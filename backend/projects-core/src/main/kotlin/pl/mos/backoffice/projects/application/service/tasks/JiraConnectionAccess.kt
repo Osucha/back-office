@@ -9,6 +9,7 @@ import pl.mos.backoffice.projects.domain.model.Connection
 import pl.mos.backoffice.projects.domain.model.ConnectionCapability
 import pl.mos.backoffice.projects.domain.model.ConnectionId
 import pl.mos.backoffice.projects.domain.model.IssueSnapshot
+import pl.mos.backoffice.projects.domain.model.IssueHeadline
 import pl.mos.backoffice.projects.domain.model.ConnectionMode
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.StepConnectionConfig
@@ -213,6 +214,21 @@ class JiraConnectionAccess(
         return choice to ScopedIssueTracker(trackers.open(connection), connection, required)
     }
 
+    /**
+     * The client of a personal intake rule (ADR 0038, amending ADR 0035): the rule owner's own personal connection,
+     * narrowed to reading. Refuses a connection that is not personal, belongs to someone else or cannot read issues.
+     */
+    fun openOwnReader(ownerUserId: UUID, connectionId: ConnectionId): OpenedTracker {
+        val required = setOf(ConnectionCapability.ISSUE_READ)
+        val connection = connections.findById(connectionId)
+            ?.takeIf { it.personal && it.ownerUserId == ownerUserId }
+            ?: throw IntegrationException("jira", "the connection of this rule is not one of your personal connections (deleted?); choose another one", retryable = false)
+        if (ConnectionCapability.ISSUE_READ !in connection.capabilities) {
+            throw IntegrationException("jira", "connection \"${connection.name}\" cannot read issues (ISSUE_READ)", retryable = false)
+        }
+        return OpenedTracker(connection, ScopedIssueTracker(trackers.open(connection), connection, required))
+    }
+
     companion object {
         /** Node config key that selects the connection (`overrides.config.jiraConnection`). */
         const val CONFIG_KEY = StepConnectionConfig.CONNECTION_KEY
@@ -247,6 +263,11 @@ class ScopedIssueTracker(
     override fun watch(jql: String, limit: Int): List<WatchedIssue> {
         need(ConnectionCapability.ISSUE_READ)
         return delegate.watch(restrictJql(jql, connection.allowedProjectKeys), limit)
+    }
+
+    override fun headlines(jql: String, limit: Int): List<IssueHeadline> {
+        need(ConnectionCapability.ISSUE_READ)
+        return delegate.headlines(restrictJql(jql, connection.allowedProjectKeys), limit)
     }
 
     override fun comment(issueKey: String, body: String) {

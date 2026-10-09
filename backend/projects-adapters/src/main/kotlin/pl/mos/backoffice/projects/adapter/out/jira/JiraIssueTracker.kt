@@ -9,6 +9,7 @@ import pl.mos.backoffice.projects.application.port.out.IssueTracker
 import pl.mos.backoffice.projects.application.port.out.IssueTrackerUnavailableException
 import pl.mos.backoffice.projects.application.port.out.TransitionUnavailableException
 import pl.mos.backoffice.projects.domain.model.IssueSnapshot
+import pl.mos.backoffice.projects.domain.model.IssueHeadline
 import pl.mos.backoffice.projects.domain.model.StatusChange
 import pl.mos.backoffice.projects.domain.model.WatchedIssue
 import java.time.Duration
@@ -100,6 +101,39 @@ class JiraIssueTracker(
         return result.take(limit)
     }
 
+
+    /**
+     * Personal intake query (ADR 0038): one page of `GET /rest/api/3/search/jql` with only key, summary, type, status
+     * and priority. 429 / 5xx become [IssueTrackerUnavailableException] with the server's `Retry-After`.
+     */
+    override fun headlines(jql: String, limit: Int): List<IssueHeadline> {
+        val page = try {
+            client.get().uri("/rest/api/3/search/jql?jql={jql}&maxResults={max}&fields={fields}", jql, limit.coerceIn(1, HEADLINE_PAGE_SIZE), HEADLINE_FIELDS)
+                .retrieve().body(Map::class.java) ?: emptyMap<String, Any?>()
+        } catch (e: RestClientResponseException) {
+            val status = e.statusCode.value()
+            log.warn("jira headlines failed status={} site={}", status, baseUrl)
+            if (status == HTTP_TOO_MANY_REQUESTS || e.statusCode.is5xxServerError) {
+                throw IssueTrackerUnavailableException(status, retryAfter(e.responseHeaders?.getFirst(HttpHeaders.RETRY_AFTER)), "search failed: ${e.responseBodyAsString.take(ERROR_BODY_CHARS)}")
+            }
+            throw IntegrationException("jira", "search failed: HTTP $status ${e.responseBodyAsString.take(ERROR_BODY_CHARS)}", e)
+        } catch (e: RuntimeException) {
+            if (e is IssueTrackerUnavailableException || e is IntegrationException) throw e
+            throw IntegrationException("jira", "search failed: ${e.message}", e, retryable = true)
+        }
+        return (page["issues"] as? List<*>)?.mapNotNull { issue ->
+            val map = issue as? Map<*, *> ?: return@mapNotNull null
+            val key = map["key"]?.toString() ?: return@mapNotNull null
+            val fields = map["fields"] as? Map<*, *> ?: emptyMap<String, Any?>()
+            IssueHeadline(
+                key = key,
+                summary = fields["summary"]?.toString(),
+                type = (fields["issuetype"] as? Map<*, *>)?.get("name")?.toString(),
+                status = (fields["status"] as? Map<*, *>)?.get("name")?.toString(),
+                priority = (fields["priority"] as? Map<*, *>)?.get("name")?.toString(),
+            )
+        }?.take(limit) ?: emptyList()
+    }
     override fun comment(issueKey: String, body: String) {
         call("comment on $issueKey") { c ->
             c.post().uri("/rest/api/3/issue/{key}/comment", issueKey)
@@ -177,6 +211,8 @@ class JiraIssueTracker(
 
     companion object {
         const val WATCH_FIELDS = "status,updated,created"
+        const val HEADLINE_FIELDS = "summary,issuetype,status,priority"
+        const val HEADLINE_PAGE_SIZE = 100
         const val WATCH_PAGE_SIZE = 50
         const val HTTP_TOO_MANY_REQUESTS = 429
         const val ERROR_BODY_CHARS = 300

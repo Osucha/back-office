@@ -215,5 +215,8 @@
   "account.notify.kind.connectionExpiringHelp": "Token Jiry połączenia, którym zarządzasz, wygasa w ciągu 14 dni lub już wygasł. Domyślnie włączone dla administratorów.",
   "account.notify.kind.connectionExpiringPreview": "Odsłuchaj dźwięk: Wygasające połączenie",
   "account.index.connections": "Połączenia",
-  "account.connections.title": "Połączenia"
+  "account.connections.title": "Połączenia",
+  "account.notify.kind.newTasks": "Nowe zadania Jira",
+  "account.notify.kind.newTasksHelp": "Jedna z Twoich reguł w Mojej pracy znalazła zgłoszenia Jira, o których jeszcze nie zdecydowałeś.",
+  "account.notify.kind.newTasksPreview": "Odsłuchaj dźwięk: Nowe zadania Jira"
 }

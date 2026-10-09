@@ -338,4 +338,9 @@ class JdbcProjectKeyLookup(private val jdbc: JdbcClient) : ProjectKeyLookup {
         if (!present) null
         else jdbc.sql("SELECT key FROM project WHERE id = :id").param("id", projectId).query(String::class.java).optional().orElse(null)
     }.onFailure { log.debug("project key lookup failed projectId={} error={}", projectId, it.message) }.getOrNull()
+
+    override fun isPersonal(projectId: UUID): Boolean = runCatching {
+        val present = jdbc.sql("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'project' AND column_name = 'personal')").query(Boolean::class.javaObjectType).single()
+        present && jdbc.sql("SELECT personal FROM project WHERE id = :id").param("id", projectId).query(Boolean::class.javaObjectType).optional().orElse(false)
+    }.onFailure { log.debug("project privacy lookup failed projectId={} error={}", projectId, it.message) }.getOrDefault(false)
 }

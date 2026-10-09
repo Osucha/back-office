@@ -75,6 +75,14 @@ repositories; `StartRun` re-checks them and refuses a run whose steps have repos
 `library: LibraryLink(libraryWorkflowId, key, version, modified)?` marks a linked copy of a library workflow
 (ADR 0037); `WorkflowService.update` recomputes `modified` against the followed version.
 
+### PersonalIntakeRule and IntakeProposal (aggregate roots, ADR 0038)
+
+`PersonalIntakeRule`: `id, ownerUserId, ownerName, name, connectionId` (the owner's personal connection),
+`jql, pollIntervalMinutes (1..1440), workflowId, enabled, includeExisting, initialized`, polling state (`nextPollAt`,
+`lastPollAt`, `lastSuccessAt`, `lastError`, `consecutiveFailures`). `IntakeProposal`: `id, ruleId, ownerUserId,
+issueKey, summary?, issueType?, status?, priority?, state (NEW / STARTED / DISMISSED / BASELINE), detectedAt, decidedAt?,
+workflowId?, runId?`; unique per `(ruleId, issueKey)`. `Project.personal` marks a private project (ADR 0038).
+
 ### LibraryWorkflow (aggregate root, ADR 0037)
 
 | Field | Notes |

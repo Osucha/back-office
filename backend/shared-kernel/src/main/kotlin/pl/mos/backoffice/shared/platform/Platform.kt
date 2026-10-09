@@ -63,6 +63,9 @@ object WorkKinds {
 
     /** One poll of a project's Jira intake watcher (ADR 0033), dedupe key `JIRA_INTAKE_POLL:<projectId>`. */
     const val JIRA_INTAKE_POLL = "JIRA_INTAKE_POLL"
+
+    /** One poll of a personal intake rule (ADR 0038), dedupe key `PERSONAL_INTAKE_POLL:<ruleId>`. */
+    const val PERSONAL_INTAKE_POLL = "PERSONAL_INTAKE_POLL"
 }
 
 // ------------------------------------------------------------------------------------------------

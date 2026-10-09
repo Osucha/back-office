@@ -39,6 +39,7 @@
 | [0035](0035-jira-connection-model.md) | Jira connection model: project system connection and list, personal connections (used only with their owner's approval or run start), per-step "Act as" (`SYSTEM` / connection / `ACTING_USER`), Atlassian scoped API tokens via api.atlassian.com with cloud id discovery and scope checks; direct Jira REST API v3, no MCP or CLI (amends 0030) | accepted |
 | [0036](0036-optional-spec-kit.md) | Spec Kit optional per project (off for new projects) with a platform switch: palette, validator, run start and runner (`specKit: false`) honour it; Spec Kit workflows seeded only when on, "Add Spec Kit workflows" later | accepted |
 | [0037](0037-workflow-library.md) | Workflow library: versioned workflows published from projects, adopted as linked copies (update keeps project-local settings, detach), runs stamped with the library version, workflow metrics (effectiveness and efficiency per version, project and node) | accepted |
+| [0038](0038-personal-work-mode.md) | Personal work next to the team mode: private projects (`projects.create.personal`, owner only), personal Jira intake rules on the owner's personal connection (amends 0035) that propose runs per new matching issue; Start runs as the owner, Dismiss / Restore | accepted |
 
 Template: context, decision, alternatives considered, consequences. Dates are the day the decision was
 taken. A superseded record keeps its text and gains a link to the successor.

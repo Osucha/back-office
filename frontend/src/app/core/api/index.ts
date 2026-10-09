@@ -8,6 +8,7 @@ export * from './approvals.service';
 export * from './ci.service';
 export * from './task-library.service';
 export * from './workflow-library.service';
+export * from './my-work.service';
 export * from './model-profiles.service';
 export * from './task-suites.service';
 export * from './benchmarks.service';

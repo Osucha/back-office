@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Back Office API
-  version: 4.1.0
+  version: 4.2.0
   description: |
     Contract between the Angular UI, the backend, the project CI (through `backoffice-ci.sh`) and the
     agent runner. Browser calls authenticate with the `BO_SESSION` cookie set by the OIDC login
@@ -38,6 +38,8 @@ tags:
   - name: approvals
   - name: ci
   - name: task-library
+  - name: my-work
+    description: Personal work (ADR 0038), personal Jira intake rules and the run proposals they create
   - name: workflow-library
     description: Versioned workflows published from projects and adopted by other projects as linked copies (ADR 0037)
   - name: model-profiles
@@ -1594,6 +1596,77 @@ paths:
         verification call `myself`. Any signed-in user.
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/JiraScopes' } } } }
+  # ---------------------------------------------------------------- personal work (ADR 0038)
+  /me/intake/rules:
+    get:
+      tags: [my-work]
+      operationId: listMyIntakeRules
+      description: The caller's personal intake rules (`connections.personal`).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IntakeRule' } } } } }
+    post:
+      tags: [my-work]
+      operationId: createMyIntakeRule
+      description: At most 10 rules per user. The connection must be one of the caller's personal connections with ISSUE_READ; the workflow one the caller may start (`run.start`).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeRuleInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeRule' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /me/intake/rules/{ruleId}:
+    parameters: [ { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    put:
+      tags: [my-work]
+      operationId: updateMyIntakeRule
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeRuleInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeRule' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [my-work]
+      operationId: deleteMyIntakeRule
+      description: Deletes the rule and its open (NEW, DISMISSED, BASELINE) proposals; started proposals keep their run.
+      responses:
+        '204': { description: Deleted }
+  /me/intake/rules/{ruleId}/poll:
+    parameters: [ { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [my-work]
+      operationId: pollMyIntakeRule
+      description: Schedules a poll of the rule right away.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeRule' } } } }
+  /me/intake/proposals:
+    get:
+      tags: [my-work]
+      operationId: listMyIntakeProposals
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [NEW, STARTED, DISMISSED] }, description: 'default NEW' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IntakeProposal' } } } } }
+  /me/intake/proposals/{proposalId}/start:
+    parameters: [ { name: proposalId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [my-work]
+      operationId: startMyIntakeProposal
+      description: Starts the rule's default workflow (or `workflowId`) for the issue as the caller (`run.start` on its project).
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { workflowId: { type: string, format: uuid, nullable: true } } } } } }
+      responses:
+        '200': { description: Started, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeProposal' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /me/intake/proposals/{proposalId}/dismiss:
+    parameters: [ { name: proposalId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [my-work]
+      operationId: dismissMyIntakeProposal
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeProposal' } } } }
+  /me/intake/proposals/{proposalId}/restore:
+    parameters: [ { name: proposalId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [my-work]
+      operationId: restoreMyIntakeProposal
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/IntakeProposal' } } } }
   /me/connections:
     get:
       tags: [connections]
@@ -2073,6 +2146,7 @@ components:
             jql: { type: string, nullable: true }
         constitution: { type: string, description: 'Markdown, Spec Kit constitution (kept while Spec Kit is off, ADR 0036)' }
         specKit: { type: boolean, nullable: true, description: 'ADR 0036: Spec Kit for this project (off by default for new projects; null on update = unchanged). Used only when the platform allows Spec Kit.' }
+        personal: { type: boolean, description: 'ADR 0038 (default false): a private project of its creator only (needs `projects.create.personal` or `projects.create`); members cannot be added. Set at creation, ignored on update.' }
         defaults:
           type: object
           properties:
@@ -2247,6 +2321,56 @@ components:
             updatedAt: { type: string, format: date-time }
             updatedBy: { $ref: '#/components/schemas/ActorRef' }
             library: { allOf: [ { $ref: '#/components/schemas/LibraryLink' } ], nullable: true, readOnly: true, description: 'set when the workflow is a linked copy of a library workflow (ADR 0037)' }
+    IntakeRuleInput:
+      type: object
+      required: [name, connectionId, jql, workflowId]
+      properties:
+        name: { type: string, maxLength: 100 }
+        connectionId: { type: string, format: uuid, description: one of the caller's personal connections with ISSUE_READ }
+        jql: { type: string, maxLength: 2000, example: 'assignee = currentUser() AND statusCategory != Done' }
+        pollIntervalMinutes: { type: integer, minimum: 1, maximum: 1440, default: 5 }
+        workflowId: { type: string, format: uuid, description: the workflow proposed for new issues }
+        enabled: { type: boolean, default: true }
+        includeExisting: { type: boolean, default: true, description: 'the issues matching on the first poll become proposals too' }
+    IntakeRule:
+      allOf:
+        - $ref: '#/components/schemas/IntakeRuleInput'
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+            connectionName: { type: string, nullable: true }
+            workflowName: { type: string, nullable: true }
+            projectId: { type: string, format: uuid, nullable: true }
+            projectKey: { type: string, nullable: true }
+            initialized: { type: boolean, description: the first poll happened }
+            lastPollAt: { type: string, format: date-time, nullable: true }
+            lastSuccessAt: { type: string, format: date-time, nullable: true }
+            nextPollAt: { type: string, format: date-time, nullable: true }
+            lastError: { type: string, nullable: true }
+            consecutiveFailures: { type: integer }
+            newProposals: { type: integer, description: proposals of this rule waiting for a decision }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    IntakeProposal:
+      type: object
+      required: [id, ruleId, issueKey, state, detectedAt]
+      properties:
+        id: { type: string, format: uuid }
+        ruleId: { type: string, format: uuid }
+        ruleName: { type: string, nullable: true }
+        issueKey: { type: string }
+        summary: { type: string, nullable: true, description: 'display only (issue text, untrusted); never sent to a model by the intake' }
+        issueType: { type: string, nullable: true }
+        status: { type: string, nullable: true, description: Jira status when detected }
+        priority: { type: string, nullable: true }
+        issueUrl: { type: string, nullable: true }
+        state: { type: string, enum: [NEW, STARTED, DISMISSED] }
+        detectedAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time, nullable: true }
+        workflowId: { type: string, format: uuid, nullable: true, description: 'NEW: the rule default; STARTED: the workflow started' }
+        workflowName: { type: string, nullable: true }
+        runId: { type: string, format: uuid, nullable: true }
     LibraryLink:
       type: object
       required: [libraryWorkflowId, key, name, version, latestVersion, modified, deprecated]
@@ -4159,12 +4283,13 @@ components:
         id: { type: string }
         type:
           type: string
-          enum: [WorkflowRunStarted, NodeStarted, NodeCompleted, NodeFailed, RunWaitingForHuman, RunWaitingForCi, ApprovalDecided, ApprovalAssigned, CiSignalReceived, WorkflowRunFinished, CiExecutionFinished, RunnerLog, BenchmarkProgress, BenchmarkFinished, BudgetAlert, BudgetExceeded, ConnectionExpiring]
+          enum: [WorkflowRunStarted, NodeStarted, NodeCompleted, NodeFailed, RunWaitingForHuman, RunWaitingForCi, ApprovalDecided, ApprovalAssigned, CiSignalReceived, WorkflowRunFinished, CiExecutionFinished, RunnerLog, BenchmarkProgress, BenchmarkFinished, BudgetAlert, BudgetExceeded, ConnectionExpiring, IntakeProposalsFound]
           description: >
             RunWaitingForHuman carries `kind` (GATE or WRITE_CONFIRMATION, ADR 0033). BudgetAlert / BudgetExceeded come from
             the llm-gateway budgets. ConnectionExpiring (daily, once per expiry date) carries `connectionId`, `projectId`
             (null = platform or personal), `name`, `scope` (PLATFORM / PROJECT / USER), `ownerUserId` (USER only: the
-            owner, the only person notified, ADR 0035), `expiresAt`, `daysLeft`.
+            owner, the only person notified, ADR 0035), `expiresAt`, `daysLeft`. IntakeProposalsFound (ADR 0038) carries
+            `ownerUserId` (the only person notified), `ruleId`, `ruleName`, `count` and `issueKeys` (at most 5).
         occurredAt: { type: string, format: date-time }
         payload: { type: object, additionalProperties: true }
     RunnerEvent:

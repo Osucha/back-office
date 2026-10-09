@@ -146,6 +146,7 @@ equivalents through the `auditor` role).
 | `admin.settings.manage` | PLATFORM | identity | platform settings (registration mode, domains) |
 | `tokens.personal` | PLATFORM | identity | create own personal access tokens |
 | `projects.create` | PLATFORM | projects | create projects (creator becomes OWNER); built-in roles `project-manager` and `platform-admin` (ADR 0028) |
+| `projects.create.personal` | PLATFORM | projects | create private projects of your own (only the creator is a member, adding members is refused); every member (ADR 0038, identity migration V410) |
 | `integrations.view` | PLATFORM | projects | see integration status and run connection tests; list platform connections (ADR 0030) |
 | `admin.connections.manage` | PLATFORM | projects | create, edit, rotate, verify and delete platform connections (Administration → Connections, ADR 0030); see the metadata of personal connections (ADR 0035) |
 | `connections.personal` | PLATFORM | projects | create and use own personal connections (My account → Connections, ADR 0035); a personal connection is used only with its owner's approval or run start and is invisible to everybody else |
@@ -183,7 +184,7 @@ The MCP endpoint `/mcp` accepts personal access tokens only.
 | Role | Scope | Permissions |
 |---|---|---|
 | `platform-admin` | PLATFORM | all platform permissions incl. `admin.projects.all` and `admin.connections.manage` |
-| `member` (SYSTEM default) | PLATFORM | `library.view`, `models.view`, `evaluation.view`, `tokens.personal`, `integrations.view`, `connections.personal` (no `projects.create` since ADR 0028) |
+| `member` (SYSTEM default) | PLATFORM | `library.view`, `models.view`, `evaluation.view`, `tokens.personal`, `integrations.view`, `connections.personal`, `projects.create.personal` (no `projects.create` since ADR 0028) |
 | `project-manager` | PLATFORM | `member` + `projects.create`, `usage.view` |
 | `evaluator` | PLATFORM | `member` + `evaluation.run` |
 | `library-curator` | PLATFORM | `member` + `library.manage` |

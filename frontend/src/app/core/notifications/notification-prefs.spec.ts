@@ -26,6 +26,7 @@ describe('notification preferences', () => {
       budget: true,
       ciFailed: false,
       connectionExpiring: false,
+      newTasks: true,
     });
     expect(d.onlyWhenHidden).toBe(true);
     expect(d.sound).toBe(true);

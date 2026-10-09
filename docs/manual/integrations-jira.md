@@ -294,7 +294,8 @@ A **personal connection** is a Jira connection you keep for yourself under **My 
 lets workflow steps comment on or move issues **as you**, in Jira, instead of as a shared account.
 
 - **Only with your own action.** It is used only when a step is set to act as the person who approves or starts it
-  ([Act as](#jira-act-as)), and only for **your** approval of a write or a run **you** started. It is never used by
+  ([Act as](#jira-act-as)), and only for **your** approval of a write or a run **you** started, or to read the issues of
+  your own rules in [My work](my-work.md#rules) (reading only, ADR 0038). It is never used by
   the intake watcher, by CI, or in a run of someone else unless you approve that write.
 - **Nobody else can see or use it.** Other users cannot read, test or change it (they get "not found").
   Administrators see under **Administration** → **Connections** → **Personal connections** that it exists (name,

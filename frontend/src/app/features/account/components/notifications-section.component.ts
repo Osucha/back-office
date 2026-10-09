@@ -362,6 +362,11 @@ export class NotificationsSectionComponent {
       help: $localize`:@@account.notify.kind.connectionExpiringHelp:A Jira token of a connection you manage expires within 14 days or has expired. On by default for administrators.`,
       preview: $localize`:@@account.notify.kind.connectionExpiringPreview:Preview the sound: Connection expiring`,
     },
+    newTasks: {
+      title: $localize`:@@account.notify.kind.newTasks:New Jira tasks`,
+      help: $localize`:@@account.notify.kind.newTasksHelp:One of your rules in My work found Jira issues you have not decided on yet.`,
+      preview: $localize`:@@account.notify.kind.newTasksPreview:Preview the sound: New Jira tasks`,
+    },
   };
 
   /** Runs in the click handler: the permission prompt and the audio unlock need the gesture. */

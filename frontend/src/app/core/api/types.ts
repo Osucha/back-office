@@ -398,3 +398,9 @@ export const SANDBOX_CACHES: SandboxCache[] = [
 export const WORK_ITEM_STATUSES: WorkItemStatus[] = ['READY', 'LEASED', 'DONE', 'DEAD'];
 /** Built-in project roles (fallback when `/admin/roles?scope=PROJECT` is not readable). */
 export const BUILT_IN_PROJECT_ROLES = ['owner', 'maintainer', 'developer', 'approver', 'viewer'];
+
+// ---- personal work (ADR 0038)
+export type IntakeRuleInput = S['IntakeRuleInput'];
+export type IntakeRule = S['IntakeRule'];
+export type IntakeProposal = S['IntakeProposal'];
+export type IntakeProposalState = IntakeProposal['state'];

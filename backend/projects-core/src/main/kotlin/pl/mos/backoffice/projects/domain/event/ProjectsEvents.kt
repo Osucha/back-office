@@ -2,6 +2,7 @@ package pl.mos.backoffice.projects.domain.event
 
 import pl.mos.backoffice.projects.domain.model.ApprovalRequestId
 import pl.mos.backoffice.projects.domain.model.CiExecutionId
+import pl.mos.backoffice.projects.domain.model.IntakeRuleId
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.RunStatus
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
@@ -202,5 +203,24 @@ data class ApprovalAssigned(
     override val type = "ApprovalAssigned"
     override val payload: Map<String, Any?> = mapOf(
         "approvalId" to approvalId.toString(), "runId" to runId.toString(), "projectId" to projectId.toString(), "assignees" to assignees.map { it.toString() },
+    )
+}
+
+/**
+ * A personal intake rule found issues its owner has not been asked about yet (ADR 0038). [ownerUserId] is in the
+ * payload, so the event stream delivers it to that person only. Only keys and the rule name, never issue text.
+ */
+data class IntakeProposalsFound(
+    val ownerUserId: java.util.UUID,
+    val ruleId: IntakeRuleId,
+    val ruleName: String,
+    val issueKeys: List<String>,
+    val count: Int,
+    override val occurredAt: Instant,
+) : ProjectsEvent() {
+    override val type = "IntakeProposalsFound"
+    override val payload: Map<String, Any?> = mapOf(
+        "ownerUserId" to ownerUserId.toString(), "ruleId" to ruleId.toString(), "ruleName" to ruleName,
+        "issueKeys" to issueKeys.take(5), "count" to count,
     )
 }

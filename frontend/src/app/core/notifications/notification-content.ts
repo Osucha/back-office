@@ -26,6 +26,7 @@ export const KIND_SOUND: Record<NotifyKind, SoundKind> = {
   budget: 'budget',
   ciFailed: 'failed',
   connectionExpiring: 'budget',
+  newTasks: 'turn',
 };
 
 const TITLE_MAX = 64;
@@ -226,6 +227,31 @@ export function connectionContent(c: ConnectionExpiringEvent): NotificationConte
   };
 }
 
+export interface IntakeProposalsEvent {
+  ruleId: string | null;
+  ruleName: string | null;
+  count: number;
+  issueKeys: string[];
+}
+
+/** A personal intake rule found issues the user has not decided on yet (ADR 0038); only keys, no issue text. */
+export function intakeContent(e: IntakeProposalsEvent): NotificationContent {
+  const count = Math.max(1, Math.trunc(e.count));
+  const keys = e.issueKeys.slice(0, 5).map((k) => cleanText(k, 24));
+  const more = count > keys.length ? ` +${count - keys.length}` : '';
+  return {
+    kind: 'newTasks',
+    title: title(
+      count === 1
+        ? $localize`:@@core.notify.newTaskTitle:New Jira task: ${keys[0] ?? ''}:key:`
+        : $localize`:@@core.notify.newTasksTitle:New Jira tasks: ${count}:count:`,
+    ),
+    body: joinClean([keys.join(', ') + more, cleanText(e.ruleName, 60)], BODY_MAX),
+    tag: `bo-intake-${seg(e.ruleId)}`,
+    link: '/my-work',
+  };
+}
+
 /** The sample of the preferences screen ("Send a test notification"). */
 export function testContent(kind: NotifyKind): NotificationContent {
   const samples: Record<NotifyKind, () => NotificationContent> = {
@@ -280,6 +306,13 @@ export function testContent(kind: NotifyKind): NotificationContent {
         projectKey: null,
         name: 'Jira reader', // i18n-ignore (sample connection name)
         daysLeft: 7,
+      }),
+    newTasks: () =>
+      intakeContent({
+        ruleId: 'preview',
+        ruleName: $localize`:@@core.notify.sampleRule:My issues`,
+        count: 2,
+        issueKeys: ['DEMO-42', 'DEMO-43'],
       }),
   };
   const c = samples[kind]();

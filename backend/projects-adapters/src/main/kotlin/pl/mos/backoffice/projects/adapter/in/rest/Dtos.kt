@@ -68,6 +68,8 @@ data class ProjectInputDto(
     val issueTracker: IssueTrackerDto? = IssueTrackerDto(),
     val constitution: String = "",
     val defaults: ProjectDefaultsDto = ProjectDefaultsDto(),
+    /** ADR 0038: create a private project (only on create). */
+    val personal: Boolean = false,
     /** ADR 0036: Spec Kit for this project; null = off on create, unchanged on update. */
     val specKit: Boolean? = null,
 )
@@ -104,6 +106,8 @@ data class ProjectDto(
     val myPermissions: List<String> = emptyList(),
     /** ADR 0036: Spec Kit is on for this project (it is used only when the platform allows it too). */
     val specKit: Boolean = false,
+    /** ADR 0038: a private project of its creator only. */
+    val personal: Boolean = false,
 )
 /** ADR 0036: the project's Spec Kit setting, the platform switch and the seeded Spec Kit workflows the project lacks. */
 data class SpecKitStatusDto(val enabled: Boolean, val allowedByPlatform: Boolean, val effective: Boolean, val missingWorkflows: List<String>)

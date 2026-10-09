@@ -60,6 +60,7 @@ describe('help map', () => {
       ['/library/templates', 'templates'],
       ['/library/interfaces', 'interfaces'],
       ['/library/skills', 'skills'],
+      ['/my-work', 'myWork'],
       ['/library/workflows', 'libraryWorkflows'],
       ['/library/workflows/l1', 'libraryMetrics'],
       ['/library/workflows/l1?tab=versions', 'libraryWorkflows'],

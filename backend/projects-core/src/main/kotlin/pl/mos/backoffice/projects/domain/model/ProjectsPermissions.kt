@@ -12,6 +12,9 @@ object ProjectsPermissions {
     const val MODULE = "projects"
 
     const val PROJECTS_CREATE = "projects.create"
+
+    /** ADR 0038: create a private project (the creator is its only member); every member holds it. */
+    const val PROJECTS_CREATE_PERSONAL = "projects.create.personal"
     const val INTEGRATIONS_VIEW = "integrations.view"
     const val CONNECTIONS_MANAGE = "admin.connections.manage"
     const val CONNECTIONS_PERSONAL = "connections.personal"
@@ -39,6 +42,7 @@ object ProjectsPermissions {
 
     val definitions: List<PermissionDefinition> = listOf(
         platform(PROJECTS_CREATE, "create projects (creator becomes OWNER)"),
+        platform(PROJECTS_CREATE_PERSONAL, "create private projects of your own (ADR 0038)"),
         platform(INTEGRATIONS_VIEW, "see integration status, platform connections and run connection tests"),
         platform(CONNECTIONS_MANAGE, "create, edit, verify and delete platform connections (Jira credentials, ADR 0030)"),
         platform(CONNECTIONS_PERSONAL, "create and use own personal connections (Jira as yourself, ADR 0035)"),

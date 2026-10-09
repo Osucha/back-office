@@ -120,6 +120,8 @@ class ProjectKeys(private val memberships: ProjectMembershipRepository, private 
     fun keyOf(projectId: UUID): String? =
         memberships.findByProject(projectId).firstOrNull()?.projectKey ?: lookup.keyOf(projectId)
 
+    fun isPersonal(projectId: UUID): Boolean = lookup.isPersonal(projectId)
+
     fun describe(access: Map<UUID, Set<String>>, roles: Map<UUID, Set<String>>, known: Map<UUID, String>): List<ProjectAccess> =
         (access.keys + roles.keys).distinct().map { id ->
             ProjectAccess(id, known[id] ?: keyOf(id) ?: id.toString(), roles[id] ?: emptySet(), access[id] ?: emptySet())

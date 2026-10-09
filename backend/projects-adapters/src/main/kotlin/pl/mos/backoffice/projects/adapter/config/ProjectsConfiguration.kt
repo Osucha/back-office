@@ -3,6 +3,8 @@ package pl.mos.backoffice.projects.adapter.config
 import pl.mos.backoffice.shared.platform.PlatformFeatures
 import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
 import pl.mos.backoffice.projects.application.service.WorkflowLibraryService
+import pl.mos.backoffice.projects.application.service.PersonalIntakeService
+import pl.mos.backoffice.projects.application.port.out.PersonalIntakeRepository
 import pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck
 import org.bsc.langgraph4j.checkpoint.BaseCheckpointSaver
 import org.bsc.langgraph4j.checkpoint.PostgresSaverV2
@@ -198,6 +200,13 @@ class ProjectsConfiguration {
         intakes: JiraIntakeRepository, projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: RunService,
         jira: JiraConnectionAccess, planner: JiraIntakePlanner, queue: WorkQueue, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
     ) = JiraIntakeService(intakes, projects, workflows, runs, jira, planner, queue, gate, audit, clock)
+
+    /** Personal work (ADR 0038): personal intake rules and run proposals. */
+    @Bean
+    fun personalIntakeService(
+        intake: PersonalIntakeRepository, connections: ConnectionRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository,
+        runs: RunService, jira: JiraConnectionAccess, queue: WorkQueue, events: EventPublisher, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+    ) = PersonalIntakeService(intake, connections, workflows, projects, runs, jira, queue, events, gate, audit, clock)
 
     @Bean
     fun signalService(runs: WorkflowRunRepository, engine: WorkflowEngine, events: EventPublisher, gate: AuthorizationGate, audit: AuditPort, clock: Clock) =

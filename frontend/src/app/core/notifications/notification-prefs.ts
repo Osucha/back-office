@@ -14,6 +14,7 @@ export const NOTIFY_KINDS = [
   'budget',
   'ciFailed',
   'connectionExpiring',
+  'newTasks',
 ] as const;
 export type NotifyKind = (typeof NOTIFY_KINDS)[number];
 
@@ -46,6 +47,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
     budget: true,
     ciFailed: false,
     connectionExpiring: false,
+    newTasks: true,
   },
   onlyWhenHidden: true,
   sound: true,

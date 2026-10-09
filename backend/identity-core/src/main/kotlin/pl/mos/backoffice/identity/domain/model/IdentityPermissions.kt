@@ -56,6 +56,9 @@ object BuiltInRoles {
     /** Own personal connections (ADR 0035): Jira as yourself, used only with your own approval or run start. */
     private const val CONNECTIONS_PERSONAL = "connections.personal"
 
+    /** Private projects of your own (ADR 0038). */
+    private const val PROJECTS_CREATE_PERSONAL = "projects.create.personal"
+
     /** Credentials of the project (ADR 0030): owners only, not maintainers. */
     private const val PROJECT_CONNECTIONS_MANAGE = "project.connections.manage"
 
@@ -63,7 +66,7 @@ object BuiltInRoles {
     val ALL_PLATFORM = setOf(
         IdentityPermissions.USERS_VIEW, IdentityPermissions.USERS_MANAGE, IdentityPermissions.ROLES_MANAGE,
         IdentityPermissions.AUDIT_VIEW, IdentityPermissions.PROJECTS_ALL, IdentityPermissions.SETTINGS_MANAGE,
-        IdentityPermissions.TOKENS_PERSONAL, CONNECTIONS_PERSONAL,
+        IdentityPermissions.TOKENS_PERSONAL, CONNECTIONS_PERSONAL, PROJECTS_CREATE_PERSONAL,
         "projects.create", "integrations.view", "admin.connections.manage", LIBRARY_VIEW, "library.manage", MODELS_VIEW, "models.manage",
         EVALUATION_VIEW, "evaluation.run", USAGE_VIEW,
     )
@@ -71,6 +74,7 @@ object BuiltInRoles {
     /** Every user: reads the shared catalogues, own tokens. No `projects.create`: managers create projects (ADR 0028). */
     private val MEMBER_PERMISSIONS = setOf(
         LIBRARY_VIEW, MODELS_VIEW, EVALUATION_VIEW, IdentityPermissions.TOKENS_PERSONAL, "integrations.view", CONNECTIONS_PERSONAL,
+        PROJECTS_CREATE_PERSONAL,
     )
 
     /** Creates projects (the creator becomes their owner) and sees usage across projects (ADR 0028). */

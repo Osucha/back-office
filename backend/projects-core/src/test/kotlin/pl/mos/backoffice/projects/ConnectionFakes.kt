@@ -99,6 +99,10 @@ object ConnectionFakes {
         val watchedJql = CopyOnWriteArrayList<String>()
         var watchResult: List<WatchedIssue> = emptyList()
         var watchFailure: RuntimeException? = null
+        /** ADR 0038: what the personal intake reads. */
+        val headlinesJql = CopyOnWriteArrayList<String>()
+        var headlinesResult: List<pl.mos.backoffice.projects.domain.model.IssueHeadline> = emptyList()
+        var headlinesFailure: RuntimeException? = null
         /** ADR 0035: the cloud id `_edge/tenant_info` answers; null = discovery fails. */
         var cloudId: String? = "11111111-2222-3333-4444-555555555555"
         val discovered = CopyOnWriteArrayList<String>()
@@ -133,6 +137,11 @@ object ConnectionFakes {
                 }
                 override fun transition(issueKey: String, toStatus: String) {
                     calls += "transition $issueKey $toStatus"
+                }
+                override fun headlines(jql: String, limit: Int): List<pl.mos.backoffice.projects.domain.model.IssueHeadline> {
+                    headlinesJql += jql
+                    headlinesFailure?.let { throw it }
+                    return headlinesResult
                 }
             }
         }

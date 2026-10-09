@@ -61,6 +61,7 @@ class ProjectMembershipService(
         val me = gate.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, projectId)
         requireProjectRole(command.role)
         requirePrincipal(command.principalType, command.principalId)
+        if (projectKeys.isPersonal(projectId)) throw InvalidStateException("a private project has only its owner; members cannot be added (ADR 0038)")
         val existing = memberships.findByProject(projectId)
         if (existing.any { it.principalType == command.principalType && it.principalId == command.principalId }) {
             throw InvalidStateException("${command.principalType.name.lowercase()} ${command.principalId} is already a member of this project")

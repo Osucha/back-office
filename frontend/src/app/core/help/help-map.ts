@@ -172,6 +172,7 @@ export const HELP_TOPICS = {
     $localize`:@@core.help.topic.interfaces:Task interfaces`,
   ),
   skills: t('task-library', 'skills', $localize`:@@core.help.topic.skills:Skills`),
+  myWork: t('my-work', 'my-work', $localize`:@@core.help.topic.myWork:My work`),
   libraryWorkflows: t(
     'workflow-library',
     'library-workflows',
@@ -329,6 +330,7 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
   [/^\/library(\/templates)?$/, 'templates'],
   [/^\/library\/interfaces$/, 'interfaces'],
   [/^\/library\/skills$/, 'skills'],
+  [/^\/my-work$/, 'myWork'],
   [/^\/library\/workflows$/, 'libraryWorkflows'],
   [/^\/library\/workflows\/[^/]+$/, (q) => (q.get('tab') ? 'libraryWorkflows' : 'libraryMetrics')],
   [/^\/models$/, 'models'],

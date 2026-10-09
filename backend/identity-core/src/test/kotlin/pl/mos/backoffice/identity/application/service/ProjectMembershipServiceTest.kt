@@ -28,6 +28,21 @@ class ProjectMembershipServiceTest {
     private fun manager() = FakeAuthorizationGate.permitting("project.members.manage", projects = setOf(project))
 
     @Test
+    fun `a private project has only its owner, adding members is refused (ADR 0038)`() {
+        val owner = db.user("owner@example.com")
+        db.member(project, "MINE", PrincipalType.USER, owner.id.value, BuiltInRoles.OWNER)
+        val dev = db.user("dev@example.com")
+        val keys = ProjectKeys(db.memberships, object : pl.mos.backoffice.identity.application.port.out.ProjectKeyLookup {
+            override fun keyOf(projectId: UUID): String? = null
+            override fun isPersonal(projectId: UUID): Boolean = projectId == project
+        })
+        val private = ProjectMembershipService(db.memberships, db.users, db.groups, db.roles, keys, audit, db.accessVersion, db.clock, manager())
+        assertThatThrownBy { private.add(project, AddMember(PrincipalType.USER, dev.id.value, "developer")) }
+            .isInstanceOf(InvalidStateException::class.java).hasMessageContaining("private project")
+        assertThat(db.memberships.findByProject(project)).hasSize(1)
+    }
+
+    @Test
     fun `the creator of a project becomes its owner`() {
         val creator = db.user("owner@example.com")
         service(FakeAuthorizationGate.denyAll()).grantCreator(project, "PRJ", Actor(PrincipalKind.USER, creator.id.value, "Owner"))

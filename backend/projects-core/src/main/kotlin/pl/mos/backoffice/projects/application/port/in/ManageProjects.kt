@@ -55,6 +55,8 @@ interface ManageProjects {
         val defaults: ProjectDefaults = ProjectDefaults(),
         /** ADR 0036: Spec Kit for this project; null = off on create, unchanged on update. */
         val specKit: Boolean? = null,
+        /** ADR 0038: create a private project (only on create; ignored on update). */
+        val personal: Boolean = false,
     )
 
     data class ProjectStats(val workflows: Int, val activeRuns: Int, val openApprovals: Int, val ciExecutionsLast7Days: Int, val costLast30Days: Money)

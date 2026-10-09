@@ -1,6 +1,7 @@
 package pl.mos.backoffice.projects.application.port.out
 
 import pl.mos.backoffice.projects.domain.model.IssueSnapshot
+import pl.mos.backoffice.projects.domain.model.IssueHeadline
 import pl.mos.backoffice.projects.domain.model.WatchedIssue
 import java.time.Duration
 
@@ -19,6 +20,12 @@ interface IssueTracker {
      * matching [jql], at most [limit]. Throws [IssueTrackerUnavailableException] on rate limits and server errors.
      */
     fun watch(jql: String, limit: Int = 100): List<WatchedIssue> = throw UnsupportedOperationException("this issue tracker cannot be watched")
+
+    /**
+     * Personal intake query (ADR 0038): key, summary, type, status and priority of the issues matching [jql], at most
+     * [limit], for display only. Throws [IssueTrackerUnavailableException] on rate limits and server errors.
+     */
+    fun headlines(jql: String, limit: Int = 50): List<IssueHeadline> = throw UnsupportedOperationException("this issue tracker cannot list issues")
 }
 
 /** The issue tracker refused for now (HTTP 429 or 5xx); [retryAfter] is the server's `Retry-After`, when sent. */

@@ -225,6 +225,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         specKitEnabled = p.specKit,
         jiraSystemConnectionId = p.jiraConnections.systemConnectionId?.value,
         jiraConnectionIds = write(p.jiraConnections.additionalConnectionIds.map { it.toString() }),
+        personal = p.personal,
     )
 
     fun toDomain(e: ProjectEntity): Project = Project(
@@ -241,6 +242,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         ciEntrypoints = json.readValue(e.ciEntrypoints, entrypointList).map { CiEntrypoint(it.key, WorkflowDefinitionId.of(it.workflowId), CiMode.valueOf(it.mode), it.description, it.uploadDiff, it.repository) },
         createdAt = e.createdAt, updatedAt = e.updatedAt, createdBy = readActor(e.createdBy),
         specKit = e.specKitEnabled,
+        personal = e.personal,
         jiraConnections = run {
             val system = e.jiraSystemConnectionId?.let(::ConnectionId)
             // stale or duplicate ids (a connection deleted by an older replica) are dropped instead of failing the read

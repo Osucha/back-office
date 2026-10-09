@@ -69,11 +69,11 @@ class QueryServicesTest {
     fun `the permission catalogue matches the architecture table`() {
         val byKey = ProjectsPermissions.definitions.associateBy { it.key }
         assertThat(byKey.keys).containsExactlyInAnyOrder(
-            "projects.create", "integrations.view", "admin.connections.manage", "connections.personal", "project.view", "project.manage", "project.ci.manage",
+            "projects.create", "projects.create.personal", "integrations.view", "admin.connections.manage", "connections.personal", "project.view", "project.manage", "project.ci.manage",
             "project.connections.manage", "workflow.edit",
             "run.start", "run.cancel", "run.approve", "run.assign", "run.signal", "ci.execute", "ci.signal",
         )
-        assertThat(byKey.filterValues { it.scope == PermissionScope.PLATFORM }.keys).containsExactlyInAnyOrder("projects.create", "integrations.view", "admin.connections.manage", "connections.personal")
+        assertThat(byKey.filterValues { it.scope == PermissionScope.PLATFORM }.keys).containsExactlyInAnyOrder("projects.create", "projects.create.personal", "integrations.view", "admin.connections.manage", "connections.personal")
         assertThat(ProjectsPermissions.definitions).allMatch { it.module == "projects" }
     }
 }

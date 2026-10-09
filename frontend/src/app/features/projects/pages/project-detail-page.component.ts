@@ -120,6 +120,10 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
         <bo-page-header [title]="p.name" [eyebrow]="p.key" [help]="helpKey()">
           <span boHeaderLead class="tile" aria-hidden="true">{{ mono(p.key) }}</span>
           <div boHeaderMeta class="meta">
+            @if (p.personal) {
+              <span class="private" i18n="@@projects.detail.private">private project</span
+              ><span class="sep">·</span>
+            }
             <span>{{ repoSummary() }}</span>
             @if (p.issueTracker?.jiraProjectKey) {
               <span class="sep">·</span><span>Jira {{ p.issueTracker?.jiraProjectKey }}</span>
@@ -426,9 +430,15 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
           </nz-tab>
           <nz-tab nzTitle="Members" i18n-nzTitle="@@projects.detail.tab.members">
             <ng-template nz-tab>
+              @if (p.personal) {
+                <p class="private-note" i18n="@@projects.detail.privateMembers">
+                  A private project has only its owner (ADR 0038): its workflows and runs are yours.
+                  To work with others, use a team project, created by a project manager.
+                </p>
+              }
               <app-project-members-panel
                 [projectId]="p.id"
-                [canManage]="can('project.members.manage')"
+                [canManage]="can('project.members.manage') && !p.personal"
               />
             </ng-template>
           </nz-tab>
@@ -588,6 +598,18 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
   `,
   styles: [
     `
+      .private {
+        padding: 0 8px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        font-weight: 500;
+        box-shadow: inset 0 0 0 1px var(--bo-line-strong);
+      }
+      .private-note {
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: var(--bo-ink-2);
+      }
       .lib-line {
         display: flex;
         flex-wrap: wrap;

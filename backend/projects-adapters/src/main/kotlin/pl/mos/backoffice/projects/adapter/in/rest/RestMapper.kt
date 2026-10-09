@@ -82,6 +82,7 @@ class RestMapper {
         constitution = dto.constitution,
         defaults = ProjectDefaults(dto.defaults.modelProfileId?.let(::ModelProfileId), dto.defaults.reviewModelProfileId?.let(::ModelProfileId)),
         specKit = dto.specKit,
+        personal = dto.personal,
     )
 
     /** `repositories` wins; the deprecated `repository` (ADR 0034) becomes the single primary repository `main`. */
@@ -125,6 +126,7 @@ class RestMapper {
         stats = stats?.let { ProjectStatsDto(it.workflows, it.activeRuns, it.openApprovals, it.ciExecutionsLast7Days, money(it.costLast30Days)) },
         createdBy = actor(p.createdBy), myRoles = myRoles.sorted(), myPermissions = myPermissions.sorted(),
         specKit = p.specKit,
+        personal = p.personal,
     )
 
     fun toDto(e: CiEntrypoint, workflowName: String?) = CiEntrypointDto(e.key, e.workflowId.value, workflowName, e.mode.name, e.description, e.uploadDiff, e.repository)

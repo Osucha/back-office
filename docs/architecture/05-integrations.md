@@ -214,7 +214,8 @@ verified > `FAILED`, then non-legacy before legacy, then name. Result `OK`, `OVE
 capabilities listed in `excess`), `NONE`, plus `fallback: true` when the system connection did not fit.
 
 Personal connections are never candidates of the `SYSTEM` rule, the ADR 0030 rule, a pin or the intake watcher,
-and a person's connection is used only for that person's own action (their approval, their run start).
+and a person's connection is used only for that person's own action (their approval, their run start) or, read-only,
+by that person's own personal intake rules (ADR 0038, `JiraConnectionAccess.openOwnReader`).
 
 `GET /projects/{id}/connections/resolve` returns this result for the designer (system or pinned; the designer
 explains `ACTING_USER` itself and resolves the system connection as its fallback). The workflow validator
@@ -343,6 +344,27 @@ Poll:
 Only key, status, `updated`, `created` and changelog status items are read; issue text never enters the
 watcher (ADR 0029). Known limit: without a changelog, a leave-and-re-enter within one window may be
 missed.
+
+### Personal intake rules (ADR 0038)
+
+Next to the project watcher, every user may keep **personal intake rules** (`PersonalIntakeRule`, table
+`personal_intake_rule`, V112; use case `ManagePersonalIntake` under `/me/intake`, permission `connections.personal`).
+A rule names one of the owner's personal connections with `ISSUE_READ`, a JQL, an interval (1–1440 minutes) and the
+default workflow (one the owner may start). The scheduler (`PersonalIntakeScheduler`, ShedLock
+`personal-intake-scan`, every `backoffice.personal-intake.scan-delay`) enqueues `PERSONAL_INTAKE_POLL` (one live item
+per rule); a poll opens the owner's connection through `JiraConnectionAccess.openOwnReader` (refused for a connection
+that is not personal, not the owner's or cannot read), runs `GET /rest/api/3/search/jql` with the rule's JQL
+(`ORDER BY updated DESC` appended unless the JQL orders itself, at most 50 issues, fields
+`summary,issuetype,status,priority`) and inserts one `intake_proposal` per new issue key (`UNIQUE (rule_id, issue_key)`,
+`ON CONFLICT DO NOTHING`). "New" = not seen by the rule before, whatever made the issue match. The first poll stores
+the current matches as `BASELINE` unless `includeExisting`. New proposals publish `IntakeProposalsFound` with
+`ownerUserId`, so `EventStreamController` delivers it to the owner only. Errors back off like the project watcher
+(interval doubled per failure up to 1 h, `Retry-After` honoured).
+
+`POST /me/intake/proposals/{id}/start` calls `StartRun.start` as the owner (`run.start` checked, `startedBy` = the
+owner, trigger `MANUAL`, parameter `intakeProposalId`), so `ACTING_USER` steps may use the owner's personal connection.
+Summaries are display-only (escaped by Angular); the run reads the issue through its Fetch issue step (ADR 0029).
+
 
 ### Approval before external writes (ADR 0033)
 

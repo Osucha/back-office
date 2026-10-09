@@ -311,5 +311,11 @@
   "projects.detail.detach.title": "Odłączyć {$name} od biblioteki?",
   "projects.detail.detach.content": "Workflow zostanie taki, jaki jest, ale nie będzie już dostawał wersji z biblioteki, a jego przyszłe uruchomienia nie będą liczone do metryk biblioteki.",
   "projects.detail.detach.ok": "Odłącz",
-  "projects.detail.detach.done": "Odłączono workflow od biblioteki"
+  "projects.detail.detach.done": "Odłączono workflow od biblioteki",
+  "projects.detail.private": "projekt prywatny",
+  "projects.detail.privateMembers": " Projekt prywatny ma tylko właściciela (ADR 0038): jego workflowy i uruchomienia są Twoje. Do pracy z innymi użyj projektu zespołowego, który tworzy kierownik projektów. ",
+  "projects.list.createPersonal": " Utwórz projekt prywatny ",
+  "projects.list.private": "prywatny",
+  "projects.list.emptyActionPersonal": "Utwórz projekt prywatny",
+  "projects.list.drawerPersonal": "Utwórz projekt prywatny (tylko Ty jesteś członkiem)"
 }

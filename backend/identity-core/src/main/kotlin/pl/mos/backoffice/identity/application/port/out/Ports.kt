@@ -89,6 +89,9 @@ interface ProjectMembershipRepository {
  */
 fun interface ProjectKeyLookup {
     fun keyOf(projectId: UUID): String?
+
+    /** ADR 0038: the project is a private project of its creator (members cannot be added); false when unknown. */
+    fun isPersonal(projectId: UUID): Boolean = false
 }
 
 interface PersonalTokenRepository {

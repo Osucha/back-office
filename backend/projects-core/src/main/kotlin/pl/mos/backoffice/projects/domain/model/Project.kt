@@ -139,6 +139,8 @@ data class Project(
     val specKit: Boolean = false,
     /** ADR 0035: the system connection and the list of further connections of the project's Jira steps. */
     val jiraConnections: ProjectJiraConnections = ProjectJiraConnections(),
+    /** ADR 0038: a private project of its creator only (members cannot be added); fixed at creation. */
+    val personal: Boolean = false,
 ) {
     init {
         if (!KEY_PATTERN.matches(key)) throw ValidationException("must match ${KEY_PATTERN.pattern}", "key")

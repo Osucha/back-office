@@ -66,13 +66,25 @@ interface Holding {
         subtitle="A project binds a repository, an optional Jira project and a constitution to its workflows."
         i18n-subtitle="@@projects.list.subtitle"
       >
+        @if (canCreatePersonal()) {
+          <button
+            boHeaderActions
+            nz-button
+            [nzType]="canCreate() ? 'default' : 'primary'"
+            type="button"
+            (click)="openCreate(true)"
+            i18n="@@projects.list.createPersonal"
+          >
+            Create private project
+          </button>
+        }
         @if (canCreate()) {
           <button
             boHeaderActions
             nz-button
             nzType="primary"
             type="button"
-            (click)="creating.set(true)"
+            (click)="openCreate(false)"
             i18n="@@projects.list.create"
           >
             Create project
@@ -90,8 +102,10 @@ interface Holding {
         <bo-empty
           [title]="canCreate() ? text.empty : text.emptyNotMember"
           [detail]="canCreate() ? text.emptyDetail : text.emptyNotMemberDetail"
-          [actionLabel]="canCreate() ? text.create : null"
-          (action)="creating.set(true)"
+          [actionLabel]="
+            canCreate() ? text.create : canCreatePersonal() ? text.createPersonal : null
+          "
+          (action)="openCreate(!canCreate())"
           help="projects"
           guideLabel="How projects work"
           i18n-guideLabel="@@projects.list.guide"
@@ -104,7 +118,12 @@ interface Holding {
                 <div class="top">
                   <span class="mono-tile" aria-hidden="true">{{ mono(p.key) }}</span>
                   <div class="names">
-                    <span class="key">{{ p.key }}</span>
+                    <span class="key"
+                      >{{ p.key }}
+                      @if (p.personal) {
+                        <span class="private" i18n="@@projects.list.private">private</span>
+                      }
+                    </span>
                     <span class="name">{{ p.name }}</span>
                   </div>
                   @if (p.stats?.openApprovals) {
@@ -158,8 +177,7 @@ interface Holding {
 
     <nz-drawer
       [nzVisible]="creating()"
-      nzTitle="Create project"
-      i18n-nzTitle="@@projects.list.drawerTitle"
+      [nzTitle]="creatingPersonal() ? text.drawerPersonal : text.drawerTeam"
       [nzWidth]="drawerWidth"
       (nzOnClose)="closeCreate()"
     >
@@ -175,6 +193,16 @@ interface Holding {
   `,
   styles: [
     `
+      .private {
+        margin-left: 6px;
+        padding: 0 6px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 500;
+        color: var(--bo-ink-2);
+        box-shadow: inset 0 0 0 1px var(--bo-line-strong);
+        vertical-align: middle;
+      }
       .who-creates {
         font-size: 12px;
         align-self: center;
@@ -331,6 +359,9 @@ export class ProjectsPageComponent {
   readonly recent = signal<WorkflowRunSummary[]>([]);
   readonly members = signal<Map<string, number>>(new Map());
   readonly canCreate = computed(() => this.identity.can('projects.create'));
+  /** ADR 0038: every member may create private projects of their own. */
+  readonly canCreatePersonal = computed(() => this.identity.can('projects.create.personal'));
+  readonly creatingPersonal = signal(false);
 
   readonly sorted = computed(() =>
     [...this.store.projects()].sort((a, b) => a.key.localeCompare(b.key)),
@@ -356,7 +387,8 @@ export class ProjectsPageComponent {
       .pipe(catchError(() => of({ content: [] })))
       .subscribe((p) => this.recent.set(p.content ?? []));
     effect(() => {
-      if (this.create() && this.canCreate()) untracked(() => this.creating.set(true));
+      if (this.create() && (this.canCreate() || this.canCreatePersonal()))
+        untracked(() => this.openCreate(!this.canCreate()));
     });
     effect(() => {
       const projects = this.store.projects().slice(0, 30);
@@ -407,6 +439,9 @@ export class ProjectsPageComponent {
     emptyDetail: $localize`:@@projects.list.emptyDetail:Create one to design the first workflow.`,
     emptyNotMemberDetail: $localize`:@@projects.list.emptyNotMemberDetail:Projects are created by project managers. Ask a project manager or a project owner to add you.`,
     create: $localize`:@@projects.list.emptyAction:Create project`,
+    createPersonal: $localize`:@@projects.list.emptyActionPersonal:Create private project`,
+    drawerTeam: $localize`:@@projects.list.drawerTitle:Create project`,
+    drawerPersonal: $localize`:@@projects.list.drawerPersonal:Create private project (only you are a member)`,
   };
 
   memberText(p: Project): string {
@@ -459,6 +494,11 @@ export class ProjectsPageComponent {
       }));
   }
 
+  openCreate(personal: boolean): void {
+    this.creatingPersonal.set(personal);
+    this.creating.set(true);
+  }
+
   closeCreate(): void {
     this.creating.set(false);
     if (this.create())
@@ -472,7 +512,8 @@ export class ProjectsPageComponent {
   createProject(input: ProjectInput): void {
     this.saving.set(true);
     this.saveError.set(null);
-    this.pendingSaves.track(this.api.create(input)).subscribe({
+    const body: ProjectInput = { ...input, personal: this.creatingPersonal() };
+    this.pendingSaves.track(this.api.create(body)).subscribe({
       next: async (p) => {
         this.saving.set(false);
         this.creating.set(false);

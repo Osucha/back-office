@@ -45,6 +45,8 @@ class ProjectEntity(
     @Column(name = "jira_system_connection_id") var jiraSystemConnectionId: UUID? = null,
     /** V110 (ADR 0035): ordered ids of the further connections of the project's Jira steps. */
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "jira_connection_ids", nullable = false, columnDefinition = "jsonb") var jiraConnectionIds: String = "[]",
+    /** V112 (ADR 0038): a private project of its creator only. */
+    @Column(nullable = false) var personal: Boolean = false,
 )
 
 @Entity

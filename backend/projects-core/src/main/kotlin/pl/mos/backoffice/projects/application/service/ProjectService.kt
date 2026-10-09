@@ -63,7 +63,12 @@ class ProjectService(
 ) : ManageProjects {
 
     override fun create(command: ProjectCommand): Project {
-        val actor = gate.require(ProjectsPermissions.PROJECTS_CREATE).actor
+        // ADR 0038: every member may create a private project; a team project needs projects.create (ADR 0028)
+        val actor = if (command.personal && !gate.currentUser().can(ProjectsPermissions.PROJECTS_CREATE)) {
+            gate.require(ProjectsPermissions.PROJECTS_CREATE_PERSONAL).actor
+        } else {
+            gate.require(ProjectsPermissions.PROJECTS_CREATE).actor
+        }
         if (projects.findByKey(command.key) != null) throw ValidationException("project key ${command.key} already exists", "key")
         val now = clock.now()
         val project = projects.save(
@@ -80,6 +85,7 @@ class ProjectService(
                 updatedAt = now,
                 createdBy = actor,
                 specKit = requireSpecKitAllowed(command.specKit ?: false, false),
+                personal = command.personal,
             ),
         )
         provisioner.grantCreator(project.id.value, project.key, actor)
@@ -94,7 +100,7 @@ class ProjectService(
                 "PROJECT_CREATE", ENTITY, saved.id.toString(), projectId = saved.id.value,
                 details = mapOf(
                     "key" to saved.key, "name" to saved.name, "repositories" to describe(saved.repositories),
-                    "seededWorkflows" to seeded.map { it.name }, "specKit" to saved.specKit,
+                    "seededWorkflows" to seeded.map { it.name }, "specKit" to saved.specKit, "personal" to saved.personal,
                 ),
             ),
         )

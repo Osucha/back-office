@@ -42,6 +42,15 @@ export const NAVIGATION: NavItem[] = [
     icon: 'inbox',
     keywords: keywords($localize`:@@shell.nav.inbox.keywords:inbox, approvals, gates`),
   },
+  {
+    path: '/my-work',
+    label: $localize`:@@shell.nav.myWork:My work`,
+    icon: 'user',
+    access: { permission: 'connections.personal' },
+    keywords: keywords(
+      $localize`:@@shell.nav.myWork.keywords:my jira issues, proposals, personal intake, automation`,
+    ),
+  },
   { path: '/projects', label: $localize`:@@shell.nav.projects:Projects`, icon: 'project' },
   {
     path: '/runs',

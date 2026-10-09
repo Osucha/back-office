@@ -27,6 +27,8 @@ export const EVENT_TYPES: DomainEventType[] = [
   'BudgetExceeded',
   // daily connection token reminder (payload connectionId, projectId | null, name, scope, expiresAt, daysLeft)
   'ConnectionExpiring',
+  // ADR 0038: a personal intake rule found new issues (payload ownerUserId, ruleId, ruleName, count, issueKeys)
+  'IntakeProposalsFound',
 ];
 
 /** Event types that change the state of a workflow run (used to refresh run lists/details). */

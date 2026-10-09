@@ -1579,6 +1579,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/intake/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMyIntakeProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/intake/proposals/{proposalId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["dismissMyIntakeProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/intake/proposals/{proposalId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restoreMyIntakeProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/intake/proposals/{proposalId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Starts the rule's default workflow (or `workflowId`) for the issue as the caller (`run.start` on its project). */
+        post: operations["startMyIntakeProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/intake/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's personal intake rules (`connections.personal`). */
+        get: operations["listMyIntakeRules"];
+        put?: never;
+        /** @description At most 10 rules per user. The connection must be one of the caller's personal connections with ISSUE_READ; the workflow one the caller may start (`run.start`). */
+        post: operations["createMyIntakeRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/intake/rules/{ruleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateMyIntakeRule"];
+        post?: never;
+        /** @description Deletes the rule and its open (NEW, DISMISSED, BASELINE) proposals; started proposals keep their run. */
+        delete: operations["deleteMyIntakeRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/intake/rules/{ruleId}/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Schedules a poll of the rule right away. */
+        post: operations["pollMyIntakeRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/mfa/recovery-codes": {
         parameters: {
             query?: never;
@@ -3711,10 +3838,10 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
-             * @description RunWaitingForHuman carries `kind` (GATE or WRITE_CONFIRMATION, ADR 0033). BudgetAlert / BudgetExceeded come from the llm-gateway budgets. ConnectionExpiring (daily, once per expiry date) carries `connectionId`, `projectId` (null = platform or personal), `name`, `scope` (PLATFORM / PROJECT / USER), `ownerUserId` (USER only: the owner, the only person notified, ADR 0035), `expiresAt`, `daysLeft`.
+             * @description RunWaitingForHuman carries `kind` (GATE or WRITE_CONFIRMATION, ADR 0033). BudgetAlert / BudgetExceeded come from the llm-gateway budgets. ConnectionExpiring (daily, once per expiry date) carries `connectionId`, `projectId` (null = platform or personal), `name`, `scope` (PLATFORM / PROJECT / USER), `ownerUserId` (USER only: the owner, the only person notified, ADR 0035), `expiresAt`, `daysLeft`. IntakeProposalsFound (ADR 0038) carries `ownerUserId` (the only person notified), `ruleId`, `ruleName`, `count` and `issueKeys` (at most 5).
              * @enum {string}
              */
-            type: "WorkflowRunStarted" | "NodeStarted" | "NodeCompleted" | "NodeFailed" | "RunWaitingForHuman" | "RunWaitingForCi" | "ApprovalDecided" | "ApprovalAssigned" | "CiSignalReceived" | "WorkflowRunFinished" | "CiExecutionFinished" | "RunnerLog" | "BenchmarkProgress" | "BenchmarkFinished" | "BudgetAlert" | "BudgetExceeded" | "ConnectionExpiring";
+            type: "WorkflowRunStarted" | "NodeStarted" | "NodeCompleted" | "NodeFailed" | "RunWaitingForHuman" | "RunWaitingForCi" | "ApprovalDecided" | "ApprovalAssigned" | "CiSignalReceived" | "WorkflowRunFinished" | "CiExecutionFinished" | "RunnerLog" | "BenchmarkProgress" | "BenchmarkFinished" | "BudgetAlert" | "BudgetExceeded" | "ConnectionExpiring" | "IntakeProposalsFound";
         };
         DsseEnvelope: {
             /** @description base64 in-toto Statement v1 */
@@ -3842,6 +3969,84 @@ export interface components {
             memberIds?: string[];
             name: string;
             platformRoles?: string[];
+        };
+        IntakeProposal: {
+            /** Format: date-time */
+            decidedAt?: string | null;
+            /** Format: date-time */
+            detectedAt: string;
+            /** Format: uuid */
+            id: string;
+            issueKey: string;
+            issueType?: string | null;
+            issueUrl?: string | null;
+            priority?: string | null;
+            /** Format: uuid */
+            ruleId: string;
+            ruleName?: string | null;
+            /** Format: uuid */
+            runId?: string | null;
+            /** @enum {string} */
+            state: "NEW" | "STARTED" | "DISMISSED";
+            /** @description Jira status when detected */
+            status?: string | null;
+            /** @description display only (issue text, untrusted); never sent to a model by the intake */
+            summary?: string | null;
+            /**
+             * Format: uuid
+             * @description NEW: the rule default; STARTED: the workflow started
+             */
+            workflowId?: string | null;
+            workflowName?: string | null;
+        };
+        IntakeRule: components["schemas"]["IntakeRuleInput"] & {
+            connectionName?: string | null;
+            consecutiveFailures?: number;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: uuid */
+            id: string;
+            /** @description the first poll happened */
+            initialized?: boolean;
+            lastError?: string | null;
+            /** Format: date-time */
+            lastPollAt?: string | null;
+            /** Format: date-time */
+            lastSuccessAt?: string | null;
+            /** @description proposals of this rule waiting for a decision */
+            newProposals?: number;
+            /** Format: date-time */
+            nextPollAt?: string | null;
+            /** Format: uuid */
+            projectId?: string | null;
+            projectKey?: string | null;
+            /** Format: date-time */
+            updatedAt?: string;
+            workflowName?: string | null;
+        };
+        IntakeRuleInput: {
+            /**
+             * Format: uuid
+             * @description one of the caller's personal connections with ISSUE_READ
+             */
+            connectionId: string;
+            /** @default true */
+            enabled: boolean;
+            /**
+             * @description the issues matching on the first poll become proposals too
+             * @default true
+             */
+            includeExisting: boolean;
+            /** @example assignee = currentUser() AND statusCategory != Done */
+            jql: string;
+            name: string;
+            /** @default 5 */
+            pollIntervalMinutes: number;
+            /**
+             * Format: uuid
+             * @description the workflow proposed for new issues
+             */
+            workflowId: string;
         };
         IntegrationsStatus: {
             ci?: {
@@ -4529,6 +4734,8 @@ export interface components {
             } | null;
             key: string;
             name: string;
+            /** @description ADR 0038 (default false): a private project of its creator only (needs `projects.create.personal` or `projects.create`); members cannot be added. Set at creation, ignored on update. */
+            personal?: boolean;
             /** @description The project's git repositories, in display order (ADR 0034). Optional: a project without repositories runs LLM work only (no coding steps). Keys are unique, at most one is `primary`. */
             repositories?: components["schemas"]["ProjectRepository"][];
             /**
@@ -8333,6 +8540,217 @@ export interface operations {
                 };
             };
             400: components["responses"]["Problem"];
+        };
+    };
+    listMyIntakeProposals: {
+        parameters: {
+            query?: {
+                /** @description default NEW */
+                state?: "NEW" | "STARTED" | "DISMISSED";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeProposal"][];
+                };
+            };
+        };
+    };
+    dismissMyIntakeProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeProposal"];
+                };
+            };
+        };
+    };
+    restoreMyIntakeProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeProposal"];
+                };
+            };
+        };
+    };
+    startMyIntakeProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    workflowId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeProposal"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    listMyIntakeRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRule"][];
+                };
+            };
+        };
+    };
+    createMyIntakeRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntakeRuleInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRule"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    updateMyIntakeRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntakeRuleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRule"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    deleteMyIntakeRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    pollMyIntakeRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRule"];
+                };
+            };
         };
     };
     regenerateRecoveryCodes: {

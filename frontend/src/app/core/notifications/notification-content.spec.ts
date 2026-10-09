@@ -5,6 +5,7 @@ import {
   ciContent,
   connectionContent,
   gateContent,
+  intakeContent,
   runContent,
   testContent,
 } from './notification-content';
@@ -169,6 +170,23 @@ describe('notification content', () => {
     expect(expired.tag).toBe('bo-connection-c-2-expired');
   });
 
+  it('announces new Jira tasks of a personal rule by key only (ADR 0038)', () => {
+    const one = intakeContent({ ruleId: 'r1', ruleName: 'Mine', count: 1, issueKeys: ['SHOP-1'] });
+    expect(one.kind).toBe('newTasks');
+    expect(one.title).toContain('SHOP-1');
+    expect(one.link).toBe('/my-work');
+    expect(one.tag).toBe('bo-intake-r1');
+    const many = intakeContent({
+      ruleId: '../x',
+      ruleName: null,
+      count: 7,
+      issueKeys: ['A-1', 'A-2'],
+    });
+    expect(many.title).toContain('7');
+    expect(many.body).toContain('A-1, A-2 +5');
+    expect(many.tag).toBe('bo-intake-');
+  });
+
   it('maps every kind to a sound and has a test sample per kind', () => {
     expect(KIND_SOUND).toEqual({
       turn: 'turn',
@@ -177,6 +195,7 @@ describe('notification content', () => {
       budget: 'budget',
       ciFailed: 'failed',
       connectionExpiring: 'budget',
+      newTasks: 'turn',
     });
     for (const k of [
       'turn',
@@ -185,6 +204,7 @@ describe('notification content', () => {
       'budget',
       'ciFailed',
       'connectionExpiring',
+      'newTasks',
     ] as const) {
       const c = testContent(k);
       expect(c.title.startsWith('Test: ')).toBe(true);

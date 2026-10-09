@@ -14,6 +14,7 @@ import {
   budgetContent,
   ciContent,
   connectionContent,
+  intakeContent,
   gateContent,
   runContent,
   type NotificationContent,
@@ -91,6 +92,7 @@ export class DesktopNotifierService {
         'BudgetAlert',
         'BudgetExceeded',
         'ConnectionExpiring',
+        'IntakeProposalsFound',
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((e) => this.onEvent(e));
@@ -156,6 +158,21 @@ export class DesktopNotifierService {
             name: str('name'),
             scope: str('scope'),
             daysLeft: typeof p['daysLeft'] === 'number' ? (p['daysLeft'] as number) : 0,
+          }),
+        );
+        return;
+      }
+      case 'IntakeProposalsFound': {
+        // ADR 0038: proposals of a personal intake rule concern its owner only
+        if (!str('ownerUserId') || str('ownerUserId') !== this.identity.me()?.user?.id) return;
+        this.deliver(
+          intakeContent({
+            ruleId: str('ruleId'),
+            ruleName: str('ruleName'),
+            count: typeof p['count'] === 'number' ? (p['count'] as number) : 1,
+            issueKeys: Array.isArray(p['issueKeys'])
+              ? (p['issueKeys'] as unknown[]).filter((k): k is string => typeof k === 'string')
+              : [],
           }),
         );
         return;

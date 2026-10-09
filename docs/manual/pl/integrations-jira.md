@@ -306,7 +306,8 @@ Pozwala krokom workflowu komentować i przenosić zgłoszenia **jako Ty** w Jirz
 
 - **Tylko przy Twoim działaniu.** Jest używane tylko wtedy, gdy krok ustawiono na działanie jako osoba, która go
   zatwierdza lub rozpoczyna ([Działaj jako](#jira-act-as)), i tylko przy **Twoim** zatwierdzeniu zapisu albo
-  w uruchomieniu, które **Ty** rozpocząłeś. Nigdy nie używa go monitor zgłoszeń, CI ani uruchomienie kogoś innego,
+  w uruchomieniu, które **Ty** rozpocząłeś, albo do odczytu zgłoszeń Twoich własnych reguł w [Mojej pracy](my-work.md#rules)
+  (tylko odczyt, ADR 0038). Nigdy nie używa go monitor zgłoszeń projektu, CI ani uruchomienie kogoś innego,
   chyba że to Ty zatwierdzasz ten zapis.
 - **Nikt inny go nie widzi ani nie używa.** Inni użytkownicy nie mogą go odczytać, przetestować ani zmienić
   (dostają „nie znaleziono”). Administratorzy widzą w **Administracja** → **Połączenia** → **Połączenia

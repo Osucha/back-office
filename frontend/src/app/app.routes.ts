@@ -184,6 +184,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // Personal work (ADR 0038): the caller's own intake rules and run proposals.
+        path: 'my-work',
+        title: $localize`:@@shell.route.myWork:My work`,
+        data: access({ permission: 'connections.personal' }),
+        loadComponent: () =>
+          import('./features/my-work/pages/my-work-page.component').then(
+            (m) => m.MyWorkPageComponent,
+          ),
+      },
+      {
         // Workflow library (ADR 0037): metrics only count runs of projects the caller may view.
         path: 'library/workflows',
         title: $localize`:@@shell.route.libraryWorkflows:Library workflows`,
