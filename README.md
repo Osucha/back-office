@@ -66,4 +66,4 @@ All configuration is described in [docs/guides/configuration.md](docs/guides/con
 
 ## Licence
 
-Internal tool. All rights reserved.
+[Apache License 2.0](LICENSE).
