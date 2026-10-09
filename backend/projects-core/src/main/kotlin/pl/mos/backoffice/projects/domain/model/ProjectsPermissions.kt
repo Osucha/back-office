@@ -31,6 +31,12 @@ object ProjectsPermissions {
     /** Defined and contributed by the identity context; checked here only for project deletion (owners). */
     const val PROJECT_MEMBERS_MANAGE = "project.members.manage"
 
+    /** Defined by the Task Library context; reading the workflow library (ADR 0037). */
+    const val LIBRARY_VIEW = "library.view"
+
+    /** Defined by the Task Library context; publishing, curating and deleting library workflows (ADR 0037). */
+    const val LIBRARY_MANAGE = "library.manage"
+
     val definitions: List<PermissionDefinition> = listOf(
         platform(PROJECTS_CREATE, "create projects (creator becomes OWNER)"),
         platform(INTEGRATIONS_VIEW, "see integration status, platform connections and run connection tests"),

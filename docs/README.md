@@ -9,12 +9,12 @@ repository read the same source of truth.
 |---|---|
 | [01-overview.md](architecture/01-overview.md) | System context, containers, hexagonal layering, module map, technology stack |
 | [02-domain-model.md](architecture/02-domain-model.md) | Bounded contexts, aggregates, value objects, domain events, state machines |
-| [03-pipelines-and-agents.md](architecture/03-pipelines-and-agents.md) | Workflow graph (nodes, ports, decisions), CI gates, compilation to LangGraph4j, task executors, step repositories (multi-repository projects, ADR 0034), agent runner protocol, Spec Kit |
+| [03-pipelines-and-agents.md](architecture/03-pipelines-and-agents.md) | Workflow graph (nodes, ports, decisions), CI gates, compilation to LangGraph4j, task executors, step repositories (multi-repository projects, ADR 0034), workflow library (ADR 0037), agent runner protocol, Spec Kit |
 | [04-model-evaluation.md](architecture/04-model-evaluation.md) | Model catalogue, task suites, benchmark execution, scoring, cost accounting |
 | [05-integrations.md](architecture/05-integrations.md) | CI client script and tokens, merge requests via push options, Jira least-privilege connections (encrypted secrets, capability selection, verification, expiry reminders), Jira intake watcher, approval before external writes, LLM providers, Langfuse/OpenTelemetry |
 | [09-scale-and-operations.md](architecture/09-scale-and-operations.md) | Roles, PostgreSQL work queue and events, shared limits, object storage, observability, SLOs, capacity, upgrades |
 | [10-agent-execution.md](architecture/10-agent-execution.md) | Threat model, runner fleet protocol v2, Agent Sandbox backends, sandbox policy, egress proxy, credential brokering, multi-repository workspace |
-| [11-governance.md](architecture/11-governance.md) | Budgets, delivery insights, provenance attestations, MCP server |
+| [11-governance.md](architecture/11-governance.md) | Budgets, delivery insights, workflow metrics (ADR 0037), provenance attestations, MCP server |
 | [12-prompt-injection.md](architecture/12-prompt-injection.md) | Prompt-injection threat model, data blocks, review guards, credential isolation of the coding agent, MCP gate opt-in |
 | [08-identity-and-access.md](architecture/08-identity-and-access.md) | Users, OIDC login, sessions, permission catalogue, roles, grants, project memberships, gate approver rules, tokens, audit log |
 | [07-task-library.md](architecture/07-task-library.md) | Task templates with inheritance, interfaces, Agent Skills, resolution rules, seeded library |

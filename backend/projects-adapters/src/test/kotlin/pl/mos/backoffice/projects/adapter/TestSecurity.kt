@@ -145,6 +145,11 @@ class TestAuthenticationFilter(private val gate: TestAuthorizationGate, private 
             val roles = request.getHeader("X-Test-Project-Roles")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
             return TestAuthorizationGate.member(UUID.fromString(project.trim()), permissions.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet(), roles)
         }
+        // `X-Test-Extra-Platform-Permissions: p1,p2`: the session owner plus those platform permissions (library.manage, ADR 0037)
+        request.getHeader("X-Test-Extra-Platform-Permissions")?.let { spec ->
+            val extra = spec.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+            return gate.defaultUser.copy(platformPermissions = gate.defaultUser.platformPermissions + extra)
+        }
         return gate.defaultUser
     }
 }

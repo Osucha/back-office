@@ -1250,6 +1250,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/insights/library-workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The headline metrics of every library workflow with runs in `[from, to)` of the projects the caller may view (`library.view`). */
+        get: operations["getLibraryWorkflowMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/insights/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Effectiveness and efficiency of one library workflow (`libraryWorkflowId`, needs `library.view`; runs of every project the caller may view) or of one project workflow (`workflowId`, needs `project.view`). Exactly one of the two. Scope: runs created in `[from, to)` (default the last 30 days, at most 366 days). Definitions: docs/architecture/11-governance.md. */
+        get: operations["getWorkflowInsights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/runner/jobs/{jobId}/agent-token": {
         parameters: {
             query?: never;
@@ -1302,6 +1336,64 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postRunnerResult"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Library workflows (`library.view`). Usage counts only cover projects the caller may view. */
+        get: operations["listLibraryWorkflows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/workflows/{libraryWorkflowId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryWorkflowId: components["parameters"]["libraryWorkflowId"];
+            };
+            cookie?: never;
+        };
+        /** @description The entry with its versions and the linked project workflows the caller may view (`library.view`). */
+        get: operations["getLibraryWorkflow"];
+        /** @description Name, description, tags and the deprecated flag (`library.manage`). Versions are immutable. */
+        put: operations["updateLibraryWorkflow"];
+        post?: never;
+        /** @description `library.manage`; refused (409) while any project workflow is linked to the entry: deprecate it instead. */
+        delete: operations["deleteLibraryWorkflow"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/workflows/{libraryWorkflowId}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryWorkflowId: components["parameters"]["libraryWorkflowId"];
+                version: number;
+            };
+            cookie?: never;
+        };
+        /** @description One published version with its graph (`library.view`). */
+        get: operations["getLibraryWorkflowVersion"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2064,6 +2156,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/workflows/from-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["projectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Creates a project workflow linked to a library version (default the latest); `workflow.edit` on the project and `library.view`. */
+        post: operations["adoptLibraryWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runner/v2/config": {
         parameters: {
             query?: never;
@@ -2699,6 +2810,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows/{workflowId}/library/detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflowId: components["parameters"]["workflowId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Removes the library link; the graph stays (`workflow.edit`). Runs keep the library version they ran. */
+        post: operations["detachWorkflowFromLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflowId}/library/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflowId: components["parameters"]["workflowId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Replaces the graph of a linked workflow with a library version (default the latest) and keeps the project-local settings of nodes with the same id, the name, triggers, enabled flag and viewport (`workflow.edit`). A locally modified copy is refused with 409 unless `discardLocalChanges` is true. */
+        post: operations["updateWorkflowFromLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflowId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflowId: components["parameters"]["workflowId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Publishes the saved project workflow to the library as a new entry (`libraryWorkflowId` null, `key` and `name` required) or as the next version of an existing entry. Needs `library.manage` and `workflow.edit` on the project. Project-local settings (step repositories, a pinned Jira connection, named approver users) are not published. Steps must use global task templates. The project workflow becomes linked to the new version. */
+        post: operations["publishWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workflows/{workflowId}/runs": {
         parameters: {
             query?: never;
@@ -2777,6 +2945,14 @@ export interface components {
             /** Format: uuid */
             userId?: string | null;
         } | null;
+        AdoptLibraryWorkflowRequest: {
+            /** Format: uuid */
+            libraryWorkflowId: string;
+            /** @description default the library name (made unique in the project) */
+            name?: string | null;
+            /** @description default the latest */
+            version?: number | null;
+        };
         AgentJob: {
             /** @description leases so far; a job is retried after a lost lease */
             attempts?: number;
@@ -3535,7 +3711,7 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
-             * @description RunWaitingForHuman carries `kind` (GATE or WRITE_CONFIRMATION, ADR 0033). BudgetAlert / BudgetExceeded come from the llm-gateway budgets. ConnectionExpiring (daily, once per expiry date) carries `connectionId`, `projectId` (null = platform), `name`, `scope`, `expiresAt`, `daysLeft`.
+             * @description RunWaitingForHuman carries `kind` (GATE or WRITE_CONFIRMATION, ADR 0033). BudgetAlert / BudgetExceeded come from the llm-gateway budgets. ConnectionExpiring (daily, once per expiry date) carries `connectionId`, `projectId` (null = platform or personal), `name`, `scope` (PLATFORM / PROJECT / USER), `ownerUserId` (USER only: the owner, the only person notified, ADR 0035), `expiresAt`, `daysLeft`.
              * @enum {string}
              */
             type: "WorkflowRunStarted" | "NodeStarted" | "NodeCompleted" | "NodeFailed" | "RunWaitingForHuman" | "RunWaitingForCi" | "ApprovalDecided" | "ApprovalAssigned" | "CiSignalReceived" | "WorkflowRunFinished" | "CiExecutionFinished" | "RunnerLog" | "BenchmarkProgress" | "BenchmarkFinished" | "BudgetAlert" | "BudgetExceeded" | "ConnectionExpiring";
@@ -3867,6 +4043,109 @@ export interface components {
             maxJobs: number;
             /** @default 25 */
             waitSeconds: number;
+        };
+        LibraryLink: {
+            deprecated: boolean;
+            key: string;
+            /** @description newer than `version`: an update is available */
+            latestVersion: number;
+            /** Format: uuid */
+            libraryWorkflowId: string;
+            /** @description the graph differs from that version (project-local settings and positions ignored) */
+            modified: boolean;
+            name: string;
+            /** @description the library version the copy follows */
+            version: number;
+        };
+        LibraryUpdateRequest: {
+            /** @default false */
+            discardLocalChanges: boolean;
+            /** @description default the latest */
+            version?: number | null;
+        };
+        LibraryWorkflow: components["schemas"]["LibraryWorkflowSummary"] & {
+            adoptions: components["schemas"]["LibraryWorkflowAdoption"][];
+            /** @description newest first */
+            versions: components["schemas"]["LibraryWorkflowVersionSummary"][];
+        };
+        LibraryWorkflowAdoption: {
+            enabled?: boolean;
+            modified?: boolean;
+            /** Format: uuid */
+            projectId?: string;
+            projectKey?: string;
+            version?: number;
+            /** Format: uuid */
+            workflowId?: string;
+            workflowName?: string;
+        };
+        LibraryWorkflowMetricsRow: {
+            /** Format: uuid */
+            libraryWorkflowId?: string;
+            metrics?: components["schemas"]["WorkflowMetrics"];
+        };
+        LibraryWorkflowSource: {
+            /** Format: uuid */
+            projectId?: string | null;
+            projectKey?: string | null;
+            /** Format: uuid */
+            workflowId?: string | null;
+            workflowVersion?: number | null;
+        };
+        LibraryWorkflowSummary: {
+            /** Format: date-time */
+            createdAt?: string;
+            deprecated: boolean;
+            description?: string;
+            /** Format: uuid */
+            id: string;
+            key: string;
+            /** Format: date-time */
+            latestPublishedAt?: string;
+            latestVersion: number;
+            name: string;
+            nodeCount?: number;
+            tags?: string[];
+            /** Format: date-time */
+            updatedAt?: string;
+            updatedBy?: components["schemas"]["ActorRef"];
+            /** @description linked project workflows the caller may view */
+            usage: {
+                projects: number;
+                workflows: number;
+            };
+        };
+        LibraryWorkflowUpdate: {
+            /** @default false */
+            deprecated: boolean;
+            description?: string;
+            name: string;
+            tags?: string[];
+        };
+        LibraryWorkflowVersionDetail: components["schemas"]["LibraryWorkflowVersionSummary"] & {
+            canvas?: {
+                x?: number;
+                y?: number;
+                zoom?: number;
+            } | null;
+            description?: string;
+            edges: components["schemas"]["WorkflowEdge"][];
+            key: string;
+            /** Format: uuid */
+            libraryWorkflowId: string;
+            name: string;
+            nodes: components["schemas"]["WorkflowNode"][];
+            triggers?: components["schemas"]["Trigger"][];
+        };
+        LibraryWorkflowVersionSummary: {
+            changeNote?: string;
+            /** @description nodes without notes */
+            nodeCount: number;
+            /** Format: date-time */
+            publishedAt: string;
+            publishedBy?: components["schemas"]["ActorRef"];
+            source?: components["schemas"]["LibraryWorkflowSource"];
+            version: number;
         };
         LocalLoginRequest: {
             /** Format: email */
@@ -4337,6 +4616,18 @@ export interface components {
             baseUrl?: string | null;
             configured?: boolean;
             provider?: components["schemas"]["Provider"];
+        };
+        PublishWorkflowRequest: {
+            changeNote?: string | null;
+            description?: string | null;
+            key?: string | null;
+            /**
+             * Format: uuid
+             * @description null: a new entry (key and name required)
+             */
+            libraryWorkflowId?: string | null;
+            name?: string | null;
+            tags?: string[] | null;
         };
         /** @enum {string} */
         Reasoning: "NONE" | "LOW" | "MEDIUM" | "HIGH" | "XHIGH" | "MAX";
@@ -5039,6 +5330,8 @@ export interface components {
             createdAt?: string;
             /** Format: uuid */
             id: string;
+            /** @description set when the workflow is a linked copy of a library workflow (ADR 0037) */
+            readonly library?: components["schemas"]["LibraryLink"] | null;
             /** Format: uuid */
             projectId: string;
             /** Format: date-time */
@@ -5067,6 +5360,68 @@ export interface components {
             id: string;
             label?: string | null;
             to: string;
+        };
+        WorkflowInsights: {
+            byNode?: components["schemas"]["WorkflowNodeMetrics"][];
+            /** @description library scope only */
+            byProject?: {
+                metrics?: components["schemas"]["WorkflowMetrics"];
+                /** Format: uuid */
+                projectId?: string;
+                projectKey?: string;
+            }[];
+            /** @description library versions (library scope) or workflow versions (workflow scope), newest first */
+            byVersion?: {
+                metrics?: components["schemas"]["WorkflowMetrics"];
+                version?: number;
+            }[];
+            /** Format: date-time */
+            from?: string;
+            /** Format: uuid */
+            libraryWorkflowId?: string | null;
+            /** Format: date-time */
+            to?: string;
+            totals?: components["schemas"]["WorkflowMetrics"];
+            weekly?: {
+                cost?: components["schemas"]["Money"];
+                failed?: number;
+                successful?: number;
+                /** Format: date */
+                weekStart?: string;
+            }[];
+            /** Format: uuid */
+            workflowId?: string | null;
+        };
+        /** @description Effectiveness and efficiency of a set of runs (ADR 0037; definitions in docs/architecture/11-governance.md). */
+        WorkflowMetrics: {
+            activeTime?: components["schemas"]["DistributionStat"];
+            costPerRun?: components["schemas"]["Money"];
+            costPerSuccessfulRun?: components["schemas"]["Money"];
+            duration?: components["schemas"]["DistributionStat"];
+            /** @description successful without a revise decision or a retried step / finished */
+            firstPassRate?: number | null;
+            humanWait?: components["schemas"]["DistributionStat"];
+            /** Format: int64 */
+            inputTokens?: number;
+            mergeRequests?: number;
+            /** Format: int64 */
+            outputTokens?: number;
+            reworkLoopsPerRun?: number | null;
+            runs?: {
+                /** @description not finished yet */
+                active?: number;
+                cancelled?: number;
+                /** @description status FAILED, or SUCCEEDED through a FAILURE end */
+                failed?: number;
+                /** @description runs of locally modified linked copies */
+                modified?: number;
+                /** @description status SUCCEEDED with outcome SUCCESS */
+                successful?: number;
+                total?: number;
+            };
+            /** @description successful / finished */
+            successRate?: number | null;
+            totalCost?: components["schemas"]["Money"];
         };
         WorkflowNode: {
             ci?: {
@@ -5117,6 +5472,22 @@ export interface components {
                 templateKey: string;
             } | null;
             timeoutSeconds?: number | null;
+        };
+        WorkflowNodeMetrics: {
+            cost?: components["schemas"]["Money"];
+            duration?: components["schemas"]["DistributionStat"];
+            executions?: number;
+            failed?: number;
+            failureRate?: number | null;
+            kind?: components["schemas"]["NodeKind"];
+            nodeId?: string;
+            nodeName?: string;
+            ports?: {
+                count?: number;
+                port?: string;
+            }[];
+            succeeded?: number;
+            templateKey?: string | null;
         };
         WorkflowPalette: {
             controlNodes?: components["schemas"]["ControlNodeDescriptor"][];
@@ -5282,6 +5653,7 @@ export interface components {
         connectionId: string;
         groupId: string;
         key: string;
+        libraryWorkflowId: string;
         page: number;
         projectId: string;
         runId: string;
@@ -7394,6 +7766,55 @@ export interface operations {
             };
         };
     };
+    getLibraryWorkflowMetrics: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryWorkflowMetricsRow"][];
+                };
+            };
+        };
+    };
+    getWorkflowInsights: {
+        parameters: {
+            query?: {
+                from?: string;
+                libraryWorkflowId?: string;
+                to?: string;
+                workflowId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowInsights"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
     issueRunnerAgentToken: {
         parameters: {
             query?: never;
@@ -7470,6 +7891,121 @@ export interface operations {
                 content?: never;
             };
             409: components["responses"]["Problem"];
+        };
+    };
+    listLibraryWorkflows: {
+        parameters: {
+            query?: {
+                includeDeprecated?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryWorkflowSummary"][];
+                };
+            };
+        };
+    };
+    getLibraryWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryWorkflowId: components["parameters"]["libraryWorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryWorkflow"];
+                };
+            };
+        };
+    };
+    updateLibraryWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryWorkflowId: components["parameters"]["libraryWorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryWorkflowUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryWorkflow"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    deleteLibraryWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryWorkflowId: components["parameters"]["libraryWorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    getLibraryWorkflowVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                libraryWorkflowId: components["parameters"]["libraryWorkflowId"];
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryWorkflowVersionDetail"];
+                };
+            };
         };
     };
     proxyAnthropicMessages: {
@@ -9025,6 +9561,33 @@ export interface operations {
             400: components["responses"]["Problem"];
         };
     };
+    adoptLibraryWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["projectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdoptLibraryWorkflowRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinition"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
     getRunnerConfig: {
         parameters: {
             query?: never;
@@ -10238,6 +10801,84 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowDefinition"];
                 };
             };
+        };
+    };
+    detachWorkflowFromLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflowId: components["parameters"]["workflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinition"];
+                };
+            };
+        };
+    };
+    updateWorkflowFromLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflowId: components["parameters"]["workflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LibraryUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinition"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    publishWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflowId: components["parameters"]["workflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishWorkflowRequest"];
+            };
+        };
+        responses: {
+            /** @description Published */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryWorkflow"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
     startRun: {

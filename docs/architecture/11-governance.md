@@ -56,6 +56,39 @@ Not yet: gate decisions per approver role (the decision stores the actor, not th
 materialised daily tables for large installs (the queries use the existing indexes on `workflow_run.created_at`
 and `usage_record.run_id`). Tested with a seeded dataset in `DeliveryInsightsIntegrationTest`.
 
+## Workflow metrics
+
+ADR 0037. `GET /insights/workflows?libraryWorkflowId=` (one library workflow: `library.view`, runs of every project
+the caller holds `project.view` on) or `?workflowId=` (one project workflow: `project.view` on its project), and
+`GET /insights/library-workflows` (headline metrics per library workflow, `library.view`). Same window rules as
+delivery insights (default the last 30 days, at most 366). Read model `JdbcWorkflowInsightsReadModel`.
+
+**Scope:** the runs **created** in `[from, to)` of the visible projects with `workflow_run.library_workflow_id`
+(library scope) or `workflow_id` (workflow scope). Per run (`facts` CTE): *successful* = `SUCCEEDED` with outcome
+`SUCCESS`; *failed* = `FAILED`, or `SUCCEEDED` through a `FAILURE` end; *finished* = successful + failed +
+`CANCELLED`; *active* = the rest. Node executions, durations and weeks are read as in delivery insights.
+
+| Metric | Definition |
+|---|---|
+| Success rate | successful ÷ finished |
+| First-pass rate | successful runs with no rework loop ÷ finished |
+| Rework loops per run | (`HUMAN_GATE` executions that left through `revise` + executions whose previous attempt of the same node `FAILED`) ÷ runs |
+| Duration | `finished_at − coalesce(started_at, created_at)` of finished, not cancelled runs; p50/p90/total/count |
+| Active time | duration minus the summed durations of the run's `HUMAN_GATE` and `WAIT_FOR_CI` executions (floor 0) |
+| Human wait | per run with at least one finished gate: the summed gate durations |
+| Total cost, cost per run, cost per successful run | ledger cost (`usage_record` by `run_id`) of the runs, ÷ runs, of the successful runs ÷ their number |
+| Tokens | ledger input and output tokens of the runs |
+| Merge requests | runs that recorded a merge-request URL |
+| Modified runs | runs whose `library_modified` is true (the linked copy differed from its library version at the start) |
+
+Breakdowns: **by version** (`library_version` in library scope, `workflow_version` in workflow scope), **by project**
+(library scope), **by node** (all executions of the node id: count, `SUCCEEDED`, `FAILED`, p50/p90 of finished
+executions, summed execution cost, ports taken; ordered by the node's average position in the runs) and
+**weekly** (successful / failed runs and their ledger cost by ISO week of `finished_at`). The UI compares a version
+with the next older one that has finished runs (better / worse when the success rate moves by 5 points or the
+median duration or cost per success by 10 %) and marks versions with fewer than 5 finished runs. Tested with a
+seeded dataset in `WorkflowInsightsIntegrationTest`.
+
 ## Provenance attestations
 
 - Format: [in-toto Statement v1](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md) in a

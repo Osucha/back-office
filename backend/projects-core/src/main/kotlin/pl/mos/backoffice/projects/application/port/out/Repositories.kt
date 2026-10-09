@@ -5,6 +5,9 @@ import pl.mos.backoffice.projects.domain.model.ApprovalRequestId
 import pl.mos.backoffice.projects.domain.model.ApprovalStatus
 import pl.mos.backoffice.projects.domain.model.CiExecution
 import pl.mos.backoffice.projects.domain.model.CiExecutionId
+import pl.mos.backoffice.projects.domain.model.LibraryLink
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflow
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflowId
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.ProjectCiToken
 import pl.mos.backoffice.projects.domain.model.ProjectCiTokenId
@@ -42,7 +45,33 @@ interface WorkflowDefinitionRepository {
     fun countByProjectId(projectId: ProjectId): Int
     fun delete(id: WorkflowDefinitionId)
     fun deleteByProjectId(projectId: ProjectId)
+
+    /** Project workflows linked to the library (ADR 0037), of one entry or (null) of all entries; no graphs loaded. */
+    fun findLinkedToLibrary(libraryWorkflowId: LibraryWorkflowId? = null): List<LinkedWorkflow>
 }
+
+/** A project workflow linked to a library entry, without its graph. */
+data class LinkedWorkflow(
+    val workflowId: WorkflowDefinitionId,
+    val projectId: ProjectId,
+    val name: String,
+    val enabled: Boolean,
+    val library: LibraryLink,
+)
+
+/** Library workflows with all their versions (ADR 0037). */
+interface LibraryWorkflowRepository {
+    fun save(workflow: LibraryWorkflow): LibraryWorkflow
+    fun findById(id: LibraryWorkflowId): LibraryWorkflow?
+    fun findByKey(key: String): LibraryWorkflow?
+    fun findAll(): List<LibraryWorkflow>
+    fun delete(id: LibraryWorkflowId)
+
+    /** Name, latest version and deprecation of entries without loading their graphs. */
+    fun findHeaders(ids: Collection<LibraryWorkflowId>): List<LibraryWorkflowHeader>
+}
+
+data class LibraryWorkflowHeader(val id: LibraryWorkflowId, val key: String, val name: String, val latestVersion: Int, val deprecated: Boolean)
 
 data class RunFilter(
     val projectId: ProjectId? = null,

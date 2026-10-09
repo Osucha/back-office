@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.TriggerSource
+import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.shared.ValidationException
 import java.util.UUID
@@ -27,7 +29,12 @@ class WorkflowController(
     private val workflows: ManageWorkflows,
     private val startRun: StartRun,
     private val mapper: RestMapper,
+    private val library: ManageWorkflowLibrary,
 ) {
+    /** The DTO with the live state of the linked library entry (ADR 0037). */
+    private fun dto(d: WorkflowDefinition): WorkflowDefinitionDto =
+        mapper.toDto(d, d.library?.let { library.linkStatus(listOf(it.libraryWorkflowId))[it.libraryWorkflowId] })
+
     @PostMapping("/validate")
     fun validate(@RequestParam projectId: UUID, @RequestBody body: WorkflowDefinitionInputDto): ValidationResultDto {
         val command = try {
@@ -45,11 +52,11 @@ class WorkflowController(
     fun validateExpression(@RequestBody @Valid body: ExpressionInputDto): ExpressionCheckDto = mapper.toDto(workflows.validateExpression(body.expression ?: ""))
 
     @GetMapping("/{workflowId}")
-    fun get(@PathVariable workflowId: UUID): WorkflowDefinitionDto = mapper.toDto(workflows.get(WorkflowDefinitionId(workflowId)))
+    fun get(@PathVariable workflowId: UUID): WorkflowDefinitionDto = dto(workflows.get(WorkflowDefinitionId(workflowId)))
 
     @PutMapping("/{workflowId}")
     fun update(@PathVariable workflowId: UUID, @RequestBody @Valid body: WorkflowDefinitionInputDto): WorkflowDefinitionDto =
-        mapper.toDto(workflows.update(WorkflowDefinitionId(workflowId), mapper.toCommand(body)))
+        dto(workflows.update(WorkflowDefinitionId(workflowId), mapper.toCommand(body)))
 
     @DeleteMapping("/{workflowId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -57,7 +64,7 @@ class WorkflowController(
 
     @PostMapping("/{workflowId}/duplicate")
     @ResponseStatus(HttpStatus.CREATED)
-    fun duplicate(@PathVariable workflowId: UUID): WorkflowDefinitionDto = mapper.toDto(workflows.duplicate(WorkflowDefinitionId(workflowId)))
+    fun duplicate(@PathVariable workflowId: UUID): WorkflowDefinitionDto = dto(workflows.duplicate(WorkflowDefinitionId(workflowId)))
 
     @PostMapping("/{workflowId}/runs")
     @ResponseStatus(HttpStatus.ACCEPTED)

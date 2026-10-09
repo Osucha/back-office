@@ -6,6 +6,9 @@ import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.Palette
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.PaletteTask
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.WorkflowCommand
 import pl.mos.backoffice.projects.application.port.out.ExpressionEvaluator
+import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
+import pl.mos.backoffice.projects.domain.model.LibraryLink
+import pl.mos.backoffice.projects.domain.service.LibraryPortability
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
@@ -35,6 +38,7 @@ import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.PublicOperation
+import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 
@@ -57,6 +61,8 @@ class WorkflowService(
     jira: JiraConnectionAccess? = null,
     /** ADR 0036: Spec Kit gating; null = not checked (tests). */
     private val specKit: SpecKitStepCheck? = null,
+    /** ADR 0037: recomputes the `modified` flag of linked copies on save; null = links are kept as they are (tests). */
+    private val library: LibraryWorkflowRepository? = null,
 ) : ManageWorkflows {
 
     private val jiraSteps = jira?.let { JiraStepCheck(taskCatalog, it) }
@@ -92,9 +98,8 @@ class WorkflowService(
         val existing = load(id)
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value).actor
         requireValid(existing.projectId, command)
-        val saved = workflows.save(
-            existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor),
-        )
+        val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor)
+        val saved = workflows.save(next.withLibrary(refreshedLink(next)))
         audit.record(
             AuditEntry(
                 "WORKFLOW_UPDATE", ENTITY, id.toString(), projectId = existing.projectId.value,
@@ -222,6 +227,18 @@ class WorkflowService(
         val issues = check.designIssues(project, nodes, triggers)
         return issues.errors to issues.warnings
     }
+
+    /** The library link of [definition] with `modified` recomputed against the version it follows (ADR 0037). */
+    private fun refreshedLink(definition: WorkflowDefinition): LibraryLink? {
+        val link = definition.library ?: return null
+        val entry = library?.findById(link.libraryWorkflowId) ?: return link
+        val followed = entry.versions.firstOrNull { it.version == link.version } ?: return link.copy(modified = true)
+        return link.copy(modified = !LibraryPortability.sameGraph(definition.nodes, definition.edges, followed.nodes, followed.edges))
+    }
+
+    /** Graph, connection, repository and Spec Kit checks of [command] in [projectId]; used by the library to adopt and update. */
+    @SystemOperation("validation helper of WorkflowLibraryService, which checks workflow.edit before calling it")
+    internal fun requireValidFor(projectId: ProjectId, command: WorkflowCommand) = requireValid(projectId, command)
 
     private fun requireValid(projectId: ProjectId, command: WorkflowCommand) {
         val result = check(projectId, command)

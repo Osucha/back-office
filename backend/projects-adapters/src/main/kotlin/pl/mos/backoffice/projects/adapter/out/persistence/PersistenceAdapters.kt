@@ -7,7 +7,13 @@ import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import pl.mos.backoffice.projects.application.port.out.ApprovalRequestRepository
 import pl.mos.backoffice.projects.application.port.out.CiExecutionRepository
+import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowHeader
+import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
+import pl.mos.backoffice.projects.application.port.out.LinkedWorkflow
 import pl.mos.backoffice.projects.application.port.out.LogLevel
+import pl.mos.backoffice.projects.domain.model.LibraryLink
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflow
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflowId
 import pl.mos.backoffice.projects.application.port.out.ProjectCiTokenRepository
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.RunFilter
@@ -90,6 +96,63 @@ class WorkflowDefinitionPersistenceAdapter(
     override fun countByProjectId(projectId: ProjectId): Int = repo.countByProjectId(projectId.value).toInt()
     override fun delete(id: WorkflowDefinitionId) = repo.deleteById(id.value)
     override fun deleteByProjectId(projectId: ProjectId) = repo.deleteByProjectId(projectId.value)
+
+    @Transactional(readOnly = true)
+    override fun findLinkedToLibrary(libraryWorkflowId: LibraryWorkflowId?): List<LinkedWorkflow> =
+        (if (libraryWorkflowId == null) repo.findLinked() else repo.findLinked(libraryWorkflowId.value)).mapNotNull { row ->
+            val key = row.libraryKey ?: return@mapNotNull null
+            val version = row.libraryVersion ?: return@mapNotNull null
+            LinkedWorkflow(
+                WorkflowDefinitionId(row.id), ProjectId(row.projectId), row.name, row.enabled,
+                LibraryLink(LibraryWorkflowId(row.libraryWorkflowId), key, version, row.libraryModified),
+            )
+        }
+}
+
+/** Library workflows (ADR 0037): one row per entry plus one row per immutable version; saving inserts new versions only. */
+@Component
+@Transactional
+class LibraryWorkflowPersistenceAdapter(
+    private val repo: LibraryWorkflowJpaRepository,
+    private val versions: LibraryWorkflowVersionJpaRepository,
+    private val mapper: PersistenceMapper,
+) : LibraryWorkflowRepository {
+    override fun save(workflow: LibraryWorkflow): LibraryWorkflow {
+        repo.save(mapper.toEntity(workflow))
+        val stored = versions.findByLibraryWorkflowId(workflow.id.value).map { it.version }.toSet()
+        workflow.versions.filter { it.version !in stored }.forEach { versions.save(mapper.toEntity(workflow.id, it)) }
+        return findById(workflow.id)!!
+    }
+
+    @Transactional(readOnly = true)
+    override fun findById(id: LibraryWorkflowId): LibraryWorkflow? =
+        repo.findById(id.value).orElse(null)?.let { mapper.toDomain(it, versions.findByLibraryWorkflowId(it.id)) }
+
+    @Transactional(readOnly = true)
+    override fun findByKey(key: String): LibraryWorkflow? = repo.findByKey(key)?.let { mapper.toDomain(it, versions.findByLibraryWorkflowId(it.id)) }
+
+    @Transactional(readOnly = true)
+    override fun findAll(): List<LibraryWorkflow> {
+        val entries = repo.findAll()
+        if (entries.isEmpty()) return emptyList()
+        val byEntry = versions.findByLibraryWorkflowIdIn(entries.map { it.id }).groupBy { it.libraryWorkflowId }
+        return entries.map { mapper.toDomain(it, byEntry[it.id].orEmpty()) }
+    }
+
+    override fun delete(id: LibraryWorkflowId) {
+        versions.deleteByLibraryWorkflowId(id.value)
+        repo.deleteById(id.value)
+    }
+
+    @Transactional(readOnly = true)
+    override fun findHeaders(ids: Collection<LibraryWorkflowId>): List<LibraryWorkflowHeader> {
+        if (ids.isEmpty()) return emptyList()
+        val uuids = ids.map { it.value }
+        val latest = versions.latestVersions(uuids).associate { (it[0] as UUID) to (it[1] as Number).toInt() }
+        return repo.findAllById(uuids).mapNotNull { e ->
+            latest[e.id]?.let { LibraryWorkflowHeader(LibraryWorkflowId(e.id), e.key, e.name, it, e.deprecated) }
+        }
+    }
 }
 
 /**

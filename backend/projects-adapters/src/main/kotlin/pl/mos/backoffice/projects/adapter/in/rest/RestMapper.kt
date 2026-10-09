@@ -9,7 +9,9 @@ import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
 import pl.mos.backoffice.projects.application.port.`in`.IntegrationsStatus
 import pl.mos.backoffice.projects.application.port.`in`.ManageCiTokens
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
+import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflowVersion
 import pl.mos.backoffice.projects.application.port.`in`.SignalRun
 import pl.mos.backoffice.projects.application.port.`in`.StartCiExecution
 import pl.mos.backoffice.projects.application.port.out.IntegrationTestOutcome
@@ -155,10 +157,53 @@ class RestMapper {
         canvas = WorkflowJson.toDomain(dto.canvas),
     )
 
-    fun toDto(d: WorkflowDefinition): WorkflowDefinitionDto = WorkflowDefinitionDto(
+    /**
+     * [status] is the live state of the linked library entry (latest version, deprecation); without it (run snapshots)
+     * the link reports the version it recorded as the latest.
+     */
+    fun toDto(d: WorkflowDefinition, status: ManageWorkflowLibrary.LinkStatus? = null): WorkflowDefinitionDto = WorkflowDefinitionDto(
         id = d.id.value, projectId = d.projectId.value, name = d.name, description = d.description, version = d.version,
         nodes = d.nodes.map(WorkflowJson::toJson), edges = d.edges.map(WorkflowJson::toJson), triggers = d.triggers.map(WorkflowJson::toJson),
         enabled = d.enabled, canvas = WorkflowJson.toJson(d.canvas), createdAt = d.createdAt, updatedAt = d.updatedAt, updatedBy = actor(d.updatedBy),
+        library = d.library?.let {
+            LibraryLinkDto(
+                it.libraryWorkflowId.value, it.key, status?.name ?: it.key, it.version, maxOf(status?.latestVersion ?: it.version, it.version),
+                it.modified, status?.deprecated ?: false,
+            )
+        },
+    )
+
+    // ---- workflow library (ADR 0037)
+
+    fun toDto(v: ManageWorkflowLibrary.LibraryWorkflowView, detail: Boolean = false): LibraryWorkflowDto {
+        val w = v.workflow
+        val latest = w.latest
+        return LibraryWorkflowDto(
+            id = w.id.value, key = w.key, name = w.name, description = w.description, tags = w.tags, latestVersion = latest.version,
+            nodeCount = latest.nodeCount, deprecated = w.deprecated, usage = LibraryUsageDto(v.projectCount, v.adoptions.size),
+            createdAt = w.createdAt, updatedAt = w.updatedAt, updatedBy = actor(w.updatedBy), latestPublishedAt = latest.publishedAt,
+            versions = if (detail) w.versions.sortedByDescending { it.version }.map(::versionSummary) else null,
+            adoptions = if (detail) {
+                v.adoptions.map { LibraryWorkflowAdoptionDto(it.projectId.value, it.projectKey, it.workflowId.value, it.workflowName, it.version, it.modified, it.enabled) }
+            } else {
+                null
+            },
+        )
+    }
+
+    fun toDto(v: ManageWorkflowLibrary.LibraryVersionView): LibraryWorkflowVersionDetailDto {
+        val s = versionSummary(v.version)
+        return LibraryWorkflowVersionDetailDto(
+            libraryWorkflowId = v.workflow.id.value, key = v.workflow.key, name = v.workflow.name, description = v.workflow.description,
+            version = s.version, changeNote = s.changeNote, nodeCount = s.nodeCount, publishedAt = s.publishedAt, publishedBy = s.publishedBy, source = s.source,
+            nodes = v.version.nodes.map(WorkflowJson::toJson), edges = v.version.edges.map(WorkflowJson::toJson),
+            triggers = v.version.triggers.map(WorkflowJson::toJson), canvas = WorkflowJson.toJson(v.version.canvas),
+        )
+    }
+
+    private fun versionSummary(v: LibraryWorkflowVersion) = LibraryWorkflowVersionSummaryDto(
+        v.version, v.changeNote, v.nodeCount, v.publishedAt, actor(v.publishedBy),
+        LibraryWorkflowSourceDto(v.source.projectId?.value, v.source.projectKey, v.source.workflowId?.value, v.source.workflowVersion),
     )
 
     fun toDto(r: WorkflowValidationResult): ValidationResultDto = ValidationResultDto(

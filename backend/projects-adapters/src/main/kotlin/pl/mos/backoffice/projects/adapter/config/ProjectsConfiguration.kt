@@ -1,6 +1,8 @@
 package pl.mos.backoffice.projects.adapter.config
 
 import pl.mos.backoffice.shared.platform.PlatformFeatures
+import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
+import pl.mos.backoffice.projects.application.service.WorkflowLibraryService
 import pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck
 import org.bsc.langgraph4j.checkpoint.BaseCheckpointSaver
 import org.bsc.langgraph4j.checkpoint.PostgresSaverV2
@@ -158,8 +160,15 @@ class ProjectsConfiguration {
     fun workflowService(
         workflows: WorkflowDefinitionRepository, projects: ProjectRepository, runs: WorkflowRunRepository, validator: WorkflowValidator,
         taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-        jira: JiraConnectionAccess, specKit: SpecKitStepCheck,
-    ) = WorkflowService(workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit)
+        jira: JiraConnectionAccess, specKit: SpecKitStepCheck, library: LibraryWorkflowRepository,
+    ) = WorkflowService(workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library)
+
+    /** Workflow library (ADR 0037): publish, adopt, update and detach linked copies. */
+    @Bean
+    fun workflowLibraryService(
+        library: LibraryWorkflowRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository, workflowService: WorkflowService,
+        taskCatalog: TaskCatalog, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+    ) = WorkflowLibraryService(library, workflows, projects, workflowService, taskCatalog, gate, audit, clock)
 
     /** Spec Kit gating of workflows (ADR 0036): project setting and platform switch. */
     @Bean

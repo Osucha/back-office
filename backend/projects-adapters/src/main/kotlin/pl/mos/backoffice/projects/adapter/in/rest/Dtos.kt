@@ -149,7 +149,90 @@ data class WorkflowDefinitionDto(
     val createdAt: Instant,
     val updatedAt: Instant,
     val updatedBy: ActorRefDto?,
+    val library: LibraryLinkDto? = null,
 )
+data class LibraryLinkDto(
+    val libraryWorkflowId: UUID,
+    val key: String,
+    val name: String,
+    val version: Int,
+    val latestVersion: Int,
+    val modified: Boolean,
+    val deprecated: Boolean,
+)
+
+// ---- workflow library (ADR 0037)
+
+data class LibraryWorkflowSourceDto(val projectId: UUID?, val projectKey: String?, val workflowId: UUID?, val workflowVersion: Int?)
+data class LibraryWorkflowVersionSummaryDto(
+    val version: Int,
+    val changeNote: String,
+    val nodeCount: Int,
+    val publishedAt: Instant,
+    val publishedBy: ActorRefDto?,
+    val source: LibraryWorkflowSourceDto,
+)
+data class LibraryUsageDto(val projects: Int, val workflows: Int)
+data class LibraryWorkflowAdoptionDto(
+    val projectId: UUID,
+    val projectKey: String,
+    val workflowId: UUID,
+    val workflowName: String,
+    val version: Int,
+    val modified: Boolean,
+    val enabled: Boolean,
+)
+data class LibraryWorkflowDto(
+    val id: UUID,
+    val key: String,
+    val name: String,
+    val description: String,
+    val tags: List<String>,
+    val latestVersion: Int,
+    val nodeCount: Int,
+    val deprecated: Boolean,
+    val usage: LibraryUsageDto,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val updatedBy: ActorRefDto?,
+    val latestPublishedAt: Instant,
+    /** Only in the detail response; null in lists. */
+    val versions: List<LibraryWorkflowVersionSummaryDto>? = null,
+    val adoptions: List<LibraryWorkflowAdoptionDto>? = null,
+)
+data class LibraryWorkflowVersionDetailDto(
+    val libraryWorkflowId: UUID,
+    val key: String,
+    val name: String,
+    val description: String,
+    val version: Int,
+    val changeNote: String,
+    val nodeCount: Int,
+    val publishedAt: Instant,
+    val publishedBy: ActorRefDto?,
+    val source: LibraryWorkflowSourceDto,
+    val nodes: List<WorkflowNodeJson>,
+    val edges: List<WorkflowEdgeJson>,
+    val triggers: List<TriggerJson>,
+    val canvas: CanvasJson?,
+)
+data class PublishWorkflowRequestDto(
+    val libraryWorkflowId: UUID? = null,
+    val key: String? = null,
+    val name: String? = null,
+    val description: String? = null,
+    val tags: List<String>? = null,
+    val changeNote: String? = null,
+)
+data class LibraryWorkflowUpdateDto(
+    @field:NotBlank val name: String = "",
+    val description: String = "",
+    val tags: List<String> = emptyList(),
+    val deprecated: Boolean = false,
+)
+data class AdoptLibraryWorkflowRequestDto(val libraryWorkflowId: UUID? = null, val version: Int? = null, val name: String? = null)
+data class LibraryUpdateRequestDto(val version: Int? = null, val discardLocalChanges: Boolean = false)
+
 data class ValidationIssueDto(val nodeId: String?, val edgeId: String?, val field: String?, val message: String)
 data class ValidationResultDto(val valid: Boolean, val errors: List<ValidationIssueDto>, val warnings: List<ValidationIssueDto>)
 data class ControlNodeDescriptorDto(val kind: String, val title: String, val description: String, val ports: List<String>, val configSchema: Map<String, Any?>)

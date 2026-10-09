@@ -31,6 +31,7 @@ const routes = [
   '/library/templates',
   '/library/interfaces',
   '/library/skills',
+  '/library/workflows',
   '/models',
   '/evaluation/suites',
   '/evaluation/benchmarks',

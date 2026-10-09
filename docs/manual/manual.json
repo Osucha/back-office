@@ -11,6 +11,7 @@
         { "slug": "workflows", "title": "Designing workflows", "anchors": ["designer", "nodes", "step-repositories", "decisions", "gates-config", "write-confirmations", "start-run"] },
         { "slug": "runs", "title": "Runs", "anchors": ["run-list", "run-detail", "repository-results", "retry-cancel", "provenance", "ci-executions"] },
         { "slug": "task-library", "title": "Task library", "anchors": ["templates", "interfaces", "skills"] },
+        { "slug": "workflow-library", "title": "Workflow library", "anchors": ["library-workflows", "publish", "adopt", "update-detach", "metrics"] },
         { "slug": "evaluation", "title": "Models and evaluation", "anchors": ["models", "suites", "benchmarks"] },
         { "slug": "costs-insights", "title": "Costs, budgets and insights", "anchors": ["costs", "budgets", "insights"] },
         { "slug": "account", "title": "Your account", "anchors": ["profile", "notifications", "mfa", "tokens", "connections"] }

@@ -84,6 +84,11 @@ export const NAVIGATION: NavItem[] = [
         label: $localize`:@@shell.nav.skills:Skills`,
         access: { permission: 'library.view' },
       },
+      {
+        path: '/library/workflows',
+        label: $localize`:@@shell.nav.libraryWorkflows:Workflows`,
+        access: { permission: 'library.view' },
+      },
     ],
   },
   {

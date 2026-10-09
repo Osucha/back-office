@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import pl.mos.backoffice.projects.application.port.`in`.ManageCiTokens
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
+import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.ProjectCiTokenId
@@ -37,6 +38,7 @@ class ProjectController(
     private val tokens: ManageCiTokens,
     private val gate: AuthorizationGate,
     private val catalog: ObjectProvider<PermissionCatalogContribution>,
+    private val library: ManageWorkflowLibrary,
     private val mapper: RestMapper,
 ) {
     @GetMapping
@@ -74,7 +76,7 @@ class ProjectController(
     /** "Add Spec Kit workflows": seeds the Spec Kit workflows the project lacks. */
     @PostMapping("/{projectId}/spec-kit/workflows")
     fun addSpecKitWorkflows(@PathVariable projectId: UUID): List<WorkflowDefinitionDto> =
-        projects.addSpecKitWorkflows(ProjectId(projectId)).map(mapper::toDto)
+        projects.addSpecKitWorkflows(ProjectId(projectId)).map { mapper.toDto(it) }
 
     // ---- CI entrypoints and snippet
 
@@ -114,7 +116,9 @@ class ProjectController(
     @GetMapping("/{projectId}/workflows")
     fun listWorkflows(@PathVariable projectId: UUID): List<WorkflowDefinitionDto> {
         projects.get(ProjectId(projectId))
-        return workflows.listByProject(ProjectId(projectId)).map(mapper::toDto)
+        val list = workflows.listByProject(ProjectId(projectId))
+        val status = library.linkStatus(list.mapNotNull { it.library?.libraryWorkflowId })
+        return list.map { mapper.toDto(it, it.library?.let { link -> status[link.libraryWorkflowId] }) }
     }
 
     @PostMapping("/{projectId}/workflows")

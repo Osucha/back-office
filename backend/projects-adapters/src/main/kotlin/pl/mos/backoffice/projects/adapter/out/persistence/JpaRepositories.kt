@@ -23,6 +23,43 @@ interface WorkflowDefinitionJpaRepository : JpaRepository<WorkflowDefinitionEnti
     fun findByProjectId(projectId: UUID): List<WorkflowDefinitionEntity>
     fun countByProjectId(projectId: UUID): Long
     fun deleteByProjectId(projectId: UUID)
+
+    /** Linked copies (ADR 0037) without their JSON graphs. */
+    @Query("$LINKED_ROW where w.libraryWorkflowId is not null")
+    fun findLinked(): List<LinkedWorkflowRow>
+
+    @Query("$LINKED_ROW where w.libraryWorkflowId = :libraryWorkflowId")
+    fun findLinked(libraryWorkflowId: UUID): List<LinkedWorkflowRow>
+}
+
+private const val LINKED_ROW =
+    "select new pl.mos.backoffice.projects.adapter.out.persistence.LinkedWorkflowRow(w.id, w.projectId, w.name, w.enabled, w.libraryWorkflowId, " +
+        "w.libraryKey, w.libraryVersion, w.libraryModified) from WorkflowDefinitionEntity w"
+
+/** Projection of a linked workflow definition row. */
+data class LinkedWorkflowRow(
+    val id: UUID,
+    val projectId: UUID,
+    val name: String,
+    val enabled: Boolean,
+    val libraryWorkflowId: UUID,
+    val libraryKey: String?,
+    val libraryVersion: Int?,
+    val libraryModified: Boolean,
+)
+
+interface LibraryWorkflowJpaRepository : JpaRepository<LibraryWorkflowEntity, UUID> {
+    fun findByKey(key: String): LibraryWorkflowEntity?
+}
+
+interface LibraryWorkflowVersionJpaRepository : JpaRepository<LibraryWorkflowVersionEntity, LibraryWorkflowVersionKey> {
+    fun findByLibraryWorkflowId(libraryWorkflowId: UUID): List<LibraryWorkflowVersionEntity>
+    fun findByLibraryWorkflowIdIn(libraryWorkflowIds: Collection<UUID>): List<LibraryWorkflowVersionEntity>
+    fun deleteByLibraryWorkflowId(libraryWorkflowId: UUID)
+
+    /** `[libraryWorkflowId, max(version)]` per entry. */
+    @Query("select v.libraryWorkflowId, max(v.version) from LibraryWorkflowVersionEntity v where v.libraryWorkflowId in :ids group by v.libraryWorkflowId")
+    fun latestVersions(ids: Collection<UUID>): List<Array<Any>>
 }
 
 interface WorkflowRunJpaRepository : JpaRepository<WorkflowRunEntity, UUID>, JpaSpecificationExecutor<WorkflowRunEntity> {

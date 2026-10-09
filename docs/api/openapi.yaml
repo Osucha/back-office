@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Back Office API
-  version: 4.0.0
+  version: 4.1.0
   description: |
     Contract between the Angular UI, the backend, the project CI (through `backoffice-ci.sh`) and the
     agent runner. Browser calls authenticate with the `BO_SESSION` cookie set by the OIDC login
@@ -38,6 +38,8 @@ tags:
   - name: approvals
   - name: ci
   - name: task-library
+  - name: workflow-library
+    description: Versioned workflows published from projects and adopted by other projects as linked copies (ADR 0037)
   - name: model-profiles
   - name: task-suites
   - name: benchmarks
@@ -494,6 +496,32 @@ paths:
         - { name: to, in: query, schema: { type: string, format: date-time } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DeliveryInsights' } } } }
+  /insights/workflows:
+    get:
+      tags: [insights]
+      operationId: getWorkflowInsights
+      description: >
+        Effectiveness and efficiency of one library workflow (`libraryWorkflowId`, needs `library.view`; runs of every
+        project the caller may view) or of one project workflow (`workflowId`, needs `project.view`). Exactly one of the two.
+        Scope: runs created in `[from, to)` (default the last 30 days, at most 366 days). Definitions: docs/architecture/11-governance.md.
+      parameters:
+        - { name: libraryWorkflowId, in: query, schema: { type: string, format: uuid } }
+        - { name: workflowId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowInsights' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /insights/library-workflows:
+    get:
+      tags: [insights]
+      operationId: getLibraryWorkflowMetrics
+      description: The headline metrics of every library workflow with runs in `[from, to)` of the projects the caller may view (`library.view`).
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LibraryWorkflowMetricsRow' } } } } }
   /runs/{runId}/attestations:
     parameters: [ { $ref: '#/components/parameters/runId' } ]
     get:
@@ -949,6 +977,97 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StartRunRequest' } } } }
       responses:
         '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRun' } } } }
+
+  # ---------------------------------------------------------------- workflow library (ADR 0037)
+  /library/workflows:
+    get:
+      tags: [workflow-library]
+      operationId: listLibraryWorkflows
+      description: Library workflows (`library.view`). Usage counts only cover projects the caller may view.
+      parameters:
+        - { name: includeDeprecated, in: query, schema: { type: boolean, default: true } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LibraryWorkflowSummary' } } } } }
+  /library/workflows/{libraryWorkflowId}:
+    parameters: [ { $ref: '#/components/parameters/libraryWorkflowId' } ]
+    get:
+      tags: [workflow-library]
+      operationId: getLibraryWorkflow
+      description: The entry with its versions and the linked project workflows the caller may view (`library.view`).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryWorkflow' } } } }
+    put:
+      tags: [workflow-library]
+      operationId: updateLibraryWorkflow
+      description: Name, description, tags and the deprecated flag (`library.manage`). Versions are immutable.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryWorkflowUpdate' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryWorkflow' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [workflow-library]
+      operationId: deleteLibraryWorkflow
+      description: '`library.manage`; refused (409) while any project workflow is linked to the entry: deprecate it instead.'
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Problem' }
+  /library/workflows/{libraryWorkflowId}/versions/{version}:
+    parameters:
+      - { $ref: '#/components/parameters/libraryWorkflowId' }
+      - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    get:
+      tags: [workflow-library]
+      operationId: getLibraryWorkflowVersion
+      description: One published version with its graph (`library.view`).
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryWorkflowVersionDetail' } } } }
+  /workflows/{workflowId}/publish:
+    parameters: [ { $ref: '#/components/parameters/workflowId' } ]
+    post:
+      tags: [workflow-library]
+      operationId: publishWorkflow
+      description: >
+        Publishes the saved project workflow to the library as a new entry (`libraryWorkflowId` null, `key` and `name`
+        required) or as the next version of an existing entry. Needs `library.manage` and `workflow.edit` on the
+        project. Project-local settings (step repositories, a pinned Jira connection, named approver users) are not
+        published. Steps must use global task templates. The project workflow becomes linked to the new version.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PublishWorkflowRequest' } } } }
+      responses:
+        '201': { description: Published, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryWorkflow' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/workflows/from-library:
+    parameters: [ { $ref: '#/components/parameters/projectId' } ]
+    post:
+      tags: [workflow-library]
+      operationId: adoptLibraryWorkflow
+      description: Creates a project workflow linked to a library version (default the latest); `workflow.edit` on the project and `library.view`.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdoptLibraryWorkflowRequest' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDefinition' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /workflows/{workflowId}/library/update:
+    parameters: [ { $ref: '#/components/parameters/workflowId' } ]
+    post:
+      tags: [workflow-library]
+      operationId: updateWorkflowFromLibrary
+      description: >
+        Replaces the graph of a linked workflow with a library version (default the latest) and keeps the project-local
+        settings of nodes with the same id, the name, triggers, enabled flag and viewport (`workflow.edit`). A locally
+        modified copy is refused with 409 unless `discardLocalChanges` is true.
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryUpdateRequest' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDefinition' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /workflows/{workflowId}/library/detach:
+    parameters: [ { $ref: '#/components/parameters/workflowId' } ]
+    post:
+      tags: [workflow-library]
+      operationId: detachWorkflowFromLibrary
+      description: Removes the library link; the graph stays (`workflow.edit`). Runs keep the library version they ran.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDefinition' } } } }
 
   # ---------------------------------------------------------------- runs
   /runs:
@@ -1828,6 +1947,7 @@ components:
   parameters:
     projectId: { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
     workflowId: { name: workflowId, in: path, required: true, schema: { type: string, format: uuid } }
+    libraryWorkflowId: { name: libraryWorkflowId, in: path, required: true, schema: { type: string, format: uuid } }
     runId: { name: runId, in: path, required: true, schema: { type: string, format: uuid } }
     userId: { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
     groupId: { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2126,6 +2246,113 @@ components:
             createdAt: { type: string, format: date-time }
             updatedAt: { type: string, format: date-time }
             updatedBy: { $ref: '#/components/schemas/ActorRef' }
+            library: { allOf: [ { $ref: '#/components/schemas/LibraryLink' } ], nullable: true, readOnly: true, description: 'set when the workflow is a linked copy of a library workflow (ADR 0037)' }
+    LibraryLink:
+      type: object
+      required: [libraryWorkflowId, key, name, version, latestVersion, modified, deprecated]
+      properties:
+        libraryWorkflowId: { type: string, format: uuid }
+        key: { type: string }
+        name: { type: string }
+        version: { type: integer, description: the library version the copy follows }
+        latestVersion: { type: integer, description: 'newer than `version`: an update is available' }
+        modified: { type: boolean, description: the graph differs from that version (project-local settings and positions ignored) }
+        deprecated: { type: boolean }
+    LibraryWorkflowSource:
+      type: object
+      properties:
+        projectId: { type: string, format: uuid, nullable: true }
+        projectKey: { type: string, nullable: true }
+        workflowId: { type: string, format: uuid, nullable: true }
+        workflowVersion: { type: integer, nullable: true }
+    LibraryWorkflowVersionSummary:
+      type: object
+      required: [version, nodeCount, publishedAt]
+      properties:
+        version: { type: integer }
+        changeNote: { type: string }
+        nodeCount: { type: integer, description: nodes without notes }
+        publishedAt: { type: string, format: date-time }
+        publishedBy: { $ref: '#/components/schemas/ActorRef' }
+        source: { $ref: '#/components/schemas/LibraryWorkflowSource' }
+    LibraryWorkflowSummary:
+      type: object
+      required: [id, key, name, latestVersion, deprecated, usage]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string }
+        description: { type: string }
+        tags: { type: array, items: { type: string } }
+        latestVersion: { type: integer }
+        nodeCount: { type: integer }
+        deprecated: { type: boolean }
+        usage: { type: object, required: [projects, workflows], properties: { projects: { type: integer }, workflows: { type: integer } }, description: linked project workflows the caller may view }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { $ref: '#/components/schemas/ActorRef' }
+        latestPublishedAt: { type: string, format: date-time }
+    LibraryWorkflowAdoption:
+      type: object
+      properties:
+        projectId: { type: string, format: uuid }
+        projectKey: { type: string }
+        workflowId: { type: string, format: uuid }
+        workflowName: { type: string }
+        version: { type: integer }
+        modified: { type: boolean }
+        enabled: { type: boolean }
+    LibraryWorkflow:
+      allOf:
+        - $ref: '#/components/schemas/LibraryWorkflowSummary'
+        - type: object
+          required: [versions, adoptions]
+          properties:
+            versions: { type: array, description: newest first, items: { $ref: '#/components/schemas/LibraryWorkflowVersionSummary' } }
+            adoptions: { type: array, items: { $ref: '#/components/schemas/LibraryWorkflowAdoption' } }
+    LibraryWorkflowVersionDetail:
+      allOf:
+        - $ref: '#/components/schemas/LibraryWorkflowVersionSummary'
+        - type: object
+          required: [libraryWorkflowId, key, name, nodes, edges]
+          properties:
+            libraryWorkflowId: { type: string, format: uuid }
+            key: { type: string }
+            name: { type: string }
+            description: { type: string }
+            nodes: { type: array, items: { $ref: '#/components/schemas/WorkflowNode' } }
+            edges: { type: array, items: { $ref: '#/components/schemas/WorkflowEdge' } }
+            triggers: { type: array, items: { $ref: '#/components/schemas/Trigger' } }
+            canvas: { type: object, nullable: true, properties: { zoom: { type: number }, x: { type: number }, y: { type: number } } }
+    PublishWorkflowRequest:
+      type: object
+      properties:
+        libraryWorkflowId: { type: string, format: uuid, nullable: true, description: 'null: a new entry (key and name required)' }
+        key: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        tags: { type: array, nullable: true, items: { type: string } }
+        changeNote: { type: string, nullable: true, maxLength: 2000 }
+    LibraryWorkflowUpdate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        tags: { type: array, items: { type: string } }
+        deprecated: { type: boolean, default: false }
+    AdoptLibraryWorkflowRequest:
+      type: object
+      required: [libraryWorkflowId]
+      properties:
+        libraryWorkflowId: { type: string, format: uuid }
+        version: { type: integer, nullable: true, description: default the latest }
+        name: { type: string, nullable: true, description: default the library name (made unique in the project) }
+    LibraryUpdateRequest:
+      type: object
+      properties:
+        version: { type: integer, nullable: true, description: default the latest }
+        discardLocalChanges: { type: boolean, default: false }
     ValidationResult:
       type: object
       required: [valid, errors]
@@ -3353,6 +3580,62 @@ components:
         weekly: { type: array, items: { type: object, properties: { weekStart: { type: string, format: date }, succeeded: { type: integer }, failed: { type: integer }, humanWaitHours: { type: number }, cost: { $ref: '#/components/schemas/Money' } } } }
         bottleneck: { type: object, nullable: true, properties: { nodeId: { type: string }, nodeName: { type: string }, workflowName: { type: string }, p90WaitSeconds: { type: number } }, description: the gate with the longest p90 wait }
         modelMix: { type: array, description: cost and tokens per model of the runs in scope, items: { type: object, properties: { model: { type: string }, calls: { type: integer }, inputTokens: { type: integer }, outputTokens: { type: integer }, cost: { $ref: '#/components/schemas/Money' } } } }
+    WorkflowMetrics:
+      type: object
+      description: Effectiveness and efficiency of a set of runs (ADR 0037; definitions in docs/architecture/11-governance.md).
+      properties:
+        runs:
+          type: object
+          properties:
+            total: { type: integer }
+            successful: { type: integer, description: 'status SUCCEEDED with outcome SUCCESS' }
+            failed: { type: integer, description: 'status FAILED, or SUCCEEDED through a FAILURE end' }
+            cancelled: { type: integer }
+            active: { type: integer, description: not finished yet }
+            modified: { type: integer, description: runs of locally modified linked copies }
+        successRate: { type: number, nullable: true, description: successful / finished }
+        firstPassRate: { type: number, nullable: true, description: successful without a revise decision or a retried step / finished }
+        reworkLoopsPerRun: { type: number, nullable: true }
+        duration: { $ref: '#/components/schemas/DistributionStat' }
+        activeTime: { $ref: '#/components/schemas/DistributionStat' }
+        humanWait: { $ref: '#/components/schemas/DistributionStat' }
+        totalCost: { $ref: '#/components/schemas/Money' }
+        costPerRun: { $ref: '#/components/schemas/Money' }
+        costPerSuccessfulRun: { $ref: '#/components/schemas/Money' }
+        inputTokens: { type: integer, format: int64 }
+        outputTokens: { type: integer, format: int64 }
+        mergeRequests: { type: integer }
+    WorkflowNodeMetrics:
+      type: object
+      properties:
+        nodeId: { type: string }
+        nodeName: { type: string }
+        kind: { $ref: '#/components/schemas/NodeKind' }
+        templateKey: { type: string, nullable: true }
+        executions: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        failureRate: { type: number, nullable: true }
+        duration: { $ref: '#/components/schemas/DistributionStat' }
+        cost: { $ref: '#/components/schemas/Money' }
+        ports: { type: array, items: { type: object, properties: { port: { type: string }, count: { type: integer } } } }
+    WorkflowInsights:
+      type: object
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        libraryWorkflowId: { type: string, format: uuid, nullable: true }
+        workflowId: { type: string, format: uuid, nullable: true }
+        totals: { $ref: '#/components/schemas/WorkflowMetrics' }
+        byVersion: { type: array, description: 'library versions (library scope) or workflow versions (workflow scope), newest first', items: { type: object, properties: { version: { type: integer }, metrics: { $ref: '#/components/schemas/WorkflowMetrics' } } } }
+        byProject: { type: array, description: library scope only, items: { type: object, properties: { projectId: { type: string, format: uuid }, projectKey: { type: string }, metrics: { $ref: '#/components/schemas/WorkflowMetrics' } } } }
+        byNode: { type: array, items: { $ref: '#/components/schemas/WorkflowNodeMetrics' } }
+        weekly: { type: array, items: { type: object, properties: { weekStart: { type: string, format: date }, successful: { type: integer }, failed: { type: integer }, cost: { $ref: '#/components/schemas/Money' } } } }
+    LibraryWorkflowMetricsRow:
+      type: object
+      properties:
+        libraryWorkflowId: { type: string, format: uuid }
+        metrics: { $ref: '#/components/schemas/WorkflowMetrics' }
     AttestationSummary:
       type: object
       properties:

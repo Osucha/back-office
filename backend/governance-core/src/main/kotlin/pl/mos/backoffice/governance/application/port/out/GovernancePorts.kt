@@ -2,7 +2,10 @@ package pl.mos.backoffice.governance.application.port.out
 
 import pl.mos.backoffice.governance.domain.model.Attestation
 import pl.mos.backoffice.governance.domain.model.DeliveryInsights
+import pl.mos.backoffice.governance.domain.model.WorkflowInsights
+import pl.mos.backoffice.governance.domain.model.WorkflowMetrics
 import pl.mos.backoffice.governance.domain.model.JobEvidence
+import pl.mos.backoffice.governance.domain.model.WorkflowScope
 import pl.mos.backoffice.shared.security.ProjectFilter
 import java.time.Instant
 import java.util.UUID
@@ -31,4 +34,14 @@ interface JsonCodec {
 /** SQL read model over the run, gate, CI and usage tables. */
 fun interface DeliveryInsightsReadModel {
     fun compute(projects: ProjectFilter, from: Instant, to: Instant): DeliveryInsights
+}
+
+/** SQL read model of the workflow metrics over `workflow_run`, its node executions and the usage ledger (ADR 0037). */
+interface WorkflowInsightsReadModel {
+    /** The project of a workflow definition, null when it does not exist. */
+    fun projectOf(workflowId: UUID): UUID?
+
+    fun compute(scope: WorkflowScope, projects: ProjectFilter, from: Instant, to: Instant): WorkflowInsights
+
+    fun libraryHeadlines(projects: ProjectFilter, from: Instant, to: Instant): Map<UUID, WorkflowMetrics>
 }

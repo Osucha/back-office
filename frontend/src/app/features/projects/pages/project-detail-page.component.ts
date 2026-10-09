@@ -24,9 +24,11 @@ import { ProjectsApi } from '../../../core/api/projects.service';
 import { RunsApi } from '../../../core/api/runs.service';
 import { WorkflowsApi } from '../../../core/api/workflows.service';
 import type {
+  LibraryLink,
   Project,
   ProjectInput,
   WorkflowDefinition,
+  WorkflowInsights,
   WorkflowRunSummary,
 } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
@@ -52,6 +54,14 @@ import { ProjectBudgetPanelComponent } from '../../budgets/public-api';
 import { ProjectConnectionsPanelComponent } from '../../connections/public-api';
 import { ProjectSandboxPanelComponent } from '../../fleet/public-api';
 import { RunsTableComponent } from '../../runs/public-api';
+import {
+  AdoptWorkflowDialogComponent,
+  PublishWorkflowDialogComponent,
+  WorkflowMetricsPanelComponent,
+  updateAvailable,
+} from '../../library/public-api';
+import { InsightsApi } from '../../../core/api/insights.service';
+import { WorkflowLibraryApi } from '../../../core/api/workflow-library.service';
 import { ProjectCiPanelComponent } from '../components/project-ci-panel.component';
 import { ProjectFormComponent } from '../components/project-form.component';
 import { JiraIntakePanelComponent } from '../components/jira-intake-panel.component';
@@ -93,6 +103,9 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
     ProvenanceComponent,
     SkeletonComponent,
     JiraIntakePanelComponent,
+    AdoptWorkflowDialogComponent,
+    PublishWorkflowDialogComponent,
+    WorkflowMetricsPanelComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -149,6 +162,17 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
                 </li>
               }
             </ul>
+          }
+          @if (can('workflow.edit') && canReadLibrary()) {
+            <button
+              boHeaderActions
+              nz-button
+              type="button"
+              (click)="adoptOpen.set(true)"
+              i18n="@@projects.detail.addFromLibrary"
+            >
+              Add from library
+            </button>
           }
           @if (can('workflow.edit')) {
             <a
@@ -237,6 +261,37 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
                           w.name
                         }}</a>
                         <span class="muted mono small"> v{{ w.version }} · {{ nodesText(w) }}</span>
+                        @if (w.library; as lib) {
+                          <div class="lib-line">
+                            <a
+                              class="chip outline mono"
+                              [routerLink]="['/library/workflows', lib.libraryWorkflowId]"
+                              [attr.title]="libraryTitle(lib.name)"
+                              >{{ lib.key }} v{{ lib.version }}</a
+                            >
+                            @if (behind(lib)) {
+                              <span
+                                class="chip you"
+                                i18n="@@projects.detail.workflows.libraryUpdate"
+                                >v{{ lib.latestVersion }} available</span
+                              >
+                            }
+                            @if (lib.modified) {
+                              <span
+                                class="chip outline"
+                                i18n="@@projects.detail.workflows.libraryModified"
+                                >changed locally</span
+                              >
+                            }
+                            @if (lib.deprecated) {
+                              <span
+                                class="chip outline"
+                                i18n="@@projects.detail.workflows.libraryDeprecated"
+                                >deprecated in the library</span
+                              >
+                            }
+                          </div>
+                        }
                         @if (w.description) {
                           <div class="muted small clamp">{{ w.description }}</div>
                         }
@@ -268,6 +323,17 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
                               Start run
                             </button>
                           }
+                          <button
+                            nz-button
+                            nzSize="small"
+                            nzType="text"
+                            type="button"
+                            (click)="metricsFor.set(w)"
+                            [attr.aria-label]="metricsLabel(w)"
+                            [attr.title]="metricsLabel(w)"
+                          >
+                            <nz-icon nzType="line-chart" />
+                          </button>
                           <a nz-button nzSize="small" [routerLink]="['/workflows', w.id, 'edit']">
                             @if (can('workflow.edit')) {
                               <span i18n="@@projects.detail.workflows.edit">Edit</span>
@@ -297,6 +363,30 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
                                     >Duplicate workflow</span
                                   >
                                 </li>
+                                @if (canManageLibrary()) {
+                                  <li nz-menu-item (click)="publishing.set(w)">
+                                    <nz-icon nzType="cloud-upload" />
+                                    <span i18n="@@projects.detail.workflows.publish"
+                                      >Publish to library</span
+                                    >
+                                  </li>
+                                }
+                                @if (w.library; as lib) {
+                                  @if (behind(lib) || lib.modified) {
+                                    <li nz-menu-item (click)="updateFromLibrary(w)">
+                                      <nz-icon nzType="sync" />
+                                      <span i18n="@@projects.detail.workflows.libraryUpdateAction"
+                                        >Update from library</span
+                                      >
+                                    </li>
+                                  }
+                                  <li nz-menu-item (click)="detach(w)">
+                                    <nz-icon nzType="disconnect" />
+                                    <span i18n="@@projects.detail.workflows.detach"
+                                      >Detach from library</span
+                                    >
+                                  </li>
+                                }
                                 <li nz-menu-item nzDanger (click)="deleteWorkflow(w)">
                                   <nz-icon nzType="delete" />
                                   <span i18n="@@projects.detail.workflows.delete"
@@ -467,9 +557,69 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
         }
       </ng-container>
     </nz-modal>
+
+    @if (project(); as p) {
+      <app-adopt-workflow-dialog
+        [open]="adoptOpen()"
+        [fixedProjectId]="p.id"
+        (adopted)="onAdopted()"
+        (closed)="adoptOpen.set(false)"
+      />
+    }
+    <app-publish-workflow-dialog
+      [workflow]="publishing()"
+      (published)="onPublished()"
+      (closed)="publishing.set(null)"
+    />
+    <nz-modal
+      [nzVisible]="!!metricsFor()"
+      [nzTitle]="metricsTitle()"
+      [nzFooter]="null"
+      nzWidth="1100px"
+      (nzOnCancel)="metricsFor.set(null)"
+    >
+      <ng-container *nzModalContent>
+        <p class="metrics-scope" i18n="@@projects.detail.metrics.scope">
+          Runs of this workflow started in the last 30 days, all versions.
+        </p>
+        <app-workflow-metrics-panel [insights]="workflowInsights()" scope="workflow" />
+      </ng-container>
+    </nz-modal>
   `,
   styles: [
     `
+      .lib-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .lib-line .chip {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 8px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        font-weight: 500;
+        white-space: nowrap;
+        color: var(--bo-ink-2);
+        box-shadow: inset 0 0 0 1px var(--bo-line-strong);
+      }
+      .lib-line .chip.mono {
+        font-family: var(--bo-font-mono);
+        font-weight: 400;
+      }
+      .lib-line .chip.you {
+        box-shadow: none;
+        background: var(--bo-you-soft);
+        color: var(--bo-you-ink);
+      }
+      .metrics-scope {
+        margin: 0 0 12px;
+        font-size: 12.5px;
+        color: var(--bo-ink-2);
+      }
       .tile {
         width: 44px;
         height: 44px;
@@ -597,6 +747,8 @@ export class ProjectDetailPageComponent {
   private readonly projectsApi = inject(ProjectsApi);
   private readonly workflowsApi = inject(WorkflowsApi);
   private readonly runsApi = inject(RunsApi);
+  private readonly libraryApi = inject(WorkflowLibraryApi);
+  private readonly insightsApi = inject(InsightsApi);
   private readonly message = inject(NzMessageService);
   private readonly confirm = inject(ConfirmService);
   private readonly identity = inject(IdentityService);
@@ -623,6 +775,17 @@ export class ProjectDetailPageComponent {
   readonly starting = signal<WorkflowDefinition | null>(null);
   readonly startingBusy = signal(false);
   readonly paramsError = signal<string | null>(null);
+  /** Workflow library (ADR 0037): "Add from library", the workflow being published, the workflow whose metrics are open. */
+  readonly adoptOpen = signal(false);
+  readonly publishing = signal<WorkflowDefinition | null>(null);
+  readonly metricsFor = signal<WorkflowDefinition | null>(null);
+  readonly workflowInsights = signal<WorkflowInsights | null>(null);
+  readonly canReadLibrary = computed(() => this.identity.can('library.view'));
+  readonly canManageLibrary = computed(() => this.identity.can('library.manage'));
+  readonly metricsTitle = computed(
+    () =>
+      $localize`:@@projects.detail.metrics.title:Performance: ${this.metricsFor()?.name ?? ''}:workflow:`,
+  );
   issueKey = '';
   paramsJson = '';
 
@@ -708,6 +871,17 @@ export class ProjectDetailPageComponent {
       untracked(() => this.load(id));
     });
     effect(() => {
+      const w = this.metricsFor();
+      untracked(() => {
+        this.workflowInsights.set(null);
+        if (!w) return;
+        this.insightsApi
+          .workflow({ workflowId: w.id })
+          .pipe(catchError(() => of(null)))
+          .subscribe((i) => this.workflowInsights.set(i));
+      });
+    });
+    effect(() => {
       const t = this.tab();
       const i = t ? TABS.indexOf(t) : -1;
       if (i >= 0) this.tabIndex.set(i);
@@ -776,6 +950,65 @@ export class ProjectDetailPageComponent {
       .list({ projectId: id, status: ['RUNNING', 'WAITING', 'PENDING'], size: 100 })
       .pipe(catchError(() => of({ content: [] })))
       .subscribe((p) => this.inFlight.set(p.content ?? []));
+  }
+
+  behind(link: LibraryLink): boolean {
+    return updateAvailable(link);
+  }
+
+  libraryTitle(name: string): string {
+    return $localize`:@@projects.detail.workflows.libraryTitle:Linked copy of the library workflow "${name}:name:"`;
+  }
+
+  metricsLabel(w: WorkflowDefinition): string {
+    return $localize`:@@projects.detail.workflows.metrics:Performance of ${w.name}:name:`;
+  }
+
+  onAdopted(): void {
+    this.adoptOpen.set(false);
+    this.reloadWorkflows();
+  }
+
+  onPublished(): void {
+    this.publishing.set(null);
+    this.reloadWorkflows();
+  }
+
+  async updateFromLibrary(w: WorkflowDefinition): Promise<void> {
+    const lib = w.library;
+    if (!lib) return;
+    if (lib.modified) {
+      const ok = await this.confirm.confirm({
+        title: $localize`:@@projects.detail.libraryUpdate.title:Replace local changes with library version ${lib.latestVersion}:version:?`,
+        content: $localize`:@@projects.detail.libraryUpdate.content:This copy was changed in the project since v${lib.version}:version:. Updating replaces its steps and connections with the library version; step repositories, the Jira connection, named approvers, the name and triggers stay.`,
+        okText: $localize`:@@projects.detail.libraryUpdate.ok:Replace and update`,
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    this.libraryApi
+      .updateFromLibrary(w.id, { discardLocalChanges: lib.modified })
+      .subscribe((updated) => {
+        this.message.success(
+          $localize`:@@projects.detail.libraryUpdate.done:${updated.name}:name: now follows library version ${updated.library?.version ?? ''}:version:`,
+        );
+        this.reloadWorkflows();
+      });
+  }
+
+  async detach(w: WorkflowDefinition): Promise<void> {
+    const ok = await this.confirm.confirm({
+      title: $localize`:@@projects.detail.detach.title:Detach ${w.name}:name: from the library?`,
+      content: $localize`:@@projects.detail.detach.content:The workflow stays as it is but no longer receives library versions, and its future runs no longer count towards the library metrics.`,
+      okText: $localize`:@@projects.detail.detach.ok:Detach`,
+    });
+    if (!ok) return;
+    this.libraryApi.detach(w.id).subscribe(() => {
+      this.message.success(
+        $localize`:@@projects.detail.detach.done:Workflow detached from the library`,
+      );
+      this.reloadWorkflows();
+    });
   }
 
   /** Workflows of the project (after load and after "Add Spec Kit workflows"). */

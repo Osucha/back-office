@@ -72,6 +72,22 @@ gate options non-empty; signal names `^[a-z][a-z0-9-]{0,39}$`. Step repositories
 [03-pipelines-and-agents.md](03-pipelines-and-agents.md#step-repositories)) are checked against the project's
 repositories; `StartRun` re-checks them and refuses a run whose steps have repository errors.
 
+`library: LibraryLink(libraryWorkflowId, key, version, modified)?` marks a linked copy of a library workflow
+(ADR 0037); `WorkflowService.update` recomputes `modified` against the followed version.
+
+### LibraryWorkflow (aggregate root, ADR 0037)
+
+| Field | Notes |
+|---|---|
+| `id, key, name, description, tags, deprecated, createdAt, updatedAt, updatedBy` | `key` unique, slug `^[a-z][a-z0-9-]{1,63}$` |
+| `versions: List<LibraryWorkflowVersion>` | append-only, immutable: `version, changeNote, nodes, edges, triggers, canvas, publishedAt, publishedBy, source(projectId, projectKey, workflowId, workflowVersion)` |
+
+`LibraryPortability` (domain service) strips project-local settings before publishing (step repositories, a
+pinned Jira connection id, named approver users), re-applies them by node id when a copy takes a new version,
+and compares graphs ignoring them, node positions and edge ids (`sameGraph`, the `modified` flag). Use case
+`ManageWorkflowLibrary` (`WorkflowLibraryService`): list, get, version, update details, delete (refused while
+linked), publish, adopt, update a copy, detach. Tables `library_workflow`, `library_workflow_version` (V111).
+
 ### WorkflowRun (aggregate root)
 
 | Field | Notes |

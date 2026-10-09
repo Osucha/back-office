@@ -133,7 +133,11 @@ export const HELP_TOPICS = {
     'jira-system-connection',
     $localize`:@@core.help.topic.project.jiraConnections:System connection of a project`,
   ),
-  'project.specKit': t('projects', 'spec-kit', $localize`:@@core.help.topic.project.specKit:Spec Kit`),
+  'project.specKit': t(
+    'projects',
+    'spec-kit',
+    $localize`:@@core.help.topic.project.specKit:Spec Kit`,
+  ),
   'gates.writeConfirmations': t(
     'your-turn',
     'write-confirmations',
@@ -168,6 +172,16 @@ export const HELP_TOPICS = {
     $localize`:@@core.help.topic.interfaces:Task interfaces`,
   ),
   skills: t('task-library', 'skills', $localize`:@@core.help.topic.skills:Skills`),
+  libraryWorkflows: t(
+    'workflow-library',
+    'library-workflows',
+    $localize`:@@core.help.topic.libraryWorkflows:Workflow library`,
+  ),
+  libraryMetrics: t(
+    'workflow-library',
+    'metrics',
+    $localize`:@@core.help.topic.libraryMetrics:Measuring workflows`,
+  ),
   models: t('evaluation', 'models', $localize`:@@core.help.topic.models:Models`),
   suites: t('evaluation', 'suites', $localize`:@@core.help.topic.suites:Task suites`),
   benchmarks: t('evaluation', 'benchmarks', $localize`:@@core.help.topic.benchmarks:Benchmarks`),
@@ -315,6 +329,8 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
   [/^\/library(\/templates)?$/, 'templates'],
   [/^\/library\/interfaces$/, 'interfaces'],
   [/^\/library\/skills$/, 'skills'],
+  [/^\/library\/workflows$/, 'libraryWorkflows'],
+  [/^\/library\/workflows\/[^/]+$/, (q) => (q.get('tab') ? 'libraryWorkflows' : 'libraryMetrics')],
   [/^\/models$/, 'models'],
   [/^\/evaluation(\/suites(\/[^/]+)?)?$/, 'suites'],
   [/^\/evaluation\/benchmarks(\/[^/]+)?$/, 'benchmarks'],

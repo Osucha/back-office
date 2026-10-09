@@ -16,6 +16,7 @@ import pl.mos.backoffice.governance.adapter.`in`.mcp.BackOfficeMcpTools
 import pl.mos.backoffice.governance.adapter.`in`.mcp.McpPersonalTokenFilter
 import pl.mos.backoffice.governance.adapter.out.evidence.JdbcJobEvidenceSource
 import pl.mos.backoffice.governance.adapter.out.insights.JdbcDeliveryInsightsReadModel
+import pl.mos.backoffice.governance.adapter.out.insights.JdbcWorkflowInsightsReadModel
 import pl.mos.backoffice.governance.adapter.out.json.JacksonJsonCodec
 import pl.mos.backoffice.governance.adapter.out.persistence.JdbcAttestationRepository
 import pl.mos.backoffice.governance.adapter.out.signing.Ed25519EnvelopeSigner
@@ -24,6 +25,7 @@ import pl.mos.backoffice.governance.application.port.`in`.DeliveryInsightsQuery
 import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
 import pl.mos.backoffice.governance.application.service.AttestationService
 import pl.mos.backoffice.governance.application.service.DeliveryInsightsService
+import pl.mos.backoffice.governance.application.service.WorkflowInsightsService
 import pl.mos.backoffice.governance.application.service.ProvenanceQueryService
 import pl.mos.backoffice.projects.application.port.`in`.ApprovalQueries
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
@@ -87,6 +89,13 @@ class GovernanceConfiguration {
 
     @Bean
     fun deliveryInsightsService(readModel: JdbcDeliveryInsightsReadModel, gate: AuthorizationGate, clock: Clock) = DeliveryInsightsService(readModel, gate, clock)
+
+    @Bean
+    fun workflowInsightsReadModel(jdbc: JdbcClient) = JdbcWorkflowInsightsReadModel(jdbc)
+
+    /** Workflow metrics (ADR 0037). */
+    @Bean
+    fun workflowInsightsService(readModel: JdbcWorkflowInsightsReadModel, gate: AuthorizationGate, clock: Clock) = WorkflowInsightsService(readModel, gate, clock)
 
     @Bean
     @ConditionalOnProperty(prefix = "backoffice.provenance", name = ["enabled"], matchIfMissing = true)

@@ -230,6 +230,8 @@ data class WorkflowDefinition(
     val updatedAt: Instant,
     /** Who saved this version (creator for version 1). */
     val updatedBy: Actor? = null,
+    /** Set when this workflow is a linked copy of a library workflow (ADR 0037); runs snapshot it. */
+    val library: LibraryLink? = null,
 ) {
     init {
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
@@ -270,4 +272,6 @@ data class WorkflowDefinition(
         updatedAt = now,
         updatedBy = actor ?: updatedBy,
     )
+
+    fun withLibrary(link: LibraryLink?): WorkflowDefinition = copy(library = link)
 }

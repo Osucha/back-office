@@ -224,6 +224,22 @@ SDLC workflows that use Spec Kit (**Issue to reviewed MR**) are seeded only whil
 workflows") seeds the missing ones. With Spec Kit off, the palette hides `SPEC_KIT` templates, the validator rejects
 `SPEC_KIT` steps, run starts refuse them and runner jobs carry `specKit: false`.
 
+## Workflow library
+
+Workflows can be shared across projects through the Library (ADR 0037). A project workflow is **published**
+(`POST /workflows/{id}/publish`, `library.manage` + `workflow.edit`) as a new `LibraryWorkflow` or as the next
+immutable version of one; `LibraryPortability` strips the project-local settings (step repositories, a pinned
+Jira connection id, named approver users) and publishing requires every TASK node to resolve to a concrete
+**global** template that the source project does not shadow. Another project **adopts** a version
+(`POST /projects/{id}/workflows/from-library`): an ordinary workflow, validated exactly like a save in the
+designer, with `library = LibraryLink(id, key, version, modified=false)`. The copy runs and is edited like any
+workflow; saving recomputes `modified`. `POST /workflows/{id}/library/update` replaces the graph with another
+library version, re-applies the local settings of nodes with the same id and keeps name, description,
+triggers, enabled and viewport (409 for a modified copy unless `discardLocalChanges`); `.../library/detach`
+removes the link. A run snapshots the definition, so the persistence adapter copies the link into
+`workflow_run.library_workflow_id`, `library_version` and `library_modified`: the workflow metrics
+([11-governance.md](11-governance.md#workflow-metrics)) attribute every run to the library version it ran.
+
 ## Agent runner protocol
 
 Unchanged from the first iteration except for these additions, all optional:

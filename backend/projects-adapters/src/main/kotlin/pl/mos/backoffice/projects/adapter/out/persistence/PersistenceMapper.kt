@@ -59,6 +59,11 @@ import pl.mos.backoffice.projects.domain.model.TriggerSource
 import pl.mos.backoffice.projects.domain.model.Verdict
 import pl.mos.backoffice.projects.domain.model.WaitKind
 import pl.mos.backoffice.projects.domain.model.WaitingOn
+import pl.mos.backoffice.projects.domain.model.LibraryLink
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflow
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflowId
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflowSource
+import pl.mos.backoffice.projects.domain.model.LibraryWorkflowVersion
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
@@ -103,7 +108,10 @@ data class DefinitionDoc(
     val createdAt: Instant,
     val updatedAt: Instant,
     val updatedBy: ActorDoc? = null,
+    /** ADR 0037: absent in snapshots of runs started before the workflow library existed. */
+    val library: LibraryLinkDoc? = null,
 )
+data class LibraryLinkDoc(val libraryWorkflowId: String, val key: String, val version: Int, val modified: Boolean = false)
 data class RunInputDoc(val issueKey: String? = null, val parameters: Map<String, Any?> = emptyMap(), val ci: Map<String, Any?>? = null)
 data class TokenUsageDoc(val inputTokens: Long = 0, val outputTokens: Long = 0, val cacheReadTokens: Long = 0, val cacheWriteTokens: Long = 0)
 data class MoneyDoc(val amount: BigDecimal = BigDecimal.ZERO, val currency: String = "USD")
@@ -254,24 +262,63 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = write(d.nodes.map(WorkflowJson::toJson)), edges = write(d.edges.map(WorkflowJson::toJson)), triggers = write(d.triggers.map(WorkflowJson::toJson)),
         canvas = WorkflowJson.toJson(d.canvas)?.let { write(it) }, enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt,
         updatedBy = writeActor(d.updatedBy),
+        libraryWorkflowId = d.library?.libraryWorkflowId?.value, libraryKey = d.library?.key, libraryVersion = d.library?.version,
+        libraryModified = d.library?.modified ?: false,
     )
 
     fun toDomain(e: WorkflowDefinitionEntity): WorkflowDefinition = WorkflowDefinition(
         id = WorkflowDefinitionId(e.id), projectId = ProjectId(e.projectId), name = e.name, description = e.description, version = e.version,
         nodes = json.readValue(e.nodes, nodeList).map(WorkflowJson::toDomain), edges = json.readValue(e.edges, edgeList).map(WorkflowJson::toDomain),
         triggers = json.readValue(e.triggers, triggerList).map(WorkflowJson::toDomain), canvas = e.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
-        enabled = e.enabled, createdAt = e.createdAt, updatedAt = e.updatedAt, updatedBy = readActor(e.updatedBy),
+        enabled = e.enabled, createdAt = e.createdAt, updatedAt = e.updatedAt, updatedBy = readActor(e.updatedBy), library = libraryLink(e),
     )
+
+    /** The library link of a definition row; a row without id, key or version has none. */
+    fun libraryLink(e: WorkflowDefinitionEntity): LibraryLink? {
+        val id = e.libraryWorkflowId ?: return null
+        return LibraryLink(LibraryWorkflowId(id), e.libraryKey ?: return null, e.libraryVersion ?: return null, e.libraryModified)
+    }
 
     fun toDoc(d: WorkflowDefinition) = DefinitionDoc(
         d.id.toString(), d.projectId.toString(), d.name, d.description, d.version, d.nodes.map(WorkflowJson::toJson), d.edges.map(WorkflowJson::toJson),
         d.triggers.map(WorkflowJson::toJson), WorkflowJson.toJson(d.canvas), d.enabled, d.createdAt, d.updatedAt, d.updatedBy?.let(::toDoc),
+        d.library?.let { LibraryLinkDoc(it.libraryWorkflowId.toString(), it.key, it.version, it.modified) },
     )
 
     fun toDomain(d: DefinitionDoc): WorkflowDefinition = WorkflowDefinition(
         id = WorkflowDefinitionId.of(d.id), projectId = ProjectId.of(d.projectId), name = d.name, description = d.description, version = d.version,
         nodes = d.nodes.map(WorkflowJson::toDomain), edges = d.edges.map(WorkflowJson::toDomain), triggers = d.triggers.map(WorkflowJson::toDomain),
         canvas = WorkflowJson.toDomain(d.canvas), enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt, updatedBy = d.updatedBy?.let(::toDomain),
+        library = d.library?.let { LibraryLink(LibraryWorkflowId.of(it.libraryWorkflowId), it.key, it.version, it.modified) },
+    )
+
+    // ---- LibraryWorkflow (ADR 0037)
+
+    fun toEntity(w: LibraryWorkflow) = LibraryWorkflowEntity(
+        id = w.id.value, key = w.key, name = w.name, description = w.description, tags = write(w.tags), deprecated = w.deprecated,
+        createdAt = w.createdAt, updatedAt = w.updatedAt, updatedBy = writeActor(w.updatedBy),
+    )
+
+    fun toEntity(id: LibraryWorkflowId, v: LibraryWorkflowVersion) = LibraryWorkflowVersionEntity(
+        libraryWorkflowId = id.value, version = v.version, changeNote = v.changeNote,
+        nodes = write(v.nodes.map(WorkflowJson::toJson)), edges = write(v.edges.map(WorkflowJson::toJson)), triggers = write(v.triggers.map(WorkflowJson::toJson)),
+        canvas = WorkflowJson.toJson(v.canvas)?.let { write(it) }, publishedAt = v.publishedAt, publishedBy = writeActor(v.publishedBy),
+        sourceProjectId = v.source.projectId?.value, sourceProjectKey = v.source.projectKey, sourceWorkflowId = v.source.workflowId?.value,
+        sourceWorkflowVersion = v.source.workflowVersion,
+    )
+
+    fun toDomain(e: LibraryWorkflowEntity, versions: List<LibraryWorkflowVersionEntity>): LibraryWorkflow = LibraryWorkflow(
+        id = LibraryWorkflowId(e.id), key = e.key, name = e.name, description = e.description, tags = json.readValue(e.tags, stringList),
+        deprecated = e.deprecated, versions = versions.sortedBy { it.version }.map(::toDomain), createdAt = e.createdAt, updatedAt = e.updatedAt,
+        updatedBy = readActor(e.updatedBy),
+    )
+
+    fun toDomain(v: LibraryWorkflowVersionEntity): LibraryWorkflowVersion = LibraryWorkflowVersion(
+        version = v.version, changeNote = v.changeNote,
+        nodes = json.readValue(v.nodes, nodeList).map(WorkflowJson::toDomain), edges = json.readValue(v.edges, edgeList).map(WorkflowJson::toDomain),
+        triggers = json.readValue(v.triggers, triggerList).map(WorkflowJson::toDomain), canvas = v.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
+        publishedAt = v.publishedAt, publishedBy = readActor(v.publishedBy),
+        source = LibraryWorkflowSource(v.sourceProjectId?.let(::ProjectId), v.sourceProjectKey, v.sourceWorkflowId?.let(::WorkflowDefinitionId), v.sourceWorkflowVersion),
     )
 
     // ---- WorkflowRun
@@ -333,6 +380,8 @@ class PersistenceMapper(private val json: JsonMapper) {
         lastSignal = r.lastSignal?.let { write(toDoc(it)) },
         costAmount = r.cost.amount, costCurrency = r.cost.currency, createdAt = r.createdAt, startedAt = r.startedAt, finishedAt = r.finishedAt,
         startedBy = writeActor(r.startedBy),
+        libraryWorkflowId = r.definitionSnapshot.library?.libraryWorkflowId?.value, libraryVersion = r.definitionSnapshot.library?.version,
+        libraryModified = r.definitionSnapshot.library?.modified ?: false,
     )
 
     fun toDomain(e: WorkflowRunEntity, artifacts: List<Artifact>): WorkflowRun {

@@ -486,5 +486,7 @@
   "core.help.topic.connections.scoped": "Tokeny API z zakresami",
   "core.help.topic.project.jiraConnections": "Połączenie systemowe projektu",
   "core.help.topic.project.specKit": "Spec Kit",
-  "core.permission.connections.personal": "Tworzenie i używanie własnych połączeń osobistych (Jira jako Ty, ADR 0035)"
+  "core.permission.connections.personal": "Tworzenie i używanie własnych połączeń osobistych (Jira jako Ty, ADR 0035)",
+  "core.help.topic.libraryWorkflows": "Biblioteka workflowów",
+  "core.help.topic.libraryMetrics": "Mierzenie workflowów"
 }

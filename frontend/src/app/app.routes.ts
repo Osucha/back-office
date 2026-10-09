@@ -184,6 +184,25 @@ export const routes: Routes = [
           ),
       },
       {
+        // Workflow library (ADR 0037): metrics only count runs of projects the caller may view.
+        path: 'library/workflows',
+        title: $localize`:@@shell.route.libraryWorkflows:Library workflows`,
+        data: access({ permission: 'library.view' }),
+        loadComponent: () =>
+          import('./features/library/pages/library-workflows-page.component').then(
+            (m) => m.LibraryWorkflowsPageComponent,
+          ),
+      },
+      {
+        path: 'library/workflows/:libraryWorkflowId',
+        title: $localize`:@@shell.route.libraryWorkflow:Library workflow`,
+        data: access({ permission: 'library.view' }),
+        loadComponent: () =>
+          import('./features/library/pages/library-workflow-page.component').then(
+            (m) => m.LibraryWorkflowPageComponent,
+          ),
+      },
+      {
         path: 'models',
         title: $localize`:@@shell.route.models:Models`,
         data: access({ permission: 'models.view' }),

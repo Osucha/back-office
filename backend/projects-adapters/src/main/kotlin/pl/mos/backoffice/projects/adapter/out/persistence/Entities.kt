@@ -5,6 +5,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.IdClass
 import jakarta.persistence.Table
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
@@ -76,6 +77,48 @@ class WorkflowDefinitionEntity(
     @Column(name = "created_at", nullable = false) var createdAt: Instant,
     @Column(name = "updated_at", nullable = false) var updatedAt: Instant,
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "updated_by", columnDefinition = "jsonb") var updatedBy: String? = null,
+    /** V111 (ADR 0037): the library entry and version this workflow is a linked copy of. */
+    @Column(name = "library_workflow_id") var libraryWorkflowId: UUID? = null,
+    @Column(name = "library_key") var libraryKey: String? = null,
+    @Column(name = "library_version") var libraryVersion: Int? = null,
+    @Column(name = "library_modified", nullable = false) var libraryModified: Boolean = false,
+)
+
+/** V111 (ADR 0037): a library workflow; its versions are [LibraryWorkflowVersionEntity] rows. */
+@Entity
+@Table(name = "library_workflow")
+class LibraryWorkflowEntity(
+    @Id var id: UUID,
+    @Column(nullable = false, unique = true) var key: String,
+    @Column(nullable = false) var name: String,
+    @Column(nullable = false) var description: String = "",
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false, columnDefinition = "jsonb") var tags: String = "[]",
+    @Column(nullable = false) var deprecated: Boolean = false,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant,
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant,
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "updated_by", columnDefinition = "jsonb") var updatedBy: String? = null,
+)
+
+/** Composite key of [LibraryWorkflowVersionEntity]. */
+data class LibraryWorkflowVersionKey(var libraryWorkflowId: UUID? = null, var version: Int? = null) : java.io.Serializable
+
+@Entity
+@Table(name = "library_workflow_version")
+@IdClass(LibraryWorkflowVersionKey::class)
+class LibraryWorkflowVersionEntity(
+    @Id @Column(name = "library_workflow_id") var libraryWorkflowId: UUID,
+    @Id var version: Int,
+    @Column(name = "change_note", nullable = false) var changeNote: String = "",
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false, columnDefinition = "jsonb") var nodes: String,
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false, columnDefinition = "jsonb") var edges: String,
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false, columnDefinition = "jsonb") var triggers: String,
+    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb") var canvas: String? = null,
+    @Column(name = "published_at", nullable = false) var publishedAt: Instant,
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "published_by", columnDefinition = "jsonb") var publishedBy: String? = null,
+    @Column(name = "source_project_id") var sourceProjectId: UUID? = null,
+    @Column(name = "source_project_key") var sourceProjectKey: String? = null,
+    @Column(name = "source_workflow_id") var sourceWorkflowId: UUID? = null,
+    @Column(name = "source_workflow_version") var sourceWorkflowVersion: Int? = null,
 )
 
 @Entity
@@ -109,6 +152,10 @@ class WorkflowRunEntity(
     @Column(name = "started_at") var startedAt: Instant? = null,
     @Column(name = "finished_at") var finishedAt: Instant? = null,
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "started_by", columnDefinition = "jsonb") var startedBy: String? = null,
+    /** V111 (ADR 0037): the library version the run executed, copied from the definition snapshot (workflow metrics). */
+    @Column(name = "library_workflow_id") var libraryWorkflowId: UUID? = null,
+    @Column(name = "library_version") var libraryVersion: Int? = null,
+    @Column(name = "library_modified", nullable = false) var libraryModified: Boolean = false,
 )
 
 @Entity

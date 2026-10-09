@@ -125,6 +125,7 @@ skills, prompt lengths and whether the prompt changed, config keys, schema lengt
 
 ## UI
 
-Library section with three tabs (Templates, Interfaces, Skills). The template editor shows the
+Library section with four tabs (Templates, Interfaces, Skills and Workflows; the workflow library belongs to the
+Projects context, ADR 0037 and [03-pipelines-and-agents.md](03-pipelines-and-agents.md#workflow-library)). The template editor shows the
 inheritance chain, an "effective prompt" preview (resolved), the interface check, and the skill picker.
 The workflow designer palette lists concrete templates grouped by interface.

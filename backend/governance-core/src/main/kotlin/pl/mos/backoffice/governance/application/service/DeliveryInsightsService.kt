@@ -29,15 +29,21 @@ class DeliveryInsightsService(
         } else {
             gate.projectFilter(GovernancePermissions.PROJECT_VIEW)
         }
-        val end = to ?: clock.now()
-        val start = from ?: end.minus(DEFAULT_WINDOW)
-        if (!start.isBefore(end)) throw ValidationException("from must be before to", "from")
-        if (Duration.between(start, end) > MAX_WINDOW) throw ValidationException("the window may span at most ${MAX_WINDOW.toDays()} days", "from")
+        val (start, end) = window(from, to, clock)
         return readModel.compute(filter, start, end).copy(projectId = projectId)
     }
 
     companion object {
         val DEFAULT_WINDOW: Duration = Duration.ofDays(30)
         val MAX_WINDOW: Duration = Duration.ofDays(366)
+
+        /** `[from, to)` with the defaults applied (to = now, from = to - 30 days), at most [MAX_WINDOW] long. */
+        fun window(from: Instant?, to: Instant?, clock: Clock): Pair<Instant, Instant> {
+            val end = to ?: clock.now()
+            val start = from ?: end.minus(DEFAULT_WINDOW)
+            if (!start.isBefore(end)) throw ValidationException("from must be before to", "from")
+            if (Duration.between(start, end) > MAX_WINDOW) throw ValidationException("the window may span at most ${MAX_WINDOW.toDays()} days", "from")
+            return start to end
+        }
     }
 }
