@@ -1,0 +1,69 @@
+{{- $name := include "runner.fullname" . }}
+{{- $a := .Values.autoscaling }}
+{{- if eq $a.type "keda" }}
+# KEDA metrics-api scaler on the pool queue (runner token as bearer; the Secret is written by the
+# controller after registration, so scaling starts once the controller has registered).
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: token
+      name: {{ include "runner.tokenSecretName" . }}
+      key: {{ .Values.tokenSecret.key }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ $name }}
+  minReplicaCount: {{ $a.minReplicas }}
+  maxReplicaCount: {{ $a.maxReplicas }}
+  pollingInterval: {{ $a.keda.pollingInterval }}
+  cooldownPeriod: {{ $a.keda.cooldownPeriod }}
+  fallback:
+    failureThreshold: 3
+    replicas: {{ $a.minReplicas }}
+  triggers:
+    - type: metrics-api
+      authenticationRef:
+        name: {{ $name }}
+      metadata:
+        url: {{ printf "%s/api/v1/runner/v2/pools/%s/queue" (trimSuffix "/" .Values.backOffice.url) .Values.backOffice.poolId | quote }}
+        format: json
+        valueLocation: {{ $a.keda.valueLocation | quote }}
+        targetValue: {{ default (toString .Values.maxConcurrent) $a.keda.targetValue | quote }}
+        activationTargetValue: {{ $a.keda.activationTargetValue | quote }}
+        authMode: bearer
+{{- else if eq $a.type "hpa" }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $a.minReplicas }}
+  maxReplicas: {{ $a.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $a.targetCPUUtilizationPercentage }}
+{{- end }}

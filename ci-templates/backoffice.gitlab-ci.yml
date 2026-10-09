@@ -1,0 +1,113 @@
+# Back Office - GitLab CI template (ADR 0013). Replaces code-review.gitlab-ci.yml (ADR 0011).
+#
+# The project's CI calls Back Office through `backoffice-ci.sh`, which this template downloads from
+# the platform itself ($BACKOFFICE_URL/ci/backoffice-ci.sh). Back Office never calls GitLab.
+#
+# Include it in the target repository:
+#
+#   include:
+#     - project: 'mos/back-office'          # project that hosts this file
+#       ref: main
+#       file: '/ci-templates/backoffice.gitlab-ci.yml'
+#   # or: - remote: 'https://gitlab.example.com/mos/back-office/-/raw/main/ci-templates/backoffice.gitlab-ci.yml'
+#
+#   variables:
+#     BACKOFFICE_TESTS_JOB: "test"          # your test job; the signal jobs run after it
+#
+#   # optional overrides
+#   backoffice:review:
+#     variables:
+#       BACKOFFICE_ADVISORY: "true"          # report only, never fail the MR pipeline
+#     # allow_failure: { exit_codes: [1] }   # tolerate gate FAIL, still fail on infra errors (2/3)
+#
+# Variables (Settings > CI/CD > Variables). Mark the token Masked (or "Masked and hidden"), NOT Protected:
+# protected variables reach only pipelines of protected branches/tags, and the review job runs in merge request
+# pipelines of feature branches, so it would get no token.
+#
+#   BACKOFFICE_URL              Base URL of Back Office, e.g. https://back-office.example.com  (required)
+#   BACKOFFICE_CI_TOKEN         Project CI token issued in Back Office (project tab CI > CI tokens): bo_ci_...  (required, masked)
+#   BACKOFFICE_REVIEW_TIMEOUT   Seconds to wait for the run (default 1800)
+#   BACKOFFICE_POLL_INTERVAL    Poll interval in seconds (default 10)
+#   BACKOFFICE_ADVISORY         "true" -> never fail the job, only report (default false)
+#   BACKOFFICE_DIFF_MAX_BYTES   Cap for the uploaded diff (default 2097152)
+#   BACKOFFICE_TESTS_JOB        Name of the project's test job the signal jobs `need` (default: none, they run in stage .post)
+#   BACKOFFICE_IMAGE            Image for the jobs; needs sh, curl, git (default alpine:3.20, installs them)
+#   BACKOFFICE_SCRIPT_URL       Where to fetch the client (default $BACKOFFICE_URL/ci/backoffice-ci.sh)
+#
+# Jobs
+#   backoffice:review        merge request pipelines, stage test: `backoffice-ci review` uploads the MR diff, starts the
+#                            `code-review` entrypoint, waits and exits 0 (PASS) / 1 (FAIL) / 2 (error) / 3 (timeout).
+#   backoffice:signal-tests  branch pipelines whose HEAD commit carries the `Back-Office-Run` trailer (pushed by the
+#                            agent runner): reports `tests` success to the waiting workflow run.
+#   backoffice:signal-tests-failed  same, `when: on_failure`, reports `tests` fail.
+#
+# Idempotent: an execution for the same (project, entrypoint, commit, MR) within 24 h is returned instead of created,
+# so retrying the job never triggers a second review of the same commit (`--var force=true` to override).
+
+variables:
+  BACKOFFICE_REVIEW_TIMEOUT: "1800"
+  BACKOFFICE_POLL_INTERVAL: "10"
+  BACKOFFICE_ADVISORY: "false"
+  BACKOFFICE_DIFF_MAX_BYTES: "2097152"
+  BACKOFFICE_IMAGE: "alpine:3.20"
+  BACKOFFICE_TESTS_JOB: ""
+
+.backoffice:
+  image: $BACKOFFICE_IMAGE
+  interruptible: true
+  variables:
+    # The MR diff is computed against the target branch: fetch enough history for a merge base.
+    GIT_DEPTH: "0"
+    GIT_STRATEGY: fetch
+  before_script:
+    - command -v curl >/dev/null && command -v git >/dev/null || apk add --no-cache curl git >/dev/null
+    - |
+      set -eu
+      : "${BACKOFFICE_URL:?BACKOFFICE_URL is required}"
+      : "${BACKOFFICE_CI_TOKEN:?BACKOFFICE_CI_TOKEN is required}"
+      SCRIPT_URL="${BACKOFFICE_SCRIPT_URL:-${BACKOFFICE_URL%/}/ci/backoffice-ci.sh}"
+      # The script is versioned with the platform; a cache-busting query avoids stale proxy copies.
+      curl -fsSL --retry 3 --retry-delay 2 "${SCRIPT_URL}?ts=$(date +%s)" -o backoffice-ci.sh
+      chmod +x backoffice-ci.sh
+      sh ./backoffice-ci.sh version
+
+backoffice:review:
+  extends: .backoffice
+  stage: test
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - sh ./backoffice-ci.sh review
+
+# Signal jobs: only meaningful on branches pushed by the agent runner (HEAD carries the trailer).
+# `needs` cannot be templated from a variable, so a project that wants the signal right after its own
+# test job overrides `needs: [<job>]`; by default the jobs run in the `.post` stage after everything.
+.backoffice-signal:
+  extends: .backoffice
+  stage: .post
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_COMMIT_BRANCH
+  script:
+    - |
+      set -eu
+      if ! git log -1 --format=%B | grep -q "^Back-Office-Run:"; then
+        echo "HEAD has no Back-Office-Run trailer: not a runner branch, nothing to signal."
+        exit 0
+      fi
+      sh ./backoffice-ci.sh signal "${BACKOFFICE_SIGNAL_NAME:-tests}" --status "${BACKOFFICE_SIGNAL_STATUS}" \
+        --message "${BACKOFFICE_TESTS_JOB:-pipeline} ${BACKOFFICE_SIGNAL_STATUS}: ${CI_PIPELINE_URL}"
+
+backoffice:signal-tests:
+  extends: .backoffice-signal
+  variables:
+    BACKOFFICE_SIGNAL_STATUS: success
+  when: on_success
+
+backoffice:signal-tests-failed:
+  extends: .backoffice-signal
+  variables:
+    BACKOFFICE_SIGNAL_STATUS: fail
+  when: on_failure

@@ -1,0 +1,209 @@
+/*
+ * Relay design tokens (docs/ui/design-language.md, section 3). The single source of colour, type,
+ * space, shape, depth and motion for the app and for the NG-ZORRO theme (ng-zorro-theme.less).
+ *
+ * Themes: light on :root; dark on [data-theme='dark'] (set by ThemeService from
+ * me.preferences.theme) and, before the preference is known, on prefers-color-scheme: dark.
+ * Density: [data-density='compact'] (DensityService).
+ *
+ * The @theme / @end markers delimit the blocks parsed by `npm run check:contrast`; keep every colour
+ * a literal #RRGGBB there. `-soft` = 12 % of the colour over the light surface, 18 % over the dark
+ * surface; `-ink` = the text colour that stays AA (4.5:1) on the tint and on every surface.
+ */
+
+:root {
+  /* @theme light */
+  --bo-bg: #f6f5f2;
+  --bo-surface: #ffffff;
+  --bo-surface-2: #faf9f6;
+  --bo-surface-3: #f1efea;
+  --bo-line: #e3e0d8;
+  --bo-line-strong: #cfcbc1;
+  --bo-ink: #1c1e21;
+  --bo-ink-hover: #33363b;
+  --bo-ink-2: #4a4e55;
+  --bo-ink-3: #6b7078;
+  --bo-on-ink: #ffffff;
+  --bo-accent: #3552d6;
+  --bo-accent-hover: #2b45bd;
+  --bo-accent-soft: #e7eafa;
+  --bo-on-accent: #ffffff;
+  --bo-agent: #3552d6;
+  --bo-agent-soft: #e7eafa;
+  --bo-agent-ink: #3552d6;
+  --bo-you: #c77800;
+  --bo-you-soft: #f8efe0;
+  --bo-you-ink: #8f5600;
+  --bo-ci: #0e7c71;
+  --bo-ci-soft: #e2efee;
+  --bo-ci-ink: #0d776c;
+  --bo-done: #2f7d40;
+  --bo-done-soft: #e6efe8;
+  --bo-done-ink: #2d783d;
+  --bo-blocked: #b8392a;
+  --bo-blocked-soft: #f6e7e5;
+  --bo-blocked-ink: #b8392a;
+  --bo-idle: #8a8f96;
+  --bo-idle-soft: #f1f2f2;
+  --bo-idle-ink: #686c70;
+  --bo-code-bg: #1c1e21;
+  --bo-code-ink: #e9e7e1;
+  --bo-scrim: #1c1e21;
+  /* @end */
+
+  --bo-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --bo-shadow-rail: 4px 0 24px rgba(0, 0, 0, 0.08);
+  --bo-selection: rgba(53, 82, 214, 0.18);
+
+  /* type */
+  --bo-font-ui: 'Instrument Sans Variable', 'Instrument Sans', system-ui, -apple-system, 'Segoe UI',
+    Roboto, sans-serif;
+  --bo-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  --bo-fs-meta: 12px;
+  --bo-fs-dense: 13px;
+  --bo-fs-body: 14px;
+  --bo-fs-section: 16px;
+  --bo-fs-title: 20px;
+  --bo-fs-greeting: 28px;
+  --bo-lh: 1.55;
+  --bo-lh-tight: 1.3;
+  --bo-tracking-title: -0.01em;
+
+  /* space (4 px grid) */
+  --bo-space-0: 2px;
+  --bo-space-1: 4px;
+  --bo-space-2: 8px;
+  --bo-space-3: 12px;
+  --bo-space-4: 16px;
+  --bo-space-5: 24px;
+  --bo-space-6: 32px;
+  --bo-space-7: 48px;
+
+  /* shape */
+  --bo-radius-control: 6px;
+  --bo-radius-card: 10px;
+  --bo-radius-chip: 999px;
+
+  /* motion */
+  --bo-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --bo-dur-fast: 140ms;
+  --bo-dur-panel: 200ms;
+
+  /* focus */
+  --bo-focus-ring: 0 0 0 2px var(--bo-surface), 0 0 0 4px var(--bo-accent);
+
+  /* density: comfortable */
+  --bo-row-h: 32px;
+  --bo-row-pad-y: 6px;
+  --bo-control-h: 32px;
+  --bo-card-pad: 16px;
+
+  /* shell */
+  --bo-rail-w: 56px;
+  --bo-rail-w-open: 232px;
+  --bo-topbar-h: 52px;
+  --bo-dock-w: 320px;
+
+  color-scheme: light;
+}
+
+/* Dark: explicit preference. The same values are repeated for the OS preference below. */
+:root[data-theme='dark'] {
+  /* @theme dark */
+  --bo-bg: #111214;
+  --bo-surface: #1a1c1f;
+  --bo-surface-2: #202328;
+  --bo-surface-3: #272a30;
+  --bo-line: #2d3137;
+  --bo-line-strong: #3b4047;
+  --bo-ink: #eceae5;
+  --bo-ink-hover: #ffffff;
+  --bo-ink-2: #b9bdc3;
+  --bo-ink-3: #8a9098;
+  --bo-on-ink: #111214;
+  --bo-accent: #8fa2ff;
+  --bo-accent-hover: #a9b7ff;
+  --bo-accent-soft: #2f3447;
+  --bo-on-accent: #111214;
+  --bo-agent: #8fa2ff;
+  --bo-agent-soft: #2f3447;
+  --bo-agent-ink: #8fa2ff;
+  --bo-you: #ffb23e;
+  --bo-you-soft: #433725;
+  --bo-you-ink: #ffb23e;
+  --bo-ci: #3cc9b8;
+  --bo-ci-soft: #203b3b;
+  --bo-ci-ink: #3cc9b8;
+  --bo-done: #6fc77f;
+  --bo-done-soft: #293b30;
+  --bo-done-ink: #6fc77f;
+  --bo-blocked: #ff7a63;
+  --bo-blocked-soft: #432d2b;
+  --bo-blocked-ink: #ff7a63;
+  --bo-idle: #7c828a;
+  --bo-idle-soft: #2c2e32;
+  --bo-idle-ink: #94999f;
+  --bo-code-bg: #0c0d0f;
+  --bo-code-ink: #e2e0da;
+  --bo-scrim: #000000;
+  /* @end */
+
+  --bo-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --bo-shadow-rail: 4px 0 24px rgba(0, 0, 0, 0.4);
+  --bo-selection: rgba(143, 162, 255, 0.28);
+  color-scheme: dark;
+}
+
+/* No preference applied yet (login page before /me) and the OS asks for dark. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bo-bg: #111214;
+    --bo-surface: #1a1c1f;
+    --bo-surface-2: #202328;
+    --bo-surface-3: #272a30;
+    --bo-line: #2d3137;
+    --bo-line-strong: #3b4047;
+    --bo-ink: #eceae5;
+    --bo-ink-hover: #ffffff;
+    --bo-ink-2: #b9bdc3;
+    --bo-ink-3: #8a9098;
+    --bo-on-ink: #111214;
+    --bo-accent: #8fa2ff;
+    --bo-accent-hover: #a9b7ff;
+    --bo-accent-soft: #2f3447;
+    --bo-on-accent: #111214;
+    --bo-agent: #8fa2ff;
+    --bo-agent-soft: #2f3447;
+    --bo-agent-ink: #8fa2ff;
+    --bo-you: #ffb23e;
+    --bo-you-soft: #433725;
+    --bo-you-ink: #ffb23e;
+    --bo-ci: #3cc9b8;
+    --bo-ci-soft: #203b3b;
+    --bo-ci-ink: #3cc9b8;
+    --bo-done: #6fc77f;
+    --bo-done-soft: #293b30;
+    --bo-done-ink: #6fc77f;
+    --bo-blocked: #ff7a63;
+    --bo-blocked-soft: #432d2b;
+    --bo-blocked-ink: #ff7a63;
+    --bo-idle: #7c828a;
+    --bo-idle-soft: #2c2e32;
+    --bo-idle-ink: #94999f;
+    --bo-code-bg: #0c0d0f;
+    --bo-code-ink: #e2e0da;
+    --bo-scrim: #000000;
+    --bo-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --bo-shadow-rail: 4px 0 24px rgba(0, 0, 0, 0.4);
+    --bo-selection: rgba(143, 162, 255, 0.28);
+    color-scheme: dark;
+  }
+}
+
+:root[data-density='compact'] {
+  --bo-row-h: 28px;
+  --bo-row-pad-y: 4px;
+  --bo-control-h: 28px;
+  --bo-card-pad: 12px;
+}

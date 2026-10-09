@@ -1,0 +1,58 @@
+server:
+  port: ${PORT:8090}
+  shutdown: graceful
+
+spring:
+  application:
+    name: back-office-runner-controller
+  lifecycle:
+    # JobSupervisor.shutdown waits up to runner-controller.shutdown-grace-seconds for running jobs.
+    timeout-per-shutdown-phase: 420s
+  main:
+    banner-mode: off
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# Environment names: RUNNER_* (Helm chart deploy/helm/back-office-runner, deploy/compose); the older BO_*
+# names are still accepted as fallbacks. Maps (kubernetes.cache-pvcs, git.secrets) and lists
+# (egress.allow-ranges, git.repo-secrets) have no single variable: the chart passes them in SPRING_APPLICATION_JSON.
+runner-controller:
+  back-office:
+    url: ${RUNNER_BACKOFFICE_URL:${BO_URL:}}
+    registration-token: ${RUNNER_REGISTRATION_TOKEN:${BO_REGISTRATION_TOKEN:}}
+    # credential-store AUTO: Kubernetes Secret in kubernetes.namespace, or this file with the DOCKER backend
+    credential-secret: ${RUNNER_TOKEN_SECRET_NAME:back-office-runner-credentials}
+    # empty = the controller's own namespace (where KEDA reads the token); never the sandbox namespace
+    credential-secret-namespace: ${RUNNER_TOKEN_SECRET_NAMESPACE:}
+    credential-file: ${RUNNER_TOKEN_FILE:./runner-credentials.json}
+  backend: ${RUNNER_BACKEND:${BO_RUNNER_BACKEND:AUTO}}
+  max-concurrent: ${RUNNER_MAX_CONCURRENT:${BO_RUNNER_MAX_CONCURRENT:4}}
+  defaults:
+    image: ${RUNNER_DEFAULT_IMAGE:${BO_RUNNER_DEFAULT_IMAGE:}}
+  egress:
+    proxy-image: ${RUNNER_EGRESS_PROXY_IMAGE:back-office/egress-proxy:dev}
+    proxy-port: ${RUNNER_EGRESS_PROXY_PORT:4750}
+  git:
+    # least privilege (ADR 0031): a READ job never receives a push credential unless this is true
+    allow-push-credential-for-read: ${RUNNER_GIT_ALLOW_PUSH_CREDENTIAL_FOR_READ:false}
+    # commit identity of the agents (sandbox env GIT_USER_NAME / GIT_USER_EMAIL); empty = runner default
+    user-name: ${RUNNER_GIT_USER_NAME:}
+    user-email: ${RUNNER_GIT_USER_EMAIL:}
+  kubernetes:
+    # sandboxes, egress proxy and runner-token Secret; empty = the controller's own namespace
+    namespace: ${RUNNER_NAMESPACE:}
+    runtime-classes:
+      STANDARD: ${RUNNER_RUNTIME_CLASS_STANDARD:gvisor}
+      HIGH: ${RUNNER_RUNTIME_CLASS_HIGH:kata}
+    # empty = the pool's warmPoolSize from Back Office
+    warm-pool-size: ${RUNNER_WARM_POOL_SIZE:}
+    # this controller as seen from the egress proxy pods (the chart sets the FQDN of its Service)
+    controller-url: ${RUNNER_CONTROLLER_URL:http://back-office-runner-controller:8090}

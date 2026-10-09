@@ -1,0 +1,638 @@
+// NG-ZORRO mapped onto the Relay tokens (tokens.css). This is the ONE file that themes NG-ZORRO:
+//
+// 1. It builds on NG-ZORRO's CSS-variable theme (`ng-zorro-antd.variable.less`), in which the
+//    primary/success/warning/error palettes are `var(--ant-*)` references, and points those
+//    variables at the Relay tokens.
+// 2. It overrides the neutral less variables (backgrounds, text, borders, radius, font) with
+//    `var(--bo-*)` strings, so one stylesheet serves light, dark and compact: switching the theme
+//    only changes the custom properties on <html>.
+// 3. The few rules below the variables adjust `.ant-*` output where a variable cannot express the
+//    Relay rule (ink primary buttons, hairline tables, chip radius, dark-safe tints). Nothing else in
+//    the app may override `.ant-*` internals; component styles use the tokens.
+//
+// Less variables are lazily evaluated, so declaring them after the import wins.
+@plugin './less-token-functions.cjs';
+@import '../../../node_modules/ng-zorro-antd/style/variable.less';
+@import '../../../node_modules/ng-zorro-antd/style/patch.less';
+// Only the components the app uses (about half of the full stylesheet). Using a new NG-ZORRO
+// component? Add its `style/entry.less` here (entries import their own dependencies).
+@import '../../../node_modules/ng-zorro-antd/icon/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/alert/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/auto-complete/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/button/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/card/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/checkbox/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/collapse/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/date-picker/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/descriptions/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/divider/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/drawer/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/dropdown/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/empty/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/input/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/input-number/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/form/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/menu/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/message/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/modal/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/notification/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/pagination/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/popover/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/progress/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/radio/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/result/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/select/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/segmented/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/skeleton/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/spin/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/statistic/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/switch/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/table/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/tabs/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/tag/style/entry.less';
+@import '../../../node_modules/ng-zorro-antd/tooltip/style/entry.less';
+
+// ---- scaffolding
+@font-family: var(--bo-font-ui);
+@code-family: var(--bo-font-mono);
+@font-size-base: 14px;
+@font-size-sm: 12px;
+@line-height-base: 1.55;
+@body-background: ~'var(--bo-bg)';
+@component-background: ~'var(--bo-surface)';
+@popover-background: ~'var(--bo-surface)';
+@text-color: ~'var(--bo-ink)';
+@text-color-secondary: ~'var(--bo-ink-3)';
+@heading-color: ~'var(--bo-ink)';
+@icon-color-hover: ~'var(--bo-ink)';
+@text-selection-bg: ~'var(--bo-selection)';
+@border-color-base: ~'var(--bo-line-strong)';
+@border-color-split: ~'var(--bo-line)';
+@background-color-light: ~'var(--bo-surface-2)';
+@background-color-base: ~'var(--bo-surface-3)';
+@item-hover-bg: ~'var(--bo-surface-2)';
+@item-active-bg: ~'var(--bo-accent-soft)';
+@disabled-color: ~'var(--bo-ink-3)';
+@disabled-bg: ~'var(--bo-surface-3)';
+@disabled-active-bg: ~'var(--bo-line)';
+@shadow-color: rgba(0, 0, 0, 0.12);
+@box-shadow-base: var(--bo-shadow-overlay);
+@shadow-1-down: var(--bo-shadow-overlay);
+@shadow-1-up: var(--bo-shadow-overlay);
+@shadow-1-left: var(--bo-shadow-overlay);
+@shadow-1-right: var(--bo-shadow-overlay);
+@shadow-2: var(--bo-shadow-overlay);
+@outline-fade: 25%;
+
+// ---- shape
+@border-radius-base: 6px;
+@border-radius-sm: 4px;
+@border-radius-lg: 10px;
+@height-base: 32px;
+@height-sm: 26px;
+@height-lg: 38px;
+
+// ---- buttons: primary is ink (commits), links/focus are the accent
+@btn-font-weight: 500;
+@btn-font-size-sm: 13px;
+@btn-primary-bg: ~'var(--bo-ink)';
+@btn-primary-color: ~'var(--bo-on-ink)';
+@btn-shadow: none;
+@btn-primary-shadow: none;
+@btn-text-shadow: none;
+@btn-default-color: ~'var(--bo-ink)';
+@btn-default-bg: ~'var(--bo-surface)';
+@btn-default-border: ~'var(--bo-line-strong)';
+@btn-disable-color: ~'var(--bo-ink-3)';
+@btn-disable-bg: ~'var(--bo-surface-3)';
+@btn-disable-border: ~'var(--bo-line)';
+@btn-danger-bg: ~'var(--bo-blocked)';
+@btn-danger-border: ~'var(--bo-blocked)';
+@btn-danger-color: ~'var(--bo-on-ink)';
+@btn-default-ghost-color: ~'var(--bo-surface)';
+@btn-default-ghost-border: ~'var(--bo-surface)';
+
+// ---- layout
+@layout-body-background: ~'var(--bo-bg)';
+@layout-header-background: ~'var(--bo-surface)';
+@layout-sider-background: ~'var(--bo-surface)';
+@layout-footer-background: ~'var(--bo-bg)';
+
+// ---- inputs / selects / pickers
+@input-bg: ~'var(--bo-surface)';
+@input-color: ~'var(--bo-ink)';
+@input-border-color: ~'var(--bo-line-strong)';
+@input-placeholder-color: ~'var(--bo-ink-3)';
+@input-addon-bg: ~'var(--bo-surface-2)';
+@input-disabled-bg: ~'var(--bo-surface-3)';
+@input-icon-hover-color: ~'var(--bo-ink)';
+@input-number-handler-active-bg: ~'var(--bo-surface-3)';
+@input-variant-filled-bg: ~'var(--bo-surface-3)';
+@input-variant-filled-hover-bg: ~'var(--bo-line)';
+@select-background: ~'var(--bo-surface)';
+@select-dropdown-bg: ~'var(--bo-surface)';
+@select-item-selected-bg: ~'var(--bo-accent-soft)';
+@select-item-active-bg: ~'var(--bo-surface-2)';
+@select-selection-item-bg: ~'var(--bo-surface-3)';
+@select-selection-item-border-color: ~'var(--bo-line)';
+@select-multiple-item-disabled-color: ~'var(--bo-ink-3)';
+@picker-bg: ~'var(--bo-surface)';
+@picker-basic-cell-disabled-bg: ~'var(--bo-surface-3)';
+
+// ---- tables: hairlines, warm header, 13 px
+@table-bg: ~'var(--bo-surface)';
+@table-header-bg: ~'var(--bo-surface-2)';
+@table-header-color: ~'var(--bo-ink-2)';
+@table-header-sort-bg: ~'var(--bo-surface-3)';
+@table-body-sort-bg: ~'var(--bo-surface-2)';
+@table-row-hover-bg: ~'var(--bo-surface-2)';
+@table-selected-row-bg: ~'var(--bo-accent-soft)';
+@table-selected-row-hover-bg: ~'var(--bo-accent-soft)';
+@table-expanded-row-bg: ~'var(--bo-surface-2)';
+@table-border-color: ~'var(--bo-line)';
+@table-header-cell-split-color: transparent;
+@table-header-sort-active-bg: ~'var(--bo-surface-3)';
+@table-fixed-header-sort-active-bg: ~'var(--bo-surface-3)';
+@table-header-filter-active-bg: ~'var(--bo-surface-3)';
+@table-footer-bg: ~'var(--bo-surface-2)';
+@table-font-size: 13px;
+@table-font-size-md: 13px;
+@table-font-size-sm: 13px;
+@table-padding-vertical-sm: 6px;
+@table-padding-horizontal-sm: 10px;
+@table-padding-vertical-md: 8px;
+@table-padding-horizontal-md: 12px;
+
+// ---- cards, tabs, menus, tags
+@card-radius: 10px;
+@card-head-background: transparent;
+@card-background: ~'var(--bo-surface)';
+@card-actions-background: ~'var(--bo-surface)';
+@card-shadow: none;
+@tabs-card-head-background: ~'var(--bo-surface-2)';
+@tabs-ink-bar-color: ~'var(--bo-ink)';
+@tabs-highlight-color: ~'var(--bo-ink)';
+@tabs-hover-color: ~'var(--bo-ink)';
+@tabs-active-color: ~'var(--bo-ink)';
+@menu-bg: ~'var(--bo-surface)';
+@menu-popup-bg: ~'var(--bo-surface)';
+@menu-item-color: ~'var(--bo-ink)';
+@menu-inline-submenu-bg: ~'var(--bo-surface)';
+@menu-item-active-bg: ~'var(--bo-accent-soft)';
+@menu-highlight-color: ~'var(--bo-accent)';
+@menu-item-group-title-color: ~'var(--bo-ink-3)';
+@dropdown-menu-bg: ~'var(--bo-surface)';
+@dropdown-selected-bg: ~'var(--bo-accent-soft)';
+@dropdown-menu-submenu-disabled-bg: ~'var(--bo-surface)';
+@tag-default-bg: ~'var(--bo-surface-2)';
+@tag-default-color: ~'var(--bo-ink-2)';
+@tag-border-radius: 999px;
+
+// ---- overlays
+@tooltip-bg: ~'var(--bo-ink)';
+@tooltip-color: ~'var(--bo-on-ink)';
+@popover-bg: ~'var(--bo-surface)';
+@popover-color: ~'var(--bo-ink)';
+@modal-header-bg: ~'var(--bo-surface)';
+@modal-content-bg: ~'var(--bo-surface)';
+@modal-footer-bg: transparent;
+@modal-mask-bg: rgba(17, 18, 20, 0.45);
+@modal-border-radius: 10px;
+@drawer-bg: ~'var(--bo-surface)';
+
+// ---- feedback and data display
+@descriptions-bg: ~'var(--bo-surface-2)';
+@progress-remaining-color: ~'var(--bo-line)';
+@progress-steps-item-bg: ~'var(--bo-line)';
+@badge-text-color: ~'var(--bo-on-ink)';
+@alert-info-bg-color: ~'var(--bo-accent-soft)';
+@alert-info-border-color: ~'var(--bo-accent-soft)';
+@alert-info-icon-color: ~'var(--bo-accent)';
+@alert-success-bg-color: ~'var(--bo-done-soft)';
+@alert-success-border-color: ~'var(--bo-done-soft)';
+@alert-success-icon-color: ~'var(--bo-done)';
+@alert-warning-bg-color: ~'var(--bo-you-soft)';
+@alert-warning-border-color: ~'var(--bo-you-soft)';
+@alert-warning-icon-color: ~'var(--bo-you)';
+@alert-error-bg-color: ~'var(--bo-blocked-soft)';
+@alert-error-border-color: ~'var(--bo-blocked-soft)';
+@alert-error-icon-color: ~'var(--bo-blocked)';
+@timeline-dot-bg: ~'var(--bo-surface)';
+@timeline-color: ~'var(--bo-line)';
+@segmented-bg: ~'var(--bo-surface-3)';
+@segmented-hover-bg: ~'var(--bo-line)';
+@segmented-selected-bg: ~'var(--bo-surface)';
+@segmented-label-color: ~'var(--bo-ink-2)';
+@segmented-label-hover-color: ~'var(--bo-ink)';
+@switch-bg: ~'var(--bo-surface)';
+@switch-color: ~'var(--bo-accent)';
+@checkbox-check-color: ~'var(--bo-on-accent)';
+@checkbox-check-bg: ~'var(--bo-surface)';
+@btn-text-hover-bg: ~'var(--bo-surface-3)';
+@radio-solid-checked-color: ~'var(--bo-on-accent)';
+@empty-img-default: none;
+
+// ---- CSS-variable palette: accent drives links, focus, checkboxes, switches, selection
+:root {
+  --ant-primary-color: var(--bo-accent);
+  --ant-primary-color-hover: var(--bo-accent-hover);
+  --ant-primary-color-active: var(--bo-accent-hover);
+  --ant-primary-color-outline: var(--bo-accent-soft);
+  --ant-primary-1: var(--bo-accent-soft);
+  --ant-primary-2: var(--bo-accent-soft);
+  --ant-primary-3: var(--bo-accent);
+  --ant-primary-4: var(--bo-accent);
+  --ant-primary-5: var(--bo-accent-hover);
+  --ant-primary-6: var(--bo-accent);
+  --ant-primary-7: var(--bo-accent-hover);
+  --ant-primary-color-deprecated-l-35: var(--bo-accent-soft);
+  --ant-primary-color-deprecated-l-20: var(--bo-accent-soft);
+  --ant-primary-color-deprecated-t-20: var(--bo-accent-hover);
+  --ant-primary-color-deprecated-t-50: var(--bo-accent-soft);
+  --ant-primary-color-deprecated-f-12: var(--bo-accent-soft);
+  --ant-primary-color-active-deprecated-f-30: var(--bo-accent-soft);
+  --ant-primary-color-active-deprecated-d-02: var(--bo-accent-soft);
+  --ant-success-color: var(--bo-done);
+  --ant-success-color-hover: var(--bo-done);
+  --ant-success-color-active: var(--bo-done);
+  --ant-success-color-outline: var(--bo-done-soft);
+  --ant-success-color-deprecated-bg: var(--bo-done-soft);
+  --ant-success-color-deprecated-border: var(--bo-done-soft);
+  --ant-error-color: var(--bo-blocked);
+  --ant-error-color-hover: var(--bo-blocked);
+  --ant-error-color-active: var(--bo-blocked);
+  --ant-error-color-outline: var(--bo-blocked-soft);
+  --ant-error-color-deprecated-bg: var(--bo-blocked-soft);
+  --ant-error-color-deprecated-border: var(--bo-blocked-soft);
+  --ant-warning-color: var(--bo-you);
+  --ant-warning-color-hover: var(--bo-you);
+  --ant-warning-color-active: var(--bo-you);
+  --ant-warning-color-outline: var(--bo-you-soft);
+  --ant-warning-color-deprecated-bg: var(--bo-you-soft);
+  --ant-warning-color-deprecated-border: var(--bo-you-soft);
+  --ant-info-color: var(--bo-accent);
+  --ant-info-color-deprecated-bg: var(--bo-accent-soft);
+  --ant-info-color-deprecated-border: var(--bo-accent-soft);
+}
+
+// ---- documented `.ant-*` adjustments (the variables cannot express these)
+
+// Ink primary buttons: hover darkens the ink instead of the accent palette.
+.ant-btn-primary:not([disabled]):not(.ant-btn-dangerous) {
+  &:hover,
+  &:focus {
+    background: var(--bo-ink-hover);
+    border-color: var(--bo-ink-hover);
+    color: var(--bo-on-ink);
+  }
+}
+.ant-btn-primary.ant-btn-dangerous:not([disabled]) {
+  color: var(--bo-on-ink);
+}
+// Default buttons hover to ink, not to the accent (the accent is navigation, not commitment).
+.ant-btn-default:not([disabled]):not(.ant-btn-dangerous),
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-link):not(.ant-btn-text):not(.ant-btn-dangerous):not(
+    [disabled]
+  ) {
+  &:hover,
+  &:focus {
+    color: var(--bo-ink);
+    border-color: var(--bo-ink-3);
+    background: var(--bo-surface);
+  }
+}
+.ant-btn {
+  box-shadow: none;
+  transition:
+    background var(--bo-dur-fast) var(--bo-ease),
+    border-color var(--bo-dur-fast) var(--bo-ease),
+    color var(--bo-dur-fast) var(--bo-ease);
+}
+.ant-btn-sm {
+  border-radius: 6px;
+}
+// Destructive: brick outline until confirmed.
+.ant-btn-dangerous:not(.ant-btn-primary):not([disabled]) {
+  color: var(--bo-blocked-ink);
+  border-color: var(--bo-blocked);
+  background: var(--bo-surface);
+  &:hover,
+  &:focus {
+    color: var(--bo-blocked-ink);
+    border-color: var(--bo-blocked);
+    background: var(--bo-blocked-soft);
+  }
+}
+.ant-btn-text:not([disabled]):hover,
+.ant-btn-text:not([disabled]):focus {
+  color: var(--bo-ink);
+}
+
+// Focus: the Relay ring on keyboard focus, never removed.
+.ant-btn:focus-visible,
+.ant-input:focus-visible,
+.ant-select-focused .ant-select-selector,
+.ant-checkbox-input:focus-visible + .ant-checkbox-inner,
+.ant-switch:focus-visible,
+.ant-radio-button-wrapper:focus-within,
+.ant-tabs-tab-btn:focus-visible,
+.ant-pagination-item:focus-visible,
+.ant-segmented-item:focus-within {
+  outline: none;
+  box-shadow: var(--bo-focus-ring) !important;
+}
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused,
+.ant-select:not(.ant-select-disabled):not(.ant-select-customize-input)
+  .ant-select-selector:focus-within,
+.ant-input-number-focused {
+  border-color: var(--bo-accent);
+  box-shadow: 0 0 0 2px var(--bo-accent-soft);
+}
+
+// Tables: 13 px, tabular numerals, hairlines, sticky warm header, density-aware rows.
+.ant-table {
+  font-variant-numeric: tabular-nums;
+  color: var(--bo-ink);
+}
+.ant-table-thead > tr > th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bo-ink-2);
+  border-bottom: 1px solid var(--bo-line);
+  white-space: nowrap;
+}
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--bo-line);
+}
+.ant-table-small .ant-table-tbody > tr > td,
+.ant-table-middle .ant-table-tbody > tr > td,
+.ant-table-tbody > tr > td {
+  padding-top: var(--bo-row-pad-y);
+  padding-bottom: var(--bo-row-pad-y);
+}
+.ant-table-tbody > tr.ant-table-row:hover > td,
+.ant-table-tbody > tr > td.ant-table-cell-row-hover {
+  background: var(--bo-surface-2);
+}
+.ant-table-wrapper {
+  border: 1px solid var(--bo-line);
+  border-radius: 10px;
+  background: var(--bo-surface);
+  overflow: hidden;
+}
+.ant-table-wrapper .ant-table {
+  background: transparent;
+}
+.ant-table-pagination.ant-pagination {
+  margin: 10px 12px;
+}
+.ant-table-placeholder .ant-table-cell {
+  color: var(--bo-ink-3);
+}
+
+// Cards: hairline, 10 px, no shadow; head in section style.
+.ant-card {
+  border: 1px solid var(--bo-line);
+  border-radius: 10px;
+  box-shadow: none;
+}
+.ant-card-bordered {
+  border-color: var(--bo-line);
+}
+.ant-card-head {
+  border-bottom-color: var(--bo-line);
+  min-height: 44px;
+}
+.ant-card-head-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.ant-card-small > .ant-card-head {
+  min-height: 40px;
+}
+
+// Tags become chips; the colour presets map onto baton tints.
+.ant-tag {
+  border-radius: 999px;
+  border-color: var(--bo-line);
+  background: var(--bo-surface-2);
+  color: var(--bo-ink-2);
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 8px;
+}
+.bo-tag(@tint, @ink) {
+  background: var(@tint);
+  border-color: transparent;
+  color: var(@ink);
+}
+.ant-tag-blue,
+.ant-tag-geekblue,
+.ant-tag-processing,
+.ant-tag-purple,
+.ant-tag-cyan {
+  .bo-tag(--bo-agent-soft, --bo-agent-ink);
+}
+.ant-tag-gold,
+.ant-tag-orange,
+.ant-tag-warning,
+.ant-tag-yellow {
+  .bo-tag(--bo-you-soft, --bo-you-ink);
+}
+.ant-tag-green,
+.ant-tag-success,
+.ant-tag-lime {
+  .bo-tag(--bo-done-soft, --bo-done-ink);
+}
+.ant-tag-red,
+.ant-tag-error,
+.ant-tag-volcano,
+.ant-tag-magenta,
+.ant-tag-pink {
+  .bo-tag(--bo-blocked-soft, --bo-blocked-ink);
+}
+
+// Tabs: ink underline, quiet labels.
+.ant-tabs-top > .ant-tabs-nav::before {
+  border-bottom-color: var(--bo-line);
+}
+.ant-tabs-tab {
+  color: var(--bo-ink-2);
+}
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--bo-ink);
+  font-weight: 500;
+}
+.ant-tabs-large > .ant-tabs-nav .ant-tabs-tab {
+  font-size: 14px;
+  padding: 10px 0;
+}
+
+// Overlays: the only place with shadows; hairline and 10 px.
+.ant-dropdown-menu,
+.ant-select-dropdown,
+.ant-picker-dropdown .ant-picker-panel-container,
+.ant-popover-inner,
+.ant-modal-content,
+.ant-notification-notice,
+.ant-message-notice-content {
+  border: 1px solid var(--bo-line);
+  box-shadow: var(--bo-shadow-overlay);
+  border-radius: 10px;
+}
+.ant-message-notice-content {
+  background: var(--bo-surface);
+  color: var(--bo-ink);
+}
+.ant-tooltip-inner {
+  font-size: 12px;
+  border-radius: 6px;
+  min-height: 28px;
+  box-shadow: var(--bo-shadow-overlay);
+}
+.ant-drawer-content {
+  background: var(--bo-surface);
+}
+.ant-drawer-header {
+  border-bottom-color: var(--bo-line);
+}
+.ant-drawer-footer {
+  border-top-color: var(--bo-line);
+}
+.ant-modal-header {
+  border-bottom-color: var(--bo-line);
+  border-radius: 10px 10px 0 0;
+}
+.ant-modal-footer {
+  border-top-color: var(--bo-line);
+}
+
+// Alerts: tinted, no border; titles in ink.
+.ant-alert {
+  border-radius: 10px;
+  color: var(--bo-ink);
+}
+.ant-alert-message {
+  color: var(--bo-ink);
+}
+
+// Menus inside dropdowns.
+.ant-dropdown-menu-item,
+.ant-dropdown-menu-submenu-title,
+.ant-menu-item {
+  color: var(--bo-ink);
+}
+.ant-dropdown-menu-item:hover,
+.ant-dropdown-menu-submenu-title:hover {
+  background: var(--bo-surface-2);
+}
+.ant-dropdown-menu-item-divider,
+.ant-menu-item-divider {
+  background-color: var(--bo-line);
+}
+
+// Segmented control and switches on the neutral scale.
+.ant-segmented {
+  color: var(--bo-ink-2);
+  background: var(--bo-surface-3);
+}
+.ant-segmented-item-selected {
+  color: var(--bo-ink);
+  box-shadow: 0 0 0 1px var(--bo-line);
+}
+.ant-switch {
+  background-color: var(--bo-line-strong);
+}
+.ant-switch-checked {
+  background-color: var(--bo-accent);
+}
+
+// Skeletons follow the surfaces (shape-true skeletons live in bo-skeleton).
+.ant-skeleton-content .ant-skeleton-title,
+.ant-skeleton-content .ant-skeleton-paragraph > li,
+.ant-skeleton-element .ant-skeleton-button,
+.ant-skeleton-element .ant-skeleton-input {
+  background: var(--bo-surface-3);
+}
+.ant-skeleton.ant-skeleton-active .ant-skeleton-content .ant-skeleton-title,
+.ant-skeleton.ant-skeleton-active .ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(
+    90deg,
+    var(--bo-surface-3) 25%,
+    var(--bo-line) 37%,
+    var(--bo-surface-3) 63%
+  );
+  background-size: 400% 100%;
+}
+
+// Descriptions and empty states in the neutral voice.
+.ant-descriptions-item-label {
+  color: var(--bo-ink-3);
+}
+.ant-descriptions-bordered .ant-descriptions-view,
+.ant-descriptions-bordered .ant-descriptions-row,
+.ant-descriptions-bordered .ant-descriptions-item-label,
+.ant-descriptions-bordered .ant-descriptions-item-content {
+  border-color: var(--bo-line);
+}
+.ant-empty-description {
+  color: var(--bo-ink-3);
+}
+.ant-empty-img-simple-ellipse {
+  fill: var(--bo-surface-3);
+}
+.ant-empty-img-simple-g {
+  stroke: var(--bo-line-strong);
+}
+.ant-empty-img-simple-path {
+  fill: var(--bo-surface-2);
+}
+.ant-empty-img-default-ellipse {
+  fill: var(--bo-surface-3);
+  fill-opacity: 1;
+}
+.ant-empty-img-default-path-1,
+.ant-empty-img-default-path-3,
+.ant-empty-img-default-path-4,
+.ant-empty-img-default-path-5,
+.ant-empty-img-default-g {
+  fill: var(--bo-surface-2);
+}
+.ant-empty-img-default-path-2 {
+  fill: var(--bo-line);
+}
+
+// Form labels and hints.
+.ant-form-item-label > label {
+  color: var(--bo-ink-2);
+  font-weight: 500;
+}
+.ant-form-item-explain,
+.ant-form-item-extra {
+  font-size: 12px;
+}
+.ant-form-item-extra {
+  color: var(--bo-ink-3);
+}
+
+// Pagination in ink.
+.ant-pagination-item-active {
+  border-color: var(--bo-ink);
+  a {
+    color: var(--bo-ink);
+  }
+}
+
+// Motion: calm and short; nothing moves under reduced motion.
+@media (prefers-reduced-motion: reduce) {
+  .ant-btn,
+  .ant-drawer-content-wrapper,
+  .ant-tabs-ink-bar,
+  .ant-skeleton-active * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

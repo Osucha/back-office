@@ -1,0 +1,6 @@
+**/build
+**/out
+**/bin
+**/.gradle
+**/.kotlin
+**/*.log

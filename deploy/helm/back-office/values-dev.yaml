@@ -1,0 +1,109 @@
+# One-command install on kind / minikube / Docker Desktop:
+#   helm dependency build deploy/helm/back-office
+#   helm install back-office deploy/helm/back-office -n back-office --create-namespace \
+#     -f deploy/helm/back-office/values-dev.yaml --set secrets.providerKeys.anthropicApiKey=sk-ant-...
+#   kubectl -n back-office port-forward svc/back-office-web 8080:8080   # http://localhost:8080
+#
+# Images must be loaded into the cluster first (kind load docker-image ... / minikube image load ...).
+
+# One Deployment with role api,worker (small install), one replica, no PDB.
+mode: combined
+topologySpread:
+  enabled: false
+
+api:
+  image:
+    repository: back-office/api
+    tag: dev
+    pullPolicy: IfNotPresent
+  replicas: 1
+  podDisruptionBudget:
+    enabled: false
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      memory: 1536Mi
+  config:
+    logLevel: DEBUG
+    publicUrl: http://localhost:8080
+    corsAllowedOrigins: "http://localhost:4200,http://localhost:8080"
+  oidcLoopback:
+    enabled: true
+
+web:
+  image:
+    repository: back-office/web
+    tag: dev
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    nodePort: 30080
+
+# The runner fleet is a separate chart; on the same kind cluster:
+#   helm install runners deploy/helm/back-office-runner -n back-office-runners --create-namespace \
+#     -f deploy/helm/back-office-runner/values-dev.yaml
+runner:
+  mode: FLEET
+
+# Bundled MinIO (bucket back-office) instead of cloud object storage.
+minio:
+  enabled: true
+  persistence:
+    size: 2Gi
+storage:
+  type: s3
+  s3:
+    bucket: back-office
+
+ingress:
+  enabled: false
+
+# Identity: bundled Keycloak with the demo users of deploy/keycloak/realm-back-office.json. Open it with
+#   kubectl -n back-office port-forward svc/back-office-keycloak-http 8180:80
+# The API reaches the same http://localhost:8180 issuer through the oidc-loopback sidecar.
+auth:
+  oidc:
+    clientSecret: back-office-dev-secret
+  bootstrapAdmins: [admin@example.com]
+  # Plain http NodePort: the session cookie cannot be Secure.
+  cookieSecure: false
+
+bundledKeycloak:
+  admin:
+    password: admin
+  realmImport:
+    sslRequired: external
+    includeDemoUsers: true
+    # The UI is opened through the NodePort / port-forward on 8080.
+    extraRedirectUris:
+      - http://localhost:30080/login/oauth2/code/oidc
+
+keycloak:
+  enabled: true
+
+secrets:
+  create: true
+  runnerTokenSecret: dev-runner-token-secret
+  providerKeys:
+    create: true
+    # Pass real keys on the command line: --set secrets.providerKeys.anthropicApiKey=...
+    ollamaBaseUrl: http://host.docker.internal:11434
+  integrations:
+    create: true
+
+postgresql:
+  enabled: true
+  auth:
+    username: backoffice
+    password: backoffice
+    database: backoffice
+  primary:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resourcesPreset: "nano"
+
+langfuse:
+  enabled: false

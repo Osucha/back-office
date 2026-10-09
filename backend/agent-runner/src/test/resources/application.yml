@@ -1,0 +1,19 @@
+spring:
+  jpa:
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: non_null
+backoffice:
+  runner:
+    api-url: http://api.test:8080
+    lease-scan:
+      enabled: false
+    max-lease-wait: PT2S
+    lease-poll-interval: PT0.1S
+    extra-allowed-models: [ "anthropic/claude-haiku-*" ]
+logging:
+  level:
+    pl.mos.backoffice: DEBUG

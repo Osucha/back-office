@@ -1,0 +1,60 @@
+{
+  "/api": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": false,
+    "xfwd": true,
+    "ws": false,
+    "logLevel": "info"
+  },
+  "/oauth2": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": false,
+    "xfwd": true
+  },
+  "/login/oauth2": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": false,
+    "xfwd": true
+  },
+  "/logout": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": false,
+    "xfwd": true
+  },
+  "/ci/backoffice-ci.sh": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": false,
+    "xfwd": true
+  },
+  "/mcp": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": false,
+    "xfwd": true
+  },
+  "/.well-known/back-office": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "xfwd": true
+  },
+  "/blobs": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "xfwd": true
+  },
+  "/v3/api-docs": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "xfwd": true
+  },
+  "/swagger-ui": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "xfwd": true
+  }
+}

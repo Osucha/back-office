@@ -1,0 +1,125 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "npm",
+    "analytics": false
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "back-office-web": {
+      "projectType": "application",
+      "schematics": {
+        "@schematics/angular:component": {
+          "style": "less"
+        }
+      },
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "src/main.ts",
+            "tsConfig": "tsconfig.app.json",
+            "inlineStyleLanguage": "less",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "public"
+              },
+              {
+                "glob": "**/*",
+                "input": "./node_modules/@ant-design/icons-angular/src/inline-svg/",
+                "output": "/assets/"
+              },
+              {
+                "glob": "**/*",
+                "input": ".manual",
+                "output": "manual"
+              }
+            ],
+            "styles": [
+              "node_modules/@fontsource-variable/instrument-sans/wght.css",
+              "node_modules/@fontsource-variable/jetbrains-mono/wght.css",
+              "src/theme.less",
+              "src/styles.less"
+            ],
+            "allowedCommonJsDependencies": [],
+            "polyfills": [
+              "@angular/localize/init"
+            ]
+          },
+          "configurations": {
+            "production": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "1.5MB",
+                  "maximumError": "1.8MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "12kB",
+                  "maximumError": "24kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {
+            "proxyConfig": "proxy.conf.json"
+          },
+          "configurations": {
+            "production": {
+              "buildTarget": "back-office-web:build:production"
+            },
+            "development": {
+              "buildTarget": "back-office-web:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "extract-i18n": {
+          "builder": "@angular/build:extract-i18n",
+          "options": {
+            "buildTarget": "back-office-web:build"
+          }
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "runner": "vitest",
+            "tsConfig": "tsconfig.spec.json",
+            "buildTarget": "back-office-web:build:development",
+            "setupFiles": [
+              "src/test-setup.ts"
+            ],
+            "coverageReporters": [
+              "lcov",
+              "text-summary"
+            ],
+            "coverageExclude": [
+              "src/app/core/api/schema.d.ts",
+              "src/test-setup.ts",
+              "src/locale/**"
+            ]
+          }
+        }
+      },
+      "i18n": {
+        "sourceLocale": "en"
+      }
+    }
+  }
+}

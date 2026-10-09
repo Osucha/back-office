@@ -1,0 +1,125 @@
+# Reference: GKE (Standard or Autopilot) + Cloud SQL for PostgreSQL + Cloud Storage
+# (docs/guides/cloud-reference.md#gcp). Medium size.
+#
+# Prerequisites: KEDA, External Secrets Operator with a ClusterSecretStore `gcp-secret-manager`
+# (Secret Manager + Workload Identity), Dataplane V2 (enforces NetworkPolicy), a GCS bucket with an HMAC
+# key of a service account that has roles/storage.objectUser on it, Managed Service for Prometheus or
+# kube-prometheus-stack.
+#
+# Object storage: the backend's BlobStore speaks S3; GCS is used through its XML API interoperability
+# endpoint (https://storage.googleapis.com) with HMAC keys. The default CRC32 checksums of AWS SDK v2
+# are rejected there, hence checksumWhenRequired=true.
+#
+# Cloud SQL: private IP, direct connection on 5432 (LISTEN/NOTIFY). Cloud SQL Managed Connection Pooling
+# in transaction mode may serve the Hikari pools (externalDatabase.pooler), never LISTEN.
+
+mode: split
+
+api:
+  image:
+    repository: europe-west3-docker.pkg.dev/acme-platform/back-office/api
+  replicas: 3
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { memory: 2Gi }
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+  serviceAccount:
+    annotations:
+      # Workload Identity (Secret Manager access for ESO is configured on the store, not here)
+      iam.gke.io/gcp-service-account: back-office-app@acme-platform.iam.gserviceaccount.com
+  config:
+    publicUrl: https://back-office.example.com
+
+worker:
+  resources:
+    requests: { cpu: "1", memory: 1536Mi }
+    limits: { memory: 2Gi }
+  autoscaling:
+    type: keda
+    minReplicas: 3
+    maxReplicas: 30
+    keda:
+      # Cloud SQL enforces TLS for the private IP when "require SSL" is set
+      sslmode: require
+
+auth:
+  oidc:
+    issuerUri: https://accounts.google.com
+  allowedEmailDomains: [example.com]
+  bootstrapAdmins: [platform-owner@example.com]
+
+postgresql:
+  enabled: false
+externalDatabase:
+  host: 10.20.0.3            # Cloud SQL private IP
+  port: 5432
+  database: backoffice
+  username: backoffice
+  jdbcParams: "sslmode=require"
+
+storage:
+  type: s3
+  s3:
+    endpoint: https://storage.googleapis.com
+    region: auto
+    bucket: acme-back-office-artifacts
+    pathStyle: true
+    checksumWhenRequired: true
+
+signing:
+  generate: false
+
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  app: { remoteKey: back-office-app }
+  providerKeys: { remoteKey: back-office-provider-keys }
+  integrations: { remoteKey: back-office-integrations }
+  database: { remoteKey: back-office-db }
+  # HMAC access id / secret as BACKOFFICE_STORAGE_S3_ACCESS_KEY / _SECRET_KEY
+  storage: { enabled: true, remoteKey: back-office-storage }
+  signing: { enabled: true, remoteKey: back-office-signing }
+
+ingress:
+  enabled: true
+  # GKE Ingress (external Application Load Balancer); BackendConfig timeoutSec 3600 for SSE is attached
+  # to the web Service through web.service.annotations below.
+  className: gce
+  host: back-office.example.com
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: back-office
+    networking.gke.io/managed-certificates: back-office
+  tls: []
+
+web:
+  image:
+    repository: europe-west3-docker.pkg.dev/acme-platform/back-office/web
+  replicas: 2
+  service:
+    annotations:
+      cloud.google.com/backend-config: '{"default": "back-office-web"}'
+      cloud.google.com/neg: '{"ingress": true}'
+
+networkPolicy:
+  enabled: true
+  ingressController:
+    # GKE Ingress with NEGs sends traffic from the Google front ends and health checkers
+    peers:
+      - ipBlock: { cidr: 35.191.0.0/16 }
+      - ipBlock: { cidr: 130.211.0.0/22 }
+  database:
+    cidrs: ["10.20.0.0/24"]
+
+otel:
+  enabled: true
+  tracesEndpoint: http://otel-collector.observability:4318/v1/traces
+
+metrics:
+  serviceMonitor: { enabled: true }
+  prometheusRule: { enabled: true }
+  dashboards: { enabled: true }

@@ -1,0 +1,26 @@
+{{- if and (eq (include "back-office.mode" .) "split") (eq (.Values.worker.autoscaling.type | default "none") "hpa") }}
+{{- $a := .Values.worker.autoscaling }}
+# Fallback without KEDA: CPU-based HPA. Queue depth is the better signal (worker.autoscaling.type=keda).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "back-office.worker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "back-office.worker.fullname" . }}
+  minReplicas: {{ $a.minReplicas }}
+  maxReplicas: {{ $a.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $a.targetCPUUtilizationPercentage }}
+{{- end }}

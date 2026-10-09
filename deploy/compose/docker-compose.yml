@@ -1,0 +1,433 @@
+# Local development stack for Back Office.
+#
+#   docker compose -f deploy/compose/docker-compose.yml up -d postgres keycloak   # database + identity provider (default)
+#   docker compose -f deploy/compose/docker-compose.yml up -d minio minio-init     # + object storage (API on the host)
+#   docker compose -f deploy/compose/docker-compose.yml --profile full up -d      # + api, worker, web, runner fleet from source
+#   docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.langfuse.yml --profile langfuse up -d
+#   docker compose -f deploy/compose/docker-compose.yml --profile quality up -d sonarqube  # SonarQube on :9100 (GR-Q3)
+#
+# Copy .env.example to .env in this directory to set keys and options. The Spring `local` profile
+# starts the services without a profile (postgres, keycloak) automatically through spring-boot-docker-compose.
+#
+# Identity (ADR 0016): Keycloak on http://localhost:8180 imports ../keycloak/realm-back-office.json on the
+# first start (realm `back-office`, client `back-office`, test users admin/dev/approver/viewer@example.com,
+# see docs/guides/local-development.md). Admin console: http://localhost:8180/admin (admin / admin).
+#
+# The issuer problem: the browser and the API must see the SAME issuer URL, because Spring Security
+# validates the `iss` claim against the configured issuer-uri. KC_HOSTNAME pins every URL Keycloak
+# generates to http://localhost:8180, so the issuer is always http://localhost:8180/realms/back-office.
+# - Backend on the host (./gradlew :app:bootRun, the usual workflow): localhost:8180 is the published port. Nothing to do.
+# - Backend in the `full` profile: inside a container `localhost` is the container itself. The API
+#   therefore runs in the network namespace of `api-netns`, a tiny socat container that listens on
+#   localhost:8180 and forwards to keycloak:8180. The API reaches http://localhost:8180 exactly like the
+#   browser does. (extra_hosts cannot remap `localhost`, and network_mode: host does not work on Docker
+#   Desktop for Windows/macOS by default, hence the sidecar.)
+#
+#
+# Profile `full` mirrors the Kubernetes topology (ADR 0023/0024): api (role api) + worker (role worker) +
+# web, MinIO for object storage, and the runner fleet: runner-controller with the DOCKER backend plus the
+# Smokescreen egress proxy image. Each sandbox container joins its own internal network bo-job-<job> (no
+# route out) and reaches anything only through its per-job proxy container, which enforces the job's allowlist.
+#
+# SECURITY (profile `full`): the runner-controller mounts /var/run/docker.sock to start sandbox
+# containers. Whoever controls that container controls your Docker daemon, i.e. your host. The DOCKER
+# backend has no gVisor/Kata boundary (isolation DEV = runc). Laptop only, never on a shared or exposed
+# host. The api and worker containers have no socket.
+
+# Shared environment of the api and worker containers (one image, BACKOFFICE_ROLE differs).
+x-backend-env: &backend-env
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-backoffice}
+  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-backoffice}
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-backoffice}
+  # Identity (ADR 0016, 08-identity-and-access.md). Sessions live in PostgreSQL (Spring Session JDBC).
+  BACKOFFICE_AUTH_OIDC_ISSUER_URI: ${BACKOFFICE_AUTH_OIDC_ISSUER_URI:-http://localhost:${KEYCLOAK_PORT:-8180}/realms/back-office}
+  BACKOFFICE_AUTH_OIDC_CLIENT_ID: ${BACKOFFICE_AUTH_OIDC_CLIENT_ID:-back-office}
+  BACKOFFICE_AUTH_OIDC_CLIENT_SECRET: ${BACKOFFICE_AUTH_OIDC_CLIENT_SECRET:-back-office-dev-secret}
+  BACKOFFICE_AUTH_OIDC_SCOPES: ${BACKOFFICE_AUTH_OIDC_SCOPES:-openid,profile,email}
+  BACKOFFICE_AUTH_REGISTRATION: ${BACKOFFICE_AUTH_REGISTRATION:-INVITE_ONLY}
+  BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS: ${BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS:-}
+  BACKOFFICE_AUTH_BOOTSTRAP_ADMINS: ${BACKOFFICE_AUTH_BOOTSTRAP_ADMINS:-admin@example.com}
+  BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT: ${BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT:-PT30M}
+  BACKOFFICE_AUTH_SESSION_ABSOLUTE_TIMEOUT: ${BACKOFFICE_AUTH_SESSION_ABSOLUTE_TIMEOUT:-PT12H}
+  # Plain http on localhost: the session cookie cannot be Secure.
+  BACKOFFICE_AUTH_COOKIE_SECURE: ${BACKOFFICE_AUTH_COOKIE_SECURE:-false}
+  BACKOFFICE_AUTH_GROUPS_CLAIM: ${BACKOFFICE_AUTH_GROUPS_CLAIM:-groups}
+  # Local accounts (ADR 0021). The secret key is required while local login is enabled; the default
+  # is the development key of .env.example - never reuse it outside a laptop.
+  BACKOFFICE_AUTH_LOCAL_ENABLED: ${BACKOFFICE_AUTH_LOCAL_ENABLED:-true}
+  BACKOFFICE_AUTH_LOCAL_SECRET_KEY: ${BACKOFFICE_AUTH_LOCAL_SECRET_KEY:-ZGV2LW9ubHktbG9jYWwtYXV0aC1rZXktMzItYnl0ZXM=}
+  BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL:-}
+  BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD:-}
+  BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY: ${BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY:-PT24H}
+  BACKOFFICE_AUTH_LOCAL_LOCKOUT_MAX_FAILURES: ${BACKOFFICE_AUTH_LOCAL_LOCKOUT_MAX_FAILURES:-5}
+  BACKOFFICE_AUTH_LOCAL_LOCKOUT_DURATION: ${BACKOFFICE_AUTH_LOCAL_LOCKOUT_DURATION:-PT15M}
+  BACKOFFICE_AUTH_LOCAL_THROTTLE_MAX_ATTEMPTS: ${BACKOFFICE_AUTH_LOCAL_THROTTLE_MAX_ATTEMPTS:-20}
+  BACKOFFICE_AUTH_LOCAL_THROTTLE_WINDOW: ${BACKOFFICE_AUTH_LOCAL_THROTTLE_WINDOW:-PT5M}
+  # HMAC secret for runner callback tokens (no longer derived from an API key).
+  RUNNER_TOKEN_SECRET: ${RUNNER_TOKEN_SECRET:-dev-runner-token-secret}
+  # Where the browser lands after logout and what links point to: the web container.
+  BACKOFFICE_PUBLIC_URL: ${BACKOFFICE_PUBLIC_URL:-http://localhost:8080}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:8080}
+  LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+  # Execution plane (ADR 0024): the runner-controller service pulls agent jobs; api and worker start
+  # no containers themselves.
+  RUNNER_MODE: ${RUNNER_MODE:-FLEET}
+  RUNNER_DEFAULT_TIMEOUT: ${RUNNER_DEFAULT_TIMEOUT:-PT60M}
+  # Object storage (service minio, bucket created by minio-init)
+  BACKOFFICE_STORAGE_TYPE: ${BACKOFFICE_STORAGE_TYPE:-s3}
+  BACKOFFICE_STORAGE_S3_ENDPOINT: ${BACKOFFICE_STORAGE_S3_ENDPOINT:-http://minio:9000}
+  BACKOFFICE_STORAGE_S3_REGION: ${BACKOFFICE_STORAGE_S3_REGION:-us-east-1}
+  BACKOFFICE_STORAGE_S3_BUCKET: ${BACKOFFICE_STORAGE_S3_BUCKET:-back-office}
+  BACKOFFICE_STORAGE_S3_PATH_STYLE: ${BACKOFFICE_STORAGE_S3_PATH_STYLE:-true}
+  BACKOFFICE_STORAGE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-backoffice}
+  BACKOFFICE_STORAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-backoffice-dev-secret}
+  # Presigned URLs are opened by the browser on the host: the published MinIO port, not minio:9000
+  BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT: ${BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT:-http://localhost:${MINIO_PORT:-9000}}
+  # Direct connection for LISTEN/NOTIFY (no pooler in compose: same as the pool URL)
+  BACKOFFICE_DATASOURCE_DIRECT_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-backoffice}
+  # Signing key (ADR 0025): deploy/scripts/gen-signing-key.sh prints these lines for .env. No value here:
+  # passed through only when set in .env / the shell; unset = an ephemeral key per start (laptop only).
+  BACKOFFICE_SIGNING_KEYS_0_ID:
+  BACKOFFICE_SIGNING_KEYS_0_PRIVATE_KEY_PKCS8_BASE64:
+  BACKOFFICE_SIGNING_KEYS_0_PUBLIC_KEY_X509_BASE64:
+  BACKOFFICE_SIGNING_KEYS_0_ACTIVE:
+  BACKOFFICE_SIGNING_ALLOW_EPHEMERAL: ${BACKOFFICE_SIGNING_ALLOW_EPHEMERAL:-true}
+  # Providers
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  GOOGLE_GENAI_API_KEY: ${GOOGLE_GENAI_API_KEY:-}
+  MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+  OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-}
+  OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  # Connection secrets (ADR 0030): key-encryption key of the stored Jira tokens; the default is the development key
+  # of .env.example - never reuse it outside a laptop. Losing the key means re-entering every connection token.
+  BACKOFFICE_SECRETS_KEY: ${BACKOFFICE_SECRETS_KEY:-ZGV2LW9ubHktbG9jYWwtY29ubmVjdGlvbnMta2V5LTE=}
+  BACKOFFICE_SECRETS_KEY_ID: ${BACKOFFICE_SECRETS_KEY_ID:-dev}
+  BACKOFFICE_SECRETS_PREVIOUS_KEYS: ${BACKOFFICE_SECRETS_PREVIOUS_KEYS:-}
+  # Integrations (no SCM API configuration, ADR 0013; git credentials belong to the runner-controller)
+  # JIRA_* are the legacy credential with every capability: prefer connections (Administration -> Connections, ADR 0030)
+  JIRA_URL: ${JIRA_URL:-}
+  JIRA_EMAIL: ${JIRA_EMAIL:-}
+  JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+  JIRA_ACCEPTANCE_CRITERIA_FIELD: ${JIRA_ACCEPTANCE_CRITERIA_FIELD:-}
+  # Observability (point at the langfuse profile or any OTLP collector)
+  OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-false}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://langfuse-web:3000/api/public/otel/v1/traces}
+  OTEL_EXPORTER_OTLP_HEADERS_AUTHORIZATION: ${OTEL_EXPORTER_OTLP_HEADERS_AUTHORIZATION:-}
+  LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
+  LANGFUSE_URL: ${LANGFUSE_URL:-http://localhost:3000}
+
+
+name: back-office
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: back-office-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-backoffice}
+      POSTGRES_USER: ${POSTGRES_USER:-backoffice}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-backoffice}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-backoffice} -d ${POSTGRES_DB:-backoffice}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------------------------------
+  # Keycloak 26.7 in dev mode (in-memory H2 database: the realm is re-imported on every fresh
+  # container; users you add in the admin console are lost with `docker compose down`).
+  # ------------------------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7
+    container_name: back-office-keycloak
+    command: ["start-dev", "--import-realm", "--http-port", "8180", "--health-enabled", "true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin}
+      # Fixed public URL: issuer = http://localhost:8180/realms/back-office for browser and API alike.
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8180}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      # Host port must equal the port in KC_HOSTNAME (the browser follows those URLs).
+      - "${KEYCLOAK_PORT:-8180}:8180"
+    volumes:
+      - ../keycloak/realm-back-office.json:/opt/keycloak/data/import/realm-back-office.json:ro
+    healthcheck:
+      # Healthy only when the realm is imported and serves its discovery document (the image has no
+      # curl/wget, hence bash /dev/tcp). /health/ready on the management port 9000 would turn green
+      # before the import finishes.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8180 && printf \"GET /realms/back-office/.well-known/openid-configuration HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && head -c 12 <&3 | grep -q \" 200\""]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 30
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------------------
+  # Object storage (S3 API on :9000, console :9001). MinIO stopped publishing community images in 2025;
+  # this is Chainguard's free rebuild. Needed by the API also when it runs on the host.
+  # ------------------------------------------------------------------------------------------
+  minio:
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
+    container_name: back-office-minio
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-backoffice}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-backoffice-dev-secret}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "/usr/bin/mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Creates the bucket once (idempotent) and exits. The mc image has no shell: MC_HOST_<alias> carries
+  # the credentials.
+  minio-init:
+    image: ${MINIO_CLIENT_IMAGE:-cgr.dev/chainguard/minio-client:latest}
+    container_name: back-office-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_HOST_bo: http://${MINIO_ROOT_USER:-backoffice}:${MINIO_ROOT_PASSWORD:-backoffice-dev-secret}@minio:9000
+      MC_CONFIG_DIR: /tmp/.mc
+    command: ["mb", "--ignore-existing", "bo/${BACKOFFICE_STORAGE_S3_BUCKET:-back-office}"]
+    restart: on-failure:10
+
+  # ------------------------------------------------------------------------------------------
+  # profile: quality  (SonarQube Community Build for the GR-Q3 quality gate, docs/guides/code-quality.md)
+  #   docker compose -f deploy/compose/docker-compose.yml --profile quality up -d sonarqube
+  #   sh deploy/scripts/sonar-local.sh          # coverage + scan against http://localhost:${SONAR_PORT:-9100}
+  # Host port 9100, not SonarQube's usual 9000: MinIO above already publishes 9000.
+  # Embedded H2 database: fine for a laptop, not for a shared server (use PostgreSQL there).
+  # Elasticsearch inside wants vm.max_map_count >= 262144 (SonarQube docs: 524288). Docker Desktop's WSL2
+  # VM usually has it; if the container stops with "max virtual memory areas vm.max_map_count is too low",
+  # run `wsl -d docker-desktop sysctl -w vm.max_map_count=524288` (Windows) or
+  # `sudo sysctl -w vm.max_map_count=524288` (Linux). SONAR_ES_BOOTSTRAP_CHECKS_DISABLE keeps a laptop
+  # with a lower value starting (search then falls back to slower I/O; acceptable for local scans).
+  # ------------------------------------------------------------------------------------------
+  sonarqube:
+    profiles: ["quality"]
+    image: ${SONARQUBE_IMAGE:-sonarqube:26.9.0.129388-community}
+    container_name: back-office-sonarqube
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+      SONAR_TELEMETRY_ENABLE: "false"
+    ports:
+      - "${SONAR_PORT:-9100}:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    healthcheck:
+      # Healthy when /api/system/status reports UP (not merely STARTING / DB_MIGRATION_NEEDED).
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 30
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------------------------------
+  # profile: full  (api + worker + web from source, runner fleet with the DOCKER backend)
+  # ------------------------------------------------------------------------------------------
+  # Own the network namespaces of api and worker: publish the API port, answer to the names `api` /
+  # `back-office-api` (and `worker`) on the compose network and forward localhost:8180 -> keycloak:8180
+  # (see the issuer note at the top).
+  api-netns:
+    profiles: ["full"]
+    image: alpine/socat:1.8.0.3
+    container_name: back-office-api
+    command: ["tcp-listen:${KEYCLOAK_PORT:-8180},fork,reuseaddr", "tcp-connect:keycloak:8180"]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      default:
+        aliases: [api]
+    ports:
+      - "${API_PORT:-8081}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  worker-netns:
+    profiles: ["full"]
+    image: alpine/socat:1.8.0.3
+    container_name: back-office-worker
+    command: ["tcp-listen:${KEYCLOAK_PORT:-8180},fork,reuseaddr", "tcp-connect:keycloak:8180"]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      default:
+        aliases: [worker]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # role api: HTTP, SSE, login, CI and runner v2 endpoints, LLM gateway. In compose it also runs the
+  # Flyway migrations on start (Kubernetes: the migrate hook Job, SPRING_FLYWAY_ENABLED=false on pods).
+  api:
+    profiles: ["full"]
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    image: back-office/api:dev
+    container_name: back-office-api-app
+    network_mode: "service:api-netns"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      api-netns:
+        condition: service_started
+    environment:
+      <<: *backend-env
+      BACKOFFICE_ROLE: api
+      SPRING_FLYWAY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 90s
+      retries: 10
+    restart: unless-stopped
+
+  # role worker: work queue consumers, schedulers, outbox relay. Starts after the api has migrated.
+  worker:
+    profiles: ["full"]
+    image: back-office/api:dev
+    container_name: back-office-worker-app
+    network_mode: "service:worker-netns"
+    depends_on:
+      api:
+        condition: service_healthy
+      worker-netns:
+        condition: service_started
+    environment:
+      <<: *backend-env
+      BACKOFFICE_ROLE: worker
+      SPRING_FLYWAY_ENABLED: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/liveness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 90s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    profiles: ["full"]
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile
+    image: back-office/web:dev
+    container_name: back-office-web
+    depends_on:
+      - api
+    environment:
+      # nginx proxies /api, /oauth2, /login/oauth2 and /logout to this upstream (alias of api-netns).
+      API_UPSTREAM: http://api:8080
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  # Builds the egress proxy image (RUNNER_EGRESS_PROXY_IMAGE). The DOCKER backend of the runner-controller
+  # does not use this container: per job it creates an internal network bo-job-<job> and a proxy container
+  # bo-egress-<job> from the image (Kubernetes: Deployment bo-egress-<pool> created by the controller).
+  egress-proxy:
+    profiles: ["full"]
+    build:
+      context: ../../backend/runner-controller/egress-proxy
+    image: ${RUNNER_EGRESS_PROXY_IMAGE:-back-office/egress-proxy:dev}
+    container_name: back-office-egress-proxy
+    networks:
+      default: {}
+      sandbox:
+        aliases: [egress-proxy]
+    restart: unless-stopped
+
+  # runner-controller, DOCKER backend (laptops only): registers with RUNNER_REGISTRATION_TOKEN (create one
+  # in Administration -> Runner fleet, pool `default`), keeps the runner token in the volume, leases
+  # jobs from the api and runs each in a sandbox container on its own internal network.
+  runner-controller:
+    profiles: ["full"]
+    build:
+      context: ../../backend
+      dockerfile: runner-controller/Dockerfile
+    image: back-office/runner-controller:dev
+    container_name: back-office-runner-controller
+    depends_on:
+      api:
+        condition: service_healthy
+      egress-proxy:
+        condition: service_started
+    environment:
+      # Names read by backend/runner-controller/src/main/resources/application.yaml. The pool comes from
+      # the registration token, allowed images from the pool configuration in Back Office.
+      RUNNER_BACKOFFICE_URL: ${RUNNER_BACKOFFICE_URL:-http://api:8080}
+      RUNNER_REGISTRATION_TOKEN: ${RUNNER_REGISTRATION_TOKEN:-}
+      RUNNER_BACKEND: DOCKER
+      RUNNER_TOKEN_FILE: /var/lib/runner-controller/runner-token
+      RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-2}
+      # The DOCKER backend starts its own proxy container and internal network per job (bo-egress-<job>,
+      # bo-job-<job>) from this image.
+      RUNNER_EGRESS_PROXY_IMAGE: ${RUNNER_EGRESS_PROXY_IMAGE:-back-office/egress-proxy:dev}
+      RUNNER_EGRESS_PROXY_PORT: "4750"
+      # Git tokens for every repository host, written into each sandbox as its token file by level (ADR 0031):
+      # READ jobs get BO_GIT_TOKEN_READ, PUSH_MR jobs BO_GIT_TOKEN_PUSH, NONE nothing. BO_GIT_TOKEN (legacy
+      # GIT_TOKEN) is a push-level fallback. Commit identity of the agents (empty = runner default).
+      BO_GIT_TOKEN_READ: ${GIT_TOKEN_READ:-}
+      BO_GIT_TOKEN_PUSH: ${GIT_TOKEN_PUSH:-}
+      BO_GIT_TOKEN: ${GIT_TOKEN:-}
+      RUNNER_GIT_ALLOW_PUSH_CREDENTIAL_FOR_READ: ${GIT_ALLOW_PUSH_CREDENTIAL_FOR_READ:-false}
+      RUNNER_GIT_USER_NAME: ${GIT_USER_NAME:-}
+      RUNNER_GIT_USER_EMAIL: ${GIT_USER_EMAIL:-}
+    volumes:
+      # SECURITY: full control of the host's Docker daemon (see the note at the top).
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-controller-data:/var/lib/runner-controller
+    restart: unless-stopped
+
+  # Builds the runner (agent) image so sandboxes find it locally. Runs nothing by itself.
+  runner-image:
+    profiles: ["full"]
+    build:
+      context: ../../runner
+      dockerfile: Dockerfile
+    image: back-office/runner:dev
+    entrypoint: ["/bin/true"]
+    restart: "no"
+
+networks:
+  default: {}
+  # No external connectivity: sandboxes reach only the egress proxy (and nothing on the default network).
+  sandbox:
+    internal: true
+
+volumes:
+  postgres-data:
+  minio-data:
+  runner-controller-data:
+  sonarqube-data:
+  sonarqube-extensions:
+  sonarqube-logs:

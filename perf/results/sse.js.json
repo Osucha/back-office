@@ -1,0 +1,260 @@
+{
+    "metrics": {
+        "http_reqs": {
+            "count": 365,
+            "rate": 10.152054628874604
+        },
+        "http_req_duration{expected_response:true}": {
+            "max": 1541.916383,
+            "p(90)": 562.1230954,
+            "p(95)": 840.4831047999995,
+            "avg": 311.43025523396204,
+            "min": 38.71429,
+            "med": 228.487089
+        },
+        "http_req_sending": {
+            "min": 0.013492,
+            "med": 0.067697,
+            "max": 16.560941,
+            "p(90)": 0.09805900000000006,
+            "p(95)": 0.1632694,
+            "avg": 0.20776148493150698
+        },
+        "iteration_duration": {
+            "p(95)": 20102.5897375,
+            "avg": 9325.379734354972,
+            "min": 738.695528,
+            "med": 1479.383298,
+            "max": 20152.674895,
+            "p(90)": 20078.299362
+        },
+        "http_req_duration": {
+            "med": 342.805636,
+            "max": 17756.880181,
+            "p(90)": 17639.3751414,
+            "p(95)": 17694.166446400002,
+            "avg": 5055.117188457533,
+            "min": 38.71429
+        },
+        "http_req_blocked": {
+            "med": 0.011912,
+            "max": 284.41261,
+            "p(90)": 75.71404780000003,
+            "p(95)": 138.1689992,
+            "avg": 21.886807224657534,
+            "min": 0.006407
+        },
+        "vus": {
+            "value": 50,
+            "min": 50,
+            "max": 55
+        },
+        "read_during_sse_ms": {
+            "med": 1045,
+            "max": 2310,
+            "p(90)": 1447,
+            "p(95)": 1772,
+            "avg": 1063.4351145038167,
+            "min": -881
+        },
+        "http_req_waiting": {
+            "avg": 2714.3794965041097,
+            "min": 0,
+            "med": 310.862087,
+            "max": 10802.115019,
+            "p(90)": 9869.9077542,
+            "p(95)": 10362.8345504
+        },
+        "iterations": {
+            "count": 231,
+            "rate": 6.424998956904201
+        },
+        "checks": {
+            "passes": 396,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        },
+        "http_req_receiving": {
+            "p(90)": 9059.5901784,
+            "p(95)": 9632.226287800002,
+            "avg": 2340.529930468494,
+            "min": 0.212039,
+            "med": 37.347014,
+            "max": 10176.967099
+        },
+        "vus_max": {
+            "value": 55,
+            "min": 55,
+            "max": 55
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "http_req_failed": {
+            "fails": 265,
+            "passes": 100,
+            "value": 0.273972602739726
+        },
+        "http_req_duration{kind:read}": {
+            "med": 231.5998625,
+            "max": 1541.916383,
+            "p(90)": 562.4034271,
+            "p(95)": 844.7429451999998,
+            "avg": 313.39678275954185,
+            "min": 38.71429,
+            "thresholds": {
+                "p(95)<300": true
+            }
+        },
+        "http_req_connecting": {
+            "avg": 21.195483358904106,
+            "min": 0,
+            "med": 0,
+            "max": 203.959072,
+            "p(90)": 73.83391380000003,
+            "p(95)": 136.89286260000003
+        },
+        "data_sent": {
+            "count": 117030,
+            "rate": 3255.054666348479
+        },
+        "sse_subscription_held": {
+            "passes": 100,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        },
+        "data_received": {
+            "count": 3250608,
+            "rate": 90411.91778919676
+        }
+    },
+    "setup_data": {
+        "credentials": {
+            "session": "YTA4NzE0N2YtZmZlYy00OGQ1LTk5MWUtYjFlMDBhMjA2OGU0",
+            "xsrf": "b57054a7-a4eb-4cab-bf24-02f2b9052d2b"
+        },
+        "projectIds": [],
+        "runIds": [
+                "41d945f0-537e-42b1-b43b-dda74ce40f1b",
+                "eb0f5cf5-25d2-4446-b8ff-f4c7b8342d9e",
+                "8ff8a060-ad7c-41e2-9908-18e032230f28",
+                "444ecf2d-7428-40d9-af76-761b4d0531a3",
+                "bfcb3940-76c0-4813-9d98-7778ab2252a0",
+                "d7529fb0-2e6a-4fb6-967a-c14f30c49afa",
+                "061e76b2-2f93-40bd-8640-5765db0a70b1",
+                "06b8a260-0f4c-42eb-853e-67b9a7d85192",
+                "23f451a6-b1ce-4add-83a1-ba369a690fff",
+                "1ef3f3e1-b065-4a5c-818a-876e20dd5324",
+                "ac270d21-d3c5-4610-94e1-7c0469f2699a",
+                "4e812249-6d54-4cb7-afa3-20486d96b15f",
+                "e7c3690f-9eb6-4130-8f13-6d763f1205f8",
+                "4da9f32d-5a4e-46af-8be6-1b22e6bed13a",
+                "a894161f-8d01-48c0-b6a6-eb68ad34a955",
+                "098e85ea-29b4-45da-a543-d1062915827f",
+                "d0b734f6-c184-47e8-ac97-4af09db05e65",
+                "5067b2e1-3d3a-43a6-b143-d389ceec9d76",
+                "7015d1f5-a01f-4939-8ba6-bbab10c4172b",
+                "e2862819-f225-4138-925f-8da4a21d7251",
+                "7a7104ef-01af-4022-b4a2-b93b02e3b47e",
+                "006d43db-d89d-4752-a573-f5598dffcb00",
+                "8194d09c-6d96-4bc6-93e9-83e3fa686067",
+                "b7aed93a-057d-49c0-8663-a368140f25db",
+                "0baccbbc-3169-4f70-9444-e9ddeb374dfd",
+                "ca9655ce-d6e0-4bbf-b9f3-294ffb91f57c",
+                "9d74f2c9-9c69-4428-abb4-57d9c30a71e0",
+                "cd3c7f69-6c93-41ff-9f8d-cdc35e6caa3d",
+                "e25c6da0-b9e2-4f4f-ad6d-274c03380801",
+                "d7f12d67-0cab-4af8-871e-fcaa62483492",
+                "92c165b5-02e5-482c-b4d7-613ab2cc9321",
+                "6a5b619c-40ef-489b-a79c-0e64e6685869",
+                "af1332aa-d244-4678-99f7-3f67228e2b81",
+                "0884571a-d06e-48ff-b8a6-bdf03a54260c",
+                "ac6683fd-ab2a-4765-8544-52783a1bc250",
+                "cf62ce80-8b31-4a5f-89a7-3292590e4c1d",
+                "2fc312b3-d546-4ce6-83c9-438fbef64978",
+                "7fd71563-675e-47ab-88bc-6ef70c9507c0",
+                "fbafa7a9-6218-40d4-bb33-4c90ebc7c1c5",
+                "a7a4e4b4-ff71-43a8-8e0b-0cc6ef4a392f",
+                "09119bb4-26c2-45ac-a585-42382ba92fd0",
+                "cc2585e8-978f-4e3e-a5f7-6bfe0994f6e1",
+                "52503e13-995e-4c3d-9b5b-899f28de95e6",
+                "8f6daf6f-952d-48bf-a5a4-4606e1d57bbc",
+                "d111ff64-8486-4572-b6ba-3079e0385862",
+                "51b3b7e5-95ef-46ef-8729-95d9e41103f3",
+                "54f08063-2f50-43dd-b20c-381c00e58339",
+                "1cd11c4b-51dc-8750-63b7-2fb6f8c2500f",
+                "2c4845b7-294e-4fb9-9d4e-2e9fee152d48",
+                "86454d22-031d-4cbe-909b-f12726dfdbc0"
+            ]
+    },
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {
+            "setup": {
+                "groups": {},
+                "checks": {
+                        "auth config 200": {
+                            "id": "c2fb63e8dc1392a368809d0cb26df0f5",
+                            "passes": 1,
+                            "fails": 0,
+                            "name": "auth config 200",
+                            "path": "::setup::auth config 200"
+                        },
+                        "login 200": {
+                            "name": "login 200",
+                            "path": "::setup::login 200",
+                            "id": "647055af8ffe21e58084ae4b140cdda0",
+                            "passes": 1,
+                            "fails": 0
+                        },
+                        "login authenticated": {
+                            "name": "login authenticated",
+                            "path": "::setup::login authenticated",
+                            "id": "ab90d6044768ef6183d80ea1895e0356",
+                            "passes": 1,
+                            "fails": 0
+                        }
+                    },
+                "name": "setup",
+                "path": "::setup",
+                "id": "5c0f8025f7e0b6654089e5b00e950f1a"
+            }
+        },
+        "checks": {
+            "runs 200": {
+                "name": "runs 200",
+                "path": "::runs 200",
+                "id": "9d8d2fca720f2b30cb7067b67368ff62",
+                "passes": 131,
+                "fails": 0
+            },
+            "ci executions 200": {
+                "name": "ci executions 200",
+                "path": "::ci executions 200",
+                "id": "b477d05d62d0d553f143855cec249b50",
+                "passes": 131,
+                "fails": 0
+            },
+            "read iteration ran": {
+                "path": "::read iteration ran",
+                "id": "aeaf0f4c04065a43351d499fb988c4d2",
+                "passes": 131,
+                "fails": 0,
+                "name": "read iteration ran"
+            }
+        },
+        "name": ""
+    }
+}

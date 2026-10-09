@@ -1,0 +1,11 @@
+{
+  "description": "Words and phrases that are the same in every UI language (product names, protocols, keys). npm run i18n:check does not report a text as untagged when every word of it is listed under words, or the whole text under phrases. Keep it short: real UI text belongs in a translation.",
+  "words": [
+    "CI", "MCP", "PAT", "PATs", "JSON", "YAML", "JQL", "API", "URL", "URLs", "ID", "IDs", "OIDC",
+    "SSO", "MFA", "TOTP", "QR", "SSE", "LLM", "LLMs", "HTTP", "HTTPS", "SHA", "UTC", "USD", "Jira",
+    "GitLab", "GitHub", "Git", "Keycloak", "Entra", "Google", "Anthropic", "OpenAI", "Mistral", "Ollama",
+    "OpenCode", "Helm", "Kubernetes", "gVisor", "Ctrl", "Shift", "Alt", "Esc", "Enter", "Tab", "Backspace",
+    "Cmd", "F1", "markdown", "Markdown", "in-toto", "intoto", "jsonl", "txt", "md"
+  ],
+  "phrases": ["xxxx-xxxx", "Back Office", "Claude Code", "VS Code", "Spec Kit", "Cursor", "Claude"]
+}

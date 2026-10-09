@@ -1,0 +1,22 @@
+{{- if and (eq .Values.storage.type "filesystem") (not .Values.storage.filesystem.existingClaim) }}
+# storage.type=filesystem: one volume shared by every app pod. Needs ReadWriteMany as soon as api and
+# worker run as separate pods or with more than one replica; object storage is the recommended backend.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-blobs" (include "back-office.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ .Values.storage.filesystem.accessMode | quote }}]
+  {{- with .Values.storage.filesystem.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.filesystem.size }}
+{{- end }}

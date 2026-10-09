@@ -1,0 +1,168 @@
+# Example OpenTelemetry Collector for Back Office (plain manifests, no operator needed).
+#
+#   kubectl create namespace observability
+#   kubectl -n observability apply -f deploy/observability/otel-collector.yaml
+#
+# Then install the chart with
+#   otel.enabled=true
+#   otel.tracesEndpoint=http://otel-collector.observability:4318/v1/traces
+#   (optional) otel.metricsEnabled=true, otel.metricsEndpoint=http://otel-collector.observability:4318/v1/metrics
+#
+# Pipelines: OTLP in (HTTP 4318, gRPC 4317) -> batch -> traces to Tempo/Jaeger/any OTLP backend,
+# metrics to Prometheus (scrape :8889 or remote write). The api/worker pods keep exposing
+# /actuator/prometheus as well, so ServiceMonitor scraping and OTLP metrics are alternatives - use one.
+# Pin the image to a current release of opentelemetry-collector-contrib.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: back-office
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+      batch: {}
+      # never ship prompt/completion bodies to the tracing backend by accident
+      attributes/redact:
+        actions:
+          - key: gen_ai.prompt
+            action: delete
+          - key: gen_ai.completion
+            action: delete
+      k8sattributes:
+        extract:
+          metadata: [k8s.namespace.name, k8s.pod.name, k8s.deployment.name, k8s.node.name]
+    exporters:
+      # replace with your backend: Tempo, Jaeger, Grafana Cloud, Honeycomb, Datadog (otlp), ...
+      otlphttp/traces:
+        endpoint: http://tempo.observability:4318
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        resource_to_telemetry_conversion:
+          enabled: true
+      debug:
+        verbosity: basic
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, attributes/redact, batch]
+          exporters: [otlphttp/traces]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [debug]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+---
+# k8sattributes needs read access to pods/namespaces/replicasets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: back-office-otel-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: back-office-otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: back-office-otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: observability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+    spec:
+      serviceAccountName: otel-collector
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.120.0
+          args: ["--config=/conf/config.yaml"]
+          ports:
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: otlp-http, containerPort: 4318 }
+            - { name: prom-metrics, containerPort: 8889 }
+          readinessProbe:
+            httpGet: { path: /, port: 13133 }
+          livenessProbe:
+            httpGet: { path: /, port: 13133 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - name: conf
+              mountPath: /conf
+      volumes:
+        - name: conf
+          configMap:
+            name: otel-collector
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+spec:
+  selector:
+    app.kubernetes.io/name: otel-collector
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc }
+    - { name: otlp-http, port: 4318, targetPort: otlp-http }
+    - { name: prom-metrics, port: 8889, targetPort: prom-metrics }

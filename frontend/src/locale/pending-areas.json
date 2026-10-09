@@ -1,0 +1,4 @@
+{
+  "description": "Areas (feature folders) whose UI is not translated yet. npm run i18n:check does not fail on their untagged texts or missing translations. Remove an area once src/locale/pl/<area>.json is complete.",
+  "areas": []
+}

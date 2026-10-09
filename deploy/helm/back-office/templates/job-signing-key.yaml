@@ -1,0 +1,160 @@
+{{- if and .Values.signing.generate (not .Values.signing.existingSecret) (not (and .Values.externalSecrets.enabled .Values.externalSecrets.signing.enabled)) }}
+{{- /*
+Ed25519 signing key for provenance attestations and runner assignments (ADR 0025). Helm's template
+functions cannot derive an Ed25519 public key, so a pre-install/pre-upgrade hook Job generates the pair
+with openssl and creates the Secret once - it is never overwritten (rotation: docs/runbooks/upgrade.md,
+deploy/scripts/gen-signing-key.sh). The Secret is not part of the release: `helm uninstall` keeps it,
+so reinstalling does not invalidate published attestations.
+Production: create the Secret yourself (signing.existingSecret) and set signing.generate=false.
+*/ -}}
+{{- $name := printf "%s-signing-keygen" (include "back-office.fullname" .) }}
+{{- $secret := include "back-office.signing.secretName" . }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: signing
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-30"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: signing
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-30"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  # create cannot be restricted by resourceNames; get is limited to the signing Secret
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ $secret | quote }}]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: signing
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-30"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: signing
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "back-office.selectorLabels" (dict "root" . "component" "signing") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $name }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: keygen
+          image: {{ .Values.signing.opensslImage | quote }}
+          command: ["sh", "-ec"]
+          args:
+            - |
+              cd /keys
+              openssl genpkey -algorithm ed25519 -outform DER -out private.der
+              openssl pkey -inform DER -in private.der -pubout -outform DER -out public.der
+              base64 private.der | tr -d "\n" > BACKOFFICE_SIGNING_KEYS_0_PRIVATE_KEY_PKCS8_BASE64
+              base64 public.der | tr -d "\n" > BACKOFFICE_SIGNING_KEYS_0_PUBLIC_KEY_X509_BASE64
+              printf "%s" "{{ .Values.signing.keyIdPrefix }}-$(date -u +%Y%m%d)" > BACKOFFICE_SIGNING_KEYS_0_ID
+              printf "true" > BACKOFFICE_SIGNING_KEYS_0_ACTIVE
+              rm -f private.der public.der
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - name: keys
+              mountPath: /keys
+      containers:
+        - name: create-secret
+          image: {{ .Values.signing.kubectlImage | quote }}
+          command: ["sh", "-ec"]
+          args:
+            - |
+              if kubectl -n {{ .Release.Namespace }} get secret {{ $secret }} > /dev/null 2>&1; then
+                echo "Secret {{ $secret }} exists - keeping the existing signing key"
+              else
+                kubectl -n {{ .Release.Namespace }} create secret generic {{ $secret }} \
+                  --from-file=/keys/BACKOFFICE_SIGNING_KEYS_0_ID \
+                  --from-file=/keys/BACKOFFICE_SIGNING_KEYS_0_PRIVATE_KEY_PKCS8_BASE64 \
+                  --from-file=/keys/BACKOFFICE_SIGNING_KEYS_0_PUBLIC_KEY_X509_BASE64 \
+                  --from-file=/keys/BACKOFFICE_SIGNING_KEYS_0_ACTIVE
+                kubectl -n {{ .Release.Namespace }} label secret {{ $secret }} app.kubernetes.io/part-of=back-office app.kubernetes.io/component=signing > /dev/null 2>&1 || true
+                echo "Secret {{ $secret }} created"
+              fi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: keys
+              mountPath: /keys
+              readOnly: true
+      volumes:
+        - name: keys
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+{{- end }}

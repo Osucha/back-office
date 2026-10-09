@@ -1,0 +1,22 @@
+# Suppressions for the Trivy gates (jobs security:dependencies and security:images, guardrail GR-S2).
+#
+# Rule: every entry has an expiry date (`expired_at`) and a reason (`statement`). After the date Trivy
+# stops honouring the entry, so the finding comes back to the gate - a suppression postpones a decision,
+# it does not close it. The job security:suppressions additionally fails as soon as any entry is expired
+# or lacks a statement, so stale entries get cleaned up instead of silently piling up.
+#
+# Suppress only when the vulnerability does not affect how we use the library, or when no fix exists
+# and the risk cannot be cut otherwise. A finding with an available fix is suppressed only for the time
+# it takes to bump the version (days, not months). Name who decided and link the issue in the statement.
+#
+# Format:
+# vulnerabilities:
+#   - id: CVE-0000-00000
+#     # optional: limit to paths / a package URL
+#     # paths: ["frontend/package-lock.json"]
+#     # purls: ["pkg:maven/org.example/lib@1.2.3"]
+#     statement: >-
+#       Why it does not apply or why we postpone. Who decided, when, which issue tracks the fix.
+#     expired_at: 2026-12-31
+
+vulnerabilities: []

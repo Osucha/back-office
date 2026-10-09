@@ -1,0 +1,8 @@
+frontend/node_modules
+frontend/dist
+frontend/.angular
+frontend/out-tsc
+frontend/coverage
+frontend/.vscode
+**/*.log
+frontend/.manual

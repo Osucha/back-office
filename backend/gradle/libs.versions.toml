@@ -1,0 +1,122 @@
+[versions]
+kotlin = "2.3.21"
+springBoot = "4.1.1"
+springDependencyManagement = "1.1.7"
+springAi = "2.0.1"
+langgraph4j = "1.9.1"
+fabric8 = "7.9.0"
+gitlab4j = "6.3.0"
+springdoc = "3.1.1"
+archunit = "1.5.1"
+wiremock = "3.13.1"
+mockk = "1.14.11"
+jacksonKotlin = "3.2.3"
+testcontainersKeycloak = "4.3.1"
+caffeine = "3.2.2"
+# Argon2id for local passwords (Spring Security Argon2PasswordEncoder needs Bouncy Castle), ADR 0021
+bouncycastle = "1.86"
+# QR code of the TOTP enrolment (otpauth URI rendered as inline SVG)
+qrcodegen = "1.8.0"
+# detekt 2.x (plugin id dev.detekt, Analysis API). alpha.3 is built with Kotlin 2.3.21 = our Kotlin version;
+# alpha.4+ are built with Kotlin 2.4 and need a Kotlin upgrade first (type resolution needs a matching compiler).
+detekt = "2.0.0-alpha.3"
+# Code quality gate (GR-Q3, ADR 0027): JaCoCo coverage for every module, SonarScanner for Gradle.
+# org.sonarqube 7.x needs Gradle >= 7.6 and Java 17+ (we run Gradle 8.14 on JDK 21).
+jacoco = "0.8.15"
+sonarqube = "7.5.0.8588"
+# Scale-out backbone (ADR 0023): cluster-wide singletons and distributed rate limits on PostgreSQL
+shedlock = "7.10.1"
+bucket4j = "8.20.0"
+# AWS SDK for Java v2 (S3 client + presigner) for the S3-compatible BlobStore (ADR 0023); not managed by the Boot BOM
+awssdk = "2.55.6"
+
+[libraries]
+# Spring Boot starters (Boot 4 names)
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-jackson = { module = "org.springframework.boot:spring-boot-starter-jackson" }
+spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boot-starter-restclient" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
+spring-boot-starter-data-jpa-test = { module = "org.springframework.boot:spring-boot-starter-data-jpa-test" }
+spring-boot-starter-security-test = { module = "org.springframework.boot:spring-boot-starter-security-test" }
+spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+spring-boot-docker-compose = { module = "org.springframework.boot:spring-boot-docker-compose" }
+spring-boot-starter-oauth2-client = { module = "org.springframework.boot:spring-boot-starter-security-oauth2-client" }
+spring-boot-starter-session-jdbc = { module = "org.springframework.boot:spring-boot-starter-session-jdbc" }
+spring-boot-starter-cache = { module = "org.springframework.boot:spring-boot-starter-cache" }
+spring-security-test = { module = "org.springframework.security:spring-security-test" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+qrcodegen = { module = "io.nayuki:qrcodegen", version.ref = "qrcodegen" }
+testcontainers-keycloak = { module = "com.github.dasniko:testcontainers-keycloak", version.ref = "testcontainersKeycloak" }
+spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
+
+# Scale-out backbone (ADR 0023)
+shedlock-core = { module = "net.javacrumbs.shedlock:shedlock-core", version.ref = "shedlock" }
+shedlock-jdbc = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
+bucket4j-postgresql = { module = "com.bucket4j:bucket4j_jdk17-postgresql", version.ref = "bucket4j" }
+bucket4j-core = { module = "com.bucket4j:bucket4j_jdk17-core", version.ref = "bucket4j" }
+micrometer-core = { module = "io.micrometer:micrometer-core" }
+micrometer-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
+
+# Spring AI (versions from the BOM imported in the root build)
+spring-ai-anthropic = { module = "org.springframework.ai:spring-ai-starter-model-anthropic" }
+spring-ai-openai = { module = "org.springframework.ai:spring-ai-starter-model-openai" }
+spring-ai-google-genai = { module = "org.springframework.ai:spring-ai-starter-model-google-genai" }
+spring-ai-mistral = { module = "org.springframework.ai:spring-ai-starter-model-mistral-ai" }
+spring-ai-ollama = { module = "org.springframework.ai:spring-ai-starter-model-ollama" }
+# MCP server (streamable HTTP, governance) and client (integration tests), ADR 0025
+spring-ai-mcp-server-webmvc = { module = "org.springframework.ai:spring-ai-starter-mcp-server-webmvc" }
+spring-ai-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
+
+# Orchestration and integrations
+langgraph4j-core = { module = "org.bsc.langgraph4j:langgraph4j-core", version.ref = "langgraph4j" }
+langgraph4j-postgres = { module = "org.bsc.langgraph4j:langgraph4j-postgres-saver", version.ref = "langgraph4j" }
+fabric8-client = { module = "io.fabric8:kubernetes-client", version.ref = "fabric8" }
+fabric8-server-mock = { module = "io.fabric8:kubernetes-server-mock", version.ref = "fabric8" }
+gitlab4j = { module = "org.gitlab4j:gitlab4j-api", version.ref = "gitlab4j" }
+springdoc = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+
+# Persistence and JSON
+postgresql = { module = "org.postgresql:postgresql" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+jackson-kotlin = { module = "tools.jackson.module:jackson-module-kotlin", version.ref = "jacksonKotlin" }
+
+# Observability
+micrometer-tracing-otel = { module = "io.micrometer:micrometer-tracing-bridge-otel" }
+otel-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+
+# Kotlin
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
+
+# Test
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+archunit = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+wiremock = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+# Testcontainers 2.x (managed by the Spring Boot BOM) renamed its artifacts: testcontainers-<module>.
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+testcontainers-minio = { module = "org.testcontainers:testcontainers-minio" }
+
+# Object storage
+awssdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "awssdk" }
+awssdk-s3 = { module = "software.amazon.awssdk:s3" }
+awssdk-apache-client = { module = "software.amazon.awssdk:apache-client" }
+assertj = { module = "org.assertj:assertj-core" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+kotlin-jpa = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }

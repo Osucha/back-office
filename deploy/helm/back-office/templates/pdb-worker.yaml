@@ -1,0 +1,3 @@
+{{- if and (eq (include "back-office.mode" .) "split") .Values.worker.podDisruptionBudget.enabled }}
+{{ include "back-office.app.pdb" (dict "root" . "component" "worker" "cfg" .Values.worker.podDisruptionBudget) }}
+{{- end }}

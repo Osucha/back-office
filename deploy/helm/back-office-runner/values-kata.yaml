@@ -1,0 +1,14 @@
+# Variant: plain Jobs (no Agent Sandbox CRDs) with Kata Containers (microVM) for every job: both
+# isolation levels map to Kata. Kata needs nodes with virtualization (bare metal or nested virt).
+backend: K8S_JOB
+runtimeClasses:
+  standard: kata
+  high: kata
+  create: true
+  kataHandler: kata
+  scheduling:
+    nodeSelector:
+      katacontainers.io/kata-runtime: "true"
+warmPool:
+  size: 0
+maxConcurrent: 5

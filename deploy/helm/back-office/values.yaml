@@ -1,0 +1,958 @@
+# Default values for the back-office chart (control plane: web, api, worker, migrate; ADR 0023).
+#
+# The execution plane (runner-controller, sandboxes, egress proxy) is a separate chart,
+# deploy/helm/back-office-runner, installable in this or any other cluster (ADR 0024). This chart has
+# no RBAC for pods or Jobs: the control plane never talks to the Kubernetes API.
+#
+# Naming: every Kubernetes object is prefixed with the release "fullname" (release name, or
+# `fullnameOverride`). With `helm install back-office ...` you get `back-office-api`, `back-office-worker`,
+# `back-office-web`, `back-office-config`, `back-office-app`, `back-office-postgresql`, ...
+#
+# Secrets: for production set `secrets.create=false` (and the nested `*.create=false`) and point
+# `existingSecret` at Secrets you created yourself, or use External Secrets (`externalSecrets.enabled`).
+# The inline values are for dev/test clusters only (docs/guides/deploy-helm.md).
+#
+# Reference values per cloud: values-aws.yaml, values-gcp.yaml, values-azure.yaml, values-onprem.yaml
+# (docs/guides/cloud-reference.md).
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Pull secrets applied to every pod of this chart.
+imagePullSecrets: []
+#  - name: gitlab-registry
+
+# Extra labels/annotations added to every object rendered by this chart.
+commonLabels: {}
+commonAnnotations: {}
+
+# ---------------------------------------------------------------------------------------------
+# Topology (ADR 0023): one image, roles selected by BACKOFFICE_ROLE
+#   split    - Deployment <fullname>-api (role api) + Deployment <fullname>-worker (role worker)
+#   combined - one Deployment <fullname>-api with role `api,worker` (small installs; replicas >= 2 is safe)
+# ---------------------------------------------------------------------------------------------
+mode: split
+
+# Soft spreading of api and worker pods over zones and nodes.
+topologySpread:
+  enabled: true
+  zoneWhenUnsatisfiable: ScheduleAnyway
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+# ---------------------------------------------------------------------------------------------
+# API (role api: REST, SSE, OIDC/local login, CI endpoints, runner v2 API, LLM gateway proxy, MCP).
+# `api.image`, `api.config`, security contexts, `api.extraEnv*` and volumes are shared by every role
+# (api, worker, migrate): it is one image.
+# ---------------------------------------------------------------------------------------------
+api:
+  image:
+    repository: back-office/api
+    # Defaults to .Chart.AppVersion when empty. CI deploys git SHAs; never `latest`.
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Replicas when autoscaling is off. Two or more for availability: sessions, SSE fan-out (LISTEN/NOTIFY)
+  # and limits are shared through PostgreSQL.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  service:
+    type: ClusterIP
+    port: 8080
+    annotations: {}
+  # JVM flags. The Dockerfile already sets MaxRAMPercentage=75 and ZGC; override here if needed.
+  javaToolOptions: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  # Probes hit Spring Boot actuator health groups.
+  probes:
+    startup:
+      enabled: true
+      failureThreshold: 30
+      periodSeconds: 5
+    liveness:
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+  # preStop sleep: the pod keeps serving while it is removed from Service endpoints and the ingress,
+  # then Spring's graceful shutdown drains requests and closes SSE streams with a retry hint.
+  preStopSleepSeconds: 10
+  terminationGracePeriodSeconds: 60
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  priorityClassName: ""
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  # Additional environment variables (list of core/v1 EnvVar) for every role. Applied last.
+  extraEnv: []
+  #  - name: LOG_LEVEL
+  #    value: DEBUG
+  # Additional envFrom sources (ConfigMaps / Secrets you manage yourself) for api and worker.
+  extraEnvFrom: []
+  #  - secretRef: { name: my-extra-secret }
+  extraVolumes: []
+  extraVolumeMounts: []
+  # Service account of api/worker pods (no Kubernetes API token is mounted). Annotate it for cloud
+  # identities: IRSA `eks.amazonaws.com/role-arn`, GKE `iam.gke.io/gcp-service-account`, Azure
+  # `azure.workload.identity/client-id` (plus the pod label azure.workload.identity/use=true).
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  # Dev clusters without DNS for Keycloak: a socat sidecar in the API pod listens on
+  # localhost:<port> and forwards to the bundled Keycloak service, so the issuer
+  # http://localhost:<port>/realms/back-office works for the API as well as for a browser using
+  # `kubectl port-forward svc/<release>-keycloak-http <port>:80` (same trick as deploy/compose).
+  oidcLoopback:
+    enabled: false
+    port: 8180
+    # Defaults to <release>-keycloak-http:80.
+    target: ""
+    image: alpine/socat:1.8.0.3
+  # HPA on CPU (and optionally requests per second through a custom-metrics adapter).
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: ""
+    requestsPerSecond:
+      enabled: false
+      # Per-pod metric served by prometheus-adapter / KEDA, e.g. from
+      # rate(http_server_requests_seconds_count{uri=~"/api/.*"}[2m])
+      metricName: backoffice_http_requests_per_second
+      averageValue: "50"
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 60
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 1
+
+  # Non-secret application configuration -> ConfigMap <fullname>-config (shared by all roles). Names on
+  # the right are the environment variables read by backend/app/src/main/resources/application.yml.
+  config:
+    # BACKOFFICE_PUBLIC_URL: external URL of the UI/API, used in links, MR notes, as the OIDC post-logout
+    # redirect target and as the base of the LLM gateway / runner URLs handed to the fleet.
+    # Defaults to https://<ingress.host> (http without ingress.tls) when ingress is enabled, else http://<fullname>-web:8080.
+    publicUrl: ""
+    # CORS_ALLOWED_ORIGINS: comma separated. The web pod proxies /api so same-origin is the default.
+    corsAllowedOrigins: ""
+    # LOG_LEVEL for pl.mos.backoffice loggers.
+    logLevel: INFO
+    # AI_LOG_PROMPTS / AI_LOG_COMPLETIONS: log prompt/completion contents (never in production).
+    aiLogPrompts: false
+    aiLogCompletions: false
+    # LLM_TIMEOUT (ISO-8601 duration) and LLM_CONCURRENCY_PER_PROVIDER.
+    llmTimeout: PT10M
+    llmConcurrencyPerProvider: 4
+    # DB_POOL_SIZE (Hikari maximum pool size per pod). Connection budget: docs/runbooks/scaling.md.
+    dbPoolSize: 10
+    # TRACING_SAMPLING probability 0..1 (only relevant when OTLP export is enabled).
+    tracingSampling: "1.0"
+    # PIPELINE_EXECUTOR_THREADS / PIPELINE_RECOVER_ON_STARTUP.
+    pipelineExecutorThreads: 16
+    pipelineRecoverOnStartup: true
+    # EVAL_CONCURRENCY_PER_PROVIDER / EVAL_SEED_STARTER_CONTENT.
+    evalConcurrencyPerProvider: 2
+    evalSeedStarterContent: true
+    # Latency histograms for http.server.requests (needed for p95 alerts and dashboards).
+    httpHistogram: true
+    # Free-form extra keys copied verbatim into the ConfigMap (string values).
+    extra: {}
+
+# ---------------------------------------------------------------------------------------------
+# Worker (role worker: work_item consumers - run advance, benchmark attempts, CI completion, retention -,
+# ShedLock singletons, outbox relay). Only rendered in mode=split. Same image as the API.
+# ---------------------------------------------------------------------------------------------
+worker:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  probes:
+    startup:
+      enabled: true
+      failureThreshold: 30
+      periodSeconds: 5
+    liveness:
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+  # Workers stop claiming on SIGTERM and finish or release their leases (lease/3 heartbeats).
+  terminationGracePeriodSeconds: 90
+  preStopSleepSeconds: 0
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  priorityClassName: ""
+  extraEnv: []
+  # type: keda (PostgreSQL scaler on the work queue) | hpa (CPU) | none (fixed replicas)
+  autoscaling:
+    type: keda
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    keda:
+      pollingInterval: 15
+      cooldownPeriod: 300
+      scaleDownStabilizationSeconds: 300
+      # Replicas KEDA keeps when the scaler fails (e.g. PostgreSQL unreachable). Empty = no fallback.
+      fallbackReplicas: 2
+      sslmode: disable
+      # Due + in-flight items (09-scale-and-operations.md, work queue). One worker per targetQueryValue items.
+      query: "SELECT count(*) FROM work_item WHERE (status = 'READY' AND run_after <= now()) OR status = 'LEASED'"
+      targetQueryValue: "20"
+      activationTargetQueryValue: "0"
+      extraTriggers: []
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+# ---------------------------------------------------------------------------------------------
+# Migrations (role migrate, Flyway). App pods run with SPRING_FLYWAY_ENABLED=false.
+# ---------------------------------------------------------------------------------------------
+migration:
+  enabled: true
+  # Run the migrate role as an init container of every api/worker pod: auto | true | false.
+  # auto = true when the database is part of the release (bundled / CNPG: it does not exist yet during
+  # pre-install) or secrets come from External Secrets. Flyway's advisory lock serialises the pods.
+  # The Helm hook Job still runs on pre-upgrade (and pre-install for an external database).
+  initContainer: auto
+  hookDeletePolicy: before-hook-creation
+  backoffLimit: 2
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  javaToolOptions: "-XX:MaxRAMPercentage=75"
+  # Image with pg_isready for the wait-for-db init container.
+  waitImage: postgres:17-alpine
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  extraEnv: []
+
+# ---------------------------------------------------------------------------------------------
+# Web (Angular served by nginx-unprivileged on 8080, proxies /api, /oauth2, /login/oauth2, /logout to the API)
+# ---------------------------------------------------------------------------------------------
+web:
+  enabled: true
+  image:
+    repository: back-office/web
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8080
+    # Only used when type is NodePort.
+    nodePort: ""
+    annotations: {}
+  # API_UPSTREAM env var for nginx. Defaults to http://<fullname>-api:<api.service.port>.
+  apiUpstream: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv: []
+
+# ---------------------------------------------------------------------------------------------
+# Execution plane (ADR 0024). Agents run in the runner fleet (chart deploy/helm/back-office-runner),
+# which pulls jobs over HTTPS from the api (`/api/v1/runner/v2/**`). Pools and registration tokens are
+# managed in Administration -> Runner fleet. Nothing here creates pods.
+# ---------------------------------------------------------------------------------------------
+runner:
+  # RUNNER_MODE: FLEET (pull-based runner-controllers) | DOCKER (embedded, laptops only) | DISABLED.
+  mode: FLEET
+  # RUNNER_DEFAULT_TIMEOUT (ISO-8601) when a step/attempt does not set timeoutSeconds.
+  defaultTimeout: PT60M
+
+# ---------------------------------------------------------------------------------------------
+# Object storage (BlobStore port): artefacts > 64 kB, diffs, runner logs, uploads (ADR 0023).
+# type s3 works with AWS S3, GCS (XML API interoperability + HMAC keys), MinIO, Ceph RGW and S3
+# gateways in front of Azure Blob. filesystem is for single-node installs only.
+# ---------------------------------------------------------------------------------------------
+storage:
+  type: s3
+  s3:
+    # BACKOFFICE_STORAGE_S3_ENDPOINT. Empty = AWS default endpoint for the region. Derived for minio.enabled.
+    endpoint: ""
+    # BACKOFFICE_STORAGE_S3_REGION
+    region: us-east-1
+    # BACKOFFICE_STORAGE_S3_BUCKET (must exist; the bundled MinIO creates it)
+    bucket: back-office
+    # BACKOFFICE_STORAGE_S3_PATH_STYLE (MinIO and most gateways need true; forced for minio.enabled)
+    pathStyle: false
+    # BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT: endpoint written into presigned URLs when sandboxes and browsers
+    # reach the store under another name than the API does (e.g. in-cluster MinIO behind an ingress); "" = endpoint
+    presignEndpoint: ""
+    # BACKOFFICE_STORAGE_S3_SSE: "" (= NONE) | NONE | S3 (SSE-S3, AES256) | KMS (SSE-KMS)
+    sse: ""
+    # Static credentials -> Secret <fullname>-storage (BACKOFFICE_STORAGE_S3_ACCESS_KEY / _SECRET_KEY).
+    # Leave empty to use ambient credentials: IRSA / EKS Pod Identity, GKE Workload Identity.
+    accessKey: ""
+    secretKey: ""
+    # Existing Secret with keys BACKOFFICE_STORAGE_S3_ACCESS_KEY and BACKOFFICE_STORAGE_S3_SECRET_KEY.
+    existingSecret: ""
+    # Send checksums only when required (AWS_REQUEST_CHECKSUM_CALCULATION=when_required): needed for GCS
+    # and several S3 gateways, which reject the default CRC32 trailers of AWS SDK v2 >= 2.30.
+    checksumWhenRequired: false
+  filesystem:
+    # BACKOFFICE_STORAGE_FILESYSTEM_ROOT (also the mount path of the PVC)
+    path: /var/lib/back-office/blobs
+    existingClaim: ""
+    size: 20Gi
+    storageClass: ""
+    # ReadWriteMany is required as soon as more than one app pod mounts the volume.
+    accessMode: ReadWriteOnce
+
+# Bundled single-node MinIO for dev/evaluation (S3 on <fullname>-minio:9000, bucket storage.s3.bucket).
+# Credentials are generated into <fullname>-storage and kept across upgrades.
+minio:
+  enabled: false
+  image:
+    # MinIO stopped publishing community images in 2025; Chainguard publishes a free rebuild (:latest only).
+    repository: cgr.dev/chainguard/minio
+    tag: latest
+    # Pin for reproducible installs, e.g. sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b
+    digest: ""
+  clientImage: cgr.dev/chainguard/minio-client:latest
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# ---------------------------------------------------------------------------------------------
+# Signing keys (ADR 0025): Ed25519 key for provenance attestations (in-toto/DSSE) and signed runner
+# assignments. Env BACKOFFICE_SIGNING_KEYS_<n>_ID | _PRIVATE_KEY_PKCS8_BASE64 | _PUBLIC_KEY_X509_BASE64 |
+# _ACTIVE from one Secret (envFrom). Public keys are published at /.well-known/back-office/keys.
+# Production: create the Secret with deploy/scripts/gen-signing-key.sh and set existingSecret.
+# ---------------------------------------------------------------------------------------------
+signing:
+  existingSecret: ""
+  # Generate <fullname>-signing once with a pre-install/pre-upgrade hook Job (never overwritten, kept on
+  # uninstall). Ignored with existingSecret or External Secrets.
+  generate: true
+  keyIdPrefix: bo
+  # The Secret is optional for the pod when true; the API still refuses to start without a key, because the
+  # chart sets BACKOFFICE_SIGNING_ALLOW_EPHEMERAL=false (per-replica ephemeral keys cannot be verified elsewhere).
+  optional: false
+  opensslImage: alpine/openssl:3.5.2
+  kubectlImage: alpine/k8s:1.34.1
+
+# ---------------------------------------------------------------------------------------------
+# External integrations (non-secret part; tokens live in secrets.integrations)
+#
+# There is no GitLab/SCM configuration (ADR 0013): the platform never calls an SCM API. Project CI
+# calls Back Office with per-project CI tokens issued in the UI (stored hashed in the database), and
+# sandboxes reach repositories over git with a token that lives only in the runner cluster (chart
+# back-office-runner, gitCredentials).
+# ---------------------------------------------------------------------------------------------
+integrations:
+  jira:
+    # JIRA_URL, e.g. https://acme.atlassian.net ; JIRA_EMAIL of the API token owner.
+    url: ""
+    email: ""
+    # JIRA_ACCEPTANCE_CRITERIA_FIELD, e.g. customfield_10042
+    acceptanceCriteriaField: ""
+
+# ---------------------------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------------------------
+secrets:
+  # Application secret <fullname>-app: RUNNER_TOKEN_SECRET, BACKOFFICE_AUTH_LOCAL_SECRET_KEY and BACKOFFICE_SECRETS_KEY (generated),
+  # BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD (only when set), BACKOFFICE_AUTH_OIDC_CLIENT_SECRET (unless
+  # auth.oidc.existingSecret is used), SPRING_DATASOURCE_PASSWORD (external DB only),
+  # OTEL_EXPORTER_OTLP_HEADERS_AUTHORIZATION (Langfuse only).
+  # There is no API key any more (iteration 3, ADR 0016): users log in through OIDC, scripts use
+  # personal access tokens, CI uses project CI tokens. Setting the removed `apiKey`/`ciApiKey` fails the install.
+  create: true
+  # Name of a Secret you manage instead (must contain the keys above). Ignored when create=true.
+  existingSecret: ""
+  # HMAC secret for per-job tokens (bo_job_, LLM gateway and result callbacks). Generated (and kept
+  # across upgrades) when empty.
+  runnerTokenSecret: ""
+  # Connection secrets (ADR 0030, docs/guides/configuration.md "Connection secrets"): key-encryption key for the
+  # Jira API tokens stored as connections. BACKOFFICE_SECRETS_KEY = base64 of 32 bytes (`openssl rand -base64 32`).
+  # Generated (and kept across upgrades) when empty and secrets.create=true; with secrets.existingSecret put
+  # BACKOFFICE_SECRETS_KEY into your Secret. BACK IT UP: without it every stored connection token must be re-entered.
+  connectionsKey: ""
+  # Id stored with every sealed secret (ConfigMap BACKOFFICE_SECRETS_KEY_ID). Rotation: new key + new id here, the
+  # old one as "id:base64" in connectionsPreviousKeys; the worker re-wraps all secrets on start, then remove it.
+  connectionsKeyId: k1
+  # BACKOFFICE_SECRETS_PREVIOUS_KEYS (comma list of id:base64), decryption only.
+  connectionsPreviousKeys: ""
+
+  # Provider keys -> Secret <fullname>-provider-keys. Consumed only by api/worker (envFrom): sandboxed
+  # agents never see them, they call the LLM gateway with a per-job token (ADR 0024). Empty values are
+  # omitted from the Secret.
+  providerKeys:
+    create: true
+    existingSecret: ""
+    anthropicApiKey: ""
+    openaiApiKey: ""
+    googleGenaiApiKey: ""
+    mistralApiKey: ""
+    openaiCompatibleApiKey: ""
+    # Non-secret, kept here for backwards compatibility.
+    openaiCompatibleBaseUrl: ""
+    ollamaBaseUrl: ""
+
+  # Integration tokens -> Secret <fullname>-integrations, consumed by api/worker: JIRA_API_TOKEN. Git
+  # credentials and the commit identity of agents live in the runner cluster (chart back-office-runner,
+  # gitCredentials), never in the control plane (ADR 0024); the removed gitToken fails the install.
+  integrations:
+    create: true
+    existingSecret: ""
+    # Jira API token (basic auth with integrations.jira.email).
+    jiraApiToken: ""
+
+# ---------------------------------------------------------------------------------------------
+# Authentication and sessions (backoffice.auth.*, ADR 0016, docs/architecture/08-identity-and-access.md)
+#
+# The API is the backend-for-frontend: it performs the OIDC authorization code flow (PKCE) as a
+# confidential client and keeps the tokens server-side. Sessions are stored in PostgreSQL (Spring
+# Session JDBC, table SPRING_SESSION), so any number of API replicas share them - no sticky sessions.
+# Register the redirect URI <publicUrl>/login/oauth2/code/oidc at your identity provider.
+# ---------------------------------------------------------------------------------------------
+auth:
+  oidc:
+    # BACKOFFICE_AUTH_OIDC_ISSUER_URI, e.g. https://sso.example.com/realms/back-office or
+    # https://login.microsoftonline.com/<tenant-id>/v2.0. Must be reachable from the API pods AND equal
+    # to the `iss` the provider puts into tokens. Derived from the bundled Keycloak when keycloak.enabled.
+    issuerUri: ""
+    # BACKOFFICE_AUTH_OIDC_CLIENT_ID
+    clientId: back-office
+    # BACKOFFICE_AUTH_OIDC_CLIENT_SECRET. Production: leave empty and use existingSecret.
+    clientSecret: ""
+    # Existing Secret holding the client secret (key below). Takes precedence over clientSecret.
+    existingSecret: ""
+    existingSecretKey: client-secret
+    # BACKOFFICE_AUTH_OIDC_SCOPES (comma separated).
+    scopes: "openid,profile,email"
+  # BACKOFFICE_AUTH_REGISTRATION: INVITE_ONLY (invited e-mails and allowedEmailDomains only) | OPEN.
+  registration: INVITE_ONLY
+  # BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS: list (or comma separated string) of domains accepted
+  # without an invitation when registration=INVITE_ONLY, e.g. [example.com].
+  allowedEmailDomains: []
+  # BACKOFFICE_AUTH_BOOTSTRAP_ADMINS: e-mails that receive platform-admin on first login. The only way
+  # to get the first administrator - set at least one on a fresh install.
+  bootstrapAdmins: []
+  session:
+    # BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT / BACKOFFICE_AUTH_SESSION_ABSOLUTE_TIMEOUT (ISO-8601).
+    idleTimeout: PT30M
+    absoluteTimeout: PT12H
+  # BACKOFFICE_AUTH_COOKIE_SECURE: Secure flag of BO_SESSION. Keep true behind TLS; false only for
+  # plain-http dev clusters (the browser drops Secure cookies on http origins other than localhost).
+  cookieSecure: true
+  # BACKOFFICE_AUTH_GROUPS_CLAIM: ID token / userinfo claim with group names (Keycloak mapper `groups`,
+  # Entra ID `groups`, Google Workspace needs a custom claim).
+  groupsClaim: groups
+  # Local accounts: e-mail + password with optional TOTP, alongside OIDC (ADR 0021).
+  local:
+    # BACKOFFICE_AUTH_LOCAL_ENABLED: hard switch; the platform setting "local login" can only narrow it.
+    enabled: true
+    # BACKOFFICE_AUTH_LOCAL_SECRET_KEY (Secret <fullname>-app): base64 of 32 bytes, encrypts TOTP secrets
+    # and signs MFA step tokens. Generated (and kept across upgrades) when empty and secrets.create=true.
+    # With secrets.existingSecret, put the key into your Secret (`openssl rand -base64 32`). Changing it
+    # invalidates every enrolled authenticator and recovery code.
+    secretKey: ""
+    # First platform admin of an installation without an identity provider: created with a forced
+    # password change when the database has no user yet. The password goes to Secret <fullname>-app
+    # (BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD); remove both values after the first login.
+    bootstrapAdminEmail: ""
+    bootstrapAdminPassword: ""
+    # BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY: lifetime of set-password / reset links (ISO-8601).
+    resetLinkValidity: PT24H
+    lockout:
+      # Defaults of the platform setting "lockout" (editable in Administration -> Settings).
+      maxFailures: 5
+      lockDuration: PT15M
+    throttle:
+      # Per source IP and API replica: sign-in attempts allowed per window before 429.
+      maxAttempts: 20
+      window: PT5M
+
+# ---------------------------------------------------------------------------------------------
+# Bundled Keycloak (evaluation installs). `keycloak` below holds the values of the codecentric/keycloakx
+# subchart; `bundledKeycloak` holds what this chart renders around it: the realm import, the admin
+# and DB credentials, an Ingress, and the derived issuer. Production: run Keycloak (or any OIDC
+# provider) separately and manage the realm there - the import is for first installs only (Keycloak
+# skips a realm that already exists, so later changes to these values do not reach it).
+# ---------------------------------------------------------------------------------------------
+bundledKeycloak:
+  # Public base URL of Keycloak (KC_HOSTNAME). Browser and API pods must both reach it.
+  # Default: http(s)://<ingress.host> when the Ingress below is enabled, else
+  # http://localhost:<api.oidcLoopback.port> (kubectl port-forward + api.oidcLoopback, dev clusters).
+  url: ""
+  realm: back-office
+  admin:
+    username: admin
+    # Generated (and kept across upgrades) when empty. Secret <release>-keycloak-env, key KC_BOOTSTRAP_ADMIN_PASSWORD.
+    password: ""
+  database:
+    # Keycloak uses the Back Office PostgreSQL (embedded or external) with its own schema. The password
+    # is taken from postgresql.auth.password / externalDatabase.password; with existing Secrets set
+    # keycloak.database.existingSecret + existingSecretKey instead.
+    schema: keycloak
+  realmImport:
+    # sslRequired of the imported realm: external (TLS except from private networks) | all | none.
+    sslRequired: external
+    # Import the test users of deploy/keycloak/realm-back-office.json (admin/dev/approver/viewer@example.com,
+    # passwords = local part). Never on a reachable installation.
+    includeDemoUsers: false
+    # Client secret written into the realm. Defaults to auth.oidc.clientSecret; set it when the API
+    # reads the secret from auth.oidc.existingSecret (same value).
+    clientSecret: ""
+    # Additional redirect URIs besides <publicUrl>/login/oauth2/code/oidc.
+    extraRedirectUris: []
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: sso.example.com
+    tls: []
+    #  - secretName: sso-tls
+    #    hosts: [sso.example.com]
+
+# codecentric/keycloakx subchart (https://github.com/codecentric/helm-charts, official Keycloak image).
+# Service <release>-keycloak-http:80. The wiring below uses only .Release.Name because a subchart cannot
+# see this chart's values: keep the `-keycloak-env` / `-keycloak-realm` names as they are.
+keycloak:
+  enabled: false
+  args: ["start", "--import-realm"]
+  http:
+    relativePath: "/"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      memory: 1536Mi
+  extraEnvFrom: |
+    - secretRef:
+        name: '{{ .Release.Name }}-keycloak-env'
+  # Keycloak does not create a missing schema: wait for PostgreSQL and create KC_DB_SCHEMA first.
+  extraInitContainers: |
+    - name: create-schema
+      image: docker.io/library/postgres:16-alpine
+      command: ["sh", "-c"]
+      args:
+        - >-
+          export PGHOST="$KC_DB_URL_HOST" PGPORT="$KC_DB_URL_PORT" PGDATABASE="$KC_DB_URL_DATABASE"
+          PGUSER="$KC_DB_USERNAME" PGPASSWORD="${KC_DB_PASSWORD:-$PGPASSWORD}";
+          until psql -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS \"$KC_DB_SCHEMA\""; do
+          echo waiting for PostgreSQL; sleep 3; done
+      {{- if .Values.database.existingSecret }}
+      env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.database.existingSecret }}
+              key: {{ .Values.database.existingSecretKey | default "password" }}
+      {{- end }}
+      envFrom:
+        - secretRef:
+            name: '{{ .Release.Name }}-keycloak-env'
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { memory: 64Mi }
+  extraVolumes: |
+    - name: realm-import
+      secret:
+        secretName: '{{ .Release.Name }}-keycloak-realm'
+  extraVolumeMounts: |
+    - name: realm-import
+      mountPath: /opt/keycloak/data/import
+      readOnly: true
+  # Only when the DB password lives in an existing Secret (see bundledKeycloak.database).
+  database:
+    existingSecret: ""
+    existingSecretKey: ""
+
+# ---------------------------------------------------------------------------------------------
+# Database. postgresql.mode: "" (auto) | bundled | cnpg | external
+#   bundled  - Bitnami PostgreSQL subchart below (postgresql.enabled=true), dev and evaluation
+#   cnpg     - CloudNativePG Cluster (cnpg.*), operator installed separately; postgresql.enabled=false
+#   external - managed PostgreSQL (externalDatabase.*); postgresql.enabled=false
+# Auto = bundled when postgresql.enabled, else external.
+# ---------------------------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  mode: ""
+  # Values below are passed to the Bitnami subchart. Service name: <fullname>-postgresql.
+  auth:
+    username: backoffice
+    password: backoffice
+    database: backoffice
+    # Provide your own Secret with keys `password` (user) and `postgres-password` (admin) instead
+    # of inline passwords.
+    existingSecret: ""
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+  architecture: standalone
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resourcesPreset: "small"
+
+externalDatabase:
+  # Used when postgresql.enabled=false and mode is external. Direct (primary) endpoint: Flyway,
+  # LISTEN/NOTIFY and KEDA use it; it must NOT be a transaction-mode pooler.
+  host: ""
+  port: 5432
+  database: backoffice
+  username: backoffice
+  # Inline password (stored in <fullname>-app as SPRING_DATASOURCE_PASSWORD) ...
+  password: ""
+  # ... or an existing Secret and the key holding the password.
+  existingSecret: ""
+  passwordKey: password
+  # Appended to both JDBC URLs, e.g. "sslmode=require".
+  jdbcParams: ""
+  # Optional managed pooler for the Hikari pools (RDS Proxy, Azure built-in PgBouncer on 6432, Cloud SQL
+  # managed connection pooling). The chart adds prepareThreshold=0 for transaction pooling.
+  pooler:
+    host: ""
+    port: 5432
+
+# CloudNativePG (postgresql.mode=cnpg). Services <cluster>-rw/-ro/-r, Secret <cluster>-app.
+cnpg:
+  # Defaults to <fullname>-pg.
+  clusterName: ""
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:17
+  database: backoffice
+  owner: backoffice
+  storage:
+    size: 20Gi
+    storageClass: ""
+  walStorage:
+    enabled: false
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "1"
+      memory: 4Gi
+    limits:
+      memory: 4Gi
+  # Connection budget (docs/runbooks/scaling.md): (api + worker pods) x (dbPoolSize + 1 listener) + KEDA
+  # + migrations + superuser reserve.
+  parameters:
+    max_connections: "300"
+    shared_buffers: 1GB
+    work_mem: 16MB
+    idle_in_transaction_session_timeout: "60000"
+  # preferred = spread when possible; required = never two instances on one node
+  podAntiAffinityType: preferred
+  # Annotate for cloud identities used by backups (IRSA / Workload Identity)
+  serviceAccountTemplate: {}
+  monitoring:
+    enablePodMonitor: false
+  pooler:
+    # PgBouncer (transaction mode) for the Hikari pools; LISTEN keeps the direct <cluster>-rw connection
+    enabled: false
+    instances: 2
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "25"
+  backup:
+    enabled: false
+    # plugin = Barman Cloud Plugin (ObjectStore CR, plugin installed separately; recommended)
+    # barmanObjectStore = deprecated in-tree backup of CNPG < 1.31
+    method: plugin
+    destinationPath: ""        # s3://back-office-backups/pg
+    endpointURL: ""            # e.g. http://minio.storage:9000 for MinIO / Ceph
+    retentionPolicy: 30d
+    # six-field cron (seconds first)
+    schedule: "0 0 3 * * *"
+    s3Credentials:
+      inheritFromIAMRole: false
+      secretName: ""
+      accessKeyIdKey: ACCESS_KEY_ID
+      secretAccessKeyKey: ACCESS_SECRET_KEY
+
+# Optional PgBouncer Deployment in front of an external PostgreSQL without a managed pooler.
+pgbouncer:
+  enabled: false
+  # Pin a tag you verified; any image honouring these env names works (edoburu/pgbouncer).
+  image: edoburu/pgbouncer:v1.24.1-p1
+  replicas: 2
+  port: 6432
+  maxClientConn: 1000
+  defaultPoolSize: 25
+  serverTlsSslmode: prefer
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# ---------------------------------------------------------------------------------------------
+# Ingress (single host: / -> web; the web pod proxies /api, /oauth2, /login/oauth2 and /logout to the
+# API, so the session cookie is first-party and same-origin). BACKOFFICE_PUBLIC_URL (links, OIDC
+# post-logout redirect) is derived from this host unless api.config.publicUrl is set.
+# ---------------------------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  #  cert-manager.io/cluster-issuer: letsencrypt
+  #  nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # SSE event stream
+  host: back-office.example.com
+  path: /
+  pathType: Prefix
+  tls: []
+  #  - secretName: back-office-tls
+  #    hosts: [back-office.example.com]
+
+# ---------------------------------------------------------------------------------------------
+# Observability
+# ---------------------------------------------------------------------------------------------
+# Generic OTLP export (any collector, e.g. deploy/observability/otel-collector.yaml). Traces are ignored
+# when langfuse.enabled=true (Langfuse wins).
+otel:
+  enabled: false
+  # OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+  tracesEndpoint: http://otel-collector.observability:4318/v1/traces
+  # OTEL_METRICS_ENABLED / OTEL_EXPORTER_OTLP_METRICS_ENDPOINT (alternative to Prometheus scraping)
+  metricsEnabled: false
+  metricsEndpoint: http://otel-collector.observability:4318/v1/metrics
+  # OTEL_LOGS_ENABLED / OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
+  logsEnabled: false
+  logsEndpoint: http://otel-collector.observability:4318/v1/logs
+  # deployment.environment resource attribute
+  environment: production
+  # Optional Authorization header value (stored in the app Secret).
+  headersAuthorization: ""
+
+# Prometheus Operator objects and Grafana dashboards (deploy/observability/).
+metrics:
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+  prometheusRule:
+    enabled: false
+    namespace: ""
+    labels: {}
+    thresholds:
+      apiErrorRatio: 0.02
+      apiP95Seconds: 0.3
+      oldestReadySeconds: 300
+      budgetWarn: 0.8
+      listenReconnects15m: 3
+    extraRules: []
+  # ConfigMaps picked up by the Grafana sidecar (kube-prometheus-stack: label grafana_dashboard=1).
+  dashboards:
+    enabled: false
+    namespace: ""
+    labels:
+      grafana_dashboard: "1"
+    annotations:
+      grafana_folder: Back Office
+
+# ---------------------------------------------------------------------------------------------
+# NetworkPolicies for the control plane (requires a CNI that enforces them).
+# ---------------------------------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+  # Namespace (and optionally pod) labels of the ingress controller allowed to reach web and api.
+  ingressController:
+    namespaceLabels:
+      kubernetes.io/metadata.name: ingress-nginx
+    podLabels: {}
+    # Explicit NetworkPolicyPeers instead (e.g. ipBlock of the VPC for AWS ALB target-type ip, or the
+    # Application Gateway subnet on AKS).
+    peers: []
+  # Namespace labels of Prometheus (scrapes :8080/actuator/prometheus). Empty = no scrape rule.
+  monitoring:
+    namespaceLabels:
+      kubernetes.io/metadata.name: monitoring
+  dnsPodLabels:
+    k8s-app: kube-dns
+  database:
+    # CIDRs of an external PostgreSQL (and its pooler). Empty = any address on the DB port.
+    cidrs: []
+  egress:
+    # HTTPS to the internet: LLM providers, OIDC issuer, Jira, cloud object storage APIs.
+    internet:
+      enabled: true
+      ports: [443]
+      except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    # Peers of an in-cluster OTel collector (list of NetworkPolicyPeer), e.g.
+    # - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: observability } }
+    otelCollector: []
+    # Additional egress rules (self-hosted OIDC or Ollama inside private ranges, S3 gateway, ...)
+    extra: []
+  api:
+    # e.g. a runner fleet in the same cluster talking to the api Service directly
+    extraIngress: []
+  web:
+    extraIngress: []
+  minio:
+    extraIngress: []
+
+# ---------------------------------------------------------------------------------------------
+# External Secrets Operator (external-secrets.io/v1). When enabled, the chart renders ExternalSecrets
+# instead of its own Secrets. Each remote secret is a map whose keys are the environment variable names
+# (docs/guides/configuration.md). Use `data` instead of `remoteKey` for per-key mappings.
+# ---------------------------------------------------------------------------------------------
+externalSecrets:
+  enabled: false
+  refreshInterval: 1h
+  secretStoreRef:
+    name: back-office
+    kind: ClusterSecretStore
+  # <fullname>-app: RUNNER_TOKEN_SECRET, BACKOFFICE_AUTH_LOCAL_SECRET_KEY, BACKOFFICE_SECRETS_KEY, BACKOFFICE_AUTH_OIDC_CLIENT_SECRET, ...
+  app:
+    remoteKey: back-office/app
+    data: []
+  # <fullname>-provider-keys: ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
+  providerKeys:
+    remoteKey: back-office/provider-keys
+    data: []
+  # <fullname>-integrations: JIRA_API_TOKEN, ...
+  integrations:
+    remoteKey: back-office/integrations
+    data: []
+  # <fullname>-db (external database without externalDatabase.existingSecret): key `password`
+  database:
+    remoteKey: back-office/db
+    data: []
+  # <fullname>-storage: BACKOFFICE_STORAGE_S3_ACCESS_KEY / _SECRET_KEY (skip with IRSA / Workload Identity)
+  storage:
+    enabled: false
+    remoteKey: back-office/storage
+    data: []
+  # <fullname>-signing: BACKOFFICE_SIGNING_KEYS_0_* (generate with deploy/scripts/gen-signing-key.sh)
+  signing:
+    enabled: true
+    remoteKey: back-office/signing
+    data: []
+
+# Langfuse project keys used by the API to push traces (OTLP basic auth: base64(pk:sk)).
+# Create a project in Langfuse first, then set these and `helm upgrade`.
+langfuseAuth:
+  publicKey: ""
+  secretKey: ""
+  # Existing Secret that already contains the full header value `Basic <base64(pk:sk)>` under
+  # `existingSecretKey`. Takes precedence over publicKey/secretKey.
+  existingSecret: ""
+  existingSecretKey: OTEL_EXPORTER_OTLP_HEADERS_AUTHORIZATION
+  # LANGFUSE_URL shown in the UI (links to traces). Defaults to http://<fullname>-langfuse-web:3000.
+  url: ""
+
+# Langfuse subchart (https://github.com/langfuse/langfuse-k8s). Only a minimal set of values is
+# listed; everything else is the subchart default. When enabling, provide the three secrets below
+# (or let the chart auto-generate them on first install) and `postgresql.auth.password`.
+langfuse:
+  enabled: false
+  langfuse:
+    nextauth:
+      # Public URL of Langfuse (set when you expose it through an Ingress).
+      url: http://localhost:3000
+      secret:
+        value: ""
+    salt:
+      value: ""
+    encryptionKey:
+      value: ""
+    features:
+      telemetryEnabled: false
+  # Langfuse brings its own PostgreSQL (groundhog2k/postgres). The nameOverride keeps it apart from
+  # the application database (<release>-postgresql vs <release>-langfuse-postgresql). Do not remove.
+  postgresql:
+    deploy: true
+    nameOverride: langfuse-postgresql
+    auth:
+      password: ""
+  clickhouse:
+    deploy: true
+    # The ClickHouse operator CRDs must exist in the cluster. Set false for offline `helm template`.
+    crdCheck: true
+  redis:
+    deploy: true
+    nameOverride: langfuse-redis
+  s3:
+    deploy: true
+    nameOverride: langfuse-s3

@@ -1,0 +1,27 @@
+# AKS execution plane with Pod Sandboxing (Kata VM isolation, GA): node pool
+#   az aks nodepool add ... --os-sku AzureLinux --workload-runtime KataVmIsolation --node-vm-size Standard_D4s_v3
+# AKS creates the RuntimeClass kata-vm-isolation. There is no gVisor on AKS: both levels use Kata.
+# Pod VM memory = memory limit (512Mi when unset); CPU limits round up to whole vCPUs.
+backOffice:
+  url: https://back-office.example.com
+  poolId: aks-westeurope
+backend: AGENT_SANDBOX
+agentSandbox:
+  install: true
+runtimeClasses:
+  standard: kata-vm-isolation
+  high: kata-vm-isolation
+  create: false
+controller:
+  image:
+    repository: acmeplatform.azurecr.io/back-office/runner-controller
+registration:
+  existingSecret: back-office-runner-registration
+maxConcurrent: 8
+warmPool: { size: 3 }
+autoscaling: { type: keda, minReplicas: 2, maxReplicas: 5 }
+caches:
+  enabled: true
+  storageClass: azurefile-csi-premium
+egressProxy:
+  image: acmeplatform.azurecr.io/back-office/egress-proxy:0.1.0

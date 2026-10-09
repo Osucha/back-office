@@ -1,0 +1,165 @@
+# Optional Langfuse v3 stack for local tracing (profile `langfuse`), simplified from
+# https://langfuse.com/self-hosting/docker-compose. Heavy: ClickHouse + Redis + MinIO + its own Postgres.
+#
+#   docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.langfuse.yml \
+#     --profile langfuse up -d
+#
+# Then open http://localhost:3000, create an organisation/project, copy the public/secret keys and set
+# in .env:
+#   LANGFUSE_ENABLED=true
+#   OTEL_TRACES_ENABLED=true
+#   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:3000/api/public/otel/v1/traces   (when the API runs on the host)
+#   OTEL_EXPORTER_OTLP_HEADERS_AUTHORIZATION=Basic <base64(pk-lf-...:sk-lf-...)>
+# For the `full` profile use http://langfuse-web:3000/... instead of localhost.
+#
+# All passwords below are development defaults. Override through .env.
+
+services:
+  langfuse-web:
+    profiles: ["langfuse"]
+    image: docker.langfuse.com/langfuse/langfuse:3
+    container_name: back-office-langfuse-web
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+    ports:
+      - "${LANGFUSE_PORT:-3000}:3000"
+    environment: &langfuse-env
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:-dev-salt-change-me}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-dev-nextauth-secret}
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD:-miniosecret}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD:-miniosecret}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ${LANGFUSE_REDIS_PASSWORD:-redissecret}
+      REDIS_TLS_ENABLED: "false"
+      # Optional bootstrap so no click-through is needed (uncomment and set):
+      # LANGFUSE_INIT_ORG_ID: backoffice
+      # LANGFUSE_INIT_PROJECT_ID: backoffice
+      # LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-local
+      # LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-local
+      # LANGFUSE_INIT_USER_EMAIL: owner@example.com
+      # LANGFUSE_INIT_USER_NAME: Owner
+      # LANGFUSE_INIT_USER_PASSWORD: change-me-12345
+    restart: unless-stopped
+
+  langfuse-worker:
+    profiles: ["langfuse"]
+    image: docker.langfuse.com/langfuse/langfuse-worker:3
+    container_name: back-office-langfuse-worker
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+    environment: *langfuse-env
+    restart: unless-stopped
+
+  langfuse-postgres:
+    profiles: ["langfuse"]
+    image: postgres:16-alpine
+    container_name: back-office-langfuse-postgres
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse}
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  langfuse-clickhouse:
+    profiles: ["langfuse"]
+    image: clickhouse/clickhouse-server:24
+    container_name: back-office-langfuse-clickhouse
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  langfuse-redis:
+    profiles: ["langfuse"]
+    image: redis:7-alpine
+    container_name: back-office-langfuse-redis
+    command: ["redis-server", "--requirepass", "${LANGFUSE_REDIS_PASSWORD:-redissecret}", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${LANGFUSE_REDIS_PASSWORD:-redissecret} ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  langfuse-minio:
+    profiles: ["langfuse"]
+    image: minio/minio:latest
+    container_name: back-office-langfuse-minio
+    entrypoint: ["sh", "-c", "mkdir -p /data/langfuse && minio server --address :9000 --console-address :9001 /data"]
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_PASSWORD:-miniosecret}
+    ports:
+      # Media uploads are fetched by the browser directly from MinIO on this port.
+      - "9090:9000"
+      - "9091:9001"
+    volumes:
+      - langfuse-minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || curl -f http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  langfuse-postgres-data:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
+  langfuse-minio-data:

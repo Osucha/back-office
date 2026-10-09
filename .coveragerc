@@ -1,0 +1,12 @@
+# coverage.py settings for the Python of runner/ and ci/ (GR-Q3, SonarQube sonar.python.coverage.reportPaths).
+#   python3 -m coverage run -m unittest discover -s runner/tests
+#   python3 -m coverage xml -o build/coverage/python-coverage.xml
+[run]
+branch = True
+# paths in the XML relative to the repository root: the report matches the SonarQube sources on any checkout
+relative_files = True
+source =
+    runner
+    ci
+omit =
+    */tests/*

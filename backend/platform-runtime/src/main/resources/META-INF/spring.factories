@@ -1,0 +1,2 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+pl.mos.backoffice.platform.config.PlatformRoleEnvironmentPostProcessor

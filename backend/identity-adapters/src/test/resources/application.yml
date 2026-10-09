@@ -1,0 +1,32 @@
+spring:
+  jpa:
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    out-of-order: true
+  session:
+    jdbc:
+      initialize-schema: never
+  jackson:
+    default-property-inclusion: non_null
+
+backoffice:
+  public-url: http://localhost:4200
+  auth:
+    cookie-secure: false
+    bootstrap-admins: boot.admin@example.com
+    session:
+      idle-timeout: PT30M
+      absolute-timeout: PT12H
+    local:
+      enabled: true
+      # test-only key (base64 of 32 bytes)
+      secret-key: dGVzdC1vbmx5LWxvY2FsLWF1dGgta2V5LTMyLWJ5dGU=
+      throttle:
+        max-attempts: 20
+        window: PT5M
+
+logging:
+  level:
+    AUDIT: WARN

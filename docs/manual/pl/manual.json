@@ -1,0 +1,42 @@
+{
+  "title": "Podręcznik Back Office",
+  "description": "Podręcznik użytkownika i administratora (polski). Te same rozdziały i kotwice co w ../manual.json; każdy plik to tłumaczenie odpowiadającego rozdziału angielskiego.",
+  "groups": [
+    {
+      "title": "Praca z Back Office",
+      "chapters": [
+        { "slug": "getting-started", "title": "Pierwsze kroki", "anchors": ["what-is", "concepts", "baton", "first-steps"] },
+        { "slug": "your-turn", "title": "Twoja kolej i skrzynka", "anchors": ["home", "inbox", "gates", "write-confirmations", "assign-steps"] },
+        { "slug": "projects", "title": "Projekty", "anchors": ["create-project", "who-creates", "repositories", "no-repository", "members", "project-ci", "spec-kit", "project-connections", "sandbox-policy", "project-budget"] },
+        { "slug": "workflows", "title": "Projektowanie workflowów", "anchors": ["designer", "nodes", "step-repositories", "decisions", "gates-config", "write-confirmations", "start-run"] },
+        { "slug": "runs", "title": "Uruchomienia", "anchors": ["run-list", "run-detail", "repository-results", "retry-cancel", "provenance", "ci-executions"] },
+        { "slug": "task-library", "title": "Biblioteka zadań", "anchors": ["templates", "interfaces", "skills"] },
+        { "slug": "evaluation", "title": "Modele i ewaluacja", "anchors": ["models", "suites", "benchmarks"] },
+        { "slug": "costs-insights", "title": "Koszty, budżety i wskaźniki", "anchors": ["costs", "budgets", "insights"] },
+        { "slug": "account", "title": "Twoje konto", "anchors": ["profile", "notifications", "mfa", "tokens", "connections"] }
+      ]
+    },
+    {
+      "title": "Integracje",
+      "chapters": [
+        { "slug": "integrations-jira", "title": "Jira", "anchors": ["jira-overview", "jira-least-privilege", "jira-token", "jira-scoped-token", "jira-connections", "jira-system-connection", "jira-personal-connections", "jira-token-expiry", "jira-config", "jira-test", "jira-tasks", "jira-act-as", "jira-write-approval", "jira-intake"] },
+        { "slug": "integrations-gitlab-ci", "title": "GitLab CI i inne CI", "anchors": ["ci-overview", "ci-token", "ci-variables", "ci-template", "ci-other"] },
+        { "slug": "integrations-git", "title": "Dostęp agentów do gita", "anchors": ["git-overview", "git-least-privilege", "gitlab-token", "gitlab-read-token", "gitlab-push-token", "gitlab-protect-branches", "github-token", "git-install", "git-multi-repo", "git-rotate"] },
+        { "slug": "integrations-llm", "title": "Dostawcy LLM", "anchors": ["llm-overview", "anthropic", "openai", "google", "mistral", "ollama", "openai-compatible"] },
+        { "slug": "integrations-identity", "title": "Logowanie (OIDC i konta lokalne)", "anchors": ["oidc-overview", "keycloak", "entra", "google-oidc", "gitlab-oidc", "local-accounts"] },
+        { "slug": "integrations-ide", "title": "IDE i MCP", "anchors": ["pat", "claude-code", "cursor", "vscode", "mcp-tools"] },
+        { "slug": "integrations-other", "title": "Magazyn, podpisy i obserwowalność", "anchors": ["storage", "signing", "observability"] }
+      ]
+    },
+    {
+      "title": "Utrzymanie platformy",
+      "chapters": [
+        { "slug": "agent-execution", "title": "Jak działają zadania agentów", "anchors": ["lifecycle", "isolation-levels", "network", "credentials", "budgets-in-sandbox", "timeouts", "provenance-attestations", "prompt-injection"] },
+        { "slug": "runner-fleet", "title": "Flota runnerów", "anchors": ["pools", "add-runner", "sandbox-policies", "agent-jobs"] },
+        { "slug": "administration", "title": "Administracja", "anchors": ["users", "groups", "roles-grants", "project-managers", "connections", "platform-settings", "audit", "operations"] },
+        { "slug": "troubleshooting", "title": "Rozwiązywanie problemów", "anchors": ["login", "jobs", "runs", "providers", "ci"] },
+        { "slug": "glossary", "title": "Słowniczek", "anchors": [] }
+      ]
+    }
+  ]
+}

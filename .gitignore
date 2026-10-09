@@ -1,0 +1,65 @@
+# --- OS / editors ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+*.iml
+.vscode/
+!.vscode/extensions.json
+.fleet/
+
+# --- secrets / local config -----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+deploy/compose/.env
+*.local.yaml
+values-*.local.yaml
+*.pem
+*.key
+
+# --- backend (Gradle / Kotlin) --------------------------------------------------------------
+backend/.gradle/
+backend/**/build/
+# IntelliJ output dirs at module level only (a **/out/ rule hid every adapter/out source package)
+backend/*/out/
+backend/*/bin/
+backend/.kotlin/
+backend/**/*.log
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# --- frontend (Angular / npm) ---------------------------------------------------------------
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/coverage/
+frontend/junit*.xml
+frontend/npm-debug.log*
+frontend/.npm/
+
+# --- runner (Python) -------------------------------------------------------------------------
+__pycache__/
+*.pyc
+.coverage
+.coverage.*
+# coverage reports for the SonarQube scan (GR-Q3), e.g. build/coverage/python-coverage.xml
+/build/
+.pytest_cache/
+runner/.venv/
+
+# --- helm ------------------------------------------------------------------------------------
+deploy/helm/**/charts/
+deploy/helm/**/rendered/
+dist/
+
+# --- CI caches -------------------------------------------------------------------------------
+.gradle/
+.npm/
+
+# local reference material, never committed
+_temp_ref/
+
+# local Claude Code state (agent worktrees, settings)
+.claude/

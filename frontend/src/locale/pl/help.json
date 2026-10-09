@@ -1,0 +1,17 @@
+{
+  "help.title": "Podręcznik",
+  "help.lead": "Jak działa Back Office, jak podłączyć Jirę, CI, dostawców LLM i IDE oraz jak utrzymywać platformę. Na dowolnej stronie naciśnij {$START_TAG_KBD}F1{$CLOSE_TAG_KBD}, aby zobaczyć pomoc do tej strony.",
+  "help.toc.label": "Spis treści podręcznika",
+  "help.toc.loading": "Wczytywanie spisu treści",
+  "help.unavailable": "Podręcznik nie jest dostępny na tym serwerze.",
+  "help.search.label": "Szukaj w podręczniku",
+  "help.search.results": "Wyniki wyszukiwania",
+  "help.search.searching": "Przeszukiwanie podręcznika",
+  "help.search.none": "Nic w podręczniku nie pasuje do „{$INTERPOLATION}”. Spróbuj mniej słów lub innych słów.",
+  "help.search.count": "{count, plural, one {# sekcja} few {# sekcje} many {# sekcji} other {# sekcji}}",
+  "help.chapter.loading": "Wczytywanie rozdziału",
+  "help.chapter.missing": "Ten rozdział jest w przygotowaniu.",
+  "help.pager.label": "Rozdziały",
+  "help.pager.previous": "Poprzedni",
+  "help.pager.next": "Następny"
+}

@@ -1,0 +1,63 @@
+# detekt 2.x configuration for the Back Office backend (docs/architecture/guardrails.md).
+#
+# Built upon the default rule set (buildUponDefaultConfig = true in build.gradle.kts); only deliberate
+# deviations are listed here, each with its reason. detekt 2 has no maxIssues threshold: a run fails on
+# any finding. The task is not part of `check` yet (existing code needs a cleanup first), run it with
+#   ./gradlew detektMain detektTest --continue
+#
+# Legitimate exceptions (the one SystemClock adapter behind the shared-kernel Clock port, a CLI
+# entry point) are marked at the call site with @Suppress("ForbiddenMethodCall") and a comment.
+
+complexity:
+  LongParameterList:
+    # Use-case commands, JPA entities and REST DTOs reconstruct many fields; default parameters are
+    # how Kotlin models optional fields, not a smell.
+    allowedFunctionParameters: 8
+    allowedConstructorParameters: 10
+    ignoreDefaultParameters: true
+    ignoreDataClasses: true
+  TooManyFunctions:
+    # Services with one method per use case and REST controllers exceed the default by design.
+    active: false
+
+style:
+  MaxLineLength:
+    maxLineLength: 140
+  MagicNumber:
+    # Domain defaults (timeouts, limits) are named at the declaration site; the rule is mostly noise here.
+    active: false
+  ReturnCount:
+    active: false
+  ForbiddenComment:
+    active: false
+
+  # GR-Q1: time only through the injected Clock (shared-kernel port / java.time.Clock), never the
+  # argument-less now(); no sleeping; no stdout. Requires type resolution (detektMain/detektTest).
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - value: 'kotlin.io.print'
+        reason: 'GR-Q1: use an SLF4J logger instead of print.'
+      - value: 'kotlin.io.println'
+        reason: 'GR-Q1: use an SLF4J logger instead of println.'
+      - value: 'java.io.PrintStream.print'
+        reason: 'GR-Q1: use an SLF4J logger instead of System.out/System.err.'
+      - value: 'java.io.PrintStream.println'
+        reason: 'GR-Q1: use an SLF4J logger instead of System.out/System.err.'
+      - value: 'java.lang.Thread.sleep'
+        reason: 'GR-Q1: no sleeping - schedule, use a timeout, or in tests await a condition (Awaitility) / a fake Clock.'
+      - value: 'java.time.Instant.now()'
+        reason: 'GR-Q1: inject a Clock and call Instant.now(clock) (or the shared-kernel Clock port).'
+      - value: 'java.time.LocalDateTime.now()'
+        reason: 'GR-Q1: inject a Clock and call LocalDateTime.now(clock).'
+      - value: 'java.time.LocalDate.now()'
+        reason: 'GR-Q1: inject a Clock and call LocalDate.now(clock).'
+      - value: 'java.time.OffsetDateTime.now()'
+        reason: 'GR-Q1: inject a Clock and call OffsetDateTime.now(clock).'
+      - value: 'java.time.ZonedDateTime.now()'
+        reason: 'GR-Q1: inject a Clock and call ZonedDateTime.now(clock).'
+
+naming:
+  FunctionNaming:
+    # Tests use backtick names describing the behaviour.
+    ignoreAnnotated: ['Test', 'ParameterizedTest']

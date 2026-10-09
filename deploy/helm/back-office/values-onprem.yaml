@@ -1,0 +1,121 @@
+# Reference: on-premises Kubernetes (kubeadm, RKE2, OpenShift, Talos) with CloudNativePG, MinIO/Ceph
+# object storage and gVisor on the runner nodes (docs/guides/cloud-reference.md#on-premises). Medium size.
+#
+# Prerequisites: CloudNativePG operator (+ Barman Cloud Plugin for backups), KEDA, ingress-nginx,
+# cert-manager, a CNI that enforces NetworkPolicy (Calico, Cilium), an S3-compatible store (MinIO
+# cluster / AIStor, Ceph RGW, SeaweedFS, Garage) with a bucket and credentials, kube-prometheus-stack.
+
+mode: split
+
+api:
+  image:
+    repository: registry.example.internal/back-office/api
+  replicas: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+  config:
+    publicUrl: https://back-office.example.internal
+
+worker:
+  autoscaling:
+    type: keda
+    minReplicas: 2
+    maxReplicas: 20
+    keda:
+      sslmode: require
+
+web:
+  image:
+    repository: registry.example.internal/back-office/web
+  replicas: 2
+
+auth:
+  oidc:
+    issuerUri: https://sso.example.internal/realms/back-office
+    existingSecret: back-office-oidc
+  bootstrapAdmins: [platform-owner@example.com]
+
+secrets:
+  create: false
+  existingSecret: back-office-app
+  providerKeys: { create: false, existingSecret: back-office-provider-keys }
+  integrations: { create: false, existingSecret: back-office-integrations }
+
+# CloudNativePG: 3 instances (one per node), PgBouncer pooler for the Hikari pools, WAL archiving and
+# daily base backups to the object store through the Barman Cloud Plugin.
+postgresql:
+  enabled: false
+  mode: cnpg
+cnpg:
+  instances: 3
+  storage:
+    size: 50Gi
+    storageClass: local-nvme
+  walStorage:
+    enabled: true
+    size: 20Gi
+    storageClass: local-nvme
+  resources:
+    requests: { cpu: "4", memory: 16Gi }
+    limits: { memory: 16Gi }
+  parameters:
+    max_connections: "400"
+    shared_buffers: 4GB
+    effective_cache_size: 12GB
+    work_mem: 32MB
+  podAntiAffinityType: required
+  monitoring:
+    enablePodMonitor: true
+  pooler:
+    enabled: true
+    instances: 2
+  backup:
+    enabled: true
+    method: plugin
+    destinationPath: s3://back-office-pg-backups/
+    endpointURL: https://s3.example.internal
+    retentionPolicy: 30d
+    s3Credentials:
+      secretName: back-office-pg-backup-s3     # keys ACCESS_KEY_ID, ACCESS_SECRET_KEY
+
+storage:
+  type: s3
+  s3:
+    endpoint: https://s3.example.internal
+    region: us-east-1
+    bucket: back-office-artifacts
+    pathStyle: true
+    existingSecret: back-office-storage          # BACKOFFICE_STORAGE_S3_ACCESS_KEY / _SECRET_KEY
+
+signing:
+  existingSecret: back-office-signing           # deploy/scripts/gen-signing-key.sh
+  generate: false
+
+ingress:
+  enabled: true
+  className: nginx
+  host: back-office.example.internal
+  annotations:
+    cert-manager.io/cluster-issuer: internal-ca
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  tls:
+    - secretName: back-office-tls
+      hosts: [back-office.example.internal]
+
+networkPolicy:
+  enabled: true
+  egress:
+    extra:
+      # object store and OIDC provider inside the private network
+      - to:
+          - ipBlock: { cidr: 10.10.0.0/16 }
+        ports:
+          - { port: 443, protocol: TCP }
+
+metrics:
+  serviceMonitor: { enabled: true, labels: { release: kube-prometheus-stack } }
+  prometheusRule: { enabled: true, labels: { release: kube-prometheus-stack } }
+  dashboards: { enabled: true }

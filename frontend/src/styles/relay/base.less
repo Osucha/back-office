@@ -1,0 +1,317 @@
+// Relay global styles: document defaults, focus, typography and the shared utility classes used by
+// every page (.page, .page-header, .mono, .muted, ...). Everything reads the tokens (tokens.css);
+// there are no theme-specific rules here, the tokens switch.
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--bo-font-ui);
+  font-size: var(--bo-fs-body);
+  line-height: var(--bo-lh);
+  background: var(--bo-bg);
+  color: var(--bo-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01' on;
+}
+
+::selection {
+  background: var(--bo-selection);
+}
+
+a {
+  color: var(--bo-accent);
+  text-underline-offset: 2px;
+}
+a:hover {
+  color: var(--bo-accent-hover);
+}
+// Links inside running text are underlined (not told apart by colour alone).
+p a:not(.ant-btn),
+dd a:not(.ant-btn),
+.field-help a,
+.markdown-body a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--bo-ink);
+  font-weight: 600;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--bo-font-mono);
+}
+
+// Keyboard focus is always visible: 2 px accent ring with a 2 px offset.
+:focus-visible {
+  outline: 2px solid var(--bo-accent);
+  outline-offset: 2px;
+}
+
+// ---- page frame
+
+.page {
+  padding: var(--bo-space-5) var(--bo-space-6) var(--bo-space-7);
+  max-width: 1480px;
+  margin: 0 auto;
+}
+@media (max-width: 900px) {
+  .page {
+    padding: var(--bo-space-4);
+  }
+}
+
+// Legacy page header markup (pages not yet on <bo-page-header>): same look.
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--bo-space-4);
+  margin-bottom: var(--bo-space-5);
+  flex-wrap: wrap;
+
+  h1,
+  h2 {
+    margin: 0;
+    font-size: var(--bo-fs-title);
+    font-weight: 600;
+    line-height: var(--bo-lh-tight);
+    letter-spacing: var(--bo-tracking-title);
+  }
+
+  .subtitle {
+    color: var(--bo-ink-3);
+    font-size: var(--bo-fs-dense);
+    margin-top: var(--bo-space-1);
+    max-width: 72ch;
+  }
+
+  .actions {
+    display: flex;
+    gap: var(--bo-space-2);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+}
+
+.toolbar {
+  display: flex;
+  gap: var(--bo-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--bo-space-3);
+}
+
+.section-title {
+  font-size: var(--bo-fs-section);
+  font-weight: 600;
+  margin: 0 0 var(--bo-space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--bo-space-2);
+}
+.section-title .count {
+  font-family: var(--bo-font-mono);
+  font-size: var(--bo-fs-meta);
+  color: var(--bo-ink-3);
+  font-weight: 400;
+}
+
+// ---- text utilities
+
+.mono {
+  font-family: var(--bo-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.muted {
+  color: var(--bo-ink-3);
+}
+.ink-2 {
+  color: var(--bo-ink-2);
+}
+.danger {
+  color: var(--bo-blocked-ink);
+}
+.meta {
+  font-size: var(--bo-fs-meta);
+  color: var(--bo-ink-3);
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.field-help {
+  color: var(--bo-ink-3);
+  font-size: var(--bo-fs-meta);
+  margin-top: 2px;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+// ---- layout utilities
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--bo-space-4);
+  margin-bottom: var(--bo-space-4);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bo-space-4);
+}
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr));
+  gap: var(--bo-space-4);
+}
+.spacer {
+  flex: 1;
+}
+
+// A plain Relay surface (hairline, 10 px) for sections that do not need a card header.
+.surface {
+  background: var(--bo-surface);
+  border: 1px solid var(--bo-line);
+  border-radius: var(--bo-radius-card);
+}
+
+// ---- code
+
+.code-block {
+  font-family: var(--bo-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--bo-code-bg);
+  color: var(--bo-code-ink);
+  padding: var(--bo-space-3);
+  border-radius: var(--bo-radius-control);
+  overflow: auto;
+  max-height: 480px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+textarea.mono-textarea {
+  font-family: var(--bo-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.chart {
+  height: 300px;
+  width: 100%;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// ---- markdown
+
+.markdown-body {
+  line-height: 1.65;
+  font-size: var(--bo-fs-body);
+  color: var(--bo-ink);
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin-top: 1.2em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+  }
+  h1 {
+    font-size: 20px;
+  }
+  h2 {
+    font-size: 17px;
+  }
+  h3 {
+    font-size: 15px;
+  }
+  pre {
+    background: var(--bo-surface-2);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bo-radius-control);
+    padding: 10px;
+    overflow: auto;
+    font-size: 12px;
+  }
+  code {
+    font-family: var(--bo-font-mono);
+    font-size: 12px;
+    background: var(--bo-surface-3);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+  }
+  table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    th,
+    td {
+      border: 1px solid var(--bo-line);
+      padding: 4px 8px;
+    }
+  }
+  blockquote {
+    border-left: 3px solid var(--bo-line-strong);
+    margin: 8px 0;
+    padding: 4px 12px;
+    color: var(--bo-ink-2);
+  }
+  img {
+    max-width: 100%;
+  }
+  // manual anchors (in-app help) land below the sticky top bar
+  [id] {
+    scroll-margin-top: calc(var(--bo-topbar-h) + 16px);
+  }
+}
+
+// ---- motion
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

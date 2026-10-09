@@ -1,0 +1,94 @@
+{{- if and .Values.pgbouncer.enabled (eq (include "back-office.database.mode" .) "external") }}
+{{- /*
+Optional PgBouncer (transaction mode) in front of an external PostgreSQL that has no managed pooler.
+Managed alternatives: RDS Proxy, Azure flexible server built-in PgBouncer (port 6432), Cloud SQL
+Managed Connection Pooling -> externalDatabase.pooler.host/port instead. LISTEN/NOTIFY and Flyway keep
+using the direct host (BACKOFFICE_DATASOURCE_DIRECT_URL).
+*/ -}}
+{{- $name := printf "%s-pgbouncer" (include "back-office.fullname" .) }}
+{{- $p := .Values.pgbouncer }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  type: ClusterIP
+  ports:
+    - name: pgbouncer
+      port: {{ $p.port }}
+      targetPort: pgbouncer
+  selector:
+    {{- include "back-office.selectorLabels" (dict "root" . "component" "pgbouncer") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  replicas: {{ $p.replicas }}
+  selector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "pgbouncer") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "back-office.selectorLabels" (dict "root" . "component" "pgbouncer") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pgbouncer
+          image: {{ $p.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: {{ include "back-office.database.host" . | quote }}
+            - name: DB_PORT
+              value: {{ include "back-office.database.port" . | quote }}
+            - name: DB_NAME
+              value: {{ include "back-office.database.name" . | quote }}
+            - name: DB_USER
+              value: {{ include "back-office.database.username" . | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "back-office.database.passwordSecretName" . }}
+                  key: {{ include "back-office.database.passwordSecretKey" . }}
+            - name: LISTEN_PORT
+              value: {{ $p.port | quote }}
+            - name: POOL_MODE
+              value: transaction
+            - name: AUTH_TYPE
+              value: scram-sha-256
+            - name: MAX_CLIENT_CONN
+              value: {{ $p.maxClientConn | quote }}
+            - name: DEFAULT_POOL_SIZE
+              value: {{ $p.defaultPoolSize | quote }}
+            - name: SERVER_TLS_SSLMODE
+              value: {{ $p.serverTlsSslmode | quote }}
+          ports:
+            - name: pgbouncer
+              containerPort: {{ $p.port }}
+          readinessProbe:
+            tcpSocket:
+              port: pgbouncer
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml $p.resources | nindent 12 }}
+{{- end }}

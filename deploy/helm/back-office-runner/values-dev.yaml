@@ -1,0 +1,22 @@
+# kind / k3d / Docker Desktop Kubernetes next to deploy/helm/back-office values-dev.yaml. No gVisor on
+# these nodes: the job backend with the default runtime (runc) - DEVELOPMENT ONLY, no isolation boundary
+# beyond the container. Create a registration token in Administration -> Runner fleet first.
+#   helm install runners deploy/helm/back-office-runner -n back-office-runners --create-namespace #     -f deploy/helm/back-office-runner/values-dev.yaml --set registration.token=bo_rrt_...
+backOffice:
+  url: http://back-office-api.back-office.svc:8080
+  poolId: default
+backend: K8S_JOB
+runtimeClasses:
+  # empty = no runtimeClassName on sandbox pods
+  standard: ""
+  high: ""
+controller:
+  image:
+    repository: back-office/runner-controller
+    tag: dev
+maxConcurrent: 2
+egressProxy:
+  image: back-office/egress-proxy:dev
+  allowedCidrs: ["10.0.0.0/8"]
+networkPolicy:
+  controllerEgressPorts: [443, 6443, 8080]

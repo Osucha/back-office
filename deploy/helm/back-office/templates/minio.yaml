@@ -1,0 +1,184 @@
+{{- if .Values.minio.enabled }}
+{{- /*
+Bundled single-node MinIO for dev/evaluation installs (S3 API on :9000). Not highly available and
+without backups: production uses S3, GCS or an S3 gateway (docs/guides/cloud-reference.md).
+Images: the MinIO project stopped publishing community images in 2025; the default is Chainguard's
+free rebuild. Pin a digest (minio.image.digest) for reproducible installs.
+*/ -}}
+{{- $name := include "back-office.minio.fullname" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  type: ClusterIP
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    - name: console
+      port: 9001
+      targetPort: console
+  selector:
+    {{- include "back-office.selectorLabels" (dict "root" . "component" "minio") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  replicas: 1
+  serviceName: {{ $name }}
+  selector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "minio") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "back-office.selectorLabels" (dict "root" . "component" "minio") | nindent 8 }}
+      annotations:
+        checksum/storage: {{ include (print $.Template.BasePath "/secret-storage.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minio
+          image: {{ printf "%s%s" .Values.minio.image.repository (ternary (printf "@%s" .Values.minio.image.digest) (printf ":%s" .Values.minio.image.tag) (not (empty .Values.minio.image.digest))) | quote }}
+          imagePullPolicy: IfNotPresent
+          args: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "back-office.storage.secretName" . }}
+                  key: BACKOFFICE_STORAGE_S3_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "back-office.storage.secretName" . }}
+                  key: BACKOFFICE_STORAGE_S3_SECRET_KEY
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if not .Values.minio.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.minio.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.minio.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.minio.persistence.size }}
+  {{- end }}
+---
+# Creates the bucket after install/upgrade (idempotent). The mc image has no shell: the alias comes from
+# MC_HOST_<alias>=http://<user>:<password>@<host>:9000.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-bucket
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "back-office.selectorLabels" (dict "root" . "component" "minio-bucket") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mc
+          image: {{ .Values.minio.clientImage | quote }}
+          args: ["mb", "--ignore-existing", {{ printf "bo/%s" .Values.storage.s3.bucket | quote }}]
+          env:
+            - name: MINIO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "back-office.storage.secretName" . }}
+                  key: BACKOFFICE_STORAGE_S3_ACCESS_KEY
+            - name: MINIO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "back-office.storage.secretName" . }}
+                  key: BACKOFFICE_STORAGE_S3_SECRET_KEY
+            - name: MC_HOST_bo
+              value: {{ printf "http://$(MINIO_USER):$(MINIO_PASSWORD)@%s:9000" $name | quote }}
+            - name: MC_CONFIG_DIR
+              value: /tmp/.mc
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

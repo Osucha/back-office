@@ -1,0 +1,163 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $sbx := include "runner.sandboxNamespace" . }}
+{{- $np := .Values.networkPolicy }}
+{{- $p := .Values.egressProxy }}
+{{- $private := list "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "169.254.0.0/16" "100.64.0.0/10" }}
+# Default deny for everything in the sandbox namespace (ingress and egress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+# Sandboxes: no ingress; egress only to cluster DNS and the pool's egress proxy on its port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandboxes
+  namespace: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "runner.sandboxPodLabels" . | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.dnsPodLabels | nindent 14 }}
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "runner.proxyPodLabels" . | nindent 14 }}
+      ports:
+        - { port: {{ $p.port }}, protocol: TCP }
+---
+# The per-pool egress proxy (bo-egress-<pool>, created by the controller): reachable only from
+# sandboxes and the controller; the only pod allowed to reach the internet - never private ranges or
+# the cloud metadata endpoint, except egressProxy.allowedCidrs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-proxy
+  namespace: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "runner.proxyPodLabels" . | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "runner.sandboxPodLabels" . | nindent 14 }}
+      ports:
+        - { port: {{ $p.port }}, protocol: TCP }
+    # the controller pushes per-job allowlists / reads the connection log
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              {{- include "runner.controllerSelectorLabels" . | nindent 14 }}
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.dnsPodLabels | nindent 14 }}
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              {{- toYaml $private | nindent 14 }}
+      ports:
+        {{- range $p.ports }}
+        - { port: {{ . }}, protocol: TCP }
+        {{- end }}
+    {{- with $p.allowedCidrs }}
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+    {{- end }}
+    # the proxy pulls allowlists and credential hashes from the controller
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              {{- include "runner.controllerSelectorLabels" . | nindent 14 }}
+      ports:
+        - { port: {{ $.Values.controller.port }}, protocol: TCP }
+---
+# Controller: ingress only from its proxies (allowlist API; kubelet probes are not subject to policies);
+# egress to DNS, the Kubernetes API, Back Office over HTTPS and the proxies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "runner.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "runner.controllerSelectorLabels" . | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $sbx }}
+          podSelector:
+            matchLabels:
+              {{- include "runner.proxyPodLabels" . | nindent 14 }}
+      ports:
+        - { port: {{ $.Values.controller.port }}, protocol: TCP }
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.dnsPodLabels | nindent 14 }}
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        {{- range $np.controllerEgressCidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        {{- range $np.controllerEgressPorts }}
+        - { port: {{ . }}, protocol: TCP }
+        {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $sbx }}
+          podSelector:
+            matchLabels:
+              {{- include "runner.proxyPodLabels" . | nindent 14 }}
+{{- end }}

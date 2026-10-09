@@ -1,0 +1,128 @@
+# Reference: Amazon EKS + RDS for PostgreSQL + S3 (docs/guides/cloud-reference.md#aws).
+# Medium size (100 users / 50 concurrent runs, 09-scale-and-operations.md capacity guide).
+#
+#   helm upgrade --install back-office deploy/helm/back-office -n back-office --create-namespace \
+#     -f deploy/helm/back-office/values-aws.yaml --set api.image.tag=$SHA --set web.image.tag=$SHA
+#
+# Prerequisites: AWS Load Balancer Controller, KEDA, External Secrets Operator with a ClusterSecretStore
+# `aws-secrets-manager`, VPC CNI network policy enforcement (enableNetworkPolicy=true), an IAM role for
+# the service account (IRSA or EKS Pod Identity) with s3:GetObject/PutObject/DeleteObject/ListBucket on the
+# bucket, kube-prometheus-stack (optional).
+
+mode: split
+
+api:
+  image:
+    repository: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/back-office/api
+  replicas: 3
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { memory: 2Gi }
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+  serviceAccount:
+    annotations:
+      # IRSA: S3 access without static keys (storage.s3.accessKey stays empty)
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/back-office-app
+  config:
+    publicUrl: https://back-office.example.com
+    dbPoolSize: 10
+
+worker:
+  resources:
+    requests: { cpu: "1", memory: 1536Mi }
+    limits: { memory: 2Gi }
+  autoscaling:
+    type: keda
+    minReplicas: 3
+    maxReplicas: 30
+    keda:
+      sslmode: require
+
+web:
+  image:
+    repository: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/back-office/web
+  replicas: 2
+
+auth:
+  oidc:
+    issuerUri: https://sso.example.com/realms/back-office
+    # BACKOFFICE_AUTH_OIDC_CLIENT_SECRET comes from the app secret in Secrets Manager
+  bootstrapAdmins: [platform-owner@example.com]
+
+# RDS for PostgreSQL 17, Multi-AZ. RDS Proxy pins sessions that LISTEN, so LISTEN/NOTIFY, Flyway and KEDA
+# use the instance endpoint; the Hikari pools may use the proxy (externalDatabase.pooler).
+postgresql:
+  enabled: false
+externalDatabase:
+  host: back-office.cluster-abcdefghijkl.eu-central-1.rds.amazonaws.com
+  port: 5432
+  database: backoffice
+  username: backoffice
+  jdbcParams: "sslmode=require"
+  pooler:
+    host: ""        # back-office.proxy-abcdefghijkl.eu-central-1.rds.amazonaws.com
+    port: 5432
+
+storage:
+  type: s3
+  s3:
+    endpoint: ""
+    region: eu-central-1
+    bucket: acme-back-office-artifacts
+    pathStyle: false
+    sse: KMS
+
+signing:
+  generate: false
+
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+  app: { remoteKey: back-office/app }
+  providerKeys: { remoteKey: back-office/provider-keys }
+  integrations: { remoteKey: back-office/integrations }
+  database: { remoteKey: back-office/db }
+  signing: { enabled: true, remoteKey: back-office/signing }
+
+ingress:
+  enabled: true
+  className: alb
+  host: back-office.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-central-1:123456789012:certificate/00000000-0000-0000-0000-000000000000
+    # SSE streams stay open: raise the ALB idle timeout (default 60 s)
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    alb.ingress.kubernetes.io/healthcheck-path: /
+  tls:
+    - hosts: [back-office.example.com]
+
+networkPolicy:
+  enabled: true
+  ingressController:
+    # ALB target-type ip sends traffic from the VPC subnets, not from a controller pod
+    peers:
+      - ipBlock: { cidr: 10.0.0.0/16 }
+  database:
+    cidrs: ["10.0.0.0/16"]
+  egress:
+    otelCollector:
+      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: observability } }
+
+otel:
+  enabled: true
+  tracesEndpoint: http://otel-collector.observability:4318/v1/traces
+  environment: production
+
+metrics:
+  serviceMonitor: { enabled: true, labels: { release: kube-prometheus-stack } }
+  prometheusRule: { enabled: true, labels: { release: kube-prometheus-stack } }
+  dashboards: { enabled: true }

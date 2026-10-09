@@ -1,0 +1,26 @@
+# GKE execution plane with GKE Sandbox (gVisor, RuntimeClass gvisor created by GKE) - a node pool with
+# --sandbox type=gvisor (Standard) or nothing to do on Autopilot. Kata is not available on GKE: HIGH
+# isolation maps to gvisor too, or run HIGH jobs in a separate pool on another platform.
+backOffice:
+  url: https://back-office.example.com
+  poolId: gke-europe-west3
+backend: AGENT_SANDBOX
+agentSandbox:
+  install: true
+runtimeClasses:
+  standard: gvisor
+  high: gvisor
+  create: false
+controller:
+  image:
+    repository: europe-west3-docker.pkg.dev/acme-platform/back-office/runner-controller
+registration:
+  existingSecret: back-office-runner-registration
+maxConcurrent: 10
+warmPool: { size: 5 }
+autoscaling: { type: keda, minReplicas: 2, maxReplicas: 5 }
+caches:
+  enabled: true
+  storageClass: standard-rwx   # Filestore CSI
+egressProxy:
+  image: europe-west3-docker.pkg.dev/acme-platform/back-office/egress-proxy:0.1.0

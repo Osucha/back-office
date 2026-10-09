@@ -1,0 +1,18 @@
+apiVersion: v2
+name: back-office-runner
+description: >-
+  Back Office runner fleet (execution plane, ADR 0024) - runner-controller that pulls agent jobs over
+  HTTPS, sandboxes on Kubernetes Agent Sandbox (gVisor/Kata) or plain Jobs, default-deny egress through a
+  Smokescreen proxy. Installable in any cluster; needs only outbound HTTPS to Back Office.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+home: https://gitlab.example.com/mos/back-office
+keywords: [ai-agents, sandbox, gvisor, kata, agent-sandbox]
+maintainers:
+  - name: Back Office contributors
+annotations:
+  # Pinned upstream release vendored in files/agent-sandbox (agentSandbox.install=true)
+  back-office.dev/agent-sandbox-version: v1.0.4
+  back-office.dev/agent-sandbox-source: https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.4/sandbox-with-extensions.yaml

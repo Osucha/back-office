@@ -1,0 +1,34 @@
+# EKS execution plane (docs/guides/cloud-reference.md#aws). EKS has no managed gVisor or Kata:
+#  - gVisor: a self-managed node group / Karpenter NodePool on AL2023 whose launch template installs runsc
+#    and registers the containerd handler "runsc" (see cloud-reference.md), labelled and tainted
+#    sandbox.back-office.dev/runtime=gvisor; this chart then creates the RuntimeClass.
+#  - Kata (isolation HIGH): *.metal instances, or KVM nested virtualization on C8i/M8i/R8i (2026) with
+#    kata-deploy; RuntimeClass kata created by kata-deploy.
+# EKS Auto Mode and Fargate cannot run custom runtimes: use managed/self-managed EC2 nodes.
+backOffice:
+  url: https://back-office.example.com
+  poolId: aws-eu-central-1
+backend: AGENT_SANDBOX
+agentSandbox:
+  install: true
+runtimeClasses:
+  standard: gvisor
+  high: kata
+  create: true
+  gvisorHandler: runsc
+  scheduling:
+    nodeSelector: { sandbox.back-office.dev/runtime: gvisor }
+    tolerations: [{ key: sandbox.back-office.dev/runtime, operator: Exists, effect: NoSchedule }]
+controller:
+  image:
+    repository: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/back-office/runner-controller
+registration:
+  existingSecret: back-office-runner-registration
+maxConcurrent: 10
+warmPool: { size: 5 }
+autoscaling: { type: keda, minReplicas: 2, maxReplicas: 5 }
+caches:
+  enabled: true
+  storageClass: efs-sc        # EFS CSI (ReadWriteMany)
+egressProxy:
+  image: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/back-office/egress-proxy:0.1.0

@@ -1,0 +1,210 @@
+{{- include "runner.validate" . }}
+{{- $name := include "runner.fullname" . }}
+{{- $sbx := include "runner.sandboxNamespace" . }}
+{{- if and .Values.registration.token (not .Values.registration.existingSecret) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "runner.registrationSecretName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  RUNNER_REGISTRATION_TOKEN: {{ .Values.registration.token | quote }}
+---
+{{- end }}
+{{- if .Values.controller.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "runner.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+  {{- with .Values.controller.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- with .Values.imagePullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  {{- if eq .Values.autoscaling.type "none" }}
+  replicas: {{ .Values.controller.replicas }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  selector:
+    matchLabels:
+      {{- include "runner.controllerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "runner.controllerSelectorLabels" . | nindent 8 }}
+        {{- with .Values.controller.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.controller.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "runner.serviceAccountName" . }}
+      # the controller drives sandboxes through the Kubernetes API
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: {{ .Values.controller.terminationGracePeriodSeconds }}
+      {{- with .Values.controller.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
+      containers:
+        - name: controller
+          image: {{ include "runner.image" . | quote }}
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          env:
+            # names read by backend/runner-controller/src/main/resources/application.yaml
+            - name: RUNNER_BACKOFFICE_URL
+              value: {{ required "backOffice.url is required" .Values.backOffice.url | quote }}
+            - name: RUNNER_REGISTRATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "runner.registrationSecretName" . }}
+                  key: RUNNER_REGISTRATION_TOKEN
+                  # only needed until the runner token Secret exists
+                  optional: true
+            # written by the controller after registration in its own (release) namespace (key runnerToken);
+            # RUNNER_TOKEN_SECRET_NAMESPACE is left empty on purpose, never the sandbox namespace
+            - name: RUNNER_TOKEN_SECRET_NAME
+              value: {{ include "runner.tokenSecretName" . | quote }}
+            - name: RUNNER_BACKEND
+              value: {{ .Values.backend | quote }}
+            - name: RUNNER_RUNTIME_CLASS_STANDARD
+              value: {{ .Values.runtimeClasses.standard | quote }}
+            - name: RUNNER_RUNTIME_CLASS_HIGH
+              value: {{ .Values.runtimeClasses.high | quote }}
+            # sandboxes and the per-pool egress proxy bo-egress-<pool> (not the runner-token Secret)
+            - name: RUNNER_NAMESPACE
+              value: {{ $sbx | quote }}
+            - name: RUNNER_MAX_CONCURRENT
+              value: {{ .Values.maxConcurrent | quote }}
+            {{- if not (kindIs "invalid" .Values.warmPool.size) }}
+            - name: RUNNER_WARM_POOL_SIZE
+              value: {{ .Values.warmPool.size | quote }}
+            {{- end }}
+            - name: RUNNER_EGRESS_PROXY_IMAGE
+              value: {{ .Values.egressProxy.image | quote }}
+            - name: RUNNER_EGRESS_PROXY_PORT
+              value: {{ .Values.egressProxy.port | quote }}
+            # the egress proxies (sandbox namespace) pull allowlists from the controller Service
+            - name: RUNNER_CONTROLLER_URL
+              value: {{ include "runner.controllerUrl" . | quote }}
+            - name: PORT
+              value: {{ .Values.controller.port | quote }}
+            {{- with .Values.gitCredentials.userName }}
+            - name: RUNNER_GIT_USER_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.gitCredentials.userEmail }}
+            - name: RUNNER_GIT_USER_EMAIL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.gitCredentials.allowPushCredentialForRead }}
+            # ADR 0031: READ jobs may receive a push credential (not recommended)
+            - name: RUNNER_GIT_ALLOW_PUSH_CREDENTIAL_FOR_READ
+              value: "true"
+            {{- end }}
+            {{- with include "runner.applicationJson" . }}
+            # runner-controller.kubernetes.cache-pvcs, .git.repo-secrets, .git.secrets, .egress.allow-ranges
+            - name: SPRING_APPLICATION_JSON
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.controller.port }}
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 10
+          securityContext:
+            {{- toYaml .Values.controller.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.controller.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.controller.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "runner.controllerSelectorLabels" . | nindent 6 }}
+{{- end }}
+---
+# Egress proxy pods pull allowlists and post decisions here (/egress/v1/*, RUNNER_CONTROLLER_URL).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "runner.controllerServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "runner.controllerSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.controller.port }}
+      targetPort: http
+      protocol: TCP

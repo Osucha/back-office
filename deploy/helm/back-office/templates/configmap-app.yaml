@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "back-office.config.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config
+  {{- include "back-office.annotations" . | nindent 2 }}
+data:
+  # --- core -----------------------------------------------------------------------------------
+  BACKOFFICE_PUBLIC_URL: {{ include "back-office.publicUrl" . | quote }}
+  CORS_ALLOWED_ORIGINS: {{ default (include "back-office.publicUrl" .) .Values.api.config.corsAllowedOrigins | quote }}
+  LOG_LEVEL: {{ .Values.api.config.logLevel | quote }}
+  AI_LOG_PROMPTS: {{ .Values.api.config.aiLogPrompts | quote }}
+  AI_LOG_COMPLETIONS: {{ .Values.api.config.aiLogCompletions | quote }}
+  LLM_TIMEOUT: {{ .Values.api.config.llmTimeout | quote }}
+  LLM_CONCURRENCY_PER_PROVIDER: {{ .Values.api.config.llmConcurrencyPerProvider | quote }}
+  PIPELINE_EXECUTOR_THREADS: {{ .Values.api.config.pipelineExecutorThreads | quote }}
+  PIPELINE_RECOVER_ON_STARTUP: {{ .Values.api.config.pipelineRecoverOnStartup | quote }}
+  EVAL_CONCURRENCY_PER_PROVIDER: {{ .Values.api.config.evalConcurrencyPerProvider | quote }}
+  EVAL_SEED_STARTER_CONTENT: {{ .Values.api.config.evalSeedStarterContent | quote }}
+  {{- with .Values.api.javaToolOptions }}
+  JAVA_TOOL_OPTIONS: {{ . | quote }}
+  {{- end }}
+  # --- authentication (ADR 0016; the client secret is in a Secret) ------------------------------
+  BACKOFFICE_AUTH_OIDC_ISSUER_URI: {{ include "back-office.oidc.issuerUri" . | quote }}
+  BACKOFFICE_AUTH_OIDC_CLIENT_ID: {{ .Values.auth.oidc.clientId | quote }}
+  BACKOFFICE_AUTH_OIDC_SCOPES: {{ include "back-office.csv" .Values.auth.oidc.scopes | quote }}
+  BACKOFFICE_AUTH_REGISTRATION: {{ .Values.auth.registration | quote }}
+  BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS: {{ include "back-office.csv" .Values.auth.allowedEmailDomains | quote }}
+  BACKOFFICE_AUTH_BOOTSTRAP_ADMINS: {{ include "back-office.csv" .Values.auth.bootstrapAdmins | quote }}
+  BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT: {{ .Values.auth.session.idleTimeout | quote }}
+  BACKOFFICE_AUTH_SESSION_ABSOLUTE_TIMEOUT: {{ .Values.auth.session.absoluteTimeout | quote }}
+  BACKOFFICE_AUTH_COOKIE_SECURE: {{ .Values.auth.cookieSecure | quote }}
+  BACKOFFICE_AUTH_GROUPS_CLAIM: {{ .Values.auth.groupsClaim | quote }}
+  # --- local accounts (ADR 0021; secret key and bootstrap password are in the app Secret) ------
+  BACKOFFICE_AUTH_LOCAL_ENABLED: {{ .Values.auth.local.enabled | quote }}
+  BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL: {{ .Values.auth.local.bootstrapAdminEmail | quote }}
+  BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY: {{ .Values.auth.local.resetLinkValidity | quote }}
+  BACKOFFICE_AUTH_LOCAL_LOCKOUT_MAX_FAILURES: {{ .Values.auth.local.lockout.maxFailures | quote }}
+  BACKOFFICE_AUTH_LOCAL_LOCKOUT_DURATION: {{ .Values.auth.local.lockout.lockDuration | quote }}
+  BACKOFFICE_AUTH_LOCAL_THROTTLE_MAX_ATTEMPTS: {{ .Values.auth.local.throttle.maxAttempts | quote }}
+  BACKOFFICE_AUTH_LOCAL_THROTTLE_WINDOW: {{ .Values.auth.local.throttle.window | quote }}
+  # --- signing (ADR 0025; keys are in the signing Secret) ---------------------------------------
+  # Never sign with a per-replica ephemeral key: other replicas and restarts could not verify it.
+  BACKOFFICE_SIGNING_ALLOW_EPHEMERAL: "false"
+  # --- database -------------------------------------------------------------------------------
+  # Hikari pool: the pooler when there is one (PgBouncer transaction mode), else the primary
+  SPRING_DATASOURCE_URL: {{ include "back-office.database.jdbcUrl" . | quote }}
+  # Direct primary connection for LISTEN/NOTIFY (one per pod) and session-level work
+  BACKOFFICE_DATASOURCE_DIRECT_URL: {{ include "back-office.database.directJdbcUrl" . | quote }}
+  # Migrations run only in the migrate role (Helm hook Job / init container)
+  SPRING_FLYWAY_ENABLED: "false"
+  SPRING_DATASOURCE_USERNAME: {{ include "back-office.database.username" . | quote }}
+  DB_POOL_SIZE: {{ .Values.api.config.dbPoolSize | quote }}
+  # --- execution plane (ADR 0024): runner-controllers pull jobs; the control plane creates no pods ----
+  RUNNER_MODE: {{ .Values.runner.mode | quote }}
+  RUNNER_DEFAULT_TIMEOUT: {{ .Values.runner.defaultTimeout | quote }}
+  # --- object storage (BlobStore; credentials are in the storage Secret or ambient) ----------------
+  BACKOFFICE_STORAGE_TYPE: {{ .Values.storage.type | quote }}
+  {{- if eq .Values.storage.type "s3" }}
+  BACKOFFICE_STORAGE_S3_ENDPOINT: {{ include "back-office.storage.s3.endpoint" . | quote }}
+  BACKOFFICE_STORAGE_S3_REGION: {{ .Values.storage.s3.region | quote }}
+  BACKOFFICE_STORAGE_S3_BUCKET: {{ required "storage.s3.bucket is required" .Values.storage.s3.bucket | quote }}
+  BACKOFFICE_STORAGE_S3_PATH_STYLE: {{ or .Values.minio.enabled .Values.storage.s3.pathStyle | quote }}
+  {{- with .Values.storage.s3.presignEndpoint }}
+  # host written into presigned URLs (sandboxes and browsers must reach it; add it to the runner chart's
+  # egressProxy.alwaysAllowHosts)
+  BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.storage.s3.sse }}
+  # NONE | S3 | KMS (an empty string would not bind to the enum, hence omitted when unset)
+  BACKOFFICE_STORAGE_S3_SSE: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.storage.s3.checksumWhenRequired }}
+  # GCS XML API / some S3 gateways reject the default CRC32 checksums of AWS SDK v2 >= 2.30
+  AWS_REQUEST_CHECKSUM_CALCULATION: "when_required"
+  AWS_RESPONSE_CHECKSUM_VALIDATION: "when_required"
+  {{- end }}
+  {{- else }}
+  BACKOFFICE_STORAGE_FILESYSTEM_ROOT: {{ .Values.storage.filesystem.path | quote }}
+  {{- end }}
+  # --- integrations (tokens are in the integrations Secret; no SCM configuration, ADR 0013) -----
+  # Jira credentials are connections (ADR 0030); JIRA_URL/JIRA_EMAIL/JIRA_API_TOKEN are the legacy credential.
+  BACKOFFICE_SECRETS_KEY_ID: {{ .Values.secrets.connectionsKeyId | default "k1" | quote }}
+  JIRA_URL: {{ .Values.integrations.jira.url | quote }}
+  JIRA_EMAIL: {{ .Values.integrations.jira.email | quote }}
+  JIRA_ACCEPTANCE_CRITERIA_FIELD: {{ .Values.integrations.jira.acceptanceCriteriaField | quote }}
+  # --- observability --------------------------------------------------------------------------
+  TRACING_SAMPLING: {{ .Values.api.config.tracingSampling | quote }}
+  {{- if .Values.api.config.httpHistogram }}
+  # histogram buckets for http.server.requests (p95 alerts, dashboards)
+  MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILESHISTOGRAM_HTTP_SERVER_REQUESTS: "true"
+  {{- end }}
+  OTEL_TRACES_ENABLED: {{ include "back-office.tracingEnabled" . | quote }}
+  {{- if .Values.otel.enabled }}
+  OTEL_METRICS_ENABLED: {{ .Values.otel.metricsEnabled | quote }}
+  {{- if .Values.otel.metricsEnabled }}
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: {{ .Values.otel.metricsEndpoint | quote }}
+  {{- end }}
+  OTEL_LOGS_ENABLED: {{ .Values.otel.logsEnabled | quote }}
+  {{- if .Values.otel.logsEnabled }}
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: {{ .Values.otel.logsEndpoint | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.langfuse.enabled }}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: {{ include "back-office.langfuse.otlpEndpoint" . | quote }}
+  LANGFUSE_ENABLED: "true"
+  LANGFUSE_URL: {{ include "back-office.langfuse.url" . | quote }}
+  {{- else if .Values.otel.enabled }}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: {{ .Values.otel.tracesEndpoint | quote }}
+  LANGFUSE_ENABLED: "false"
+  {{- else }}
+  LANGFUSE_ENABLED: "false"
+  {{- end }}
+  {{- range $k, $v := .Values.api.config.extra }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

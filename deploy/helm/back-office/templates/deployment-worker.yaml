@@ -1,0 +1,4 @@
+{{- if eq (include "back-office.mode" .) "split" }}
+{{- $autoscaled := ne (.Values.worker.autoscaling.type | default "none") "none" }}
+{{ include "back-office.app.deployment" (dict "root" . "component" "worker" "role" "worker" "cfg" .Values.worker "autoscaled" $autoscaled) }}
+{{- end }}

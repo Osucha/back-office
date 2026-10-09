@@ -1,0 +1,5 @@
+{{- /* split: api role only; combined: one Deployment running api,worker (small installs, ADR 0023) */ -}}
+{{- $combined := eq (include "back-office.mode" .) "combined" }}
+{{- $role := ternary "api,worker" "api" $combined }}
+{{- $autoscaled := .Values.api.autoscaling.enabled }}
+{{ include "back-office.app.deployment" (dict "root" . "component" "api" "role" $role "cfg" .Values.api "autoscaled" $autoscaled) }}

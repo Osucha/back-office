@@ -1,0 +1,20 @@
+# Paths excluded from the TruffleHog scan (job security:secrets, guardrail GR-S1).
+# One Go regular expression per line, matched against the file path relative to the scan root.
+# Every entry needs a reason. Do not exclude source directories to silence a finding: rotate the
+# secret, remove it from the file, and (if it ever reached a pushed commit) purge it from history.
+#
+# .git holds the ephemeral CI job token injected by the runner into .git/config - not a secret from the code.
+^\.git/
+# Dependencies and build output are not our code and are re-created by every build.
+(^|/)node_modules/
+^frontend/dist/
+^frontend/\.angular/
+^backend/(.+/)?build/
+^backend/(.+/)?bin/
+^backend/\.gradle/
+# Third-party subcharts downloaded by `helm dependency build` (git-ignored; the Langfuse chart ships a test key).
+^deploy/helm/back-office/charts/
+^\.gradle/
+^\.npm/
+# Local-only reference material, git-ignored (never in a CI checkout).
+^_temp_ref/

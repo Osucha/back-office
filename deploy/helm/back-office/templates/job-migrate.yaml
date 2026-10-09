@@ -1,0 +1,87 @@
+{{- if .Values.migration.enabled }}
+{{- /*
+Database migrations (role migrate, ADR 0023). Application pods run with SPRING_FLYWAY_ENABLED=false.
+Hook events: pre-install,pre-upgrade when the database already exists outside the release; only
+pre-upgrade when it is part of the release (bundled / CNPG) or secrets come from External Secrets -
+then an init container of every app pod migrates on install (migration.initContainer=auto).
+Everything the Job needs is inline or in hook resources: ConfigMaps and Secrets of the release do not
+exist yet while pre-install hooks run.
+*/ -}}
+{{- $name := include "back-office.migrate.fullname" . }}
+{{- if include "back-office.database.inlinePassword" . }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: {{ include "back-office.migration.hookEvents" . }}
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+type: Opaque
+stringData:
+  SPRING_DATASOURCE_PASSWORD: {{ required "externalDatabase.password or externalDatabase.existingSecret is required for an external database" .Values.externalDatabase.password | quote }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: {{ include "back-office.migration.hookEvents" . }}
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: {{ .Values.migration.hookDeletePolicy }}
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ .Values.migration.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "back-office.selectorLabels" (dict "root" . "component" "migrate") | nindent 8 }}
+        backoffice.role: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      {{- with .Values.api.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "back-office.api.image" . | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          env:
+            {{- include "back-office.migrate.env" (dict "root" . "hook" true) | nindent 12 }}
+          {{- with .Values.api.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

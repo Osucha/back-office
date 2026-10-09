@@ -1,0 +1,78 @@
+{{- $sbx := include "runner.sandboxNamespace" . }}
+{{- if .Values.sandboxNamespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: {{ .Values.sandboxNamespace.podSecurity }}
+    pod-security.kubernetes.io/enforce-version: latest
+    backoffice.io/sandboxes: "true"
+  annotations:
+    # keep sandboxes' namespace (and running jobs) when the release is removed by accident
+    helm.sh/resource-policy: keep
+---
+{{- end }}
+# Sandbox pods get no service-account token and no API permissions.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "runner.fullname" . }}-sandbox
+  namespace: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+{{- with .Values.imagePullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- if .Values.caches.enabled }}
+{{- range $cache, $size := .Values.caches.volumes }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-cache-%s" (include "runner.fullname" $) $cache }}
+  namespace: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" $ | nindent 4 }}
+    backoffice.io/cache: {{ $cache }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ $.Values.caches.accessMode | quote }}]
+  {{- with $.Values.caches.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $size }}
+{{- end }}
+{{- end }}
+{{- if .Values.runtimeClasses.create }}
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ .Values.runtimeClasses.standard }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+handler: {{ .Values.runtimeClasses.gvisorHandler }}
+{{- with .Values.runtimeClasses.scheduling }}
+scheduling:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ .Values.runtimeClasses.high }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+handler: {{ .Values.runtimeClasses.kataHandler }}
+{{- with .Values.runtimeClasses.scheduling }}
+scheduling:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,219 @@
+# Back Office runner fleet (ADR 0024, docs/architecture/10-agent-execution.md,
+# docs/guides/runner-fleet-install.md). One release = one runner pool in one cluster.
+# Variants: values-dev.yaml (DOCKER-less kind/k3d, K8S_JOB + runc), values-gvisor.yaml
+# (AGENT_SANDBOX + gVisor), values-kata.yaml (K8S_JOB + Kata), cloud values-aws/gcp/azure/onprem.yaml.
+
+nameOverride: ""
+fullnameOverride: ""
+imagePullSecrets: []
+commonLabels: {}
+
+# ---------------------------------------------------------------------------------------------
+# Connection to the control plane (outbound HTTPS only)
+# ---------------------------------------------------------------------------------------------
+backOffice:
+  # RUNNER_BACKOFFICE_URL: public URL of Back Office (the api is served under /api/v1).
+  url: https://back-office.example.com
+  # Pool id as shown in Administration -> Runner fleet: KEDA queue scaler URL and the backoffice.io/pool
+  # label of the chart's resources. The controller itself takes its pool from the registration token.
+  poolId: default
+
+# Single-use registration token (bo_rrt_...) issued for the pool. Used on the first start only:
+# the controller registers, receives its runner token (bo_rt_...) and stores it in the Secret
+# `tokenSecret.name` (key `runnerToken`) in the release (controller) namespace, never the sandbox namespace.
+# Afterwards the registration token can be removed.
+registration:
+  token: ""
+  # Existing Secret with key RUNNER_REGISTRATION_TOKEN instead of the inline value.
+  existingSecret: ""
+
+tokenSecret:
+  # RUNNER_TOKEN_SECRET_NAME. Defaults to <fullname>-token. Written by the controller into its own (release)
+  # namespace with keys runnerToken, runnerId, poolId, where the chart grants it access and KEDA reads it
+  # (RUNNER_TOKEN_SECRET_NAMESPACE is not set by the chart; agents never share a namespace with this token).
+  name: ""
+  key: runnerToken
+
+# ---------------------------------------------------------------------------------------------
+# Sandboxes
+# ---------------------------------------------------------------------------------------------
+# RUNNER_BACKEND: auto (AGENT_SANDBOX when the CRDs exist, else K8S_JOB) | AGENT_SANDBOX | K8S_JOB.
+# DOCKER is the laptop backend (deploy/compose), it is rejected here.
+backend: auto
+
+# RuntimeClasses referenced by sandbox pods. STANDARD isolation -> gVisor, HIGH -> Kata.
+# Names differ per platform: GKE Sandbox `gvisor`; AKS Pod Sandboxing `kata-vm-isolation`;
+# self-installed runsc/kata: whatever your RuntimeClass objects are called.
+runtimeClasses:
+  standard: gvisor          # RUNNER_RUNTIME_CLASS_STANDARD
+  high: kata                # RUNNER_RUNTIME_CLASS_HIGH
+  # Create RuntimeClass objects (only when the nodes have the handlers installed). Most managed
+  # platforms create them for you: leave false on GKE/AKS.
+  create: false
+  gvisorHandler: runsc
+  kataHandler: kata
+  # nodeSelector/tolerations of the RuntimeClass scheduling section (sandbox node pools)
+  scheduling: {}
+  #  nodeSelector: { sandbox.back-office.dev/runtime: gvisor }
+  #  tolerations: [{ key: sandbox, operator: Exists, effect: NoSchedule }]
+
+sandboxNamespace:
+  # Namespace for sandbox pods (RUNNER_NAMESPACE). Separate from the controller's by default so the
+  # default-deny policies do not touch the controller. Empty name = <release namespace>-sandboxes.
+  create: true
+  name: ""
+  # Pod Security Admission level of the sandbox namespace
+  podSecurity: restricted
+
+# RUNNER_MAX_CONCURRENT: sandboxes this controller runs at once (per replica).
+maxConcurrent: 5
+
+# Agent Sandbox warm pool per SandboxTemplate (AGENT_SANDBOX backend): pre-started pods for sub-second starts.
+# RUNNER_WARM_POOL_SIZE; null = the pool's warmPoolSize configured in Back Office.
+# (Allowed sandbox images are part of the pool configuration in Back Office, not of this chart.)
+warmPool:
+  size: 2
+
+# Per-pool cache volumes mounted read-write into sandboxes (keyed per project inside the volume).
+caches:
+  enabled: false
+  storageClass: ""
+  accessMode: ReadWriteMany
+  volumes:
+    gradle: 50Gi
+    npm: 20Gi
+
+# Git credentials stay in this cluster (ADR 0024): Secrets in the sandbox namespace with key `token`,
+# delivered only to the git credential helper of the sandbox. Least privilege (ADR 0031): Back Office sends
+# each job's level (NONE | READ | PUSH_MR); the controller mounts the READ Secret for jobs that only read
+# (reviews, spec analysis, benchmarks, push=false) and the PUSH Secret only for jobs that push a branch and
+# open a merge request. Neither token can merge: protect the default branch (docs/manual/integrations-git.md).
+gitCredentials:
+  # repository -> { read: <Secret>, push: <Secret> } (runner-controller.git.repo-secrets). `repository`:
+  # host/group/project (one repository), host/group/* (a group), host (every repository on it),
+  # *.example.com (sub-domains) or * (everything); the most specific entry wins. Either Secret may be omitted:
+  # a READ job without `read` is refused (unless allowPushCredentialForRead), a PUSH_MR job without `push` too.
+  # Multi-repository jobs select per repository (each with its own level), so one job can get the read token
+  # of a documentation repository and the push token of a source repository; give read-only repositories no
+  # `push` Secret at all (docs/manual/integrations-git.md#git-multi-repo).
+  repoSecrets: []
+  #  - repository: gitlab.example.com/shop/api
+  #    read: git-shop-api-read     # project access token: role Reporter, scope read_repository
+  #    push: git-shop-api-push     # project access token: role Developer, scope write_repository
+  #  - repository: gitlab.example.com/shop/docs
+  #    read: git-shop-docs-read    # documentation: read only, deliberately no push Secret
+  #  - repository: gitlab.example.com/shop/*
+  #    read: git-shop-read         # group access token: Reporter, read_repository
+  # Hand the push Secret to READ jobs when no read Secret matches (RUNNER_GIT_ALLOW_PUSH_CREDENTIAL_FOR_READ).
+  # Keep false: with true a review or benchmark job could push.
+  allowPushCredentialForRead: false
+  # Compatibility (before ADR 0031), PUSH level, used only when no repoSecrets entry matches; the controller
+  # logs a warning that they grant push. READ jobs covered only by these fail unless allowPushCredentialForRead.
+  # Secret used for every repository host (`*`).
+  existingSecret: ""
+  # Repository host -> Secret, takes precedence over existingSecret, e.g. gitlab.example.com: git-gitlab
+  hostSecrets: {}
+  # Commit identity of the agents (RUNNER_GIT_USER_NAME / RUNNER_GIT_USER_EMAIL -> sandbox GIT_USER_NAME /
+  # GIT_USER_EMAIL); empty = "Back Office Agent" <agent@backoffice.local>.
+  userName: ""
+  userEmail: ""
+
+# Extra env for the controller (list of EnvVar).
+extraEnv: []
+
+# ---------------------------------------------------------------------------------------------
+# runner-controller Deployment
+# ---------------------------------------------------------------------------------------------
+controller:
+  image:
+    repository: back-office/runner-controller
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  # HTTP port (server.port / PORT): probes, metrics and the egress pull API behind the controller Service
+  port: 8090
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  # Stop leasing on SIGTERM, let sandboxes finish or hand leases back.
+  terminationGracePeriodSeconds: 120
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  priorityClassName: ""
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+# type: keda (metrics-api scaler on /api/v1/runner/v2/pools/{poolId}/queue with the runner token) |
+# hpa (CPU) | none. The queue endpoint returns {"queued": n, "running": m}.
+autoscaling:
+  type: none
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  keda:
+    pollingInterval: 30
+    cooldownPeriod: 300
+    # one controller replica per (maxConcurrent) queued jobs
+    valueLocation: queued
+    targetValue: ""          # default = maxConcurrent
+    activationTargetValue: "0"
+
+# ---------------------------------------------------------------------------------------------
+# Egress (default deny; the per-pool proxy is the only pod allowed to reach the internet)
+# ---------------------------------------------------------------------------------------------
+egressProxy:
+  # The controller creates one Smokescreen-based proxy Deployment per pool, `bo-egress-<pool>`, in the
+  # sandbox namespace (image built from backend/runner-controller/egress-proxy/). It pulls per-job
+  # allowlists and credential hashes from the controller; sandboxes reach it on port 4750 only.
+  # RUNNER_EGRESS_PROXY_IMAGE
+  image: back-office/egress-proxy:0.1.0
+  port: 4750
+  # Proxy egress: TCP ports to public addresses (private ranges and metadata endpoints are denied).
+  ports: [443, 80]
+  # Private destinations the proxy may reach (self-hosted GitLab, Back Office inside the VPC, Nexus): opened
+  # in the NetworkPolicy and passed to Smokescreen as runner-controller.egress.allow-ranges.
+  allowedCidrs: []
+  # Hosts every sandbox may reach in addition to the job's policy (runner-controller.egress.always-allow),
+  # e.g. the object-storage host in presigned upload URLs: ["s3.eu-central-1.amazonaws.com", "minio.example.internal"].
+  # The Back Office gateway host and the job's repository host are always allowed already.
+  alwaysAllowHosts: []
+
+networkPolicy:
+  enabled: true
+  dnsPodLabels:
+    k8s-app: kube-dns
+  # Controller egress: Back Office URL and the Kubernetes API. Restrict to CIDRs where possible.
+  controllerEgressCidrs: ["0.0.0.0/0"]
+  controllerEgressPorts: [443, 6443]
+
+# ---------------------------------------------------------------------------------------------
+# Kubernetes Agent Sandbox controller + CRDs (kubernetes-sigs/agent-sandbox), pinned release vendored in
+# files/agent-sandbox. Cluster-scoped: install once per cluster (only in one release), or apply the
+# upstream manifest yourself:
+#   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.4/sandbox-with-extensions.yaml
+# ---------------------------------------------------------------------------------------------
+agentSandbox:
+  install: false
+  version: v1.0.4

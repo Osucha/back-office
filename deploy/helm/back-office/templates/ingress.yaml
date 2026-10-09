@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled }}
+# One host, one backend: the web pod serves the SPA and reverse-proxies /api, /oauth2, /login/oauth2 and
+# /logout to the API service (OIDC login and the BO_SESSION cookie stay first-party),
+# so the browser talks to a single origin (06-security.md).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "back-office.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                {{- if .Values.web.enabled }}
+                name: {{ include "back-office.web.fullname" . }}
+                port:
+                  number: {{ .Values.web.service.port }}
+                {{- else }}
+                name: {{ include "back-office.api.fullname" . }}
+                port:
+                  number: {{ .Values.api.service.port }}
+                {{- end }}
+{{- end }}

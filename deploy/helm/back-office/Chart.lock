@@ -1,0 +1,12 @@
+dependencies:
+- name: postgresql
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 18.12.2
+- name: langfuse
+  repository: https://langfuse.github.io/langfuse-k8s
+  version: 2.1.2
+- name: keycloakx
+  repository: https://codecentric.github.io/helm-charts
+  version: 7.3.2
+digest: sha256:d00b85be236e450db8880d740ae39d6231a37e532d342b5e7d122a330dc5639e
+generated: "2026-09-27T12:55:21.6174059+02:00"

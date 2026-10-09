@@ -1,0 +1,51 @@
+{{- if .Values.api.autoscaling.enabled }}
+{{- $a := .Values.api.autoscaling }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "back-office.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  {{- include "back-office.annotations" . | nindent 2 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "back-office.api.fullname" . }}
+  minReplicas: {{ $a.minReplicas }}
+  maxReplicas: {{ $a.maxReplicas }}
+  metrics:
+    {{- with $a.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with $a.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- if $a.requestsPerSecond.enabled }}
+    # Needs a custom-metrics adapter (prometheus-adapter or KEDA) exposing this per-pod metric,
+    # e.g. rate(http_server_requests_seconds_count{uri=~"/api/.*"}[2m]).
+    - type: Pods
+      pods:
+        metric:
+          name: {{ $a.requestsPerSecond.metricName }}
+        target:
+          type: AverageValue
+          averageValue: {{ $a.requestsPerSecond.averageValue | quote }}
+    {{- end }}
+  {{- with $a.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,290 @@
+spring:
+  lifecycle:
+    # graceful shutdown: HTTP drains, workers stop claiming and finish or release their leases
+    timeout-per-shutdown-phase: 45s
+  application:
+    name: back-office
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/backoffice}
+    username: ${SPRING_DATASOURCE_USERNAME:backoffice}
+    password: ${SPRING_DATASOURCE_PASSWORD:backoffice}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    # Migrations run in the `migrate` role (Helm pre-upgrade Job, ADR 0023); application pods never migrate.
+    # The local profile migrates at startup for development.
+    enabled: ${BACKOFFICE_FLYWAY_ENABLED:false}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    # Version ranges are reserved per bounded context (V1 gateway, V50 runner, V100 projects, V200
+    # evaluation, V300 tasks, V400 identity), so a new projects migration is always lower than an applied evaluation one.
+    out-of-order: true
+  session:
+    # Spring Session JDBC tables come from Flyway (identity-adapters V401); cookie BO_SESSION is configured in code
+    timeout: ${backoffice.auth.session.idle-timeout}
+    jdbc:
+      initialize-schema: never
+  jackson:
+    default-property-inclusion: non_null
+  ai:
+    # The gateway builds ChatModels per provider itself; do not let Spring AI pick a single default.
+    model:
+      chat: none
+    chat:
+      observations:
+        log-prompt: ${AI_LOG_PROMPTS:false}
+        log-completion: ${AI_LOG_COMPLETIONS:false}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+    google:
+      genai:
+        api-key: ${GOOGLE_GENAI_API_KEY:}
+    mistralai:
+      api-key: ${MISTRAL_API_KEY:}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    # MCP server (ADR 0025, docs/architecture/11-governance.md): streamable HTTP at /mcp, PAT only
+    mcp:
+      server:
+        enabled: ${BACKOFFICE_MCP_ENABLED:true}
+        name: back-office
+        version: ${APP_VERSION:0.1.0-SNAPSHOT}
+        protocol: STREAMABLE
+        type: SYNC
+        instructions: "Back Office: work waiting for you (gates, failed runs), runs and artefacts, workflows, the task library and delivery insights. Authenticate with a personal access token."
+        tool-callback-converter: false
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        streamable-http:
+          mcp-endpoint: /mcp
+
+server:
+  port: 8080
+  shutdown: graceful
+  # honour X-Forwarded-* from the ingress: correct https redirect URIs, Secure cookies and audit source IPs
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}
+  otlp:
+    tracing:
+      export:
+        enabled: ${OTEL_TRACES_ENABLED:false}
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+      headers:
+        Authorization: ${OTEL_EXPORTER_OTLP_HEADERS_AUTHORIZATION:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+backoffice:
+  security:
+    runner-token-secret: ${RUNNER_TOKEN_SECRET:}
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  public-url: ${BACKOFFICE_PUBLIC_URL:http://localhost:8080}
+  # Ed25519 signing keys (ADR 0024/0025): attestations and runner job assignments. Without keys an ephemeral key
+  # is generated (warning). keys: [{id, privateKeyPkcs8Base64, publicKeyX509Base64, active}]; keep retired keys.
+  signing:
+    allow-ephemeral: ${BACKOFFICE_SIGNING_ALLOW_EPHEMERAL:true}
+  provenance:
+    enabled: ${BACKOFFICE_PROVENANCE_ENABLED:true}
+    sweep-interval: ${BACKOFFICE_PROVENANCE_SWEEP_INTERVAL:PT5M}
+  mcp:
+    enabled: ${BACKOFFICE_MCP_ENABLED:true}
+  # Identity & access (ADR 0016-0018, docs/guides/authentication-and-users.md). OIDC login is disabled
+  # while issuer-uri is blank: then only bearer tokens (bo_pat_, bo_ci_) authenticate.
+  auth:
+    oidc:
+      issuer-uri: ${OIDC_ISSUER_URI:}
+      client-id: ${OIDC_CLIENT_ID:back-office}
+      client-secret: ${OIDC_CLIENT_SECRET:}
+      scopes: ${OIDC_SCOPES:openid,profile,email}
+      provider-name: ${OIDC_PROVIDER_NAME:Keycloak}
+      account-url: ${OIDC_ACCOUNT_URL:}
+    registration: ${BACKOFFICE_REGISTRATION:INVITE_ONLY}       # OPEN | INVITE_ONLY (default until saved in the admin UI)
+    allowed-email-domains: ${BACKOFFICE_ALLOWED_EMAIL_DOMAINS:}
+    bootstrap-admins: ${BACKOFFICE_BOOTSTRAP_ADMINS:}           # comma list; platform-admin on first login
+    groups-claim: ${OIDC_GROUPS_CLAIM:groups}
+    sync-groups: ${BACKOFFICE_SYNC_GROUPS:false}
+    personal-token-max-days: ${BACKOFFICE_PAT_MAX_DAYS:90}
+    cookie-secure: ${BACKOFFICE_COOKIE_SECURE:true}
+    session:
+      idle-timeout: ${BACKOFFICE_SESSION_IDLE_TIMEOUT:PT30M}
+      absolute-timeout: ${BACKOFFICE_SESSION_ABSOLUTE_TIMEOUT:PT12H}
+    # Local accounts: e-mail + password, optional TOTP (ADR 0021). secret-key (base64 of 32 bytes,
+    # `openssl rand -base64 32`) encrypts TOTP secrets and signs MFA step tokens; startup fails without it
+    # while local login is enabled. The bootstrap admin is created only when no user exists yet.
+    local:
+      enabled: ${BACKOFFICE_AUTH_LOCAL_ENABLED:true}
+      secret-key: ${BACKOFFICE_AUTH_LOCAL_SECRET_KEY:}
+      bootstrap-admin-email: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL:}
+      bootstrap-admin-password: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD:}
+      reset-link-validity: ${BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY:PT24H}
+      lockout:
+        max-failures: ${BACKOFFICE_AUTH_LOCAL_LOCKOUT_MAX_FAILURES:5}
+        lock-duration: ${BACKOFFICE_AUTH_LOCAL_LOCKOUT_DURATION:PT15M}
+      throttle:
+        max-attempts: ${BACKOFFICE_AUTH_LOCAL_THROTTLE_MAX_ATTEMPTS:20}
+        window: ${BACKOFFICE_AUTH_LOCAL_THROTTLE_WINDOW:PT5M}
+  llm:
+    openai-compatible:
+      base-url: ${OPENAI_COMPATIBLE_BASE_URL:}
+      api-key: ${OPENAI_COMPATIBLE_API_KEY:}
+    default-timeout: ${LLM_TIMEOUT:PT10M}
+    concurrency-per-provider: ${LLM_CONCURRENCY_PER_PROVIDER:4}
+  # Agent execution control plane (ADR 0024, docs/guides/runner-fleet.md). Jobs run on runner-controllers that
+  # lease them; the API holds no cluster credentials. mode/image are still read by the integrations page only.
+  runner:
+    mode: ${RUNNER_MODE:FLEET}
+    image: ${RUNNER_IMAGE:back-office/runner:latest}
+    api-url: ${RUNNER_API_URL:}                 # blank = backoffice.public-url; sandboxes reach the LLM proxy here
+    lease-duration: ${RUNNER_LEASE_DURATION:PT60S}
+    queue-timeout: ${RUNNER_QUEUE_TIMEOUT:PT24H}
+    default-timeout: ${RUNNER_DEFAULT_TIMEOUT:PT60M}   # agent task timeout when a step/attempt sets none
+    extra-allowed-models: ${RUNNER_EXTRA_ALLOWED_MODELS:}
+    platform-policy:
+      isolation: ${RUNNER_PLATFORM_ISOLATION:STANDARD}   # DEV only for local docker runners
+  integrations:
+    jira:
+      url: ${JIRA_URL:}
+      email: ${JIRA_EMAIL:}
+      api-token: ${JIRA_API_TOKEN:}
+      acceptance-criteria-field: ${JIRA_ACCEPTANCE_CRITERIA_FIELD:}
+      # ADR 0035: scoped API tokens are sent to <gateway>/ex/jira/<cloudId>
+      api-gateway-url: ${JIRA_API_GATEWAY_URL:https://api.atlassian.com}
+    langfuse:
+      enabled: ${LANGFUSE_ENABLED:false}
+      url: ${LANGFUSE_URL:}
+  # Connection secrets (ADR 0030, docs/guides/configuration.md "Connection secrets"): key-encryption key for the Jira
+  # API tokens of connections. key = base64 of 32 bytes (`openssl rand -base64 32`); previous-keys = "id:base64,..."
+  # (decryption only, after a rotation). Startup fails in the api/worker roles when connections exist without the key.
+  secrets:
+    key: ${BACKOFFICE_SECRETS_KEY:}
+    key-id: ${BACKOFFICE_SECRETS_KEY_ID:k1}
+    previous-keys: ${BACKOFFICE_SECRETS_PREVIOUS_KEYS:}
+    allow-unreadable: ${BACKOFFICE_SECRETS_ALLOW_UNREADABLE:false}
+  # Roles of this process (ADR 0023): api, worker, migrate (comma list). api,worker = small install.
+  role: ${BACKOFFICE_ROLE:api,worker}
+  platform:
+    worker:
+      concurrency: ${WORKER_CONCURRENCY:16}
+      lease: ${WORKER_LEASE:PT60S}
+    events:
+      # Dedicated LISTEN/NOTIFY connection to the primary (never a transaction pooler such as PgBouncer);
+      # blank = the data source URL. Same username/password as the data source.
+      direct-url: ${BACKOFFICE_DATASOURCE_DIRECT_URL:}
+  pipelines:
+    executor-threads: ${PIPELINE_EXECUTOR_THREADS:16}
+    recover-on-startup: ${PIPELINE_RECOVER_ON_STARTUP:true}
+  evaluation:
+    concurrency-per-provider: ${EVAL_CONCURRENCY_PER_PROVIDER:2}
+    seed-starter-content: ${EVAL_SEED_STARTER_CONTENT:true}
+  # Object storage for artefacts > 64 kB, diffs, logs, uploads (ADR 0023, docs/guides/configuration.md
+  # "Object storage and data retention"). filesystem = single replica only; clusters use s3.
+  storage:
+    type: ${BACKOFFICE_STORAGE_TYPE:filesystem}
+    s3:
+      endpoint: ${BACKOFFICE_STORAGE_S3_ENDPOINT:}
+      region: ${BACKOFFICE_STORAGE_S3_REGION:us-east-1}
+      bucket: ${BACKOFFICE_STORAGE_S3_BUCKET:}
+      path-style: ${BACKOFFICE_STORAGE_S3_PATH_STYLE:false}
+      access-key: ${BACKOFFICE_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${BACKOFFICE_STORAGE_S3_SECRET_KEY:}
+      sse: ${BACKOFFICE_STORAGE_S3_SSE:NONE}
+    filesystem:
+      root: ${BACKOFFICE_STORAGE_FILESYSTEM_ROOT:${java.io.tmpdir}/back-office/blobs}
+  retention:
+    enabled: ${BACKOFFICE_RETENTION_ENABLED:true}
+    artifacts: ${BACKOFFICE_RETENTION_ARTIFACTS:P180D}
+    checkpoints: ${BACKOFFICE_RETENTION_CHECKPOINTS:P30D}
+    runner-job-events: ${BACKOFFICE_RETENTION_RUNNER_JOB_EVENTS:P30D}
+
+logging:
+  level:
+    pl.mos.backoffice: ${LOG_LEVEL:INFO}
+    org.springframework.ai: WARN
+
+---
+# JSON logs (ECS) to stdout everywhere except the local profile, which keeps plain console logs
+spring:
+  config:
+    activate:
+      on-profile: "!local"
+logging:
+  structured:
+    format:
+      console: ${LOG_FORMAT:ecs}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  flyway:
+    enabled: ${BACKOFFICE_FLYWAY_ENABLED:true}
+  docker:
+    compose:
+      enabled: true
+      file: ../deploy/compose/docker-compose.yml
+      lifecycle-management: start_only
+backoffice:
+  # links handed to users (set-password, post-logout) point at the Angular dev server
+  public-url: ${BACKOFFICE_PUBLIC_URL:http://localhost:4200}
+  security:
+    runner-token-secret: ${RUNNER_TOKEN_SECRET:dev-runner-token-secret}
+  auth:
+    oidc:
+      issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8180/realms/back-office}
+      client-id: ${OIDC_CLIENT_ID:back-office}
+      client-secret: ${OIDC_CLIENT_SECRET:back-office-dev-secret}
+    registration: OPEN
+    bootstrap-admins: ${BACKOFFICE_BOOTSTRAP_ADMINS:admin@example.com}
+    cookie-secure: false
+    local:
+      # fixed development key - never use it outside the local profile
+      secret-key: ${BACKOFFICE_AUTH_LOCAL_SECRET_KEY:ZGV2LW9ubHktbG9jYWwtYXV0aC1rZXktMzItYnl0ZXM=}
+      bootstrap-admin-email: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL:owner@example.com}
+      bootstrap-admin-password: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD:ChangeMe-Local-123}
+  runner:
+    mode: ${RUNNER_MODE:FLEET}
+    platform-policy:
+      isolation: ${RUNNER_PLATFORM_ISOLATION:DEV}
+  secrets:
+    # fixed development key for connection secrets - never use it outside the local profile
+    key: ${BACKOFFICE_SECRETS_KEY:ZGV2LW9ubHktbG9jYWwtY29ubmVjdGlvbnMta2V5LTE=}
+    key-id: ${BACKOFFICE_SECRETS_KEY_ID:dev}
+logging:
+  level:
+    pl.mos.backoffice: DEBUG

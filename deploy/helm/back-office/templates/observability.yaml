@@ -1,0 +1,151 @@
+{{- /*
+Prometheus Operator objects (monitoring.coreos.com/v1) and Grafana dashboards (09-scale-and-operations.md).
+Metric names: backoffice_* from the backend (Micrometer), http_server_requests_* / jvm_* / hikaricp_*
+Spring Boot defaults. Dashboards are copies of deploy/observability/dashboards/*.json (CI checks).
+*/ -}}
+{{- $m := .Values.metrics }}
+{{- if $m.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "back-office.fullname" . }}
+  namespace: {{ default .Release.Namespace $m.serviceMonitor.namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    {{- with $m.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames: [{{ .Release.Namespace | quote }}]
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/instance
+        operator: In
+        values: [{{ .Release.Name | quote }}]
+      - key: app.kubernetes.io/component
+        operator: In
+        values: ["api", "worker"]
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: {{ $m.serviceMonitor.interval }}
+      scrapeTimeout: {{ $m.serviceMonitor.scrapeTimeout }}
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
+          targetLabel: component
+{{- end }}
+{{- if $m.prometheusRule.enabled }}
+{{- $api := printf "%s-api" (include "back-office.fullname" .) }}
+{{- $sel := printf "namespace=%q" .Release.Namespace }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "back-office.fullname" . }}
+  namespace: {{ default .Release.Namespace $m.prometheusRule.namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    {{- with $m.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: back-office.slo
+      rules:
+        - record: backoffice:api_requests:rate5m
+          expr: sum by (namespace) (rate(http_server_requests_seconds_count{ {{- $sel }},uri=~"/api/.*"}[5m]))
+        - record: backoffice:api_errors:rate5m
+          expr: sum by (namespace) (rate(http_server_requests_seconds_count{ {{- $sel }},uri=~"/api/.*",status=~"5.."}[5m]))
+        - alert: BackOfficeApiHighErrorRate
+          # SLO 99.9 % non-5xx on /api/**: alert when more than 2 % fail for 10 minutes (fast burn)
+          expr: backoffice:api_errors:rate5m / clamp_min(backoffice:api_requests:rate5m, 0.001) > {{ $m.prometheusRule.thresholds.apiErrorRatio }}
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: Back Office API 5xx ratio above {{ mulf $m.prometheusRule.thresholds.apiErrorRatio 100 }} %
+            description: "{{ "{{" }} $value | humanizePercentage {{ "}}" }} of /api requests fail. Check api logs and PostgreSQL (docs/runbooks/scaling.md)."
+        - alert: BackOfficeApiSlowReads
+          # SLO p95 < 300 ms for reads; the SSE stream (long-lived) is excluded
+          expr: histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{ {{- $sel }},uri=~"/api/.*",uri!~".*/(events|stream).*",method="GET"}[5m]))) > {{ $m.prometheusRule.thresholds.apiP95Seconds }}
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: Back Office API p95 read latency above {{ $m.prometheusRule.thresholds.apiP95Seconds }} s
+            description: "p95 is {{ "{{" }} $value | humanizeDuration {{ "}}" }}. Check CPU throttling, Hikari pending connections and slow queries."
+        - alert: BackOfficeWorkQueueStalled
+          # the oldest READY item waits longer than 5 minutes: workers down, not scaling, or all busy
+          expr: max by (kind) (backoffice_work_oldest_ready_seconds{ {{- $sel }}}) > {{ $m.prometheusRule.thresholds.oldestReadySeconds }}
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "Work items of kind {{ "{{" }} $labels.kind {{ "}}" }} wait more than 5 minutes"
+            description: Workers are not picking up work. See docs/runbooks/scaling.md (KEDA not scaling).
+        - alert: BackOfficeDeadWorkItems
+          expr: max by (kind) (backoffice_work_items{ {{- $sel }},status="DEAD"}) > 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ "{{" }} $value {{ "}}" }} dead work items of kind {{ "{{" }} $labels.kind {{ "}}" }}"
+            description: Items exhausted their retries. Inspect and retry them in Administration -> Operations.
+        - alert: BackOfficeRunnerPoolWithoutRunners
+          # queued agent jobs but nothing leased/running in the pool for 10 minutes: no online runner-controller
+          expr: |
+            max by (pool) (backoffice_runner_jobs{ {{- $sel }},status="QUEUED"}) > 0
+            unless on (pool)
+            max by (pool) (backoffice_runner_jobs{ {{- $sel }},status=~"LEASED|STARTING|RUNNING"}) > 0
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: "Runner pool {{ "{{" }} $labels.pool {{ "}}" }} has queued jobs and no runner working on them"
+            description: Check the runner-controller of the pool (docs/guides/runner-fleet-install.md, docs/runbooks/scaling.md).
+        - alert: BackOfficeBudgetExceeded
+          expr: max by (scope) (backoffice_budget_utilisation{ {{- $sel }}}) >= 1
+          for: 1m
+          labels: { severity: warning }
+          annotations:
+            summary: "Budget {{ "{{" }} $labels.scope {{ "}}" }} exhausted - the LLM gateway refuses new calls"
+            description: An owner must raise the limit or stop the work (ADR 0025).
+        - alert: BackOfficeBudgetNearlyExceeded
+          expr: max by (scope) (backoffice_budget_utilisation{ {{- $sel }}}) >= {{ $m.prometheusRule.thresholds.budgetWarn }} < 1
+          for: 5m
+          labels: { severity: info }
+          annotations:
+            summary: "Budget {{ "{{" }} $labels.scope {{ "}}" }} at {{ "{{" }} $value | humanizePercentage {{ "}}" }}"
+        - alert: BackOfficeEventListenerReconnecting
+          # LISTEN/NOTIFY connection of the api replicas keeps dropping: SSE events are delayed
+          expr: sum by (pod) (increase(backoffice_events_listen_reconnects_total{ {{- $sel }}}[15m])) > {{ $m.prometheusRule.thresholds.listenReconnects15m }}
+          for: 0m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ "{{" }} $labels.pod {{ "}}" }} reconnected its LISTEN connection {{ "{{" }} $value {{ "}}" }} times in 15 minutes"
+            description: A pooler in transaction mode on the direct URL, idle timeouts of a proxy/firewall, or failovers. See docs/runbooks/scaling.md.
+        - alert: BackOfficeHikariPoolExhausted
+          expr: max by (pod) (hikaricp_connections_pending{ {{- $sel }}}) > 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ "{{" }} $labels.pod {{ "}}" }} waits for database connections"
+            description: Raise api.config.dbPoolSize within the PostgreSQL connection budget or add a pooler (docs/runbooks/scaling.md).
+        {{- with $m.prometheusRule.extraRules }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
+{{- if $m.dashboards.enabled }}
+{{- range $path, $_ := .Files.Glob "files/dashboards/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-dashboard-%s" (include "back-office.fullname" $) (base $path | trimSuffix ".json") | trunc 63 | trimSuffix "-" }}
+  namespace: {{ default $.Release.Namespace $m.dashboards.namespace }}
+  labels:
+    {{- include "back-office.labels" $ | nindent 4 }}
+    {{- toYaml $m.dashboards.labels | nindent 4 }}
+  annotations:
+    {{- toYaml $m.dashboards.annotations | nindent 4 }}
+data:
+  {{ base $path }}: |-
+    {{- $.Files.Get $path | nindent 4 }}
+{{- end }}
+{{- end }}

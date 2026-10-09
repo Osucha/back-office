@@ -1,0 +1,39 @@
+apiVersion: v2
+name: back-office
+description: >-
+  Back Office - multi-user SDLC control room: REST API + pipeline engine (OIDC backend-for-frontend),
+  Angular web UI, RBAC for agent runner Jobs, optional PostgreSQL, Keycloak and Langfuse.
+type: application
+version: 0.1.0
+# appVersion equals the image tag that is deployed by default (git SHA in CI, see conventions.md).
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+home: https://gitlab.example.com/mos/back-office
+sources:
+  - https://gitlab.example.com/mos/back-office
+keywords:
+  - sdlc
+  - ai-agents
+  - spec-kit
+  - opencode
+  - code-review
+maintainers:
+  - name: Back Office contributors
+dependencies:
+  # Bitnami PostgreSQL. Chart 18.x ships PostgreSQL 18; the application requires 16 or newer.
+  - name: postgresql
+    version: "18.x.x"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: postgresql.enabled
+  # Langfuse v3/v4 (web + worker + ClickHouse + Valkey + S3). Disabled by default (ADR 0008/0012).
+  - name: langfuse
+    version: "2.x.x"
+    repository: https://langfuse.github.io/langfuse-k8s
+    condition: langfuse.enabled
+  # Keycloak for evaluation installs (official quay.io image; the Bitnami chart is frozen at 26.3 and its
+  # image is no longer published). Disabled by default: production uses an external OIDC provider (ADR 0016).
+  - name: keycloakx
+    alias: keycloak
+    version: "7.x.x"
+    repository: https://codecentric.github.io/helm-charts
+    condition: keycloak.enabled

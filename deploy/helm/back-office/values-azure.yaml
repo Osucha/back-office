@@ -1,0 +1,126 @@
+# Reference: AKS + Azure Database for PostgreSQL flexible server + Blob Storage through an S3 gateway
+# (docs/guides/cloud-reference.md#azure). Medium size.
+#
+# Prerequisites: KEDA (AKS add-on), External Secrets Operator with a ClusterSecretStore `azure-key-vault`
+# (Workload Identity), Azure CNI with Cilium or Azure Network Policy Manager, application routing add-on
+# (managed ingress-nginx) or Application Gateway for Containers.
+#
+# Object storage: Azure Blob has no S3 API. Run an S3 gateway (s3proxy with the azureblob provider,
+# deployed next to Back Office - see cloud-reference.md) or use MinIO on managed disks for small installs.
+#
+# PostgreSQL flexible server: direct connections on 5432 (LISTEN/NOTIFY, Flyway, KEDA); the built-in
+# PgBouncer (port 6432, transaction mode) may serve the Hikari pools.
+
+mode: split
+
+api:
+  image:
+    repository: acmeplatform.azurecr.io/back-office/api
+  replicas: 3
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { memory: 2Gi }
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+  config:
+    publicUrl: https://back-office.example.com
+
+worker:
+  resources:
+    requests: { cpu: "1", memory: 1536Mi }
+    limits: { memory: 2Gi }
+  autoscaling:
+    type: keda
+    minReplicas: 3
+    maxReplicas: 30
+    keda:
+      sslmode: require
+
+web:
+  image:
+    repository: acmeplatform.azurecr.io/back-office/web
+  replicas: 2
+
+auth:
+  oidc:
+    issuerUri: https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0
+  bootstrapAdmins: [platform-owner@example.com]
+
+postgresql:
+  enabled: false
+externalDatabase:
+  host: acme-back-office.postgres.database.azure.com
+  port: 5432
+  database: backoffice
+  username: backoffice
+  jdbcParams: "sslmode=require"
+  pooler:
+    # built-in PgBouncer of the flexible server (enable server parameter pgbouncer.enabled=true)
+    host: acme-back-office.postgres.database.azure.com
+    port: 6432
+
+storage:
+  type: s3
+  s3:
+    # s3proxy Service backed by the storage account (docs/guides/cloud-reference.md#azure)
+    endpoint: http://s3proxy.back-office:80
+    region: westeurope
+    bucket: back-office-artifacts   # = Blob container
+    pathStyle: true
+    checksumWhenRequired: true
+
+signing:
+  generate: false
+
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    name: azure-key-vault
+    kind: ClusterSecretStore
+  # Key Vault secret names cannot contain "/" or "_": one JSON secret per target, extracted by key
+  app: { remoteKey: back-office-app }
+  providerKeys: { remoteKey: back-office-provider-keys }
+  integrations: { remoteKey: back-office-integrations }
+  database: { remoteKey: back-office-db }
+  storage: { enabled: true, remoteKey: back-office-storage }
+  signing: { enabled: true, remoteKey: back-office-signing }
+
+ingress:
+  enabled: true
+  # application routing add-on (managed ingress-nginx)
+  className: webapprouting.kubernetes.azure.com
+  host: back-office.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    cert-manager.io/cluster-issuer: letsencrypt
+  tls:
+    - secretName: back-office-tls
+      hosts: [back-office.example.com]
+
+networkPolicy:
+  enabled: true
+  ingressController:
+    namespaceLabels:
+      kubernetes.io/metadata.name: app-routing-system
+  database:
+    # delegated subnet of the flexible server
+    cidrs: ["10.30.2.0/24"]
+  egress:
+    extra:
+      # s3proxy in the release namespace
+      - to:
+          - podSelector: { matchLabels: { app.kubernetes.io/name: s3proxy } }
+        ports:
+          - { port: 80, protocol: TCP }
+
+otel:
+  enabled: true
+  tracesEndpoint: http://otel-collector.observability:4318/v1/traces
+
+metrics:
+  serviceMonitor: { enabled: true }
+  prometheusRule: { enabled: true }
+  dashboards: { enabled: true }

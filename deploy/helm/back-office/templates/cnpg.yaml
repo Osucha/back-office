@@ -1,0 +1,146 @@
+{{- if eq (include "back-office.database.mode" .) "cnpg" }}
+{{- /*
+CloudNativePG (postgresql.mode=cnpg). The operator (and, for backups, the Barman Cloud Plugin) must be
+installed in the cluster first: docs/guides/cloud-reference.md#on-premises. The operator creates the
+Services <cluster>-rw / -ro / -r and the Secret <cluster>-app (keys username, password) for the owner.
+*/ -}}
+{{- $c := .Values.cnpg }}
+{{- $name := include "back-office.cnpg.clusterName" . }}
+{{- $b := $c.backup }}
+{{- if and $b.enabled (eq $b.method "plugin") }}
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ $name }}-backup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  retentionPolicy: {{ $b.retentionPolicy | quote }}
+  configuration:
+    destinationPath: {{ required "cnpg.backup.destinationPath is required" $b.destinationPath | quote }}
+    {{- with $b.endpointURL }}
+    endpointURL: {{ . | quote }}
+    {{- end }}
+    {{- include "back-office.cnpg.s3Credentials" . | nindent 4 }}
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+---
+{{- end }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  instances: {{ $c.instances }}
+  imageName: {{ $c.imageName | quote }}
+  primaryUpdateStrategy: unsupervised
+  enablePDB: true
+  bootstrap:
+    initdb:
+      database: {{ $c.database | quote }}
+      owner: {{ $c.owner | quote }}
+  postgresql:
+    parameters:
+      {{- toYaml $c.parameters | nindent 6 }}
+  storage:
+    size: {{ $c.storage.size }}
+    {{- with $c.storage.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+  {{- if $c.walStorage.enabled }}
+  walStorage:
+    size: {{ $c.walStorage.size }}
+    {{- with $c.walStorage.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+  {{- end }}
+  {{- with $c.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  affinity:
+    # one instance per node, spread across zones where there are several
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+    podAntiAffinityType: {{ $c.podAntiAffinityType }}
+  {{- with $c.serviceAccountTemplate }}
+  serviceAccountTemplate:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  monitoring:
+    enablePodMonitor: {{ $c.monitoring.enablePodMonitor }}
+  {{- if $b.enabled }}
+  {{- if eq $b.method "plugin" }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ $name }}-backup
+  {{- else }}
+  # deprecated in-tree backup (removal planned for CNPG 1.31): prefer cnpg.backup.method=plugin
+  backup:
+    retentionPolicy: {{ $b.retentionPolicy | quote }}
+    barmanObjectStore:
+      destinationPath: {{ required "cnpg.backup.destinationPath is required" $b.destinationPath | quote }}
+      {{- with $b.endpointURL }}
+      endpointURL: {{ . | quote }}
+      {{- end }}
+      {{- include "back-office.cnpg.s3Credentials" . | nindent 6 }}
+      wal:
+        compression: gzip
+  {{- end }}
+  {{- end }}
+{{- if $b.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $name }}-daily
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  schedule: {{ $b.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ $name }}
+  {{- if eq $b.method "plugin" }}
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  {{- else }}
+  method: barmanObjectStore
+  {{- end }}
+{{- end }}
+{{- if $c.pooler.enabled }}
+---
+# PgBouncer in transaction mode for the Hikari pools. LISTEN/NOTIFY and Flyway use the direct
+# <cluster>-rw Service (BACKOFFICE_DATASOURCE_DIRECT_URL), because transaction pooling breaks sessions.
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: {{ $name }}-pooler-rw
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  cluster:
+    name: {{ $name }}
+  instances: {{ $c.pooler.instances }}
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      {{- toYaml $c.pooler.parameters | nindent 6 }}
+{{- end }}
+{{- end }}

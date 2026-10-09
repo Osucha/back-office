@@ -1,0 +1,150 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Back Office dependency updates (09-scale-and-operations.md, maintainability): weekly, grouped, patch updates of dev/test dependencies merge automatically once the pipeline is green.",
+  "extends": [
+    "config:recommended",
+    ":semanticCommitsDisabled",
+    ":dependencyDashboard",
+    "docker:pinDigests"
+  ],
+  "timezone": "Europe/Warsaw",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 4,
+  "labels": ["dependencies"],
+  "enabledManagers": ["gradle", "gradle-wrapper", "npm", "dockerfile", "docker-compose", "helmv3", "helm-values", "gitlabci", "custom.regex"],
+  "platformAutomerge": true,
+  "automergeType": "pr",
+  "rebaseWhen": "conflicted",
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versions marked with a renovate comment in Dockerfiles and CI (e.g. Smokescreen)",
+      "fileMatch": ["(^|/)Dockerfile$", "^\\.gitlab-ci\\.yml$"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+ARG \\S+?=(?<currentValue>\\S+)"]
+    },
+    {
+      "customType": "regex",
+      "description": "Tool images and versions in .gitlab-ci.yml variables",
+      "fileMatch": ["^\\.gitlab-ci\\.yml$"],
+      "matchStrings": [
+        "_IMAGE: \"(?<depName>[^\":]+):(?<currentValue>[^\"@]+)\"",
+        "TRIVY_VERSION: \"(?<currentValue>[^\"]+)\"(?<depName>)"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "{{#if depName}}{{depName}}{{else}}aquasec/trivy{{/if}}"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Kotlin toolchain moves together",
+      "matchPackageNames": ["org.jetbrains.kotlin{/,}**", "com.google.devtools.ksp{/,}**"],
+      "groupName": "kotlin"
+    },
+    {
+      "description": "Spring Boot, Spring AI and the Spring dependency management",
+      "matchPackageNames": ["org.springframework.boot{/,}**", "org.springframework.ai{/,}**", "io.spring.dependency-management{/,}**"],
+      "groupName": "spring"
+    },
+    {
+      "description": "LangGraph4j",
+      "matchPackageNames": ["org.bsc.langgraph4j{/,}**"],
+      "groupName": "langgraph4j"
+    },
+    {
+      "description": "Backend test libraries",
+      "matchManagers": ["gradle"],
+      "matchPackageNames": ["org.junit{/,}**", "io.mockk{/,}**", "org.testcontainers{/,}**", "com.tngtech.archunit{/,}**", "org.assertj{/,}**", "io.gitlab.arturbosch.detekt{/,}**"],
+      "groupName": "backend test dependencies"
+    },
+    {
+      "description": "Other backend dependencies, minor and patch",
+      "matchManagers": ["gradle"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "backend (non-major)",
+      "matchPackageNames": ["!org.jetbrains.kotlin{/,}**", "!org.springframework.boot{/,}**", "!org.springframework.ai{/,}**", "!org.bsc.langgraph4j{/,}**"]
+    },
+    {
+      "description": "Angular framework and CLI together",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@angular/**", "@angular-devkit/**", "@schematics/angular", "typescript", "zone.js", "rxjs"],
+      "groupName": "angular"
+    },
+    {
+      "description": "NG-ZORRO",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["ng-zorro-antd", "@ant-design/**"],
+      "groupName": "ng-zorro"
+    },
+    {
+      "description": "Frontend devDependencies, minor and patch",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "frontend dev dependencies (non-major)",
+      "matchPackageNames": ["!@angular/**", "!@angular-devkit/**", "!typescript"]
+    },
+    {
+      "description": "Automerge patch updates of devDependencies and test dependencies once CI is green",
+      "matchUpdateTypes": ["patch"],
+      "matchDepTypes": ["devDependencies", "test", "testImplementation", "testRuntimeOnly"],
+      "automerge": true
+    },
+    {
+      "description": "Automerge patch updates of the backend test group",
+      "matchUpdateTypes": ["patch"],
+      "matchPackageNames": ["org.junit{/,}**", "io.mockk{/,}**", "org.testcontainers{/,}**", "com.tngtech.archunit{/,}**", "org.assertj{/,}**"],
+      "automerge": true
+    },
+    {
+      "description": "Base images of our Dockerfiles and compose",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "container base images"
+    },
+    {
+      "description": "JDK 21 / Node 22 LTS lines are chosen deliberately: no major bumps of the runtime images",
+      "matchManagers": ["dockerfile", "docker-compose", "gitlabci"],
+      "matchPackageNames": ["eclipse-temurin", "node", "gradle"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "PostgreSQL major versions need a planned upgrade (docs/runbooks/upgrade.md)",
+      "matchPackageNames": ["postgres", "ghcr.io/cloudnative-pg/postgresql"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Helm subcharts and chart images",
+      "matchManagers": ["helmv3", "helm-values"],
+      "groupName": "helm charts"
+    },
+    {
+      "description": "Bitnami PostgreSQL chart majors follow PostgreSQL majors: review manually",
+      "matchManagers": ["helmv3"],
+      "matchPackageNames": ["postgresql"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "CI tool images (helm, trivy, trufflehog, kaniko, cosign)",
+      "matchManagers": ["gitlabci", "custom.regex"],
+      "matchFileNames": [".gitlab-ci.yml"],
+      "groupName": "ci tooling"
+    },
+    {
+      "description": "Security scanners: re-run the guardrail negative tests after an upgrade (guardrails.md)",
+      "matchPackageNames": ["aquasec/trivy", "trufflesecurity/trufflehog", "io.gitlab.arturbosch.detekt{/,}**"],
+      "prBodyNotes": ["Guardrail tool upgrade: re-run the negative test of the rule and add a row to docs/architecture/guardrails.md."]
+    },
+    {
+      "description": "Chainguard images publish only :latest - keep the digest pinned and refreshed",
+      "matchPackageNames": ["cgr.dev/chainguard/**"],
+      "pinDigests": true
+    }
+  ]
+}

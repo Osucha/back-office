@@ -1,0 +1,180 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- /*
+Control-plane NetworkPolicies (09-scale-and-operations.md). Requires a CNI that enforces them.
+  ingress controller -> web -> api ; ingress controller -> api (runner fleet, CI, MCP, LLM gateway)
+  api / worker -> PostgreSQL, object storage, DNS, HTTPS egress (LLM providers, OIDC, Jira)
+  migrate -> PostgreSQL ; monitoring -> :8080 metrics
+Runner fleet traffic arrives through the ingress (outbound HTTPS from the fleet, ADR 0024). A fleet in
+the same cluster that talks to the api Service directly needs networkPolicy.api.extraIngress.
+*/ -}}
+{{- $np := .Values.networkPolicy }}
+{{- $root := . }}
+{{- $mode := include "back-office.database.mode" . }}
+# ---------------------------------------------------------------------------------------------- api
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "back-office.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    {{- include "back-office.np.fromIngress" . | nindent 4 }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "back-office.selectorLabels" (dict "root" . "component" "web") | nindent 14 }}
+      ports:
+        - { port: 8080, protocol: TCP }
+    {{- include "back-office.np.fromMonitoring" . | nindent 4 }}
+    {{- with $np.api.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  egress:
+    {{- include "back-office.np.dns" . | nindent 4 }}
+    {{- include "back-office.np.toDatabase" . | nindent 4 }}
+    {{- include "back-office.np.egressCommon" . | nindent 4 }}
+{{- if eq (include "back-office.mode" .) "split" }}
+---
+# ------------------------------------------------------------------------------------------- worker
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "back-office.worker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "worker") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    {{- include "back-office.np.fromMonitoring" . | nindent 4 }}
+  egress:
+    {{- include "back-office.np.dns" . | nindent 4 }}
+    {{- include "back-office.np.toDatabase" . | nindent 4 }}
+    {{- include "back-office.np.egressCommon" . | nindent 4 }}
+{{- end }}
+---
+# ---------------------------------------------------------------------------------------------- web
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "back-office.web.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    {{- include "back-office.np.fromIngress" . | nindent 4 }}
+    {{- with $np.web.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  egress:
+    {{- include "back-office.np.dns" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "back-office.selectorLabels" (dict "root" . "component" "api") | nindent 14 }}
+      ports:
+        - { port: 8080, protocol: TCP }
+---
+# ------------------------------------------------------------------------------------------ migrate
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "back-office.migrate.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "migrate") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress:
+    {{- include "back-office.np.dns" . | nindent 4 }}
+    {{- include "back-office.np.toDatabase" . | nindent 4 }}
+{{- if .Values.minio.enabled }}
+---
+# -------------------------------------------------------------------------------------------- minio
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "back-office.minio.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "minio") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+          # api, worker (and the bucket Job); presigned upload URLs from sandboxes arrive through
+          # networkPolicy.minio.extraIngress when the fleet uploads directly
+      ports:
+        - { port: 9000, protocol: TCP }
+    {{- with $np.minio.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  egress: []
+{{- end }}
+{{- if and .Values.pgbouncer.enabled (eq $mode "external") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-pgbouncer" (include "back-office.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "back-office.selectorLabels" (dict "root" . "component" "pgbouncer") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - { port: {{ .Values.pgbouncer.port }}, protocol: TCP }
+  egress:
+    {{- include "back-office.np.dns" . | nindent 4 }}
+    - to:
+        {{- if $np.database.cidrs }}
+        {{- range $np.database.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+        {{- else }}
+        - ipBlock:
+            cidr: 0.0.0.0/0
+        {{- end }}
+      ports:
+        - { port: {{ .Values.externalDatabase.port }}, protocol: TCP }
+{{- end }}
+{{- end }}

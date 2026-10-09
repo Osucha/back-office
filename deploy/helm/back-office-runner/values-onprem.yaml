@@ -1,0 +1,45 @@
+# On-premises execution plane: gVisor (runsc) installed on dedicated sandbox nodes, Kata on nodes with
+# hardware virtualization; the chart creates both RuntimeClasses.
+backOffice:
+  url: https://back-office.example.internal
+  poolId: onprem-dc1
+backend: AGENT_SANDBOX
+agentSandbox:
+  install: true
+runtimeClasses:
+  standard: gvisor
+  high: kata
+  create: true
+  gvisorHandler: runsc
+  kataHandler: kata
+  scheduling:
+    nodeSelector: { sandbox.back-office.dev/runtime: "true" }
+    tolerations: [{ key: sandbox.back-office.dev/runtime, operator: Exists, effect: NoSchedule }]
+controller:
+  image:
+    repository: registry.example.internal/back-office/runner-controller
+registration:
+  existingSecret: back-office-runner-registration
+maxConcurrent: 10
+warmPool: { size: 5 }
+autoscaling: { type: keda, minReplicas: 2, maxReplicas: 6 }
+caches:
+  enabled: true
+  storageClass: cephfs
+egressProxy:
+  image: registry.example.internal/back-office/egress-proxy:0.1.0
+  # Back Office, GitLab and Nexus inside the data centre (hosts: pool policy in Back Office)
+  allowedCidrs: ["10.10.0.0/16"]
+networkPolicy:
+  controllerEgressCidrs: ["10.10.0.0/16", "10.96.0.1/32"]
+# Least-privilege git (ADR 0031): read-only tokens for review / analysis / benchmark jobs, push tokens
+# (Developer + write_repository, cannot merge into the protected default branch) only for implementation jobs.
+# Secrets (key `token`) in the sandbox namespace, see docs/manual/integrations-git.md#git-least-privilege.
+gitCredentials:
+  repoSecrets:
+    - repository: gitlab.example.internal/shop/api
+      read: git-shop-api-read
+      push: git-shop-api-push
+    - repository: gitlab.example.internal/shop/*
+      read: git-shop-read
+      push: git-shop-push

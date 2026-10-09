@@ -1,0 +1,17 @@
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration,classpath:db/testschema
+    out-of-order: true
+  ai:
+    mcp:
+      server:
+        enabled: false
+backoffice:
+  mcp:
+    enabled: false
+  provenance:
+    sweep-initial-delay: PT1H
+logging:
+  level:
+    pl.mos.backoffice: DEBUG

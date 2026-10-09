@@ -1,0 +1,764 @@
+# GitLab CI for the Back Office monorepo.
+#
+# Stages
+#   build    frontend production build, helm lint + template of both charts in every variant (kubeconform)
+#   test     backend Gradle tests (Testcontainers via docker:dind), frontend unit tests, runner unittest,
+#            CI client script tests (ci/backoffice-ci.sh against a fake API)
+#            guardrails (docs/architecture/guardrails.md): security:secrets (TruffleHog), security:dependencies
+#            (Trivy + CycloneDX SBOM), security:suppressions (expired Trivy suppressions), backend:detekt,
+#            frontend:lint-deps (dependency-cruiser)
+#   quality  quality:sonar - GR-Q3 SonarQube scan of backend + frontend + Python with the coverage of the test
+#            jobs; waits for the quality gate "Back Office way" (new code). Runs only when the CI variable
+#            SONAR_HOST_URL is set (docs/guides/code-quality.md)
+#   package  kaniko builds of api / web / runner / runner-controller / egress-proxy images
+#            -> $CI_REGISTRY_IMAGE/<name>:$CI_COMMIT_SHORT_SHA (digest files as artefacts)
+#   scan     security:images - Trivy scan + CycloneDX SBOM of the pushed images (default branch and tags);
+#            sign:images - cosign keyless signatures, SBOM and SLSA provenance attestations by digest
+#   chart    helm package artefact (+ push to the GitLab Helm registry on the default branch)
+#   release  on tags: upload ci/backoffice-ci.sh and ci-templates/backoffice.gitlab-ci.yml to the generic
+#            package registry and create a GitLab release linking them (ADR 0013: the CI client is a release asset)
+#
+# Merge requests run build+test (and image builds without push when IMAGES_ON_MR=true); the default
+# branch and tags build and push images and the chart.
+
+stages: [build, test, quality, package, scan, chart, release]
+
+variables:
+  GIT_DEPTH: "50"
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.caching=true -Dorg.gradle.console=plain"
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  HELM_IMAGE: "alpine/helm:3.19.0"
+  TRIVY_IMAGE: "aquasec/trivy:0.74.0"
+  TRUFFLEHOG_IMAGE: "trufflesecurity/trufflehog:3.97.9"
+  KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2-debug"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+  # Set to "true" to build (not push) images on merge requests as well.
+  IMAGES_ON_MR: "false"
+  # Docker-in-Docker for Testcontainers in backend tests.
+  DOCKER_HOST: "tcp://docker:2376"
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: "1"
+  DOCKER_CERT_PATH: "/certs/client"
+  TESTCONTAINERS_HOST_OVERRIDE: "docker"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+.rules-mr-or-main: &rules-mr-or-main
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+.rules-main-only: &rules-main-only
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+.rules-images: &rules-images
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $IMAGES_ON_MR == "true"
+
+# --------------------------------------------------------------------------------------------
+# build
+# --------------------------------------------------------------------------------------------
+frontend:build:
+  stage: build
+  image: node:22
+  <<: *rules-mr-or-main
+  cache:
+    key:
+      files: [frontend/package-lock.json]
+    paths: [.npm]
+  before_script:
+    - cd frontend
+    - npm ci --prefer-offline --no-audit --no-fund
+  script:
+    - npm run build
+  artifacts:
+    paths: [frontend/dist]
+    expire_in: 1 day
+
+helm:lint:
+  stage: build
+  image:
+    name: $HELM_IMAGE
+    entrypoint: [""]
+  <<: *rules-mr-or-main
+  script:
+    - cd deploy/helm/back-office
+    # The chart carries copies of the dev realm and of the dashboards (Helm cannot read files outside the chart).
+    - cmp files/keycloak/realm-back-office.json ../../keycloak/realm-back-office.json || (echo "files/keycloak/realm-back-office.json differs from deploy/keycloak/realm-back-office.json - copy it" && exit 1)
+    - for f in ../../observability/dashboards/*.json; do cmp "$f" "files/dashboards/$(basename $f)" || (echo "dashboard copy $(basename $f) differs - cp deploy/observability/dashboards/*.json deploy/helm/back-office/files/dashboards/" && exit 1); done
+    - helm repo add langfuse https://langfuse.github.io/langfuse-k8s
+    - helm repo add codecentric https://codecentric.github.io/helm-charts
+    - helm dependency build .
+    - export OIDC="--set auth.oidc.issuerUri=https://sso.example.com/realms/back-office --set auth.oidc.clientSecret=ci"
+    - helm lint . $OIDC
+    # every shipped values file: dev (combined + MinIO + Keycloak) and the cloud references
+    - for v in values-dev values-aws values-gcp values-azure values-onprem; do helm lint . -f $v.yaml && helm template back-office . -f $v.yaml > /tmp/render-$v.yaml || exit 1; done
+    # external DB + external OIDC provider with the client secret in an existing Secret, NetworkPolicies
+    - helm template back-office . --set auth.oidc.issuerUri=https://login.microsoftonline.com/tenant/v2.0 --set auth.oidc.existingSecret=bo-oidc --set postgresql.enabled=false --set externalDatabase.host=db --set externalDatabase.password=pw --set ingress.enabled=true --set networkPolicy.enabled=true --set pgbouncer.enabled=true > /tmp/render-ext.yaml
+    # CloudNativePG with pooler and backups, filesystem storage, KEDA off (HPA)
+    - helm template back-office . $OIDC --set postgresql.enabled=false --set postgresql.mode=cnpg --set cnpg.pooler.enabled=true --set cnpg.backup.enabled=true --set cnpg.backup.destinationPath=s3://b/pg --set cnpg.backup.s3Credentials.inheritFromIAMRole=true --set storage.type=filesystem --set worker.autoscaling.type=hpa > /tmp/render-cnpg.yaml
+    # bundled Keycloak behind its own ingress host
+    - helm template back-office . --set keycloak.enabled=true --set auth.oidc.clientSecret=ci --set bundledKeycloak.ingress.enabled=true --set bundledKeycloak.ingress.host=sso.example.com --set ingress.enabled=true > /tmp/render-keycloak.yaml
+    - helm template back-office . $OIDC --set langfuse.enabled=true --set langfuse.clickhouse.crdCheck=false --set langfuseAuth.publicKey=pk --set langfuseAuth.secretKey=sk > /tmp/render-langfuse.yaml
+    # Negative checks: the removed API key and an inconsistent database mode must fail the render.
+    - if helm template back-office . $OIDC --set secrets.apiKey=old > /dev/null 2>&1; then echo "secrets.apiKey must be rejected"; exit 1; fi
+    - if helm template back-office . $OIDC --set postgresql.mode=cnpg > /dev/null 2>&1; then echo "postgresql.mode=cnpg with postgresql.enabled=true must be rejected"; exit 1; fi
+    - grep -c "^kind:" /tmp/render-*.yaml
+    # runner fleet chart: defaults, AGENT_SANDBOX + gVisor, K8S_JOB + Kata, dev, cloud references
+    - cd ../back-office-runner
+    - helm lint .
+    - for v in values-gvisor values-kata values-dev values-aws values-gcp values-azure values-onprem; do helm lint . -f $v.yaml && helm template runners . -f $v.yaml > /tmp/render-runner-$v.yaml || exit 1; done
+    - helm template runners . --set autoscaling.type=keda --set caches.enabled=true --set runtimeClasses.create=true > /tmp/render-runner-keda.yaml
+    # DOCKER is the laptop backend: the chart refuses it
+    - if helm template runners . --set backend=DOCKER > /dev/null 2>&1; then echo "backend=DOCKER must be rejected"; exit 1; fi
+    - grep -c "^kind:" /tmp/render-runner-*.yaml
+  artifacts:
+    paths: [deploy/helm/back-office/charts, deploy/helm/back-office/Chart.lock]
+    expire_in: 1 day
+
+# Rendered manifests validated against the Kubernetes and CRD schemas (KEDA, Prometheus Operator, CNPG,
+# External Secrets, Agent Sandbox) with kubeconform. allow_failure while the CRD catalog lacks a schema.
+helm:kubeconform:
+  stage: build
+  image:
+    name: $HELM_IMAGE
+    entrypoint: [""]
+  <<: *rules-mr-or-main
+  needs: [helm:lint]
+  allow_failure: true
+  script:
+    - apk add --no-cache curl > /dev/null
+    - curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar -xz -C /usr/local/bin kubeconform
+    - export SCHEMAS="-schema-location default -schema-location https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
+    - cd deploy/helm/back-office && helm dependency build . > /dev/null
+    - helm template back-office . -f values-aws.yaml | kubeconform -strict -summary -ignore-missing-schemas $SCHEMAS
+    - helm template back-office . -f values-onprem.yaml | kubeconform -strict -summary -ignore-missing-schemas $SCHEMAS
+    - cd ../back-office-runner && helm template runners . -f values-gvisor.yaml | kubeconform -strict -summary -ignore-missing-schemas $SCHEMAS
+
+# --------------------------------------------------------------------------------------------
+# test
+# --------------------------------------------------------------------------------------------
+backend:test:
+  stage: test
+  image: gradle:8.14-jdk21
+  <<: *rules-mr-or-main
+  services:
+    - name: docker:27-dind
+      alias: docker
+  cache:
+    key: gradle-$CI_COMMIT_REF_SLUG
+    paths: [.gradle/caches, .gradle/wrapper]
+    fallback_keys: [gradle-$CI_DEFAULT_BRANCH]
+  before_script:
+    - cd backend
+    - chmod +x gradlew
+  script:
+    # jacocoAggregatedReport: coverage XML of all modules for quality:sonar (GR-Q3)
+    - ./gradlew test jacocoAggregatedReport --no-daemon --stacktrace
+  artifacts:
+    when: always
+    reports:
+      junit: backend/**/build/test-results/test/TEST-*.xml
+    paths:
+      - backend/**/build/reports/tests
+      - backend/build/reports/jacoco/aggregate
+      - backend/*/build/classes/kotlin/main
+    expire_in: 1 week
+
+frontend:test:
+  stage: test
+  image: node:22
+  <<: *rules-mr-or-main
+  needs: []
+  cache:
+    key:
+      files: [frontend/package-lock.json]
+    paths: [.npm]
+  before_script:
+    - cd frontend
+    - npm ci --prefer-offline --no-audit --no-fund
+  script:
+    # Angular 21 unit-test builder with vitest + jsdom: no browser required. --coverage (v8) writes
+    # coverage/back-office-web/lcov.info for quality:sonar (GR-Q3).
+    - npm run test:ci
+    - npm run lint:format
+  coverage: '/Lines\s*:\s*(\d+(?:\.\d+)?)%/'
+  artifacts:
+    when: always
+    paths: [frontend/coverage]
+    expire_in: 1 week
+  allow_failure: false
+
+runner:test:
+  stage: test
+  image: python:3.12-slim
+  <<: *rules-mr-or-main
+  needs: []
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - pip install -q coverage
+  script:
+    # coverage.py settings in .coveragerc; the XML feeds quality:sonar (GR-Q3)
+    - python3 -m coverage run -m unittest discover -s runner/tests -v
+    - mkdir -p build/coverage && python3 -m coverage xml -o build/coverage/python-coverage.xml
+    - python3 -m py_compile runner/entrypoint.py
+  artifacts:
+    paths: [build/coverage]
+    expire_in: 1 week
+
+# The CI client is POSIX sh: run its tests with dash as /bin/sh (Debian default) and once more with
+# busybox-style constraints checked by `sh -n` under dash. Needs git + curl like a real CI job.
+ci:test:
+  stage: test
+  image: python:3.12-slim
+  <<: *rules-mr-or-main
+  needs: []
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git curl dash > /dev/null
+    - git config --global user.email ci@example.com && git config --global user.name ci
+  script:
+    - dash -n ci/backoffice-ci.sh
+    - BACKOFFICE_CI_SH=/bin/dash python3 -m unittest discover -s ci/tests -v
+
+# GR-D2: no source file is hidden by .gitignore. A too-broad pattern (e.g. backend/**/out/) once hid
+# every adapter/out package, so a clean clone did not build. Fails if any file under a src/ directory,
+# ci/, runner/ or docs/ is ignored.
+repo:ignored-sources:
+  stage: test
+  image: alpine/git:2.47.2
+  <<: *rules-mr-or-main
+  needs: []
+  script:
+    - |
+      ignored=$(git ls-files --others --ignored --exclude-standard -- "*/src/*" "ci/*" "runner/*" "docs/*" | grep -vE "__pycache__|\.pyc$|/node_modules/|^_temp_ref/" || true)
+      if [ -n "$ignored" ]; then echo "Source files hidden by .gitignore:"; echo "$ignored"; exit 1; fi
+      echo "no ignored source files"
+
+# --------------------------------------------------------------------------------------------
+# guardrails (docs/architecture/guardrails.md). Each job names the rule IDs it enforces.
+# --------------------------------------------------------------------------------------------
+# GR-S1: no secrets in the tree. Scans the checked-out files (not the history) of every MR.
+# Unverified findings fail too. TRUFFLEHOG_ONLY_VERIFIED=true fails only on secrets the provider
+# confirms as live (fewer false positives, but a revoked-yet-committed key would pass).
+# False positives: `trufflehog:ignore` on the line, or a path regex with a reason in
+# ci/trufflehog-exclude.txt. The JDBC and GitLab v1 detectors are off: they flag the documented dev
+# JDBC URLs and the word GITLAB_TOKEN in prose (no credential to verify).
+security:secrets:
+  stage: test
+  image:
+    name: $TRUFFLEHOG_IMAGE
+    entrypoint: [""]
+  <<: *rules-mr-or-main
+  needs: []
+  variables:
+    TRUFFLEHOG_ONLY_VERIFIED: "false"
+  script:
+    - if [ "$TRUFFLEHOG_ONLY_VERIFIED" = "true" ]; then ONLY="--only-verified"; else ONLY=""; fi
+    - trufflehog filesystem . --fail --no-update --exclude-paths=ci/trufflehog-exclude.txt --exclude-detectors=JDBC,Gitlab.v1 $ONLY
+  allow_failure: false
+
+# GR-S2: no fixable HIGH/CRITICAL CVE in the dependencies of backend (Gradle runtimeClasspath through
+# lockfiles written by an init script only in this job), frontend (package-lock.json) and runner.
+# Three steps on purpose: full informative report, CycloneDX SBOM artefacts, then the gate
+# (HIGH/CRITICAL with a fix available, suppressions from ci/trivy-ignore.yaml).
+security:dependencies:
+  stage: test
+  image: gradle:8.14-jdk21
+  <<: *rules-mr-or-main
+  needs: []
+  variables:
+    TRIVY_VERSION: "0.74.0"
+    TRIVY_CACHE_DIR: "$CI_PROJECT_DIR/.trivycache"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_TIMEOUT: "15m"
+    # TruffleHog owns secret scanning; here only vulnerabilities.
+    TRIVY_SCANNERS: vuln
+  cache:
+    - key: trivy-db
+      paths: [.trivycache]
+    - key: gradle-$CI_COMMIT_REF_SLUG
+      paths: [.gradle/caches, .gradle/wrapper]
+      policy: pull
+  before_script:
+    - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
+    - cd backend && chmod +x gradlew
+    - ./gradlew --no-daemon -q -I ../ci/gradle/lock-runtime-classpath.init.gradle.kts writeRuntimeLocks --write-locks
+    - find . -name gradle.lockfile | sort
+    - cd ..
+  script:
+    - echo "===== Trivy full report (informative) ====="
+    - trivy fs --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 0 --ignorefile ci/trivy-ignore.yaml --skip-dirs frontend/node_modules backend frontend runner
+    - echo "===== CycloneDX SBOMs ====="
+    - mkdir -p sbom
+    - trivy fs --format cyclonedx --output sbom/backend.cdx.json backend
+    - trivy fs --format cyclonedx --output sbom/frontend.cdx.json --skip-dirs frontend/node_modules frontend
+    - trivy fs --format cyclonedx --output sbom/runner.cdx.json runner
+    - echo "===== Gate - HIGH/CRITICAL with a fix available ====="
+    - trivy fs --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile ci/trivy-ignore.yaml --skip-dirs frontend/node_modules backend frontend runner
+  artifacts:
+    when: always
+    paths: [sbom/]
+    expire_in: 4 weeks
+  allow_failure: false
+
+# GR-S2 (hygiene): every suppression in ci/trivy-ignore.yaml has a statement and a future expiry date.
+security:suppressions:
+  stage: test
+  image: python:3.12-slim
+  <<: *rules-mr-or-main
+  needs: []
+  script:
+    - python3 ci/check-trivy-ignore.py ci/trivy-ignore.yaml
+
+# GR-Q1: detekt with the bans of backend/config/detekt/detekt.yml (type resolution: detektMain/detektTest).
+# allow_failure until the existing findings are cleaned up; then drop it and wire detekt into `check`.
+backend:detekt:
+  stage: test
+  image: gradle:8.14-jdk21
+  <<: *rules-mr-or-main
+  needs: []
+  cache:
+    key: gradle-$CI_COMMIT_REF_SLUG
+    paths: [.gradle/caches, .gradle/wrapper]
+    policy: pull
+  before_script:
+    - cd backend
+    - chmod +x gradlew
+  script:
+    - ./gradlew detektMain detektTest --no-daemon --continue
+  artifacts:
+    when: always
+    paths: [backend/**/build/reports/detekt]
+    expire_in: 1 week
+  allow_failure: true
+
+# GR-D1: the OpenAPI file is the contract. The committed frontend types must equal what the generator
+# produces from docs/api/openapi.yaml (the web image regenerates them anyway; this catches the drift at MR
+# time). allow_failure while iteration 3 is changing the contract; make it blocking once main is green.
+frontend:api-drift:
+  stage: test
+  image: node:22
+  <<: *rules-mr-or-main
+  needs: []
+  cache:
+    key:
+      files: [frontend/package-lock.json]
+    paths: [.npm]
+  before_script:
+    - cd frontend
+    - npm ci --prefer-offline --no-audit --no-fund
+  script:
+    - npm run api:types
+    - git diff --exit-code -- src/app/core/api/schema.d.ts || (echo "schema.d.ts is stale - run npm run api:types and commit it" && exit 1)
+  allow_failure: true
+
+# GR-Q2: frontend layer rules (dependency-cruiser via `npm run lint:deps`). allow_failure until the
+# script exists in frontend/package.json and passes on main.
+frontend:lint-deps:
+  stage: test
+  image: node:22
+  <<: *rules-mr-or-main
+  needs: []
+  cache:
+    key:
+      files: [frontend/package-lock.json]
+    paths: [.npm]
+  before_script:
+    - cd frontend
+    - npm ci --prefer-offline --no-audit --no-fund
+  script:
+    - npm run lint:deps
+  allow_failure: true
+
+# --------------------------------------------------------------------------------------------
+# quality: GR-Q3 SonarQube quality gate (ADR 0027, docs/guides/code-quality.md)
+# --------------------------------------------------------------------------------------------
+# One SonarQube project `back-office` (Kotlin modules, frontend TypeScript, Python of runner/ and ci/),
+# scanned with the SonarScanner for Gradle (backend/build.gradle.kts) using the coverage reports of
+# backend:test (JaCoCo aggregate), frontend:test (lcov) and runner:test (coverage.py), plus the detekt
+# reports when backend:detekt produced them. sonar.qualitygate.wait=true: a red gate fails the pipeline.
+#
+# CI/CD variables (Settings -> CI/CD -> Variables):
+#   SONAR_HOST_URL          e.g. https://sonarqube.example.com. Not set = this job is not created (forks,
+#                           mirrors and installations without SonarQube keep a green pipeline).
+#   SONAR_TOKEN             masked; a project analysis token (deploy/scripts/sonar-setup.sh SONAR_CREATE_TOKEN=true).
+#                           Not "protected" if merge requests from unprotected branches are analysed.
+#   SONAR_BRANCH_ANALYSIS   "true" only with SonarQube Developer Edition+ or SonarQube Cloud: analyse merge
+#                           requests (sonar.pullrequest.*) and decorate them. Otherwise (Community Build) only
+#                           the default branch is analysed and a merge request is judged after it is merged.
+quality:sonar:
+  stage: quality
+  image: gradle:8.14-jdk21
+  rules:
+    - if: $SONAR_HOST_URL && $CI_PIPELINE_SOURCE == "merge_request_event" && $SONAR_BRANCH_ANALYSIS == "true"
+    - if: $SONAR_HOST_URL && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs:
+    - job: backend:test
+    - job: frontend:test
+    - job: runner:test
+    - job: backend:detekt
+      optional: true
+  variables:
+    # full history: SonarQube needs git blame to tell new lines from old ones
+    GIT_DEPTH: "0"
+    SONAR_USER_HOME: "$CI_PROJECT_DIR/.sonar"
+    SONAR_BRANCH_ANALYSIS: "false"
+  cache:
+    - key: sonar
+      paths: [.sonar/cache]
+    - key: gradle-$CI_COMMIT_REF_SLUG
+      paths: [.gradle/caches, .gradle/wrapper]
+      policy: pull
+  before_script:
+    - cd backend
+    - chmod +x gradlew
+  script:
+    - |
+      if [ -z "${SONAR_HOST_URL:-}" ]; then echo "GR-Q3: SONAR_HOST_URL is not set - SonarQube analysis skipped"; exit 0; fi
+      if [ -z "${SONAR_TOKEN:-}" ]; then
+        echo "GR-Q3: SONAR_HOST_URL is set but SONAR_TOKEN is not - add the masked CI/CD variable SONAR_TOKEN (docs/guides/code-quality.md)"
+        exit 1
+      fi
+      # Project version = last release tag: with the new-code definition PREVIOUS_VERSION, "new code" is
+      # everything since the previous release.
+      APP_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo 0.1.0-SNAPSHOT); export APP_VERSION
+      # SONAR_HOST_URL and SONAR_TOKEN reach the scanner as environment variables (not on the command line).
+      set -- -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=600 -Dsonar.gradle.skipCompile=true
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        set -- "$@" -Dsonar.pullrequest.key="$CI_MERGE_REQUEST_IID" \
+          -Dsonar.pullrequest.branch="$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" \
+          -Dsonar.pullrequest.base="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      elif [ "$SONAR_BRANCH_ANALYSIS" = "true" ]; then
+        set -- "$@" -Dsonar.branch.name="$CI_COMMIT_BRANCH"
+      fi
+      ./gradlew sonar --no-daemon --stacktrace "$@"
+  allow_failure: false
+
+# --------------------------------------------------------------------------------------------
+# package (kaniko, no privileged runner needed)
+# --------------------------------------------------------------------------------------------
+.kaniko:
+  stage: package
+  image:
+    name: $KANIKO_IMAGE
+    entrypoint: [""]
+  <<: *rules-images
+  variables:
+    GIT_STRATEGY: fetch
+  before_script:
+    - mkdir -p /kaniko/.docker "${CI_PROJECT_DIR}/digests"
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        export KANIKO_PUSH_ARGS="--no-push"
+      else
+        export KANIKO_PUSH_ARGS="--destination ${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${IMAGE_TAG} --destination ${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_REF_SLUG}"
+      fi
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/${IMAGE_CONTEXT}"
+      --dockerfile "${CI_PROJECT_DIR}/${IMAGE_DOCKERFILE:-${IMAGE_CONTEXT}/Dockerfile}"
+      --cache=true
+      --cache-repo "${CI_REGISTRY_IMAGE}/cache"
+      --snapshot-mode=redo
+      --build-arg APP_VERSION=${IMAGE_TAG}
+      --label org.opencontainers.image.revision=${CI_COMMIT_SHA}
+      --label org.opencontainers.image.source=${CI_PROJECT_URL}
+      --digest-file "${CI_PROJECT_DIR}/digests/${IMAGE_NAME}.digest"
+      ${KANIKO_PUSH_ARGS}
+  # the digest is what gets scanned, signed and attested (tags are mutable)
+  artifacts:
+    paths: [digests/]
+    expire_in: 4 weeks
+
+image:api:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: api
+    IMAGE_CONTEXT: backend
+  needs: [backend:test]
+
+image:web:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: web
+    # The web Dockerfile needs the repository root as context (it copies docs/api/openapi.yaml).
+    IMAGE_CONTEXT: "."
+    IMAGE_DOCKERFILE: frontend/Dockerfile
+  needs: [frontend:test, frontend:build]
+
+image:runner:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: runner
+    IMAGE_CONTEXT: runner
+  needs: [runner:test]
+
+# runner-controller (ADR 0024): Gradle module backend/runner-controller, context backend. Skipped until
+# the module's Dockerfile exists.
+image:runner-controller:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: runner-controller
+    IMAGE_CONTEXT: backend
+    IMAGE_DOCKERFILE: backend/runner-controller/Dockerfile
+  needs: [backend:test]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: [backend/runner-controller/Dockerfile]
+    - if: $CI_COMMIT_TAG
+      exists: [backend/runner-controller/Dockerfile]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $IMAGES_ON_MR == "true"
+      exists: [backend/runner-controller/Dockerfile]
+
+# Per-pool Smokescreen egress proxy (bo-egress-<pool>), built from the runner-controller module.
+image:egress-proxy:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: egress-proxy
+    IMAGE_CONTEXT: backend/runner-controller/egress-proxy
+  needs: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: [backend/runner-controller/egress-proxy/Dockerfile]
+    - if: $CI_COMMIT_TAG
+      exists: [backend/runner-controller/egress-proxy/Dockerfile]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $IMAGES_ON_MR == "true"
+      exists: [backend/runner-controller/egress-proxy/Dockerfile]
+
+# --------------------------------------------------------------------------------------------
+# scan: GR-S2 on the pushed images (OS packages and language dependencies inside each image)
+# --------------------------------------------------------------------------------------------
+.image-scan:
+  stage: scan
+  image:
+    name: $TRIVY_IMAGE
+    entrypoint: [""]
+  <<: *rules-main-only
+  variables:
+    TRIVY_CACHE_DIR: "$CI_PROJECT_DIR/.trivycache"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_TIMEOUT: "15m"
+    TRIVY_SCANNERS: vuln
+    TRIVY_USERNAME: "$CI_REGISTRY_USER"
+    TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
+  cache:
+    key: trivy-db
+    paths: [.trivycache]
+  script:
+    - export IMAGE="${CI_REGISTRY_IMAGE}/${IMAGE_NAME}@$(cat digests/${IMAGE_NAME}.digest)"
+    - trivy image --exit-code 0 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignorefile ci/trivy-ignore.yaml "$IMAGE"
+    - mkdir -p sbom
+    - trivy image --format cyclonedx --output "sbom/image-${IMAGE_NAME}.cdx.json" "$IMAGE"
+    - trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --ignorefile ci/trivy-ignore.yaml "$IMAGE"
+  artifacts:
+    when: always
+    paths: [sbom/]
+    expire_in: 4 weeks
+  allow_failure: false
+
+security:images:
+  extends: .image-scan
+  needs: [image:api, image:web, image:runner]
+  parallel:
+    matrix:
+      - IMAGE_NAME: [api, web, runner]
+
+security:images:runner-controller:
+  extends: .image-scan
+  needs: [image:runner-controller, image:egress-proxy]
+  parallel:
+    matrix:
+      - IMAGE_NAME: [runner-controller, egress-proxy]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: [backend/runner-controller/Dockerfile]
+    - if: $CI_COMMIT_TAG
+      exists: [backend/runner-controller/Dockerfile]
+
+# --------------------------------------------------------------------------------------------
+# sign: cosign keyless (Sigstore Fulcio/Rekor, identity = this GitLab pipeline via OIDC id_token) for every
+# pushed image by digest, plus attestations: the CycloneDX SBOM of the image and a SLSA v1 provenance
+# statement describing this build. Verify with
+#   cosign verify <image>@<digest> --certificate-identity-regexp "^${CI_PROJECT_URL}//" \
+#     --certificate-oidc-issuer ${CI_SERVER_URL}
+#   cosign verify-attestation --type cyclonedx <same flags> <image>@<digest>
+# SLSA note: the provenance is generated by the build job's own pipeline (kaniko on shared runners), so
+# it meets SLSA Build L2 (hosted build, signed provenance); L3 would need an isolated, non-forgeable
+# provenance generator (docs/guides/cloud-reference.md#supply-chain).
+# --------------------------------------------------------------------------------------------
+.cosign:
+  stage: scan
+  image:
+    # -dev tag: distroless cosign plus a shell
+    name: ghcr.io/sigstore/cosign/cosign:v3.1.3-dev
+    entrypoint: [""]
+  <<: *rules-main-only
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  variables:
+    COSIGN_YES: "true"
+  script:
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    - export DIGEST="$(cat digests/${IMAGE_NAME}.digest)"
+    - export IMAGE="${CI_REGISTRY_IMAGE}/${IMAGE_NAME}@${DIGEST}"
+    - cosign sign "$IMAGE"
+    - cosign attest --type cyclonedx --predicate "sbom/image-${IMAGE_NAME}.cdx.json" "$IMAGE"
+    - |
+      cat > provenance.json <<EOF
+      {
+        "buildDefinition": {
+          "buildType": "https://back-office.dev/gitlab-ci-kaniko/v1",
+          "externalParameters": {
+            "repository": "${CI_PROJECT_URL}", "ref": "${CI_COMMIT_REF_NAME}",
+            "pipeline": "${CI_PIPELINE_URL}", "image": "${IMAGE_NAME}"
+          },
+          "resolvedDependencies": [
+            { "uri": "git+${CI_PROJECT_URL}@${CI_COMMIT_SHA}", "digest": { "gitCommit": "${CI_COMMIT_SHA}" } }
+          ]
+        },
+        "runDetails": {
+          "builder": { "id": "${CI_SERVER_URL}/runners/${CI_RUNNER_ID}" },
+          "metadata": { "invocationId": "${CI_JOB_URL}", "startedOn": "${CI_PIPELINE_CREATED_AT}" }
+        }
+      }
+      EOF
+    - cosign attest --type slsaprovenance1 --predicate provenance.json "$IMAGE"
+    - echo "signed and attested $IMAGE"
+
+sign:images:
+  extends: .cosign
+  needs: [image:api, image:web, image:runner, security:images]
+  parallel:
+    matrix:
+      - IMAGE_NAME: [api, web, runner]
+
+sign:images:runner-controller:
+  extends: .cosign
+  needs: [image:runner-controller, image:egress-proxy, security:images:runner-controller]
+  parallel:
+    matrix:
+      - IMAGE_NAME: [runner-controller, egress-proxy]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: [backend/runner-controller/Dockerfile]
+    - if: $CI_COMMIT_TAG
+      exists: [backend/runner-controller/Dockerfile]
+
+# --------------------------------------------------------------------------------------------
+# chart
+# --------------------------------------------------------------------------------------------
+helm:package:
+  stage: chart
+  image:
+    name: $HELM_IMAGE
+    entrypoint: [""]
+  <<: *rules-mr-or-main
+  needs: [helm:lint]
+  variables:
+    CHART_DIR: deploy/helm/back-office
+  script:
+    - apk add --no-cache curl > /dev/null
+    - helm repo add langfuse https://langfuse.github.io/langfuse-k8s
+    - helm repo add codecentric https://codecentric.github.io/helm-charts
+    - helm dependency build $CHART_DIR
+    - CHART_VERSION=$(grep "^version:" $CHART_DIR/Chart.yaml | awk "{print \$2}")
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        APP_VERSION="$CI_COMMIT_TAG"
+        PKG_VERSION="${CI_COMMIT_TAG#v}"
+      else
+        APP_VERSION="$IMAGE_TAG"
+        PKG_VERSION="${CHART_VERSION}-${IMAGE_TAG}"
+      fi
+    - mkdir -p dist/chart
+    # control plane and runner fleet charts share the version scheme
+    - helm package $CHART_DIR --version "$PKG_VERSION" --app-version "$APP_VERSION" --destination dist/chart
+    - helm package deploy/helm/back-office-runner --version "$PKG_VERSION" --app-version "$APP_VERSION" --destination dist/chart
+    - ls -l dist/chart
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || [ -n "$CI_COMMIT_TAG" ]; then
+        # Publish to the project Helm package registry (channel: stable)
+        for chart in dist/chart/*.tgz; do
+          curl --fail --request POST --user "gitlab-ci-token:${CI_JOB_TOKEN}" \
+            --form "chart=@${chart}" \
+            "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/helm/api/stable/charts" || echo "WARN chart publish failed (registry disabled?)"
+        done
+      fi
+  artifacts:
+    paths: [dist/chart]
+    expire_in: 4 weeks
+
+# --------------------------------------------------------------------------------------------
+# release (tags only): the CI client script and the GitLab CI template as release assets
+# --------------------------------------------------------------------------------------------
+.release-vars: &release-vars
+  PACKAGE_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/backoffice-ci/${CI_COMMIT_TAG}"
+
+release:assets:
+  stage: release
+  image: alpine:3.20
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs: [ci:test]
+  variables:
+    <<: *release-vars
+  script:
+    - apk add --no-cache curl > /dev/null
+    - sh -n ci/backoffice-ci.sh
+    - |
+      for f in ci/backoffice-ci.sh ci-templates/backoffice.gitlab-ci.yml; do
+        name=$(basename "$f")
+        echo "uploading $f -> ${PACKAGE_URL}/${name}"
+        curl --fail --silent --show-error --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "$f" "${PACKAGE_URL}/${name}"
+        echo
+      done
+    - sha256sum ci/backoffice-ci.sh ci-templates/backoffice.gitlab-ci.yml | tee dist-checksums.txt
+  artifacts:
+    paths: [dist-checksums.txt]
+    expire_in: 1 year
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs: [release:assets, helm:package]
+  variables:
+    <<: *release-vars
+  script:
+    - echo "Releasing $CI_COMMIT_TAG with backoffice-ci.sh and the GitLab CI template as assets"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Back Office $CI_COMMIT_TAG"
+    description: |
+      Back Office $CI_COMMIT_TAG.
+
+      CI client (`backoffice-ci.sh`, also served by every deployment at `$BACKOFFICE_URL/ci/backoffice-ci.sh`)
+      and the GitLab CI template are attached as assets. See docs/guides/ci-integration.md.
+    assets:
+      links:
+        - name: backoffice-ci.sh
+          url: "${PACKAGE_URL}/backoffice-ci.sh"
+          filepath: /backoffice-ci.sh
+          link_type: other
+        - name: backoffice.gitlab-ci.yml
+          url: "${PACKAGE_URL}/backoffice.gitlab-ci.yml"
+          filepath: /backoffice.gitlab-ci.yml
+          link_type: other
+        - name: backoffice-ci.sh (source at tag)
+          url: "${CI_PROJECT_URL}/-/raw/${CI_COMMIT_TAG}/ci/backoffice-ci.sh"
+          link_type: other

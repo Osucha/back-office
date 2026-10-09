@@ -1,0 +1,121 @@
+{
+  "realm": "back-office",
+  "displayName": "Back Office (development)",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 10,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "accessTokenLifespan": 300,
+  "groups": [
+    { "name": "architects", "path": "/architects" },
+    { "name": "developers", "path": "/developers" },
+    { "name": "approvers", "path": "/approvers" }
+  ],
+  "clients": [
+    {
+      "clientId": "back-office",
+      "name": "Back Office",
+      "description": "Back Office API acting as backend-for-frontend (ADR 0016). Confidential, authorization code + PKCE only.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "back-office-dev-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "rootUrl": "",
+      "baseUrl": "http://localhost:4200/",
+      "redirectUris": [
+        "http://localhost:8080/login/oauth2/code/oidc",
+        "http://localhost:4200/login/oauth2/code/oidc"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4200/*##http://localhost:8080/*",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false",
+        "backchannel.logout.session.required": "true",
+        "use.refresh.tokens": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "enabled": true,
+      "groups": ["/architects"],
+      "credentials": [{ "type": "password", "value": "admin", "temporary": false }]
+    },
+    {
+      "username": "dev",
+      "email": "dev@example.com",
+      "emailVerified": true,
+      "firstName": "Dan",
+      "lastName": "Developer",
+      "enabled": true,
+      "groups": ["/developers"],
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }]
+    },
+    {
+      "username": "approver",
+      "email": "approver@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Approver",
+      "enabled": true,
+      "groups": ["/approvers"],
+      "credentials": [{ "type": "password", "value": "approver", "temporary": false }]
+    },
+    {
+      "username": "viewer",
+      "email": "viewer@example.com",
+      "emailVerified": true,
+      "firstName": "Victor",
+      "lastName": "Viewer",
+      "enabled": true,
+      "groups": [],
+      "credentials": [{ "type": "password", "value": "viewer", "temporary": false }]
+    }
+  ]
+}

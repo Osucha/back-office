@@ -1,0 +1,41 @@
+{
+  "description": "Test vectors for AgentJobAssignment.specDigest (docs/architecture/10-agent-execution.md, Assignment verification). Canonical form: RFC 8785 (JCS) with null object members removed; digest: lowercase hex SHA-256 of the UTF-8 bytes. inputJson is the assignment body ({policy?, spec}) as text so number spellings such as 5.00 survive. Both the control plane (agent-runner AssignmentSigner) and runner-controller (CanonicalJson) must reproduce every vector.",
+  "vectors": [
+    {
+      "name": "absent policy, null members dropped",
+      "inputJson": "{\"spec\":{\"b\":1,\"a\":\"x\",\"n\":null}}",
+      "canonical": "{\"spec\":{\"a\":\"x\",\"b\":1}}",
+      "specDigest": "41c28972974470482f9110477b15cc0f149680cf05a0a64929a55079e74e3b1a"
+    },
+    {
+      "name": "explicit null policy hashes like an absent one",
+      "inputJson": "{\"policy\":null,\"spec\":{\"a\":\"x\",\"b\":1}}",
+      "canonical": "{\"spec\":{\"a\":\"x\",\"b\":1}}",
+      "specDigest": "41c28972974470482f9110477b15cc0f149680cf05a0a64929a55079e74e3b1a"
+    },
+    {
+      "name": "numbers in ECMAScript form",
+      "inputJson": "{\"spec\":{\"temperature\":0.5,\"maxCostUsd\":5.00,\"cpu\":2.0,\"small\":1e-7,\"tokens\":120000,\"negative\":-0.25}}",
+      "canonical": "{\"spec\":{\"cpu\":2,\"maxCostUsd\":5,\"negative\":-0.25,\"small\":1e-7,\"temperature\":0.5,\"tokens\":120000}}",
+      "specDigest": "45dc98ce0186af763dd9275ba35ac4b1613fe5b492c5f7a92e9fce7f9babedd9"
+    },
+    {
+      "name": "string escaping and UTF-16 key order",
+      "inputJson": "{\"spec\":{\"z\":\"line\\nESC\\u001b[0m tab\\t quote\\\" back\\\\ \\u00e9 \\ud83d\\ude00\",\"\\u00e9\":1,\"a\":2,\"B\":3}}",
+      "canonical": "{\"spec\":{\"B\":3,\"a\":2,\"z\":\"line\\nESC\\u001b[0m tab\\t quote\\\" back\\\\ é 😀\",\"é\":1}}",
+      "specDigest": "21059771c026c98137570b0979f9567b163d4cf2181ee8be6dd15ccf3d92d99a"
+    },
+    {
+      "name": "nested structures keep null array elements",
+      "inputJson": "{\"policy\":{\"isolation\":\"STANDARD\",\"resources\":{\"cpu\":\"2\",\"memory\":\"4Gi\"},\"egress\":null},\"spec\":{\"list\":[1,null,{\"k\":null,\"j\":true}],\"empty\":{}}}",
+      "canonical": "{\"policy\":{\"isolation\":\"STANDARD\",\"resources\":{\"cpu\":\"2\",\"memory\":\"4Gi\"}},\"spec\":{\"empty\":{},\"list\":[1,null,{\"j\":true}]}}",
+      "specDigest": "23d2a2b9a9affced95135fbf0f01f2d730209a571ef3dc56e58a1a97c1f5fa89"
+    },
+    {
+      "name": "two repositories (ADR 0034): per-entry access, legacy repository mirrors the primary",
+      "inputJson": "{\"policy\":{\"isolation\":\"STANDARD\",\"resources\":{\"cpu\":\"2\",\"memory\":\"4Gi\"}},\"spec\":{\"mode\":\"IMPLEMENT\",\"agent\":\"CLAUDE_CODE\",\"model\":{\"provider\":\"ANTHROPIC\",\"modelId\":\"claude-opus-5\",\"options\":{\"temperature\":null,\"maxOutputTokens\":null,\"reasoning\":\"MEDIUM\",\"extra\":{}}},\"repositories\":[{\"key\":\"app\",\"url\":\"https://gitlab.example.com/acme/app.git\",\"baseBranch\":\"main\",\"access\":\"PUSH_MR\",\"path\":\"app\",\"pushBranch\":\"feature/acme-42\",\"mergeRequest\":{\"create\":true,\"title\":\"ACME-42: Export invoices\",\"description\":null,\"draft\":false},\"primary\":true},{\"key\":\"docs\",\"url\":\"https://gitlab.example.com/acme/docs.git\",\"baseBranch\":\"develop\",\"access\":\"READ\",\"path\":\"docs\",\"pushBranch\":null,\"mergeRequest\":null,\"primary\":false}],\"repository\":{\"url\":\"https://gitlab.example.com/acme/app.git\",\"baseRef\":\"main\",\"branch\":\"feature/acme-42\",\"push\":true,\"mergeRequest\":{\"create\":true,\"title\":\"ACME-42: Export invoices\",\"description\":null,\"targetBranch\":\"main\",\"draft\":false}},\"prompt\":\"Implement ACME-42.\",\"timeoutSeconds\":3600,\"collectArtifacts\":[],\"collectDiff\":true,\"skills\":[],\"gitAccess\":\"PUSH_MR\"}}",
+      "canonical": "{\"policy\":{\"isolation\":\"STANDARD\",\"resources\":{\"cpu\":\"2\",\"memory\":\"4Gi\"}},\"spec\":{\"agent\":\"CLAUDE_CODE\",\"collectArtifacts\":[],\"collectDiff\":true,\"gitAccess\":\"PUSH_MR\",\"mode\":\"IMPLEMENT\",\"model\":{\"modelId\":\"claude-opus-5\",\"options\":{\"extra\":{},\"reasoning\":\"MEDIUM\"},\"provider\":\"ANTHROPIC\"},\"prompt\":\"Implement ACME-42.\",\"repositories\":[{\"access\":\"PUSH_MR\",\"baseBranch\":\"main\",\"key\":\"app\",\"mergeRequest\":{\"create\":true,\"draft\":false,\"title\":\"ACME-42: Export invoices\"},\"path\":\"app\",\"primary\":true,\"pushBranch\":\"feature/acme-42\",\"url\":\"https://gitlab.example.com/acme/app.git\"},{\"access\":\"READ\",\"baseBranch\":\"develop\",\"key\":\"docs\",\"path\":\"docs\",\"primary\":false,\"url\":\"https://gitlab.example.com/acme/docs.git\"}],\"repository\":{\"baseRef\":\"main\",\"branch\":\"feature/acme-42\",\"mergeRequest\":{\"create\":true,\"draft\":false,\"targetBranch\":\"main\",\"title\":\"ACME-42: Export invoices\"},\"push\":true,\"url\":\"https://gitlab.example.com/acme/app.git\"},\"skills\":[],\"timeoutSeconds\":3600}}",
+      "specDigest": "4b3579e78b0367a5df3e0151042fb9b94efada4c5886eec94536978e21f57278"
+    }
+  ]
+}

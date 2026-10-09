@@ -1,0 +1,4 @@
+{{- if .Values.agentSandbox.install }}
+{{- /* Pinned upstream release (files/agent-sandbox, see Chart.yaml annotations). Cluster-scoped. */ -}}
+{{ .Files.Get "files/agent-sandbox/sandbox-with-extensions.yaml" }}
+{{- end }}

@@ -1,0 +1,69 @@
+{{- if and (eq (include "back-office.mode" .) "split") (eq (.Values.worker.autoscaling.type | default "none") "keda") }}
+{{- $a := .Values.worker.autoscaling }}
+{{- $name := include "back-office.worker.fullname" . }}
+# KEDA PostgreSQL scaler on the work queue (ADR 0023, 09-scale-and-operations.md). The query counts items
+# that are due (READY, run_after reached) plus items being worked on (LEASED), so workers that are busy
+# are not scaled in underneath their leases. desired replicas = ceil(result / targetQueryValue).
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ include "back-office.database.passwordSecretName" . }}
+      key: {{ include "back-office.database.passwordSecretKey" . }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+  {{- include "back-office.annotations" . | nindent 2 }}
+spec:
+  scaleTargetRef:
+    name: {{ $name }}
+  minReplicaCount: {{ $a.minReplicas }}
+  maxReplicaCount: {{ $a.maxReplicas }}
+  pollingInterval: {{ $a.keda.pollingInterval }}
+  cooldownPeriod: {{ $a.keda.cooldownPeriod }}
+  {{- with $a.keda.fallbackReplicas }}
+  fallback:
+    failureThreshold: 3
+    replicas: {{ . }}
+  {{- end }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          # workers finish or hand back leases within terminationGracePeriodSeconds; scale in slowly
+          stabilizationWindowSeconds: {{ $a.keda.scaleDownStabilizationSeconds }}
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  triggers:
+    - type: postgresql
+      authenticationRef:
+        name: {{ $name }}
+      metadata:
+        # direct connection (not the transaction pooler): KEDA polls every pollingInterval seconds
+        host: {{ include "back-office.database.host" . | quote }}
+        port: {{ include "back-office.database.port" . | quote }}
+        userName: {{ include "back-office.database.username" . | quote }}
+        dbName: {{ include "back-office.database.name" . | quote }}
+        sslmode: {{ $a.keda.sslmode | quote }}
+        query: {{ $a.keda.query | quote }}
+        targetQueryValue: {{ $a.keda.targetQueryValue | quote }}
+        activationTargetQueryValue: {{ $a.keda.activationTargetQueryValue | quote }}
+    {{- with $a.keda.extraTriggers }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

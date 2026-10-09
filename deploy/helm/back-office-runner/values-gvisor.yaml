@@ -1,0 +1,18 @@
+# Variant: Kubernetes Agent Sandbox + gVisor (default backend of ADR 0024). Warm pool for fast starts.
+# Needs the Agent Sandbox CRDs (agentSandbox.install=true here, or installed cluster-wide) and a
+# RuntimeClass named gvisor (GKE Sandbox creates it; elsewhere install runsc on the sandbox nodes and set
+# runtimeClasses.create=true).
+backend: AGENT_SANDBOX
+agentSandbox:
+  install: true
+runtimeClasses:
+  standard: gvisor
+  high: kata
+  create: false
+warmPool:
+  size: 3
+maxConcurrent: 10
+autoscaling:
+  type: keda
+  minReplicas: 1
+  maxReplicas: 4

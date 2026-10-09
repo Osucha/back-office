@@ -1,0 +1,72 @@
+Back Office {{ .Chart.AppVersion }} has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Components (mode {{ include "back-office.mode" . }})
+  API    : {{ include "back-office.api.fullname" . }} role {{ ternary "api,worker" "api" (eq (include "back-office.mode" .) "combined") }} ({{ include "back-office.api.image" . }})
+{{- if eq (include "back-office.mode" .) "split" }}
+  Worker : {{ include "back-office.worker.fullname" . }} role worker, autoscaling {{ .Values.worker.autoscaling.type }}
+{{- end }}
+  Migrate: {{ if .Values.migration.enabled }}hook Job {{ include "back-office.migrate.fullname" . }} ({{ include "back-office.migration.hookEvents" . }}){{ if include "back-office.migration.initContainer" . }} + init container in app pods{{ end }}{{ else }}disabled{{ end }}
+  Web    : {{ if .Values.web.enabled }}{{ include "back-office.web.fullname" . }} ({{ include "back-office.web.image" . }}){{ else }}disabled{{ end }}
+  DB     : {{ include "back-office.database.mode" . }} ({{ include "back-office.database.host" . }}:{{ include "back-office.database.port" . }}/{{ include "back-office.database.name" . }}){{ with include "back-office.database.poolerHostPort" . }}, pooled via {{ . }}{{ end }}
+  Storage: {{ .Values.storage.type }}{{ if eq .Values.storage.type "s3" }} bucket {{ .Values.storage.s3.bucket }}{{ with include "back-office.storage.s3.endpoint" . }} at {{ . }}{{ end }}{{ end }}
+  Signing: Secret {{ include "back-office.signing.secretName" . }}
+  Runners: install deploy/helm/back-office-runner in any cluster (docs/guides/runner-fleet-install.md)
+  Tracing: {{ if .Values.langfuse.enabled }}Langfuse at {{ include "back-office.langfuse.url" . }}{{ else if .Values.otel.enabled }}OTLP to {{ .Values.otel.tracesEndpoint }}{{ else }}off{{ end }}
+
+1. Wait for the pods:
+     kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "back-office.api.fullname" . }}
+
+2. Open the UI:
+{{- if .Values.ingress.enabled }}
+     {{ include "back-office.publicUrl" . }}
+{{- else if and .Values.web.enabled (eq .Values.web.service.type "NodePort") }}
+     export NODE_PORT=$(kubectl -n {{ .Release.Namespace }} get svc {{ include "back-office.web.fullname" . }} -o jsonpath="{.spec.ports[0].nodePort}")
+     export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+     echo http://$NODE_IP:$NODE_PORT
+{{- else if .Values.web.enabled }}
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "back-office.web.fullname" . }} 8080:{{ .Values.web.service.port }}
+     open http://localhost:8080
+{{- else }}
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "back-office.api.fullname" . }} 8080:{{ .Values.api.service.port }}
+{{- end }}
+
+3. Sign in through OIDC ({{ include "back-office.oidc.issuerUri" . }}, client {{ .Values.auth.oidc.clientId }}).
+     Redirect URI to register at the provider: {{ include "back-office.publicUrl" . }}/login/oauth2/code/oidc
+{{- if .Values.auth.bootstrapAdmins }}
+     First administrator(s) (platform-admin on first login): {{ include "back-office.csv" .Values.auth.bootstrapAdmins }}
+{{- else }}
+     WARNING: auth.bootstrapAdmins is empty - nobody can become administrator. Set it and helm upgrade.
+{{- end }}
+{{- if .Values.keycloak.enabled }}
+
+   Bundled Keycloak: {{ include "back-office.keycloak.url" . }}/admin  (user {{ .Values.bundledKeycloak.admin.username }})
+     kubectl -n {{ .Release.Namespace }} get secret {{ .Release.Name }}-keycloak-env -o jsonpath="{.data.KC_BOOTSTRAP_ADMIN_PASSWORD}" | base64 -d; echo
+{{- if not .Values.bundledKeycloak.ingress.enabled }}
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "back-office.keycloak.service" . }} {{ .Values.api.oidcLoopback.port }}:80
+{{- if not .Values.api.oidcLoopback.enabled }}
+   WARNING: no Keycloak ingress and api.oidcLoopback.enabled=false - the API cannot reach the issuer URL.
+{{- end }}
+{{- end }}
+     The realm is imported only on the first start; manage it in Keycloak afterwards (docs/runbooks/keycloak-realm.md).
+{{- end }}
+{{- if and .Values.auth.cookieSecure (not (hasPrefix "https://" (include "back-office.publicUrl" .))) }}
+
+WARNING: auth.cookieSecure=true but the public URL {{ include "back-office.publicUrl" . }} is not https: browsers will
+drop the session cookie (except on localhost). Enable TLS on the ingress or set auth.cookieSecure=false for a dev cluster.
+{{- end }}
+
+4. Health and API docs:
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "back-office.api.fullname" . }} 8081:{{ .Values.api.service.port }}
+     curl http://localhost:8081/actuator/health/readiness
+     open http://localhost:8081/swagger-ui.html
+{{- if not (or .Values.secrets.providerKeys.anthropicApiKey .Values.secrets.providerKeys.openaiApiKey .Values.secrets.providerKeys.googleGenaiApiKey .Values.secrets.providerKeys.mistralApiKey .Values.secrets.providerKeys.openaiCompatibleApiKey .Values.secrets.providerKeys.ollamaBaseUrl (not .Values.secrets.providerKeys.create)) }}
+
+WARNING: no LLM provider key was configured (secrets.providerKeys.*). Set at least one and run helm upgrade.
+{{- end }}
+{{- if and .Values.langfuse.enabled (not .Values.langfuseAuth.existingSecret) (not (and .Values.langfuseAuth.publicKey .Values.langfuseAuth.secretKey)) }}
+
+NOTE: Langfuse is enabled but langfuseAuth.publicKey/secretKey are empty. Create a project in
+Langfuse, copy its keys and run helm upgrade with --set langfuseAuth.publicKey=... --set langfuseAuth.secretKey=...
+{{- end }}
+
+Documentation: docs/guides/deploy-helm.md and docs/guides/configuration.md in the repository.

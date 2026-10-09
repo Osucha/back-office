@@ -1,0 +1,20 @@
+{{- if eq (include "back-office.mode" .) "split" }}
+# Only for metrics scraping (ServiceMonitor) and debugging: workers serve no user traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "back-office.worker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "back-office.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "back-office.selectorLabels" (dict "root" . "component" "worker") | nindent 4 }}
+{{- end }}

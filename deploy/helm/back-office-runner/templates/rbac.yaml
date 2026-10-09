@@ -1,0 +1,108 @@
+{{- /*
+Least privilege: namespaced Roles only (no ClusterRole). In the sandbox namespace the controller manages
+sandboxes, Jobs, pods, per-job Secrets / NetworkPolicies and the egress proxy; in its own (release) namespace
+only the runner-token Secret (key runnerToken, also read by KEDA) and the registration Secret by name, and leases.
+*/ -}}
+{{- $name := include "runner.fullname" . }}
+{{- $sbx := include "runner.sandboxNamespace" . }}
+{{- $sa := include "runner.serviceAccountName" . }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-sandboxes
+  namespace: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes", "sandboxes/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims", "sandboxclaims/status", "sandboxtemplates", "sandboxwarmpools"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # result collection / cancellation inside a running sandbox
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+  # the per-pool egress proxy (bo-egress-<pool>) and its Service
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  # per-job Secrets (job token, rendered spec) created for one sandbox and deleted with it
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-sandboxes
+  namespace: {{ $sbx }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}-sandboxes
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-token
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+rules:
+  # create cannot be limited by name: the controller creates the token Secret after registration
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ include "runner.tokenSecretName" . | quote }}, {{ include "runner.registrationSecretName" . | quote }}]
+    verbs: ["get", "update", "patch"]
+  # leader election when running several replicas
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-token
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "runner.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}-token
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ .Release.Namespace }}

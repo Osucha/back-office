@@ -1,0 +1,32 @@
+spring:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+backoffice:
+  platform:
+    worker:
+      poll-interval: 100ms
+  public-url: http://backoffice.test:8080
+  secrets:
+    key: dGVzdC1vbmx5LWNvbm5lY3Rpb25zLXNlY3JldC1rZXk=   # "test-only-connections-secret-key" (32 bytes)
+    key-id: test
+  integrations:
+    jira:
+      url: ""
+    langfuse:
+      enabled: false
+  pipelines:
+    executor-threads: 4
+    recover-on-startup: true
+    wait-sweep-delay: 3600000
+  runner:
+    mode: DISABLED
+    image: back-office/runner:test
+logging:
+  level:
+    pl.mos.backoffice: DEBUG
+    org.bsc.langgraph4j: WARN
