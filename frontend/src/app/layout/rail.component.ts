@@ -15,6 +15,7 @@ import { filter, map } from 'rxjs';
 import { HoverPreloadingStrategy } from '../core/routing/hover-preloading';
 import { ProjectsStore, monogram } from '../core/state/projects.store';
 import { navTarget, type NavItem } from './navigation';
+import { LogoComponent } from '../core/ui/relay/logo.component';
 
 const MAX_TILES = 6;
 
@@ -25,7 +26,7 @@ const MAX_TILES = 6;
  */
 @Component({
   selector: 'app-rail',
-  imports: [NgTemplateOutlet, RouterLink, RouterLinkActive, NzIconModule],
+  imports: [LogoComponent, NgTemplateOutlet, RouterLink, RouterLinkActive, NzIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.expanded]': 'expanded()',
@@ -44,11 +45,7 @@ const MAX_TILES = 6;
         i18n-aria-label="@@shell.rail.brand"
         (mouseenter)="intent('/home')"
       >
-        <svg class="mark" viewBox="0 0 28 28" aria-hidden="true">
-          <rect x="1" y="1" width="26" height="26" rx="8" class="mark-bg" />
-          <rect x="7" y="16.5" width="14" height="3.5" rx="1.75" class="mark-ink" />
-          <rect x="7" y="8" width="8.5" height="3.5" rx="1.75" class="mark-you" />
-        </svg>
+        <bo-logo class="mark" [size]="28" />
         <span class="label brand-name">Back Office</span>
       </a>
 
@@ -217,15 +214,6 @@ const MAX_TILES = 6;
         width: 28px;
         height: 28px;
         flex: none;
-      }
-      .mark-bg {
-        fill: var(--bo-ink);
-      }
-      .mark-ink {
-        fill: var(--bo-on-ink);
-      }
-      .mark-you {
-        fill: var(--bo-you);
       }
       .brand-name {
         font-weight: 600;

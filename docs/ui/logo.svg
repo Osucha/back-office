@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Back Office">
+  <!-- Relay mark: the baton runs along a workflow track from an agent step (cobalt) to your turn (amber). -->
+  <rect x="1" y="1" width="30" height="30" rx="8.5" fill="#1C1E21"/>
+  <rect x="1.5" y="1.5" width="29" height="29" rx="8" fill="none" stroke="#FFFFFF" stroke-opacity="0.14"/>
+  <path d="M9.5 22C9.5 15.5 22.5 16.5 22.5 10" fill="none" stroke="#ECEAE5" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="9.5" cy="22" r="4" fill="#7B93FF"/>
+  <circle cx="22.5" cy="10" r="4.4" fill="#FFB23E"/>
+  <circle cx="22.5" cy="10" r="1.5" fill="#1C1E21"/>
+</svg>

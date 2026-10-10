@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/ui/logo.svg" width="96" height="96" alt=""></p>
+
 # Back Office — SDLC Control Room for a one-person engineering team
 
 Back Office is a self-hosted application that lets a single technical owner (architect, developer,

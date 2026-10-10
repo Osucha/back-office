@@ -7,6 +7,7 @@ import {
   type AppLocale,
 } from '../../../core/i18n/locale';
 import { RelayIllustrationComponent } from './relay-illustration.component';
+import { LogoComponent } from '../../../core/ui/relay/logo.component';
 
 /**
  * Split layout of the public auth screens (sign-in, set password, forced password change, MFA
@@ -16,17 +17,13 @@ import { RelayIllustrationComponent } from './relay-illustration.component';
  */
 @Component({
   selector: 'app-auth-shell',
-  imports: [RelayIllustrationComponent],
+  imports: [LogoComponent, RelayIllustrationComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="split">
       <aside class="brand-side">
         <div class="brand">
-          <svg class="mark" viewBox="0 0 28 28" aria-hidden="true">
-            <rect x="1" y="1" width="26" height="26" rx="8" class="mark-bg" />
-            <rect x="7" y="16.5" width="14" height="3.5" rx="1.75" class="mark-ink" />
-            <rect x="7" y="8" width="8.5" height="3.5" rx="1.75" class="mark-you" />
-          </svg>
+          <bo-logo class="mark" [size]="28" />
           <span class="brand-name">Back Office</span>
         </div>
         <div class="pitch">
@@ -104,15 +101,6 @@ import { RelayIllustrationComponent } from './relay-illustration.component';
       .mark {
         width: 30px;
         height: 30px;
-      }
-      .mark-bg {
-        fill: var(--bo-ink);
-      }
-      .mark-ink {
-        fill: var(--bo-on-ink);
-      }
-      .mark-you {
-        fill: var(--bo-you);
       }
       .brand-name {
         font-weight: 600;
