@@ -64,7 +64,8 @@ use the client secret.
 <a id="keycloak"></a>
 ## Keycloak
 
-The chart can deploy Keycloak (`keycloak.enabled=true`) with an imported realm; for your own Keycloak:
+The Helm chart does not deploy Keycloak; run your own (the realm `deploy/keycloak/realm-back-office.json`
+used by the local docker-compose setup is a complete example) and register the client:
 
 1. Admin console → select the realm → **Clients** → **Create client**: type **OpenID Connect**, **Client ID**
    `back-office` → **Next**.

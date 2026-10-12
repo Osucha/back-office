@@ -30,24 +30,24 @@ Components (mode {{ include "back-office.mode" . }})
      kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "back-office.api.fullname" . }} 8080:{{ .Values.api.service.port }}
 {{- end }}
 
-3. Sign in through OIDC ({{ include "back-office.oidc.issuerUri" . }}, client {{ .Values.auth.oidc.clientId }}).
+{{- $issuer := include "back-office.oidc.issuerUri" . }}
+3. Sign in
+{{- if .Values.auth.local.enabled }}
+     Local accounts (e-mail + password, optional TOTP).
+{{- if .Values.auth.local.bootstrapAdminEmail }}
+     First administrator: {{ .Values.auth.local.bootstrapAdminEmail }} with auth.local.bootstrapAdminPassword (a new
+     password is required at the first sign-in); then remove both values and helm upgrade.
+{{- end }}
+{{- end }}
+{{- if $issuer }}
+     OIDC ({{ $issuer }}, client {{ .Values.auth.oidc.clientId }}).
      Redirect URI to register at the provider: {{ include "back-office.publicUrl" . }}/login/oauth2/code/oidc
+{{- end }}
 {{- if .Values.auth.bootstrapAdmins }}
-     First administrator(s) (platform-admin on first login): {{ include "back-office.csv" .Values.auth.bootstrapAdmins }}
-{{- else }}
-     WARNING: auth.bootstrapAdmins is empty - nobody can become administrator. Set it and helm upgrade.
-{{- end }}
-{{- if .Values.keycloak.enabled }}
-
-   Bundled Keycloak: {{ include "back-office.keycloak.url" . }}/admin  (user {{ .Values.bundledKeycloak.admin.username }})
-     kubectl -n {{ .Release.Namespace }} get secret {{ .Release.Name }}-keycloak-env -o jsonpath="{.data.KC_BOOTSTRAP_ADMIN_PASSWORD}" | base64 -d; echo
-{{- if not .Values.bundledKeycloak.ingress.enabled }}
-     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "back-office.keycloak.service" . }} {{ .Values.api.oidcLoopback.port }}:80
-{{- if not .Values.api.oidcLoopback.enabled }}
-   WARNING: no Keycloak ingress and api.oidcLoopback.enabled=false - the API cannot reach the issuer URL.
-{{- end }}
-{{- end }}
-     The realm is imported only on the first start; manage it in Keycloak afterwards (docs/runbooks/keycloak-realm.md).
+     Platform administrators on first login: {{ include "back-office.csv" .Values.auth.bootstrapAdmins }}
+{{- else if not .Values.auth.local.bootstrapAdminEmail }}
+     WARNING: neither auth.local.bootstrapAdminEmail nor auth.bootstrapAdmins is set - nobody can become
+     administrator. Set one of them and helm upgrade.
 {{- end }}
 {{- if and .Values.auth.cookieSecure (not (hasPrefix "https://" (include "back-office.publicUrl" .))) }}
 

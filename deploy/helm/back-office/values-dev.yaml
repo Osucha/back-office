@@ -29,8 +29,6 @@ api:
     logLevel: DEBUG
     publicUrl: http://localhost:8080
     corsAllowedOrigins: "http://localhost:4200,http://localhost:8080"
-  oidcLoopback:
-    enabled: true
 
 web:
   image:
@@ -60,28 +58,14 @@ storage:
 ingress:
   enabled: false
 
-# Identity: bundled Keycloak with the demo users of deploy/keycloak/realm-back-office.json. Open it with
-#   kubectl -n back-office port-forward svc/back-office-keycloak-http 8180:80
-# The API reaches the same http://localhost:8180 issuer through the oidc-loopback sidecar.
+# Identity: local accounts only (ADR 0039). The first administrator signs in with the password below and
+# must change it; then remove bootstrapAdminEmail / bootstrapAdminPassword and helm upgrade.
 auth:
-  oidc:
-    clientSecret: back-office-dev-secret
-  bootstrapAdmins: [admin@example.com]
+  local:
+    bootstrapAdminEmail: admin@example.com
+    bootstrapAdminPassword: change-me-at-first-login
   # Plain http NodePort: the session cookie cannot be Secure.
   cookieSecure: false
-
-bundledKeycloak:
-  admin:
-    password: admin
-  realmImport:
-    sslRequired: external
-    includeDemoUsers: true
-    # The UI is opened through the NodePort / port-forward on 8080.
-    extraRedirectUris:
-      - http://localhost:30080/login/oauth2/code/oidc
-
-keycloak:
-  enabled: true
 
 secrets:
   create: true

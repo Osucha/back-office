@@ -1,12 +1,9 @@
 dependencies:
 - name: postgresql
   repository: oci://registry-1.docker.io/bitnamicharts
-  version: 18.12.2
+  version: 18.12.4
 - name: langfuse
   repository: https://langfuse.github.io/langfuse-k8s
-  version: 2.1.2
-- name: keycloakx
-  repository: https://codecentric.github.io/helm-charts
-  version: 7.3.2
-digest: sha256:d00b85be236e450db8880d740ae39d6231a37e532d342b5e7d122a330dc5639e
-generated: "2026-09-27T12:55:21.6174059+02:00"
+  version: 2.1.4
+digest: sha256:5939bf514b332e8f2a23c2d8ce6db7500f0a5397a52ed97c52e1eaad194e2887
+generated: "2026-10-12T11:45:14.1585472+02:00"

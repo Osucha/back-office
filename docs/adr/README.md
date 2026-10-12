@@ -40,6 +40,7 @@
 | [0036](0036-optional-spec-kit.md) | Spec Kit optional per project (off for new projects) with a platform switch: palette, validator, run start and runner (`specKit: false`) honour it; Spec Kit workflows seeded only when on, "Add Spec Kit workflows" later | accepted |
 | [0037](0037-workflow-library.md) | Workflow library: versioned workflows published from projects, adopted as linked copies (update keeps project-local settings, detach), runs stamped with the library version, workflow metrics (effectiveness and efficiency per version, project and node) | accepted |
 | [0038](0038-personal-work-mode.md) | Personal work next to the team mode: private projects (`projects.create.personal`, owner only), personal Jira intake rules on the owner's personal connection (amends 0035) that propose runs per new matching issue; Start runs as the owner, Dismiss / Restore | accepted |
+| [0039](0039-chart-without-bundled-keycloak.md) | The Helm chart bundles no identity provider: Keycloak subchart removed, local accounts are the default, external OIDC optional (amends 0012) | accepted |
 
 Template: context, decision, alternatives considered, consequences. Dates are the day the decision was
 taken. A superseded record keeps its text and gains a link to the successor.

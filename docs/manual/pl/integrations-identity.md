@@ -65,7 +65,8 @@ secretu używają tylko nowe logowania.
 <a id="keycloak"></a>
 ## Keycloak
 
-Chart może wdrożyć Keycloaka (`keycloak.enabled=true`) z zaimportowanym realmem; dla własnego Keycloaka:
+Chart Helm nie wdraża Keycloaka; uruchom własny (pełnym przykładem jest realm
+`deploy/keycloak/realm-back-office.json`, używany przez lokalne środowisko docker-compose) i zarejestruj klienta:
 
 1. Konsola administracyjna → wybierz realm → **Clients** → **Create client**: typ **OpenID Connect**,
    **Client ID** `back-office` → **Next**.

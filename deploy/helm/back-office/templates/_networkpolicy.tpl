@@ -94,15 +94,6 @@
   ports:
     - { port: 9000, protocol: TCP }
 {{- end }}
-{{- if .Values.keycloak.enabled }}
-- to:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/instance: {{ .Release.Name }}
-          app.kubernetes.io/name: keycloak
-  ports:
-    - { port: 8080, protocol: TCP }
-{{- end }}
 {{- if .Values.langfuse.enabled }}
 - to:
     - podSelector:

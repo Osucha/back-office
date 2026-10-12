@@ -357,8 +357,7 @@ Signing keys (ADR 0025): Ed25519, BACKOFFICE_SIGNING_KEYS_<n>_* in one Secret
 {{- end -}}
 
 {{/* =========================================================================================
-Identity (ADR 0016): OIDC client of the API and the optional bundled Keycloak (codecentric/keycloakx,
-dependency alias `keycloak`).
+Identity (ADR 0016, ADR 0021, ADR 0039): local accounts and the optional external OIDC provider of the API.
 ========================================================================================= */}}
 
 {{/* Comma separated string from a list or a string value */}}
@@ -366,67 +365,14 @@ dependency alias `keycloak`).
 {{- if kindIs "slice" . -}}{{- join "," . -}}{{- else -}}{{- . | default "" -}}{{- end -}}
 {{- end -}}
 
-{{/* Name of the realm the chart imports into the bundled Keycloak */}}
-{{- define "back-office.keycloak.realm" -}}
-{{- .Values.bundledKeycloak.realm | default "back-office" -}}
-{{- end -}}
-
-{{/* Resource name prefix of the keycloakx subchart (mirrors keycloak.fullname with the alias as chart name) */}}
-{{- define "back-office.keycloak.fullname" -}}
-{{- if .Values.keycloak.fullnameOverride -}}
-{{- .Values.keycloak.fullnameOverride | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- $name := default "keycloak" .Values.keycloak.nameOverride -}}
-{{- if contains $name .Release.Name -}}
-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-
-{{/* In-cluster HTTP service of the bundled Keycloak */}}
-{{- define "back-office.keycloak.service" -}}
-{{- printf "%s-http" (include "back-office.keycloak.fullname" .) -}}
-{{- end -}}
-
-{{/* Public base URL of the bundled Keycloak (KC_HOSTNAME). Browser and API must both reach it. */}}
-{{- define "back-office.keycloak.url" -}}
-{{- if .Values.bundledKeycloak.url -}}
-{{- .Values.bundledKeycloak.url | trimSuffix "/" -}}
-{{- else if .Values.bundledKeycloak.ingress.enabled -}}
-{{- $scheme := ternary "https" "http" (gt (len .Values.bundledKeycloak.ingress.tls) 0) -}}
-{{- printf "%s://%s" $scheme (required "bundledKeycloak.ingress.host is required when bundledKeycloak.ingress.enabled=true" .Values.bundledKeycloak.ingress.host) -}}
-{{- else -}}
-{{- printf "http://localhost:%v" .Values.api.oidcLoopback.port -}}
-{{- end -}}
-{{- end -}}
-
-{{/* OIDC issuer: explicit value, or derived from the bundled Keycloak */}}
+{{/* OIDC issuer of an external provider; empty = local accounts only (ADR 0021, ADR 0039) */}}
 {{- define "back-office.oidc.issuerUri" -}}
 {{- if .Values.auth.oidc.issuerUri -}}
 {{- .Values.auth.oidc.issuerUri -}}
-{{- else if .Values.keycloak.enabled -}}
-{{- printf "%s/realms/%s" (include "back-office.keycloak.url" .) (include "back-office.keycloak.realm" .) -}}
 {{- else if .Values.auth.local.enabled -}}
 {{- /* no identity provider: local accounts only (ADR 0021) */ -}}
 {{- else -}}
-{{- fail "auth.oidc.issuerUri is required (or set keycloak.enabled=true to bundle Keycloak, or keep auth.local.enabled=true for local accounts only). See docs/guides/deploy-helm.md" -}}
-{{- end -}}
-{{- end -}}
-
-{{/* Client secret the realm import writes into the bundled Keycloak (must equal the API's) */}}
-{{- define "back-office.keycloak.clientSecret" -}}
-{{- $s := coalesce .Values.bundledKeycloak.realmImport.clientSecret .Values.auth.oidc.clientSecret -}}
-{{- required "keycloak.enabled=true needs the OIDC client secret for the realm import: set auth.oidc.clientSecret, or bundledKeycloak.realmImport.clientSecret (same value as in auth.oidc.existingSecret)" $s -}}
-{{- end -}}
-
-{{/* Password for the Keycloak DB connection when the chart knows it inline */}}
-{{- define "back-office.keycloak.dbPassword" -}}
-{{- if .Values.postgresql.enabled -}}
-{{- if not .Values.postgresql.auth.existingSecret -}}{{- .Values.postgresql.auth.password -}}{{- end -}}
-{{- else if not .Values.externalDatabase.existingSecret -}}
-{{- .Values.externalDatabase.password -}}
+{{- fail "auth.oidc.issuerUri is required when auth.local.enabled=false (keep auth.local.enabled=true for local accounts only). See docs/guides/deploy-helm.md" -}}
 {{- end -}}
 {{- end -}}
 

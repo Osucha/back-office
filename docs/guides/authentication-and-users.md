@@ -4,9 +4,9 @@
 
 You install or administer Back Office for more than one person: you need the first administrator, want to
 invite colleagues, organise them in groups, decide who may do what on the platform and in which projects,
-hand out personal access tokens to scripts, read the audit log, or connect an identity provider other
-than the bundled Keycloak, or run Back Office **without an identity provider** using local accounts
-(e-mail + password, optional TOTP). The design is in [08-identity-and-access.md](../architecture/08-identity-and-access.md)
+hand out personal access tokens to scripts, read the audit log, run Back Office **without an identity
+provider** using local accounts (e-mail + password, optional TOTP; the Helm chart's default), or connect
+an external OIDC identity provider (Keycloak, Entra ID, Google, ...; the chart does not deploy one, ADR 0039). The design is in [08-identity-and-access.md](../architecture/08-identity-and-access.md)
 and ADRs [0016](../adr/0016-oidc-bff-authentication.md), [0017](../adr/0017-deny-by-default-authorization.md),
 [0018](../adr/0018-transactional-audit-log.md), [0021](../adr/0021-local-accounts.md).
 

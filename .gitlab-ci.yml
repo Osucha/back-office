@@ -95,26 +95,25 @@ helm:lint:
   <<: *rules-mr-or-main
   script:
     - cd deploy/helm/back-office
-    # The chart carries copies of the dev realm and of the dashboards (Helm cannot read files outside the chart).
-    - cmp files/keycloak/realm-back-office.json ../../keycloak/realm-back-office.json || (echo "files/keycloak/realm-back-office.json differs from deploy/keycloak/realm-back-office.json - copy it" && exit 1)
+    # The chart carries copies of the dashboards (Helm cannot read files outside the chart).
     - for f in ../../observability/dashboards/*.json; do cmp "$f" "files/dashboards/$(basename $f)" || (echo "dashboard copy $(basename $f) differs - cp deploy/observability/dashboards/*.json deploy/helm/back-office/files/dashboards/" && exit 1); done
     - helm repo add langfuse https://langfuse.github.io/langfuse-k8s
-    - helm repo add codecentric https://codecentric.github.io/helm-charts
     - helm dependency build .
     - export OIDC="--set auth.oidc.issuerUri=https://sso.example.com/realms/back-office --set auth.oidc.clientSecret=ci"
     - helm lint . $OIDC
-    # every shipped values file: dev (combined + MinIO + Keycloak) and the cloud references
+    # every shipped values file: dev (combined + MinIO, local accounts) and the cloud references
     - for v in values-dev values-aws values-gcp values-azure values-onprem; do helm lint . -f $v.yaml && helm template back-office . -f $v.yaml > /tmp/render-$v.yaml || exit 1; done
     # external DB + external OIDC provider with the client secret in an existing Secret, NetworkPolicies
     - helm template back-office . --set auth.oidc.issuerUri=https://login.microsoftonline.com/tenant/v2.0 --set auth.oidc.existingSecret=bo-oidc --set postgresql.enabled=false --set externalDatabase.host=db --set externalDatabase.password=pw --set ingress.enabled=true --set networkPolicy.enabled=true --set pgbouncer.enabled=true > /tmp/render-ext.yaml
     # CloudNativePG with pooler and backups, filesystem storage, KEDA off (HPA)
     - helm template back-office . $OIDC --set postgresql.enabled=false --set postgresql.mode=cnpg --set cnpg.pooler.enabled=true --set cnpg.backup.enabled=true --set cnpg.backup.destinationPath=s3://b/pg --set cnpg.backup.s3Credentials.inheritFromIAMRole=true --set storage.type=filesystem --set worker.autoscaling.type=hpa > /tmp/render-cnpg.yaml
-    # bundled Keycloak behind its own ingress host
-    - helm template back-office . --set keycloak.enabled=true --set auth.oidc.clientSecret=ci --set bundledKeycloak.ingress.enabled=true --set bundledKeycloak.ingress.host=sso.example.com --set ingress.enabled=true > /tmp/render-keycloak.yaml
+    # local accounts only (ADR 0039): no OIDC values at all, first admin from the bootstrap values
+    - helm template back-office . --set auth.local.bootstrapAdminEmail=admin@example.com --set auth.local.bootstrapAdminPassword=ci --set ingress.enabled=true > /tmp/render-local.yaml
     - helm template back-office . $OIDC --set langfuse.enabled=true --set langfuse.clickhouse.crdCheck=false --set langfuseAuth.publicKey=pk --set langfuseAuth.secretKey=sk > /tmp/render-langfuse.yaml
     # Negative checks: the removed API key and an inconsistent database mode must fail the render.
     - if helm template back-office . $OIDC --set secrets.apiKey=old > /dev/null 2>&1; then echo "secrets.apiKey must be rejected"; exit 1; fi
     - if helm template back-office . $OIDC --set postgresql.mode=cnpg > /dev/null 2>&1; then echo "postgresql.mode=cnpg with postgresql.enabled=true must be rejected"; exit 1; fi
+    - if helm template back-office . --set auth.local.enabled=false > /dev/null 2>&1; then echo "no local accounts and no OIDC issuer must be rejected"; exit 1; fi
     - grep -c "^kind:" /tmp/render-*.yaml
     # runner fleet chart: defaults, AGENT_SANDBOX + gVisor, K8S_JOB + Kata, dev, cloud references
     - cd ../back-office-runner

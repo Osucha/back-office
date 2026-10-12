@@ -122,16 +122,6 @@ api:
     create: true
     name: ""
     annotations: {}
-  # Dev clusters without DNS for Keycloak: a socat sidecar in the API pod listens on
-  # localhost:<port> and forwards to the bundled Keycloak service, so the issuer
-  # http://localhost:<port>/realms/back-office works for the API as well as for a browser using
-  # `kubectl port-forward svc/<release>-keycloak-http <port>:80` (same trick as deploy/compose).
-  oidcLoopback:
-    enabled: false
-    port: 8180
-    # Defaults to <release>-keycloak-http:80.
-    target: ""
-    image: alpine/socat:1.8.0.3
   # HPA on CPU (and optionally requests per second through a custom-metrics adapter).
   autoscaling:
     enabled: false
@@ -486,7 +476,7 @@ auth:
   oidc:
     # BACKOFFICE_AUTH_OIDC_ISSUER_URI, e.g. https://sso.example.com/realms/back-office or
     # https://login.microsoftonline.com/<tenant-id>/v2.0. Must be reachable from the API pods AND equal
-    # to the `iss` the provider puts into tokens. Derived from the bundled Keycloak when keycloak.enabled.
+    # to the `iss` the provider puts into tokens. Empty = no OIDC: local accounts only (auth.local, ADR 0039).
     issuerUri: ""
     # BACKOFFICE_AUTH_OIDC_CLIENT_ID
     clientId: back-office
@@ -512,7 +502,7 @@ auth:
   # BACKOFFICE_AUTH_COOKIE_SECURE: Secure flag of BO_SESSION. Keep true behind TLS; false only for
   # plain-http dev clusters (the browser drops Secure cookies on http origins other than localhost).
   cookieSecure: true
-  # BACKOFFICE_AUTH_GROUPS_CLAIM: ID token / userinfo claim with group names (Keycloak mapper `groups`,
+  # BACKOFFICE_AUTH_GROUPS_CLAIM: ID token / userinfo claim with group names (e.g. Keycloak mapper `groups`,
   # Entra ID `groups`, Google Workspace needs a custom claim).
   groupsClaim: groups
   # Local accounts: e-mail + password with optional TOTP, alongside OIDC (ADR 0021).
@@ -539,109 +529,6 @@ auth:
       # Per source IP and API replica: sign-in attempts allowed per window before 429.
       maxAttempts: 20
       window: PT5M
-
-# ---------------------------------------------------------------------------------------------
-# Bundled Keycloak (evaluation installs). `keycloak` below holds the values of the codecentric/keycloakx
-# subchart; `bundledKeycloak` holds what this chart renders around it: the realm import, the admin
-# and DB credentials, an Ingress, and the derived issuer. Production: run Keycloak (or any OIDC
-# provider) separately and manage the realm there - the import is for first installs only (Keycloak
-# skips a realm that already exists, so later changes to these values do not reach it).
-# ---------------------------------------------------------------------------------------------
-bundledKeycloak:
-  # Public base URL of Keycloak (KC_HOSTNAME). Browser and API pods must both reach it.
-  # Default: http(s)://<ingress.host> when the Ingress below is enabled, else
-  # http://localhost:<api.oidcLoopback.port> (kubectl port-forward + api.oidcLoopback, dev clusters).
-  url: ""
-  realm: back-office
-  admin:
-    username: admin
-    # Generated (and kept across upgrades) when empty. Secret <release>-keycloak-env, key KC_BOOTSTRAP_ADMIN_PASSWORD.
-    password: ""
-  database:
-    # Keycloak uses the Back Office PostgreSQL (embedded or external) with its own schema. The password
-    # is taken from postgresql.auth.password / externalDatabase.password; with existing Secrets set
-    # keycloak.database.existingSecret + existingSecretKey instead.
-    schema: keycloak
-  realmImport:
-    # sslRequired of the imported realm: external (TLS except from private networks) | all | none.
-    sslRequired: external
-    # Import the test users of deploy/keycloak/realm-back-office.json (admin/dev/approver/viewer@example.com,
-    # passwords = local part). Never on a reachable installation.
-    includeDemoUsers: false
-    # Client secret written into the realm. Defaults to auth.oidc.clientSecret; set it when the API
-    # reads the secret from auth.oidc.existingSecret (same value).
-    clientSecret: ""
-    # Additional redirect URIs besides <publicUrl>/login/oauth2/code/oidc.
-    extraRedirectUris: []
-  ingress:
-    enabled: false
-    className: ""
-    annotations: {}
-    host: sso.example.com
-    tls: []
-    #  - secretName: sso-tls
-    #    hosts: [sso.example.com]
-
-# codecentric/keycloakx subchart (https://github.com/codecentric/helm-charts, official Keycloak image).
-# Service <release>-keycloak-http:80. The wiring below uses only .Release.Name because a subchart cannot
-# see this chart's values: keep the `-keycloak-env` / `-keycloak-realm` names as they are.
-keycloak:
-  enabled: false
-  args: ["start", "--import-realm"]
-  http:
-    relativePath: "/"
-  resources:
-    requests:
-      cpu: 250m
-      memory: 768Mi
-    limits:
-      memory: 1536Mi
-  extraEnvFrom: |
-    - secretRef:
-        name: '{{ .Release.Name }}-keycloak-env'
-  # Keycloak does not create a missing schema: wait for PostgreSQL and create KC_DB_SCHEMA first.
-  extraInitContainers: |
-    - name: create-schema
-      image: docker.io/library/postgres:16-alpine
-      command: ["sh", "-c"]
-      args:
-        - >-
-          export PGHOST="$KC_DB_URL_HOST" PGPORT="$KC_DB_URL_PORT" PGDATABASE="$KC_DB_URL_DATABASE"
-          PGUSER="$KC_DB_USERNAME" PGPASSWORD="${KC_DB_PASSWORD:-$PGPASSWORD}";
-          until psql -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS \"$KC_DB_SCHEMA\""; do
-          echo waiting for PostgreSQL; sleep 3; done
-      {{- if .Values.database.existingSecret }}
-      env:
-        - name: PGPASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.database.existingSecret }}
-              key: {{ .Values.database.existingSecretKey | default "password" }}
-      {{- end }}
-      envFrom:
-        - secretRef:
-            name: '{{ .Release.Name }}-keycloak-env'
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        allowPrivilegeEscalation: false
-        capabilities:
-          drop: ["ALL"]
-      resources:
-        requests: { cpu: 10m, memory: 32Mi }
-        limits: { memory: 64Mi }
-  extraVolumes: |
-    - name: realm-import
-      secret:
-        secretName: '{{ .Release.Name }}-keycloak-realm'
-  extraVolumeMounts: |
-    - name: realm-import
-      mountPath: /opt/keycloak/data/import
-      readOnly: true
-  # Only when the DB password lives in an existing Secret (see bundledKeycloak.database).
-  database:
-    existingSecret: ""
-    existingSecretKey: ""
 
 # ---------------------------------------------------------------------------------------------
 # Database. postgresql.mode: "" (auto) | bundled | cnpg | external

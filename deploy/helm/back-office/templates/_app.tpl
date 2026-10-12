@@ -285,27 +285,6 @@ spec:
             {{- with $root.Values.api.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-        {{- if and $isApi $root.Values.api.oidcLoopback.enabled }}
-        # Dev only: localhost:<port> inside this pod -> Keycloak service, so the API sees the same issuer
-        # URL as a browser using kubectl port-forward (values.yaml api.oidcLoopback).
-        - name: oidc-loopback
-          image: {{ $root.Values.api.oidcLoopback.image | quote }}
-          imagePullPolicy: IfNotPresent
-          args:
-            - {{ printf "tcp-listen:%v,fork,reuseaddr" $root.Values.api.oidcLoopback.port | quote }}
-            - {{ printf "tcp-connect:%s" (default (printf "%s:80" (include "back-office.keycloak.service" $root)) $root.Values.api.oidcLoopback.target) | quote }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              memory: 64Mi
-        {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}

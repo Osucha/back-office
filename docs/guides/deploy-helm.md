@@ -3,8 +3,8 @@
 ## When to use this guide
 
 You are installing or upgrading the Back Office **control plane** on a Kubernetes cluster with the chart
-in `deploy/helm/back-office`: creating the namespace and Secrets, connecting an OIDC identity provider
-(or the bundled Keycloak), choosing the topology (`mode: split` or `combined`), the database
+in `deploy/helm/back-office`: creating the namespace and Secrets, setting up sign-in (local accounts by
+default, optionally an external OIDC identity provider), choosing the topology (`mode: split` or `combined`), the database
 (bundled, CloudNativePG or managed) and object storage, exposing the UI through an Ingress, autoscaling,
 observability, optionally Langfuse, and verifying the deployment. Agents run in the separately installed
 **runner fleet** ([runner-fleet-install.md](runner-fleet-install.md)); per-cloud reference setups are in
@@ -26,16 +26,17 @@ observability, optionally Langfuse, and verifying the deployment. Agents run in 
   worker and migrate roles) and `back-office/web`, tagged with the git SHA and signed by CI (cosign;
   `$CI_REGISTRY_IMAGE/{api,web}:$CI_COMMIT_SHORT_SHA`). For kind/minikube load them with
   `kind load docker-image back-office/api:dev` etc.
-- An OIDC provider (Keycloak, Microsoft Entra ID, Google Workspace, Okta, ...) where you can register a
-  confidential client - or `keycloak.enabled=true` for an evaluation install (section 2b).
-- Network access from the cluster to your OIDC issuer, your LLM providers, object storage and Jira (git
+- Nothing for sign-in by default: the chart starts with local accounts (e-mail + password, section 2d).
+  Optionally an OIDC provider you run or use (Keycloak, Microsoft Entra ID, Google Workspace, Okta, ...)
+  where you can register a confidential client (section 2a). The chart does not deploy an identity
+  provider (ADR 0039).
+- Network access from the cluster to your OIDC issuer (if any), your LLM providers, object storage and Jira (git
   hosts are reached only by the runner fleet). The reverse direction matters too: your CI runners must reach Back Office
   (`BACKOFFICE_URL`), because the CI calls the platform, never the other way round (ADR 0013).
 
 ```bash
 helm repo add langfuse https://langfuse.github.io/langfuse-k8s
-helm repo add codecentric https://codecentric.github.io/helm-charts
-helm dependency build deploy/helm/back-office      # pulls bitnami postgresql (OCI), langfuse and keycloakx
+helm dependency build deploy/helm/back-office      # pulls bitnami postgresql (OCI) and langfuse
 ```
 
 ## 1. Namespace and Secrets
@@ -53,10 +54,10 @@ kubectl -n back-office create secret generic back-office-app \
   --from-literal=RUNNER_TOKEN_SECRET="$(openssl rand -hex 32)" \
   --from-literal=BACKOFFICE_AUTH_LOCAL_SECRET_KEY="$(openssl rand -base64 32)" \
   --from-literal=BACKOFFICE_SECRETS_KEY="$(openssl rand -base64 32)"
-# Optional, installations without an identity provider (section 2d):
+# First administrator of a local-accounts install (the default, section 2d); remove after the first login:
 #   --from-literal=BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD='<initial password, 12+ characters>'
 
-# OIDC client secret of the API (copied from the identity provider, see section 2a).
+# Only with an external OIDC provider: client secret of the API (copied from the IdP, see section 2a).
 kubectl -n back-office create secret generic back-office-oidc \
   --from-literal=client-secret='<secret from the IdP>'
 
@@ -102,7 +103,10 @@ rollout and a failure stops the upgrade with the old version still serving
 ([runbooks/upgrade.md](../runbooks/upgrade.md)). With a pooler, the Hikari pools use it and LISTEN/NOTIFY
 keeps a direct connection to the primary (`BACKOFFICE_DATASOURCE_DIRECT_URL`).
 
-## 2a. Identity provider (OIDC)
+## 2a. Optional: external identity provider (OIDC)
+
+Skip this section for a local-accounts install (the default, section 2d). The chart does not deploy an
+identity provider (ADR 0039); connect the one your organisation runs, or a Keycloak you run yourself.
 
 Back Office is its own backend-for-frontend (ADR 0016): the API performs the authorization code flow
 with PKCE as a **confidential client**, keeps the tokens server-side and gives the browser only the
@@ -121,7 +125,8 @@ Groups are only *mapped* to Back Office groups; permissions are granted in Back 
 **Keycloak (your own)**: client `back-office`, *Client authentication* on, *Standard flow* only, *PKCE
 method* S256 (Advanced tab), redirect/post-logout URIs as above, *Web origins* `+`. Add a mapper *Group
 Membership*, token claim name `groups`, *Full group path* off, in ID token and userinfo. Issuer:
-`https://sso.example.com/realms/<realm>`. `deploy/keycloak/realm-back-office.json` is a complete example.
+`https://sso.example.com/realms/<realm>`. `deploy/keycloak/realm-back-office.json` is a complete example;
+importing, exporting and backing up the realm: [runbooks/keycloak-realm.md](../runbooks/keycloak-realm.md).
 
 **Microsoft Entra ID**: *App registrations > New registration*, platform *Web*, redirect URI as above,
 *Front-channel logout URL* not needed. *Certificates & secrets > New client secret* goes into
@@ -164,48 +169,6 @@ start; a failed discovery shows up as a failed login and is retried at the next 
 it means: API restarts do not log users out, several API replicas share sessions without sticky
 sessions, and deactivating a user deletes their sessions immediately.
 
-## 2b. Optional: bundled Keycloak (evaluation installs)
-
-`keycloak.enabled=true` deploys Keycloak 26.7 from the
-[codecentric/keycloakx](https://github.com/codecentric/helm-charts/tree/master/charts/keycloakx) chart
-(official `quay.io/keycloak/keycloak` image; the Bitnami chart was not used because it is frozen at 26.3
-and its image is no longer published). The chart then:
-
-- stores Keycloak's data in the Back Office PostgreSQL, schema `keycloak` (created by an init container),
-- imports the realm `back-office` from `deploy/keycloak/realm-back-office.json` with the client secret,
-  redirect URI and post-logout URI rewritten for your public URL, `sslRequired: external`, and without the
-  demo users unless `bundledKeycloak.realmImport.includeDemoUsers=true`,
-- derives `auth.oidc.issuerUri` = `<bundledKeycloak url>/realms/back-office`,
-- optionally exposes Keycloak on its own host (`bundledKeycloak.ingress`).
-
-```yaml
-keycloak:
-  enabled: true
-auth:
-  oidc:
-    clientSecret: "<openssl rand -hex 32>"    # written into the realm and into <fullname>-app
-  bootstrapAdmins: [jane.doe@example.com]
-bundledKeycloak:
-  ingress:
-    enabled: true
-    className: nginx
-    host: sso.example.com
-    tls: [{ secretName: sso-tls, hosts: [sso.example.com] }]
-```
-
-Read the generated admin password with
-`kubectl -n back-office get secret back-office-keycloak-env -o jsonpath="{.data.KC_BOOTSTRAP_ADMIN_PASSWORD}" | base64 -d`
-and create the users in the admin console (`https://sso.example.com/admin`). Keycloak imports the realm
-**only on the first start** (an existing realm is skipped), so later changes to the realm values have
-no effect: manage the realm in Keycloak, export it for backups
-([runbooks/keycloak-realm.md](../runbooks/keycloak-realm.md)). For production run Keycloak as its own
-release (or use the organisation's IdP) and treat the import as a starting point, not as configuration.
-
-Without an Ingress for Keycloak (kind/minikube, `values-dev.yaml`), the issuer is
-`http://localhost:8180/realms/back-office`: port-forward Keycloak for the browser
-(`kubectl port-forward svc/back-office-keycloak-http 8180:80`) and enable `api.oidcLoopback`, a socat
-sidecar that makes the same URL reach Keycloak from inside the API pod.
-
 ## 2c. Values file
 
 `values-prod.yaml` (keep it outside the repository or in your GitOps repo):
@@ -236,7 +199,7 @@ metrics:
 imagePullSecrets: [{ name: registry-pull }]
 integrations:
   jira: { acceptanceCriteriaField: customfield_10042 }   # url/email are legacy (section 2e)
-auth:
+auth:                                       # external OIDC (section 2a); omit for local accounts (2d)
   oidc:
     issuerUri: https://sso.example.com/realms/back-office
     existingSecret: back-office-oidc
@@ -265,16 +228,17 @@ ingress:
       hosts: [back-office.example.com]
 ```
 
-## 2d. Local accounts (with or without an identity provider)
+## 2d. Local accounts (the default)
 
-Local accounts (e-mail + password, optional TOTP; ADR 0021) are on by default (`auth.local.enabled`).
+Local accounts (e-mail + password, optional TOTP; ADR 0021) are on by default (`auth.local.enabled`),
+alone or next to an external OIDC provider (section 2a).
 They need `BACKOFFICE_AUTH_LOCAL_SECRET_KEY` in the app Secret: with `secrets.create=true` the chart
 generates it on the first install and keeps it on upgrades (like `RUNNER_TOKEN_SECRET`); with
 `secrets.existingSecret` add it yourself (section 1). Without it the API refuses to start while local
 login is enabled. Do not rotate it casually: it encrypts the users' TOTP secrets.
 
-**No identity provider at all**: leave `auth.oidc.issuerUri` empty and `keycloak.enabled=false`, and set the
-bootstrap administrator:
+**No identity provider at all (default)**: leave `auth.oidc.issuerUri` empty and set the bootstrap
+administrator:
 
 ```yaml
 auth:
@@ -290,7 +254,9 @@ are needed then. The throttle (`auth.local.throttle`, 20 attempts per IP per 5 m
 replica, and the source IP comes from `X-Forwarded-For` of your ingress (`server.forward-headers-strategy`):
 make sure the ingress sets it and clients cannot spoof it.
 
-To use **OIDC only**, set `auth.local.enabled=false` (the secret key is then optional).
+With an external OIDC provider (section 2a) the first administrator comes from `auth.bootstrapAdmins`
+instead (platform-admin on the first OIDC login of that e-mail). To use **OIDC only**, set
+`auth.local.enabled=false` (the secret key is then optional; `auth.oidc.issuerUri` is then required).
 
 ## 2e. Jira connections and the secrets key (ADR 0030)
 
@@ -333,7 +299,8 @@ helm upgrade --install back-office deploy/helm/back-office -n back-office --crea
 
 The chart prints `NOTES.txt` with the URL, the redirect URI to register, the bootstrap admins and the
 port-forward commands. Log in with a bootstrap admin e-mail first, then invite the others (Administration > Users).
-`values-dev.yaml` bundles Keycloak with the demo users of the local realm (`admin@example.com` / `admin`, ...).
+`values-dev.yaml` uses local accounts with the bootstrap administrator `admin@example.com` (initial
+password in the file; you must change it at the first login).
 
 ## 4. Upgrade
 
@@ -341,7 +308,7 @@ port-forward commands. Log in with a bootstrap admin e-mail first, then invite t
 
 Iteration 3 replaces the owner API key with OIDC login (ADR 0016). Before `helm upgrade`:
 
-1. Register the OIDC client (section 2a) or decide on the bundled Keycloak (2b).
+1. Register the OIDC client (section 2a), or use local accounts (section 2d).
 2. Remove `secrets.apiKey` and `secrets.ciApiKey` from your values - the chart **fails** with an upgrade
    hint while they are set. With `secrets.existingSecret`, drop `BACKOFFICE_API_KEY` /
    `BACKOFFICE_CI_API_KEY` from that Secret and make sure it contains `RUNNER_TOKEN_SECRET` (it no longer
@@ -577,7 +544,8 @@ Secrets you created by hand are not removed by Helm.
 - **`Error: execution error ... secrets.apiKey / secrets.ciApiKey were removed`** - see
   [Upgrading from iteration 2](#upgrading-from-iteration-2).
 - **`auth.oidc.issuerUri is required` / `auth.oidc.clientSecret or auth.oidc.existingSecret is required`** -
-  configure the OIDC client (section 2a) or enable the bundled Keycloak.
+  configure the OIDC client (section 2a), or keep `auth.local.enabled=true` for local accounts only
+  (section 2d).
 - **API crashes with `Unable to resolve Configuration with the provided Issuer`** - the pod cannot reach
   the issuer or the discovery document announces another `issuer`. Test from inside:
   `kubectl exec deploy/back-office-api -- wget -qO- <issuer>/.well-known/openid-configuration`.
@@ -587,8 +555,6 @@ Secrets you created by hand are not removed by Helm.
 - **Login succeeds at the IdP, then back on the login page** - the cookie is dropped (`auth.cookieSecure=true`
   over http) or `/login/oauth2` is not proxied to the API; `/login?error=not-invited` means the e-mail
   was not invited (`INVITE_ONLY`).
-- **Bundled Keycloak pod stuck in `Init`** - the `create-schema` init container waits for PostgreSQL;
-  `kubectl logs back-office-keycloak-0 -c create-schema`.
 - **API pod `CrashLoopBackOff`** - `kubectl logs deploy/back-office-api --previous`. Usual causes:
   wrong `SPRING_DATASOURCE_*` (check the ConfigMap and the DB Secret key name), Flyway checksum
   mismatch after a downgrade, or the JVM OOM-killed (raise `api.resources.limits.memory`).

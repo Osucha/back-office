@@ -33,9 +33,9 @@ Properties `backoffice.auth.*` (Spring relaxed binding: `backoffice.auth.oidc.is
 
 | Variable | Default | Description | Secret | Helm value |
 |---|---|---|---|---|
-| `BACKOFFICE_AUTH_OIDC_ISSUER_URI` | _(required; `local`: `http://localhost:8180/realms/back-office`)_ | OIDC issuer. The API fetches `<issuer>/.well-known/openid-configuration` lazily at the first sign-in (not at startup, so the API starts while the provider is still booting; a failed discovery is retried at the next sign-in), and the `iss` of ID tokens must equal it: it must be reachable from the API **and** be the URL the browser is redirected to | no | `auth.oidc.issuerUri` (derived `<bundledKeycloak url>/realms/back-office` when `keycloak.enabled`) |
+| `BACKOFFICE_AUTH_OIDC_ISSUER_URI` | _(empty = local accounts only, no OIDC login; required for OIDC; `local` profile: the compose Keycloak `http://localhost:8180/realms/back-office`)_ | OIDC issuer. The API fetches `<issuer>/.well-known/openid-configuration` lazily at the first sign-in (not at startup, so the API starts while the provider is still booting; a failed discovery is retried at the next sign-in), and the `iss` of ID tokens must equal it: it must be reachable from the API **and** be the URL the browser is redirected to | no | `auth.oidc.issuerUri` (empty by default: the chart starts with local accounts and does not deploy an identity provider, ADR 0039) |
 | `BACKOFFICE_AUTH_OIDC_CLIENT_ID` | `back-office` | Confidential client registered at the provider (authorization code + PKCE) | no | `auth.oidc.clientId` |
-| `BACKOFFICE_AUTH_OIDC_CLIENT_SECRET` | _(required; `local`: `back-office-dev-secret`)_ | Client secret | yes | `auth.oidc.existingSecret` + `existingSecretKey` (default `client-secret`), or `auth.oidc.clientSecret` -> Secret `<fullname>-app` |
+| `BACKOFFICE_AUTH_OIDC_CLIENT_SECRET` | _(required for OIDC; `local`: `back-office-dev-secret`)_ | Client secret | yes | `auth.oidc.existingSecret` + `existingSecretKey` (default `client-secret`), or `auth.oidc.clientSecret` -> Secret `<fullname>-app` |
 | `BACKOFFICE_AUTH_OIDC_SCOPES` | `openid,profile,email` | Requested scopes, comma separated (add `groups` or similar where the provider needs a scope for the groups claim) | no | `auth.oidc.scopes` |
 | `BACKOFFICE_AUTH_REGISTRATION` | `INVITE_ONLY` | `INVITE_ONLY`: only invited e-mails, allowed domains and bootstrap admins get an account on first login; `OPEN`: everyone the provider authenticates | no | `auth.registration` |
 | `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS` | _(empty)_ | Comma separated domains accepted without invitation in `INVITE_ONLY` mode | no | `auth.allowedEmailDomains` (list or string) |
@@ -73,19 +73,6 @@ Password policy, "MFA required for local accounts" and the lockout are platform 
 shared by all API replicas (no sticky sessions) and are deleted when a user is deactivated. Expired
 sessions are purged by a scheduled job in the API. Cookie `BO_SESSION` (`HttpOnly`, `SameSite=Lax`),
 CSRF cookie `XSRF-TOKEN` + header `X-XSRF-TOKEN`.
-
-### Bundled Keycloak (Helm, evaluation installs)
-
-| Helm value | Default | Description |
-|---|---|---|
-| `keycloak.enabled` | `false` | Deploy Keycloak 26.7 (codecentric/keycloakx subchart, official image) |
-| `bundledKeycloak.url` | ingress URL, else `http://localhost:8180` | `KC_HOSTNAME`; issuer = `<url>/realms/<realm>` |
-| `bundledKeycloak.realm` | `back-office` | Realm name |
-| `bundledKeycloak.admin.username` / `password` | `admin` / generated | `KC_BOOTSTRAP_ADMIN_*` in Secret `<release>-keycloak-env` |
-| `bundledKeycloak.database.schema` | `keycloak` | Keycloak's schema inside the Back Office database |
-| `bundledKeycloak.realmImport.*` | `sslRequired: external`, no demo users | Realm import from `deploy/keycloak/realm-back-office.json` (first start only) |
-| `bundledKeycloak.ingress.*` | disabled | Keycloak host (e.g. `sso.example.com`) |
-| `api.oidcLoopback.*` | disabled | Dev clusters: sidecar making `http://localhost:8180` reach Keycloak from the API pod |
 
 ### Local Keycloak (compose)
 
@@ -444,9 +431,6 @@ through `envFrom`; the migrate role gets only the database password.
 <fullname>-db                 (External Secrets, external DB)  -> key `password`
 auth.oidc.existingSecret      (you create it)             -> key `client-secret`
 
-<release>-keycloak-env        (keycloak.enabled)          -> Keycloak pod: KC_HOSTNAME, KC_BOOTSTRAP_ADMIN_*, KC_DB_*
-<release>-keycloak-realm      (keycloak.enabled)          -> realm import file (contains the client secret)
-
 runner chart: <fullname>-registration (RUNNER_REGISTRATION_TOKEN), <fullname>-token (key `runnerToken`,
 written by the controller into its own release namespace, never the sandbox namespace), gitCredentials.repoSecrets[].read / .push
 and the legacy gitCredentials.existingSecret / hostSecrets (key `token`, sandbox namespace)
@@ -480,7 +464,8 @@ the runner-controller's actuator probes on `:8090`.
 ## Where to look when it fails
 
 - **`helm install` fails with `auth.oidc.issuerUri is required` / `auth.oidc.clientSecret or
-  auth.oidc.existingSecret is required`** - configure the OIDC client (or `keycloak.enabled=true`).
+  auth.oidc.existingSecret is required`** - set `auth.oidc.*` for your OIDC provider, or keep local
+  accounts (`auth.local.enabled=true`, `auth.oidc.issuerUri` empty).
 - **`helm upgrade` fails with `secrets.apiKey / secrets.ciApiKey were removed`** - delete those keys from
   your values file ([deploy-helm.md](deploy-helm.md#upgrading-from-iteration-2)).
 - **Sign-in fails with `Unable to resolve Configuration with the provided Issuer`** (the API itself starts;

@@ -2,19 +2,18 @@
 
 Deploys the Back Office control plane (ADR 0023): the web UI (Angular behind nginx) and one backend
 image in the roles `api`, `worker` and `migrate` (or `api,worker` in `mode: combined`), plus optionally
-PostgreSQL (Bitnami subchart or a CloudNativePG `Cluster`), MinIO, PgBouncer, Keycloak (codecentric/keycloakx
-subchart, alias `keycloak`), Langfuse (langfuse-k8s subchart), ExternalSecrets, NetworkPolicies, KEDA
+PostgreSQL (Bitnami subchart or a CloudNativePG `Cluster`), MinIO, PgBouncer, Langfuse (langfuse-k8s subchart), ExternalSecrets, NetworkPolicies, KEDA
 objects, ServiceMonitor, PrometheusRule and Grafana dashboards. The agent execution plane is the separate
 chart [`back-office-runner`](../back-office-runner/README.md); this chart has no RBAC for pods or Jobs.
 Reference values per cloud: `values-aws.yaml`, `values-gcp.yaml`, `values-azure.yaml`, `values-onprem.yaml`
 ([cloud-reference.md](../../../docs/guides/cloud-reference.md)). Users log in
-through OIDC (ADR 0016); there is no API key. See [docs/guides/deploy-helm.md](../../../docs/guides/deploy-helm.md) for
+with local accounts (ADR 0021) and optionally through an external OIDC provider (ADR 0016); the chart bundles no
+identity provider (ADR 0039) and there is no API key. See [docs/guides/deploy-helm.md](../../../docs/guides/deploy-helm.md) for
 the step-by-step guide and [docs/guides/configuration.md](../../../docs/guides/configuration.md) for
 the mapping between values and environment variables.
 
 ```bash
 helm repo add langfuse https://langfuse.github.io/langfuse-k8s
-helm repo add codecentric https://codecentric.github.io/helm-charts
 helm dependency build deploy/helm/back-office
 helm install back-office deploy/helm/back-office -n back-office --create-namespace \
   -f deploy/helm/back-office/values-dev.yaml
@@ -47,9 +46,6 @@ helm install back-office deploy/helm/back-office -n back-office --create-namespa
 | Deployment / Service | `<fullname>-web` | `web.enabled` |
 | Ingress | `<fullname>` | `ingress.enabled` |
 | PostgreSQL (subchart) | `<fullname>-postgresql` | `postgresql.enabled` |
-| Keycloak (subchart) | `<release>-keycloak` StatefulSet, `<release>-keycloak-http` Service | `keycloak.enabled` |
-| Secrets (Keycloak env, realm import) | `<release>-keycloak-env`, `<release>-keycloak-realm` | `keycloak.enabled` |
-| Ingress (Keycloak) | `<release>-keycloak` | `keycloak.enabled` and `bundledKeycloak.ingress.enabled` |
 | Langfuse (subchart) | `<release>-langfuse-web`, `<release>-langfuse-postgresql`, ... | `langfuse.enabled` |
 
 `<fullname>` is the release name when it contains `back-office`, otherwise `<release>-back-office`
@@ -91,7 +87,6 @@ helm install back-office deploy/helm/back-office -n back-office --create-namespa
 | `api.extraVolumes`, `api.extraVolumeMounts` | list | `[]` | Extra volumes |
 | `api.serviceAccount.create` / `name` / `annotations` | | `true` / `""` / `{}` | API service account |
 | `api.autoscaling.enabled` / `minReplicas` / `maxReplicas` / `targetCPUUtilizationPercentage` / `targetMemoryUtilizationPercentage` | | `false` / `1` / `3` / `80` / `""` | HPA. Sessions are in PostgreSQL, so replicas share them; provider rate limits are per replica |
-| `api.oidcLoopback.enabled` / `port` / `target` / `image` | | `false` / `8180` / `<release>-keycloak-http:80` / `alpine/socat:1.8.0.3` | Dev only: sidecar forwarding `localhost:<port>` to Keycloak so the issuer `http://localhost:<port>/...` works with `kubectl port-forward` |
 | `api.podDisruptionBudget.enabled` / `minAvailable` / `maxUnavailable` | | `false` / `1` / unset | PDB |
 | `api.config.publicUrl` | string | `""` (derived) | `BACKOFFICE_PUBLIC_URL`; defaults to the ingress URL or the web Service |
 | `api.config.corsAllowedOrigins` | string | `""` (= publicUrl) | `CORS_ALLOWED_ORIGINS` |
@@ -213,7 +208,7 @@ helm install back-office deploy/helm/back-office -n back-office --create-namespa
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `auth.oidc.issuerUri` | string | `""` (derived from the bundled Keycloak) | `BACKOFFICE_AUTH_OIDC_ISSUER_URI`; required without `keycloak.enabled` |
+| `auth.oidc.issuerUri` | string | `""` | `BACKOFFICE_AUTH_OIDC_ISSUER_URI` of an external provider; empty = local accounts only (then `auth.local.enabled` must stay `true`) |
 | `auth.oidc.clientId` | string | `back-office` | `BACKOFFICE_AUTH_OIDC_CLIENT_ID` |
 | `auth.oidc.clientSecret` | string | `""` | `BACKOFFICE_AUTH_OIDC_CLIENT_SECRET` stored in `<fullname>-app` (dev) |
 | `auth.oidc.existingSecret` / `existingSecretKey` | | `""` / `client-secret` | Secret with the client secret (production) |
@@ -224,26 +219,6 @@ helm install back-office deploy/helm/back-office -n back-office --create-namespa
 | `auth.session.idleTimeout` / `absoluteTimeout` | string | `PT30M` / `PT12H` | `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` / `..._ABSOLUTE_TIMEOUT` |
 | `auth.cookieSecure` | bool | `true` | `BACKOFFICE_AUTH_COOKIE_SECURE` |
 | `auth.groupsClaim` | string | `groups` | `BACKOFFICE_AUTH_GROUPS_CLAIM` |
-
-### Bundled Keycloak (`keycloak.*` subchart values, `bundledKeycloak.*` chart settings)
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `keycloak.enabled` | bool | `false` | Deploy Keycloak 26.7 (codecentric/keycloakx, official image) for evaluation installs |
-| `keycloak.database.existingSecret` / `existingSecretKey` | | `""` | Needed only when the DB password is in an existing Secret |
-| `bundledKeycloak.url` | string | `""` (ingress URL, else `http://localhost:<api.oidcLoopback.port>`) | `KC_HOSTNAME`, the public URL; issuer = `<url>/realms/<realm>` |
-| `bundledKeycloak.realm` | string | `back-office` | Realm name |
-| `bundledKeycloak.admin.username` / `password` | | `admin` / generated | Keycloak bootstrap admin (Secret `<release>-keycloak-env`) |
-| `bundledKeycloak.database.schema` | string | `keycloak` | Schema in the Back Office database (created by an init container) |
-| `bundledKeycloak.realmImport.sslRequired` | string | `external` | `sslRequired` of the imported realm |
-| `bundledKeycloak.realmImport.includeDemoUsers` | bool | `false` | Import the test users of `deploy/keycloak/realm-back-office.json` |
-| `bundledKeycloak.realmImport.clientSecret` | string | `""` (= `auth.oidc.clientSecret`) | Client secret written into the realm |
-| `bundledKeycloak.realmImport.extraRedirectUris` | list | `[]` | Besides `<publicUrl>/login/oauth2/code/oidc` |
-| `bundledKeycloak.ingress.enabled` / `className` / `annotations` / `host` / `tls` | | `false` / `""` / `{}` / `sso.example.com` / `[]` | Ingress for Keycloak |
-
-The realm file is copied into the chart as `files/keycloak/realm-back-office.json` (Helm cannot read
-files outside the chart); CI fails when the copy differs from `deploy/keycloak/realm-back-office.json`.
-Keycloak imports it only on the first start.
 
 ### Database
 
@@ -300,8 +275,7 @@ helm lint . $OIDC
 for v in values-dev values-aws values-gcp values-azure values-onprem; do helm lint . -f $v.yaml && helm template bo . -f $v.yaml > /dev/null; done
 helm template bo . $OIDC --set postgresql.enabled=false --set postgresql.mode=cnpg --set cnpg.pooler.enabled=true
 helm template bo . $OIDC --set postgresql.enabled=false --set externalDatabase.host=db --set externalDatabase.password=pw --set pgbouncer.enabled=true --set networkPolicy.enabled=true
-helm template bo . --set keycloak.enabled=true --set auth.oidc.clientSecret=x \
-  --set bundledKeycloak.ingress.enabled=true --set bundledKeycloak.ingress.host=sso.example.com
+helm template bo . --set auth.local.bootstrapAdminEmail=admin@example.com --set auth.local.bootstrapAdminPassword=x
 helm template bo . $OIDC --set langfuse.enabled=true --set langfuse.clickhouse.crdCheck=false
 ```
 

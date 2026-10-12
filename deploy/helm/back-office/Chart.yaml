@@ -2,15 +2,17 @@ apiVersion: v2
 name: back-office
 description: >-
   Back Office - multi-user SDLC control room: REST API + pipeline engine (OIDC backend-for-frontend),
-  Angular web UI, RBAC for agent runner Jobs, optional PostgreSQL, Keycloak and Langfuse.
+  Angular web UI, RBAC for agent runner Jobs, optional PostgreSQL and Langfuse. Local accounts or an
+  external OIDC provider; no bundled identity provider (ADR 0039).
 type: application
 version: 0.1.0
 # appVersion equals the image tag that is deployed by default (git SHA in CI, see conventions.md).
 appVersion: "0.1.0"
 kubeVersion: ">=1.27.0-0"
-home: https://gitlab.example.com/mos/back-office
+home: https://github.com/Osucha/back-office
+icon: https://raw.githubusercontent.com/Osucha/back-office/main/docs/ui/logo.svg
 sources:
-  - https://gitlab.example.com/mos/back-office
+  - https://github.com/Osucha/back-office
 keywords:
   - sdlc
   - ai-agents
@@ -30,10 +32,3 @@ dependencies:
     version: "2.x.x"
     repository: https://langfuse.github.io/langfuse-k8s
     condition: langfuse.enabled
-  # Keycloak for evaluation installs (official quay.io image; the Bitnami chart is frozen at 26.3 and its
-  # image is no longer published). Disabled by default: production uses an external OIDC provider (ADR 0016).
-  - name: keycloakx
-    alias: keycloak
-    version: "7.x.x"
-    repository: https://codecentric.github.io/helm-charts
-    condition: keycloak.enabled
