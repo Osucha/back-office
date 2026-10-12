@@ -12,7 +12,9 @@ import {
   untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Router, RouterLink, Scroll } from '@angular/router';
+import { filter } from 'rxjs';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
@@ -62,6 +64,10 @@ export const ACCOUNT_SECTIONS = [
   { id: 'access', label: $localize`:@@account.index.access:My access` },
 ] as const;
 export type AccountSection = (typeof ACCOUNT_SECTIONS)[number]['id'];
+
+function isSection(id: unknown): id is AccountSection {
+  return typeof id === 'string' && ACCOUNT_SECTIONS.some((s) => s.id === id);
+}
 
 /**
  * My account: one scrolling page with a section index (profile, preferences, notifications, security, personal
@@ -113,7 +119,7 @@ export type AccountSection = (typeof ACCOUNT_SECTIONS)[number]['id'];
               queryParamsHandling="merge"
               [class.active]="active() === s.id"
               [attr.aria-current]="active() === s.id ? 'true' : null"
-              (click)="scrollTo(s.id)"
+              (click)="select(s.id)"
               >{{ s.label }}</a
             >
           }
@@ -566,6 +572,11 @@ export class AccountPageComponent {
   private readonly pendingSaves = inject(PendingSavesService);
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly router = inject(Router);
+  /** The index does not follow scrolling until then (a scroll to a chosen section is running). */
+  private spyPausedUntil = 0;
+  /** The next scroll to a section is the user's click (smooth), not a deep link. */
+  private smoothNext = false;
 
   /** `?section=` scrolls to that section. */
   readonly section = input<string | undefined>();
@@ -631,14 +642,41 @@ export class AccountPageComponent {
     afterNextRender(() => {
       const target = this.section();
       // After the router restored the scroll position (top) of the navigation.
-      if (target && this.sections.some((s) => s.id === target))
-        setTimeout(() => this.scrollTo(target as AccountSection, false), 60);
+      if (isSection(target)) setTimeout(() => this.scrollTo(target, false), 60);
       this.observeSections();
     });
+    // Every `?section=` navigation (the index, links inside the sections): the router scrolls to the top on
+    // navigation (scrollPositionRestoration), so the section is scrolled to after the router's Scroll event.
+    this.router.events
+      .pipe(
+        filter((e): e is Scroll => e instanceof Scroll),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => {
+        const target = this.router.parseUrl(this.router.url).queryParams['section'];
+        if (!isSection(target)) return;
+        const smooth = this.smoothNext;
+        this.smoothNext = false;
+        setTimeout(() => this.scrollTo(target, smooth), 0);
+      });
+  }
+
+  /** A click in the index: highlighted at once; the scroll follows the navigation (see the constructor). */
+  select(id: AccountSection): void {
+    this.active.set(id);
+    // the same `?section=` is no navigation (no Scroll event): scroll right away
+    if (this.router.parseUrl(this.router.url).queryParams['section'] === id) {
+      this.scrollTo(id);
+      return;
+    }
+    this.smoothNext = true;
+    this.spyPausedUntil = Date.now() + 1500;
   }
 
   scrollTo(id: AccountSection, smooth = true): void {
     this.active.set(id);
+    // the last sections cannot reach the top of a short page: keep the chosen one highlighted while it scrolls
+    this.spyPausedUntil = Date.now() + (smooth ? 1200 : 300);
     const el = (this.host.nativeElement as HTMLElement).querySelector<HTMLElement>('#' + id);
     el?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
   }
@@ -682,6 +720,7 @@ export class AccountPageComponent {
     let frame = 0;
     const update = () => {
       frame = 0;
+      if (Date.now() < this.spyPausedUntil) return;
       let current: AccountSection = this.sections[0].id;
       for (const s of this.sections) {
         const el = root.querySelector<HTMLElement>('#' + s.id);

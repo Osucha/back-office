@@ -217,8 +217,11 @@ export const SCOPE_OPTIONS: Readonly<
   },
 };
 
-/** `GET /myself` of every verification: classic `read:jira-user` or granular `read:user:jira`. */
-export const VERIFICATION_SCOPES = { classic: ['read:jira-user'], granular: ['read:user:jira'] } as const;
+/** `GET /myself` of every verification: classic `read:jira-user`, or all granular scopes the endpoint lists. */
+export const VERIFICATION_SCOPES = {
+  classic: ['read:jira-user'],
+  granular: ['read:user:jira', 'read:group:jira', 'read:application-role:jira', 'read:avatar:jira'],
+} as const;
 
 const SCOPE_PATTERN = /^[a-z]+:[a-z0-9._-]+(:[a-z0-9._-]+)?$/;
 
@@ -427,7 +430,7 @@ export function verificationMessageText(
   const perms = jiraPermissionNames(m.permissions ?? []);
   switch (m.code) {
     case 'AUTHENTICATION_FAILED':
-      return $localize`:@@connections.message.authFailed:Jira rejected the e-mail and API token. Check both, or create a new classic API token.`;
+      return $localize`:@@connections.message.authFailed:Jira rejected the e-mail and API token. Check both; a scoped token also needs every scope listed for identifying the account (read:user, read:group, read:application-role, read:avatar).`;
     case 'SITE_UNREACHABLE':
       return $localize`:@@connections.message.unreachable:The Jira site could not be reached. Check the site URL.`;
     case 'HTTP_ERROR':

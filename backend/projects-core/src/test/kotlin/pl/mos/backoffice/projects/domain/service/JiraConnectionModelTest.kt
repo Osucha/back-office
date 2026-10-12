@@ -36,6 +36,14 @@ class JiraConnectionModelTest {
     private val anna = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
 
     @Test
+    fun `identifying the account with a scoped token needs every granular scope of myself`() {
+        // Jira answers 401 to GET /myself when a scoped token lacks one of them (seen with read:user:jira alone)
+        assertThat(JiraScopes.coversVerification(listOf("read:user:jira", "read:avatar:jira"))).isFalse()
+        assertThat(JiraScopes.coversVerification(listOf("read:user:jira", "read:group:jira", "read:application-role:jira", "read:avatar:jira"))).isTrue()
+        assertThat(JiraScopes.coversVerification(listOf("read:jira-user"))).isTrue()
+    }
+
+    @Test
     fun `the system connection is used when it covers the step, even if a tighter connection exists`() {
         val writer = ConnectionFakes.connection("writer", WRITE, projectId)
         val reader = ConnectionFakes.connection("reader", READ)

@@ -31,11 +31,17 @@ object JiraScopes {
     const val READ_TRANSITION = "read:issue.transition:jira"
     const val READ_STATUS = "read:status:jira"
     const val READ_USER = "read:user:jira"
+    const val READ_GROUP = "read:group:jira"
+    const val READ_APPLICATION_ROLE = "read:application-role:jira"
+    const val READ_AVATAR = "read:avatar:jira"
 
-    /** `GET /rest/api/3/myself` (every verification): classic `read:jira-user` or granular `read:user:jira`. */
+    /**
+     * `GET /rest/api/3/myself` (every verification): classic `read:jira-user`, or the granular scopes the endpoint's
+     * reference lists (user, group, application role, avatar). A scoped token without all of them gets HTTP 401.
+     */
     val VERIFICATION: List<Option> = listOf(
         Option(Kind.CLASSIC, setOf(READ_JIRA_USER)),
-        Option(Kind.GRANULAR, setOf(READ_USER)),
+        Option(Kind.GRANULAR, setOf(READ_USER, READ_GROUP, READ_APPLICATION_ROLE, READ_AVATAR)),
     )
 
     private val READ_GRANULAR_RECOMMENDED = setOf(

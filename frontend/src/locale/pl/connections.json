@@ -119,7 +119,7 @@
   "connections.expiry.expiredTitle": "Token API wygasł {$date}. Zastąp go.",
   "connections.expiry.soon": "token wygasa {$date}",
   "connections.expiry.soonTitle": "Utwórz nowy token API przed {$date} i zastąp go tutaj.",
-  "connections.message.authFailed": "Jira odrzuciła e-mail i token API. Sprawdź oba albo utwórz nowy klasyczny token API.",
+  "connections.message.authFailed": "Jira odrzuciła e-mail i token API. Sprawdź oba; token z zakresami potrzebuje też wszystkich zakresów do rozpoznania konta (read:user, read:group, read:application-role, read:avatar).",
   "connections.message.unreachable": "Nie udało się połączyć z witryną Jira. Sprawdź URL witryny.",
   "connections.message.httpErrorKey": "Jira zwróciła błąd dla {$key}.",
   "connections.message.httpError": "Jira zwróciła błąd.",
