@@ -220,7 +220,13 @@ export const SCOPE_OPTIONS: Readonly<
 /** `GET /myself` of every verification: classic `read:jira-user`, or all granular scopes the endpoint lists. */
 export const VERIFICATION_SCOPES = {
   classic: ['read:jira-user'],
-  granular: ['read:user:jira', 'read:group:jira', 'read:application-role:jira', 'read:avatar:jira'],
+  granular: [
+    'read:user:jira',
+    'read:group:jira',
+    'read:application-role:jira',
+    'read:avatar:jira',
+    'read:permission:jira',
+  ],
 } as const;
 
 const SCOPE_PATTERN = /^[a-z]+:[a-z0-9._-]+(:[a-z0-9._-]+)?$/;
@@ -368,6 +374,11 @@ export interface Chip {
   title?: string;
 }
 
+/** The extra permissions are the account's, out of reach of a scoped token (the backend reports them as INFO). */
+export function excessBoundByScopes(v: ConnectionVerification | null | undefined): boolean {
+  return (v?.messages ?? []).some((m) => m.code === 'EXCESS_PERMISSIONS' && m.severity === 'INFO');
+}
+
 export function verificationChip(v: ConnectionVerification | null | undefined): Chip {
   if (!v)
     return { tone: 'neutral', label: $localize`:@@connections.verification.none:not checked` };
@@ -377,7 +388,7 @@ export function verificationChip(v: ConnectionVerification | null | undefined): 
     case 'FAILED':
       return { tone: 'bad', label: $localize`:@@connections.verification.failed:check failed` };
     default:
-      return v.excess?.length
+      return v.excess?.length && !excessBoundByScopes(v)
         ? {
             tone: 'warn',
             label: $localize`:@@connections.verification.overPrivileged:over-privileged`,
@@ -448,6 +459,11 @@ export function verificationMessageText(
     case 'EXCESS_PERMISSIONS': {
       const actions = permissionActions(m.permissions ?? []);
       const only = jiraPermissionNames(needed);
+      // a scoped token (INFO): the account may do more, the token only what its scopes allow - nothing to fix
+      if (m.severity === 'INFO')
+        return key
+          ? $localize`:@@connections.message.excessScopedKey:In ${key}:key: this account can also ${actions}:actions:, but the scoped token can only do what its scopes allow.`
+          : $localize`:@@connections.message.excessScoped:This account can also ${actions}:actions:, but the scoped token can only do what its scopes allow.`;
       if (key && only)
         return $localize`:@@connections.message.excessKeyOnly:Over-privileged in ${key}:key:: this account can also ${actions}:actions:. Use a dedicated account with only ${only}:needed:.`;
       if (key)

@@ -107,6 +107,26 @@ describe('connection model', () => {
     ).toBe(
       'Over-privileged in SHOP: this account can also delete issues, administer the project. Use a dedicated account with only Browse Projects.',
     );
+    // a scoped token: the account's extra permissions are out of the token's reach (INFO, nothing to fix)
+    const scoped = {
+      severity: 'INFO' as const,
+      code: 'EXCESS_PERMISSIONS' as const,
+      projectKey: 'SHOP',
+      permissions: ['DELETE_ISSUES' as const],
+      text: 'english',
+    };
+    expect(verificationMessageText(scoped, ['BROWSE_PROJECTS'])).toBe(
+      'In SHOP this account can also delete issues, but the scoped token can only do what its scopes allow.',
+    );
+    expect(
+      verificationChip({
+        status: 'WARNING',
+        checkedAt: '2026-10-12T10:00:00Z',
+        projects: [],
+        excess: ['DELETE_ISSUES'],
+        messages: [scoped],
+      } as unknown as Parameters<typeof verificationChip>[0]).label,
+    ).toBe('check with warnings');
     expect(
       verificationMessageText({ severity: 'ERROR', code: 'AUTHENTICATION_FAILED', text: 'x' }),
     ).toContain('rejected the e-mail and API token');

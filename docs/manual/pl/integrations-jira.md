@@ -155,7 +155,7 @@ Atlassian oferuje dwa rodzaje tokenów API. Back Office obsługuje oba:
 
    | Połączenie może | Szczegółowe zakresy do zaznaczenia (zalecane) | Albo zakresy klasyczne |
    |---|---|---|
-   | (zawsze, by rozpoznać konto) | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` (wszystkie cztery; bez nich Jira odpowiada 401) | `read:jira-user` |
+   | (zawsze, by rozpoznać konto) | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` (wszystkie cztery; bez nich Jira odpowiada 401), zalecany `read:permission:jira` (pokazuje uprawnienia konta w projekcie) | `read:jira-user` |
    | **Odczyt zgłoszeń** | `read:issue:jira`, `read:issue-details:jira`, `read:jql:jira`, `read:issue-meta:jira`, `read:field-configuration:jira`, `read:status:jira`, `read:issue.changelog:jira`, `read:field:jira`, `read:avatar:jira` | `read:jira-work` |
    | **Komentowanie zgłoszeń** | `write:comment:jira`, `read:comment:jira`, `read:comment.property:jira`, `read:project:jira`, `read:project-role:jira`, `read:group:jira`, `read:avatar:jira` | `read:jira-work`, `write:jira-work` |
    | **Przenoszenie zgłoszeń** | `write:issue:jira`, `write:issue.property:jira`, `read:issue.transition:jira`, `read:status:jira`, `read:field-configuration:jira` | `read:jira-work`, `write:jira-work` |

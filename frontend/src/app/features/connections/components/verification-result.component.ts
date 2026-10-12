@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { TimeAgoPipe } from '../../../core/ui/pipes/time-ago.pipe';
 import {
+  excessBoundByScopes,
   jiraPermissionName,
   messageTone,
   permissionsFor,
@@ -54,10 +55,19 @@ import { CONNECTION_CHIP_STYLES } from './chip-styles';
                 >
               }
               @for (g of sorted(p.excess); track g) {
-                <span class="cchip warn" [title]="text_.excessTitle"
-                  >{{ name(g) }}
-                  <span i18n="@@connections.verification.excessChip">not needed</span></span
-                >
+                @if (boundByScopes()) {
+                  <span class="cchip neutral" [title]="text_.excessScopedTitle"
+                    >{{ name(g) }}
+                    <span i18n="@@connections.verification.excessScopedChip"
+                      >not in the token</span
+                    ></span
+                  >
+                } @else {
+                  <span class="cchip warn" [title]="text_.excessTitle"
+                    >{{ name(g) }}
+                    <span i18n="@@connections.verification.excessChip">not needed</span></span
+                  >
+                }
               }
             </span>
           </div>
@@ -118,9 +128,11 @@ export class VerificationResultComponent {
   readonly capabilities = input<readonly string[]>([]);
 
   readonly chip = computed(() => verificationChip(this.verification()));
+  readonly boundByScopes = computed(() => excessBoundByScopes(this.verification()));
   readonly needed = computed(() => permissionsFor(this.capabilities()));
   readonly text_ = {
     missingTitle: $localize`:@@connections.verification.missingTitle:Missing for the declared capabilities: steps that need it fail.`,
+    excessScopedTitle: $localize`:@@connections.verification.excessScopedTitle:The account has this permission in Jira, but the scopes of this token do not allow using it.`,
     excessTitle: $localize`:@@connections.verification.excessTitle:Over-privileged: the declared capabilities do not need this permission. Use a dedicated account without it.`,
   };
 

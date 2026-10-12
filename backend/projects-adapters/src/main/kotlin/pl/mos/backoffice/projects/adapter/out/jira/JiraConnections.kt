@@ -207,8 +207,8 @@ class JiraIssueTrackerFactory(
             scoped && (status == 401 || status == 403) ->
                 ProbeFailure(
                     VerificationCode.MISSING_SCOPES,
-                    "the scoped token may not read the account's permissions in $projectKey (HTTP $status); add ${JiraScopes.READ_JIRA_WORK} or " +
-                        "read:permission:jira to see them, or rely on the endpoint checks",
+                    "the scoped token may not read the account's permissions in $projectKey (HTTP $status); add ${JiraScopes.READ_PERMISSION} " +
+                        "(or the broader classic ${JiraScopes.READ_JIRA_WORK}) to see them, or rely on the endpoint checks",
                 )
             else -> ProbeFailure(VerificationCode.HTTP_ERROR, "Jira answered HTTP $status to /rest/api/3/mypermissions for $projectKey")
         }
