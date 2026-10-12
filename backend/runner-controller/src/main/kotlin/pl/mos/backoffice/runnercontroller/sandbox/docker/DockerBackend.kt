@@ -9,6 +9,7 @@ import pl.mos.backoffice.runnercontroller.egress.EgressDecision
 import pl.mos.backoffice.runnercontroller.git.GitCredentialSelector
 import pl.mos.backoffice.runnercontroller.git.JobRepositories
 import pl.mos.backoffice.runnercontroller.protocol.BackendKind
+import pl.mos.backoffice.runnercontroller.sandbox.LOCAL_LOGIN_FILE
 import pl.mos.backoffice.runnercontroller.sandbox.Labels
 import pl.mos.backoffice.runnercontroller.sandbox.LaunchRequest
 import pl.mos.backoffice.runnercontroller.sandbox.ManagedSandbox
@@ -89,6 +90,8 @@ class DockerBackend(
         Files.createDirectories(gitDir)
         // writable for the sandbox user (10001): the runner deletes the secret files before the agent starts (ADR 0029)
         listOf(bundleDir, gitDir).forEach(::allowSandboxToDelete)
+        // ADR 0040: the owner's Claude Code login, before `ready`; the runner reads and deletes it
+        request.localLoginCredential?.let(env)?.takeIf { it.isNotBlank() }?.let { Files.writeString(bundleDir.resolve(LOCAL_LOGIN_FILE), it.trim()) }
         request.bundle.files(proxyUrl(request)).forEach { (name, content) -> Files.writeString(bundleDir.resolve(name), content) }
         // only the variable selected for this job's level (ADR 0031): READ -> BO_GIT_TOKEN_READ, PUSH_MR -> BO_GIT_TOKEN_PUSH
         request.gitCredential?.let(env)?.takeIf { it.isNotBlank() }?.let { Files.writeString(gitDir.resolve("token"), it) }

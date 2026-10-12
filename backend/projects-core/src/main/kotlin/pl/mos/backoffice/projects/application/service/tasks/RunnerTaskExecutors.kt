@@ -204,6 +204,7 @@ class RunnerTaskSupport(
             repositories = jobRepositories,
             gitAccess = GitAccess.highest(jobRepositories.map { it.access }),
             specKit = specKit,
+            personalRunnerOf = personalRunnerOf(context),
         )
         if (logWarnings) {
             jobRepositories.forEach { r -> context.log("repository ${r.key} (/workspace/${r.path}${if (r.primary) ", primary" else ""}): git access ${r.access}, ${describe(r.access)}") }
@@ -211,10 +212,21 @@ class RunnerTaskSupport(
         return Plan(spec, profile, branch, push, repos)
     }
 
+    /** ADR 0040: steps of a private project started by its owner go to the owner's personal runner, when they have one. */
+    private fun personalRunnerOf(context: NodeContext): java.util.UUID? =
+        if (context.project.personal) ActingUser.startedBy(context.run)?.userId else null
+
     private fun map(context: NodeContext, mode: RunnerMode, plan: Plan, jobId: RunnerJobId, result: RunnerResult): NodeResult {
         val node = context.node
         val project = context.project
-        val cost = result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
+        val cost = if (result.subscription) {
+            // ADR 0040: paid by the user's own subscription; the harness estimate is logged, not counted
+            context.log("the agent used your own Claude login on your personal runner" +
+                (result.reportedCostUsd?.let { " (Claude Code estimates $it USD at API prices; not counted as cost)" } ?: ""))
+            Money.ZERO
+        } else {
+            result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
+        }
         val artifacts = result.artifacts.map { NewArtifact(it.name, ArtifactKind.forName(it.name, it.mediaType), it.mediaType, it.content) }.toMutableList()
         result.verification?.let { artifacts += NewArtifact("verification-${node.id}", ArtifactKind.LOG, "text/plain", "$ ${it.command}\nexit code ${it.exitCode}\n\n${it.outputTail}") }
         result.diff?.takeIf { it.isNotBlank() }?.let { artifacts += NewArtifact("diff", ArtifactKind.DIFF, "text/x-diff", it) }

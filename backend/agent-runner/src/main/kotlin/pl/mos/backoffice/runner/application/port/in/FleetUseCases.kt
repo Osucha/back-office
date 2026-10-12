@@ -2,6 +2,7 @@ package pl.mos.backoffice.runner.application.port.`in`
 
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.JobCompletionReport
+import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.runner.domain.RunnerNode
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.RunnerJobId
@@ -39,6 +40,9 @@ data class RunnerPoolView(
     val queued: Int,
     val running: Int,
     val createdAt: Instant,
+    /** ADR 0040: the owner of a personal pool (managed by them under My account); null = shared pool. */
+    val ownerUserId: UUID? = null,
+    val llmCredentials: LlmCredentials = LlmCredentials.GATEWAY,
 )
 
 data class RunnerView(
@@ -70,6 +74,38 @@ interface ManageRunnerPools {
 
     /** Single-use `bo_rrt_` token (24 h), shown once, with a ready-to-paste values snippet for the runner chart. */
     fun issueRegistrationToken(poolId: String): IssuedRegistrationToken
+}
+
+// ------------------------------------------------------------------------------------------------
+// Personal runner (ADR 0040; the signed-in user's own pool, `fleet.personal`)
+// ------------------------------------------------------------------------------------------------
+
+data class PersonalRunnerView(
+    val poolId: String,
+    val llmCredentials: LlmCredentials,
+    val runners: List<RunnerView>,
+    val queued: Int,
+    val running: Int,
+    val createdAt: Instant,
+)
+
+/** A single-use registration token for the personal pool and the command that starts a runner-controller with it. */
+data class IssuedPersonalRegistration(val token: String, val expiresAt: Instant, val dockerCommand: String)
+
+interface ManagePersonalRunner {
+    /** The caller's personal runner, or null when they have not set one up. */
+    fun mine(): PersonalRunnerView?
+
+    /** Creates the caller's personal pool (idempotent) or changes its model credentials. */
+    fun enable(llmCredentials: LlmCredentials): PersonalRunnerView
+
+    /** Deletes the personal pool and its runners; 409 while it still has queued or running jobs. */
+    fun disable()
+
+    fun issueRegistrationToken(): IssuedPersonalRegistration
+
+    /** Revokes one runner of the caller's personal pool; its jobs go back to the queue. */
+    fun revokeRunner(runnerId: UUID)
 }
 
 interface ManageRunners {
@@ -168,6 +204,8 @@ data class LeasedJob(
     val spec: RunnerJobSpec,
     val policy: SandboxPolicy,
     val gateway: GatewayUrls,
+    /** ADR 0040: LOCAL_LOGIN = Claude Code uses the login of the personal pool's owner, not the gateway. */
+    val llmCredentials: LlmCredentials = LlmCredentials.GATEWAY,
 )
 
 data class JobHeartbeatInput(

@@ -38,12 +38,18 @@ data class LaunchRequest(
     val repositoryTokens: List<RepositoryToken> = emptyList(),
     /** Multi-repository specs: every repository key with its level (annotation `backoffice.io/git-repositories`). */
     val repositoryAccess: Map<String, GitAccess> = emptyMap(),
+    /**
+     * ADR 0040: name of the controller environment variable with the owner's Claude Code login (LOCAL_LOGIN jobs,
+     * DOCKER backend only); delivered as `claude-login-token` in the bundle. Null = the job uses the LLM gateway.
+     */
+    val localLoginCredential: String? = null,
 )
 
 /**
  * Files under `/var/run/backoffice/job/` (runner: `RUNNER_JOB_DIR`):
  * `spec.json` (RunnerJobSpec incl. `gateway`), `policy.json` (resolved SandboxPolicy), `job-id`, `job-token`
  * (bo_job_), `proxy-url` (HTTPS_PROXY for the sandbox; filled in by the backend) and `ready` (written last).
+ * LOCAL_LOGIN jobs (ADR 0040, DOCKER backend) also get `claude-login-token`, written before `ready`.
  */
 data class JobBundle(val specJson: String, val policyJson: String, val jobId: String, val jobToken: String) {
     fun files(proxyUrl: String): Map<String, String> = linkedMapOf(
@@ -109,6 +115,9 @@ interface SandboxBackend {
 
 /** Pool-level settings from `/runner/v2/config` plus local configuration. */
 data class PoolSettings(val poolId: String, val warmPoolSize: Int, val defaultPolicy: ResolvedPolicy?)
+
+/** Bundle file with the owner's Claude Code login of a LOCAL_LOGIN job (ADR 0040). */
+const val LOCAL_LOGIN_FILE = "claude-login-token"
 
 object Labels {
     const val MANAGED_BY = "app.kubernetes.io/managed-by"

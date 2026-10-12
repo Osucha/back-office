@@ -159,6 +159,7 @@ equivalents through the `auditor` role).
 | `usage.view` | PLATFORM | llm | read the usage ledger for all projects and benchmarks |
 | `fleet.view` | PLATFORM | runner | see runner pools, runners and agent jobs (ADR 0024) |
 | `fleet.manage` | PLATFORM | runner | create/edit/delete runner pools, issue registration tokens, revoke runners, cancel agent jobs |
+| `fleet.personal` | PLATFORM | runner | your own personal runner pool under My account: connect your computer, disconnect it, choose GATEWAY or LOCAL_LOGIN; every member (ADR 0040, identity migration V411) |
 | `project.view` | PROJECT | projects | see the project, its workflows, runs, CI executions |
 | `project.manage` | PROJECT | projects | edit project settings, CI entrypoints; deleting the project also needs `project.members.manage` (owners only) |
 | `project.members.manage` | PROJECT | identity | add/remove members and change their project roles |
@@ -184,7 +185,7 @@ The MCP endpoint `/mcp` accepts personal access tokens only.
 | Role | Scope | Permissions |
 |---|---|---|
 | `platform-admin` | PLATFORM | all platform permissions incl. `admin.projects.all` and `admin.connections.manage` |
-| `member` (SYSTEM default) | PLATFORM | `library.view`, `models.view`, `evaluation.view`, `tokens.personal`, `integrations.view`, `connections.personal`, `projects.create.personal` (no `projects.create` since ADR 0028) |
+| `member` (SYSTEM default) | PLATFORM | `library.view`, `models.view`, `evaluation.view`, `tokens.personal`, `integrations.view`, `connections.personal`, `projects.create.personal`, `fleet.personal` (no `projects.create` since ADR 0028) |
 | `project-manager` | PLATFORM | `member` + `projects.create`, `usage.view` |
 | `evaluator` | PLATFORM | `member` + `evaluation.run` |
 | `library-curator` | PLATFORM | `member` + `library.manage` |
@@ -243,7 +244,7 @@ Decisions record `decidedBy` (actor), ticked checklist items and the comment; th
 |---|---|---|---|
 | Personal access token (PAT) | `bo_pat_` | the owner's effective permissions, optionally narrowed to a list of permissions; expiry required (max 365 days) | the user (`tokens.personal`) |
 | Project CI token | `bo_ci_` | `ci.execute`, `ci.signal` on one project | project member with `project.ci.manage` |
-| Runner registration token | `bo_rrt_` | single use, 24 h: registers one runner-controller in one pool | operator with `fleet.manage` |
+| Runner registration token | `bo_rrt_` | single use, 24 h: registers one runner-controller in one pool | operator with `fleet.manage`; for their own personal pool, the user with `fleet.personal` (ADR 0040) |
 | Runner token | `bo_rt_` | runner protocol v2 (`/runner/v2/**`) for the jobs of its pool and its own leases; revocable | issued at registration |
 | Job token | `bo_job_` | one agent job: sandbox callbacks, uploads, the LLM proxy (`/llm/**`) with the job's model allowlist; expires with the lease / terminal state | issued at lease time |
 

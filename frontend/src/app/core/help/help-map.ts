@@ -224,6 +224,11 @@ export const HELP_TOPICS = {
     'claude-code',
     $localize`:@@core.help.topic.account.ide:Connect your IDE`,
   ),
+  'account.runner': t(
+    'personal-runner',
+    'connect',
+    $localize`:@@core.help.topic.account.runner:My computer as a runner`,
+  ),
   'account.mfa': t(
     'account',
     'mfa',
@@ -342,13 +347,15 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
     (q) =>
       q.get('section') === 'ide'
         ? 'account.ide'
-        : q.get('section') === 'tokens'
-          ? 'account.tokens'
-          : q.get('section') === 'security'
-            ? 'account.mfa'
-            : q.get('section') === 'notifications'
-              ? 'account.notifications'
-              : 'account',
+        : q.get('section') === 'runner'
+          ? 'account.runner'
+          : q.get('section') === 'tokens'
+            ? 'account.tokens'
+            : q.get('section') === 'security'
+              ? 'account.mfa'
+              : q.get('section') === 'notifications'
+                ? 'account.notifications'
+                : 'account',
   ],
   [/^\/admin(\/users(\/[^/]+)?)?$/, 'admin.users'],
   [/^\/admin\/groups(\/[^/]+)?$/, 'admin.groups'],

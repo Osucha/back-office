@@ -350,7 +350,7 @@ const TABS: (IntakeProposalState | 'RULES')[] = ['NEW', 'STARTED', 'DISMISSED', 
       nzOkText="Start"
       i18n-nzOkText="@@my-work.chooseStart"
       nzCancelText="Cancel"
-      i18n-nzCancelText="@@my-work.cancel"
+      i18n-nzCancelText="@@my-work.chooseCancel"
       [nzOkDisabled]="!chosenWorkflow()"
       (nzOnOk)="startChosen()"
       (nzOnCancel)="choosing.set(null)"
@@ -813,7 +813,7 @@ export class MyWorkPageComponent {
     const ok = await this.confirm.danger(
       $localize`:@@my-work.rule.deleteConfirm.title:Delete the rule "${r.name}:name:"?`,
       $localize`:@@my-work.rule.deleteConfirm.content:Its proposals disappear; runs you already started stay.`,
-      $localize`:@@my-work.rule.delete:Delete rule`,
+      $localize`:@@my-work.rule.deleteConfirm.ok:Delete rule`,
     );
     if (!ok) return;
     this.api.deleteRule(r.id).subscribe(() => {

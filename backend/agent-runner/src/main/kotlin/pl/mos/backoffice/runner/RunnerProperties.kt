@@ -40,7 +40,18 @@ data class RunnerProperties(
     val leaseScan: LeaseScan = LeaseScan(),
     /** The top layer of every sandbox policy (the platform ceiling). */
     val platformPolicy: PlatformPolicy = PlatformPolicy(),
+    /** Personal runners (ADR 0040): images of the generated `docker run` command and limits of a new personal pool. */
+    val personal: Personal = Personal(),
 ) {
+    data class Personal(
+        val controllerImage: String = "back-office/runner-controller:dev",
+        val runnerImage: String = "back-office/runner:dev",
+        val egressProxyImage: String = "back-office/egress-proxy:dev",
+        /** `allowedImages` of a new personal pool (`*` = any sequence). */
+        val allowedImages: List<String> = listOf("back-office/runner:*", "*/back-office/runner:*"),
+        val maxConcurrentJobs: Int = 2,
+    )
+
     data class LeaseScan(val enabled: Boolean = true, val interval: Duration = Duration.ofSeconds(10))
 
     data class PlatformPolicy(

@@ -100,6 +100,17 @@ class DockerBackendTest {
     }
 
     @Test
+    fun `LOCAL_LOGIN - the owner login is a bundle file, never an environment variable or argument`() {
+        val docker = RecordingDocker()
+        val props = ControllerProperties(docker = ControllerProperties.Docker(workDir = dir.toString()))
+        val backend = DockerBackend(props, docker, JsonMapper.builder().build(), mapOf("CLAUDE_CODE_OAUTH_TOKEN" to "sk-ant-oat-own\n")::get)
+        val request = TestPolicies.launch(gitAccess = GitAccess.NONE, gitCredential = null).copy(localLoginCredential = "CLAUDE_CODE_OAUTH_TOKEN")
+        backend.launch(request)
+        assertThat(Files.readString(dir.resolve(request.jobId).resolve("job").resolve("claude-login-token"))).isEqualTo("sk-ant-oat-own")
+        assertThat(docker.calls.flatten().joinToString(" ")).doesNotContain("sk-ant-oat-own")
+    }
+
+    @Test
     fun `without a commit identity the runner default applies`() {
         val (args, tokenFile) = launch(ControllerProperties.Git(), emptyMap())
         assertThat(envOf(args).keys).doesNotContain("GIT_USER_NAME", "GIT_USER_EMAIL")

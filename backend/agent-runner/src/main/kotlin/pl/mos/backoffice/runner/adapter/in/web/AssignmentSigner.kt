@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import pl.mos.backoffice.runner.RunnerJobSpecJson
 import pl.mos.backoffice.runner.SandboxPolicyJson
 import pl.mos.backoffice.runner.application.port.`in`.LeasedJob
+import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.shared.platform.EnvelopeSigner
 import tools.jackson.databind.json.JsonMapper
 import java.security.MessageDigest
@@ -22,7 +23,14 @@ class AssignmentSigner(private val json: JsonMapper, private val signer: () -> E
     @Volatile private var warned = false
 
     fun assignment(job: LeasedJob): AgentJobAssignmentJson {
-        val spec = canonical(RunnerJobSpecJson.of(job.spec).copy(gateway = job.gateway.toJson()))
+        val spec = canonical(
+            RunnerJobSpecJson.of(job.spec).copy(
+                gateway = job.gateway.toJson(),
+                // ADR 0040: only the non-default value is sent, so gateway assignments keep their digests
+                llmCredentials = job.llmCredentials.takeIf { it != LlmCredentials.GATEWAY }?.name,
+                personalRunnerOf = null,
+            ),
+        )
         val policy = canonical(SandboxPolicyJson.of(job.policy))
         val digest = specDigest(spec, policy)
         val expires = job.leaseExpiresAt.toString()

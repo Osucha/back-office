@@ -64,5 +64,7 @@
   "my-work.rule.saved": "Zapisano regułę",
   "my-work.rule.saveFailed": "Nie udało się zapisać reguły",
   "my-work.rule.deleteConfirm.title": "Usunąć regułę „{$name}”?",
-  "my-work.rule.deleteConfirm.content": "Jej propozycje znikną; uruchomienia, które już rozpocząłeś, zostaną."
+  "my-work.rule.deleteConfirm.content": "Jej propozycje znikną; uruchomienia, które już rozpocząłeś, zostaną.",
+  "my-work.chooseCancel": "Anuluj",
+  "my-work.rule.deleteConfirm.ok": "Usuń regułę"
 }

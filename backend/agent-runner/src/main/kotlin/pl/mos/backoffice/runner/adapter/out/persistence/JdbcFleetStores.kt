@@ -18,6 +18,7 @@ import pl.mos.backoffice.runner.application.port.out.RunnerPoolStore
 import pl.mos.backoffice.runner.application.port.out.StoredResult
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
+import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.runner.domain.RegistrationToken
 import pl.mos.backoffice.runner.domain.RunnerNode
 import pl.mos.backoffice.runner.domain.RunnerPool
@@ -59,7 +60,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
 
     // ================================================================ pools
 
-    private val poolColumns = "id, name, description, labels, ceiling, allowed_images, warm_pool_size, max_concurrent_jobs, project_ids, created_at, updated_at"
+    private val poolColumns = "id, name, description, labels, ceiling, allowed_images, warm_pool_size, max_concurrent_jobs, project_ids, created_at, updated_at, owner_user_id, llm_credentials"
 
     private fun pool(rs: ResultSet) = RunnerPool(
         id = rs.getString("id"),
@@ -73,6 +74,8 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
         projectIds = json.readValue(rs.getString("project_ids"), STRING_LIST).map(UUID::fromString).toSet(),
         createdAt = rs.instant("created_at")!!,
         updatedAt = rs.instant("updated_at")!!,
+        ownerUserId = rs.getObject("owner_user_id", UUID::class.java),
+        llmCredentials = LlmCredentials.valueOf(rs.getString("llm_credentials")),
     )
 
     private fun poolParams(pool: RunnerPool) = MapSqlParameterSource()
@@ -80,6 +83,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
         .addValue("labels", write(pool.labels)).addValue("ceiling", policyJson(pool.ceiling)).addValue("allowedImages", write(pool.allowedImages))
         .addValue("warm", pool.warmPoolSize).addValue("max", pool.maxConcurrentJobs).addValue("projects", write(pool.projectIds.map(UUID::toString)))
         .addValue("createdAt", pool.createdAt.ts()).addValue("updatedAt", pool.updatedAt.ts())
+        .addValue("owner", pool.ownerUserId).addValue("credentials", pool.llmCredentials.name)
 
     override fun findAll(): List<RunnerPool> = db.query("SELECT $poolColumns FROM runner_pool ORDER BY id") { rs, _ -> pool(rs) }
 
@@ -91,7 +95,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
             """
             INSERT INTO runner_pool ($poolColumns)
             VALUES (:id, :name, :description, CAST(:labels AS jsonb), CAST(:ceiling AS jsonb), CAST(:allowedImages AS jsonb), :warm, :max,
-                    CAST(:projects AS jsonb), :createdAt, :updatedAt)
+                    CAST(:projects AS jsonb), :createdAt, :updatedAt, :owner, :credentials)
             """.trimIndent(),
             poolParams(pool),
         )
@@ -102,7 +106,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
             """
             UPDATE runner_pool SET name = :name, description = :description, labels = CAST(:labels AS jsonb), ceiling = CAST(:ceiling AS jsonb),
                    allowed_images = CAST(:allowedImages AS jsonb), warm_pool_size = :warm, max_concurrent_jobs = :max,
-                   project_ids = CAST(:projects AS jsonb), updated_at = :updatedAt
+                   project_ids = CAST(:projects AS jsonb), updated_at = :updatedAt, llm_credentials = :credentials
             WHERE id = :id
             """.trimIndent(),
             poolParams(pool),

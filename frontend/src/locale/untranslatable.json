@@ -7,5 +7,5 @@
     "OpenCode", "Helm", "Kubernetes", "gVisor", "Ctrl", "Shift", "Alt", "Esc", "Enter", "Tab", "Backspace",
     "Cmd", "F1", "markdown", "Markdown", "in-toto", "intoto", "jsonl", "txt", "md"
   ],
-  "phrases": ["xxxx-xxxx", "Back Office", "Claude Code", "VS Code", "Spec Kit", "Cursor", "Claude"]
+  "phrases": ["xxxx-xxxx", "Back Office", "Claude Code", "VS Code", "Spec Kit", "Cursor", "Claude", "docker run", "bash / zsh", "PowerShell"]
 }

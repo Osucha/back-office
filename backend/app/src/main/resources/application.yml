@@ -176,6 +176,11 @@ backoffice:
     extra-allowed-models: ${RUNNER_EXTRA_ALLOWED_MODELS:}
     platform-policy:
       isolation: ${RUNNER_PLATFORM_ISOLATION:STANDARD}   # DEV only for local docker runners
+    # personal runners (ADR 0040): images in the docker run command shown under My account
+    personal:
+      controller-image: ${RUNNER_PERSONAL_CONTROLLER_IMAGE:back-office/runner-controller:dev}
+      runner-image: ${RUNNER_PERSONAL_RUNNER_IMAGE:back-office/runner:dev}
+      egress-proxy-image: ${RUNNER_PERSONAL_EGRESS_PROXY_IMAGE:back-office/egress-proxy:dev}
   integrations:
     jira:
       url: ${JIRA_URL:}
@@ -279,6 +284,8 @@ backoffice:
       bootstrap-admin-password: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD:ChangeMe-Local-123}
   runner:
     mode: ${RUNNER_MODE:FLEET}
+    # sandboxes on Docker on this computer reach the API on the host (personal runner, ADR 0040)
+    api-url: ${RUNNER_API_URL:http://host.docker.internal:8080}
     platform-policy:
       isolation: ${RUNNER_PLATFORM_ISOLATION:DEV}
   secrets:

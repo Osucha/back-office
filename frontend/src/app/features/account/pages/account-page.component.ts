@@ -45,6 +45,7 @@ import { absoluteTime } from '../../../core/ui/relay/format';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ConnectIdeSectionComponent } from '../components/connect-ide-section.component';
 import { PersonalTokensPanelComponent } from '../components/personal-tokens-panel.component';
+import { PersonalRunnerSectionComponent } from '../components/personal-runner-section.component';
 import { NotificationsSectionComponent } from '../components/notifications-section.component';
 import { SecuritySectionComponent } from '../components/security-section.component';
 import { PersonalConnectionsPanelComponent } from '../../connections/public-api';
@@ -57,6 +58,7 @@ export const ACCOUNT_SECTIONS = [
   { id: 'tokens', label: $localize`:@@account.index.tokens:Personal access tokens` },
   { id: 'connections', label: $localize`:@@account.index.connections:Connections` },
   { id: 'ide', label: $localize`:@@account.index.ide:Connect your IDE` },
+  { id: 'runner', label: $localize`:@@account.index.runner:My computer as a runner` },
   { id: 'access', label: $localize`:@@account.index.access:My access` },
 ] as const;
 export type AccountSection = (typeof ACCOUNT_SECTIONS)[number]['id'];
@@ -83,6 +85,7 @@ export type AccountSection = (typeof ACCOUNT_SECTIONS)[number]['id'];
     ConnectIdeSectionComponent,
     PersonalConnectionsPanelComponent,
     PersonalTokensPanelComponent,
+    PersonalRunnerSectionComponent,
     NotificationsSectionComponent,
     SecuritySectionComponent,
   ],
@@ -323,6 +326,24 @@ export type AccountSection = (typeof ACCOUNT_SECTIONS)[number]['id'];
               <app-connect-ide-section />
             } @placeholder {
               <div class="ph" aria-hidden="true"></div>
+            }
+          </section>
+
+          <section id="runner" class="card" aria-labelledby="h-runner">
+            <h2 id="h-runner" class="card-title">
+              <span i18n="@@account.runner.title">My computer as a runner</span>
+              <bo-help-link topic="account.runner" />
+            </h2>
+            @if (identity.can('fleet.personal')) {
+              @defer (on viewport) {
+                <app-personal-runner-section />
+              } @placeholder {
+                <div class="ph" aria-hidden="true"></div>
+              }
+            } @else {
+              <p class="muted" i18n="@@account.runner.notAllowed">
+                Your role does not include personal runners (permission fleet.personal).
+              </p>
             }
           </section>
 

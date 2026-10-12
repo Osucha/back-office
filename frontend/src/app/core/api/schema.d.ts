@@ -1757,6 +1757,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/runner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ADR 0040: your personal runner pool (`fleet.personal`); 204 when you have not set one up. */
+        get: operations["getMyRunner"];
+        /** @description Creates your personal runner pool (idempotent) or changes how Claude Code in it reaches the models. */
+        put: operations["enableMyRunner"];
+        post?: never;
+        /** @description Deletes your personal runner pool and its runners; 409 while it has queued or running jobs. */
+        delete: operations["disableMyRunner"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/runner/registration-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Single-use registration token (24 h, shown once) for your personal runner and the docker run command that uses it. */
+        post: operations["createMyRunnerRegistrationToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/runner/runners/{runnerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runnerId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Revokes a runner of your personal pool; its leased jobs are re-queued. */
+        delete: operations["revokeMyRunner"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/security": {
         parameters: {
             query?: never;
@@ -4352,6 +4407,11 @@ export interface components {
             source?: components["schemas"]["LibraryWorkflowSource"];
             version: number;
         };
+        /**
+         * @description ADR 0040: how Claude Code in a pool's sandboxes reaches the model. GATEWAY = the Back Office LLM gateway (metered, budgets apply). LOCAL_LOGIN = personal pools only: the login of the pool's owner (CLAUDE_CODE_OAUTH_TOKEN on their runner-controller), not metered by Back Office. OpenCode always uses the gateway.
+         * @enum {string}
+         */
+        LlmCredentials: "GATEWAY" | "LOCAL_LOGIN";
         LocalLoginRequest: {
             /** Format: email */
             email: string;
@@ -4612,6 +4672,25 @@ export interface components {
             updatedAt?: string | null;
             /** @enum {string|null} */
             verificationStatus?: "OK" | "WARNING" | "FAILED" | null;
+        };
+        PersonalRegistrationToken: {
+            /** @description docker run of the runner-controller (DOCKER backend) for your computer; secrets other than the token are passed by name (-e NAME) */
+            dockerCommand: string;
+            /** Format: date-time */
+            expiresAt: string;
+            token: string;
+        };
+        PersonalRunner: {
+            /** Format: date-time */
+            createdAt: string;
+            llmCredentials: components["schemas"]["LlmCredentials"];
+            poolId: string;
+            queued: number;
+            runners: components["schemas"]["Runner"][];
+            running: number;
+        };
+        PersonalRunnerInput: {
+            llmCredentials: components["schemas"]["LlmCredentials"];
         };
         PersonalToken: {
             /** @description The token may decide human gates through the MCP tool decide_gate (ADR 0029) */
@@ -4973,6 +5052,11 @@ export interface components {
                 openaiBaseUrl?: string;
             } | null;
             gitAccess?: components["schemas"]["GitAccess"];
+            /**
+             * @description ADR 0040, v2 assignments of personal pools: LOCAL_LOGIN = Claude Code uses the owner's own login, delivered by the controller as the bundle file claude-login-token, and reaches api.anthropic.com directly. Omitted = the gateway. Covered by the spec digest when present.
+             * @enum {string|null}
+             */
+            llmCredentials?: "GATEWAY" | "LOCAL_LOGIN" | null;
             /** @enum {string} */
             mode: "SPEC_KIT" | "IMPLEMENT" | "EVAL_CODING";
             model: components["schemas"]["ModelRef"];
@@ -5017,7 +5101,13 @@ export interface components {
         RunnerPool: components["schemas"]["RunnerPoolInput"] & {
             /** Format: date-time */
             createdAt?: string;
+            llmCredentials?: components["schemas"]["LlmCredentials"];
             onlineRunners?: number;
+            /**
+             * Format: uuid
+             * @description ADR 0040: owner of a personal pool (managed under My account); null = shared pool
+             */
+            ownerUserId?: string | null;
             queued?: number;
             runners?: number;
             running?: number;
@@ -5110,6 +5200,11 @@ export interface components {
             status: "SUCCEEDED" | "FAILED" | "TIMED_OUT";
             summary?: string | null;
             usage?: components["schemas"]["TokenUsage"] & {
+                /**
+                 * @description ADR 0040: Claude Code ran with its user own login; costUsd is only its estimate and is not counted as spend
+                 * @enum {string|null}
+                 */
+                billing?: "SUBSCRIPTION" | null;
                 costUsd?: number | null;
             };
             verification?: {
@@ -8876,6 +8971,119 @@ export interface operations {
                     "application/json": components["schemas"]["UserPreferences"];
                 };
             };
+        };
+    };
+    getMyRunner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalRunner"];
+                };
+            };
+            /** @description No personal runner */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    enableMyRunner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalRunnerInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalRunner"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    disableMyRunner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    createMyRunnerRegistrationToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalRegistrationToken"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    revokeMyRunner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runnerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
         };
     };
     getMySecurity: {

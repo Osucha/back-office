@@ -12,6 +12,7 @@ import pl.mos.backoffice.runnercontroller.policy.ResolvedPolicy
 import pl.mos.backoffice.runnercontroller.policy.SandboxPolicy
 import pl.mos.backoffice.runnercontroller.protocol.AgentJobAssignment
 import pl.mos.backoffice.runnercontroller.protocol.AgentJobStatus
+import pl.mos.backoffice.runnercontroller.protocol.BackendKind
 import pl.mos.backoffice.runnercontroller.protocol.BackOfficeClient
 import pl.mos.backoffice.runnercontroller.protocol.BackOfficeHttpException
 import pl.mos.backoffice.runnercontroller.protocol.GatewayUrls
@@ -43,6 +44,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+
+/** `spec.llmCredentials` of an assignment whose Claude Code uses the personal runner owner's own login (ADR 0040). */
+private const val LOCAL_LOGIN = "LOCAL_LOGIN"
 
 /** A job this controller runs. Mutated only on the monitor thread (after [JobSupervisor.accept] put it in). */
 class RunningJob(
@@ -76,6 +80,7 @@ class JobSupervisor(
     meters: MeterRegistry,
     private val now: () -> Instant = Instant::now,
     private val configProvider: () -> RunnerConfig = client::config,
+    private val env: (String) -> String? = System::getenv,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -229,6 +234,14 @@ class JobSupervisor(
         if (running.containsKey(a.jobId)) return false
 
         val spec = a.spec.deepCopy()
+        val localLogin = try {
+            localLoginCredential(spec)
+        } catch (e: PolicyViolation) {
+            log.warn("job {}: {}", a.jobId, e.message)
+            rejectedCounter("local-login").increment()
+            report(a.jobId, JobCompletion(AgentJobStatus.FAILED, reason = "local-login: ${e.message}"))
+            return false
+        }
         val (git, policy) = try {
             // least privilege (ADR 0031), per repository: READ gets the read token, PUSH_MR the push token, NONE nothing
             val plan = backend.gitCredentials.plan(spec)
@@ -240,7 +253,7 @@ class JobSupervisor(
                 specTimeoutSeconds = spec.get("timeoutSeconds")?.takeIf { it.isNumber }?.asInt(),
                 // every repository host is reachable, whatever its level (NONE repositories are cloned anonymously)
                 repositoryUrls = plan.repositories.urls,
-                gatewayUrls = gatewayList(effectiveGateway(spec)),
+                gatewayUrls = gatewayList(effectiveGateway(spec)) + localLogin?.let { props.localLogin.hosts }.orEmpty(),
             )
         } catch (e: PolicyViolation) {
             log.warn("job {} violates the pool policy: {}", a.jobId, e.message)
@@ -269,6 +282,7 @@ class JobSupervisor(
             deadline = deadline,
             repositoryTokens = git.tokens,
             repositoryAccess = git.repositories.repositories.filter { git.repositories.multi }.associate { it.key to it.access },
+            localLoginCredential = localLogin,
         )
         val handle = try {
             backend.launch(request)
@@ -288,6 +302,18 @@ class JobSupervisor(
         running[a.jobId] = job
         log.info("job {} launched as {} (isolation {}, image {}, timeout {}s)", a.jobId, handle.name, policy.isolation, policy.image, policy.timeoutSeconds)
         return true
+    }
+
+    /**
+     * ADR 0040: for a LOCAL_LOGIN assignment the name of the variable holding the owner's Claude Code login, null for
+     * gateway jobs. Throws when this controller cannot deliver it (not DOCKER, or the variable is not set).
+     */
+    private fun localLoginCredential(spec: ObjectNode): String? {
+        if (spec.get("llmCredentials")?.asString() != LOCAL_LOGIN) return null
+        if (backend.kind != BackendKind.DOCKER) throw PolicyViolation("Claude Code with the owner's own login runs only on a personal runner (DOCKER backend)")
+        val name = props.localLogin.tokenEnv
+        if (env(name).isNullOrBlank()) throw PolicyViolation("$name is not set on this runner-controller; run claude setup-token and start it with -e $name")
+        return name
     }
 
     /** The copy of the spec delivered to the sandbox: gateway filled in, timeout clamped to the policy. */

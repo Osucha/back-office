@@ -6,6 +6,9 @@ import type {
   AgentJob,
   AgentJobPage,
   AgentJobQuery,
+  LlmCredentials,
+  PersonalRegistrationToken,
+  PersonalRunner,
   RegistrationToken,
   Runner,
   RunnerPool,
@@ -68,6 +71,33 @@ export class FleetApi {
 
   cancelJob(jobId: string): Observable<void> {
     return this.http.post<void>(url('admin', 'agent-jobs', jobId, 'cancel'), {});
+  }
+
+  // ---- personal runner (ADR 0040, `fleet.personal`)
+
+  /** Your personal runner, or null (204) when you have not set one up. */
+  myRunner(): Observable<PersonalRunner | null> {
+    return this.http.get<PersonalRunner | null>(url('me', 'runner'));
+  }
+
+  enableMyRunner(llmCredentials: LlmCredentials): Observable<PersonalRunner> {
+    return this.http.put<PersonalRunner>(url('me', 'runner'), { llmCredentials });
+  }
+
+  disableMyRunner(): Observable<void> {
+    return this.http.delete<void>(url('me', 'runner'));
+  }
+
+  /** Single-use registration token and the docker run command for your computer (shown once, 24 h). */
+  createMyRunnerToken(): Observable<PersonalRegistrationToken> {
+    return this.http.post<PersonalRegistrationToken>(
+      url('me', 'runner', 'registration-tokens'),
+      {},
+    );
+  }
+
+  revokeMyRunner(runnerId: string): Observable<void> {
+    return this.http.delete<void>(url('me', 'runner', 'runners', runnerId));
   }
 
   projectPolicy(projectId: string): Observable<SandboxPolicyView> {

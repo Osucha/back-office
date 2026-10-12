@@ -502,6 +502,21 @@ deletes those it does not run and reports them `LOST` / `controller-restarted`.
   artefacts with media type `application/vnd.backoffice.blob-ref+json` (`{blobKey, sha256, sizeBytes,
   mediaType}`). `RunnerResult.digests` carries `diffSha256` (full diff) and `logSha256`.
 
+## Personal runners (ADR 0040)
+
+A user may have one **personal pool** (`runner_pool.owner_user_id`, `/api/v1/me/runner`, `fleet.personal`). Steps of
+a private project (ADR 0038) whose run a person started carry `RunnerJobSpec.personalRunnerOf` = that person; routing
+sends them only to that person's pool when it exists (waiting while it is offline) and never sends anything else
+there. The pool is served by a runner-controller with the DOCKER backend on the user's computer, started with the
+`docker run` command generated at registration.
+
+`llm_credentials = LOCAL_LOGIN` (personal pools only): the assignment carries `spec.llmCredentials = LOCAL_LOGIN`
+(signed) and `api.anthropic.com` in the mandatory egress. The controller (DOCKER only, `CLAUDE_CODE_OAUTH_TOKEN` set,
+else `local-login: ...` failure) writes the login as bundle file `claude-login-token`; the runner consumes and
+deletes it, starts Claude Code with `CLAUDE_CODE_OAUTH_TOKEN` and without gateway URL/token, and reports
+`usage.billing = SUBSCRIPTION`. Such a step costs 0 in runs and budgets; the estimate stays on the agent job.
+OpenCode jobs of the pool use the gateway as usual.
+
 ## Agent Sandbox prerequisites
 
 - Agent Sandbox controller and CRDs (`kubernetes-sigs/agent-sandbox`, API **v1beta1**: `sandboxes.agents.x-k8s.io`,

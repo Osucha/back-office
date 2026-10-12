@@ -28,6 +28,8 @@ import pl.mos.backoffice.runner.application.service.AgentJobService
 import pl.mos.backoffice.runner.application.service.FleetAdminService
 import pl.mos.backoffice.runner.application.service.FleetSettings
 import pl.mos.backoffice.runner.application.service.JobLifecycle
+import pl.mos.backoffice.runner.application.service.PersonalRunnerService
+import pl.mos.backoffice.runner.application.service.PersonalRunnerSettings
 import pl.mos.backoffice.runner.application.service.ProjectSandboxPolicyService
 import pl.mos.backoffice.runner.application.service.RunnerProtocolService
 import pl.mos.backoffice.runner.application.service.SandboxCallbackService
@@ -69,6 +71,9 @@ class RunnerConfiguration {
         extraAllowedModels = props.extraAllowedModels,
         platformPolicy = props.platformPolicy.toPolicy(),
         maxLlmRequestsPerJob = props.maxLlmRequestsPerJob,
+        personal = props.personal.let {
+            PersonalRunnerSettings(it.controllerImage, it.runnerImage, it.egressProxyImage, it.allowedImages, it.maxConcurrentJobs.coerceAtLeast(1))
+        },
     ).also { log.info("runner fleet control plane: api-url={} lease={} queue-timeout={}", it.apiUrl, it.leaseDuration, it.queueTimeout) }
 
     @Bean
@@ -105,6 +110,10 @@ class RunnerConfiguration {
     @Bean
     fun fleetAdminService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>) =
         FleetAdminService(stores, stores, stores, stores, lifecycle, tx, gate, audit.getIfAvailable { AuditPort.NOOP })
+
+    @Bean
+    fun personalRunnerService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>) =
+        PersonalRunnerService(stores, stores, stores, stores, lifecycle, tx, gate, audit.getIfAvailable { AuditPort.NOOP })
 
     @Bean
     fun projectSandboxPolicyService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>) =

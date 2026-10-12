@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** In-memory backend: tests set the observed state per job. */
 class FakeBackend : SandboxBackend {
-    override val kind = BackendKind.K8S_JOB
+    override var kind = BackendKind.K8S_JOB
     override var gitCredentials = GitCredentialSelector.EMPTY
     val launched = ConcurrentHashMap<String, LaunchRequest>()
     val state = ConcurrentHashMap<String, SandboxObservation>()
@@ -75,8 +75,10 @@ class JobSupervisorTest {
     private val client = BackOfficeClient(bo.url, json, holder::token)
     private val props = ControllerProperties(maxConcurrent = 2, heartbeatSeconds = 0, lease = ControllerProperties.Lease(waitSeconds = 1))
     private val meters = SimpleMeterRegistry()
+    private val controllerEnv = mutableMapOf<String, String>()
     private val supervisor = JobSupervisor(
         props, client, backend, registry, PolicyResolver(PolicyDefaults(image = "back-office/runner:dev")), json, meters,
+        env = { controllerEnv[it] },
     )
 
     private val spec = mapOf(
@@ -177,6 +179,32 @@ class JobSupervisorTest {
         leaseOnce()
         assertThat(bo.completionOf(noKata)!!.get("reason").asString()).contains("kata")
         assertThat(backend.launched).isEmpty()
+    }
+
+    @Test
+    fun `LOCAL_LOGIN jobs get the owner login variable and Anthropic egress on docker, are refused elsewhere`() {
+        register()
+        val localLogin = spec + mapOf("agent" to "CLAUDE_CODE", "llmCredentials" to "LOCAL_LOGIN")
+        // ADR 0040: not on Kubernetes backends
+        val onK8s = bo.enqueue(localLogin, policy)
+        leaseOnce()
+        assertThat(bo.completionOf(onK8s)!!.get("reason").asString()).startsWith("local-login: ").contains("DOCKER")
+
+        backend.kind = BackendKind.DOCKER
+        val noToken = bo.enqueue(localLogin, policy)
+        leaseOnce()
+        assertThat(bo.completionOf(noToken)!!.get("reason").asString()).contains("CLAUDE_CODE_OAUTH_TOKEN is not set")
+
+        controllerEnv["CLAUDE_CODE_OAUTH_TOKEN"] = "sk-ant-oat-own"
+        val ok = bo.enqueue(localLogin, policy)
+        val gateway = bo.enqueue(spec, policy)
+        leaseOnce()
+        val launched = backend.launched.getValue(ok)
+        assertThat(launched.localLoginCredential).isEqualTo("CLAUDE_CODE_OAUTH_TOKEN")
+        assertThat(launched.policy.egressHosts).contains("api.anthropic.com")
+        assertThat(launched.bundle.specJson).doesNotContain("sk-ant-oat-own")
+        assertThat(backend.launched.getValue(gateway).localLoginCredential).isNull()
+        assertThat(backend.launched.getValue(gateway).policy.egressHosts).doesNotContain("api.anthropic.com")
     }
 
     @Test

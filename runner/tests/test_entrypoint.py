@@ -215,6 +215,27 @@ class ModelMappingTests(unittest.TestCase):
         self.assertNotIn("ANTHROPIC_API_KEY", env_c)
         self.assertEqual(env_c["MAX_THINKING_TOKENS"], str(ep.REASONING_TO_BUDGET["HIGH"]))
 
+    def test_agent_environment_claude_code_local_login_skips_gateway(self):
+        # ADR 0040: the owner's own login, no gateway URL and no gateway token for Claude Code
+        spec = ep.parse_spec(dict(BASE_SPEC, agent="CLAUDE_CODE", gateway=GATEWAY_JSON, llmCredentials="LOCAL_LOGIN"))
+        self.assertTrue(spec.local_login)
+        env = ep.agent_environment(spec, {"HOME": "/tmp", "CLAUDE_CODE_OAUTH_TOKEN": "leaked"}, Path("/ws"), "bo_job_abc", None, "sk-ant-oat-own")
+        self.assertEqual(env["CLAUDE_CODE_OAUTH_TOKEN"], "sk-ant-oat-own")
+        self.assertNotIn("ANTHROPIC_BASE_URL", env)
+        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)
+
+    def test_agent_environment_local_login_without_token_sets_nothing(self):
+        spec = ep.parse_spec(dict(BASE_SPEC, agent="CLAUDE_CODE", gateway=GATEWAY_JSON, llmCredentials="LOCAL_LOGIN"))
+        env = ep.agent_environment(spec, {"HOME": "/tmp", "CLAUDE_CODE_OAUTH_TOKEN": "inherited"}, Path("/ws"), "bo_job_abc")
+        self.assertNotIn("CLAUDE_CODE_OAUTH_TOKEN", env)
+        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)
+
+    def test_llm_credentials_default_and_validation(self):
+        self.assertEqual(ep.parse_spec(dict(BASE_SPEC)).llm_credentials, "GATEWAY")
+        self.assertFalse(ep.parse_spec(dict(BASE_SPEC)).local_login)
+        with self.assertRaises(ValueError):
+            ep.parse_spec(dict(BASE_SPEC, llmCredentials="API_KEY"))
+
     def test_claude_command_with_settings_file(self):
         cmd = ep.build_claude_command(ep.ModelRef("ANTHROPIC", "claude-opus-5"), "x", "dontAsk", "", Path("/ws/.runner/claude-settings.json"))
         self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
@@ -285,6 +306,25 @@ class JobBundleTests(unittest.TestCase):
             self.assertEqual(ctx.callback_url, "https://bo.example.com/api/v1")
             self.assertEqual(ctx.policy["tools"]["deny"], ["curl *"])
             self.assertEqual(ctx.spec.gateway.anthropic_base_url, GATEWAY.anthropic_base_url)
+
+    def test_local_login_token_read_once_and_deleted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._bundle(d, dict(BASE_SPEC, agent="CLAUDE_CODE", gateway=GATEWAY_JSON, llmCredentials="LOCAL_LOGIN"))
+            (d / ep.LOCAL_LOGIN_FILE).write_text("sk-ant-oat-own\n", encoding="utf-8")
+            env = {"RUNNER_JOB_DIR": tmp}
+            ctx = ep.load_job_context(env)
+            self.assertEqual(ep.load_local_login_token(env, ctx), ("sk-ant-oat-own", True))
+            self.assertFalse((d / ep.LOCAL_LOGIN_FILE).exists())
+
+    def test_local_login_token_ignored_for_gateway_jobs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._bundle(d, dict(BASE_SPEC, gateway=GATEWAY_JSON))
+            (d / ep.LOCAL_LOGIN_FILE).write_text("sk-ant-oat-own", encoding="utf-8")
+            env = {"RUNNER_JOB_DIR": tmp}
+            self.assertEqual(ep.load_local_login_token(env, ep.load_job_context(env)), ("", None))
+            self.assertEqual(ep.load_local_login_token(env, None), ("", None))
 
     def test_falls_back_to_environment(self):
         with tempfile.TemporaryDirectory() as tmp:

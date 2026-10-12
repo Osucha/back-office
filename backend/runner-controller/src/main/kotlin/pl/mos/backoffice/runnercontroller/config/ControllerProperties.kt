@@ -33,6 +33,7 @@ data class ControllerProperties(
     val git: Git = Git(),
     val kubernetes: Kubernetes = Kubernetes(),
     val docker: Docker = Docker(),
+    val localLogin: LocalLogin = LocalLogin(),
     /** Keep finished sandboxes for debugging instead of deleting them (never in production). */
     val keepFinishedSandboxes: Boolean = false,
 ) {
@@ -104,6 +105,16 @@ data class ControllerProperties(
             if (userEmail.isNotBlank()) put("GIT_USER_EMAIL", userEmail)
         }
     }
+
+    /**
+     * ADR 0040, personal runners (DOCKER backend): jobs whose pool uses LOCAL_LOGIN run Claude Code with the owner's
+     * own login. The controller reads it from [tokenEnv] (`claude setup-token`), delivers it as a bundle file the
+     * runner deletes after reading, and lets the sandbox reach [hosts].
+     */
+    data class LocalLogin(
+        val tokenEnv: String = "CLAUDE_CODE_OAUTH_TOKEN",
+        val hosts: List<String> = listOf("api.anthropic.com"),
+    )
 
     data class Kubernetes(
         /** Namespace for sandboxes and pool resources; empty = the controller's own namespace. */

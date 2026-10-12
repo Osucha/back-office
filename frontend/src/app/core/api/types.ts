@@ -245,6 +245,9 @@ export type RunnerPoolInput = S['RunnerPoolInput'];
 export type RunnerPool = S['RunnerPool'];
 export type Runner = S['Runner'];
 export type RunnerBackend = NonNullable<Runner['backends']>[number];
+export type LlmCredentials = S['LlmCredentials'];
+export type PersonalRunner = S['PersonalRunner'];
+export type PersonalRegistrationToken = S['PersonalRegistrationToken'];
 export type RegistrationToken = NonNullable<
   operations['createRegistrationToken']['responses']['201']['content']['application/json']
 >;

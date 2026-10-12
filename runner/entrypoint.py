@@ -787,6 +787,13 @@ class JobSpec:
     # None = a spec from an older Back Office (or a legacy-built job): the earlier behaviour (Spec Kit for SPEC_KIT
     # jobs, jobs with a constitution and IMPLEMENT jobs on a tasks.md).
     spec_kit: Optional[bool] = None
+    # ADR 0040: GATEWAY (the Back Office LLM gateway) or LOCAL_LOGIN (Claude Code uses the personal runner owner's own
+    # login, delivered as <job dir>/claude-login-token; other harnesses still use the gateway).
+    llm_credentials: str = "GATEWAY"
+
+    @property
+    def local_login(self) -> bool:
+        return self.llm_credentials == LLM_CREDENTIALS_LOCAL_LOGIN
 
     @property
     def spec_kit_allowed(self) -> bool:
@@ -814,6 +821,10 @@ def parse_gateway(raw: Any) -> Optional[Gateway]:
 
 
 REQUIRED_SPEC_KEYS = ("mode", "agent", "model", "prompt", "timeoutSeconds")
+LLM_CREDENTIALS_LOCAL_LOGIN = "LOCAL_LOGIN"
+LLM_CREDENTIALS = ("GATEWAY", LLM_CREDENTIALS_LOCAL_LOGIN)
+LOCAL_LOGIN_FILE = "claude-login-token"
+BILLING_SUBSCRIPTION = "SUBSCRIPTION"
 SPEC_MODES = ("SPEC_KIT", "IMPLEMENT", "EVAL_CODING")
 SPEC_AGENTS = ("OPENCODE", "CLAUDE_CODE")
 
@@ -1052,6 +1063,9 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         raise ValueError("specKit must be a boolean")
     if mode == "SPEC_KIT" and spec_kit is False:
         raise ValueError("a SPEC_KIT job with specKit false: Spec Kit is off for this project")
+    llm_credentials = str(raw.get("llmCredentials") or "GATEWAY").upper()
+    if llm_credentials not in LLM_CREDENTIALS:
+        raise ValueError(f"llmCredentials must be one of {', '.join(LLM_CREDENTIALS)}")
     return JobSpec(
         mode=mode,
         agent=agent,
@@ -1072,6 +1086,7 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         multi_repo=multi,
         repositories=repositories,
         spec_kit=spec_kit,
+        llm_credentials=llm_credentials,
     )
 
 
@@ -1156,6 +1171,18 @@ def _load_job_token(env: Dict[str, str], job_dir: Path) -> Tuple[str, Optional[b
     if token_file.is_file():
         token, token_removed = consume_secret_file(token_file)
     return (token or env.get("RUNNER_CALLBACK_TOKEN", "")), token_removed
+
+
+def load_local_login_token(env: Dict[str, str], ctx: Optional[JobContext]) -> Tuple[str, Optional[bool]]:
+    """ADR 0040: the owner's Claude Code login of a LOCAL_LOGIN job, read once from the bundle and deleted, so only the
+    Claude Code process gets it (as CLAUDE_CODE_OAUTH_TOKEN). ("", None) for gateway jobs or without the file."""
+    if ctx is None or not ctx.spec.local_login:
+        return "", None
+    path = Path(env.get("RUNNER_JOB_DIR") or DEFAULT_JOB_DIR) / LOCAL_LOGIN_FILE
+    if not path.is_file():
+        return "", None
+    token, removed = consume_secret_file(path)
+    return token or "", removed
 
 
 def _callback_url(spec: JobSpec, env: Dict[str, str]) -> str:
@@ -1487,10 +1514,12 @@ def build_claude_command(
 
 
 def agent_environment(
-    spec: JobSpec, base_env: Dict[str, str], workspace: Path, agent_token: str = "", proxy_url: Optional[str] = None
+    spec: JobSpec, base_env: Dict[str, str], workspace: Path, agent_token: str = "", proxy_url: Optional[str] = None,
+    local_login_token: str = "",
 ) -> Dict[str, str]:
     """Environment of the agent process: the gateway-only agent token is its only credential (the job token only
-    as fallback for an older Back Office). Runner credentials (git, callback) never reach it."""
+    as fallback for an older Back Office). Runner credentials (git, callback) never reach it. LOCAL_LOGIN jobs
+    (ADR 0040): Claude Code gets the owner's own login instead of the gateway."""
     env = {k: v for k, v in base_env.items() if k not in PROVIDER_ENV_NAMES and k not in RUNNER_ONLY_ENV_NAMES}
     env.setdefault("CI", "true")
     env["TERM"] = "dumb"
@@ -1508,11 +1537,16 @@ def agent_environment(
         env.setdefault("DISABLE_AUTOUPDATER", "1")
         env.setdefault("DISABLE_TELEMETRY", "1")
         env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
-        if spec.gateway and spec.gateway.anthropic_base_url:
-            # Claude Code appends /v1/messages itself.
-            env["ANTHROPIC_BASE_URL"] = _without_v1(spec.gateway.anthropic_base_url)
-        if agent_token:
-            env["ANTHROPIC_AUTH_TOKEN"] = agent_token
+        if spec.local_login:
+            # Anthropic directly with the owner's subscription; a gateway token would take precedence over the login
+            if local_login_token:
+                env["CLAUDE_CODE_OAUTH_TOKEN"] = local_login_token
+        else:
+            if spec.gateway and spec.gateway.anthropic_base_url:
+                # Claude Code appends /v1/messages itself.
+                env["ANTHROPIC_BASE_URL"] = _without_v1(spec.gateway.anthropic_base_url)
+            if agent_token:
+                env["ANTHROPIC_AUTH_TOKEN"] = agent_token
         if spec.model.reasoning and spec.model.reasoning != "NONE":
             env.setdefault("MAX_THINKING_TOKENS", str(REASONING_TO_BUDGET[spec.model.reasoning]))
     return env
@@ -2852,6 +2886,9 @@ class _Run:
     repo_tokens: Dict[str, str] = field(default_factory=dict)
     extra_dirs: List[str] = field(default_factory=list)
     repo_results: Optional[List[Dict[str, Any]]] = None
+    # ADR 0040: the owner's Claude Code login (LOCAL_LOGIN jobs); subscription = Claude Code ran with it
+    local_login_token: str = ""
+    subscription: bool = False
 
     def log(self, message: str) -> None:
         self.sink.log(message)
@@ -3029,7 +3066,14 @@ def _claude_help(agent_env: Dict[str, str]) -> str:
 
 
 def _claude_invocation(run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, agent_env: Dict[str, str]) -> List[str]:
-    require_gateway(spec.gateway, "anthropic")
+    if spec.local_login:
+        if not run.local_login_token:
+            raise ValueError(f"llmCredentials LOCAL_LOGIN but no {LOCAL_LOGIN_FILE} in the job bundle: the runner-controller"
+                             " needs CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) - ADR 0040")
+        run.subscription = True
+        run.log("[agent] Claude Code uses the personal runner owner's own login (ADR 0040): not metered by Back Office")
+    else:
+        require_gateway(spec.gateway, "anthropic")
     if spec.model.provider != "ANTHROPIC":
         run.log(f"[agent] WARN Claude Code with provider {spec.model.provider}: the gateway's Anthropic endpoint must serve this model id")
     settings_file = _write_policy_files(spec, run.tools, run.workspace, repo_dir, run.log)
@@ -3070,7 +3114,7 @@ def _kill_strays(run: _Run) -> None:
 
 def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     prompt = with_repositories_section(build_agent_prompt(spec, repo_dir), spec, run.workspace) if spec.agent != STUB_AGENT else spec.prompt
-    agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url)
+    agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token)
     cmd, parser, shell = _agent_invocation(run, spec, repo_dir, prompt, agent_env)
     elapsed = time.monotonic() - run.started
     agent_timeout = max(60.0, spec.timeout_seconds - elapsed)
@@ -3458,6 +3502,9 @@ def _finalize_result(run: _Run, log_file: LogFile) -> Dict[str, Any]:
         diff=run.diff_text,
         merge_request_url=run.merge_request_url,
     )
+    if run.subscription:
+        # ADR 0040: costUsd stays Claude Code's estimate; Back Office does not count it as spend
+        result["usage"]["billing"] = BILLING_SUBSCRIPTION
     _redact_result(result, run.redact)
     if run.repo_results is not None:
         # multi-repository jobs; the top-level branch/commit/diff/MR fields above are the primary repository's
@@ -3513,11 +3560,13 @@ def main() -> int:
     # Multi-repository jobs: one token per repository (<token dir>/<key>/token), each read once the same way.
     repo_tokens, repo_tokens_removed = load_repo_tokens(env, [r.key for r in ctx.spec.repositories] if ctx else [])
     git_token_removed = _combine_removed(git_token_removed, repo_tokens_removed)
+    # ADR 0040: the owner's Claude Code login of a LOCAL_LOGIN job, read once the same way
+    local_login_token, local_login_removed = load_local_login_token(env, ctx)
     job_id, callback_token, callback_url, proxy_url = _connection_settings(env, ctx)
     apply_proxy_env(env, proxy_url)
 
     redact = Redactor([env.get(n, "") for n in SECRET_ENV_NAMES] + [callback_token, proxy_password(proxy_url), git_token]
-                      + list(repo_tokens.values()))
+                      + list(repo_tokens.values()) + [local_login_token])
     client = CallbackClient(callback_url, job_id, callback_token, redact, proxy_url)
     log_file = LogFile(private_log_path(env, job_id))
     sink = EventSink(client, redact, log_file)
@@ -3531,11 +3580,15 @@ def main() -> int:
         log("[runner] WARN no callback URL or job id: running in offline mode (events -> stdout only)")
 
     security = _security_report(non_dumpable, git_token_removed, ctx, log)
+    if ctx is not None and ctx.spec.local_login:
+        security["llmCredentials"] = LLM_CREDENTIALS_LOCAL_LOGIN
+        security["localLoginFileRemoved"] = local_login_removed
     agent_token = _isolate_agent_token(client, ctx, redact, security, log)
     run = _Run(
         env=env, workspace=workspace, started=started, sandboxed=sandboxed, proxy_url=proxy_url, redact=redact, sink=sink,
         uploader=uploader, security=security, agent_credential=agent_token or callback_token,
         tools=tool_policy_from(ctx.policy) if ctx else None, fatal_error=ctx_error, repo_tokens=repo_tokens,
+        local_login_token=local_login_token,
     )
 
     if ctx_error:

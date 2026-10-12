@@ -15,6 +15,8 @@ ENV APP_VERSION=${APP_VERSION}
 RUN --mount=type=cache,target=/root/.gradle ./gradlew :runner-controller:bootJar -x test --no-daemon
 
 FROM eclipse-temurin:21-jre AS runtime
+# The DOCKER backend (laptops, personal runners - ADR 0040) drives the host daemon through the docker CLI.
+COPY --from=docker:27.5.1-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN useradd --system --uid 10001 --create-home controller
 WORKDIR /app
 COPY --from=build /workspace/runner-controller/build/libs/runner-controller.jar /app/runner-controller.jar

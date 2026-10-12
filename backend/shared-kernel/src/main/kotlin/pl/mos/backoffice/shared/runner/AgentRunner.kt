@@ -7,6 +7,7 @@ import pl.mos.backoffice.shared.usage.UsageContext
 import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import pl.mos.backoffice.shared.platform.WorkRequest
 
 enum class RunnerMode { SPEC_KIT, IMPLEMENT, EVAL_CODING }
@@ -158,6 +159,12 @@ data class RunnerJobSpec(
      * omitted from the canonical JSON, so their spec digests do not change.
      */
     val specKit: Boolean? = null,
+    /**
+     * ADR 0040: the user whose personal runner should run this job (a step of a private project started by its
+     * owner). When that user has a personal runner pool the job goes there and nowhere else; otherwise it is routed
+     * like any other job. Routing data only: never sent to the runner.
+     */
+    val personalRunnerOf: UUID? = null,
 )
 
 enum class RunnerJobStatus { CREATED, RUNNING, SUCCEEDED, FAILED, TIMED_OUT, CANCELLED }
@@ -189,6 +196,11 @@ data class RunnerResult(
      * [diffStat] / [mergeRequestUrl] then describe the single (primary) repository.
      */
     val repositories: List<RepoResult> = emptyList(),
+    /**
+     * ADR 0040: the coding agent used its user's own subscription login on a personal runner instead of the LLM
+     * gateway. Nothing was billed through Back Office; [reportedCostUsd] is only the harness's estimate.
+     */
+    val subscription: Boolean = false,
 ) {
     val succeeded: Boolean get() = status == RunnerJobStatus.SUCCEEDED
 }

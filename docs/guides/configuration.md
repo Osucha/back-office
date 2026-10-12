@@ -228,6 +228,9 @@ over `/api/v1/runner/v2/**`. The variables of the push model (`RUNNER_IMAGE`, `R
 | `RUNNER_DEFAULT_IMAGE` | - | Sandbox image when neither the job policy nor the pool ceiling names one | no | - (`extraEnv`) |
 | `RUNNER_EGRESS_PROXY_IMAGE` | `back-office/egress-proxy:dev` | Image of the Smokescreen proxy (built from `backend/runner-controller/egress-proxy/`) | no | `egressProxy.image` |
 | `RUNNER_EGRESS_PROXY_PORT` | `4750` | Proxy port (sandboxes may reach only this) | no | `egressProxy.port` |
+| `RUNNER_EGRESS_ALLOW_RANGES` | _(empty)_ | Comma-separated CIDRs the proxy may connect to (a Back Office on the same computer, ADR 0040) | no | - (`egress.allowRanges`) |
+| `RUNNER_DOCKER_WORK_DIR` | _(temp dir)_ | DOCKER backend: job directories; the same path for the controller container and the Docker daemon (personal runner: `/var/lib/back-office-runner/jobs`) | no | - |
+| `CLAUDE_CODE_OAUTH_TOKEN` | - | DOCKER backend, personal pools with LOCAL_LOGIN (ADR 0040): the owner's Claude Code login (`claude setup-token`), delivered to Claude Code in LOCAL_LOGIN jobs only; name configurable with `RUNNER_LOCAL_LOGIN_TOKEN_ENV` | no | - |
 | `RUNNER_CONTROLLER_URL` | `http://back-office-runner-controller:8090` | The controller as seen by the egress proxy pods (allowlist pull, decisions) | no | derived: `http://<fullname>-controller.<release-ns>.svc:8090` |
 | `PORT` | `8090` | HTTP port of the controller (probes, metrics, `/egress/v1/*`) | no | `controller.port` |
 | `BO_GIT_TOKEN_READ` | _(empty)_ | DOCKER backend only (ADR 0031): git token written into the sandboxes of READ jobs (reviews, spec analysis, benchmarks, `push=false`; `runner-controller.git.token-read-env`). Project or group access token, role Reporter, scope `read_repository` | yes | - (compose: `GIT_TOKEN_READ` in `.env`; Kubernetes uses `gitCredentials.repoSecrets[].read`) |

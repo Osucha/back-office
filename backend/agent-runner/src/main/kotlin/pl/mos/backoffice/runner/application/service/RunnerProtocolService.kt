@@ -95,7 +95,7 @@ class RunnerProtocolService(
     @SystemOperation("pool configuration for the authenticated runner-controller")
     override fun config(runner: RunnerNode): RunnerConfigView {
         val pool = pools.find(runner.poolId) ?: throw NotFoundException("RunnerPool", runner.poolId)
-        val ceiling = lifecycle.resolver.resolve(listOf(lifecycle.platformLayer(), lifecycle.poolLayer(pool)), mandatoryHosts = lifecycle.mandatoryHosts(null)).policy
+        val ceiling = lifecycle.resolver.resolve(listOf(lifecycle.platformLayer(), lifecycle.poolLayer(pool)), mandatoryHosts = lifecycle.mandatoryHosts(null) + lifecycle.localLoginHosts(pool)).policy
         return RunnerConfigView(pool.id, ceiling, pool.allowedImages, pool.warmPoolSize, lifecycle.settings.gateway, signingKeys())
     }
 
@@ -125,7 +125,7 @@ class RunnerProtocolService(
             )
             jobs.update(leased)
             jobs.setTokenHash(job.id, token.hash)
-            LeasedJob(job.id, leaseExpiresAt, token.plaintext, job.spec.copy(policy = resolved.policy), resolved.policy, lifecycle.settings.gateway)
+            LeasedJob(job.id, leaseExpiresAt, token.plaintext, job.spec.copy(policy = resolved.policy), resolved.policy, lifecycle.settings.gateway, pool.llmCredentials)
         }
     }
 

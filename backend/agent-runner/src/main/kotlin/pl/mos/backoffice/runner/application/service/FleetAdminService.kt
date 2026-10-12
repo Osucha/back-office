@@ -141,10 +141,8 @@ class FleetAdminService(
         tx.inTransaction {
             val node = nodes.find(runnerId) ?: throw NotFoundException("Runner", runnerId)
             if (node.revokedAt != null) return@inTransaction
-            nodes.revoke(runnerId, lifecycle.now())
-            val requeued = jobs.activeOfRunner(runnerId).mapNotNull { jobs.lock(it.id) }.filter { it.status.active && it.runnerId == runnerId }
-            requeued.forEach { lifecycle.requeue(it, "re-queued: runner ${node.name} was revoked", countAsLost = false) }
-            audit.record(AuditEntry("RUNNER_REVOKE", "Runner", runnerId.toString(), details = mapOf("poolId" to node.poolId, "name" to node.name, "requeuedJobs" to requeued.size)))
+            val requeued = lifecycle.revokeRunner(node)
+            audit.record(AuditEntry("RUNNER_REVOKE", "Runner", runnerId.toString(), details = mapOf("poolId" to node.poolId, "name" to node.name, "requeuedJobs" to requeued)))
         }
     }
 
@@ -197,14 +195,11 @@ class FleetAdminService(
                 queued = counts[pool.id]?.queued ?: 0,
                 running = counts[pool.id]?.active ?: 0,
                 createdAt = pool.createdAt,
+                ownerUserId = pool.ownerUserId,
+                llmCredentials = pool.llmCredentials,
             )
         }
     }
-
-    private fun runnerView(node: RunnerNode, running: Int, online: Boolean) = RunnerView(
-        node.id, node.poolId, node.name, node.version, node.backends, node.runtimeClasses, node.maxConcurrent, running,
-        node.lastSeenAt, online, node.cluster, node.registeredAt, node.revokedAt,
-    )
 
     private fun jobView(job: AgentJob, onlineByPool: Map<String, Int>): AgentJobView {
         val usage = job.spec.usageContext
@@ -230,6 +225,7 @@ class FleetAdminService(
         if (input.warmPoolSize < 0) errors += ValidationException.FieldError("warmPoolSize", "must not be negative")
         if (input.maxConcurrentJobs < 1) errors += ValidationException.FieldError("maxConcurrentJobs", "must be at least 1")
         if (input.allowedImages.any { it.isBlank() }) errors += ValidationException.FieldError("allowedImages", "must not contain blank patterns")
+        if (input.id.startsWith(PERSONAL_PREFIX)) errors += ValidationException.FieldError("id", "ids starting with $PERSONAL_PREFIX are reserved for personal runners")
         lifecycle.resolver.validate(input.ceiling).forEach { errors += ValidationException.FieldError("ceiling", it) }
         if (errors.isNotEmpty()) throw ValidationException(errors)
     }
@@ -250,5 +246,12 @@ class FleetAdminService(
 
     companion object {
         const val MAX_PAGE_SIZE = 200
+        private const val PERSONAL_PREFIX = "personal-"
     }
 }
+
+/** A runner as people see it (fleet administration and the personal runner page). */
+internal fun runnerView(node: RunnerNode, running: Int, online: Boolean) = RunnerView(
+    node.id, node.poolId, node.name, node.version, node.backends, node.runtimeClasses, node.maxConcurrent, running,
+    node.lastSeenAt, online, node.cluster, node.registeredAt, node.revokedAt,
+)

@@ -5,6 +5,7 @@ import pl.mos.backoffice.runner.ModelRefJson
 import pl.mos.backoffice.runner.SandboxPolicyJson
 import pl.mos.backoffice.runner.application.port.`in`.AgentJobView
 import pl.mos.backoffice.runner.application.port.`in`.GatewayUrls
+import pl.mos.backoffice.runner.application.port.`in`.PersonalRunnerView
 import pl.mos.backoffice.runner.application.port.`in`.RunnerPoolInput
 import pl.mos.backoffice.runner.application.port.`in`.RunnerPoolView
 import pl.mos.backoffice.runner.application.port.`in`.RunnerView
@@ -99,16 +100,38 @@ data class RunnerPoolJson(
     val queued: Int,
     val running: Int,
     val createdAt: Instant,
+    /** ADR 0040: owner of a personal pool; null = shared pool. */
+    val ownerUserId: UUID? = null,
+    val llmCredentials: String = "GATEWAY",
 ) {
     companion object {
         fun of(v: RunnerPoolView) = RunnerPoolJson(
             v.input.id, v.input.name, v.input.description, v.input.labels, SandboxPolicyJson.of(v.input.ceiling), v.input.allowedImages,
             v.input.warmPoolSize, v.input.maxConcurrentJobs, v.input.projectIds.sorted(), v.runners, v.onlineRunners, v.queued, v.running, v.createdAt,
+            v.ownerUserId, v.llmCredentials.name,
         )
     }
 }
 
 data class RegistrationTokenJson(val token: String, val expiresAt: Instant, val helmValues: String)
+
+/** openapi `PersonalRunner` (ADR 0040). */
+data class PersonalRunnerJson(
+    val poolId: String,
+    val llmCredentials: String,
+    val runners: List<RunnerJson>,
+    val queued: Int,
+    val running: Int,
+    val createdAt: Instant,
+) {
+    companion object {
+        fun of(v: PersonalRunnerView) = PersonalRunnerJson(v.poolId, v.llmCredentials.name, v.runners.map(RunnerJson::of), v.queued, v.running, v.createdAt)
+    }
+}
+
+data class PersonalRunnerInputJson(val llmCredentials: String = "LOCAL_LOGIN")
+
+data class PersonalRegistrationTokenJson(val token: String, val expiresAt: Instant, val dockerCommand: String)
 
 data class RunnerJson(
     val id: UUID,

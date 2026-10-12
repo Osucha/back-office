@@ -22,8 +22,8 @@ management:
         enabled: true
 
 # Environment names: RUNNER_* (Helm chart deploy/helm/back-office-runner, deploy/compose); the older BO_*
-# names are still accepted as fallbacks. Maps (kubernetes.cache-pvcs, git.secrets) and lists
-# (egress.allow-ranges, git.repo-secrets) have no single variable: the chart passes them in SPRING_APPLICATION_JSON.
+# names are still accepted as fallbacks. Maps (kubernetes.cache-pvcs, git.secrets) and git.repo-secrets have no
+# single variable: the chart passes them in SPRING_APPLICATION_JSON (egress.allow-ranges also takes RUNNER_EGRESS_ALLOW_RANGES).
 runner-controller:
   back-office:
     url: ${RUNNER_BACKOFFICE_URL:${BO_URL:}}
@@ -40,12 +40,21 @@ runner-controller:
   egress:
     proxy-image: ${RUNNER_EGRESS_PROXY_IMAGE:back-office/egress-proxy:dev}
     proxy-port: ${RUNNER_EGRESS_PROXY_PORT:4750}
+    # comma-separated CIDRs the proxy may connect to, e.g. a Back Office on this computer (personal runner, ADR 0040)
+    allow-ranges: ${RUNNER_EGRESS_ALLOW_RANGES:}
   git:
     # least privilege (ADR 0031): a READ job never receives a push credential unless this is true
     allow-push-credential-for-read: ${RUNNER_GIT_ALLOW_PUSH_CREDENTIAL_FOR_READ:false}
     # commit identity of the agents (sandbox env GIT_USER_NAME / GIT_USER_EMAIL); empty = runner default
     user-name: ${RUNNER_GIT_USER_NAME:}
     user-email: ${RUNNER_GIT_USER_EMAIL:}
+  docker:
+    # DOCKER backend: job directories; must be the same path for the controller and the Docker daemon when the
+    # controller itself runs in a container (personal runner: -v /var/lib/back-office-runner:/var/lib/back-office-runner)
+    work-dir: ${RUNNER_DOCKER_WORK_DIR:}
+  local-login:
+    # ADR 0040: variable with the owner's Claude Code login (claude setup-token) for LOCAL_LOGIN jobs
+    token-env: ${RUNNER_LOCAL_LOGIN_TOKEN_ENV:CLAUDE_CODE_OAUTH_TOKEN}
   kubernetes:
     # sandboxes, egress proxy and runner-token Secret; empty = the controller's own namespace
     namespace: ${RUNNER_NAMESPACE:}

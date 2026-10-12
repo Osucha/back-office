@@ -380,6 +380,46 @@ paths:
       description: Single-use token for `runner-controller` registration (shown once, 24 h).
       responses:
         '201': { description: Created, content: { application/json: { schema: { type: object, properties: { token: { type: string }, expiresAt: { type: string, format: date-time }, helmValues: { type: string, description: "ready-to-paste values for the back-office-runner chart (keys backOffice.url, backOffice.poolId, registration.token, backend)" } } } } } }
+  /me/runner:
+    get:
+      tags: [fleet]
+      operationId: getMyRunner
+      description: 'ADR 0040: your personal runner pool (`fleet.personal`); 204 when you have not set one up.'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalRunner' } } } }
+        '204': { description: No personal runner }
+    put:
+      tags: [fleet]
+      operationId: enableMyRunner
+      description: Creates your personal runner pool (idempotent) or changes how Claude Code in it reaches the models.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalRunnerInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalRunner' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [fleet]
+      operationId: disableMyRunner
+      description: Deletes your personal runner pool and its runners; 409 while it has queued or running jobs.
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Problem' }
+  /me/runner/registration-tokens:
+    post:
+      tags: [fleet]
+      operationId: createMyRunnerRegistrationToken
+      description: Single-use registration token (24 h, shown once) for your personal runner and the docker run command that uses it.
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalRegistrationToken' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /me/runner/runners/{runnerId}:
+    parameters: [ { name: runnerId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    delete:
+      tags: [fleet]
+      operationId: revokeMyRunner
+      description: Revokes a runner of your personal pool; its leased jobs are re-queued.
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/Problem' }
   /admin/runners:
     get:
       tags: [fleet]
@@ -3469,6 +3509,37 @@ components:
             queued: { type: integer }
             running: { type: integer }
             createdAt: { type: string, format: date-time }
+            ownerUserId: { type: string, format: uuid, nullable: true, description: 'ADR 0040: owner of a personal pool (managed under My account); null = shared pool' }
+            llmCredentials: { $ref: '#/components/schemas/LlmCredentials' }
+    LlmCredentials:
+      type: string
+      enum: [GATEWAY, LOCAL_LOGIN]
+      description: >-
+        ADR 0040: how Claude Code in a pool's sandboxes reaches the model. GATEWAY = the Back Office LLM gateway (metered,
+        budgets apply). LOCAL_LOGIN = personal pools only: the login of the pool's owner (CLAUDE_CODE_OAUTH_TOKEN on their
+        runner-controller), not metered by Back Office. OpenCode always uses the gateway.
+    PersonalRunner:
+      type: object
+      required: [poolId, llmCredentials, runners, queued, running, createdAt]
+      properties:
+        poolId: { type: string }
+        llmCredentials: { $ref: '#/components/schemas/LlmCredentials' }
+        runners: { type: array, items: { $ref: '#/components/schemas/Runner' } }
+        queued: { type: integer }
+        running: { type: integer }
+        createdAt: { type: string, format: date-time }
+    PersonalRunnerInput:
+      type: object
+      required: [llmCredentials]
+      properties:
+        llmCredentials: { $ref: '#/components/schemas/LlmCredentials' }
+    PersonalRegistrationToken:
+      type: object
+      required: [token, expiresAt, dockerCommand]
+      properties:
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+        dockerCommand: { type: string, description: 'docker run of the runner-controller (DOCKER backend) for your computer; secrets other than the token are passed by name (-e NAME)' }
     Runner:
       type: object
       properties:
@@ -4327,6 +4398,7 @@ components:
             - type: object
               properties:
                 costUsd: { type: number, nullable: true }
+                billing: { type: string, enum: [SUBSCRIPTION], nullable: true, description: 'ADR 0040: Claude Code ran with its user own login; costUsd is only its estimate and is not counted as spend' }
         error: { type: string, nullable: true }
         repositories:
           type: array
@@ -4414,6 +4486,14 @@ components:
             ADR 0036: false = the project does not use Spec Kit: no `specify init`, no constitution, no `/speckit.*`
             commands (a SPEC_KIT job with false is refused). Null/omitted (legacy-built jobs, older Back Office): the
             runner's earlier behaviour. Covered by the spec digest when present.
+        llmCredentials:
+          type: string
+          enum: [GATEWAY, LOCAL_LOGIN]
+          nullable: true
+          description: >-
+            ADR 0040, v2 assignments of personal pools: LOCAL_LOGIN = Claude Code uses the owner's own login, delivered by
+            the controller as the bundle file claude-login-token, and reaches api.anthropic.com directly. Omitted = the
+            gateway. Covered by the spec digest when present.
         gateway:
           type: object
           nullable: true

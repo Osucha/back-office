@@ -23,6 +23,8 @@ import pl.mos.backoffice.shared.runner.RunnerLogLine
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.RunnerResult
+import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
@@ -44,8 +46,8 @@ class GitAccessDerivationTest {
     private val runner = CapturingRunner()
     private val support = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30))
 
-    private fun context(project: pl.mos.backoffice.projects.domain.model.Project = this.project): NodeContext {
-        val run = Fixtures.runningRun(project)
+    private fun context(project: pl.mos.backoffice.projects.domain.model.Project = this.project, startedBy: Actor? = null): NodeContext {
+        val run = Fixtures.runningRun(project, startedBy = startedBy)
         val node = run.definitionSnapshot.requireNode("implement")
         val started = run.nodeStarted(node, now)
         return NodeContext(started, project, node, started.nodes.last(), emptyMap())
@@ -112,8 +114,42 @@ class GitAccessDerivationTest {
         assertThat(GitAccess.derive(RunnerMode.IMPLEMENT, repo)).isEqualTo(GitAccess.PUSH_MR)
     }
 
+    @Test
+    fun `ADR 0040 - steps of a private project started by its owner ask for the owner's personal runner`() {
+        val owner = UUID.randomUUID()
+        val person = Actor(PrincipalKind.USER, owner, "Owner")
+        val private = Fixtures.project().copy(personal = true)
+        support.run(context(private, person), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        assertThat(runner.specs.last().personalRunnerOf).isEqualTo(owner)
+        // a team project, or a private one started by the system, uses the shared fleet
+        support.run(context(project, person), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        assertThat(runner.specs.last().personalRunnerOf).isNull()
+        support.run(context(private, Actor(PrincipalKind.SYSTEM, null, "system")), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        assertThat(runner.specs.last().personalRunnerOf).isNull()
+    }
+
+    @Test
+    fun `ADR 0040 - a subscription run costs nothing, a gateway run its reported cost`() {
+        val jobId = RunnerJobId(UUID.randomUUID())
+        fun result(subscription: Boolean) = RunnerResult(
+            status = RunnerJobStatus.SUCCEEDED, summary = "done", branch = null, commitSha = null, diffStat = null, verification = null,
+            artifacts = emptyList(), usage = pl.mos.backoffice.shared.llm.TokenUsage(100, 20, 0, 0), reportedCostUsd = BigDecimal("0.42"),
+            error = null, finishedAt = now, subscription = subscription,
+        )
+        val ctx = context()
+        runner.results[jobId] = result(subscription = true)
+        val subscription = support.complete(ctx, task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
+        assertThat(subscription.cost.amount.signum()).isZero()
+        assertThat(subscription.usage.inputTokens).isEqualTo(100)
+        runner.results[jobId] = result(subscription = false)
+        val metered = support.complete(ctx, task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
+        assertThat(metered.cost.amount).isEqualByComparingTo("0.42")
+    }
+
     private class CapturingRunner : AgentRunner {
         val specs = mutableListOf<RunnerJobSpec>()
+        val results = mutableMapOf<RunnerJobId, RunnerResult>()
+        override fun result(jobId: RunnerJobId): RunnerResult? = results[jobId]
         override fun submit(spec: RunnerJobSpec, continuation: WorkRequest): RunnerJobId {
             specs += spec
             return RunnerJobId(UUID.randomUUID())

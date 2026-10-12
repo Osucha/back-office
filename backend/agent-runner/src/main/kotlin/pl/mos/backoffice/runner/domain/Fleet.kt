@@ -50,6 +50,9 @@ object RunnerPermissions {
     /** Create/edit/delete pools, issue registration tokens, revoke runners, cancel agent jobs. */
     const val FLEET_MANAGE = "fleet.manage"
 
+    /** Your own personal runner pool (ADR 0040): connect your computer, revoke it, choose its model credentials. */
+    const val FLEET_PERSONAL = "fleet.personal"
+
     /** Project sandbox policy (read with `project.view`, change with `project.manage`). */
     const val PROJECT_VIEW = "project.view"
     const val PROJECT_MANAGE = "project.manage"
@@ -57,8 +60,17 @@ object RunnerPermissions {
     val definitions: List<PermissionDefinition> = listOf(
         PermissionDefinition(FLEET_VIEW, PermissionScope.PLATFORM, MODULE, "See runner pools, runners and agent jobs"),
         PermissionDefinition(FLEET_MANAGE, PermissionScope.PLATFORM, MODULE, "Manage runner pools, registration tokens, runners and agent jobs"),
+        PermissionDefinition(FLEET_PERSONAL, PermissionScope.PLATFORM, MODULE, "Connect your own computer as a personal runner for your private projects"),
     )
 }
+
+/**
+ * How coding agents of a pool reach the models (ADR 0040). `GATEWAY`: through the Back Office LLM gateway with the
+ * job's agent token (metered, budgets apply). `LOCAL_LOGIN`: personal pools only; Claude Code uses the login of the
+ * runner's owner (`CLAUDE_CODE_OAUTH_TOKEN` on their runner-controller) and talks to Anthropic directly; nothing
+ * is metered by Back Office. Other harnesses (OpenCode) always use the gateway.
+ */
+enum class LlmCredentials { GATEWAY, LOCAL_LOGIN }
 
 /**
  * Opaque credentials of the fleet: `bo_rrt_` (single-use registration, 24 h), `bo_rt_` (runner-controller),
@@ -100,13 +112,24 @@ data class RunnerPool(
     val projectIds: Set<UUID>,
     val createdAt: Instant,
     val updatedAt: Instant,
+    /** ADR 0040: the user of a personal pool (it runs only jobs routed to that user's personal runner); null = shared pool. */
+    val ownerUserId: UUID? = null,
+    val llmCredentials: LlmCredentials = LlmCredentials.GATEWAY,
 ) {
+    val personal: Boolean get() = ownerUserId != null
+
     fun acceptsProject(projectId: UUID?): Boolean = projectIds.isEmpty() || (projectId != null && projectId in projectIds)
 
     fun matches(selector: Map<String, String>): Boolean = selector.all { (k, v) -> labels[k] == v }
 
     companion object {
         val ID = Regex("^[a-z][a-z0-9-]{1,39}$")
+
+        /** Hosts a LOCAL_LOGIN sandbox must reach besides the API: Claude Code's own endpoint. */
+        val LOCAL_LOGIN_HOSTS = listOf("api.anthropic.com")
+
+        /** Id of the personal pool of [userId]: `personal-` + 24 hex digits of the user id. */
+        fun personalId(userId: UUID): String = "personal-" + userId.toString().replace("-", "").take(24)
     }
 }
 

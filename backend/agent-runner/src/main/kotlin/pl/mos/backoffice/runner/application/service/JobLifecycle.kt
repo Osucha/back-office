@@ -9,7 +9,9 @@ import pl.mos.backoffice.runner.application.port.out.RunnerPoolStore
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.JobCompletionReport
+import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.runner.domain.RunnerLogEvent
+import pl.mos.backoffice.runner.domain.RunnerNode
 import pl.mos.backoffice.runner.domain.RunnerPool
 import pl.mos.backoffice.runner.domain.policy.HostPatterns
 import pl.mos.backoffice.runner.domain.policy.PolicyLayer
@@ -45,6 +47,7 @@ data class FleetSettings(
     val platformPolicy: SandboxPolicy = SandboxPolicy.DEFAULT,
     /** Metered LLM proxy calls per job; 0 or less = unlimited. */
     val maxLlmRequestsPerJob: Long = 2000,
+    val personal: PersonalRunnerSettings = PersonalRunnerSettings(),
 ) {
     private val api: String get() = apiUrl.trimEnd('/')
 
@@ -61,6 +64,15 @@ data class FleetSettings(
             uri.host?.lowercase()?.let { host -> if (uri.port > 0) "$host:${uri.port}" else host }
         }
 }
+
+/** Personal runners (ADR 0040): what a new personal pool allows and the images of the `docker run` command. */
+data class PersonalRunnerSettings(
+    val controllerImage: String = "back-office/runner-controller:dev",
+    val runnerImage: String = "back-office/runner:dev",
+    val egressProxyImage: String = "back-office/egress-proxy:dev",
+    val allowedImages: List<String> = listOf("back-office/runner:*", "*/back-office/runner:*"),
+    val maxConcurrentJobs: Int = 2,
+)
 
 /** Where a job goes: the chosen pool and its resolved policy, or why no pool fits. */
 data class Routing(val pool: RunnerPool?, val resolved: ResolvedPolicy?, val selector: Map<String, String>, val reason: String?)
@@ -108,8 +120,12 @@ class JobLifecycle(
         resolver.resolve(
             listOfNotNull(platformLayer(), poolLayer(pool), projectPolicy?.let { PolicyLayer(PolicyLevel.PROJECT, it) }, templateLayer(spec)),
             allowedImages = pool.allowedImages,
-            mandatoryHosts = mandatoryHosts(spec),
+            mandatoryHosts = mandatoryHosts(spec) + localLoginHosts(pool),
         )
+
+    /** ADR 0040: Claude Code with the owner's own login talks to Anthropic directly. */
+    fun localLoginHosts(pool: RunnerPool): List<String> =
+        if (pool.llmCredentials == LlmCredentials.LOCAL_LOGIN) RunnerPool.LOCAL_LOGIN_HOSTS else emptyList()
 
     fun projectPolicy(projectId: java.util.UUID?): SandboxPolicy? = projectId?.let(projectPolicies::findPolicy)
 
@@ -120,12 +136,17 @@ class JobLifecycle(
             listOfNotNull(platformLayer(), projectPolicy?.let { PolicyLayer(PolicyLevel.PROJECT, it) }, templateLayer(spec)),
         ).policy.poolSelector
         val all = pools.findAll()
-        if (all.isEmpty()) return Routing(null, null, selector, "no runner pool exists; create one in Administration → Runner fleet")
+        // ADR 0040: a job for a user's personal runner goes to that user's personal pool when they have one (even
+        // while it is offline: it waits there), else to the shared pools. Personal pools never run anything else.
+        val personal = spec.personalRunnerOf?.let { owner -> all.filter { it.ownerUserId == owner } }.orEmpty()
+        val eligible = personal.ifEmpty { all.filterNot { it.personal } }
+        if (eligible.isEmpty()) return Routing(null, null, selector, "no runner pool exists; create one in Administration → Runner fleet")
         val rejections = mutableListOf<String>()
-        val candidates = all.mapNotNull { pool ->
+        val candidates = eligible.mapNotNull { pool ->
             when {
                 !pool.acceptsProject(projectId) -> null.also { rejections += "${pool.id}: project not allowed" }
-                !pool.matches(selector) -> null.also { rejections += "${pool.id}: labels do not match poolSelector $selector" }
+                // the owner chose their own computer: the selector of the shared fleet does not apply
+                !pool.personal && !pool.matches(selector) -> null.also { rejections += "${pool.id}: labels do not match poolSelector $selector" }
                 else -> {
                     val resolved = resolveFor(pool, spec, projectPolicy)
                     if (resolved.ok) pool to resolved else null.also { rejections += "${pool.id}: ${resolved.errors.joinToString("; ")}" }
@@ -217,6 +238,14 @@ class JobLifecycle(
     }
 
     fun wake(poolId: String?) = signal.wake(poolId)
+
+    /** Revokes [node]'s token and puts the jobs it holds back into the queue; returns how many were re-queued. */
+    fun revokeRunner(node: RunnerNode): Int {
+        nodes.revoke(node.id, clock.now())
+        val requeued = jobs.activeOfRunner(node.id).mapNotNull { jobs.lock(it.id) }.filter { it.status.active && it.runnerId == node.id }
+        requeued.forEach { requeue(it, "re-queued: runner ${node.name} was revoked", countAsLost = false) }
+        return requeued.size
+    }
 
     // ---------------------------------------------------------------- credentials
 

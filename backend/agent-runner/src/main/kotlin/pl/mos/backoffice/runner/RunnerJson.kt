@@ -191,6 +191,13 @@ data class RunnerJobSpecJson(
     val gitAccess: String? = null,
     /** ADR 0036: false = no Spec Kit work in the job; null (legacy-built jobs, older specs) = the runner's earlier behaviour. */
     val specKit: Boolean? = null,
+    /**
+     * ADR 0040, set in v2 assignments only: `LOCAL_LOGIN` = Claude Code uses the login of the personal runner's owner
+     * (the controller delivers it) instead of the gateway. Absent = the gateway (older specs keep their digests).
+     */
+    val llmCredentials: String? = null,
+    /** ADR 0040: routing to a user's personal runner; stored with the job, removed from assignments. */
+    val personalRunnerOf: String? = null,
 ) {
     companion object {
         fun of(spec: RunnerJobSpec) = RunnerJobSpecJson(
@@ -211,6 +218,7 @@ data class RunnerJobSpecJson(
             runId = spec.usageContext.runId?.toString(),
             gitAccess = spec.gitAccess.name,
             specKit = spec.specKit,
+            personalRunnerOf = spec.personalRunnerOf?.toString(),
         )
     }
 }
@@ -239,6 +247,8 @@ data class ResultUsageJson(
     val cacheReadTokens: Long = 0,
     val cacheWriteTokens: Long = 0,
     val costUsd: BigDecimal? = null,
+    /** ADR 0040: `SUBSCRIPTION` when Claude Code used its user's own login (cost is an estimate, nothing billed). */
+    val billing: String? = null,
 ) {
     fun toTokenUsage() = TokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens)
 }
@@ -275,6 +285,7 @@ data class RunnerResultJson(
         error = error,
         finishedAt = this.finishedAt ?: finishedAt,
         repositories = repositories.orEmpty().map { it.toRepoResult() },
+        subscription = usage.billing.equals(BILLING_SUBSCRIPTION, ignoreCase = true),
     )
 
     companion object {
@@ -288,11 +299,16 @@ data class RunnerResultJson(
             mergeRequestUrl = result.mergeRequestUrl,
             verification = result.verification?.let { VerificationJson(it.command, it.exitCode, it.outputTail) },
             artifacts = result.artifacts.map { ResultArtifactJson(it.name, it.path, it.mediaType, it.content) },
-            usage = ResultUsageJson(result.usage.inputTokens, result.usage.outputTokens, result.usage.cacheReadTokens, result.usage.cacheWriteTokens, result.reportedCostUsd),
+            usage = ResultUsageJson(
+                result.usage.inputTokens, result.usage.outputTokens, result.usage.cacheReadTokens, result.usage.cacheWriteTokens, result.reportedCostUsd,
+                billing = BILLING_SUBSCRIPTION.takeIf { result.subscription },
+            ),
             error = result.error,
             finishedAt = result.finishedAt,
             repositories = result.repositories.takeIf { it.isNotEmpty() }?.map { RepoResultJson.of(it) },
         )
+
+        const val BILLING_SUBSCRIPTION = "SUBSCRIPTION"
     }
 }
 
@@ -431,5 +447,6 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         gitAccess = gitAccess?.let { g -> GitAccess.entries.firstOrNull { it.name == g } }
             ?: if (repos.isNotEmpty()) GitAccess.highest(repos.map { it.access }) else GitAccess.derive(runnerMode, repo),
         specKit = specKit,
+        personalRunnerOf = personalRunnerOf?.let { runCatching { UUID.fromString(it) }.getOrNull() },
     )
 }
