@@ -43,6 +43,7 @@ data class StepRepositoryPlan(
  */
 object StepRepositories {
     const val CONFIG_KEY = "repositories"
+    const val REPOSITORY_OPTIONAL = "repositoryOptional"
     const val FIELD = "task.config.repositories"
 
     private val ALLOWED = setOf(GitAccess.READ, GitAccess.PUSH_MR)
@@ -74,7 +75,11 @@ object StepRepositories {
         } catch (e: RuntimeException) {
             return StepRepositoryPlan(emptyList(), listOf("repositories must be a list of {key, access}"))
         }
-        if (requested == null) return if (runnerStep) defaultPlan(project, pushes) else StepRepositoryPlan(emptyList())
+        if (requested == null) {
+            // a step that may work without code (config repositoryOptional, e.g. agent-task) gets an empty workspace
+            if (runnerStep && project.repositories.isEmpty() && repositoryOptional(config)) return StepRepositoryPlan(emptyList())
+            return if (runnerStep) defaultPlan(project, pushes) else StepRepositoryPlan(emptyList())
+        }
         if (!runnerStep) {
             return StepRepositoryPlan(emptyList(), listOf("only runner steps (IMPLEMENT, SPEC_KIT) work in repositories; remove repositories from this step"))
         }
@@ -99,6 +104,9 @@ object StepRepositories {
         val repositories = resolved.map { (repo, access) -> StepRepository(repo, access, repo.key == primaryKey) }
         return StepRepositoryPlan(repositories, warnings = warnings(repositories))
     }
+
+    /** `config.repositoryOptional`: the runner step also runs in a project without repositories (empty workspace). */
+    fun repositoryOptional(config: Map<String, Any?>): Boolean = config[REPOSITORY_OPTIONAL]?.toString()?.lowercase() == "true"
 
     private fun defaultPlan(project: Project, pushes: Boolean): StepRepositoryPlan {
         if (project.repositories.isEmpty()) return StepRepositoryPlan(emptyList(), listOf(noRepositories(project)))

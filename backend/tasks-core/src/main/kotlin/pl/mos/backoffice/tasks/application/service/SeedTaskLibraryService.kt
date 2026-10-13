@@ -42,11 +42,17 @@ class SeedTaskLibraryService(
             when {
                 existing == null -> { templates.save(shipped); templatesCreated++ }
                 isUntouchedBuiltIn(existing) &&
-                    ((shipped.skills - existing.skills.toSet()).isNotEmpty() || shipped.config != existing.config) -> {
-                    // A never-edited built-in (version 1) receives skills added to the shipped definition later
-                    // (e.g. the SDLC ground rules on base-agent, ADR 0019) and corrected shipped config (e.g. the
-                    // Notify Jira message template). Edited copies stay as the owner left them.
-                    templates.save(existing.copy(skills = (existing.skills + shipped.skills).distinct(), config = shipped.config, updatedAt = now))
+                    ((shipped.skills - existing.skills.toSet()).isNotEmpty() || shipped.config != existing.config ||
+                        shipped.prompt != existing.prompt || shipped.description != existing.description || shipped.produces != existing.produces) -> {
+                    // A never-edited built-in (version 1) follows the shipped definition: skills added later (e.g. the
+                    // SDLC ground rules on base-agent, ADR 0019), corrected config (e.g. the Notify Jira message
+                    // template), prompts, description and outputs. Edited copies stay as the owner left them.
+                    templates.save(
+                        existing.copy(
+                            skills = (existing.skills + shipped.skills).distinct(), config = shipped.config, prompt = shipped.prompt,
+                            description = shipped.description, produces = shipped.produces, updatedAt = now,
+                        ),
+                    )
                     templatesUpgraded++
                 }
             }

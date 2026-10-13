@@ -130,7 +130,10 @@ class RunnerTaskSupport(
         if (!repositoryPlan.valid) throw RepositoryPlanException("repositories of step ${node.id}: " + repositoryPlan.errors.joinToString("; "))
         if (logWarnings) repositoryPlan.warnings.forEach { context.warn("repositories: $it") }
         val repos = repositoryPlan.repositories
-        val primary = repositoryPlan.primary ?: throw RepositoryPlanException("step ${node.id} has no repository")
+        // no repository only for steps that allow it (StepRepositories.repositoryOptional): an empty workspace
+        val primary = repositoryPlan.primary
+        if (primary == null && repos.isNotEmpty()) throw RepositoryPlanException("step ${node.id} has no primary repository")
+        if (primary == null && !StepRepositories.repositoryOptional(config)) throw RepositoryPlanException("step ${node.id} has no repository")
         val profile = modelResolver.forTask(task, project)
         val model = templateModel.build(context, repos)
         val blocks = PromptDataBlocks.random()
@@ -138,10 +141,10 @@ class RunnerTaskSupport(
         val user = renderer.renderPrompt(task.prompt.user?.takeIf { it.isNotBlank() } ?: defaultPrompt, model, blocks)
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("template: $it") } }
         // the notice comes last: the runner derives the commit message (and Spec Kit the feature name) from the first line
-        val prompt = listOfNotNull(system, user.text, repositoriesSection(repos, blocks), agentNotice(blocks)).joinToString("\n\n")
+        val prompt = listOfNotNull(system, user.text, repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) }, agentNotice(blocks)).joinToString("\n\n")
         val fallbackBranch = "run/${context.run.id.short}"
         // the job branch must not be the base branch of any repository it may be pushed to (nor HEAD / a ref path)
-        val protectedBranches = (repos.filter { it.access == GitAccess.PUSH_MR }.ifEmpty { listOf(primary) }).map { it.repository.defaultBranch }.distinct()
+        val protectedBranches = (repos.filter { it.access == GitAccess.PUSH_MR }.ifEmpty { listOfNotNull(primary) }).map { it.repository.defaultBranch }.distinct()
         val branch = renderer.renderText(config.string("branchTemplate") ?: context.stateString(RunStateKeys.BRANCH) ?: DEFAULT_BRANCH_TEMPLATE, model)
             .let(::sanitiseBranch)
             .let { candidate ->
@@ -176,15 +179,17 @@ class RunnerTaskSupport(
                 primary = r.primary,
             )
         }
-        val primaryPushes = primary.access == GitAccess.PUSH_MR
-        // legacy mirror of the primary entry for runners older than ADR 0034
-        val repository = RunnerRepository(
-            url = primary.repository.url,
-            baseRef = primary.repository.defaultBranch,
-            branch = branch,
-            push = primaryPushes,
-            mergeRequest = if (primaryPushes) mergeRequest?.let { RunnerMergeRequest(it.create, it.title, it.description, primary.repository.defaultBranch, it.draft) } else null,
-        )
+        val primaryPushes = primary?.access == GitAccess.PUSH_MR
+        // legacy mirror of the primary entry for runners older than ADR 0034; none for an empty workspace
+        val repository = primary?.let {
+            RunnerRepository(
+                url = it.repository.url,
+                baseRef = it.repository.defaultBranch,
+                branch = branch,
+                push = primaryPushes,
+                mergeRequest = if (primaryPushes) mergeRequest?.let { mr -> RunnerMergeRequest(mr.create, mr.title, mr.description, it.repository.defaultBranch, mr.draft) } else null,
+            )
+        }
         val spec = RunnerJobSpec(
             mode = mode,
             agent = config.string("agent")?.uppercase()?.let { a -> AgentHarness.entries.firstOrNull { it.name == a } } ?: AgentHarness.OPENCODE,
@@ -230,6 +235,8 @@ class RunnerTaskSupport(
         val artifacts = result.artifacts.map { NewArtifact(it.name, ArtifactKind.forName(it.name, it.mediaType), it.mediaType, it.content) }.toMutableList()
         result.verification?.let { artifacts += NewArtifact("verification-${node.id}", ArtifactKind.LOG, "text/plain", "$ ${it.command}\nexit code ${it.exitCode}\n\n${it.outputTail}") }
         result.diff?.takeIf { it.isNotBlank() }?.let { artifacts += NewArtifact("diff", ArtifactKind.DIFF, "text/x-diff", it) }
+        // without a repository the agent's answer is the step's product, like the result of an LLM task
+        if (plan.repositories.isEmpty()) result.summary?.takeIf { it.isNotBlank() }?.let { artifacts += NewArtifact("result", ArtifactKind.MARKDOWN, "text/markdown", it) }
         val verificationFailed = result.verification?.let { it.exitCode != 0 } ?: false
         val succeeded = result.status == RunnerJobStatus.SUCCEEDED && !verificationFailed
         val repositories = repositoryResults(plan, result, succeeded)

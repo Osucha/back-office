@@ -155,8 +155,10 @@ Two built-in templates exist for work you describe yourself in the node: drop th
 | **Agent task** (`agent-task`) | a coding agent on a runner (Claude Code by default, `agent` in **Config**), with a clone of the project's repository | analysing code, reviewing, answering questions about the repository; with `push: true` in **Config** also changes on a branch with a merge request |
 
 Both put the issue (when the run has one), the run parameter `input` and the reviewer's feedback into the
-system prompt, so the replaced prompt can be just the task. The **Agent task** does not push by default and
-needs a project with a repository; on a [personal runner](personal-runner.md) it can use your own Claude login.
+system prompt, so the replaced prompt can be just the task. The **Agent task** does not push by default; in a
+project without repositories it runs in an empty workspace and its final answer becomes the `result` artefact. The
+**LLM task** runs on the Back Office server and needs a configured model provider (an API key); the **Agent task**
+runs on a runner, so on your [personal runner](personal-runner.md) it can use your own Claude login instead.
 
 Use the MCP tool `search_task_library` to search the library from your IDE (see
 [IDE and MCP](integrations-ide.md#mcp-tools)).

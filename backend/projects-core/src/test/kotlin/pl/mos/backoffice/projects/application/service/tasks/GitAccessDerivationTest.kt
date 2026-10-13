@@ -84,6 +84,21 @@ class GitAccessDerivationTest {
     }
 
     @Test
+    fun `a step that allows it runs in an empty workspace of a project without repositories, others fail`() {
+        val noCode = Fixtures.project().copy(repositories = emptyList())
+        support.run(context(noCode), task(TaskExecutor.IMPLEMENT, mapOf("push" to false, "repositoryOptional" to true)), RunnerMode.IMPLEMENT, null, "x")
+        val spec = runner.specs.last()
+        assertThat(spec.repository).isNull()
+        assertThat(spec.repositories).isEmpty()
+        assertThat(spec.gitAccess).isEqualTo(GitAccess.NONE)
+        assertThat(spec.prompt).doesNotContain("## Repositories")
+
+        val refused = support.run(context(noCode), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        assertThat(refused.failed).isTrue()
+        assertThat(runner.specs).hasSize(1)
+    }
+
+    @Test
     fun `implement with push asks for PUSH_MR and opens the MR through push options`() {
         val spec = submit(RunnerMode.IMPLEMENT, emptyMap())
         assertThat(spec.gitAccess).isEqualTo(GitAccess.PUSH_MR)

@@ -173,8 +173,11 @@ Do pracy, którą opisujesz sam w węźle, służą dwa wbudowane szablony: prze
 | **Agent task** (`agent-task`) | agent kodujący na runnerze (domyślnie Claude Code, `agent` w **Konfiguracji**), z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
 
 Oba wstawiają do promptu systemowego zgłoszenie (gdy przebieg je ma), parametr przebiegu `input` i uwagi
-recenzenta, więc zastąpiony prompt może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian i wymaga
-projektu z repozytorium; na [osobistym runnerze](personal-runner.md) może korzystać z Twojego logowania do Claude.
+recenzenta, więc zastąpiony prompt może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian; w projekcie
+bez repozytoriów działa w pustym katalogu roboczym, a jego końcowa odpowiedź staje się artefaktem `result`.
+**LLM task** działa na serwerze Back Office i wymaga skonfigurowanego dostawcy modeli (klucza API); **Agent task**
+działa na runnerze, więc na [osobistym runnerze](personal-runner.md) może zamiast tego korzystać z Twojego logowania
+do Claude.
 
 Aby przeszukiwać bibliotekę z IDE, użyj narzędzia MCP `search_task_library` (zob.
 [IDE i MCP](integrations-ide.md#mcp-tools)).

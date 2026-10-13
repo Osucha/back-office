@@ -243,11 +243,12 @@ object BuiltInLibrary {
             key = AGENT_TASK, name = "Agent task", executor = TaskExecutor.IMPLEMENT,
             description = "Generic coding-agent work in the project's repository: replace the user prompt in the designer with the task. " +
                 "The issue, the run parameter input and revision comments are in the system prompt. Claude Code by default (config agent), " +
-                "no push by default: set push to true for a branch and a merge request.",
+                "no push by default: set push to true for a branch and a merge request. In a project without repositories it runs in an empty " +
+                "workspace and its final answer becomes the result artefact.",
             prompt = Prompt(system = AGENT_TASK_SYSTEM, user = AGENT_TASK_USER),
             skills = baseAgentSkills,
-            config = IMPLEMENT_CONFIG + mapOf("agent" to "CLAUDE_CODE", "push" to false, "branchTemplate" to "agent/{{issue.key | lower}}"),
-            produces = listOf("diff"), tags = listOf("agent", "generic"),
+            config = IMPLEMENT_CONFIG + mapOf("agent" to "CLAUDE_CODE", "push" to false, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
+            produces = listOf("result"), tags = listOf("agent", "generic"),
         )),
     ) + sdlcTemplates(now)
 
@@ -355,7 +356,8 @@ object BuiltInLibrary {
 
     val AGENT_TASK_SYSTEM = """
         You are a coding agent working for the owner of this project inside Back Office, in a sandbox with a
-        clone of the project's repository. A person reviews what you produce before it is used. The task is the
+        clone of the project's repository (or an empty workspace when the project has none). A person reviews what
+        you produce before it is used. The task is the
         user message: do exactly that, in this repository, and finish with a short summary of what you did and
         found. Change files only when the task asks for changes; when something is unknown, say so instead of
         guessing.
@@ -377,7 +379,8 @@ object BuiltInLibrary {
 
     /** The placeholder task of agent-task: harmless (read-only) until a designer replaces it. */
     val AGENT_TASK_USER = """
-        Describe the repository: its structure, how to build and test it, and anything that looks unfinished.
+        Describe the repository: its structure, how to build and test it, and anything that looks unfinished
+        (without a repository: say so in one sentence).
     """.trimIndent()
 
     /** The placeholder task; designers replace it per node (override "Replace prompt"). */

@@ -60,7 +60,7 @@ seven SDLC templates):
 | `code-review` | `base-agent` | `Reviewer` | `LLM` (findings schema, chunked diff) |
 | `analyse-issue` | `base-agent` | `Analyst` | `LLM` |
 | `llm-task` | — | — | `LLM` (generic task for any LLM work, ADR 0034: the prompt is written per node with the override "replace prompt", the run parameter `input` reaches the model as a data block, revision feedback is appended; used by the starter workflow **LLM task with review** of projects without a repository) |
-| `agent-task` | — | — | `IMPLEMENT` (generic coding-agent task: the prompt is written per node with "replace prompt"; issue, run parameter `input` and feedback are in the system prompt; agent CLAUDE_CODE, `push` false by default, true for a branch and merge request; skills `agent-ground-rules`, `ask-dont-guess`) |
+| `agent-task` | — | — | `IMPLEMENT` (generic coding-agent task: the prompt is written per node with "replace prompt"; issue, run parameter `input` and feedback are in the system prompt; agent CLAUDE_CODE, `push` false by default, true for a branch and merge request; `repositoryOptional`: in a project without repositories an empty workspace, the final answer becomes the `result` artefact; skills `agent-ground-rules`, `ask-dont-guess`) |
 | `notify-jira` | — | — | `NOTIFY` (Jira comment; `config.messageTemplate` = `Back Office run {{run.short}} ({{run.workflow}}): {{node.name}}. {{mr.url}}`) |
 | `transition-issue` | — | — | `TRANSITION_ISSUE` (`config.toStatus` = `In Review`, `config.failIfMissing` = `false`) |
 
