@@ -141,8 +141,8 @@ backoffice:
     personal-token-max-days: ${BACKOFFICE_PAT_MAX_DAYS:90}
     cookie-secure: ${BACKOFFICE_COOKIE_SECURE:true}
     session:
-      idle-timeout: ${BACKOFFICE_SESSION_IDLE_TIMEOUT:PT30M}
-      absolute-timeout: ${BACKOFFICE_SESSION_ABSOLUTE_TIMEOUT:PT12H}
+      idle-timeout: ${BACKOFFICE_SESSION_IDLE_TIMEOUT:PT24H}
+      absolute-timeout: ${BACKOFFICE_SESSION_ABSOLUTE_TIMEOUT:PT24H}
     # Local accounts: e-mail + password, optional TOTP (ADR 0021). secret-key (base64 of 32 bytes,
     # `openssl rand -base64 32`) encrypts TOTP secrets and signs MFA step tokens; startup fails without it
     # while local login is enabled. The bootstrap admin is created only when no user exists yet.

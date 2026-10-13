@@ -41,6 +41,18 @@ describe('connection model (ADR 0035)', () => {
     const read = recommendedScopes(['ISSUE_READ']);
     expect(read).toContain('read:issue:jira');
     expect(read).toContain('read:user:jira');
+    // what Jira actually demands of a scoped token: myself (identity), mypermissions and search/jql
+    expect(read).toEqual(
+      expect.arrayContaining([
+        'read:group:jira',
+        'read:application-role:jira',
+        'read:avatar:jira',
+        'read:permission:jira',
+        'read:jql:jira',
+        'read:issue-details:jira',
+        'read:audit-log:jira',
+      ]),
+    );
     expect(read.some((s) => s.startsWith('write:'))).toBe(false);
     expect(recommendedScopes(['ISSUE_COMMENT'], 'CLASSIC')).toEqual([
       'read:jira-user',

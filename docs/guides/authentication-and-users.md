@@ -188,7 +188,7 @@ Project CI tokens (`bo_ci_`) are managed per project (see [ci-integration.md](ci
 - The session lives in PostgreSQL (`SPRING_SESSION`, Spring Session JDBC); the browser holds only the
   `BO_SESSION` cookie (HttpOnly, Secure, SameSite=Lax) and `XSRF-TOKEN` (read by the UI and sent back as
   `X-XSRF-TOKEN` on writes).
-- **Idle timeout** (30 min) and **absolute timeout** (12 h from login). `GET /api/v1/auth/session` tells the UI
+- **Idle timeout** (24 h) and **absolute timeout** (24 h from login). `GET /api/v1/auth/session` tells the UI
   how long is left and does not itself extend the session.
 - On every request the user is re-checked: a deactivated user loses access immediately.
 - **Logout** (`POST /api/v1/auth/logout`) ends the Back Office session and returns the provider's end-session

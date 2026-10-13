@@ -23,7 +23,7 @@ and the API logs (`kubectl -n back-office logs deploy/back-office-api`).
 | Nobody can sign in, no provider button | issuer empty, so OIDC is off | set the issuer, or sign in locally |
 | `403` with `"code":"csrf"` on writes | the `X-XSRF-TOKEN` header is missing (proxy strips it) | fix the proxy; scripts use a personal token instead of a session |
 | `403` with `"permission": "..."` | the person lacks that permission | **Users** → user → **Effective permissions**; a Deny at user or group level beats roles |
-| Signed out after a short time | idle timeout (30 min) or absolute timeout (12 h), deactivation, sessions ended by an admin | expected; adjust `BACKOFFICE_AUTH_SESSION_*` |
+| Signed out after a short time | idle timeout (24 h) or absolute timeout (24 h from sign-in), deactivation, sessions ended by an admin | expected; adjust `BACKOFFICE_AUTH_SESSION_*` |
 | Local sign-in `401 invalid-credentials` | wrong password, locked, method not allowed, never set a password (the audit log has the real reason) | **Unlock account**, **Sign-in method**, **Issue set-password link** |
 | `429 too-many-attempts` | 20 attempts per IP in 5 minutes | wait for `Retry-After` |
 | Script gets `401` `invalid-token` | personal token expired or revoked, owner deactivated | create a new token ([integrations-ide.md](integrations-ide.md#pat)) |

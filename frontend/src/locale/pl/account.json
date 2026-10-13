@@ -236,7 +236,6 @@
   "account.runner.connect": " Podłącz ten komputer ",
   "account.runner.remove": " Usuń mój osobisty runner ",
   "account.runner.shell": "Powłoka",
-  "account.runner.stepDocker": " Docker musi działać, a obrazy {$START_TAG_CODE}back-office/runner-controller{$CLOSE_TAG_CODE}, {$START_TAG_CODE}back-office/runner{$CLOSE_TAG_CODE} i {$START_TAG_CODE}back-office/egress-proxy{$CLOSE_TAG_CODE} muszą być zbudowane lub pobrane (patrz podręcznik). ",
   "account.runner.stepSecrets": "Ustaw sekrety w powłoce (zostają na Twoim komputerze):",
   "account.runner.secretsLabel": "Powłoka",
   "account.runner.stepRun": "Uruchom runner w tej samej powłoce. Token działa raz i wygasa {$INTERPOLATION}:",
@@ -246,5 +245,7 @@
   "account.runner.revokeConfirm": "Odłącz",
   "account.runner.removeTitle": "Usunąć Twój osobisty runner?",
   "account.runner.removeContent": "Twoje komputery zostaną odłączone, a kroki projektów prywatnych znów będą korzystać ze wspólnej floty runnerów.",
-  "account.runner.removeConfirm": "Usuń"
+  "account.runner.removeConfirm": "Usuń",
+  "account.runner.stepImages": "Docker musi działać. Zbuduj raz trzy obrazy w katalogu głównym repozytorium Back Office (pomiń, jeśli Twoja organizacja je publikuje):",
+  "account.runner.buildLabel": "Budowanie"
 }

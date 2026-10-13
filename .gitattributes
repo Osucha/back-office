@@ -1,0 +1,7 @@
+# Scripts run inside Linux containers and CI images: always LF, also in Windows checkouts (core.autocrlf=true would
+# give them CRLF, and "#!/bin/sh\r" fails with "not found").
+gradlew text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+*.bat text eol=crlf

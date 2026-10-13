@@ -67,8 +67,8 @@ data class IdentityProperties(
     }
 
     data class Session(
-        val idleTimeout: Duration = Duration.ofMinutes(30),
-        val absoluteTimeout: Duration = Duration.ofHours(12),
+        val idleTimeout: Duration = Duration.ofHours(24),
+        val absoluteTimeout: Duration = Duration.ofHours(24),
     )
 
     fun accountUrl(): String? = oidc.accountUrl.ifBlank {

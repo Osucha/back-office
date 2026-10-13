@@ -497,8 +497,8 @@ auth:
   bootstrapAdmins: []
   session:
     # BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT / BACKOFFICE_AUTH_SESSION_ABSOLUTE_TIMEOUT (ISO-8601).
-    idleTimeout: PT30M
-    absoluteTimeout: PT12H
+    idleTimeout: PT24H
+    absoluteTimeout: PT24H
   # BACKOFFICE_AUTH_COOKIE_SECURE: Secure flag of BO_SESSION. Keep true behind TLS; false only for
   # plain-http dev clusters (the browser drops Secure cookies on http origins other than localhost).
   cookieSecure: true

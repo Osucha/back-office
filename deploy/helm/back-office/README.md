@@ -216,7 +216,7 @@ helm install back-office deploy/helm/back-office -n back-office --create-namespa
 | `auth.registration` | string | `INVITE_ONLY` | `BACKOFFICE_AUTH_REGISTRATION` (`INVITE_ONLY` or `OPEN`) |
 | `auth.allowedEmailDomains` | list/string | `[]` | `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS` |
 | `auth.bootstrapAdmins` | list/string | `[]` | `BACKOFFICE_AUTH_BOOTSTRAP_ADMINS`: platform-admin on first login |
-| `auth.session.idleTimeout` / `absoluteTimeout` | string | `PT30M` / `PT12H` | `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` / `..._ABSOLUTE_TIMEOUT` |
+| `auth.session.idleTimeout` / `absoluteTimeout` | string | `PT24H` / `PT24H` | `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` / `..._ABSOLUTE_TIMEOUT` |
 | `auth.cookieSecure` | bool | `true` | `BACKOFFICE_AUTH_COOKIE_SECURE` |
 | `auth.groupsClaim` | string | `groups` | `BACKOFFICE_AUTH_GROUPS_CLAIM` |
 

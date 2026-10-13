@@ -22,7 +22,13 @@ import { CodeBlockComponent } from '../../../core/ui/code-block.component';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { timeAgo } from '../../../core/ui/pipes/time-ago.pipe';
 import { absoluteTime } from '../../../core/ui/relay/format';
-import { forShell, setupCommands, sortRunners, type Shell } from '../data/personal-runner';
+import {
+  BUILD_COMMANDS,
+  forShell,
+  setupCommands,
+  sortRunners,
+  type Shell,
+} from '../data/personal-runner';
 
 /**
  * Account → My computer as a runner (ADR 0040): a personal runner pool that runs the agent steps of your private
@@ -156,10 +162,16 @@ import { forShell, setupCommands, sortRunners, type Shell } from '../data/person
           }
         </div>
         <ol class="steps">
-          <li i18n="@@account.runner.stepDocker">
-            Docker must be running, with the images <code>back-office/runner-controller</code>,
-            <code>back-office/runner</code> and <code>back-office/egress-proxy</code> built or
-            pulled (see the manual).
+          <li>
+            <span i18n="@@account.runner.stepImages"
+              >Docker must be running. Build the three images once, in the root of the Back Office
+              repository (skip it when your organisation publishes them):</span
+            >
+            <app-code-block
+              label="Build"
+              i18n-label="@@account.runner.buildLabel"
+              [code]="buildCommands"
+            />
           </li>
           <li>
             <span i18n="@@account.runner.stepSecrets"
@@ -314,6 +326,7 @@ export class PersonalRunnerSectionComponent implements OnInit {
     { id: 'powershell', label: 'PowerShell' },
   ];
 
+  readonly buildCommands = BUILD_COMMANDS;
   readonly runner = signal<PersonalRunner | null>(null);
   readonly loaded = signal(false);
   readonly busy = signal(false);

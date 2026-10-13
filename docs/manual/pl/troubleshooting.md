@@ -24,7 +24,7 @@ lub logowanie.
 | Nikt nie może się zalogować, brak przycisku dostawcy | issuer jest pusty, więc OIDC jest wyłączone | ustaw issuer albo zaloguj się lokalnie |
 | `403` z `"code":"csrf"` przy zapisach | brak nagłówka `X-XSRF-TOKEN` (proxy go usuwa) | popraw proxy; skrypty używają osobistego tokenu zamiast sesji |
 | `403` z `"permission": "..."` | osoba nie ma tego uprawnienia | **Użytkownicy** → użytkownik → **Uprawnienia efektywne** (**Effective permissions**); Odmów na poziomie użytkownika lub grupy wygrywa z rolami |
-| Wylogowanie po krótkim czasie | limit bezczynności (30 min) lub bezwzględny limit (12 h), dezaktywacja, sesje zakończone przez administratora | zachowanie oczekiwane; dostosuj `BACKOFFICE_AUTH_SESSION_*` |
+| Wylogowanie po krótkim czasie | limit bezczynności (24 h) lub bezwzględny limit (24 h od zalogowania), dezaktywacja, sesje zakończone przez administratora | zachowanie oczekiwane; dostosuj `BACKOFFICE_AUTH_SESSION_*` |
 | Logowanie lokalne `401 invalid-credentials` | błędne hasło, blokada, niedozwolona metoda, hasło nigdy nieustawione (prawdziwa przyczyna jest w dzienniku audytu) | **Odblokuj konto** (**Unlock account**), **Metoda logowania** (**Sign-in method**), **Wydaj link do ustawienia hasła** (**Issue set-password link**) |
 | `429 too-many-attempts` | 20 prób z jednego IP w ciągu 5 minut | odczekaj czas z `Retry-After` |
 | Skrypt dostaje `401` `invalid-token` | osobisty token wygasł lub został unieważniony, właściciel dezaktywowany | utwórz nowy token ([integrations-ide.md](integrations-ide.md#pat)) |
