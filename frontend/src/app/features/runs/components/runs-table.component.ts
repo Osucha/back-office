@@ -138,7 +138,7 @@ const ROW_HEIGHT = 49;
             </td>
           }
           <td class="who">{{ who(r) }}</td>
-          <td nzAlign="right"><bo-cost [value]="r.cost" /></td>
+          <td nzAlign="right"><bo-cost [value]="r.cost" [apiValue]="r.apiCost" /></td>
           <td nzAlign="right" class="age" [attr.title]="abs(r.createdAt)">
             {{ ago(r.createdAt) }}
           </td>

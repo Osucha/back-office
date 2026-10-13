@@ -224,13 +224,14 @@ class RunnerTaskSupport(
     private fun map(context: NodeContext, mode: RunnerMode, plan: Plan, jobId: RunnerJobId, result: RunnerResult): NodeResult {
         val node = context.node
         val project = context.project
+        // ADR 0042: what the step costs at API prices, whoever pays; the harness figure first, else the profile's pricing
+        val apiCost = result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
         val cost = if (result.subscription) {
-            // ADR 0040: paid by the user's own subscription; the harness estimate is logged, not counted
-            context.log("the agent used your own Claude login on your personal runner" +
-                (result.reportedCostUsd?.let { " (Claude Code estimates $it USD at API prices; not counted as cost)" } ?: ""))
+            // ADR 0040: paid by the user's own subscription, so nothing is spent; the API-equivalent cost is kept
+            context.log("the agent used your own Claude login on your personal runner (cost at API prices ${apiCost.rounded().amount.toPlainString()} USD; paid by the subscription)")
             Money.ZERO
         } else {
-            result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
+            apiCost
         }
         val artifacts = result.artifacts.map { NewArtifact(it.name, ArtifactKind.forName(it.name, it.mediaType), it.mediaType, it.content) }.toMutableList()
         result.verification?.let { artifacts += NewArtifact("verification-${node.id}", ArtifactKind.LOG, "text/plain", "$ ${it.command}\nexit code ${it.exitCode}\n\n${it.outputTail}") }
@@ -264,6 +265,7 @@ class RunnerTaskSupport(
             summary = summary,
             usage = result.usage,
             cost = cost,
+            apiCost = apiCost,
             runnerJobId = jobId,
             artifacts = artifacts,
             mergeRequest = mr,

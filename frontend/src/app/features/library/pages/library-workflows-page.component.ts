@@ -212,7 +212,10 @@ import { type LibraryRow, filterLibraryWorkflows, libraryRows } from '../data/wo
                 <td class="mono-cell">{{ wait(w.metrics?.duration?.p50Seconds) }}</td>
                 <td nzAlign="right">
                   @if (w.metrics?.runs?.successful) {
-                    <bo-cost [value]="w.metrics?.costPerSuccessfulRun" />
+                    <bo-cost
+                      [value]="w.metrics?.costPerSuccessfulRun"
+                      [apiValue]="w.metrics?.apiCostPerSuccessfulRun"
+                    />
                   } @else {
                     <span class="quiet">-</span>
                   }

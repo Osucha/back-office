@@ -67,6 +67,8 @@ class WorkflowInsightsIntegrationTest {
             node("publish", "Publish", "TASK", "notify-jira", 1, "SUCCEEDED", "success", day1, "09:30", "10:00", "0"),
         ))
         usage(run1, alpha, "1.50")
+        // ADR 0042: a step of run 1 ran on a subscription: spent nothing, 0.80 at API prices
+        jdbc.sql("UPDATE workflow_run SET api_cost_amount = 0.80 WHERE id = :id").param("id", run1).update()
 
         val day2 = "2026-11-03"
         val run2 = run(alpha, "alpha", workflow, 4, 2, true, "SUCCEEDED", "SUCCESS", "${day2}T08:00:00Z", "${day2}T12:00:00Z", listOf(
@@ -120,6 +122,8 @@ class WorkflowInsightsIntegrationTest {
         assertThat(t.totalCost.amount).isEqualByComparingTo(BigDecimal("5.00"))
         assertThat(t.costPerRun.amount).isEqualByComparingTo(BigDecimal("1.25"))
         assertThat(t.costPerSuccessfulRun.amount).isEqualByComparingTo(BigDecimal("2.25"))
+        assertThat(t.totalApiCost.amount).isEqualByComparingTo(BigDecimal("5.80"))
+        assertThat(t.apiCostPerSuccessfulRun.amount).isEqualByComparingTo(BigDecimal("2.65"))
         assertThat(t.inputTokens).isEqualTo(3000)
         assertThat(t.outputTokens).isEqualTo(300)
 
@@ -135,6 +139,7 @@ class WorkflowInsightsIntegrationTest {
         assertThat(draft.failureRate).isEqualTo(0.4)
         assertThat(draft.templateKey).isEqualTo("llm-task")
         assertThat(draft.cost.amount).isEqualByComparingTo(BigDecimal("3.70"))
+        assertThat(draft.apiCost.amount).isEqualByComparingTo(BigDecimal("3.70")) // executions without apiCost count their cost
         assertThat(i.byNode[1].ports).containsExactly(PortCount("approve", 2), PortCount("revise", 1))
         assertThat(i.byNode[1].duration.p50Seconds).isEqualTo(3600.0)
 

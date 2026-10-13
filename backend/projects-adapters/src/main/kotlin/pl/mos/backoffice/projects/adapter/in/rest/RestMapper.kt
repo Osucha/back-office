@@ -246,7 +246,7 @@ class RestMapper {
         workflowVersion = r.workflowVersion, trigger = RunTriggerDto(r.trigger.type.name, r.trigger.ciExecutionId?.value), issueKey = r.issueKey,
         status = r.status.name, outcome = r.outcome?.name, currentNodeId = r.currentNodeId,
         waitingOn = r.waitingOn?.let { WaitingOnDto(it.kind.name, it.nodeId, it.approvalId?.value, it.signal) },
-        cost = money(r.cost), createdAt = r.createdAt, startedAt = r.startedAt, finishedAt = r.finishedAt, startedBy = actor(r.startedBy),
+        cost = money(r.cost), apiCost = money(r.apiCost), createdAt = r.createdAt, startedAt = r.startedAt, finishedAt = r.finishedAt, startedBy = actor(r.startedBy),
     )
 
     fun toDto(r: WorkflowRun): WorkflowRunDto = WorkflowRunDto(
@@ -254,7 +254,7 @@ class RestMapper {
         workflowVersion = r.workflowVersion, trigger = RunTriggerDto(r.trigger.type.name, r.trigger.ciExecutionId?.value), issueKey = r.issueKey,
         status = r.status.name, outcome = r.outcome?.name, currentNodeId = r.currentNodeId,
         waitingOn = r.waitingOn?.let { WaitingOnDto(it.kind.name, it.nodeId, it.approvalId?.value, it.signal) },
-        cost = money(r.cost), createdAt = r.createdAt, startedAt = r.startedAt, finishedAt = r.finishedAt, startedBy = actor(r.startedBy),
+        cost = money(r.cost), apiCost = money(r.apiCost), createdAt = r.createdAt, startedAt = r.startedAt, finishedAt = r.finishedAt, startedBy = actor(r.startedBy),
         input = RunInputDto(r.input.issueKey, r.input.parameters, r.input.ci?.let(::toDto)),
         definitionSnapshot = toDto(r.definitionSnapshot),
         nodes = r.nodes.map(::toDto),
@@ -267,7 +267,7 @@ class RestMapper {
     fun toDto(s: NodeExecution): NodeExecutionDto = NodeExecutionDto(
         id = s.id.value, nodeId = s.nodeId, nodeName = s.nodeName, kind = s.kind.name, templateKey = s.templateKey, attempt = s.attempt, status = s.status.name,
         port = s.port, startedAt = s.startedAt, finishedAt = s.finishedAt, summary = s.summary, confidence = s.confidence, runnerJobId = s.runnerJobId?.value,
-        usage = usage(s.usage), cost = money(s.cost), error = s.error, artifactIds = s.artifactIds.map { it.value },
+        usage = usage(s.usage), cost = money(s.cost), apiCost = money(s.apiCost), error = s.error, artifactIds = s.artifactIds.map { it.value },
         repositories = s.repositories.map(::toDto),
     )
 

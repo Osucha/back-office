@@ -109,7 +109,10 @@ import {
                   <td class="mono-cell">{{ wait(v.metrics.activeTime?.p50Seconds) }}</td>
                   <td nzAlign="right">
                     @if (v.metrics.runs?.successful) {
-                      <bo-cost [value]="v.metrics.costPerSuccessfulRun" />
+                      <bo-cost
+                        [value]="v.metrics.costPerSuccessfulRun"
+                        [apiValue]="v.metrics.apiCostPerSuccessfulRun"
+                      />
                     } @else {
                       <span class="quiet">-</span>
                     }
@@ -152,7 +155,10 @@ import {
                     <td class="mono-cell">{{ wait(p.metrics?.duration?.p50Seconds) }}</td>
                     <td nzAlign="right">
                       @if (p.metrics?.runs?.successful) {
-                        <bo-cost [value]="p.metrics?.costPerSuccessfulRun" />
+                        <bo-cost
+                          [value]="p.metrics?.costPerSuccessfulRun"
+                          [apiValue]="p.metrics?.apiCostPerSuccessfulRun"
+                        />
                       } @else {
                         <span class="quiet">-</span>
                       }
@@ -204,7 +210,7 @@ import {
                   <td class="mono-cell">
                     {{ wait(n.duration?.p50Seconds) }} / {{ wait(n.duration?.p90Seconds) }}
                   </td>
-                  <td nzAlign="right"><bo-cost [value]="n.cost" /></td>
+                  <td nzAlign="right"><bo-cost [value]="n.cost" [apiValue]="n.apiCost" /></td>
                   <td class="small">{{ n.portsText || '-' }}</td>
                 </tr>
               }
@@ -242,7 +248,7 @@ import {
       }
       .cards {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 12px;
       }
       @media (max-width: 1200px) {

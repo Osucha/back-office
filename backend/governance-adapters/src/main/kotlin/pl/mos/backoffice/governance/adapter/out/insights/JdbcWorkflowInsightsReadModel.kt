@@ -81,6 +81,8 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
                ${distribution("CASE WHEN gates > 0 THEN human_secs END", "h")},
                coalesce(sum(cost), 0) AS cost,
                coalesce(sum(cost) FILTER (WHERE successful), 0) AS success_cost,
+               coalesce(sum(api_cost), 0) AS api_cost,
+               coalesce(sum(api_cost) FILTER (WHERE successful), 0) AS success_api_cost,
                coalesce(sum(input_tokens), 0) AS input_tokens,
                coalesce(sum(output_tokens), 0) AS output_tokens,
                count(*) FILTER (WHERE has_mr) AS merge_requests
@@ -104,6 +106,9 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
             inputTokens = rs.getLong("input_tokens"),
             outputTokens = rs.getLong("output_tokens"),
             mergeRequests = rs.getInt("merge_requests"),
+            totalApiCost = money(rs.getBigDecimal("api_cost")),
+            apiCostPerRun = perUnit(rs.getBigDecimal("api_cost"), counts.total),
+            apiCostPerSuccessfulRun = perUnit(rs.getBigDecimal("success_api_cost"), counts.successful),
         )
         (rs.getString("grp") ?: "") to (metrics to rs.getString("project_key"))
     }.filter { it.first.isNotEmpty() }.toMap()
@@ -123,7 +128,7 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
                    count(*) FILTER (WHERE status = 'SUCCEEDED') AS succeeded,
                    count(*) FILTER (WHERE status = 'FAILED') AS failed,
                    ${distribution("CASE WHEN started_at IS NOT NULL AND finished_at IS NOT NULL THEN extract(epoch FROM finished_at - started_at)::double precision END", "d")},
-                   coalesce(sum(cost), 0) AS cost, min(idx) AS first_idx
+                   coalesce(sum(cost), 0) AS cost, coalesce(sum(api_cost), 0) AS api_cost, min(idx) AS first_idx
               FROM execs
              WHERE kind <> 'NOTE'
              GROUP BY node_id
@@ -142,6 +147,7 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
                 duration = distribution(rs, "d"),
                 cost = money(rs.getBigDecimal("cost")),
                 ports = ports[id].orEmpty(),
+                apiCost = money(rs.getBigDecimal("api_cost")),
             )
         }
     }
@@ -183,7 +189,8 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
                     SELECT r.id AS run_id, n.idx, n.doc->>'nodeId' AS node_id, n.doc->>'nodeName' AS node_name, n.doc->>'kind' AS kind,
                            n.doc->>'templateKey' AS template_key, coalesce((n.doc->>'attempt')::int, 1) AS attempt, n.doc->>'status' AS status,
                            n.doc->>'port' AS port, ${ts("n.doc->'startedAt'")} AS started_at, ${ts("n.doc->'finishedAt'")} AS finished_at,
-                           coalesce((n.doc->'cost'->>'amount')::numeric, 0) AS cost
+                           coalesce((n.doc->'cost'->>'amount')::numeric, 0) AS cost,
+                           coalesce((n.doc->'apiCost'->>'amount')::numeric, (n.doc->'cost'->>'amount')::numeric, 0) AS api_cost
                       FROM runs r CROSS JOIN LATERAL jsonb_array_elements(r.nodes) WITH ORDINALITY AS n(doc, idx)
                 ), waits AS (
                     SELECT run_id,
@@ -209,7 +216,10 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
                                 THEN greatest(extract(epoch FROM r.finished_at - coalesce(r.started_at, r.created_at)), 0)::double precision END AS secs,
                            coalesce(w.wait_secs, 0) AS wait_secs, coalesce(w.human_secs, 0) AS human_secs, coalesce(w.gates, 0) AS gates,
                            coalesce(rw.loops, 0) AS rework,
-                           coalesce(l.cost, 0) AS cost, coalesce(l.input_tokens, 0) AS input_tokens, coalesce(l.output_tokens, 0) AS output_tokens,
+                           coalesce(l.cost, 0) AS cost,
+                           -- ADR 0042: the ledger's spend plus what subscriptions paid for, at API prices
+                           coalesce(l.cost, 0) + greatest(r.api_cost_amount - r.cost_amount, 0) AS api_cost,
+                           coalesce(l.input_tokens, 0) AS input_tokens, coalesce(l.output_tokens, 0) AS output_tokens,
                            coalesce(r.merge_request->>'url', '') <> '' AS has_mr
                       FROM runs r
                       LEFT JOIN waits w ON w.run_id = r.id

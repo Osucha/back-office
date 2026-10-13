@@ -131,6 +131,8 @@ data class NodeExecutionDoc(
     val runnerJobId: String? = null,
     val usage: TokenUsageDoc = TokenUsageDoc(),
     val cost: MoneyDoc = MoneyDoc(),
+    /** ADR 0042; absent in executions stored before it (then the same as cost). */
+    val apiCost: MoneyDoc? = null,
     val error: String? = null,
     val artifactIds: List<String> = emptyList(),
     val repositories: List<RepositoryResultDoc> = emptyList(),
@@ -334,7 +336,7 @@ class PersistenceMapper(private val json: JsonMapper) {
     fun toDoc(s: NodeExecution) = NodeExecutionDoc(
         id = s.id.toString(), nodeId = s.nodeId, nodeName = s.nodeName, kind = s.kind.name, templateKey = s.templateKey, attempt = s.attempt, status = s.status.name,
         port = s.port, startedAt = s.startedAt, finishedAt = s.finishedAt, summary = s.summary, confidence = s.confidence, runnerJobId = s.runnerJobId?.toString(),
-        usage = toDoc(s.usage), cost = toDoc(s.cost), error = s.error, artifactIds = s.artifactIds.map { it.toString() },
+        usage = toDoc(s.usage), cost = toDoc(s.cost), apiCost = toDoc(s.apiCost), error = s.error, artifactIds = s.artifactIds.map { it.toString() },
         repositories = s.repositories.map {
             RepositoryResultDoc(
                 it.key, it.url, it.purpose?.name, it.access.name, it.primary, it.branch, it.commitSha,
@@ -346,7 +348,7 @@ class PersistenceMapper(private val json: JsonMapper) {
     fun toDomain(d: NodeExecutionDoc): NodeExecution = NodeExecution(
         id = NodeExecutionId.of(d.id), nodeId = d.nodeId, nodeName = d.nodeName, kind = NodeKind.valueOf(d.kind), templateKey = d.templateKey, attempt = d.attempt,
         status = NodeExecutionStatus.valueOf(d.status), port = d.port, startedAt = d.startedAt, finishedAt = d.finishedAt, summary = d.summary, confidence = d.confidence,
-        runnerJobId = d.runnerJobId?.let(RunnerJobId::of), usage = toDomain(d.usage), cost = toDomain(d.cost), error = d.error,
+        runnerJobId = d.runnerJobId?.let(RunnerJobId::of), usage = toDomain(d.usage), cost = toDomain(d.cost), apiCost = toDomain(d.apiCost ?: d.cost), error = d.error,
         artifactIds = d.artifactIds.map(ArtifactId::of),
         repositories = d.repositories.map {
             RepositoryResult(
@@ -381,7 +383,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         mergeRequest = r.mergeRequest?.let { write(it.toMap()) },
         review = r.review?.let { write(toDoc(it)) },
         lastSignal = r.lastSignal?.let { write(toDoc(it)) },
-        costAmount = r.cost.amount, costCurrency = r.cost.currency, createdAt = r.createdAt, startedAt = r.startedAt, finishedAt = r.finishedAt,
+        costAmount = r.cost.amount, costCurrency = r.cost.currency, apiCostAmount = r.apiCost.amount, createdAt = r.createdAt, startedAt = r.startedAt, finishedAt = r.finishedAt,
         startedBy = writeActor(r.startedBy),
         libraryWorkflowId = r.definitionSnapshot.library?.libraryWorkflowId?.value, libraryVersion = r.definitionSnapshot.library?.version,
         libraryModified = r.definitionSnapshot.library?.modified ?: false,
@@ -400,6 +402,7 @@ class PersistenceMapper(private val json: JsonMapper) {
             waitingOn = if (waitingKind != null && e.currentNodeId != null) WaitingOn(waitingKind, e.currentNodeId!!, e.openApprovalId?.let(::ApprovalRequestId), e.waitingSignal) else null,
             nodes = json.readValue(e.nodes, executionList).map(::toDomain), artifacts = artifacts,
             cost = Money(e.costAmount, e.costCurrency).rounded(),
+            apiCost = Money(e.apiCostAmount, e.costCurrency).rounded(),
             mergeRequest = e.mergeRequest?.let { MergeRequestSnapshot.fromMap(json.readValue(it, anyMap)) },
             review = e.review?.let { toDomain(read<ReviewReportDoc>(it)) },
             lastSignal = e.lastSignal?.let { toDomain(read<CiSignalDoc>(it)) },

@@ -493,5 +493,7 @@
   "core.notify.newTaskTitle": "Nowe zadanie Jira: {$key}",
   "core.notify.newTasksTitle": "Nowe zadania Jira: {$count}",
   "core.notify.sampleRule": "Moje zgłoszenia",
-  "core.help.topic.account.runner": "Mój komputer jako runner"
+  "core.help.topic.account.runner": "Mój komputer jako runner",
+  "core.cost.apiTip": "Ta sama praca w cenach API. Różni się od kosztu, gdy kroki opłaciła subskrypcja (Claude Code z Twoim własnym logowaniem).",
+  "core.cost.apiAria": "W cenach API {$cost}"
 }

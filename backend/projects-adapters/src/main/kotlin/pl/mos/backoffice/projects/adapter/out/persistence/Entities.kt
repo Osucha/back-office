@@ -152,6 +152,8 @@ class WorkflowRunEntity(
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "last_signal", columnDefinition = "jsonb") var lastSignal: String? = null,
     @Column(name = "cost_amount", nullable = false, precision = 18, scale = 6) var costAmount: BigDecimal,
     @Column(name = "cost_currency", nullable = false) var costCurrency: String,
+    /** V115 (ADR 0042): the run's cost at API list prices; equals cost_amount unless a subscription paid. */
+    @Column(name = "api_cost_amount", nullable = false, precision = 18, scale = 6) var apiCostAmount: BigDecimal = BigDecimal.ZERO,
     @Column(name = "created_at", nullable = false) var createdAt: Instant,
     @Column(name = "started_at") var startedAt: Instant? = null,
     @Column(name = "finished_at") var finishedAt: Instant? = null,

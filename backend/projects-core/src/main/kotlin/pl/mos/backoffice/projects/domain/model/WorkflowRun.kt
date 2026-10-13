@@ -103,6 +103,8 @@ data class NodeExecution(
     val runnerJobId: RunnerJobId? = null,
     val usage: TokenUsage = TokenUsage.ZERO,
     val cost: Money = Money.ZERO,
+    /** The cost at API list prices (ADR 0042): equal to [cost] unless a subscription paid for the step. */
+    val apiCost: Money = Money.ZERO,
     val error: String? = null,
     val artifactIds: List<ArtifactId> = emptyList(),
     /** What a runner step did per repository (ADR 0034); empty for steps without repositories. */
@@ -132,6 +134,8 @@ data class WorkflowRun(
     val nodes: List<NodeExecution> = emptyList(),
     val artifacts: List<Artifact> = emptyList(),
     val cost: Money = Money.ZERO,
+    /** Sum of the steps' cost at API list prices (ADR 0042). */
+    val apiCost: Money = Money.ZERO,
     val mergeRequest: MergeRequestSnapshot? = null,
     val review: ReviewReport? = null,
     val lastSignal: CiSignal? = null,
@@ -192,6 +196,7 @@ data class WorkflowRun(
         runnerJobId: RunnerJobId? = null,
         artifactIds: List<ArtifactId> = emptyList(),
         repositories: List<RepositoryResult> = emptyList(),
+        apiCost: Money? = null,
     ): WorkflowRun = finishNode(nodeId) {
         it.copy(
             repositories = repositories.ifEmpty { it.repositories },
@@ -202,6 +207,7 @@ data class WorkflowRun(
             confidence = confidence,
             usage = usage,
             cost = cost,
+            apiCost = apiCost ?: cost,
             runnerJobId = runnerJobId ?: it.runnerJobId,
             artifactIds = (it.artifactIds + artifactIds).distinct(),
         )
@@ -216,9 +222,11 @@ data class WorkflowRun(
         cost: Money = Money.ZERO,
         runnerJobId: RunnerJobId? = null,
         repositories: List<RepositoryResult> = emptyList(),
+        apiCost: Money? = null,
     ): WorkflowRun = finishNode(nodeId) {
         it.copy(
             repositories = repositories.ifEmpty { it.repositories },
+            apiCost = apiCost ?: cost,
             status = NodeExecutionStatus.FAILED,
             port = port,
             finishedAt = now,
@@ -376,14 +384,14 @@ data class WorkflowRun(
     fun withReview(report: ReviewReport): WorkflowRun = copy(review = report)
 
     /** Cost roll-up is allowed on terminal runs too. */
-    fun rollUpCost(): WorkflowRun = copy(cost = Money.sum(nodes.map { it.cost }))
+    fun rollUpCost(): WorkflowRun = copy(cost = Money.sum(nodes.map { it.cost }), apiCost = Money.sum(nodes.map { it.apiCost }))
 
     private fun finishNode(nodeId: String, update: (NodeExecution) -> NodeExecution): WorkflowRun {
         requireMutable()
         val open = nodes.lastOrNull { it.nodeId == nodeId && it.open }
             ?: throw InvalidStateException("run $id has no open execution of node $nodeId")
         val updated = nodes.map { if (it.id == open.id) update(it) else it }
-        return copy(nodes = updated, cost = Money.sum(updated.map { it.cost }))
+        return copy(nodes = updated, cost = Money.sum(updated.map { it.cost }), apiCost = Money.sum(updated.map { it.apiCost }))
     }
 
     private fun closeOpenNodes(now: Instant): List<NodeExecution> =

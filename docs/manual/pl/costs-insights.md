@@ -39,6 +39,16 @@ Claude Code księgowany jest koszt zgłoszony przez agenta, a szacunek z cennika
 porównania. Strona główna pokazuje **Koszt w tym tygodniu**; projekty pokazują koszt z ostatnich 30 dni;
 uruchomienia i kroki pokazują własny koszt.
 
+<a id="api-cost"></a>
+### Koszt w cenach API
+
+Obok kosztu (pieniędzy wydanych przez Back Office) każdy krok, przebieg i metryka workflowu ma też **koszt w cenach
+API**: tę samą pracę w cennikach dostawców. Dla pracy przez bramę LLM obie wartości są równe. Różnią się dla kroków
+opłaconych przez subskrypcję, np. Claude Code z Twoim własnym logowaniem na [osobistym runnerze](personal-runner.md#credentials):
+wtedy koszt to 0, a koszt w cenach API to szacunek Claude Code. Tam, gdzie się różnią, UI pokazuje `$0.00 · API $0.05`,
+a metryki workflowów mają kartę **W cenach API na udany przebieg**. Służy do porównywania zadań i workflowów niezależnie
+od tego, kto płaci; budżety i strona kosztów liczą tylko wydane pieniądze.
+
 <a id="budgets"></a>
 ## Budżety
 

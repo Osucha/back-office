@@ -36,7 +36,9 @@ import { absoluteTime } from './format';
       <span class="part num">{{ duration() }}</span>
     }
     @if (cost()) {
-      <span class="part"><bo-cost [value]="cost()" [usage]="usage()" /></span>
+      <span class="part"
+        ><bo-cost [value]="cost()" [apiValue]="apiCost()" [usage]="usage()"
+      /></span>
     }
     <ng-content />
   `,
@@ -75,6 +77,8 @@ export class ProvenanceComponent {
   readonly at = input<string | null | undefined>(null);
   readonly durationMs = input<number | null | undefined>(null);
   readonly cost = input<Money | null | undefined>(null);
+  /** ADR 0042: the cost at API prices, shown next to [cost] when it differs. */
+  readonly apiCost = input<Money | null | undefined>(null);
   readonly usage = input<TokenUsage | null | undefined>(null);
 
   readonly name = computed(() => {

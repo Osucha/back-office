@@ -93,6 +93,7 @@ class RunProgressService(
             runnerJobId = completion.runnerJobId,
             artifactIds = created.map { it.id },
             repositories = completion.repositories,
+            apiCost = completion.apiCost,
         )
         val saved = runs.save(run)
         events.publish(NodeCompleted(runId, saved.projectId, nodeId, completion.port, completion.summary, completion.confidence, completion.cost.amount.toPlainString(), now))
@@ -109,11 +110,12 @@ class RunProgressService(
         cost: Money,
         runnerJobId: RunnerJobId?,
         repositories: List<RepositoryResult>,
+        apiCost: Money?,
     ): WorkflowRun =
         synchronized(lock) {
             val run = load(runId)
             val now = clock.now()
-            val saved = runs.save(run.nodeFailed(nodeId, error, now, port, usage, cost, runnerJobId, repositories))
+            val saved = runs.save(run.nodeFailed(nodeId, error, now, port, usage, cost, runnerJobId, repositories, apiCost))
             events.publish(NodeFailed(runId, saved.projectId, nodeId, error, now))
             saved
         }

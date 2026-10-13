@@ -4540,6 +4540,8 @@ export interface components {
             recoveryCodesRemaining?: number;
         };
         NodeExecution: {
+            /** @description ADR 0042: the step at API list prices; equals cost unless a subscription paid for it (Claude Code with its owner login on a personal runner) */
+            apiCost?: components["schemas"]["Money"];
             artifactIds?: string[];
             attempt?: number;
             confidence?: number | null;
@@ -5702,6 +5704,8 @@ export interface components {
         /** @description Effectiveness and efficiency of a set of runs (ADR 0037; definitions in docs/architecture/11-governance.md). */
         WorkflowMetrics: {
             activeTime?: components["schemas"]["DistributionStat"];
+            apiCostPerRun?: components["schemas"]["Money"];
+            apiCostPerSuccessfulRun?: components["schemas"]["Money"];
             costPerRun?: components["schemas"]["Money"];
             costPerSuccessfulRun?: components["schemas"]["Money"];
             duration?: components["schemas"]["DistributionStat"];
@@ -5728,6 +5732,8 @@ export interface components {
             };
             /** @description successful / finished */
             successRate?: number | null;
+            /** @description ADR 0042: totalCost plus what subscriptions paid for, at API list prices */
+            totalApiCost?: components["schemas"]["Money"];
             totalCost?: components["schemas"]["Money"];
         };
         WorkflowNode: {
@@ -5781,6 +5787,8 @@ export interface components {
             timeoutSeconds?: number | null;
         };
         WorkflowNodeMetrics: {
+            /** @description ADR 0042: the node at API list prices */
+            apiCost?: components["schemas"]["Money"];
             cost?: components["schemas"]["Money"];
             duration?: components["schemas"]["DistributionStat"];
             executions?: number;
@@ -5835,6 +5843,8 @@ export interface components {
             totalElements?: number;
         };
         WorkflowRunSummary: {
+            /** @description ADR 0042: the run at API list prices (sum of its steps) */
+            apiCost?: components["schemas"]["Money"];
             cost?: components["schemas"]["Money"];
             /** Format: date-time */
             createdAt?: string;

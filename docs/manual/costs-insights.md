@@ -38,6 +38,16 @@ For Claude Code jobs the cost the agent reports is booked, and the price-list es
 comparison. Home shows **Cost this week**; projects show the cost of the last 30 days; runs and steps show
 their own cost.
 
+<a id="api-cost"></a>
+### Cost at API prices
+
+Next to the cost (money spent through Back Office) every step, run and workflow metric also has the **cost at API
+prices**: the same work at the providers' list prices. The two are equal for work through the LLM gateway. They
+differ for steps a subscription paid for, such as Claude Code with your own login on a
+[personal runner](personal-runner.md#credentials): there the cost is 0 and the cost at API prices is Claude Code's
+estimate. Wherever they differ the UI shows `$0.00 · API $0.05`, and workflow metrics have the card **At API prices per
+successful run**. Use it to compare tasks and workflows whoever pays; budgets and the costs page count only money spent.
+
 <a id="budgets"></a>
 ## Budgets
 

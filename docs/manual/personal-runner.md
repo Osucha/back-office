@@ -57,8 +57,8 @@ back at `backoffice.runner.api-url` (`RUNNER_API_URL`); for a Back Office starte
 - **My own Claude login (subscription)**: Claude Code in the sandbox signs in with a token of your account and talks
   to Anthropic directly. Create the token once with `claude setup-token` (it opens the browser and prints a
   long-lived token) and put it into `CLAUDE_CODE_OAUTH_TOKEN` before starting the runner. Back Office does not meter
-  these calls: the step's cost is **0** in runs, budgets and insights, and the run log shows Claude Code's own
-  estimate at API prices for information. Budgets and the gateway's model allow-list do not apply.
+  these calls: the step's cost is **0** in runs, budgets and insights, while its
+  [cost at API prices](costs-insights.md#api-cost) (Claude Code's estimate) is kept and shown next to it. Budgets and the gateway's model allow-list do not apply.
 - **Back Office LLM gateway**: as on the shared fleet; your computer only provides the compute. Metered, budgets
   apply.
 

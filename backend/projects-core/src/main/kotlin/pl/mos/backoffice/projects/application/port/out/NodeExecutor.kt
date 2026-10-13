@@ -60,6 +60,11 @@ data class NodeResult(
     val confidence: Double? = null,
     val usage: TokenUsage = TokenUsage.ZERO,
     val cost: Money = Money.ZERO,
+    /**
+     * What the step would cost at API list prices (ADR 0042); null = the same as [cost]. Differs for work paid by a
+     * subscription (Claude Code with its owner's login on a personal runner): [cost] 0, this the harness estimate.
+     */
+    val apiCost: Money? = null,
     val runnerJobId: RunnerJobId? = null,
     val artifacts: List<NewArtifact> = emptyList(),
     val mergeRequest: MergeRequestSnapshot? = null,

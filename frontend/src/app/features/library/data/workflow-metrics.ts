@@ -15,7 +15,7 @@ import { formatCost } from '../../../core/ui/relay/format';
 import { formatRate, formatWait } from '../../insights/public-api';
 
 export interface MetricCard {
-  id: 'success' | 'firstPass' | 'duration' | 'active' | 'cost';
+  id: 'success' | 'firstPass' | 'duration' | 'active' | 'cost' | 'apiCost';
   label: string;
   value: string;
   sub: string;
@@ -71,6 +71,13 @@ export function metricCards(m: WorkflowMetrics): MetricCard[] {
       value: m.runs?.successful ? formatCost(m.costPerSuccessfulRun) : '-',
       sub: $localize`:@@library.metrics.costSub:${formatCost(m.totalCost)}:total: in all · ${formatCost(m.costPerRun)}:perRun: per run`,
       hint: $localize`:@@library.metrics.costHint:Ledger cost of the successful runs divided by their number.`,
+    },
+    {
+      id: 'apiCost',
+      label: $localize`:@@library.metrics.apiCost:At API prices per successful run`,
+      value: m.runs?.successful ? formatCost(m.apiCostPerSuccessfulRun) : '-',
+      sub: $localize`:@@library.metrics.apiCostSub:${formatCost(m.totalApiCost)}:total: in all · ${formatCost(m.apiCostPerRun)}:perRun: per run`,
+      hint: $localize`:@@library.metrics.apiCostHint:The same runs at API list prices: the cost plus what subscriptions paid for (Claude Code with its owner's own login on a personal runner). Use it to compare workflows whoever pays.`,
     },
   ];
 }

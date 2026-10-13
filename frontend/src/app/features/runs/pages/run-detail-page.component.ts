@@ -130,6 +130,7 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
             [at]="r.createdAt"
             [durationMs]="durationMs()"
             [cost]="r.cost"
+            [apiCost]="r.apiCost"
             [usage]="totalUsage()"
           />
           @if (isActive() && can('run.cancel')) {
@@ -391,7 +392,8 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
                               [who]="kindTitle(s)"
                               [detail]="s.templateKey ?? null"
                               [durationMs]="stepDuration(s)"
-                              [cost]="s.cost?.amount ? s.cost : null"
+                              [cost]="s.cost?.amount || s.apiCost?.amount ? s.cost : null"
+                              [apiCost]="s.apiCost"
                               [usage]="s.usage"
                             />
                             @if (s.error) {
@@ -424,6 +426,7 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
                     [at]="s.startedAt"
                     [durationMs]="stepDuration(s)"
                     [cost]="s.cost"
+                    [apiCost]="s.apiCost"
                     [usage]="s.usage"
                   >
                     @if (s.confidence !== null && s.confidence !== undefined) {

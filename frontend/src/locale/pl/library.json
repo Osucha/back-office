@@ -449,5 +449,8 @@
   "library.workflows.crumb.library": "Biblioteka",
   "library.workflows.crumb.workflows": "Workflowy",
   "library.workflows.key.search": "Szukaj workflowów biblioteki",
-  "library.workflows.usedIn": "{count, plural, =0 {nieużywany} one {# projekt} few {# projekty} many {# projektów} other {# projektu}}"
+  "library.workflows.usedIn": "{count, plural, =0 {nieużywany} one {# projekt} few {# projekty} many {# projektów} other {# projektu}}",
+  "library.metrics.apiCost": "W cenach API na udany przebieg",
+  "library.metrics.apiCostSub": "{$total} łącznie · {$perRun} na przebieg",
+  "library.metrics.apiCostHint": "Te same przebiegi w cenach API: koszt plus to, co opłaciły subskrypcje (Claude Code z własnym logowaniem właściciela na osobistym runnerze). Pozwala porównywać workflowy niezależnie od tego, kto płaci."
 }

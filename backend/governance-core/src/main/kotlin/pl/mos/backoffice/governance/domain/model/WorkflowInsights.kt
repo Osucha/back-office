@@ -41,6 +41,13 @@ data class WorkflowMetrics(
     val inputTokens: Long,
     val outputTokens: Long,
     val mergeRequests: Int,
+    /**
+     * ADR 0042: the same runs at API list prices: the spent cost plus the estimate of steps a subscription paid for
+     * (Claude Code with its owner's login). Equal to the cost when everything went through the gateway.
+     */
+    val totalApiCost: Money = totalCost,
+    val apiCostPerRun: Money = costPerRun,
+    val apiCostPerSuccessfulRun: Money = costPerSuccessfulRun,
 ) {
     companion object {
         val EMPTY = WorkflowMetrics(
@@ -68,6 +75,8 @@ data class NodeMetrics(
     val duration: DistributionStat,
     val cost: Money,
     val ports: List<PortCount>,
+    /** ADR 0042: the node's cost at API list prices. */
+    val apiCost: Money = cost,
 ) {
     val failureRate: Double? get() = if (succeeded + failed == 0) null else failed.toDouble() / (succeeded + failed)
 }

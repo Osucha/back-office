@@ -155,6 +155,8 @@ class GitAccessDerivationTest {
         runner.results[jobId] = result(subscription = true)
         val subscription = support.complete(ctx, task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
         assertThat(subscription.cost.amount.signum()).isZero()
+        // ADR 0042: the API-equivalent cost is kept next to the zero spend
+        assertThat(subscription.apiCost!!.amount).isEqualByComparingTo("0.42")
         assertThat(subscription.usage.inputTokens).isEqualTo(100)
         runner.results[jobId] = result(subscription = false)
         val metered = support.complete(ctx, task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)

@@ -77,6 +77,7 @@ delivery insights (default the last 30 days, at most 366). Read model `JdbcWorkf
 | Active time | duration minus the summed durations of the run's `HUMAN_GATE` and `WAIT_FOR_CI` executions (floor 0) |
 | Human wait | per run with at least one finished gate: the summed gate durations |
 | Total cost, cost per run, cost per successful run | ledger cost (`usage_record` by `run_id`) of the runs, ÷ runs, of the successful runs ÷ their number |
+| Cost at API prices: total, per run, per successful run (ADR 0042) | the ledger cost plus what subscriptions paid for (`workflow_run.api_cost_amount - cost_amount`, at least 0), divided the same way; per node `apiCost` of the node executions (their cost when absent) |
 | Tokens | ledger input and output tokens of the runs |
 | Merge requests | runs that recorded a merge-request URL |
 | Modified runs | runs whose `library_modified` is true (the linked copy differed from its library version at the start) |

@@ -309,6 +309,8 @@ data class NodeExecutionDto(
     val runnerJobId: UUID?,
     val usage: TokenUsageDto,
     val cost: MoneyDto,
+    /** ADR 0042: the cost at API list prices (equals cost unless a subscription paid). */
+    val apiCost: MoneyDto = MoneyDto(BigDecimal.ZERO),
     val error: String?,
     val artifactIds: List<UUID>,
     val repositories: List<RepositoryResultDto> = emptyList(),
@@ -339,6 +341,8 @@ data class WorkflowRunSummaryDto(
     val currentNodeId: String?,
     val waitingOn: WaitingOnDto?,
     val cost: MoneyDto,
+    /** ADR 0042: the cost at API list prices (equals cost unless a subscription paid). */
+    val apiCost: MoneyDto = MoneyDto(BigDecimal.ZERO),
     val createdAt: Instant,
     val startedAt: Instant?,
     val finishedAt: Instant?,
@@ -358,6 +362,8 @@ data class WorkflowRunDto(
     val currentNodeId: String?,
     val waitingOn: WaitingOnDto?,
     val cost: MoneyDto,
+    /** ADR 0042: the cost at API list prices (equals cost unless a subscription paid). */
+    val apiCost: MoneyDto = MoneyDto(BigDecimal.ZERO),
     val createdAt: Instant,
     val startedAt: Instant?,
     val finishedAt: Instant?,

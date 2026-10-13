@@ -2604,6 +2604,7 @@ components:
         runnerJobId: { type: string, format: uuid, nullable: true }
         usage: { $ref: '#/components/schemas/TokenUsage' }
         cost: { $ref: '#/components/schemas/Money' }
+        apiCost: { allOf: [ { $ref: '#/components/schemas/Money' } ], description: 'ADR 0042: the step at API list prices; equals cost unless a subscription paid for it (Claude Code with its owner login on a personal runner)' }
         error: { type: string, nullable: true }
         artifactIds: { type: array, items: { type: string, format: uuid } }
         repositories:
@@ -2679,6 +2680,7 @@ components:
             approvalId: { type: string, format: uuid, nullable: true }
             signal: { type: string, nullable: true }
         cost: { $ref: '#/components/schemas/Money' }
+        apiCost: { allOf: [ { $ref: '#/components/schemas/Money' } ], description: 'ADR 0042: the run at API list prices (sum of its steps)' }
         createdAt: { type: string, format: date-time }
         startedAt: { type: string, format: date-time, nullable: true }
         finishedAt: { type: string, format: date-time, nullable: true }
@@ -3799,6 +3801,9 @@ components:
         totalCost: { $ref: '#/components/schemas/Money' }
         costPerRun: { $ref: '#/components/schemas/Money' }
         costPerSuccessfulRun: { $ref: '#/components/schemas/Money' }
+        totalApiCost: { allOf: [ { $ref: '#/components/schemas/Money' } ], description: 'ADR 0042: totalCost plus what subscriptions paid for, at API list prices' }
+        apiCostPerRun: { $ref: '#/components/schemas/Money' }
+        apiCostPerSuccessfulRun: { $ref: '#/components/schemas/Money' }
         inputTokens: { type: integer, format: int64 }
         outputTokens: { type: integer, format: int64 }
         mergeRequests: { type: integer }
@@ -3815,6 +3820,7 @@ components:
         failureRate: { type: number, nullable: true }
         duration: { $ref: '#/components/schemas/DistributionStat' }
         cost: { $ref: '#/components/schemas/Money' }
+        apiCost: { allOf: [ { $ref: '#/components/schemas/Money' } ], description: 'ADR 0042: the node at API list prices' }
         ports: { type: array, items: { type: object, properties: { port: { type: string }, count: { type: integer } } } }
     WorkflowInsights:
       type: object

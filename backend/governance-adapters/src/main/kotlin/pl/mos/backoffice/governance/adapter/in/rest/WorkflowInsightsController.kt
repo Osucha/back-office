@@ -52,6 +52,9 @@ data class WorkflowMetricsDto(
     val inputTokens: Long,
     val outputTokens: Long,
     val mergeRequests: Int,
+    val totalApiCost: MoneyDto,
+    val apiCostPerRun: MoneyDto,
+    val apiCostPerSuccessfulRun: MoneyDto,
 ) {
     companion object {
         fun of(m: WorkflowMetrics) = WorkflowMetricsDto(
@@ -68,6 +71,9 @@ data class WorkflowMetricsDto(
             inputTokens = m.inputTokens,
             outputTokens = m.outputTokens,
             mergeRequests = m.mergeRequests,
+            totalApiCost = MoneyDto.of(m.totalApiCost),
+            apiCostPerRun = MoneyDto.of(m.apiCostPerRun),
+            apiCostPerSuccessfulRun = MoneyDto.of(m.apiCostPerSuccessfulRun),
         )
     }
 }
@@ -87,12 +93,13 @@ data class WorkflowNodeMetricsDto(
     val duration: DistributionStatDto,
     val cost: MoneyDto,
     val ports: List<PortCountDto>,
+    val apiCost: MoneyDto,
 ) {
     companion object {
         fun of(n: NodeMetrics) = WorkflowNodeMetricsDto(
             n.nodeId, n.nodeName, n.kind, n.templateKey, n.executions, n.succeeded, n.failed,
             n.failureRate?.let { BigDecimal(it).setScale(4, RoundingMode.HALF_UP).toDouble() },
-            DistributionStatDto.of(n.duration), MoneyDto.of(n.cost), n.ports.map { PortCountDto(it.port, it.count) },
+            DistributionStatDto.of(n.duration), MoneyDto.of(n.cost), n.ports.map { PortCountDto(it.port, it.count) }, MoneyDto.of(n.apiCost),
         )
     }
 }

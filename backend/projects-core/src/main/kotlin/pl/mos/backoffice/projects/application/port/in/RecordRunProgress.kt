@@ -36,6 +36,7 @@ interface RecordRunProgress {
         cost: Money = Money.ZERO,
         runnerJobId: RunnerJobId? = null,
         repositories: List<RepositoryResult> = emptyList(),
+        apiCost: Money? = null,
     ): WorkflowRun
     fun nodeSkipped(runId: WorkflowRunId, nodeId: String, reason: String): WorkflowRun
     fun waitingForHuman(runId: WorkflowRunId, nodeId: String, question: String, options: List<String>, context: ApprovalContext): ApprovalRequest
@@ -57,6 +58,8 @@ interface RecordRunProgress {
         val confidence: Double? = null,
         val usage: TokenUsage = TokenUsage.ZERO,
         val cost: Money = Money.ZERO,
+        /** ADR 0042: null = the same as [cost]. */
+        val apiCost: Money? = null,
         val runnerJobId: RunnerJobId? = null,
         val artifacts: List<NewArtifact> = emptyList(),
         val mergeRequest: MergeRequestSnapshot? = null,

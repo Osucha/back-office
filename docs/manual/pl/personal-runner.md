@@ -58,8 +58,8 @@ pod adresem `backoffice.runner.api-url` (`RUNNER_API_URL`); dla Back Office uruc
 - **Moje własne logowanie do Claude (subskrypcja)**: Claude Code w piaskownicy loguje się tokenem Twojego konta i
   łączy się bezpośrednio z Anthropic. Token utworzysz raz poleceniem `claude setup-token` (otwiera przeglądarkę i
   wypisuje długo ważny token); przed uruchomieniem runnera wstaw go do `CLAUDE_CODE_OAUTH_TOKEN`. Back Office nie
-  mierzy tych wywołań: koszt kroku to **0** w przebiegach, budżetach i analizach, a log przebiegu pokazuje dla
-  informacji szacunek Claude Code w cenach API. Budżety i lista modeli bramy nie mają tu zastosowania.
+  mierzy tych wywołań: koszt kroku to **0** w przebiegach, budżetach i analizach, a obok widać jego
+  [koszt w cenach API](costs-insights.md#api-cost) (szacunek Claude Code). Budżety i lista modeli bramy nie mają tu zastosowania.
 - **Brama LLM Back Office**: jak na wspólnej flocie; Twój komputer daje tylko moc obliczeniową. Zużycie jest
   mierzone, budżety obowiązują.
 

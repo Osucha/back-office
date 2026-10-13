@@ -45,6 +45,11 @@ class WorkflowRunTest {
         assertThat(run.nodes.last().attempt).isEqualTo(2)
         assertThat(run.visits("specify")).isEqualTo(2)
         assertThat(run.cost).isEqualTo(Money.usd(0.75))
+        // ADR 0042: without an API-equivalent cost a step counts its cost; a subscription step adds only to apiCost
+        assertThat(run.apiCost).isEqualTo(Money.usd(0.75))
+        run = run.nodeFinished("specify", "success", now, cost = Money.ZERO, apiCost = Money.usd(1.0))
+        assertThat(run.cost).isEqualTo(Money.usd(0.75))
+        assertThat(run.apiCost).isEqualTo(Money.usd(1.75))
     }
 
     @Test

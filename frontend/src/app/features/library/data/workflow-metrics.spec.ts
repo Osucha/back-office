@@ -59,7 +59,7 @@ describe('workflow metrics', () => {
     expect(finishedRuns(m)).toBe(5);
     expect(finishedRuns(null)).toBe(0);
     const cards = metricCards(m);
-    expect(cards.map((c) => c.id)).toEqual(['success', 'firstPass', 'duration', 'active', 'cost']);
+    expect(cards.map((c) => c.id)).toEqual(['success', 'firstPass', 'duration', 'active', 'cost', 'apiCost']);
     expect(cards[0].value).toBe('80%');
     expect(cards[0].sub).toContain('4');
     expect(cards[2].value).toBe('1.0h');
