@@ -18,10 +18,12 @@ data class RunnerLogEvent(
     val projectId: UUID? = null,
     val runId: UUID? = null,
     val level: String = "INFO",
+    /** The workflow step that submitted the job (usage context `stepId`), so run pages attribute the line live. */
+    val nodeId: String? = null,
 ) : DomainEvent {
     override val type: String = "RunnerLog"
     override val payload: Map<String, Any?> = mapOf(
         "jobId" to jobId.toString(), "projectId" to projectId?.toString(), "runId" to runId?.toString(),
-        "message" to message, "progress" to progress, "level" to level,
+        "message" to message, "progress" to progress, "level" to level, "nodeId" to nodeId,
     )
 }

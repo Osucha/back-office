@@ -53,7 +53,7 @@ class SandboxCallbackService(
             val progress = event.type.equals("PROGRESS", ignoreCase = true)
             val message = event.message.take(MAX_MESSAGE_CHARS)
             jobs.appendEvent(jobId, at, message, progress)
-            this.events.publish(RunnerLogEvent(jobId, message, progress, at, usage.projectId, usage.runId))
+            this.events.publish(RunnerLogEvent(jobId, message, progress, at, usage.projectId, usage.runId, nodeId = usage.stepId))
         }
     }
 

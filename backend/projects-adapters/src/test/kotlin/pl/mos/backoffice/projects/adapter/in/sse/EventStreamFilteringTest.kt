@@ -33,6 +33,7 @@ class EventStreamFilteringTest {
 
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var stream: EventStreamController
+    @Autowired lateinit var directory: pl.mos.backoffice.projects.adapter.FakeProjectAccessDirectory
 
     private data class Plain(override val type: String, override val payload: Map<String, Any?>, override val occurredAt: Instant = Instant.now()) : DomainEvent
 
@@ -61,6 +62,22 @@ class EventStreamFilteringTest {
         val body = result.response.contentAsString
         assertThat(body).contains(seenRun.toString()).contains("BenchmarkProgress")
         assertThat(body).doesNotContain(hiddenRun.toString()).doesNotContain("secret log line")
+    }
+
+    @Test
+    fun `access granted after subscribing (a project created later) is picked up without reconnecting`() {
+        val earlier = ProjectId.new()
+        val created = ProjectId.new()
+        val run = WorkflowRunId.new()
+        val result = mvc.perform(get("/api/v1/events").header("X-Test-Project-Permissions", "$earlier=${ProjectsPermissions.PROJECT_VIEW}"))
+            .andExpect(request().asyncStarted())
+            .andReturn()
+        // the same person now also owns a project created after the stream opened
+        directory.register(TestAuthorizationGate.member(created.value, setOf(ProjectsPermissions.PROJECT_VIEW)))
+
+        stream.onEvent(stored(NodeStarted(run, created, "start", "START", 1, Instant.now())))
+
+        assertThat(result.response.contentAsString).contains(run.toString())
     }
 
     @Test

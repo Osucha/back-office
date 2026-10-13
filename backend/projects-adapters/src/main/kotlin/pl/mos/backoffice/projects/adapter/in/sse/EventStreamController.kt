@@ -14,6 +14,7 @@ import pl.mos.backoffice.shared.platform.EventStream
 import pl.mos.backoffice.shared.platform.StoredEvent
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.CurrentUser
+import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -29,9 +30,17 @@ import java.util.concurrent.ConcurrentHashMap
  * replayed from `event_log` (retention 24 h) with the same filter; a heartbeat comment is written every 20 s.
  */
 @RestController
-class EventStreamController(private val json: JsonMapper, private val gate: AuthorizationGate, private val events: EventStream) {
+class EventStreamController(
+    private val json: JsonMapper,
+    private val gate: AuthorizationGate,
+    private val events: EventStream,
+    /** Refreshes a subscriber's access when an event is not visible with the one captured at subscription; null in tests. */
+    private val directory: ProjectAccessDirectory? = null,
+) {
 
-    private class Subscriber(val emitter: SseEmitter, val user: CurrentUser) {
+    private class Subscriber(val emitter: SseEmitter, @Volatile var user: CurrentUser) {
+        /** When [user] was last reloaded; a project created or granted after subscribing becomes visible on the next event. */
+        @Volatile var refreshedAt: Long = 0L
         @Volatile var handle: AutoCloseable? = null
         /** Recently sent ids, so an event racing between replay and live delivery is not sent twice. */
         val sent = LinkedHashSet<Long>()
@@ -80,7 +89,7 @@ class EventStreamController(private val json: JsonMapper, private val gate: Auth
 
     private fun deliver(subscriber: Subscriber, event: StoredEvent) {
         val envelope = DomainEventEnvelopeDto(event.id.toString(), event.type, event.occurredAt, event.payload)
-        if (!visible(subscriber.user, envelope)) return
+        if (!visible(subscriber.user, envelope) && !(refresh(subscriber) && visible(subscriber.user, envelope))) return
         synchronized(subscriber) {
             if (!subscriber.sent.add(event.id)) return
             if (subscriber.sent.size > SENT_MEMORY) subscriber.sent.iterator().let { it.next(); it.remove() }
@@ -99,6 +108,18 @@ class EventStreamController(private val json: JsonMapper, private val gate: Auth
         }
     }
 
+    /** Reloads the subscriber's access (at most every [REFRESH_MILLIS]); true when it was reloaded. */
+    private fun refresh(subscriber: Subscriber): Boolean {
+        val directory = directory ?: return false
+        val userId = subscriber.user.userId?.value ?: return false
+        val now = System.currentTimeMillis()
+        if (now - subscriber.refreshedAt < REFRESH_MILLIS) return false
+        subscriber.refreshedAt = now
+        val fresh = runCatching { directory.user(userId) }.getOrNull() ?: return false
+        subscriber.user = fresh
+        return true
+    }
+
     private fun drop(subscriber: Subscriber) {
         subscribers.remove(subscriber)
         runCatching { subscriber.handle?.close() }
@@ -106,6 +127,7 @@ class EventStreamController(private val json: JsonMapper, private val gate: Auth
 
     companion object {
         private const val SENT_MEMORY = 1_000
+        private const val REFRESH_MILLIS = 10_000L
 
         /**
          * Delivery rule: an `ownerUserId` in the payload (personal connections, ADR 0035) -> that user only; no

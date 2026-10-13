@@ -1194,7 +1194,12 @@ export class RunDetailPageComponent {
         this.appendLogs([
           {
             at: (p['at'] as string) ?? e.occurredAt,
-            nodeId: (p['nodeId'] as string) ?? (p['stepId'] as string) ?? '',
+            // lines of an older backend name only the job: the step that runs it, else the current step
+            nodeId:
+              (p['nodeId'] as string) ??
+              (p['stepId'] as string) ??
+              this.stepOfJob(p['jobId'] as string | undefined) ??
+              '',
             level: (p['level'] as LogLine['level']) ?? 'INFO',
             message: (p['message'] as string) ?? '',
           },
@@ -1212,18 +1217,27 @@ export class RunDetailPageComponent {
         else this.load();
       });
 
-    // Poll logs while active (SSE may be down); poll the run at a slower cadence as a fallback.
+    // Poll logs while active (SSE may be down); reload the run every 10 s while it is active.
     interval(5000)
       .pipe(startWith(0), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         if (!this.run()) return;
         if (this.isActive() || this.logs().length === 0) this.pollLogs();
       });
-    interval(20000)
+    // a stream that is connected but silently delivers nothing (proxies, a missed grant) must not freeze the timeline
+    interval(10000)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
-        if (this.isActive() && this.events.state() !== 'connected') this.load();
+        if (this.isActive()) this.load();
       });
+  }
+
+  /** The step whose runner job is [jobId], else the step the run is at. */
+  private stepOfJob(jobId: string | undefined): string | undefined {
+    const run = this.run();
+    if (!run) return undefined;
+    const byJob = jobId ? run.nodes?.find((n) => n.runnerJobId === jobId)?.nodeId : undefined;
+    return byJob ?? run.currentNodeId ?? undefined;
   }
 
   private reloadWaitingApproval(): void {

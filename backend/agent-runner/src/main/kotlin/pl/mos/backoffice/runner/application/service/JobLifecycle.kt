@@ -195,7 +195,7 @@ class JobLifecycle(
         events.publish(
             RunnerLogEvent(
                 job.id, "agent job ${status.name.lowercase()}" + (finished.reason?.let { ": $it" } ?: ""), false, now,
-                usage.projectId, usage.runId, if (status == AgentJobStatus.SUCCEEDED) "INFO" else "WARN",
+                usage.projectId, usage.runId, if (status == AgentJobStatus.SUCCEEDED) "INFO" else "WARN", usage.stepId,
             ),
         )
         return finished
