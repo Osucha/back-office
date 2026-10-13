@@ -32,7 +32,7 @@ class SdlcSeedTest {
     fun `seeding twice creates the SDLC entries once`() {
         val first = service.seed()
         val second = service.seed()
-        assertThat(first.total).isEqualTo(9 + 20 + 12)
+        assertThat(first.total).isEqualTo(9 + 21 + 12)
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcTemplateKeys }).hasSize(BuiltInLibrary.sdlcTemplateKeys.size)
         assertThat(lib.skills.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcSkillKeys }).hasSize(BuiltInLibrary.sdlcSkillKeys.size)

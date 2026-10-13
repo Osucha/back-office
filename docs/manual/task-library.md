@@ -143,5 +143,20 @@ Back Office ships with templates for the Spec Kit phases, implementation with Op
 `write-user-story`, `plan-task-list`, `implement-task-list` and `review-against-spec`, plus their
 interfaces and skills. You can edit built-ins; Back Office never overwrites an edited entry.
 
+<a id="generic-tasks"></a>
+### Tasks with any prompt
+
+Two built-in templates exist for work you describe yourself in the node: drop the block on the canvas, open
+**Overrides** → **Replace** and write the task there (it replaces the template's user prompt).
+
+| Template | What runs it | Good for |
+|---|---|---|
+| **LLM task** (`llm-task`) | one model call, no repository | summaries, drafts, answers about the run's input material |
+| **Agent task** (`agent-task`) | a coding agent on a runner (Claude Code by default, `agent` in **Config**), with a clone of the project's repository | analysing code, reviewing, answering questions about the repository; with `push: true` in **Config** also changes on a branch with a merge request |
+
+Both put the issue (when the run has one), the run parameter `input` and the reviewer's feedback into the
+system prompt, so the replaced prompt can be just the task. The **Agent task** does not push by default and
+needs a project with a repository; on a [personal runner](personal-runner.md) it can use your own Claude login.
+
 Use the MCP tool `search_task_library` to search the library from your IDE (see
 [IDE and MCP](integrations-ide.md#mcp-tools)).

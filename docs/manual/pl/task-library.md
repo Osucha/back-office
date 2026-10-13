@@ -161,5 +161,20 @@ Back Office zawiera szablony faz Spec Kit, implementacji z OpenCode lub Claude C
 interfejsami i umiejętnościami. Wpisy wbudowane możesz edytować; Back Office nigdy nie nadpisuje
 zmienionego wpisu.
 
+<a id="generic-tasks"></a>
+### Zadania z dowolnym promptem
+
+Do pracy, którą opisujesz sam w węźle, służą dwa wbudowane szablony: przeciągnij klocek na kanwę, otwórz
+**Nadpisania** (**Overrides**) → **Zastąp** (**Replace**) i wpisz tam zadanie (zastępuje prompt użytkownika z szablonu).
+
+| Szablon | Kto go wykonuje | Do czego |
+|---|---|---|
+| **LLM task** (`llm-task`) | jedno wywołanie modelu, bez repozytorium | podsumowania, szkice, odpowiedzi na podstawie materiału wejściowego przebiegu |
+| **Agent task** (`agent-task`) | agent kodujący na runnerze (domyślnie Claude Code, `agent` w **Konfiguracji**), z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
+
+Oba wstawiają do promptu systemowego zgłoszenie (gdy przebieg je ma), parametr przebiegu `input` i uwagi
+recenzenta, więc zastąpiony prompt może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian i wymaga
+projektu z repozytorium; na [osobistym runnerze](personal-runner.md) może korzystać z Twojego logowania do Claude.
+
 Aby przeszukiwać bibliotekę z IDE, użyj narzędzia MCP `search_task_library` (zob.
 [IDE i MCP](integrations-ide.md#mcp-tools)).

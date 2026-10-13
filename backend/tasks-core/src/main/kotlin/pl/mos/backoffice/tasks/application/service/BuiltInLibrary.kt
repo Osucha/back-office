@@ -12,8 +12,8 @@ import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.time.Instant
 
 /**
- * The shipped library of docs/architecture/07-task-library.md: nine interfaces, twenty global
- * templates (all but the generic `llm-task` rooted in the abstract `base-agent`), and twelve skills, including the SDLC conventions of
+ * The shipped library of docs/architecture/07-task-library.md: nine interfaces, twenty-one global
+ * templates (all but the generic `llm-task` and `agent-task` rooted in the abstract `base-agent`), and twelve skills, including the SDLC conventions of
  * ADR 0019 (user story, use case, ADR, change-request impact analysis, task list planning and execution,
  * review against the specification). Prompts use the executor placeholders
  * `{{project.constitution}}`, `{{issue.*}}`, `{{artifacts.*}}` and `{{feedback}}`
@@ -46,6 +46,9 @@ object BuiltInLibrary {
 
     /** Generic LLM task of projects without repositories (ADR 0034): the prompt is written in the designer. */
     const val LLM_TASK = "llm-task"
+
+    /** Generic coding-agent task: any prompt, run by an agent in the project's repository (no push by default). */
+    const val AGENT_TASK = "agent-task"
 
     const val SPEC_WRITING = "spec-writing"
     const val KOTLIN_HEXAGONAL = "kotlin-hexagonal"
@@ -89,6 +92,7 @@ object BuiltInLibrary {
     val templateKeys = listOf(
         BASE_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
         IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, LLM_TASK,
+        AGENT_TASK,
     ) + sdlcTemplateKeys
     val skillKeys = listOf(SPEC_WRITING, KOTLIN_HEXAGONAL, CONVENTIONAL_COMMITS, SECURITY_REVIEW_CHECKLIST, ANGULAR_NG_ZORRO) + sdlcSkillKeys
 
@@ -235,6 +239,16 @@ object BuiltInLibrary {
             prompt = Prompt(system = LLM_TASK_SYSTEM, user = LLM_TASK_USER),
             produces = listOf("result"), tags = listOf("llm", "generic"),
         )),
+        template(now, TaskTemplate.Content(
+            key = AGENT_TASK, name = "Agent task", executor = TaskExecutor.IMPLEMENT,
+            description = "Generic coding-agent work in the project's repository: replace the user prompt in the designer with the task. " +
+                "The issue, the run parameter input and revision comments are in the system prompt. Claude Code by default (config agent), " +
+                "no push by default: set push to true for a branch and a merge request.",
+            prompt = Prompt(system = AGENT_TASK_SYSTEM, user = AGENT_TASK_USER),
+            skills = baseAgentSkills,
+            config = IMPLEMENT_CONFIG + mapOf("agent" to "CLAUDE_CODE", "push" to false, "branchTemplate" to "agent/{{issue.key | lower}}"),
+            produces = listOf("diff"), tags = listOf("agent", "generic"),
+        )),
     ) + sdlcTemplates(now)
 
     /** Templates of the delivery conventions adopted in ADR 0019. */
@@ -337,6 +351,33 @@ object BuiltInLibrary {
 
         ## Feedback of the reviewer on your previous result (empty on the first attempt)
         {{feedback}}
+    """.trimIndent()
+
+    val AGENT_TASK_SYSTEM = """
+        You are a coding agent working for the owner of this project inside Back Office, in a sandbox with a
+        clone of the project's repository. A person reviews what you produce before it is used. The task is the
+        user message: do exactly that, in this repository, and finish with a short summary of what you did and
+        found. Change files only when the task asks for changes; when something is unknown, say so instead of
+        guessing.
+
+        ## Project constitution
+        {{project.constitution}}
+
+        ## Issue (empty when the run has none)
+        {{issue.key}}: {{issue.summary}}
+
+        {{issue.description}}
+
+        ## Input material (run parameter input)
+        {{parameters.input}}
+
+        ## Feedback of the reviewer on your previous result (empty on the first attempt)
+        {{feedback}}
+    """.trimIndent()
+
+    /** The placeholder task of agent-task: harmless (read-only) until a designer replaces it. */
+    val AGENT_TASK_USER = """
+        Describe the repository: its structure, how to build and test it, and anything that looks unfinished.
     """.trimIndent()
 
     /** The placeholder task; designers replace it per node (override "Replace prompt"). */
