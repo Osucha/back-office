@@ -176,11 +176,12 @@ export const SCOPE_OPTIONS: Readonly<
 > = {
   ISSUE_READ: {
     classic: ['read:jira-work'],
-    granular: ['read:issue:jira', 'read:issue-details:jira', 'read:jql:jira'],
+    granular: ['read:issue:jira', 'read:issue-details:jira', 'read:jql:jira', 'read:audit-log:jira'],
     granularRecommended: [
       'read:issue:jira',
       'read:issue-details:jira',
       'read:jql:jira',
+      'read:audit-log:jira',
       'read:issue-meta:jira',
       'read:field-configuration:jira',
       'read:status:jira',

@@ -175,7 +175,9 @@ class JiraConnectionModelTest {
     @Test
     fun `scope catalogue covers capabilities with the classic or the granular set and spots extra write scopes`() {
         assertThat(JiraScopes.missing(setOf(ISSUE_READ), listOf("read:jira-work"))).isEmpty()
-        assertThat(JiraScopes.missing(setOf(ISSUE_READ), listOf("read:issue:jira", "read:issue-details:jira", "read:jql:jira"))).isEmpty()
+        // search/jql answers 401 to a scoped token without read:audit-log:jira
+        assertThat(JiraScopes.missing(setOf(ISSUE_READ), listOf("read:issue:jira", "read:issue-details:jira", "read:jql:jira"))).containsExactly(ISSUE_READ)
+        assertThat(JiraScopes.missing(setOf(ISSUE_READ), listOf("read:issue:jira", "read:issue-details:jira", "read:jql:jira", "read:audit-log:jira"))).isEmpty()
         assertThat(JiraScopes.missing(setOf(ISSUE_READ, ISSUE_COMMENT), listOf("read:jira-work"))).containsExactly(ISSUE_COMMENT)
         assertThat(JiraScopes.missing(setOf(ISSUE_COMMENT), listOf("write:comment:jira", "read:comment:jira"))).isEmpty()
         assertThat(JiraScopes.missing(setOf(ISSUE_TRANSITION), listOf("write:issue:jira", "read:issue.transition:jira", "read:status:jira"))).isEmpty()

@@ -151,7 +151,7 @@ Atlassian offers two kinds of API tokens. Back Office supports both:
    | Connection may | Granular scopes to tick (recommended) | Or the classic scopes |
    |---|---|---|
    | (always, to identify the account) | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` and `read:permission:jira` (all five: without the first four Jira answers 401, the last reads the account's project permissions) | `read:jira-user` |
-   | **Read issues** | `read:issue:jira`, `read:issue-details:jira`, `read:jql:jira`, `read:issue-meta:jira`, `read:field-configuration:jira`, `read:status:jira`, `read:issue.changelog:jira`, `read:field:jira`, `read:avatar:jira` | `read:jira-work` |
+   | **Read issues** | `read:issue:jira`, `read:issue-details:jira`, `read:jql:jira`, `read:audit-log:jira` (Jira's search answers 401 without it), `read:issue-meta:jira`, `read:field-configuration:jira`, `read:status:jira`, `read:issue.changelog:jira`, `read:field:jira`, `read:avatar:jira` | `read:jira-work` |
    | **Comment on issues** | `write:comment:jira`, `read:comment:jira`, `read:comment.property:jira`, `read:project:jira`, `read:project-role:jira`, `read:group:jira`, `read:avatar:jira` | `read:jira-work`, `write:jira-work` |
    | **Move issues** | `write:issue:jira`, `write:issue.property:jira`, `read:issue.transition:jira`, `read:status:jira`, `read:field-configuration:jira` | `read:jira-work`, `write:jira-work` |
 

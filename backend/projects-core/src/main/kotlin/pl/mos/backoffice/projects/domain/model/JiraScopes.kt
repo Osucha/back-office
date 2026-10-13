@@ -35,6 +35,7 @@ object JiraScopes {
     const val READ_APPLICATION_ROLE = "read:application-role:jira"
     const val READ_AVATAR = "read:avatar:jira"
     const val READ_PERMISSION = "read:permission:jira"
+    const val READ_AUDIT_LOG = "read:audit-log:jira"
 
     /**
      * `GET /rest/api/3/myself` (every verification): classic `read:jira-user`, or the granular scopes the endpoint's
@@ -47,7 +48,7 @@ object JiraScopes {
     )
 
     private val READ_GRANULAR_RECOMMENDED = setOf(
-        READ_ISSUE, READ_ISSUE_DETAILS, READ_JQL, "read:issue-meta:jira", "read:field-configuration:jira", READ_STATUS,
+        READ_ISSUE, READ_ISSUE_DETAILS, READ_JQL, READ_AUDIT_LOG, "read:issue-meta:jira", "read:field-configuration:jira", READ_STATUS,
         "read:issue.changelog:jira", "read:field:jira", READ_USER, "read:avatar:jira",
     )
 
@@ -55,7 +56,8 @@ object JiraScopes {
     fun options(capability: ConnectionCapability): List<Option> = when (capability) {
         ConnectionCapability.ISSUE_READ -> listOf(
             Option(Kind.CLASSIC, setOf(READ_JIRA_WORK)),
-            Option(Kind.GRANULAR, setOf(READ_ISSUE, READ_ISSUE_DETAILS, READ_JQL), READ_GRANULAR_RECOMMENDED),
+            // GET /rest/api/3/search/jql answers 401 to a scoped token without read:audit-log:jira (Atlassian's scope list)
+            Option(Kind.GRANULAR, setOf(READ_ISSUE, READ_ISSUE_DETAILS, READ_JQL, READ_AUDIT_LOG), READ_GRANULAR_RECOMMENDED),
         )
         ConnectionCapability.ISSUE_COMMENT -> listOf(
             Option(Kind.CLASSIC, setOf(READ_JIRA_WORK, WRITE_JIRA_WORK)),
