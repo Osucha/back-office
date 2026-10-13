@@ -265,7 +265,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         canvas = WorkflowJson.toJson(d.canvas)?.let { write(it) }, enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt,
         updatedBy = writeActor(d.updatedBy),
         libraryWorkflowId = d.library?.libraryWorkflowId?.value, libraryKey = d.library?.key, libraryVersion = d.library?.version,
-        libraryModified = d.library?.modified ?: false,
+        libraryModified = d.library?.modified ?: false, draft = d.draft,
     )
 
     fun toDomain(e: WorkflowDefinitionEntity): WorkflowDefinition = WorkflowDefinition(
@@ -273,6 +273,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = json.readValue(e.nodes, nodeList).map(WorkflowJson::toDomain), edges = json.readValue(e.edges, edgeList).map(WorkflowJson::toDomain),
         triggers = json.readValue(e.triggers, triggerList).map(WorkflowJson::toDomain), canvas = e.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
         enabled = e.enabled, createdAt = e.createdAt, updatedAt = e.updatedAt, updatedBy = readActor(e.updatedBy), library = libraryLink(e),
+        draft = e.draft,
     )
 
     /** The library link of a definition row; a row without id, key or version has none. */

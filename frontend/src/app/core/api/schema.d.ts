@@ -2965,7 +2965,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getWorkflow"];
-        /** @description Bumps `version`; in-flight runs keep their pinned version. */
+        /** @description Bumps `version`; in-flight runs keep their pinned version. A definition with validation errors is saved as a draft (`draft`). */
         put: operations["updateWorkflow"];
         post?: never;
         delete: operations["deleteWorkflow"];
@@ -4783,6 +4783,7 @@ export interface components {
             createdBy?: components["schemas"]["ActorRef"];
             /** Format: uuid */
             id: string;
+            key: string;
             /** @description caller's effective project permissions */
             readonly myPermissions?: string[];
             /** @description caller's project roles */
@@ -4808,10 +4809,12 @@ export interface components {
             };
             description?: string;
             issueTracker?: {
+                /** @description Jira project of the issues (e.g. LFV); not derived from the project key */
                 jiraProjectKey?: string;
                 jql?: string | null;
             } | null;
-            key: string;
+            /** @description Back Office's short code of the project (CI logins, MCP, templates); not a Jira key. Omitted on create = generated from the name; on update a new value renames the project, omitted = unchanged. */
+            key?: string | null;
             name: string;
             /** @description ADR 0038 (default false): a private project of its creator only (needs `projects.create.personal` or `projects.create`); members cannot be added. Set at creation, ignored on update. */
             personal?: boolean;
@@ -5630,6 +5633,8 @@ export interface components {
         WorkflowDefinition: components["schemas"]["WorkflowDefinitionInput"] & {
             /** Format: date-time */
             createdAt?: string;
+            /** @description saved with validation errors: kept as a draft, no run starts from it and it cannot be published until it is saved without errors */
+            readonly draft?: boolean;
             /** Format: uuid */
             id: string;
             /** @description set when the workflow is a linked copy of a library workflow (ADR 0037) */

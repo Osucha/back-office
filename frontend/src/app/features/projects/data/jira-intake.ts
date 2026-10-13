@@ -33,7 +33,7 @@ export function intakeWorkflowOptions(
         id: w.id!,
         name: w.name ?? w.id!,
         status: trigger ? trigger.status : undefined,
-        usable: !!trigger && w.enabled !== false,
+        usable: !!trigger && w.enabled !== false && !w.draft,
       };
     })
     .sort((a, b) => Number(b.usable) - Number(a.usable) || a.name.localeCompare(b.name));

@@ -104,6 +104,7 @@ class RunService(
         auditDetails: Map<String, Any?> = emptyMap(),
     ): WorkflowRun {
         if (!definition.enabled) throw InvalidStateException("workflow ${definition.name} is disabled")
+        if (definition.draft) throw InvalidStateException("workflow ${definition.name} is a draft with validation errors; fix them and save it before starting runs")
         requireRunnable(definition)
         val project = projects.findById(definition.projectId) ?: throw NotFoundException("Project", definition.projectId)
         specKitSteps?.runBlockers(project, definition.nodes)?.takeIf { it.isNotEmpty() }?.let { blockers ->

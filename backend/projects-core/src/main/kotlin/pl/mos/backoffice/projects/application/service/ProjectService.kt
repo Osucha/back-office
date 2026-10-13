@@ -69,12 +69,14 @@ class ProjectService(
         } else {
             gate.require(ProjectsPermissions.PROJECTS_CREATE).actor
         }
-        if (projects.findByKey(command.key) != null) throw ValidationException("project key ${command.key} already exists", "key")
+        val requested = normalisedKey(command.key)
+        if (requested != null && projects.findByKey(requested) != null) throw ValidationException("project key $requested already exists", "key")
+        val key = requested ?: Project.suggestKey(command.name) { projects.findByKey(it) != null }
         val now = clock.now()
         val project = projects.save(
             Project(
                 id = ProjectId.new(),
-                key = command.key,
+                key = key,
                 name = command.name,
                 description = command.description,
                 repositories = command.repositories,
@@ -111,6 +113,8 @@ class ProjectService(
      * Seeds the SDLC workflows that do not exist yet (by name) and registers "CI code review" as the `code-review`
      * entrypoint unless one exists. Used at creation and when a project gets its first repository (ADR 0034).
      */
+    private fun normalisedKey(key: String?): String? = key?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
+
     private fun seedSdlc(project: Project, actor: Actor, now: java.time.Instant): Pair<Project, List<WorkflowDefinition>> {
         val existing = workflows.findByProjectId(project.id).map { it.name }.toSet()
         // ADR 0036: the Spec Kit workflows only when Spec Kit is on (offered later through "Add Spec Kit workflows")
@@ -129,20 +133,25 @@ class ProjectService(
     override fun update(id: ProjectId, command: ProjectCommand): Project {
         val actor = gate.require(ProjectsPermissions.PROJECT_MANAGE, id.value).actor
         val existing = load(id)
-        if (command.key != existing.key) throw ValidationException("project key cannot be changed", "key")
+        val newKey = normalisedKey(command.key)?.takeIf { it != existing.key }
+        if (newKey != null && projects.findByKey(newKey) != null) throw ValidationException("project key $newKey already exists", "key")
+        val now = clock.now()
+        val renamed = newKey?.let { existing.rename(it, now) } ?: existing
         val saved = projects.save(
-            existing.update(
+            renamed.update(
                 name = command.name,
                 description = command.description,
                 repositories = command.repositories,
                 issueTracker = command.issueTracker,
                 constitution = command.constitution,
                 defaults = command.defaults,
-                now = clock.now(),
+                now = now,
                 specKit = requireSpecKitAllowed(command.specKit ?: existing.specKit, existing.specKit),
             ),
         )
+        if (newKey != null) provisioner.projectRenamed(id.value, newKey)
         val changes = AuditableChanges.changed(
+            "key" to (existing.key to saved.key),
             "name" to (existing.name to saved.name),
             "description" to (existing.description to saved.description),
             "repositories" to (describe(existing.repositories) to describe(saved.repositories)),

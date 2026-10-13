@@ -970,7 +970,7 @@ paths:
     put:
       tags: [workflows]
       operationId: updateWorkflow
-      description: Bumps `version`; in-flight runs keep their pinned version.
+      description: Bumps `version`; in-flight runs keep their pinned version. A definition with validation errors is saved as a draft (`draft`).
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDefinitionInput' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDefinition' } } } }
@@ -2156,9 +2156,9 @@ components:
         primary: { type: boolean, default: false, description: 'at most one; the repository of steps that name none' }
     ProjectInput:
       type: object
-      required: [key, name]
+      required: [name]
       properties:
-        key: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,15}$' }
+        key: { type: string, nullable: true, pattern: '^([A-Z][A-Z0-9_]{1,15})?$', description: "Back Office's short code of the project (CI logins, MCP, templates); not a Jira key. Omitted on create = generated from the name; on update a new value renames the project, omitted = unchanged." }
         name: { type: string }
         description: { type: string }
         repositories:
@@ -2182,7 +2182,7 @@ components:
           type: object
           nullable: true
           properties:
-            jiraProjectKey: { type: string }
+            jiraProjectKey: { type: string, description: "Jira project of the issues (e.g. LFV); not derived from the project key" }
             jql: { type: string, nullable: true }
         constitution: { type: string, description: 'Markdown, Spec Kit constitution (kept while Spec Kit is off, ADR 0036)' }
         specKit: { type: boolean, nullable: true, description: 'ADR 0036: Spec Kit for this project (off by default for new projects; null on update = unchanged). Used only when the platform allows Spec Kit.' }
@@ -2196,9 +2196,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/ProjectInput'
         - type: object
-          required: [id, createdAt, updatedAt]
+          required: [id, key, createdAt, updatedAt]
           properties:
             id: { type: string, format: uuid }
+            key: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,15}$' }
             ciEntrypoints: { type: array, items: { $ref: '#/components/schemas/CiEntrypoint' } }
             createdAt: { type: string, format: date-time }
             updatedAt: { type: string, format: date-time }
@@ -2361,6 +2362,7 @@ components:
             updatedAt: { type: string, format: date-time }
             updatedBy: { $ref: '#/components/schemas/ActorRef' }
             library: { allOf: [ { $ref: '#/components/schemas/LibraryLink' } ], nullable: true, readOnly: true, description: 'set when the workflow is a linked copy of a library workflow (ADR 0037)' }
+            draft: { type: boolean, readOnly: true, description: 'saved with validation errors: kept as a draft, no run starts from it and it cannot be published until it is saved without errors' }
     IntakeRuleInput:
       type: object
       required: [name, connectionId, jql, workflowId]

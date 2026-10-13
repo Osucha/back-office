@@ -279,7 +279,6 @@
   "workflows.designer.savedAs": "Zapisano jako v{$version}",
   "workflows.designer.notSaved": "Jeszcze nie zapisano",
   "workflows.designer.places": "w {count, plural, one {# miejscu} few {# miejscach} many {# miejscach} other {# miejsca}}",
-  "workflows.designer.fixToSave": "Popraw {count, plural, one {# błąd} few {# błędy} many {# błędów} other {# błędu}}, aby zapisać.",
   "workflows.designer.severity.error": "błąd",
   "workflows.designer.severity.warning": "ostrzeżenie",
   "workflows.designer.crumb.projects": "Projekty",
@@ -305,7 +304,6 @@
   "workflows.designer.json.invalid": "Niepoprawny JSON: {$error}",
   "workflows.designer.copied": "Definicję skopiowano do schowka",
   "workflows.designer.clipboardUnavailable": "Schowek niedostępny; zaznacz tekst i skopiuj go ręcznie",
-  "workflows.designer.fixFirst": "Najpierw popraw błędy walidacji",
   "workflows.designer.saved": "Workflow zapisany jako v{$version}",
   "workflows.designer.created": "Utworzono workflow",
   "workflows.designer.duplicated": "Utworzono kopię: {$name}",
@@ -314,7 +312,6 @@
   "workflows.props.jiraConnection": "Połączenie Jira",
   "workflows.node.jiraNeeds": "Połączenie Jira wymaga: {$needs}",
   "workflows.node.jiraPinned": "Połączenie Jira wymaga: {$needs} (przypięte połączenie)",
-
   "workflows.props.writeApproval": "Zatwierdzenie przed zapisem w Jirze",
   "workflows.write.intro": " Ten krok zapisuje w Jirze. Gdy zatwierdzenie jest wymagane, uruchomienie zatrzymuje się przed zapisem, a Twoja kolej pokazuje dokładnie, co zostanie zapisane; nic nie trafia do Jiry, dopóki ktoś nie zatwierdzi. ",
   "workflows.write.modeLabel": "Zatwierdzenie przed zapisem w Jirze",
@@ -328,7 +325,6 @@
   "workflows.write.anyApprover": "każdy z run.approve",
   "workflows.write.defaultRule": "{$who} (domyślnie)",
   "workflows.write.fourEyes": "{$who}, ale nie osoba, która uruchomiła workflow",
-
   "workflows.props.repositories": "Repozytoria",
   "workflows.repos.noRepositories": " Ten projekt nie ma repozytorium, więc ten krok kodujący nie może się wykonać. Dodaj repozytorium w ustawieniach projektu albo użyj kroku LLM. ",
   "workflows.repos.modeDefault": "Użyj głównego repozytorium",
@@ -343,5 +339,7 @@
   "workflows.repos.listLabel": "Repozytoria projektu",
   "workflows.repos.pushOffOption": "Wypchnięcie i merge request (wypychanie wyłączone)",
   "workflows.repos.accessLabel": "Dostęp do {$key}",
-  "workflows.repos.unknown": "Projekt nie ma repozytorium {$key}; odznacz je albo popraw projekt."
+  "workflows.repos.unknown": "Projekt nie ma repozytorium {$key}; odznacz je albo popraw projekt.",
+  "workflows.designer.draftOnSave": "{count, plural, one {# błąd} few {# błędy} many {# błędów} other {# błędu}}: zapis zachowa wersję roboczą, przebiegi nie wystartują do czasu poprawienia.",
+  "workflows.designer.savedDraft": "Zapisano jako wersję roboczą (v{$version}): przebiegi nie wystartują, dopóki błędy nie zostaną poprawione"
 }

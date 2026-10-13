@@ -100,7 +100,7 @@ Scopes per capability (`JiraScopes`, one option suffices; to be re-checked again
 
 | Capability | Classic scopes | Granular scopes (required) | Granular (recommended to tick) |
 |---|---|---|---|
-| verification (`myself`) | `read:jira-user` | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` (corrected 2026-10-12: `myself` answers 401 without all four) | |
+| verification (`myself`) | `read:jira-user` | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira`, `read:permission:jira` (corrected 2026-10-13: `myself` answers 401 without the first four; the last one reads `mypermissions`) | |
 | `ISSUE_READ` | `read:jira-work` | `read:issue:jira`, `read:issue-details:jira`, `read:jql:jira` | + `read:issue-meta:jira`, `read:field-configuration:jira`, `read:status:jira`, `read:issue.changelog:jira`, `read:field:jira`, `read:user:jira`, `read:avatar:jira` |
 | `ISSUE_COMMENT` | `read:jira-work`, `write:jira-work` | `write:comment:jira`, `read:comment:jira` | + `read:comment.property:jira`, `read:project:jira`, `read:project-role:jira`, `read:group:jira`, `read:user:jira`, `read:avatar:jira` |
 | `ISSUE_TRANSITION` | `read:jira-work`, `write:jira-work` | `write:issue:jira`, `read:issue.transition:jira`, `read:status:jira` | + `write:issue.property:jira`, `read:field-configuration:jira` |

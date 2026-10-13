@@ -103,6 +103,7 @@ class WorkflowLibraryService(
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, source.projectId.value).actor
         gate.require(ProjectsPermissions.LIBRARY_MANAGE)
         val project = projects.findById(source.projectId) ?: throw NotFoundException("Project", source.projectId)
+        if (source.draft) throw InvalidStateException("workflow ${source.name} is a draft with validation errors; fix them and save it before publishing")
         requireGlobalTemplates(source)
         val note = command.changeNote?.trim().orEmpty()
         if (note.length > LibraryWorkflow.MAX_CHANGE_NOTE) throw ValidationException("must be at most ${LibraryWorkflow.MAX_CHANGE_NOTE} characters", "changeNote")

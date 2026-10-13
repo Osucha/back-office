@@ -45,7 +45,8 @@ interface ManageProjects {
     }
 
     data class ProjectCommand(
-        val key: String,
+        /** Short code; null or blank = generated from the name on create, unchanged on update. */
+        val key: String?,
         val name: String,
         val description: String = "",
         /** Zero or more repositories (ADR 0034); keys unique, at most one primary. */

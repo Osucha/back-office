@@ -74,7 +74,7 @@ class RestMapper {
     // ---- projects
 
     fun toCommand(dto: ProjectInputDto) = ManageProjects.ProjectCommand(
-        key = dto.key.trim(),
+        key = dto.key?.trim()?.ifEmpty { null },
         name = dto.name.trim(),
         description = dto.description,
         repositories = repositories(dto),
@@ -173,6 +173,7 @@ class RestMapper {
                 it.modified, status?.deprecated ?: false,
             )
         },
+        draft = d.draft,
     )
 
     // ---- workflow library (ADR 0037)

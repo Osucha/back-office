@@ -163,6 +163,9 @@ interface ProjectAccessProvisioner {
 
     /** Removes memberships of a deleted project. */
     fun projectDeleted(projectId: UUID)
+
+    /** The project got a new key: memberships show it from now on. */
+    fun projectRenamed(projectId: UUID, projectKey: String) = Unit
 }
 
 /**

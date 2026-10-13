@@ -129,6 +129,13 @@ class ProjectMembershipService(
         accessVersion.increment()
     }
 
+    @SystemOperation("called by the Projects context when a project key changes")
+    override fun projectRenamed(projectId: UUID, projectKey: String) {
+        val changed = memberships.findByProject(projectId).filter { it.projectKey != projectKey }
+        changed.forEach { memberships.save(it.copy(projectKey = projectKey)) }
+        if (changed.isNotEmpty()) accessVersion.increment()
+    }
+
     @SystemOperation("called by the Projects context when a project is deleted")
     override fun projectDeleted(projectId: UUID) {
         val removed = memberships.deleteByProject(projectId)

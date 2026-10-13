@@ -29,11 +29,11 @@ The manager who creates a project becomes its **Owner**, adds the team with proj
 
 | Field | Meaning |
 |---|---|
-| **Key** | 2–16 uppercase letters, digits or underscores, for example `SHOP`. Cannot be changed later. |
+| **Short code** | Back Office's own code of the project: 2–16 uppercase letters, digits or underscores, for example `SHOP`. Optional: left empty, it is generated from the name. It appears in CI logins, MCP tools and the `{{project.key}}` template variable, and can be changed later in **Settings** (past runs keep the old code). It is **not** the Jira key. |
 | **Name**, **Description** | Shown on the project card and page. |
 | **Repositories** | Optional. The Git repositories agents clone and push to, each with a key, URL, default branch and purpose; leave the list empty for a project without code. See [Repositories](#repositories). Back Office never calls your Git server's API; your CI calls Back Office. Agents need Git credentials on the runner (see [Git access for agents](integrations-git.md#git-overview)). |
 | Issue tracker switch (**Jira** / **none**) | Turn on when the workflows use the Jira tasks (fetch issue, notify, transition). The Jira credentials are [connections](#project-connections). |
-| **Jira project key** | Defaults to the project key. The designer uses it to check which connection a Jira node gets. |
+| **Jira project key** | Required with Jira on: the key of the Jira project, the prefix of its issue keys (`LFV` in `LFV-123`). The designer uses it to check which connection a Jira node gets, and the intake watcher reads this project. It is independent of the short code. |
 | **JQL filter** | Narrows the issues the **Jira intake watcher** reacts to, for example `issuetype = Story AND labels = ai`. It does not limit runs started by hand, by CI or through MCP. |
 | **Jira intake watcher** (Settings tab, after creation) | Lets Jira start runs: when an issue enters a status (or a new issue appears), a chosen workflow starts with its key. **Watch Jira and start runs**, **Poll every (minutes)**, **Workflow to start**, a status card and **Poll now**; needs `project.manage` and a reader connection. See [Jira intake watcher](integrations-jira.md#jira-intake). |
 | **Default model profile** | Used by model-backed tasks that name no profile. |

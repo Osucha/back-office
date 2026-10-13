@@ -30,8 +30,10 @@ workflow** in the page header (`/projects/:id/workflows/new`). An existing workf
    edge. Loops back to earlier nodes are ordinary edges.
 4. Select a node to edit it in **Properties** (see below). Select an edge to give it a **Label** or
    **Delete edge**.
-5. Fix every error in the **Validation** sheet. Warnings do not block saving; errors do ("Fix 2 errors
-   to save.").
+5. Fix the errors in the **Validation** sheet, now or later. A workflow saved with errors is kept as a
+   **draft** ("2 errors: saving keeps a draft, runs cannot start until fixed."): every save is a version as usual,
+   but no run starts from a draft (by hand, from CI or the Jira watcher) and it cannot be published to the library.
+   The project's workflow list marks it **draft (has errors)**. Warnings never block anything.
 6. Click **Create workflow** or **Save as new version**.
 
 Every save creates a new version. Runs keep the version they started with, so editing never disturbs work

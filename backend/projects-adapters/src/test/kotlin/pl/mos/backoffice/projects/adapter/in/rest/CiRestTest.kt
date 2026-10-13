@@ -219,7 +219,9 @@ class CiRestTest {
             .andExpect(jsonPath("$.errors[?(@.field == 'ports.a')]").isNotEmpty)
         mvc.perform(post("/api/v1/workflows/validate?projectId=$projectId").contentType(MediaType.APPLICATION_JSON).content("""{"name":"x","nodes":[{"id":"a","kind":"BOGUS","name":"A","position":{"x":0,"y":0}}],"edges":[]}"""))
             .andExpect(status().isOk).andExpect(jsonPath("$.valid").value(false))
-        mvc.perform(post("/api/v1/projects/$projectId/workflows").contentType(MediaType.APPLICATION_JSON).content(broken)).andExpect(status().isBadRequest)
+        // a workflow with errors is saved as a draft
+        mvc.perform(post("/api/v1/projects/$projectId/workflows").contentType(MediaType.APPLICATION_JSON).content(broken))
+            .andExpect(status().isCreated).andExpect(jsonPath("$.draft").value(true))
 
         mvc.perform(get("/api/v1/workflows/palette?projectId=$projectId"))
             .andExpect(status().isOk)

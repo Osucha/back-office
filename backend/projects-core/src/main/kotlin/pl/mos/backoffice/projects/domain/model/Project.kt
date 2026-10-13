@@ -153,8 +153,11 @@ data class Project(
         if (duplicate != null) throw ValidationException("entrypoint key $duplicate is not unique", "ciEntrypoints")
     }
 
-    /** Jira project key defaults to the project key when the binding does not name one. */
-    val jiraProjectKey: String get() = issueTracker.jiraProjectKey?.takeIf { it.isNotBlank() } ?: key
+    /**
+     * The Jira project of the project's issues, when the binding names one. It is not derived from [key]: the project
+     * key is Back Office's own short code (CI logins, MCP, templates) and may differ from any Jira key.
+     */
+    val jiraProjectKey: String? get() = issueTracker.jiraProjectKey?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
 
     fun entrypoint(key: String): CiEntrypoint? = ciEntrypoints.firstOrNull { it.key == key }
 
@@ -192,12 +195,30 @@ data class Project(
         updatedAt = now,
     )
 
+    /** A new short code; history (runs, CI executions, audit) keeps the key it was recorded with. */
+    fun rename(newKey: String, now: Instant): Project = copy(key = newKey, updatedAt = now)
+
     fun withEntrypoints(entrypoints: List<CiEntrypoint>, now: Instant): Project = copy(ciEntrypoints = entrypoints, updatedAt = now)
 
     fun withJiraConnections(settings: ProjectJiraConnections, now: Instant): Project = copy(jiraConnections = settings, updatedAt = now)
 
     companion object {
         val KEY_PATTERN = Regex("^[A-Z][A-Z0-9_]{1,15}$")
+
+        /**
+         * A free key derived from [name]: the initials of a name of several words, else its first letters (diacritics
+         * dropped, at least 2 and at most 10 characters), with a number appended while [taken] says it exists.
+         */
+        fun suggestKey(name: String, taken: (String) -> Boolean): String {
+            val ascii = java.text.Normalizer.normalize(name.replace('ł', 'l').replace('Ł', 'L'), java.text.Normalizer.Form.NFD)
+                .replace(Regex("\\p{M}+"), "").uppercase()
+            val words = ascii.split(Regex("[^A-Z0-9]+")).filter { it.isNotEmpty() }
+            val raw = if (words.size >= 2) words.joinToString("") { it.take(1) } else words.firstOrNull().orEmpty()
+            var base = raw.dropWhile { !it.isLetter() }.take(10)
+            if (base.length < 2) base = (base + "PRJ").take(3)
+            if (!taken(base)) return base
+            return (2..9999).asSequence().map { "$base$it" }.first { !taken(it) }
+        }
     }
 }
 

@@ -82,11 +82,12 @@ class SpecKitGatingTest {
     }
 
     @Test
-    fun `the designer palette hides Spec Kit templates, also those extending them, and saving refuses Spec Kit steps`() {
+    fun `the designer palette hides Spec Kit templates, also those extending them, and saving keeps such a workflow as a draft`() {
         val projects = mockk<ProjectRepository> { every { findById(off.id) } returns off; every { findById(on.id) } returns on }
         val expressions = mockk<ExpressionEvaluator> { every { validate(any()) } returns null }
         val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(off.id.value, on.id.value))
-        val service = WorkflowService(mockk(), projects, mockk(), WorkflowValidator(), catalog, expressions, gate, RecordingAuditPort(), Clock.fixed(now), null, check)
+        val saving = mockk<WorkflowDefinitionRepository> { every { save(any()) } answers { firstArg() } }
+        val service = WorkflowService(saving, projects, mockk(), WorkflowValidator(), catalog, expressions, gate, RecordingAuditPort(), Clock.fixed(now), null, check)
 
         assertThat(service.palette(off.id).tasks.map { it.key }).containsExactly("llm-task")
         assertThat(service.palette(on.id).tasks.map { it.key }).containsExactly("spec-kit-specify", "my-spec", "llm-task")
@@ -94,7 +95,8 @@ class SpecKitGatingTest {
         val command = WorkflowCommand(issueWorkflow.name, "", issueWorkflow.nodes, issueWorkflow.edges, issueWorkflow.triggers, true)
         val result = service.validate(off.id, command)
         assertThat(result.errors).anyMatch { it.nodeId == "specify" && it.message.contains("Spec Kit") }
-        assertThatThrownBy { service.create(off.id, command) }.isInstanceOf(ValidationException::class.java)
+        // kept as a draft: saved, but no run starts from it
+        assertThat(service.create(off.id, command).draft).isTrue()
     }
 
     @Test

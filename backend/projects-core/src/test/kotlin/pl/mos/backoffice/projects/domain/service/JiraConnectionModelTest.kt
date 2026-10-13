@@ -39,7 +39,8 @@ class JiraConnectionModelTest {
     fun `identifying the account with a scoped token needs every granular scope of myself`() {
         // Jira answers 401 to GET /myself when a scoped token lacks one of them (seen with read:user:jira alone)
         assertThat(JiraScopes.coversVerification(listOf("read:user:jira", "read:avatar:jira"))).isFalse()
-        assertThat(JiraScopes.coversVerification(listOf("read:user:jira", "read:group:jira", "read:application-role:jira", "read:avatar:jira"))).isTrue()
+        assertThat(JiraScopes.coversVerification(listOf("read:user:jira", "read:group:jira", "read:application-role:jira", "read:avatar:jira"))).isFalse()
+        assertThat(JiraScopes.coversVerification(listOf("read:user:jira", "read:group:jira", "read:application-role:jira", "read:avatar:jira", "read:permission:jira"))).isTrue()
         assertThat(JiraScopes.coversVerification(listOf("read:jira-user"))).isTrue()
     }
 

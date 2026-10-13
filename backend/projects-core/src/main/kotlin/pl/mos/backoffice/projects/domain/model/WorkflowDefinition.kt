@@ -232,6 +232,11 @@ data class WorkflowDefinition(
     val updatedBy: Actor? = null,
     /** Set when this workflow is a linked copy of a library workflow (ADR 0037); runs snapshot it. */
     val library: LibraryLink? = null,
+    /**
+     * Saved with validation errors (a work in progress): kept like any version, but no run starts from it and it
+     * cannot be published to the library until a save without errors.
+     */
+    val draft: Boolean = false,
 ) {
     init {
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
@@ -271,6 +276,8 @@ data class WorkflowDefinition(
         version = version + 1,
         updatedAt = now,
         updatedBy = actor ?: updatedBy,
+        // callers that save without validating mark the new version as a draft themselves
+        draft = false,
     )
 
     fun withLibrary(link: LibraryLink?): WorkflowDefinition = copy(library = link)

@@ -656,7 +656,7 @@ const MAX_HISTORY = 50;
           [dirty]="dirty() && !readOnly()"
           [saving]="saving()"
           [showSave]="!readOnly()"
-          [canSave]="issues().errorCount === 0 && !jsonError()"
+          [canSave]="!jsonError()"
           [requireDirty]="!!existing()"
           [saveLabel]="existing() ? text.saveVersion : text.create"
           [cleanLabel]="cleanLabel()"
@@ -1136,7 +1136,7 @@ export class WorkflowDesignerPageComponent {
 
   fixLabel(count: number): string {
     return icu(
-      $localize`:@@workflows.designer.fixToSave:Fix {count, plural, one {# error} other {# errors}} to save.`,
+      $localize`:@@workflows.designer.draftOnSave:{count, plural, one {# error} other {# errors}}: saving keeps a draft, runs cannot start until fixed.`,
       { count },
     );
   }
@@ -1656,10 +1656,6 @@ export class WorkflowDesignerPageComponent {
 
   save(): void {
     const d = this.def();
-    if (this.issues().errorCount > 0) {
-      this.message.error($localize`:@@workflows.designer.fixFirst:Fix the validation errors first`);
-      return;
-    }
     this.saving.set(true);
     const existing = this.existing();
     const req = existing
@@ -1670,11 +1666,17 @@ export class WorkflowDesignerPageComponent {
         this.saving.set(false);
         this.dirty.set(false);
         this.persistedIds.set(new Set(saved.nodes.map((n) => n.id)));
+        if (saved.draft) {
+          this.message.warning(
+            $localize`:@@workflows.designer.savedDraft:Saved as a draft (v${saved.version}:version:): runs cannot start until the errors are fixed`,
+          );
+        }
         if (existing) {
           this.existing.set(saved);
-          this.message.success(
-            $localize`:@@workflows.designer.saved:Workflow saved as v${saved.version}:version:`,
-          );
+          if (!saved.draft)
+            this.message.success(
+              $localize`:@@workflows.designer.saved:Workflow saved as v${saved.version}:version:`,
+            );
         } else {
           this.message.success($localize`:@@workflows.designer.created:Workflow created`);
           this.router.navigate(['/workflows', saved.id, 'edit'], { replaceUrl: true });

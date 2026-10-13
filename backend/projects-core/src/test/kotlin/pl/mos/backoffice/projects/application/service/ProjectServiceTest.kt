@@ -48,6 +48,7 @@ class ProjectServiceTest {
     private val provisioner = object : ProjectAccessProvisioner {
         override fun grantCreator(projectId: UUID, projectKey: String, creator: Actor) { provisioned += "owner:$projectKey:${creator.displayName}" }
         override fun projectDeleted(projectId: UUID) { provisioned += "deleted:$projectId" }
+        override fun projectRenamed(projectId: UUID, projectKey: String) { provisioned += "renamed:$projectKey" }
     }
     private val seeded = mutableListOf<WorkflowDefinition>()
 
@@ -85,6 +86,35 @@ class ProjectServiceTest {
 
         assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).create(command.copy(key = "OTHER")) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("projects.create") }
+    }
+
+    @Test
+    fun `the key is generated from the name when omitted and can be changed later, also in the memberships`() {
+        every { projects.findByKey("MP") } returns pl.mos.backoffice.projects.Fixtures.project("MP")
+        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(key = null, name = "Mój projekt"))
+        assertThat(project.key).isEqualTo("MP2")
+        // nothing implicit about Jira: the project key is not a Jira key
+        assertThat(project.jiraProjectKey).isNull()
+        audit.entries.clear()
+
+        val manager = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
+        val renamed = service(manager).update(project.id, command.copy(key = "lfv", name = "Mój projekt"))
+        assertThat(renamed.key).isEqualTo("LFV")
+        assertThat(provisioned).contains("renamed:LFV")
+        assertThat(audit.entries.single().details["key"]).isEqualTo(mapOf("old" to "MP2", "new" to "LFV"))
+        // null = unchanged
+        assertThat(service(manager).update(project.id, command.copy(key = null, name = "Mój projekt")).key).isEqualTo("LFV")
+        every { projects.findByKey("TAKEN") } returns pl.mos.backoffice.projects.Fixtures.project("TAKEN")
+        assertThatThrownBy { service(manager).update(project.id, command.copy(key = "TAKEN")) }.isInstanceOf(pl.mos.backoffice.shared.ValidationException::class.java)
+    }
+
+    @Test
+    fun `suggested keys use initials or the first letters, without diacritics`() {
+        val none: (String) -> Boolean = { false }
+        assertThat(Project.suggestKey("Łódź", none)).isEqualTo("LODZ")
+        assertThat(Project.suggestKey("Zarządzanie zgłoszeniami klienta", none)).isEqualTo("ZZK")
+        assertThat(Project.suggestKey("x", none)).isEqualTo("XPR")
+        assertThat(Project.suggestKey("123", none)).isEqualTo("PRJ")
     }
 
     @Test

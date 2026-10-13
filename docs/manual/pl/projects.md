@@ -31,11 +31,11 @@ Kierownik, który tworzy projekt, zostaje jego **Właścicielem**, dodaje zespó
 
 | Pole | Znaczenie |
 |---|---|
-| **Klucz** (**Key**) | 2–16 wielkich liter, cyfr lub podkreśleń, na przykład `SHOP`. Nie można go później zmienić. |
+| **Kod skrócony** (**Short code**) | Własny kod projektu w Back Office: 2–16 wielkich liter, cyfr lub podkreśleń, na przykład `SHOP`. Opcjonalny: puste pole oznacza kod utworzony z nazwy. Pojawia się w loginach CI, narzędziach MCP i zmiennej szablonu `{{project.key}}`; można go później zmienić w **Ustawieniach** (dotychczasowe przebiegi zachowują stary kod). To **nie** jest klucz Jira. |
 | **Nazwa**, **Opis** | Wyświetlane na karcie i stronie projektu. |
 | **Repozytoria** (**Repositories**) | Opcjonalne. Repozytoria Git, które agenci klonują i do których wypychają zmiany; każde ma klucz, URL, gałąź domyślną i przeznaczenie. W projekcie bez kodu zostaw listę pustą. Zob. [Repozytoria](#repositories). Back Office nigdy nie wywołuje API Twojego serwera Git; to Twoje CI wywołuje Back Office. Agenci potrzebują poświadczeń Git na runnerze (zob. [Dostęp agentów do gita](integrations-git.md#git-overview)). |
 | Przełącznik systemu zgłoszeń (**Jira** / **brak**) | Włącz, gdy workflowy korzystają z zadań Jiry (pobranie zgłoszenia, powiadomienie, zmiana statusu). Poświadczenia Jiry to [połączenia](#project-connections). |
-| **Klucz projektu Jira** (**Jira project key**) | Domyślnie klucz projektu. Projektant używa go, aby sprawdzić, które połączenie dostanie węzeł Jiry. |
+| **Klucz projektu Jira** (**Jira project key**) | Wymagany przy włączonej Jirze: klucz projektu w Jirze, czyli przedrostek kluczy zgłoszeń (`LFV` w `LFV-123`). Projektant używa go, aby sprawdzić, które połączenie dostanie węzeł Jiry, a monitor zgłoszeń czyta ten projekt. Nie zależy od kodu skróconego. |
 | **Filtr JQL** (**JQL filter**) | Zawęża zgłoszenia, na które reaguje **monitor zgłoszeń Jira**, na przykład `issuetype = Story AND labels = ai`. Nie ogranicza uruchomień rozpoczynanych ręcznie, z CI ani przez MCP. |
 | **Monitor zgłoszeń Jira** (**Jira intake watcher**; karta Ustawienia, po utworzeniu projektu) | Pozwala Jirze uruchamiać workflowy: gdy zgłoszenie trafi do statusu (albo pojawi się nowe zgłoszenie), wybrany workflow startuje z jego kluczem. **Monitoruj Jirę i uruchamiaj workflowy**, **Sprawdzaj co (minuty)**, **Workflow do uruchomienia**, karta stanu i **Sprawdź teraz** (**Poll now**); wymaga `project.manage` i połączenia do odczytu. Zob. [Monitor zgłoszeń Jira](integrations-jira.md#jira-intake). |
 | **Domyślny profil modelu** (**Default model profile**) | Używany przez zadania oparte na modelu, które nie wskazują profilu. |

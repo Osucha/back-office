@@ -59,7 +59,8 @@ data class DiffStatDto(val files: Int, val insertions: Int, val deletions: Int)
 data class IssueTrackerDto(val jiraProjectKey: String? = null, val jql: String? = null)
 data class ProjectDefaultsDto(val modelProfileId: UUID? = null, val reviewModelProfileId: UUID? = null)
 data class ProjectInputDto(
-    @field:NotBlank @field:Pattern(regexp = "^[A-Z][A-Z0-9_]{1,15}$") val key: String = "",
+    /** Optional: generated from the name on create; on update a new key renames the project (null = unchanged). */
+    @field:Pattern(regexp = "^([A-Z][A-Z0-9_]{1,15})?$") val key: String? = null,
     @field:NotBlank val name: String = "",
     val description: String = "",
     @field:Valid val repositories: List<ProjectRepositoryDto>? = null,
@@ -154,6 +155,8 @@ data class WorkflowDefinitionDto(
     val updatedAt: Instant,
     val updatedBy: ActorRefDto?,
     val library: LibraryLinkDto? = null,
+    /** Saved with validation errors: no runs start from it until it is saved without errors. */
+    val draft: Boolean = false,
 )
 data class LibraryLinkDto(
     val libraryWorkflowId: UUID,

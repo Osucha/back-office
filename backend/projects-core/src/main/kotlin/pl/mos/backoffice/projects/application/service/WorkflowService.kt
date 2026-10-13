@@ -71,7 +71,8 @@ class WorkflowService(
     override fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition {
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value).actor
         projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
-        requireValid(projectId, command)
+        // a workflow with errors is kept as a draft (no runs, no publishing) instead of being refused
+        val draft = !check(projectId, command).valid
         val now = clock.now()
         val saved = workflows.save(
             WorkflowDefinition(
@@ -88,17 +89,21 @@ class WorkflowService(
                 createdAt = now,
                 updatedAt = now,
                 updatedBy = actor,
+                draft = draft,
             ),
         )
-        audit.record(AuditEntry("WORKFLOW_CREATE", ENTITY, saved.id.toString(), projectId = projectId.value, details = mapOf("name" to saved.name, "nodes" to saved.nodes.size)))
+        audit.record(
+            AuditEntry("WORKFLOW_CREATE", ENTITY, saved.id.toString(), projectId = projectId.value, details = mapOf("name" to saved.name, "nodes" to saved.nodes.size, "draft" to draft)),
+        )
         return saved
     }
 
     override fun update(id: WorkflowDefinitionId, command: WorkflowCommand): WorkflowDefinition {
         val existing = load(id)
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value).actor
-        requireValid(existing.projectId, command)
+        val draft = !check(existing.projectId, command).valid
         val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor)
+            .copy(draft = draft)
         val saved = workflows.save(next.withLibrary(refreshedLink(next)))
         audit.record(
             AuditEntry(
@@ -108,6 +113,7 @@ class WorkflowService(
                     "enabled" to (existing.enabled to saved.enabled),
                     "version" to (existing.version to saved.version),
                     "nodes" to (existing.nodes.size to saved.nodes.size),
+                    "draft" to (existing.draft to saved.draft),
                 ),
             ),
         )

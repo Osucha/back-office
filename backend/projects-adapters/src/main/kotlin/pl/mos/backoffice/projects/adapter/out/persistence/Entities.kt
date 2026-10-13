@@ -84,6 +84,8 @@ class WorkflowDefinitionEntity(
     @Column(name = "library_key") var libraryKey: String? = null,
     @Column(name = "library_version") var libraryVersion: Int? = null,
     @Column(name = "library_modified", nullable = false) var libraryModified: Boolean = false,
+    /** V113: saved with validation errors (no runs, no publishing). */
+    @Column(nullable = false) var draft: Boolean = false,
 )
 
 /** V111 (ADR 0037): a library workflow; its versions are [LibraryWorkflowVersionEntity] rows. */

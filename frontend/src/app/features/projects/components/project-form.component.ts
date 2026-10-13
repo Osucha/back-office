@@ -44,14 +44,16 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
     <form nz-form nzLayout="vertical" [formGroup]="form" (ngSubmit)="submit()">
       <div class="grid">
         <nz-form-item>
-          <nz-form-label nzRequired nzFor="p-key" i18n="@@projects.form.key">Key</nz-form-label>
-          <nz-form-control [nzErrorTip]="keyTip">
+          <nz-form-label nzFor="p-key" i18n="@@projects.form.keyOptional">Short code</nz-form-label>
+          <nz-form-control
+            [nzErrorTip]="keyTip"
+            [nzExtra]="project() ? text.keyRenameHint : text.keyHint"
+          >
             <input
               nz-input
               id="p-key"
               formControlName="key"
-              [placeholder]="examples.key"
-              [readOnly]="!!project()"
+              [placeholder]="project() ? examples.key : text.keyGenerated"
               class="mono"
               style="text-transform: uppercase"
             />
@@ -116,16 +118,17 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
       @if (form.controls.jiraEnabled.value) {
         <div class="grid" formGroupName="issueTracker">
           <nz-form-item>
-            <nz-form-label nzFor="p-jira" i18n="@@projects.form.jiraProjectKey"
+            <nz-form-label nzRequired nzFor="p-jira" i18n="@@projects.form.jiraProjectKey"
               >Jira project key</nz-form-label
             >
-            <nz-form-control>
+            <nz-form-control [nzErrorTip]="text.jiraKeyRequired">
               <input
                 nz-input
                 id="p-jira"
                 formControlName="jiraProjectKey"
-                placeholder="Defaults to the project key"
-                i18n-placeholder="@@projects.form.jiraProjectKeyPlaceholder"
+                class="mono"
+                style="text-transform: uppercase"
+                [placeholder]="examples.jiraKey"
               />
             </nz-form-control>
           </nz-form-item>
@@ -332,16 +335,22 @@ export class ProjectFormComponent {
 
   readonly text = {
     keyPattern: $localize`:@@projects.form.keyPattern:Uppercase letters, digits and underscore, 2-16 chars (e.g. SHOP)`,
+    keyHint: $localize`:@@projects.form.keyHint:Back Office's own short code (CI logins, MCP, templates), not the Jira key. Leave empty to generate it from the name.`,
+    keyRenameHint: $localize`:@@projects.form.keyRenameHint:Back Office's own short code, not the Jira key. Changing it does not touch Jira; past runs keep the old code.`,
+    keyGenerated: $localize`:@@projects.form.keyGenerated:generated from the name`,
+    jiraKeyRequired: $localize`:@@projects.form.jiraKeyRequired:Enter the key of the Jira project (the prefix of its issue keys, e.g. LFV in LFV-123)`,
     nameRequired: $localize`:@@projects.form.nameRequired:Name is required`,
   };
   /** Example values in placeholders: code and data, the same in every language. */
   readonly examples = {
     key: 'SHOP',
+    jiraKey: 'LFV',
     jql: 'labels = "ai-ready" AND status = "To Do"', // i18n-ignore
   };
 
   readonly form = this.fb.nonNullable.group({
-    key: ['', [Validators.required, Validators.pattern(/^[A-Z][A-Z0-9_]{1,15}$/)]],
+    // optional: generated from the name on create, unchanged on update when emptied
+    key: ['', [Validators.pattern(/^([A-Z][A-Z0-9_]{1,15})?$/)]],
     name: ['', Validators.required],
     description: [''],
     repositories: repositoriesArray(),
@@ -378,7 +387,7 @@ export class ProjectFormComponent {
         key: p.key,
         name: p.name,
         description: p.description ?? '',
-        jiraEnabled: !!p.issueTracker,
+        jiraEnabled: !!(p.issueTracker?.jiraProjectKey || p.issueTracker?.jql),
         issueTracker: {
           jiraProjectKey: p.issueTracker?.jiraProjectKey ?? '',
           jql: p.issueTracker?.jql ?? '',
@@ -412,19 +421,22 @@ export class ProjectFormComponent {
   }
 
   submit(): void {
+    const jiraKey = this.form.controls.issueTracker.controls.jiraProjectKey;
+    // the Jira key is never derived from the project key: required while Jira is on
+    if (this.form.controls.jiraEnabled.value && !jiraKey.value.trim()) jiraKey.setErrors({ required: true });
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
     const v = this.form.getRawValue();
     const input: ProjectInput = {
-      key: v.key,
+      key: v.key || undefined,
       name: v.name,
       description: v.description || undefined,
       repositories: repositoriesValue(this.form.controls.repositories),
       issueTracker: v.jiraEnabled
         ? {
-            jiraProjectKey: v.issueTracker.jiraProjectKey || v.key,
+            jiraProjectKey: v.issueTracker.jiraProjectKey.trim().toUpperCase(),
             jql: v.issueTracker.jql || null,
           }
         : null,

@@ -31,8 +31,11 @@ Otwierasz go z projektu: karta **Workflowy** (**Workflows**) → **Edytuj** (**E
    wyjściowego wychodzi najwyżej jedna krawędź. Pętle do wcześniejszych węzłów to zwykłe krawędzie.
 4. Zaznacz węzeł, aby edytować go we **Właściwościach** (zob. niżej). Zaznacz krawędź, aby nadać jej
    **Etykietę** (**Label**) lub ją usunąć przyciskiem **Usuń krawędź** (**Delete edge**).
-5. Popraw wszystkie błędy z arkusza **Walidacja**. Ostrzeżenia nie blokują zapisu, błędy tak („Popraw
-   2 błędy, aby zapisać.”).
+5. Popraw błędy z arkusza **Walidacja**, od razu albo później. Workflow zapisany z błędami zostaje **wersją
+   roboczą** („2 błędy: zapis zachowa wersję roboczą, przebiegi nie wystartują do czasu poprawienia.”): każdy zapis
+   jest jak zwykle wersją, ale z wersji roboczej nie startuje żaden przebieg (ręcznie, z CI ani z monitora Jira) i nie
+   można jej opublikować w bibliotece. Lista workflowów projektu oznacza ją **wersja robocza (z błędami)**. Ostrzeżenia
+   niczego nie blokują.
 6. Kliknij **Utwórz workflow** lub **Zapisz jako nową wersję**.
 
 Każdy zapis tworzy nową wersję. Uruchomienia zachowują wersję, z którą wystartowały, więc edycja nigdy

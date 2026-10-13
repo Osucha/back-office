@@ -30,13 +30,13 @@ class JiraIntakePlanner {
         return minutes.coerceIn(MIN_WINDOW_MINUTES, MAX_WINDOW.toMinutes())
     }
 
-    fun jql(jiraProjectKey: String, projectJql: String?, triggerStatus: String?, windowMinutes: Long): String {
+    fun jql(jiraProjectKey: String?, projectJql: String?, triggerStatus: String?, windowMinutes: Long): String {
         val filter = projectJql?.let(::stripOrderBy)?.trim()?.takeIf { it.isNotEmpty() }
         val window = when (mode(triggerStatus)) {
             IntakeMode.TRANSITION -> "status CHANGED TO ${quote(triggerStatus!!.trim())} AFTER -${windowMinutes}m"
             IntakeMode.NEW_ISSUE -> "created >= -${windowMinutes}m"
         }
-        return listOfNotNull("project = ${quote(jiraProjectKey)}", filter?.let { "($it)" }, window).joinToString(" AND ") + " ORDER BY updated ASC"
+        return listOfNotNull(jiraProjectKey?.let { "project = ${quote(it)}" }, filter?.let { "($it)" }, window).joinToString(" AND ") + " ORDER BY updated ASC"
     }
 
     /** The issues of [issues] that start a run, oldest first, each with its dedupe key. */

@@ -127,6 +127,10 @@ class JiraIntakeService(
         }
         val connectionName = choice.connection.name
         val warning = choice.message.takeIf { choice.status == SelectionStatus.OVER_PRIVILEGED }
+        if (watchesEverything(project)) {
+            intakes.save(intake.failed(now, "refused: $NO_JIRA_SCOPE", connection = connectionName))
+            return 0
+        }
         val cursor = intake.cursor
         if (cursor == null) {
             intakes.save(intake.succeeded(now, 0, advanceCursor = true, connection = connectionName, warning = warning))
@@ -168,6 +172,9 @@ class JiraIntakeService(
         }
     }
 
+    /** Neither a Jira project key nor a JQL filter: the watcher would see every project of the site. */
+    private fun watchesEverything(project: Project): Boolean = project.jiraProjectKey == null && project.issueTracker.jql.isNullOrBlank()
+
     private fun enqueue(projectId: ProjectId) =
         queue.enqueue(WorkRequest(WorkKinds.JIRA_INTAKE_POLL, mapOf(PROJECT_ID to projectId.toString()), dedupeKey = dedupeKey(projectId), maxAttempts = 1))
 
@@ -181,6 +188,8 @@ class JiraIntakeService(
             if (workflow != null && trigger == null) add("workflow ${workflow.name} has no JIRA_TRANSITION trigger")
             if (workflow != null && !workflow.enabled) add("workflow ${workflow.name} is disabled")
             if (!choice.usable) add("no connection with ISSUE_READ: the watcher refuses to poll (${choice.message})")
+            if (workflow != null && workflow.draft) add("workflow ${workflow.name} is a draft with validation errors")
+            if (watchesEverything(project)) add(NO_JIRA_SCOPE)
         }
         return JiraIntakeView(
             intake = intake,
@@ -198,6 +207,7 @@ class JiraIntakeService(
     private fun loadProject(projectId: ProjectId): Project = projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
 
     companion object {
+        const val NO_JIRA_SCOPE = "set the Jira project key (or a JQL filter) in the project settings: without it the watcher would read every Jira project"
         const val ENTITY = "JiraIntake"
         const val UPDATE = "JIRA_INTAKE_UPDATE"
         const val POLL_NOW = "JIRA_INTAKE_POLL_NOW"

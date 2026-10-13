@@ -150,7 +150,7 @@ Atlassian offers two kinds of API tokens. Back Office supports both:
 
    | Connection may | Granular scopes to tick (recommended) | Or the classic scopes |
    |---|---|---|
-   | (always, to identify the account) | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` (all four; without them Jira answers 401), recommended `read:permission:jira` (to show the account's project permissions) | `read:jira-user` |
+   | (always, to identify the account) | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` and `read:permission:jira` (all five: without the first four Jira answers 401, the last reads the account's project permissions) | `read:jira-user` |
    | **Read issues** | `read:issue:jira`, `read:issue-details:jira`, `read:jql:jira`, `read:issue-meta:jira`, `read:field-configuration:jira`, `read:status:jira`, `read:issue.changelog:jira`, `read:field:jira`, `read:avatar:jira` | `read:jira-work` |
    | **Comment on issues** | `write:comment:jira`, `read:comment:jira`, `read:comment.property:jira`, `read:project:jira`, `read:project-role:jira`, `read:group:jira`, `read:avatar:jira` | `read:jira-work`, `write:jira-work` |
    | **Move issues** | `write:issue:jira`, `write:issue.property:jira`, `read:issue.transition:jira`, `read:status:jira`, `read:field-configuration:jira` | `read:jira-work`, `write:jira-work` |
@@ -373,8 +373,8 @@ When your issues keep acceptance criteria in a custom field, Back Office can exp
 
 1. Open the project → **Settings** tab (needs `project.manage`) and scroll to **Issue tracker (optional)**.
 2. Switch the toggle to **Jira**.
-3. **Jira project key**: the key of the Jira project (for example `SHOP`); empty means "same as the Back
-   Office project key". The designer uses it to check which connection a Jira node would get (against
+3. **Jira project key** (required): the key of the Jira project (for example `SHOP`), independent of the Back
+   Office short code. The designer uses it to check which connection a Jira node would get (against
    **Allowed projects**); at run time the key of the actual issue counts.
 4. **JQL filter** (optional): narrows the issues the [Jira intake watcher](#jira-intake) reacts to.
 5. **Save changes**. The change is audited.

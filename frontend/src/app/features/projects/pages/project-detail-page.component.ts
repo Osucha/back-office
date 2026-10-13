@@ -305,8 +305,14 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
                         <bo-baton
                           size="sm"
                           appearance="plain"
-                          [holder]="w.enabled === false ? 'idle' : 'done'"
-                          [label]="w.enabled === false ? text.disabled : text.enabled"
+                          [holder]="w.draft ? 'blocked' : w.enabled === false ? 'idle' : 'done'"
+                          [label]="
+                            w.draft
+                              ? text.draft
+                              : w.enabled === false
+                                ? text.disabled
+                                : text.enabled
+                          "
                         />
                       </td>
                       <td>
@@ -321,7 +327,7 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
                               nzType="primary"
                               type="button"
                               (click)="openStart(w)"
-                              [disabled]="w.enabled === false"
+                              [disabled]="w.enabled === false || w.draft"
                               i18n="@@projects.detail.workflows.startRun"
                             >
                               Start run
@@ -546,7 +552,7 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
           id="issue-key"
           nz-input
           [(ngModel)]="issueKey"
-          [placeholder]="(project()?.issueTracker?.jiraProjectKey || project()?.key) + '-123'"
+          [placeholder]="(project()?.issueTracker?.jiraProjectKey || 'ABC') + '-123'"
           class="mono"
           style="margin: 4px 0 12px"
           (keydown.enter)="startRun()"
@@ -870,6 +876,7 @@ export class ProjectDetailPageComponent {
     noWorkflowsDetail: $localize`:@@projects.detail.workflows.emptyDetail:Design the first one on the canvas: issue to reviewed merge request.`,
     newWorkflow: $localize`:@@projects.detail.workflows.new:New workflow`,
     disabled: $localize`:@@projects.detail.workflows.disabled:disabled`,
+    draft: $localize`:@@projects.detail.workflows.draft:draft (has errors)`,
     enabled: $localize`:@@projects.detail.workflows.enabled:enabled`,
     settings: $localize`:@@projects.detail.settings:Project settings`,
     settingsReadOnly: $localize`:@@projects.detail.settingsReadOnly:Project settings (read-only)`,

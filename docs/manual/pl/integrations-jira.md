@@ -155,7 +155,7 @@ Atlassian oferuje dwa rodzaje tokenów API. Back Office obsługuje oba:
 
    | Połączenie może | Szczegółowe zakresy do zaznaczenia (zalecane) | Albo zakresy klasyczne |
    |---|---|---|
-   | (zawsze, by rozpoznać konto) | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` (wszystkie cztery; bez nich Jira odpowiada 401), zalecany `read:permission:jira` (pokazuje uprawnienia konta w projekcie) | `read:jira-user` |
+   | (zawsze, by rozpoznać konto) | `read:user:jira`, `read:group:jira`, `read:application-role:jira`, `read:avatar:jira` i `read:permission:jira` (wszystkie pięć: bez pierwszych czterech Jira odpowiada 401, ostatni odczytuje uprawnienia konta w projekcie) | `read:jira-user` |
    | **Odczyt zgłoszeń** | `read:issue:jira`, `read:issue-details:jira`, `read:jql:jira`, `read:issue-meta:jira`, `read:field-configuration:jira`, `read:status:jira`, `read:issue.changelog:jira`, `read:field:jira`, `read:avatar:jira` | `read:jira-work` |
    | **Komentowanie zgłoszeń** | `write:comment:jira`, `read:comment:jira`, `read:comment.property:jira`, `read:project:jira`, `read:project-role:jira`, `read:group:jira`, `read:avatar:jira` | `read:jira-work`, `write:jira-work` |
    | **Przenoszenie zgłoszeń** | `write:issue:jira`, `write:issue.property:jira`, `read:issue.transition:jira`, `read:status:jira`, `read:field-configuration:jira` | `read:jira-work`, `write:jira-work` |
@@ -386,8 +386,8 @@ promptom jako `issue.acceptanceCriteria`.
 1. Otwórz projekt → zakładka **Ustawienia** (**Settings**) (wymaga `project.manage`) i przewiń do
    **System zgłoszeń (opcjonalnie)** (**Issue tracker (optional)**).
 2. Przełącz przełącznik na **Jira**.
-3. **Klucz projektu Jira** (**Jira project key**): klucz projektu w Jirze (na przykład `SHOP`); puste pole
-   oznacza „taki sam jak klucz projektu Back Office”. Projektant używa go, aby sprawdzić, które połączenie
+3. **Klucz projektu Jira** (**Jira project key**, wymagany): klucz projektu w Jirze (na przykład `SHOP`), niezależny
+   od kodu skróconego projektu w Back Office. Projektant używa go, aby sprawdzić, które połączenie
    dostałby węzeł Jiry (względem **Dozwolonych projektów**); w czasie uruchomienia liczy się klucz
    rzeczywistego zgłoszenia.
 4. **Filtr JQL** (**JQL filter**) (opcjonalnie): zawęża zgłoszenia, na które reaguje
