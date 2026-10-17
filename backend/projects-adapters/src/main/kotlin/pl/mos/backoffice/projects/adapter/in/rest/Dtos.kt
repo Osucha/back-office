@@ -14,6 +14,7 @@ import pl.mos.backoffice.projects.adapter.support.WorkflowNodeJson
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
+import pl.mos.backoffice.projects.adapter.support.WorkflowWorkspaceJson
 
 /* Request and response bodies exactly as in docs/api/openapi.yaml. */
 
@@ -139,6 +140,7 @@ data class WorkflowDefinitionInputDto(
     val triggers: List<TriggerJson> = listOf(TriggerJson()),
     val enabled: Boolean = true,
     val canvas: CanvasJson? = null,
+    val workspaces: List<WorkflowWorkspaceJson> = emptyList(),
 )
 data class WorkflowDefinitionDto(
     val id: UUID,
@@ -157,6 +159,7 @@ data class WorkflowDefinitionDto(
     val library: LibraryLinkDto? = null,
     /** Saved with validation errors: no runs start from it until it is saved without errors. */
     val draft: Boolean = false,
+    val workspaces: List<WorkflowWorkspaceJson> = emptyList(),
 )
 data class LibraryLinkDto(
     val libraryWorkflowId: UUID,
@@ -222,6 +225,7 @@ data class LibraryWorkflowVersionDetailDto(
     val edges: List<WorkflowEdgeJson>,
     val triggers: List<TriggerJson>,
     val canvas: CanvasJson?,
+    val workspaces: List<WorkflowWorkspaceJson> = emptyList(),
 )
 data class PublishWorkflowRequestDto(
     val libraryWorkflowId: UUID? = null,

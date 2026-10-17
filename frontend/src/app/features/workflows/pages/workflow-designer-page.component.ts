@@ -68,6 +68,8 @@ import { ProjectsStore } from '../../../core/state/projects.store';
 import { NodePaletteComponent, type PalettePick } from '../components/node-palette.component';
 import { NodePropertyPanelComponent } from '../components/node-property-panel.component';
 import { TriggersEditorComponent } from '../components/triggers-editor.component';
+import { WorkspacesEditorComponent, type WorkspacesChange } from '../components/workspaces-editor.component';
+import { applyWorkspaces, membersOf } from '../data/workspaces';
 import { WorkflowCanvasComponent, type PaletteDrop } from '../components/workflow-canvas.component';
 import { autoLayout, needsLayout } from '../data/auto-layout';
 import {
@@ -118,6 +120,7 @@ const MAX_HISTORY = 50;
     NodePaletteComponent,
     NodePropertyPanelComponent,
     TriggersEditorComponent,
+    WorkspacesEditorComponent,
     ActionBarComponent,
     BatonComponent,
     GlyphComponent,
@@ -490,6 +493,7 @@ const MAX_HISTORY = 50;
                     [projectId]="resolvedProjectId()"
                     [projectRepositories]="projectRepositories()"
                     [librarySources]="librarySources()"
+                    [workspaces]="def().workspaces ?? []"
                     [idLocked]="persistedIds().has(n.id)"
                     [readonly]="readOnly()"
                     (nodeChange)="updateNode(n.id, $event)"
@@ -588,6 +592,19 @@ const MAX_HISTORY = 50;
                               >Disabled: runs cannot start</span
                             >
                           }
+                        </nz-form-control>
+                      </nz-form-item>
+                      <nz-form-item>
+                        <nz-form-label i18n="@@workflows.designer.workspaces">Workspaces</nz-form-label>
+                        <nz-form-control>
+                          <app-workspaces-editor
+                            [workspaces]="def().workspaces ?? []"
+                            [stepCounts]="workspaceStepCounts()"
+                            [projectRepositories]="projectRepositories()"
+                            [librarySources]="librarySources()"
+                            [readonly]="readOnly()"
+                            (changed)="onWorkspaces($event)"
+                          />
                         </nz-form-control>
                       </nz-form-item>
                       <nz-form-item>
@@ -1401,6 +1418,18 @@ export class WorkflowDesignerPageComponent {
     }
     this.def.set(next);
     this.dirty.set(true);
+  }
+
+  /** ADR 0044: steps per workspace key, for the workspaces editor. */
+  readonly workspaceStepCounts = computed<Record<string, number>>(() => {
+    const def = this.def();
+    return Object.fromEntries((def.workspaces ?? []).map((w) => [w.key, membersOf(def, w.key).length]));
+  });
+
+  /** ADR 0044: workspaces changed in the workflow properties; steps follow renamed and removed ones. */
+  onWorkspaces(change: WorkspacesChange): void {
+    if (this.readOnly()) return;
+    this.commit(applyWorkspaces(this.def(), change.workspaces, change.renames), 'coalesce');
   }
 
   patchDef(changes: Partial<WorkflowDefinitionInput>): void {

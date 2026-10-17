@@ -47,15 +47,23 @@ import {
           nzSize="small"
           [attr.aria-label]="text.mode"
         >
-          <label nz-radio nzValue="default" i18n="@@workflows.repos.modeDefault"
-            >Use the primary repository</label
-          >
+          @if (workspaceSources()?.length) {
+            <label nz-radio nzValue="default" i18n="@@workflows.repos.modeWorkspace"
+              >Use the workspace sources</label
+            >
+          } @else {
+            <label nz-radio nzValue="default" i18n="@@workflows.repos.modeDefault"
+              >Use the primary repository</label
+            >
+          }
           <label nz-radio nzValue="explicit" i18n="@@workflows.repos.modeExplicit"
             >Choose repositories</label
           >
         </nz-radio-group>
 
-        @if (!explicit()) {
+        @if (!explicit() && workspaceSources()?.length) {
+          <p class="quiet">{{ workspaceSourcesText() }}</p>
+        } @else if (!explicit()) {
           @if (primary(); as p) {
             <p class="quiet">
               <span class="mono">{{ p.key }}</span> ·
@@ -241,6 +249,13 @@ export class StepRepositoriesSectionComponent {
   /** The node's validation issues (errors and warnings); those of `task.config.repositories` show here. */
   readonly nodeIssues = input<readonly ValidationIssue[]>([]);
   readonly readonly = input(false);
+  /** ADR 0044: sources of the step's workspace (what the default uses then); null = no workspace with sources. */
+  readonly workspaceSources = input<readonly string[] | null>(null);
+
+  workspaceSourcesText(): string {
+    const list = (this.workspaceSources() ?? []).join(', ');
+    return $localize`:@@workflows.repos.workspaceSources:${list}:sources: · the primary as the step pushes, the others read only`;
+  }
 
   /** The new `overrides.config` (undefined when it became empty). */
   readonly configChange = output<Record<string, unknown> | undefined>();

@@ -499,5 +499,6 @@
   "core.help.topic.librarySources": "Źródła biblioteki",
   "core.help.topic.projectSources": "Źródła projektu",
   "core.repository.purpose.standards": "Standardy",
-  "core.repository.purpose.templates": "Szablony"
+  "core.repository.purpose.templates": "Szablony",
+  "core.help.topic.workspaces": "Przestrzenie robocze i sesje agentów"
 }

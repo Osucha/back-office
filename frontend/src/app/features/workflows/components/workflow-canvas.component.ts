@@ -43,6 +43,7 @@ import type {
 import { ThemeService } from '../../../core/ui/theme.service';
 import { estimateNodeSize, type Rect, type Size } from '../data/auto-layout';
 import { routeEdge } from '../data/edge-routing';
+import { workspaceRegions } from '../data/workspaces';
 import { neighbourInDirection, type NavDirection } from '../data/graph-nav';
 import {
   NODE_KIND_META,
@@ -129,6 +130,32 @@ export interface PaletteDrop {
           </svg:g>
         </ng-template>
       </vflow>
+
+      @if (regions().length) {
+        <!-- ADR 0044: each run workspace as a region around its steps; follows pan and zoom, never takes clicks -->
+        <svg class="ws-overlay" aria-hidden="true">
+          <g [attr.transform]="regionTransform()">
+            @for (r of regions(); track r.key) {
+              <rect
+                class="ws-region"
+                [attr.x]="r.x"
+                [attr.y]="r.y"
+                [attr.width]="r.width"
+                [attr.height]="r.height"
+                rx="14"
+                [attr.stroke]="r.color"
+                [attr.fill]="r.color"
+              />
+              <text class="ws-label" [attr.x]="r.x + 12" [attr.y]="r.y + 18" [attr.fill]="r.color">{{ r.name }}</text>
+            }
+          </g>
+        </svg>
+        <ul class="sr-only">
+          @for (r of regions(); track r.key) {
+            <li>{{ regionText(r.name, r.nodeIds.length) }}</li>
+          }
+        </ul>
+      }
 
       @if (minimapVisible()) {
         <app-canvas-minimap
@@ -228,6 +255,33 @@ export interface PaletteDrop {
         display: block;
         height: 100%;
         min-height: 320px;
+      }
+      .ws-overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: visible;
+      }
+      .ws-region {
+        fill-opacity: 0.06;
+        stroke-width: 1.5;
+        stroke-dasharray: 6 4;
+      }
+      .ws-label {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        margin: 0;
+        padding: 0;
       }
       .canvas {
         position: relative;
@@ -412,6 +466,17 @@ export class WorkflowCanvasComponent {
     }
     return out;
   });
+
+  /** ADR 0044: run workspaces drawn around their steps (flow coordinates). */
+  readonly regions = computed(() => workspaceRegions(this.definition(), this.rects()));
+  readonly regionTransform = computed(() => {
+    const v = this.viewport();
+    return `translate(${v.x} ${v.y}) scale(${v.zoom})`;
+  });
+
+  regionText(name: string, steps: number): string {
+    return $localize`:@@workflows.canvas.workspaceRegion:Workspace ${name}:name: with ${steps}:count: steps`;
+  }
 
   readonly minimapNodes = computed<MinimapNode[]>(() => {
     const rects = this.rects();

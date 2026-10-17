@@ -25,6 +25,8 @@ data class RunnerWorkspace(
     val name: String,
     val sessionRole: String? = null,
     val prepareOnly: Boolean = false,
+    /** The workspace's own setup (e.g. npm ci): the runner runs it once per workspace, again only when it changes. */
+    val setupCommand: String? = null,
 ) {
     companion object {
         /** Workspace keys and session roles: short, lower case, DNS-safe (the name must stay a valid volume / PVC name). */

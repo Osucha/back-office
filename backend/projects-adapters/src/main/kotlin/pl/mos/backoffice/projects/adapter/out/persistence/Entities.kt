@@ -86,6 +86,8 @@ class WorkflowDefinitionEntity(
     @Column(name = "library_modified", nullable = false) var libraryModified: Boolean = false,
     /** V113: saved with validation errors (no runs, no publishing). */
     @Column(nullable = false) var draft: Boolean = false,
+    /** V117 (ADR 0044): run workspaces of the workflow. */
+    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb") var workspaces: String? = null,
 )
 
 /** V111 (ADR 0037): a library workflow; its versions are [LibraryWorkflowVersionEntity] rows. */
@@ -123,6 +125,8 @@ class LibraryWorkflowVersionEntity(
     @Column(name = "source_project_key") var sourceProjectKey: String? = null,
     @Column(name = "source_workflow_id") var sourceWorkflowId: UUID? = null,
     @Column(name = "source_workflow_version") var sourceWorkflowVersion: Int? = null,
+    /** V117 (ADR 0044): run workspaces with library sources only. */
+    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb") var workspaces: String? = null,
 )
 
 @Entity

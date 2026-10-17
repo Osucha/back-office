@@ -12,6 +12,8 @@ import pl.mos.backoffice.projects.domain.model.GitRepository
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.RepositoryPurpose
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
+import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.projects.domain.service.StepWorkspace
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
@@ -57,8 +59,15 @@ class MultiRepositoryJobTest {
     private val runner = ScriptedRunner()
     private val support = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30))
 
+    /** ADR 0044: the workspaces the test workflow declares. */
+    private val workspaces = listOf(
+        WorkflowWorkspace("main", roles = listOf("implementer", "reviewer")),
+        WorkflowWorkspace("shared", sources = listOf(WorkspaceSource("docs"), WorkspaceSource("app")), setupCommand = "npm ci"),
+    )
+
     private fun context(p: Project = project, state: Map<String, Any?> = emptyMap()): NodeContext {
-        val run = Fixtures.runningRun(p)
+        val plain = Fixtures.runningRun(p)
+        val run = plain.copy(definitionSnapshot = plain.definitionSnapshot.copy(workspaces = workspaces))
         val node = run.definitionSnapshot.requireNode("implement")
         val started = run.nodeStarted(node, now)
         return NodeContext(started, p, node, started.nodes.last(), state)
@@ -152,6 +161,29 @@ class MultiRepositoryJobTest {
         assertThat(spec.workspace!!.sessionRole).isNull()
         assertThat(spec.gitAccess).isEqualTo(GitAccess.READ)
         assertThat(spec.repositories.all { it.mergeRequest == null && it.pushBranch == null }).isTrue()
+    }
+
+    @Test
+    fun `a step of a workspace without repositories of its own works on the workspace sources`() {
+        val spec = submit(mapOf(StepWorkspace.WORKSPACE to "shared"))
+        assertThat(spec.repositories.map { listOf(it.key, it.access, it.primary) }).containsExactly(
+            listOf("docs", GitAccess.READ, false),
+            listOf("app", GitAccess.PUSH_MR, true),
+        )
+        assertThat(spec.workspace!!.setupCommand).isEqualTo("npm ci")
+        // a step's own repositories win
+        val own = submit(mapOf(StepWorkspace.WORKSPACE to "shared", StepRepositories.CONFIG_KEY to listOf(mapOf("key" to "lib", "access" to "READ"))))
+        assertThat(own.repositories.map { it.key }).containsExactly("lib")
+    }
+
+    @Test
+    fun `a workspace the workflow does not declare, or a role it does not allow, fails the step`() {
+        val before = runner.specs.size
+        assertThat(support.run(context(), task(mapOf(StepWorkspace.WORKSPACE to "other")), RunnerMode.IMPLEMENT, null, "x").error).contains("not defined")
+        assertThat(
+            support.run(context(), task(mapOf(StepWorkspace.WORKSPACE to "main", StepWorkspace.SESSION_ROLE to "tester")), RunnerMode.IMPLEMENT, null, "x").error,
+        ).contains("not a role")
+        assertThat(runner.specs).hasSize(before)
     }
 
     @Test

@@ -2401,6 +2401,32 @@ components:
         triggers: { type: array, items: { $ref: '#/components/schemas/Trigger' } }
         enabled: { type: boolean, default: true }
         canvas: { type: object, nullable: true, properties: { zoom: { type: number }, x: { type: number }, y: { type: number } } }
+        workspaces:
+          type: array
+          description: 'ADR 0044: run workspaces coding steps may share (config.workspace = key)'
+          items: { $ref: '#/components/schemas/WorkflowWorkspace' }
+    WorkflowWorkspace:
+      type: object
+      description: >-
+        ADR 0044: a run workspace declared on the workflow. Coding steps pick it by key and share /workspace within one run;
+        steps without repositories of their own work on its sources (the project's primary among them gets the step's push
+        access, the others READ); setupCommand runs once per workspace; roles are the agent session roles its steps may
+        continue (any when empty). Library versions keep only library sources.
+      required: [key]
+      properties:
+        key: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' }
+        name: { type: string, description: 'shown on the canvas; default the key' }
+        description: { type: string }
+        sources:
+          type: array
+          items:
+            type: object
+            required: [key]
+            properties:
+              key: { type: string, description: 'project repository key, or library source key when library is true' }
+              library: { type: boolean, default: false }
+        setupCommand: { type: string, nullable: true }
+        roles: { type: array, items: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' } }
     WorkflowDefinition:
       allOf:
         - $ref: '#/components/schemas/WorkflowDefinitionInput'
@@ -2564,6 +2590,7 @@ components:
             edges: { type: array, items: { $ref: '#/components/schemas/WorkflowEdge' } }
             triggers: { type: array, items: { $ref: '#/components/schemas/Trigger' } }
             canvas: { type: object, nullable: true, properties: { zoom: { type: number }, x: { type: number }, y: { type: number } } }
+            workspaces: { type: array, items: { $ref: '#/components/schemas/WorkflowWorkspace' } }
     PublishWorkflowRequest:
       type: object
       properties:
@@ -4595,6 +4622,7 @@ components:
             key: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' }
             sessionRole: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{0,19}$' }
             prepareOnly: { type: boolean, nullable: true }
+            setupCommand: { type: string, nullable: true, description: 'the workspace setup; run once per workspace, again when it changes' }
         llmCredentials:
           type: string
           enum: [GATEWAY, LOCAL_LOGIN]

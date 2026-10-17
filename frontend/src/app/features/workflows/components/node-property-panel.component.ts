@@ -33,6 +33,7 @@ import type {
   PaletteTask,
   LibrarySource,
   ProjectRepository,
+  WorkflowWorkspace,
   ResolvedTask,
   Skill,
   TaskOverrides,
@@ -60,6 +61,8 @@ import {
   stepPushes,
 } from '../data/step-repositories';
 import { StepRepositoriesSectionComponent } from './step-repositories-section.component';
+import { StepWorkspaceSectionComponent } from './step-workspace-section.component';
+import { WORKSPACE_CONFIG_KEYS, stepWorkspace } from '../data/workspaces';
 
 type PromptMode = 'none' | 'append' | 'replace';
 
@@ -90,6 +93,7 @@ type PromptMode = 'none' | 'append' | 'replace';
     NodeConnectionSectionComponent,
     WriteApprovalSectionComponent,
     StepRepositoriesSectionComponent,
+    StepWorkspaceSectionComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -293,8 +297,23 @@ type PromptMode = 'none' | 'append' | 'replace';
                 <app-step-repositories-section
                   [repositories]="projectRepositories()"
                   [librarySources]="librarySources()"
+                  [workspaceSources]="stepWorkspaceSources()"
                   [config]="n.task?.overrides?.config ?? null"
                   [pushes]="stepPushes()"
+                  [nodeIssues]="allIssues()"
+                  [readonly]="readonly()"
+                  (configChange)="patchOverrides({ config: $event })"
+                />
+                <nz-divider
+                  nzText="Workspace"
+                  i18n-nzText="@@workflows.props.workspace"
+                  nzOrientation="left"
+                  nzPlain
+                />
+                <app-step-workspace-section
+                  [workspaces]="workspaces()"
+                  [config]="n.task?.overrides?.config ?? null"
+                  [canPrepare]="paletteTask()?.executor === 'IMPLEMENT'"
                   [nodeIssues]="allIssues()"
                   [readonly]="readonly()"
                   (configChange)="patchOverrides({ config: $event })"
@@ -993,6 +1012,15 @@ export class NodePropertyPanelComponent {
   readonly projectRepositories = input<readonly ProjectRepository[]>([]);
   /** Sources of the library (ADR 0043) a runner step may attach. */
   readonly librarySources = input<readonly LibrarySource[]>([]);
+  /** Run workspaces of the workflow (ADR 0044) a coding step may pick. */
+  readonly workspaces = input<readonly WorkflowWorkspace[]>([]);
+  /** Sources of the node's workspace, shown as the default of its repositories; null without a workspace. */
+  readonly stepWorkspaceSources = computed<string[] | null>(() => {
+    const key = stepWorkspace(this.node()?.task?.overrides?.config).workspace;
+    const ws = key ? this.workspaces().find((w) => w.key === key) : undefined;
+    const keys = (ws?.sources ?? []).map((s) => (s.library ? `lib-${s.key}` : s.key));
+    return keys.length ? keys : null;
+  });
   /** Ids of nodes that exist in the saved version (renaming them is not allowed). */
   readonly idLocked = input(false);
   readonly readonly = input(false);
@@ -1092,7 +1120,7 @@ export class NodePropertyPanelComponent {
   private readonly ownSectionKeys = computed<string[]>(() => {
     const keys: string[] = [];
     if (this.requiredCapabilities().length) keys.push(...SECTION_CONFIG_KEYS);
-    if (this.runnerStep()) keys.push(STEP_REPOSITORIES_KEY);
+    if (this.runnerStep()) keys.push(STEP_REPOSITORIES_KEY, ...WORKSPACE_CONFIG_KEYS);
     return keys;
   });
   /** Config shown in the schema form: without the pin, the write approval and the repositories. */

@@ -4478,6 +4478,7 @@ export interface components {
             name: string;
             nodes: components["schemas"]["WorkflowNode"][];
             triggers?: components["schemas"]["Trigger"][];
+            workspaces?: components["schemas"]["WorkflowWorkspace"][];
         };
         LibraryWorkflowVersionSummary: {
             changeNote?: string;
@@ -5190,6 +5191,8 @@ export interface components {
                 name: string;
                 prepareOnly?: boolean | null;
                 sessionRole?: string | null;
+                /** @description the workspace setup; run once per workspace, again when it changes */
+                setupCommand?: string | null;
             } | null;
         };
         RunnerPool: components["schemas"]["RunnerPoolInput"] & {
@@ -5750,6 +5753,8 @@ export interface components {
             name: string;
             nodes: components["schemas"]["WorkflowNode"][];
             triggers?: components["schemas"]["Trigger"][];
+            /** @description ADR 0044: run workspaces coding steps may share (config.workspace = key) */
+            workspaces?: components["schemas"]["WorkflowWorkspace"][];
         };
         WorkflowEdge: {
             from: string;
@@ -5972,6 +5977,21 @@ export interface components {
             workflowId?: string;
             workflowName?: string;
             workflowVersion?: number;
+        };
+        /** @description ADR 0044: a run workspace declared on the workflow. Coding steps pick it by key and share /workspace within one run; steps without repositories of their own work on its sources (the project's primary among them gets the step's push access, the others READ); setupCommand runs once per workspace; roles are the agent session roles its steps may continue (any when empty). Library versions keep only library sources. */
+        WorkflowWorkspace: {
+            description?: string;
+            key: string;
+            /** @description shown on the canvas; default the key */
+            name?: string;
+            roles?: string[];
+            setupCommand?: string | null;
+            sources?: {
+                /** @description project repository key, or library source key when library is true */
+                key: string;
+                /** @default false */
+                library: boolean;
+            }[];
         };
         WorkItem: {
             attempts?: number;

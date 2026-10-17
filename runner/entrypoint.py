@@ -759,6 +759,8 @@ class WorkspaceSpec:
     key: str
     session_role: Optional[str] = None
     prepare_only: bool = False
+    # the workspace's own setup (declared on the workflow): run once per workspace, again only when it changes
+    setup_command: Optional[str] = None
 
 
 @dataclass
@@ -1076,7 +1078,11 @@ def parse_workspace(raw: Any) -> Optional[WorkspaceSpec]:
     role = raw.get("sessionRole")
     if role is not None and not WORKSPACE_KEY_RE.match(str(role)):
         raise ValueError(f"workspace.sessionRole {role!r} is not valid")
-    return WorkspaceSpec(name=name, key=key, session_role=str(role) if role else None, prepare_only=raw.get("prepareOnly") is True)
+    setup = raw.get("setupCommand")
+    return WorkspaceSpec(
+        name=name, key=key, session_role=str(role) if role else None, prepare_only=raw.get("prepareOnly") is True,
+        setup_command=str(setup) if setup else None,
+    )
 
 
 def parse_spec(raw: Dict[str, Any]) -> JobSpec:
@@ -3139,6 +3145,30 @@ def _prepare_repository(run: _Run, spec: JobSpec, repo_dir: Path, git_token: str
     return git
 
 
+def _run_workspace_setup(run: _Run, spec: JobSpec, work_dir: Path) -> None:
+    """ADR 0044: the workspace's own setup, once per workspace (a marker under /workspace/.bo remembers the command)."""
+    ws = spec.workspace
+    if ws is None or not ws.setup_command:
+        return
+    marker = run.workspace / WORKSPACE_STATE_DIR / "setup.json"
+    digest = sha256_hex(ws.setup_command.encode("utf-8"))
+    previous = _read_regular_file(marker)
+    try:
+        done = previous is not None and json.loads(previous.decode("utf-8")).get("sha256") == digest
+    except (ValueError, AttributeError):
+        done = False
+    if done:
+        run.log(f"[workspace] setup of {ws.key} already ran in this workspace; skipped")
+        return
+    run.sink.progress(f"running the setup of workspace {ws.key}: {ws.setup_command}")
+    res = run_process([ws.setup_command], work_dir, _untrusted_env(run, spec), timeout=max(60, spec.timeout_seconds),
+                      on_line=lambda l: run.log(f"[workspace setup] {l}"), shell=True)
+    if res.exit_code != 0:
+        raise RuntimeError(f"workspace setup exited with code {res.exit_code}" + (" (timed out)" if res.timed_out else ""))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    _replace_file(marker, json.dumps({"sha256": digest}).encode("utf-8"))
+
+
 def _run_setup(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     if not spec.setup_command:
         return
@@ -3601,6 +3631,7 @@ def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
         run.log(f"[runner] no repositories in spec; working directory {work_dir}")
     if spec.skills:
         write_skills(work_dir, spec.skills, run.log)
+    _run_workspace_setup(run, spec, work_dir)
     _run_setup(run, spec, work_dir)
     if spec.workspace is not None and spec.workspace.prepare_only:
         _finish_prepare_only(run, spec, states)

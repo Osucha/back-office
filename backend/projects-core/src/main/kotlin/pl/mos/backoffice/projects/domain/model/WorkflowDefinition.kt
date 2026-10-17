@@ -22,6 +22,34 @@ data class Point(val x: Double, val y: Double)
 /** Viewport of the designer canvas; node positions live on the nodes. */
 data class Canvas(val zoom: Double = 1.0, val x: Double = 0.0, val y: Double = 0.0)
 
+/** ADR 0044: a source cloned into a workspace: a project repository or ([library]) a library source, by key. */
+data class WorkspaceSource(val key: String, val library: Boolean = false)
+
+/**
+ * ADR 0044: a run workspace declared on the workflow. Coding steps pick it by [key] (`config.workspace`) and share
+ * `/workspace` within a run. [sources] are cloned there for every step of the workspace that names no repositories
+ * of its own; [setupCommand] runs once per run before the first step's own setup; [roles] are the agent session roles
+ * its steps may continue (`config.sessionRole`), any role when empty.
+ */
+data class WorkflowWorkspace(
+    val key: String,
+    val name: String = key,
+    val description: String = "",
+    val sources: List<WorkspaceSource> = emptyList(),
+    val setupCommand: String? = null,
+    val roles: List<String> = emptyList(),
+) {
+    init {
+        if (!WORKSPACE_KEY.matches(key)) throw ValidationException("workspace key \"$key\": 1-20 lower case letters, digits or hyphens, starting with a letter", "workspaces")
+        roles.forEach { if (!WORKSPACE_KEY.matches(it)) throw ValidationException("workspace $key: role \"$it\" must be 1-20 lower case letters, digits or hyphens", "workspaces") }
+        if (sources.map { it.key to it.library }.toSet().size != sources.size) throw ValidationException("workspace $key lists a source twice", "workspaces")
+    }
+
+    companion object {
+        val WORKSPACE_KEY = Regex("^[a-z][a-z0-9-]{0,19}$")
+    }
+}
+
 /** A `TASK` node: which Task Library template runs, plus node-level overrides applied last. */
 data class TaskBinding(val templateKey: String, val overrides: TaskOverrides = TaskOverrides.NONE)
 
@@ -237,11 +265,16 @@ data class WorkflowDefinition(
      * cannot be published to the library until a save without errors.
      */
     val draft: Boolean = false,
+    /** ADR 0044: run workspaces its coding steps may share. */
+    val workspaces: List<WorkflowWorkspace> = emptyList(),
 ) {
     init {
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
         if (nodes.isEmpty()) throw ValidationException("must contain nodes", "nodes")
+        if (workspaces.map { it.key }.toSet().size != workspaces.size) throw ValidationException("workspace keys must be unique", "workspaces")
     }
+
+    fun workspace(key: String?): WorkflowWorkspace? = key?.let { k -> workspaces.firstOrNull { it.key == k } }
 
     fun node(nodeId: String): WorkflowNode? = nodes.firstOrNull { it.id == nodeId }
 
@@ -265,7 +298,9 @@ data class WorkflowDefinition(
         canvas: Canvas?,
         now: Instant,
         actor: Actor? = null,
+        workspaces: List<WorkflowWorkspace> = this.workspaces,
     ): WorkflowDefinition = copy(
+        workspaces = workspaces,
         name = name,
         description = description,
         nodes = nodes,

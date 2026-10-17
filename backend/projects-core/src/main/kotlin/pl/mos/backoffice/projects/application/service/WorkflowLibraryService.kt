@@ -118,6 +118,7 @@ class WorkflowLibraryService(
             publishedAt = now,
             publishedBy = actor,
             source = LibraryWorkflowSource(project.id, project.key, source.id, source.version),
+            workspaces = LibraryPortability.portableWorkspaces(source.workspaces),
         )
         val target = command.libraryWorkflowId?.let(::load)
         val saved = if (target == null) {
@@ -177,6 +178,7 @@ class WorkflowLibraryService(
             triggers = chosen.triggers,
             enabled = true,
             canvas = chosen.canvas,
+            workspaces = chosen.workspaces,
         )
         workflowService.requireValidFor(projectId, command)
         val now = clock.now()
@@ -196,6 +198,7 @@ class WorkflowLibraryService(
                 updatedAt = now,
                 updatedBy = actor,
                 library = LibraryLink(entry.id, entry.key, chosen.version),
+                workspaces = command.workspaces,
             ),
         )
         audit.record(
@@ -220,10 +223,11 @@ class WorkflowLibraryService(
         }
         if (!modified && target.version == link.version) return existing
         val nodes = LibraryPortability.withLocalSettings(target.nodes, existing.nodes)
-        val command = WorkflowCommand(existing.name, existing.description, nodes, target.edges, existing.triggers, existing.enabled, existing.canvas)
+        val workspaces = LibraryPortability.workspacesWithLocalSources(target.workspaces, existing.workspaces)
+        val command = WorkflowCommand(existing.name, existing.description, nodes, target.edges, existing.triggers, existing.enabled, existing.canvas, workspaces)
         workflowService.requireValidFor(existing.projectId, command)
         val saved = workflows.save(
-            existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor)
+            existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.workspaces)
                 .withLibrary(link.copy(version = target.version, modified = false)),
         )
         audit.record(

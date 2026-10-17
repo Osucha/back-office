@@ -37,6 +37,8 @@ data class LibraryWorkflowVersion(
     val publishedAt: Instant,
     val publishedBy: Actor?,
     val source: LibraryWorkflowSource,
+    /** ADR 0044: the workflow's workspaces with library sources only (project repositories are project-local). */
+    val workspaces: List<WorkflowWorkspace> = emptyList(),
 ) {
     /** Nodes that do work or route (notes excluded). */
     val nodeCount: Int get() = nodes.count { it.kind != NodeKind.NOTE }

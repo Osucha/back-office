@@ -124,12 +124,13 @@ class RunnerTaskSupport(
     private fun plan(context: NodeContext, task: ResolvedTask, mode: RunnerMode, phase: SpecKitPhase?, defaultPrompt: String, logWarnings: Boolean): Plan {
         val node = context.node
         val project = context.project
-        val config = task.config
         // ADR 0044: the run workspace and session of the step; a prepare step never pushes
-        val workspaceSetting = StepWorkspace.of(config, runnerStep = true)
+        val workspaceSetting = StepWorkspace.of(task.config, runnerStep = true, context.run.definitionSnapshot.workspaces)
         if (!workspaceSetting.valid) throw RepositoryPlanException("workspace of step ${node.id}: " + workspaceSetting.errors.joinToString("; "))
         if (logWarnings) workspaceSetting.warnings.forEach { context.warn("workspace: $it") }
-        val push = !workspaceSetting.prepareOnly && config.boolean("push", default = true)
+        val push = !workspaceSetting.prepareOnly && task.config.boolean("push", default = true)
+        // a step of a workspace without repositories of its own works on the workspace's sources
+        val config = StepWorkspace.effectiveConfig(task.config, workspaceSetting.definition, project, push && GitAccess.pushingMode(mode))
         // ADR 0036: Spec Kit only where the project turned it on and the platform allows it
         val specKit = project.specKit && features.specKitAllowed()
         if (mode == RunnerMode.SPEC_KIT && !specKit) {
@@ -151,7 +152,10 @@ class RunnerTaskSupport(
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("template: $it") } }
         // the notice comes last: the runner derives the commit message (and Spec Kit the feature name) from the first line
         val workspace = workspaceSetting.key?.let { key ->
-            RunnerWorkspace(key, RunnerWorkspace.nameFor(context.run.id.value, key), workspaceSetting.sessionRole, workspaceSetting.prepareOnly)
+            RunnerWorkspace(
+                key, RunnerWorkspace.nameFor(context.run.id.value, key), workspaceSetting.sessionRole, workspaceSetting.prepareOnly,
+                setupCommand = workspaceSetting.definition?.setupCommand?.takeIf { it.isNotBlank() },
+            )
         }
         val prompt = listOfNotNull(
             system, user.text, repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) }, workspace?.let(::workspaceSection), agentNotice(blocks),

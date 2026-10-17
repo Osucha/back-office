@@ -134,10 +134,10 @@ class WorkspaceMainFlowTests(unittest.TestCase):
             self.origin = make_origin(tmp_path, "src")
             src = tmp_path / "ws" / "src"
 
-            # 1. prepare: clone + setupCommand, no agent (the stub would fail the job if it ran)
-            setup = self.stub("import pathlib; pathlib.Path('prepared.txt').write_text('deps')")
-            result, _ = self.run_main(tmp_path, self.job("READ", self.stub("raise SystemExit(3)"), setupCommand=setup,
-                                                         workspace=workspace(prepareOnly=True)))
+            # 1. prepare: clone + the workspace setup, no agent (the stub would fail the job if it ran)
+            setup = self.stub("import pathlib; p = pathlib.Path('prepared.txt'); p.write_text(p.read_text() + 'x' if p.exists() else 'x')")
+            result, _ = self.run_main(tmp_path, self.job("READ", self.stub("raise SystemExit(3)"),
+                                                         workspace=workspace(prepareOnly=True, setupCommand=setup)))
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertIn("prepared", result["summary"])
             self.assertTrue((src / "prepared.txt").exists())
@@ -145,9 +145,11 @@ class WorkspaceMainFlowTests(unittest.TestCase):
 
             # 2. a read-only step sees what was prepared; its notes stay uncommitted for the next step
             notes = self.stub("import pathlib; print('prepared', pathlib.Path('prepared.txt').exists()); pathlib.Path('NOTES.md').write_text('check cart')")
-            result, stdout = self.run_main(tmp_path, self.job("READ", notes, workspace=workspace(sessionRole="reviewer")))
+            result, stdout = self.run_main(tmp_path, self.job("READ", notes, workspace=workspace(sessionRole="reviewer", setupCommand=setup)))
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertIn("prepared True", result["summary"])
+            self.assertIn("already ran in this workspace", stdout)
+            self.assertEqual((src / "prepared.txt").read_text(), "x")  # the workspace setup ran once
             self.assertIn("reused from an earlier step", stdout)
             self.assertIn("NOTES.md", git(src, "status", "--porcelain"))
             self.assertEqual(git(src, "config", "remote.origin.pushurl").strip(), ep.DISABLED_PUSH_URL)

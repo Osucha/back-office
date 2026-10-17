@@ -149,6 +149,7 @@ export const HELP_TOPICS = {
     $localize`:@@core.help.topic.designer.writeConfirmations:Confirmations before external writes`,
   ),
   designer: t('workflows', 'designer', $localize`:@@core.help.topic.designer:Workflow designer`),
+  workspaces: t('workflows', 'workspaces', $localize`:@@core.help.topic.workspaces:Workspaces and agent sessions`),
   'step.repositories': t(
     'workflows',
     'step-repositories',

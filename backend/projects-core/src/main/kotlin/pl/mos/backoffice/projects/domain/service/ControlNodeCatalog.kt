@@ -131,18 +131,23 @@ object ControlNodeCatalog {
 
     private const val APPROVAL_FIELD = "approval"
 
-    /** ADR 0044: run workspace, session role and (IMPLEMENT) prepare-only of a runner step. */
+    /**
+     * ADR 0044: run workspace, session role and (IMPLEMENT) prepare-only of a runner step. `x-editor: workspace` tells the
+     * designer to render its workspace section (a choice among the workflow's workspaces) instead of generic fields.
+     */
     private fun workspaceSettings(prepare: Boolean): Map<String, Any?> = listOfNotNull(
         StepWorkspace.WORKSPACE to string(
-            "Run workspace (e.g. main): steps of one run that name the same workspace share /workspace (clones, files, caches); empty = a fresh workspace",
+            "Run workspace of the workflow (Workspaces): steps of one run that name the same workspace share /workspace; empty = a fresh workspace",
             pattern = RunnerWorkspace.KEY_PATTERN.pattern,
-        ),
+        ) + WORKSPACE_EDITOR,
         StepWorkspace.SESSION_ROLE to string(
             "Agent session role in the workspace (e.g. implementer, reviewer): steps with the same role continue one agent session; empty = a new session",
             pattern = RunnerWorkspace.KEY_PATTERN.pattern,
-        ),
-        if (prepare) StepWorkspace.PREPARE_ONLY to boolean("Only prepare the workspace: clone and run setupCommand, no agent, no push", false) else null,
+        ) + WORKSPACE_EDITOR,
+        if (prepare) StepWorkspace.PREPARE_ONLY to (boolean("Only prepare the workspace: clone and run its setup, no agent, no push", false) + WORKSPACE_EDITOR) else null,
     ).toMap()
+
+    private val WORKSPACE_EDITOR = mapOf("x-editor" to "workspace")
 
     /**
      * ADR 0034: the repositories of a runner step. `x-editor: repositories` tells the designer to render its repository

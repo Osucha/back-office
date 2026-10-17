@@ -345,8 +345,12 @@ two-repository vector).
 
 ## Run workspaces and agent sessions (ADR 0044)
 
-- Step config `workspace` / `sessionRole` / `prepareOnly` (`StepWorkspace`, validated with the step repositories)
-  becomes `RunnerJobSpec.workspace {name, key, sessionRole, prepareOnly}`; `name = bo-ws-<run id hex>-<key>`.
+- `WorkflowDefinition.workspaces` (`WorkflowWorkspace`: key, name, description, sources, setupCommand, roles; V117,
+  also in run snapshots and library versions) declares them; step config `workspace` / `sessionRole` /
+  `prepareOnly` picks one (`StepWorkspace`, validated with the step repositories; `effectiveConfig` turns the
+  workspace sources into the step's repositories when it names none). It becomes `RunnerJobSpec.workspace {name, key,
+  sessionRole, prepareOnly, setupCommand}`; `name = bo-ws-<run id hex>-<key>`. The designer draws a region per
+  workspace around its steps (`workspaceRegions`).
 - Control plane: `runner_workspace` (V54: pool, runner, active job, release time) and `agent_job.workspace_name`.
   `JobLifecycle.routeJob` binds the workspace and prefers its pool; `lockQueued(pool, runner)` skips jobs whose
   workspace is busy or on another runner; the lease claims it with one conditional `UPDATE` (`active_job_id`), and

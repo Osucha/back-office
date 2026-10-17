@@ -157,6 +157,7 @@ class RestMapper {
         triggers = dto.triggers.map(WorkflowJson::toDomain).ifEmpty { listOf(pl.mos.backoffice.projects.domain.model.Trigger(pl.mos.backoffice.projects.domain.model.TriggerType.MANUAL)) },
         enabled = dto.enabled,
         canvas = WorkflowJson.toDomain(dto.canvas),
+        workspaces = dto.workspaces.map(WorkflowJson::toDomain),
     )
 
     /**
@@ -174,6 +175,7 @@ class RestMapper {
             )
         },
         draft = d.draft,
+        workspaces = d.workspaces.map(WorkflowJson::toJson),
     )
 
     // ---- workflow library (ADR 0037)
@@ -201,6 +203,7 @@ class RestMapper {
             version = s.version, changeNote = s.changeNote, nodeCount = s.nodeCount, publishedAt = s.publishedAt, publishedBy = s.publishedBy, source = s.source,
             nodes = v.version.nodes.map(WorkflowJson::toJson), edges = v.version.edges.map(WorkflowJson::toJson),
             triggers = v.version.triggers.map(WorkflowJson::toJson), canvas = WorkflowJson.toJson(v.version.canvas),
+            workspaces = v.version.workspaces.map(WorkflowJson::toJson),
         )
     }
 

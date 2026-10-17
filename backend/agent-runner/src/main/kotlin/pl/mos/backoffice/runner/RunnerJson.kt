@@ -233,11 +233,12 @@ data class WorkspaceJson(
     val key: String,
     val sessionRole: String? = null,
     val prepareOnly: Boolean? = null,
+    val setupCommand: String? = null,
 ) {
-    fun toWorkspace() = RunnerWorkspace(key = key, name = name, sessionRole = sessionRole, prepareOnly = prepareOnly == true)
+    fun toWorkspace() = RunnerWorkspace(key = key, name = name, sessionRole = sessionRole, prepareOnly = prepareOnly == true, setupCommand = setupCommand)
 
     companion object {
-        fun of(w: RunnerWorkspace) = WorkspaceJson(w.name, w.key, w.sessionRole, w.prepareOnly.takeIf { it })
+        fun of(w: RunnerWorkspace) = WorkspaceJson(w.name, w.key, w.sessionRole, w.prepareOnly.takeIf { it }, w.setupCommand)
     }
 }
 

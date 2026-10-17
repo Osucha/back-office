@@ -256,12 +256,12 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = PREPARE_WORKSPACE, name = "Prepare workspace", executor = TaskExecutor.IMPLEMENT,
-            description = "Prepares the run workspace (config workspace, default main) once for the steps that name it: clones the step's " +
-                "repositories and library sources and runs setupCommand (e.g. npm ci). Starts no agent and never pushes. Later steps with " +
-                "the same workspace reuse the clones and everything setupCommand left there.",
+            description = "Prepares a run workspace of the workflow (choose it in the step) once for the steps that use it: clones its " +
+                "sources (or the step's own repositories) and runs the workspace setup and the step's setupCommand. Starts no agent and " +
+                "never pushes. Later steps of the same workspace reuse the clones and everything the setup left there.",
             prompt = Prompt(user = PREPARE_WORKSPACE_USER),
             config = mapOf(
-                "workspace" to "main", "prepareOnly" to true, "push" to false, "mergeRequest" to false,
+                "prepareOnly" to true, "push" to false, "mergeRequest" to false,
                 "repositoryOptional" to true, "setupCommand" to null,
             ),
             tags = listOf("workspace"),

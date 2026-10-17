@@ -186,19 +186,27 @@ z projektu po zapisaniu workflowu), nie wystartuje; komunikat wskazuje krok. W w
 
 Każdy krok programistyczny zaczyna zwykle od zera: nowy `/workspace`, nowe klony, nowa sesja agenta.
 **Przestrzeń robocza przebiegu** pozwala kilku krokom jednego uruchomienia pracować w tym samym katalogu, a **rola
-sesji** pozwala agentowi kontynuować własną rozmowę zamiast czytać wszystko od nowa (ADR 0044). Oba ustawienia są we
-właściwościach kroku programistycznego (**Implement**, **Spec Kit**):
+agenta** pozwala agentowi kontynuować własną rozmowę zamiast czytać wszystko od nowa (ADR 0044).
 
-| Ustawienie | Znaczenie |
+**Zdefiniuj przestrzenie w workflowie.** Kliknij puste płótno: właściwości workflowu mają sekcję **Przestrzenie
+robocze** (**Workspaces**). Kliknij **Dodaj przestrzeń** i ustaw:
+
+| Pole | Znaczenie |
 |---|---|
-| **workspace** | Krótka nazwa, np. `main` (małe litery, cyfry, myślniki; do 20 znaków). Kroki jednego uruchomienia z tą samą nazwą współdzielą `/workspace`: klony, niezacommitowane pliki, zainstalowane zależności, cache. Puste = nowa przestrzeń, jak dotąd. |
-| **sessionRole** | Krótka nazwa, np. `implementer` albo `reviewer`. Kroki uruchomienia z tą samą przestrzenią i rolą kontynuują jedną sesję agenta (Claude Code lub OpenCode). Puste = nowa sesja w każdym kroku. |
-| **prepareOnly** | Tylko w krokach **Implement**: sklonuj repozytoria i źródła kroku i uruchom jego **setupCommand** (np. `npm ci`), bez agenta i bez wypychania. |
+| **Nazwa** | Widoczna na płótnie wokół kroków przestrzeni. |
+| **Klucz** | Małe litery, cyfry, myślniki (do 20), np. `main`. Zmiana klucza aktualizuje kroki, które go używają. |
+| **Źródła klonowane do przestrzeni** | Repozytoria projektu i [źródła z biblioteki](task-library.md#sources). Kroki przestrzeni bez własnych repozytoriów pracują na nich: główne repozytorium projektu wśród nich dostaje dostęp wynikający z ustawienia **push** kroku, pozostałe są tylko do odczytu. Własna lista **Repozytoria** kroku zastępuje je dla tego kroku. |
+| **Polecenie przygotowania** | Np. `npm ci`. Uruchamiane raz na przebieg, przed pierwszym krokiem przestrzeni; ponownie tylko po zmianie. |
+| **Role agentów** | Np. `implementer`, `reviewer`. Kroki z tą samą rolą kontynuują jedną sesję agenta. Puste = dowolna rola. |
 
-**Przygotuj przestrzeń raz.** Na początku workflowu postaw wbudowane zadanie **Prepare workspace**
-(`prepare-workspace`): jego repozytoria (i [źródła z biblioteki](task-library.md#sources)) są klonowane, a jego
-**setupCommand** uruchamia się raz; kolejne kroki z tą samą przestrzenią korzystają z tego wszystkiego. Krok jest
-opcjonalny: przestrzeń tworzy pierwszy krok, który ją wskazuje.
+**Wybierz przestrzeń w kroku.** Krok programistyczny (**Implement**, **Spec Kit**) ma sekcję **Przestrzeń robocza**
+tylko z wyborem: przestrzeń (albo **Brak: nowy katalog**), **Rola agenta** (albo nowa sesja) i, w krokach
+**Implement**, **Tylko przygotuj przestrzeń** (klonowanie i przygotowanie, bez agenta, bez wypychania). Takim krokiem
+jest wbudowane zadanie **Prepare workspace** (`prepare-workspace`); jest opcjonalne, pierwszy krok przestrzeni też ją
+przygotowuje.
+
+**Na płótnie** każda przestrzeń to kolorowy, przerywany obszar z nazwą wokół jej kroków, więc od razu widać, które
+kroki współdzielą katalog. Obszar sięga od pierwszego do ostatniego z jej kroków.
 
 **Agenci na zmianę.** Na przykład *implementacja* (rola `implementer`, push włączony) → *weryfikacja* (rola
 `reviewer`, push wyłączony) → decyzja → z powrotem do *implementacji*. Każdy agent kontynuuje własną sesję i widzi,
@@ -218,8 +226,9 @@ zostaje).
 **Uwaga na zaufanie.** Wszystkie kroki i role uruchomienia mogą czytać i zmieniać wszystko w swojej przestrzeni, także
 historię sesji innych ról. Do niezależnej weryfikacji użyj kroku bez przestrzeni.
 
-Walidacja: niepoprawna nazwa albo **prepareOnly** bez **workspace** to błąd; **sessionRole** bez **workspace** to
-ostrzeżenie (sesja nie zostałaby zachowana).
+Walidacja: krok wskazujący przestrzeń, której workflow nie definiuje, rolę spoza listy przestrzeni albo **Tylko
+przygotuj** bez przestrzeni to błąd; rola bez przestrzeni to ostrzeżenie. Publikacja workflowu do biblioteki zachowuje
+jego przestrzenie ze źródłami z biblioteki; projekt, który go przyjmie, dodaje własne repozytoria.
 
 <a id="decisions"></a>
 ## Decyzje

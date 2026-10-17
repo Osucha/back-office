@@ -30,7 +30,7 @@ export function isRunnerTask(task: Pick<PaletteTask, 'executor'> | null | undefi
   return !!task?.executor && RUNNER_EXECUTORS.includes(task.executor);
 }
 
-/** Config keys of the schema the generic form must not render (`"x-editor": "repositories"`). */
+/** Config keys of the schema the generic form must not render (`"x-editor": "repositories"` or `"workspace"`). */
 export function ownEditorKeys(
   schema: { properties?: Record<string, unknown> } | null | undefined,
 ): string[] {
@@ -41,7 +41,7 @@ export function ownEditorKeys(
         k === STEP_REPOSITORIES_KEY ||
         (!!v &&
           typeof v === 'object' &&
-          (v as Record<string, unknown>)['x-editor'] === 'repositories'),
+          ['repositories', 'workspace'].includes(String((v as Record<string, unknown>)['x-editor']))),
     )
     .map(([k]) => k);
 }

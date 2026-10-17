@@ -21,6 +21,8 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.util.UUID
+import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
+import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 
 /*
  * JSON shape of a workflow graph exactly as in openapi.yaml (`WorkflowNode`, `WorkflowEdge`, `Trigger`,
@@ -30,6 +32,17 @@ import java.util.UUID
 
 data class PointJson(val x: Double = 0.0, val y: Double = 0.0)
 data class CanvasJson(val zoom: Double = 1.0, val x: Double = 0.0, val y: Double = 0.0)
+
+/** ADR 0044: openapi `WorkflowWorkspace`. */
+data class WorkspaceSourceJson(val key: String = "", val library: Boolean = false)
+data class WorkflowWorkspaceJson(
+    val key: String = "",
+    val name: String? = null,
+    val description: String = "",
+    val sources: List<WorkspaceSourceJson> = emptyList(),
+    val setupCommand: String? = null,
+    val roles: List<String> = emptyList(),
+)
 data class TaskOverridesJson(
     val modelProfileId: UUID? = null,
     val systemPromptAppend: String? = null,
@@ -171,6 +184,18 @@ object WorkflowJson {
 
     fun toDomain(c: CanvasJson?) = c?.let { Canvas(it.zoom, it.x, it.y) }
     fun toJson(c: Canvas?) = c?.let { CanvasJson(it.zoom, it.x, it.y) }
+
+    fun toDomain(w: WorkflowWorkspaceJson) = WorkflowWorkspace(
+        key = w.key.trim(),
+        name = w.name?.trim()?.takeIf { it.isNotEmpty() } ?: w.key.trim(),
+        description = w.description.trim(),
+        sources = w.sources.map { WorkspaceSource(it.key.trim(), it.library) },
+        setupCommand = w.setupCommand?.trim()?.takeIf { it.isNotEmpty() },
+        roles = w.roles.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
+    )
+    fun toJson(w: WorkflowWorkspace) = WorkflowWorkspaceJson(
+        w.key, w.name, w.description, w.sources.map { WorkspaceSourceJson(it.key, it.library) }, w.setupCommand, w.roles,
+    )
 
     private fun defaultName(kind: NodeKind) = when (kind) {
         NodeKind.START -> "Start"

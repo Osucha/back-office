@@ -69,6 +69,8 @@ import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectFilter
+import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
+import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 
 @SpringBootTest(classes = [ProjectsTestApplication::class])
 @Import(ProjectsTestBeans::class)
@@ -128,6 +130,26 @@ class PersistenceRoundTripTest {
         assertThat(tokens.findByHash("hash-1")).isEqualTo(token)
         assertThat(tokens.save(token.revoke(now)).revokedAt).isEqualTo(now)
         assertThat(tokens.findByProjectId(project.id).single().revoked).isTrue()
+    }
+
+    @Test
+    fun `workflow workspaces round-trip in the definition and in the run snapshot (ADR 0044)`() {
+        val project = project("RTW")
+        val workspaces = listOf(
+            WorkflowWorkspace(
+                "main", "Main workspace", "shared clones",
+                listOf(WorkspaceSource("main"), WorkspaceSource("standards", library = true)), "npm ci", listOf("implementer", "reviewer"),
+            ),
+            WorkflowWorkspace("docs"),
+        )
+        val definition = workflows.save(DefaultWorkflows.issueToReviewedMr(project.id, now).copy(workspaces = workspaces))
+        assertThat(workflows.findById(definition.id)!!.workspaces).isEqualTo(workspaces)
+        val plain = workflows.save(DefaultWorkflows.ciCodeReview(project.id, now))
+        assertThat(workflows.findById(plain.id)!!.workspaces).isEmpty()
+
+        val run = WorkflowRun.create(project, definition, RunTrigger(TriggerSource.MANUAL), RunInput("RTW-1"), now, startedBy = alice).start(now)
+        runs.save(run)
+        assertThat(runs.findById(run.id)!!.definitionSnapshot.workspaces).isEqualTo(workspaces)
     }
 
     @Test
