@@ -42,6 +42,8 @@ tags:
     description: Personal work (ADR 0038), personal Jira intake rules and the run proposals they create
   - name: workflow-library
     description: Versioned workflows published from projects and adopted by other projects as linked copies (ADR 0037)
+  - name: library-sources
+    description: Sources of the library (git repositories of standards, templates, reference material) that steps of every project attach read-only (ADR 0043)
   - name: model-profiles
   - name: task-suites
   - name: benchmarks
@@ -1021,6 +1023,43 @@ paths:
         '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRun' } } } }
 
   # ---------------------------------------------------------------- workflow library (ADR 0037)
+  /library/sources:
+    get:
+      tags: [library-sources]
+      operationId: listLibrarySources
+      description: 'Sources of the library (library.view).'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LibrarySource' } } } } }
+    post:
+      tags: [library-sources]
+      operationId: createLibrarySource
+      description: 'Adds a git source to the library (library.manage).'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LibrarySourceInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/LibrarySource' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /library/sources/{sourceId}:
+    parameters: [ { name: sourceId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    get:
+      tags: [library-sources]
+      operationId: getLibrarySource
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LibrarySource' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [library-sources]
+      operationId: updateLibrarySource
+      description: 'Changes a source (library.manage); the key cannot change because steps refer to it.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LibrarySourceInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LibrarySource' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [library-sources]
+      operationId: deleteLibrarySource
+      description: 'Removes a source (library.manage). Steps that still name it fail validation and are kept as drafts.'
+      responses:
+        '204': { description: Deleted }
   /library/workflows:
     get:
       tags: [workflow-library]
@@ -2138,8 +2177,8 @@ components:
     # ---- projects
     RepositoryPurpose:
       type: string
-      enum: [DOCS, SOURCE, OTHER]
-      description: 'What a project repository holds (ADR 0034); shown as a label and in the agent prompt. DOCS = documentation, SOURCE = source code.'
+      enum: [DOCS, SOURCE, OTHER, STANDARDS, TEMPLATES]
+      description: 'What a repository holds (ADR 0034, ADR 0043); shown as a label and in the agent prompt. DOCS = documentation, SOURCE = source code, STANDARDS = rules to follow, TEMPLATES = templates to start from.'
     ProjectRepository:
       type: object
       description: >-
@@ -2468,6 +2507,28 @@ components:
         version: { type: integer }
         modified: { type: boolean }
         enabled: { type: boolean }
+    LibrarySourceInput:
+      type: object
+      required: [key, name, url]
+      properties:
+        key: { type: string, pattern: '^[a-z][a-z0-9-]{1,26}$', description: 'Name steps use; the job clones it into /workspace/lib-<key>' }
+        name: { type: string }
+        description: { type: string }
+        kind: { type: string, enum: [GIT], description: 'Only GIT for now' }
+        url: { type: string, description: 'Git clone URL; the runner cluster needs a read credential for private repositories' }
+        defaultBranch: { type: string, nullable: true, description: 'Empty = main' }
+        purpose: { $ref: '#/components/schemas/RepositoryPurpose' }
+    LibrarySource:
+      allOf:
+        - $ref: '#/components/schemas/LibrarySourceInput'
+        - type: object
+          required: [id, jobKey, createdAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            jobKey: { type: string, description: 'lib-<key>: the repository key and directory of the source in a job' }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], nullable: true }
     LibraryWorkflow:
       allOf:
         - $ref: '#/components/schemas/LibraryWorkflowSummary'

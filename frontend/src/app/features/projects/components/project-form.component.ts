@@ -42,6 +42,7 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <form nz-form nzLayout="vertical" [formGroup]="form" (ngSubmit)="submit()">
+      @if (sections() !== 'sources') {
       <div class="grid">
         <nz-form-item>
           <nz-form-label nzFor="p-key" i18n="@@projects.form.keyOptional">Short code</nz-form-label>
@@ -84,16 +85,22 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
         </nz-form-control>
       </nz-form-item>
 
+      }
+      @if (sections() === 'all') {
       <nz-divider
         nzText="Repositories"
         i18n-nzText="@@projects.form.repositories"
         nzOrientation="left"
         nzPlain
       />
+      }
+      @if (sections() !== 'settings') {
       <app-project-repositories-editor
         [array]="form.controls.repositories"
         [readonly]="readonly()"
       />
+      }
+      @if (sections() !== 'sources') {
 
       <nz-divider
         nzText="Issue tracker (optional)"
@@ -253,6 +260,7 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
         </nz-form-control>
       </nz-form-item>
       }
+      }
 
       @if (!readonly()) {
         <div class="form-actions">
@@ -325,6 +333,12 @@ export class ProjectFormComponent {
   readonly readonly = input(false);
   /** ADR 0036: the platform allows Spec Kit (otherwise the switch is shown with a note). */
   readonly specKitAllowed = input(true);
+  /**
+   * Which part of the form is shown (ADR 0043): `all` (create), `settings` (everything but the repositories)
+   * or `sources` (only the repositories, the project tab Sources). Hidden controls keep their values, so a
+   * save always sends the whole project.
+   */
+  readonly sections = input<'all' | 'settings' | 'sources'>('all');
   /** Failed save from the parent: field errors go onto the controls, the rest into a notification. */
   readonly serverError = input<unknown>(null);
   readonly saved = output<ProjectInput>();

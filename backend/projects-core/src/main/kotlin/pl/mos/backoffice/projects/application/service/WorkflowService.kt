@@ -6,6 +6,7 @@ import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.Palette
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.PaletteTask
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.WorkflowCommand
 import pl.mos.backoffice.projects.application.port.out.ExpressionEvaluator
+import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
 import pl.mos.backoffice.projects.domain.model.LibraryLink
 import pl.mos.backoffice.projects.domain.service.LibraryPortability
@@ -63,10 +64,12 @@ class WorkflowService(
     private val specKit: SpecKitStepCheck? = null,
     /** ADR 0037: recomputes the `modified` flag of linked copies on save; null = links are kept as they are (tests). */
     private val library: LibraryWorkflowRepository? = null,
+    /** ADR 0043: library sources steps may attach; null = none (tests). */
+    librarySources: LibrarySourceRepository? = null,
 ) : ManageWorkflows {
 
     private val jiraSteps = jira?.let { JiraStepCheck(taskCatalog, it) }
-    private val repositorySteps = RepositoryStepCheck(taskCatalog)
+    private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources)
 
     override fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition {
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value).actor

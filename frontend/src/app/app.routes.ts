@@ -184,6 +184,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // Library sources (ADR 0043): git repositories steps of every project attach read-only.
+        path: 'library/sources',
+        title: $localize`:@@shell.route.librarySources:Library sources`,
+        data: access({ permission: 'library.view' }),
+        loadComponent: () =>
+          import('./features/library/pages/library-sources-page.component').then(
+            (m) => m.LibrarySourcesPageComponent,
+          ),
+      },
+      {
         // Personal work (ADR 0038): the caller's own intake rules and run proposals.
         path: 'my-work',
         title: $localize`:@@shell.route.myWork:My work`,

@@ -91,10 +91,22 @@ workflowId?, runId?`; unique per `(ruleId, issueKey)`. `Project.personal` marks 
 | `versions: List<LibraryWorkflowVersion>` | append-only, immutable: `version, changeNote, nodes, edges, triggers, canvas, publishedAt, publishedBy, source(projectId, projectKey, workflowId, workflowVersion)` |
 
 `LibraryPortability` (domain service) strips project-local settings before publishing (step repositories, a
-pinned Jira connection id, named approver users), re-applies them by node id when a copy takes a new version,
+pinned Jira connection id, named approver users; library sources of a step stay, ADR 0043), re-applies them by node id when a copy takes a new version,
 and compares graphs ignoring them, node positions and edge ids (`sameGraph`, the `modified` flag). Use case
 `ManageWorkflowLibrary` (`WorkflowLibraryService`): list, get, version, update details, delete (refused while
 linked), publish, adopt, update a copy, detach. Tables `library_workflow`, `library_workflow_version` (V111).
+
+### LibrarySource (aggregate root, ADR 0043)
+
+| Field | Notes |
+|---|---|
+| `id, key, name, description, kind, url, defaultBranch, purpose, createdAt, updatedAt, updatedBy` | `key` unique and immutable, `^[a-z][a-z0-9-]{1,26}$`; `kind` only `GIT`; `purpose` a `RepositoryPurpose` |
+
+`jobKey = "lib-" + key` is its repository key and folder in a job (`asRepository()` gives the read-only
+`GitRepository`). Steps attach it as `config.repositories` entry `{key, access: READ, library: true}`;
+`StepRepositories.plan` resolves it through `LibrarySourceRepository` (unknown key or a clash with a project key is
+an error). Use case `ManageLibrarySources` (`LibrarySourceService`, `library.view` / `library.manage`, audited).
+Table `library_source` (V116).
 
 ### WorkflowRun (aggregate root)
 

@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { NzCheckboxModule } from 'ng-zorro-antd/checkbox';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzSelectModule } from 'ng-zorro-antd/select';
-import type { ProjectRepository, ValidationIssue } from '../../../core/api/types';
+import type { LibrarySource, ProjectRepository, ValidationIssue } from '../../../core/api/types';
 import { HelpLinkComponent } from '../../../core/help/help-link.component';
 import { accessLabel, purposeLabel } from '../../../core/ui/repositories';
 import {
@@ -13,16 +13,20 @@ import {
   pickerRows,
   repositoryIssues,
   setRepositoryAccess,
+  stepLibraryKeys,
   stepRepositories,
+  toggleLibrarySource,
   toggleRepository,
   unknownKeys,
+  unknownLibraryKeys,
   withStepRepositories,
 } from '../data/step-repositories';
 
 /**
  * "Repositories" of a runner step (IMPLEMENT / SPEC_KIT) in the designer (ADR 0034): the default
  * (the project's primary repository, access derived from push) or an explicit list with READ or
- * PUSH_MR per repository, written to `overrides.config.repositories`.
+ * PUSH_MR per repository, written to `overrides.config.repositories`. Below, the library sources (ADR 0043)
+ * the step attaches read-only; ticking one in the default mode switches to the explicit list.
  */
 @Component({
   selector: 'app-step-repositories-section',
@@ -115,6 +119,30 @@ import {
           }
         }
       }
+      @if (librarySources().length || libraryKeys().length) {
+        <div class="lib-head" i18n="@@workflows.repos.libraryTitle">Library sources (read only)</div>
+        <ul class="rows" [attr.aria-label]="text.libraryList">
+          @for (s of librarySources(); track s.id) {
+            <li class="row">
+              <label
+                nz-checkbox
+                [ngModel]="libraryKeys().includes(s.key)"
+                (ngModelChange)="toggleLibrary(s.key, $event)"
+                [nzDisabled]="readonly()"
+              >
+                <span>{{ s.name }}</span>
+                <span class="mono quiet-inline">{{ s.jobKey }}</span>
+                @if (s.purpose) {
+                  <span class="chip">{{ purpose(s.purpose) }}</span>
+                }
+              </label>
+            </li>
+          }
+        </ul>
+        @for (k of unknownLibrary(); track k) {
+          <p class="state bad">{{ unknownLibraryText(k) }}</p>
+        }
+      }
       @for (e of issues(); track $index) {
         <p class="state bad" role="alert">{{ e.message }}</p>
       }
@@ -149,6 +177,17 @@ import {
         align-items: center;
         flex-wrap: wrap;
         gap: 8px;
+      }
+      .lib-head {
+        margin-top: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--bo-ink-2);
+      }
+      .quiet-inline {
+        margin-left: 6px;
+        font-size: 11px;
+        color: var(--bo-ink-3);
       }
       .access {
         width: 210px;
@@ -193,6 +232,8 @@ import {
 export class StepRepositoriesSectionComponent {
   /** The project's repositories (display order). */
   readonly repositories = input<readonly ProjectRepository[]>([]);
+  /** Sources of the library (ADR 0043) the step may attach read-only. */
+  readonly librarySources = input<readonly LibrarySource[]>([]);
   /** The node's `overrides.config`. */
   readonly config = input<Record<string, unknown> | null | undefined>(null);
   /** Whether the step pushes (config `push`, template, schema default). */
@@ -207,6 +248,7 @@ export class StepRepositoriesSectionComponent {
   readonly text = {
     mode: $localize`:@@workflows.repos.modeLabel:Repositories of this step`,
     list: $localize`:@@workflows.repos.listLabel:Project repositories`,
+    libraryList: $localize`:@@workflows.repos.libraryListLabel:Library sources`,
     pushOffOption: $localize`:@@workflows.repos.pushOffOption:Push and merge request (push is off)`,
   };
 
@@ -217,6 +259,10 @@ export class StepRepositoriesSectionComponent {
   readonly rows = computed(() => pickerRows(this.repositories(), this.list() ?? [], this.pushes()));
   readonly unknown = computed(() => unknownKeys(this.repositories(), this.list() ?? []));
   readonly issues = computed(() => repositoryIssues(this.nodeIssues()));
+  readonly libraryKeys = computed(() => stepLibraryKeys(this.list()));
+  readonly unknownLibrary = computed(() =>
+    unknownLibraryKeys(this.librarySources(), this.list() ?? []),
+  );
 
   accessText(access: StepAccess): string {
     return accessLabel(access);
@@ -228,6 +274,17 @@ export class StepRepositoriesSectionComponent {
   }
   unknownText(key: string): string {
     return $localize`:@@workflows.repos.unknown:The project has no repository ${key}:key:; untick it or fix the project.`;
+  }
+
+  unknownLibraryText(key: string): string {
+    return $localize`:@@workflows.repos.unknownLibrary:The library has no source ${key}:key:; untick it.`;
+  }
+
+  /** Ticking a source in the default mode starts the explicit list with what the default does. */
+  toggleLibrary(key: string, on: boolean): void {
+    if (this.readonly()) return;
+    const base = this.list() ?? initialExplicitList(this.repositories(), this.pushes());
+    this.emit(toggleLibrarySource(this.librarySources(), base, key, on));
   }
 
   setMode(mode: 'default' | 'explicit'): void {

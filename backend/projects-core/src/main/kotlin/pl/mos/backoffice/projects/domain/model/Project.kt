@@ -7,8 +7,8 @@ import java.time.Instant
 
 private const val MUST_NOT_BE_BLANK = "must not be blank"
 
-/** What a project repository holds (ADR 0034): a label for people and a hint for the agent. */
-enum class RepositoryPurpose { DOCS, SOURCE, OTHER }
+/** What a repository holds (ADR 0034): a label for people and a hint for the agent; STANDARDS and TEMPLATES mainly for library sources (ADR 0043). */
+enum class RepositoryPurpose { DOCS, SOURCE, OTHER, STANDARDS, TEMPLATES }
 
 /**
  * One git repository of a project (ADR 0034; OpenAPI `ProjectRepository`). The runner clones it into

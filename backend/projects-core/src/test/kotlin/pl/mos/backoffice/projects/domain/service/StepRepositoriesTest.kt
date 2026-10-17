@@ -33,6 +33,36 @@ class StepRepositoriesTest {
         assertThat(reading.repositories.single().access).isEqualTo(GitAccess.READ)
     }
 
+    private val standards = pl.mos.backoffice.projects.domain.model.LibrarySource(
+        pl.mos.backoffice.projects.domain.model.LibrarySourceId.new(), "standards", "Company standards", url = "https://git.example.com/acme/standards.git",
+        createdAt = java.time.Instant.EPOCH, updatedAt = java.time.Instant.EPOCH,
+    )
+    private val library: (String) -> pl.mos.backoffice.projects.domain.model.LibrarySource? = { if (it == "standards") standards else null }
+
+    private fun withLibrary(vararg project: Pair<String, String>, shared: List<Map<String, Any?>>) = mapOf(
+        StepRepositories.CONFIG_KEY to project.map { (k, a) -> mapOf("key" to k, "access" to a) } + shared,
+    )
+
+    @Test
+    fun `library sources join a step read-only under lib-key, also in a project without repositories (ADR 0043)`() {
+        val plan = StepRepositories.plan(multi, withLibrary("app" to "PUSH_MR", shared = listOf(mapOf("key" to "standards", "access" to "READ", "library" to true))), true, true, library)
+        assertThat(plan.valid).isTrue()
+        assertThat(plan.repositories.map { Triple(it.key, it.access, it.library) })
+            .containsExactly(Triple("app", GitAccess.PUSH_MR, false), Triple("lib-standards", GitAccess.READ, true))
+        assertThat(plan.primary!!.key).isEqualTo("app")
+        assertThat(plan.repositories.last().toTemplateMap()["library"]).isEqualTo(true)
+
+        // only library sources: the first becomes the working directory, no project repository needed
+        val onlyShared = StepRepositories.plan(repoLess, withLibrary(shared = listOf(mapOf("key" to "standards", "library" to true))), true, false, library)
+        assertThat(onlyShared.valid).isTrue()
+        assertThat(onlyShared.primary!!.key).isEqualTo("lib-standards")
+
+        val pushing = StepRepositories.plan(multi, withLibrary(shared = listOf(mapOf("key" to "standards", "access" to "PUSH_MR", "library" to true))), true, true, library)
+        assertThat(pushing.errors).anyMatch { it.contains("read-only") }
+        val unknown = StepRepositories.plan(multi, withLibrary(shared = listOf(mapOf("key" to "nope", "library" to true))), true, true, library)
+        assertThat(unknown.errors).anyMatch { it.contains("library source nope does not exist") }
+    }
+
     @Test
     fun `steps that need no repository work in a project without repositories`() {
         val plan = StepRepositories.plan(repoLess, emptyMap(), runnerStep = false, pushes = false)

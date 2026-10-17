@@ -1,7 +1,7 @@
 # Task library
 
 The task library holds what agents do and how they are prompted, separately from the workflows that use
-it: task templates, the interfaces they promise, and reusable skills. This chapter covers the three
+it: task templates, the interfaces they promise, reusable skills and sources. This chapter covers these
 **Library** pages and how to change a task for one project only.
 
 ## How the pieces fit
@@ -135,6 +135,32 @@ any template. A skill that a template uses cannot be deleted or renamed; built-i
 deleted. Every agent inherits the skills `agent-ground-rules` and `ask-dont-guess` through the built-in
 `base-agent` template; remove them on a template with **Remove inherited skills** if a task must not see
 them.
+
+<a id="sources"></a>
+## Sources
+
+**Library** → **Sources** (`/library/sources`) lists material that steps of every project can attach:
+standards to follow, templates to start from, reference documentation. For now a source is a Git
+repository. Everyone with `library.view` sees the list; `library.manage` adds, changes and deletes
+sources.
+
+| Field | Meaning |
+|---|---|
+| **Key** | 2-27 lower case letters, digits and hyphens, starting with a letter, for example `standards`. Steps refer to the source by it. It cannot change later. |
+| **Name** | What people see in the designer and on the project tab **Sources**. |
+| **Git URL** | The URL the runner clones. Private repositories need a read token on the runners, like project repositories ([Git access for agents](integrations-git.md#git-least-privilege)). |
+| **Branch** | Default `main`. The branch that is cloned. |
+| **Purpose** | **Standards**, **Templates**, **Documentation**, **Source code** or **Other**. Told to the agent. |
+| **Description** | What to follow or reuse in it. Given to the agent as data, not as instructions. |
+
+How a source reaches the agent: in the designer, a coding step ticks it in its section **Repositories**,
+under **Library sources (read only)** ([Repositories of a step](workflows.md#step-repositories)). The job
+clones it into `/workspace/lib-<key>` (for example `/workspace/lib-standards`), read only: nothing is ever
+pushed to a library source, and the agent is told to follow it, not to change it.
+
+Deleting a source does not change any workflow: steps that still name it fail validation (the workflow can
+be saved only as a draft) until you untick it. When you publish a workflow to the workflow library, the
+library sources its steps use go with it; projects that adopt it get them too.
 
 ## The built-in library
 

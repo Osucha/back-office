@@ -42,6 +42,17 @@ class LibraryPortabilityTest {
     }
 
     @Test
+    fun `library sources of a step are shared and stay in the published graph and in updates (ADR 0043)`() {
+        val shared = mapOf("key" to "standards", "access" to "READ", "library" to true)
+        val own = mapOf("key" to "api", "access" to "READ")
+        val published = (LibraryPortability.portable(listOf(task(mapOf("repositories" to listOf(own, shared))))).single() as WorkflowNode.Task).task.overrides.config
+        assertThat(published["repositories"]).isEqualTo(listOf(shared))
+
+        val updated = LibraryPortability.withLocalSettings(listOf(task(published)), listOf(task(mapOf("repositories" to listOf(own)))))
+        assertThat((updated.single() as WorkflowNode.Task).task.overrides.config["repositories"]).isEqualTo(listOf(own, shared))
+    }
+
+    @Test
     fun `portable connection modes stay in the published graph`() {
         listOf("SYSTEM", "acting_user").forEach { mode ->
             val t = LibraryPortability.portable(listOf(task(mapOf("jiraConnection" to mode)))).single() as WorkflowNode.Task

@@ -44,6 +44,7 @@
 | [0040](0040-personal-runners.md) | Personal runners: a personal runner pool per user (`fleet.personal`, My account) runs the agent steps of their private projects on their own computer (runner-controller with the DOCKER backend, one `docker run`); optional `LOCAL_LOGIN`: Claude Code uses the owner's own login (`CLAUDE_CODE_OAUTH_TOKEN`), not metered, node cost 0 (extends 0024) | accepted |
 | [0041](0041-workflow-drafts-and-project-short-code.md) | Workflow drafts (saved with errors, no runs, no publishing) and the project key as Back Office's own short code: optional (generated from the name), changeable, no longer the implicit Jira project key (amends 0014, 0035) | accepted |
 | [0042](0042-api-equivalent-cost.md) | Cost at API prices next to the spent cost: steps, runs and workflow metrics carry `apiCost` (equal to the cost through the gateway, the harness estimate for subscription steps); budgets keep counting only spent money | accepted |
+| [0043](0043-library-sources.md) | Sources: git repositories of standards, templates and reference material in the library (`/library/sources`), attached read only by steps as `{key, access: READ, library: true}` and cloned to `/workspace/lib-<key>`; the project tab Sources holds the project repositories | accepted |
 
 Template: context, decision, alternatives considered, consequences. Dates are the day the decision was
 taken. A superseded record keeps its text and gains a link to the successor.

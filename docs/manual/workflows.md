@@ -148,6 +148,12 @@ several repositories, the same branch name is used in each and each gets its own
 uses it, otherwise the first in the list) and is told which repositories exist, where they are, their purpose,
 base branch and whether it may change them.
 
+**Library sources.** Under **Library sources (read only)** the step ticks sources of the
+[library](task-library.md#sources): standards, templates, reference material shared by all projects. Each is
+cloned read only into `/workspace/lib-<key>` and the agent is told to follow it, not to change it. Ticking a
+source while the step uses the primary repository switches the step to its own list, starting with the
+primary repository; going back to **Use the primary repository** drops the ticked sources.
+
 **Validation messages** (in the **Validation** sheet and when a run starts):
 
 | Message is about | What to do |

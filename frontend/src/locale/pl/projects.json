@@ -321,5 +321,15 @@
   "projects.form.keyRenameHint": "Własny krótki kod projektu w Back Office, nie klucz Jira. Zmiana nie dotyka Jiry; dotychczasowe przebiegi zachowują stary kod.",
   "projects.form.keyGenerated": "utworzony z nazwy",
   "projects.form.jiraKeyRequired": "Podaj klucz projektu w Jirze (przedrostek kluczy zgłoszeń, np. LFV w LFV-123)",
-  "projects.detail.workflows.draft": "wersja robocza (z błędami)"
+  "projects.detail.workflows.draft": "wersja robocza (z błędami)",
+  "projects.sources.library.title": "Źródła z biblioteki",
+  "projects.sources.library.intro": " Wspólne dla wszystkich projektów: standardy, szablony i materiały referencyjne. Kroki podłączają je tylko do odczytu w projektancie (sekcja Repozytoria kroku); zadanie dostaje je w /workspace/lib-<key>. ",
+  "projects.sources.library.loading": "Wczytywanie…",
+  "projects.sources.library.empty": "Biblioteka nie ma jeszcze źródeł.",
+  "projects.sources.library.col.source": "Źródło",
+  "projects.sources.library.col.purpose": "Przeznaczenie",
+  "projects.sources.library.col.repository": "Repozytorium",
+  "projects.sources.library.manage": "Otwórz Biblioteka → Źródła",
+  "projects.detail.tab.sources": "Źródła",
+  "projects.detail.sources.repositories": "Repozytoria projektu"
 }

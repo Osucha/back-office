@@ -36,11 +36,13 @@ import {
 import { ModelProfilesApi } from '../../../core/api/model-profiles.service';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import { WorkflowsApi } from '../../../core/api/workflows.service';
+import { LibrarySourcesApi } from '../../../core/api/library-sources.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
 import { projectRepositories } from '../../../core/ui/repositories';
 import type {
   ModelProfile,
   Point,
+  LibrarySource,
   ProjectRepository,
   Skill,
   ValidationResult,
@@ -487,6 +489,7 @@ const MAX_HISTORY = 50;
                     [skills]="skills()"
                     [projectId]="resolvedProjectId()"
                     [projectRepositories]="projectRepositories()"
+                    [librarySources]="librarySources()"
                     [idLocked]="persistedIds().has(n.id)"
                     [readonly]="readOnly()"
                     (nodeChange)="updateNode(n.id, $event)"
@@ -1111,8 +1114,11 @@ export class WorkflowDesignerPageComponent {
   readonly sheetOpen = signal(false);
   private readonly projectsStore = inject(ProjectsStore);
   private readonly projectsApi = inject(ProjectsApi);
+  private readonly librarySourcesApi = inject(LibrarySourcesApi);
   /** The project's repositories (ADR 0034) for the repositories of runner steps. */
   readonly projectRepositories = signal<ProjectRepository[]>([]);
+  /** Library sources (ADR 0043) runner steps may attach. */
+  readonly librarySources = signal<LibrarySource[]>([]);
   readonly projectKey = computed(
     () =>
       this.projectsStore.byId().get(this.resolvedProjectId())?.key ??
@@ -1365,6 +1371,9 @@ export class WorkflowDesignerPageComponent {
     this.library
       .listSkills(projectId)
       .subscribe({ next: (s) => this.skills.set(s), error: () => undefined });
+    this.librarySourcesApi
+      .list()
+      .subscribe({ next: (s) => this.librarySources.set(s), error: () => undefined });
     // Fresh repositories for the step repository picker (ADR 0034); the store may be older.
     this.projectsApi.get(projectId).subscribe({
       next: (p) => this.projectRepositories.set(projectRepositories(p)),

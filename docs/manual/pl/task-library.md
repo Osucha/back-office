@@ -153,6 +153,34 @@ umiejętności wbudowanych nie można usuwać. Każdy agent dziedziczy umiejętn
 i `ask-dont-guess` przez wbudowany szablon `base-agent`; jeśli zadanie nie może ich widzieć, usuń je
 w szablonie przez **Usuń odziedziczone umiejętności**.
 
+<a id="sources"></a>
+## Źródła
+
+**Biblioteka** → **Źródła** (**Sources**, `/library/sources`) wyświetla materiały, które kroki każdego
+projektu mogą podłączyć: standardy do przestrzegania, szablony do wykorzystania, dokumentację referencyjną.
+Na razie źródło to repozytorium Git. Listę widzi każdy z `library.view`; `library.manage` dodaje,
+zmienia i usuwa źródła.
+
+| Pole | Znaczenie |
+|---|---|
+| **Klucz** (**Key**) | 2-27 małych liter, cyfr i myślników, zaczyna się literą, na przykład `standards`. Kroki odwołują się po nim do źródła. Nie można go później zmienić. |
+| **Nazwa** (**Name**) | To, co widać w projektancie i na karcie projektu **Źródła**. |
+| **URL Gita** (**Git URL**) | Adres, który klonuje runner. Prywatne repozytoria wymagają tokenu do odczytu na runnerach, jak repozytoria projektu ([Dostęp agentów do gita](integrations-git.md#git-least-privilege)). |
+| **Gałąź** (**Branch**) | Domyślnie `main`. Gałąź, która jest klonowana. |
+| **Przeznaczenie** (**Purpose**) | **Standardy**, **Szablony**, **Dokumentacja**, **Kod źródłowy** albo **Inne**. Agent dostaje tę informację. |
+| **Opis** (**Description**) | Czego w nim przestrzegać albo co wykorzystać. Agent dostaje go jako dane, nie jako instrukcje. |
+
+Jak źródło trafia do agenta: w projektancie krok programistyczny zaznacza je w sekcji **Repozytoria**,
+w części **Źródła z biblioteki (tylko odczyt)** ([Repozytoria kroku](workflows.md#step-repositories)).
+Zadanie klonuje je do `/workspace/lib-<key>` (na przykład `/workspace/lib-standards`) tylko do odczytu:
+do źródła z biblioteki nic nie jest wypychane, a agent dostaje polecenie, by się do niego stosował, a nie
+je zmieniał.
+
+Usunięcie źródła nie zmienia żadnego workflowu: kroki, które nadal je wskazują, nie przechodzą walidacji
+(workflow da się zapisać tylko jako wersję roboczą), dopóki ich nie odznaczysz. Gdy publikujesz workflow do
+biblioteki workflowów, źródła z biblioteki używane przez jego kroki idą razem z nim; projekty, które go
+przyjmą, też je dostają.
+
 ## Biblioteka wbudowana
 
 Back Office zawiera szablony faz Spec Kit, implementacji z OpenCode lub Claude Code, `clarify-spec`,

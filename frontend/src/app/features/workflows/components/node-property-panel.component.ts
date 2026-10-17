@@ -31,6 +31,7 @@ import type {
   DecisionBranch,
   ModelProfile,
   PaletteTask,
+  LibrarySource,
   ProjectRepository,
   ResolvedTask,
   Skill,
@@ -291,6 +292,7 @@ type PromptMode = 'none' | 'append' | 'replace';
                 />
                 <app-step-repositories-section
                   [repositories]="projectRepositories()"
+                  [librarySources]="librarySources()"
                   [config]="n.task?.overrides?.config ?? null"
                   [pushes]="stepPushes()"
                   [nodeIssues]="allIssues()"
@@ -989,6 +991,8 @@ export class NodePropertyPanelComponent {
   readonly projectId = input<string | null>(null);
   /** The project's repositories (ADR 0034), for the repositories of runner steps. */
   readonly projectRepositories = input<readonly ProjectRepository[]>([]);
+  /** Sources of the library (ADR 0043) a runner step may attach. */
+  readonly librarySources = input<readonly LibrarySource[]>([]);
   /** Ids of nodes that exist in the saved version (renaming them is not allowed). */
   readonly idLocked = input(false);
   readonly readonly = input(false);

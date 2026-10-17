@@ -60,7 +60,8 @@ A project can have no repository, one, or several, for example the service code,
 API contract. Agents in coding steps (**Implement**, **Spec Kit**) clone them; every other step (model
 calls, Jira, gates, CI waits) works without any.
 
-Edit the list on the project form (**Create project**, or tab **Settings**). You need `project.manage`.
+Edit the list on the project form (**Create project**) or on the project tab **Sources**. You need
+`project.manage`.
 
 | Field | Meaning |
 |---|---|
@@ -88,6 +89,14 @@ not start; the message names the step and lists the project's repositories.
 **Credentials.** Each repository needs a read token and, if steps push to it, a push token in the runner
 cluster ([Git access for agents](integrations-git.md#git-least-privilege)). A step gets only the access it
 asks for, per repository.
+
+<a id="sources"></a>
+### The Sources tab
+
+The project tab **Sources** gathers everything steps of the project can attach: on the left the project's
+repositories (the editor above, saved with **Save changes**), on the right the
+[library sources](task-library.md#sources) shared by all projects, read only here. Each step chooses what it
+attaches in the designer ([Repositories of a step](workflows.md#step-repositories)).
 
 <a id="no-repository"></a>
 ### Projects without a repository
@@ -118,13 +127,14 @@ The tabs, each reachable with `?tab=` in the URL:
 | Tab | Content | Changing it needs |
 |---|---|---|
 | **Workflows** | The project's workflows with triggers, state, last change; **Start run**, **Edit** / **View**, and the more-actions menu (**Duplicate workflow**, **Delete workflow**). | `workflow.edit` (start: `run.start`) |
+| **Sources** | The project's repositories and the library sources (see [The Sources tab](#sources)). | `project.manage` |
 | **Runs** | The project's runs (see [Runs](runs.md#run-list)). | — |
 | **CI** | Entrypoints, CI tokens, a GitLab CI snippet and the CI executions. | `project.manage`, `project.ci.manage` |
 | **Members** | Users and groups with their project roles. | `project.members.manage` |
 | **Connections** | The project's Jira connections and the platform connections it falls back to (see [Project connections](#project-connections)). | `project.connections.manage` |
 | **Sandbox** | The project's sandbox policy and what a job gets today. | `project.manage` |
 | **Budget** | The project's monthly budget. | `project.manage` |
-| **Settings** | The project form above with the [repositories](#repositories), the [Spec Kit](#spec-kit) switch and constitution, the [Jira intake watcher](integrations-jira.md#jira-intake), the **Spec Kit** card (**Add Spec Kit workflows**), and **Delete this project**. | `project.manage` |
+| **Settings** | The project form above (without the repositories, which are on **Sources**), the [Spec Kit](#spec-kit) switch and constitution, the [Jira intake watcher](integrations-jira.md#jira-intake), the **Spec Kit** card (**Add Spec Kit workflows**), and **Delete this project**. | `project.manage` |
 
 <a id="members"></a>
 ## Members and project roles

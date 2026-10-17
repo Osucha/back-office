@@ -50,6 +50,10 @@ export function purposeLabel(purpose: RepositoryPurpose | null | undefined): str
       return $localize`:@@core.repository.purpose.other:Other`;
     case 'SOURCE':
       return $localize`:@@core.repository.purpose.source:Source code`;
+    case 'STANDARDS':
+      return $localize`:@@core.repository.purpose.standards:Standards`;
+    case 'TEMPLATES':
+      return $localize`:@@core.repository.purpose.templates:Templates`;
     default:
       return '';
   }

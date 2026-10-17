@@ -94,6 +94,11 @@ export const NAVIGATION: NavItem[] = [
         access: { permission: 'library.view' },
       },
       {
+        path: '/library/sources',
+        label: $localize`:@@shell.nav.librarySources:Sources`,
+        access: { permission: 'library.view' },
+      },
+      {
         path: '/library/workflows',
         label: $localize`:@@shell.nav.libraryWorkflows:Workflows`,
         access: { permission: 'library.view' },

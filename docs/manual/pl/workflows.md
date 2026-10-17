@@ -157,6 +157,13 @@ gałęzi i każde dostaje własny merge request.
 repozytorium projektu, jeśli krok go używa, w przeciwnym razie w pierwszym z listy) i dostaje informację,
 jakie repozytoria istnieją, gdzie są, jakie mają przeznaczenie i gałąź bazową oraz czy może je zmieniać.
 
+**Źródła z biblioteki.** W części **Źródła z biblioteki (tylko odczyt)** krok zaznacza źródła
+[biblioteki](task-library.md#sources): standardy, szablony, materiały referencyjne wspólne dla wszystkich
+projektów. Każde jest klonowane tylko do odczytu do `/workspace/lib-<key>`, a agent dostaje polecenie, by
+się do niego stosował, a nie je zmieniał. Zaznaczenie źródła, gdy krok używa głównego repozytorium,
+przełącza krok na własną listę, zaczynającą się od głównego repozytorium; powrót do **Użyj głównego
+repozytorium** usuwa zaznaczone źródła.
+
 **Komunikaty walidacji** (w arkuszu **Walidacja** i przy starcie uruchomienia):
 
 | Komunikat dotyczy | Co zrobić |

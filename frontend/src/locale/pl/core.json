@@ -495,5 +495,9 @@
   "core.notify.sampleRule": "Moje zgłoszenia",
   "core.help.topic.account.runner": "Mój komputer jako runner",
   "core.cost.apiTip": "Ta sama praca w cenach API. Różni się od kosztu, gdy kroki opłaciła subskrypcja (Claude Code z Twoim własnym logowaniem).",
-  "core.cost.apiAria": "W cenach API {$cost}"
+  "core.cost.apiAria": "W cenach API {$cost}",
+  "core.help.topic.librarySources": "Źródła biblioteki",
+  "core.help.topic.projectSources": "Źródła projektu",
+  "core.repository.purpose.standards": "Standardy",
+  "core.repository.purpose.templates": "Szablony"
 }

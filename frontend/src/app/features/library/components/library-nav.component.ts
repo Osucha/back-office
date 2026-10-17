@@ -4,7 +4,7 @@ import {
   type SegmentedNavItem,
 } from '../../../core/ui/relay/segmented-nav.component';
 
-export type LibrarySection = 'templates' | 'interfaces' | 'skills' | 'workflows';
+export type LibrarySection = 'templates' | 'interfaces' | 'skills' | 'sources' | 'workflows';
 
 /** Relay segmented control shared by the Library pages (with optional item counts). */
 @Component({
@@ -43,6 +43,12 @@ export class LibraryNavComponent {
         label: $localize`:@@library.nav.skills:Skills`,
         link: '/library/skills',
         count: c.skills,
+      },
+      {
+        id: 'sources',
+        label: $localize`:@@library.nav.sources:Sources`,
+        link: '/library/sources',
+        count: c.sources,
       },
       {
         id: 'workflows',

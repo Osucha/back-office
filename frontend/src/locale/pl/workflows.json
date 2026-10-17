@@ -341,5 +341,8 @@
   "workflows.repos.accessLabel": "Dostęp do {$key}",
   "workflows.repos.unknown": "Projekt nie ma repozytorium {$key}; odznacz je albo popraw projekt.",
   "workflows.designer.draftOnSave": "{count, plural, one {# błąd} few {# błędy} many {# błędów} other {# błędu}}: zapis zachowa wersję roboczą, przebiegi nie wystartują do czasu poprawienia.",
-  "workflows.designer.savedDraft": "Zapisano jako wersję roboczą (v{$version}): przebiegi nie wystartują, dopóki błędy nie zostaną poprawione"
+  "workflows.designer.savedDraft": "Zapisano jako wersję roboczą (v{$version}): przebiegi nie wystartują, dopóki błędy nie zostaną poprawione",
+  "workflows.repos.libraryTitle": "Źródła z biblioteki (tylko odczyt)",
+  "workflows.repos.libraryListLabel": "Źródła z biblioteki",
+  "workflows.repos.unknownLibrary": "Biblioteka nie ma źródła {$key}; odznacz je."
 }

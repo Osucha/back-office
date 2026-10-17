@@ -66,12 +66,23 @@ import { ProjectCiPanelComponent } from '../components/project-ci-panel.componen
 import { ProjectFormComponent } from '../components/project-form.component';
 import { JiraIntakePanelComponent } from '../components/jira-intake-panel.component';
 import { ProjectMembersPanelComponent } from '../components/project-members-panel.component';
+import { ProjectSourcesPanelComponent } from '../components/project-sources-panel.component';
 
-const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'budget', 'settings'];
+const TABS = [
+  'workflows',
+  'sources',
+  'runs',
+  'ci',
+  'members',
+  'connections',
+  'sandbox',
+  'budget',
+  'settings',
+];
 
 /**
  * Project: header (monogram, repository, provenance, your roles, what is in flight), then
- * Workflows, Runs, CI, Members, Connections, Sandbox, Budget and Settings tabs (`?tab=`). `?start=<workflowId>` opens the start
+ * Workflows, Sources, Runs, CI, Members, Connections, Sandbox, Budget and Settings tabs (`?tab=`). `?start=<workflowId>` opens the start
  * dialog (the command palette's "Start run…").
  */
 @Component({
@@ -92,6 +103,7 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
     ProjectCiPanelComponent,
     ProjectFormComponent,
     ProjectMembersPanelComponent,
+    ProjectSourcesPanelComponent,
     ProjectBudgetPanelComponent,
     ProjectConnectionsPanelComponent,
     ProjectSandboxPanelComponent,
@@ -414,6 +426,25 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
               </nz-table>
             }
           </nz-tab>
+          <nz-tab nzTitle="Sources" i18n-nzTitle="@@projects.detail.tab.sources">
+            <ng-template nz-tab>
+              <div class="two-col">
+                <nz-card nzTitle="Project repositories" i18n-nzTitle="@@projects.detail.sources.repositories">
+                  <app-project-form
+                    [project]="p"
+                    sections="sources"
+                    [saving]="saving()"
+                    [cancellable]="false"
+                    [readonly]="!can('project.manage')"
+                    [serverError]="saveError()"
+                    [specKitAllowed]="specKitAllowed()"
+                    (saved)="save($event)"
+                  />
+                </nz-card>
+                <app-project-sources-panel />
+              </div>
+            </ng-template>
+          </nz-tab>
           <nz-tab nzTitle="Runs" i18n-nzTitle="@@projects.detail.tab.runs">
             <ng-template nz-tab>
               <app-runs-table
@@ -484,6 +515,7 @@ const TABS = ['workflows', 'runs', 'ci', 'members', 'connections', 'sandbox', 'b
                 <nz-card [nzTitle]="can('project.manage') ? text.settings : text.settingsReadOnly">
                   <app-project-form
                     [project]="p"
+                    sections="settings"
                     [saving]="saving()"
                     [cancellable]="false"
                     [readonly]="!can('project.manage')"
@@ -786,7 +818,7 @@ export class ProjectDetailPageComponent {
   readonly router = inject(Router);
 
   readonly projectId = input.required<string>();
-  /** Optional `?tab=` query param (workflows | runs | ci | members | connections | sandbox | budget | settings). */
+  /** Optional `?tab=` query param (workflows | sources | runs | ci | members | connections | sandbox | budget | settings). */
   readonly tab = input<string | undefined>();
   /** Optional `?start=<workflowId>`: open the start dialog. */
   readonly start = input<string | undefined>();

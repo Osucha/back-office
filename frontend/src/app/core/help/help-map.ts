@@ -172,6 +172,16 @@ export const HELP_TOPICS = {
     $localize`:@@core.help.topic.interfaces:Task interfaces`,
   ),
   skills: t('task-library', 'skills', $localize`:@@core.help.topic.skills:Skills`),
+  librarySources: t(
+    'task-library',
+    'sources',
+    $localize`:@@core.help.topic.librarySources:Library sources`,
+  ),
+  projectSources: t(
+    'projects',
+    'sources',
+    $localize`:@@core.help.topic.projectSources:Project sources`,
+  ),
   myWork: t('my-work', 'my-work', $localize`:@@core.help.topic.myWork:My work`),
   libraryWorkflows: t(
     'workflow-library',
@@ -310,6 +320,7 @@ export function helpTopic(key: HelpKey): HelpTopic {
 /** Project detail `?tab=` -> topic (no tab = Workflows). */
 const PROJECT_TABS: Record<string, HelpKey> = {
   workflows: 'project.workflows',
+  sources: 'projectSources',
   runs: 'project.runs',
   ci: 'project.ci',
   members: 'project.members',
@@ -335,6 +346,7 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
   [/^\/library(\/templates)?$/, 'templates'],
   [/^\/library\/interfaces$/, 'interfaces'],
   [/^\/library\/skills$/, 'skills'],
+  [/^\/library\/sources$/, 'librarySources'],
   [/^\/my-work$/, 'myWork'],
   [/^\/library\/workflows$/, 'libraryWorkflows'],
   [/^\/library\/workflows\/[^/]+$/, (q) => (q.get('tab') ? 'libraryWorkflows' : 'libraryMetrics')],

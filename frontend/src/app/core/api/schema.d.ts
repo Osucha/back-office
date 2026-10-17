@@ -1342,6 +1342,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Sources of the library (library.view). */
+        get: operations["listLibrarySources"];
+        put?: never;
+        /** @description Adds a git source to the library (library.manage). */
+        post: operations["createLibrarySource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/sources/{sourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getLibrarySource"];
+        /** @description Changes a source (library.manage); the key cannot change because steps refer to it. */
+        put: operations["updateLibrarySource"];
+        post?: never;
+        /** @description Removes a source (library.manage). Steps that still name it fail validation and are kept as drafts. */
+        delete: operations["deleteLibrarySource"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/workflows": {
         parameters: {
             query?: never;
@@ -4317,6 +4355,33 @@ export interface components {
             /** @description the library version the copy follows */
             version: number;
         };
+        LibrarySource: components["schemas"]["LibrarySourceInput"] & {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            /** @description lib-<key>: the repository key and directory of the source in a job */
+            jobKey: string;
+            /** Format: date-time */
+            updatedAt: string;
+            updatedBy?: components["schemas"]["ActorRef"] | null;
+        };
+        LibrarySourceInput: {
+            /** @description Empty = main */
+            defaultBranch?: string | null;
+            description?: string;
+            /** @description Name steps use; the job clones it into /workspace/lib-<key> */
+            key: string;
+            /**
+             * @description Only GIT for now
+             * @enum {string}
+             */
+            kind?: "GIT";
+            name: string;
+            purpose?: components["schemas"]["RepositoryPurpose"];
+            /** @description Git clone URL; the runner cluster needs a read credential for private repositories */
+            url: string;
+        };
         LibraryUpdateRequest: {
             /** @default false */
             discardLocalChanges: boolean;
@@ -4926,10 +4991,10 @@ export interface components {
             codes?: string[];
         };
         /**
-         * @description What a project repository holds (ADR 0034); shown as a label and in the agent prompt. DOCS = documentation, SOURCE = source code.
+         * @description What a repository holds (ADR 0034, ADR 0043); shown as a label and in the agent prompt. DOCS = documentation, SOURCE = source code, STANDARDS = rules to follow, TEMPLATES = templates to start from.
          * @enum {string}
          */
-        RepositoryPurpose: "DOCS" | "SOURCE" | "OTHER";
+        RepositoryPurpose: "DOCS" | "SOURCE" | "OTHER" | "STANDARDS" | "TEMPLATES";
         /** @description What a runner step did in one repository (ADR 0034). Built from RunnerResult.repositories, or from the legacy single-repository fields of older runners. */
         RepositoryResult: {
             access?: components["schemas"]["GitAccess"];
@@ -8208,6 +8273,121 @@ export interface operations {
                 content?: never;
             };
             409: components["responses"]["Problem"];
+        };
+    };
+    listLibrarySources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySource"][];
+                };
+            };
+        };
+    };
+    createLibrarySource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibrarySourceInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySource"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    getLibrarySource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySource"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateLibrarySource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibrarySourceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySource"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    deleteLibrarySource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listLibraryWorkflows: {

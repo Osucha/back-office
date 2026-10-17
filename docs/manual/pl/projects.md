@@ -63,8 +63,8 @@ Projekt może nie mieć repozytorium, mieć jedno albo kilka, na przykład kod u
 i kontrakt API. Agenci w krokach programistycznych (**Implement**, **Spec Kit**) je klonują; wszystkie
 pozostałe kroki (wywołania modelu, Jira, bramki, oczekiwanie na CI) działają bez nich.
 
-Listę edytujesz w formularzu projektu (**Utwórz projekt** albo karta **Ustawienia**). Wymaga
-`project.manage`.
+Listę edytujesz w formularzu projektu (**Utwórz projekt**) albo na karcie projektu **Źródła**
+(**Sources**). Wymaga `project.manage`.
 
 | Pole | Znaczenie |
 |---|---|
@@ -94,6 +94,14 @@ projekt już nie ma, nie wystartuje; komunikat podaje krok i listę repozytorió
 **Poświadczenia.** Każde repozytorium potrzebuje w klastrze runnerów tokenu do odczytu oraz, jeśli kroki do
 niego wypychają, tokenu do wypychania ([Dostęp agentów do gita](integrations-git.md#git-least-privilege)).
 Krok dostaje tylko taki dostęp, o jaki prosi, osobno dla każdego repozytorium.
+
+<a id="sources"></a>
+### Karta Źródła
+
+Karta projektu **Źródła** (**Sources**) zbiera wszystko, co kroki projektu mogą podłączyć: po lewej
+repozytoria projektu (edytor opisany wyżej, zapisywany przyciskiem **Zapisz zmiany**), po prawej
+[źródła z biblioteki](task-library.md#sources) wspólne dla wszystkich projektów, tutaj tylko do odczytu.
+Każdy krok wybiera w projektancie, co podłącza ([Repozytoria kroku](workflows.md#step-repositories)).
 
 <a id="no-repository"></a>
 ### Projekty bez repozytorium
@@ -125,13 +133,14 @@ Karty, każda dostępna przez `?tab=` w URL:
 | Karta | Zawartość | Zmiana wymaga |
 |---|---|---|
 | **Workflowy** (**Workflows**) | Workflowy projektu z wyzwalaczami, stanem i datą ostatniej zmiany; **Uruchom** (**Start run**), **Edytuj** / **Podgląd** (**Edit** / **View**) i menu dodatkowych akcji (**Duplikuj workflow**, **Usuń workflow**). | `workflow.edit` (uruchamianie: `run.start`) |
+| **Źródła** (**Sources**) | Repozytoria projektu i źródła z biblioteki (zob. [Karta Źródła](#sources)). | `project.manage` |
 | **Uruchomienia** (**Runs**) | Uruchomienia projektu (zob. [Uruchomienia](runs.md#run-list)). | — |
 | **CI** | Punkty wejścia, tokeny CI, fragment konfiguracji GitLab CI i wykonania CI. | `project.manage`, `project.ci.manage` |
 | **Członkowie** (**Members**) | Użytkownicy i grupy z ich rolami projektowymi. | `project.members.manage` |
 | **Połączenia** (**Connections**) | Połączenia Jiry projektu i połączenia platformy, z których projekt korzysta awaryjnie (zob. [Połączenia projektu](#project-connections)). | `project.connections.manage` |
 | **Sandbox** | Polityka sandboxa projektu i to, co dziś dostaje zadanie. | `project.manage` |
 | **Budżet** (**Budget**) | Miesięczny budżet projektu. | `project.manage` |
-| **Ustawienia** (**Settings**) | Formularz projektu opisany wyżej z [repozytoriami](#repositories), przełącznikiem i konstytucją [Spec Kit](#spec-kit), [monitor zgłoszeń Jira](integrations-jira.md#jira-intake), karta **Spec Kit** (**Dodaj workflowy Spec Kit**) i **Usuń ten projekt**. | `project.manage` |
+| **Ustawienia** (**Settings**) | Formularz projektu opisany wyżej (bez repozytoriów, które są na karcie **Źródła**), przełącznik i konstytucja [Spec Kit](#spec-kit), [monitor zgłoszeń Jira](integrations-jira.md#jira-intake), karta **Spec Kit** (**Dodaj workflowy Spec Kit**) i **Usuń ten projekt**. | `project.manage` |
 
 <a id="members"></a>
 ## Członkowie i role projektowe

@@ -2,8 +2,11 @@
  * Repositories of a runner step (ADR 0034): `overrides.config.repositories = [{key, access}]`.
  * Absent = default: the project's primary repository with derived access (push on -> PUSH_MR,
  * otherwise READ). Only runner steps (palette executor IMPLEMENT or SPEC_KIT) use repositories.
+ * Library sources (ADR 0043) are entries `{key, access: READ, library: true}` of the same list; the job clones
+ * them into /workspace/lib-<key>.
  */
 import type {
+  LibrarySource,
   PaletteTask,
   ProjectRepository,
   TaskExecutor,
@@ -17,7 +20,11 @@ export type StepAccess = 'READ' | 'PUSH_MR';
 export interface StepRepository {
   key: string;
   access: StepAccess;
+  /** A library source (always READ), not a project repository. */
+  library?: boolean;
 }
+
+const isLibrary = (r: StepRepository) => r.library === true;
 
 export function isRunnerTask(task: Pick<PaletteTask, 'executor'> | null | undefined): boolean {
   return !!task?.executor && RUNNER_EXECUTORS.includes(task.executor);
@@ -47,10 +54,14 @@ export function stepRepositories(
   if (!Array.isArray(raw)) return null;
   return raw
     .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
-    .map((r) => ({
-      key: String(r['key'] ?? ''),
-      access: r['access'] === 'PUSH_MR' ? 'PUSH_MR' : 'READ',
-    }));
+    .map((r): StepRepository => {
+      const library = r['library'] === true;
+      return {
+        key: String(r['key'] ?? ''),
+        access: !library && r['access'] === 'PUSH_MR' ? 'PUSH_MR' : 'READ',
+        ...(library ? { library } : {}),
+      };
+    });
 }
 
 /** The node config with the list set (null removes it = default). Undefined when empty. */
@@ -60,7 +71,10 @@ export function withStepRepositories(
 ): Record<string, unknown> | undefined {
   const next: Record<string, unknown> = { ...(config ?? {}) };
   if (list === null) delete next[STEP_REPOSITORIES_KEY];
-  else next[STEP_REPOSITORIES_KEY] = list.map((r) => ({ key: r.key, access: r.access }));
+  else
+    next[STEP_REPOSITORIES_KEY] = list.map((r) =>
+      isLibrary(r) ? { key: r.key, access: 'READ', library: true } : { key: r.key, access: r.access },
+    );
   return Object.keys(next).length ? next : undefined;
 }
 
@@ -111,7 +125,7 @@ export function pickerRows(
   list: readonly StepRepository[],
   pushes: boolean,
 ): PickerRow[] {
-  const byKey = new Map(list.map((r) => [r.key, r]));
+  const byKey = new Map(list.filter((r) => !isLibrary(r)).map((r) => [r.key, r]));
   return repositories.map((repository) => {
     const s = byKey.get(repository.key);
     return {
@@ -128,21 +142,59 @@ export function unknownKeys(
   list: readonly StepRepository[],
 ): string[] {
   const keys = new Set(repositories.map((r) => r.key));
-  return list.map((r) => r.key).filter((k) => !keys.has(k));
+  return list
+    .filter((r) => !isLibrary(r))
+    .map((r) => r.key)
+    .filter((k) => !keys.has(k));
 }
 
-/** Ticks / unticks a repository. A new entry gets READ (least privilege). Keeps project order. */
+/**
+ * Ticks / unticks a project repository. A new entry gets READ (least privilege). Keeps project order;
+ * library entries stay after the project ones.
+ */
 export function toggleRepository(
   repositories: readonly ProjectRepository[],
   list: readonly StepRepository[],
   key: string,
   on: boolean,
 ): StepRepository[] {
-  if (!on) return list.filter((r) => r.key !== key);
-  if (list.some((r) => r.key === key)) return [...list];
-  const next = [...list, { key, access: 'READ' as StepAccess }];
+  const own = list.filter((r) => !isLibrary(r));
+  const library = list.filter(isLibrary);
+  if (!on) return [...own.filter((r) => r.key !== key), ...library];
+  if (own.some((r) => r.key === key)) return [...list];
+  const next = [...own, { key, access: 'READ' as StepAccess }];
   const order = new Map(repositories.map((r, i) => [r.key, i]));
-  return next.sort((a, b) => (order.get(a.key) ?? 1e9) - (order.get(b.key) ?? 1e9));
+  next.sort((a, b) => (order.get(a.key) ?? 1e9) - (order.get(b.key) ?? 1e9));
+  return [...next, ...library];
+}
+
+/** Library sources the step attaches (keys in list order). */
+export function stepLibraryKeys(list: readonly StepRepository[] | null): string[] {
+  return (list ?? []).filter(isLibrary).map((r) => r.key);
+}
+
+/** Ticks / unticks a library source: always READ, after the project repositories, in library order. */
+export function toggleLibrarySource(
+  sources: readonly LibrarySource[],
+  list: readonly StepRepository[],
+  key: string,
+  on: boolean,
+): StepRepository[] {
+  const own = list.filter((r) => !isLibrary(r));
+  const library = list.filter(isLibrary).filter((r) => r.key !== key);
+  if (on) library.push({ key, access: 'READ', library: true });
+  const order = new Map(sources.map((s, i) => [s.key, i]));
+  library.sort((a, b) => (order.get(a.key) ?? 1e9) - (order.get(b.key) ?? 1e9));
+  return [...own, ...library];
+}
+
+/** Library keys of the list the library no longer has. */
+export function unknownLibraryKeys(
+  sources: readonly LibrarySource[],
+  list: readonly StepRepository[],
+): string[] {
+  const keys = new Set(sources.map((s) => s.key));
+  return stepLibraryKeys(list).filter((k) => !keys.has(k));
 }
 
 export function setRepositoryAccess(
@@ -150,7 +202,7 @@ export function setRepositoryAccess(
   key: string,
   access: StepAccess,
 ): StepRepository[] {
-  return list.map((r) => (r.key === key ? { ...r, access } : r));
+  return list.map((r) => (r.key === key && !isLibrary(r) ? { ...r, access } : r));
 }
 
 /** Validation issues that concern the step's repositories (`task.config.repositories`). */

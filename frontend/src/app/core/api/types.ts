@@ -24,7 +24,7 @@ export type Project = S['Project'];
 /** One git repository of a project (ADR 0034); a project has zero or more. */
 export type ProjectRepository = S['ProjectRepository'];
 export type RepositoryPurpose = S['RepositoryPurpose'];
-export const REPOSITORY_PURPOSES: RepositoryPurpose[] = ['SOURCE', 'DOCS', 'OTHER'];
+export const REPOSITORY_PURPOSES: RepositoryPurpose[] = ['SOURCE', 'DOCS', 'STANDARDS', 'TEMPLATES', 'OTHER'];
 /** Git access level of a runner job / of one job repository (ADR 0031). */
 export type GitAccess = S['GitAccess'];
 /** What a runner step did in one repository (ADR 0034). */
@@ -277,6 +277,8 @@ export type Bottleneck = NonNullable<DeliveryInsights['bottleneck']>;
 // ---- workflow library and workflow metrics (ADR 0037)
 export type LibraryLink = S['LibraryLink'];
 export type LibraryWorkflowSummary = S['LibraryWorkflowSummary'];
+export type LibrarySource = S['LibrarySource'];
+export type LibrarySourceInput = S['LibrarySourceInput'];
 export type LibraryWorkflow = S['LibraryWorkflow'];
 export type LibraryWorkflowVersionSummary = S['LibraryWorkflowVersionSummary'];
 export type LibraryWorkflowVersionDetail = S['LibraryWorkflowVersionDetail'];

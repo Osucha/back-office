@@ -1,18 +1,22 @@
 package pl.mos.backoffice.projects.domain.service
 
 import pl.mos.backoffice.projects.domain.model.GitRepository
+import pl.mos.backoffice.projects.domain.model.LibrarySource
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.RepositoryPurpose
 import pl.mos.backoffice.shared.runner.GitAccess
 
-/** One repository a step uses, with its access (ADR 0034). [primary] = the job's primary entry (agent working directory). */
-data class StepRepository(val repository: GitRepository, val access: GitAccess, val primary: Boolean) {
+/**
+ * One source a step uses, with its access (ADR 0034, ADR 0043). [primary] = the job's primary entry (agent working
+ * directory); [library] = a read-only source of the library, keyed `lib-<key>` in the job.
+ */
+data class StepRepository(val repository: GitRepository, val access: GitAccess, val primary: Boolean, val library: Boolean = false) {
     val key: String get() = repository.key
 
     fun toTemplateMap(): Map<String, Any?> = mapOf(
         "key" to repository.key, "url" to repository.url, "path" to repository.key, "access" to access.name,
         "purpose" to repository.purpose.name, "baseBranch" to repository.defaultBranch, "primary" to primary,
-        "description" to repository.description,
+        "description" to repository.description, "library" to library,
     )
 }
 
@@ -48,8 +52,8 @@ object StepRepositories {
 
     private val ALLOWED = setOf(GitAccess.READ, GitAccess.PUSH_MR)
 
-    /** A requested entry; [access] is null when the config value is not a known level. */
-    data class Request(val key: String, val access: GitAccess?, val rawAccess: String?)
+    /** A requested entry; [access] is null when the config value is not a known level; [library] = a library source. */
+    data class Request(val key: String, val access: GitAccess?, val rawAccess: String?, val library: Boolean = false)
 
     /** The explicit list of [config], or null when the step names none (absent, null or an empty list). */
     fun requested(config: Map<String, Any?>): List<Request>? {
@@ -60,7 +64,12 @@ object StepRepositories {
             when (item) {
                 is Map<*, *> -> {
                     val access = item["access"]?.toString()?.trim()
-                    Request(item["key"]?.toString()?.trim() ?: "", access?.let { a -> GitAccess.entries.firstOrNull { it.name == a.uppercase() } } ?: if (access == null) GitAccess.READ else null, access)
+                    Request(
+                        item["key"]?.toString()?.trim() ?: "",
+                        access?.let { a -> GitAccess.entries.firstOrNull { it.name == a.uppercase() } } ?: if (access == null) GitAccess.READ else null,
+                        access,
+                        library = item["library"]?.toString()?.lowercase() == "true",
+                    )
                 }
                 // shorthand "docs" = read access
                 is String -> Request(item.trim(), GitAccess.READ, null)
@@ -69,7 +78,8 @@ object StepRepositories {
         }
     }
 
-    fun plan(project: Project, config: Map<String, Any?>, runnerStep: Boolean, pushes: Boolean): StepRepositoryPlan {
+    /** [library] resolves a library source by key (ADR 0043); without it a step cannot use library sources. */
+    fun plan(project: Project, config: Map<String, Any?>, runnerStep: Boolean, pushes: Boolean, library: (String) -> LibrarySource? = { null }): StepRepositoryPlan {
         val requested = try {
             requested(config)
         } catch (e: RuntimeException) {
@@ -84,9 +94,19 @@ object StepRepositories {
             return StepRepositoryPlan(emptyList(), listOf("only runner steps (IMPLEMENT, SPEC_KIT) work in repositories; remove repositories from this step"))
         }
         val errors = mutableListOf<String>()
-        if (project.repositories.isEmpty()) errors += noRepositories(project)
-        requested.groupingBy { it.key }.eachCount().filterValues { it > 1 }.keys.forEach { errors += "repository $it is listed twice" }
-        val resolved = requested.distinctBy { it.key }.mapNotNull { request ->
+        val own = requested.filterNot { it.library }
+        if (project.repositories.isEmpty() && own.isNotEmpty()) errors += noRepositories(project)
+        requested.groupingBy { it.library to it.key }.eachCount().filterValues { it > 1 }.keys.forEach { errors += "source ${it.second} is listed twice" }
+        val shared = requested.filter { it.library }.distinctBy { it.key }.mapNotNull { request ->
+            val source = library(request.key)
+            when {
+                request.key.isBlank() -> null.also { errors += "library source entries need a key" }
+                source == null -> null.also { errors += "library source ${request.key} does not exist (Library > Sources)" }
+                request.access != GitAccess.READ -> null.also { errors += "library source ${request.key} is read-only; use access READ" }
+                else -> source
+            }
+        }
+        val resolved = own.distinctBy { it.key }.mapNotNull { request ->
             val repository = project.repository(request.key)
             when {
                 project.repositories.isEmpty() -> null
@@ -99,9 +119,13 @@ object StepRepositories {
                 else -> repository to request.access
             }
         }
+        shared.map { it.jobKey }.filter { key -> resolved.any { it.first.key == key } }
+            .forEach { errors += "project repository $it clashes with the library source of the same name; rename the repository" }
         if (errors.isNotEmpty()) return StepRepositoryPlan(emptyList(), errors)
-        val primaryKey = resolved.firstOrNull { it.first.primary }?.first?.key ?: resolved.first().first.key
-        val repositories = resolved.map { (repo, access) -> StepRepository(repo, access, repo.key == primaryKey) }
+        // the agent works in the project's primary repository, else the step's first project one, else the first library source
+        val primaryKey = resolved.firstOrNull { it.first.primary }?.first?.key ?: resolved.firstOrNull()?.first?.key ?: shared.first().jobKey
+        val repositories = resolved.map { (repo, access) -> StepRepository(repo, access, repo.key == primaryKey) } +
+            shared.map { StepRepository(it.asRepository(), GitAccess.READ, it.jobKey == primaryKey, library = true) }
         return StepRepositoryPlan(repositories, warnings = warnings(repositories))
     }
 

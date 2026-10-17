@@ -9,7 +9,8 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
  * What of a workflow graph belongs to one project and what can be shared through the library (ADR 0037).
  *
  * Project-local settings, never published and kept when a linked copy takes a new library version:
- * - TASK `config.repositories` (repository keys of the project, ADR 0034);
+ * - TASK `config.repositories` entries of the project's repositories (ADR 0034); entries of library sources (ADR 0043)
+ *   are shared by every project and stay in the published graph;
  * - TASK `config.jiraConnection` when it pins a connection id (`SYSTEM` and `ACTING_USER` are portable modes, ADR 0035);
  * - named users of approver rules: HUMAN_GATE `approvers.users` and write-step `config.approvers.users` (roles stay).
  */
@@ -59,7 +60,8 @@ object LibraryPortability {
     private fun portableConfig(config: Map<String, Any?>): Map<String, Any?> {
         if (config.isEmpty()) return config
         val out = LinkedHashMap(config)
-        out.remove(REPOSITORIES_KEY)
+        val shared = entries(config).filter(::libraryEntry)
+        if (shared.isEmpty()) out.remove(REPOSITORIES_KEY) else out[REPOSITORIES_KEY] = shared
         if (pinnedConnection(config[StepConnectionConfig.CONNECTION_KEY])) out.remove(StepConnectionConfig.CONNECTION_KEY)
         val approvers = config[APPROVERS_KEY]
         if (approvers is Map<*, *> && approvers.containsKey(USERS_KEY)) out[APPROVERS_KEY] = approvers + (USERS_KEY to emptyList<Any?>())
@@ -69,13 +71,19 @@ object LibraryPortability {
     /** The published [config] plus the local repositories, pinned connection and approver users of [local]. */
     private fun mergeConfig(config: Map<String, Any?>, local: Map<String, Any?>): Map<String, Any?> {
         val out = LinkedHashMap(config)
-        local[REPOSITORIES_KEY]?.let { out[REPOSITORIES_KEY] = it }
+        // the project's own repositories from the local copy, the library sources as published
+        val merged = entries(local).filterNot(::libraryEntry) + entries(config).filter(::libraryEntry)
+        if (merged.isNotEmpty()) out[REPOSITORIES_KEY] = merged else if (local.containsKey(REPOSITORIES_KEY)) out[REPOSITORIES_KEY] = local[REPOSITORIES_KEY]
         local[StepConnectionConfig.CONNECTION_KEY]?.takeIf(::pinnedConnection)?.let { out[StepConnectionConfig.CONNECTION_KEY] = it }
         val users = (local[APPROVERS_KEY] as? Map<*, *>)?.get(USERS_KEY)
         val approvers = out[APPROVERS_KEY]
         if (approvers is Map<*, *> && users is List<*> && users.isNotEmpty()) out[APPROVERS_KEY] = approvers + (USERS_KEY to users)
         return out
     }
+
+    private fun entries(config: Map<String, Any?>): List<Any?> = (config[REPOSITORIES_KEY] as? List<*>).orEmpty()
+
+    private fun libraryEntry(entry: Any?): Boolean = (entry as? Map<*, *>)?.get("library")?.toString()?.lowercase() == "true"
 
     private fun pinnedConnection(value: Any?): Boolean {
         val raw = value?.toString()?.trim().orEmpty()

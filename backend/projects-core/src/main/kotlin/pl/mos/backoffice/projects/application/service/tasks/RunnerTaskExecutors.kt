@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
@@ -79,6 +80,8 @@ class RunnerTaskSupport(
     private val defaultTimeout: Duration,
     /** ADR 0036: the platform switch for Spec Kit (together with the project setting). */
     private val features: PlatformFeatures = PlatformFeatures.DEFAULTS,
+    /** ADR 0043: library sources steps may attach read-only; null = none (tests). */
+    private val librarySources: LibrarySourceRepository? = null,
 ) {
     private data class Plan(
         val spec: RunnerJobSpec,
@@ -126,7 +129,7 @@ class RunnerTaskSupport(
         if (mode == RunnerMode.SPEC_KIT && !specKit) {
             throw RepositoryPlanException("step ${node.id} uses Spec Kit, which is ${specKitOff(project.specKit)} (manual: projects#spec-kit)")
         }
-        val repositoryPlan = StepRepositories.plan(project, config, runnerStep = true, pushes = push && GitAccess.pushingMode(mode))
+        val repositoryPlan = StepRepositories.plan(project, config, runnerStep = true, pushes = push && GitAccess.pushingMode(mode), library = { librarySources?.findByKey(it) })
         if (!repositoryPlan.valid) throw RepositoryPlanException("repositories of step ${node.id}: " + repositoryPlan.errors.joinToString("; "))
         if (logWarnings) repositoryPlan.warnings.forEach { context.warn("repositories: $it") }
         val repos = repositoryPlan.repositories
@@ -340,7 +343,12 @@ class RunnerTaskSupport(
                 append(", purpose ").append(r.repository.purpose.name)
                 append(", base branch ").append(blocks.inlineOrWrap("repositories.${r.key}.defaultBranch", r.repository.defaultBranch))
                 append(", ").append(
-                    if (r.access == GitAccess.PUSH_MR) "your changes here are committed and pushed for review by the runner" else "read-only: changes here are discarded",
+                    when {
+                        // ADR 0043: library sources hold what the team agreed on (standards, templates): follow, do not change
+                        r.library -> "library source (reference material: follow it, do not change it)"
+                        r.access == GitAccess.PUSH_MR -> "your changes here are committed and pushed for review by the runner"
+                        else -> "read-only: changes here are discarded"
+                    },
                 )
                 append(", url ").append(blocks.inlineOrWrap("repositories.${r.key}.url", r.repository.url)).append('\n')
                 r.repository.description?.takeIf { it.isNotBlank() }?.let { append("  description: ").append(blocks.wrap("repositories.${r.key}.description", it)).append('\n') }
