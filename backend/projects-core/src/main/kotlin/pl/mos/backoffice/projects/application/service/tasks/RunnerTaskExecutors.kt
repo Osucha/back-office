@@ -15,6 +15,7 @@ import pl.mos.backoffice.projects.domain.model.MergeRequestSnapshot
 import pl.mos.backoffice.projects.domain.model.RepositoryResult
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.projects.domain.service.StepRepository
+import pl.mos.backoffice.projects.domain.service.StepWorkspace
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.Money
@@ -34,6 +35,7 @@ import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerSkill
+import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.runner.SpecKitPhase
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskExecutor
@@ -123,7 +125,11 @@ class RunnerTaskSupport(
         val node = context.node
         val project = context.project
         val config = task.config
-        val push = config.boolean("push", default = true)
+        // ADR 0044: the run workspace and session of the step; a prepare step never pushes
+        val workspaceSetting = StepWorkspace.of(config, runnerStep = true)
+        if (!workspaceSetting.valid) throw RepositoryPlanException("workspace of step ${node.id}: " + workspaceSetting.errors.joinToString("; "))
+        if (logWarnings) workspaceSetting.warnings.forEach { context.warn("workspace: $it") }
+        val push = !workspaceSetting.prepareOnly && config.boolean("push", default = true)
         // ADR 0036: Spec Kit only where the project turned it on and the platform allows it
         val specKit = project.specKit && features.specKitAllowed()
         if (mode == RunnerMode.SPEC_KIT && !specKit) {
@@ -144,7 +150,12 @@ class RunnerTaskSupport(
         val user = renderer.renderPrompt(task.prompt.user?.takeIf { it.isNotBlank() } ?: defaultPrompt, model, blocks)
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("template: $it") } }
         // the notice comes last: the runner derives the commit message (and Spec Kit the feature name) from the first line
-        val prompt = listOfNotNull(system, user.text, repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) }, agentNotice(blocks)).joinToString("\n\n")
+        val workspace = workspaceSetting.key?.let { key ->
+            RunnerWorkspace(key, RunnerWorkspace.nameFor(context.run.id.value, key), workspaceSetting.sessionRole, workspaceSetting.prepareOnly)
+        }
+        val prompt = listOfNotNull(
+            system, user.text, repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) }, workspace?.let(::workspaceSection), agentNotice(blocks),
+        ).joinToString("\n\n")
         val fallbackBranch = "run/${context.run.id.short}"
         // the job branch must not be the base branch of any repository it may be pushed to (nor HEAD / a ref path)
         val protectedBranches = (repos.filter { it.access == GitAccess.PUSH_MR }.ifEmpty { listOfNotNull(primary) }).map { it.repository.defaultBranch }.distinct()
@@ -213,11 +224,27 @@ class RunnerTaskSupport(
             gitAccess = GitAccess.highest(jobRepositories.map { it.access }),
             specKit = specKit,
             personalRunnerOf = personalRunnerOf(context),
+            workspace = workspace,
         )
         if (logWarnings) {
+            workspace?.let { w ->
+                context.log(
+                    "workspace ${w.key} of this run (${w.name})" +
+                        (if (w.prepareOnly) ": prepare only, no agent" else "") +
+                        (w.sessionRole?.let { "; agent session of role $it continues" } ?: ""),
+                )
+            }
             jobRepositories.forEach { r -> context.log("repository ${r.key} (/workspace/${r.path}${if (r.primary) ", primary" else ""}): git access ${r.access}, ${describe(r.access)}") }
         }
         return Plan(spec, profile, branch, push, repos)
+    }
+
+    /** ADR 0044: what the agent is told about the shared workspace and its session. */
+    private fun workspaceSection(workspace: RunnerWorkspace): String = buildString {
+        append("Workspace: this step works in the run's shared workspace \"${workspace.key}\". Files that earlier steps of this run left ")
+        append("there are kept, including uncommitted work, and later steps (other agents) continue from what you leave: keep it tidy ")
+        append("and say in your final answer what you changed and what is left.")
+        workspace.sessionRole?.let { append(" You act as the \"$it\" of this run; if you worked in this workspace before, you continue that session.") }
     }
 
     /** ADR 0040: steps of a private project started by its owner go to the owner's personal runner, when they have one. */

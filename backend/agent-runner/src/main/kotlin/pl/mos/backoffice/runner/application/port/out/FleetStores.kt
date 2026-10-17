@@ -4,6 +4,7 @@ import pl.mos.backoffice.runner.application.port.`in`.AgentJobFilter
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.RegistrationToken
+import pl.mos.backoffice.runner.domain.RunWorkspace
 import pl.mos.backoffice.runner.domain.RunnerNode
 import pl.mos.backoffice.runner.domain.RunnerPool
 import pl.mos.backoffice.shared.RunnerJobId
@@ -51,8 +52,11 @@ interface AgentJobStore {
     /** `SELECT ... FOR UPDATE` of one job (serialises protocol calls on it). */
     fun lock(id: RunnerJobId): AgentJob?
 
-    /** Queued, not cancelled jobs of a pool by priority and age, locked with `FOR UPDATE SKIP LOCKED`. */
-    fun lockQueued(poolId: String, limit: Int): List<AgentJob>
+    /**
+     * Queued, not cancelled jobs of a pool by priority and age, locked with `FOR UPDATE SKIP LOCKED`. Jobs of a run
+     * workspace (ADR 0044) only while no other job uses it and it is on no runner or on [runnerId].
+     */
+    fun lockQueued(poolId: String, runnerId: UUID, limit: Int): List<AgentJob>
 
     /** Jobs whose lease expired, locked with `FOR UPDATE SKIP LOCKED`. */
     fun lockExpiredLeases(now: Instant, limit: Int): List<AgentJob>
@@ -117,6 +121,35 @@ interface LeaseSignal {
 
     /** Waits up to [timeoutMillis] for a wake-up of [poolId]; returns early when one arrives. */
     fun await(poolId: String, timeoutMillis: Long)
+}
+
+/** ADR 0044: persistent workspaces of runs (`runner_workspace`). */
+interface RunWorkspaceStore {
+    /**
+     * The workspace [name] of run [runId] for a new job: created when absent; a released one starts over (no pool, no
+     * runner); a pending release is cancelled.
+     */
+    fun bind(name: String, runId: UUID, key: String, now: Instant): RunWorkspace
+
+    /** Sets the pool; a different pool than before also drops the runner (the workspace starts over there). */
+    fun assignPool(name: String, poolId: String)
+
+    /** Claims the workspace for [jobId] on [runnerId] when no job uses it and no other runner holds it. */
+    fun claim(name: String, runnerId: UUID, jobId: UUID, now: Instant): Boolean
+
+    /** The job [jobId] no longer uses its workspace (finished or back in the queue). */
+    fun releaseJob(jobId: UUID, now: Instant)
+
+    /** Workspaces of run [runId] not yet released are released at [at]. */
+    fun scheduleRelease(runId: UUID, at: Instant)
+
+    /** Rows named [names] plus the unreleased rows of [runnerId], locked for the sync. */
+    fun lockForSync(runnerId: UUID, names: Collection<String>): List<RunWorkspace>
+
+    fun markReleased(names: Collection<String>, now: Instant)
+
+    /** Drops the runner of [names] (their volume is gone): the next job starts an empty workspace anywhere in the pool. */
+    fun forget(names: Collection<String>)
 }
 
 /** Object storage for large results and sandbox uploads (the shared `BlobStore`; optional). */

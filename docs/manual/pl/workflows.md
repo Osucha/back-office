@@ -181,6 +181,46 @@ Błędy blokują zapis. Uruchomienie, którego kroki mają takie błędy (na prz
 z projektu po zapisaniu workflowu), nie wystartuje; komunikat wskazuje krok. W widoku **JSON** ustawienie to
 `config.repositories: [{"key": "docs", "access": "READ"}]`.
 
+<a id="workspaces"></a>
+## Przestrzenie robocze i sesje agentów
+
+Każdy krok programistyczny zaczyna zwykle od zera: nowy `/workspace`, nowe klony, nowa sesja agenta.
+**Przestrzeń robocza przebiegu** pozwala kilku krokom jednego uruchomienia pracować w tym samym katalogu, a **rola
+sesji** pozwala agentowi kontynuować własną rozmowę zamiast czytać wszystko od nowa (ADR 0044). Oba ustawienia są we
+właściwościach kroku programistycznego (**Implement**, **Spec Kit**):
+
+| Ustawienie | Znaczenie |
+|---|---|
+| **workspace** | Krótka nazwa, np. `main` (małe litery, cyfry, myślniki; do 20 znaków). Kroki jednego uruchomienia z tą samą nazwą współdzielą `/workspace`: klony, niezacommitowane pliki, zainstalowane zależności, cache. Puste = nowa przestrzeń, jak dotąd. |
+| **sessionRole** | Krótka nazwa, np. `implementer` albo `reviewer`. Kroki uruchomienia z tą samą przestrzenią i rolą kontynuują jedną sesję agenta (Claude Code lub OpenCode). Puste = nowa sesja w każdym kroku. |
+| **prepareOnly** | Tylko w krokach **Implement**: sklonuj repozytoria i źródła kroku i uruchom jego **setupCommand** (np. `npm ci`), bez agenta i bez wypychania. |
+
+**Przygotuj przestrzeń raz.** Na początku workflowu postaw wbudowane zadanie **Prepare workspace**
+(`prepare-workspace`): jego repozytoria (i [źródła z biblioteki](task-library.md#sources)) są klonowane, a jego
+**setupCommand** uruchamia się raz; kolejne kroki z tą samą przestrzenią korzystają z tego wszystkiego. Krok jest
+opcjonalny: przestrzeń tworzy pierwszy krok, który ją wskazuje.
+
+**Agenci na zmianę.** Na przykład *implementacja* (rola `implementer`, push włączony) → *weryfikacja* (rola
+`reviewer`, push wyłączony) → decyzja → z powrotem do *implementacji*. Każdy agent kontynuuje własną sesję i widzi,
+co drugi zostawił w przestrzeni: weryfikujący czyta niezacommitowane zmiany implementującego, implementujący znajduje
+notatki weryfikującego. Krok z dostępem do odczytu zostawia swoje zmiany niezacommitowane dla następnego kroku; krok
+wypychający commituje wszystko w repozytorium i wypycha gałąź uruchomienia.
+
+**Co dzieje się na runnerze.** Przestrzeń żyje na runnerze, który wykonał jej pierwszy krok, jako wolumen Dockera albo
+żądanie wolumenu (PVC) w Kubernetes. Kroki tej przestrzeni wykonują się tam jeden po drugim, także gdy gałęzie
+workflowu biegną równolegle. Przed każdym krokiem runner sprawdza każde ponownie użyte repozytorium i zapisuje jego
+konfigurację gita od nowa, więc nic, co poprzedni agent podłożył w `.git`, się nie uruchomi.
+
+**Po zakończeniu uruchomienia** przestrzeń jest usuwana; po nieudanym uruchomieniu zostaje na 24 godziny, żeby
+**Ponów** (**Retry**) kontynuował w niej. Przestrzeń użyta później zaczyna pusta (wypchnięta gałąź uruchomienia
+zostaje).
+
+**Uwaga na zaufanie.** Wszystkie kroki i role uruchomienia mogą czytać i zmieniać wszystko w swojej przestrzeni, także
+historię sesji innych ról. Do niezależnej weryfikacji użyj kroku bez przestrzeni.
+
+Walidacja: niepoprawna nazwa albo **prepareOnly** bez **workspace** to błąd; **sessionRole** bez **workspace** to
+ostrzeżenie (sesja nie zostałaby zachowana).
+
 <a id="decisions"></a>
 ## Decyzje
 

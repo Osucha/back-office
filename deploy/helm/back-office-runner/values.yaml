@@ -74,6 +74,13 @@ maxConcurrent: 5
 warmPool:
   size: 2
 
+# Run workspaces (ADR 0044): steps of one run that name the same workspace share a ReadWriteOnce PVC at /workspace,
+# sized by the step's ephemeralStorage, created by the controller and deleted when Back Office releases it (run
+# ended; a failed run's workspaces are kept 24 h for a retry). Jobs with a workspace never use warm pods.
+workspaces:
+  # StorageClass of the workspace PVCs; empty = the cluster default
+  storageClass: ""
+
 # Per-pool cache volumes mounted read-write into sandboxes (keyed per project inside the volume).
 caches:
   enabled: false

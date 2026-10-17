@@ -109,6 +109,10 @@ spec:
             - name: RUNNER_WARM_POOL_SIZE
               value: {{ .Values.warmPool.size | quote }}
             {{- end }}
+            {{- with .Values.workspaces.storageClass }}
+            - name: RUNNER_WORKSPACE_STORAGE_CLASS
+              value: {{ . | quote }}
+            {{- end }}
             - name: RUNNER_EGRESS_PROXY_IMAGE
               value: {{ .Values.egressProxy.image | quote }}
             - name: RUNNER_EGRESS_PROXY_PORT

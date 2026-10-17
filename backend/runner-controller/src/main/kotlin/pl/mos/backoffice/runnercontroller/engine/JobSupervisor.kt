@@ -31,6 +31,7 @@ import pl.mos.backoffice.runnercontroller.sandbox.SandboxLaunchFailed
 import pl.mos.backoffice.runnercontroller.sandbox.SandboxObservation
 import pl.mos.backoffice.runnercontroller.sandbox.SandboxOutcome
 import pl.mos.backoffice.runnercontroller.sandbox.SandboxPhase
+import pl.mos.backoffice.runnercontroller.sandbox.Workspaces
 import pl.mos.backoffice.runnercontroller.security.AssignmentVerifier
 import pl.mos.backoffice.runnercontroller.security.Verification
 import tools.jackson.databind.json.JsonMapper
@@ -56,6 +57,8 @@ class RunningJob(
     val launchedNanos: Long,
     val deadline: Instant,
     @Volatile var leaseExpiresAt: String,
+    /** ADR 0044: the run workspace the sandbox uses (never deleted while it runs). */
+    val workspace: String? = null,
 ) {
     var phase: HeartbeatPhase = HeartbeatPhase.STARTING
     var lastHeartbeat: Instant = Instant.EPOCH
@@ -130,6 +133,9 @@ class JobSupervisor(
         bootstrap()
         monitor = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "sandbox-monitor").apply { isDaemon = true } }.also {
             it.scheduleWithFixedDelay({ safeTick() }, props.monitorIntervalMillis, props.monitorIntervalMillis, TimeUnit.MILLISECONDS)
+            if (backend.supportsWorkspaces) {
+                it.scheduleWithFixedDelay({ safeSyncWorkspaces() }, props.workspaceSyncSeconds, props.workspaceSyncSeconds, TimeUnit.SECONDS)
+            }
         }
         leaseThread = Thread.ofPlatform().name("lease-loop").daemon(true).start { leaseLoop() }
         log.info("runner-controller started: pool={} backend={} maxConcurrent={}", poolId, backend.kind, props.maxConcurrent)
@@ -283,6 +289,7 @@ class JobSupervisor(
             repositoryTokens = git.tokens,
             repositoryAccess = git.repositories.repositories.filter { git.repositories.multi }.associate { it.key to it.access },
             localLoginCredential = localLogin,
+            workspace = workspaceOf(a.jobId, spec),
         )
         val handle = try {
             backend.launch(request)
@@ -298,7 +305,7 @@ class JobSupervisor(
             report(a.jobId, JobCompletion(AgentJobStatus.FAILED, reason = reason.take(500)))
             return false
         }
-        val job = RunningJob(a.jobId, handle, launchedAt, System.nanoTime(), deadline, a.leaseExpiresAt)
+        val job = RunningJob(a.jobId, handle, launchedAt, System.nanoTime(), deadline, a.leaseExpiresAt, request.workspace)
         running[a.jobId] = job
         log.info("job {} launched as {} (isolation {}, image {}, timeout {}s)", a.jobId, handle.name, policy.isolation, policy.image, policy.timeoutSeconds)
         return true
@@ -351,6 +358,37 @@ class JobSupervisor(
             tick()
         } catch (e: Throwable) {
             log.error("monitor tick failed", e)
+        }
+    }
+
+    /** ADR 0044: the run workspace of [spec] when this backend can keep one; otherwise the job gets a throwaway workspace. */
+    private fun workspaceOf(jobId: String, spec: ObjectNode): String? {
+        if (!Workspaces.requested(spec)) return null
+        val name = Workspaces.nameOf(spec)
+        when {
+            name == null -> log.warn("job {}: invalid workspace name in the spec; using a throwaway workspace", jobId)
+            !backend.supportsWorkspaces -> log.warn("job {}: backend {} keeps no run workspaces; using a throwaway workspace", jobId, backend.kind)
+            else -> return name
+        }
+        return null
+    }
+
+    /**
+     * ADR 0044: reports the run workspaces this controller holds and deletes the ones Back Office released (never one
+     * a running sandbox uses). Skipped when the backend cannot list them, so nothing is deleted by mistake.
+     */
+    fun syncWorkspaces() {
+        val held = backend.listWorkspaces(poolId) ?: return
+        val release = client.syncWorkspaces(held)
+        val inUse = running.values.mapNotNull { it.workspace }.toSet()
+        release.filter { it in held && it !in inUse }.forEach { backend.deleteWorkspace(it) }
+    }
+
+    private fun safeSyncWorkspaces() {
+        try {
+            syncWorkspaces()
+        } catch (e: RuntimeException) {
+            log.warn("workspace sync failed: {}", e.message)
         }
     }
 

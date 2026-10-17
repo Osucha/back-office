@@ -43,7 +43,7 @@ class AgentJobMaintenanceService(
         }.size
         var routed = 0
         jobs.lockUnassigned(BATCH).forEach { job ->
-            val routing = lifecycle.route(job.spec)
+            val routing = lifecycle.routeJob(job.spec)
             if (routing.pool != null) routed++
             if (routing.pool != null || routing.reason != job.reason) {
                 jobs.update(lifecycle.applyRouting(job, routing))

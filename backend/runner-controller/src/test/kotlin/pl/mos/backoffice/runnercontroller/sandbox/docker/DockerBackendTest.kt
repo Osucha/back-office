@@ -111,6 +111,40 @@ class DockerBackendTest {
     }
 
     @Test
+    fun `a run workspace is a labelled named volume at workspace, listed and deleted by name (ADR 0044)`() {
+        val docker = object : DockerCli() {
+            val calls = mutableListOf<List<String>>()
+            override fun run(args: List<String>, check: Boolean): DockerResult {
+                calls += args
+                val out = if (args.take(2) == listOf("volume", "ls")) "bo-ws-11111111222243338444555555555555-main\nother-volume\n" else ""
+                return DockerResult(0, out, "")
+            }
+        }
+        val props = ControllerProperties(docker = ControllerProperties.Docker(workDir = dir.toString()))
+        val backend = DockerBackend(props, docker, JsonMapper.builder().build(), emptyMap<String, String>()::get)
+        val name = "bo-ws-11111111222243338444555555555555-main"
+        val request = TestPolicies.launch(gitAccess = GitAccess.NONE, gitCredential = null).copy(workspace = name)
+        backend.launch(request)
+
+        val create = docker.calls.single { it.take(2) == listOf("volume", "create") }
+        assertThat(create.last()).isEqualTo(name)
+        assertThat(create).contains("backoffice.io/workspace=true")
+        val args = docker.calls.single { it.firstOrNull() == "run" && "bo-job-${request.jobId}" in it }
+        assertThat(args.zipWithNext()).contains("-v" to "$name:/workspace:rw")
+        assertThat(args.joinToString(" ")).doesNotContain("--tmpfs /workspace")
+        assertThat(backend.listWorkspaces(request.poolId)).containsExactly(name)
+        backend.deleteWorkspace(name)
+        backend.deleteWorkspace("../not-a-workspace")
+        assertThat(docker.calls.filter { it.take(2) == listOf("volume", "rm") }).containsExactly(listOf("volume", "rm", name))
+    }
+
+    @Test
+    fun `without a workspace the sandbox keeps a throwaway tmpfs`() {
+        val (args, _) = launch(ControllerProperties.Git(), emptyMap())
+        assertThat(args.joinToString(" ")).contains("--tmpfs /workspace:rw,exec")
+    }
+
+    @Test
     fun `without a commit identity the runner default applies`() {
         val (args, tokenFile) = launch(ControllerProperties.Git(), emptyMap())
         assertThat(envOf(args).keys).doesNotContain("GIT_USER_NAME", "GIT_USER_EMAIL")

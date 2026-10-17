@@ -13,6 +13,7 @@ import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.RepositoryPurpose
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.StepRepositories
+import pl.mos.backoffice.projects.domain.service.StepWorkspace
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.RunnerJobId
@@ -31,6 +32,7 @@ import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerLogLine
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerResult
+import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
@@ -131,6 +133,34 @@ class MultiRepositoryJobTest {
         assertThat(spec.repositories.single().let { listOf(it.key, it.access, it.primary, it.path) }).containsExactly("main", GitAccess.PUSH_MR, true, "main")
         assertThat(spec.repository!!.push).isTrue()
         assertThat(spec.gitAccess).isEqualTo(GitAccess.PUSH_MR)
+    }
+
+    @Test
+    fun `a step in a run workspace names it, its session role and tells the agent (ADR 0044)`() {
+        val ctx = context()
+        support.run(ctx, task(mapOf(StepWorkspace.WORKSPACE to "main", StepWorkspace.SESSION_ROLE to "reviewer")), RunnerMode.IMPLEMENT, null, "x")
+        val spec = runner.specs.last()
+        assertThat(spec.workspace).isEqualTo(RunnerWorkspace("main", RunnerWorkspace.nameFor(ctx.run.id.value, "main"), "reviewer", false))
+        assertThat(spec.prompt).contains("shared workspace \"main\"").contains("\"reviewer\"")
+        assertThat(spec.repositories.single().access).isEqualTo(GitAccess.PUSH_MR)
+    }
+
+    @Test
+    fun `a prepare step never pushes and opens no merge request`() {
+        val spec = submit(mapOf(StepWorkspace.WORKSPACE to "main", StepWorkspace.PREPARE_ONLY to true, "push" to true))
+        assertThat(spec.workspace!!.prepareOnly).isTrue()
+        assertThat(spec.workspace!!.sessionRole).isNull()
+        assertThat(spec.gitAccess).isEqualTo(GitAccess.READ)
+        assertThat(spec.repositories.all { it.mergeRequest == null && it.pushBranch == null }).isTrue()
+    }
+
+    @Test
+    fun `an invalid workspace fails the step before any job is submitted`() {
+        val before = runner.specs.size
+        val result = support.run(context(), task(mapOf(StepWorkspace.WORKSPACE to "Main Space")), RunnerMode.IMPLEMENT, null, "x")
+        assertThat(result.error).contains("workspace")
+        assertThat(runner.specs).hasSize(before)
+        assertThat(submit(emptyMap()).workspace).isNull()
     }
 
     @Test

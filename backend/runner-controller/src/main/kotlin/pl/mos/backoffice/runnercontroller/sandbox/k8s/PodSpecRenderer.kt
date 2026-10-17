@@ -67,11 +67,11 @@ class PodSpecRenderer(
 
     fun runtimeClassFor(isolation: Isolation): String? = k8s.runtimeClasses[isolation.name]?.takeIf { it.isNotBlank() }
 
-    fun podSpec(policy: ResolvedPolicy, delivery: BundleDelivery, activeDeadlineSeconds: Long?): PodSpec {
-        val volumes = mutableListOf(
-            emptyDir("workspace", policy.ephemeralStorage, memory = false),
-            emptyDir("tmp", "1Gi", memory = false),
-        )
+    /** [workspaceClaim] (ADR 0044): the run workspace PVC mounted at `/workspace`; null = a size-limited emptyDir. */
+    fun podSpec(policy: ResolvedPolicy, delivery: BundleDelivery, activeDeadlineSeconds: Long?, workspaceClaim: String? = null): PodSpec {
+        val workspace = workspaceClaim?.let { VolumeBuilder().withName("workspace").withNewPersistentVolumeClaim(it, false).build() }
+            ?: emptyDir("workspace", policy.ephemeralStorage, memory = false)
+        val volumes = mutableListOf(workspace, emptyDir("tmp", "1Gi", memory = false))
         val mounts = mutableListOf(mount("workspace", WORKSPACE, false), mount("tmp", "/tmp", false))
         // The agent container always gets writable memory volumes for the bundle and the git token.
         volumes += emptyDir("job", "1Mi", memory = true)

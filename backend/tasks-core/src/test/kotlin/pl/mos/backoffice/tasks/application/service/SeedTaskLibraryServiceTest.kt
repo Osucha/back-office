@@ -15,12 +15,12 @@ class SeedTaskLibraryServiceTest {
     fun `seeds the documented library once and never twice`() {
         val first = service.seed()
         assertThat(first.interfacesCreated).isEqualTo(9)
-        assertThat(first.templatesCreated).isEqualTo(21)
+        assertThat(first.templatesCreated).isEqualTo(22)
         assertThat(first.skillsCreated).isEqualTo(12)
 
         val second = service.seed()
         assertThat(second.total).isZero()
-        assertThat(lib.templates.rows).hasSize(21)
+        assertThat(lib.templates.rows).hasSize(22)
         assertThat(lib.interfaces.findAll().map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.interfaceKeys)
         assertThat(lib.templates.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.templateKeys)
         assertThat(lib.skills.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.skillKeys)
@@ -35,7 +35,7 @@ class SeedTaskLibraryServiceTest {
 
         val result = service.seed()
 
-        assertThat(result.templatesCreated).isEqualTo(20)
+        assertThat(result.templatesCreated).isEqualTo(21)
         assertThat(result.skillsCreated).isEqualTo(11)
         assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!.name).isEqualTo("My review")
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.SPEC_WRITING, Scope.Global)!!.content).isEqualTo("# mine")

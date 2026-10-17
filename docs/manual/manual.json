@@ -10,7 +10,7 @@
         { "slug": "my-work", "title": "My work", "anchors": ["my-work", "private-projects", "rules", "notifications"] },
         { "slug": "personal-runner", "title": "My computer as a runner", "anchors": ["personal-runner", "connect", "credentials", "security"] },
         { "slug": "projects", "title": "Projects", "anchors": ["create-project", "who-creates", "repositories", "sources", "no-repository", "members", "project-ci", "spec-kit", "project-connections", "sandbox-policy", "project-budget"] },
-        { "slug": "workflows", "title": "Designing workflows", "anchors": ["designer", "nodes", "step-repositories", "decisions", "gates-config", "write-confirmations", "start-run"] },
+        { "slug": "workflows", "title": "Designing workflows", "anchors": ["designer", "nodes", "step-repositories", "workspaces", "decisions", "gates-config", "write-confirmations", "start-run"] },
         { "slug": "runs", "title": "Runs", "anchors": ["run-list", "run-detail", "repository-results", "retry-cancel", "provenance", "ci-executions"] },
         { "slug": "task-library", "title": "Task library", "anchors": ["templates", "interfaces", "skills", "sources"] },
         { "slug": "workflow-library", "title": "Workflow library", "anchors": ["library-workflows", "publish", "adopt", "update-detach", "metrics"] },

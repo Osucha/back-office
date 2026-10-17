@@ -33,6 +33,12 @@ class KubernetesJobBackend(private val k: KubernetesSupport) : SandboxBackend {
 
     override val gitCredentials get() = k.gitCredentials
 
+    override val supportsWorkspaces: Boolean get() = true
+
+    override fun listWorkspaces(poolId: String): List<String>? = k.listWorkspaceClaims(poolId)
+
+    override fun deleteWorkspace(name: String) = k.deleteWorkspaceClaim(name)
+
     override fun launch(request: LaunchRequest): SandboxHandle {
         k.checkRuntimeClass(request)
         val name = Labels.sandboxName(request.jobId)
@@ -40,6 +46,7 @@ class KubernetesJobBackend(private val k: KubernetesSupport) : SandboxBackend {
             log.info("job {} already has Job {}; re-attaching", request.jobId, name)
             return SandboxHandle(request.jobId, name, kind)
         }
+        k.ensureWorkspaceClaim(request)
         k.createJobSecret(request, proxyUrl(request))
         val created = try {
             jobs.resource(buildJob(request)).create()
@@ -59,6 +66,7 @@ class KubernetesJobBackend(private val k: KubernetesSupport) : SandboxBackend {
             request.policy,
             k.bundleSecrets(name, request),
             activeDeadlineSeconds = deadline,
+            workspaceClaim = request.workspace,
         )
         return JobBuilder()
             .withNewMetadata()

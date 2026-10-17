@@ -6,6 +6,7 @@ import pl.mos.backoffice.runner.application.port.out.LeaseSignal
 import pl.mos.backoffice.runner.application.port.out.ProjectPolicyStore
 import pl.mos.backoffice.runner.application.port.out.RunnerNodeStore
 import pl.mos.backoffice.runner.application.port.out.RunnerPoolStore
+import pl.mos.backoffice.runner.application.port.out.RunWorkspaceStore
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.JobCompletionReport
@@ -92,6 +93,8 @@ class JobLifecycle(
     private val events: EventPublisher,
     private val clock: Clock,
     val settings: FleetSettings,
+    /** ADR 0044: run workspaces; null = jobs that name one run in a throwaway workspace (tests). */
+    val workspaces: RunWorkspaceStore? = null,
 ) {
     private val log = LoggerFactory.getLogger(JobLifecycle::class.java)
     val resolver = SandboxPolicyResolver()
@@ -129,7 +132,23 @@ class JobLifecycle(
 
     fun projectPolicy(projectId: java.util.UUID?): SandboxPolicy? = projectId?.let(projectPolicies::findPolicy)
 
-    fun route(spec: RunnerJobSpec): Routing {
+    /**
+     * ADR 0044: [route] for a new or unassigned job. A job of a run workspace binds it (created, or started over when
+     * it was released) and goes to the workspace's pool while that pool can run it (its runner holds the volume);
+     * otherwise it is routed as usual and the workspace starts over in the new pool.
+     */
+    fun routeJob(spec: RunnerJobSpec): Routing {
+        val workspace = spec.workspace
+        val store = workspaces
+        val runId = spec.usageContext.runId
+        if (workspace == null || store == null || runId == null) return route(spec)
+        val bound = store.bind(workspace.name, runId, workspace.key, now())
+        val routing = route(spec, preferredPool = bound.poolId)
+        routing.pool?.let { store.assignPool(workspace.name, it.id) }
+        return routing
+    }
+
+    fun route(spec: RunnerJobSpec, preferredPool: String? = null): Routing {
         val projectId = spec.usageContext.projectId
         val projectPolicy = projectPolicy(projectId)
         val selector = resolver.resolve(
@@ -157,7 +176,7 @@ class JobLifecycle(
         val now = clock.now()
         val online = nodes.list(null).filter { it.online(now, settings.onlineWindow) }.groupingBy { it.poolId }.eachCount()
         val queued = jobs.countsByPool()
-        val (pool, resolved) = candidates.sortedWith(
+        val (pool, resolved) = candidates.firstOrNull { it.first.id == preferredPool } ?: candidates.sortedWith(
             compareByDescending<Pair<RunnerPool, ResolvedPolicy>> { (online[it.first.id] ?: 0) > 0 }
                 .thenBy { queued[it.first.id]?.queued ?: 0 }
                 .thenBy { it.first.id },
@@ -190,6 +209,7 @@ class JobLifecycle(
         )
         jobs.update(finished)
         jobs.setTokenHash(job.id, null)
+        releaseWorkspace(job)
         enqueueContinuation(finished)
         val usage = job.spec.usageContext
         events.publish(
@@ -215,8 +235,16 @@ class JobLifecycle(
         )
         jobs.update(queued)
         jobs.setTokenHash(job.id, null)
+        releaseWorkspace(job)
         signal.wake(job.poolId)
         return queued
+    }
+
+    /** ADR 0044: the job no longer uses its workspace; the next job of the workspace may be leased. */
+    private fun releaseWorkspace(job: AgentJob) {
+        if (job.spec.workspace == null) return
+        workspaces?.releaseJob(job.id.value, clock.now())
+        signal.wake(job.poolId)
     }
 
     private fun enqueueContinuation(job: AgentJob) {

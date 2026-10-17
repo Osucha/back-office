@@ -12,7 +12,7 @@ import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.time.Instant
 
 /**
- * The shipped library of docs/architecture/07-task-library.md: nine interfaces, twenty-one global
+ * The shipped library of docs/architecture/07-task-library.md: nine interfaces, twenty-two global
  * templates (all but the generic `llm-task` and `agent-task` rooted in the abstract `base-agent`), and twelve skills, including the SDLC conventions of
  * ADR 0019 (user story, use case, ADR, change-request impact analysis, task list planning and execution,
  * review against the specification). Prompts use the executor placeholders
@@ -49,6 +49,9 @@ object BuiltInLibrary {
 
     /** Generic coding-agent task: any prompt, run by an agent in the project's repository (no push by default). */
     const val AGENT_TASK = "agent-task"
+
+    /** ADR 0044: clones the step's repositories and sources into the run workspace and runs setupCommand; no agent. */
+    const val PREPARE_WORKSPACE = "prepare-workspace"
 
     const val SPEC_WRITING = "spec-writing"
     const val KOTLIN_HEXAGONAL = "kotlin-hexagonal"
@@ -93,6 +96,7 @@ object BuiltInLibrary {
         BASE_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
         IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, LLM_TASK,
         AGENT_TASK,
+        PREPARE_WORKSPACE,
     ) + sdlcTemplateKeys
     val skillKeys = listOf(SPEC_WRITING, KOTLIN_HEXAGONAL, CONVENTIONAL_COMMITS, SECURITY_REVIEW_CHECKLIST, ANGULAR_NG_ZORRO) + sdlcSkillKeys
 
@@ -250,6 +254,18 @@ object BuiltInLibrary {
             config = IMPLEMENT_CONFIG + mapOf("agent" to "CLAUDE_CODE", "push" to false, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
             produces = listOf("result"), tags = listOf("agent", "generic"),
         )),
+        template(now, TaskTemplate.Content(
+            key = PREPARE_WORKSPACE, name = "Prepare workspace", executor = TaskExecutor.IMPLEMENT,
+            description = "Prepares the run workspace (config workspace, default main) once for the steps that name it: clones the step's " +
+                "repositories and library sources and runs setupCommand (e.g. npm ci). Starts no agent and never pushes. Later steps with " +
+                "the same workspace reuse the clones and everything setupCommand left there.",
+            prompt = Prompt(user = PREPARE_WORKSPACE_USER),
+            config = mapOf(
+                "workspace" to "main", "prepareOnly" to true, "push" to false, "mergeRequest" to false,
+                "repositoryOptional" to true, "setupCommand" to null,
+            ),
+            tags = listOf("workspace"),
+        )),
     ) + sdlcTemplates(now)
 
     /** Templates of the delivery conventions adopted in ADR 0019. */
@@ -376,6 +392,9 @@ object BuiltInLibrary {
         ## Feedback of the reviewer on your previous result (empty on the first attempt)
         {{feedback}}
     """.trimIndent()
+
+    /** Never sent to an agent (prepareOnly); the runner derives nothing from it. */
+    val PREPARE_WORKSPACE_USER = "Prepare the workspace of this run."
 
     /** The placeholder task of agent-task: harmless (read-only) until a designer replaces it. */
     val AGENT_TASK_USER = """

@@ -1,6 +1,9 @@
 package pl.mos.backoffice.runnercontroller.sandbox.k8s
 
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
+import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder
 import io.fabric8.kubernetes.api.model.Secret
 import io.fabric8.kubernetes.api.model.SecretBuilder
@@ -11,6 +14,7 @@ import pl.mos.backoffice.runnercontroller.git.GitCredentialSelector
 import pl.mos.backoffice.runnercontroller.policy.PolicyViolation
 import pl.mos.backoffice.runnercontroller.sandbox.LaunchRequest
 import pl.mos.backoffice.runnercontroller.sandbox.Labels
+import pl.mos.backoffice.runnercontroller.sandbox.Workspaces
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
@@ -116,6 +120,45 @@ class KubernetesSupport(
 
     fun deleteJobSecret(jobId: String) {
         runCatching { client.secrets().inNamespace(namespace).withName(Labels.sandboxName(jobId)).delete() }
+    }
+
+    // ---------------------------------------------------------------- run workspaces (ADR 0044)
+
+    /** The run workspace PVC of [request] (ReadWriteOnce, sized by `ephemeralStorage`), created on first use. */
+    fun ensureWorkspaceClaim(request: LaunchRequest): String? {
+        val name = request.workspace ?: return null
+        require(Workspaces.NAME.matches(name)) { "invalid workspace name $name" }
+        val claims = client.persistentVolumeClaims().inNamespace(namespace)
+        if (claims.withName(name).get() != null) return name
+        val claim = PersistentVolumeClaimBuilder()
+            .withNewMetadata()
+            .withName(name)
+            .withNamespace(namespace)
+            .withLabels<String, String>(renderer.poolLabels(request.poolId) - Labels.SANDBOX + (Workspaces.LABEL to "true"))
+            .endMetadata()
+            .withNewSpec()
+            .withAccessModes("ReadWriteOnce")
+            .withStorageClassName(props.kubernetes.workspaceStorageClass.takeIf { it.isNotBlank() })
+            .withNewResources().addToRequests("storage", Quantity(request.policy.ephemeralStorage)).endResources()
+            .endSpec()
+            .build()
+        try {
+            claims.resource(claim).create()
+        } catch (e: KubernetesClientException) {
+            if (e.code != 409) throw e
+        }
+        return name
+    }
+
+    fun listWorkspaceClaims(poolId: String): List<String>? = runCatching {
+        client.persistentVolumeClaims().inNamespace(namespace)
+            .withLabels(renderer.poolLabels(poolId) - Labels.SANDBOX + (Workspaces.LABEL to "true")).list().items
+            .map { it.metadata.name }.filter { Workspaces.NAME.matches(it) }
+    }.getOrNull()
+
+    fun deleteWorkspaceClaim(name: String) {
+        if (!Workspaces.NAME.matches(name)) return
+        runCatching { client.persistentVolumeClaims().inNamespace(namespace).withName(name).delete() }
     }
 
     companion object {

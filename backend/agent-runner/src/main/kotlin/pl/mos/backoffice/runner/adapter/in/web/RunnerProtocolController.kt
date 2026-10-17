@@ -112,6 +112,13 @@ class RunnerProtocolController(
         return UploadTargetJson(target.url, target.method, target.headers, target.blobKey, target.expiresAt)
     }
 
+    /** ADR 0044: the run workspaces this runner holds; the answer names the ones it deletes. */
+    @PostMapping("/workspaces/sync")
+    fun syncWorkspaces(request: HttpServletRequest, @RequestBody(required = false) body: WorkspaceSyncJson?): WorkspaceSyncResultJson {
+        val release = gate.asSystem(REASON) { protocol.syncWorkspaces(RunnerTokenFilter.runner(request), body?.held.orEmpty()) }
+        return WorkspaceSyncResultJson(release)
+    }
+
     /** Queue depth for autoscaling (KEDA metrics-api scaler). */
     @GetMapping("/pools/{poolId}/queue")
     fun queue(request: HttpServletRequest, @PathVariable poolId: String): QueueDepthJson {

@@ -80,10 +80,18 @@ class AgentSandboxBackend(
 
     override val gitCredentials get() = k.gitCredentials
 
+    override val supportsWorkspaces: Boolean get() = true
+
+    override fun listWorkspaces(poolId: String): List<String>? = k.listWorkspaceClaims(poolId)
+
+    override fun deleteWorkspace(name: String) = k.deleteWorkspaceClaim(name)
+
     override fun launch(request: LaunchRequest): SandboxHandle {
         k.checkRuntimeClass(request)
         val name = Labels.sandboxName(request.jobId)
-        val warm = (poolWarmSize[request.poolId] ?: 0) > 0
+        // ADR 0044: warm pods have their volumes fixed in the template, so a job with a run workspace starts cold
+        val warm = (poolWarmSize[request.poolId] ?: 0) > 0 && request.workspace == null
+        k.ensureWorkspaceClaim(request)
         val secret = k.createJobSecret(request, proxyUrl(request))
         try {
             if (warm) {
@@ -186,7 +194,7 @@ class AgentSandboxBackend(
         val name = Labels.sandboxName(request.jobId)
         val labels = k.jobLabels(request)
         val deadline = request.policy.timeoutSeconds.toLong() + k.props.deadlineGraceSeconds
-        val podSpec = k.renderer.podSpec(request.policy, k.bundleSecrets(name, request), deadline)
+        val podSpec = k.renderer.podSpec(request.policy, k.bundleSecrets(name, request), deadline, workspaceClaim = request.workspace)
         return GenericKubernetesResourceBuilder()
             .withApiVersion("${SANDBOX.group}/${SANDBOX.version}")
             .withKind(SANDBOX.kind)

@@ -2520,6 +2520,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runner/v2/workspaces/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description ADR 0044: the run workspaces (Docker volumes / PVCs named bo-ws-...) this runner-controller holds. The answer names the ones it deletes: released by Back Office (run ended, or 24 h after it failed), unknown, or now held by another runner. Rows of this runner whose volume is gone are forgotten (the next job starts an empty workspace). Called about once a minute; a controller that cannot list its volumes does not call it. */
+        post: operations["syncRunWorkspaces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs": {
         parameters: {
             query?: never;
@@ -5167,6 +5184,13 @@ export interface components {
             specKitPhase?: "SPECIFY" | "CLARIFY" | "PLAN" | "TASKS" | "ANALYZE" | "IMPLEMENT" | null;
             timeoutSeconds: number;
             verifyCommand?: string | null;
+            /** @description ADR 0044: the run workspace of the job. The controller mounts the volume / PVC `name` at /workspace instead of a throwaway one (backends without workspaces log it and use a throwaway one); the runner reuses clones it made there for earlier jobs (rewriting .git/config first) and keeps their working trees. `sessionRole` continues the coding agent's session of that role (Claude Code --session-id / --resume, OpenCode --continue); `prepareOnly` clones and runs setupCommand without an agent. Back Office leases the jobs of one workspace only to the runner holding it, one at a time. Omitted = a throwaway workspace. Covered by the spec digest when present. */
+            workspace?: {
+                key: string;
+                name: string;
+                prepareOnly?: boolean | null;
+                sessionRole?: string | null;
+            } | null;
         };
         RunnerPool: components["schemas"]["RunnerPoolInput"] & {
             /** Format: date-time */
@@ -5975,6 +5999,14 @@ export interface components {
             size?: number;
             /** Format: int64 */
             totalElements?: number;
+        };
+        /** @description ADR 0044: the run workspaces a runner-controller holds. */
+        WorkspaceSync: {
+            held: string[];
+        };
+        WorkspaceSyncResult: {
+            /** @description workspaces the controller deletes now */
+            release: string[];
         };
         /** @description ADR 0035: the identities the caller could approve a Jira write as (write-confirmation dialog). */
         WriteIdentity: {
@@ -10579,6 +10611,30 @@ export interface operations {
                 };
             };
             401: components["responses"]["Problem"];
+        };
+    };
+    syncRunWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceSync"];
+            };
+        };
+        responses: {
+            /** @description Workspaces to delete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSyncResult"];
+                };
+            };
         };
     };
     listRuns: {

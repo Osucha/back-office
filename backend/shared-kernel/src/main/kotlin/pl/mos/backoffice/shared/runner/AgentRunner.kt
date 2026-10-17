@@ -15,6 +15,29 @@ enum class AgentHarness { OPENCODE, CLAUDE_CODE }
 enum class SpecKitPhase { SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT }
 
 /**
+ * ADR 0044: the persistent workspace of a run a job works in. Every job of the run that names the same [key] gets the
+ * same directory at `/workspace` ([name]: a Docker volume or a PVC of the runner that holds it); repositories cloned
+ * there by an earlier job are reused. [sessionRole] continues the coding agent's session of that role (one per role
+ * and workspace); [prepareOnly] clones and runs `setupCommand` without an agent.
+ */
+data class RunnerWorkspace(
+    val key: String,
+    val name: String,
+    val sessionRole: String? = null,
+    val prepareOnly: Boolean = false,
+) {
+    companion object {
+        /** Workspace keys and session roles: short, lower case, DNS-safe (the name must stay a valid volume / PVC name). */
+        val KEY_PATTERN = Regex("^[a-z][a-z0-9-]{0,19}$")
+
+        const val NAME_PREFIX = "bo-ws-"
+
+        /** `bo-ws-<run id without dashes>-<key>`: at most 59 characters. */
+        fun nameFor(runId: UUID, key: String): String = NAME_PREFIX + runId.toString().replace("-", "") + "-" + key
+    }
+}
+
+/**
  * Merge request to open when the branch is pushed. Implemented with git push options
  * (`-o merge_request.create ...`), which GitLab honours and other hosts ignore, so the platform never
  * needs an SCM API token (ADR 0013).
@@ -165,6 +188,8 @@ data class RunnerJobSpec(
      * like any other job. Routing data only: never sent to the runner.
      */
     val personalRunnerOf: UUID? = null,
+    /** ADR 0044: the run workspace the job works in; null = a throwaway workspace (and a new agent session). */
+    val workspace: RunnerWorkspace? = null,
 )
 
 enum class RunnerJobStatus { CREATED, RUNNING, SUCCEEDED, FAILED, TIMED_OUT, CANCELLED }
@@ -237,6 +262,12 @@ interface AgentRunner {
     fun cancel(jobId: RunnerJobId)
     fun logs(jobId: RunnerJobId, after: Instant?): List<RunnerLogLine>
     fun isAvailable(): Boolean
+
+    /**
+     * ADR 0044: the run [runId] ended; its workspaces are released after [keepFor] (zero = now) unless a job of the
+     * run uses them again before. The runners holding them delete them on their next sync.
+     */
+    fun releaseWorkspaces(runId: UUID, keepFor: Duration) {}
 }
 
 // ------------------------------------------------------------------------------------------------

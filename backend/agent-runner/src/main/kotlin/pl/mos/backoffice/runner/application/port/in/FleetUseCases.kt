@@ -237,6 +237,12 @@ interface RunnerFleetProtocol {
     fun complete(runner: RunnerNode, jobId: RunnerJobId, completion: JobCompletionReport)
 
     fun queueDepth(runner: RunnerNode, poolId: String): QueueDepth
+
+    /**
+     * ADR 0044: [held] = run workspaces (volumes / PVCs) the runner holds. Returns the ones it deletes: released, due,
+     * unknown or now held elsewhere. Rows of this runner whose volume is gone are forgotten (they start over).
+     */
+    fun syncWorkspaces(runner: RunnerNode, held: List<String>): List<String>
 }
 
 // ------------------------------------------------------------------------------------------------

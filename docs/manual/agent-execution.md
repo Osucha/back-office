@@ -53,6 +53,12 @@ Back Office (api)                runner-controller (pool P)              sandbox
 Jobs and their states are visible in **Administration** → **Runner fleet** → **Agent jobs**
 ([runner-fleet.md](runner-fleet.md#agent-jobs)).
 
+**Run workspaces (ADR 0044).** A step that names a [workspace](workflows.md#workspaces) gets a persistent
+`/workspace` instead of a throwaway one: a Docker volume or a PersistentVolumeClaim of the runner that ran the
+workspace's first step. Back Office leases the workspace's jobs only to that runner and one at a time; the runner
+reuses its earlier clones after rewriting their `.git/config`. Each runner-controller reports its workspaces every
+minute and deletes the ones Back Office released.
+
 <a id="isolation-levels"></a>
 ## Isolation levels
 

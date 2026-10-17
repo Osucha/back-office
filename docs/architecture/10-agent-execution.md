@@ -343,6 +343,25 @@ single-repository spec and runs exactly as before (`/workspace/repo`, `spec.gitA
 `result.repositories`). The digest algorithm is unchanged (`docs/api/fixtures/spec-digest-vectors.json` has a
 two-repository vector).
 
+## Run workspaces and agent sessions (ADR 0044)
+
+- Step config `workspace` / `sessionRole` / `prepareOnly` (`StepWorkspace`, validated with the step repositories)
+  becomes `RunnerJobSpec.workspace {name, key, sessionRole, prepareOnly}`; `name = bo-ws-<run id hex>-<key>`.
+- Control plane: `runner_workspace` (V54: pool, runner, active job, release time) and `agent_job.workspace_name`.
+  `JobLifecycle.routeJob` binds the workspace and prefers its pool; `lockQueued(pool, runner)` skips jobs whose
+  workspace is busy or on another runner; the lease claims it with one conditional `UPDATE` (`active_job_id`), and
+  `finish` / `requeue` free it. `RunProgressService.finished` calls `AgentRunner.releaseWorkspaces` (now; 24 h after
+  a failure). `POST /runner/v2/workspaces/sync` (`WorkspaceSync.decide`) tells a controller what to delete.
+- runner-controller: DOCKER mounts a named volume (`docker volume create`, labels managed-by / pool /
+  `backoffice.io/workspace`); K8S_JOB and AGENT_SANDBOX a ReadWriteOnce PVC sized by `ephemeralStorage`
+  (`workspace-storage-class`), never a warm pod. A sync every `workspace-sync-seconds` (60) deletes released volumes
+  not used by a running sandbox.
+- runner: a clone is reused when `/workspace/.bo/repos/<path>.json` names the same URL: `.git` checked, hooks and
+  grafts removed, `.git/config` rewritten (`trusted_git_config`), fetch, access of the job; the working tree stays.
+  READ repositories are not committed in a workspace. Sessions: Claude Code `--session-id` / `--resume` with
+  `uuid5(workspace, role)` in `CLAUDE_CONFIG_DIR=/workspace/.claude-config`; OpenCode `XDG_DATA_HOME=/workspace/.bo/opencode/<role>`
+  and `--continue`. `prepareOnly`: clone + setupCommand + `.git` restore, no agent, no commit.
+
 ## Runner protocol v2 (summary; contract in `docs/api/openapi.yaml`, tag `runner-v2`)
 
 | Call | Who | Purpose |

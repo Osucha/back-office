@@ -289,6 +289,19 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UploadRequest' } } } }
       responses:
         '200': { description: Upload target, content: { application/json: { schema: { $ref: '#/components/schemas/UploadTarget' } } } }
+  /runner/v2/workspaces/sync:
+    post:
+      tags: [runner-v2]
+      operationId: syncRunWorkspaces
+      security: [ { RunnerFleetToken: [] } ]
+      description: >-
+        ADR 0044: the run workspaces (Docker volumes / PVCs named bo-ws-...) this runner-controller holds. The answer
+        names the ones it deletes: released by Back Office (run ended, or 24 h after it failed), unknown, or now held by
+        another runner. Rows of this runner whose volume is gone are forgotten (the next job starts an empty workspace).
+        Called about once a minute; a controller that cannot list its volumes does not call it.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkspaceSync' } } } }
+      responses:
+        '200': { description: Workspaces to delete, content: { application/json: { schema: { $ref: '#/components/schemas/WorkspaceSyncResult' } } } }
   /runner/v2/pools/{poolId}/queue:
     parameters: [ { name: poolId, in: path, required: true, schema: { type: string } } ]
     get:
@@ -4501,6 +4514,17 @@ components:
           properties:
             askTreatedAsDeny: { type: array, items: { type: string } }
             denials: { type: array, items: { type: object, properties: { tool: { type: string }, input: { type: string } } } }
+    WorkspaceSync:
+      type: object
+      description: 'ADR 0044: the run workspaces a runner-controller holds.'
+      required: [held]
+      properties:
+        held: { type: array, items: { type: string } }
+    WorkspaceSyncResult:
+      type: object
+      required: [release]
+      properties:
+        release: { type: array, items: { type: string }, description: 'workspaces the controller deletes now' }
     RunnerJobSpec:
       description: 'Delivered to the sandbox as `spec.json` of the job bundle (/var/run/backoffice/job, ADR 0024); legacy: base64 JSON in `RUNNER_SPEC`.'
       type: object
@@ -4555,6 +4579,22 @@ components:
             ADR 0036: false = the project does not use Spec Kit: no `specify init`, no constitution, no `/speckit.*`
             commands (a SPEC_KIT job with false is refused). Null/omitted (legacy-built jobs, older Back Office): the
             runner's earlier behaviour. Covered by the spec digest when present.
+        workspace:
+          type: object
+          nullable: true
+          description: >-
+            ADR 0044: the run workspace of the job. The controller mounts the volume / PVC `name` at /workspace instead of
+            a throwaway one (backends without workspaces log it and use a throwaway one); the runner reuses clones it made
+            there for earlier jobs (rewriting .git/config first) and keeps their working trees. `sessionRole` continues the
+            coding agent's session of that role (Claude Code --session-id / --resume, OpenCode --continue); `prepareOnly`
+            clones and runs setupCommand without an agent. Back Office leases the jobs of one workspace only to the runner
+            holding it, one at a time. Omitted = a throwaway workspace. Covered by the spec digest when present.
+          required: [name, key]
+          properties:
+            name: { type: string, pattern: '^bo-ws-[0-9a-f]{32}-[a-z][a-z0-9-]{0,19}$' }
+            key: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' }
+            sessionRole: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{0,19}$' }
+            prepareOnly: { type: boolean, nullable: true }
         llmCredentials:
           type: string
           enum: [GATEWAY, LOCAL_LOGIN]

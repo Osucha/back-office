@@ -43,6 +43,11 @@ data class LaunchRequest(
      * DOCKER backend only); delivered as `claude-login-token` in the bundle. Null = the job uses the LLM gateway.
      */
     val localLoginCredential: String? = null,
+    /**
+     * ADR 0044: the run workspace (volume / PVC name, [Workspaces.NAME]) mounted at `/workspace` instead of a throwaway
+     * one; null = throwaway. Set only when the backend [SandboxBackend.supportsWorkspaces].
+     */
+    val workspace: String? = null,
 )
 
 /**
@@ -111,6 +116,15 @@ interface SandboxBackend {
 
     /** Git credentials this backend can deliver, selected per job by repository and [GitAccess] (ADR 0031). */
     val gitCredentials: GitCredentialSelector get() = GitCredentialSelector.EMPTY
+
+    /** ADR 0044: whether this backend mounts [LaunchRequest.workspace] as a persistent volume. */
+    val supportsWorkspaces: Boolean get() = false
+
+    /** ADR 0044: the run workspaces this controller holds for [poolId]; null when they cannot be listed. */
+    fun listWorkspaces(poolId: String): List<String>? = emptyList()
+
+    /** ADR 0044: deletes the workspace volume [name] (fails quietly while a sandbox still uses it). */
+    fun deleteWorkspace(name: String) {}
 }
 
 /** Pool-level settings from `/runner/v2/config` plus local configuration. */

@@ -44,7 +44,7 @@ conventions of ADR 0019 `RequirementWriter` (`requirement-writer`; in: `issue`; 
 `user-story`) and `ChangeAnalyst` (`change-analyst`; in: `issue`; out: artefact `impact-analysis`, state
 `confidence`).
 
-Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-one in total, the fourteen below plus the
+Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-two in total, the fifteen below plus the
 seven SDLC templates):
 
 | Key | extends | implements | executor |
@@ -61,6 +61,7 @@ seven SDLC templates):
 | `analyse-issue` | `base-agent` | `Analyst` | `LLM` |
 | `llm-task` | — | — | `LLM` (generic task for any LLM work, ADR 0034: the prompt is written per node with the override "replace prompt", the run parameter `input` reaches the model as a data block, revision feedback is appended; used by the starter workflow **LLM task with review** of projects without a repository) |
 | `agent-task` | — | — | `IMPLEMENT` (generic coding-agent task: the prompt is written per node with "replace prompt"; issue, run parameter `input` and feedback are in the system prompt; agent CLAUDE_CODE, `push` false by default, true for a branch and merge request; `repositoryOptional`: in a project without repositories an empty workspace, the final answer becomes the `result` artefact; skills `agent-ground-rules`, `ask-dont-guess`) |
+| `prepare-workspace` | — | — | `IMPLEMENT` (ADR 0044: `prepareOnly`, `workspace` = `main`: clones the step's repositories and sources into the run workspace and runs `setupCommand`; no agent, never pushes) |
 | `notify-jira` | — | — | `NOTIFY` (Jira comment; `config.messageTemplate` = `Back Office run {{run.short}} ({{run.workflow}}): {{node.name}}. {{mr.url}}`) |
 | `transition-issue` | — | — | `TRANSITION_ISSUE` (`config.toStatus` = `In Review`, `config.failIfMissing` = `false`) |
 

@@ -71,6 +71,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -197,6 +198,11 @@ DEFAULT_GIT_TOKEN_DIR = "/var/run/backoffice/git"
 DEFAULT_GIT_TOKEN_FILE = DEFAULT_GIT_TOKEN_DIR + "/token"
 # Multi-repository jobs (`spec.repositories`): one token file per repository, <token dir>/<key>/token.
 REPO_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+# ADR 0044: run workspaces (a Docker volume / PVC at /workspace shared by the steps of one run)
+WORKSPACE_NAME_RE = re.compile(r"^bo-ws-[0-9a-f]{32}-[a-z][a-z0-9-]{0,19}$")
+WORKSPACE_KEY_RE = re.compile(r"^[a-z][a-z0-9-]{0,19}$")
+# runner state inside a run workspace: which clones the runner made, agent session data per role
+WORKSPACE_STATE_DIR = ".bo"
 # prctl(2) option: 0 = not dumpable -> no ptrace attach and /proc/<pid>/{mem,environ,...} owned by root.
 PR_SET_DUMPABLE = 4
 # Added to EVERY git invocation of the runner: hooks and fsmonitor run arbitrary commands the agent could have
@@ -745,6 +751,17 @@ class RepoSpec:
 
 
 @dataclass
+class WorkspaceSpec:
+    """ADR 0044: `spec.workspace`: the run workspace mounted at /workspace (clones of earlier steps are reused),
+    the agent session role to continue, and prepare-only (clone + setupCommand, no agent)."""
+
+    name: str
+    key: str
+    session_role: Optional[str] = None
+    prepare_only: bool = False
+
+
+@dataclass
 class Skill:
     key: str
     name: str
@@ -790,6 +807,8 @@ class JobSpec:
     # ADR 0040: GATEWAY (the Back Office LLM gateway) or LOCAL_LOGIN (Claude Code uses the personal runner owner's own
     # login, delivered as <job dir>/claude-login-token; other harnesses still use the gateway).
     llm_credentials: str = "GATEWAY"
+    # ADR 0044: the run workspace; None = a throwaway workspace and a new agent session
+    workspace: Optional[WorkspaceSpec] = None
 
     @property
     def local_login(self) -> bool:
@@ -1043,11 +1062,30 @@ def is_multi_repo_spec(raw: Dict[str, Any]) -> bool:
     return bool(repos) or not (isinstance(legacy, dict) and legacy.get("url"))
 
 
+def parse_workspace(raw: Any) -> Optional[WorkspaceSpec]:
+    """`spec.workspace` (ADR 0044); names and keys are validated (the name is a volume the controller mounted)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("workspace must be an object")
+    name, key = str(raw.get("name") or ""), str(raw.get("key") or "")
+    if not WORKSPACE_NAME_RE.match(name):
+        raise ValueError(f"workspace.name {name!r} is not a run workspace name")
+    if not WORKSPACE_KEY_RE.match(key):
+        raise ValueError(f"workspace.key {key!r} is not valid")
+    role = raw.get("sessionRole")
+    if role is not None and not WORKSPACE_KEY_RE.match(str(role)):
+        raise ValueError(f"workspace.sessionRole {role!r} is not valid")
+    return WorkspaceSpec(name=name, key=key, session_role=str(role) if role else None, prepare_only=raw.get("prepareOnly") is True)
+
+
 def parse_spec(raw: Dict[str, Any]) -> JobSpec:
     _require_spec_keys(raw)
     model = _parse_model(raw["model"])
-    multi = is_multi_repo_spec(raw)
-    repositories = parse_repositories(raw["repositories"]) if multi else []
+    workspace = parse_workspace(raw.get("workspace"))
+    # a workspace job without repositories still takes the multi-repository path (the agent works in /workspace)
+    multi = is_multi_repo_spec(raw) or (workspace is not None and not (isinstance(raw.get("repository"), dict) and raw["repository"].get("url")))
+    repositories = parse_repositories(raw.get("repositories") or []) if multi else []
     repo = None if multi else _parse_repository(raw.get("repository"))
     skills = _parse_skills(raw.get("skills"))
     mode = str(raw["mode"]).upper()
@@ -1087,6 +1125,7 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         repositories=repositories,
         spec_kit=spec_kit,
         llm_credentials=llm_credentials,
+        workspace=workspace,
     )
 
 
@@ -1487,13 +1526,45 @@ def build_opencode_config(
     }
 
 
-def build_opencode_command(model: ModelRef, prompt: str) -> List[str]:
-    return ["opencode", "run", "--model", opencode_model_ref(model), "--format", "json", prompt]
+@dataclass
+class AgentSession:
+    """ADR 0044: the coding agent's session of one role in a run workspace. Claude Code: a fixed id derived from the
+    workspace and the role (`--session-id` the first time, `--resume` after); OpenCode: its own data directory per
+    role (`--continue` once it holds a session)."""
+
+    role: str
+    session_id: str
+    resume: bool
+    data_dir: Optional[Path] = None
+
+
+def session_id_for(workspace_name: str, role: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"https://backoffice.invalid/workspaces/{workspace_name}/sessions/{role}"))
+
+
+def agent_session(spec: JobSpec, workspace: Path, agent_env: Dict[str, str]) -> Optional[AgentSession]:
+    """The session to start or continue, or None (no workspace, no role: a new session as before ADR 0044)."""
+    ws = spec.workspace
+    if ws is None or not ws.session_role or ws.prepare_only or spec.agent not in ("CLAUDE_CODE", "OPENCODE"):
+        return None
+    sid = session_id_for(ws.name, ws.session_role)
+    if spec.agent == "CLAUDE_CODE":
+        config_dir = Path(agent_env.get("CLAUDE_CONFIG_DIR") or workspace / ".claude-config")
+        return AgentSession(ws.session_role, sid, any(config_dir.glob(f"projects/*/{sid}.jsonl")))
+    data_dir = workspace / WORKSPACE_STATE_DIR / "opencode" / ws.session_role
+    return AgentSession(ws.session_role, sid, data_dir.is_dir() and any(data_dir.iterdir()), data_dir)
+
+
+def build_opencode_command(model: ModelRef, prompt: str, continue_session: bool = False) -> List[str]:
+    cmd = ["opencode", "run", "--model", opencode_model_ref(model), "--format", "json"]
+    if continue_session:
+        cmd.append("--continue")
+    return cmd + [prompt]
 
 
 def build_claude_command(
     model: ModelRef, prompt: str, permission_mode: str, help_text: str = "", settings_file: Optional[Path] = None,
-    extra_dirs: Iterable[str] = (),
+    extra_dirs: Iterable[str] = (), session: Optional[AgentSession] = None,
 ) -> List[str]:
     cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose", "--model", model.model_id]
     if permission_mode == "bypassPermissions":
@@ -1506,7 +1577,10 @@ def build_claude_command(
         # the other repositories of a multi-repository job (the working directory is the primary one)
         for d in extra_dirs:
             cmd += ["--add-dir", str(d)]
-    if "--no-session-persistence" in help_text:
+    if session is not None and "--session-id" in help_text:
+        # ADR 0044: the role's session in the run workspace, kept for the next step of that role
+        cmd += ["--resume", session.session_id] if session.resume else ["--session-id", session.session_id]
+    elif "--no-session-persistence" in help_text:
         cmd.append("--no-session-persistence")
     if model.reasoning and model.reasoning != "NONE" and "--effort" in help_text:
         cmd += ["--effort", REASONING_TO_CLAUDE_EFFORT[model.reasoning]]
@@ -2066,6 +2140,35 @@ class Git:
             self.run(["fetch", "--quiet", "origin", base_ref], with_creds=True)
             self.run(["checkout", "--quiet", "FETCH_HEAD"])
 
+    def reattach(self, url: str, base_ref: str) -> None:
+        """ADR 0044: reuse a clone an earlier job of the run left in the workspace. Untrusted code ran there, so before
+        any git call `.git` must be a plain directory, hooks and grafts go and `.git/config` is written anew (only
+        origin = the spec URL); then fetch, the access of this job (push disabled for READ / NONE) and the base ref.
+        The working tree, local branches and uncommitted changes are kept."""
+        git_dir = self._git_dir()
+        _empty_hooks_dir(git_dir / "hooks")
+        grafts = git_dir / "info" / "grafts"
+        if grafts.exists() or grafts.is_symlink():
+            _remove_entry(grafts)
+        _replace_file(git_dir / "config", trusted_git_config(url).encode("utf-8"))
+        if not self.remote_host:
+            self.remote_host = credential_host(url)
+        if self.bind_path and not self.remote_path:
+            self.remote_path = credential_path(url)
+        if not self.can_push:
+            self.disable_push()
+        self.run(["fetch", "--quiet", "--no-tags", "origin"], with_creds=True)
+        if self.run(["rev-parse", "--verify", "--quiet", f"origin/{base_ref}"], check=False).returncode != 0:
+            # baseRef may be a tag or a SHA
+            self.run(["fetch", "--quiet", "origin", base_ref], with_creds=True, check=False)
+
+    def current_branch(self) -> Optional[str]:
+        cp = self.run(["symbolic-ref", "--quiet", "--short", "HEAD"], check=False)
+        return cp.stdout.strip() or None if cp.returncode == 0 else None
+
+    def has_local_branch(self, branch: str) -> bool:
+        return self.run(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], check=False).returncode == 0
+
     @property
     def can_push(self) -> bool:
         return self.access == GIT_ACCESS_PUSH_MR
@@ -2215,6 +2318,15 @@ class Git:
             grafts.unlink()
             self.log("[git] removed .git/info/grafts (planted by untrusted code)")
         return changed
+
+
+def trusted_git_config(url: str) -> str:
+    """The `.git/config` a reused clone gets (ADR 0044): nothing an agent could have planted survives."""
+    quoted = url.replace("\\", "\\\\").replace('"', '\\"')
+    return (
+        "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n"
+        f'[remote "origin"]\n\turl = "{quoted}"\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n'
+    )
 
 
 def _read_regular_file(path: Path) -> Optional[bytes]:
@@ -3065,7 +3177,9 @@ def _claude_help(agent_env: Dict[str, str]) -> str:
     return (help_cp.stdout or "") + (help_cp.stderr or "")
 
 
-def _claude_invocation(run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, agent_env: Dict[str, str]) -> List[str]:
+def _claude_invocation(
+    run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, agent_env: Dict[str, str], session: Optional[AgentSession] = None,
+) -> List[str]:
     if spec.local_login:
         if not run.local_login_token:
             raise ValueError(f"llmCredentials LOCAL_LOGIN but no {LOCAL_LOGIN_FILE} in the job bundle: the runner-controller"
@@ -3081,22 +3195,24 @@ def _claude_invocation(run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, ag
     help_text = _claude_help(agent_env)
     if run.extra_dirs and "--add-dir" not in help_text:
         run.log("[agent] WARN this Claude Code has no --add-dir: the other repositories may be outside its allowed directories")
-    return build_claude_command(spec.model, prompt, permission_mode, help_text, settings_file, run.extra_dirs)
+    if session is not None and "--session-id" not in help_text:
+        run.log("[agent] WARN this Claude Code cannot keep a named session (no --session-id): a new session starts")
+    return build_claude_command(spec.model, prompt, permission_mode, help_text, settings_file, run.extra_dirs, session)
 
 
 LineParser = Callable[[str, AgentOutcome], Optional[str]]
 
 
 def _agent_invocation(
-    run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, agent_env: Dict[str, str]
+    run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, agent_env: Dict[str, str], session: Optional[AgentSession] = None,
 ) -> Tuple[List[str], LineParser, bool]:
     """(command, output line parser, run through the shell) for the spec's agent."""
     if spec.agent == "OPENCODE":
         config = build_opencode_config(spec.model, spec.gateway, run.tools, run.extra_dirs)
         (run.workspace / "opencode.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
-        return build_opencode_command(spec.model, prompt), parse_opencode_line, False
+        return build_opencode_command(spec.model, prompt, bool(session and session.resume)), parse_opencode_line, False
     if spec.agent == "CLAUDE_CODE":
-        return _claude_invocation(run, spec, repo_dir, prompt, agent_env), parse_claude_line, False
+        return _claude_invocation(run, spec, repo_dir, prompt, agent_env, session), parse_claude_line, False
     # STUB (tests only): the prompt is a shell script run with the agent's environment
     return [prompt], parse_stub_line, True
 
@@ -3115,7 +3231,13 @@ def _kill_strays(run: _Run) -> None:
 def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     prompt = with_repositories_section(build_agent_prompt(spec, repo_dir), spec, run.workspace) if spec.agent != STUB_AGENT else spec.prompt
     agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token)
-    cmd, parser, shell = _agent_invocation(run, spec, repo_dir, prompt, agent_env)
+    session = agent_session(spec, run.workspace, agent_env)
+    if session is not None:
+        if session.data_dir is not None:
+            session.data_dir.mkdir(parents=True, exist_ok=True)
+            agent_env["XDG_DATA_HOME"] = str(session.data_dir)
+        run.log(f"[agent] session of role {session.role}: {'continuing' if session.resume else 'starting'} {session.session_id} (run workspace)")
+    cmd, parser, shell = _agent_invocation(run, spec, repo_dir, prompt, agent_env, session)
     elapsed = time.monotonic() - run.started
     agent_timeout = max(60.0, spec.timeout_seconds - elapsed)
     run.log(f"[agent] prompt ({len(prompt)} chars): {prompt.splitlines()[0][:200] if prompt else ''}")
@@ -3284,15 +3406,67 @@ def _validate_repo_push_targets(spec: JobSpec) -> None:
             raise RuntimeError(f"push refused: repository {repo.key}: {e}") from e
 
 
-def _clone_repository(run: _Run, state: _RepoState) -> None:
-    """Clone into <workspace>/<path> with the repository's own token; READ / NONE clones get the push URL
-    disabled, PUSH_MR clones the job branch. Then the trusted `.git` state is recorded."""
+def _clone_marker(run: _Run, repo: RepoSpec) -> Path:
+    return run.workspace / WORKSPACE_STATE_DIR / "repos" / f"{repo.path.replace('/', '__')}.json"
+
+
+def _reusable_clone(run: _Run, spec: JobSpec, state: _RepoState) -> bool:
+    """ADR 0044: a repository directory of the run workspace that an earlier job's runner cloned from the same URL."""
+    if spec.workspace is None or not (state.directory / ".git").is_dir() or (state.directory / ".git").is_symlink():
+        return False
+    marker = _read_regular_file(_clone_marker(run, state.repo))
+    try:
+        return marker is not None and json.loads(marker.decode("utf-8")).get("url") == state.repo.url
+    except (ValueError, AttributeError):
+        return False
+
+
+def _remember_clone(run: _Run, spec: JobSpec, repo: RepoSpec) -> None:
+    if spec.workspace is None:
+        return
+    marker = _clone_marker(run, repo)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    _replace_file(marker, json.dumps({"url": repo.url, "key": repo.key}).encode("utf-8"))
+
+
+def _reattach_repository(run: _Run, state: _RepoState, git: Git) -> None:
+    """ADR 0044: continue in the clone an earlier step of the run left (working tree and local commits kept)."""
     repo = state.repo
-    if state.directory.exists():
-        shutil.rmtree(state.directory, ignore_errors=True)
+    run.sink.progress(f"reusing {repo.key} from the run workspace: {run.redact(repo.url)} -> {repo.path}")
+    git.reattach(repo.url, repo.base_ref)
+    git.configure_identity(run.env.get("GIT_USER_NAME") or "Back Office Agent", run.env.get("GIT_USER_EMAIL") or "agent@backoffice.local")
+    if repo.can_push and repo.push_branch:
+        current = git.current_branch()
+        if current == repo.push_branch:
+            run.log(f"{state.tag} staying on branch {repo.push_branch} (run workspace)")
+        elif git.has_local_branch(repo.push_branch):
+            git.run(["checkout", "--quiet", repo.push_branch])
+            run.log(f"{state.tag} switched to the local branch {repo.push_branch} (run workspace)")
+        else:
+            existed = git.checkout_branch(repo.push_branch)
+            run.log(f"{state.tag} branch {repo.push_branch} {'re-attached from origin' if existed else 'created'} (run workspace)")
+        state.result["branch"] = repo.push_branch
+    dirty = git.has_changes()
+    run.log(f"{state.tag} reused from an earlier step of the run: HEAD {git.head()}" + (", with uncommitted changes" if dirty else ""))
+
+
+def _clone_repository(run: _Run, state: _RepoState, spec: Optional[JobSpec] = None) -> None:
+    """Clone into <workspace>/<path> with the repository's own token; READ / NONE clones get the push URL
+    disabled, PUSH_MR clones the job branch. In a run workspace (ADR 0044) a clone of an earlier step is reused.
+    Then the trusted `.git` state is recorded."""
+    repo = state.repo
     token = run.repo_tokens.get(repo.key) if repo.access != GIT_ACCESS_NONE else None
     git = Git(state.directory, run.env, _repo_log(run, state), token=token, repo_url=repo.url, access=repo.access, bind_path=True)
     state.git = git
+    if spec is not None and _reusable_clone(run, spec, state):
+        if not repo.can_push:
+            run.log(f"{state.tag} access {repo.access}: pushing is disabled (ADR 0031)")
+        _reattach_repository(run, state, git)
+        git.snapshot_config()
+        git.pin_base(repo.base_ref)
+        return
+    if state.directory.exists():
+        shutil.rmtree(state.directory, ignore_errors=True)
     if not repo.can_push:
         run.log(f"{state.tag} access {repo.access}: clone only, pushing is disabled (ADR 0031)")
     if not git.has_token and repo.url.startswith(HTTPS_PREFIX):
@@ -3307,6 +3481,8 @@ def _clone_repository(run: _Run, state: _RepoState) -> None:
     run.log(f"{state.tag} HEAD {git.head()} in {repo.path}")
     git.snapshot_config()
     git.pin_base(repo.base_ref)
+    if spec is not None:
+        _remember_clone(run, spec, repo)
 
 
 def _prepare_repositories(run: _Run, spec: JobSpec) -> List[_RepoState]:
@@ -3316,7 +3492,7 @@ def _prepare_repositories(run: _Run, spec: JobSpec) -> List[_RepoState]:
     _validate_repo_push_targets(spec)
     for state in states:
         try:
-            _clone_repository(run, state)
+            _clone_repository(run, state, spec)
         except (RuntimeError, OSError, ValueError) as e:
             state.result["error"] = f"clone failed: {run.redact(str(e))}"
             raise RuntimeError(f"repository {state.repo.key}: {state.result['error']}") from e
@@ -3340,7 +3516,11 @@ def _restore_repositories(run: _Run, states: List[_RepoState]) -> None:
 def _commit_repository(run: _Run, spec: JobSpec, state: _RepoState) -> None:
     git = state.git
     assert git is not None
-    if git.has_changes():
+    if spec.workspace is not None and not state.repo.can_push:
+        # ADR 0044: in a run workspace a read-only step leaves its changes uncommitted for the next step
+        if git.has_changes():
+            run.log(f"{state.tag} changes left uncommitted in the run workspace (access {state.repo.access})")
+    elif git.has_changes():
         sha = git.commit_all(commit_message(spec.mode, spec.prompt), run_id=spec.run_id)
         if sha:
             run.log(f"{state.tag} committed {sha[:12]}" + (f" (trailer {RUN_TRAILER}: {spec.run_id})" if spec.run_id else ""))
@@ -3422,6 +3602,9 @@ def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
     if spec.skills:
         write_skills(work_dir, spec.skills, run.log)
     _run_setup(run, spec, work_dir)
+    if spec.workspace is not None and spec.workspace.prepare_only:
+        _finish_prepare_only(run, spec, states)
+        return
     _prepare_spec_kit(run, spec, work_dir)
     _run_agent(run, spec, work_dir)
     _run_verify(run, spec, work_dir)
@@ -3431,6 +3614,23 @@ def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
     for state in states:
         _finish_repository(run, spec, state)
     _report_repositories(run, states)
+
+
+def _finish_prepare_only(run: _Run, spec: JobSpec, states: List[_RepoState]) -> None:
+    """ADR 0044: a prepare step: the repositories are in the run workspace and setupCommand ran; no agent, no commit,
+    no push. setupCommand is repository code, so `.git` is restored as after an agent."""
+    _restore_repositories(run, states)
+    run.agent_exit = 0
+    names = ", ".join(f"{s.repo.key} ({s.repo.path})" for s in states) or "no repositories"
+    run.outcome.final_result = (
+        f"Workspace {spec.workspace.key if spec.workspace else ''} prepared: {names}"
+        + (f"; setupCommand: {spec.setup_command}" if spec.setup_command else "")
+        + ". No agent ran."
+    )
+    for state in states:
+        state.result["commitSha"] = state.git.head() if state.git else None
+    _report_repositories(run, states)
+    run.log(f"[workspace] prepared {names}; later steps of the run reuse them")
 
 
 def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str], job_id: str, git_token: str) -> None:

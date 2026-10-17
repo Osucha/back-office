@@ -19,6 +19,7 @@ import pl.mos.backoffice.runner.adapter.out.BlobResultArchive
 import pl.mos.backoffice.runner.adapter.out.InProcessLeaseSignal
 import pl.mos.backoffice.runner.adapter.out.SpringTransactions
 import pl.mos.backoffice.runner.adapter.out.persistence.JdbcFleetStores
+import pl.mos.backoffice.runner.adapter.out.persistence.JdbcRunWorkspaceStore
 import pl.mos.backoffice.runner.application.port.`in`.MaintainAgentJobs
 import pl.mos.backoffice.runner.application.port.out.LeaseSignal
 import pl.mos.backoffice.runner.application.port.out.ResultArchive
@@ -79,6 +80,10 @@ class RunnerConfiguration {
     @Bean
     fun jdbcFleetStores(db: NamedParameterJdbcTemplate, json: JsonMapper) = JdbcFleetStores(db, json)
 
+    /** ADR 0044: persistent workspaces of runs. */
+    @Bean
+    fun runWorkspaceStore(db: NamedParameterJdbcTemplate) = JdbcRunWorkspaceStore(db)
+
     @Bean
     fun runnerTransactions(transactionManager: PlatformTransactionManager): Transactions = SpringTransactions(TransactionTemplate(transactionManager))
 
@@ -96,10 +101,11 @@ class RunnerConfiguration {
         events: EventPublisher,
         clock: Clock,
         settings: FleetSettings,
+        workspaces: JdbcRunWorkspaceStore,
     ): JobLifecycle {
         val queue = workQueue.getIfAvailable()
         if (queue == null) log.warn("no WorkQueue bean: agent job continuations will not be enqueued")
-        return JobLifecycle(stores, stores, stores, stores, queue, signal, events, clock, settings)
+        return JobLifecycle(stores, stores, stores, stores, queue, signal, events, clock, settings, workspaces)
     }
 
     /** The shared `AgentRunner` port and `JobTokenVerifier`. */

@@ -19,6 +19,7 @@ import pl.mos.backoffice.runnercontroller.sandbox.SandboxHandle
 import pl.mos.backoffice.runnercontroller.sandbox.SandboxLaunchFailed
 import pl.mos.backoffice.runnercontroller.sandbox.SandboxObservation
 import pl.mos.backoffice.runnercontroller.sandbox.SandboxPhase
+import pl.mos.backoffice.runnercontroller.sandbox.Workspaces
 import pl.mos.backoffice.runnercontroller.sandbox.k8s.PodSpecRenderer
 import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
@@ -112,12 +113,18 @@ class DockerBackend(
             docker.run(listOf("network", "create", "--internal") + labelArgs(labels) + networkName(jobId))
             startProxy(request, aclFile, labels)
             val policy = request.policy
+            // ADR 0044: the run workspace is a named volume (created on first use; a new volume copies the image's
+            // /workspace, owned by the sandbox user); otherwise a throwaway tmpfs
+            val workspaceMount = request.workspace?.let { name ->
+                ensureWorkspaceVolume(name, request.poolId)
+                listOf("-v", "$name:${PodSpecRenderer.WORKSPACE}:rw")
+            } ?: listOf("--tmpfs", "${PodSpecRenderer.WORKSPACE}:rw,exec,size=${bytes(policy.ephemeralStorage)},uid=10001,gid=10001,mode=0755")
             val args = mutableListOf(
                 "run", "-d", "--name", agentName(jobId),
                 "--network", networkName(jobId),
                 "--read-only",
                 "--tmpfs", "/tmp:rw,exec,size=1g",
-                "--tmpfs", "${PodSpecRenderer.WORKSPACE}:rw,exec,size=${bytes(policy.ephemeralStorage)},uid=10001,gid=10001,mode=0755",
+                *workspaceMount.toTypedArray(),
                 "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges",
                 "--pids-limit", policy.pids.toString(),
@@ -211,6 +218,33 @@ class DockerBackend(
             val dir = jobDir(jobId)
             if (Files.exists(dir)) Files.walk(dir).use { s -> s.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
         }.onFailure { log.warn("cannot remove {}: {}", jobDir(jobId), it.message) }
+    }
+
+    override val supportsWorkspaces: Boolean get() = true
+
+    private fun ensureWorkspaceVolume(name: String, poolId: String) {
+        require(Workspaces.NAME.matches(name)) { "invalid workspace name $name" }
+        docker.run(
+            listOf("volume", "create") +
+                labelArgs(mapOf(Labels.MANAGED_BY to Labels.MANAGED_BY_VALUE, Labels.POOL to Labels.value(poolId), Workspaces.LABEL to "true")) +
+                name,
+        )
+    }
+
+    override fun listWorkspaces(poolId: String): List<String>? {
+        val r = docker.run(
+            listOf("volume", "ls", FILTER_FLAG, "label=${Labels.MANAGED_BY}=${Labels.MANAGED_BY_VALUE}",
+                FILTER_FLAG, "label=${Labels.POOL}=${Labels.value(poolId)}", FILTER_FLAG, "label=${Workspaces.LABEL}=true", "--format", "{{.Name}}"),
+            check = false,
+        )
+        if (r.exitCode != 0) return null
+        return r.stdout.lines().map { it.trim() }.filter { Workspaces.NAME.matches(it) }
+    }
+
+    override fun deleteWorkspace(name: String) {
+        if (!Workspaces.NAME.matches(name)) return
+        val r = docker.run(listOf("volume", "rm", name), check = false)
+        if (r.exitCode == 0) log.info("deleted run workspace {}", name) else log.warn("cannot delete run workspace {}: {}", name, r.stderr.trim().take(300))
     }
 
     override fun listManaged(poolId: String): List<ManagedSandbox> {

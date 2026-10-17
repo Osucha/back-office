@@ -49,6 +49,11 @@ data class RunnerConfig(
 
 data class LeaseRequest(val maxJobs: Int, val waitSeconds: Int, val freeSlots: Int)
 
+/** ADR 0044: `POST /runner/v2/workspaces/sync`: what the controller holds, and what it deletes. */
+data class WorkspaceSync(val held: List<String>)
+
+data class WorkspaceSyncResult(val release: List<String> = emptyList())
+
 data class AgentJobAssignment(
     val jobId: String,
     val leaseExpiresAt: String,

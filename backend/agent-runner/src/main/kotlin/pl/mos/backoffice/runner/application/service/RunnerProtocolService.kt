@@ -18,6 +18,8 @@ import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.FleetTokens
 import pl.mos.backoffice.runner.domain.JobCompletionReport
 import pl.mos.backoffice.runner.domain.RunnerNode
+import pl.mos.backoffice.runner.domain.WorkspaceSync
+import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.RunnerJobId
@@ -111,7 +113,13 @@ class RunnerProtocolService(
         if (capacity <= 0) return@inTransaction emptyList()
         val now = lifecycle.now()
         val leaseExpiresAt = now.plus(lifecycle.settings.leaseDuration)
-        jobs.lockQueued(pool.id, capacity).mapNotNull { job ->
+        jobs.lockQueued(pool.id, runner.id, capacity).mapNotNull { job ->
+            // ADR 0044: a job of a run workspace only on the runner that holds it, one job at a time
+            val workspace = job.spec.workspace
+            val workspaces = lifecycle.workspaces
+            if (workspace != null && workspaces != null && !workspaces.claim(workspace.name, runner.id, job.id.value, now)) {
+                return@mapNotNull null
+            }
             // the pool may have changed since submit: resolve again against the current ceiling
             val resolved = lifecycle.resolveFor(pool, job.spec, lifecycle.projectPolicy(job.spec.usageContext.projectId))
             if (!resolved.ok) {
@@ -167,6 +175,17 @@ class RunnerProtocolService(
         }
     }
 
+    @SystemOperation("run workspaces the runner holds: which to delete (ADR 0044)")
+    override fun syncWorkspaces(runner: RunnerNode, held: List<String>): List<String> = tx.inTransaction {
+        val store = lifecycle.workspaces ?: return@inTransaction emptyList()
+        val names = held.filter { it.startsWith(RunnerWorkspace.NAME_PREFIX) }.distinct().take(MAX_SYNCED_WORKSPACES)
+        val now = lifecycle.now()
+        val decision = WorkspaceSync.decide(runner.id, names, store.lockForSync(runner.id, names), now)
+        store.markReleased(decision.release, now)
+        store.forget(decision.forget)
+        decision.delete
+    }
+
     @SystemOperation("queue depth of the runner's own pool (autoscaling)")
     override fun queueDepth(runner: RunnerNode, poolId: String): QueueDepth {
         if (poolId != runner.poolId) throw InvalidStateException("runner belongs to pool ${runner.poolId}")
@@ -185,6 +204,7 @@ class RunnerProtocolService(
         const val DEFAULT_MAX_CONCURRENT = 4
         const val MAX_CONCURRENT_CAP = 1000
         const val MAX_JOBS_PER_LEASE = 20
+        const val MAX_SYNCED_WORKSPACES = 500
 
         /** A job that did not succeed after the gateway refused it for budget reads `budget-exceeded: <why>`. */
         fun budgetTagged(status: AgentJobStatus, reason: String?, refusal: String?): String? =

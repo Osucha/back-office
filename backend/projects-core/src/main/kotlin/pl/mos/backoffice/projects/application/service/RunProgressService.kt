@@ -42,6 +42,8 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.runner.AgentRunner
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -58,6 +60,8 @@ class RunProgressService(
     private val ciExecutions: CompleteCiExecution,
     private val events: EventPublisher,
     private val clock: Clock,
+    /** ADR 0044: releases the run's workspaces when it ends; null = no runner (tests). */
+    private val runner: AgentRunner? = null,
 ) : RecordRunProgress {
 
     /** In-process only; across replicas a run is advanced by the one worker holding its RUN_ADVANCE lease. */
@@ -218,6 +222,8 @@ class RunProgressService(
         val saved = runs.save(finished)
         events.publish(WorkflowRunFinished(runId, run.projectId, status, saved.outcome?.name, saved.cost.amount.toPlainString(), failure?.message, now))
         ciExecutions.runFinished(saved)
+        // ADR 0044: a failed run keeps its workspaces for a retry for a while; others release them now
+        runner?.releaseWorkspaces(runId.value, if (status == RunStatus.FAILED) WORKSPACE_KEEP_AFTER_FAILURE else Duration.ZERO)
         saved
     }
 
@@ -241,6 +247,9 @@ class RunProgressService(
 
     private companion object {
         const val ENGINE = "workflow engine progress callback"
+
+        /** ADR 0044: how long the workspaces of a failed run wait for a retry. */
+        val WORKSPACE_KEEP_AFTER_FAILURE: Duration = Duration.ofHours(24)
     }
 
     private fun toArtifact(nodeId: String, artifact: NewArtifact, now: Instant) = Artifact(

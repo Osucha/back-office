@@ -222,8 +222,8 @@ class ProjectsConfiguration {
     @Bean
     fun runProgressService(
         runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, logs: RunLogRepository, ciExecutions: CompleteCiExecution,
-        events: EventPublisher, clock: Clock,
-    ): RecordRunProgress = RunProgressService(runs, approvals, logs, ciExecutions, events, clock)
+        events: EventPublisher, clock: Clock, runner: ObjectProvider<AgentRunner>,
+    ): RecordRunProgress = RunProgressService(runs, approvals, logs, ciExecutions, events, clock, runner.getIfAvailable())
 
     @Bean
     fun approvalService(

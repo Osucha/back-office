@@ -63,5 +63,7 @@ runner-controller:
       HIGH: ${RUNNER_RUNTIME_CLASS_HIGH:kata}
     # empty = the pool's warmPoolSize from Back Office
     warm-pool-size: ${RUNNER_WARM_POOL_SIZE:}
+    # ADR 0044: StorageClass of run workspace PVCs (ReadWriteOnce); empty = the cluster default
+    workspace-storage-class: ${RUNNER_WORKSPACE_STORAGE_CLASS:}
     # this controller as seen from the egress proxy pods (the chart sets the FQDN of its Service)
     controller-url: ${RUNNER_CONTROLLER_URL:http://back-office-runner-controller:8090}

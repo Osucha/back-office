@@ -21,6 +21,8 @@ data class ControllerProperties(
     val lease: Lease = Lease(),
     val heartbeatSeconds: Long = 15,
     val monitorIntervalMillis: Long = 2000,
+    /** ADR 0044: how often the held run workspaces are reported to Back Office (released ones are deleted). */
+    val workspaceSyncSeconds: Long = 60,
     /** On shutdown: stop leasing, let running jobs finish for this long, then hand the rest back (LOST). */
     val shutdownGraceSeconds: Long = 300,
     val imagePullGraceSeconds: Long = 90,
@@ -136,6 +138,8 @@ data class ControllerProperties(
         val warmPoolSize: Int? = null,
         /** Private CIDRs never reachable from the egress proxy pods (NetworkPolicy `except`). */
         val privateCidrs: List<String> = listOf("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"),
+        /** ADR 0044: StorageClass of run workspace PVCs (ReadWriteOnce); empty = the cluster default. */
+        val workspaceStorageClass: String = "",
     )
 
     data class Docker(

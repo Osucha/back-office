@@ -20,6 +20,7 @@ import pl.mos.backoffice.shared.runner.RunnerLogLine
 import pl.mos.backoffice.shared.runner.RunnerResult
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.locks.LockSupport
 
 /**
@@ -44,7 +45,7 @@ class AgentJobService(
         jobs.findByLabel(label)?.let { return@inTransaction it.id }
         val now = lifecycle.now()
         val normalised = spec.copy(jobLabel = label)
-        val routing = lifecycle.route(normalised)
+        val routing = lifecycle.routeJob(normalised)
         val job = lifecycle.applyRouting(
             AgentJob(
                 id = RunnerJobId.new(), label = label, poolId = null, runnerId = null, status = AgentJobStatus.QUEUED,
@@ -124,6 +125,12 @@ class AgentJobService(
 
     /** Jobs always queue; the platform can run agents as soon as at least one pool exists. */
     override fun isAvailable(): Boolean = pools.findAll().isNotEmpty()
+
+    /** ADR 0044: the run ended; its workspaces go at [keepFor] from now (a retry before that keeps using them). */
+    override fun releaseWorkspaces(runId: UUID, keepFor: Duration) {
+        val store = lifecycle.workspaces ?: return
+        tx.inTransaction { store.scheduleRelease(runId, lifecycle.now().plus(keepFor)) }
+    }
 
     override fun verify(token: String): JobCredential? {
         if (!token.startsWith(FleetTokens.JOB_PREFIX)) return null

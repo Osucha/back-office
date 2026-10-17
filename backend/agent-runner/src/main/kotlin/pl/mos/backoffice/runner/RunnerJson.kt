@@ -14,6 +14,7 @@ import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerSkill
 import pl.mos.backoffice.shared.runner.RunnerVerification
+import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.JobCompletionReport
 import pl.mos.backoffice.shared.ValidationException
@@ -198,6 +199,8 @@ data class RunnerJobSpecJson(
     val llmCredentials: String? = null,
     /** ADR 0040: routing to a user's personal runner; stored with the job, removed from assignments. */
     val personalRunnerOf: String? = null,
+    /** ADR 0044: the run workspace (volume / PVC name, key, session role); absent = a throwaway workspace. */
+    val workspace: WorkspaceJson? = null,
 ) {
     companion object {
         fun of(spec: RunnerJobSpec) = RunnerJobSpecJson(
@@ -219,7 +222,22 @@ data class RunnerJobSpecJson(
             gitAccess = spec.gitAccess.name,
             specKit = spec.specKit,
             personalRunnerOf = spec.personalRunnerOf?.toString(),
+            workspace = spec.workspace?.let { WorkspaceJson.of(it) },
         )
+    }
+}
+
+/** ADR 0044: `RunnerJobSpec.workspace`; `sessionRole` and `prepareOnly` are omitted when unset. */
+data class WorkspaceJson(
+    val name: String,
+    val key: String,
+    val sessionRole: String? = null,
+    val prepareOnly: Boolean? = null,
+) {
+    fun toWorkspace() = RunnerWorkspace(key = key, name = name, sessionRole = sessionRole, prepareOnly = prepareOnly == true)
+
+    companion object {
+        fun of(w: RunnerWorkspace) = WorkspaceJson(w.name, w.key, w.sessionRole, w.prepareOnly.takeIf { it })
     }
 }
 
@@ -448,5 +466,6 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
             ?: if (repos.isNotEmpty()) GitAccess.highest(repos.map { it.access }) else GitAccess.derive(runnerMode, repo),
         specKit = specKit,
         personalRunnerOf = personalRunnerOf?.let { runCatching { UUID.fromString(it) }.getOrNull() },
+        workspace = workspace?.toWorkspace(),
     )
 }

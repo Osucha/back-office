@@ -171,6 +171,45 @@ Errors block saving. A run whose steps have such errors (for example a repositor
 after the workflow was saved) does not start; the message names the step. In the **JSON** view the setting is
 `config.repositories: [{"key": "docs", "access": "READ"}]`.
 
+<a id="workspaces"></a>
+## Workspaces and agent sessions
+
+Every coding step normally starts from nothing: a fresh `/workspace`, fresh clones, a new agent session. A **run
+workspace** lets several steps of one run work in the same directory, and a **session role** lets an agent continue
+its own conversation instead of re-reading everything (ADR 0044). Both are settings of a coding step (**Implement**,
+**Spec Kit**) in its properties:
+
+| Setting | Meaning |
+|---|---|
+| **workspace** | A short name such as `main` (lower case letters, digits, hyphens; up to 20). Steps of one run with the same name share `/workspace`: the clones, files that are not committed, installed dependencies, caches. Empty = a fresh workspace, as before. |
+| **sessionRole** | A short name such as `implementer` or `reviewer`. Steps of the run with the same workspace and role continue one agent session (Claude Code or OpenCode). Empty = a new session for each step. |
+| **prepareOnly** | Only on **Implement** steps: clone the step's repositories and sources and run its **setupCommand** (for example `npm ci`), without an agent and without pushing. |
+
+**Prepare the workspace once.** Put the built-in task **Prepare workspace** (`prepare-workspace`) at the start:
+its repositories (and [library sources](task-library.md#sources)) are cloned and its **setupCommand** runs once;
+later steps with the same **workspace** reuse all of it. The step is optional: the first step that names a workspace
+creates it.
+
+**Agents taking turns.** For example *implement* (role `implementer`, push on) → *verify* (role `reviewer`, push
+off) → a decision → back to *implement*. Each agent continues its own session and sees what the other left in the
+workspace: the reviewer reads the implementer's uncommitted changes, the implementer finds the reviewer's notes. A
+step with read access leaves its changes uncommitted for the next step; a pushing step commits everything in the
+repository and pushes the run branch.
+
+**What happens on the runner.** The workspace lives on the runner that ran its first step, as a Docker volume or a
+Kubernetes volume claim. Steps of the workspace run there, one after the other, also when branches of the workflow
+run in parallel. Before each step the runner checks every reused repository and rewrites its git configuration, so
+nothing a previous agent planted in `.git` runs.
+
+**When the run ends** the workspace is deleted; after a failed run it is kept for 24 hours so **Retry** continues in
+it. A workspace used after that starts empty (the pushed run branch is still there).
+
+**Mind the trust.** All steps and roles of a run can read and change everything in their workspace, including the
+other roles' session history. For an independent check use a step without the workspace.
+
+Validation: an invalid name, or **prepareOnly** without a **workspace**, is an error; a **sessionRole** without a
+**workspace** is a warning (the session would not be kept).
+
 <a id="decisions"></a>
 ## Decisions
 

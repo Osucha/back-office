@@ -248,10 +248,10 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
             """
             INSERT INTO agent_job (id, label, pool_id, status, priority, mode, agent, model_label, project_id, run_id, node_id, benchmark_id, attempt_id,
                                    spec, usage_context, requested_policy, policy, policy_sources, pool_selector, continuation, queued_at,
-                                   queue_deadline, timeout_seconds, reason)
+                                   queue_deadline, timeout_seconds, reason, workspace_name)
             VALUES (:id, :label, :pool, :status, :priority, :mode, :agent, :model, :project, :run, :node, :benchmark, :attempt,
                     CAST(:spec AS jsonb), CAST(:usage AS jsonb), CAST(:requested AS jsonb), CAST(:policy AS jsonb), CAST(:sources AS jsonb),
-                    CAST(:selector AS jsonb), CAST(:continuation AS jsonb), :queuedAt, :deadline, :timeout, :reason)
+                    CAST(:selector AS jsonb), CAST(:continuation AS jsonb), :queuedAt, :deadline, :timeout, :reason, :workspace)
             ON CONFLICT (label) DO NOTHING
             """.trimIndent(),
             MapSqlParameterSource()
@@ -264,7 +264,8 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
                 .addValue("sources", write(job.policySources)).addValue("selector", write(job.poolSelector))
                 .addValue("continuation", job.continuation?.let { write(WorkRequestJson.of(it)) })
                 .addValue("queuedAt", job.queuedAt.ts()).addValue("deadline", job.queueDeadline.ts())
-                .addValue("timeout", job.spec.timeout.seconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).addValue("reason", job.reason),
+                .addValue("timeout", job.spec.timeout.seconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).addValue("reason", job.reason)
+                .addValue("workspace", job.spec.workspace?.name),
         )
         return findByLabel(job.label) ?: error("agent job ${job.label} vanished after insert")
     }
@@ -272,14 +273,18 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
     override fun lock(id: RunnerJobId): AgentJob? =
         queryJobs("SELECT $jobColumns FROM agent_job WHERE id = :id FOR UPDATE", mapOf("id" to id.value)).firstOrNull()
 
-    override fun lockQueued(poolId: String, limit: Int): List<AgentJob> = queryJobs(
+    override fun lockQueued(poolId: String, runnerId: UUID, limit: Int): List<AgentJob> = queryJobs(
         """
         SELECT $jobColumns FROM agent_job
         WHERE pool_id = :pool AND status = 'QUEUED' AND NOT cancel_requested
+          AND (workspace_name IS NULL OR EXISTS (
+                SELECT 1 FROM runner_workspace w
+                 WHERE w.name = agent_job.workspace_name AND w.released_at IS NULL AND w.active_job_id IS NULL
+                   AND (w.runner_id IS NULL OR w.runner_id = :runner)))
         ORDER BY priority DESC, queued_at ASC LIMIT :limit
-        FOR UPDATE SKIP LOCKED
+        FOR UPDATE OF agent_job SKIP LOCKED
         """.trimIndent(),
-        mapOf("pool" to poolId, "limit" to limit),
+        mapOf("pool" to poolId, "runner" to runnerId, "limit" to limit),
     )
 
     override fun lockExpiredLeases(now: Instant, limit: Int): List<AgentJob> = queryJobs(

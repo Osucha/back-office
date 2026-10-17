@@ -50,6 +50,11 @@ class BackOfficeClient(
         send("POST", "/runner/v2/jobs/$jobId/complete", completion, timeout = Duration.ofSeconds(20))
     }
 
+    /** ADR 0044: reports the held run workspaces; returns the ones to delete. */
+    fun syncWorkspaces(held: List<String>): List<String> =
+        send("POST", "/runner/v2/workspaces/sync", WorkspaceSync(held), timeout = Duration.ofSeconds(30))
+            .let { if (it.isBlank()) emptyList() else json.readValue(it, WorkspaceSyncResult::class.java).release }
+
     private fun send(method: String, path: String, body: Any?, authenticated: Boolean = true, timeout: Duration): String {
         val builder = HttpRequest.newBuilder(URI.create(apiBase + path))
             .timeout(timeout)

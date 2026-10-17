@@ -71,6 +71,12 @@ data class UploadTargetJson(val url: String, val method: String, val headers: Ma
 
 data class QueueDepthJson(val queued: Int, val running: Int)
 
+/** openapi `WorkspaceSync` (ADR 0044): the workspaces a runner-controller holds. */
+data class WorkspaceSyncJson(val held: List<String> = emptyList())
+
+/** openapi `WorkspaceSyncResult`: the workspaces to delete. */
+data class WorkspaceSyncResultJson(val release: List<String>)
+
 data class RunnerPoolInputJson(
     val id: String = "",
     val name: String = "",

@@ -62,6 +62,14 @@ the queue.
 Autoscaling: `GET /api/v1/runner/v2/pools/{poolId}/queue` (runner token) returns `{queued, running}` for a
 KEDA metrics-api scaler.
 
+### Run workspaces (ADR 0044)
+
+Steps that name a run workspace keep `/workspace` between the steps of one run. On Docker (also personal runners)
+that is a named volume `bo-ws-...`; on Kubernetes a ReadWriteOnce PVC in the sandbox namespace (chart value
+`workspaces.storageClass`, empty = the cluster default; the controller needs `create` / `delete` on
+persistentvolumeclaims, which the chart grants). The controller reports its workspaces every minute and deletes the
+released ones. Docker volumes have no size limit: watch the disk of a personal runner.
+
 ## 3. Sandbox policies
 
 The policy of a job is resolved **narrowing only**: platform (`backoffice.runner.platform-policy.*`) →

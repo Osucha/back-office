@@ -3,6 +3,7 @@ package pl.mos.backoffice.projects.domain.service
 import pl.mos.backoffice.projects.domain.model.GateSpec
 import pl.mos.backoffice.projects.domain.model.NodeKind
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 
 /** Designer-facing description of a control node kind: title, description, ports and a JSON Schema for its section. */
@@ -104,7 +105,7 @@ object ControlNodeCatalog {
                 "setupCommand" to string("Command run before the agent, e.g. npm ci"),
                 "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
                 StepRepositories.CONFIG_KEY to repositoriesSetting(),
-            ),
+            ) + workspaceSettings(prepare = false),
         )
         TaskExecutor.IMPLEMENT -> schema(
             mapOf(
@@ -119,7 +120,7 @@ object ControlNodeCatalog {
                 "mergeRequestDraft" to boolean("Open the MR as draft", false),
                 "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
                 StepRepositories.CONFIG_KEY to repositoriesSetting(),
-            ),
+            ) + workspaceSettings(prepare = true),
         )
         TaskExecutor.FETCH_ISSUE -> schema(
             mapOf("issueKeyFrom" to string("Where to read the issue key: input (default) or a run parameter name", "input")),
@@ -129,6 +130,19 @@ object ControlNodeCatalog {
     }
 
     private const val APPROVAL_FIELD = "approval"
+
+    /** ADR 0044: run workspace, session role and (IMPLEMENT) prepare-only of a runner step. */
+    private fun workspaceSettings(prepare: Boolean): Map<String, Any?> = listOfNotNull(
+        StepWorkspace.WORKSPACE to string(
+            "Run workspace (e.g. main): steps of one run that name the same workspace share /workspace (clones, files, caches); empty = a fresh workspace",
+            pattern = RunnerWorkspace.KEY_PATTERN.pattern,
+        ),
+        StepWorkspace.SESSION_ROLE to string(
+            "Agent session role in the workspace (e.g. implementer, reviewer): steps with the same role continue one agent session; empty = a new session",
+            pattern = RunnerWorkspace.KEY_PATTERN.pattern,
+        ),
+        if (prepare) StepWorkspace.PREPARE_ONLY to boolean("Only prepare the workspace: clone and run setupCommand, no agent, no push", false) else null,
+    ).toMap()
 
     /**
      * ADR 0034: the repositories of a runner step. `x-editor: repositories` tells the designer to render its repository
