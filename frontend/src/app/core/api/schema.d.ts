@@ -1438,6 +1438,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llm-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description LLM provider connections and the read-only environment endpoints (models.view; ADR 0045). */
+        get: operations["listLlmProviders"];
+        put?: never;
+        /** @description Adds a provider connection (admin.settings.manage). */
+        post: operations["createLlmProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm-providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateLlmProvider"];
+        post?: never;
+        /** @description Removes a connection; model profiles that name it stop working until they name another one. */
+        delete: operations["deleteLlmProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm-providers/{id}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Connection test: the models the endpoint offers (admin.settings.manage). */
+        post: operations["listLlmProviderModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm-providers/environment/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["listEnvironmentProviderModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm/anthropic/v1/messages": {
         parameters: {
             query?: never;
@@ -4535,6 +4607,42 @@ export interface components {
          * @enum {string}
          */
         LlmCredentials: "GATEWAY" | "LOCAL_LOGIN";
+        LlmProvider: {
+            baseUrl?: string | null;
+            enabled: boolean;
+            hasApiKey: boolean;
+            /**
+             * Format: uuid
+             * @description null for an environment endpoint
+             */
+            id?: string | null;
+            key?: string | null;
+            name: string;
+            provider: components["schemas"]["Provider"];
+            /**
+             * @description ENVIRONMENT = read-only fallback from environment variables
+             * @enum {string}
+             */
+            source: "DATABASE" | "ENVIRONMENT";
+            /** Format: date-time */
+            updatedAt?: string | null;
+            updatedBy?: components["schemas"]["ActorRef"] | null;
+            /** @description enabled, with what its type needs and a readable key */
+            usable: boolean;
+        };
+        /** @description ADR 0045: an LLM provider connection added in Back Office. Several per provider type are possible (e.g. OpenRouter and Groq as OPENAI_COMPATIBLE). Key and provider cannot change. apiKey is write-only: null keeps the stored key, clearApiKey removes it. Needs BACKOFFICE_SECRETS_KEY on the server to store a key. */
+        LlmProviderInput: {
+            apiKey?: string | null;
+            /** @description required for OPENAI_COMPATIBLE (including the version path, e.g. https://openrouter.ai/api/v1) and OLLAMA; optional override for the others */
+            baseUrl?: string | null;
+            /** @default false */
+            clearApiKey: boolean;
+            /** @default true */
+            enabled: boolean;
+            key: string;
+            name: string;
+            provider: components["schemas"]["Provider"];
+        };
         LocalLoginRequest: {
             /** Format: email */
             email: string;
@@ -4623,6 +4731,8 @@ export interface components {
             ref: components["schemas"]["ModelRef"];
         };
         ModelRef: {
+            /** @description ADR 0045: key of the LLM provider connection serving the model; null = the first connection of the provider, else its environment configuration */
+            connection?: string | null;
             modelId: string;
             options?: components["schemas"]["ModelOptions"];
             provider: components["schemas"]["Provider"];
@@ -5052,6 +5162,11 @@ export interface components {
         };
         /** @enum {string} */
         Provider: "ANTHROPIC" | "OPENAI" | "GOOGLE" | "MISTRAL" | "OLLAMA" | "OPENAI_COMPATIBLE";
+        ProviderModels: {
+            error?: string | null;
+            models: string[];
+            ok: boolean;
+        };
         ProviderStatus: {
             baseUrl?: string | null;
             configured?: boolean;
@@ -8602,6 +8717,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryWorkflowVersionDetail"];
+                };
+            };
+        };
+    };
+    listLlmProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProvider"][];
+                };
+            };
+        };
+    };
+    createLlmProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmProviderInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProvider"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    updateLlmProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmProviderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProvider"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    deleteLlmProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listLlmProviderModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderModels"];
+                };
+            };
+        };
+    };
+    listEnvironmentProviderModels: {
+        parameters: {
+            query: {
+                provider: components["schemas"]["Provider"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderModels"];
                 };
             };
         };

@@ -10,6 +10,21 @@ where to put it, how to test it and how to rotate it.
 <a id="llm-overview"></a>
 ## How provider keys are used
 
+**Add providers in Back Office** (ADR 0045): **Models** → **LLM providers** (`/models/providers`, you need
+`admin.settings.manage`) → **Add provider**. Pick the type, a name and a key (for example `openrouter`), the base
+URL where the type needs one, and paste the API key. **Quick start** fills in OpenRouter, Groq, GitHub Models,
+Mistral, Google Gemini, Ollama or LM Studio. **Test and list models** calls the provider and lists the model ids it
+offers: copy one into a model profile. You can add several connections of one type, for example OpenRouter and Groq;
+a model profile picks one in its field **Connection** (empty = the first connection of its type).
+
+- The key is stored encrypted with the server's secret key (`BACKOFFICE_SECRETS_KEY`, the one Jira connections use)
+  and never shown again; leave the field empty to keep it, or tick **Remove the stored key**. Without that secret key
+  configured, keys cannot be stored.
+- Changes apply without a restart (other replicas within 30 seconds).
+- **Environment variables** below still work as a fallback: a provider type without any connection uses them, and
+  the page lists them read-only. Prefer connections in the UI; keep the variables only where deployment tooling
+  already sets them.
+
 | Provider | `Provider` value | Active when | Variable(s) | Helm value (`secrets.providerKeys.*`) |
 |---|---|---|---|---|
 | Anthropic (Claude) | `ANTHROPIC` | key set | `ANTHROPIC_API_KEY` | `anthropicApiKey` |
@@ -23,14 +38,14 @@ where to put it, how to test it and how to rotate it.
   (`envFrom`). For production create the Secret yourself with exactly these key names and set
   `secrets.providerKeys.create=false` and `secrets.providerKeys.existingSecret=<name>` (or External Secrets,
   `externalSecrets.providerKeys.remoteKey`). Docker Compose: `deploy/compose/.env`.
-- There is **no UI field** for keys. **Settings** → **LLM providers** shows **API key set** or **no API key**
-  per provider; **Models** tests a model profile.
+- **Settings** → **LLM providers** shows which provider types are configured (by a connection or by
+  environment variables); **Models** tests a model profile.
 - **Sandboxes never receive a provider key.** A coding agent gets a per-job token (`bo_job_...`) and calls
   the gateway at `<public URL>/api/v1/llm/anthropic` or `/api/v1/llm/openai/v1`. The gateway checks the
   job's model allowlist and budget, adds the real key and books the usage
   ([agent-execution.md](agent-execution.md#credentials)). Claude Code therefore runs on your Anthropic key,
   OpenCode on whichever provider the step's model uses.
-- Keys are read when the pods start. Every change needs a restart of api and worker.
+- Keys from environment variables are read when the pods start; changing them needs a restart of api and worker.
 
 **Good practice for every vendor**
 
@@ -147,7 +162,8 @@ LM Studio, an internal gateway.
    server without authentication put any non-empty placeholder.
 4. Create model profiles with provider **OPENAI_COMPATIBLE** and the vendor's model id.
 
-**Limits**: only one OpenAI-compatible endpoint per installation. Base URL and key must come from the same
-vendor (an OpenRouter key against a Groq URL answers `401`).
+**Limits**: through environment variables only one OpenAI-compatible endpoint is possible; add more as connections
+under **LLM providers**. Base URL and key must come from the same vendor (an OpenRouter key against a Groq URL answers
+`401`).
 
 Errors and rate limits: [troubleshooting.md](troubleshooting.md#providers).

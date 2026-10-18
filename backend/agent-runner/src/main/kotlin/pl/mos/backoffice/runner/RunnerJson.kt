@@ -51,10 +51,12 @@ data class ModelOptionsJson(
     val extra: Map<String, Any?> = emptyMap(),
 )
 
-data class ModelRefJson(val provider: String, val modelId: String, val options: ModelOptionsJson = ModelOptionsJson()) {
+/** [connection] (ADR 0045): the provider connection serving the model; omitted when the provider's default serves it. */
+data class ModelRefJson(val provider: String, val modelId: String, val options: ModelOptionsJson = ModelOptionsJson(), val connection: String? = null) {
     fun toModelRef(): ModelRef = ModelRef(
         provider = Provider.valueOf(provider),
         modelId = modelId,
+        connection = connection,
         options = ModelOptions(
             temperature = options.temperature,
             maxOutputTokens = options.maxOutputTokens,
@@ -67,6 +69,7 @@ data class ModelRefJson(val provider: String, val modelId: String, val options: 
         fun of(ref: ModelRef) = ModelRefJson(
             ref.provider.name, ref.modelId,
             ModelOptionsJson(ref.options.temperature, ref.options.maxOutputTokens, ref.options.reasoning.name, ref.options.extra),
+            ref.connection,
         )
     }
 }

@@ -46,6 +46,8 @@ tags:
     description: Run workspaces of a project shared by its workflows (sources, setup, agent roles; ADR 0044)
   - name: library-sources
     description: Sources of the library (git repositories of standards, templates, reference material) that steps of every project attach read-only (ADR 0043)
+  - name: llm-providers
+    description: LLM provider connections with sealed API keys, managed in Back Office (ADR 0045)
   - name: model-profiles
   - name: task-suites
   - name: benchmarks
@@ -1546,6 +1548,51 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ModelTestResult' } } } }
         '502': { $ref: '#/components/responses/Problem' }
+  /llm-providers:
+    get:
+      tags: [llm-providers]
+      operationId: listLlmProviders
+      description: 'LLM provider connections and the read-only environment endpoints (models.view; ADR 0045).'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LlmProvider' } } } } }
+    post:
+      tags: [llm-providers]
+      operationId: createLlmProvider
+      description: 'Adds a provider connection (admin.settings.manage).'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LlmProviderInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/LlmProvider' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /llm-providers/{id}:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    put:
+      tags: [llm-providers]
+      operationId: updateLlmProvider
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LlmProviderInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LlmProvider' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [llm-providers]
+      operationId: deleteLlmProvider
+      description: 'Removes a connection; model profiles that name it stop working until they name another one.'
+      responses:
+        '204': { description: Deleted }
+  /llm-providers/{id}/models:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [llm-providers]
+      operationId: listLlmProviderModels
+      description: 'Connection test: the models the endpoint offers (admin.settings.manage).'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProviderModels' } } } }
+  /llm-providers/environment/models:
+    post:
+      tags: [llm-providers]
+      operationId: listEnvironmentProviderModels
+      parameters: [ { name: provider, in: query, required: true, schema: { $ref: '#/components/schemas/Provider' } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProviderModels' } } } }
   /model-profiles/providers:
     get:
       tags: [model-profiles]
@@ -2208,6 +2255,47 @@ components:
         provider: { $ref: '#/components/schemas/Provider' }
         modelId: { type: string }
         options: { $ref: '#/components/schemas/ModelOptions' }
+        connection:
+          type: string
+          nullable: true
+          description: 'ADR 0045: key of the LLM provider connection serving the model; null = the first connection of the provider, else its environment configuration'
+    LlmProviderInput:
+      type: object
+      description: >-
+        ADR 0045: an LLM provider connection added in Back Office. Several per provider type are possible (e.g. OpenRouter
+        and Groq as OPENAI_COMPATIBLE). Key and provider cannot change. apiKey is write-only: null keeps the stored key,
+        clearApiKey removes it. Needs BACKOFFICE_SECRETS_KEY on the server to store a key.
+      required: [key, name, provider]
+      properties:
+        key: { type: string, pattern: '^[a-z][a-z0-9-]{1,39}$' }
+        name: { type: string }
+        provider: { $ref: '#/components/schemas/Provider' }
+        baseUrl: { type: string, nullable: true, description: 'required for OPENAI_COMPATIBLE (including the version path, e.g. https://openrouter.ai/api/v1) and OLLAMA; optional override for the others' }
+        apiKey: { type: string, nullable: true, writeOnly: true }
+        clearApiKey: { type: boolean, default: false }
+        enabled: { type: boolean, default: true }
+    LlmProvider:
+      type: object
+      required: [name, provider, hasApiKey, enabled, usable, source]
+      properties:
+        id: { type: string, format: uuid, nullable: true, description: 'null for an environment endpoint' }
+        key: { type: string, nullable: true }
+        name: { type: string }
+        provider: { $ref: '#/components/schemas/Provider' }
+        baseUrl: { type: string, nullable: true }
+        hasApiKey: { type: boolean }
+        enabled: { type: boolean }
+        usable: { type: boolean, description: 'enabled, with what its type needs and a readable key' }
+        source: { type: string, enum: [DATABASE, ENVIRONMENT], description: 'ENVIRONMENT = read-only fallback from environment variables' }
+        updatedAt: { type: string, format: date-time, nullable: true }
+        updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], nullable: true }
+    ProviderModels:
+      type: object
+      required: [ok, models]
+      properties:
+        ok: { type: boolean }
+        models: { type: array, items: { type: string } }
+        error: { type: string, nullable: true }
 
     Dashboard:
       type: object

@@ -218,5 +218,6 @@
   "shell.nav.connections": "Połączenia",
   "shell.palette.openConnections.title": "Otwórz połączenia",
   "shell.palette.openConnections.subtitle": "Poświadczenia Jiry platformy z minimalnymi uprawnieniami",
-  "shell.palette.openConnections.keywords": "jira, poświadczenia, token api, odczyt, zapis"
+  "shell.palette.openConnections.keywords": "jira, poświadczenia, token api, odczyt, zapis",
+  "shell.route.llmProviders": "Dostawcy LLM"
 }

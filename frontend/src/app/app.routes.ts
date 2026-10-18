@@ -231,6 +231,16 @@ export const routes: Routes = [
             (m) => m.ModelsPageComponent,
           ),
       },
+      {
+        // ADR 0045: provider connections with their API keys, managed in Back Office
+        path: 'models/providers',
+        title: $localize`:@@shell.route.llmProviders:LLM providers`,
+        data: access({ permission: 'models.view' }),
+        loadComponent: () =>
+          import('./features/models/pages/llm-providers-page.component').then(
+            (m) => m.LlmProvidersPageComponent,
+          ),
+      },
       { path: 'evaluation', pathMatch: 'full', redirectTo: 'evaluation/suites' },
       {
         path: 'evaluation/suites',

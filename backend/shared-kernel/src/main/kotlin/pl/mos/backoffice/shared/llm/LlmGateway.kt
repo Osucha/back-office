@@ -82,4 +82,7 @@ interface LlmGateway {
 
     /** Whether credentials for the provider are configured on this server. */
     fun isConfigured(provider: Provider): Boolean
+
+    /** ADR 0045: whether [model] can be called (its connection, or a configured endpoint of its provider). */
+    fun isConfigured(model: ModelRef): Boolean = isConfigured(model.provider)
 }

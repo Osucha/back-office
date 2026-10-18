@@ -10,6 +10,21 @@ każdy klucz, jakie są najwęższe uprawnienia, gdzie go umieścić, jak go prz
 <a id="llm-overview"></a>
 ## Jak używane są klucze dostawców
 
+**Dodawaj dostawców w Back Office** (ADR 0045): **Modele** → **Dostawcy LLM** (`/models/providers`, wymaga
+`admin.settings.manage`) → **Dodaj dostawcę**. Wybierz typ, nazwę i klucz (np. `openrouter`), bazowy URL, jeśli typ go
+wymaga, i wklej klucz API. **Szybki start** uzupełnia OpenRouter, Groq, GitHub Models, Mistral, Google Gemini, Ollamę
+albo LM Studio. **Testuj i pokaż modele** wywołuje dostawcę i wyświetla identyfikatory jego modeli: skopiuj jeden do
+profilu modelu. Połączeń jednego typu może być kilka, np. OpenRouter i Groq; profil modelu wybiera jedno w polu
+**Połączenie** (puste = pierwsze połączenie danego typu).
+
+- Klucz jest zapisywany zaszyfrowany kluczem tajnym serwera (`BACKOFFICE_SECRETS_KEY`, tym samym co połączenia Jiry)
+  i nigdy więcej nie jest pokazywany; zostaw pole puste, żeby go zachować, albo zaznacz **Usuń zapisany klucz**. Bez
+  skonfigurowanego klucza tajnego nie da się zapisać kluczy.
+- Zmiany działają bez restartu (na innych replikach w ciągu 30 sekund).
+- **Zmienne środowiskowe** opisane niżej nadal działają jako rezerwa: typ dostawcy bez żadnego połączenia z nich
+  korzysta, a strona pokazuje je tylko do odczytu. Preferuj połączenia w interfejsie; zmienne zostaw tylko tam, gdzie
+  już ustawia je narzędzie wdrożeniowe.
+
 | Dostawca | Wartość `Provider` | Aktywny, gdy | Zmienne | Wartość Helm (`secrets.providerKeys.*`) |
 |---|---|---|---|---|
 | Anthropic (Claude) | `ANTHROPIC` | ustawiono klucz | `ANTHROPIC_API_KEY` | `anthropicApiKey` |
@@ -23,15 +38,14 @@ każdy klucz, jakie są najwęższe uprawnienia, gdzie go umieścić, jak go prz
   (`envFrom`). W produkcji utwórz Secret samodzielnie, z dokładnie tymi nazwami kluczy, i ustaw
   `secrets.providerKeys.create=false` oraz `secrets.providerKeys.existingSecret=<name>` (albo użyj External
   Secrets, `externalSecrets.providerKeys.remoteKey`). Docker Compose: `deploy/compose/.env`.
-- W interfejsie **nie ma pola** na klucze. **Ustawienia** (**Settings**) → **Dostawcy LLM** (**LLM providers**)
-  pokazuje dla każdego dostawcy **Klucz API ustawiony** (**API key set**) lub **Brak klucza API**
-  (**no API key**); w **Modelach** (**Models**) testujesz profil modelu.
+- **Ustawienia** (**Settings**) → **Dostawcy LLM** (**LLM providers**) pokazuje, które typy dostawców są
+  skonfigurowane (połączeniem albo zmiennymi środowiskowymi); w **Modelach** (**Models**) testujesz profil modelu.
 - **Sandboxy nigdy nie dostają klucza dostawcy.** Agent kodujący otrzymuje token przypisany do zadania
   (`bo_job_...`) i wywołuje bramę pod `<public URL>/api/v1/llm/anthropic` lub `/api/v1/llm/openai/v1`. Brama
   sprawdza listę dozwolonych modeli i budżet zadania, dodaje prawdziwy klucz i księguje zużycie
   ([agent-execution.md](agent-execution.md#credentials)). Claude Code działa więc na Twoim kluczu Anthropic,
   a OpenCode na kluczu tego dostawcy, którego używa model kroku.
-- Klucze są odczytywane przy starcie podów. Każda zmiana wymaga restartu api i workera.
+- Klucze ze zmiennych środowiskowych są odczytywane przy starcie podów; ich zmiana wymaga restartu api i workera.
 
 **Dobre praktyki dla każdego dostawcy**
 

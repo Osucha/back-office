@@ -111,6 +111,9 @@ import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 import pl.mos.backoffice.projects.application.service.ProjectWorkspaceService
+import pl.mos.backoffice.shared.security.SecretVault
+import pl.mos.backoffice.shared.security.SealedValue
+import pl.mos.backoffice.projects.domain.model.SealedSecret
 
 /**
  * Wires the Projects & Workflows use cases (plain Kotlin classes from `projects-core`) from the port
@@ -322,6 +325,15 @@ class ProjectsConfiguration {
 
     /** Envelope encryption of connection secrets; the only bean that can open them (used by the Jira adapter). */
     @Bean fun secretCipher(properties: SecretsProperties) = AesGcmSecretCipher(properties)
+
+    /** ADR 0045: the installation's secret key for other contexts (LLM provider API keys), shared-kernel port. */
+    @Bean fun secretVault(cipher: AesGcmSecretCipher): SecretVault = object : SecretVault {
+        override val configured: Boolean get() = cipher.configured
+        override fun seal(plaintext: String, associatedData: String): SealedValue =
+            cipher.seal(plaintext, associatedData).let { SealedValue(it.keyId, it.wrappedKey, it.ciphertext) }
+        override fun open(sealed: SealedValue, associatedData: String): String =
+            cipher.open(SealedSecret(sealed.keyId, sealed.wrappedKey, sealed.ciphertext), associatedData)
+    }
 
     @Bean fun connectionSelector() = ConnectionSelector()
 

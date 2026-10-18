@@ -28,8 +28,11 @@ object RestMappers {
     fun money(m: Money) = MoneyDto(m.rounded().amount, m.currency)
     fun usage(u: TokenUsage) = TokenUsageDto(u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens)
 
-    fun ref(r: ModelRef) = ModelRefDto(r.provider, r.modelId, ModelOptionsDto(r.options.temperature, r.options.maxOutputTokens, r.options.reasoning, r.options.extra))
-    fun ref(d: ModelRefDto) = ModelRef(d.provider, d.modelId, ModelOptions(d.options.temperature, d.options.maxOutputTokens, d.options.reasoning, d.options.extra))
+    fun ref(r: ModelRef) = ModelRefDto(r.provider, r.modelId, ModelOptionsDto(r.options.temperature, r.options.maxOutputTokens, r.options.reasoning, r.options.extra), r.connection)
+    fun ref(d: ModelRefDto) = ModelRef(
+        d.provider, d.modelId, ModelOptions(d.options.temperature, d.options.maxOutputTokens, d.options.reasoning, d.options.extra),
+        d.connection?.trim()?.ifEmpty { null },
+    )
 
     fun pricing(p: Pricing) = PricingDto(p.inputPerMTok, p.outputPerMTok, p.cacheReadPerMTok, p.cacheWritePerMTok, p.currency)
     fun pricing(d: PricingDto) = Pricing(d.inputPerMTok, d.outputPerMTok, d.cacheReadPerMTok, d.cacheWritePerMTok, d.currency)

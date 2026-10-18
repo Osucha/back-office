@@ -22,6 +22,7 @@ import type {
   ModelProfileInput,
   ModelTestResult,
   ProviderStatus,
+  LlmProvider,
 } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
 import { problemMessage } from '../../../core/http/http-error.interceptor';
@@ -53,6 +54,7 @@ import {
 } from '../data/model-format';
 import { compareText } from '../../../core/i18n/compare';
 import { icu } from '../../../core/i18n/icu';
+import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
 
 /**
  * Models: the catalogue of model profiles. Filters live in the URL; rows open the profile side
@@ -89,6 +91,10 @@ import { icu } from '../../../core/i18n/icu';
         i18n-subtitle="@@models.subtitle"
         [menu]="[{ label: text.reload, icon: 'reload', run: reload }]"
       >
+        <a boHeaderActions nz-button routerLink="/models/providers">
+          <nz-icon nzType="api" />
+          <ng-container i18n="@@models.providersLink">LLM providers</ng-container>
+        </a>
         @if (canManage()) {
           <button boHeaderActions nz-button nzType="primary" type="button" (click)="create()">
             <nz-icon nzType="plus" />
@@ -365,6 +371,7 @@ import { icu } from '../../../core/i18n/icu';
       [open]="panelOpen()"
       [profile]="editing()"
       [providers]="providers()"
+      [connections]="connections()"
       [saving]="saving()"
       [testing]="!!editing()?.id && testing() === editing()?.id"
       [testResult]="editing()?.id ? (results()[editing()!.id] ?? null) : null"
@@ -425,6 +432,9 @@ export class ModelsPageComponent {
   readonly panel = panelParam('profile');
   readonly profiles = signal<ModelProfile[]>([]);
   readonly providers = signal<ProviderStatus[]>([]);
+  /** ADR 0045: provider connections a profile may name. */
+  readonly connections = signal<LlmProvider[]>([]);
+  private readonly llmProvidersApi = inject(LlmProvidersApi);
   readonly loading = signal(false);
   readonly loaded = signal(false);
   readonly saving = signal(false);
@@ -528,6 +538,7 @@ export class ModelsPageComponent {
     inject(BreadcrumbService).set([{ label: $localize`:@@models.group:Models` }]);
     this.load();
     this.api.providers().subscribe((p) => this.providers.set(p));
+    this.llmProvidersApi.list().subscribe({ next: (c) => this.connections.set(c), error: () => undefined });
     inject(ShortcutsService).register(
       [
         {

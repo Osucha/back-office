@@ -30,7 +30,8 @@ data class ModelOptionsDto(
     val extra: Map<String, Any?> = emptyMap(),
 )
 
-data class ModelRefDto(val provider: Provider, val modelId: String, val options: ModelOptionsDto = ModelOptionsDto())
+/** [connection] (ADR 0045): key of the provider connection serving the model; null = the provider's default. */
+data class ModelRefDto(val provider: Provider, val modelId: String, val options: ModelOptionsDto = ModelOptionsDto(), val connection: String? = null)
 
 data class PricingDto(
     val inputPerMTok: BigDecimal,

@@ -39,6 +39,7 @@ class EvaluationMappers(private val json: JsonMapper) {
         displayName = p.displayName,
         provider = p.ref.provider,
         modelId = p.ref.modelId,
+        connectionKey = p.ref.connection,
         options = json.writeValueAsString(
             mapOf(
                 "temperature" to p.ref.options.temperature,
@@ -73,6 +74,7 @@ class EvaluationMappers(private val json: JsonMapper) {
             ref = ModelRef(
                 provider = e.provider,
                 modelId = e.modelId,
+                connection = e.connectionKey,
                 options = ModelOptions(
                     temperature = (options["temperature"] as? Number)?.toDouble(),
                     maxOutputTokens = (options["maxOutputTokens"] as? Number)?.toInt(),

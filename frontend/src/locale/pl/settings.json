@@ -42,9 +42,6 @@
   "settings.langfuse.what": "Ślady każdego wywołania LLM do debugowania promptów i kosztów.",
 
   "settings.providers.title": "Dostawcy LLM",
-  "settings.providers.openModels": "Otwórz modele",
-  "settings.providers.what": "Klucze pochodzą z Secretu {$START_TAG_CODE}back-office-provider-keys{$CLOSE_TAG_CODE} (lokalnie z {$START_TAG_CODE}.env{$CLOSE_TAG_CODE}). Pojedynczy model przetestujesz na stronie Modele.",
-  "settings.providers.noKeyHint": "Żaden dostawca nie ma jeszcze klucza API, więc agenci nie mogą działać. Ustaw klucz, na przykład {$START_TAG_CODE}ANTHROPIC_API_KEY{$CLOSE_TAG_CODE} lub {$START_TAG_CODE}OPENAI_API_KEY{$CLOSE_TAG_CODE}, i uruchom ponownie API.",
   "settings.providers.connect": "Podłącz dostawcę",
   "settings.providers.keySet": "Klucz API ustawiony",
   "settings.providers.noKey": "brak klucza API",
@@ -78,5 +75,8 @@
   "settings.jira.legacyUrl": "URL (zmienne środowiskowe)",
   "settings.jira.manageConnections": "Zarządzaj połączeniami",
   "settings.jira.hintConnections": "Dodaj połączenie Jira w sekcji {$START_LINK}Administracja → Połączenia{$CLOSE_LINK}: konto Atlassian i token API ograniczone do możliwości, których potrzebuje Back Office.",
-  "settings.jira.legacyNotice": "Poświadczenie ze zmiennej środowiskowej {$START_TAG_CODE}JIRA_API_TOKEN{$CLOSE_TAG_CODE} ma wszystkie możliwości. Przejdź na połączenia z ograniczonym zakresem: utwórz połączenie do odczytu i połączenie do zapisu w sekcji {$START_LINK}Administracja → Połączenia{$CLOSE_LINK}, a potem usuń {$START_TAG_CODE}JIRA_API_TOKEN{$CLOSE_TAG_CODE}."
+  "settings.jira.legacyNotice": "Poświadczenie ze zmiennej środowiskowej {$START_TAG_CODE}JIRA_API_TOKEN{$CLOSE_TAG_CODE} ma wszystkie możliwości. Przejdź na połączenia z ograniczonym zakresem: utwórz połączenie do odczytu i połączenie do zapisu w sekcji {$START_LINK}Administracja → Połączenia{$CLOSE_LINK}, a potem usuń {$START_TAG_CODE}JIRA_API_TOKEN{$CLOSE_TAG_CODE}.",
+  "settings.providers.manage": "Zarządzaj dostawcami",
+  "settings.providers.whatConnections": " Dostawców i ich klucze API dodajesz w Modele, Dostawcy LLM; jednego typu może być kilka. Klucze ze zmiennych środowiskowych nadal działają jako rezerwa. ",
+  "settings.providers.noConnectionHint": "Nie skonfigurowano jeszcze żadnego dostawcy, więc agenci nie mogą działać. Dodaj go w Modele, Dostawcy LLM."
 }

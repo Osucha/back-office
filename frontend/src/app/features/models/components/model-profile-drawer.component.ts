@@ -28,6 +28,7 @@ import {
   type ModelTestResult,
   type Provider,
   type ProviderStatus,
+  type LlmProvider,
   type Reasoning,
 } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
@@ -180,6 +181,22 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
               </nz-select>
             </nz-form-control>
           </nz-form-item>
+          @if (connectionsOfType().length) {
+            <nz-form-item>
+              <nz-form-label nzFor="mp-connection" i18n="@@models.drawer.connection">Connection</nz-form-label>
+              <nz-form-control
+                nzExtra="Which connection of this provider type serves the model (LLM providers)."
+                i18n-nzExtra="@@models.drawer.connectionHint"
+              >
+                <nz-select id="mp-connection" formControlName="connection">
+                  <nz-option nzValue="" [nzLabel]="text.defaultConnection" />
+                  @for (c of connectionsOfType(); track c.id) {
+                    <nz-option [nzValue]="c.key!" [nzLabel]="connectionOption(c)" />
+                  }
+                </nz-select>
+              </nz-form-control>
+            </nz-form-item>
+          }
           <nz-form-item>
             <nz-form-label nzRequired nzFor="mp-model" i18n="@@models.drawer.modelId"
               >Model id</nz-form-label
@@ -523,6 +540,8 @@ export class ModelProfileDrawerComponent {
   /** Existing profile (edit), a copy without id (duplicate) or null (create). */
   readonly profile = input<ModelProfile | null>(null);
   readonly providers = input<ProviderStatus[]>([]);
+  /** ADR 0045: provider connections added in Back Office. */
+  readonly connections = input<LlmProvider[]>([]);
   readonly saving = input(false);
   readonly testing = input(false);
   readonly testResult = input<ModelTestResult | null>(null);
@@ -548,7 +567,20 @@ export class ModelProfileDrawerComponent {
     readOnly: $localize`:@@models.drawer.readOnly:Read-only: needs models.manage`,
     discard: $localize`:@@models.drawer.discard:Discard changes`,
     close: $localize`:@@models.drawer.close:Close`,
+    defaultConnection: $localize`:@@models.drawer.defaultConnection:Default: the first connection of this type`,
   };
+
+  connectionOption(c: LlmProvider): string {
+    const label = `${c.name} (${c.key})`;
+    return c.usable ? label : $localize`:@@models.drawer.connectionNotReady:${label}:connection: - not ready`;
+  }
+
+  /** Database connections of the selected provider type. */
+  readonly connectionsOfType = computed(() => {
+    this.status();
+    const type = this.form.controls.provider.value;
+    return this.connections().filter((c) => c.source === 'DATABASE' && c.provider === type && !!c.key);
+  });
 
   providerOption(p: ProviderStatus): string {
     const name = providerLabel(p.provider);
@@ -567,6 +599,7 @@ export class ModelProfileDrawerComponent {
   readonly form = this.fb.group({
     displayName: this.fb.nonNullable.control('', Validators.required),
     provider: this.fb.nonNullable.control<Provider>('ANTHROPIC', Validators.required),
+    connection: this.fb.nonNullable.control(''),
     modelId: this.fb.nonNullable.control('', Validators.required),
     options: this.fb.group({
       temperature: this.fb.control<number | null>(null),
@@ -643,6 +676,7 @@ export class ModelProfileDrawerComponent {
       this.form.reset({
         displayName: '',
         provider: providers.find((x) => x.configured)?.provider ?? 'ANTHROPIC',
+        connection: '',
         modelId: '',
         options: { temperature: null, maxOutputTokens: null, reasoning: 'MEDIUM', extra: '' },
         pricing: {
@@ -660,6 +694,7 @@ export class ModelProfileDrawerComponent {
       this.form.reset({
         displayName: p.displayName,
         provider: p.ref.provider,
+        connection: p.ref.connection ?? '',
         modelId: p.ref.modelId,
         options: {
           temperature: p.ref.options?.temperature ?? null,
@@ -700,6 +735,7 @@ export class ModelProfileDrawerComponent {
       displayName: v.displayName.trim(),
       ref: {
         provider: v.provider,
+        connection: this.connectionsOfType().some((c) => c.key === v.connection) ? v.connection : null,
         modelId: v.modelId.trim(),
         options: {
           temperature: v.options.temperature,

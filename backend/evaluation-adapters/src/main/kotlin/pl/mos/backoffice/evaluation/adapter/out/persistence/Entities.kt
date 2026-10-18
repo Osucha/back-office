@@ -32,6 +32,8 @@ class ModelProfileEntity(
     @Column(name = "display_name", nullable = false, length = 200) val displayName: String = "",
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) val provider: Provider = Provider.OPENAI,
     @Column(name = "model_id", nullable = false, length = 200) val modelId: String = "",
+    /** V202 (ADR 0045): the provider connection serving the model; null = the provider's default. */
+    @Column(name = "connection_key", length = 40) val connectionKey: String? = null,
     @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false) val options: String = "{}",
     @Column(name = "input_per_mtok", nullable = false, precision = 18, scale = 6) val inputPerMTok: BigDecimal = BigDecimal.ZERO,
     @Column(name = "output_per_mtok", nullable = false, precision = 18, scale = 6) val outputPerMTok: BigDecimal = BigDecimal.ZERO,

@@ -32,6 +32,7 @@ import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
 import java.time.Duration
+import pl.mos.backoffice.shared.llm.ModelRef
 
 /** ADR 0017 / 0018 for the Model Evaluation context: exact permission per use case, denial, audit and actor stamps. */
 class EvaluationAccessTest {
@@ -110,7 +111,8 @@ class EvaluationAccessTest {
 
     @Test
     fun `providers are listed with models view`() {
-        every { gateway.isConfigured(any()) } returns false
+        every { gateway.isConfigured(any<Provider>()) } returns false
+        every { gateway.isConfigured(any<ModelRef>()) } returns false
         val viewer = FakeAuthorizationGate.permitting("models.view")
         assertThat(ProviderService(gateway, emptyMap(), viewer).list().map { it.provider }).containsExactlyElementsOf(Provider.entries)
         assertThat(viewer.checked).containsExactly("models.view")

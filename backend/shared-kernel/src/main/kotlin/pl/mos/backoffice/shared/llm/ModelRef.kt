@@ -22,11 +22,16 @@ data class ModelOptions(
     }
 }
 
-/** Fully resolved pointer to a model: which vendor, which model id, how to call it. */
+/**
+ * Fully resolved pointer to a model: which vendor, which model id, how to call it. [connection] (ADR 0045) names the
+ * provider connection added in Back Office that serves it (several per provider type are possible, e.g. OpenRouter and
+ * Groq as two OPENAI_COMPATIBLE connections); null = the first connection of [provider], else its environment keys.
+ */
 data class ModelRef(
     val provider: Provider,
     val modelId: String,
     val options: ModelOptions = ModelOptions.DEFAULT,
+    val connection: String? = null,
 ) {
     init {
         require(modelId.isNotBlank()) { "modelId must not be blank" }

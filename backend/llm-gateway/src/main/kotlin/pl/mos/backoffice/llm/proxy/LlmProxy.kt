@@ -99,16 +99,20 @@ class LlmProxy(
                 response, 403, "Model not allowed", "Model $modelId is not on this job's allowlist (${credential.modelAllowlist.joinToString()})", "model-not-allowed",
                 mapOf("model" to modelId),
             )
-        val settings = registry[provider]
-        if (provider != Provider.OLLAMA && !settings.hasKey) {
-            return ProxyProblems.write(response, 502, "Provider not configured", "No API key is configured for ${provider.name.lowercase()}", "provider-not-configured")
-        }
+        // ADR 0045: the job's model may be served by a named provider connection
+        val connection = credential.modelConnections["${provider.name.lowercase()}/$modelId"]
+        val endpoint = registry.resolve(provider, connection)
+            ?: return ProxyProblems.write(
+                response, 502, "Provider not configured",
+                "No usable connection is configured for ${provider.name.lowercase()}" + (connection?.let { " (connection $it)" } ?: ""), "provider-not-configured",
+            )
+        val settings = endpoint.settings
         val streaming = body.get("stream")?.asBoolean() == true
         if (protocol == ProxyProtocol.OPENAI && streaming && metered) {
             // the final chunk then carries the usage; without it the call could not be metered
             (body.get("stream_options") as? ObjectNode ?: body.putObject("stream_options")).put("include_usage", true)
         }
-        val modelRef = ModelRef(provider, modelId)
+        val modelRef = ModelRef(provider, modelId, connection = connection)
         val context = contextOf(credential)
         val pricing = catalog?.findPricing(modelRef)
         val maxOutput = (body.get("max_tokens") ?: body.get("max_completion_tokens"))?.asInt() ?: properties.estimateOutputTokensCap
@@ -192,7 +196,7 @@ class LlmProxy(
         body: ObjectNode,
         streaming: Boolean,
     ): HttpRequest {
-        val upstream = HttpRequest.newBuilder(URI.create(baseUrl(provider).trimEnd('/') + path))
+        val upstream = HttpRequest.newBuilder(URI.create(baseUrl(provider, settings).trimEnd('/') + path))
             .timeout(properties.requestTimeout)
             .header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(body)))
@@ -281,15 +285,16 @@ class LlmProxy(
     private fun allowed(credential: JobCredential, label: String): Boolean =
         credential.modelAllowlist.any { pattern -> Regex(pattern.split('*').joinToString(".*") { Regex.escape(it) }).matches(label) }
 
-    private fun baseUrl(provider: Provider): String {
+    private fun baseUrl(provider: Provider, settings: ProviderSettings): String {
         properties.baseUrls[provider.name.lowercase().replace('_', '-')]?.takeIf { it.isNotBlank() }?.let { return it }
+        val own = settings.baseUrl?.takeIf { it.isNotBlank() }
         return when (provider) {
-            Provider.ANTHROPIC -> registry.baseUrl(provider) ?: "https://api.anthropic.com"
-            Provider.OPENAI -> "https://api.openai.com/v1"
-            Provider.OPENAI_COMPATIBLE -> openAiCompatibleBaseUrl?.takeIf { it.isNotBlank() } ?: registry.baseUrl(provider) ?: throw IntegrationException("openai-compatible", "no base URL configured")
+            Provider.ANTHROPIC -> own ?: "https://api.anthropic.com"
+            Provider.OPENAI -> own ?: "https://api.openai.com/v1"
+            Provider.OPENAI_COMPATIBLE -> own ?: openAiCompatibleBaseUrl?.takeIf { it.isNotBlank() } ?: throw IntegrationException("openai-compatible", "no base URL configured")
             Provider.GOOGLE -> "https://generativelanguage.googleapis.com/v1beta/openai"
-            Provider.MISTRAL -> "https://api.mistral.ai/v1"
-            Provider.OLLAMA -> (registry.baseUrl(provider) ?: "http://localhost:11434").trimEnd('/') + "/v1"
+            Provider.MISTRAL -> own ?: "https://api.mistral.ai/v1"
+            Provider.OLLAMA -> (own ?: "http://localhost:11434").trimEnd('/') + "/v1"
         }
     }
 

@@ -149,6 +149,7 @@ class ModelProfileService(
         fun snapshot(p: ModelProfile): Map<String, Any?> = mapOf(
             "displayName" to p.displayName,
             "provider" to p.ref.provider.name,
+            "connection" to p.ref.connection,
             "modelId" to p.ref.modelId,
             "pricing" to pricing(p.pricing),
             "enabled" to p.enabled,
@@ -158,6 +159,7 @@ class ModelProfileService(
         fun diff(old: ModelProfile, new: ModelProfile): Map<String, Any?> = AuditableChanges.changed(
             "displayName" to (old.displayName to new.displayName),
             "provider" to (old.ref.provider.name to new.ref.provider.name),
+            "connection" to (old.ref.connection to new.ref.connection),
             "modelId" to (old.ref.modelId to new.ref.modelId),
             "options" to (old.ref.options.toString() to new.ref.options.toString()),
             "pricing.inputPerMTok" to (old.pricing.inputPerMTok.toPlainString() to new.pricing.inputPerMTok.toPlainString()),

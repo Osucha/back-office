@@ -34,7 +34,7 @@ class ModelProfileController(
     private val providers: ListProviders,
     private val gateway: LlmGateway,
 ) {
-    private fun dto(p: ModelProfile) = RestMappers.profile(p, gateway.isConfigured(p.ref.provider))
+    private fun dto(p: ModelProfile) = RestMappers.profile(p, gateway.isConfigured(p.ref))
 
     @GetMapping
     fun list(@RequestParam(required = false) enabled: Boolean?): List<ModelProfileDto> = profiles.list(enabled).map(::dto)
@@ -108,7 +108,7 @@ class TaskSuiteController(private val suites: ManageTaskSuites) {
 @RequestMapping("/api/v1/benchmarks")
 class BenchmarkController(private val benchmarks: ManageBenchmarks, private val gateway: LlmGateway) {
 
-    private fun dto(d: ManageBenchmarks.BenchmarkDetails) = RestMappers.benchmark(d) { gateway.isConfigured(it.ref.provider) }
+    private fun dto(d: ManageBenchmarks.BenchmarkDetails) = RestMappers.benchmark(d) { gateway.isConfigured(it.ref) }
 
     @GetMapping
     fun list(): List<BenchmarkSummaryDto> = benchmarks.list().map(RestMappers::benchmarkSummary)

@@ -31,6 +31,14 @@ import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageLedger
 import tools.jackson.databind.json.JsonMapper
+import org.springframework.jdbc.core.simple.JdbcClient
+import pl.mos.backoffice.llm.connections.CachedProviderConnections
+import pl.mos.backoffice.llm.connections.JdbcLlmProviderConnectionStore
+import pl.mos.backoffice.llm.connections.LlmProviderConnectionStore
+import pl.mos.backoffice.llm.connections.LlmProviderService
+import pl.mos.backoffice.llm.connections.ProviderModelLister
+import pl.mos.backoffice.shared.audit.AuditPort
+import pl.mos.backoffice.shared.security.SecretVault
 
 /**
  * Wires the gateway. Provider credentials are read from the standard Spring AI properties
@@ -41,8 +49,29 @@ import tools.jackson.databind.json.JsonMapper
 @EnableConfigurationProperties(LlmProperties::class)
 class LlmGatewayConfiguration {
 
+    /** ADR 0045: provider connections added in Back Office (API keys sealed with the installation's secret key). */
     @Bean
-    fun providerRegistry(environment: Environment, properties: LlmProperties): ProviderRegistry = ProviderRegistry(
+    fun llmProviderConnectionStore(jdbc: JdbcClient): LlmProviderConnectionStore = JdbcLlmProviderConnectionStore(jdbc)
+
+    @Bean
+    fun cachedProviderConnections(store: LlmProviderConnectionStore, vault: ObjectProvider<SecretVault>) =
+        CachedProviderConnections(store, vault.getIfAvailable())
+
+    @Bean
+    fun providerModelLister(json: JsonMapper) = ProviderModelLister(json)
+
+    @Bean
+    fun llmProviderService(
+        store: LlmProviderConnectionStore, vault: ObjectProvider<SecretVault>, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>, clock: Clock,
+        cache: CachedProviderConnections, registry: ProviderRegistry, lister: ProviderModelLister,
+    ) = LlmProviderService(store, vault.getIfAvailable(), gate, audit.getIfAvailable { AuditPort.NOOP }, clock, cache, registry, lister)
+
+    /**
+     * Provider endpoints (ADR 0045): connections added in Back Office first, the environment variables of each type as a
+     * fallback (the configuration before 0045, still used by Helm values).
+     */
+    @Bean
+    fun providerRegistry(environment: Environment, properties: LlmProperties, connections: CachedProviderConnections): ProviderRegistry = ProviderRegistry(
         mapOf(
             Provider.ANTHROPIC to ProviderSettings(apiKey = environment.getProperty("spring.ai.anthropic.api-key"), baseUrl = environment.getProperty("spring.ai.anthropic.base-url")),
             Provider.OPENAI to ProviderSettings(apiKey = environment.getProperty("spring.ai.openai.api-key"), baseUrl = environment.getProperty("spring.ai.openai.base-url")),
@@ -53,6 +82,7 @@ class LlmGatewayConfiguration {
             Provider.OLLAMA to ProviderSettings(baseUrl = environment.getProperty("OLLAMA_BASE_URL")),
             Provider.OPENAI_COMPATIBLE to ProviderSettings(apiKey = properties.openaiCompatible.apiKey, baseUrl = properties.openaiCompatible.baseUrl),
         ),
+        connections,
     )
 
     @Bean

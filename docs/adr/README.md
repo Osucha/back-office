@@ -46,6 +46,7 @@
 | [0042](0042-api-equivalent-cost.md) | Cost at API prices next to the spent cost: steps, runs and workflow metrics carry `apiCost` (equal to the cost through the gateway, the harness estimate for subscription steps); budgets keep counting only spent money | accepted |
 | [0043](0043-library-sources.md) | Sources: git repositories of standards, templates and reference material in the library (`/library/sources`), attached read only by steps as `{key, access: READ, library: true}` and cloned to `/workspace/lib-<key>`; the project tab Sources holds the project repositories | accepted |
 | [0044](0044-run-workspaces-and-agent-sessions.md) | Run workspaces and resumed agent sessions: workspaces of the project shared by its workflows (sources, setup, roles; drawn around their steps); steps of a run that pick the same one share a Docker volume / PVC at /workspace on one runner, one job at a time; `sessionRole` continues the agent's session per role; `prepare-workspace` clones and runs setupCommand once; released when the run ends (24 h after a failure) | accepted |
+| [0045](0045-llm-provider-connections.md) | LLM provider connections managed in Back Office: provider type, base URL and an API key sealed with the secret key, several per type (OpenRouter and Groq side by side), named by model profiles (`ModelRef.connection`); environment variables remain the fallback | accepted |
 
 Template: context, decision, alternatives considered, consequences. Dates are the day the decision was
 taken. A superseded record keeps its text and gains a link to the successor.

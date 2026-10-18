@@ -118,6 +118,8 @@ data class JobCredential(
     /** Cap on metered LLM proxy calls of the job (runaway or hijacked agents); null = unlimited. */
     val maxRequests: Long? = null,
     val scope: JobTokenScope = JobTokenScope.FULL,
+    /** ADR 0045: `provider/modelId` label -> provider connection key, for models served by a named connection. */
+    val modelConnections: Map<String, String> = emptyMap(),
 )
 
 fun interface JobTokenVerifier {

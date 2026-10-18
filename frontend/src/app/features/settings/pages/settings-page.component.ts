@@ -192,20 +192,19 @@ const PROVIDERS: Record<string, string> = {
               <nz-icon nzType="robot" class="card-icon" aria-hidden="true" />
               <h3 id="providers-title" i18n="@@settings.providers.title">LLM providers</h3>
               <bo-help-link topic="settings.llm" />
-              <a class="head-link" routerLink="/models" i18n="@@settings.providers.openModels"
-                >Open models</a
+              <a class="head-link" routerLink="/models/providers" i18n="@@settings.providers.manage"
+                >Manage providers</a
               >
             </header>
-            <p class="what" i18n="@@settings.providers.what">
-              Keys come from the <code>back-office-provider-keys</code> Secret (or
-              <code>.env</code> locally). Test a single model on the Models page.
+            <p class="what" i18n="@@settings.providers.whatConnections">
+              Add providers and their API keys under Models, LLM providers; several of one type are possible. Keys
+              from environment variables still work as a fallback.
             </p>
             @if (!anyProviderKey()) {
               <p class="hint">
-                <ng-container i18n="@@settings.providers.noKeyHint"
-                  >No provider has an API key yet, so agents cannot run. Set one, for example
-                  <code>ANTHROPIC_API_KEY</code> or <code>OPENAI_API_KEY</code>, and restart the
-                  API.</ng-container
+                <ng-container i18n="@@settings.providers.noConnectionHint"
+                  >No provider is configured yet, so agents cannot run. Add one under Models, LLM
+                  providers.</ng-container
                 >
                 <bo-help-link
                   topic="settings.llm"

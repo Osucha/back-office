@@ -28,6 +28,7 @@ import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.runner.AgentRunner
 import java.util.concurrent.CopyOnWriteArrayList
+import pl.mos.backoffice.shared.llm.ModelRef
 
 /**
  * Minimal boot for evaluation-adapters integration tests: this context only, with stand-ins for the
@@ -50,7 +51,8 @@ class EvaluationTestApplication {
 
     @Bean
     fun llmGateway(): LlmGateway = mockk<LlmGateway>().also { gateway ->
-        every { gateway.isConfigured(any()) } answers { firstArg<Provider>() == Provider.ANTHROPIC }
+        every { gateway.isConfigured(any<Provider>()) } answers { firstArg<Provider>() == Provider.ANTHROPIC }
+        every { gateway.isConfigured(any<ModelRef>()) } answers { firstArg<ModelRef>().provider == Provider.ANTHROPIC }
     }
 
     @Bean

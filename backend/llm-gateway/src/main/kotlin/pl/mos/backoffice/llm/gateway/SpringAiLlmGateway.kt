@@ -74,24 +74,29 @@ class SpringAiLlmGateway(
 ) : LlmGateway {
 
     private val log = LoggerFactory.getLogger(SpringAiLlmGateway::class.java)
-    private val models = ConcurrentHashMap<Provider, ChatModel>()
-    private val semaphores: Map<Provider, Semaphore> = EnumMap<Provider, Semaphore>(Provider::class.java).apply {
-        Provider.entries.forEach { put(it, Semaphore(properties.concurrencyPerProvider.coerceAtLeast(1), true)) }
-    }
+    /** ADR 0045: one client per endpoint (connection or environment), replaced when its URL or key changes. */
+    private val models = ConcurrentHashMap<String, Pair<String, ChatModel>>()
+    private val semaphores = ConcurrentHashMap<String, Semaphore>()
     private val executor: ExecutorService = Executors.newVirtualThreadPerTaskExecutor()
 
     override fun isConfigured(provider: Provider): Boolean = registry.isConfigured(provider)
 
+    override fun isConfigured(model: ModelRef): Boolean = registry.isConfigured(model)
+
     override fun chat(model: ModelRef, request: LlmRequest): LlmResult {
         val provider = model.provider
         val system = provider.name.lowercase()
-        if (!registry.isConfigured(provider)) {
-            throw IntegrationException(system, "provider is not configured on this server (missing API key or base URL)")
-        }
+        val endpoint = registry.resolve(model) ?: throw IntegrationException(
+            system,
+            model.connection?.let { "provider connection $it ($system) is missing, disabled or has no API key / base URL" }
+                ?: "provider is not configured on this server (add a connection under Settings, LLM providers)",
+        )
         val options = merge(model.options, request.optionsOverride)
         val chatOptions = optionsMapper.map(model, options, request.responseSchema)
         val messages = toSpringMessages(request.messages, request.responseSchema)
-        val chatModel = models.computeIfAbsent(provider) { factory.create(it, registry[it]) }
+        val chatModel = models.compute(endpoint.id) { _, cached ->
+            if (cached != null && cached.first == endpoint.fingerprint) cached else endpoint.fingerprint to factory.create(provider, endpoint.settings)
+        }!!.second
 
         val observation = Observation.createNotStarted("backoffice.llm.chat", observationRegistry)
             .lowCardinalityKeyValue("provider", system)
@@ -105,7 +110,7 @@ class SpringAiLlmGateway(
         budgetPrecheck(request.usageContext, estimatedCost, ProviderRateLimiter.estimateTokens(promptChars, maxOutput))
         val permit =rateLimiter.acquire(provider, CallPriority.of(request.usageContext.kind), ProviderRateLimiter.estimateTokens(promptChars, maxOutput))
 
-        val semaphore = semaphores.getValue(provider)
+        val semaphore = semaphores.computeIfAbsent(endpoint.id) { Semaphore(properties.concurrencyPerProvider.coerceAtLeast(1), true) }
         if (!semaphore.tryAcquire(properties.defaultTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
             throw IntegrationException(system, "timed out waiting for a free slot (concurrency ${properties.concurrencyPerProvider})", retryable = true)
         }
