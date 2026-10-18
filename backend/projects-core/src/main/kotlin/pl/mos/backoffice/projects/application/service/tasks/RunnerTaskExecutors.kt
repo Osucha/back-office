@@ -1,6 +1,7 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
+import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
@@ -84,6 +85,8 @@ class RunnerTaskSupport(
     private val features: PlatformFeatures = PlatformFeatures.DEFAULTS,
     /** ADR 0043: library sources steps may attach read-only; null = none (tests). */
     private val librarySources: LibrarySourceRepository? = null,
+    /** ADR 0044: run workspaces of projects; null = none (tests). */
+    private val projectWorkspaces: ProjectWorkspaceRepository? = null,
 ) {
     private data class Plan(
         val spec: RunnerJobSpec,
@@ -125,7 +128,7 @@ class RunnerTaskSupport(
         val node = context.node
         val project = context.project
         // ADR 0044: the run workspace and session of the step; a prepare step never pushes
-        val workspaceSetting = StepWorkspace.of(task.config, runnerStep = true, context.run.definitionSnapshot.workspaces)
+        val workspaceSetting = StepWorkspace.of(task.config, runnerStep = true, projectWorkspaces?.findByProjectId(project.id).orEmpty())
         if (!workspaceSetting.valid) throw RepositoryPlanException("workspace of step ${node.id}: " + workspaceSetting.errors.joinToString("; "))
         if (logWarnings) workspaceSetting.warnings.forEach { context.warn("workspace: $it") }
         val push = !workspaceSetting.prepareOnly && task.config.boolean("push", default = true)

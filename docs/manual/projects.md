@@ -128,6 +128,7 @@ The tabs, each reachable with `?tab=` in the URL:
 |---|---|---|
 | **Workflows** | The project's workflows with triggers, state, last change; **Start run**, **Edit** / **View**, and the more-actions menu (**Duplicate workflow**, **Delete workflow**). | `workflow.edit` (start: `run.start`) |
 | **Sources** | The project's repositories and the library sources (see [The Sources tab](#sources)). | `project.manage` |
+| **Workspaces** | Run workspaces shared by the project's workflows: sources, setup command, agent roles (see [Workspaces and agent sessions](workflows.md#workspaces)). | `project.manage` |
 | **Runs** | The project's runs (see [Runs](runs.md#run-list)). | — |
 | **CI** | Entrypoints, CI tokens, a GitLab CI snippet and the CI executions. | `project.manage`, `project.ci.manage` |
 | **Members** | Users and groups with their project roles. | `project.members.manage` |

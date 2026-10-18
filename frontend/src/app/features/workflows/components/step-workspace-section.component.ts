@@ -3,13 +3,14 @@ import { FormsModule } from '@angular/forms';
 import { NzCheckboxModule } from 'ng-zorro-antd/checkbox';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzSelectModule } from 'ng-zorro-antd/select';
-import type { ValidationIssue, WorkflowWorkspace } from '../../../core/api/types';
-import { stepWorkspace, withStepWorkspace, workspaceColor, type StepWorkspace } from '../data/workspaces';
+import type { ProjectWorkspace, ValidationIssue } from '../../../core/api/types';
+import { sourceLabels, workspaceColor } from '../../../core/ui/workspaces';
+import { stepWorkspace, withStepWorkspace, type StepWorkspace } from '../data/workspaces';
 
 /**
- * "Workspace" of a coding step (ADR 0044): only the choice. Which workspace of the workflow the step works in, which
+ * "Workspace" of a coding step (ADR 0044): only the choice. Which workspace of the project the step works in, which
  * agent role it continues and (Implement) whether it only prepares the workspace. The workspaces themselves are
- * configured in the workflow properties.
+ * configured in the project tab Workspaces and shared by all its workflows.
  */
 @Component({
   selector: 'app-step-workspace-section',
@@ -18,9 +19,9 @@ import { stepWorkspace, withStepWorkspace, workspaceColor, type StepWorkspace } 
   template: `
     <div class="sws">
       @if (!workspaces().length) {
-        <p class="quiet" i18n="@@workflows.stepWorkspace.none">
-          The workflow has no workspaces: this step starts from a fresh directory and a new agent session. Add
-          workspaces in the workflow properties (click the empty canvas).
+        <p class="quiet" i18n="@@workflows.stepWorkspace.noneInProject">
+          The project has no workspaces: this step starts from a fresh directory and a new agent session. Add workspaces
+          in the project tab Workspaces.
         </p>
       } @else {
         <nz-select
@@ -128,7 +129,7 @@ import { stepWorkspace, withStepWorkspace, workspaceColor, type StepWorkspace } 
   ],
 })
 export class StepWorkspaceSectionComponent {
-  readonly workspaces = input<readonly WorkflowWorkspace[]>([]);
+  readonly workspaces = input<readonly ProjectWorkspace[]>([]);
   /** The node's `overrides.config`. */
   readonly config = input<Record<string, unknown> | null | undefined>(null);
   /** Implement steps may only prepare the workspace. */
@@ -151,15 +152,15 @@ export class StepWorkspaceSectionComponent {
   readonly color = computed(() => workspaceColor(this.workspaces().findIndex((w) => w.key === this.current().workspace)));
   readonly issues = computed(() => (this.nodeIssues() ?? []).filter((i) => !!i.field && /(^|\.)config\.workspace\b/.test(i.field)));
 
-  sourcesText(w: WorkflowWorkspace): string {
-    const keys = (w.sources ?? []).map((s) => (s.library ? `lib-${s.key}` : s.key));
+  sourcesText(w: ProjectWorkspace): string {
+    const keys = sourceLabels(w);
     return keys.length
       ? $localize`:@@workflows.stepWorkspace.sources:Sources: ${keys.join(', ')}:sources:`
       : $localize`:@@workflows.stepWorkspace.noSources:No sources of its own: the step's repositories are cloned into it.`;
   }
 
   unknownText(key: string): string {
-    return $localize`:@@workflows.stepWorkspace.unknown:The workflow has no workspace ${key}:key:; choose another one.`;
+    return $localize`:@@workflows.stepWorkspace.unknownInProject:The project has no workspace ${key}:key:; choose another one.`;
   }
 
   set(change: Partial<StepWorkspace>): void {

@@ -33,7 +33,7 @@ import type {
   PaletteTask,
   LibrarySource,
   ProjectRepository,
-  WorkflowWorkspace,
+  ProjectWorkspace,
   ResolvedTask,
   Skill,
   TaskOverrides,
@@ -1012,8 +1012,8 @@ export class NodePropertyPanelComponent {
   readonly projectRepositories = input<readonly ProjectRepository[]>([]);
   /** Sources of the library (ADR 0043) a runner step may attach. */
   readonly librarySources = input<readonly LibrarySource[]>([]);
-  /** Run workspaces of the workflow (ADR 0044) a coding step may pick. */
-  readonly workspaces = input<readonly WorkflowWorkspace[]>([]);
+  /** Run workspaces of the project (ADR 0044) a coding step may pick. */
+  readonly workspaces = input<readonly ProjectWorkspace[]>([]);
   /** Sources of the node's workspace, shown as the default of its repositories; null without a workspace. */
   readonly stepWorkspaceSources = computed<string[] | null>(() => {
     const key = stepWorkspace(this.node()?.task?.overrides?.config).workspace;

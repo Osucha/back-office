@@ -42,7 +42,7 @@ import pl.mos.backoffice.shared.security.PublicOperation
 import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskExecutor
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
+import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 
 /**
  * Implements [ManageWorkflows]: validated create/update (version bump), duplicate, delete guarded by
@@ -67,10 +67,12 @@ class WorkflowService(
     private val library: LibraryWorkflowRepository? = null,
     /** ADR 0043: library sources steps may attach; null = none (tests). */
     librarySources: LibrarySourceRepository? = null,
+    /** ADR 0044: run workspaces of projects steps may pick; null = none (tests). */
+    projectWorkspaces: ProjectWorkspaceRepository? = null,
 ) : ManageWorkflows {
 
     private val jiraSteps = jira?.let { JiraStepCheck(taskCatalog, it) }
-    private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources)
+    private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources, projectWorkspaces)
 
     override fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition {
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value).actor
@@ -94,7 +96,6 @@ class WorkflowService(
                 updatedAt = now,
                 updatedBy = actor,
                 draft = draft,
-                workspaces = command.workspaces,
             ),
         )
         audit.record(
@@ -107,7 +108,7 @@ class WorkflowService(
         val existing = load(id)
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value).actor
         val draft = !check(existing.projectId, command).valid
-        val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.workspaces)
+        val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor)
             .copy(draft = draft)
         val saved = workflows.save(next.withLibrary(refreshedLink(next)))
         audit.record(
@@ -210,7 +211,7 @@ class WorkflowService(
     private fun check(projectId: ProjectId, command: WorkflowCommand): WorkflowValidationResult {
         val graph = validator.validate(command.name, command.nodes, command.edges, taskPortsFor(projectId), ExpressionValidator { expressions.validate(it) }, command.triggers)
         val (errors, warnings) = connectionIssues(projectId, command.nodes, command.triggers)
-        val (repoErrors, repoWarnings) = repositoryIssues(projectId, command.nodes, command.workspaces)
+        val (repoErrors, repoWarnings) = repositoryIssues(projectId, command.nodes)
         val specKitErrors = specKit?.let { check -> projects.findById(projectId)?.let { check.designIssues(it, command.nodes) } }.orEmpty()
         val allErrors = errors + repoErrors + specKitErrors
         val allWarnings = warnings + repoWarnings
@@ -218,13 +219,9 @@ class WorkflowService(
     }
 
     /** ADR 0034: the repositories each runner step works on ([RepositoryStepCheck]); a step that cannot get one is an error. */
-    private fun repositoryIssues(
-        projectId: ProjectId,
-        nodes: List<WorkflowNode>,
-        workspaces: List<WorkflowWorkspace>,
-    ): Pair<List<ValidationIssue>, List<ValidationIssue>> {
+    private fun repositoryIssues(projectId: ProjectId, nodes: List<WorkflowNode>): Pair<List<ValidationIssue>, List<ValidationIssue>> {
         val project = projects.findById(projectId) ?: return emptyList<ValidationIssue>() to emptyList()
-        val issues = repositorySteps.designIssues(project, nodes, workspaces)
+        val issues = repositorySteps.designIssues(project, nodes)
         return issues.errors to issues.warnings
     }
 

@@ -116,7 +116,7 @@ class RunService(
                     " (manual: ${JiraStepCheck.CONNECTIONS_GUIDE})",
             )
         }
-        repositorySteps?.runBlockers(project, definition.nodes, definition.workspaces)?.takeIf { it.isNotEmpty() }?.let { blockers ->
+        repositorySteps?.runBlockers(project, definition.nodes)?.takeIf { it.isNotEmpty() }?.let { blockers ->
             throw InvalidStateException("workflow ${definition.name} cannot start: " + blockers.joinToString("; ") + " (manual: $REPOSITORIES_GUIDE)")
         }
         val now = clock.now()

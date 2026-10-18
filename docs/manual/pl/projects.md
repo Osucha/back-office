@@ -134,6 +134,7 @@ Karty, każda dostępna przez `?tab=` w URL:
 |---|---|---|
 | **Workflowy** (**Workflows**) | Workflowy projektu z wyzwalaczami, stanem i datą ostatniej zmiany; **Uruchom** (**Start run**), **Edytuj** / **Podgląd** (**Edit** / **View**) i menu dodatkowych akcji (**Duplikuj workflow**, **Usuń workflow**). | `workflow.edit` (uruchamianie: `run.start`) |
 | **Źródła** (**Sources**) | Repozytoria projektu i źródła z biblioteki (zob. [Karta Źródła](#sources)). | `project.manage` |
+| **Przestrzenie robocze** (**Workspaces**) | Przestrzenie robocze wspólne dla workflowów projektu: źródła, polecenie przygotowania, role agentów (zob. [Przestrzenie robocze i sesje agentów](workflows.md#workspaces)). | `project.manage` |
 | **Uruchomienia** (**Runs**) | Uruchomienia projektu (zob. [Uruchomienia](runs.md#run-list)). | — |
 | **CI** | Punkty wejścia, tokeny CI, fragment konfiguracji GitLab CI i wykonania CI. | `project.manage`, `project.ci.manage` |
 | **Członkowie** (**Members**) | Użytkownicy i grupy z ich rolami projektowymi. | `project.members.manage` |

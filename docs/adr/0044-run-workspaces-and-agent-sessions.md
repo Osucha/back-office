@@ -22,13 +22,15 @@ each continuing its own session, and wants to prepare that material once.
 
 ## Decision
 
-1. **Workspaces are declared on the workflow** (`WorkflowDefinition.workspaces`, V117): key, name, description, the
-   sources cloned into it (project repositories and library sources), a setup command and the agent roles of its
-   steps. A coding step only picks one (`config.workspace`, `config.sessionRole`, `config.prepareOnly`); naming a
-   workspace the workflow does not declare, or a role it does not list, is a validation error. Steps of a workspace
-   without repositories of their own work on its sources (the project's primary among them gets the step's push access,
-   the others READ). The designer draws each workspace as a region around its steps. Library versions keep workspaces
-   with their library sources only; an adopting project adds its own repositories.
+1. **Workspaces belong to the project** (`project_workspace`, V118; project tab Workspaces, `project.manage`) and
+   are shared by all its workflows: key (fixed), name, description, the sources cloned into it (project repositories
+   and library sources), a setup command and the agent roles of its steps. A coding step only picks one
+   (`config.workspace`, `config.sessionRole`, `config.prepareOnly`); naming a workspace the project does not have,
+   or a role it does not list, is a validation error. Steps of a workspace without repositories of their own work on
+   its sources (the project's primary among them gets the step's push access, the others READ). The designer draws
+   each workspace as a region around its steps. A first version kept workspaces on each workflow (V117); they moved to
+   the project so that several workflows use the same one (V118 drops the workflow columns). Library workflows carry
+   only the keys; the adopting project needs workspaces with those keys.
 2. **Workspace of a run.** All steps of one run that name the same workspace work in one persistent directory mounted
    at `/workspace`: a Docker named volume (DOCKER backend, also personal runners) or a PersistentVolumeClaim
    (Kubernetes backends). Its name is derived from the run and the key (`bo-ws-<run id>-<key>`). Steps without

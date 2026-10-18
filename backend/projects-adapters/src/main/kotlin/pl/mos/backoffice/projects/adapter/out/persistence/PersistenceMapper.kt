@@ -83,8 +83,6 @@ import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
-import pl.mos.backoffice.projects.adapter.support.WorkflowWorkspaceJson
 
 /* JSON documents stored in JSONB columns. */
 
@@ -112,8 +110,6 @@ data class DefinitionDoc(
     val updatedBy: ActorDoc? = null,
     /** ADR 0037: absent in snapshots of runs started before the workflow library existed. */
     val library: LibraryLinkDoc? = null,
-    /** ADR 0044: absent in snapshots of runs started before run workspaces existed. */
-    val workspaces: List<WorkflowWorkspaceJson> = emptyList(),
 )
 data class LibraryLinkDoc(val libraryWorkflowId: String, val key: String, val version: Int, val modified: Boolean = false)
 data class RunInputDoc(val issueKey: String? = null, val parameters: Map<String, Any?> = emptyMap(), val ci: Map<String, Any?>? = null)
@@ -204,7 +200,6 @@ class PersistenceMapper(private val json: JsonMapper) {
     private val nodeList = object : TypeReference<List<WorkflowNodeJson>>() {}
     private val edgeList = object : TypeReference<List<WorkflowEdgeJson>>() {}
     private val triggerList = object : TypeReference<List<TriggerJson>>() {}
-    private val workspaceList = object : TypeReference<List<WorkflowWorkspaceJson>>() {}
     private val executionList = object : TypeReference<List<NodeExecutionDoc>>() {}
     private val repositoryList = object : TypeReference<List<ProjectRepositoryDoc>>() {}
     private val checklistList = object : TypeReference<List<ChecklistItemJson>>() {}
@@ -273,7 +268,6 @@ class PersistenceMapper(private val json: JsonMapper) {
         updatedBy = writeActor(d.updatedBy),
         libraryWorkflowId = d.library?.libraryWorkflowId?.value, libraryKey = d.library?.key, libraryVersion = d.library?.version,
         libraryModified = d.library?.modified ?: false, draft = d.draft,
-        workspaces = d.workspaces.takeIf { it.isNotEmpty() }?.let { ws -> write(ws.map(WorkflowJson::toJson)) },
     )
 
     fun toDomain(e: WorkflowDefinitionEntity): WorkflowDefinition = WorkflowDefinition(
@@ -281,12 +275,8 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = json.readValue(e.nodes, nodeList).map(WorkflowJson::toDomain), edges = json.readValue(e.edges, edgeList).map(WorkflowJson::toDomain),
         triggers = json.readValue(e.triggers, triggerList).map(WorkflowJson::toDomain), canvas = e.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
         enabled = e.enabled, createdAt = e.createdAt, updatedAt = e.updatedAt, updatedBy = readActor(e.updatedBy), library = libraryLink(e),
-        draft = e.draft, workspaces = workspaces(e.workspaces),
+        draft = e.draft,
     )
-
-    /** ADR 0044: the workspaces column (null = none). */
-    private fun workspaces(column: String?): List<WorkflowWorkspace> =
-        column?.let { json.readValue(it, workspaceList).map(WorkflowJson::toDomain) }.orEmpty()
 
     /** The library link of a definition row; a row without id, key or version has none. */
     fun libraryLink(e: WorkflowDefinitionEntity): LibraryLink? {
@@ -298,7 +288,6 @@ class PersistenceMapper(private val json: JsonMapper) {
         d.id.toString(), d.projectId.toString(), d.name, d.description, d.version, d.nodes.map(WorkflowJson::toJson), d.edges.map(WorkflowJson::toJson),
         d.triggers.map(WorkflowJson::toJson), WorkflowJson.toJson(d.canvas), d.enabled, d.createdAt, d.updatedAt, d.updatedBy?.let(::toDoc),
         d.library?.let { LibraryLinkDoc(it.libraryWorkflowId.toString(), it.key, it.version, it.modified) },
-        d.workspaces.map(WorkflowJson::toJson),
     )
 
     fun toDomain(d: DefinitionDoc): WorkflowDefinition = WorkflowDefinition(
@@ -306,7 +295,6 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = d.nodes.map(WorkflowJson::toDomain), edges = d.edges.map(WorkflowJson::toDomain), triggers = d.triggers.map(WorkflowJson::toDomain),
         canvas = WorkflowJson.toDomain(d.canvas), enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt, updatedBy = d.updatedBy?.let(::toDomain),
         library = d.library?.let { LibraryLink(LibraryWorkflowId.of(it.libraryWorkflowId), it.key, it.version, it.modified) },
-        workspaces = d.workspaces.map(WorkflowJson::toDomain),
     )
 
     // ---- LibraryWorkflow (ADR 0037)
@@ -322,7 +310,6 @@ class PersistenceMapper(private val json: JsonMapper) {
         canvas = WorkflowJson.toJson(v.canvas)?.let { write(it) }, publishedAt = v.publishedAt, publishedBy = writeActor(v.publishedBy),
         sourceProjectId = v.source.projectId?.value, sourceProjectKey = v.source.projectKey, sourceWorkflowId = v.source.workflowId?.value,
         sourceWorkflowVersion = v.source.workflowVersion,
-        workspaces = v.workspaces.takeIf { it.isNotEmpty() }?.let { ws -> write(ws.map(WorkflowJson::toJson)) },
     )
 
     fun toDomain(e: LibraryWorkflowEntity, versions: List<LibraryWorkflowVersionEntity>): LibraryWorkflow = LibraryWorkflow(
@@ -337,7 +324,6 @@ class PersistenceMapper(private val json: JsonMapper) {
         triggers = json.readValue(v.triggers, triggerList).map(WorkflowJson::toDomain), canvas = v.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
         publishedAt = v.publishedAt, publishedBy = readActor(v.publishedBy),
         source = LibraryWorkflowSource(v.sourceProjectId?.let(::ProjectId), v.sourceProjectKey, v.sourceWorkflowId?.let(::WorkflowDefinitionId), v.sourceWorkflowVersion),
-        workspaces = workspaces(v.workspaces),
     )
 
     // ---- WorkflowRun

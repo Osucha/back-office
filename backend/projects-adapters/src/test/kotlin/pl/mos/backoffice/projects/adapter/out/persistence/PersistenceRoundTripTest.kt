@@ -69,7 +69,9 @@ import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspaceId
+import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 
 @SpringBootTest(classes = [ProjectsTestApplication::class])
@@ -83,6 +85,7 @@ class PersistenceRoundTripTest {
     @Autowired lateinit var approvals: ApprovalRequestRepository
     @Autowired lateinit var executions: CiExecutionRepository
     @Autowired lateinit var logs: RunLogRepository
+    @Autowired lateinit var workspaces: ProjectWorkspaceRepository
 
     private val now = Instant.now().truncatedTo(ChronoUnit.MICROS)
 
@@ -133,23 +136,22 @@ class PersistenceRoundTripTest {
     }
 
     @Test
-    fun `workflow workspaces round-trip in the definition and in the run snapshot (ADR 0044)`() {
+    fun `project workspaces round-trip, unique per project and gone with the project (ADR 0044)`() {
         val project = project("RTW")
-        val workspaces = listOf(
-            WorkflowWorkspace(
-                "main", "Main workspace", "shared clones",
-                listOf(WorkspaceSource("main"), WorkspaceSource("standards", library = true)), "npm ci", listOf("implementer", "reviewer"),
-            ),
-            WorkflowWorkspace("docs"),
+        val main = ProjectWorkspace(
+            ProjectWorkspaceId.new(), project.id, "main", "Main workspace", "shared clones",
+            listOf(WorkspaceSource("main"), WorkspaceSource("standards", library = true)), "npm ci", listOf("implementer", "reviewer"), now, now, alice,
         )
-        val definition = workflows.save(DefaultWorkflows.issueToReviewedMr(project.id, now).copy(workspaces = workspaces))
-        assertThat(workflows.findById(definition.id)!!.workspaces).isEqualTo(workspaces)
-        val plain = workflows.save(DefaultWorkflows.ciCodeReview(project.id, now))
-        assertThat(workflows.findById(plain.id)!!.workspaces).isEmpty()
-
-        val run = WorkflowRun.create(project, definition, RunTrigger(TriggerSource.MANUAL), RunInput("RTW-1"), now, startedBy = alice).start(now)
-        runs.save(run)
-        assertThat(runs.findById(run.id)!!.definitionSnapshot.workspaces).isEqualTo(workspaces)
+        workspaces.save(main)
+        workspaces.save(ProjectWorkspace(ProjectWorkspaceId.new(), project.id, "docs", createdAt = now, updatedAt = now))
+        assertThat(workspaces.findById(main.id)).isEqualTo(main)
+        assertThat(workspaces.findByProjectId(project.id).map { it.key }).containsExactly("docs", "main")
+        workspaces.save(main.copy(name = "Renamed", roles = emptyList()))
+        assertThat(workspaces.findById(main.id)!!.name).isEqualTo("Renamed")
+        workspaces.delete(main.id)
+        assertThat(workspaces.findByProjectId(project.id).map { it.key }).containsExactly("docs")
+        projects.delete(project.id)
+        assertThat(workspaces.findByProjectId(project.id)).isEmpty()
     }
 
     @Test

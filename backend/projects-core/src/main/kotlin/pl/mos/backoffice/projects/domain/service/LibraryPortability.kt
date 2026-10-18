@@ -4,7 +4,6 @@ import pl.mos.backoffice.projects.domain.model.Point
 import pl.mos.backoffice.projects.domain.model.StepConnectionConfig
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
 
 /**
  * What of a workflow graph belongs to one project and what can be shared through the library (ADR 0037).
@@ -24,19 +23,6 @@ object LibraryPortability {
 
     /** The graph as it is published: project-local settings removed. */
     fun portable(nodes: List<WorkflowNode>): List<WorkflowNode> = nodes.map(::strip)
-
-    /** ADR 0044: workspaces as published: only library sources stay (project repositories differ per project). */
-    fun portableWorkspaces(workspaces: List<WorkflowWorkspace>): List<WorkflowWorkspace> =
-        workspaces.map { w -> w.copy(sources = w.sources.filter { it.library }) }
-
-    /** ADR 0044: a copy taking [target] keeps the project repositories its own workspaces of the same key listed. */
-    fun workspacesWithLocalSources(target: List<WorkflowWorkspace>, local: List<WorkflowWorkspace>): List<WorkflowWorkspace> {
-        val byKey = local.associateBy { it.key }
-        return target.map { w ->
-            val own = byKey[w.key]?.sources.orEmpty().filterNot { it.library }
-            w.copy(sources = own + w.sources.filter { it.library })
-        }
-    }
 
     /**
      * The library [nodes] with the project-local settings of the [local] nodes that have the same id and kind

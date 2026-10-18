@@ -3,11 +3,11 @@ package pl.mos.backoffice.projects.domain.service
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
 import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 
 class StepWorkspaceTest {
-    private val declared = listOf(WorkflowWorkspace("main"))
+    private val project = Fixtures.project()
+    private val declared = listOf(Fixtures.workspace(project.id, "main"))
 
     @Test
     fun `no workspace by default, a declared one with its session role`() {
@@ -20,8 +20,7 @@ class StepWorkspaceTest {
 
     @Test
     fun `the workspace sources become the step repositories, the primary gets the push access`() {
-        val project = Fixtures.project()
-        val ws = WorkflowWorkspace("main", sources = listOf(WorkspaceSource("standards", library = true), WorkspaceSource("main")))
+        val ws = Fixtures.workspace(project.id, "main", sources = listOf(WorkspaceSource("standards", library = true), WorkspaceSource("main")))
         @Suppress("UNCHECKED_CAST")
         val entries = StepWorkspace.effectiveConfig(emptyMap(), ws, project, pushes = true)[StepRepositories.CONFIG_KEY] as List<Map<String, Any?>>
         assertThat(entries).containsExactly(

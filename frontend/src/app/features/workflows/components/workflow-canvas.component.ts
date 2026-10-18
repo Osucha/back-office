@@ -35,6 +35,7 @@ import type {
   NodeExecution,
   NodeKind,
   Point,
+  ProjectWorkspace,
   WorkflowCanvas,
   WorkflowDefinitionInput,
   WorkflowEdge,
@@ -391,6 +392,8 @@ export class WorkflowCanvasComponent {
   readonly showMinimap = input(true);
   /** Initial viewport (persisted `canvas`); when null the readable opening view is used. */
   readonly initialViewport = input<WorkflowCanvas | null>(null);
+  /** ADR 0044: the project's run workspaces (names and colours of the regions around their steps). */
+  readonly workspaces = input<readonly ProjectWorkspace[]>([]);
 
   readonly nodeSelected = output<string | null>();
   readonly edgeSelected = output<string | null>();
@@ -468,7 +471,7 @@ export class WorkflowCanvasComponent {
   });
 
   /** ADR 0044: run workspaces drawn around their steps (flow coordinates). */
-  readonly regions = computed(() => workspaceRegions(this.definition(), this.rects()));
+  readonly regions = computed(() => workspaceRegions(this.definition(), this.rects(), this.workspaces()));
   readonly regionTransform = computed(() => {
     const v = this.viewport();
     return `translate(${v.x} ${v.y}) scale(${v.zoom})`;

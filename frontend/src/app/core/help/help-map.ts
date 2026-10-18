@@ -322,6 +322,7 @@ export function helpTopic(key: HelpKey): HelpTopic {
 const PROJECT_TABS: Record<string, HelpKey> = {
   workflows: 'project.workflows',
   sources: 'projectSources',
+  workspaces: 'workspaces',
   runs: 'project.runs',
   ci: 'project.ci',
   members: 'project.members',

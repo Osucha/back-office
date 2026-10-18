@@ -2395,6 +2395,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Run workspaces of the project (project.view; ADR 0044). */
+        get: operations["listProjectWorkspaces"];
+        put?: never;
+        /** @description Adds a run workspace (project.manage). Sources must be repositories of the project or library sources. */
+        post: operations["createProjectWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/workspaces/{workspaceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Changes a workspace (project.manage); the key cannot change because workflow steps refer to it. */
+        put: operations["updateProjectWorkspace"];
+        post?: never;
+        /** @description Removes a workspace (project.manage). Steps that still name it fail validation and are kept as drafts. */
+        delete: operations["deleteProjectWorkspace"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runner/v2/config": {
         parameters: {
             query?: never;
@@ -4478,7 +4519,6 @@ export interface components {
             name: string;
             nodes: components["schemas"]["WorkflowNode"][];
             triggers?: components["schemas"]["Trigger"][];
-            workspaces?: components["schemas"]["WorkflowWorkspace"][];
         };
         LibraryWorkflowVersionSummary: {
             changeNote?: string;
@@ -4983,6 +5023,32 @@ export interface components {
             purpose?: components["schemas"]["RepositoryPurpose"];
             /** @description git URL the runner clones (and, for PUSH_MR steps, pushes to) */
             url: string;
+        };
+        ProjectWorkspace: components["schemas"]["ProjectWorkspaceInput"] & {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            updatedBy?: components["schemas"]["ActorRef"] | null;
+        };
+        /** @description ADR 0044: a run workspace of a project, used by any of its workflows. Coding steps pick it by key (config.workspace) and share /workspace within one run; steps without repositories of their own work on its sources (the project's primary among them gets the step's push access, the others READ); setupCommand runs once per workspace; roles are the agent session roles its steps may continue (any when empty). The key cannot change. */
+        ProjectWorkspaceInput: {
+            description?: string;
+            key: string;
+            /** @description shown on the canvas; default the key */
+            name?: string;
+            roles?: string[];
+            setupCommand?: string | null;
+            sources?: {
+                /** @description project repository key, or library source key when library is true */
+                key: string;
+                /** @default false */
+                library: boolean;
+            }[];
         };
         /** @enum {string} */
         Provider: "ANTHROPIC" | "OPENAI" | "GOOGLE" | "MISTRAL" | "OLLAMA" | "OPENAI_COMPATIBLE";
@@ -5753,8 +5819,6 @@ export interface components {
             name: string;
             nodes: components["schemas"]["WorkflowNode"][];
             triggers?: components["schemas"]["Trigger"][];
-            /** @description ADR 0044: run workspaces coding steps may share (config.workspace = key) */
-            workspaces?: components["schemas"]["WorkflowWorkspace"][];
         };
         WorkflowEdge: {
             from: string;
@@ -5977,21 +6041,6 @@ export interface components {
             workflowId?: string;
             workflowName?: string;
             workflowVersion?: number;
-        };
-        /** @description ADR 0044: a run workspace declared on the workflow. Coding steps pick it by key and share /workspace within one run; steps without repositories of their own work on its sources (the project's primary among them gets the step's push access, the others READ); setupCommand runs once per workspace; roles are the agent session roles its steps may continue (any when empty). Library versions keep only library sources. */
-        WorkflowWorkspace: {
-            description?: string;
-            key: string;
-            /** @description shown on the canvas; default the key */
-            name?: string;
-            roles?: string[];
-            setupCommand?: string | null;
-            sources?: {
-                /** @description project repository key, or library source key when library is true */
-                key: string;
-                /** @default false */
-                library: boolean;
-            }[];
         };
         WorkItem: {
             attempts?: number;
@@ -10459,6 +10508,104 @@ export interface operations {
                 };
             };
             400: components["responses"]["Problem"];
+        };
+    };
+    listProjectWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectWorkspace"][];
+                };
+            };
+        };
+    };
+    createProjectWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectWorkspaceInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectWorkspace"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    updateProjectWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectWorkspaceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectWorkspace"];
+                };
+            };
+            400: components["responses"]["Problem"];
+        };
+    };
+    deleteProjectWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getRunnerConfig: {

@@ -1,13 +1,13 @@
 package pl.mos.backoffice.projects.domain.service
 
 import pl.mos.backoffice.projects.domain.model.Project
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
 
 /**
  * ADR 0044: the run workspace and agent session of a runner step, from its config:
- * `workspace` (key of a workspace declared on the workflow; absent = a throwaway workspace), `sessionRole` (continue
+ * `workspace` (key of a workspace of the project; absent = a throwaway workspace), `sessionRole` (continue
  * the coding agent's session of that role in the workspace) and `prepareOnly` (clone and run setup, no agent).
  */
 object StepWorkspace {
@@ -22,14 +22,14 @@ object StepWorkspace {
         val prepareOnly: Boolean,
         val errors: List<String> = emptyList(),
         val warnings: List<String> = emptyList(),
-        /** The workspace as declared on the workflow; null without a workspace or when it is not declared. */
-        val definition: WorkflowWorkspace? = null,
+        /** The project's workspace of that key; null without a workspace or when the project has none of that key. */
+        val definition: ProjectWorkspace? = null,
     ) {
         val valid: Boolean get() = errors.isEmpty()
     }
 
-    /** [workspaces] = the workspaces declared on the workflow; a step may only name one of them. */
-    fun of(config: Map<String, Any?>, runnerStep: Boolean, workspaces: List<WorkflowWorkspace> = emptyList()): Setting {
+    /** [workspaces] = the workspaces of the project; a step may only name one of them. */
+    fun of(config: Map<String, Any?>, runnerStep: Boolean, workspaces: List<ProjectWorkspace> = emptyList()): Setting {
         val key = text(config[WORKSPACE])
         val role = text(config[SESSION_ROLE])
         val prepareOnly = config[PREPARE_ONLY]?.toString()?.lowercase() == "true"
@@ -43,7 +43,7 @@ object StepWorkspace {
         if (key != null && !RunnerWorkspace.KEY_PATTERN.matches(key)) {
             errors += "workspace \"$key\": 1-20 lower case letters, digits or hyphens, starting with a letter"
         } else if (key != null && definition == null) {
-            errors += "workspace \"$key\" is not defined in this workflow; add it under Workspaces (workflow properties)"
+            errors += "workspace \"$key\" is not defined in this project; add it in the project tab Workspaces"
         }
         if (role != null && !RunnerWorkspace.KEY_PATTERN.matches(role)) errors += "sessionRole \"$role\": 1-20 lower case letters, digits or hyphens, starting with a letter"
         if (role != null && definition != null && definition.roles.isNotEmpty() && role !in definition.roles) {
@@ -60,7 +60,7 @@ object StepWorkspace {
      * the workspace's sources. The project's primary repository among them (else the first project repository) gets the
      * access the step's push setting gives it; every other source is READ. A step's own `repositories` win.
      */
-    fun effectiveConfig(config: Map<String, Any?>, workspace: WorkflowWorkspace?, project: Project, pushes: Boolean): Map<String, Any?> {
+    fun effectiveConfig(config: Map<String, Any?>, workspace: ProjectWorkspace?, project: Project, pushes: Boolean): Map<String, Any?> {
         if (workspace == null || workspace.sources.isEmpty() || config[StepRepositories.CONFIG_KEY] is List<*>) return config
         val own = workspace.sources.filterNot { it.library }
         val primary = own.firstOrNull { s -> project.repositories.any { it.key == s.key && it.primary } }?.key ?: own.firstOrNull()?.key

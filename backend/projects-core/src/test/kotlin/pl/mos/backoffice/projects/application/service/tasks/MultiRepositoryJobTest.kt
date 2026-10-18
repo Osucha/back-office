@@ -12,7 +12,10 @@ import pl.mos.backoffice.projects.domain.model.GitRepository
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.RepositoryPurpose
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
+import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
+import pl.mos.backoffice.projects.domain.model.ProjectId
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspaceId
 import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.projects.domain.service.StepWorkspace
@@ -57,17 +60,24 @@ class MultiRepositoryJobTest {
         override fun findPricing(ref: ModelRef): Pricing? = null
     }
     private val runner = ScriptedRunner()
-    private val support = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30))
 
-    /** ADR 0044: the workspaces the test workflow declares. */
+    /** ADR 0044: the workspaces of the test project. */
     private val workspaces = listOf(
-        WorkflowWorkspace("main", roles = listOf("implementer", "reviewer")),
-        WorkflowWorkspace("shared", sources = listOf(WorkspaceSource("docs"), WorkspaceSource("app")), setupCommand = "npm ci"),
+        Fixtures.workspace(project.id, "main", roles = listOf("implementer", "reviewer")),
+        Fixtures.workspace(project.id, "shared", sources = listOf(WorkspaceSource("docs"), WorkspaceSource("app")), setupCommand = "npm ci"),
+    )
+    private val workspaceStore = object : ProjectWorkspaceRepository {
+        override fun findByProjectId(projectId: ProjectId) = workspaces.filter { it.projectId == projectId }
+        override fun findById(id: ProjectWorkspaceId) = workspaces.firstOrNull { it.id == id }
+        override fun save(workspace: ProjectWorkspace) = workspace
+        override fun delete(id: ProjectWorkspaceId) = Unit
+    }
+    private val support = RunnerTaskSupport(
+        runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30), projectWorkspaces = workspaceStore,
     )
 
     private fun context(p: Project = project, state: Map<String, Any?> = emptyMap()): NodeContext {
-        val plain = Fixtures.runningRun(p)
-        val run = plain.copy(definitionSnapshot = plain.definitionSnapshot.copy(workspaces = workspaces))
+        val run = Fixtures.runningRun(p)
         val node = run.definitionSnapshot.requireNode("implement")
         val started = run.nodeStarted(node, now)
         return NodeContext(started, p, node, started.nodes.last(), state)

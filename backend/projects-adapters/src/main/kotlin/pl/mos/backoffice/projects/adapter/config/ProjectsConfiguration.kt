@@ -109,6 +109,8 @@ import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
 import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.shared.platform.WorkQueue
+import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
+import pl.mos.backoffice.projects.application.service.ProjectWorkspaceService
 
 /**
  * Wires the Projects & Workflows use cases (plain Kotlin classes from `projects-core`) from the port
@@ -165,12 +167,20 @@ class ProjectsConfiguration {
         workflows: WorkflowDefinitionRepository, projects: ProjectRepository, runs: WorkflowRunRepository, validator: WorkflowValidator,
         taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
         jira: JiraConnectionAccess, specKit: SpecKitStepCheck, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
-    ) = WorkflowService(workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources)
+        projectWorkspaces: ProjectWorkspaceRepository,
+    ) = WorkflowService(workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources, projectWorkspaces)
 
     /** Sources of the library (ADR 0043). */
     @Bean
     fun librarySourceService(sources: LibrarySourceRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock) =
         LibrarySourceService(sources, gate, audit, clock)
+
+    /** Run workspaces of projects (ADR 0044). */
+    @Bean
+    fun projectWorkspaceService(
+        workspaces: ProjectWorkspaceRepository, projects: ProjectRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+        librarySources: LibrarySourceRepository,
+    ) = ProjectWorkspaceService(workspaces, projects, gate, audit, clock, librarySources)
 
     /** Workflow library (ADR 0037): publish, adopt, update and detach linked copies. */
     @Bean
@@ -188,7 +198,8 @@ class ProjectsConfiguration {
     @Bean fun jiraStepCheck(taskCatalog: TaskCatalog, jira: JiraConnectionAccess) = JiraStepCheck(taskCatalog, jira)
 
     /** Sources of the runner steps of a workflow: project repositories (ADR 0034) and library sources (ADR 0043). */
-    @Bean fun repositoryStepCheck(taskCatalog: TaskCatalog, librarySources: LibrarySourceRepository) = RepositoryStepCheck(taskCatalog, librarySources)
+    @Bean fun repositoryStepCheck(taskCatalog: TaskCatalog, librarySources: LibrarySourceRepository, projectWorkspaces: ProjectWorkspaceRepository) =
+        RepositoryStepCheck(taskCatalog, librarySources, projectWorkspaces)
 
     @Bean
     fun runService(
@@ -289,8 +300,11 @@ class ProjectsConfiguration {
     @Bean
     fun runnerTaskSupport(
         runner: AgentRunner, modelResolver: ModelResolver, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, settings: RunnerSettings,
-        features: ObjectProvider<PlatformFeatures>, librarySources: LibrarySourceRepository,
-    ) = RunnerTaskSupport(runner, modelResolver, renderer, templateModel, settings.defaultTimeout, features.getIfAvailable { PlatformFeatures.DEFAULTS }, librarySources)
+        features: ObjectProvider<PlatformFeatures>, librarySources: LibrarySourceRepository, projectWorkspaces: ProjectWorkspaceRepository,
+    ) = RunnerTaskSupport(
+        runner, modelResolver, renderer, templateModel, settings.defaultTimeout, features.getIfAvailable { PlatformFeatures.DEFAULTS }, librarySources,
+        projectWorkspaces,
+    )
 
     @Bean fun specKitTaskExecutor(support: RunnerTaskSupport) = SpecKitTaskExecutor(support)
 

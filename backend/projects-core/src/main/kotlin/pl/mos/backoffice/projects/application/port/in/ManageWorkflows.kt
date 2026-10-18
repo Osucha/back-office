@@ -14,7 +14,6 @@ import pl.mos.backoffice.projects.domain.service.StateField
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.util.UUID
-import pl.mos.backoffice.projects.domain.model.WorkflowWorkspace
 
 /** Use case: design workflows. `update` bumps the version; `delete` refuses while runs are active. */
 interface ManageWorkflows {
@@ -36,8 +35,6 @@ interface ManageWorkflows {
         val triggers: List<Trigger> = listOf(Trigger(TriggerType.MANUAL)),
         val enabled: Boolean = true,
         val canvas: Canvas? = null,
-        /** ADR 0044: run workspaces of the workflow. */
-        val workspaces: List<WorkflowWorkspace> = emptyList(),
     )
 
     data class PaletteTask(

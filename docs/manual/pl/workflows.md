@@ -188,25 +188,26 @@ Każdy krok programistyczny zaczyna zwykle od zera: nowy `/workspace`, nowe klon
 **Przestrzeń robocza przebiegu** pozwala kilku krokom jednego uruchomienia pracować w tym samym katalogu, a **rola
 agenta** pozwala agentowi kontynuować własną rozmowę zamiast czytać wszystko od nowa (ADR 0044).
 
-**Zdefiniuj przestrzenie w workflowie.** Kliknij puste płótno: właściwości workflowu mają sekcję **Przestrzenie
-robocze** (**Workspaces**). Kliknij **Dodaj przestrzeń** i ustaw:
+**Zdefiniuj przestrzenie w projekcie.** Karta projektu **Przestrzenie robocze** (**Workspaces**) je wyświetla; może z
+nich korzystać każdy workflow projektu. Kliknij **Dodaj przestrzeń** (wymaga `project.manage`) i ustaw:
 
 | Pole | Znaczenie |
 |---|---|
 | **Nazwa** | Widoczna na płótnie wokół kroków przestrzeni. |
-| **Klucz** | Małe litery, cyfry, myślniki (do 20), np. `main`. Zmiana klucza aktualizuje kroki, które go używają. |
+| **Klucz** | Małe litery, cyfry, myślniki (do 20), np. `main`. Kroki wybierają przestrzeń po kluczu; nie można go później zmienić. |
 | **Źródła klonowane do przestrzeni** | Repozytoria projektu i [źródła z biblioteki](task-library.md#sources). Kroki przestrzeni bez własnych repozytoriów pracują na nich: główne repozytorium projektu wśród nich dostaje dostęp wynikający z ustawienia **push** kroku, pozostałe są tylko do odczytu. Własna lista **Repozytoria** kroku zastępuje je dla tego kroku. |
 | **Polecenie przygotowania** | Np. `npm ci`. Uruchamiane raz na przebieg, przed pierwszym krokiem przestrzeni; ponownie tylko po zmianie. |
 | **Role agentów** | Np. `implementer`, `reviewer`. Kroki z tą samą rolą kontynuują jedną sesję agenta. Puste = dowolna rola. |
 
 **Wybierz przestrzeń w kroku.** Krok programistyczny (**Implement**, **Spec Kit**) ma sekcję **Przestrzeń robocza**
-tylko z wyborem: przestrzeń (albo **Brak: nowy katalog**), **Rola agenta** (albo nowa sesja) i, w krokach
+tylko z wyborem spośród przestrzeni projektu: przestrzeń (albo **Brak: nowy katalog**), **Rola agenta** (albo nowa sesja) i, w krokach
 **Implement**, **Tylko przygotuj przestrzeń** (klonowanie i przygotowanie, bez agenta, bez wypychania). Takim krokiem
 jest wbudowane zadanie **Prepare workspace** (`prepare-workspace`); jest opcjonalne, pierwszy krok przestrzeni też ją
 przygotowuje.
 
 **Na płótnie** każda przestrzeń to kolorowy, przerywany obszar z nazwą wokół jej kroków, więc od razu widać, które
-kroki współdzielą katalog. Obszar sięga od pierwszego do ostatniego z jej kroków.
+kroki współdzielą katalog. Obszar sięga od pierwszego do ostatniego z jej kroków. Właściwości workflowu (kliknij puste
+płótno) wyświetlają przestrzenie projektu z liczbą kroków tego workflowu w każdej.
 
 **Agenci na zmianę.** Na przykład *implementacja* (rola `implementer`, push włączony) → *weryfikacja* (rola
 `reviewer`, push wyłączony) → decyzja → z powrotem do *implementacji*. Każdy agent kontynuuje własną sesję i widzi,
@@ -226,9 +227,10 @@ zostaje).
 **Uwaga na zaufanie.** Wszystkie kroki i role uruchomienia mogą czytać i zmieniać wszystko w swojej przestrzeni, także
 historię sesji innych ról. Do niezależnej weryfikacji użyj kroku bez przestrzeni.
 
-Walidacja: krok wskazujący przestrzeń, której workflow nie definiuje, rolę spoza listy przestrzeni albo **Tylko
-przygotuj** bez przestrzeni to błąd; rola bez przestrzeni to ostrzeżenie. Publikacja workflowu do biblioteki zachowuje
-jego przestrzenie ze źródłami z biblioteki; projekt, który go przyjmie, dodaje własne repozytoria.
+Walidacja: krok wskazujący przestrzeń, której projekt nie ma, rolę spoza listy przestrzeni albo **Tylko przygotuj**
+bez przestrzeni to błąd; rola bez przestrzeni to ostrzeżenie. Usunięcie przestrzeni zamienia korzystające z niej
+workflowy w wersje robocze, dopóki ich kroki nie wybiorą innej. Workflow opublikowany do biblioteki zachowuje klucze
+przestrzeni swoich kroków; projekt, który go przyjmie, potrzebuje przestrzeni o tych kluczach.
 
 <a id="decisions"></a>
 ## Decyzje

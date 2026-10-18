@@ -42,6 +42,8 @@ tags:
     description: Personal work (ADR 0038), personal Jira intake rules and the run proposals they create
   - name: workflow-library
     description: Versioned workflows published from projects and adopted by other projects as linked copies (ADR 0037)
+  - name: project-workspaces
+    description: Run workspaces of a project shared by its workflows (sources, setup, agent roles; ADR 0044)
   - name: library-sources
     description: Sources of the library (git repositories of standards, templates, reference material) that steps of every project attach read-only (ADR 0043)
   - name: model-profiles
@@ -1036,6 +1038,40 @@ paths:
         '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRun' } } } }
 
   # ---------------------------------------------------------------- workflow library (ADR 0037)
+  /projects/{projectId}/workspaces:
+    parameters: [ { name: projectId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    get:
+      tags: [project-workspaces]
+      operationId: listProjectWorkspaces
+      description: 'Run workspaces of the project (project.view; ADR 0044).'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ProjectWorkspace' } } } } }
+    post:
+      tags: [project-workspaces]
+      operationId: createProjectWorkspace
+      description: 'Adds a run workspace (project.manage). Sources must be repositories of the project or library sources.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspaceInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspace' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/workspaces/{workspaceId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workspaceId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [project-workspaces]
+      operationId: updateProjectWorkspace
+      description: 'Changes a workspace (project.manage); the key cannot change because workflow steps refer to it.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspaceInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspace' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [project-workspaces]
+      operationId: deleteProjectWorkspace
+      description: 'Removes a workspace (project.manage). Steps that still name it fail validation and are kept as drafts.'
+      responses:
+        '204': { description: Deleted }
   /library/sources:
     get:
       tags: [library-sources]
@@ -2401,17 +2437,13 @@ components:
         triggers: { type: array, items: { $ref: '#/components/schemas/Trigger' } }
         enabled: { type: boolean, default: true }
         canvas: { type: object, nullable: true, properties: { zoom: { type: number }, x: { type: number }, y: { type: number } } }
-        workspaces:
-          type: array
-          description: 'ADR 0044: run workspaces coding steps may share (config.workspace = key)'
-          items: { $ref: '#/components/schemas/WorkflowWorkspace' }
-    WorkflowWorkspace:
+    ProjectWorkspaceInput:
       type: object
       description: >-
-        ADR 0044: a run workspace declared on the workflow. Coding steps pick it by key and share /workspace within one run;
-        steps without repositories of their own work on its sources (the project's primary among them gets the step's push
-        access, the others READ); setupCommand runs once per workspace; roles are the agent session roles its steps may
-        continue (any when empty). Library versions keep only library sources.
+        ADR 0044: a run workspace of a project, used by any of its workflows. Coding steps pick it by key
+        (config.workspace) and share /workspace within one run; steps without repositories of their own work on its
+        sources (the project's primary among them gets the step's push access, the others READ); setupCommand runs once
+        per workspace; roles are the agent session roles its steps may continue (any when empty). The key cannot change.
       required: [key]
       properties:
         key: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' }
@@ -2427,6 +2459,17 @@ components:
               library: { type: boolean, default: false }
         setupCommand: { type: string, nullable: true }
         roles: { type: array, items: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' } }
+    ProjectWorkspace:
+      allOf:
+        - $ref: '#/components/schemas/ProjectWorkspaceInput'
+        - type: object
+          required: [id, projectId, name, sources, roles, createdAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            projectId: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], nullable: true }
     WorkflowDefinition:
       allOf:
         - $ref: '#/components/schemas/WorkflowDefinitionInput'
@@ -2590,7 +2633,6 @@ components:
             edges: { type: array, items: { $ref: '#/components/schemas/WorkflowEdge' } }
             triggers: { type: array, items: { $ref: '#/components/schemas/Trigger' } }
             canvas: { type: object, nullable: true, properties: { zoom: { type: number }, x: { type: number }, y: { type: number } } }
-            workspaces: { type: array, items: { $ref: '#/components/schemas/WorkflowWorkspace' } }
     PublishWorkflowRequest:
       type: object
       properties:

@@ -699,6 +699,5 @@ export function normalizeDefinition(
     triggers: raw.triggers ?? [],
     enabled: raw.enabled ?? true,
     canvas: raw.canvas ?? null,
-    workspaces: raw.workspaces ?? [],
   };
 }

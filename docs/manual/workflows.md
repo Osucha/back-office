@@ -178,24 +178,25 @@ Every coding step normally starts from nothing: a fresh `/workspace`, fresh clon
 workspace** lets several steps of one run work in the same directory, and an **agent role** lets an agent continue its
 own conversation instead of re-reading everything (ADR 0044).
 
-**Define workspaces on the workflow.** Click the empty canvas: the workflow properties have the section
-**Workspaces**. **Add workspace** and set:
+**Define workspaces in the project.** The project tab **Workspaces** lists them; every workflow of the project can
+use them. **Add workspace** (you need `project.manage`) and set:
 
 | Field | Meaning |
 |---|---|
 | **Name** | Shown on the canvas around the workspace's steps. |
-| **Key** | Lower case letters, digits, hyphens (up to 20), for example `main`. Renaming it updates the steps that use it. |
+| **Key** | Lower case letters, digits, hyphens (up to 20), for example `main`. Steps pick the workspace by it; it cannot change later. |
 | **Sources cloned into it** | Project repositories and [library sources](task-library.md#sources). Steps of the workspace that name no repositories of their own work on these: the project's primary repository among them gets the access the step's **push** gives it, the others are read only. A step's own **Repositories** list replaces them for that step. |
 | **Setup command** | For example `npm ci`. Runs once per run, before the first step of the workspace; again only when you change it. |
 | **Agent roles** | For example `implementer`, `reviewer`. Steps with the same role continue one agent session. Empty = any role. |
 
 **Pick the workspace in the step.** A coding step (**Implement**, **Spec Kit**) has the section **Workspace** with
-only the choice: the workspace (or **None: a fresh directory**), the **Agent role** (or a new session) and, on
+only the choice among the project's workspaces: the workspace (or **None: a fresh directory**), the **Agent role** (or a new session) and, on
 **Implement** steps, **Only prepare the workspace** (clone and set up, no agent, no push). The built-in task **Prepare
 workspace** (`prepare-workspace`) is such a step; it is optional, the first step of a workspace prepares it too.
 
 **On the canvas** each workspace is a coloured, dashed region with its name around its steps, so you see at a glance
-which steps share a directory. The region spans from the first to the last of its steps.
+which steps share a directory. The region spans from the first to the last of its steps. The workflow properties (click
+the empty canvas) list the project's workspaces with the number of steps of this workflow in each.
 
 **Agents taking turns.** For example *implement* (role `implementer`, push on) → *verify* (role `reviewer`, push
 off) → a decision → back to *implement*. Each agent continues its own session and sees what the other left in the
@@ -214,9 +215,10 @@ it. A workspace used after that starts empty (the pushed run branch is still the
 **Mind the trust.** All steps and roles of a run can read and change everything in their workspace, including the
 other roles' session history. For an independent check use a step without the workspace.
 
-Validation: a step that names a workspace the workflow does not define, a role the workspace does not list, or
-**Only prepare** without a workspace is an error; a role without a workspace is a warning. Publishing a workflow to
-the library keeps its workspaces with their library sources; a project that adopts it adds its own repositories.
+Validation: a step that names a workspace the project does not have, a role the workspace does not list, or **Only
+prepare** without a workspace is an error; a role without a workspace is a warning. Deleting a workspace turns the
+workflows that use it into drafts until their steps pick another one. A workflow published to the library keeps the
+workspace keys of its steps; the adopting project needs workspaces with those keys.
 
 <a id="decisions"></a>
 ## Decisions

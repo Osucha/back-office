@@ -345,9 +345,9 @@ two-repository vector).
 
 ## Run workspaces and agent sessions (ADR 0044)
 
-- `WorkflowDefinition.workspaces` (`WorkflowWorkspace`: key, name, description, sources, setupCommand, roles; V117,
-  also in run snapshots and library versions) declares them; step config `workspace` / `sessionRole` /
-  `prepareOnly` picks one (`StepWorkspace`, validated with the step repositories; `effectiveConfig` turns the
+- `ProjectWorkspace` (`project_workspace`, V118: key, name, description, sources, setupCommand, roles;
+  `ManageProjectWorkspaces`, `/api/v1/projects/{id}/workspaces`) declares them for all workflows of a project; step
+  config `workspace` / `sessionRole` / `prepareOnly` picks one (`StepWorkspace`, validated with the step repositories; `effectiveConfig` turns the
   workspace sources into the step's repositories when it names none). It becomes `RunnerJobSpec.workspace {name, key,
   sessionRole, prepareOnly, setupCommand}`; `name = bo-ws-<run id hex>-<key>`. The designer draws a region per
   workspace around its steps (`workspaceRegions`).

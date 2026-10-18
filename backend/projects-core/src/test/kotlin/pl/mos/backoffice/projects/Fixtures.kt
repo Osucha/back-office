@@ -5,6 +5,9 @@ import pl.mos.backoffice.projects.domain.model.GitRepository
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.ProjectDefaults
 import pl.mos.backoffice.projects.domain.model.ProjectId
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspaceId
+import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.RunInput
 import pl.mos.backoffice.projects.domain.model.RunTrigger
@@ -34,6 +37,15 @@ object Fixtures {
     )
 
     fun issueWorkflow(project: Project): WorkflowDefinition = DefaultWorkflows.issueToReviewedMr(project.id, now)
+
+    /** ADR 0044: a run workspace of [projectId]. */
+    fun workspace(
+        projectId: ProjectId,
+        key: String,
+        sources: List<WorkspaceSource> = emptyList(),
+        setupCommand: String? = null,
+        roles: List<String> = emptyList(),
+    ) = ProjectWorkspace(ProjectWorkspaceId.new(), projectId, key, key, "", sources, setupCommand, roles, now, now)
 
     fun reviewWorkflow(project: Project): WorkflowDefinition = DefaultWorkflows.ciCodeReview(project.id, now)
 

@@ -44,6 +44,7 @@ import type {
   Point,
   LibrarySource,
   ProjectRepository,
+  ProjectWorkspace,
   Skill,
   ValidationResult,
   WorkflowCanvas,
@@ -68,8 +69,9 @@ import { ProjectsStore } from '../../../core/state/projects.store';
 import { NodePaletteComponent, type PalettePick } from '../components/node-palette.component';
 import { NodePropertyPanelComponent } from '../components/node-property-panel.component';
 import { TriggersEditorComponent } from '../components/triggers-editor.component';
-import { WorkspacesEditorComponent, type WorkspacesChange } from '../components/workspaces-editor.component';
-import { applyWorkspaces, membersOf } from '../data/workspaces';
+import { ProjectWorkspacesApi } from '../../../core/api/project-workspaces.service';
+import { workspaceColor } from '../../../core/ui/workspaces';
+import { membersOf } from '../data/workspaces';
 import { WorkflowCanvasComponent, type PaletteDrop } from '../components/workflow-canvas.component';
 import { autoLayout, needsLayout } from '../data/auto-layout';
 import {
@@ -120,7 +122,6 @@ const MAX_HISTORY = 50;
     NodePaletteComponent,
     NodePropertyPanelComponent,
     TriggersEditorComponent,
-    WorkspacesEditorComponent,
     ActionBarComponent,
     BatonComponent,
     GlyphComponent,
@@ -378,6 +379,7 @@ const MAX_HISTORY = 50;
                   [issues]="counts()"
                   [selectedNodeId]="selectedNodeId()"
                   [initialViewport]="initialViewport()"
+                  [workspaces]="workspaces()"
                   [readonly]="readOnly()"
                   (nodeSelected)="onNodeSelected($event)"
                   (edgeSelected)="selectedEdgeId.set($event)"
@@ -493,7 +495,7 @@ const MAX_HISTORY = 50;
                     [projectId]="resolvedProjectId()"
                     [projectRepositories]="projectRepositories()"
                     [librarySources]="librarySources()"
-                    [workspaces]="def().workspaces ?? []"
+                    [workspaces]="workspaces()"
                     [idLocked]="persistedIds().has(n.id)"
                     [readonly]="readOnly()"
                     (nodeChange)="updateNode(n.id, $event)"
@@ -597,14 +599,29 @@ const MAX_HISTORY = 50;
                       <nz-form-item>
                         <nz-form-label i18n="@@workflows.designer.workspaces">Workspaces</nz-form-label>
                         <nz-form-control>
-                          <app-workspaces-editor
-                            [workspaces]="def().workspaces ?? []"
-                            [stepCounts]="workspaceStepCounts()"
-                            [projectRepositories]="projectRepositories()"
-                            [librarySources]="librarySources()"
-                            [readonly]="readOnly()"
-                            (changed)="onWorkspaces($event)"
-                          />
+                          <ul class="ws-list">
+                            @for (w of workspaces(); track w.key; let i = $index) {
+                              <li>
+                                <span class="ws-dot" [style.background]="workspaceColor(i)"></span>
+                                <span>{{ w.name || w.key }}</span>
+                                <span class="muted small mono">{{ w.key }}</span>
+                                <span class="muted small">{{ workspaceStepsText(w.key) }}</span>
+                              </li>
+                            } @empty {
+                              <li class="muted small" i18n="@@workflows.designer.noWorkspaces">
+                                The project has no workspaces.
+                              </li>
+                            }
+                          </ul>
+                          @if (resolvedProjectId(); as pid) {
+                            <a
+                              class="small"
+                              [routerLink]="['/projects', pid]"
+                              [queryParams]="{ tab: 'workspaces' }"
+                              i18n="@@workflows.designer.manageWorkspaces"
+                              >Configure in the project tab Workspaces</a
+                            >
+                          }
                         </nz-form-control>
                       </nz-form-item>
                       <nz-form-item>
@@ -821,6 +838,28 @@ const MAX_HISTORY = 50;
         min-height: 0;
         display: flex;
         flex-direction: column;
+      }
+      .ws-list {
+        list-style: none;
+        margin: 0 0 4px;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .ws-list li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .ws-list .mono {
+        font-family: var(--bo-font-mono);
+      }
+      .ws-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 3px;
+        flex: none;
       }
       .canvas-area {
         flex: 1;
@@ -1132,10 +1171,13 @@ export class WorkflowDesignerPageComponent {
   private readonly projectsStore = inject(ProjectsStore);
   private readonly projectsApi = inject(ProjectsApi);
   private readonly librarySourcesApi = inject(LibrarySourcesApi);
+  private readonly workspacesApi = inject(ProjectWorkspacesApi);
   /** The project's repositories (ADR 0034) for the repositories of runner steps. */
   readonly projectRepositories = signal<ProjectRepository[]>([]);
   /** Library sources (ADR 0043) runner steps may attach. */
   readonly librarySources = signal<LibrarySource[]>([]);
+  /** ADR 0044: run workspaces of the project steps may pick (configured in the project tab Workspaces). */
+  readonly workspaces = signal<ProjectWorkspace[]>([]);
   readonly projectKey = computed(
     () =>
       this.projectsStore.byId().get(this.resolvedProjectId())?.key ??
@@ -1391,6 +1433,7 @@ export class WorkflowDesignerPageComponent {
     this.librarySourcesApi
       .list()
       .subscribe({ next: (s) => this.librarySources.set(s), error: () => undefined });
+    this.workspacesApi.list(projectId).subscribe({ next: (w) => this.workspaces.set(w), error: () => undefined });
     // Fresh repositories for the step repository picker (ADR 0034); the store may be older.
     this.projectsApi.get(projectId).subscribe({
       next: (p) => this.projectRepositories.set(projectRepositories(p)),
@@ -1420,16 +1463,12 @@ export class WorkflowDesignerPageComponent {
     this.dirty.set(true);
   }
 
-  /** ADR 0044: steps per workspace key, for the workspaces editor. */
-  readonly workspaceStepCounts = computed<Record<string, number>>(() => {
-    const def = this.def();
-    return Object.fromEntries((def.workspaces ?? []).map((w) => [w.key, membersOf(def, w.key).length]));
-  });
+  readonly workspaceColor = workspaceColor;
 
-  /** ADR 0044: workspaces changed in the workflow properties; steps follow renamed and removed ones. */
-  onWorkspaces(change: WorkspacesChange): void {
-    if (this.readOnly()) return;
-    this.commit(applyWorkspaces(this.def(), change.workspaces, change.renames), 'coalesce');
+  /** ADR 0044: how many steps of this workflow use the project workspace [key]. */
+  workspaceStepsText(key: string): string {
+    const n = membersOf(this.def(), key).length;
+    return $localize`:@@workflows.designer.workspaceSteps:steps here: ${n}:count:`;
   }
 
   patchDef(changes: Partial<WorkflowDefinitionInput>): void {
