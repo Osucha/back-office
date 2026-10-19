@@ -33,6 +33,8 @@ import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
 import java.time.Duration
 import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.runner.ExecutionTarget
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 /** ADR 0017 / 0018 for the Model Evaluation context: exact permission per use case, denial, audit and actor stamps. */
 class EvaluationAccessTest {
@@ -41,7 +43,10 @@ class EvaluationAccessTest {
     private val suites = InMemoryTaskSuiteRepository()
     private val profiles = InMemoryModelProfileRepository()
     private val submitted = mutableListOf<AttemptId>()
-    private val runner = mockk<AgentRunner>(relaxed = true).also { every { it.isAvailable() } returns true }
+    private val runner = mockk<AgentRunner>(relaxed = true).also {
+        every { it.isAvailable() } returns true
+        every { it.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.SHARED, 1, 1))
+    }
     private val gateway = mockk<LlmGateway>()
     private val clock = Clock.fixed(Fixtures.now)
     private val audit = RecordingAuditPort()

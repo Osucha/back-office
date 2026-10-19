@@ -20,6 +20,12 @@ interface ManageModelProfiles {
     /** Sends a tiny prompt through the gateway and books a `MODEL_TEST` usage record. Never throws on provider errors. */
     fun test(id: ModelProfileId): ModelTestResult
 
+    /**
+     * ADR 0046: the same tiny call for every model of a benchmark before it starts (`evaluation.run`), so a model without
+     * access or with its quota used up shows up before hundreds of attempts fail. Each id once, in the given order.
+     */
+    fun preflight(ids: List<ModelProfileId>): List<Pair<ModelProfile, ModelTestResult>>
+
     data class ProfileCommand(
         val displayName: String,
         val ref: ModelRef,

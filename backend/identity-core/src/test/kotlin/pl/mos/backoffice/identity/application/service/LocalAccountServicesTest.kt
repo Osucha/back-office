@@ -22,11 +22,13 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
+import java.time.Instant
 
 class LocalAccountServicesTest {
 
@@ -264,6 +266,25 @@ class LocalAccountServicesTest {
 
         val login = LocalLoginService(local.support(audit, options)).login("owner@example.com", "ChangeMe-Local-123")
         assertThat((login as LoginOutcome.SignedIn).restriction).isEqualTo(SessionRestriction.PASSWORD_CHANGE)
+    }
+
+    @Test
+    fun `the bootstrap gives an OIDC-only administrator a password once, never anybody else`() {
+        val options = local.options(bootstrapEmail = "owner@example.com", bootstrapPassword = "ChangeMe-Local-123")
+        val service = BootstrapLocalAdminService(local.support(audit, options), db.grants, db.accessVersion)
+        val other = local.support(audit, options).users.save(User.invite("other@example.com", "Other", emptySet(), Instant.now(), Actor.SYSTEM).copy(status = UserStatus.ACTIVE))
+        val owner = local.support(audit, options).users.save(User.invite("owner@example.com", "Owner", emptySet(), Instant.now(), Actor.SYSTEM).copy(status = UserStatus.ACTIVE))
+        // not an administrator yet: nothing happens
+        assertThat(service.bootstrap()).isNull()
+
+        val set = db.grants.find(GrantLevel.USER, owner.id.value)
+        db.grants.save(set.copy(roles = set.roles + BuiltInRoles.PLATFORM_ADMIN))
+        val adopted = service.bootstrap()!!
+        assertThat(adopted.authMode).isEqualTo(AuthMode.BOTH)
+        assertThat(local.credentialMap[owner.id]!!.mustChangePassword).isTrue()
+        assertThat(local.credentialMap[other.id]).isNull()
+        // a password once set is never overwritten
+        assertThat(service.bootstrap()).isNull()
     }
 
     @Test

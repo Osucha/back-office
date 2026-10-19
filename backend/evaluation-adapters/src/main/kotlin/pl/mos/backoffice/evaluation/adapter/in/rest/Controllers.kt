@@ -106,12 +106,23 @@ class TaskSuiteController(private val suites: ManageTaskSuites) {
 /** `/api/v1/benchmarks` (openapi tag `benchmarks`). */
 @RestController
 @RequestMapping("/api/v1/benchmarks")
-class BenchmarkController(private val benchmarks: ManageBenchmarks, private val gateway: LlmGateway) {
+class BenchmarkController(private val benchmarks: ManageBenchmarks, private val gateway: LlmGateway, private val profiles: ManageModelProfiles) {
 
     private fun dto(d: ManageBenchmarks.BenchmarkDetails) = RestMappers.benchmark(d) { gateway.isConfigured(it.ref) }
 
     @GetMapping
     fun list(): List<BenchmarkSummaryDto> = benchmarks.list().map(RestMappers::benchmarkSummary)
+
+    /** ADR 0046: the shared fleet and the caller's personal runner, with their online runners. */
+    /** ADR 0046: one tiny call per candidate and judge before a benchmark starts. */
+    @PostMapping("/preflight")
+    fun preflight(@RequestBody body: PreflightInputDto): List<PreflightResultDto> =
+        profiles.preflight(body.modelProfileIds.map { ModelProfileId(it) }).map { (p, r) ->
+            PreflightResultDto(p.id.value, p.displayName, r.ok, r.latencyMs, r.error)
+        }
+
+    @GetMapping("/execution-targets")
+    fun executionTargets(): List<ExecutionTargetDto> = benchmarks.executionTargets().map { ExecutionTargetDto(it.target, it.pools, it.onlineRunners) }
 
     @PostMapping
     fun create(@RequestBody body: BenchmarkInputDto): ResponseEntity<BenchmarkDto> {

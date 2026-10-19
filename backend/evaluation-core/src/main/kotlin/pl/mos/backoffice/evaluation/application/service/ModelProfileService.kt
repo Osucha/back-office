@@ -26,6 +26,7 @@ import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.usage.Pricing
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
+import pl.mos.backoffice.shared.ValidationException
 
 /**
  * Model catalogue use cases. Deleting a profile that any benchmark refers to is refused so historical
@@ -103,7 +104,16 @@ class ModelProfileService(
 
     override fun test(id: ModelProfileId): ModelTestResult {
         gate.require(EvaluationPermissions.MODELS_MANAGE)
-        val profile = load(id)
+        return probe(load(id))
+    }
+
+    override fun preflight(ids: List<ModelProfileId>): List<Pair<ModelProfile, ModelTestResult>> {
+        gate.require(EvaluationPermissions.EVALUATION_RUN)
+        if (ids.size > MAX_PREFLIGHT) throw ValidationException("at most $MAX_PREFLIGHT models", "modelProfileIds")
+        return ids.distinct().map { id -> load(id).let { it to probe(it) } }
+    }
+
+    private fun probe(profile: ModelProfile): ModelTestResult {
         val request = LlmRequest(
             messages = listOf(LlmMessage.user(TEST_PROMPT)),
             usageContext = UsageContext(kind = UsageKind.MODEL_TEST),
@@ -145,6 +155,7 @@ class ModelProfileService(
     companion object {
         const val TEST_PROMPT = "Reply with the single word OK."
         const val TEST_MAX_TOKENS = 64
+        const val MAX_PREFLIGHT = 20
 
         fun snapshot(p: ModelProfile): Map<String, Any?> = mapOf(
             "displayName" to p.displayName,

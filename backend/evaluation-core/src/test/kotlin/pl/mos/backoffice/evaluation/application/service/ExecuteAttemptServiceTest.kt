@@ -35,6 +35,7 @@ import pl.mos.backoffice.shared.runner.RunnerVerification
 import pl.mos.backoffice.shared.usage.UsageKind
 import java.math.BigDecimal
 import java.time.Duration
+import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 
 class ExecuteAttemptServiceTest {
 
@@ -262,6 +263,53 @@ class ExecuteAttemptServiceTest {
 
         assertThat(benchmarks.findById(benchmark.id)!!.status).isEqualTo(BenchmarkStatus.FAILED)
         assertThat(benchmarks.findAttempts(benchmark.id)).allSatisfy { assertThat(it.status).isEqualTo(AttemptStatus.FAILED) }
+    }
+
+    @Test
+    fun `a retry after the judge failed asks only the judge again (ADR 0046)`() {
+        every { gateway.chat(candidate.ref, any()) } answers { llmResult(candidate.ref, "The bug is X.") }
+        every { gateway.chat(judge.ref, any()) } throws IntegrationException("anthropic", "429 rate limited", retryable = true)
+        val attempt = benchmarks.findAttempts(benchmark.id).first { it.taskId == promptTask.id }
+
+        assertThat(service.execute(attempt.id).retry).isTrue()
+        val requeued = benchmarks.findAttempt(attempt.id)!!
+        assertThat(requeued.status).isEqualTo(AttemptStatus.PENDING)
+        assertThat(requeued.output).isEqualTo("The bug is X.")
+
+        every { gateway.chat(judge.ref, any()) } answers { llmResult(judge.ref, "{}", judgeAnswer, TokenUsage(2000, 200)) }
+        service.execute(attempt.id)
+
+        val stored = benchmarks.findAttempt(attempt.id)!!
+        assertThat(stored.status).isEqualTo(AttemptStatus.SUCCEEDED)
+        assertThat(stored.output).isEqualTo("The bug is X.")
+        assertThat(stored.usage).isEqualTo(TokenUsage(1000, 500))
+        verify(exactly = 1) { gateway.chat(candidate.ref, any()) }
+    }
+
+    @Test
+    fun `a persistent failure skips the waiting attempts of that model, a judge failure all of them (ADR 0046)`() {
+        val other = Fixtures.profile("Other", modelId = "other-model", input = "1", output = "1")
+        profiles.save(other)
+        val prompts = suite.copy(tasks = listOf(promptTask))
+        val twoModels = benchmarks.save(Fixtures.benchmark(prompts, listOf(candidate, other), judge, repetitions = 2).start(Fixtures.now))
+        benchmarks.saveAttempts(BenchmarkExecutionPlanner.plan(twoModels, prompts, listOf(candidate, other), Fixtures.now))
+        fun of(model: ModelProfile) = benchmarks.findAttempts(twoModels.id).filter { it.modelProfileId == model.id }.sortedBy { it.repetition }
+        every { gateway.chat(candidate.ref, any()) } throws IntegrationException("openai_compatible", "HTTP 403 (forbidden)", persistent = true)
+
+        service.execute(of(candidate).first().id)
+        assertThat(of(candidate).map { it.status }).containsOnly(AttemptStatus.FAILED)
+        assertThat(of(candidate).last().error).startsWith("skipped, Candidate failed")
+        assertThat(of(other).map { it.status }).describedAs("another model is not affected").containsOnly(AttemptStatus.PENDING)
+
+        // the judge's quota is gone: everything still waiting ends at once and the benchmark finishes
+        every { gateway.chat(other.ref, any()) } answers { llmResult(other.ref, "answer") }
+        every { gateway.chat(judge.ref, any()) } throws IntegrationException("anthropic", "HTTP 429 (quota used up)", persistent = true)
+        val report = service.execute(of(other).first().id)
+
+        assertThat(of(other).first().error).startsWith("judge: ")
+        assertThat(of(other).last().error).startsWith("skipped, the judge failed")
+        assertThat(benchmarks.findAttempts(twoModels.id)).allSatisfy { assertThat(it.status).isEqualTo(AttemptStatus.FAILED) }
+        assertThat(report.finished).isNotNull()
     }
 
     @Test

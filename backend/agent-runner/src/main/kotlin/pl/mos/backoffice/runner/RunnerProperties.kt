@@ -42,7 +42,15 @@ data class RunnerProperties(
     val platformPolicy: PlatformPolicy = PlatformPolicy(),
     /** Personal runners (ADR 0040): images of the generated `docker run` command and limits of a new personal pool. */
     val personal: Personal = Personal(),
+    /** ADR 0046: a shared pool and a registration token from the configuration, for the bundled runner of a local stack. */
+    val localFleet: LocalFleet = LocalFleet(),
 ) {
+    /**
+     * Laptop stacks only (docker compose): with [registrationToken] set, the shared pool [poolId] exists after startup
+     * and the runner-controller of the stack registers with that token (again after losing its volume). Blank = off.
+     */
+    data class LocalFleet(val registrationToken: String = "", val poolId: String = "default", val maxConcurrentJobs: Int = 2)
+
     data class Personal(
         val controllerImage: String = "back-office/runner-controller:dev",
         val runnerImage: String = "back-office/runner:dev",

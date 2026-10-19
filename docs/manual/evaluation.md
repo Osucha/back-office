@@ -110,7 +110,15 @@ models, attempt progress and cost.
 5. Set **Repetitions** (1–5); two or three measure how stable the scores are.
 6. For coding jobs, choose the **Coding harness**: **OpenCode** (works with every provider) or **Claude
    Code** (Anthropic only).
-7. Click **Create and start**, or **Save as draft** and later **Start benchmark** on its page.
+7. When the tasks include coding jobs, choose where they run under **Coding tasks run on**: **Shared
+   runners** (the platform's fleet) or **My personal runner** (your computer, see
+   [Personal runner](personal-runner.md)). Each option says how many runners are online; one that is not set
+   up cannot be chosen, and with none online the coding attempts wait until a runner connects (at most 24
+   hours). Prompt tasks need no runner.
+8. Click **Create and start**, or **Save as draft** and later **Start benchmark** on its page. **Create and
+   start** first sends a one-line test to every candidate and the judge (**Check models** does only that):
+   models that do not answer are listed with the provider's reason, for example no access to the model or
+   a daily quota used up. Remove them, or click **Start anyway**.
 
 The form shows how many attempts the benchmark plans (tasks × models × repetitions, each also judged
 once). Every attempt costs candidate tokens plus judge tokens; coding attempts on frontier models can
@@ -120,8 +128,15 @@ cost several dollars each.
 
 Attempts are planned up front and run a few at a time per provider. When the operator has configured
 provider rate limits, benchmark calls leave a reserve for workflow steps and reviews, and an attempt that
-hits the limit is queued again later. Progress updates live. **Cancel benchmark** stops queued attempts and running
-jobs; finished attempts keep their results. Single failed attempts do not fail the benchmark.
+hits the limit is queued again later. A retry after only the judge failed keeps the candidate's answer and asks
+the judge again. Progress updates live. **Cancel benchmark** stops queued attempts and running jobs; finished
+attempts keep their results. Single failed attempts do not fail the benchmark.
+
+Some failures repeat for every further call: no access to the model, a wrong key, a daily quota of the
+provider or of the connection used up. After the first one, the attempts of that model still waiting end at
+once with "skipped, ... failed: ..." instead of each calling the provider; when the judge fails that way, all
+waiting attempts end. When coding attempts wait because no runner is online where the benchmark sends them,
+its page says so.
 
 ### Reading the results
 

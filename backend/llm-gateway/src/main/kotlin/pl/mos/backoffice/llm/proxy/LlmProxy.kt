@@ -32,6 +32,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
+import pl.mos.backoffice.llm.connections.ConnectionQuota
 
 /**
  * The LLM gateway proxy for sandboxes (ADR 0024 "credential brokering"): the agent calls Anthropic- or
@@ -51,6 +52,8 @@ class LlmProxy(
     private val gate: AuthorizationGate,
     private val json: JsonMapper,
     private val clock: Clock,
+    /** ADR 0046: request limits of provider connections; agents' calls count against them too. */
+    private val quota: ConnectionQuota = ConnectionQuota.NONE,
 ) {
     private val log = LoggerFactory.getLogger(LlmProxy::class.java)
 
@@ -106,6 +109,12 @@ class LlmProxy(
                 response, 502, "Provider not configured",
                 "No usable connection is configured for ${provider.name.lowercase()}" + (connection?.let { " (connection $it)" } ?: ""), "provider-not-configured",
             )
+        try {
+            quota.admit(endpoint)
+        } catch (e: IntegrationException) {
+            response.setHeader("retry-after", if (e.retryable) "60" else "3600")
+            return ProxyProblems.write(response, 429, "Connection limit reached", e.message ?: "connection request limit reached", "connection-limit")
+        }
         val settings = endpoint.settings
         val streaming = body.get("stream")?.asBoolean() == true
         if (protocol == ProxyProtocol.OPENAI && streaming && metered) {

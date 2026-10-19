@@ -34,6 +34,8 @@ import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentRunner
+import pl.mos.backoffice.shared.runner.ExecutionTarget
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 /**
  * Benchmark lifecycle. `start` persists the whole attempt matrix as `PENDING` before queueing anything,
@@ -71,6 +73,7 @@ class BenchmarkService(
                 codingHarness = command.codingHarness,
                 now = clock.now(),
                 actor = user.actor,
+                runnerTarget = command.runnerTarget,
             ),
         )
         audit.record(
@@ -79,6 +82,7 @@ class BenchmarkService(
                 mapOf(
                     "name" to benchmark.name, "suiteId" to suite.id.toString(), "models" to models.map { it.displayName },
                     "judge" to judge.displayName, "repetitions" to benchmark.repetitions, "taskIds" to benchmark.taskIds.map { it.toString() },
+                    "runnerTarget" to benchmark.runnerTarget.name,
                 ),
             ),
         )
@@ -96,14 +100,35 @@ class BenchmarkService(
         if (!judge.enabled) throw InvalidStateException("judge profile ${judge.displayName} is disabled")
         val now = clock.now()
         val attempts = BenchmarkExecutionPlanner.plan(benchmark, suite, models, now)
-        if (attempts.any { it.kind == TaskKind.CODING_JOB } && !runner.isAvailable()) {
-            throw InvalidStateException("the selected tasks include CODING_JOB tasks but no agent runner is available")
-        }
+        if (attempts.any { it.kind == TaskKind.CODING_JOB }) requireRunnerTarget(benchmark)
         val started = benchmarks.save(benchmark.start(now, user.actor))
         benchmarks.saveAttempts(attempts)
         attempts.forEach { executor.submit(it.id) }
         audit.record(entry("BENCHMARK_START", id, mapOf("name" to benchmark.name, "attempts" to attempts.size)))
         return details(started)
+    }
+
+    override fun executionTargets(): List<ExecutionTarget> {
+        val user = gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        return runner.executionTargets(user.userId?.value)
+    }
+
+    /** ADR 0046: coding jobs need a pool where the benchmark sends them; a personal runner needs its creator. */
+    private fun requireRunnerTarget(benchmark: Benchmark) {
+        val owner = benchmark.createdBy?.userId
+        if (benchmark.runnerTarget == RunnerTarget.PERSONAL && owner == null) {
+            throw InvalidStateException("the benchmark should run on a personal runner but has no creator")
+        }
+        val target = runner.executionTargets(owner).firstOrNull { it.target == benchmark.runnerTarget }
+        if (target == null || !target.exists) {
+            throw InvalidStateException(
+                if (benchmark.runnerTarget == RunnerTarget.PERSONAL) {
+                    "the selected tasks include CODING_JOB tasks but you have no personal runner; set one up under My account or choose the shared runners"
+                } else {
+                    "the selected tasks include CODING_JOB tasks but no shared runner pool exists; create one in Administration, Runner fleet, or choose your personal runner"
+                },
+            )
+        }
     }
 
     override fun cancel(id: BenchmarkId): BenchmarkDetails {

@@ -127,6 +127,12 @@ class JobLifecycle(
         )
 
     /** ADR 0040: Claude Code with the owner's own login talks to Anthropic directly. */
+    /** Runners per pool that called in within the online window. */
+    fun onlineRunnersByPool(): Map<String, Int> {
+        val now = clock.now()
+        return nodes.list(null).filter { it.online(now, settings.onlineWindow) }.groupingBy { it.poolId }.eachCount()
+    }
+
     fun localLoginHosts(pool: RunnerPool): List<String> =
         if (pool.llmCredentials == LlmCredentials.LOCAL_LOGIN) RunnerPool.LOCAL_LOGIN_HOSTS else emptyList()
 

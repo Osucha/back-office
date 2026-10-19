@@ -10,11 +10,15 @@ export interface ConnectionPreset {
   label: string;
   provider: Provider;
   baseUrl: string | null;
+  /** ADR 0046: limits of the provider's free tier, prefilled (editable). */
+  requestsPerMinute?: number;
+  requestsPerDay?: number;
 }
 
 /** Common endpoints, filled in with one click (the API key still has to be pasted). */
 export const PRESETS: ConnectionPreset[] = [
-  { id: 'openrouter', label: 'OpenRouter', provider: 'OPENAI_COMPATIBLE', baseUrl: 'https://openrouter.ai/api/v1' }, // i18n-ignore: vendor name
+  // free models without purchased credits: 20 requests a minute, 50 a day (1000 a day after buying 10 credits)
+  { id: 'openrouter', label: 'OpenRouter', provider: 'OPENAI_COMPATIBLE', baseUrl: 'https://openrouter.ai/api/v1', requestsPerMinute: 20, requestsPerDay: 50 }, // i18n-ignore: vendor name
   { id: 'groq', label: 'Groq', provider: 'OPENAI_COMPATIBLE', baseUrl: 'https://api.groq.com/openai/v1' }, // i18n-ignore: vendor name
   { id: 'github-models', label: 'GitHub Models', provider: 'OPENAI_COMPATIBLE', baseUrl: 'https://models.github.ai/inference' }, // i18n-ignore: vendor name
   { id: 'mistral', label: 'Mistral', provider: 'MISTRAL', baseUrl: null }, // i18n-ignore: vendor name
@@ -24,7 +28,10 @@ export const PRESETS: ConnectionPreset[] = [
 ];
 
 export function emptyConnection(): LlmProviderInput {
-  return { key: '', name: '', provider: 'OPENAI_COMPATIBLE', baseUrl: null, apiKey: null, clearApiKey: false, enabled: true };
+  return {
+    key: '', name: '', provider: 'OPENAI_COMPATIBLE', baseUrl: null, apiKey: null, clearApiKey: false, enabled: true,
+    requestsPerMinute: null, requestsPerDay: null,
+  };
 }
 
 /** What blocks saving; [creating] = a new connection (an API key is then expected where the type needs one). */

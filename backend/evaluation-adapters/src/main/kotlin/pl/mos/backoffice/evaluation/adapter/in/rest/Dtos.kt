@@ -13,6 +13,7 @@ import pl.mos.backoffice.shared.security.PrincipalKind
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 /* Request and response bodies of the model-profiles, task-suites and benchmarks tags in docs/api/openapi.yaml. */
 
@@ -67,6 +68,10 @@ data class ModelProfileDto(
 )
 
 data class ModelTestResultDto(val ok: Boolean, val latencyMs: Long, val usage: TokenUsageDto, val cost: MoneyDto, val sample: String?, val error: String?)
+
+data class PreflightInputDto(val modelProfileIds: List<UUID> = emptyList())
+
+data class PreflightResultDto(val modelProfileId: UUID, val displayName: String, val ok: Boolean, val latencyMs: Long, val error: String?)
 
 data class ProviderStatusDto(val provider: Provider, val configured: Boolean, val baseUrl: String?)
 
@@ -134,7 +139,10 @@ data class BenchmarkInputDto(
     val repetitions: Int = 1,
     val codingHarness: AgentHarness = AgentHarness.OPENCODE,
     val taskIds: List<UUID> = emptyList(),
+    val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
 )
+
+data class ExecutionTargetDto(val target: RunnerTarget, val pools: Int, val onlineRunners: Int)
 
 data class ProgressDto(val total: Int, val done: Int, val failed: Int)
 
@@ -155,6 +163,7 @@ data class BenchmarkSummaryDto(
     val startedAt: Instant?,
     val finishedAt: Instant?,
     val createdBy: ActorRefDto? = null,
+    val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
 )
 
 data class BenchmarkDto(
@@ -174,6 +183,7 @@ data class BenchmarkDto(
     val startedAt: Instant?,
     val finishedAt: Instant?,
     val createdBy: ActorRefDto? = null,
+    val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
     val models: List<ModelProfileDto>,
     val judge: ModelProfileDto?,
 )
@@ -188,6 +198,7 @@ data class AttemptDto(
     val modelDisplayName: String,
     val repetition: Int,
     val status: AttemptStatus,
+    val kind: TaskKind,
     val score: Double?,
     val passed: Boolean?,
     val usage: TokenUsageDto,

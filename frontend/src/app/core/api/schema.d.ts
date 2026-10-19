@@ -1059,6 +1059,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/benchmarks/execution-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ADR 0046: where coding jobs of the caller's benchmarks can run now: the shared runner fleet and the caller's personal runner (evaluation.view). */
+        get: operations["benchmarkExecutionTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/benchmarks/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description ADR 0046: one tiny call per model (candidates and judge) before a benchmark starts, so a model without access or with its quota used up shows up first (evaluation.run). At most 20 models. */
+        post: operations["benchmarkPreflight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/budgets": {
         parameters: {
             query?: never;
@@ -3488,6 +3522,8 @@ export interface components {
             finishedAt?: string | null;
             /** Format: uuid */
             id?: string;
+            /** @enum {string} */
+            kind?: "PROMPT" | "CODING_JOB";
             modelDisplayName?: string;
             /** Format: uuid */
             modelProfileId?: string;
@@ -3602,6 +3638,7 @@ export interface components {
             name: string;
             /** @default 1 */
             repetitions: number;
+            runnerTarget?: components["schemas"]["RunnerTarget"];
             /** Format: uuid */
             suiteId: string;
             taskIds?: string[];
@@ -4147,6 +4184,13 @@ export interface components {
             /** @default 1 */
             weight: number;
         };
+        ExecutionTarget: {
+            /** @description runners that called in within the online window */
+            onlineRunners: number;
+            /** @description runner pools of the target (0 = none set up) */
+            pools: number;
+            target: components["schemas"]["RunnerTarget"];
+        };
         Finding: {
             detail?: string;
             file?: string;
@@ -4636,6 +4680,10 @@ export interface components {
             key?: string | null;
             name: string;
             provider: components["schemas"]["Provider"];
+            requestsPerDay?: number | null;
+            requestsPerMinute?: number | null;
+            /** @description requests sent through the connection today (UTC) */
+            requestsToday?: number | null;
             /**
              * @description ENVIRONMENT = read-only fallback from environment variables
              * @enum {string}
@@ -4659,6 +4707,10 @@ export interface components {
             key: string;
             name: string;
             provider: components["schemas"]["Provider"];
+            /** @description ADR 0046: per UTC day; e.g. 50 for OpenRouter free models without credits */
+            requestsPerDay?: number | null;
+            /** @description ADR 0046: limit Back Office keeps for this connection (null = none) */
+            requestsPerMinute?: number | null;
         };
         LocalLoginRequest: {
             /** Format: email */
@@ -5530,6 +5582,12 @@ export interface components {
                 outputTail?: string;
             } | null;
         };
+        /**
+         * @description ADR 0046: where coding jobs run: the shared runner fleet or the personal runner of the user who created the benchmark
+         * @default SHARED
+         * @enum {string}
+         */
+        RunnerTarget: "SHARED" | "PERSONAL";
         /** @enum {string} */
         RunOutcome: "SUCCESS" | "FAILURE";
         /** @enum {string} */
@@ -8135,6 +8193,60 @@ export interface operations {
                 };
             };
             409: components["responses"]["Problem"];
+        };
+    };
+    benchmarkExecutionTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionTarget"][];
+                };
+            };
+        };
+    };
+    benchmarkPreflight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    modelProfileIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        displayName: string;
+                        error?: string | null;
+                        /** Format: int64 */
+                        latencyMs?: number;
+                        /** Format: uuid */
+                        modelProfileId: string;
+                        ok: boolean;
+                    }[];
+                };
+            };
         };
     };
     listBudgets: {

@@ -26,6 +26,7 @@ import pl.mos.backoffice.shared.platform.JobTokenVerifier
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.usage.UsageLedger
 import tools.jackson.databind.json.JsonMapper
+import pl.mos.backoffice.llm.connections.ConnectionQuota
 
 /** Budgets (ADR 0025) and the sandbox LLM proxy (ADR 0024). */
 @Configuration
@@ -64,7 +65,8 @@ class ProxyConfiguration {
         gate: AuthorizationGate,
         json: JsonMapper,
         clock: Clock,
-    ) = LlmProxy(registry, properties, llm.openaiCompatible.baseUrl, rateLimiter, budgets, ledger, catalog.getIfAvailable(), gate, json, clock)
+        quota: ConnectionQuota,
+    ) = LlmProxy(registry, properties, llm.openaiCompatible.baseUrl, rateLimiter, budgets, ledger, catalog.getIfAvailable(), gate, json, clock, quota)
 
     @Bean
     fun jobTokenFilter(verifier: ObjectProvider<JobTokenVerifier>): FilterRegistrationBean<JobTokenFilter> =

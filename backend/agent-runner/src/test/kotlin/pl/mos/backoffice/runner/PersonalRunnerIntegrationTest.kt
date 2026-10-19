@@ -56,6 +56,7 @@ class PersonalRunnerIntegrationTest {
     @Autowired lateinit var pools: ManageRunnerPools
     @Autowired lateinit var adminJobs: ManageAgentJobs
     @Autowired lateinit var runner: AgentJobService
+    @Autowired lateinit var runnerAdmin: pl.mos.backoffice.runner.application.service.FleetAdminService
 
     private lateinit var me: UUID
 
@@ -99,6 +100,29 @@ class PersonalRunnerIntegrationTest {
         val response = mvc.perform(post("/api/v1/runner/v2/register").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated).andReturn().response.contentAsString
         return json.readTree(response).get("runnerToken").asString()
+    }
+
+    @Test
+    fun `a local stack's shared pool and registration token come from the configuration, reusable after every start (ADR 0046)`() {
+        val poolId = "local-${UUID.randomUUID().toString().take(8)}"
+        val token = "bo_rrt_local-${UUID.randomUUID()}"
+        val admin = runnerAdmin
+        admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2)
+        admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2)
+        fun registerWith(name: String) = mvc.perform(
+            post("/api/v1/runner/v2/register").contentType(MediaType.APPLICATION_JSON)
+                .content("""{"registrationToken":"$token","name":"$name","version":"2.0.0","capabilities":{"backends":["DOCKER"],"maxConcurrent":2}}"""),
+        )
+        registerWith("compose").andExpect(status().isCreated)
+        // used once; the next start of the API arms it again (a controller that lost its volume registers anew)
+        registerWith("compose-again").andExpect(status().isUnauthorized)
+        admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2)
+        registerWith("compose-again").andExpect(status().isCreated)
+
+        asAdmin { assertThat(pools.list().map { it.input.id }).contains(poolId) }
+        val targets = runner.executionTargets(me).associateBy { it.target }
+        assertThat(targets.getValue(pl.mos.backoffice.shared.runner.RunnerTarget.SHARED).onlineRunners).isGreaterThanOrEqualTo(1)
+        assertThat(targets.getValue(pl.mos.backoffice.shared.runner.RunnerTarget.PERSONAL).pools).isZero()
     }
 
     @Suppress("UNCHECKED_CAST")

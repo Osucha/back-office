@@ -1,5 +1,7 @@
 **/build
-**/out
+# IDE output of the root and the modules only: **/out would also drop the source packages application/port/out
+out
+*/out
 **/bin
 **/.gradle
 **/.kotlin

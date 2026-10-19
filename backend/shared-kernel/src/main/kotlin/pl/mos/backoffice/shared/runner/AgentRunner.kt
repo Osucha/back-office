@@ -12,6 +12,14 @@ import pl.mos.backoffice.shared.platform.WorkRequest
 
 enum class RunnerMode { SPEC_KIT, IMPLEMENT, EVAL_CODING }
 enum class AgentHarness { OPENCODE, CLAUDE_CODE }
+
+/** Where agent jobs of a benchmark run (ADR 0046): the shared runner fleet or the starting user's personal runner. */
+enum class RunnerTarget { SHARED, PERSONAL }
+
+/** What a [RunnerTarget] offers right now: its pools and the runners that called in recently. */
+data class ExecutionTarget(val target: RunnerTarget, val pools: Int, val onlineRunners: Int) {
+    val exists: Boolean get() = pools > 0
+}
 enum class SpecKitPhase { SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT }
 
 /**
@@ -264,6 +272,10 @@ interface AgentRunner {
     fun cancel(jobId: RunnerJobId)
     fun logs(jobId: RunnerJobId, after: Instant?): List<RunnerLogLine>
     fun isAvailable(): Boolean
+
+    /** ADR 0046: the shared fleet and the personal runner of [userId] (when given), with their online runners. */
+    fun executionTargets(userId: UUID?): List<ExecutionTarget> =
+        listOf(ExecutionTarget(RunnerTarget.SHARED, if (isAvailable()) 1 else 0, 0))
 
     /**
      * ADR 0044: the run [runId] ended; its workspaces are released after [keepFor] (zero = now) unless a job of the

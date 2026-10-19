@@ -562,8 +562,8 @@ class BootstrapLocalAdminService(
         val email = local.options.local.bootstrapAdminEmail?.takeIf { it.isNotBlank() } ?: return null
         val password = local.options.local.bootstrapAdminPassword?.takeIf { it.isNotEmpty() }
             ?: throw IllegalStateException("backoffice.auth.local.bootstrap-admin-password must be set together with bootstrap-admin-email")
-        if (!local.users.isEmpty()) return null
         val normalised = User.validEmail(email, "bootstrap-admin-email")
+        if (!local.users.isEmpty()) return adoptExisting(normalised, password)
         local.validatePassword(password, normalised, "bootstrap-admin-password")
         val now = local.clock.now()
         val user = local.users.save(
@@ -583,5 +583,29 @@ class BootstrapLocalAdminService(
         )
         accessVersion.increment()
         return user
+    }
+
+    /**
+     * An installation that drops its identity provider keeps its data: an active platform administrator with the bootstrap
+     * e-mail and no password yet (an OIDC-only account) gets the bootstrap password, to be changed at the first sign-in.
+     * A password once set is never touched, nor is anybody who is not a platform administrator.
+     */
+    private fun adoptExisting(email: String, password: String): User? {
+        val user = local.users.findByEmail(email) ?: return null
+        if (user.status != UserStatus.ACTIVE || local.credentials.find(user.id) != null) return null
+        if (BuiltInRoles.PLATFORM_ADMIN !in grants.find(GrantLevel.USER, user.id.value).roles) return null
+        local.validatePassword(password, email, "bootstrap-admin-password")
+        val now = local.clock.now()
+        val mode = if (user.authMode == AuthMode.OIDC) AuthMode.BOTH else user.authMode
+        val saved = local.users.save(user.copy(authMode = mode))
+        local.credentials.save(LocalCredential.empty(user.id).withPassword(local.hasher.hash(password), now, mustChange = true))
+        local.audit.record(
+            AuditEntry(
+                IdentityAudit.AUTH_MODE_CHANGE, IdentityAudit.ENTITY_USER, user.id.toString(),
+                details = mapOf("authMode" to (user.authMode.name to mode.name), "reason" to "bootstrap-local-admin"), actor = Actor.SYSTEM,
+            ),
+        )
+        accessVersion.increment()
+        return saved
     }
 }

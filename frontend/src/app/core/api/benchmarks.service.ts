@@ -8,6 +8,8 @@ import type {
   Benchmark,
   BenchmarkInput,
   BenchmarkSummary,
+  ExecutionTarget,
+  PreflightResult,
   Leaderboard,
 } from './types';
 
@@ -21,6 +23,16 @@ export class BenchmarksApi {
 
   get(benchmarkId: string): Observable<Benchmark> {
     return this.http.get<Benchmark>(url('benchmarks', benchmarkId));
+  }
+
+  /** ADR 0046: one tiny call per model before a benchmark starts. */
+  preflight(modelProfileIds: string[]): Observable<PreflightResult[]> {
+    return this.http.post<PreflightResult[]>(url('benchmarks', 'preflight'), { modelProfileIds });
+  }
+
+  /** ADR 0046: the shared fleet and your personal runner, with their online runners. */
+  executionTargets(): Observable<ExecutionTarget[]> {
+    return this.http.get<ExecutionTarget[]>(url('benchmarks', 'execution-targets'));
   }
 
   create(input: BenchmarkInput): Observable<Benchmark> {

@@ -1,17 +1,24 @@
 # Local development stack for Back Office.
 #
-#   docker compose -f deploy/compose/docker-compose.yml up -d postgres keycloak   # database + identity provider (default)
-#   docker compose -f deploy/compose/docker-compose.yml up -d minio minio-init     # + object storage (API on the host)
-#   docker compose -f deploy/compose/docker-compose.yml --profile full up -d      # + api, worker, web, runner fleet from source
+#   deploy/compose/start.cmd  (Windows, double-click)  or  sh deploy/compose/start.sh
+#                                                                                  # the whole application in containers, one step
+#   docker compose -f deploy/compose/docker-compose.yml up -d postgres minio minio-init  # infrastructure only (API on the host)
+#   docker compose -f deploy/compose/docker-compose.yml --profile full up -d --build    # + api, worker, web, runner fleet from source
+#   docker compose -f deploy/compose/docker-compose.yml --profile keycloak up -d keycloak  # optional identity provider
 #   docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.langfuse.yml --profile langfuse up -d
 #   docker compose -f deploy/compose/docker-compose.yml --profile quality up -d sonarqube  # SonarQube on :9100 (GR-Q3)
 #
 # Copy .env.example to .env in this directory to set keys and options. The Spring `local` profile
-# starts the services without a profile (postgres, keycloak) automatically through spring-boot-docker-compose.
+# starts the services without a profile (postgres, minio) automatically through spring-boot-docker-compose.
 #
-# Identity (ADR 0016): Keycloak on http://localhost:8180 imports ../keycloak/realm-back-office.json on the
-# first start (realm `back-office`, client `back-office`, test users admin/dev/approver/viewer@example.com,
-# see docs/guides/local-development.md). Admin console: http://localhost:8180/admin (admin / admin).
+# Sign-in: local accounts (ADR 0021) by default. The bootstrap administrator is admin@example.com /
+# ChangeMe-Local-123 (password change forced at the first sign-in); an existing OIDC-only administrator with
+# that e-mail gets this password once.
+#
+# Identity provider (optional, ADR 0016): profile `keycloak` starts Keycloak on http://localhost:8180, which
+# imports ../keycloak/realm-back-office.json (realm `back-office`, test users admin/dev/approver/viewer@example.com,
+# see docs/guides/local-development.md). Set BACKOFFICE_AUTH_OIDC_ISSUER_URI=http://localhost:8180/realms/back-office
+# in .env (OIDC_ISSUER_URI for the API on the host) to log in through it. Admin console: http://localhost:8180/admin.
 #
 # The issuer problem: the browser and the API must see the SAME issuer URL, because Spring Security
 # validates the `iss` claim against the configured issuer-uri. KC_HOSTNAME pins every URL Keycloak
@@ -40,7 +47,8 @@ x-backend-env: &backend-env
   SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-backoffice}
   SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-backoffice}
   # Identity (ADR 0016, 08-identity-and-access.md). Sessions live in PostgreSQL (Spring Session JDBC).
-  BACKOFFICE_AUTH_OIDC_ISSUER_URI: ${BACKOFFICE_AUTH_OIDC_ISSUER_URI:-http://localhost:${KEYCLOAK_PORT:-8180}/realms/back-office}
+  # Empty = no OIDC login (Keycloak is optional, profile `keycloak`); local accounts below.
+  BACKOFFICE_AUTH_OIDC_ISSUER_URI: ${BACKOFFICE_AUTH_OIDC_ISSUER_URI:-}
   BACKOFFICE_AUTH_OIDC_CLIENT_ID: ${BACKOFFICE_AUTH_OIDC_CLIENT_ID:-back-office}
   BACKOFFICE_AUTH_OIDC_CLIENT_SECRET: ${BACKOFFICE_AUTH_OIDC_CLIENT_SECRET:-back-office-dev-secret}
   BACKOFFICE_AUTH_OIDC_SCOPES: ${BACKOFFICE_AUTH_OIDC_SCOPES:-openid,profile,email}
@@ -56,8 +64,8 @@ x-backend-env: &backend-env
   # is the development key of .env.example - never reuse it outside a laptop.
   BACKOFFICE_AUTH_LOCAL_ENABLED: ${BACKOFFICE_AUTH_LOCAL_ENABLED:-true}
   BACKOFFICE_AUTH_LOCAL_SECRET_KEY: ${BACKOFFICE_AUTH_LOCAL_SECRET_KEY:-ZGV2LW9ubHktbG9jYWwtYXV0aC1rZXktMzItYnl0ZXM=}
-  BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL:-}
-  BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD:-}
+  BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+  BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD:-ChangeMe-Local-123}
   BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY: ${BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY:-PT24H}
   BACKOFFICE_AUTH_LOCAL_LOCKOUT_MAX_FAILURES: ${BACKOFFICE_AUTH_LOCAL_LOCKOUT_MAX_FAILURES:-5}
   BACKOFFICE_AUTH_LOCAL_LOCKOUT_DURATION: ${BACKOFFICE_AUTH_LOCAL_LOCKOUT_DURATION:-PT15M}
@@ -72,6 +80,13 @@ x-backend-env: &backend-env
   # Execution plane (ADR 0024): the runner-controller service pulls agent jobs; api and worker start
   # no containers themselves.
   RUNNER_MODE: ${RUNNER_MODE:-FLEET}
+  # Where sandboxes reach the API and its LLM proxy: the published API port on the host, like a personal runner
+  # (sandbox networks are created per job by the controller, outside this compose network).
+  RUNNER_API_URL: ${RUNNER_API_URL:-http://host.docker.internal:${API_PORT:-8081}}
+  # The bundled runner-controller (DOCKER backend, runc) needs the DEV isolation ceiling; laptop only.
+  RUNNER_PLATFORM_ISOLATION: ${RUNNER_PLATFORM_ISOLATION:-DEV}
+  # ADR 0046: pool `default` and this registration token exist after start, so runner-controller registers by itself.
+  RUNNER_LOCAL_FLEET_TOKEN: ${RUNNER_LOCAL_FLEET_TOKEN:-bo_rrt_local-compose-stack-only}
   RUNNER_DEFAULT_TIMEOUT: ${RUNNER_DEFAULT_TIMEOUT:-PT60M}
   # Object storage (service minio, bucket created by minio-init)
   BACKOFFICE_STORAGE_TYPE: ${BACKOFFICE_STORAGE_TYPE:-s3}
@@ -145,6 +160,7 @@ services:
   # container; users you add in the admin console are lost with `docker compose down`).
   # ------------------------------------------------------------------------------------------
   keycloak:
+    profiles: ["keycloak"]
     image: quay.io/keycloak/keycloak:26.7
     container_name: back-office-keycloak
     command: ["start-dev", "--import-realm", "--http-port", "8180", "--health-enabled", "true"]
@@ -254,9 +270,6 @@ services:
     image: alpine/socat:1.8.0.3
     container_name: back-office-api
     command: ["tcp-listen:${KEYCLOAK_PORT:-8180},fork,reuseaddr", "tcp-connect:keycloak:8180"]
-    depends_on:
-      keycloak:
-        condition: service_healthy
     networks:
       default:
         aliases: [api]
@@ -271,9 +284,6 @@ services:
     image: alpine/socat:1.8.0.3
     container_name: back-office-worker
     command: ["tcp-listen:${KEYCLOAK_PORT:-8180},fork,reuseaddr", "tcp-connect:keycloak:8180"]
-    depends_on:
-      keycloak:
-        condition: service_healthy
     networks:
       default:
         aliases: [worker]
@@ -293,8 +303,6 @@ services:
     network_mode: "service:api-netns"
     depends_on:
       postgres:
-        condition: service_healthy
-      keycloak:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
@@ -364,10 +372,11 @@ services:
       default: {}
       sandbox:
         aliases: [egress-proxy]
-    restart: unless-stopped
+    # only carries the image: without a per-job ACL file it stops at once ("static mode needs BO_EGRESS_ACL_FILE")
+    restart: "no"
 
-  # runner-controller, DOCKER backend (laptops only): registers with RUNNER_REGISTRATION_TOKEN (create one
-  # in Administration -> Runner fleet, pool `default`), keeps the runner token in the volume, leases
+  # runner-controller, DOCKER backend (laptops only): registers with the local fleet token (ADR 0046: the api
+  # creates pool `default` and accepts RUNNER_LOCAL_FLEET_TOKEN), keeps the runner token in the volume, leases
   # jobs from the api and runs each in a sandbox container on its own internal network.
   runner-controller:
     profiles: ["full"]
@@ -376,19 +385,26 @@ services:
       dockerfile: runner-controller/Dockerfile
     image: back-office/runner-controller:dev
     container_name: back-office-runner-controller
+    # the Docker socket is root-equivalent anyway; the image's own user cannot open it on Docker Desktop
+    user: "0:0"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       api:
         condition: service_healthy
-      egress-proxy:
-        condition: service_started
     environment:
       # Names read by backend/runner-controller/src/main/resources/application.yaml. The pool comes from
       # the registration token, allowed images from the pool configuration in Back Office.
       RUNNER_BACKOFFICE_URL: ${RUNNER_BACKOFFICE_URL:-http://api:8080}
-      RUNNER_REGISTRATION_TOKEN: ${RUNNER_REGISTRATION_TOKEN:-}
+      RUNNER_REGISTRATION_TOKEN: ${RUNNER_REGISTRATION_TOKEN:-${RUNNER_LOCAL_FLEET_TOKEN:-bo_rrt_local-compose-stack-only}}
       RUNNER_BACKEND: DOCKER
-      RUNNER_TOKEN_FILE: /var/lib/runner-controller/runner-token
+      # Same path inside and outside: the Docker daemon bind-mounts the job directories into sandboxes.
+      RUNNER_TOKEN_FILE: /var/lib/back-office-compose-runner/runner-token
+      RUNNER_DOCKER_WORK_DIR: /var/lib/back-office-compose-runner/jobs
+      RUNNER_DEFAULT_IMAGE: ${RUNNER_DEFAULT_IMAGE:-back-office/runner:dev}
       RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-2}
+      # The API is reached on the host's private address (RUNNER_API_URL): the job's egress proxy must allow it.
+      RUNNER_EGRESS_ALLOW_RANGES: ${RUNNER_EGRESS_ALLOW_RANGES:-172.16.0.0/12,192.168.0.0/16}
       # The DOCKER backend starts its own proxy container and internal network per job (bo-egress-<job>,
       # bo-job-<job>) from this image.
       RUNNER_EGRESS_PROXY_IMAGE: ${RUNNER_EGRESS_PROXY_IMAGE:-back-office/egress-proxy:dev}
@@ -405,7 +421,7 @@ services:
     volumes:
       # SECURITY: full control of the host's Docker daemon (see the note at the top).
       - /var/run/docker.sock:/var/run/docker.sock
-      - runner-controller-data:/var/lib/runner-controller
+      - /var/lib/back-office-compose-runner:/var/lib/back-office-compose-runner
     restart: unless-stopped
 
   # Builds the runner (agent) image so sandboxes find it locally. Runs nothing by itself.
@@ -427,7 +443,6 @@ networks:
 volumes:
   postgres-data:
   minio-data:
-  runner-controller-data:
   sonarqube-data:
   sonarqube-extensions:
   sonarqube-logs:

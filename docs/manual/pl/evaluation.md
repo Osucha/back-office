@@ -127,8 +127,17 @@ je trzyma, zestawem, liczbą modeli, postępem prób i kosztem.
 5. Ustaw **Powtórzenia** (**Repetitions**; 1–5); dwa lub trzy pozwalają zmierzyć, jak stabilne są wyniki.
 6. Dla zadań programistycznych wybierz **Agenta programistycznego** (**Coding harness**): **OpenCode**
    (działa z każdym dostawcą) lub **Claude Code** (tylko Anthropic).
-7. Kliknij **Utwórz i uruchom** (**Create and start**) albo **Zapisz jako szkic** (**Save as draft**),
-   a później **Uruchom benchmark** (**Start benchmark**) na jego stronie.
+7. Gdy zadania obejmują zadania programistyczne, wybierz, gdzie mają działać, w polu **Zadania kodujące
+   uruchamiaj na** (**Coding tasks run on**): **Współdzielone runnery** (**Shared runners**, flota platformy)
+   albo **Mój osobisty runner** (**My personal runner**, Twój komputer, zob.
+   [Osobisty runner](personal-runner.md)). Przy każdej opcji widać, ile runnerów jest online; nieskonfigurowanej
+   nie da się wybrać, a gdy żaden nie jest online, próby kodujące czekają na połączenie runnera (najwyżej 24
+   godziny). Zadania promptowe nie potrzebują runnera.
+8. Kliknij **Utwórz i uruchom** (**Create and start**) albo **Zapisz jako szkic** (**Save as draft**),
+   a później **Uruchom benchmark** (**Start benchmark**) na jego stronie. **Utwórz i uruchom** najpierw wysyła
+   jednolinijkowy test do każdego kandydata i modelu oceniającego (**Sprawdź modele**, **Check models**, robi
+   tylko to): modele, które nie odpowiadają, są wypisane z powodem podanym przez dostawcę, na przykład brak
+   dostępu do modelu albo wyczerpany limit dzienny. Usuń je albo kliknij **Uruchom mimo to** (**Start anyway**).
 
 Formularz pokazuje, ile prób zaplanuje benchmark (zadania × modele × powtórzenia, każda dodatkowo raz
 oceniana). Każda próba kosztuje tokeny kandydata plus tokeny modelu oceniającego; próby programistyczne na
@@ -138,9 +147,16 @@ najmocniejszych modelach mogą kosztować po kilka dolarów każda.
 
 Próby są planowane z góry i wykonywane po kilka naraz dla każdego dostawcy. Jeśli operator skonfigurował
 limity zapytań dostawców, wywołania benchmarku zostawiają rezerwę dla kroków workflowów i przeglądów,
-a próba, która trafi na limit, wraca później do kolejki. Postęp aktualizuje się na żywo. **Anuluj
+a próba, która trafi na limit, wraca później do kolejki. Ponowienie po błędzie samego modelu oceniającego
+zachowuje odpowiedź kandydata i pyta tylko oceniającego. Postęp aktualizuje się na żywo. **Anuluj
 benchmark** (**Cancel benchmark**) zatrzymuje próby w kolejce i działające zadania; zakończone próby
 zachowują wyniki. Pojedyncze nieudane próby nie powodują niepowodzenia benchmarku.
+
+Niektóre błędy powtarzają się przy każdym kolejnym wywołaniu: brak dostępu do modelu, zły klucz, wyczerpany
+limit dzienny dostawcy albo połączenia. Po pierwszym takim błędzie czekające próby tego modelu kończą się od
+razu z komunikatem „skipped, ... failed: ...”, zamiast każda wywoływać dostawcę; gdy tak zawiedzie model
+oceniający, kończą się wszystkie czekające próby. Gdy próby kodujące czekają, bo w miejscu, do którego
+benchmark je wysyła, żaden runner nie jest online, strona benchmarku o tym informuje.
 
 ### Odczytywanie wyników
 

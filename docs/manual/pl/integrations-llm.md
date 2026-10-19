@@ -21,6 +21,11 @@ profilu modelu. Połączeń jednego typu może być kilka, np. OpenRouter i Groq
   i nigdy więcej nie jest pokazywany; zostaw pole puste, żeby go zachować, albo zaznacz **Usuń zapisany klucz**. Bez
   skonfigurowanego klucza tajnego nie da się zapisać kluczy.
 - Zmiany działają bez restartu (na innych replikach w ciągu 30 sekund).
+- **Zapytań na minutę** i **Zapytań na dzień** (opcjonalne, ADR 0046) to limity, których pilnuje Back Office: liczy
+  każde zapytanie przez połączenie (kroki workflowów, benchmarki, agenci w piaskownicach) i zatrzymuje się na limicie,
+  zanim dostawca zacznie odrzucać. Po osiągnięciu limitu dziennego wywołania od razu kończą się błędem aż do 00:00 UTC,
+  więc benchmark pomija pozostałe próby modeli z tego połączenia. Szybki start OpenRouter wpisuje 20 i 50, czyli
+  darmowy poziom bez wykupionych kredytów (1000 dziennie po zakupie 10 kredytów); lista pokazuje dzisiejszą liczbę.
 - **Zmienne środowiskowe** opisane niżej nadal działają jako rezerwa: typ dostawcy bez żadnego połączenia z nich
   korzysta, a strona pokazuje je tylko do odczytu. Preferuj połączenia w interfejsie; zmienne zostaw tylko tam, gdzie
   już ustawia je narzędzie wdrożeniowe.

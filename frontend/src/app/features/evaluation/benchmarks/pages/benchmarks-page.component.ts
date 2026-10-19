@@ -30,9 +30,13 @@ import type {
   BenchmarkInput,
   BenchmarkSummary,
   EvalTask,
+  ExecutionTarget,
   ModelProfile,
+  PreflightResult,
+  RunnerTarget,
   TaskSuiteSummary,
 } from '../../../../core/api/types';
+import { GlyphComponent } from '../../../../core/ui/relay/glyph.component';
 import { IdentityService } from '../../../../core/auth/identity.service';
 import { EventStreamService } from '../../../../core/events/event-stream.service';
 import type { BatonHolder } from '../../../../core/ui/relay/baton';
@@ -83,6 +87,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
     EmptyComponent,
     EvaluationNavComponent,
     FilterBarComponent,
+    GlyphComponent,
     PageHeaderComponent,
     ProvenanceComponent,
     SidePanelComponent,
@@ -329,6 +334,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
               id="b-models"
               name="modelProfileIds"
               [(ngModel)]="form.modelProfileIds"
+              (ngModelChange)="checks.set(null)"
               nzMode="multiple"
               nzShowSearch
               nzPlaceHolder="Pick at least one"
@@ -356,6 +362,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
               id="b-judge"
               name="judgeModelProfileId"
               [(ngModel)]="form.judgeModelProfileId"
+              (ngModelChange)="checks.set(null)"
               nzShowSearch
               nzPlaceHolder="Select the judge"
               i18n-nzPlaceHolder="@@evaluation.benchmarks.form.selectJudge"
@@ -408,7 +415,44 @@ import { categoryLabel } from '../../suites/data/suite-view';
             </nz-form-control>
           </nz-form-item>
         </div>
+        @if (codingSelected()) {
+          <nz-form-item>
+            <nz-form-label i18n="@@evaluation.benchmarks.form.runner"
+              >Coding tasks run on</nz-form-label
+            >
+            <nz-form-control [nzExtra]="runnerHint()">
+              <nz-radio-group
+                name="runnerTarget"
+                [(ngModel)]="form.runnerTarget"
+                aria-label="Coding tasks run on"
+                i18n-aria-label="@@evaluation.benchmarks.form.runner"
+              >
+                @for (t of targets(); track t.target) {
+                  <label nz-radio [nzValue]="t.target" [nzDisabled]="!t.pools">
+                    {{ targetName(t.target) }}
+                    <span class="quiet">({{ targetStatus(t) }})</span>
+                  </label>
+                }
+              </nz-radio-group>
+            </nz-form-control>
+          </nz-form-item>
+        }
         <p class="matrix">{{ matrixText() }}</p>
+        @if (checks(); as cs) {
+          <ul class="checks" aria-live="polite">
+            @for (c of cs; track c.modelProfileId) {
+              <li>
+                <bo-glyph [holder]="c.ok ? 'done' : 'blocked'" [size]="11" />
+                <strong>{{ c.displayName }}</strong>
+                @if (c.ok) {
+                  <span class="quiet" i18n="@@evaluation.benchmarks.form.checkOk">answers</span>
+                } @else {
+                  <span class="err">{{ c.error }}</span>
+                }
+              </li>
+            }
+          </ul>
+        }
       </form>
       <div boPanelFooter class="foot">
         <button
@@ -418,6 +462,16 @@ import { categoryLabel } from '../../suites/data/suite-view';
           i18n="@@evaluation.benchmarks.form.cancel"
         >
           Cancel
+        </button>
+        <button
+          nz-button
+          type="button"
+          (click)="runChecks()"
+          [nzLoading]="checking()"
+          [disabled]="!valid()"
+          i18n="@@evaluation.benchmarks.form.check"
+        >
+          Check models
         </button>
         <span class="spacer"></span>
         <button
@@ -434,14 +488,18 @@ import { categoryLabel } from '../../suites/data/suite-view';
           nz-button
           nzType="primary"
           type="button"
-          (click)="createBenchmark(true)"
-          [nzLoading]="saving() === 'start'"
-          [disabled]="!valid()"
+          (click)="createBenchmark(true, checksFailed())"
+          [nzLoading]="saving() === 'start' || checking()"
+          [disabled]="!valid() || !runnerUsable()"
         >
           <nz-icon nzType="caret-right" />
-          <ng-container i18n="@@evaluation.benchmarks.form.createStart"
-            >Create and start</ng-container
-          >
+          @if (checksFailed()) {
+            <ng-container i18n="@@evaluation.benchmarks.form.startAnyway">Start anyway</ng-container>
+          } @else {
+            <ng-container i18n="@@evaluation.benchmarks.form.createStart"
+              >Create and start</ng-container
+            >
+          }
         </button>
       </div>
     </bo-side-panel>
@@ -467,6 +525,23 @@ import { categoryLabel } from '../../suites/data/suite-view';
         font-size: 13px;
         font-weight: 600;
         color: var(--bo-ink);
+      }
+      .checks {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 4px;
+        font-size: 12.5px;
+      }
+      .checks li {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .checks .err {
+        color: var(--bo-ink-2);
+        overflow-wrap: anywhere;
       }
       .foot {
         display: flex;
@@ -504,6 +579,12 @@ export class BenchmarksPageComponent {
   readonly suites = signal<TaskSuiteSummary[]>([]);
   readonly profiles = signal<ModelProfile[]>([]);
   readonly suiteTasks = signal<EvalTask[]>([]);
+  /** ADR 0046: the shared fleet and the caller's personal runner, with their online runners. */
+  readonly targets = signal<ExecutionTarget[]>([]);
+  /** ADR 0046: result of the check of the selected models and judge; null = not checked since the last change. */
+  readonly checks = signal<PreflightResult[] | null>(null);
+  readonly checking = signal(false);
+  readonly checksFailed = computed(() => !!this.checks()?.some((c) => !c.ok));
   readonly tasksLoading = signal(false);
   readonly canRun = computed(() => this.identity.can('evaluation.run'));
   readonly baton = (b: BenchmarkSummary) => benchmarkBaton(b.status);
@@ -545,6 +626,7 @@ export class BenchmarksPageComponent {
     judgeModelProfileId: string | null;
     repetitions: number;
     codingHarness: 'OPENCODE' | 'CLAUDE_CODE';
+    runnerTarget: RunnerTarget;
   } = this.emptyForm();
 
   readonly nav = listNavigation({
@@ -582,6 +664,65 @@ export class BenchmarksPageComponent {
       $localize`:@@evaluation.benchmarks.form.matrix:{count, plural, one {# attempt} other {# attempts}} will run (${tasks}:tasks: × ${models}:models: × ${reps}:repetitions:), each also judged once.`,
       { count: this.matrixSize() },
     );
+  }
+
+  /** Whether the selected tasks (all of the suite when none is picked) include agent coding jobs. */
+  codingSelected(): boolean {
+    const picked = this.form.taskIds;
+    return this.suiteTasks().some((t) => t.kind === 'CODING_JOB' && (!picked.length || picked.includes(t.id!)));
+  }
+
+  private target(): ExecutionTarget | undefined {
+    return this.targets().find((t) => t.target === this.form.runnerTarget);
+  }
+
+  /** Coding tasks need a pool where they can go; prompt tasks need none. */
+  runnerUsable(): boolean {
+    return !this.codingSelected() || !!this.target()?.pools;
+  }
+
+  targetName(t: RunnerTarget): string {
+    return t === 'PERSONAL'
+      ? $localize`:@@evaluation.benchmarks.form.runnerPersonal:My personal runner`
+      : $localize`:@@evaluation.benchmarks.form.runnerShared:Shared runners`;
+  }
+
+  targetStatus(t: ExecutionTarget): string {
+    if (!t.pools) return $localize`:@@evaluation.benchmarks.form.runnerNone:not set up`;
+    return icu($localize`:@@evaluation.benchmarks.form.runnerOnline:{count, plural, =0 {none online} one {# online} other {# online}}`, {
+      count: t.onlineRunners,
+    });
+  }
+
+  runnerHint(): string {
+    const t = this.target();
+    if (!t?.pools) {
+      return this.form.runnerTarget === 'PERSONAL'
+        ? $localize`:@@evaluation.benchmarks.form.runnerHintNoPersonal:You have no personal runner: set one up under My account, or choose the shared runners.`
+        : $localize`:@@evaluation.benchmarks.form.runnerHintNoShared:No shared runner pool exists: an administrator creates one under Runner fleet, or choose your personal runner.`;
+    }
+    if (!t.onlineRunners) {
+      return $localize`:@@evaluation.benchmarks.form.runnerHintOffline:No runner is online there now: coding tasks wait until one connects (at most 24 hours).`;
+    }
+    return $localize`:@@evaluation.benchmarks.form.runnerHint:Agent coding tasks run in sandboxes there; prompt tasks need no runner.`;
+  }
+
+  /** ADR 0046: one tiny call per candidate and the judge; [then] gets whether all answered. */
+  runChecks(then?: (allOk: boolean) => void): void {
+    const ids = [...new Set([...this.form.modelProfileIds, this.form.judgeModelProfileId].filter((x): x is string => !!x))];
+    if (!ids.length) return;
+    this.checking.set(true);
+    this.api.preflight(ids).subscribe({
+      next: (results) => {
+        this.checking.set(false);
+        this.checks.set(results);
+        then?.(results.every((r) => r.ok));
+      },
+      error: () => {
+        this.checking.set(false);
+        then?.(false);
+      },
+    });
   }
 
   repetitions(n: number | null | undefined): string {
@@ -665,7 +806,19 @@ export class BenchmarksPageComponent {
   openCreate(): void {
     this.form = this.emptyForm();
     this.suiteTasks.set([]);
+    this.checks.set(null);
     this.creating.set(true);
+    this.api.executionTargets().subscribe({
+      next: (targets) => {
+        this.targets.set(targets);
+        // a personal runner that is online first, else wherever a pool exists
+        const personal = targets.find((t) => t.target === 'PERSONAL');
+        const shared = targets.find((t) => t.target === 'SHARED');
+        if (personal?.onlineRunners && !shared?.onlineRunners) this.form.runnerTarget = 'PERSONAL';
+        else if (!shared?.pools && personal?.pools) this.form.runnerTarget = 'PERSONAL';
+      },
+      error: () => this.targets.set([]),
+    });
   }
 
   closeCreate(): void {
@@ -704,11 +857,22 @@ export class BenchmarksPageComponent {
     );
   }
 
-  createBenchmark(start = false): void {
+  createBenchmark(start = false, skipChecks = false): void {
     if (!this.isValid()) {
       this.message.warning(
         $localize`:@@evaluation.benchmarks.form.required:Name, suite, at least one model and a judge are required`,
       );
+      return;
+    }
+    if (start && !skipChecks) {
+      // ADR 0046: a model without access or quota shows up before hundreds of attempts fail
+      this.runChecks((allOk) => {
+        if (allOk) this.createBenchmark(true, true);
+        else
+          this.message.warning(
+            $localize`:@@evaluation.benchmarks.form.checkFailed:Some models did not answer; see below. Remove them or start anyway.`,
+          );
+      });
       return;
     }
     const input: BenchmarkInput = {
@@ -719,6 +883,7 @@ export class BenchmarksPageComponent {
       repetitions: this.form.repetitions,
       codingHarness: this.form.codingHarness,
       taskIds: this.form.taskIds,
+      runnerTarget: this.form.runnerTarget,
     };
     this.saving.set(start ? 'start' : 'draft');
     this.api.create(input).subscribe({
@@ -763,6 +928,7 @@ export class BenchmarksPageComponent {
       judgeModelProfileId: null as string | null,
       repetitions: 1,
       codingHarness: 'OPENCODE' as 'OPENCODE' | 'CLAUDE_CODE',
+      runnerTarget: 'SHARED' as RunnerTarget,
     };
   }
 }

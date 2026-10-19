@@ -27,6 +27,7 @@ import type {
   Attempt,
   AttemptDetail,
   Benchmark,
+  ExecutionTarget,
   Leaderboard,
   LeaderboardRow,
 } from '../../../../core/api/types';
@@ -207,10 +208,30 @@ const PROVIDERS: Record<string, string> = {
             <dd>{{ b.codingHarness === 'CLAUDE_CODE' ? 'Claude Code' : 'OpenCode' }}</dd>
           </div>
           <div>
+            <dt i18n="@@evaluation.benchmark.runner">Coding tasks run on</dt>
+            <dd>
+              @if (b.runnerTarget === 'PERSONAL') {
+                <ng-container i18n="@@evaluation.benchmark.runnerPersonal">personal runner</ng-container>
+              } @else {
+                <ng-container i18n="@@evaluation.benchmark.runnerShared">shared runners</ng-container>
+              }
+            </dd>
+          </div>
+          <div>
             <dt i18n="@@evaluation.benchmark.totalCost">Total cost</dt>
             <dd><bo-cost [value]="b.totalCost" /></dd>
           </div>
         </dl>
+
+        @if (waitingForRunner()) {
+          <div class="runner-notice" role="note">
+            <bo-glyph holder="idle" [size]="12" />
+            <span i18n="@@evaluation.benchmark.waitingForRunner"
+              >Coding attempts are waiting for a runner: none is online where this benchmark sends them.
+              They start when one connects and fail after 24 hours.</span
+            >
+          </div>
+        }
 
         <nz-tabs [nzSelectedIndex]="tabIndex()" (nzSelectedIndexChange)="setTab($event)">
           <nz-tab nzTitle="Leaderboard" i18n-nzTitle="@@evaluation.benchmark.tab.leaderboard">
@@ -604,6 +625,18 @@ const PROVIDERS: Record<string, string> = {
       .sep {
         margin: 0 6px;
       }
+      .runner-notice {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 8px 12px;
+        margin: 0 0 16px;
+        border: 1px solid var(--bo-line);
+        border-radius: var(--bo-radius-card);
+        background: var(--bo-surface);
+        font-size: 13px;
+        color: var(--bo-ink-2);
+      }
       .facts {
         display: flex;
         flex-wrap: wrap;
@@ -769,6 +802,15 @@ export class BenchmarkDetailPageComponent {
   readonly notFound = signal(false);
   readonly leaderboard = signal<Leaderboard | null>(null);
   readonly attempts = signal<Attempt[]>([]);
+  /** ADR 0046: the runners where this benchmark's coding jobs go, for the "waiting for a runner" notice. */
+  readonly targets = signal<ExecutionTarget[]>([]);
+  readonly waitingForRunner = computed(() => {
+    const b = this.benchmark();
+    if (b?.status !== 'RUNNING') return false;
+    const target = this.targets().find((t) => t.target === (b.runnerTarget ?? 'SHARED'));
+    if (!target || target.onlineRunners > 0) return false;
+    return this.attempts().some((a) => a.kind === 'CODING_JOB' && (a.status === 'RUNNING' || a.status === 'PENDING'));
+  });
   readonly attemptsLoading = signal(false);
   readonly attemptsLoaded = signal(false);
   readonly busy = signal<'start' | 'cancel' | null>(null);
@@ -961,6 +1003,8 @@ export class BenchmarkDetailPageComponent {
     this.api.get(id).subscribe({
       next: (b) => {
         this.benchmark.set(b);
+        if (b.status === 'RUNNING')
+          this.api.executionTargets().subscribe({ next: (t) => this.targets.set(t), error: () => undefined });
         this.notFound.set(false);
         this.breadcrumb.set([
           { label: $localize`:@@evaluation.title:Evaluation`, link: '/evaluation/suites' },

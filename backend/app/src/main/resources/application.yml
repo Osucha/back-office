@@ -181,6 +181,9 @@ backoffice:
       controller-image: ${RUNNER_PERSONAL_CONTROLLER_IMAGE:back-office/runner-controller:dev}
       runner-image: ${RUNNER_PERSONAL_RUNNER_IMAGE:back-office/runner:dev}
       egress-proxy-image: ${RUNNER_PERSONAL_EGRESS_PROXY_IMAGE:back-office/egress-proxy:dev}
+    # ADR 0046, laptop stacks only: shared pool + registration token of the bundled runner-controller (blank = off)
+    local-fleet:
+      registration-token: ${RUNNER_LOCAL_FLEET_TOKEN:}
   integrations:
     jira:
       url: ${JIRA_URL:}
@@ -271,7 +274,8 @@ backoffice:
     runner-token-secret: ${RUNNER_TOKEN_SECRET:dev-runner-token-secret}
   auth:
     oidc:
-      issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8180/realms/back-office}
+      # empty = local accounts only; with Keycloak (compose --profile keycloak): http://localhost:8180/realms/back-office
+      issuer-uri: ${OIDC_ISSUER_URI:}
       client-id: ${OIDC_CLIENT_ID:back-office}
       client-secret: ${OIDC_CLIENT_SECRET:back-office-dev-secret}
     registration: OPEN
@@ -280,7 +284,8 @@ backoffice:
     local:
       # fixed development key - never use it outside the local profile
       secret-key: ${BACKOFFICE_AUTH_LOCAL_SECRET_KEY:ZGV2LW9ubHktbG9jYWwtYXV0aC1rZXktMzItYnl0ZXM=}
-      bootstrap-admin-email: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL:owner@example.com}
+      # an existing OIDC-only platform admin with this e-mail gets the password once (forced change at sign-in)
+      bootstrap-admin-email: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL:admin@example.com}
       bootstrap-admin-password: ${BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD:ChangeMe-Local-123}
   runner:
     mode: ${RUNNER_MODE:FLEET}

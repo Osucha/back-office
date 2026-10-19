@@ -35,6 +35,9 @@ interface RunnerNodeStore {
 interface RegistrationTokenStore {
     fun insert(token: RegistrationToken, tokenHash: String, createdBy: String?)
 
+    /** ADR 0046: makes the token with [tokenHash] usable for [poolId] until [expiresAt], also when it was used before. */
+    fun rearm(id: UUID, poolId: String, tokenHash: String, now: Instant, expiresAt: Instant)
+
     /** Atomically marks an unused, unexpired token as used; null when there is none. */
     fun consume(tokenHash: String, now: Instant, runnerId: UUID): RegistrationToken?
 }

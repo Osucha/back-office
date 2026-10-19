@@ -21,6 +21,7 @@ import { SidePanelComponent } from '../../../core/ui/relay/side-panel.component'
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { providerLabel } from '../data/model-format';
 import { PROVIDER_TYPES, PRESETS, connectionProblems, emptyConnection, type ConnectionPreset } from '../data/llm-providers';
+import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 
 /**
  * LLM providers (ADR 0045): connections to model vendors with their API keys, added here instead of environment
@@ -37,6 +38,7 @@ import { PROVIDER_TYPES, PRESETS, connectionProblems, emptyConnection, type Conn
     NzFormModule,
     NzIconModule,
     NzInputModule,
+    NzInputNumberModule,
     NzSelectModule,
     NzSwitchModule,
     NzTableModule,
@@ -107,6 +109,11 @@ import { PROVIDER_TYPES, PRESETS, connectionProblems, emptyConnection, type Conn
                   }
                   @if (p.hasApiKey) {
                     <span class="muted small" i18n="@@models.providers.state.keySet"> · key set</span>
+                  }
+                  @if (p.requestsPerDay) {
+                    <div class="small" [class.bad]="(p.requestsToday ?? 0) >= p.requestsPerDay" [class.muted]="(p.requestsToday ?? 0) < p.requestsPerDay">
+                      {{ todayLabel(p) }}
+                    </div>
                   }
                 </td>
                 <td>
@@ -188,6 +195,24 @@ import { PROVIDER_TYPES, PRESETS, connectionProblems, emptyConnection, type Conn
                   <span i18n="@@models.providers.form.clearKey"> Remove the stored key</span></label
                 >
               }
+              <div class="grid">
+                <nz-form-item>
+                  <nz-form-label nzFor="lp-rpm" i18n="@@models.providers.form.rpm">Requests per minute</nz-form-label>
+                  <nz-form-control>
+                    <nz-input-number nzId="lp-rpm" name="rpm" [nzMin]="1" [nzPrecision]="0" style="width: 100%" [ngModel]="d.requestsPerMinute" (ngModelChange)="patch({ requestsPerMinute: $event || null })" [nzDisabled]="!canManage()" />
+                  </nz-form-control>
+                </nz-form-item>
+                <nz-form-item>
+                  <nz-form-label nzFor="lp-rpd" i18n="@@models.providers.form.rpd">Requests per day</nz-form-label>
+                  <nz-form-control>
+                    <nz-input-number nzId="lp-rpd" name="rpd" [nzMin]="1" [nzPrecision]="0" style="width: 100%" [ngModel]="d.requestsPerDay" (ngModelChange)="patch({ requestsPerDay: $event || null })" [nzDisabled]="!canManage()" />
+                  </nz-form-control>
+                </nz-form-item>
+              </div>
+              <p class="muted small limits-hint" i18n="@@models.providers.form.limitsHint">
+                Optional. Back Office counts every request through this connection (steps, benchmarks, agents) and stops at
+                the limit instead of letting the provider refuse; the day ends at 00:00 UTC. Empty = no limit.
+              </p>
               <nz-form-item>
                 <nz-form-control>
                   <nz-switch name="enabled" [ngModel]="d.enabled !== false" (ngModelChange)="patch({ enabled: $event })" [nzDisabled]="!canManage()" />
@@ -403,7 +428,10 @@ export class LlmProvidersPageComponent {
     }
     this.viewing.set(null);
     this.editing.set(p);
-    this.draft.set({ key: p.key ?? '', name: p.name, provider: p.provider, baseUrl: p.baseUrl ?? null, apiKey: null, clearApiKey: false, enabled: p.enabled });
+    this.draft.set({
+      key: p.key ?? '', name: p.name, provider: p.provider, baseUrl: p.baseUrl ?? null, apiKey: null, clearApiKey: false, enabled: p.enabled,
+      requestsPerMinute: p.requestsPerMinute ?? null, requestsPerDay: p.requestsPerDay ?? null,
+    });
   }
 
   close(): void {
@@ -419,7 +447,17 @@ export class LlmProvidersPageComponent {
   }
 
   applyPreset(p: ConnectionPreset): void {
-    this.patch({ provider: p.provider, name: p.label, key: p.id, baseUrl: p.baseUrl });
+    this.patch({
+      provider: p.provider, name: p.label, key: p.id, baseUrl: p.baseUrl,
+      requestsPerMinute: p.requestsPerMinute ?? null, requestsPerDay: p.requestsPerDay ?? null,
+    });
+  }
+
+  /** ADR 0046: "today 37 / 50" against the daily limit. */
+  todayLabel(p: LlmProvider): string {
+    const used = p.requestsToday ?? 0;
+    const limit = p.requestsPerDay ?? 0;
+    return $localize`:@@models.providers.today:today ${used}:used: / ${limit}:limit: requests`;
   }
 
   save(): void {

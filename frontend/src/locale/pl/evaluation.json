@@ -323,5 +323,23 @@
   "evaluation.task.noChanges": "Brak zmian",
   "evaluation.task.notSaved": "Jeszcze niezapisane",
   "evaluation.task.discard": "Odrzuć zmiany",
-  "evaluation.task.close": "Zamknij"
+  "evaluation.task.close": "Zamknij",
+
+  "evaluation.benchmark.runner": "Zadania kodujące na",
+  "evaluation.benchmark.runnerPersonal": "osobistym runnerze",
+  "evaluation.benchmark.runnerShared": "współdzielonych runnerach",
+  "evaluation.benchmark.waitingForRunner": "Próby kodujące czekają na runnera: w miejscu, do którego ten benchmark je wysyła, żaden nie jest online. Ruszą, gdy któryś się połączy, a po 24 godzinach zakończą się błędem.",
+  "evaluation.benchmarks.form.runner": "Zadania kodujące uruchamiaj na",
+  "evaluation.benchmarks.form.checkOk": "odpowiada",
+  "evaluation.benchmarks.form.check": "Sprawdź modele",
+  "evaluation.benchmarks.form.startAnyway": "Uruchom mimo to",
+  "evaluation.benchmarks.form.runnerPersonal": "Mój osobisty runner",
+  "evaluation.benchmarks.form.runnerShared": "Współdzielone runnery",
+  "evaluation.benchmarks.form.runnerNone": "nieskonfigurowany",
+  "evaluation.benchmarks.form.runnerOnline": "{count, plural, =0 {żaden online} one {# online} few {# online} many {# online} other {# online}}",
+  "evaluation.benchmarks.form.runnerHintNoPersonal": "Nie masz osobistego runnera: skonfiguruj go w Moim koncie albo wybierz współdzielone runnery.",
+  "evaluation.benchmarks.form.runnerHintNoShared": "Nie ma puli współdzielonych runnerów: administrator tworzy ją we Flocie runnerów; możesz też wybrać swój osobisty runner.",
+  "evaluation.benchmarks.form.runnerHintOffline": "Żaden runner nie jest tam teraz online: zadania kodujące poczekają, aż któryś się połączy (najwyżej 24 godziny).",
+  "evaluation.benchmarks.form.runnerHint": "Zadania kodujące agentów działają tam w piaskownicach; zadania promptowe nie potrzebują runnera.",
+  "evaluation.benchmarks.form.checkFailed": "Część modeli nie odpowiedziała (szczegóły niżej). Usuń je albo uruchom mimo to."
 }

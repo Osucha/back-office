@@ -29,6 +29,8 @@ import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.runner.AgentRunner
 import java.util.concurrent.CopyOnWriteArrayList
 import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.runner.ExecutionTarget
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 /**
  * Minimal boot for evaluation-adapters integration tests: this context only, with stand-ins for the
@@ -58,6 +60,7 @@ class EvaluationTestApplication {
     @Bean
     fun agentRunner(): AgentRunner = mockk<AgentRunner>(relaxed = true).also {
         every { it.isAvailable() } returns true
+        every { it.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.SHARED, 1, 1))
     }
 
     /** Holds every evaluation permission by default; tests switch `user` to check denials. */

@@ -30,6 +30,8 @@ import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.usage.UsageKind
 import java.time.Duration
+import pl.mos.backoffice.shared.runner.ExecutionTarget
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 class BenchmarkServiceTest {
 
@@ -52,7 +54,14 @@ class BenchmarkServiceTest {
     fun setUp() {
         listOf(judge, a, b).forEach { profiles.save(it) }
         suites.save(suite)
-        every { runner.isAvailable() } returns true
+        targets(shared = 1, personal = 0)
+    }
+
+    private fun targets(shared: Int, personal: Int) {
+        every { runner.executionTargets(any()) } returns listOf(
+            ExecutionTarget(RunnerTarget.SHARED, shared, 0),
+            ExecutionTarget(RunnerTarget.PERSONAL, personal, 0),
+        )
     }
 
     private fun command(repetitions: Int = 1) = ManageBenchmarks.BenchmarkCommand(
@@ -77,12 +86,16 @@ class BenchmarkServiceTest {
     }
 
     @Test
-    fun `start refuses coding tasks without a runner and disabled models`() {
-        every { runner.isAvailable() } returns false
+    fun `start refuses coding tasks without a runner pool of the chosen target and disabled models`() {
+        targets(shared = 0, personal = 1)
         val draft = service.create(command())
-        assertThatThrownBy { service.start(draft.benchmark.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("runner")
+        assertThatThrownBy { service.start(draft.benchmark.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("no shared runner pool")
+        val personal = service.create(command().copy(runnerTarget = RunnerTarget.PERSONAL))
+        assertThat(personal.benchmark.runnerTarget).isEqualTo(RunnerTarget.PERSONAL)
+        targets(shared = 1, personal = 0)
+        assertThatThrownBy { service.start(personal.benchmark.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("no personal runner")
+        assertThat(service.executionTargets().map { it.target }).containsExactly(RunnerTarget.SHARED, RunnerTarget.PERSONAL)
 
-        every { runner.isAvailable() } returns true
         profiles.save(a.copy(enabled = false))
         assertThatThrownBy { service.start(draft.benchmark.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("disabled")
     }
@@ -161,5 +174,21 @@ class BenchmarkServiceTest {
         val fresh = modelService.create(ManageModelProfiles.ProfileCommand("C", a.ref, a.pricing))
         modelService.delete(fresh.id)
         assertThat(profiles.findById(fresh.id)).isNull()
+    }
+
+    @Test
+    fun `preflight checks every model of a benchmark once with evaluation run (ADR 0046)`() {
+        val gateway = mockk<LlmGateway>()
+        every { gateway.chat(a.ref, any()) } answers { LlmResult("OK", null, TokenUsage(10, 2), latency = Duration.ofMillis(5), modelRef = a.ref) }
+        every { gateway.chat(b.ref, any()) } throws IntegrationException("openai_compatible", "HTTP 429 (quota used up)", persistent = true)
+        val runner = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_RUN), audit)
+
+        val results = runner.preflight(listOf(a.id, b.id, a.id))
+
+        assertThat(results.map { it.first.displayName to it.second.ok }).containsExactly("A" to true, "B" to false)
+        assertThat(results.last().second.error).contains("quota")
+        verify(exactly = 1) { gateway.chat(a.ref, any()) }
+        val viewer = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_VIEW), audit)
+        assertThatThrownBy { viewer.preflight(listOf(a.id)) }.isInstanceOf(pl.mos.backoffice.shared.InsufficientPermissionException::class.java)
     }
 }

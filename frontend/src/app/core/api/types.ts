@@ -158,6 +158,11 @@ export type BenchmarkInput = S['BenchmarkInput'];
 export type BenchmarkStatus = S['BenchmarkStatus'];
 export type BenchmarkSummary = S['BenchmarkSummary'];
 export type Benchmark = S['Benchmark'];
+export type ExecutionTarget = S['ExecutionTarget'];
+export type RunnerTarget = S['RunnerTarget'];
+export type PreflightResult = NonNullable<
+  operations['benchmarkPreflight']['responses']['200']['content']['application/json']
+>[number];
 export type AttemptStatus = S['AttemptStatus'];
 export type Attempt = S['Attempt'];
 export type AttemptDetail = S['AttemptDetail'];

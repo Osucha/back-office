@@ -10,6 +10,7 @@ import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import java.time.Instant
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 enum class BenchmarkStatus {
     DRAFT, RUNNING, COMPLETED, FAILED, CANCELLED;
@@ -72,6 +73,8 @@ data class Benchmark(
     val judgeModelProfileId: ModelProfileId,
     val repetitions: Int = 1,
     val codingHarness: AgentHarness = AgentHarness.OPENCODE,
+    /** ADR 0046: where its coding jobs run, the shared fleet or the personal runner of the user who created it. */
+    val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
     val status: BenchmarkStatus = BenchmarkStatus.DRAFT,
     val createdAt: Instant,
     val startedAt: Instant? = null,
@@ -124,6 +127,7 @@ data class Benchmark(
             now: Instant,
             id: BenchmarkId = BenchmarkId.new(),
             actor: Actor? = null,
+            runnerTarget: RunnerTarget = RunnerTarget.SHARED,
         ): Benchmark = Benchmark(
             id = id,
             name = name,
@@ -133,6 +137,7 @@ data class Benchmark(
             judgeModelProfileId = judgeModelProfileId,
             repetitions = repetitions,
             codingHarness = codingHarness,
+            runnerTarget = runnerTarget,
             createdAt = now,
             createdBy = actor,
             updatedBy = actor,

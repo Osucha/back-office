@@ -27,7 +27,11 @@ object ProviderErrorClassifier {
     /** Message of a retryable transport failure that carries no message of its own. */
     private const val IO_ERROR = "I/O error"
 
-    data class Verdict(val message: String, val retryable: Boolean, val status: Int? = null)
+    /** [persistent]: the same call keeps failing until somebody acts (key, access, model id, a daily quota used up). */
+    data class Verdict(val message: String, val retryable: Boolean, val status: Int? = null, val persistent: Boolean = false)
+
+    /** A 429 that will not clear within minutes: a daily or monthly quota, or no credit left (e.g. OpenRouter free-models-per-day). */
+    private val QUOTA = Regex("(?i)per[-_ ]?day|daily|quota|insufficient[_ ]credits|billing")
 
     fun classify(error: Throwable): Verdict {
         var current: Throwable? = error
@@ -57,15 +61,22 @@ object ProviderErrorClassifier {
     }
 
     fun status(status: Int, message: String?): Verdict {
+        val quota = status == 429 && message != null && QUOTA.containsMatchIn(message)
         val hint = when (status) {
             401 -> "authentication failed, check the API key"
+            402 -> "payment required, the account has no credit"
             403 -> "forbidden, the key lacks access to this model or organisation"
             404 -> "not found, check the model id"
-            429 -> "rate limited"
+            429 -> if (quota) "quota used up, it resets later" else "rate limited"
             in 500..599 -> "provider error"
             else -> "request rejected"
         }
         val detail = message?.take(500)?.takeIf { it.isNotBlank() }
-        return Verdict("HTTP $status ($hint)" + (detail?.let { ": $it" } ?: ""), retryable = status == 429 || status >= 500, status = status)
+        return Verdict(
+            "HTTP $status ($hint)" + (detail?.let { ": $it" } ?: ""),
+            retryable = (status == 429 && !quota) || status >= 500,
+            status = status,
+            persistent = quota || status in setOf(401, 402, 403, 404),
+        )
     }
 }

@@ -180,6 +180,18 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
         )
     }
 
+    override fun rearm(id: UUID, poolId: String, tokenHash: String, now: Instant, expiresAt: Instant) {
+        db.update(
+            """
+            INSERT INTO runner_registration_token (id, pool_id, token_hash, created_at, expires_at, created_by)
+            VALUES (:id, :pool, :hash, :now, :expiresAt, 'local-fleet')
+            ON CONFLICT (token_hash) DO UPDATE SET pool_id = EXCLUDED.pool_id, expires_at = EXCLUDED.expires_at, used_at = NULL, runner_id = NULL
+            """.trimIndent(),
+            MapSqlParameterSource().addValue("id", id).addValue("pool", poolId).addValue("hash", tokenHash)
+                .addValue("now", now.ts()).addValue("expiresAt", expiresAt.ts()),
+        )
+    }
+
     override fun consume(tokenHash: String, now: Instant, runnerId: UUID): RegistrationToken? =
         db.query(
             """

@@ -42,6 +42,7 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.ThreadLocalRandom
+import pl.mos.backoffice.llm.connections.ConnectionQuota
 
 /**
  * `LlmGateway` on Spring AI (ADR 0003). One lazily built `ChatModel` per configured provider; every call
@@ -71,6 +72,8 @@ class SpringAiLlmGateway(
      * `(context, estimatedCostUsd, estimatedTokens)`; throws when a hard limit would be crossed.
      */
     private val budgetPrecheck: (UsageContext, java.math.BigDecimal, Long) -> Unit = { _, _, _ -> },
+    /** ADR 0046: request limits of provider connections. */
+    private val quota: ConnectionQuota = ConnectionQuota.NONE,
 ) : LlmGateway {
 
     private val log = LoggerFactory.getLogger(SpringAiLlmGateway::class.java)
@@ -90,6 +93,7 @@ class SpringAiLlmGateway(
             system,
             model.connection?.let { "provider connection $it ($system) is missing, disabled or has no API key / base URL" }
                 ?: "provider is not configured on this server (add a connection under Settings, LLM providers)",
+            persistent = true,
         )
         val options = merge(model.options, request.optionsOverride)
         val chatOptions = optionsMapper.map(model, options, request.responseSchema)
@@ -108,7 +112,8 @@ class SpringAiLlmGateway(
         val promptChars = request.messages.sumOf { it.content.length.toLong() } + (request.responseSchema?.length?.toLong() ?: 0L)
         val estimatedCost = catalog.findPricing(model)?.costOf(TokenUsage((promptChars + 3) / 4, maxOutput.toLong()))?.amount ?: java.math.BigDecimal.ZERO
         budgetPrecheck(request.usageContext, estimatedCost, ProviderRateLimiter.estimateTokens(promptChars, maxOutput))
-        val permit =rateLimiter.acquire(provider, CallPriority.of(request.usageContext.kind), ProviderRateLimiter.estimateTokens(promptChars, maxOutput))
+        val permit = rateLimiter.acquire(provider, CallPriority.of(request.usageContext.kind), ProviderRateLimiter.estimateTokens(promptChars, maxOutput))
+        quota.admit(endpoint)
 
         val semaphore = semaphores.computeIfAbsent(endpoint.id) { Semaphore(properties.concurrencyPerProvider.coerceAtLeast(1), true) }
         if (!semaphore.tryAcquire(properties.defaultTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
@@ -194,7 +199,7 @@ class SpringAiLlmGateway(
             val cause = e.cause ?: e
             if (cause is IntegrationException) throw cause
             val verdict = ProviderErrorClassifier.classify(cause)
-            throw IntegrationException(system, verdict.message, cause, verdict.retryable)
+            throw IntegrationException(system, verdict.message, cause, verdict.retryable, verdict.persistent)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             future.cancel(true)

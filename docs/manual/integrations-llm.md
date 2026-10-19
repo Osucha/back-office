@@ -21,6 +21,11 @@ a model profile picks one in its field **Connection** (empty = the first connect
   and never shown again; leave the field empty to keep it, or tick **Remove the stored key**. Without that secret key
   configured, keys cannot be stored.
 - Changes apply without a restart (other replicas within 30 seconds).
+- **Requests per minute** and **Requests per day** (optional, ADR 0046) are limits Back Office keeps for the
+  connection: it counts every request through it (workflow steps, benchmarks, agents in sandboxes) and stops at the
+  limit instead of letting the provider refuse. A reached daily limit fails at once until 00:00 UTC, so benchmarks
+  skip the remaining attempts of the models on that connection. The OpenRouter quick start fills in 20 and 50, the
+  free tier without purchased credits (1000 a day after buying 10 credits); the list shows today's count.
 - **Environment variables** below still work as a fallback: a provider type without any connection uses them, and
   the page lists them read-only. Prefer connections in the UI; keep the variables only where deployment tooling
   already sets them.

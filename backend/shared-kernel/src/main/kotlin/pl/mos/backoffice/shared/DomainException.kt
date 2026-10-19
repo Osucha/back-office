@@ -20,7 +20,12 @@ class ValidationException(val errors: List<FieldError>) :
 }
 
 /** A call to an external system (LLM provider, GitLab, Jira, Kubernetes) failed. */
-class IntegrationException(val system: String, message: String, cause: Throwable? = null, val retryable: Boolean = false) :
+/**
+ * A call to another system failed. [retryable]: a later attempt may succeed (rate limit, 5xx, connection). [persistent]:
+ * every further call of the same kind fails the same way until somebody acts (bad key, no access to the model, a daily
+ * quota used up, a missing connection), so callers stop sending more (ADR 0046).
+ */
+class IntegrationException(val system: String, message: String, cause: Throwable? = null, val retryable: Boolean = false, val persistent: Boolean = false) :
     DomainException("$system: $message", cause)
 
 /** The caller lacks [permission] (on [projectId] when project-scoped). Mapped to 403. */

@@ -2,9 +2,23 @@
 
 ## When to use this guide
 
-You want to run Back Office on your laptop: PostgreSQL, Keycloak and MinIO in Docker, the Kotlin API and
-the Angular UI from source, and optionally the runner fleet (runner-controller with the DOCKER backend and
-the Smokescreen egress proxy) so `IMPLEMENT` / `SPEC_KIT` steps and coding benchmarks work end to end.
+You want to run Back Office on your laptop: PostgreSQL and MinIO in Docker, the Kotlin API and the Angular UI
+from source, and optionally the runner fleet (runner-controller with the DOCKER backend and the Smokescreen
+egress proxy) so `IMPLEMENT` / `SPEC_KIT` steps and coding benchmarks work end to end. Keycloak is optional.
+
+## 0. Everything at once (just use it)
+
+To run the application rather than develop it, start the whole stack in Docker in one step (ADR 0046):
+double-click `deploy/compose/start.cmd` on Windows, or run `sh deploy/compose/start.sh`. It builds the images
+(several minutes the first time), starts PostgreSQL, MinIO, api, worker, web and the runner fleet, waits for the
+API and opens `http://localhost:8080`. `deploy/compose/stop.cmd` stops it; data stays in the Docker volumes.
+
+- Sign in with `admin@example.com` / `ChangeMe-Local-123` and set your own password at once. An existing
+  administrator `admin@example.com` who signed in through Keycloak before keeps every project and setting: the
+  bootstrap gives that account this password once (an existing password is never overwritten).
+- The bundled runner-controller registers by itself: the API creates the shared pool `default` and accepts the
+  local registration token `RUNNER_LOCAL_FLEET_TOKEN` (laptop only).
+- The stack uses port 8080 (web) and 8081 (API): stop `./gradlew :app:bootRun` first, they share the database.
 
 ## Prerequisites
 
@@ -20,12 +34,17 @@ the Smokescreen egress proxy) so `IMPLEMENT` / `SPEC_KIT` steps and coding bench
 Repository layout is described in the [README](../../README.md). All commands below are run from the
 repository root unless stated otherwise.
 
-## 1. Database and identity provider
+## 1. Database, object storage and (optionally) the identity provider
 
 ```bash
-docker compose -f deploy/compose/docker-compose.yml up -d postgres keycloak minio minio-init
-docker compose -f deploy/compose/docker-compose.yml ps        # wait until they are "healthy" (Keycloak ~40-60 s)
+docker compose -f deploy/compose/docker-compose.yml up -d postgres minio minio-init
+docker compose -f deploy/compose/docker-compose.yml ps        # wait until they are "healthy"
+# optional: Keycloak, then set OIDC_ISSUER_URI (bootRun) / BACKOFFICE_AUTH_OIDC_ISSUER_URI (compose .env)
+docker compose -f deploy/compose/docker-compose.yml --profile keycloak up -d keycloak
 ```
+
+Without Keycloak (the default) local accounts sign in: `admin@example.com` / `ChangeMe-Local-123` (the
+bootstrap administrator, password change forced at the first sign-in).
 
 | Service | URL | Notes |
 |---|---|---|
@@ -67,10 +86,11 @@ cd backend
 
 The `local` profile (see `application.yml`):
 
-- points OIDC at the compose Keycloak: issuer `http://localhost:8180/realms/back-office`, client
-  `back-office` / `back-office-dev-secret`, bootstrap admin `admin@example.com`, non-Secure cookie,
+- signs in with local accounts; the bootstrap administrator is `admin@example.com` / `ChangeMe-Local-123`.
+  OIDC is off unless `OIDC_ISSUER_URI` is set (Keycloak: `http://localhost:8180/realms/back-office`, client
+  `back-office` / `back-office-dev-secret`); bootstrap OIDC admin `admin@example.com`, non-Secure cookie,
 - sets `RUNNER_MODE=DOCKER`,
-- starts the compose services without a profile (`postgres`, `keycloak`) automatically
+- starts the compose services without a profile (`postgres`, `minio`) automatically
   (spring-boot-docker-compose, `start_only`),
 - logs `pl.mos.backoffice` at DEBUG.
 
@@ -191,10 +211,12 @@ container `localhost` is the container itself, so the API runs in the network na
 issuer `http://localhost:8180/realms/back-office` (details at the top of `docker-compose.yml`).
 
 The worker runs in the network namespace of its own socat container (`worker-netns`) for the same
-reason. The runner-controller registers with `RUNNER_REGISTRATION_TOKEN` from `.env`: log in, open
-**Administration > Runner fleet**, create a registration token for pool `default`, put it into `.env`
-and `docker compose ... up -d runner-controller`. It stores the runner token in the volume
-`runner-controller-data`, so the registration token is needed only once.
+reason. The runner-controller registers by itself (ADR 0046): the API creates the shared pool `default` and accepts
+the local registration token `RUNNER_LOCAL_FLEET_TOKEN` (both services read the same default). It stores the
+runner token in `/var/lib/back-office-compose-runner` of the Docker host (the same path holds the job directories the
+daemon mounts into sandboxes); after losing it the controller registers again with the same
+token. Set `RUNNER_REGISTRATION_TOKEN` in `.env` to register with a token from **Administration > Runner fleet**
+instead.
 
 Security: the `full` profile mounts `/var/run/docker.sock` into the **runner-controller** (not into api
 or worker) so it can start sandbox containers. Anyone who can reach that container controls your Docker
@@ -303,8 +325,8 @@ API runs on the host the endpoint is `http://localhost:3000/api/public/otel/v1/t
   `--add-host host.docker.internal:host-gateway` (the `full` profile does this) or use the compose
   network and `http://back-office-api:8080`.
 - **runner-controller exits with `registration failed`** - `RUNNER_REGISTRATION_TOKEN` empty, already
-  used or for another pool; create a new one. Delete the volume `back-office_runner-controller-data` to
-  force a new registration.
+  used or for another pool; create a new one. Delete `/var/lib/back-office-compose-runner/runner-token` on the Docker
+  host (`docker run --rm -v /var/lib/back-office-compose-runner:/d alpine rm /d/runner-token`) to force a new registration.
 - **Agent cannot download dependencies** - the host is not in the job's `sandboxPolicy.network.allow`
   (or the pool ceiling); `docker logs back-office-egress-proxy` shows every decision.
 - **Uploads fail with `NoSuchBucket`** - `minio-init` did not run (`docker compose ... up minio-init`).

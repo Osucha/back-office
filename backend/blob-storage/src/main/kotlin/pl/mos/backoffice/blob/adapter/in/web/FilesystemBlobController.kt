@@ -2,6 +2,7 @@ package pl.mos.backoffice.blob.adapter.`in`.web
 
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -16,9 +17,10 @@ import java.net.URLDecoder
  * Serves the presigned links of [FilesystemBlobStore] (`/blobs/{key}?method&expires&signature`). The HMAC
  * signature is the authorisation, as with S3 presigned URLs, so the path is outside `/api`; a missing,
  * wrong or expired signature answers 403 without revealing whether the key exists. Registered only when
- * `backoffice.storage.type=filesystem`.
+ * `backoffice.storage.type=filesystem`: component scanning also finds it, hence the same condition here.
  */
 @RestController
+@ConditionalOnProperty(prefix = "backoffice.storage", name = ["type"], havingValue = "filesystem", matchIfMissing = true)
 class FilesystemBlobController(private val store: FilesystemBlobStore) {
 
     @GetMapping("/blobs/**")

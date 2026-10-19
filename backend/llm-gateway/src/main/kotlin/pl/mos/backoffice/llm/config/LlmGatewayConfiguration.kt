@@ -39,6 +39,8 @@ import pl.mos.backoffice.llm.connections.LlmProviderService
 import pl.mos.backoffice.llm.connections.ProviderModelLister
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.security.SecretVault
+import pl.mos.backoffice.llm.connections.ConnectionQuota
+import pl.mos.backoffice.llm.connections.JdbcConnectionQuota
 
 /**
  * Wires the gateway. Provider credentials are read from the standard Spring AI properties
@@ -60,11 +62,15 @@ class LlmGatewayConfiguration {
     @Bean
     fun providerModelLister(json: JsonMapper) = ProviderModelLister(json)
 
+    /** ADR 0046: request limits of the connections, counted in the database for every replica. */
+    @Bean
+    fun connectionQuota(jdbc: JdbcClient, clock: Clock): ConnectionQuota = JdbcConnectionQuota(jdbc, clock)
+
     @Bean
     fun llmProviderService(
         store: LlmProviderConnectionStore, vault: ObjectProvider<SecretVault>, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>, clock: Clock,
-        cache: CachedProviderConnections, registry: ProviderRegistry, lister: ProviderModelLister,
-    ) = LlmProviderService(store, vault.getIfAvailable(), gate, audit.getIfAvailable { AuditPort.NOOP }, clock, cache, registry, lister)
+        cache: CachedProviderConnections, registry: ProviderRegistry, lister: ProviderModelLister, quota: ConnectionQuota,
+    ) = LlmProviderService(store, vault.getIfAvailable(), gate, audit.getIfAvailable { AuditPort.NOOP }, clock, cache, registry, lister, quota)
 
     /**
      * Provider endpoints (ADR 0045): connections added in Back Office first, the environment variables of each type as a
@@ -122,6 +128,7 @@ class LlmGatewayConfiguration {
         rateLimiter: ProviderRateLimiter,
         budgets: ObjectProvider<EnforceBudgets>,
         gate: AuthorizationGate,
+        quota: ConnectionQuota,
     ): LlmGateway = SpringAiLlmGateway(
         registry = registry,
         factory = factory,
@@ -134,6 +141,7 @@ class LlmGatewayConfiguration {
         observationRegistry = observationRegistry.getIfAvailable { ObservationRegistry.NOOP },
         rateLimiter = rateLimiter,
         budgetPrecheck = budgetPrecheck(budgets.getIfAvailable(), gate),
+        quota = quota,
     )
 
     /** In-process calls stop at the same hard limits as the sandbox proxy (ADR 0025). */

@@ -1674,6 +1674,39 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BenchmarkInput' } } } }
       responses:
         '201': { description: Created (DRAFT), content: { application/json: { schema: { $ref: '#/components/schemas/Benchmark' } } } }
+  /benchmarks/preflight:
+    post:
+      tags: [benchmarks]
+      operationId: benchmarkPreflight
+      description: 'ADR 0046: one tiny call per model (candidates and judge) before a benchmark starts, so a model without access or with its quota used up shows up first (evaluation.run). At most 20 models.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [modelProfileIds], properties: { modelProfileIds: { type: array, items: { type: string, format: uuid } } } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [modelProfileId, displayName, ok]
+                  properties:
+                    modelProfileId: { type: string, format: uuid }
+                    displayName: { type: string }
+                    ok: { type: boolean }
+                    latencyMs: { type: integer, format: int64 }
+                    error: { type: string, nullable: true }
+  /benchmarks/execution-targets:
+    get:
+      tags: [benchmarks]
+      operationId: benchmarkExecutionTargets
+      description: 'ADR 0046: where coding jobs of the caller''s benchmarks can run now: the shared runner fleet and the caller''s personal runner (evaluation.view).'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ExecutionTarget' } } } } }
   /benchmarks/{benchmarkId}:
     parameters: [ { name: benchmarkId, in: path, required: true, schema: { type: string, format: uuid } } ]
     get:
@@ -2282,6 +2315,8 @@ components:
         apiKey: { type: string, nullable: true, writeOnly: true }
         clearApiKey: { type: boolean, default: false }
         enabled: { type: boolean, default: true }
+        requestsPerMinute: { type: integer, minimum: 1, nullable: true, description: 'ADR 0046: limit Back Office keeps for this connection (null = none)' }
+        requestsPerDay: { type: integer, minimum: 1, nullable: true, description: 'ADR 0046: per UTC day; e.g. 50 for OpenRouter free models without credits' }
     LlmProvider:
       type: object
       required: [name, provider, hasApiKey, enabled, usable, source]
@@ -2297,6 +2332,9 @@ components:
         source: { type: string, enum: [DATABASE, ENVIRONMENT], description: 'ENVIRONMENT = read-only fallback from environment variables' }
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], nullable: true }
+        requestsPerMinute: { type: integer, nullable: true }
+        requestsPerDay: { type: integer, nullable: true }
+        requestsToday: { type: integer, nullable: true, description: 'requests sent through the connection today (UTC)' }
     ProviderModels:
       type: object
       required: [ok, models]
@@ -4238,6 +4276,19 @@ components:
         repetitions: { type: integer, minimum: 1, maximum: 5, default: 1 }
         codingHarness: { type: string, enum: [OPENCODE, CLAUDE_CODE], default: OPENCODE }
         taskIds: { type: array, items: { type: string, format: uuid } }
+        runnerTarget: { $ref: '#/components/schemas/RunnerTarget' }
+    RunnerTarget:
+      type: string
+      enum: [SHARED, PERSONAL]
+      default: SHARED
+      description: 'ADR 0046: where coding jobs run: the shared runner fleet or the personal runner of the user who created the benchmark'
+    ExecutionTarget:
+      type: object
+      required: [target, pools, onlineRunners]
+      properties:
+        target: { $ref: '#/components/schemas/RunnerTarget' }
+        pools: { type: integer, description: 'runner pools of the target (0 = none set up)' }
+        onlineRunners: { type: integer, description: 'runners that called in within the online window' }
     BenchmarkStatus:
       type: string
       enum: [DRAFT, RUNNING, COMPLETED, FAILED, CANCELLED]
@@ -4277,6 +4328,7 @@ components:
         modelDisplayName: { type: string }
         repetition: { type: integer }
         status: { $ref: '#/components/schemas/AttemptStatus' }
+        kind: { type: string, enum: [PROMPT, CODING_JOB] }
         score: { type: number, nullable: true }
         passed: { type: boolean, nullable: true }
         usage: { $ref: '#/components/schemas/TokenUsage' }

@@ -13,7 +13,10 @@ import pl.mos.backoffice.shared.platform.JobTokenScope
 import pl.mos.backoffice.shared.platform.JobCredential
 import pl.mos.backoffice.shared.platform.JobTokenVerifier
 import pl.mos.backoffice.shared.platform.WorkRequest
+import pl.mos.backoffice.runner.domain.RunnerPool
 import pl.mos.backoffice.shared.runner.AgentRunner
+import pl.mos.backoffice.shared.runner.ExecutionTarget
+import pl.mos.backoffice.shared.runner.RunnerTarget
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerLogLine
@@ -125,6 +128,15 @@ class AgentJobService(
 
     /** Jobs always queue; the platform can run agents as soon as at least one pool exists. */
     override fun isAvailable(): Boolean = pools.findAll().isNotEmpty()
+
+    /** ADR 0046: shared pools (every pool without an owner) and [userId]'s personal pool, with their online runners. */
+    override fun executionTargets(userId: UUID?): List<ExecutionTarget> {
+        val all = pools.findAll()
+        val online = lifecycle.onlineRunnersByPool()
+        fun target(kind: RunnerTarget, of: List<RunnerPool>) = ExecutionTarget(kind, of.size, of.sumOf { online[it.id] ?: 0 })
+        return listOf(target(RunnerTarget.SHARED, all.filterNot { it.personal })) +
+            (userId?.let { owner -> listOf(target(RunnerTarget.PERSONAL, all.filter { it.ownerUserId == owner })) } ?: emptyList())
+    }
 
     /** ADR 0044: the run ended; its workspaces go at [keepFor] from now (a retry before that keeps using them). */
     override fun releaseWorkspaces(runId: UUID, keepFor: Duration) {

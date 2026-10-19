@@ -18,6 +18,7 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 /*
  * JPA rows of V200__evaluation_schema.sql. JSONB columns are kept as JSON strings and (de)serialised by
@@ -99,6 +100,7 @@ class BenchmarkEntity(
     @Column(name = "judge_model_profile_id", nullable = false) val judgeModelProfileId: UUID = UUID.randomUUID(),
     @Column(nullable = false) val repetitions: Int = 1,
     @Enumerated(EnumType.STRING) @Column(name = "coding_harness", nullable = false, length = 32) val codingHarness: AgentHarness = AgentHarness.OPENCODE,
+    @Enumerated(EnumType.STRING) @Column(name = "runner_target", nullable = false, length = 16) val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) val status: BenchmarkStatus = BenchmarkStatus.DRAFT,
     @Column(name = "created_at", nullable = false) val createdAt: Instant = Instant.EPOCH,
     @Column(name = "started_at") val startedAt: Instant? = null,

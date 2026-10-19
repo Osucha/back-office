@@ -27,6 +27,9 @@ data class LlmProviderInputDto(
     val apiKey: String? = null,
     val clearApiKey: Boolean = false,
     val enabled: Boolean = true,
+    /** ADR 0046: optional limits Back Office keeps (null = none). */
+    val requestsPerMinute: Int? = null,
+    val requestsPerDay: Int? = null,
 )
 
 data class LlmProviderActorDto(val kind: String, val id: UUID?, val displayName: String)
@@ -43,6 +46,9 @@ data class LlmProviderDto(
     val source: String,
     val updatedAt: Instant?,
     val updatedBy: LlmProviderActorDto?,
+    val requestsPerMinute: Int?,
+    val requestsPerDay: Int?,
+    val requestsToday: Int?,
 )
 
 data class ProviderModelInfoDto(
@@ -101,7 +107,7 @@ class LlmProviderController(private val service: LlmProviderService) {
 
     private fun command(body: LlmProviderInputDto) = LlmProviderCommand(
         key = body.key, name = body.name, provider = provider(body.provider), baseUrl = body.baseUrl, apiKey = body.apiKey,
-        clearApiKey = body.clearApiKey, enabled = body.enabled,
+        clearApiKey = body.clearApiKey, enabled = body.enabled, requestsPerMinute = body.requestsPerMinute, requestsPerDay = body.requestsPerDay,
     )
 
     private fun provider(value: String): Provider =
@@ -110,6 +116,7 @@ class LlmProviderController(private val service: LlmProviderService) {
     private fun toDto(v: LlmProviderView) = LlmProviderDto(
         v.id, v.key, v.name, v.provider.name, v.baseUrl, v.hasApiKey, v.enabled, v.usable, v.source.name, v.updatedAt,
         v.updatedBy?.let { LlmProviderActorDto(it.kind.name, it.userId, it.displayName) },
+        v.requestsPerMinute, v.requestsPerDay, v.requestsToday,
     )
 
     private fun toDto(m: ProviderModels) = ProviderModelsDto(m.ok, m.models, m.error, m.details.map(::toDto))

@@ -29,7 +29,9 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
+import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.usage.PageOf
 import java.util.UUID
 
@@ -111,6 +113,27 @@ class FleetAdminService(
             if (jobs.hasLiveJobs(poolId)) throw InvalidStateException("runner pool $poolId still has queued or running agent jobs; cancel them or wait")
             pools.delete(poolId)
             audit.record(AuditEntry("RUNNER_POOL_DELETE", "RunnerPool", poolId))
+        }
+    }
+
+    /**
+     * ADR 0046, laptop stacks only: the shared pool [poolId] (created when missing) and the configured registration token,
+     * usable again after every start, so the stack's bundled runner-controller registers without a manual step.
+     */
+    @SystemOperation("startup: local stack fleet from configuration (runner.local-fleet); never exposed through a controller")
+    fun bootstrapLocalFleet(poolId: String, registrationToken: String, allowedImages: List<String>, maxConcurrentJobs: Int) {
+        tx.inTransaction {
+            val now = lifecycle.now()
+            if (pools.find(poolId) == null) {
+                pools.insert(
+                    RunnerPool(
+                        poolId, "Local runners", "The runner-controller of this docker compose stack (ADR 0046)", emptyMap(), SandboxPolicy.DEFAULT,
+                        allowedImages, 0, maxConcurrentJobs, emptySet(), now, now,
+                    ),
+                )
+                audit.record(AuditEntry("RUNNER_POOL_CREATE", "RunnerPool", poolId, details = mapOf("name" to "Local runners", "reason" to "local-fleet")))
+            }
+            registrations.rearm(UUID.randomUUID(), poolId, FleetTokens.hash(registrationToken), now, now.plus(LOCAL_TOKEN_VALIDITY))
         }
     }
 
@@ -247,6 +270,7 @@ class FleetAdminService(
     companion object {
         const val MAX_PAGE_SIZE = 200
         private const val PERSONAL_PREFIX = "personal-"
+        private val LOCAL_TOKEN_VALIDITY: java.time.Duration = java.time.Duration.ofDays(365)
     }
 }
 

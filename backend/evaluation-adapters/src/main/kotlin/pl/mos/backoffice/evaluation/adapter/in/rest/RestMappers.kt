@@ -117,6 +117,7 @@ object RestMappers {
         repetitions = d.repetitions,
         codingHarness = d.codingHarness,
         taskIds = d.taskIds.map { EvalTaskId(it) },
+        runnerTarget = d.runnerTarget,
     )
 
     fun benchmarkSummary(d: ManageBenchmarks.BenchmarkDetails) = BenchmarkSummaryDto(
@@ -136,6 +137,7 @@ object RestMappers {
         startedAt = d.benchmark.startedAt,
         finishedAt = d.benchmark.finishedAt,
         createdBy = actor(d.benchmark.createdBy),
+        runnerTarget = d.benchmark.runnerTarget,
     )
 
     fun benchmark(d: ManageBenchmarks.BenchmarkDetails, configured: (ModelProfile) -> Boolean): BenchmarkDto {
@@ -145,6 +147,7 @@ object RestMappers {
             judgeModelProfileId = s.judgeModelProfileId, repetitions = s.repetitions, codingHarness = s.codingHarness, taskIds = s.taskIds,
             status = s.status, progress = s.progress, totalCost = s.totalCost, createdAt = s.createdAt, startedAt = s.startedAt, finishedAt = s.finishedAt,
             createdBy = s.createdBy,
+            runnerTarget = s.runnerTarget,
             models =d.models.map { profile(it, configured(it)) },
             judge = d.judge?.let { profile(it, configured(it)) },
         )
@@ -152,7 +155,7 @@ object RestMappers {
 
     fun attempt(a: Attempt) = AttemptDto(
         id = a.id.value, taskId = a.taskId.value, taskName = a.taskName, category = a.category, difficulty = a.difficulty,
-        modelProfileId = a.modelProfileId.value, modelDisplayName = a.modelDisplayName, repetition = a.repetition, status = a.status,
+        modelProfileId = a.modelProfileId.value, modelDisplayName = a.modelDisplayName, repetition = a.repetition, status = a.status, kind = a.kind,
         score = a.score, passed = a.passed, usage = usage(a.usage), cost = money(a.cost), durationMs = a.durationMs,
         startedAt = a.startedAt, finishedAt = a.finishedAt,
     )

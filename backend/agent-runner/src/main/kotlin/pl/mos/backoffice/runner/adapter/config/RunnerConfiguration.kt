@@ -3,7 +3,9 @@ package pl.mos.backoffice.runner.adapter.config
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.context.ApplicationListener
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -171,6 +173,16 @@ class RunnerConfiguration {
 
     @Bean
     fun leaseScanScheduler(maintenance: MaintainAgentJobs, gate: AuthorizationGate, props: RunnerProperties) = LeaseScanScheduler(maintenance, gate, props)
+
+    /** ADR 0046: the shared pool and registration token of a local stack (`backoffice.runner.local-fleet`), after the migrations. */
+    @Bean
+    fun localFleetBootstrap(admin: FleetAdminService, props: RunnerProperties) = ApplicationListener<ApplicationReadyEvent> {
+        val fleet = props.localFleet
+        if (fleet.registrationToken.isBlank()) return@ApplicationListener
+        runCatching { admin.bootstrapLocalFleet(fleet.poolId, fleet.registrationToken, props.personal.allowedImages, fleet.maxConcurrentJobs) }
+            .onSuccess { log.info("local fleet: pool {} accepts the configured registration token", fleet.poolId) }
+            .onFailure { log.warn("local fleet bootstrap failed: {}", it.toString()) }
+    }
 
     companion object {
         /** After Spring Security's chain (-100). */

@@ -16,6 +16,8 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.runner.ExecutionTarget
+import pl.mos.backoffice.shared.runner.RunnerTarget
 import java.time.Instant
 
 /** Use case: create, start, cancel and inspect benchmarks. */
@@ -33,6 +35,8 @@ interface ManageBenchmarks {
     fun attempts(id: BenchmarkId, taskId: EvalTaskId? = null, modelProfileId: ModelProfileId? = null): List<Attempt>
     fun attempt(id: BenchmarkId, attemptId: AttemptId): Attempt
     fun leaderboard(id: BenchmarkId): Leaderboard
+    /** ADR 0046: where the caller's benchmarks can run coding jobs now (shared fleet, own personal runner). */
+    fun executionTargets(): List<ExecutionTarget>
 
     data class BenchmarkCommand(
         val name: String,
@@ -42,6 +46,7 @@ interface ManageBenchmarks {
         val repetitions: Int = 1,
         val codingHarness: AgentHarness = AgentHarness.OPENCODE,
         val taskIds: List<EvalTaskId> = emptyList(),
+        val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
     )
 
     /** Benchmark plus what the UI needs next to it. `models`/`judge` are null when a profile was deleted. */

@@ -41,6 +41,7 @@ import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
+import pl.mos.backoffice.shared.runner.RunnerTarget
 
 /**
  * Runs one attempt synchronously on the caller's thread (docs/architecture/04-model-evaluation.md):
@@ -88,12 +89,17 @@ class ExecuteAttemptService(
                 TaskKind.CODING_JOB -> runCodingJob(attempt, benchmark, task, candidate, judge, suite.codingScoreWeights, context) { attempt = it }
             }
         } catch (e: IntegrationException) {
+            // the stored state: JUDGING with the candidate's answer when only the judge failed (ADR 0046)
+            val current = benchmarks.findAttempt(attempt.id)?.takeIf { !it.status.terminal } ?: attempt
             if (allowRetry && e.retryable) {
-                // Rate limited or a transient provider error (ADR 0020): back to the queue, not a failed attempt.
-                val requeued = benchmarks.saveAttempt(attempt.requeue())
+                // Rate limited or a transient provider error (ADR 0020): back to the queue, not a failed attempt; the
+                // candidate's answer stays, so the retry asks only the judge again.
+                val requeued = benchmarks.saveAttempt(current.requeue())
                 return AttemptExecutionReport(requeued, null, null, retry = true, retryReason = e.message)
             }
-            attempt.fail(e.message ?: e.javaClass.simpleName, clock.now())
+            val judgeFailed = current.status == AttemptStatus.JUDGING
+            if (e.persistent) skipSiblings(benchmark, current, judgeFailed, e.message ?: e.javaClass.simpleName)
+            current.fail((if (judgeFailed) "judge: " else "") + (e.message ?: e.javaClass.simpleName), clock.now())
         } catch (e: Exception) {
             attempt.fail(e.message ?: e.javaClass.simpleName, clock.now())
         }
@@ -103,18 +109,22 @@ class ExecuteAttemptService(
     }
 
     private fun runPrompt(attempt: Attempt, task: EvalTask, candidate: ModelProfile, judge: ModelProfile, context: UsageContext): Attempt {
-        val candidateResult = gateway.chat(candidate.ref, LlmRequest.of(JudgePrompts.CANDIDATE_SYSTEM_PROMPT, task.prompt, context))
-        val judging = benchmarks.saveAttempt(
-            attempt.judging(
-                output = candidateResult.content,
-                verification = null,
-                usage = candidateResult.usage,
-                cost = candidate.pricing.costOf(candidateResult.usage),
-            ),
-        )
+        // a retry after the judge failed keeps the answer it already has (ADR 0046): the candidate is not asked twice
+        val judging = attempt.output?.let { benchmarks.saveAttempt(attempt.judging(it, null, attempt.usage, attempt.cost)) } ?: run {
+            val candidateResult = gateway.chat(candidate.ref, LlmRequest.of(JudgePrompts.CANDIDATE_SYSTEM_PROMPT, task.prompt, context))
+            benchmarks.saveAttempt(
+                attempt.judging(
+                    output = candidateResult.content,
+                    verification = null,
+                    usage = candidateResult.usage,
+                    cost = candidate.pricing.costOf(candidateResult.usage),
+                ),
+            )
+        }
+        val answer = judging.output.orEmpty()
         val blocks = PromptDataBlocks.random()
-        val signals = InjectionDetector.scan(candidateResult.content, "candidate_output")
-        val (judged, judgeCost) = judge(judge, JudgePrompts.promptTaskJudgeMessage(task, candidateResult.content, blocks), blocks, context)
+        val signals = InjectionDetector.scan(answer, "candidate_output")
+        val (judged, judgeCost) = judge(judge, JudgePrompts.promptTaskJudgeMessage(task, answer, blocks), blocks, context)
         val verdict = JudgePrompts.guard(judged, signals)
         val combined = ScoreCombiner.prompt(verdict.score)
         return judging.succeed(combined.score, combined.passed, verdict, judgeCost, clock.now())
@@ -150,6 +160,8 @@ class ExecuteAttemptService(
             jobLabel = "eval-${attempt.id.short}-${attempt.repetition}",
             // benchmarks only read the repository: the runner cluster hands out its read-only token (ADR 0031)
             gitAccess = GitAccess.READ,
+            // ADR 0046: the creator's personal runner when the benchmark asks for it, else the shared fleet
+            personalRunnerOf = benchmark.createdBy?.userId?.takeIf { benchmark.runnerTarget == RunnerTarget.PERSONAL },
         )
         val existing = attempt.runnerJobId
         if (existing == null) {
@@ -204,6 +216,20 @@ class ExecuteAttemptService(
         appendLine()
         appendLine(result.summary ?: "(no summary)")
     }.trim()
+
+    /**
+     * ADR 0046: a failure that every further call repeats (no access to the model, a daily quota used up, a bad key) ends
+     * the attempts still waiting for the same model, or all of them when the judge failed, instead of sending each one
+     * to the provider. Attempts already handed to a runner finish on their own.
+     */
+    private fun skipSiblings(benchmark: Benchmark, failed: Attempt, judgeFailed: Boolean, reason: String) {
+        val now = clock.now()
+        val note = if (judgeFailed) "skipped, the judge failed: $reason" else "skipped, ${failed.modelDisplayName} failed: $reason"
+        benchmarks.findAttempts(benchmark.id)
+            .filter { it.id != failed.id && it.status == AttemptStatus.PENDING && it.runnerJobId == null }
+            .filter { judgeFailed || it.modelProfileId == failed.modelProfileId }
+            .forEach { benchmarks.saveAttempt(it.fail(note, now)) }
+    }
 
     private fun afterTerminal(benchmark: Benchmark, attempt: Attempt): AttemptExecutionReport {
         val now = clock.now()
