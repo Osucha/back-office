@@ -20,88 +20,15 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Starter catalogue and suite. Prices are USD per million tokens as published in 2026-06; the owner
- * maintains them afterwards. Coding tasks point at a placeholder repository that must be replaced.
+ * Starter task suite. Coding tasks point at a placeholder repository that must be replaced. Model profiles are not
+ * seeded any more (ADR 0045): they are created from the models of the connected providers.
  */
 object StarterContent {
 
     const val PLACEHOLDER_REPO_URL = "https://gitlab.example.com/samples/kotlin-sample.git"
     const val STARTER_SUITE_NAME = "Starter: SDLC tasks"
 
-    private const val PRICE_NOTE = "Prices in USD per million tokens, exact list prices as of 2026-06. Verify against the provider price list before relying on cost figures."
-    private const val PLACEHOLDER_NOTE = "Pricing is a placeholder (0/0): verify current pricing on the provider price list and update this profile."
     private const val REPO_NOTE = "This task runs against the placeholder repository $PLACEHOLDER_REPO_URL, which does not exist. Point `repository.url` at a real Kotlin/Gradle sample repository the runner can clone (a small Spring Boot service with a green `./gradlew test` is ideal) before starting a benchmark."
-
-    fun modelProfiles(now: Instant): List<ModelProfile> = listOf(
-        profile(
-            "Claude Fable 5.1", Provider.ANTHROPIC, "claude-fable-5-1", Reasoning.HIGH,
-            Pricing(BigDecimal("10"), BigDecimal("50"), cacheReadPerMTok = BigDecimal("0.25")),
-            setOf(Capability.CODING, Capability.REASONING, Capability.LONG_CONTEXT, Capability.TOOLS, Capability.VISION),
-            200_000, "Frontier model, default judge candidate. $PRICE_NOTE", now,
-        ),
-        profile(
-            "Claude Opus 5", Provider.ANTHROPIC, "claude-opus-5", Reasoning.HIGH,
-            Pricing(BigDecimal("5"), BigDecimal("25"), cacheReadPerMTok = BigDecimal("0.5")),
-            setOf(Capability.CODING, Capability.REASONING, Capability.LONG_CONTEXT, Capability.TOOLS, Capability.VISION),
-            200_000, PRICE_NOTE, now,
-        ),
-        profile(
-            "Claude Sonnet 5", Provider.ANTHROPIC, "claude-sonnet-5", Reasoning.MEDIUM,
-            Pricing(BigDecimal("2"), BigDecimal("10")),
-            setOf(Capability.CODING, Capability.REASONING, Capability.TOOLS, Capability.VISION),
-            200_000, PRICE_NOTE, now,
-        ),
-        profile(
-            "Claude Haiku 4.5", Provider.ANTHROPIC, "claude-haiku-4-5", Reasoning.MEDIUM,
-            Pricing(BigDecimal("1"), BigDecimal("5")),
-            setOf(Capability.CODING, Capability.TOOLS, Capability.CHEAP),
-            200_000, PRICE_NOTE, now,
-        ),
-        profile(
-            "GPT-5", Provider.OPENAI, "gpt-5", Reasoning.MEDIUM,
-            Pricing.FREE,
-            setOf(Capability.CODING, Capability.REASONING, Capability.TOOLS, Capability.VISION),
-            400_000, PLACEHOLDER_NOTE, now,
-        ),
-        profile(
-            "Gemini 2.5 Pro", Provider.GOOGLE, "gemini-2.5-pro", Reasoning.MEDIUM,
-            Pricing.FREE,
-            setOf(Capability.CODING, Capability.REASONING, Capability.LONG_CONTEXT, Capability.TOOLS, Capability.VISION),
-            1_000_000, PLACEHOLDER_NOTE, now,
-        ),
-        profile(
-            "Mistral Large", Provider.MISTRAL, "mistral-large-latest", Reasoning.MEDIUM,
-            Pricing.FREE,
-            setOf(Capability.CODING, Capability.TOOLS),
-            128_000, PLACEHOLDER_NOTE, now,
-        ),
-        profile(
-            "Qwen3 32B (Ollama, local)", Provider.OLLAMA, "qwen3:32b", Reasoning.MEDIUM,
-            Pricing.FREE,
-            setOf(Capability.CODING, Capability.CHEAP),
-            32_000, "Runs on the local Ollama server (OLLAMA_BASE_URL). No token cost; hardware time is not accounted.", now,
-        ),
-    )
-
-    private fun profile(
-        name: String,
-        provider: Provider,
-        modelId: String,
-        reasoning: Reasoning,
-        pricing: Pricing,
-        capabilities: Set<Capability>,
-        contextWindow: Int,
-        notes: String,
-        now: Instant,
-    ) = ModelProfile.create(
-        displayName = name,
-        ref = ModelRef(provider, modelId, ModelOptions(reasoning = reasoning, maxOutputTokens = 8_192)),
-        pricing = pricing,
-        capabilities = capabilities,
-        contextWindow = contextWindow,
-        notes = notes,
-        now = now,
-    )
 
     fun starterSuite(now: Instant): TaskSuite = TaskSuite.create(
         name = STARTER_SUITE_NAME,

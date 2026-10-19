@@ -19,37 +19,20 @@ class SeedStarterContentServiceTest {
     private val service = SeedStarterContentService(profiles, suites, Clock.fixed(Fixtures.now))
 
     @Test
-    fun `seeds eight profiles and a twelve task suite once`() {
+    fun `seeds the twelve task suite once and no model profiles (ADR 0045)`() {
         val first = service.seedIfEmpty()
-        assertThat(first.profilesCreated).isEqualTo(8)
+        assertThat(first.profilesCreated).isZero()
         assertThat(first.suitesCreated).isEqualTo(1)
 
         val second = service.seedIfEmpty()
-        assertThat(second.profilesCreated).isZero()
         assertThat(second.suitesCreated).isZero()
-        assertThat(profiles.count()).isEqualTo(8)
+        assertThat(profiles.count()).isZero()
         assertThat(suites.count()).isEqualTo(1)
     }
 
     @Test
-    fun `seed content matches the documented catalogue and suite`() {
+    fun `seed content matches the documented suite`() {
         service.seedIfEmpty()
-
-        val byModel = profiles.findAll().associateBy { it.ref.modelId }
-        assertThat(byModel.keys).containsExactlyInAnyOrder(
-            "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "gpt-5", "gemini-2.5-pro", "mistral-large-latest", "qwen3:32b",
-        )
-        val fable = byModel["claude-fable-5-1"]!!
-        assertThat(fable.ref.provider).isEqualTo(Provider.ANTHROPIC)
-        assertThat(fable.ref.options.reasoning).isEqualTo(Reasoning.HIGH)
-        assertThat(fable.pricing.inputPerMTok).isEqualByComparingTo(BigDecimal("10"))
-        assertThat(fable.pricing.outputPerMTok).isEqualByComparingTo(BigDecimal("50"))
-        assertThat(fable.pricing.cacheReadPerMTok).isEqualByComparingTo(BigDecimal("0.25"))
-        assertThat(fable.notes).contains("2026-06")
-        assertThat(byModel["claude-opus-5"]!!.ref.options.reasoning).isEqualTo(Reasoning.HIGH)
-        assertThat(byModel["claude-sonnet-5"]!!.ref.options.reasoning).isEqualTo(Reasoning.MEDIUM)
-        assertThat(byModel["gpt-5"]!!.notes).containsIgnoringCase("verify current pricing")
-        assertThat(byModel["qwen3:32b"]!!.ref.provider).isEqualTo(Provider.OLLAMA)
 
         val suite = suites.findAll().single()
         assertThat(suite.name).isEqualTo(StarterContent.STARTER_SUITE_NAME)

@@ -15,16 +15,24 @@ than opinions. This chapter covers the **Models** page, task suites and benchmar
 ## Model profiles
 
 **Models** (`/models`) lists the profiles with **Provider**, **Model id**, price **In / out per MTok**,
-**Context**, **Last test** and **Enabled**. A notice at the top names providers that have no API key on
-the server; tests and runs with their profiles fail until the key is set (see
-[LLM providers](integrations-llm.md#llm-overview)).
+**Context**, **Last test** and **Enabled**. No profiles are predefined: you create them from the models
+your connected providers offer (see [LLM providers](integrations-llm.md#llm-overview)). Profiles whose
+provider is not connected are hidden; the line under the table counts them and **Show them** brings them
+back, to fix their connection or delete them.
+
+Below the profiles, **Available from providers** lists the models every connected provider offers right
+now, read live from the provider (refreshed every ten minutes, or with the reload button). OpenRouter also
+publishes prices and context windows; its `:free` models are marked **free**, and **Free only** shows just
+those. **Add as profile** opens the profile form prefilled with the provider, connection, model id, name,
+prices and context window; models that already have a profile say **profile exists**.
 
 A profile is a model plus its options. Two profiles may point at the same model with different options,
 for example high and low reasoning, so you can measure whether the stronger setting is worth its price.
 
 ### Steps: create a profile
 
-1. Click **Create profile** (or duplicate an existing one from its row).
+1. Click **Add as profile** on a model under **Available from providers**, or **Create profile** for a
+   model the provider does not list (or duplicate an existing profile from its row).
 2. Enter **Display name**, **Provider** and **Model id**, exactly as the provider's API expects it.
 3. **Default options**: **Temperature**, **Max output tokens**, **Reasoning effort**, and **Extra options
    (JSON)** passed to the provider as they are.

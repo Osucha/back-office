@@ -40,10 +40,11 @@ returns one row per provider with `configured` (a key or base URL is present on 
 (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENAI_API_KEY`, `MISTRAL_API_KEY`, `OLLAMA_BASE_URL`,
 `OPENAI_COMPATIBLE_BASE_URL` + `OPENAI_COMPATIBLE_API_KEY`) and restart.
 
-On first start with an empty catalogue the server seeds eight profiles (Claude Fable 5.1, Opus 5,
-Sonnet 5, Haiku 4.5, GPT-5, Gemini 2.5 Pro, Mistral Large, Qwen3 32B on Ollama). Anthropic prices are
-the 2026-06 list prices; the others are placeholders (0/0) with a note to verify. Fix prices before you
-trust cost figures: the ledger computes cost from the profile that matches the call.
+No profiles are seeded (ADR 0045). Connect a provider (Models > LLM providers), then pick its models in
+the section "Available from providers" of the Models page: `GET /api/v1/llm-providers/catalog` lists the
+models of every usable connection, with prices and context windows where the provider publishes them
+(OpenRouter), and "Add as profile" prefills the profile. Check prices before you trust cost figures: the
+ledger computes cost from the profile that matches the call.
 
 Create your own entry:
 

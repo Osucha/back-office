@@ -191,7 +191,28 @@ data class LlmProviderCommand(
     val enabled: Boolean = true,
 )
 
-data class ProviderModels(val ok: Boolean, val models: List<String>, val error: String?)
+/** One model a provider offers; prices in USD per million tokens when the provider publishes them (OpenRouter). */
+data class ProviderModelInfo(
+    val id: String,
+    val name: String? = null,
+    val contextWindow: Int? = null,
+    val inputPerMTok: java.math.BigDecimal? = null,
+    val outputPerMTok: java.math.BigDecimal? = null,
+    val free: Boolean = false,
+)
+
+data class ProviderModels(val ok: Boolean, val models: List<String>, val error: String?, val details: List<ProviderModelInfo> = emptyList())
+
+/** The models of one usable endpoint (a connection, or an environment fallback), for the catalogue of the Models page. */
+data class CatalogSection(
+    val connection: String?,
+    val name: String,
+    val provider: Provider,
+    val source: ConnectionSource,
+    val ok: Boolean,
+    val error: String?,
+    val models: List<ProviderModelInfo>,
+)
 
 /**
  * ADR 0045: LLM provider connections managed in the UI (`admin.settings.manage`; listed with `models.view`). API keys
@@ -270,6 +291,31 @@ class LlmProviderService(
         audit.record(AuditEntry("LLM_PROVIDER_DELETE", ENTITY, id.toString(), details = mapOf("key" to existing.key, "provider" to existing.provider.name)))
     }
 
+    private val catalogCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Instant, ProviderModels>>()
+
+    /**
+     * The models every usable endpoint offers (`models.view`): the source of new model profiles. Cached per endpoint for
+     * ten minutes; [refresh] asks the providers again.
+     */
+    fun catalog(refresh: Boolean): List<CatalogSection> {
+        gate.require(VIEW)
+        val now = clock.now()
+        val names = store.findAll().associate { it.key to it.name }
+        val connections = cache.connections()
+        val endpoints = connections.mapNotNull { c ->
+            val endpoint = registry.resolve(c.provider, c.key) ?: return@mapNotNull null
+            Triple(endpoint, names[c.key] ?: c.key, ConnectionSource.DATABASE)
+        } + Provider.entries.mapNotNull { p ->
+            if (connections.any { it.provider == p }) return@mapNotNull null
+            registry.resolve(p)?.takeIf { it.connection == null }?.let { Triple(it, "${p.name.lowercase()} (environment)", ConnectionSource.ENVIRONMENT) }
+        }
+        return endpoints.map { (endpoint, name, source) ->
+            val cached = catalogCache[endpoint.fingerprint]?.takeIf { !refresh && it.first.plus(CATALOG_TTL).isAfter(now) }?.second
+            val models = cached ?: lister.list(endpoint.provider, endpoint.settings).also { if (it.ok) catalogCache[endpoint.fingerprint] = now to it }
+            CatalogSection(endpoint.connection, name, endpoint.provider, source, models.ok, models.error, models.details)
+        }
+    }
+
     /** Lists the models the endpoint offers (also a connection test); [id] null = the environment endpoint of [provider]. */
     fun models(id: UUID?, provider: Provider?): ProviderModels {
         gate.require(MANAGE)
@@ -302,5 +348,6 @@ class LlmProviderService(
         const val ENTITY = "LlmProviderConnection"
         const val VIEW = "models.view"
         const val MANAGE = "admin.settings.manage"
+        val CATALOG_TTL: Duration = Duration.ofMinutes(10)
     }
 }

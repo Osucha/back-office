@@ -16,9 +16,17 @@ opinii. Ten rozdział opisuje stronę **Modele** (**Models**), zestawy zadań i 
 
 **Modele** (`/models`) wyświetlają profile z kolumnami **Dostawca** (**Provider**), **Id modelu**
 (**Model id**), cena **Wej. / wyj. za MTok** (**In / out per MTok**), **Kontekst** (**Context**),
-**Ostatni test** (**Last test**) i **Włączony** (**Enabled**). Komunikat u góry wymienia dostawców, którzy
-nie mają klucza API na serwerze; testy i uruchomienia z ich profilami kończą się błędem, dopóki klucz nie
-zostanie ustawiony (zob. [Dostawcy LLM](integrations-llm.md#llm-overview)).
+**Ostatni test** (**Last test**) i **Włączony** (**Enabled**). Nie ma predefiniowanych profili: tworzysz
+je z modeli oferowanych przez podłączonych dostawców (zob. [Dostawcy LLM](integrations-llm.md#llm-overview)).
+Profile, których dostawca nie jest podłączony, są ukryte; wiersz pod tabelą podaje ich liczbę, a **Pokaż je**
+(**Show them**) przywraca je, żeby poprawić połączenie albo je usunąć.
+
+Pod profilami sekcja **Dostępne u dostawców** (**Available from providers**) wyświetla modele, które każdy
+podłączony dostawca oferuje w tej chwili, pobrane na żywo (odświeżane co dziesięć minut albo przyciskiem
+odświeżania). OpenRouter publikuje też ceny i okna kontekstu; jego modele `:free` są oznaczone jako
+**darmowy**, a przełącznik **Tylko darmowe** (**Free only**) pokazuje tylko je. **Dodaj jako profil** (**Add
+as profile**) otwiera formularz profilu wypełniony dostawcą, połączeniem, id modelu, nazwą, cenami i oknem
+kontekstu; modele, które mają już profil, są oznaczone **profil istnieje**.
 
 Profil to model plus jego opcje. Dwa profile mogą wskazywać ten sam model z różnymi opcjami, na przykład
 wysokim i niskim poziomem rozumowania, dzięki czemu możesz zmierzyć, czy mocniejsze ustawienie jest warte
@@ -26,7 +34,9 @@ swojej ceny.
 
 ### Kroki: tworzenie profilu
 
-1. Kliknij **Utwórz profil** (**Create profile**) (albo zduplikuj istniejący z jego wiersza).
+1. Kliknij **Dodaj jako profil** przy modelu w sekcji **Dostępne u dostawców** albo **Utwórz profil**
+   (**Create profile**) dla modelu, którego dostawca nie wymienia (albo zduplikuj istniejący profil z jego
+   wiersza).
 2. Wpisz **Wyświetlaną nazwę** (**Display name**), **Dostawcę** i **Id modelu** dokładnie w takiej
    postaci, jakiej oczekuje API dostawcy.
 3. **Opcje domyślne** (**Default options**): **Temperatura** (**Temperature**), **Maks. liczba tokenów

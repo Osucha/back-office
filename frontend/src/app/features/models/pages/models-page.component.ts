@@ -55,6 +55,8 @@ import {
 import { compareText } from '../../../core/i18n/compare';
 import { icu } from '../../../core/i18n/icu';
 import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
+import { ProviderCatalogComponent } from '../components/provider-catalog.component';
+import { catalogKey } from '../data/model-catalog';
 
 /**
  * Models: the catalogue of model profiles. Filters live in the URL; rows open the profile side
@@ -79,6 +81,7 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
     PageHeaderComponent,
     SkeletonComponent,
     ModelProfileDrawerComponent,
+    ProviderCatalogComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -102,20 +105,6 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
           </button>
         }
       </bo-page-header>
-
-      @if (unconfigured().length) {
-        <div class="notice" role="note">
-          <bo-glyph holder="idle" [size]="13" />
-          <span>
-            <strong>{{ unconfiguredTitle() }}</strong>
-            <ng-container i18n="@@models.notice.text"
-              >{{ unconfigured().join(', ') }}. Tests and runs with their profiles fail until the
-              key is set.</ng-container
-            >
-          </span>
-          <a routerLink="/settings" i18n="@@models.notice.openSettings">Open settings</a>
-        </div>
-      }
 
       <bo-filter-bar
         #bar
@@ -155,8 +144,10 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
           label="Loading model profiles"
           i18n-label="@@models.loading"
         />
-      } @else if (!filtered().length) {
-        @if (f.active()) {
+      } @else if (!visible().length) {
+        @if (hiddenCount()) {
+          <!-- only profiles of unconnected providers: the line below offers them -->
+        } @else if (f.active()) {
           <bo-empty
             title="No profile matches these filters."
             i18n-title="@@models.noMatch"
@@ -181,8 +172,8 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
       } @else {
         <nz-table
           #t
-          [nzData]="filtered()"
-          [nzShowPagination]="filtered().length > 50"
+          [nzData]="visible()"
+          [nzShowPagination]="visible().length > 50"
           [nzPageSize]="50"
           nzSize="middle"
         >
@@ -233,7 +224,7 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
                     @if (p.providerConfigured === false) {
                       <span class="state-word"
                         ><bo-glyph holder="idle" [size]="11" />
-                        <ng-container i18n="@@models.noApiKey">no API key</ng-container></span
+                        <ng-container i18n="@@models.notConnected">not connected</ng-container></span
                       >
                     } @else {
                       <span class="state-word"
@@ -365,6 +356,22 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
           </tbody>
         </nz-table>
       }
+
+      @if (hiddenCount() || showUnavailable()) {
+        <div class="notice" role="note">
+          <bo-glyph holder="idle" [size]="13" />
+          <span>{{ hiddenLabel() }}</span>
+          <button nz-button nzType="link" nzSize="small" type="button" (click)="showUnavailable.set(!showUnavailable())">
+            @if (showUnavailable()) {
+              <ng-container i18n="@@models.unavailable.hide">Hide them</ng-container>
+            } @else {
+              <ng-container i18n="@@models.unavailable.show">Show them</ng-container>
+            }
+          </button>
+        </div>
+      }
+
+      <app-provider-catalog [existing]="existingKeys()" [canManage]="canManage()" (add)="addFromCatalog($event)" />
     </div>
 
     <app-model-profile-drawer
@@ -385,23 +392,18 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
     `
       .notice {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 10px;
-        padding: 10px 14px;
-        margin-bottom: 16px;
+        padding: 6px 14px;
+        margin: 12px 0 0;
         border: 1px solid var(--bo-line);
         border-radius: var(--bo-radius-card);
         background: var(--bo-surface);
         font-size: 13px;
         color: var(--bo-ink-2);
       }
-      .notice strong {
-        font-weight: 600;
-        color: var(--bo-ink);
-      }
-      .notice a {
+      .notice button {
         margin-left: auto;
-        white-space: nowrap;
       }
       .ink {
         color: var(--bo-ink);
@@ -456,12 +458,8 @@ export class ModelsPageComponent {
     setKey: $localize`:@@models.setKeyFirst:Set the provider API key first`,
     testHint: $localize`:@@models.testHint:Send a tiny prompt and measure latency and cost`,
   };
-  readonly unconfiguredTitle = computed(() =>
-    icu(
-      $localize`:@@models.notice.title:{count, plural, one {# provider has} other {# providers have}} no API key on the server:`,
-      { count: this.unconfigured().length },
-    ),
-  );
+  /** ADR 0045: profiles whose provider is not connected are hidden unless asked for. */
+  readonly showUnavailable = signal(false);
 
   readonly filtered = computed(() =>
     filterProfiles(this.profiles(), {
@@ -470,26 +468,41 @@ export class ModelsPageComponent {
       state: this.f.values().state,
     }),
   );
+  readonly visible = computed(() =>
+    this.showUnavailable() ? this.filtered() : this.filtered().filter((p) => p.providerConfigured !== false),
+  );
+  readonly hiddenCount = computed(() => this.filtered().filter((p) => p.providerConfigured === false).length);
+  readonly hiddenLabel = computed(() =>
+    this.showUnavailable()
+      ? icu(
+          $localize`:@@models.unavailable.shown:{count, plural, =0 {Every profile has a connected provider.} one {# profile is shown although its provider is not connected; tests and runs with it fail.} other {# profiles are shown although their provider is not connected; tests and runs with them fail.}}`,
+          { count: this.hiddenCount() },
+        )
+      : icu(
+          $localize`:@@models.unavailable.hidden:{count, plural, one {# profile is hidden: its provider is not connected.} other {# profiles are hidden: their provider is not connected.}}`,
+          { count: this.hiddenCount() },
+        ),
+  );
+  /** Catalogue keys of the existing profiles, so the catalogue marks models already added. */
+  readonly existingKeys = computed(
+    () => new Set(this.profiles().map((p) => catalogKey(p.ref.provider, p.ref.connection, p.ref.modelId))),
+  );
   readonly providerOptions = computed(() =>
     [...new Set(this.profiles().map((p) => p.ref.provider))].sort(compareText),
   );
-  readonly unconfigured = computed(() => {
-    const used = new Set(this.profiles().map((p) => p.ref.provider));
-    return this.providers()
-      .filter((p) => !p.configured && p.provider && used.has(p.provider))
-      .map((p) => providerLabel(p.provider));
-  });
   readonly editing = computed<ModelProfile | null>(() => {
     const id = this.panel.value();
     if (!id) return null;
     if (id === 'new') {
       const src = this.copyOf();
       return src
-        ? {
-            ...src,
-            id: undefined as unknown as string,
-            displayName: $localize`:@@models.copyName:${src.displayName}:name: (copy)`,
-          }
+        ? src.id
+          ? {
+              ...src,
+              id: undefined as unknown as string,
+              displayName: $localize`:@@models.copyName:${src.displayName}:name: (copy)`,
+            }
+          : src
         : null;
     }
     return this.profiles().find((p) => p.id === id) ?? null;
@@ -618,6 +631,12 @@ export class ModelsPageComponent {
 
   duplicate(p: ModelProfile): void {
     this.copyOf.set(p);
+    this.panel.open('new');
+  }
+
+  /** "Add as profile" in the catalogue: the drawer opens prefilled (a profile without id). */
+  addFromCatalog(prefill: ModelProfile): void {
+    this.copyOf.set(prefill);
     this.panel.open('new');
   }
 

@@ -28,7 +28,8 @@ class ProviderModelLister(
             if (response.statusCode() !in 200..299) {
                 return ProviderModels(false, emptyList(), "HTTP ${response.statusCode()}: ${response.body().take(300)}")
             }
-            ProviderModels(true, ids(provider, json.readTree(response.body())).sorted(), null)
+            val infos = infos(provider, json.readTree(response.body())).sortedBy { it.id }
+            ProviderModels(true, infos.map { it.id }, null, infos)
         } catch (e: java.io.IOException) {
             ProviderModels(false, emptyList(), "${request.uri().host}: ${e.message ?: e.javaClass.simpleName}")
         } catch (e: InterruptedException) {
@@ -61,12 +62,37 @@ class ProviderModelLister(
         return builder.build()
     }
 
-    private fun ids(provider: Provider, body: JsonNode): List<String> {
+    /**
+     * Model entries with what the provider tells about them: OpenRouter-style `pricing` (USD per token, turned into per
+     * million), `context_length` / `max_context_length` / `context_window`, Anthropic `display_name`. Local Ollama
+     * models cost nothing. Missing data stays null.
+     */
+    private fun infos(provider: Provider, body: JsonNode): List<ProviderModelInfo> {
         val items = if (provider == Provider.OLLAMA) body.get("models") else body.get("data")
         if (items == null || !items.isArray) return emptyList()
         return items.mapNotNull { item ->
             val raw = (if (provider == Provider.OLLAMA) item.get("name") else item.get("id"))?.asString()
-            raw?.removePrefix("models/")?.takeIf { it.isNotBlank() }
-        }.distinct()
+            val id = raw?.removePrefix("models/")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val pricing = item.get("pricing")
+            val input = perMillion(pricing?.get("prompt"))
+            val output = perMillion(pricing?.get("completion"))
+            val local = provider == Provider.OLLAMA
+            ProviderModelInfo(
+                id = id,
+                name = (item.get("name") ?: item.get("display_name"))?.asString()?.takeIf { it.isNotBlank() && it != id },
+                contextWindow = listOf("context_length", "max_context_length", "context_window")
+                    .firstNotNullOfOrNull { k -> item.get(k)?.takeIf { it.isNumber }?.asInt() },
+                inputPerMTok = if (local) java.math.BigDecimal.ZERO else input,
+                outputPerMTok = if (local) java.math.BigDecimal.ZERO else output,
+                free = local || id.endsWith(":free") || (input != null && output != null && input.signum() == 0 && output.signum() == 0),
+            )
+        }.distinctBy { it.id }
+    }
+
+    private fun perMillion(node: JsonNode?): java.math.BigDecimal? {
+        val text = node?.asString()?.takeIf { it.isNotBlank() } ?: return null
+        val perToken = text.toBigDecimalOrNull() ?: return null
+        if (perToken.signum() < 0) return null
+        return perToken.multiply(java.math.BigDecimal(1_000_000)).stripTrailingZeros().let { if (it.scale() < 0) it.setScale(0) else it }
     }
 }

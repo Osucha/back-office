@@ -18,14 +18,12 @@ class SeedStarterContentService(
     private val clock: Clock,
 ) : SeedStarterContent {
 
-    @SystemOperation("startup seeding of the model catalogue and the starter suite; never exposed through a controller")
+    @SystemOperation("startup seeding of the starter suite; never exposed through a controller")
     override fun seedIfEmpty(): SeedResult {
         val now = clock.now()
         var profilesCreated = 0
         var suitesCreated = 0
-        if (profiles.count() == 0L) {
-            StarterContent.modelProfiles(now).forEach { profiles.save(it); profilesCreated++ }
-        }
+        // ADR 0045: no seeded model profiles; they are created from the models the connected providers offer
         if (suites.count() == 0L) {
             suites.save(StarterContent.starterSuite(now))
             suitesCreated++

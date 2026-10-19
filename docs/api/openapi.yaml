@@ -1563,6 +1563,14 @@ paths:
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/LlmProvider' } } } }
         '400': { $ref: '#/components/responses/Problem' }
+  /llm-providers/catalog:
+    get:
+      tags: [llm-providers]
+      operationId: llmProviderCatalog
+      description: 'The models every usable provider endpoint offers, the source of new model profiles (models.view). Cached for ten minutes per endpoint.'
+      parameters: [ { name: refresh, in: query, required: false, schema: { type: boolean, default: false } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ProviderCatalogSection' } } } } }
   /llm-providers/{id}:
     parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
     put:
@@ -2296,6 +2304,28 @@ components:
         ok: { type: boolean }
         models: { type: array, items: { type: string } }
         error: { type: string, nullable: true }
+        details: { type: array, items: { $ref: '#/components/schemas/ProviderModelInfo' } }
+    ProviderModelInfo:
+      type: object
+      required: [id, free]
+      properties:
+        id: { type: string }
+        name: { type: string, nullable: true }
+        contextWindow: { type: integer, nullable: true }
+        inputPerMTok: { type: number, nullable: true, description: 'USD per million input tokens, when the provider publishes it (OpenRouter)' }
+        outputPerMTok: { type: number, nullable: true }
+        free: { type: boolean, description: 'a :free model, zero prices, or a local Ollama model' }
+    ProviderCatalogSection:
+      type: object
+      required: [name, provider, source, ok, models]
+      properties:
+        connection: { type: string, nullable: true, description: 'connection key; null for an environment endpoint' }
+        name: { type: string }
+        provider: { $ref: '#/components/schemas/Provider' }
+        source: { type: string, enum: [DATABASE, ENVIRONMENT] }
+        ok: { type: boolean }
+        error: { type: string, nullable: true }
+        models: { type: array, items: { $ref: '#/components/schemas/ProviderModelInfo' } }
 
     Dashboard:
       type: object

@@ -45,7 +45,26 @@ data class LlmProviderDto(
     val updatedBy: LlmProviderActorDto?,
 )
 
-data class ProviderModelsDto(val ok: Boolean, val models: List<String>, val error: String?)
+data class ProviderModelInfoDto(
+    val id: String,
+    val name: String?,
+    val contextWindow: Int?,
+    val inputPerMTok: java.math.BigDecimal?,
+    val outputPerMTok: java.math.BigDecimal?,
+    val free: Boolean,
+)
+
+data class ProviderModelsDto(val ok: Boolean, val models: List<String>, val error: String?, val details: List<ProviderModelInfoDto> = emptyList())
+
+data class CatalogSectionDto(
+    val connection: String?,
+    val name: String,
+    val provider: String,
+    val source: String,
+    val ok: Boolean,
+    val error: String?,
+    val models: List<ProviderModelInfoDto>,
+)
 
 /** `llm-providers` tag of openapi.yaml (ADR 0045): provider connections managed in Back Office. */
 @RestController
@@ -54,6 +73,12 @@ class LlmProviderController(private val service: LlmProviderService) {
 
     @GetMapping
     fun list(): List<LlmProviderDto> = service.list().map(::toDto)
+
+    /** The models of every usable provider endpoint, the source of new model profiles (`?refresh=true` asks again). */
+    @GetMapping("/catalog")
+    fun catalog(@RequestParam(defaultValue = "false") refresh: Boolean): List<CatalogSectionDto> = service.catalog(refresh).map { s ->
+        CatalogSectionDto(s.connection, s.name, s.provider.name, s.source.name, s.ok, s.error, s.models.map(::toDto))
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -87,5 +112,7 @@ class LlmProviderController(private val service: LlmProviderService) {
         v.updatedBy?.let { LlmProviderActorDto(it.kind.name, it.userId, it.displayName) },
     )
 
-    private fun toDto(m: ProviderModels) = ProviderModelsDto(m.ok, m.models, m.error)
+    private fun toDto(m: ProviderModels) = ProviderModelsDto(m.ok, m.models, m.error, m.details.map(::toDto))
+
+    private fun toDto(i: ProviderModelInfo) = ProviderModelInfoDto(i.id, i.name, i.contextWindow, i.inputPerMTok, i.outputPerMTok, i.free)
 }

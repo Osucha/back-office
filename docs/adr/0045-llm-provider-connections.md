@@ -34,6 +34,12 @@ by side, which is exactly what evaluation and benchmarks need.
    shows the model ids to put into profiles.
 7. The secret key is offered to other contexts through the shared-kernel port `SecretVault`, implemented by the
    projects adapters over the existing cipher.
+8. **Model profiles come from the connected providers.** The dated starter profiles are no longer seeded (they named
+   models the installation usually cannot reach). `GET /api/v1/llm-providers/catalog` (`models.view`) lists the
+   models of every usable endpoint, cached ten minutes per endpoint, with prices per million tokens and context
+   windows where the provider publishes them (OpenRouter `pricing`, `context_length`; `:free` models and Ollama are
+   marked free). The Models page offers them under "Available from providers" with "Add as profile", and hides
+   profiles whose provider is not connected until asked to show them.
 
 ## Consequences
 

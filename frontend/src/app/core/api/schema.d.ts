@@ -1494,6 +1494,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llm-providers/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The models every usable provider endpoint offers, the source of new model profiles (models.view). Cached for ten minutes per endpoint. */
+        get: operations["llmProviderCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm-providers/environment/models": {
         parameters: {
             query?: never;
@@ -5162,7 +5179,29 @@ export interface components {
         };
         /** @enum {string} */
         Provider: "ANTHROPIC" | "OPENAI" | "GOOGLE" | "MISTRAL" | "OLLAMA" | "OPENAI_COMPATIBLE";
+        ProviderCatalogSection: {
+            /** @description connection key; null for an environment endpoint */
+            connection?: string | null;
+            error?: string | null;
+            models: components["schemas"]["ProviderModelInfo"][];
+            name: string;
+            ok: boolean;
+            provider: components["schemas"]["Provider"];
+            /** @enum {string} */
+            source: "DATABASE" | "ENVIRONMENT";
+        };
+        ProviderModelInfo: {
+            contextWindow?: number | null;
+            /** @description a :free model, zero prices, or a local Ollama model */
+            free: boolean;
+            id: string;
+            /** @description USD per million input tokens, when the provider publishes it (OpenRouter) */
+            inputPerMTok?: number | null;
+            name?: string | null;
+            outputPerMTok?: number | null;
+        };
         ProviderModels: {
+            details?: components["schemas"]["ProviderModelInfo"][];
             error?: string | null;
             models: string[];
             ok: boolean;
@@ -8831,6 +8870,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderModels"];
+                };
+            };
+        };
+    };
+    llmProviderCatalog: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCatalogSection"][];
                 };
             };
         };

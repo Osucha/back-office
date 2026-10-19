@@ -8,7 +8,7 @@ import java.time.Duration
 data class EvaluationProperties(
     /** Deprecated (ADR 0023): provider concurrency now comes from the distributed provider rate limiter; ignored. */
     val concurrencyPerProvider: Int = 2,
-    /** Create the dated model seed and the starter suite when the catalogue is empty. */
+    /** Create the starter suite when there is none (model profiles are not seeded, ADR 0045). */
     val seedStarterContent: Boolean = true,
     /** Re-queue in-flight attempts of running benchmarks after a restart. */
     val recoverOnStartup: Boolean = true,
