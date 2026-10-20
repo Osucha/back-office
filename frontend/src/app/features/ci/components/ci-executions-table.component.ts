@@ -28,6 +28,8 @@ import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { absoluteTime } from '../../../core/ui/relay/format';
 import { listNavigation } from '../../../core/ui/relay/list-nav';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { serverSort } from '../../../core/ui/relay/table-sort';
 
 const VIRTUAL_FROM = 100;
 
@@ -74,6 +76,7 @@ export function filterCi(
     CostComponent,
     EmptyComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -111,15 +114,15 @@ export function filterCi(
         <ng-template #totalTpl let-total>{{ totalText(total) }}</ng-template>
         <thead>
           <tr>
-            <th nzWidth="150px" i18n="@@ci.table.gate">Gate</th>
-            <th nzWidth="180px" i18n="@@ci.table.entrypoint">Entrypoint</th>
-            <th i18n="@@ci.table.mrOrRef">Merge request or ref</th>
+            <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="166px" i18n="@@ci.table.gate">Gate</th>
+            <th nzShowSort [boSort]="sort" boSortKey="entrypoint" nzWidth="196px" i18n="@@ci.table.entrypoint">Entrypoint</th>
+            <th nzShowSort [boSort]="sort" boSortKey="ref" i18n="@@ci.table.mrOrRef">Merge request or ref</th>
             <th nzWidth="100px" i18n="@@ci.table.commit">Commit</th>
             @if (!projectId()) {
-              <th nzWidth="90px" i18n="@@ci.table.project">Project</th>
+              <th nzShowSort [boSort]="sort" boSortKey="project" nzWidth="106px" i18n="@@ci.table.project">Project</th>
             }
-            <th nzWidth="90px" nzAlign="right" i18n="@@ci.table.cost">Cost</th>
-            <th nzWidth="90px" nzAlign="right" i18n="@@ci.table.age">Age</th>
+            <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@ci.table.cost">Cost</th>
+            <th nzShowSort [boSort]="sort" boSortKey="createdAt" nzWidth="106px" nzAlign="right" i18n="@@ci.table.age">Age</th>
           </tr>
         </thead>
         <tbody>
@@ -257,6 +260,10 @@ export class CiExecutionsTableComponent {
   readonly loaded = signal(false);
   readonly page = signal(0);
   readonly size = signal(inject(IdentityService).pageSize());
+  /** Server-side column sort (ADR 0046), kept in `?ciSort=` so it does not clash with other tables of the page. */
+  readonly sort = serverSort(['status', 'entrypoint', 'ref', 'project', 'cost', 'createdAt'], {
+    param: 'ciSort',
+  });
 
   readonly rows = computed(() => filterCi(this.raw(), this.holders(), this.query()));
   readonly virtual = computed(() => this.rows().length > VIRTUAL_FROM);
@@ -269,6 +276,7 @@ export class CiExecutionsTableComponent {
   constructor() {
     effect(() => {
       this.projectId();
+      this.sort.query();
       untracked(() => {
         this.page.set(0);
         this.load();
@@ -318,7 +326,12 @@ export class CiExecutionsTableComponent {
   load(): void {
     this.loading.set(true);
     this.api
-      .listExecutions({ projectId: this.projectId(), page: this.page(), size: this.size() })
+      .listExecutions({
+        projectId: this.projectId(),
+        page: this.page(),
+        size: this.size(),
+        sort: this.sort.query() ?? undefined,
+      })
       .subscribe({
         next: (p) => {
           this.raw.set(p.content ?? []);

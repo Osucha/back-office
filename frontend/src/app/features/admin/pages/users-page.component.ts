@@ -46,6 +46,8 @@ import { PageHeaderComponent } from '../../../core/ui/relay/page-header.componen
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { serverSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../components/admin-nav.component';
 import { InviteUserPanelComponent } from '../components/invite-user-panel.component';
 import { StateChipComponent } from '../components/state-chip.component';
@@ -74,6 +76,7 @@ import {
     InviteUserPanelComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     StateChipComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -193,12 +196,27 @@ import {
           <ng-template #totalTpl let-total>{{ totalLabel(total) }}</ng-template>
           <thead>
             <tr>
-              <th i18n="@@admin.users.colUser">User</th>
-              <th nzWidth="120px" i18n="@@admin.users.colStatus">Status</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@admin.users.colUser">User</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="status"
+                nzWidth="136px"
+                i18n="@@admin.users.colStatus"
+              >
+                Status
+              </th>
               <th nzWidth="260px" i18n="@@admin.users.colSignIn">Sign-in</th>
               <th i18n="@@admin.users.colGroups">Groups and roles</th>
               <th nzWidth="90px" nzAlign="right" i18n="@@admin.users.colProjects">Projects</th>
-              <th nzWidth="120px" nzAlign="right" i18n="@@admin.users.colLastSignIn">
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="lastLoginAt"
+                nzWidth="136px"
+                nzAlign="right"
+                i18n="@@admin.users.colLastSignIn"
+              >
                 Last sign-in
               </th>
             </tr>
@@ -387,6 +405,8 @@ export class UsersPageComponent {
   readonly f = urlFilters({ q: 'string', status: 'string', groupId: 'string', signIn: 'string' });
   /** `?invite=1` opens the invite panel (command palette "Invite user"). */
   readonly invite = panelParam('invite');
+  /** Column sort in the URL (`?sort=name.asc`); the server orders the page. */
+  readonly sort = serverSort(['name', 'status', 'lastLoginAt']);
 
   readonly users = signal<UserDetail[]>([]);
   readonly total = signal(0);
@@ -413,7 +433,7 @@ export class UsersPageComponent {
   });
   private readonly serverFilters = computed(() => {
     const v = this.f.values();
-    return JSON.stringify([v.q, v.status, v.groupId]);
+    return JSON.stringify([v.q, v.status, v.groupId, this.sort.query()]);
   });
   readonly hidden = computed(() => this.users().length - this.rows().length);
 
@@ -497,7 +517,7 @@ export class UsersPageComponent {
       this.projectRoles.load();
     }
     effect(() => {
-      // Server-side filters reload from the first page; the sign-in filter is client-side.
+      // Server-side filters and the sort reload from the first page; the sign-in filter is client-side.
       this.serverFilters();
       untracked(() => {
         this.page.set(0);
@@ -593,6 +613,7 @@ export class UsersPageComponent {
         groupId: v.groupId ?? undefined,
         page: this.page(),
         size: this.size(),
+        sort: this.sort.query() ?? undefined,
       })
       .subscribe({
         next: (p) => {

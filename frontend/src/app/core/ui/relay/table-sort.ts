@@ -97,3 +97,26 @@ export function tableSort<T>(columns: Record<string, SortAccessor<T>>, options: 
     },
   };
 }
+
+/** A [TableSort] whose rows the server orders (ADR 0046): [query] is the value of the API's `sort` parameter. */
+export interface ServerSort extends SortControl {
+  readonly state: Signal<{ key: string; order: SortOrder } | null>;
+  /** `field.asc` / `field.desc` for the request; null keeps the server's natural order. */
+  readonly query: Signal<string | null>;
+}
+
+/**
+ * Sorting of a server-paged table: the same headers (`th[boSort]`) and URL state as [tableSort], but the rows come
+ * sorted from the API. Reload page 0 when [ServerSort.query] changes.
+ *
+ *   readonly sort = serverSort(['status', 'cost', 'createdAt']);
+ *   this.api.list({ page: 0, sort: this.sort.query() ?? undefined })
+ */
+export function serverSort(keys: readonly string[], options: { param?: string } = {}): ServerSort {
+  const sort = tableSort<unknown>(Object.fromEntries(keys.map((k) => [k, () => null])), options);
+  const query = computed(() => {
+    const s = sort.state();
+    return s ? `${s.key}.${s.order === 'descend' ? 'desc' : 'asc'}` : null;
+  });
+  return { state: sort.state, order: sort.order, set: sort.set, query };
+}

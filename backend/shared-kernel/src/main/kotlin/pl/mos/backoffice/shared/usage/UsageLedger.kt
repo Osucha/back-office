@@ -63,7 +63,13 @@ data class UsageQuery(
     val projectId: UUID? = null,
     val runId: UUID? = null,
     val benchmarkId: UUID? = null,
-)
+    /** Column order of `entries` (fields: [ENTRY_SORT_FIELDS]); null keeps newest first. Ignored by summaries and totals. */
+    val sort: SortSpec? = null,
+) {
+    companion object {
+        val ENTRY_SORT_FIELDS = listOf("occurredAt", "model", "kind", "tokens", "duration", "cost")
+    }
+}
 
 data class UsageGroup(val key: String, val label: String, val cost: Money, val usage: TokenUsage, val calls: Long)
 

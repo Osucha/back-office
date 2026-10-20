@@ -46,8 +46,22 @@ class JdbcUserRepository(private val jdbc: JdbcClient, private val json: JsonMap
         }
         val clause = if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")
         val total = jdbc.sql("SELECT count(*) FROM identity_user u $clause").params(params).query(Long::class.javaObjectType).single()
-        val content = many("$clause ORDER BY lower(u.display_name), u.id LIMIT :limit OFFSET :offset", params + mapOf("limit" to query.size, "offset" to query.page.toLong() * query.size))
+        val content = many("$clause ORDER BY ${orderBy(query)} LIMIT :limit OFFSET :offset", params + mapOf("limit" to query.size, "offset" to query.page.toLong() * query.size))
         return Page(content, query.page, query.size, total)
+    }
+
+    /** Column of each [UserQuery.SORT_FIELDS] entry, with the id as a stable tiebreaker; never-signed-in users last. */
+    private fun orderBy(query: UserQuery): String {
+        val sort = query.sort ?: return "lower(u.display_name), u.id"
+        val direction = if (sort.descending) "DESC" else "ASC"
+        val column = when (sort.field) {
+            "name" -> "lower(u.display_name) $direction"
+            "email" -> "lower(u.email) $direction"
+            "status" -> "u.status $direction"
+            "lastLoginAt" -> "u.last_login_at $direction NULLS LAST"
+            else -> "lower(u.display_name) $direction"
+        }
+        return "$column, u.id $direction"
     }
 
     override fun lookup(q: String, limit: Int): List<User> = many(

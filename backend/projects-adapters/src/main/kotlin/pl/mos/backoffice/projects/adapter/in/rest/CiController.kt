@@ -22,6 +22,7 @@ import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.util.UUID
 
 /**
@@ -52,8 +53,10 @@ class CiController(
         @RequestParam(required = false) projectId: UUID?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
+        @RequestParam(required = false) sort: String?,
     ): PageDto<CiExecutionSummaryDto> {
-        val result = executions.list(projectId?.let(::ProjectId), page.coerceAtLeast(0), size.coerceIn(1, 200))
+        val order = SortSpec.parse(sort, CiExecutionQueries.SORT_FIELDS)
+        val result = executions.list(projectId?.let(::ProjectId), page.coerceAtLeast(0), size.coerceIn(1, 200), order)
         return PageDto(result.content.map(mapper::toSummary), result.page, result.size, result.totalElements)
     }
 

@@ -161,6 +161,19 @@ class CiRestTest {
     }
 
     @Test
+    fun `the run and CI execution listings take the sort fields of the contract and answer 400 for others (ADR 0046)`() {
+        for (sort in listOf("status.asc", "entrypoint.desc", "ref.asc", "project.desc", "cost.asc", "createdAt.desc")) {
+            mvc.perform(get("/api/v1/ci/executions?sort=$sort")).andExpect(status().isOk)
+        }
+        for (sort in listOf("status.desc", "workflow.asc", "project.asc", "startedBy.desc", "cost.desc", "createdAt.asc")) {
+            mvc.perform(get("/api/v1/runs?sort=$sort")).andExpect(status().isOk)
+        }
+        mvc.perform(get("/api/v1/ci/executions?sort=workflow.asc")).andExpect(status().isBadRequest)
+        mvc.perform(get("/api/v1/runs?sort=ref.desc")).andExpect(status().isBadRequest)
+        mvc.perform(get("/api/v1/runs?sort=cost.sideways")).andExpect(status().isBadRequest)
+    }
+
+    @Test
     fun `CI endpoints reject missing, unknown, revoked and foreign tokens`() {
         val project = createProject("CI2")
         val token = createToken(project["id"])

@@ -14,6 +14,7 @@ import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.usage.UsageGroupBy
 import pl.mos.backoffice.shared.usage.UsageKind
 import pl.mos.backoffice.llm.usage.UsageQueryService
+import pl.mos.backoffice.shared.usage.SortSpec
 import pl.mos.backoffice.shared.usage.UsageQuery
 import pl.mos.backoffice.shared.usage.UsageRecord
 import java.math.BigDecimal
@@ -54,8 +55,10 @@ class UsageController(private val usage: UsageQueryService) {
         @RequestParam(required = false) benchmarkId: UUID?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
+        @RequestParam(required = false) sort: String?,
     ): UsageEntryPageDto {
-        val result = usage.entries(UsageQuery(from, to, projectId, runId, benchmarkId), page, size)
+        val order = SortSpec.parse(sort, UsageQuery.ENTRY_SORT_FIELDS)
+        val result = usage.entries(UsageQuery(from, to, projectId, runId, benchmarkId, order), page, size)
         return UsageEntryPageDto(result.content.map { UsageEntryDto.of(it) }, result.page, result.size, result.totalElements)
     }
 }

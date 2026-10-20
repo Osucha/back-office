@@ -14,6 +14,7 @@ import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.SandboxIsolation
 import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.usage.PageOf
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Instant
 import java.util.UUID
 
@@ -115,7 +116,12 @@ interface ManageRunners {
     fun revoke(runnerId: UUID)
 }
 
-data class AgentJobFilter(val poolId: String? = null, val status: AgentJobStatus? = null, val projectId: UUID? = null)
+/** `sort` orders by one of [SORT_FIELDS]; null keeps newest queued first. */
+data class AgentJobFilter(val poolId: String? = null, val status: AgentJobStatus? = null, val projectId: UUID? = null, val sort: SortSpec? = null) {
+    companion object {
+        val SORT_FIELDS = listOf("status", "label", "model", "pool", "duration", "cost", "queuedAt")
+    }
+}
 
 data class AgentJobView(
     val id: RunnerJobId,

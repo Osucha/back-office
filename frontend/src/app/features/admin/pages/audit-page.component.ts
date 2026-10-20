@@ -42,6 +42,8 @@ import { PageHeaderComponent } from '../../../core/ui/relay/page-header.componen
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { serverSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../components/admin-nav.component';
 import { AuditEventPanelComponent } from '../components/audit-event-panel.component';
 import { StateChipComponent } from '../components/state-chip.component';
@@ -82,6 +84,7 @@ const ROW_HEIGHT = 37;
     PageHeaderComponent,
     PrincipalPickerComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     StateChipComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -227,7 +230,15 @@ const ROW_HEIGHT = 37;
         >
           <thead>
             <tr>
-              <th nzWidth="170px" i18n="@@admin.audit.col.time">Time</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="at"
+                nzWidth="186px"
+                i18n="@@admin.audit.col.time"
+              >
+                Time
+              </th>
               <th nzWidth="110px" i18n="@@admin.audit.col.result">Result</th>
               <th i18n="@@admin.audit.col.operation">Operation</th>
               <th nzWidth="190px" i18n="@@admin.audit.col.actor">Actor</th>
@@ -377,6 +388,8 @@ export class AuditPageComponent {
     to: 'string',
   });
   readonly panel = panelParam('event');
+  /** `?sort=at.asc` lists the oldest entries first; "Load more" continues in that direction. */
+  readonly sort = serverSort(['at']);
 
   readonly groups = operationGroups();
   readonly results = AUDIT_RESULTS;
@@ -389,7 +402,9 @@ export class AuditPageComponent {
   private request = 0;
 
   readonly filters = computed(() => auditFiltersFromUrl(this.f.values()));
-  private readonly queryKey = computed(() => JSON.stringify(toAuditQuery(this.filters())));
+  private readonly queryKey = computed(() =>
+    JSON.stringify([toAuditQuery(this.filters()), this.sort.query()]),
+  );
   readonly range = computed(() => this.filters().range);
   readonly virtual = computed(() => this.entries().length > VIRTUAL_FROM);
   readonly selected = computed(
@@ -606,7 +621,11 @@ export class AuditPageComponent {
   private fetch(cursor: string | null): void {
     const id = ++this.request;
     this.loading.set(true);
-    this.api.audit(toAuditQuery(this.filters(), cursor)).subscribe({
+    const query = {
+      ...toAuditQuery(this.filters(), cursor),
+      sort: this.sort.query() ?? undefined,
+    };
+    this.api.audit(query).subscribe({
       next: (page) => {
         if (id !== this.request) return;
         this.entries.update((list) => [...list, ...(page.content ?? [])]);

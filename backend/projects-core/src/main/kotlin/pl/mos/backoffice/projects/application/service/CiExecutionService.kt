@@ -28,6 +28,7 @@ import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.PublicOperation
 import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.usage.PageOf
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Duration
 
 /**
@@ -139,8 +140,8 @@ class CiExecutionService(
     }
 
     @PublicOperation("lists only CI executions of projects the caller holds project.view on")
-    override fun list(projectId: ProjectId?, page: Int, size: Int): PageOf<CiExecution> =
-        executions.find(projectId, gate.projectFilter(ProjectsPermissions.PROJECT_VIEW), page, size)
+    override fun list(projectId: ProjectId?, page: Int, size: Int, sort: SortSpec?): PageOf<CiExecution> =
+        executions.find(projectId, gate.projectFilter(ProjectsPermissions.PROJECT_VIEW), page, size, sort)
 
     private fun truncate(diff: String): String {
         val bytes = diff.toByteArray(Charsets.UTF_8)

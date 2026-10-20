@@ -21,6 +21,7 @@ import pl.mos.backoffice.projects.domain.model.RunStatus
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Instant
 import java.util.UUID
 
@@ -41,11 +42,12 @@ class RunController(
         @RequestParam(required = false) status: List<String>?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
+        @RequestParam(required = false) sort: String?,
     ): PageDto<WorkflowRunSummaryDto> {
         val statuses = (status ?: emptyList()).flatMap { it.split(",") }.map { it.trim() }.filter { it.isNotEmpty() }
             .map { s -> RunStatus.entries.firstOrNull { it.name.equals(s, true) } ?: throw ValidationException("unknown status $s", "status") }
             .toSet()
-        val filter = RunFilter(projectId?.let(::ProjectId), workflowId?.let(::WorkflowDefinitionId), statuses)
+        val filter = RunFilter(projectId?.let(::ProjectId), workflowId?.let(::WorkflowDefinitionId), statuses, SortSpec.parse(sort, RunFilter.SORT_FIELDS))
         val result = queries.list(filter, page.coerceAtLeast(0), size.coerceIn(1, 200))
         return PageDto(result.content.map(mapper::toSummary), result.page, result.size, result.totalElements)
     }

@@ -18,6 +18,7 @@ import pl.mos.backoffice.identity.TestIdentity
 import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAuthorizationGate
 import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
 import pl.mos.backoffice.identity.application.port.`in`.ManageGroups
+import pl.mos.backoffice.identity.application.port.out.UserRepository
 import pl.mos.backoffice.identity.domain.model.UserStatus
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
@@ -41,6 +42,7 @@ class IdentityRestIntegrationTest {
     @Autowired lateinit var gate: SecurityContextAuthorizationGate
     @Autowired lateinit var loader: LoadCurrentUser
     @Autowired lateinit var tm: PlatformTransactionManager
+    @Autowired lateinit var users: UserRepository
 
     private fun admin(): Cookie = identity.login(identity.user("admin-${UUID.randomUUID()}@example.com", "platform-admin")).first
     private fun member(): Pair<Cookie, pl.mos.backoffice.identity.domain.model.User> = identity.user().let { identity.login(it).first to it }
@@ -268,6 +270,56 @@ class IdentityRestIntegrationTest {
         assertThat(second).hasStatusOk().bodyJson().extractingPath("$.content.length()").asNumber().isNotEqualTo(0)
         assertThat(mvc.get().uri("/api/v1/admin/audit?cursor=garbage").cookie(session)).hasStatus(HttpStatus.BAD_REQUEST)
         assertThat(auditCount("AUDIT_VIEW")).isGreaterThanOrEqualTo(2)
+    }
+
+    @Test
+    fun `the audit log sorts oldest first with at asc and the cursor continues ascending`() {
+        val admin = identity.user("audit-sort-${UUID.randomUUID()}@example.com", "platform-admin")
+        val session = identity.login(admin).first
+        repeat(3) { post("/api/v1/admin/groups", """{"name":"Audit sort ${UUID.randomUUID()}"}""", session).exchange() }
+        fun ids(body: String) = json.readTree(body).get("content").iterator().asSequence().map { it.get("id").asString() }.toList()
+        val filter = "operation=GROUP_CREATE&actorId=${admin.id}"
+
+        val newestFirst = ids(mvc.get().uri("/api/v1/admin/audit?$filter&size=10").cookie(session).exchange().response.contentAsString)
+        assertThat(newestFirst).hasSize(3)
+        assertThat(ids(mvc.get().uri("/api/v1/admin/audit?$filter&size=10&sort=at.desc").cookie(session).exchange().response.contentAsString))
+            .isEqualTo(newestFirst)
+
+        val first = mvc.get().uri("/api/v1/admin/audit?$filter&size=2&sort=at.asc").cookie(session).exchange()
+        assertThat(first).hasStatusOk()
+        val cursor = json.readTree(first.response.contentAsString).get("nextCursor").asString()
+        val second = mvc.get().uri("/api/v1/admin/audit?$filter&size=2&sort=at.asc&cursor=$cursor").cookie(session).exchange()
+        assertThat(second).hasStatusOk()
+        assertThat(json.readTree(second.response.contentAsString).get("nextCursor")?.takeUnless { it.isNull }).isNull()
+        assertThat(ids(first.response.contentAsString) + ids(second.response.contentAsString)).isEqualTo(newestFirst.reversed())
+
+        assertThat(mvc.get().uri("/api/v1/admin/audit?sort=operation.asc").cookie(session)).hasStatus(HttpStatus.BAD_REQUEST)
+        assertThat(mvc.get().uri("/api/v1/admin/audit?sort=at.sideways").cookie(session)).hasStatus(HttpStatus.BAD_REQUEST)
+    }
+
+    @Test
+    fun `the user list sorts by name, email and last sign-in and rejects unknown fields`() {
+        val session = admin()
+        val tag = "sort-${UUID.randomUUID().toString().take(8)}"
+        val carol = users.save(identity.user("$tag-a@example.com").copy(displayName = "Carol $tag", lastLoginAt = Instant.parse("2026-01-02T00:00:00Z")))
+        val alice = users.save(identity.user("$tag-b@example.com").copy(displayName = "alice $tag", lastLoginAt = Instant.parse("2026-03-01T00:00:00Z")))
+        val bob = users.save(identity.user("$tag-c@example.com").copy(displayName = "Bob $tag"))
+        fun order(sort: String): List<String> {
+            val result = mvc.get().uri("/api/v1/admin/users?q=$tag&sort=$sort").cookie(session).exchange()
+            assertThat(result).hasStatusOk()
+            return json.readTree(result.response.contentAsString).get("content").iterator().asSequence().map { it.get("id").asString() }.toList()
+        }
+
+        assertThat(order("name.asc")).containsExactly(alice.id.toString(), bob.id.toString(), carol.id.toString())
+        assertThat(order("name.desc")).containsExactly(carol.id.toString(), bob.id.toString(), alice.id.toString())
+        assertThat(order("email.asc")).containsExactly(carol.id.toString(), alice.id.toString(), bob.id.toString())
+        // users who never signed in come last in both directions
+        assertThat(order("lastLoginAt.desc")).containsExactly(alice.id.toString(), carol.id.toString(), bob.id.toString())
+        assertThat(order("lastLoginAt.asc")).containsExactly(carol.id.toString(), alice.id.toString(), bob.id.toString())
+
+        val unknown = mvc.get().uri("/api/v1/admin/users?sort=groups.asc").cookie(session).exchange()
+        assertThat(unknown).hasStatus(HttpStatus.BAD_REQUEST)
+        assertThat(unknown.response.contentType).contains("problem+json")
     }
 
     @Test

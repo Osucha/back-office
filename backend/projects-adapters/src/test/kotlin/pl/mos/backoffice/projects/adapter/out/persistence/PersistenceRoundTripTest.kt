@@ -73,6 +73,9 @@ import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
 import pl.mos.backoffice.projects.domain.model.ProjectWorkspaceId
 import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 import pl.mos.backoffice.projects.domain.model.WorkspaceSource
+import pl.mos.backoffice.projects.domain.model.CiExecutionStatus
+import pl.mos.backoffice.projects.application.port.`in`.CiExecutionQueries
+import pl.mos.backoffice.shared.usage.SortSpec
 
 @SpringBootTest(classes = [ProjectsTestApplication::class])
 @Import(ProjectsTestBeans::class)
@@ -302,5 +305,60 @@ class PersistenceRoundTripTest {
         assertThat(approvals.findByStatus(ApprovalStatus.OPEN, onlyA, 1)).hasSize(1)
         assertThat(approvals.countOpen(onlyA)).isEqualTo(1)
         assertThat(approvals.countOpen(none)).isZero()
+    }
+
+    @Test
+    fun `run listings sort by the asked column with empty values last and keep newest first without a sort (ADR 0046)`() {
+        val a = project("RS1")
+        val b = project("RS2")
+        val both = ProjectFilter.Only(setOf(a.id.value, b.id.value))
+        val review = workflows.save(DefaultWorkflows.ciCodeReview(a.id, now))
+        val issue = workflows.save(DefaultWorkflows.issueToReviewedMr(b.id, now))
+        val bob = Actor(PrincipalKind.USER, UUID.randomUUID(), "bob")
+        val r1 = runs.save(WorkflowRun.create(a, review, RunTrigger(TriggerSource.MANUAL), RunInput(), now.minusSeconds(30), startedBy = bob).start(now).copy(cost = Money.usd(0.3)))
+        val r2 = runs.save(WorkflowRun.create(b, issue, RunTrigger(TriggerSource.MANUAL), RunInput(), now.minusSeconds(20), startedBy = alice).copy(cost = Money.usd(0.1)))
+        val r3 = runs.save(WorkflowRun.create(a, review, RunTrigger(TriggerSource.API), RunInput(), now.minusSeconds(10)).copy(cost = Money.usd(0.2)))
+        fun ids(sort: String?) = runs.find(RunFilter(sort = SortSpec.parse(sort, RunFilter.SORT_FIELDS)), both, 0, 10).content.map { it.id }
+
+        assertThat(ids(null)).containsExactly(r3.id, r2.id, r1.id)
+        assertThat(ids("createdAt.asc")).containsExactly(r1.id, r2.id, r3.id)
+        assertThat(ids("cost.desc")).containsExactly(r1.id, r3.id, r2.id)
+        assertThat(ids("status.desc")).containsExactly(r1.id, r3.id, r2.id)
+        assertThat(ids("workflow.desc")).containsExactly(r2.id, r3.id, r1.id)
+        assertThat(ids("project.asc")).containsExactly(r3.id, r1.id, r2.id)
+        // the starter's display name from the JSON column; a run without a starter comes last in both directions
+        assertThat(ids("startedBy.asc")).containsExactly(r2.id, r1.id, r3.id)
+        assertThat(ids("startedBy.desc")).containsExactly(r1.id, r2.id, r3.id)
+        // paging follows the sort and the count ignores it
+        val second = runs.find(RunFilter(sort = SortSpec("cost", true)), both, 1, 2)
+        assertThat(second.content.map { it.id }).containsExactly(r2.id)
+        assertThat(second.totalElements).isEqualTo(3)
+    }
+
+    @Test
+    fun `CI execution listings sort by the asked column with empty values last and keep newest first without a sort (ADR 0046)`() {
+        val a = project("RS3")
+        val b = project("RS4")
+        val both = ProjectFilter.Only(setOf(a.id.value, b.id.value))
+        fun execution(project: Project, entrypoint: String, ref: String?, ageSeconds: Long, cost: Double, status: CiExecutionStatus = CiExecutionStatus.QUEUED) = executions.save(
+            CiExecution(
+                CiExecutionId.new(), project.id, project.key, entrypoint, CiMode.BLOCKING, status = status,
+                context = CiContext(CiProvider.GITLAB, ref = ref, commitSha = "sha"), cost = Money.usd(cost), createdAt = now.minusSeconds(ageSeconds),
+            ),
+        )
+        val e1 = execution(a, "security", "main", 30, 0.5)
+        val e2 = execution(b, "code-review", null, 20, 0.1, CiExecutionStatus.RUNNING)
+        val e3 = execution(a, "Lint", "feature/a", 10, 0.0)
+        fun ids(sort: String?) = executions.find(null, both, 0, 10, SortSpec.parse(sort, CiExecutionQueries.SORT_FIELDS)).content.map { it.id }
+
+        assertThat(ids(null)).containsExactly(e3.id, e2.id, e1.id)
+        assertThat(ids("createdAt.asc")).containsExactly(e1.id, e2.id, e3.id)
+        assertThat(ids("entrypoint.asc")).containsExactly(e2.id, e3.id, e1.id)
+        assertThat(ids("project.desc")).containsExactly(e2.id, e3.id, e1.id)
+        assertThat(ids("cost.asc")).containsExactly(e3.id, e2.id, e1.id)
+        assertThat(ids("status.desc")).containsExactly(e2.id, e3.id, e1.id)
+        // the ref of the stored CI context; an execution without a ref comes last in both directions
+        assertThat(ids("ref.asc")).containsExactly(e3.id, e1.id, e2.id)
+        assertThat(ids("ref.desc")).containsExactly(e1.id, e3.id, e2.id)
     }
 }

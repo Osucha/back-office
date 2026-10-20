@@ -55,3 +55,27 @@ describe('CI executions: repository (ADR 0034)', () => {
     expect(chips[0].getAttribute('aria-label')).toBe('Repository docs');
   });
 });
+
+describe('CI executions: server-side sort (ADR 0046)', () => {
+  it('loads once without a sort, then reloads page 0 with the chosen column', async () => {
+    TestBed.configureTestingModule({
+      imports: [CiExecutionsTableComponent],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(CiExecutionsTableComponent);
+    fixture.detectChanges();
+    const first = http.expectOne((r) => r.url.endsWith('/ci/executions'));
+    expect(first.request.params.has('sort')).toBe(false);
+    first.flush({ content: [docs, legacy], totalElements: 2, page: 0, size: 20 });
+    fixture.detectChanges();
+
+    fixture.componentInstance.sort.set('ref', 'descend');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const sorted = http.expectOne((r) => r.url.endsWith('/ci/executions'));
+    expect(sorted.request.params.get('sort')).toBe('ref.desc');
+    expect(sorted.request.params.get('page')).toBe('0');
+    sorted.flush({ content: [legacy, docs], totalElements: 2, page: 0, size: 20 });
+  });
+});

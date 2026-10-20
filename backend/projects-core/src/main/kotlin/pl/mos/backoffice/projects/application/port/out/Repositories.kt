@@ -19,6 +19,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.usage.PageOf
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Instant
 
 interface ProjectRepository {
@@ -77,7 +78,14 @@ data class RunFilter(
     val projectId: ProjectId? = null,
     val workflowId: WorkflowDefinitionId? = null,
     val statuses: Set<RunStatus> = emptySet(),
-)
+    /** Column sorting (ADR 0046); null keeps newest first. */
+    val sort: SortSpec? = null,
+) {
+    companion object {
+        /** The `sort` fields of `GET /runs`. */
+        val SORT_FIELDS = listOf("status", "workflow", "project", "startedBy", "cost", "createdAt")
+    }
+}
 
 interface WorkflowRunRepository {
     fun save(run: WorkflowRun): WorkflowRun
@@ -111,7 +119,8 @@ interface CiExecutionRepository {
     fun findByRunId(runId: WorkflowRunId): CiExecution?
     /** Newest execution with the same idempotency key created after [since]. */
     fun findRecentByKey(idempotencyKey: String, since: Instant): CiExecution?
-    fun find(projectId: ProjectId?, projects: ProjectFilter, page: Int, size: Int): PageOf<CiExecution>
+    /** Newest first unless [sort] names a column (ADR 0046). */
+    fun find(projectId: ProjectId?, projects: ProjectFilter, page: Int, size: Int, sort: SortSpec? = null): PageOf<CiExecution>
     fun findRecent(limit: Int, projects: ProjectFilter): List<CiExecution>
     fun countByProjectSince(projectId: ProjectId, since: Instant): Int
     fun deleteByProjectId(projectId: ProjectId)

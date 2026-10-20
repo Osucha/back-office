@@ -18,6 +18,8 @@ export interface RunsQuery {
   status?: RunStatus[];
   page?: number;
   size?: number;
+  /** `field.asc` / `field.desc` (ADR 0046); omitted keeps newest first. */
+  sort?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -32,6 +34,7 @@ export class RunsApi {
         status: query.status,
         page: query.page,
         size: query.size,
+        sort: query.sort,
       }),
     });
   }

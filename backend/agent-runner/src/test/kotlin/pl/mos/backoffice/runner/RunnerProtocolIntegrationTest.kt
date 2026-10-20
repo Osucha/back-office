@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import pl.mos.backoffice.runner.application.port.`in`.AgentJobFilter
 import pl.mos.backoffice.runner.application.port.`in`.MaintainAgentJobs
 import pl.mos.backoffice.runner.application.port.`in`.ManageAgentJobs
 import pl.mos.backoffice.runner.application.port.`in`.ManageRunnerPools
@@ -36,6 +37,7 @@ import pl.mos.backoffice.shared.runner.SandboxResources
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.UsageContext
+import pl.mos.backoffice.shared.usage.SortSpec
 import pl.mos.backoffice.shared.usage.UsageKind
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
@@ -351,6 +353,29 @@ class RunnerProtocolIntegrationTest {
         mvc.perform(get("/api/v1/admin/agent-jobs/$jobId")).andExpect(status().isForbidden)
         mvc.perform(post("/api/v1/admin/runner-pools/$poolId/registration-tokens")).andExpect(status().isForbidden)
         assertThat(gate.checked).contains(RunnerPermissions.FLEET_VIEW, RunnerPermissions.FLEET_MANAGE)
+    }
+
+    @Test
+    fun `the agent jobs list sorts by a column and rejects an unknown sort field`() {
+        val suffix = UUID.randomUUID().toString().take(8)
+        val opus = spec().copy(jobLabel = "a-$suffix")
+        val haiku = spec().copy(jobLabel = "b-$suffix", model = ModelRef(Provider.ANTHROPIC, "claude-haiku-5"))
+        val opusId = runner.submit(opus, continuation(opus.usageContext.runId!!))
+        val haikuId = runner.submit(haiku, continuation(haiku.usageContext.runId!!))
+
+        fun ids(sort: String?) = adminJobs.list(AgentJobFilter(poolId = poolId, sort = SortSpec.parse(sort, AgentJobFilter.SORT_FIELDS)), 0, 10).content.map { it.id }
+        assertThat(ids("label.asc")).containsExactly(opusId, haikuId)
+        assertThat(ids("label.desc")).containsExactly(haikuId, opusId)
+        assertThat(ids("model.asc")).containsExactly(haikuId, opusId)
+        // duration of jobs that never started is null: nulls last in both directions, id breaks the tie
+        assertThat(ids("duration.desc")).containsExactlyInAnyOrder(opusId, haikuId)
+
+        mvc.perform(get("/api/v1/admin/agent-jobs").param("poolId", poolId).param("sort", "label.desc"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.content[0].id").value(haikuId.toString()))
+            .andExpect(jsonPath("$.content[1].id").value(opusId.toString()))
+        mvc.perform(get("/api/v1/admin/agent-jobs").param("sort", "secret.asc")).andExpect(status().isBadRequest)
+        mvc.perform(get("/api/v1/admin/agent-jobs").param("sort", "label.sideways")).andExpect(status().isBadRequest)
     }
 
     @Test

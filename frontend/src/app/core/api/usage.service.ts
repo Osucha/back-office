@@ -18,6 +18,8 @@ export interface UsageEntriesQuery {
   benchmarkId?: string | null;
   page?: number;
   size?: number;
+  /** `field.asc|field.desc` (occurredAt, model, kind, tokens, duration, cost); omitted = newest first. */
+  sort?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -44,6 +46,7 @@ export class UsageApi {
         benchmarkId: query.benchmarkId,
         page: query.page,
         size: query.size,
+        sort: query.sort,
       }),
     });
   }

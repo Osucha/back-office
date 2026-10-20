@@ -60,5 +60,9 @@ The local stack also needed four commands and a Keycloak the owner does not use.
   the candidate's own (`benchmark_attempt.candidate_latency_ms`, evaluation V204) over succeeded attempts, the form
   warns about a judge that is also a candidate and about sample repositories, and the starter coding tasks run against
   Spring PetClinic pinned to a commit (suites still on the placeholder repository are upgraded at startup).
+- Column sorting: client-side tables sort in the browser (`tableSort`, `th[boSort]`); the server-paged lists (runs, CI
+  executions, users, audit log, usage entries, agent jobs) take `sort=field.asc|desc` (`SortSpec`, a whitelist of
+  fields per list mapped to columns, natural order without it; the audit log only by time, keyset cursor both ways).
+  The UI keeps either in the URL.
 - `backend/.dockerignore` excluded `**/out`, which also dropped the source packages `application/port/out`, so the
   `full` profile could not build the API image; it now excludes only the IDE output directories (`out`, `*/out`).

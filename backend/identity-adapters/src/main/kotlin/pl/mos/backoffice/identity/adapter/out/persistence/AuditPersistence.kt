@@ -163,7 +163,7 @@ class JdbcAuditLog(
     }
 }
 
-/** Audit search with an opaque keyset cursor (base64url of `eventTime|id`), newest first. */
+/** Audit search with an opaque keyset cursor (base64url of `eventTime|id`), newest first (oldest first for `at.asc`). */
 class JdbcAuditLogReader(private val jdbc: JdbcClient, private val json: JsonMapper) : AuditLogReader {
 
     override fun search(query: AuditQuery): AuditRecordPage {
@@ -178,15 +178,17 @@ class JdbcAuditLogReader(private val jdbc: JdbcClient, private val json: JsonMap
         query.projectId?.let { where += "project_id = :projectId"; params["projectId"] = it }
         query.result?.let { where += "result = :result"; params["result"] = it.name }
         query.correlationId?.let { where += "correlation_id = :correlationId"; params["correlationId"] = it }
+        // at.asc runs oldest first: the keyset comparison and the ORDER BY flip, so the cursor continues in that direction
+        val (comparison, direction) = if (query.ascending) ">" to "ASC" else "<" to "DESC"
         query.cursor?.let {
             val (time, id) = decode(it)
-            where += "(event_time, id) < (:cursorTime, :cursorId)"
+            where += "(event_time, id) $comparison (:cursorTime, :cursorId)"
             params["cursorTime"] = JdbcSupport.ts(time)!!
             params["cursorId"] = id
         }
         params["limit"] = query.size + 1
         val clause = if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")
-        val rows = jdbc.sql("SELECT * FROM audit_log $clause ORDER BY event_time DESC, id DESC LIMIT :limit").params(params).query { rs, _ ->
+        val rows = jdbc.sql("SELECT * FROM audit_log $clause ORDER BY event_time $direction, id $direction LIMIT :limit").params(params).query { rs, _ ->
             val kind = rs.getString("actor_kind")
             AuditRecord(
                 id = rs.uuid("id")!!,

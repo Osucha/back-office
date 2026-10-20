@@ -41,6 +41,8 @@ import { listNavigation } from '../../../core/ui/relay/list-nav';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { serverSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import {
   PERIODS,
@@ -107,6 +109,7 @@ const VIRTUAL_FROM = 100;
     FilterBarComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -326,12 +329,12 @@ const VIRTUAL_FROM = 100;
           >
             <thead>
               <tr>
-                <th nzWidth="150px" i18n="@@costs.ledger.when">When</th>
-                <th i18n="@@costs.ledger.model">Model</th>
-                <th nzWidth="260px" i18n="@@costs.ledger.work">Work</th>
-                <th nzWidth="170px" i18n="@@costs.ledger.tokens">Tokens</th>
-                <th nzWidth="90px" nzAlign="right" i18n="@@costs.ledger.duration">Duration</th>
-                <th nzWidth="100px" nzAlign="right" i18n="@@costs.ledger.cost">Cost</th>
+                <th nzShowSort [boSort]="sort" boSortKey="occurredAt" nzWidth="166px" i18n="@@costs.ledger.when">When</th>
+                <th nzShowSort [boSort]="sort" boSortKey="model" i18n="@@costs.ledger.model">Model</th>
+                <th nzShowSort [boSort]="sort" boSortKey="kind" nzWidth="276px" i18n="@@costs.ledger.work">Work</th>
+                <th nzShowSort [boSort]="sort" boSortKey="tokens" nzWidth="186px" i18n="@@costs.ledger.tokens">Tokens</th>
+                <th nzShowSort [boSort]="sort" boSortKey="duration" nzWidth="106px" nzAlign="right" i18n="@@costs.ledger.duration">Duration</th>
+                <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="116px" nzAlign="right" i18n="@@costs.ledger.cost">Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -602,6 +605,10 @@ export class CostsPageComponent {
     projectId: 'string',
     q: 'string',
   });
+  /** Ledger column order, sorted by the server (`?ledgerSort=cost.desc`). */
+  readonly sort = serverSort(['occurredAt', 'model', 'kind', 'tokens', 'duration', 'cost'], {
+    param: 'ledgerSort',
+  });
   readonly groups = GROUPS;
   readonly projects = signal<Project[]>([]);
   readonly summary = signal<UsageSummary | null>(null);
@@ -770,6 +777,7 @@ export class CostsPageComponent {
     });
     effect(() => {
       this.range();
+      this.sort.query(); // a new column order starts again at page 0
       untracked(() => {
         this.page.set(0);
         this.loadEntries();
@@ -853,17 +861,19 @@ export class CostsPageComponent {
   loadEntries(): void {
     const r = apiRange(this.range());
     this.entriesLoading.set(true);
-    this.api.entries({ ...r, page: this.page(), size: this.size() }).subscribe({
-      next: (p) => {
-        this.entries.set(p.content ?? []);
-        this.entriesTotal.set(p.totalElements ?? p.content?.length ?? 0);
-        this.entriesLoading.set(false);
-        this.entriesLoaded.set(true);
-      },
-      error: () => {
-        this.entriesLoading.set(false);
-        this.entriesLoaded.set(true);
-      },
-    });
+    this.api
+      .entries({ ...r, page: this.page(), size: this.size(), sort: this.sort.query() ?? undefined })
+      .subscribe({
+        next: (p) => {
+          this.entries.set(p.content ?? []);
+          this.entriesTotal.set(p.totalElements ?? p.content?.length ?? 0);
+          this.entriesLoading.set(false);
+          this.entriesLoaded.set(true);
+        },
+        error: () => {
+          this.entriesLoading.set(false);
+          this.entriesLoaded.set(true);
+        },
+      });
   }
 }

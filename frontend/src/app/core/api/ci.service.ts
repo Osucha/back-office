@@ -11,6 +11,8 @@ export interface CiExecutionsQuery {
   projectId?: string | null;
   page?: number;
   size?: number;
+  /** `field.asc` / `field.desc` (ADR 0046); omitted keeps newest first. */
+  sort?: string;
 }
 
 /** Owner-side view of CI executions (`backoffice-ci run <entrypoint>` calls). */
@@ -20,7 +22,12 @@ export class CiApi {
 
   listExecutions(query: CiExecutionsQuery): Observable<CiExecutionPage> {
     return this.http.get<CiExecutionPage>(url('ci', 'executions'), {
-      params: params({ projectId: query.projectId, page: query.page, size: query.size }),
+      params: params({
+        projectId: query.projectId,
+        page: query.page,
+        size: query.size,
+        sort: query.sort,
+      }),
     });
   }
 

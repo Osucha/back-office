@@ -6,6 +6,7 @@ import pl.mos.backoffice.projects.domain.model.CiExecutionId
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.usage.PageOf
+import pl.mos.backoffice.shared.usage.SortSpec
 
 /**
  * Use case: `backoffice-ci run <entrypoint>`. Resolves the entrypoint, applies the idempotency rule
@@ -31,7 +32,13 @@ interface StartCiExecution {
  */
 interface CiExecutionQueries {
     fun get(id: CiExecutionId): CiExecution
-    fun list(projectId: ProjectId?, page: Int, size: Int): PageOf<CiExecution>
+    /** Newest first unless [sort] names one of [SORT_FIELDS] (ADR 0046). */
+    fun list(projectId: ProjectId?, page: Int, size: Int, sort: SortSpec? = null): PageOf<CiExecution>
+
+    companion object {
+        /** The `sort` fields of `GET /ci/executions`. */
+        val SORT_FIELDS = listOf("status", "entrypoint", "ref", "project", "cost", "createdAt")
+    }
 }
 
 /** Internal use case: called when a CI-triggered run finishes to derive status, gate result and report. */

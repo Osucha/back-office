@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.adapter.out.persistence
 
+import jakarta.persistence.criteria.CriteriaBuilder
+import jakarta.persistence.criteria.Expression
+import jakarta.persistence.criteria.Root
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.data.jpa.domain.Specification
@@ -38,6 +41,8 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.usage.PageOf
+import pl.mos.backoffice.shared.usage.SortSpec
+import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 
@@ -59,6 +64,32 @@ internal object ProjectSpecs {
     fun <T : Any> after(field: String, since: Instant): Specification<T> = Specification { root, _, cb -> cb.greaterThan(root.get(field), since) }
 
     fun nothingVisible(filter: ProjectFilter): Boolean = filter is ProjectFilter.Only && filter.projectIds.isEmpty()
+
+    /**
+     * Column sorting of a list (ADR 0046) inside the query, so JSON attributes can be sorted too: [key] in the asked
+     * direction with empty values (null, and '' for [text] keys) last, then newest first and the id as a stable
+     * tiebreaker. Use it with an unsorted page request: Spring Data keeps the specification's order then and drops
+     * it from the count query.
+     */
+    fun <T : Any> sorted(sort: SortSpec, text: Boolean, key: (Root<T>, CriteriaBuilder) -> Expression<*>): Specification<T> =
+        Specification { root, query, cb ->
+            val value = key(root, cb)
+            val empty = if (text) cb.or(cb.isNull(value), cb.equal(value, "")) else cb.isNull(value)
+            query.orderBy(
+                cb.asc(cb.selectCase<Int>().`when`(empty, 1).otherwise(0)),
+                if (sort.descending) cb.desc(value) else cb.asc(value),
+                cb.desc(root.get<Instant>("createdAt")),
+                cb.asc(root.get<UUID>("id")),
+            )
+            null
+        }
+
+    /** A text attribute of a `jsonb` column (`column->>'name'`), lower-cased for sorting. */
+    fun <T : Any> jsonText(root: Root<T>, cb: CriteriaBuilder, column: String, name: String): Expression<String> =
+        cb.lower(cb.function("jsonb_extract_path_text", String::class.java, root.get<String>(column), cb.literal(name)))
+
+    /** A text attribute lower-cased for sorting. */
+    fun <T : Any> lowerText(root: Root<T>, cb: CriteriaBuilder, attribute: String): Expression<String> = cb.lower(root.get<String>(attribute))
 }
 
 @Component
@@ -180,13 +211,25 @@ class WorkflowRunPersistenceAdapter(
 
     override fun find(filter: RunFilter, projects: ProjectFilter, page: Int, size: Int): PageOf<WorkflowRun> {
         if (ProjectSpecs.nothingVisible(projects)) return PageOf(emptyList(), page, size, 0)
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        val sort = filter.sort
+        val pageable = if (sort == null) PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")) else PageRequest.of(page, size)
         var spec = ProjectSpecs.visibleTo<WorkflowRunEntity>(projects)
         filter.projectId?.let { spec = spec.and(ProjectSpecs.eq("projectId", it.value)) }
         filter.workflowId?.let { spec = spec.and(ProjectSpecs.eq("workflowId", it.value)) }
         if (filter.statuses.isNotEmpty()) spec = spec.and(ProjectSpecs.within("status", filter.statuses.map { it.name }))
+        if (sort != null) spec = spec.and(runOrder(sort))
         val result = runs.findAll(spec, pageable)
         return PageOf(result.content.map { mapper.toDomain(it, emptyList()) }, page, size, result.totalElements)
+    }
+
+    /** [RunFilter.SORT_FIELDS] to columns: workflow name, project key and the starter's display name as shown in the table. */
+    private fun runOrder(sort: SortSpec): Specification<WorkflowRunEntity> = when (sort.field) {
+        "status" -> ProjectSpecs.sorted(sort, text = true) { root, _ -> root.get<String>("status") }
+        "workflow" -> ProjectSpecs.sorted(sort, text = true) { root, cb -> ProjectSpecs.lowerText(root, cb, "workflowName") }
+        "project" -> ProjectSpecs.sorted(sort, text = true) { root, cb -> ProjectSpecs.lowerText(root, cb, "projectKey") }
+        "startedBy" -> ProjectSpecs.sorted(sort, text = true) { root, cb -> ProjectSpecs.jsonText(root, cb, "startedBy", "displayName") }
+        "cost" -> ProjectSpecs.sorted(sort, text = false) { root, _ -> root.get<BigDecimal>("costAmount") }
+        else -> ProjectSpecs.sorted(sort, text = false) { root, _ -> root.get<Instant>("createdAt") }
     }
 
     override fun findByStatus(statuses: Set<RunStatus>): List<WorkflowRun> =
@@ -269,13 +312,24 @@ class CiExecutionPersistenceAdapter(private val repo: CiExecutionJpaRepository, 
     override fun findByRunId(runId: WorkflowRunId): CiExecution? = repo.findFirstByRunId(runId.value)?.let(mapper::toDomain)
     override fun findRecentByKey(idempotencyKey: String, since: Instant): CiExecution? =
         repo.findFirstByIdempotencyKeyAndCreatedAtAfterOrderByCreatedAtDesc(idempotencyKey, since)?.let(mapper::toDomain)
-    override fun find(projectId: ProjectId?, projects: ProjectFilter, page: Int, size: Int): PageOf<CiExecution> {
+    override fun find(projectId: ProjectId?, projects: ProjectFilter, page: Int, size: Int, sort: SortSpec?): PageOf<CiExecution> {
         if (ProjectSpecs.nothingVisible(projects)) return PageOf(emptyList(), page, size, 0)
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        val pageable = if (sort == null) PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")) else PageRequest.of(page, size)
         var spec = ProjectSpecs.visibleTo<CiExecutionEntity>(projects)
         projectId?.let { spec = spec.and(ProjectSpecs.eq("projectId", it.value)) }
+        if (sort != null) spec = spec.and(executionOrder(sort))
         val result = repo.findAll(spec, pageable)
         return PageOf(result.content.map(mapper::toDomain), page, size, result.totalElements)
+    }
+
+    /** `CiExecutionQueries.SORT_FIELDS` to columns: `ref` is the `ref` of the stored CI context (`context->>'ref'`). */
+    private fun executionOrder(sort: SortSpec): Specification<CiExecutionEntity> = when (sort.field) {
+        "status" -> ProjectSpecs.sorted(sort, text = true) { root, _ -> root.get<String>("status") }
+        "entrypoint" -> ProjectSpecs.sorted(sort, text = true) { root, cb -> ProjectSpecs.lowerText(root, cb, "entrypoint") }
+        "ref" -> ProjectSpecs.sorted(sort, text = true) { root, cb -> ProjectSpecs.jsonText(root, cb, "context", "ref") }
+        "project" -> ProjectSpecs.sorted(sort, text = true) { root, cb -> ProjectSpecs.lowerText(root, cb, "projectKey") }
+        "cost" -> ProjectSpecs.sorted(sort, text = false) { root, _ -> root.get<BigDecimal>("costAmount") }
+        else -> ProjectSpecs.sorted(sort, text = false) { root, _ -> root.get<Instant>("createdAt") }
     }
     override fun findRecent(limit: Int, projects: ProjectFilter): List<CiExecution> {
         if (ProjectSpecs.nothingVisible(projects)) return emptyList()

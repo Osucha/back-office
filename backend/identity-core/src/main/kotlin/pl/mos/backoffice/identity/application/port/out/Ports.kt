@@ -17,10 +17,23 @@ import pl.mos.backoffice.shared.audit.AuditResult
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PermissionDefinition
 import pl.mos.backoffice.shared.security.UserId
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Instant
 import java.util.UUID
 
-data class UserQuery(val q: String? = null, val status: UserStatus? = null, val groupId: GroupId? = null, val page: Int = 0, val size: Int = 20)
+data class UserQuery(
+    val q: String? = null,
+    val status: UserStatus? = null,
+    val groupId: GroupId? = null,
+    val page: Int = 0,
+    val size: Int = 20,
+    /** Column sort ([SORT_FIELDS]); `null` keeps the natural order (display name). */
+    val sort: SortSpec? = null,
+) {
+    companion object {
+        val SORT_FIELDS = listOf("name", "email", "status", "lastLoginAt")
+    }
+}
 
 data class Page<T>(val content: List<T>, val page: Int, val size: Int, val totalElements: Long)
 
@@ -155,7 +168,16 @@ data class AuditQuery(
     /** Opaque keyset cursor returned as [AuditRecordPage.nextCursor]. */
     val cursor: String? = null,
     val size: Int = 50,
-)
+    /** Only `at` ([SORT_FIELDS]); `at.asc` lists the oldest first, `null` or `at.desc` the newest first. */
+    val sort: SortSpec? = null,
+) {
+    /** True when the page (and its cursor) runs from the oldest entry to the newest. */
+    val ascending: Boolean get() = sort != null && !sort.descending
+
+    companion object {
+        val SORT_FIELDS = listOf("at")
+    }
+}
 
 data class AuditRecord(
     val id: UUID,

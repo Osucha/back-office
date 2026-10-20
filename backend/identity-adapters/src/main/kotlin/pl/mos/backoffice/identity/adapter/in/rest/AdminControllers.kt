@@ -39,6 +39,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditResult
 import pl.mos.backoffice.shared.security.PermissionScope
 import pl.mos.backoffice.shared.security.UserId
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Instant
 import java.util.UUID
 
@@ -60,8 +61,9 @@ class AdminUserController(
         @RequestParam(required = false) groupId: UUID?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
+        @RequestParam(required = false) sort: String?,
     ): UserPageDto {
-        val result = users.list(UserQuery(q, status, groupId?.let(::GroupId), page, size))
+        val result = users.list(UserQuery(q, status, groupId?.let(::GroupId), page, size, SortSpec.parse(sort, UserQuery.SORT_FIELDS)))
         return UserPageDto(result.content.map { UserDetailDto.of(it, web.publicUrl) }, result.page, result.size, result.totalElements)
     }
 
@@ -201,8 +203,11 @@ class AdminAccessController(
         @RequestParam(required = false) correlationId: String?,
         @RequestParam(required = false) cursor: String?,
         @RequestParam(defaultValue = "50") size: Int,
+        @RequestParam(required = false) sort: String?,
     ): AuditPageDto {
-        val page = audit.search(AuditQuery(from, to, actorId, operation, entityType, entityId, projectId, result, correlationId, cursor, size))
+        val page = audit.search(
+            AuditQuery(from, to, actorId, operation, entityType, entityId, projectId, result, correlationId, cursor, size, SortSpec.parse(sort, AuditQuery.SORT_FIELDS)),
+        )
         return AuditPageDto(page.content.map(AuditEntryDto::of), page.nextCursor)
     }
 

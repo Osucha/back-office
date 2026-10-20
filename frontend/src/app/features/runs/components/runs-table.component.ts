@@ -29,6 +29,8 @@ import { absoluteTime } from '../../../core/ui/relay/format';
 import { listNavigation } from '../../../core/ui/relay/list-nav';
 import { RunTrackComponent } from '../../../core/ui/relay/run-track.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { serverSort } from '../../../core/ui/relay/table-sort';
 import { filterRuns, statusesForHolders } from '../data/run-filters';
 
 const VIRTUAL_FROM = 100;
@@ -49,6 +51,7 @@ const ROW_HEIGHT = 49;
     EmptyComponent,
     RunTrackComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -87,15 +90,15 @@ const ROW_HEIGHT = 49;
         <ng-template #totalTpl let-total>{{ totalText(total) }}</ng-template>
         <thead>
           <tr>
-            <th nzWidth="150px" i18n="@@runs.table.holder">Holder</th>
-            <th i18n="@@runs.table.run">Run</th>
+            <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="166px" i18n="@@runs.table.holder">Holder</th>
+            <th nzShowSort [boSort]="sort" boSortKey="workflow" i18n="@@runs.table.run">Run</th>
             <th nzWidth="22%" i18n="@@runs.table.relay">Relay</th>
             @if (!projectId()) {
-              <th nzWidth="90px" i18n="@@runs.table.project">Project</th>
+              <th nzShowSort [boSort]="sort" boSortKey="project" nzWidth="106px" i18n="@@runs.table.project">Project</th>
             }
-            <th nzWidth="150px" i18n="@@runs.table.startedBy">Started by</th>
-            <th nzWidth="90px" nzAlign="right" i18n="@@runs.table.cost">Cost</th>
-            <th nzWidth="90px" nzAlign="right" i18n="@@runs.table.age">Age</th>
+            <th nzShowSort [boSort]="sort" boSortKey="startedBy" nzWidth="166px" i18n="@@runs.table.startedBy">Started by</th>
+            <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@runs.table.cost">Cost</th>
+            <th nzShowSort [boSort]="sort" boSortKey="createdAt" nzWidth="106px" nzAlign="right" i18n="@@runs.table.age">Age</th>
           </tr>
         </thead>
         <tbody>
@@ -208,6 +211,10 @@ export class RunsTableComponent {
   readonly page = signal(0);
   readonly size = signal(this.identity.pageSize());
   readonly rowHeight = ROW_HEIGHT;
+  /** Server-side column sort (ADR 0046), kept in `?runSort=` so it does not clash with other tables of the page. */
+  readonly sort = serverSort(['status', 'workflow', 'project', 'startedBy', 'cost', 'createdAt'], {
+    param: 'runSort',
+  });
 
   readonly rows = computed(() =>
     filterRuns(this.raw(), {
@@ -236,6 +243,7 @@ export class RunsTableComponent {
       this.projectId();
       this.workflowId();
       this.apiStatus();
+      this.sort.query();
       untracked(() => {
         this.page.set(0);
         this.load();
@@ -299,6 +307,7 @@ export class RunsTableComponent {
         status: this.apiStatus(),
         page: this.page(),
         size: this.size(),
+        sort: this.sort.query() ?? undefined,
       })
       .subscribe({
         next: (p) => {

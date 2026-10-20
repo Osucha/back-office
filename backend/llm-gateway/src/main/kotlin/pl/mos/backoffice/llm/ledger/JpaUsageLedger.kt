@@ -3,6 +3,8 @@ package pl.mos.backoffice.llm.ledger
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import jakarta.persistence.criteria.CriteriaBuilder
+import jakarta.persistence.criteria.Expression
+import jakarta.persistence.criteria.Nulls
 import jakarta.persistence.criteria.Predicate
 import jakarta.persistence.criteria.Root
 import org.springframework.data.domain.PageRequest
@@ -11,10 +13,13 @@ import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import pl.mos.backoffice.shared.Money
+import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.usage.PageOf
+import pl.mos.backoffice.shared.usage.SortSpec
 import pl.mos.backoffice.shared.usage.UsageGroup
 import pl.mos.backoffice.shared.usage.UsageGroupBy
+import pl.mos.backoffice.shared.usage.UsageKind
 import pl.mos.backoffice.shared.usage.UsageLedger
 import pl.mos.backoffice.shared.usage.UsageQuery
 import pl.mos.backoffice.shared.usage.UsageRecord
@@ -75,9 +80,35 @@ class JpaUsageLedger(private val repository: UsageRecordJpaRepository) : UsageLe
 
     @Transactional(readOnly = true)
     override fun entries(query: UsageQuery, page: Int, size: Int): PageOf<UsageRecord> {
+        query.sort?.let { return sortedEntries(query, it, page.coerceAtLeast(0), size.coerceIn(1, MAX_PAGE_SIZE)) }
         val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, MAX_PAGE_SIZE), Sort.by(Sort.Direction.DESC, "occurredAt"))
         val result = repository.findAll(specification(query), pageable)
         return PageOf(result.content.map { it.toRecord() }, result.number, result.size, result.totalElements)
+    }
+
+    /** Entries in a column order (`UsageQuery.ENTRY_SORT_FIELDS`), nulls last, with the id as a stable tiebreaker. */
+    private fun sortedEntries(query: UsageQuery, sort: SortSpec, page: Int, size: Int): PageOf<UsageRecord> {
+        val cb = entityManager.criteriaBuilder
+        val cq = cb.createQuery(UsageRecordEntity::class.java)
+        val root = cq.from(UsageRecordEntity::class.java)
+        val key: Expression<*> = when (sort.field) {
+            "occurredAt" -> root.get<Instant>("occurredAt")
+            "model" -> root.get<String>("modelId")
+            "kind" -> root.get<UsageKind>("contextKind")
+            "tokens" -> cb.sum(root.get<Long>("inputTokens"), root.get<Long>("outputTokens"))
+            "duration" -> root.get<Long>("durationMs")
+            "cost" -> root.get<BigDecimal>("cost")
+            else -> throw ValidationException("cannot sort usage entries by ${sort.field}", "sort")
+        }
+        val primary = if (sort.descending) cb.desc(key, Nulls.LAST) else cb.asc(key, Nulls.LAST)
+        cq.select(root).where(*predicates(query, root, cb).toTypedArray()).orderBy(primary, cb.asc(root.get<UUID>("id")))
+        val content = entityManager.createQuery(cq).setFirstResult(page * size).setMaxResults(size).resultList
+
+        val countQuery = cb.createQuery(Long::class.javaObjectType)
+        val countRoot = countQuery.from(UsageRecordEntity::class.java)
+        countQuery.select(cb.count(countRoot)).where(*predicates(query, countRoot, cb).toTypedArray())
+        val total = entityManager.createQuery(countQuery).singleResult ?: 0L
+        return PageOf(content.map { it.toRecord() }, page, size, total)
     }
 
     @Transactional(readOnly = true)

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { compareValues, parseSort, sortRows, tableSort } from './table-sort';
+import { compareValues, parseSort, serverSort, sortRows, tableSort } from './table-sort';
 
 describe('table sort', () => {
   const rows = [
@@ -35,5 +35,14 @@ describe('table sort', () => {
     expect(sort.apply(rows)[0].name).toBe('Ewa');
     sort.set('score', null);
     expect(sort.state()).toBeNull();
+  });
+
+  it('gives a server-paged table the value of the API sort parameter', () => {
+    const sort = TestBed.runInInjectionContext(() => serverSort(['cost', 'createdAt']));
+    expect(sort.query()).toBeNull();
+    sort.set('createdAt', 'descend');
+    expect(sort.query()).toBe('createdAt.desc');
+    sort.set('cost', 'ascend');
+    expect(sort.query()).toBe('cost.asc');
   });
 });

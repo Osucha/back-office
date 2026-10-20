@@ -6408,6 +6408,8 @@ export interface operations {
                 poolId?: string;
                 projectId?: string;
                 size?: components["parameters"]["size"];
+                /** @description ADR 0046 column sort, field.asc or field.desc; fields: status, label, model, pool, duration, cost, queuedAt. Without it the natural order (newest first). */
+                sort?: string;
                 status?: components["schemas"]["AgentJobStatus"];
             };
             header?: never;
@@ -6482,6 +6484,8 @@ export interface operations {
                 projectId?: string;
                 result?: "SUCCESS" | "DENIED" | "FAILURE";
                 size?: number;
+                /** @description ADR 0046 column sort, field.asc or field.desc; fields: at (the log stays chronological; at.asc lists the oldest first). Without it the natural order (newest first). */
+                sort?: string;
                 to?: string;
             };
             header?: never;
@@ -7312,6 +7316,8 @@ export interface operations {
                 /** @description search in e-mail and name */
                 q?: string;
                 size?: components["parameters"]["size"];
+                /** @description ADR 0046 column sort, field.asc or field.desc; fields: name, email, status, lastLoginAt. Without it the natural order (newest first). */
+                sort?: string;
                 status?: components["schemas"]["UserStatus"];
             };
             header?: never;
@@ -8280,6 +8286,8 @@ export interface operations {
                 page?: components["parameters"]["page"];
                 projectId?: string;
                 size?: components["parameters"]["size"];
+                /** @description ADR 0046 column sort, field.asc or field.desc; fields: status, entrypoint, ref, project, cost, createdAt. Without it the natural order (newest first). */
+                sort?: string;
             };
             header?: never;
             path?: never;
@@ -11239,6 +11247,8 @@ export interface operations {
                 page?: components["parameters"]["page"];
                 projectId?: string;
                 size?: components["parameters"]["size"];
+                /** @description ADR 0046 column sort, field.asc or field.desc; fields: status, workflow, project, startedBy, cost, createdAt. Without it the natural order (newest first). */
+                sort?: string;
                 status?: components["schemas"]["RunStatus"][];
                 workflowId?: string;
             };
@@ -12118,6 +12128,8 @@ export interface operations {
                 page?: components["parameters"]["page"];
                 runId?: string;
                 size?: components["parameters"]["size"];
+                /** @description ADR 0046 column sort, field.asc or field.desc; fields: occurredAt, model, kind, tokens, duration, cost. Without it the natural order (newest first). */
+                sort?: string;
                 to?: string;
             };
             header?: never;

@@ -234,7 +234,7 @@ class AuditSearchService(
             "from" to bounded.from?.toString(), "to" to bounded.to?.toString(), "actorId" to bounded.actorId?.toString(),
             "operation" to bounded.operation, "entityType" to bounded.entityType, "entityId" to bounded.entityId,
             "projectId" to bounded.projectId?.toString(), "result" to bounded.result?.name, "correlationId" to bounded.correlationId,
-            "cursor" to bounded.cursor,
+            "cursor" to bounded.cursor, "sort" to bounded.sort?.let { "${it.field}.${if (it.descending) "desc" else "asc"}" },
         ).filterValues { it != null }
         audit.record(AuditEntry(IdentityAudit.AUDIT_VIEW, IdentityAudit.ENTITY_AUDIT, null, details = mapOf("filter" to filter, "returned" to page.content.size)))
         return page

@@ -1,6 +1,7 @@
 package pl.mos.backoffice.llm.ledger
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -10,9 +11,11 @@ import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.assertj.MockMvcTester
 import pl.mos.backoffice.llm.PostgresTestSupport
 import pl.mos.backoffice.shared.Money
+import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
+import pl.mos.backoffice.shared.usage.SortSpec
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageGroupBy
 import pl.mos.backoffice.shared.usage.UsageKind
@@ -121,6 +124,35 @@ class JpaUsageLedgerIntegrationTest {
         assertThat(first.content.map { it.occurredAt }).isSortedAccordingTo(Comparator.reverseOrder())
         val second = ledger.entries(UsageQuery(from = null, to = null), page = 1, size = 3)
         assertThat(second.content).hasSize(1)
+    }
+
+    @Test
+    fun `entries sort by a column, nulls last, and the default stays newest first`() {
+        ledger.record(record(day1, gpt, TokenUsage(1, 1), "0.000100", UsageContext(UsageKind.CODE_REVIEW)).copy(durationMs = null))
+        fun page(sort: String) = ledger.entries(UsageQuery(from = null, to = null, sort = SortSpec.parse(sort, UsageQuery.ENTRY_SORT_FIELDS)), 0, 10)
+
+        val byCost = page("cost.desc")
+        assertThat(byCost.totalElements).isEqualTo(5)
+        assertThat(byCost.content.map { it.cost }).containsExactly(
+            Money.usd("0.03"), Money.usd("0.02"), Money.usd("0.01"), Money.usd("0.0005"), Money.usd("0.0001"),
+        )
+        assertThat(page("tokens.asc").content.map { it.usage.inputTokens + it.usage.outputTokens }).containsExactly(2L, 11L, 550L, 1100L, 2300L)
+        assertThat(page("model.asc").content.map { it.modelRef.modelId }).containsExactly("claude-sonnet-5", "claude-sonnet-5", "claude-sonnet-5", "gpt-5", "gpt-5")
+        assertThat(page("kind.asc").content.first().context.kind).isEqualTo(UsageKind.BENCHMARK_ATTEMPT)
+        assertThat(page("duration.asc").content.last().durationMs).isNull()
+        assertThat(page("duration.desc").content.last().durationMs).isNull()
+        assertThat(page("occurredAt.asc").content.first().occurredAt).isEqualTo(day1)
+        assertThat(ledger.entries(UsageQuery(from = null, to = null), 0, 10).content.first().occurredAt).isEqualTo(day2)
+    }
+
+    @Test
+    fun `entries reject an unknown sort field`() {
+        assertThatThrownBy { SortSpec.parse("secret.asc", UsageQuery.ENTRY_SORT_FIELDS) }.isInstanceOf(ValidationException::class.java)
+        assertThat(mvc.get().uri("/api/v1/usage/entries").param("sort", "secret.asc")).hasFailed()
+        assertThat(mvc.get().uri("/api/v1/usage/entries").param("sort", "cost.desc").param("runId", runId.toString()))
+            .hasStatusOk()
+            .bodyJson()
+            .extractingPath("$.content[*].context.stepId").asArray().containsExactly("plan", "specify")
     }
 
     @Test

@@ -36,6 +36,8 @@ import { listNavigation } from '../../../core/ui/relay/list-nav';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { serverSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { AdminNavComponent } from '../../admin/public-api';
 import { AgentJobPanelComponent } from '../components/agent-job-panel.component';
@@ -70,6 +72,7 @@ import {
     FleetNavComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -172,13 +175,13 @@ import {
         >
           <thead>
             <tr>
-              <th nzWidth="170px" i18n="@@fleet.jobs.col.state">State</th>
-              <th i18n="@@fleet.jobs.col.work">Work</th>
-              <th nzWidth="170px" i18n="@@fleet.jobs.col.model">Model</th>
-              <th nzWidth="110px" i18n="@@fleet.jobs.col.pool">Pool</th>
-              <th nzWidth="90px" nzAlign="right" i18n="@@fleet.jobs.col.duration">Duration</th>
-              <th nzWidth="90px" nzAlign="right" i18n="@@fleet.jobs.col.cost">Cost</th>
-              <th nzWidth="100px" nzAlign="right" i18n="@@fleet.jobs.col.queued">Queued</th>
+              <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="170px" i18n="@@fleet.jobs.col.state">State</th>
+              <th nzShowSort [boSort]="sort" boSortKey="label" i18n="@@fleet.jobs.col.work">Work</th>
+              <th nzShowSort [boSort]="sort" boSortKey="model" nzWidth="186px" i18n="@@fleet.jobs.col.model">Model</th>
+              <th nzShowSort [boSort]="sort" boSortKey="pool" nzWidth="126px" i18n="@@fleet.jobs.col.pool">Pool</th>
+              <th nzShowSort [boSort]="sort" boSortKey="duration" nzWidth="106px" nzAlign="right" i18n="@@fleet.jobs.col.duration">Duration</th>
+              <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@fleet.jobs.col.cost">Cost</th>
+              <th nzShowSort [boSort]="sort" boSortKey="queuedAt" nzWidth="116px" nzAlign="right" i18n="@@fleet.jobs.col.queued">Queued</th>
             </tr>
           </thead>
           <tbody>
@@ -258,6 +261,8 @@ export class AgentJobsPageComponent {
 
   readonly f = urlFilters({ q: 'string', holder: 'list', poolId: 'string', status: 'string' });
   readonly panel = panelParam('job');
+  /** Column order, sorted by the server (`?sort=cost.desc`). */
+  readonly sort = serverSort(['status', 'label', 'model', 'pool', 'duration', 'cost', 'queuedAt']);
   readonly holders = JOB_HOLDERS;
   readonly statuses = AGENT_JOB_STATUSES;
   readonly statusLabel = JOB_STATUS_LABELS;
@@ -332,6 +337,7 @@ export class AgentJobsPageComponent {
     this.api.pools().subscribe({ next: (p) => this.pools.set(p ?? []), error: () => undefined });
     effect(() => {
       this.f.values(); // reload on any filter change (pool, status)
+      this.sort.query(); // and on a new column order, from page 0
       untracked(() => {
         this.page.set(0);
         this.load();
@@ -383,6 +389,7 @@ export class AgentJobsPageComponent {
         status: (v.status as AgentJobStatus | null) ?? undefined,
         page: this.page(),
         size: this.size,
+        sort: this.sort.query() ?? undefined,
       })
       .subscribe({
         next: (p) => {

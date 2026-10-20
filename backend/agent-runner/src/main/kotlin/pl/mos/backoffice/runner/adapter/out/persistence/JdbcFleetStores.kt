@@ -26,10 +26,12 @@ import pl.mos.backoffice.runner.toContext
 import pl.mos.backoffice.runner.toJson
 import pl.mos.backoffice.runner.toSpec
 import pl.mos.backoffice.shared.RunnerJobId
+import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.RunnerLogLine
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.usage.PageOf
+import pl.mos.backoffice.shared.usage.SortSpec
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.json.JsonMapper
 import java.sql.ResultSet
@@ -41,6 +43,17 @@ import java.util.UUID
 private val ACTIVE = AgentJobStatus.ACTIVE.map { it.name }
 private val STRING_MAP = object : TypeReference<Map<String, String>>() {}
 private val STRING_LIST = object : TypeReference<List<String>>() {}
+
+/** Sort fields of the agent jobs list (`AgentJobFilter.SORT_FIELDS`) -> SQL; the model and duration match what the table shows. */
+private val JOB_SORT_COLUMNS = mapOf(
+    "status" to "status",
+    "label" to "label",
+    "model" to "(spec -> 'model' ->> 'modelId')",
+    "pool" to "pool_id",
+    "duration" to "(COALESCE(finished_at, CURRENT_TIMESTAMP) - started_at)",
+    "cost" to "cost_usd",
+    "queuedAt" to "queued_at",
+)
 
 private fun Instant?.ts(): OffsetDateTime? = this?.atOffset(ZoneOffset.UTC)
 
@@ -415,8 +428,15 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
         filter.projectId?.let { where += "project_id = :project"; params.addValue("project", it) }
         val clause = if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")
         val total = db.queryForObject("SELECT count(*) FROM agent_job $clause", params, Long::class.java) ?: 0L
-        val content = db.query("SELECT $jobColumns FROM agent_job $clause ORDER BY queued_at DESC, id LIMIT :limit OFFSET :offset", params) { rs, _ -> job(rs) }
+        val content = db.query("SELECT $jobColumns FROM agent_job $clause ORDER BY ${jobOrder(filter.sort)} LIMIT :limit OFFSET :offset", params) { rs, _ -> job(rs) }
         return PageOf(content, page, size, total)
+    }
+
+    /** ORDER BY of the jobs list: a fixed column per sort field (never user text), nulls last, id as the tiebreaker. */
+    private fun jobOrder(sort: SortSpec?): String {
+        if (sort == null) return "queued_at DESC, id"
+        val column = JOB_SORT_COLUMNS[sort.field] ?: throw ValidationException("cannot sort agent jobs by ${sort.field}", "sort")
+        return "$column ${if (sort.descending) "DESC" else "ASC"} NULLS LAST, id"
     }
 
     override fun appendEvent(id: RunnerJobId, at: Instant, message: String, progress: Boolean) {

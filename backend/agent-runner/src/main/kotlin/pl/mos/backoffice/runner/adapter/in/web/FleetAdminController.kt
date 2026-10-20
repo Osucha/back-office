@@ -24,6 +24,7 @@ import pl.mos.backoffice.runner.application.service.RunnerAuthenticationExceptio
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.usage.SortSpec
 import java.util.UUID
 
 /** `/api/v1/admin/runner-pools`, `/admin/runners`, `/admin/agent-jobs` (openapi tag `fleet`); permissions are checked in the use cases. */
@@ -76,9 +77,11 @@ class FleetAdminController(
         @RequestParam(required = false) projectId: UUID?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "50") size: Int,
+        @RequestParam(required = false) sort: String?,
     ): AgentJobPageJson {
         val parsed = status?.let { s -> AgentJobStatus.entries.firstOrNull { it.name == s.uppercase() } ?: throw ValidationException("unknown status $s", "status") }
-        val result = jobs.list(AgentJobFilter(poolId, parsed, projectId), page, size)
+        val order = SortSpec.parse(sort, AgentJobFilter.SORT_FIELDS)
+        val result = jobs.list(AgentJobFilter(poolId, parsed, projectId, order), page, size)
         return AgentJobPageJson(result.content.map(AgentJobJson::of), result.page, result.size, result.totalElements)
     }
 
