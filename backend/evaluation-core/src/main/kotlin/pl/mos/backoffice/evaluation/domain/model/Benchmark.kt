@@ -173,6 +173,8 @@ data class Attempt(
     val cost: Money = Money.ZERO,
     val judgeCost: Money = Money.ZERO,
     val durationMs: Long? = null,
+    /** ADR 0046: the candidate's own time (model answer or agent job), without the judge, queueing or retries. */
+    val candidateLatencyMs: Long? = null,
     val runnerJobId: RunnerJobId? = null,
     val error: String? = null,
     val createdAt: Instant,
@@ -183,8 +185,8 @@ data class Attempt(
 
     fun withRunnerJob(jobId: RunnerJobId): Attempt = copy(runnerJobId = jobId)
 
-    fun judging(output: String?, verification: AttemptVerification?, usage: TokenUsage, cost: Money): Attempt =
-        copy(status = AttemptStatus.JUDGING, output = output, verification = verification, usage = usage, cost = cost)
+    fun judging(output: String?, verification: AttemptVerification?, usage: TokenUsage, cost: Money, candidateLatencyMs: Long? = this.candidateLatencyMs): Attempt =
+        copy(status = AttemptStatus.JUDGING, output = output, verification = verification, usage = usage, cost = cost, candidateLatencyMs = candidateLatencyMs)
 
     fun succeed(score: Double, passed: Boolean, verdict: JudgeVerdict, judgeCost: Money, now: Instant): Attempt = copy(
         status = AttemptStatus.SUCCEEDED,

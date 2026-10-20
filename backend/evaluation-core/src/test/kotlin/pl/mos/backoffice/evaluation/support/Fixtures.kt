@@ -101,6 +101,7 @@ object Fixtures {
         passed = passed,
         cost = cost,
         durationMs = durationMs,
+        candidateLatencyMs = durationMs,
         createdAt = now,
         startedAt = now,
         finishedAt = durationMs?.let { now.plusMillis(it) },

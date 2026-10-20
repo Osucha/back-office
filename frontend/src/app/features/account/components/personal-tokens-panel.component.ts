@@ -24,6 +24,8 @@ import { TimeAgoPipe } from '../../../core/ui/pipes/time-ago.pipe';
 import { BatonComponent } from '../../../core/ui/relay/baton.component';
 import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import {
   DEFAULT_TOKEN_DAYS,
   maxTokenDays,
@@ -51,6 +53,7 @@ import {
     BatonComponent,
     EmptyComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -85,24 +88,24 @@ import {
       />
     } @else {
       <nz-table
-        [nzData]="tokens()"
+        [nzData]="rows()"
         [nzLoading]="loading()"
         [nzShowPagination]="false"
         nzSize="small"
       >
         <thead>
           <tr>
-            <th i18n="@@account.tokens.colName">Name</th>
-            <th nzWidth="140px" i18n="@@account.tokens.colPrefix">Prefix</th>
-            <th i18n="@@account.tokens.colPermissions">Permissions</th>
-            <th nzWidth="120px" i18n="@@account.tokens.colExpires">Expires</th>
-            <th nzWidth="110px" i18n="@@account.tokens.colLastUsed">Last used</th>
-            <th nzWidth="100px" i18n="@@account.tokens.colState">State</th>
+            <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@account.tokens.colName">Name</th>
+            <th nzShowSort [boSort]="sort" boSortKey="prefix" nzWidth="140px" i18n="@@account.tokens.colPrefix">Prefix</th>
+            <th nzShowSort [boSort]="sort" boSortKey="permissions" i18n="@@account.tokens.colPermissions">Permissions</th>
+            <th nzShowSort [boSort]="sort" boSortKey="expires" nzWidth="136px" i18n="@@account.tokens.colExpires">Expires</th>
+            <th nzShowSort [boSort]="sort" boSortKey="lastUsed" nzWidth="126px" i18n="@@account.tokens.colLastUsed">Last used</th>
+            <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="116px" i18n="@@account.tokens.colState">State</th>
             <th nzWidth="90px"></th>
           </tr>
         </thead>
         <tbody>
-          @for (t of tokens(); track t.id) {
+          @for (t of rows(); track t.id) {
             <tr>
               <td class="name">{{ t.name }}</td>
               <td class="mono">{{ t.prefix }}…</td>
@@ -365,6 +368,16 @@ export class PersonalTokensPanelComponent {
     expired: $localize`:@@account.tokens.stateExpired:expired`,
     revoked: $localize`:@@account.tokens.stateRevoked:revoked`,
   };
+  /** Column sorting (URL `?sort=`). */
+  readonly sort = tableSort<PersonalToken>({
+    name: (t) => t.name,
+    prefix: (t) => t.prefix,
+    permissions: (t) => (t.permissions ?? []).join(', '),
+    expires: (t) => t.expiresAt,
+    lastUsed: (t) => t.lastUsedAt,
+    state: (t) => this.stateLabels[this.state(t)],
+  });
+  readonly rows = computed(() => this.sort.apply(this.tokens()));
   readonly text = {
     createdTitle: $localize`:@@account.tokens.createdTitle:Token created`,
     createTitle: $localize`:@@account.tokens.createTitle:Create personal access token`,

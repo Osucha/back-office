@@ -140,9 +140,8 @@ POST /api/v1/task-suites/{suiteId}/tasks
   "instructions": "Add POST /api/customers with body {email, displayName}. Email must be valid and unique (409 on duplicate); displayName 2-80 chars trimmed. Respond 201 with Location header; validation errors as RFC 9457 problem details with a per-field errors array. Follow the existing package layout. Add unit tests for validation and web tests for 201/400/409. Existing tests must stay green.",
   "rubric": "- Correctness (0-10): behaves as specified for 201, 400, 409.\n- Tests (0-10): validation and web tests exist for all three cases.\n- Fit (0-10): follows the repository conventions instead of a parallel style.\n- Hygiene (0-10): focused diff, no unrelated changes, no debug output.",
   "repository": {
-    "url": "https://gitlab.example.com/samples/kotlin-sample.git",
+    "url": "https://github.com/your-org/your-service.git",
     "baseRef": "main",
-    "setupCommand": "./gradlew --offline help || true",
     "verifyCommand": "./gradlew test"
   },
   "timeoutSeconds": 1200
@@ -151,8 +150,10 @@ POST /api/v1/task-suites/{suiteId}/tasks
 
 Requirements for the repository: the runner image can clone it (public, or credentials in the runner
 integrations secret), `verifyCommand` is green on `baseRef`, and it finishes well inside
-`timeoutSeconds` (the agent needs most of the budget). The seeded coding tasks point at a placeholder
-URL and must be re-pointed before a benchmark that includes them can produce anything but failures.
+`timeoutSeconds` (the agent needs most of the budget). `baseRef` may be a branch, a tag or a commit; pin a commit
+so every benchmark sees the same code. The seeded coding tasks run against Spring PetClinic
+(`https://github.com/spring-projects/spring-petclinic`, pinned commit, `./mvnw -B -q test`, about 100 seconds);
+suites seeded earlier with the placeholder `gitlab.example.com` repository get these tasks at the next start.
 `POST /benchmarks/{id}/start` is refused with 409 when coding tasks are selected and no runner is
 available (`backoffice.runner.mode=DISABLED`).
 

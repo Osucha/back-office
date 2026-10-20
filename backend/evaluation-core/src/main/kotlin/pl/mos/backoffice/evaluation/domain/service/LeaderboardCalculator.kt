@@ -55,7 +55,8 @@ object LeaderboardCalculator {
         } else {
             null
         }
-        val latencies = attempts.mapNotNull { it.durationMs }.sorted()
+        // ADR 0046: the candidate's own time; failed attempts (often seconds) and the judge would distort it
+        val latencies = succeeded.mapNotNull { it.candidateLatencyMs }.sorted()
         return LeaderboardRow(
             modelProfileId = modelId,
             modelDisplayName = first.modelDisplayName,
@@ -68,6 +69,7 @@ object LeaderboardCalculator {
             scorePerDollar = scorePerDollar,
             p50LatencyMs = percentile(latencies, 0.50),
             p95LatencyMs = percentile(latencies, 0.95),
+            latencySamples = latencies.size,
             stability = stability(succeeded),
         )
     }

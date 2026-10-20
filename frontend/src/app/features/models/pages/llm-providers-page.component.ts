@@ -18,7 +18,9 @@ import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component';
 import { SidePanelComponent } from '../../../core/ui/relay/side-panel.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { providerLabel } from '../data/model-format';
 import { PROVIDER_TYPES, PRESETS, connectionProblems, emptyConnection, type ConnectionPreset } from '../data/llm-providers';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
@@ -46,6 +48,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
     PageHeaderComponent,
     ProvenanceComponent,
     SidePanelComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -76,14 +79,14 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
           i18n-detail="@@models.providers.empty.detail"
         />
       } @else {
-        <nz-table #t [nzData]="items()" [nzLoading]="!loaded()" [nzShowPagination]="false" nzSize="middle" class="relay-table">
+        <nz-table #t [nzData]="rows()" [nzLoading]="!loaded()" [nzShowPagination]="false" nzSize="middle" class="relay-table">
           <thead>
             <tr>
-              <th i18n="@@models.providers.col.connection">Connection</th>
-              <th i18n="@@models.providers.col.type">Type</th>
-              <th i18n="@@models.providers.col.endpoint">Endpoint</th>
-              <th i18n="@@models.providers.col.state">State</th>
-              <th i18n="@@models.providers.col.changed">Changed</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@models.providers.col.connection">Connection</th>
+              <th nzShowSort [boSort]="sort" boSortKey="type" i18n="@@models.providers.col.type">Type</th>
+              <th nzShowSort [boSort]="sort" boSortKey="endpoint" i18n="@@models.providers.col.endpoint">Endpoint</th>
+              <th nzShowSort [boSort]="sort" boSortKey="state" i18n="@@models.providers.col.state">State</th>
+              <th nzShowSort [boSort]="sort" boSortKey="changed" i18n="@@models.providers.col.changed">Changed</th>
             </tr>
           </thead>
           <tbody>
@@ -336,6 +339,15 @@ export class LlmProvidersPageComponent {
   readonly saving = signal(false);
   readonly testing = signal(false);
   readonly models = signal<ProviderModels | null>(null);
+  /** Column sorting (URL `?sort=`); state orders ready, missing key or URL, disabled. */
+  readonly sort = tableSort<LlmProvider>({
+    name: (p) => p.name,
+    type: (p) => providerLabel(p.provider),
+    endpoint: (p) => p.baseUrl || this.defaultUrl(p.provider),
+    state: (p) => (p.usable ? 0 : p.enabled ? 1 : 2),
+    changed: (p) => p.updatedAt,
+  });
+  readonly rows = computed(() => this.sort.apply(this.items()));
   readonly canManage = computed(() => this.identity.can('admin.settings.manage'));
   readonly panelOpen = computed(() => !!this.draft() || !!this.viewing());
   readonly problems = computed(() => {

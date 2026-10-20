@@ -250,6 +250,7 @@ data class LeaderboardRowDto(
     val scorePerDollar: Double?,
     val p50LatencyMs: Long?,
     val p95LatencyMs: Long?,
+    val latencySamples: Int,
     val stability: Double?,
 )
 

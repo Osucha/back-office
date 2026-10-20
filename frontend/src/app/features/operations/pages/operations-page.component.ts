@@ -21,7 +21,9 @@ import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { absoluteTime } from '../../../core/ui/relay/format';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../../admin/public-api';
 import {
   REFRESH_MS,
@@ -50,6 +52,7 @@ import { formatNumber } from '../../../core/i18n/numbers';
     EmptyComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -140,20 +143,20 @@ import { formatNumber } from '../../../core/i18n/numbers';
         <div class="cols">
           <section class="card" aria-labelledby="h-replicas">
             <h2 id="h-replicas" i18n="@@operations.replicas.title">Replicas</h2>
-            <nz-table [nzData]="o.replicas ?? []" [nzShowPagination]="false" nzSize="small">
+            <nz-table [nzData]="replicas()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th i18n="@@operations.replicas.instance">Instance</th>
-                  <th nzWidth="120px" i18n="@@operations.replicas.state">State</th>
-                  <th i18n="@@operations.replicas.roles">Roles</th>
-                  <th nzWidth="90px" i18n="@@operations.replicas.version">Version</th>
-                  <th nzWidth="90px" nzAlign="right" i18n="@@operations.replicas.lastSeen">
+                  <th nzShowSort [boSort]="sort" boSortKey="instance" i18n="@@operations.replicas.instance">Instance</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="136px" i18n="@@operations.replicas.state">State</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="roles" i18n="@@operations.replicas.roles">Roles</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="version" nzWidth="106px" i18n="@@operations.replicas.version">Version</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="lastSeen" nzWidth="106px" nzAlign="right" i18n="@@operations.replicas.lastSeen">
                     Last seen
                   </th>
                 </tr>
               </thead>
               <tbody>
-                @for (r of o.replicas ?? []; track r.instance) {
+                @for (r of replicas(); track r.instance) {
                   <tr>
                     <td class="mono-cell">{{ r.instance }}</td>
                     <td><bo-baton size="sm" appearance="plain" [baton]="replica(r)" /></td>
@@ -208,20 +211,20 @@ import { formatNumber } from '../../../core/i18n/numbers';
               i18n-title="@@operations.dead.empty"
             />
           } @else {
-            <nz-table [nzData]="dead()" [nzShowPagination]="false" nzSize="small">
+            <nz-table [nzData]="deadRows()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th nzWidth="170px" i18n="@@operations.dead.kind">Kind</th>
-                  <th i18n="@@operations.dead.lastError">Last error</th>
-                  <th nzWidth="80px" nzAlign="right" i18n="@@operations.dead.attempts">Attempts</th>
-                  <th nzWidth="110px" nzAlign="right" i18n="@@operations.dead.created">Created</th>
+                  <th nzShowSort [boSort]="deadSort" boSortKey="kind" nzWidth="186px" i18n="@@operations.dead.kind">Kind</th>
+                  <th nzShowSort [boSort]="deadSort" boSortKey="error" i18n="@@operations.dead.lastError">Last error</th>
+                  <th nzShowSort [boSort]="deadSort" boSortKey="attempts" nzWidth="96px" nzAlign="right" i18n="@@operations.dead.attempts">Attempts</th>
+                  <th nzShowSort [boSort]="deadSort" boSortKey="created" nzWidth="126px" nzAlign="right" i18n="@@operations.dead.created">Created</th>
                   <th nzWidth="100px" nzAlign="right">
                     <span class="sr-only" i18n="@@operations.dead.actions">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                @for (w of dead(); track w.id) {
+                @for (w of deadRows(); track w.id) {
                   <tr>
                     <td>
                       <div class="cell-main">
@@ -402,6 +405,27 @@ export class OperationsPageComponent {
       .filter(([, n]) => n > 0)
       .map(([status, count]) => ({ status, count })),
   );
+
+  /** Column sorting of the replicas (URL `?sort=`). */
+  readonly sort = tableSort<NonNullable<OperationsOverview['replicas']>[number]>({
+    instance: (r) => r.instance,
+    state: (r) => replicaBaton(r).label,
+    roles: (r) => (r.roles ?? []).join(', '),
+    version: (r) => r.version,
+    lastSeen: (r) => r.lastSeenAt,
+  });
+  readonly replicas = computed(() => this.sort.apply(this.overview()?.replicas ?? []));
+  /** Column sorting of the dead items (URL `?deadSort=`). */
+  readonly deadSort = tableSort<WorkItem>(
+    {
+      kind: (w) => w.kind,
+      error: (w) => w.lastError,
+      attempts: (w) => w.attempts ?? 0,
+      created: (w) => w.createdAt,
+    },
+    { param: 'deadSort' },
+  );
+  readonly deadRows = computed(() => this.deadSort.apply(this.dead()));
 
   readonly versionsText = computed(() => {
     const v = this.versions();

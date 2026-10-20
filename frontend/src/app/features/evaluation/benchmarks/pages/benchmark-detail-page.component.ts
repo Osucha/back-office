@@ -64,6 +64,8 @@ import { AttemptStripComponent } from '../components/attempt-strip.component';
 import { attemptCounts, benchmarkBaton, filterAttemptsByHolder } from '../data/benchmark-view';
 import { scatterOption } from '../data/leaderboard-chart';
 import { categoryLabel } from '../../suites/data/suite-view';
+import { SortHeaderDirective } from '../../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../../core/ui/relay/table-sort';
 
 const VIRTUAL_FROM = 100;
 const ATTEMPT_HOLDERS: BatonHolder[] = ['agent', 'done', 'blocked', 'idle'];
@@ -104,6 +106,7 @@ const PROVIDERS: Record<string, string> = {
     PageHeaderComponent,
     ProvenanceComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -407,9 +410,9 @@ const PROVIDERS: Record<string, string> = {
             } @else {
               <nz-table
                 #at
-                [nzData]="filteredAttempts()"
-                [nzPageSize]="virtual() ? filteredAttempts().length : 50"
-                [nzShowPagination]="!virtual() && filteredAttempts().length > 50"
+                [nzData]="attemptRows()"
+                [nzPageSize]="virtual() ? attemptRows().length : 50"
+                [nzShowPagination]="!virtual() && attemptRows().length > 50"
                 [nzVirtualItemSize]="virtual() ? 45 : 0"
                 [nzVirtualForTrackBy]="trackAttempt"
                 [nzScroll]="virtual() ? { y: '60vh' } : {}"
@@ -417,20 +420,20 @@ const PROVIDERS: Record<string, string> = {
               >
                 <thead>
                   <tr>
-                    <th nzWidth="118px" i18n="@@evaluation.benchmark.col.holder">Holder</th>
-                    <th i18n="@@evaluation.benchmark.col.task">Task</th>
-                    <th nzWidth="170px" i18n="@@evaluation.benchmark.col.model">Model</th>
-                    <th nzWidth="50px" nzAlign="right" i18n="@@evaluation.benchmark.col.rep">
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="status" nzWidth="130px" i18n="@@evaluation.benchmark.col.holder">Holder</th>
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="task" i18n="@@evaluation.benchmark.col.task">Task</th>
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="model" nzWidth="180px" i18n="@@evaluation.benchmark.col.model">Model</th>
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="rep" nzWidth="70px" nzAlign="right" i18n="@@evaluation.benchmark.col.rep">
                       Rep
                     </th>
-                    <th nzWidth="70px" nzAlign="right" i18n="@@evaluation.benchmark.col.score">
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="score" nzWidth="86px" nzAlign="right" i18n="@@evaluation.benchmark.col.score">
                       Score
                     </th>
-                    <th nzWidth="90px" i18n="@@evaluation.benchmark.col.tests">Tests</th>
-                    <th nzWidth="90px" nzAlign="right" i18n="@@evaluation.benchmark.col.cost">
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="passed" nzWidth="100px" i18n="@@evaluation.benchmark.col.tests">Tests</th>
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="cost" nzWidth="100px" nzAlign="right" i18n="@@evaluation.benchmark.col.cost">
                       Cost
                     </th>
-                    <th nzWidth="80px" nzAlign="right" i18n="@@evaluation.benchmark.col.duration">
+                    <th nzShowSort [boSort]="attemptSort" boSortKey="duration" nzWidth="100px" nzAlign="right" i18n="@@evaluation.benchmark.col.duration">
                       Duration
                     </th>
                   </tr>
@@ -510,8 +513,11 @@ const PROVIDERS: Record<string, string> = {
         <thead>
           <tr>
             <th nzWidth="44px" nzAlign="right">#</th>
-            <th i18n="@@evaluation.board.model">Model</th>
+            <th nzShowSort [boSort]="boardSort" boSortKey="model" i18n="@@evaluation.board.model">Model</th>
             <th
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="score"
               nzWidth="200px"
               nz-tooltip
               nzTooltipTitle="Mean judge score over successful attempts"
@@ -520,11 +526,14 @@ const PROVIDERS: Record<string, string> = {
             >
               Score
             </th>
-            <th nzWidth="80px" nzAlign="right" i18n="@@evaluation.board.passRate">Pass rate</th>
-            <th nzWidth="90px" nzAlign="right" i18n="@@evaluation.board.meanCost">Mean cost</th>
-            <th nzWidth="90px" nzAlign="right" i18n="@@evaluation.board.total">Total</th>
+            <th nzShowSort [boSort]="boardSort" boSortKey="passRate" nzWidth="96px" nzAlign="right" i18n="@@evaluation.board.passRate">Pass rate</th>
+            <th nzShowSort [boSort]="boardSort" boSortKey="meanCost" nzWidth="106px" nzAlign="right" i18n="@@evaluation.board.meanCost">Mean cost</th>
+            <th nzShowSort [boSort]="boardSort" boSortKey="total" nzWidth="96px" nzAlign="right" i18n="@@evaluation.board.total">Total</th>
             <th
-              nzWidth="80px"
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="perDollar"
+              nzWidth="96px"
               nzAlign="right"
               nz-tooltip
               nzTooltipTitle="Mean score per dollar of mean cost"
@@ -533,9 +542,24 @@ const PROVIDERS: Record<string, string> = {
             >
               Score / $
             </th>
-            <th nzWidth="120px" nzAlign="right">p50 / p95</th>
             <th
-              nzWidth="80px"
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="latency"
+              nzWidth="136px"
+              nzAlign="right"
+              nz-tooltip
+              nzTooltipTitle="The candidate's own response time (model answer or agent job), without the judge, queueing or retries, over succeeded attempts: median / 95th percentile (the longest one below 20 attempts)"
+              i18n-nzTooltipTitle="@@evaluation.board.latencyTooltip"
+              i18n="@@evaluation.board.latency"
+            >
+              Time p50 / p95
+            </th>
+            <th
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="stability"
+              nzWidth="96px"
               nzAlign="right"
               nz-tooltip
               nzTooltipTitle="Standard deviation of the score across repetitions (lower is steadier)"
@@ -547,10 +571,10 @@ const PROVIDERS: Record<string, string> = {
           </tr>
         </thead>
         <tbody>
-          @for (r of sorted(rows); track r.modelProfileId; let i = $index) {
-            <tr [class.first]="i === 0">
+          @for (r of boardSort.apply(sorted(rows)); track r.modelProfileId) {
+            <tr [class.first]="rank(r, rows) === 1">
               <td nzAlign="right">
-                <span class="mono-cell">{{ i + 1 }}</span>
+                <span class="mono-cell">{{ rank(r, rows) }}</span>
               </td>
               <td>
                 <div class="cell-main">
@@ -590,7 +614,7 @@ const PROVIDERS: Record<string, string> = {
                 }}</span>
               </td>
               <td nzAlign="right">
-                <span class="mono-cell"
+                <span class="mono-cell" [attr.title]="latencyNote(r)"
                   >{{ duration(r.p50LatencyMs) }} / {{ duration(r.p95LatencyMs) }}</span
                 >
               </td>
@@ -886,7 +910,33 @@ export class BenchmarkDetailPageComponent {
     );
   });
   readonly counts = computed(() => attemptCounts(this.attempts()));
-  readonly virtual = computed(() => this.filteredAttempts().length > VIRTUAL_FROM);
+  /** Column sorting of the attempts (`?sort=`); keyboard navigation follows the same order. */
+  readonly attemptSort = tableSort<Attempt>({
+    status: (a) => a.status,
+    task: (a) => a.taskName,
+    model: (a) => a.modelDisplayName,
+    rep: (a) => a.repetition,
+    score: (a) => a.score,
+    passed: (a) => a.passed,
+    cost: (a) => a.cost?.amount,
+    duration: (a) => a.durationMs,
+  });
+  readonly attemptRows = computed(() => this.attemptSort.apply(this.filteredAttempts()));
+  /** Column sorting of the leaderboards (`?board=`); the rank (#) stays the rank by score. */
+  readonly boardSort = tableSort<LeaderboardRow>(
+    {
+      model: (r) => r.modelDisplayName,
+      score: (r) => r.meanScore,
+      passRate: (r) => r.passRate,
+      meanCost: (r) => r.meanCost?.amount,
+      total: (r) => r.totalCost?.amount,
+      perDollar: (r) => r.scorePerDollar,
+      latency: (r) => r.p50LatencyMs,
+      stability: (r) => r.stability,
+    },
+    { param: 'board' },
+  );
+  readonly virtual = computed(() => this.attemptRows().length > VIRTUAL_FROM);
   readonly chips = computed<FilterChip[]>(() => {
     const v = this.f.values();
     const out: FilterChip[] = [];
@@ -927,7 +977,7 @@ export class BenchmarkDetailPageComponent {
   });
 
   readonly nav = listNavigation({
-    items: this.filteredAttempts,
+    items: this.attemptRows,
     open: (a) => this.openAttempt(a),
     group: $localize`:@@evaluation.benchmark.attemptsGroup:Attempts`,
     when: () => this.tabIndex() === 1 && !this.panel.value(),
@@ -1051,6 +1101,20 @@ export class BenchmarkDetailPageComponent {
 
   sorted(rows: LeaderboardRow[]): LeaderboardRow[] {
     return [...rows].sort((a, b) => (b.meanScore ?? -1) - (a.meanScore ?? -1));
+  }
+
+  /** Rank by mean score, whatever column the table is sorted by. */
+  rank(r: LeaderboardRow, rows: LeaderboardRow[]): number {
+    return this.sorted(rows).indexOf(r) + 1;
+  }
+
+  /** ADR 0046: how many succeeded attempts the times come from; p95 is the longest one below 20. */
+  latencyNote(r: LeaderboardRow): string {
+    const count = r.latencySamples ?? 0;
+    return icu(
+      $localize`:@@evaluation.board.latencyNote:{count, plural, =0 {no succeeded attempt} one {from # succeeded attempt} other {from # succeeded attempts}}`,
+      { count },
+    );
   }
 
   openAttempt(a: Attempt): void {

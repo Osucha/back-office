@@ -25,3 +25,5 @@ export * from './command-palette.service';
 export * from './command-palette.component';
 export * from './breadcrumb.service';
 export * from './format';
+export * from './table-sort';
+export * from './sort-header.directive';

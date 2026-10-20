@@ -31,6 +31,8 @@ import { listNavigation } from '../../../core/ui/relay/list-nav';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../components/admin-nav.component';
 
 /** Roles per scope: named permission bundles; built-ins are editable but not deletable. */
@@ -48,6 +50,7 @@ import { AdminNavComponent } from '../components/admin-nav.component';
     FilterBarComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     RoleNamePipe,
     RoleDescriptionPipe,
   ],
@@ -111,12 +114,12 @@ import { AdminNavComponent } from '../components/admin-nav.component';
           (action)="f.values().q ? f.set({ q: null }) : create()"
         />
       } @else {
-        <nz-table #t [nzData]="visible()" [nzShowPagination]="false" nzSize="middle">
+        <nz-table #t [nzData]="sorted()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th nzWidth="240px" i18n="@@admin.roles.col.key">Key</th>
-              <th i18n="@@admin.roles.col.name">Name</th>
-              <th nzWidth="120px" nzAlign="right" i18n="@@admin.roles.col.permissions">
+              <th nzShowSort [boSort]="sort" boSortKey="key" nzWidth="240px" i18n="@@admin.roles.col.key">Key</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@admin.roles.col.name">Name</th>
+              <th nzShowSort [boSort]="sort" boSortKey="permissions" nzWidth="136px" nzAlign="right" i18n="@@admin.roles.col.permissions">
                 Permissions
               </th>
               <th nzWidth="64px">
@@ -266,8 +269,15 @@ export class RolesPageComponent {
         ).map((x) => x.item)
       : list;
   });
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<Role>({
+    key: (r) => r.key,
+    name: (r) => (r.key ? roleName(r.key, r.name) : r.name),
+    permissions: (r) => r.permissions?.length ?? 0,
+  });
+  readonly sorted = computed(() => this.sort.apply(this.visible()));
   readonly nav = listNavigation({
-    items: this.visible,
+    items: this.sorted,
     open: (r) => this.open(r),
     group: $localize`:@@admin.roles.shortcutGroup:Roles`,
   });

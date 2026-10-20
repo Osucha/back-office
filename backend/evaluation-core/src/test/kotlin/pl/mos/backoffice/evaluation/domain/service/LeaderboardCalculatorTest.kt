@@ -37,7 +37,9 @@ class LeaderboardCalculatorTest {
         assertThat(row.meanCost).isEqualTo(Money.usd("0.05"))
         assertThat(row.scorePerDollar).isCloseTo(1600.0, within(1e-6))
         assertThat(row.p50LatencyMs).isEqualTo(2000)
-        assertThat(row.p95LatencyMs).isEqualTo(9000)
+        // the failed attempt (9000) does not count (ADR 0046)
+        assertThat(row.p95LatencyMs).isEqualTo(3000)
+        assertThat(row.latencySamples).isEqualTo(3)
     }
 
     @Test

@@ -4511,12 +4511,17 @@ export interface components {
         };
         LeaderboardRow: {
             attempts?: number;
+            /** @description succeeded attempts the latencies are computed from */
+            latencySamples?: number;
             meanCost?: components["schemas"]["Money"];
             meanScore?: number | null;
             modelDisplayName?: string;
             /** Format: uuid */
             modelProfileId?: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description ADR 0046: median of the candidate's own time (model answer or agent job) in succeeded attempts
+             */
             p50LatencyMs?: number | null;
             /** Format: int64 */
             p95LatencyMs?: number | null;

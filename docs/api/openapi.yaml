@@ -4359,8 +4359,9 @@ components:
         meanCost: { $ref: '#/components/schemas/Money' }
         totalCost: { $ref: '#/components/schemas/Money' }
         scorePerDollar: { type: number, nullable: true }
-        p50LatencyMs: { type: integer, format: int64, nullable: true }
+        p50LatencyMs: { type: integer, format: int64, nullable: true, description: 'ADR 0046: median of the candidate''s own time (model answer or agent job) in succeeded attempts' }
         p95LatencyMs: { type: integer, format: int64, nullable: true }
+        latencySamples: { type: integer, description: 'succeeded attempts the latencies are computed from' }
         stability: { type: number, nullable: true }
     Leaderboard:
       type: object

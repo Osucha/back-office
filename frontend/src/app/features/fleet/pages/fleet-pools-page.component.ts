@@ -22,6 +22,8 @@ import { PageHeaderComponent } from '../../../core/ui/relay/page-header.componen
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { icu } from '../../../core/i18n/icu';
 import { AdminNavComponent } from '../../admin/public-api';
@@ -49,6 +51,7 @@ import { formatLabels, isolationName } from '../data/policy';
     FleetNavComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -139,17 +142,24 @@ import { formatLabels, isolationName } from '../data/policy';
             >
           </div>
         </section>
-        <nz-table #t [nzData]="pools()" [nzShowPagination]="false" nzSize="middle" class="pools">
+        <nz-table #t [nzData]="rows()" [nzShowPagination]="false" nzSize="middle" class="pools">
           <thead>
             <tr>
-              <th i18n="@@fleet.pools.col.pool">Pool</th>
-              <th nzWidth="150px" i18n="@@fleet.pools.col.state">State</th>
-              <th nzWidth="130px" nzAlign="right" i18n="@@fleet.pools.col.runnersOnline">
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@fleet.pools.col.pool">Pool</th>
+              <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="150px" i18n="@@fleet.pools.col.state">State</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="online"
+                nzWidth="146px"
+                nzAlign="right"
+                i18n="@@fleet.pools.col.runnersOnline"
+              >
                 Runners online
               </th>
-              <th nzWidth="90px" nzAlign="right" i18n="@@fleet.pools.col.running">Running</th>
-              <th nzWidth="90px" nzAlign="right" i18n="@@fleet.pools.col.queued">Queued</th>
-              <th nzWidth="190px" i18n="@@fleet.pools.col.ceiling">Isolation ceiling</th>
+              <th nzShowSort [boSort]="sort" boSortKey="running" nzWidth="106px" nzAlign="right" i18n="@@fleet.pools.col.running">Running</th>
+              <th nzShowSort [boSort]="sort" boSortKey="queued" nzWidth="106px" nzAlign="right" i18n="@@fleet.pools.col.queued">Queued</th>
+              <th nzShowSort [boSort]="sort" boSortKey="ceiling" nzWidth="190px" i18n="@@fleet.pools.col.ceiling">Isolation ceiling</th>
               <th nzWidth="150px" nzAlign="right">
                 <span class="sr-only" i18n="@@fleet.pools.col.actions">Actions</span>
               </th>
@@ -315,8 +325,18 @@ export class FleetPoolsPageComponent {
     }
     return t;
   });
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<RunnerPool>({
+    name: (p) => p.name,
+    state: (p) => poolBaton(p).label,
+    online: (p) => p.onlineRunners ?? 0,
+    running: (p) => p.running ?? 0,
+    queued: (p) => p.queued ?? 0,
+    ceiling: (p) => isolationName(p.ceiling?.isolation),
+  });
+  readonly rows = computed(() => this.sort.apply(this.pools()));
   readonly nav = listNavigation({
-    items: this.pools,
+    items: this.rows,
     open: (p) => this.open(p),
     group: $localize`:@@fleet.nav.pools:Pools`,
     when: () => !this.addRunner.value(),

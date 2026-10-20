@@ -33,6 +33,8 @@ import type {
 import { HelpLinkComponent } from '../../../core/help/help-link.component';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { TimeAgoPipe } from '../../../core/ui/pipes/time-ago.pipe';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { StatusTagComponent } from '../../../core/ui/status-tag.component';
 import { CiExecutionsTableComponent } from '../../ci/public-api';
 import {
@@ -64,6 +66,7 @@ import {
     NzSkeletonModule,
     NzTooltipModule,
     HelpLinkComponent,
+    SortHeaderDirective,
     StatusTagComponent,
     TimeAgoPipe,
     CiExecutionsTableComponent,
@@ -282,18 +285,18 @@ import {
           } @else if (!tokens().length) {
             <p class="muted" i18n="@@projects.ci.tokens.empty">No tokens yet.</p>
           } @else {
-            <nz-table [nzData]="tokens()" [nzShowPagination]="false" nzSize="small">
+            <nz-table [nzData]="tokenRows()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th i18n="@@projects.ci.tokens.name">Name</th>
-                  <th nzWidth="150px" i18n="@@projects.ci.tokens.prefix">Prefix</th>
-                  <th nzWidth="110px" i18n="@@projects.ci.tokens.created">Created</th>
-                  <th nzWidth="110px" i18n="@@projects.ci.tokens.lastUsed">Last used</th>
+                  <th nzShowSort [boSort]="tokenSort" boSortKey="name" i18n="@@projects.ci.tokens.name">Name</th>
+                  <th nzShowSort [boSort]="tokenSort" boSortKey="prefix" nzWidth="166px" i18n="@@projects.ci.tokens.prefix">Prefix</th>
+                  <th nzShowSort [boSort]="tokenSort" boSortKey="created" nzWidth="126px" i18n="@@projects.ci.tokens.created">Created</th>
+                  <th nzShowSort [boSort]="tokenSort" boSortKey="lastUsed" nzWidth="126px" i18n="@@projects.ci.tokens.lastUsed">Last used</th>
                   <th nzWidth="100px"></th>
                 </tr>
               </thead>
               <tbody>
-                @for (t of tokens(); track t.id) {
+                @for (t of tokenRows(); track t.id) {
                   <tr [class.revoked]="!!t.revokedAt">
                     <td>
                       {{ t.name }}
@@ -538,6 +541,17 @@ export class ProjectCiPanelComponent {
 
   readonly tokens = signal<CiToken[]>([]);
   readonly tokensLoading = signal(false);
+  /** Column sorting of the CI tokens (URL `?tokenSort=`); the editable entrypoints keep their own order. */
+  readonly tokenSort = tableSort<CiToken>(
+    {
+      name: (t) => t.name,
+      prefix: (t) => t.prefix,
+      created: (t) => t.createdAt,
+      lastUsed: (t) => t.lastUsedAt,
+    },
+    { param: 'tokenSort' },
+  );
+  readonly tokenRows = computed(() => this.tokenSort.apply(this.tokens()));
   readonly revoking = signal<string | null>(null);
   readonly modal = signal<TokenModalState>({ step: 'closed' });
   readonly creatingToken = signal(false);

@@ -39,6 +39,8 @@ import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { SidePanelComponent, panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { LibraryNavComponent } from '../components/library-nav.component';
 import { canCreateInLibrary, canEditScope, editableProjects } from '../data/library-access';
@@ -90,6 +92,7 @@ const EMPTY: SkillInput = {
     ProvenanceComponent,
     SidePanelComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     LibraryNavComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -175,18 +178,18 @@ const EMPTY: SkillInput = {
       } @else {
         <nz-table
           #t
-          [nzData]="filtered()"
-          [nzShowPagination]="filtered().length > 50"
+          [nzData]="rows()"
+          [nzShowPagination]="rows().length > 50"
           [nzPageSize]="50"
           nzSize="middle"
         >
           <thead>
             <tr>
-              <th i18n="@@library.skills.col.skill">Skill</th>
-              <th nzWidth="90px" i18n="@@library.skills.scope">Scope</th>
-              <th nzWidth="20%" i18n="@@library.skills.tags">Tags</th>
-              <th nzWidth="100px" nzAlign="right" i18n="@@library.skills.col.size">Size</th>
-              <th nzWidth="190px" i18n="@@library.skills.col.updated">Updated</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.skills.col.skill">Skill</th>
+              <th nzShowSort [boSort]="sort" boSortKey="scope" nzWidth="106px" i18n="@@library.skills.scope">Scope</th>
+              <th nzShowSort [boSort]="sort" boSortKey="tags" nzWidth="20%" i18n="@@library.skills.tags">Tags</th>
+              <th nzShowSort [boSort]="sort" boSortKey="size" nzWidth="116px" nzAlign="right" i18n="@@library.skills.col.size">Size</th>
+              <th nzShowSort [boSort]="sort" boSortKey="updated" nzWidth="190px" i18n="@@library.skills.col.updated">Updated</th>
               <th nzWidth="84px">
                 <span class="sr-only" i18n="@@library.skills.col.actions">Actions</span>
               </th>
@@ -519,6 +522,16 @@ export class SkillsPageComponent {
   readonly canCreate = computed(() => canCreateInLibrary(this.identity));
   readonly scopeProjects = computed(() => editableProjects(this.identity, this.projects()));
   readonly filtered = computed(() => filterSkills(this.items(), this.f.values().q));
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<Skill>({
+    name: (s) => s.name,
+    // global skills first, then project skills by project key
+    scope: (s) => (s.scope.type === 'PROJECT' ? `1 ${this.projectKey(s.scope.projectId)}` : '0'),
+    tags: (s) => (s.tags ?? []).join(' '),
+    size: (s) => s.content.length,
+    updated: (s) => s.updatedAt,
+  });
+  readonly rows = computed(() => this.sort.apply(this.filtered()));
   readonly editing = computed(() => {
     const id = this.panel.value();
     return id && id !== 'new' ? (this.items().find((s) => this.idOf(s) === id) ?? null) : null;
@@ -575,7 +588,7 @@ export class SkillsPageComponent {
   readonly previewSource = computed(() => this.draft().content.replace(/^---[\s\S]*?---\s*/, ''));
 
   readonly nav = listNavigation({
-    items: this.filtered,
+    items: this.rows,
     open: (s) => this.edit(s),
     group: $localize`:@@library.skills.group:Skills`,
     when: () => !this.panelOpen(),

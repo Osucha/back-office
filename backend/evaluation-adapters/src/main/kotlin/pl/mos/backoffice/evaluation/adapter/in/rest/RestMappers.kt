@@ -173,7 +173,7 @@ object RestMappers {
     fun row(r: LeaderboardRow) = LeaderboardRowDto(
         modelProfileId = r.modelProfileId.value, modelDisplayName = r.modelDisplayName, provider = r.provider, attempts = r.attempts,
         meanScore = r.meanScore, passRate = r.passRate, meanCost = money(r.meanCost), totalCost = money(r.totalCost),
-        scorePerDollar = r.scorePerDollar, p50LatencyMs = r.p50LatencyMs, p95LatencyMs = r.p95LatencyMs, stability = r.stability,
+        scorePerDollar = r.scorePerDollar, p50LatencyMs = r.p50LatencyMs, p95LatencyMs = r.p95LatencyMs, latencySamples = r.latencySamples, stability = r.stability,
     )
 
     fun leaderboard(l: Leaderboard) = LeaderboardDto(

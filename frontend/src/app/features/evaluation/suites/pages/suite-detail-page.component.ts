@@ -42,6 +42,8 @@ import { ProvenanceComponent } from '../../../../core/ui/relay/provenance.compon
 import { ShortcutsService } from '../../../../core/ui/relay/shortcuts.service';
 import { panelParam } from '../../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../../core/ui/relay/table-styles';
 import { humanize } from '../../../../core/ui/status-tag.component';
 import { TaskEditorDrawerComponent } from '../components/task-editor-drawer.component';
@@ -52,6 +54,9 @@ import {
   suiteStats,
   weightsText,
 } from '../data/suite-view';
+
+/** Difficulty sorts by level, not by its label. */
+const DIFFICULTY_ORDER: readonly string[] = ['EASY', 'MEDIUM', 'HARD', 'EXPERT'];
 
 /**
  * Task suite: facts, the task list (search and kind filter in the URL) and the task side panel
@@ -75,6 +80,7 @@ import {
     PageHeaderComponent,
     ProvenanceComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     TaskEditorDrawerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -192,23 +198,23 @@ import {
             (action)="f.clear()"
           />
         } @else {
-          <nz-table [nzData]="tasks()" [nzShowPagination]="false" nzSize="middle">
+          <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
             <thead>
               <tr>
-                <th i18n="@@evaluation.suite.col.task">Task</th>
-                <th nzWidth="130px" i18n="@@evaluation.suite.col.category">Category</th>
-                <th nzWidth="100px" i18n="@@evaluation.suite.col.difficulty">Difficulty</th>
-                <th nzWidth="90px" nzAlign="right" i18n="@@evaluation.suite.col.timeout">
+                <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.suite.col.task">Task</th>
+                <th nzShowSort [boSort]="sort" boSortKey="category" nzWidth="146px" i18n="@@evaluation.suite.col.category">Category</th>
+                <th nzShowSort [boSort]="sort" boSortKey="difficulty" nzWidth="116px" i18n="@@evaluation.suite.col.difficulty">Difficulty</th>
+                <th nzShowSort [boSort]="sort" boSortKey="timeout" nzWidth="106px" nzAlign="right" i18n="@@evaluation.suite.col.timeout">
                   Timeout
                 </th>
-                <th nzWidth="70px" nzAlign="right" i18n="@@evaluation.suite.col.weight">Weight</th>
+                <th nzShowSort [boSort]="sort" boSortKey="weight" nzWidth="86px" nzAlign="right" i18n="@@evaluation.suite.col.weight">Weight</th>
                 <th nzWidth="96px">
                   <span class="sr-only" i18n="@@evaluation.suite.col.actions">Actions</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              @for (t of tasks(); track t.id; let i = $index) {
+              @for (t of rows(); track t.id; let i = $index) {
                 <tr
                   class="clickable-row"
                   [class.active]="nav.cursor() === i || panel.value() === t.id"
@@ -426,6 +432,15 @@ export class SuiteDetailPageComponent {
       kind: this.f.values().kind,
     }),
   );
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<EvalTask>({
+    name: (t) => t.name,
+    category: (t) => categoryLabel(t.category),
+    difficulty: (t) => (t.difficulty ? DIFFICULTY_ORDER.indexOf(t.difficulty) : null),
+    timeout: (t) => t.timeoutSeconds,
+    weight: (t) => t.weight,
+  });
+  readonly rows = computed(() => this.sort.apply(this.tasks()));
   readonly chips = computed<FilterChip[]>(() => {
     const k = this.f.values().kind;
     return k
@@ -477,7 +492,7 @@ export class SuiteDetailPageComponent {
   });
 
   readonly nav = listNavigation({
-    items: this.tasks,
+    items: this.rows,
     open: (t) => this.editTask(t),
     group: $localize`:@@evaluation.suite.tasksGroup:Tasks`,
     when: () => !this.panelOpen() && !this.editingSuite(),

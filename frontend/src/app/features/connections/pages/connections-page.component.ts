@@ -9,6 +9,8 @@ import type { ConnectionVerification, PersonalConnectionSummary } from '../data/
 import { IdentityService } from '../../../core/auth/identity.service';
 import { BreadcrumbService } from '../../../core/ui/relay/breadcrumb.service';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../../admin/public-api';
 import { ConnectionsListComponent } from '../components/connections-list.component';
 import type { ConnectionOwner } from '../data/connection-types';
@@ -20,7 +22,14 @@ import type { ConnectionOwner } from '../data/connection-types';
  */
 @Component({
   selector: 'app-connections-page',
-  imports: [AdminNavComponent, ConnectionsListComponent, PageHeaderComponent, NzTableModule, DatePipe],
+  imports: [
+    AdminNavComponent,
+    ConnectionsListComponent,
+    PageHeaderComponent,
+    NzTableModule,
+    DatePipe,
+    SortHeaderDirective,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
@@ -49,18 +58,18 @@ import type { ConnectionOwner } from '../data/connection-types';
           @if (!personal().length) {
             <p class="quiet" i18n="@@connections.page.personalEmpty">Nobody has a personal connection.</p>
           } @else {
-            <nz-table [nzData]="personal()" [nzShowPagination]="false" nzSize="small">
+            <nz-table [nzData]="personalRows()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th i18n="@@connections.page.personal.owner">Owner</th>
-                  <th i18n="@@connections.page.personal.connection">Connection</th>
-                  <th i18n="@@connections.page.personal.capabilities">Capabilities</th>
-                  <th i18n="@@connections.page.personal.token">Token</th>
-                  <th i18n="@@connections.page.personal.check">Last check</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="owner" i18n="@@connections.page.personal.owner">Owner</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@connections.page.personal.connection">Connection</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="capabilities" i18n="@@connections.page.personal.capabilities">Capabilities</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="token" i18n="@@connections.page.personal.token">Token</th>
+                  <th nzShowSort [boSort]="sort" boSortKey="check" i18n="@@connections.page.personal.check">Last check</th>
                 </tr>
               </thead>
               <tbody>
-                @for (p of personal(); track p.id) {
+                @for (p of personalRows(); track p.id) {
                   <tr>
                     <td>{{ p.ownerName }}</td>
                     <td>
@@ -126,6 +135,15 @@ export class ConnectionsPageComponent {
   readonly kind = tokenKindLabel;
   readonly check = (p: PersonalConnectionSummary) =>
     verificationChip(p.verificationStatus ? ({ status: p.verificationStatus } as ConnectionVerification) : null);
+  /** Column sorting of the personal connections (URL `?sort=`; the platform list uses `?connectionSort=`). */
+  readonly sort = tableSort<PersonalConnectionSummary>({
+    owner: (p) => p.ownerName,
+    name: (p) => p.name,
+    capabilities: (p) => this.caps(p),
+    token: (p) => this.kind(p.tokenKind),
+    check: (p) => this.check(p).label,
+  });
+  readonly personalRows = computed(() => this.sort.apply(this.personal()));
 
   constructor() {
     effect(() => {

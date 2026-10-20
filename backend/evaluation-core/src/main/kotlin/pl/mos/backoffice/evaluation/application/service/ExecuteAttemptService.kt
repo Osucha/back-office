@@ -118,6 +118,7 @@ class ExecuteAttemptService(
                     verification = null,
                     usage = candidateResult.usage,
                     cost = candidate.pricing.costOf(candidateResult.usage),
+                    candidateLatencyMs = candidateResult.latency.toMillis(),
                 ),
             )
         }
@@ -184,7 +185,9 @@ class ExecuteAttemptService(
             return withJob.judging(output, verification, usage, cost).fail(result.error ?: "runner job ${result.status}", clock.now())
         }
 
-        val judging = benchmarks.saveAttempt(withJob.judging(output, verification, usage, cost)).also(onProgress)
+        // the agent's time: from submitting the job (the attempt's start) to its result, queueing for a runner included
+        val agentMs = withJob.startedAt?.let { java.time.Duration.between(it, result.finishedAt).toMillis() }?.takeIf { it >= 0 }
+        val judging = benchmarks.saveAttempt(withJob.judging(output, verification, usage, cost, agentMs)).also(onProgress)
         val diffStat = result.diffStat?.let { "${it.files} files changed, ${it.insertions} insertions(+), ${it.deletions} deletions(-)" }
         val artifacts = result.artifacts.takeIf { it.isNotEmpty() }?.joinToString("\n\n") { a ->
             "### ${a.name}\n${a.content.take(MAX_ARTIFACT_CHARS)}"
@@ -200,9 +203,12 @@ class ExecuteAttemptService(
     }
 
     private fun judge(judge: ModelProfile, message: String, blocks: PromptDataBlocks, context: UsageContext): Pair<JudgeVerdict, Money> {
+        // the verdict is a short JSON; a cap keeps a talkative (or reasoning) judge from writing pages and timing out
+        val cap = judge.ref.options.maxOutputTokens?.coerceAtMost(JUDGE_MAX_OUTPUT_TOKENS) ?: JUDGE_MAX_OUTPUT_TOKENS
         val result: LlmResult = gateway.chat(
             judge.ref,
-            LlmRequest.of(JudgePrompts.systemPrompt(blocks), message, context, responseSchema = JudgePrompts.RESPONSE_SCHEMA),
+            LlmRequest.of(JudgePrompts.systemPrompt(blocks), message, context, responseSchema = JudgePrompts.RESPONSE_SCHEMA)
+                .copy(optionsOverride = judge.ref.options.copy(maxOutputTokens = cap)),
         )
         return JudgePrompts.parseVerdict(result.structured, result.content) to judge.pricing.costOf(result.usage)
     }
@@ -251,5 +257,8 @@ class ExecuteAttemptService(
 
     companion object {
         const val MAX_ARTIFACT_CHARS = 8_000
+
+        /** ADR 0046: enough for criteria and a short rationale, also for models that reason before answering. */
+        const val JUDGE_MAX_OUTPUT_TOKENS = 3_000
     }
 }

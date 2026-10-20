@@ -2,6 +2,7 @@ package pl.mos.backoffice.evaluation.application.service
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
 import pl.mos.backoffice.evaluation.support.Fixtures
@@ -45,11 +46,32 @@ class SeedStarterContentServiceTest {
         assertThat(coding).hasSize(5)
         assertThat(coding).allSatisfy {
             assertThat(it.kind).isEqualTo(TaskKind.CODING_JOB)
-            assertThat(it.repository!!.url).isEqualTo(StarterContent.PLACEHOLDER_REPO_URL)
-            assertThat(it.repository!!.verifyCommand).isEqualTo("./gradlew test")
-            assertThat(it.context).contains("placeholder")
+            assertThat(it.repository!!.url).isEqualTo(StarterContent.PETCLINIC_REPO_URL)
+            assertThat(it.repository!!.baseRef).isEqualTo(StarterContent.PETCLINIC_COMMIT)
+            assertThat(it.repository!!.verifyCommand).isEqualTo("./mvnw -B -q test")
+            assertThat(it.context).contains("spring-javaformat")
         }
         assertThat(suite.tasks.filter { it.kind == TaskKind.PROMPT }).allSatisfy { assertThat(it.repository).isNull() }
+    }
+
+    @Test
+    fun `coding tasks still on the placeholder repository become the PetClinic tasks, the owner's own stay (ADR 0046)`() {
+        service.seedIfEmpty()
+        val seeded = suites.findAll().single()
+        val old = seeded.tasks.filter { it.kind == TaskKind.CODING_JOB }
+            .map { it.copy(id = EvalTaskId.new(), name = "Old " + it.name, repository = it.repository!!.copy(url = StarterContent.PLACEHOLDER_REPO_URL, baseRef = "main")) }
+        val mine = old.first().copy(id = EvalTaskId.new(), name = "Mine", repository = old.first().repository!!.copy(url = "https://github.com/me/app.git"))
+        val prompts = seeded.tasks.filter { it.kind == TaskKind.PROMPT }
+        suites.save(seeded.copy(tasks = prompts + old + mine))
+
+        val result = service.seedIfEmpty()
+
+        assertThat(result.suitesUpgraded).isEqualTo(1)
+        val upgraded = suites.findAll().single()
+        assertThat(upgraded.tasks.map { it.repository?.url }).doesNotContain(StarterContent.PLACEHOLDER_REPO_URL)
+        assertThat(upgraded.tasks.filter { it.repository?.url == StarterContent.PETCLINIC_REPO_URL }).hasSize(5)
+        assertThat(upgraded.tasks.map { it.name }).contains("Mine").containsAll(prompts.map { it.name })
+        assertThat(service.seedIfEmpty().suitesUpgraded).isZero()
     }
 
     @Test

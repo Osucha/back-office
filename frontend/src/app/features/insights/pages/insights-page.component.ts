@@ -28,10 +28,13 @@ import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { urlFilters } from '../../../core/ui/relay/filter-state';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import {
   PERIODS,
   type PeriodId,
+  type SuccessRow,
   decisionRows,
   formatRate,
   formatWait,
@@ -42,6 +45,14 @@ import {
   weeklyLabel,
   weeklyOption,
 } from '../data/insights-view';
+
+/** Sortable columns of the "Agent success by template / model" tables. */
+const successColumns = {
+  key: (r: SuccessRow) => r.key,
+  jobs: (r: SuccessRow) => r.jobs,
+  rate: (r: SuccessRow) => r.rate,
+  cost: (r: SuccessRow) => r.cost?.amount,
+};
 
 /**
  * Delivery insights (`GET /insights/delivery`): where the time goes between an issue and a merged
@@ -66,6 +77,7 @@ import {
     EmptyComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -210,14 +222,17 @@ import {
             <ng-container
               *ngTemplateOutlet="
                 successTable;
-                context: { $implicit: templates(), col: text.template }
+                context: { $implicit: templateRows(), col: text.template, sort: templateSort }
               "
             />
           </section>
           <section class="card" aria-labelledby="h-model">
             <h2 id="h-model" i18n="@@insights.tables.byModel">Agent success by model</h2>
             <ng-container
-              *ngTemplateOutlet="successTable; context: { $implicit: models(), col: text.model }"
+              *ngTemplateOutlet="
+                successTable;
+                context: { $implicit: modelRows(), col: text.model, sort: modelSort }
+              "
             />
           </section>
           <section class="card" aria-labelledby="h-gates">
@@ -252,7 +267,7 @@ import {
       }
     </div>
 
-    <ng-template #successTable let-rows let-col="col">
+    <ng-template #successTable let-rows let-col="col" let-sort="sort">
       @if (!rows.length) {
         <bo-empty
           tone="quiet"
@@ -263,10 +278,10 @@ import {
         <nz-table [nzData]="rows" [nzShowPagination]="false" nzSize="small">
           <thead>
             <tr>
-              <th>{{ col }}</th>
-              <th nzWidth="70px" nzAlign="right" i18n="@@insights.tables.jobs">Jobs</th>
-              <th nzWidth="130px" i18n="@@insights.tables.success">Success</th>
-              <th nzWidth="80px" nzAlign="right" i18n="@@insights.tables.cost">Cost</th>
+              <th nzShowSort [boSort]="sort" boSortKey="key">{{ col }}</th>
+              <th nzShowSort [boSort]="sort" boSortKey="jobs" nzWidth="86px" nzAlign="right" i18n="@@insights.tables.jobs">Jobs</th>
+              <th nzShowSort [boSort]="sort" boSortKey="rate" nzWidth="146px" i18n="@@insights.tables.success">Success</th>
+              <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="96px" nzAlign="right" i18n="@@insights.tables.cost">Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -519,6 +534,11 @@ export class InsightsPageComponent {
   readonly cards = computed(() => headlines(this.data()));
   readonly templates = computed(() => successRows(this.data()?.agentSuccessByTemplate));
   readonly models = computed(() => successRows(this.data()?.agentSuccessByModel));
+  /** Column sorting of the two success tables (URL `?sort=` and `?modelSort=`). */
+  readonly templateSort = tableSort<SuccessRow>(successColumns);
+  readonly modelSort = tableSort<SuccessRow>(successColumns, { param: 'modelSort' });
+  readonly templateRows = computed(() => this.templateSort.apply(this.templates()));
+  readonly modelRows = computed(() => this.modelSort.apply(this.models()));
   readonly decisions = computed(() => decisionRows(this.data()?.gateDecisions));
   readonly weekly = computed(() => weeklyOption(this.data()?.weekly, this.tokens()));
   readonly weeklyText = computed(() => weeklyLabel(this.data()?.weekly));

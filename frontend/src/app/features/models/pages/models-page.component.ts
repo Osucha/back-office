@@ -56,6 +56,8 @@ import { compareText } from '../../../core/i18n/compare';
 import { icu } from '../../../core/i18n/icu';
 import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
 import { ProviderCatalogComponent } from '../components/provider-catalog.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { catalogKey } from '../data/model-catalog';
 
 /**
@@ -82,6 +84,7 @@ import { catalogKey } from '../data/model-catalog';
     SkeletonComponent,
     ModelProfileDrawerComponent,
     ProviderCatalogComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -172,20 +175,20 @@ import { catalogKey } from '../data/model-catalog';
       } @else {
         <nz-table
           #t
-          [nzData]="visible()"
-          [nzShowPagination]="visible().length > 50"
+          [nzData]="rows()"
+          [nzShowPagination]="rows().length > 50"
           [nzPageSize]="50"
           nzSize="middle"
         >
           <thead>
             <tr>
-              <th i18n="@@models.col.profile">Profile</th>
-              <th nzWidth="150px" i18n="@@models.col.provider">Provider</th>
-              <th nzWidth="170px" i18n="@@models.col.modelId">Model id</th>
-              <th nzWidth="150px" nzAlign="right" i18n="@@models.col.price">In / out per MTok</th>
-              <th nzWidth="80px" nzAlign="right" i18n="@@models.col.context">Context</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@models.col.profile">Profile</th>
+              <th nzShowSort [boSort]="sort" boSortKey="provider" nzWidth="150px" i18n="@@models.col.provider">Provider</th>
+              <th nzShowSort [boSort]="sort" boSortKey="model" nzWidth="170px" i18n="@@models.col.modelId">Model id</th>
+              <th nzShowSort [boSort]="sort" boSortKey="price" nzWidth="150px" nzAlign="right" i18n="@@models.col.price">In / out per MTok</th>
+              <th nzShowSort [boSort]="sort" boSortKey="context" nzWidth="96px" nzAlign="right" i18n="@@models.col.context">Context</th>
               <th nzWidth="190px" i18n="@@models.col.lastTest">Last test</th>
-              <th nzWidth="76px" i18n="@@models.col.enabled">Enabled</th>
+              <th nzShowSort [boSort]="sort" boSortKey="enabled" nzWidth="96px" i18n="@@models.col.enabled">Enabled</th>
               <th nzWidth="130px">
                 <span class="sr-only" i18n="@@models.col.actions">Actions</span>
               </th>
@@ -471,6 +474,16 @@ export class ModelsPageComponent {
   readonly visible = computed(() =>
     this.showUnavailable() ? this.filtered() : this.filtered().filter((p) => p.providerConfigured !== false),
   );
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<ModelProfile>({
+    name: (p) => p.displayName,
+    provider: (p) => providerLabel(p.ref.provider),
+    model: (p) => p.ref.modelId,
+    price: (p) => p.pricing.inputPerMTok,
+    context: (p) => p.contextWindow,
+    enabled: (p) => p.enabled !== false,
+  });
+  readonly rows = computed(() => this.sort.apply(this.visible()));
   readonly hiddenCount = computed(() => this.filtered().filter((p) => p.providerConfigured === false).length);
   readonly hiddenLabel = computed(() =>
     this.showUnavailable()
@@ -540,7 +553,7 @@ export class ModelsPageComponent {
   });
 
   readonly nav = listNavigation({
-    items: this.filtered,
+    items: this.rows,
     open: (p) => this.edit(p),
     group: $localize`:@@models.group:Models`,
     when: () => !this.panelOpen(),

@@ -62,7 +62,9 @@ A node's profile wins over the template's, which wins over the project default.
 
 A task suite is the work models are measured on: your kind of tickets, specs, reviews and coding jobs.
 **Evaluation** → **Task suites** (`/evaluation/suites`) lists them. A starter suite, **Starter: SDLC
-tasks**, shows the shape; copy it and replace the content with your own work.
+tasks**, shows the shape; copy it and replace the content with your own work. Its five coding tasks run against
+Spring PetClinic (`https://github.com/spring-projects/spring-petclinic`, pinned to one commit, verified with
+`./mvnw -B -q test` in about 100 seconds), so a first benchmark works without your own repository.
 
 ### Steps: create a suite and add tasks
 
@@ -122,7 +124,8 @@ models, attempt progress and cost.
 
 The form shows how many attempts the benchmark plans (tasks × models × repetitions, each also judged
 once). Every attempt costs candidate tokens plus judge tokens; coding attempts on frontier models can
-cost several dollars each.
+cost several dollars each. The form warns when the judge is also a candidate (it would grade its own answers)
+and when coding tasks point at a sample repository such as `gitlab.example.com` that does not exist.
 
 ### While it runs
 
@@ -148,7 +151,7 @@ The benchmark page has the tabs **Leaderboard** and **Attempts · N**.
 | **Pass rate** | Share of attempts that passed (coding: tests green; prompt: score of 70 or more). Failed and timed-out attempts count as not passed. |
 | **Mean cost**, **Total** | Candidate cost per attempt and overall. |
 | **Score / $** | Mean score per dollar of mean cost. |
-| **p50 / p95** | Wall-clock time per attempt. |
+| **Time p50 / p95** | The candidate's own response time (the model's answer, or the agent job from submission to result), without the judge, queueing or retries, over succeeded attempts: half of them were faster than p50, 95% faster than p95. Below 20 attempts p95 is simply the slowest one; the tooltip says how many attempts the times come from. |
 | **Stability** | Standard deviation of the score across repetitions; lower is steadier. |
 
 **Score vs cost** plots every model; a model that another one beats on both score and cost is dominated.

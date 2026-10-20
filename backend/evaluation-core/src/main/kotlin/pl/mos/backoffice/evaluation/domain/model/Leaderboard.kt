@@ -15,8 +15,10 @@ data class LeaderboardRow(
     val meanCost: Money,
     val totalCost: Money,
     val scorePerDollar: Double?,
+    /** ADR 0046: of the candidate's own time in succeeded attempts; [latencySamples] says over how many. */
     val p50LatencyMs: Long?,
     val p95LatencyMs: Long?,
+    val latencySamples: Int = 0,
     /** Standard deviation of the score across repetitions of the same task, averaged over tasks. */
     val stability: Double?,
 )

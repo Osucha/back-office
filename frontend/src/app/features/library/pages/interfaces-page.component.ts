@@ -42,6 +42,8 @@ import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { SidePanelComponent, panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { LibraryNavComponent } from '../components/library-nav.component';
 import { filterInterfaces } from '../data/library-filters';
@@ -79,6 +81,7 @@ const EMPTY: TaskInterfaceInput = {
     ProvenanceComponent,
     SidePanelComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     LibraryNavComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -148,21 +151,21 @@ const EMPTY: TaskInterfaceInput = {
           />
         }
       } @else {
-        <nz-table [nzData]="filtered()" [nzShowPagination]="false" nzSize="middle">
+        <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th i18n="@@library.interfaces.col.interface">Interface</th>
-              <th nzWidth="18%" i18n="@@library.interfaces.inputs">Inputs</th>
-              <th nzWidth="16%" i18n="@@library.interfaces.outputs">Outputs</th>
-              <th nzWidth="130px" i18n="@@library.interfaces.ports">Ports</th>
-              <th nzWidth="16%" i18n="@@library.interfaces.col.implementedBy">Implemented by</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.interfaces.col.interface">Interface</th>
+              <th nzShowSort [boSort]="sort" boSortKey="inputs" nzWidth="18%" i18n="@@library.interfaces.inputs">Inputs</th>
+              <th nzShowSort [boSort]="sort" boSortKey="outputs" nzWidth="16%" i18n="@@library.interfaces.outputs">Outputs</th>
+              <th nzShowSort [boSort]="sort" boSortKey="ports" nzWidth="146px" i18n="@@library.interfaces.ports">Ports</th>
+              <th nzShowSort [boSort]="sort" boSortKey="implementedBy" nzWidth="16%" i18n="@@library.interfaces.col.implementedBy">Implemented by</th>
               <th nzWidth="84px">
                 <span class="sr-only" i18n="@@library.interfaces.col.actions">Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            @for (i of filtered(); track i.key; let idx = $index) {
+            @for (i of rows(); track i.key; let idx = $index) {
               <tr
                 class="clickable-row"
                 [class.active]="nav.cursor() === idx || panel.value() === i.key"
@@ -593,6 +596,15 @@ export class InterfacesPageComponent {
   };
 
   readonly filtered = computed(() => filterInterfaces(this.items(), this.f.values().q));
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<TaskInterface>({
+    name: (i) => i.name,
+    inputs: (i) => (i.inputs ?? []).map((s) => s.name).join(' '),
+    outputs: (i) => (i.outputs ?? []).map((s) => s.name).join(' '),
+    ports: (i) => (i.ports ?? []).join(' '),
+    implementedBy: (i) => (i.implementedBy ?? []).join(', '),
+  });
+  readonly rows = computed(() => this.sort.apply(this.filtered()));
   readonly editing = computed(() => {
     const key = this.panel.value();
     return key && key !== 'new' ? (this.items().find((i) => i.key === key) ?? null) : null;
@@ -617,7 +629,7 @@ export class InterfacesPageComponent {
   });
 
   readonly nav = listNavigation({
-    items: this.filtered,
+    items: this.rows,
     open: (i) => this.edit(i),
     group: $localize`:@@library.interfaces.group:Interfaces`,
     when: () => !this.panelOpen(),

@@ -11,6 +11,8 @@ import { absoluteTime, formatUsage } from '../../../../core/ui/relay/format';
 import { GlyphComponent } from '../../../../core/ui/relay/glyph.component';
 import { SidePanelComponent } from '../../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../../core/ui/relay/table-sort';
 import { humanize } from '../../../../core/ui/status-tag.component';
 import { fixed } from '../../../../core/i18n/numbers';
 import { categoryLabel } from '../../suites/data/suite-view';
@@ -27,6 +29,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
     MarkdownViewerComponent,
     SidePanelComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -126,20 +129,20 @@ import { categoryLabel } from '../../suites/data/suite-view';
           <nz-tab nzTitle="Judge" i18n-nzTitle="@@evaluation.attempt.tab.judge">
             @if (a.judgeCriteria?.length) {
               <nz-table
-                [nzData]="a.judgeCriteria ?? []"
+                [nzData]="criteria()"
                 [nzShowPagination]="false"
                 nzSize="small"
                 style="margin-bottom: 12px"
               >
                 <thead>
                   <tr>
-                    <th nzWidth="34%" i18n="@@evaluation.attempt.criterion">Criterion</th>
-                    <th nzWidth="70px" nzAlign="right" i18n="@@evaluation.attempt.score">Score</th>
-                    <th i18n="@@evaluation.attempt.comment">Comment</th>
+                    <th nzShowSort [boSort]="criteriaSort" boSortKey="name" nzWidth="34%" i18n="@@evaluation.attempt.criterion">Criterion</th>
+                    <th nzShowSort [boSort]="criteriaSort" boSortKey="score" nzWidth="86px" nzAlign="right" i18n="@@evaluation.attempt.score">Score</th>
+                    <th nzShowSort [boSort]="criteriaSort" boSortKey="comment" i18n="@@evaluation.attempt.comment">Comment</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (c of a.judgeCriteria; track $index) {
+                  @for (c of criteria(); track $index) {
                     <tr>
                       <td>{{ c.name }}</td>
                       <td nzAlign="right" class="mono">{{ c.score }}</td>
@@ -265,6 +268,16 @@ export class AttemptDetailModalComponent {
       humanize(a.difficulty).toLowerCase(),
     ].join(' · ');
   });
+  /** Column sorting of the judge criteria (URL `?criteriaSort=`; the page's tables use their own params). */
+  readonly criteriaSort = tableSort<NonNullable<AttemptDetail['judgeCriteria']>[number]>(
+    {
+      name: (c) => c.name,
+      score: (c) => c.score,
+      comment: (c) => c.comment,
+    },
+    { param: 'criteriaSort' },
+  );
+  readonly criteria = computed(() => this.criteriaSort.apply(this.attempt()?.judgeCriteria ?? []));
   readonly text = { attempt: $localize`:@@evaluation.attempt.title:Attempt` };
   readonly fixed = fixed;
   readonly duration = formatDuration;

@@ -55,6 +55,8 @@ import { ProvenanceComponent } from '../../../../core/ui/relay/provenance.compon
 import { ShortcutsService } from '../../../../core/ui/relay/shortcuts.service';
 import { SidePanelComponent } from '../../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../../core/ui/relay/table-styles';
 import { humanize } from '../../../../core/ui/status-tag.component';
 import { icu } from '../../../../core/i18n/icu';
@@ -92,6 +94,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
     ProvenanceComponent,
     SidePanelComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -183,22 +186,22 @@ import { categoryLabel } from '../../suites/data/suite-view';
       } @else {
         <nz-table
           #t
-          [nzData]="filtered()"
-          [nzShowPagination]="filtered().length > 50"
+          [nzData]="rows()"
+          [nzShowPagination]="rows().length > 50"
           [nzPageSize]="50"
           nzSize="middle"
         >
           <thead>
             <tr>
-              <th nzWidth="120px" i18n="@@evaluation.benchmarks.col.holder">Holder</th>
-              <th i18n="@@evaluation.benchmarks.col.benchmark">Benchmark</th>
-              <th nzWidth="170px" i18n="@@evaluation.benchmarks.col.suite">Suite</th>
-              <th nzWidth="70px" nzAlign="right" i18n="@@evaluation.benchmarks.col.models">
+              <th nzShowSort [boSort]="sort" boSortKey="holder" nzWidth="136px" i18n="@@evaluation.benchmarks.col.holder">Holder</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.benchmarks.col.benchmark">Benchmark</th>
+              <th nzShowSort [boSort]="sort" boSortKey="suite" nzWidth="170px" i18n="@@evaluation.benchmarks.col.suite">Suite</th>
+              <th nzShowSort [boSort]="sort" boSortKey="models" nzWidth="86px" nzAlign="right" i18n="@@evaluation.benchmarks.col.models">
                 Models
               </th>
-              <th nzWidth="250px" i18n="@@evaluation.benchmarks.col.attempts">Attempts</th>
-              <th nzWidth="90px" nzAlign="right" i18n="@@evaluation.benchmarks.col.cost">Cost</th>
-              <th nzWidth="190px" i18n="@@evaluation.benchmarks.col.created">Created</th>
+              <th nzShowSort [boSort]="sort" boSortKey="attempts" nzWidth="250px" i18n="@@evaluation.benchmarks.col.attempts">Attempts</th>
+              <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@evaluation.benchmarks.col.cost">Cost</th>
+              <th nzShowSort [boSort]="sort" boSortKey="created" nzWidth="190px" i18n="@@evaluation.benchmarks.col.created">Created</th>
             </tr>
           </thead>
           <tbody>
@@ -438,6 +441,9 @@ import { categoryLabel } from '../../suites/data/suite-view';
           </nz-form-item>
         }
         <p class="matrix">{{ matrixText() }}</p>
+        @for (w of warnings(); track w) {
+          <p class="warn" role="note"><bo-glyph holder="idle" [size]="11" /> {{ w }}</p>
+        }
         @if (checks(); as cs) {
           <ul class="checks" aria-live="polite">
             @for (c of cs; track c.modelProfileId) {
@@ -526,6 +532,11 @@ import { categoryLabel } from '../../suites/data/suite-view';
         font-weight: 600;
         color: var(--bo-ink);
       }
+      .warn {
+        margin: 8px 0 0;
+        font-size: 12.5px;
+        color: var(--bo-ink-2);
+      }
       .checks {
         list-style: none;
         margin: 10px 0 0;
@@ -607,6 +618,17 @@ export class BenchmarksPageComponent {
         (!q || [b.name, b.suiteName ?? ''].some((x) => x.toLowerCase().includes(q))),
     );
   });
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<BenchmarkSummary>({
+    holder: (b) => b.status,
+    name: (b) => b.name,
+    suite: (b) => b.suiteName,
+    models: (b) => b.modelProfileIds.length,
+    attempts: (b) => (b.progress?.total ? (b.progress.done ?? 0) / b.progress.total : null),
+    cost: (b) => b.totalCost?.amount,
+    created: (b) => b.createdAt,
+  });
+  readonly rows = computed(() => this.sort.apply(this.filtered()));
   readonly chips = computed<FilterChip[]>(() => {
     const s = this.f.values().suite;
     if (!s) return [];
@@ -630,7 +652,7 @@ export class BenchmarksPageComponent {
   } = this.emptyForm();
 
   readonly nav = listNavigation({
-    items: this.filtered,
+    items: this.rows,
     open: (b) => this.open(b),
     group: $localize`:@@evaluation.nav.benchmarks:Benchmarks`,
     when: () => !this.creating(),
@@ -674,6 +696,33 @@ export class BenchmarksPageComponent {
 
   private target(): ExecutionTarget | undefined {
     return this.targets().find((t) => t.target === this.form.runnerTarget);
+  }
+
+  /**
+   * ADR 0046: what would make the result meaningless: a judge grading its own answers, coding tasks on a sample
+   * repository that does not exist.
+   */
+  warnings(): string[] {
+    const out: string[] = [];
+    if (this.form.judgeModelProfileId && this.form.modelProfileIds.includes(this.form.judgeModelProfileId)) {
+      out.push(
+        $localize`:@@evaluation.benchmarks.form.judgeIsCandidate:The judge is also a candidate: it would grade its own answers. Pick a judge that is not compared.`,
+      );
+    }
+    const picked = this.form.taskIds;
+    const samples = this.suiteTasks().filter(
+      (t) => (!picked.length || picked.includes(t.id!)) && /(^|[./@])example\.(com|org|net)([/:]|$)/i.test(t.repository?.url ?? ''),
+    );
+    if (samples.length) {
+      const count = samples.length;
+      out.push(
+        icu(
+          $localize`:@@evaluation.benchmarks.form.sampleRepository:{count, plural, one {# coding task points} other {# coding tasks point}} at a sample repository that does not exist: they will fail. Point them at a real repository in the suite or leave them out.`,
+          { count },
+        ),
+      );
+    }
+    return out;
   }
 
   /** Coding tasks need a pool where they can go; prompt tasks need none. */

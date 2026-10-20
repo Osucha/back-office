@@ -20,20 +20,22 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Starter task suite. Coding tasks point at a placeholder repository that must be replaced. Model profiles are not
- * seeded any more (ADR 0045): they are created from the models of the connected providers.
+ * Starter task suite. Coding tasks run against Spring PetClinic pinned to one commit, so they work out of the box and
+ * every benchmark sees the same code. Model profiles are not seeded (ADR 0045): they are created from the models of
+ * the connected providers.
  */
 object StarterContent {
 
+    /** The address of the first starter coding tasks, which never existed; [upgradeCodingTasks] replaces them. */
     const val PLACEHOLDER_REPO_URL = "https://gitlab.example.com/samples/kotlin-sample.git"
+    const val PETCLINIC_REPO_URL = "https://github.com/spring-projects/spring-petclinic.git"
+    const val PETCLINIC_COMMIT = "500158f732419217507c7656904b8e6aa1bcc0d6"
     const val STARTER_SUITE_NAME = "Starter: SDLC tasks"
-
-    private const val REPO_NOTE = "This task runs against the placeholder repository $PLACEHOLDER_REPO_URL, which does not exist. Point `repository.url` at a real Kotlin/Gradle sample repository the runner can clone (a small Spring Boot service with a green `./gradlew test` is ideal) before starting a benchmark."
 
     fun starterSuite(now: Instant): TaskSuite = TaskSuite.create(
         name = STARTER_SUITE_NAME,
         description = "Twelve example tasks across analysis, specification, review, architecture and coding. " +
-            "Replace them with your own tickets and repositories; the five CODING_JOB tasks reference a placeholder repository that must be changed before use.",
+            "The five CODING_JOB tasks run against Spring PetClinic pinned to one commit; replace them with your own tickets and repositories.",
         codingScoreWeights = CodingScoreWeights.DEFAULT,
         tasks = listOf(
             rootCauseFailingTest(),
@@ -43,14 +45,29 @@ object StarterContent {
             reviewKotlinDiff(),
             monolithModuleBoundaries(),
             writeAdr(),
-            codingAddEndpoint(),
-            codingFixConcurrencyBug(),
-            codingRefactorHexagonal(),
-            codingFlywayAndJpa(),
-            codingRateLimiter(),
-        ),
+        ) + codingTasks(),
         now = now,
     )
+
+    /** The five CODING_JOB tasks (Spring PetClinic). */
+    fun codingTasks(): List<EvalTask> =
+        listOf(codingAddEndpoint(), codingVisitVet(), codingOptimisticLocking(), codingRefactorHexagonal(), codingRateLimiter())
+
+    /**
+     * ADR 0046: a starter suite seeded with the placeholder repository gets the PetClinic tasks instead of the coding tasks
+     * that still point there; tasks the owner changed to another repository stay. Null when nothing is to change.
+     */
+    fun upgradeCodingTasks(suite: TaskSuite, now: Instant): TaskSuite? {
+        val stale = suite.tasks.filter { it.repository?.url == PLACEHOLDER_REPO_URL }
+        if (stale.isEmpty()) return null
+        val kept = suite.tasks - stale.toSet()
+        val added = codingTasks().filter { new -> kept.none { it.name == new.name } }
+        return suite.copy(
+            tasks = kept + added,
+            description = if (suite.name == STARTER_SUITE_NAME) starterSuite(now).description else suite.description,
+            updatedAt = now,
+        )
+    }
 
     // ----- ANALYSIS -----------------------------------------------------------------------------
 
@@ -293,58 +310,99 @@ object StarterContent {
 
     // ----- CODING (runner jobs) -----------------------------------------------------------------
 
+    /**
+     * Spring PetClinic, the reference Spring Boot application, pinned to one commit so every benchmark works on the same
+     * code: Java 17 (built on the runner's JDK 21), Maven wrapper, H2 in tests, about 90 green tests in 100 seconds.
+     */
     private fun codingRepository() = TaskRepository(
-        url = PLACEHOLDER_REPO_URL,
-        baseRef = "main",
-        verifyCommand = "./gradlew test",
+        url = PETCLINIC_REPO_URL,
+        baseRef = PETCLINIC_COMMIT,
+        verifyCommand = "./mvnw -B -q test",
     )
+
+    private val PETCLINIC_CONTEXT = """
+        Repository: Spring PetClinic (https://github.com/spring-projects/spring-petclinic, commit ${PETCLINIC_COMMIT.take(12)}),
+        Spring Boot with Spring MVC + Thymeleaf, Spring Data JPA, Bean Validation and caching. Packages under
+        `org.springframework.samples.petclinic`: `owner` (Owner, Pet, PetType, Visit and their controllers, OwnerRepository),
+        `vet` (Vet, Specialty, VetController, VetRepository), `model` (BaseEntity, NamedEntity, Person), `system`.
+        The schema is plain SQL, one file per database: `src/main/resources/db/{h2,mysql,postgres}/schema.sql` and
+        `data.sql` (no Flyway; Hibernate does not create tables). Tests run on H2; MySQL and PostgreSQL tests are skipped
+        without Docker. Build with the Maven wrapper: `./mvnw -B -q test`. The build checks formatting
+        (spring-javaformat, tabs) and `I18nPropertiesSyncTest` requires every new message key in all
+        `messages*.properties` files: run `./mvnw -B -q spring-javaformat:apply` before you finish.
+    """.trimIndent()
 
     private fun codingAddEndpoint() = EvalTask(
         id = EvalTaskId.new(),
-        name = "Add a validated REST endpoint",
+        name = "Add a validated JSON endpoint for owners",
         category = TaskCategory.CODING,
         difficulty = Difficulty.EASY,
         kind = TaskKind.CODING_JOB,
         instructions = """
-            Add `POST /api/customers` to this Spring Boot service. Request body: `{ "email": string, "displayName": string }`.
-            Rules: email must be a syntactically valid address and unique (409 on duplicate), displayName 2-80
-            characters after trimming. Response 201 with `{ "id": uuid, "email", "displayName", "createdAt" }` and a
-            `Location` header. Validation errors return RFC 9457 problem details with a per-field `errors` array.
-            Follow the existing package layout and naming. Add unit tests for validation and a web-layer test
-            for the 201, 400 and 409 cases. All existing tests must stay green.
+            Add a small JSON API next to the existing HTML pages: `POST /api/owners` creates an owner from
+            `{ "firstName", "lastName", "address", "city", "telephone" }` with the same validation rules as the
+            `Owner` entity (telephone exactly 10 digits, required fields). Answer 201 with the created owner as JSON
+            (id, the five fields, no pets) and a `Location: /api/owners/{id}` header; `GET /api/owners/{id}` returns it,
+            404 when it does not exist. Validation errors answer 400 as RFC 9457 problem details listing each invalid
+            field. Use a request DTO instead of binding the JPA entity, keep the existing HTML controllers unchanged,
+            and add MockMvc tests for 201, 400 and 404. All existing tests must stay green.
         """.trimIndent(),
-        context = REPO_NOTE,
+        context = PETCLINIC_CONTEXT,
         rubric = """
-            - Correctness (0-10): endpoint behaves as specified (201 + Location, 400 with field errors, 409 on duplicate email).
-            - Tests (0-10): validation unit tests and web-layer tests for all three status codes exist and are meaningful.
-            - Fit (0-10): follows the repository conventions (packages, DTO naming, error handling) instead of introducing a parallel style.
-            - Hygiene (0-10): small focused diff, no unrelated changes, no dead code or debug output.
+            - Correctness (0-10): POST answers 201 with Location and body, GET by id works, 404 for unknown ids, 400 problem details name each invalid field.
+            - Tests (0-10): MockMvc tests cover 201, 400 (at least the telephone rule) and 404 with meaningful assertions on status, headers and body.
+            - Fit (0-10): a separate REST controller and DTOs in the owner package, reuses OwnerRepository, no entity exposed as the request body, HTML flow untouched.
+            - Hygiene (0-10): small focused diff, formatting applied, no unrelated changes or debug output.
         """.trimIndent(),
         repository = codingRepository(),
         timeout = Duration.ofMinutes(20),
     )
 
-    private fun codingFixConcurrencyBug() = EvalTask(
+    private fun codingVisitVet() = EvalTask(
         id = EvalTaskId.new(),
-        name = "Fix a concurrency bug with a failing test",
+        name = "Record which vet handled a visit",
+        category = TaskCategory.CODING,
+        difficulty = Difficulty.MEDIUM,
+        kind = TaskKind.CODING_JOB,
+        instructions = """
+            Visits do not say which vet handled them. Add an optional vet to a visit: a nullable `vet_id` column with a
+            foreign key to `vets` in every schema.sql (H2, MySQL, PostgreSQL), a `@ManyToOne` `vet` on `Visit`, a vet
+            select in the new-visit form (`pets/createOrUpdateVisitForm.html`, empty choice allowed) and the vet's
+            name in the visits table of the owner details page (blank when none). Give a few existing visits a vet in
+            the H2 `data.sql`. Tests: the form posts a visit with a vet and the page shows the name; a visit without a
+            vet still works.
+        """.trimIndent(),
+        context = PETCLINIC_CONTEXT,
+        rubric = """
+            - Schema (0-10): nullable vet_id with a foreign key in all three schema files, consistent naming, sample data updated without breaking existing rows.
+            - Mapping and UI (0-10): Visit maps the vet lazily or eagerly on purpose, the form offers the vets with an empty choice, owner details show the name.
+            - Tests (0-10): controller tests cover a visit with and without a vet and assert what the page renders.
+            - Hygiene (0-10): message keys added to every messages file, formatting applied, no unrelated changes.
+        """.trimIndent(),
+        repository = codingRepository(),
+        timeout = Duration.ofMinutes(25),
+    )
+
+    private fun codingOptimisticLocking() = EvalTask(
+        id = EvalTaskId.new(),
+        name = "Prevent lost updates on owner edits",
         category = TaskCategory.CODING,
         difficulty = Difficulty.HARD,
         kind = TaskKind.CODING_JOB,
         instructions = """
-            The `StockReservationService` in this repository loses reservations under concurrent load: two
-            parallel reservations for the last unit can both succeed. First write a test that reproduces the
-            problem deterministically (for example with a CountDownLatch and two threads, or a repeatable
-            multi-threaded loop that asserts the invariant `reserved <= available`). Confirm it fails. Then fix the
-            service without a global lock: use optimistic locking with a version column or a database-level
-            constraint plus retry, whichever fits the existing persistence code. Explain the chosen strategy in
-            a short comment. All tests must pass.
+            Two receptionists editing the same owner silently overwrite each other: the last save wins. Add optimistic
+            locking: a `version` column (every schema.sql, existing rows start at 0) and `@Version` on the entity, carried
+            through the edit form as a hidden field. When the version is stale, re-show the form with a clear error
+            ("changed by someone else, reload") instead of saving or answering 500. First write a test that
+            reproduces the lost update on the current code and fails, then fix it; the test must not rely on sleeps.
+            Explain the chosen approach and its limits in a short comment.
         """.trimIndent(),
-        context = REPO_NOTE,
+        context = PETCLINIC_CONTEXT,
         rubric = """
-            - Reproduction (0-10): a test exists that fails on the original code and passes after the fix; it exercises real concurrency, not a sequential simulation.
-            - Fix quality (0-10): the fix guarantees the invariant (optimistic locking with retry, atomic conditional update, or unique constraint); no `synchronized` on a singleton as the sole fix in a multi-instance deployment.
-            - Explanation (0-10): the strategy and its limits (e.g. retry count, behaviour under contention) are documented briefly and accurately.
-            - Hygiene (0-10): focused diff, no test disabled, no flaky sleeps as the synchronization mechanism.
+            - Reproduction (0-10): a test shows the lost update on the original code (it would fail there) and passes after the fix, deterministically.
+            - Fix (0-10): @Version on the entity, the version travels through the form, a stale save is rejected and reported on the form, never a 500.
+            - Schema and data (0-10): version column added consistently to all schema files with a default, existing data keeps loading.
+            - Explanation and hygiene (0-10): short accurate comment on the strategy and its limits, message keys in every messages file, focused diff.
         """.trimIndent(),
         repository = codingRepository(),
         timeout = Duration.ofMinutes(30),
@@ -352,79 +410,51 @@ object StarterContent {
 
     private fun codingRefactorHexagonal() = EvalTask(
         id = EvalTaskId.new(),
-        name = "Refactor to hexagonal ports with tests green",
+        name = "Refactor the vet module to ports and adapters",
         category = TaskCategory.CODING,
         difficulty = Difficulty.EXPERT,
         kind = TaskKind.CODING_JOB,
         instructions = """
-            The `order` package mixes domain logic, JPA entities and REST controllers. Refactor it into a
-            hexagonal structure: `domain` (pure Kotlin aggregates and value objects), `application` (use-case
-            interfaces as inbound ports, repository/gateway interfaces as outbound ports, services implementing
-            the use cases), `adapter.in.rest` and `adapter.out.persistence` (JPA entities and mappers). The
-            domain must not import Spring, JPA or Jackson. Preserve the public REST contract byte for byte
-            (existing web tests must pass unchanged). Add an ArchUnit test that enforces the layering. Keep
-            behaviour identical; this is a pure refactoring.
+            The `vet` package mixes JPA entities, the Spring Data repository and the controller. Refactor it into
+            ports and adapters: `vet.domain` (plain Java records or classes for Vet and Specialty, no Spring, JPA or
+            Jackson imports), `vet.application` (a use case such as `ListVets` as an inbound port, `VetCatalog` as an
+            outbound port, a service implementing the use case), `vet.adapter.in.web` (the existing controller) and
+            `vet.adapter.out.persistence` (the JPA entities, the repository and a mapper). Keep the HTML page, the
+            `/vets` JSON and XML resources and the caching behaviour identical: existing tests must pass unchanged.
+            Add ArchUnit (`com.tngtech.archunit:archunit-junit5`, test scope) with a test that enforces the layering.
         """.trimIndent(),
-        context = REPO_NOTE,
+        context = PETCLINIC_CONTEXT,
         rubric = """
-            - Structure (0-10): the four layers exist with the right dependency direction; domain free of framework imports; ports are interfaces owned by the application layer.
-            - Behaviour preservation (0-10): existing tests unchanged and green; REST contract identical; no logic silently altered.
-            - ArchUnit (0-10): a layering test exists, is meaningful (not trivially passing) and would fail on the original structure.
-            - Craft (0-10): mappers are explicit and small, no leaked JPA entities into domain or DTOs, no god-classes; the diff is reviewable.
+            - Structure (0-10): the four layers exist with the right dependency direction, the domain is free of framework imports, ports are interfaces owned by the application layer.
+            - Behaviour preservation (0-10): existing tests unchanged and green, /vets HTML, JSON and XML identical, caching still applied.
+            - ArchUnit (0-10): a meaningful layering test that would fail on the original structure.
+            - Craft (0-10): small explicit mappers, no JPA entity leaking past the persistence adapter, a reviewable diff.
         """.trimIndent(),
         repository = codingRepository(),
         timeout = Duration.ofMinutes(45),
     )
 
-    private fun codingFlywayAndJpa() = EvalTask(
-        id = EvalTaskId.new(),
-        name = "Add a Flyway migration and JPA mapping",
-        category = TaskCategory.CODING,
-        difficulty = Difficulty.MEDIUM,
-        kind = TaskKind.CODING_JOB,
-        instructions = """
-            Add persistence for `AuditEvent(id: UUID, occurredAt: Instant, actor: String, action: String,
-            subjectType: String, subjectId: String, details: JSON object)` to this service. Deliverables: a Flyway
-            migration following the repository numbering convention (table `audit_event`, `timestamptz`,
-            `jsonb` details, index on `(subject_type, subject_id)` and on `occurred_at`), a JPA entity using the
-            project's JSON mapping approach (or Hibernate `@JdbcTypeCode(SqlTypes.JSON)`), a Spring Data
-            repository with `findBySubject(subjectType, subjectId, pageable)` ordered newest first, and a
-            repository test against PostgreSQL (Testcontainers, as the existing tests do) that round-trips an
-            event with nested JSON details. Hibernate schema validation must pass.
-        """.trimIndent(),
-        context = REPO_NOTE,
-        rubric = """
-            - Migration (0-10): correct types (uuid PK, timestamptz, jsonb), both indexes, follows the version numbering and naming used in the repository.
-            - Mapping (0-10): entity matches the table so `ddl-auto=validate` passes; JSON mapped with the project approach; timestamps are UTC Instants.
-            - Repository and test (0-10): query returns newest first with paging; Testcontainers test round-trips nested JSON and asserts on it.
-            - Hygiene (0-10): no generated schema edits by hand outside Flyway, no unrelated changes.
-        """.trimIndent(),
-        repository = codingRepository(),
-        timeout = Duration.ofMinutes(25),
-    )
-
     private fun codingRateLimiter() = EvalTask(
         id = EvalTaskId.new(),
-        name = "Implement a rate limiter with tests",
+        name = "Rate-limit form submissions with tests",
         category = TaskCategory.CODING,
         difficulty = Difficulty.HARD,
         kind = TaskKind.CODING_JOB,
         instructions = """
-            Implement a per-API-key token-bucket rate limiter for this service: `RateLimiter.tryAcquire(key: String): Decision`
-            where `Decision` carries `allowed`, `remaining` and `retryAfter`. Configuration: capacity and refill
-            rate per second from application properties, sensible defaults (60 requests, 1 per second refill).
-            The implementation must be thread-safe, must not leak memory for keys that stop calling (evict idle
-            buckets), and must use an injectable time source so tests are deterministic. Wire it as a servlet
-            filter on `/api/**` that returns 429 with `Retry-After` and `X-RateLimit-Remaining` headers. Tests:
-            unit tests for refill math and burst behaviour with a fake clock, a concurrency test proving no
-            over-admission, and a web test for the 429 path.
+            Protect the application from form spam: a token-bucket rate limiter per client IP for state-changing
+            requests (POST to `/owners/**`). `RateLimiter.tryAcquire(key): Decision` returns `allowed`, `remaining` and
+            `retryAfter`; capacity and refill rate come from application properties with defaults (20 requests, 1 per
+            3 seconds). It must be thread-safe, evict buckets of clients that stopped calling and take an injectable
+            clock so tests are deterministic. Wire it as a servlet filter answering 429 with `Retry-After`; GET requests
+            and static resources are never limited. Tests: refill and burst with a fake clock, a concurrency test
+            proving no over-admission, and a MockMvc test of the 429 path.
         """.trimIndent(),
-        context = REPO_NOTE,
+        context = PETCLINIC_CONTEXT,
         rubric = """
-            - Algorithm (0-10): token bucket implemented correctly (capacity cap, fractional refill, no negative tokens), deterministic through an injected clock.
-            - Concurrency and memory (0-10): thread-safe per-key state (atomic update or per-bucket lock), idle eviction present and tested or clearly bounded.
-            - Integration (0-10): filter applied to /api/** only, 429 with correct headers, configuration properties bound with defaults.
-            - Tests (0-10): refill, burst, concurrency and web tests present and meaningful; no sleeps for timing.
+            - Algorithm (0-10): correct token bucket (capacity cap, fractional refill, never negative), deterministic through the injected clock.
+            - Concurrency and memory (0-10): thread-safe per-key state, idle buckets evicted and that eviction tested or clearly bounded.
+            - Integration (0-10): only POST /owners/** limited, 429 with Retry-After, properties bound with defaults.
+            - Tests (0-10): refill, burst, concurrency and web tests present and meaningful, no sleeps for timing.
         """.trimIndent(),
         repository = codingRepository(),
         timeout = Duration.ofMinutes(30),

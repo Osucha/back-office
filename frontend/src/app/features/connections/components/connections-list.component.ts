@@ -25,6 +25,8 @@ import { ConfirmService } from '../../../core/ui/confirm.service';
 import { NotifyService } from '../../../core/ui/notify.service';
 import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import {
   capabilityLabel,
@@ -59,6 +61,7 @@ import { VerificationResultComponent } from './verification-result.component';
     EmptyComponent,
     HelpLinkComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     ConnectionEditorComponent,
     VerificationResultComponent,
   ],
@@ -107,20 +110,20 @@ import { VerificationResultComponent } from './verification-result.component';
         (action)="openEditor('create', null)"
       />
     } @else {
-      <nz-table [nzData]="connections()" [nzShowPagination]="false" nzSize="middle">
+      <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
         <thead>
           <tr>
-            <th i18n="@@connections.list.col.connection">Connection</th>
-            <th nzWidth="220px" i18n="@@connections.list.col.capabilities">Capabilities</th>
-            <th nzWidth="150px" i18n="@@connections.list.col.projects">Allowed projects</th>
-            <th nzWidth="200px" i18n="@@connections.list.col.status">Status</th>
+            <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@connections.list.col.connection">Connection</th>
+            <th nzShowSort [boSort]="sort" boSortKey="capabilities" nzWidth="220px" i18n="@@connections.list.col.capabilities">Capabilities</th>
+            <th nzShowSort [boSort]="sort" boSortKey="projects" nzWidth="166px" i18n="@@connections.list.col.projects">Allowed projects</th>
+            <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="200px" i18n="@@connections.list.col.status">Status</th>
             <th nzWidth="190px" nzAlign="right">
               <span class="sr-only" i18n="@@connections.list.col.actions">Actions</span>
             </th>
           </tr>
         </thead>
         <tbody>
-          @for (c of connections(); track c.id) {
+          @for (c of rows(); track c.id) {
             <tr>
               <td>
                 <div class="cell-main">
@@ -397,6 +400,18 @@ export class ConnectionsListComponent {
   readonly vchip = (c: Connection) => verificationChip(c.verification);
   readonly echip = (c: Connection) => expiryChip(c);
   readonly caps = (c: Connection) => sortCapabilities(c.capabilities ?? []);
+
+  /** Column sorting (URL `?connectionSort=`: the list is embedded in pages with tables of their own). */
+  readonly sort = tableSort<Connection>(
+    {
+      name: (c) => c.name,
+      capabilities: (c) => this.caps(c).map((cap) => this.capLabel(cap)).join(', '),
+      projects: (c) => c.allowedProjectKeys.join(', '),
+      status: (c) => this.vchip(c).label,
+    },
+    { param: 'connectionSort' },
+  );
+  readonly rows = computed(() => this.sort.apply(this.connections()));
 
   readonly text = {
     emptyTitle: $localize`:@@connections.list.emptyTitle:No connections yet.`,

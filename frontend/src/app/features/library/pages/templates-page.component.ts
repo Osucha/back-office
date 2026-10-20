@@ -44,7 +44,9 @@ import { PageHeaderComponent } from '../../../core/ui/relay/page-header.componen
 import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component';
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { LibraryNavComponent } from '../components/library-nav.component';
 import { TemplateEditorDrawerComponent } from '../components/template-editor-drawer.component';
 import {
@@ -73,6 +75,7 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
     PageHeaderComponent,
     ProvenanceComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     LibraryNavComponent,
     TemplateEditorDrawerComponent,
   ],
@@ -177,8 +180,8 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
       } @else {
         <nz-table
           #t
-          [nzData]="filtered()"
-          [nzShowPagination]="filtered().length > 50"
+          [nzData]="rows()"
+          [nzShowPagination]="rows().length > 50"
           [nzPageSize]="50"
           nzSize="middle"
           [nzShowTotal]="totalTpl"
@@ -186,12 +189,12 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
           <ng-template #totalTpl let-total>{{ totalLabel(total) }}</ng-template>
           <thead>
             <tr>
-              <th i18n="@@library.templates.col.template">Template</th>
-              <th nzWidth="130px" i18n="@@library.templates.col.extends">Extends</th>
-              <th nzWidth="18%" i18n="@@library.templates.col.implements">Implements</th>
-              <th nzWidth="120px" i18n="@@library.templates.col.executor">Executor</th>
-              <th nzWidth="90px" i18n="@@library.templates.col.scope">Scope</th>
-              <th nzWidth="200px" i18n="@@library.templates.col.updated">Updated</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.templates.col.template">Template</th>
+              <th nzShowSort [boSort]="sort" boSortKey="extends" nzWidth="146px" i18n="@@library.templates.col.extends">Extends</th>
+              <th nzShowSort [boSort]="sort" boSortKey="implements" nzWidth="18%" i18n="@@library.templates.col.implements">Implements</th>
+              <th nzShowSort [boSort]="sort" boSortKey="executor" nzWidth="136px" i18n="@@library.templates.col.executor">Executor</th>
+              <th nzShowSort [boSort]="sort" boSortKey="scope" nzWidth="106px" i18n="@@library.templates.col.scope">Scope</th>
+              <th nzShowSort [boSort]="sort" boSortKey="updated" nzWidth="200px" i18n="@@library.templates.col.updated">Updated</th>
               <th nzWidth="118px">
                 <span class="sr-only" i18n="@@library.templates.col.actions">Actions</span>
               </th>
@@ -436,6 +439,16 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
       executor: this.f.values().executor,
     }),
   );
+  readonly sort = tableSort<TaskTemplate>({
+    name: (t) => t.name,
+    extends: (t) => t.extendsKey,
+    implements: (t) => (t.implements ?? []).join(', '),
+    executor: (t) => (t.executor ? executorLabel(t.executor) : null),
+    // global templates first, then project templates by project key
+    scope: (t) => (t.scope.type === 'PROJECT' ? `PROJECT ${this.projectKey(t.scope.projectId)}` : 'GLOBAL'),
+    updated: (t) => t.updatedAt,
+  });
+  readonly rows = computed(() => this.sort.apply(this.filtered()));
   readonly chips = computed<FilterChip[]>(() => {
     const v = this.f.values();
     const out: FilterChip[] = [];
@@ -453,7 +466,7 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   });
 
   readonly nav = listNavigation({
-    items: this.filtered,
+    items: this.rows,
     open: (t) => this.edit(t),
     group: $localize`:@@library.templates.group:Templates`,
     when: () => !this.drawerOpen(),

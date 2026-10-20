@@ -4,15 +4,19 @@ import { RouterLink } from '@angular/router';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
-import type { WorkflowInsights } from '../../../core/api/types';
+import type { WorkflowInsights, WorkflowProjectMetrics } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
 import { humanize } from '../../../core/ui/status-tag.component';
 import { CostComponent } from '../../../core/ui/relay/cost.component';
 import { EmptyComponent } from '../../../core/ui/relay/empty.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { formatRate, formatWait } from '../../insights/public-api';
 import {
   MIN_RUNS_FOR_TREND,
+  type NodeRow,
+  type VersionRow,
   finishedRuns,
   formatLoops,
   metricCards,
@@ -34,6 +38,7 @@ import {
     NzTooltipModule,
     CostComponent,
     EmptyComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -69,21 +74,21 @@ import {
 
         <section class="card" aria-labelledby="h-versions">
           <h3 id="h-versions" class="c-title" i18n="@@library.metrics.byVersion">By version</h3>
-          <nz-table [nzData]="versions()" [nzShowPagination]="false" nzSize="small">
+          <nz-table [nzData]="versionList()" [nzShowPagination]="false" nzSize="small">
             <thead>
               <tr>
-                <th nzWidth="90px" i18n="@@library.metrics.col.version">Version</th>
-                <th nzAlign="right" i18n="@@library.metrics.col.runs">Runs</th>
-                <th i18n="@@library.metrics.col.success">Success</th>
-                <th i18n="@@library.metrics.col.firstPass">First pass</th>
-                <th i18n="@@library.metrics.col.rework">Rework / run</th>
-                <th i18n="@@library.metrics.col.duration">Median time</th>
-                <th i18n="@@library.metrics.col.active">Active time</th>
-                <th nzAlign="right" i18n="@@library.metrics.col.costPerSuccess">Cost / success</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="version" nzWidth="106px" i18n="@@library.metrics.col.version">Version</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="runs" nzAlign="right" i18n="@@library.metrics.col.runs">Runs</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="success" i18n="@@library.metrics.col.success">Success</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="firstPass" i18n="@@library.metrics.col.firstPass">First pass</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="rework" i18n="@@library.metrics.col.rework">Rework / run</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="duration" i18n="@@library.metrics.col.duration">Median time</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="active" i18n="@@library.metrics.col.active">Active time</th>
+                <th nzShowSort [boSort]="versionSort" boSortKey="cost" nzAlign="right" i18n="@@library.metrics.col.costPerSuccess">Cost / success</th>
               </tr>
             </thead>
             <tbody>
-              @for (v of versions(); track v.version) {
+              @for (v of versionList(); track v.version) {
                 <tr>
                   <td class="mono-cell">
                     v{{ v.version }}
@@ -130,19 +135,19 @@ import {
         @if (scope() === 'library' && (i.byProject?.length ?? 0) > 0) {
           <section class="card" aria-labelledby="h-projects">
             <h3 id="h-projects" class="c-title" i18n="@@library.metrics.byProject">By project</h3>
-            <nz-table [nzData]="i.byProject ?? []" [nzShowPagination]="false" nzSize="small">
+            <nz-table [nzData]="projectList()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th i18n="@@library.metrics.col.project">Project</th>
-                  <th nzAlign="right" i18n="@@library.metrics.col.runs">Runs</th>
-                  <th i18n="@@library.metrics.col.success">Success</th>
-                  <th i18n="@@library.metrics.col.firstPass">First pass</th>
-                  <th i18n="@@library.metrics.col.duration">Median time</th>
-                  <th nzAlign="right" i18n="@@library.metrics.col.costPerSuccess">Cost / success</th>
+                  <th nzShowSort [boSort]="projectSort" boSortKey="project" i18n="@@library.metrics.col.project">Project</th>
+                  <th nzShowSort [boSort]="projectSort" boSortKey="runs" nzAlign="right" i18n="@@library.metrics.col.runs">Runs</th>
+                  <th nzShowSort [boSort]="projectSort" boSortKey="success" i18n="@@library.metrics.col.success">Success</th>
+                  <th nzShowSort [boSort]="projectSort" boSortKey="firstPass" i18n="@@library.metrics.col.firstPass">First pass</th>
+                  <th nzShowSort [boSort]="projectSort" boSortKey="duration" i18n="@@library.metrics.col.duration">Median time</th>
+                  <th nzShowSort [boSort]="projectSort" boSortKey="cost" nzAlign="right" i18n="@@library.metrics.col.costPerSuccess">Cost / success</th>
                 </tr>
               </thead>
               <tbody>
-                @for (p of i.byProject ?? []; track p.projectId) {
+                @for (p of projectList(); track p.projectId) {
                   <tr>
                     <td>
                       <a class="mono-cell" [routerLink]="['/projects', p.projectId]">{{
@@ -172,19 +177,19 @@ import {
 
         <section class="card" aria-labelledby="h-nodes">
           <h3 id="h-nodes" class="c-title" i18n="@@library.metrics.byNode">Steps</h3>
-          <nz-table [nzData]="nodes()" [nzShowPagination]="false" nzSize="small">
+          <nz-table [nzData]="nodeList()" [nzShowPagination]="false" nzSize="small">
             <thead>
               <tr>
-                <th i18n="@@library.metrics.col.step">Step</th>
-                <th nzAlign="right" i18n="@@library.metrics.col.executions">Executions</th>
-                <th i18n="@@library.metrics.col.failures">Failures</th>
-                <th i18n="@@library.metrics.col.stepTime">Median / p90</th>
-                <th nzAlign="right" i18n="@@library.metrics.col.cost">Cost</th>
-                <th i18n="@@library.metrics.col.ports">Ports taken</th>
+                <th nzShowSort [boSort]="nodeSort" boSortKey="step" i18n="@@library.metrics.col.step">Step</th>
+                <th nzShowSort [boSort]="nodeSort" boSortKey="executions" nzAlign="right" i18n="@@library.metrics.col.executions">Executions</th>
+                <th nzShowSort [boSort]="nodeSort" boSortKey="failures" i18n="@@library.metrics.col.failures">Failures</th>
+                <th nzShowSort [boSort]="nodeSort" boSortKey="time" i18n="@@library.metrics.col.stepTime">Median / p90</th>
+                <th nzShowSort [boSort]="nodeSort" boSortKey="cost" nzAlign="right" i18n="@@library.metrics.col.cost">Cost</th>
+                <th nzShowSort [boSort]="nodeSort" boSortKey="ports" i18n="@@library.metrics.col.ports">Ports taken</th>
               </tr>
             </thead>
             <tbody>
-              @for (n of nodes(); track n.nodeId) {
+              @for (n of nodeList(); track n.nodeId) {
                 <tr [class.hot]="!!n.hotspot">
                   <td>
                     <div class="cell-main">
@@ -340,6 +345,48 @@ export class WorkflowMetricsPanelComponent {
   readonly versions = computed(() => versionRows(this.insights()?.byVersion));
   readonly nodes = computed(() => nodeRows(this.insights()?.byNode));
   readonly anyFewRuns = computed(() => this.versions().some((v) => v.fewRuns));
+  /**
+   * Column sorting of the three tables, each with its own URL parameter (the panel sits inside pages that keep
+   * their own `?sort=`).
+   */
+  readonly versionSort = tableSort<VersionRow>(
+    {
+      version: (v) => v.version,
+      runs: (v) => v.metrics.runs?.total ?? 0,
+      success: (v) => v.metrics.successRate,
+      firstPass: (v) => v.metrics.firstPassRate,
+      rework: (v) => v.metrics.reworkLoopsPerRun,
+      duration: (v) => v.metrics.duration?.p50Seconds,
+      active: (v) => v.metrics.activeTime?.p50Seconds,
+      cost: (v) => (v.metrics.runs?.successful ? v.metrics.costPerSuccessfulRun?.amount : null),
+    },
+    { param: 'versionSort' },
+  );
+  readonly projectSort = tableSort<WorkflowProjectMetrics>(
+    {
+      project: (p) => p.projectKey,
+      runs: (p) => p.metrics?.runs?.total ?? 0,
+      success: (p) => p.metrics?.successRate,
+      firstPass: (p) => p.metrics?.firstPassRate,
+      duration: (p) => p.metrics?.duration?.p50Seconds,
+      cost: (p) => (p.metrics?.runs?.successful ? p.metrics?.costPerSuccessfulRun?.amount : null),
+    },
+    { param: 'projectSort' },
+  );
+  readonly nodeSort = tableSort<NodeRow>(
+    {
+      step: (n) => n.nodeName,
+      executions: (n) => n.executions ?? 0,
+      failures: (n) => n.failed ?? 0,
+      time: (n) => n.duration?.p50Seconds,
+      cost: (n) => n.cost?.amount,
+      ports: (n) => n.portsText,
+    },
+    { param: 'stepSort' },
+  );
+  readonly versionList = computed(() => this.versionSort.apply(this.versions()));
+  readonly projectList = computed(() => this.projectSort.apply(this.insights()?.byProject ?? []));
+  readonly nodeList = computed(() => this.nodeSort.apply(this.nodes()));
   readonly runsText = computed(() => {
     const r = this.insights()?.totals?.runs;
     return icu(

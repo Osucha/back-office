@@ -19,7 +19,9 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
 import type { ModelProfile, ProviderCatalogSection } from '../../../core/api/types';
 import { GlyphComponent } from '../../../core/ui/relay/glyph.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { icu } from '../../../core/i18n/icu';
 import { catalogRows, filterCatalog, profileFromCatalog, type CatalogRow } from '../data/model-catalog';
 import { contextLabel, perMTok, providerLabel } from '../data/model-format';
@@ -41,6 +43,7 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
     NzTableModule,
     NzTooltipModule,
     GlyphComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -118,17 +121,17 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
 
         <nz-table
           #t
-          [nzData]="filtered()"
+          [nzData]="sortedRows()"
           [nzPageSize]="20"
-          [nzShowPagination]="filtered().length > 20"
+          [nzShowPagination]="sortedRows().length > 20"
           nzSize="small"
         >
           <thead>
             <tr>
-              <th i18n="@@models.catalog.col.model">Model</th>
-              <th nzWidth="170px" i18n="@@models.catalog.col.connection">Connection</th>
-              <th nzWidth="150px" nzAlign="right" i18n="@@models.col.price">In / out per MTok</th>
-              <th nzWidth="80px" nzAlign="right" i18n="@@models.col.context">Context</th>
+              <th nzShowSort [boSort]="sort" boSortKey="model" i18n="@@models.catalog.col.model">Model</th>
+              <th nzShowSort [boSort]="sort" boSortKey="connection" nzWidth="186px" i18n="@@models.catalog.col.connection">Connection</th>
+              <th nzShowSort [boSort]="sort" boSortKey="price" nzWidth="166px" nzAlign="right" i18n="@@models.col.price">In / out per MTok</th>
+              <th nzShowSort [boSort]="sort" boSortKey="context" nzWidth="96px" nzAlign="right" i18n="@@models.col.context">Context</th>
               <th nzWidth="150px"><span class="sr-only" i18n="@@models.col.actions">Actions</span></th>
             </tr>
           </thead>
@@ -279,6 +282,17 @@ export class ProviderCatalogComponent {
   readonly filtered = computed(() =>
     filterCatalog(this.rows(), { query: this.query(), connection: this.connection(), freeOnly: this.freeOnly() }),
   );
+  /** Column sorting (URL `?catalogSort=`, apart from the profiles table above). */
+  readonly sort = tableSort<CatalogRow>(
+    {
+      model: (r) => r.model.name || r.model.id,
+      connection: (r) => r.connectionName,
+      price: (r) => r.model.inputPerMTok,
+      context: (r) => r.model.contextWindow,
+    },
+    { param: 'catalogSort' },
+  );
+  readonly sortedRows = computed(() => this.sort.apply(this.filtered()));
   readonly countLabel = computed(() =>
     icu($localize`:@@models.catalog.count:{count, plural, one {# model} other {# models}}`, {
       count: this.filtered().length,

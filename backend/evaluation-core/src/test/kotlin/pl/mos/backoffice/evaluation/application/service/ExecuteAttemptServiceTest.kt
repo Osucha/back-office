@@ -95,6 +95,7 @@ class ExecuteAttemptServiceTest {
         // judge: 2000 * 10 / 1e6 + 200 * 50 / 1e6 = 0.02 + 0.01
         assertThat(stored.judgeCost).isEqualTo(Money.usd("0.03"))
         assertThat(stored.durationMs).isNotNull().isPositive()
+        assertThat(stored.candidateLatencyMs).describedAs("the candidate's own time, not the judge's").isEqualTo(1000L)
 
         val candidateRequest = requests[0]
         assertThat(candidateRequest.responseSchema).isNull()
@@ -104,6 +105,7 @@ class ExecuteAttemptServiceTest {
         assertThat(candidateRequest.usageContext.attemptId).isEqualTo(attempt.id.value)
         val judgeRequest = requests[1]
         assertThat(judgeRequest.responseSchema).contains("\"score\"")
+        assertThat(judgeRequest.optionsOverride?.maxOutputTokens).isEqualTo(ExecuteAttemptService.JUDGE_MAX_OUTPUT_TOKENS)
         assertThat(judgeRequest.messages.last().content).contains("The bug is X.").contains("Correctness 0-10.")
 
         assertThat(report.progress!!.counts.done).isEqualTo(1)

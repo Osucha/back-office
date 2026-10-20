@@ -27,6 +27,8 @@ import { urlFilters } from '../../../core/ui/relay/filter-state';
 import { absoluteTime } from '../../../core/ui/relay/format';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { AdminNavComponent } from '../../admin/public-api';
 import { FleetNavComponent } from '../components/fleet-nav.component';
@@ -49,6 +51,7 @@ import { revokeConsequences, runnerBaton } from '../data/fleet-view';
     FleetNavComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -124,13 +127,13 @@ import { revokeConsequences, runnerBaton } from '../data/fleet-view';
         <nz-table #t [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th i18n="@@fleet.runners.col.runner">Runner</th>
-              <th nzWidth="140px" i18n="@@fleet.runners.col.state">State</th>
-              <th nzWidth="120px" i18n="@@fleet.runners.col.pool">Pool</th>
-              <th nzWidth="90px" i18n="@@fleet.runners.col.version">Version</th>
-              <th i18n="@@fleet.runners.col.backends">Backends and runtime classes</th>
-              <th nzWidth="90px" nzAlign="right" i18n="@@fleet.runners.col.jobs">Jobs</th>
-              <th nzWidth="110px" nzAlign="right" i18n="@@fleet.runners.col.lastSeen">Last seen</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@fleet.runners.col.runner">Runner</th>
+              <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="140px" i18n="@@fleet.runners.col.state">State</th>
+              <th nzShowSort [boSort]="sort" boSortKey="pool" nzWidth="120px" i18n="@@fleet.runners.col.pool">Pool</th>
+              <th nzShowSort [boSort]="sort" boSortKey="version" nzWidth="106px" i18n="@@fleet.runners.col.version">Version</th>
+              <th nzShowSort [boSort]="sort" boSortKey="backends" i18n="@@fleet.runners.col.backends">Backends and runtime classes</th>
+              <th nzShowSort [boSort]="sort" boSortKey="jobs" nzWidth="106px" nzAlign="right" i18n="@@fleet.runners.col.jobs">Jobs</th>
+              <th nzShowSort [boSort]="sort" boSortKey="lastSeen" nzWidth="126px" nzAlign="right" i18n="@@fleet.runners.col.lastSeen">Last seen</th>
               <th nzWidth="90px" nzAlign="right">
                 <span class="sr-only" i18n="@@fleet.pools.col.actions">Actions</span>
               </th>
@@ -244,7 +247,7 @@ export class FleetRunnersPageComponent {
     openPools: $localize`:@@fleet.runners.openPools:Open pools`,
     noCluster: $localize`:@@fleet.runners.noCluster:cluster not reported`,
   };
-  readonly rows = computed(() => {
+  readonly filtered = computed(() => {
     const q = (this.f.values().q ?? '').trim().toLowerCase();
     const list = [...this.runners()].sort(
       (a, b) =>
@@ -255,6 +258,17 @@ export class FleetRunnersPageComponent {
       [r.name, r.cluster, r.version, r.poolId].some((v) => v?.toLowerCase().includes(q)),
     );
   });
+  /** Column sorting (URL `?sort=`); without one, online runners first, then by name. */
+  readonly sort = tableSort<Runner>({
+    name: (r) => r.name,
+    state: (r) => runnerBaton(r).label,
+    pool: (r) => r.poolId,
+    version: (r) => r.version,
+    backends: (r) => [...(r.backends ?? []), ...(r.runtimeClasses ?? [])].join(' '),
+    jobs: (r) => r.running ?? 0,
+    lastSeen: (r) => r.lastSeenAt,
+  });
+  readonly rows = computed(() => this.sort.apply(this.filtered()));
   readonly chips = computed<FilterChip[]>(() => {
     const id = this.f.values().poolId;
     if (!id) return [];

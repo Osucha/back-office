@@ -1,10 +1,12 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { LibrarySourcesApi } from '../../../core/api/library-sources.service';
 import type { LibrarySource } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
 
 /**
@@ -13,7 +15,7 @@ import { purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
  */
 @Component({
   selector: 'app-project-sources-panel',
-  imports: [RouterLink, NzCardModule, NzTableModule],
+  imports: [RouterLink, NzCardModule, NzTableModule, SortHeaderDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nz-card nzTitle="Library sources" i18n-nzTitle="@@projects.sources.library.title">
@@ -26,16 +28,16 @@ import { purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
       } @else if (!items().length) {
         <p class="muted" i18n="@@projects.sources.library.empty">The library has no sources yet.</p>
       } @else {
-        <nz-table [nzData]="items()" [nzShowPagination]="false" nzSize="small">
+        <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="small">
           <thead>
             <tr>
-              <th i18n="@@projects.sources.library.col.source">Source</th>
-              <th i18n="@@projects.sources.library.col.purpose">Purpose</th>
-              <th i18n="@@projects.sources.library.col.repository">Repository</th>
+              <th nzShowSort [boSort]="sort" boSortKey="source" i18n="@@projects.sources.library.col.source">Source</th>
+              <th nzShowSort [boSort]="sort" boSortKey="purpose" i18n="@@projects.sources.library.col.purpose">Purpose</th>
+              <th nzShowSort [boSort]="sort" boSortKey="repository" i18n="@@projects.sources.library.col.repository">Repository</th>
             </tr>
           </thead>
           <tbody>
-            @for (s of items(); track s.id) {
+            @for (s of rows(); track s.id) {
               <tr>
                 <td>
                   <div>{{ s.name }}</div>
@@ -80,6 +82,16 @@ export class ProjectSourcesPanelComponent {
   readonly canView = inject(IdentityService).can('library.view');
   readonly purpose = purposeLabel;
   readonly shortUrl = shortRepoUrl;
+  /** Column sorting (URL `?sourceSort=`, apart from the other tables of the project page). */
+  readonly sort = tableSort<LibrarySource>(
+    {
+      source: (s) => s.name,
+      purpose: (s) => purposeLabel(s.purpose),
+      repository: (s) => shortRepoUrl(s.url),
+    },
+    { param: 'sourceSort' },
+  );
+  readonly rows = computed(() => this.sort.apply(this.items()));
 
   constructor() {
     this.api.list().subscribe({

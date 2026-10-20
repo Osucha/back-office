@@ -29,6 +29,8 @@ import { PageHeaderComponent } from '../../../../core/ui/relay/page-header.compo
 import { ProvenanceComponent } from '../../../../core/ui/relay/provenance.component';
 import { ShortcutsService } from '../../../../core/ui/relay/shortcuts.service';
 import { SkeletonComponent } from '../../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../../core/ui/relay/table-styles';
 import { EvaluationNavComponent } from '../../components/evaluation-nav.component';
 import { filterSuites, weightsText } from '../data/suite-view';
@@ -52,6 +54,7 @@ import { filterSuites, weightsText } from '../data/suite-view';
     PageHeaderComponent,
     ProvenanceComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -116,17 +119,17 @@ import { filterSuites, weightsText } from '../data/suite-view';
           />
         }
       } @else {
-        <nz-table [nzData]="filtered()" [nzShowPagination]="false" nzSize="middle">
+        <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th i18n="@@evaluation.suites.col.suite">Suite</th>
-              <th nzWidth="90px" nzAlign="right" i18n="@@evaluation.suites.col.tasks">Tasks</th>
-              <th nzWidth="220px" i18n="@@evaluation.suites.col.codingScore">Coding score</th>
-              <th nzWidth="220px" i18n="@@evaluation.suites.col.changed">Changed</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.suites.col.suite">Suite</th>
+              <th nzShowSort [boSort]="sort" boSortKey="tasks" nzWidth="106px" nzAlign="right" i18n="@@evaluation.suites.col.tasks">Tasks</th>
+              <th nzShowSort [boSort]="sort" boSortKey="weights" nzWidth="220px" i18n="@@evaluation.suites.col.codingScore">Coding score</th>
+              <th nzShowSort [boSort]="sort" boSortKey="changed" nzWidth="220px" i18n="@@evaluation.suites.col.changed">Changed</th>
             </tr>
           </thead>
           <tbody>
-            @for (s of filtered(); track s.id; let i = $index) {
+            @for (s of rows(); track s.id; let i = $index) {
               <tr
                 class="clickable-row"
                 [class.active]="nav.cursor() === i"
@@ -280,6 +283,14 @@ export class SuitesPageComponent {
   readonly canRun = computed(() => this.identity.can('evaluation.run'));
   readonly filtered = computed(() => filterSuites(this.suites(), this.f.values().q));
   readonly weights = weightsText;
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<TaskSuiteSummary>({
+    name: (s) => s.name,
+    tasks: (s) => s.taskCount ?? 0,
+    weights: (s) => weightsText(s),
+    changed: (s) => s.createdAt,
+  });
+  readonly rows = computed(() => this.sort.apply(this.filtered()));
   form = { name: '', description: '', verification: 0.6, judge: 0.4 };
   readonly text = {
     reload: $localize`:@@evaluation.suites.reload:Reload suites`,
@@ -289,7 +300,7 @@ export class SuitesPageComponent {
   };
 
   readonly nav = listNavigation({
-    items: this.filtered,
+    items: this.rows,
     open: (s) => this.open(s),
     group: $localize`:@@evaluation.nav.suites:Task suites`,
     when: () => !this.creating(),

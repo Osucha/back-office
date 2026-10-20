@@ -46,7 +46,9 @@ import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { SidePanelComponent, panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import {
   type WorkflowChoice,
   emptyRule,
@@ -84,6 +86,7 @@ const TABS: (IntakeProposalState | 'RULES')[] = ['NEW', 'STARTED', 'DISMISSED', 
     PageHeaderComponent,
     SidePanelComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     TimeAgoPipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -134,19 +137,19 @@ const TABS: (IntakeProposalState | 'RULES')[] = ['NEW', 'STARTED', 'DISMISSED', 
               help="myWork"
             />
           } @else {
-            <nz-table [nzData]="rules()" [nzShowPagination]="false" nzSize="middle">
+            <nz-table [nzData]="sortedRules()" [nzShowPagination]="false" nzSize="middle">
               <thead>
                 <tr>
-                  <th i18n="@@my-work.rules.col.rule">Rule</th>
-                  <th nzWidth="220px" i18n="@@my-work.rules.col.workflow">Proposes</th>
-                  <th nzWidth="200px" i18n="@@my-work.rules.col.status">Status</th>
+                  <th nzShowSort [boSort]="ruleSort" boSortKey="name" i18n="@@my-work.rules.col.rule">Rule</th>
+                  <th nzShowSort [boSort]="ruleSort" boSortKey="workflow" nzWidth="220px" i18n="@@my-work.rules.col.workflow">Proposes</th>
+                  <th nzShowSort [boSort]="ruleSort" boSortKey="status" nzWidth="200px" i18n="@@my-work.rules.col.status">Status</th>
                   <th nzWidth="120px">
                     <span class="sr-only" i18n="@@my-work.rules.col.actions">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                @for (r of rules(); track r.id) {
+                @for (r of sortedRules(); track r.id) {
                   <tr
                     class="clickable-row"
                     tabindex="0"
@@ -229,9 +232,9 @@ const TABS: (IntakeProposalState | 'RULES')[] = ['NEW', 'STARTED', 'DISMISSED', 
         >
           <thead>
             <tr>
-              <th i18n="@@my-work.col.issue">Issue</th>
-              <th nzWidth="230px" i18n="@@my-work.col.workflow">Workflow</th>
-              <th nzWidth="130px" i18n="@@my-work.col.found">Found</th>
+              <th nzShowSort [boSort]="sort" boSortKey="issue" i18n="@@my-work.col.issue">Issue</th>
+              <th nzShowSort [boSort]="sort" boSortKey="workflow" nzWidth="230px" i18n="@@my-work.col.workflow">Workflow</th>
+              <th nzShowSort [boSort]="sort" boSortKey="found" nzWidth="146px" i18n="@@my-work.col.found">Found</th>
               <th nzWidth="230px">
                 <span class="sr-only" i18n="@@my-work.col.actions">Actions</span>
               </th>
@@ -663,6 +666,30 @@ export class MyWorkPageComponent {
     () =>
       $localize`:@@my-work.chooseTitle:Start a workflow for ${this.choosing()?.issueKey ?? ''}:key:`,
   );
+  /** Column sorting of the proposal tables (URL `?sort=`, shared by the New / Started / Dismissed tabs). */
+  readonly sort = tableSort<IntakeProposal>({
+    issue: (p) => p.issueKey,
+    workflow: (p) => p.workflowName,
+    found: (p) => p.detectedAt,
+  });
+  readonly sortedProposals = computed<Record<IntakeProposalState, IntakeProposal[]>>(() => {
+    const all = this.proposals();
+    return {
+      NEW: this.sort.apply(all.NEW),
+      STARTED: this.sort.apply(all.STARTED),
+      DISMISSED: this.sort.apply(all.DISMISSED),
+    };
+  });
+  /** Column sorting of the rules table (URL `?rulesSort=`). */
+  readonly ruleSort = tableSort<IntakeRule>(
+    {
+      name: (r) => r.name,
+      workflow: (r) => (r.projectKey ? `${r.projectKey} · ` : '') + (r.workflowName ?? ''),
+      status: (r) => ruleStatus(r).text,
+    },
+    { param: 'rulesSort' },
+  );
+  readonly sortedRules = computed(() => this.ruleSort.apply(this.rules()));
   readonly reload = () => this.load();
 
   constructor() {
@@ -696,7 +723,7 @@ export class MyWorkPageComponent {
   }
 
   items(state: IntakeProposalState): IntakeProposal[] {
-    return this.proposals()[state];
+    return this.sortedProposals()[state];
   }
 
   status(r: IntakeRule) {

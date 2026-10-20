@@ -50,6 +50,8 @@ import { GlyphComponent } from '../../../core/ui/relay/glyph.component';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { ProjectBudgetPanelComponent } from '../../budgets/public-api';
 import { ProjectConnectionsPanelComponent } from '../../connections/public-api';
 import { ProjectSandboxPanelComponent } from '../../fleet/public-api';
@@ -117,6 +119,7 @@ const TABS = [
     PageHeaderComponent,
     ProvenanceComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     JiraIntakePanelComponent,
     AdoptWorkflowDialogComponent,
     PublishWorkflowDialogComponent,
@@ -256,13 +259,13 @@ const TABS = [
                 (action)="router.navigate(['/projects', p.id, 'workflows', 'new'])"
               />
             } @else {
-              <nz-table [nzData]="workflows()" [nzShowPagination]="false" nzSize="middle">
+              <nz-table [nzData]="workflowRows()" [nzShowPagination]="false" nzSize="middle">
                 <thead>
                   <tr>
-                    <th i18n="@@projects.detail.workflows.workflow">Workflow</th>
-                    <th nzWidth="170px" i18n="@@projects.detail.workflows.triggers">Triggers</th>
-                    <th nzWidth="120px" i18n="@@projects.detail.workflows.state">State</th>
-                    <th nzWidth="220px" i18n="@@projects.detail.workflows.lastChange">
+                    <th nzShowSort [boSort]="workflowSort" boSortKey="name" i18n="@@projects.detail.workflows.workflow">Workflow</th>
+                    <th nzShowSort [boSort]="workflowSort" boSortKey="triggers" nzWidth="186px" i18n="@@projects.detail.workflows.triggers">Triggers</th>
+                    <th nzShowSort [boSort]="workflowSort" boSortKey="state" nzWidth="136px" i18n="@@projects.detail.workflows.state">State</th>
+                    <th nzShowSort [boSort]="workflowSort" boSortKey="lastChange" nzWidth="220px" i18n="@@projects.detail.workflows.lastChange">
                       Last change
                     </th>
                     <th nzWidth="230px" nzAlign="right">
@@ -273,7 +276,7 @@ const TABS = [
                   </tr>
                 </thead>
                 <tbody>
-                  @for (w of workflows(); track w.id) {
+                  @for (w of workflowRows(); track w.id) {
                     <tr>
                       <td>
                         <a class="wf-name" [routerLink]="['/workflows', w.id, 'edit']">{{
@@ -926,6 +929,17 @@ export class ProjectDetailPageComponent {
     settingsReadOnly: $localize`:@@projects.detail.settingsReadOnly:Project settings (read-only)`,
     manual: $localize`:@@projects.detail.trigger.manual:Manual`,
   };
+  /** Column sorting of the workflows (URL `?workflowSort=`, apart from the tables of the other tabs). */
+  readonly workflowSort = tableSort<WorkflowDefinition>(
+    {
+      name: (w) => w.name,
+      triggers: (w) => this.triggerText(w),
+      state: (w) => (w.draft ? this.text.draft : w.enabled === false ? this.text.disabled : this.text.enabled),
+      lastChange: (w) => w.updatedAt,
+    },
+    { param: 'workflowSort' },
+  );
+  readonly workflowRows = computed(() => this.workflowSort.apply(this.workflows()));
 
   nodesText(w: WorkflowDefinition): string {
     return icu(

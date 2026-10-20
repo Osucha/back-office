@@ -70,7 +70,9 @@ Profil węzła wygrywa z profilem szablonu, a ten z domyślnym profilem projektu
 Zestaw zadań to praca, na której mierzy się modele: zgłoszenia, specyfikacje, przeglądy i zadania
 programistyczne takie jak Twoje. **Ewaluacja** (**Evaluation**) → **Zestawy zadań** (**Task suites**,
 `/evaluation/suites`) wyświetla je. Zestaw startowy **Starter: SDLC tasks** pokazuje strukturę; skopiuj
-go i zastąp treść własną pracą.
+go i zastąp treść własną pracą. Jego pięć zadań programistycznych działa na Spring PetClinic
+(`https://github.com/spring-projects/spring-petclinic`, przypięty commit, weryfikacja `./mvnw -B -q test` w około
+100 sekund), więc pierwszy benchmark działa bez własnego repozytorium.
 
 ### Kroki: tworzenie zestawu i dodawanie zadań
 
@@ -141,7 +143,9 @@ je trzyma, zestawem, liczbą modeli, postępem prób i kosztem.
 
 Formularz pokazuje, ile prób zaplanuje benchmark (zadania × modele × powtórzenia, każda dodatkowo raz
 oceniana). Każda próba kosztuje tokeny kandydata plus tokeny modelu oceniającego; próby programistyczne na
-najmocniejszych modelach mogą kosztować po kilka dolarów każda.
+najmocniejszych modelach mogą kosztować po kilka dolarów każda. Formularz ostrzega, gdy model oceniający jest też
+kandydatem (oceniałby własne odpowiedzi) i gdy zadania programistyczne wskazują przykładowe repozytorium, np.
+`gitlab.example.com`, które nie istnieje.
 
 ### W trakcie działania
 
@@ -168,7 +172,7 @@ Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**At
 | **Odsetek zaliczonych** (**Pass rate**) | Udział zaliczonych prób (programistyczne: testy przechodzą; prompt: ocena 70 lub więcej). Próby nieudane i przekraczające czas liczą się jako niezaliczone. |
 | **Średni koszt** (**Mean cost**), **Łącznie** (**Total**) | Koszt kandydata na próbę i ogółem. |
 | **Wynik / $** (**Score / $**) | Średni wynik na dolara średniego kosztu. |
-| **p50 / p95** | Czas rzeczywisty na próbę. |
+| **Czas p50 / p95** (**Time p50 / p95**) | Czas odpowiedzi samego kandydata (odpowiedź modelu albo zadanie agenta od zlecenia do wyniku), bez modelu oceniającego, kolejki i ponowień, z udanych prób: połowa była szybsza niż p50, 95% szybsze niż p95. Poniżej 20 prób p95 to po prostu najwolniejsza próba; podpowiedź mówi, z ilu prób policzono czasy. |
 | **Stabilność** (**Stability**) | Odchylenie standardowe wyniku między powtórzeniami; im niższe, tym stabilniej. |
 
 **Wynik a koszt** (**Score vs cost**) pokazuje na wykresie każdy model; model, który inny model bije

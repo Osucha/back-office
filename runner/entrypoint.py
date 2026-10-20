@@ -1261,6 +1261,68 @@ def apply_proxy_env(env: Dict[str, str], proxy_url: Optional[str]) -> None:
         env[name] = proxy_url
     for name in ("NO_PROXY", "no_proxy"):
         env.pop(name, None)
+    java = java_proxy_options(proxy_url)
+    if java:
+        current = env.get("JAVA_TOOL_OPTIONS", "")
+        if "-Dhttps.proxyHost=" not in current:
+            env["JAVA_TOOL_OPTIONS"] = (current + " " + java).strip()
+
+
+def _proxy_parts(proxy_url: str) -> Optional[Tuple[str, int, str, str]]:
+    """(host, port, user, password) of the egress proxy URL; None when it cannot be read."""
+    parsed = urllib.parse.urlsplit(proxy_url)
+    if not parsed.hostname:
+        return None
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return parsed.hostname, port, urllib.parse.unquote(parsed.username or ""), urllib.parse.unquote(parsed.password or "")
+
+
+def java_proxy_options(proxy_url: Optional[str]) -> str:
+    """JVM flags for the egress proxy (ADR 0046): Java ignores HTTPS_PROXY, so Gradle, the Maven and Gradle wrappers and
+    any other JVM tool would try a direct connection the sandbox does not have. With credentials, Basic proxy
+    authentication for HTTPS tunnels is re-enabled (the JDK turns it off by default)."""
+    parts = _proxy_parts(proxy_url) if proxy_url else None
+    if not parts:
+        return ""
+    host, port, user, password = parts
+    flags = [f"-Dhttp.proxyHost={host}", f"-Dhttp.proxyPort={port}", f"-Dhttps.proxyHost={host}", f"-Dhttps.proxyPort={port}",
+             "-Dhttp.nonProxyHosts=localhost|127.0.0.1"]
+    if user:
+        flags += [f"-Dhttp.proxyUser={user}", f"-Dhttp.proxyPassword={password}", f"-Dhttps.proxyUser={user}",
+                  f"-Dhttps.proxyPassword={password}", "-Djdk.http.auth.tunneling.disabledSchemes="]
+    return " ".join(flags)
+
+
+def write_maven_proxy_settings(env: Dict[str, str], proxy_url: Optional[str], log: Callable[[str], None]) -> None:
+    """Maven reads proxies only from settings.xml (not from JVM flags): `~/.m2/settings.xml` with the egress proxy,
+    unless the image or the repository brought its own. Java takes `~` from the account, not from HOME, so Maven
+    gets `-Duser.home=$HOME` (also where its local repository then lives: the writable HOME of the sandbox)."""
+    parts = _proxy_parts(proxy_url) if proxy_url else None
+    if not parts:
+        return
+    host, port, user, password = parts
+    home = env.get("HOME") or "/nonexistent"
+    if "-Duser.home=" not in env.get("MAVEN_OPTS", ""):
+        env["MAVEN_OPTS"] = (env.get("MAVEN_OPTS", "") + f" -Duser.home={home}").strip()
+    settings = Path(home) / ".m2" / "settings.xml"
+    if settings.exists():
+        return
+
+    def esc(value: str) -> str:
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    auth = f"<username>{esc(user)}</username><password>{esc(password)}</password>" if user else ""
+    proxies = "".join(
+        f"<proxy><id>egress-{protocol}</id><active>true</active><protocol>{protocol}</protocol>"
+        f"<host>{esc(host)}</host><port>{port}</port>{auth}<nonProxyHosts>localhost|127.0.0.1</nonProxyHosts></proxy>"
+        for protocol in ("https", "http")
+    )
+    try:
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(f"<settings><proxies>{proxies}</proxies></settings>\n", encoding="utf-8")
+        log("[runner] Maven proxy settings written to ~/.m2/settings.xml")
+    except OSError as e:
+        log(f"[runner] WARN cannot write Maven proxy settings: {e}")
 
 
 def apply_process_limit(env: Dict[str, str], log: Callable[[str], None]) -> None:
@@ -3674,6 +3736,7 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
     apply_process_limit(run.env, run.log)
     run.workspace.mkdir(parents=True, exist_ok=True)
     _prepare_home(run.workspace, run.env, run.log)
+    write_maven_proxy_settings(run.env, run.proxy_url, run.log)
     _log_tool_policy(run)
     if spec.agent != STUB_AGENT:
         _log_tool_versions(run)

@@ -142,6 +142,7 @@ class BenchmarkAttemptEntity(
     @Column(name = "judge_cost", nullable = false, precision = 18, scale = 6) val judgeCost: BigDecimal = BigDecimal.ZERO,
     @Column(nullable = false, length = 3) val currency: String = "USD",
     @Column(name = "duration_ms") val durationMs: Long? = null,
+    @Column(name = "candidate_latency_ms") val candidateLatencyMs: Long? = null,
     @Column(name = "runner_job_id") val runnerJobId: UUID? = null,
     @Column(columnDefinition = "text") val error: String? = null,
     @Column(name = "created_at", nullable = false) val createdAt: Instant = Instant.EPOCH,

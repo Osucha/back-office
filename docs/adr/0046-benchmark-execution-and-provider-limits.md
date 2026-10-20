@@ -55,5 +55,10 @@ The local stack also needed four commands and a Keycloak the owner does not use.
 - The fixed local registration token and the DEV isolation ceiling of the compose stack are for laptops only; the Helm
   chart sets neither.
 - Benchmarks created before V203 run on the shared fleet, as before.
+- Follow-up after the first real benchmark: a timed out provider call is no longer repeated inside the call (the
+  attempt retries later with its own backoff), the judge answers within 3000 output tokens, the leaderboard times are
+  the candidate's own (`benchmark_attempt.candidate_latency_ms`, evaluation V204) over succeeded attempts, the form
+  warns about a judge that is also a candidate and about sample repositories, and the starter coding tasks run against
+  Spring PetClinic pinned to a commit (suites still on the placeholder repository are upgraded at startup).
 - `backend/.dockerignore` excluded `**/out`, which also dropped the source packages `application/port/out`, so the
   `full` profile could not build the API image; it now excludes only the IDE output directories (`out`, `*/out`).

@@ -29,11 +29,12 @@ import type {
   Role,
   SessionSummary,
   UserDetail,
+  UserProjectMembership,
 } from '../../../core/api/types';
 import { AuthConfigService } from '../../../core/auth/auth-config.service';
 import type { HasUnsavedChanges } from '../../../core/auth/guards';
 import { IdentityService } from '../../../core/auth/identity.service';
-import { roleOptions } from '../../../core/i18n/catalog-labels';
+import { roleName, roleOptions } from '../../../core/i18n/catalog-labels';
 import { PermissionDescriptionPipe, RoleNamePipe } from '../../../core/i18n/catalog-labels.pipes';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { reportFormError } from '../../../core/forms/server-errors';
@@ -48,6 +49,8 @@ import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { absoluteTime, firstName } from '../../../core/ui/relay/format';
 import { PageHeaderComponent, type PageAction } from '../../../core/ui/relay/page-header.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../components/admin-nav.component';
 import { AuthModePickerComponent } from '../components/auth-mode-picker.component';
 import { EffectivePermissionsTableComponent } from '../components/effective-permissions-table.component';
@@ -103,6 +106,7 @@ interface IssuedLink {
     OneTimeLinkComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     StateChipComponent,
     PermissionDescriptionPipe,
     RoleNamePipe,
@@ -527,20 +531,20 @@ interface IssuedLink {
               />
             } @else {
               <nz-table
-                [nzData]="u.projectMemberships ?? []"
+                [nzData]="memberships()"
                 [nzShowPagination]="false"
                 nzSize="small"
               >
                 <thead>
                   <tr>
-                    <th nzWidth="120px" i18n="@@admin.userDetail.colProject">Project</th>
-                    <th nzWidth="140px" i18n="@@admin.userDetail.colRole">Role</th>
-                    <th nzWidth="160px" i18n="@@admin.userDetail.colVia">Via</th>
-                    <th i18n="@@admin.userDetail.colPermissions">Effective project permissions</th>
+                    <th nzShowSort [boSort]="membershipSort" boSortKey="project" nzWidth="136px" i18n="@@admin.userDetail.colProject">Project</th>
+                    <th nzShowSort [boSort]="membershipSort" boSortKey="role" nzWidth="156px" i18n="@@admin.userDetail.colRole">Role</th>
+                    <th nzShowSort [boSort]="membershipSort" boSortKey="via" nzWidth="176px" i18n="@@admin.userDetail.colVia">Via</th>
+                    <th nzShowSort [boSort]="membershipSort" boSortKey="permissions" i18n="@@admin.userDetail.colPermissions">Effective project permissions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (m of u.projectMemberships ?? []; track $index) {
+                  @for (m of memberships(); track $index) {
                     <tr>
                       <td>
                         <a
@@ -594,18 +598,18 @@ interface IssuedLink {
                   </button>
                 </div>
               }
-              <nz-table [nzData]="sessions()" [nzShowPagination]="false" nzSize="small">
+              <nz-table [nzData]="sortedSessions()" [nzShowPagination]="false" nzSize="small">
                 <thead>
                   <tr>
-                    <th nzWidth="140px" i18n="@@admin.userDetail.colSession">Session</th>
-                    <th nzWidth="170px" i18n="@@admin.userDetail.colStarted">Started</th>
-                    <th nzWidth="120px" i18n="@@admin.userDetail.colLastAccess">Last access</th>
-                    <th nzWidth="140px" i18n="@@admin.userDetail.colIp">IP</th>
-                    <th i18n="@@admin.userDetail.colBrowser">Browser</th>
+                    <th nzShowSort [boSort]="sessionSort" boSortKey="session" nzWidth="156px" i18n="@@admin.userDetail.colSession">Session</th>
+                    <th nzShowSort [boSort]="sessionSort" boSortKey="started" nzWidth="170px" i18n="@@admin.userDetail.colStarted">Started</th>
+                    <th nzShowSort [boSort]="sessionSort" boSortKey="lastAccess" nzWidth="136px" i18n="@@admin.userDetail.colLastAccess">Last access</th>
+                    <th nzShowSort [boSort]="sessionSort" boSortKey="ip" nzWidth="140px" i18n="@@admin.userDetail.colIp">IP</th>
+                    <th nzShowSort [boSort]="sessionSort" boSortKey="browser" i18n="@@admin.userDetail.colBrowser">Browser</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (s of sessions(); track s.id) {
+                  @for (s of sortedSessions(); track s.id) {
                     <tr>
                       <td class="mono">{{ (s.id ?? '').slice(0, 12) }}</td>
                       <td [attr.title]="abs(s.createdAt)">{{ ago(s.createdAt) }}</td>
@@ -861,6 +865,27 @@ export class UserDetailPageComponent implements HasUnsavedChanges {
     const name = this.name();
     return $localize`:@@admin.userDetail.noSessions:${name}:name: has no active sessions.`;
   });
+  /** Column sorting of the memberships (URL `?sort=`) and the sessions (`?sessionSort=`). */
+  readonly membershipSort = tableSort<UserProjectMembership>({
+    project: (m) => m.projectKey,
+    role: (m) => (m.role ? roleName(m.role) : null),
+    via: (m) => m.viaGroup,
+    permissions: (m) => this.projectPermissions(m.projectId).join(', '),
+  });
+  readonly memberships = computed(() =>
+    this.membershipSort.apply(this.user()?.projectMemberships ?? []),
+  );
+  readonly sessionSort = tableSort<SessionSummary>(
+    {
+      session: (s) => s.id,
+      started: (s) => s.createdAt,
+      lastAccess: (s) => s.lastAccessAt,
+      ip: (s) => s.sourceIp,
+      browser: (s) => s.userAgent,
+    },
+    { param: 'sessionSort' },
+  );
+  readonly sortedSessions = computed(() => this.sessionSort.apply(this.sessions()));
   readonly sessionsTab = computed(() => {
     const count = this.sessions().length;
     return $localize`:@@admin.userDetail.tabSessions:Sessions · ${count}:count:`;

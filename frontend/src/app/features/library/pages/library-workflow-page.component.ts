@@ -40,6 +40,8 @@ import { urlFilters } from '../../../core/ui/relay/filter-state';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { PERIODS, type PeriodId, periodRange } from '../../insights/public-api';
 import { WorkflowCanvasComponent } from '../../workflows/public-api';
@@ -71,6 +73,7 @@ const TABS = ['performance', 'graph', 'versions', 'projects'] as const;
     PageHeaderComponent,
     ProvenanceComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     WorkflowCanvasComponent,
     AdoptWorkflowDialogComponent,
     WorkflowMetricsPanelComponent,
@@ -195,18 +198,18 @@ const TABS = ['performance', 'graph', 'versions', 'projects'] as const;
           </nz-tab>
 
           <nz-tab [nzTitle]="versionsTitle()">
-            <nz-table [nzData]="w.versions" [nzShowPagination]="false" nzSize="middle">
+            <nz-table [nzData]="versionRows()" [nzShowPagination]="false" nzSize="middle">
               <thead>
                 <tr>
-                  <th nzWidth="80px" i18n="@@library.workflow.col.version">Version</th>
-                  <th i18n="@@library.workflow.col.changes">What changed</th>
-                  <th nzWidth="80px" nzAlign="right" i18n="@@library.workflow.col.nodes">Steps</th>
-                  <th nzWidth="200px" i18n="@@library.workflow.col.source">Published from</th>
-                  <th nzWidth="210px" i18n="@@library.workflow.col.published">Published</th>
+                  <th nzShowSort [boSort]="versionSort" boSortKey="version" nzWidth="96px" i18n="@@library.workflow.col.version">Version</th>
+                  <th nzShowSort [boSort]="versionSort" boSortKey="changes" i18n="@@library.workflow.col.changes">What changed</th>
+                  <th nzShowSort [boSort]="versionSort" boSortKey="nodes" nzWidth="96px" nzAlign="right" i18n="@@library.workflow.col.nodes">Steps</th>
+                  <th nzShowSort [boSort]="versionSort" boSortKey="source" nzWidth="200px" i18n="@@library.workflow.col.source">Published from</th>
+                  <th nzShowSort [boSort]="versionSort" boSortKey="published" nzWidth="210px" i18n="@@library.workflow.col.published">Published</th>
                 </tr>
               </thead>
               <tbody>
-                @for (v of w.versions; track v.version) {
+                @for (v of versionRows(); track v.version) {
                   <tr
                     class="clickable-row"
                     tabindex="0"
@@ -244,17 +247,17 @@ const TABS = ['performance', 'graph', 'versions', 'projects'] as const;
                 (action)="adoptOpen.set(true)"
               />
             } @else {
-              <nz-table [nzData]="w.adoptions" [nzShowPagination]="false" nzSize="middle">
+              <nz-table [nzData]="adoptionRows()" [nzShowPagination]="false" nzSize="middle">
                 <thead>
                   <tr>
-                    <th nzWidth="120px" i18n="@@library.workflow.col.project">Project</th>
-                    <th i18n="@@library.workflow.col.workflow">Workflow</th>
-                    <th nzWidth="260px" i18n="@@library.workflow.col.follows">Follows</th>
-                    <th nzWidth="110px" i18n="@@library.workflow.col.state">State</th>
+                    <th nzShowSort [boSort]="adoptionSort" boSortKey="project" nzWidth="136px" i18n="@@library.workflow.col.project">Project</th>
+                    <th nzShowSort [boSort]="adoptionSort" boSortKey="workflow" i18n="@@library.workflow.col.workflow">Workflow</th>
+                    <th nzShowSort [boSort]="adoptionSort" boSortKey="follows" nzWidth="260px" i18n="@@library.workflow.col.follows">Follows</th>
+                    <th nzShowSort [boSort]="adoptionSort" boSortKey="state" nzWidth="110px" i18n="@@library.workflow.col.state">State</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (a of w.adoptions; track a.workflowId) {
+                  @for (a of adoptionRows(); track a.workflowId) {
                     <tr>
                       <td>
                         <a class="mono-cell" [routerLink]="['/projects', a.projectId]">{{
@@ -498,6 +501,28 @@ export class LibraryWorkflowPageComponent {
       ' ' +
       (this.entry()?.adoptions.length ?? 0),
   );
+  /**
+   * Column sorting of the versions (URL `?sort=`) and the projects tab (`?adoptionSort=`); the metrics panel keeps
+   * its own parameters.
+   */
+  readonly versionSort = tableSort<LibraryWorkflow['versions'][number]>({
+    version: (v) => v.version,
+    changes: (v) => v.changeNote,
+    nodes: (v) => v.nodeCount,
+    source: (v) => v.source?.projectKey,
+    published: (v) => v.publishedAt,
+  });
+  readonly adoptionSort = tableSort<LibraryWorkflowAdoption>(
+    {
+      project: (a) => a.projectKey,
+      workflow: (a) => a.workflowName,
+      follows: (a) => a.version,
+      state: (a) => !!a.enabled,
+    },
+    { param: 'adoptionSort' },
+  );
+  readonly versionRows = computed(() => this.versionSort.apply(this.entry()?.versions ?? []));
+  readonly adoptionRows = computed(() => this.adoptionSort.apply(this.entry()?.adoptions ?? []));
   /** The chosen version's graph in the shape the canvas reads. */
   readonly definition = computed<WorkflowDefinitionInput | null>(() => {
     const v = this.versionDetail();

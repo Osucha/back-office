@@ -30,6 +30,8 @@ import { PageHeaderComponent } from '../../../core/ui/relay/page-header.componen
 import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component';
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import {
   PERIODS,
@@ -59,6 +61,7 @@ import { type LibraryRow, filterLibraryWorkflows, libraryRows } from '../data/wo
     PageHeaderComponent,
     ProvenanceComponent,
     SkeletonComponent,
+    SortHeaderDirective,
     LibraryNavComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -155,23 +158,30 @@ import { type LibraryRow, filterLibraryWorkflows, libraryRows } from '../data/wo
       } @else {
         <nz-table
           #t
-          [nzData]="filtered()"
-          [nzShowPagination]="filtered().length > 50"
+          [nzData]="sorted()"
+          [nzShowPagination]="sorted().length > 50"
           [nzPageSize]="50"
           nzSize="middle"
         >
           <thead>
             <tr>
-              <th i18n="@@library.workflows.col.workflow">Workflow</th>
-              <th nzWidth="110px" i18n="@@library.workflows.col.usedIn">Used in</th>
-              <th nzWidth="70px" nzAlign="right" i18n="@@library.workflows.col.runs">Runs</th>
-              <th nzWidth="90px" i18n="@@library.workflows.col.success">Success</th>
-              <th nzWidth="90px" i18n="@@library.workflows.col.firstPass">First pass</th>
-              <th nzWidth="100px" i18n="@@library.workflows.col.duration">Median time</th>
-              <th nzWidth="110px" nzAlign="right" i18n="@@library.workflows.col.cost">
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.workflows.col.workflow">Workflow</th>
+              <th nzShowSort [boSort]="sort" boSortKey="usedIn" nzWidth="126px" i18n="@@library.workflows.col.usedIn">Used in</th>
+              <th nzShowSort [boSort]="sort" boSortKey="runs" nzWidth="86px" nzAlign="right" i18n="@@library.workflows.col.runs">Runs</th>
+              <th nzShowSort [boSort]="sort" boSortKey="success" nzWidth="106px" i18n="@@library.workflows.col.success">Success</th>
+              <th nzShowSort [boSort]="sort" boSortKey="firstPass" nzWidth="106px" i18n="@@library.workflows.col.firstPass">First pass</th>
+              <th nzShowSort [boSort]="sort" boSortKey="duration" nzWidth="116px" i18n="@@library.workflows.col.duration">Median time</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="cost"
+                nzWidth="126px"
+                nzAlign="right"
+                i18n="@@library.workflows.col.cost"
+              >
                 Cost / success
               </th>
-              <th nzWidth="190px" i18n="@@library.workflows.col.published">Latest version</th>
+              <th nzShowSort [boSort]="sort" boSortKey="published" nzWidth="190px" i18n="@@library.workflows.col.published">Latest version</th>
             </tr>
           </thead>
           <tbody>
@@ -303,6 +313,18 @@ export class LibraryWorkflowsPageComponent {
   readonly filtered = computed(() =>
     filterLibraryWorkflows(this.rows(), this.f.values().q, this.showDeprecated()),
   );
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<LibraryRow>({
+    name: (w) => w.name,
+    usedIn: (w) => w.usage?.projects ?? 0,
+    runs: (w) => w.metrics?.runs?.total ?? 0,
+    success: (w) => w.metrics?.successRate,
+    firstPass: (w) => w.metrics?.firstPassRate,
+    duration: (w) => w.metrics?.duration?.p50Seconds,
+    cost: (w) => (w.metrics?.runs?.successful ? w.metrics?.costPerSuccessfulRun?.amount : null),
+    published: (w) => w.latestPublishedAt,
+  });
+  readonly sorted = computed(() => this.sort.apply(this.filtered()));
   readonly visibleCount = computed(() => this.items().filter((w) => !w.deprecated).length);
   readonly chips = computed<FilterChip[]>(() =>
     this.showDeprecated()
@@ -316,7 +338,7 @@ export class LibraryWorkflowsPageComponent {
   );
 
   readonly nav = listNavigation({
-    items: this.filtered,
+    items: this.sorted,
     open: (w) => this.open(w),
     group: $localize`:@@library.workflows.group:Library workflows`,
   });

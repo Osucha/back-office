@@ -27,6 +27,8 @@ import { urlFilters } from '../../../core/ui/relay/filter-state';
 import { fuzzyFilter } from '../../../core/ui/relay/fuzzy';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../components/admin-nav.component';
 import { EDITOR_STYLES } from '../components/editor-styles';
 import { EffectToggleComponent } from '../components/effect-toggle.component';
@@ -61,6 +63,7 @@ import { matrixFor } from '../data/permission-matrix';
     FilterBarComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -191,20 +194,20 @@ import { matrixFor } from '../data/permission-matrix';
               <bo-empty tone="quiet" [title]="f.active() ? text.noMatch : text.emptyCatalogue" />
             } @else {
               <nz-table
-                [nzData]="visibleRows()"
+                [nzData]="sortedRows()"
                 [nzShowPagination]="false"
                 [nzScroll]="{ y: '56vh' }"
                 nzSize="small"
               >
                 <thead>
                   <tr>
-                    <th nzWidth="140px" i18n="@@admin.grants.col.module">Module</th>
-                    <th i18n="@@admin.grants.col.permission">Permission</th>
+                    <th nzShowSort [boSort]="sort" boSortKey="module" nzWidth="156px" i18n="@@admin.grants.col.module">Module</th>
+                    <th nzShowSort [boSort]="sort" boSortKey="permission" i18n="@@admin.grants.col.permission">Permission</th>
                     <th nzWidth="230px" i18n="@@admin.grants.col.thisLevel">This level</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (p of visibleRows(); track p.key) {
+                  @for (p of sortedRows(); track p.key) {
                     <tr [class.set]="state(p.key!) !== 'inherit'">
                       <td class="module">{{ p.module }}</td>
                       <td>
@@ -325,6 +328,12 @@ export class GrantsPageComponent implements HasUnsavedChanges {
       ? fuzzyFilter(list, q, (r) => [r.key, r.description, r.module], 1000).map((x) => x.item)
       : list;
   });
+  /** Column sorting (URL `?sort=`); "This level" stays unsorted so a toggle click does not move its row. */
+  readonly sort = tableSort<PermissionDefinition & { module: string }>({
+    module: (r) => r.module,
+    permission: (r) => r.key,
+  });
+  readonly sortedRows = computed(() => this.sort.apply(this.visibleRows()));
   readonly presets = computed<FilterPreset[]>(() => [
     {
       label: $localize`:@@admin.grants.preset.overridesOnly:Overrides only`,

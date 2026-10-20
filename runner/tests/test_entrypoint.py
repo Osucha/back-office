@@ -206,6 +206,36 @@ class ModelMappingTests(unittest.TestCase):
         self.assertEqual(env["http_proxy"], "http://job:secret@proxy:4750")
         self.assertTrue(env["OPENCODE_CONFIG"].endswith("opencode.json"))
 
+    def test_java_tools_get_the_egress_proxy(self):
+        # ADR 0046: the JVM ignores HTTPS_PROXY; Gradle and the wrappers need system properties, Maven settings.xml
+        env = {"HOME": "/tmp", "JAVA_TOOL_OPTIONS": "-Xmx1g"}
+        ep.apply_proxy_env(env, "http://job:s%40cret@proxy:4750")
+        self.assertIn("-Xmx1g", env["JAVA_TOOL_OPTIONS"])
+        self.assertIn("-Dhttps.proxyHost=proxy -Dhttps.proxyPort=4750", env["JAVA_TOOL_OPTIONS"])
+        self.assertIn("-Dhttps.proxyPassword=s@cret", env["JAVA_TOOL_OPTIONS"])
+        self.assertIn("-Djdk.http.auth.tunneling.disabledSchemes=", env["JAVA_TOOL_OPTIONS"])
+        ep.apply_proxy_env(env, "http://job:s%40cret@proxy:4750")
+        self.assertEqual(env["JAVA_TOOL_OPTIONS"].count("-Dhttps.proxyHost="), 1)
+        self.assertEqual(ep.java_proxy_options("http://egress:4750"),
+                         "-Dhttp.proxyHost=egress -Dhttp.proxyPort=4750 -Dhttps.proxyHost=egress -Dhttps.proxyPort=4750"
+                         " -Dhttp.nonProxyHosts=localhost|127.0.0.1")
+        self.assertEqual(ep.java_proxy_options(None), "")
+
+        with tempfile.TemporaryDirectory() as home:
+            logs = []
+            ep.write_maven_proxy_settings({"HOME": home}, "http://job:a<b@proxy:4750", logs.append)
+            settings = (Path(home) / ".m2" / "settings.xml").read_text(encoding="utf-8")
+            maven_env = {"HOME": home, "MAVEN_OPTS": "-Xmx1g"}
+            ep.write_maven_proxy_settings(maven_env, "http://proxy:4750", logs.append)
+            self.assertEqual(maven_env["MAVEN_OPTS"], f"-Xmx1g -Duser.home={home}")
+            self.assertIn("<host>proxy</host><port>4750</port>", settings)
+            self.assertIn("<password>a&lt;b</password>", settings)
+            self.assertIn("<protocol>https</protocol>", settings)
+            # an existing settings.xml (the image's or the repository's) is kept
+            (Path(home) / ".m2" / "settings.xml").write_text("<settings/>", encoding="utf-8")
+            ep.write_maven_proxy_settings({"HOME": home}, "http://proxy:4750", logs.append)
+            self.assertEqual((Path(home) / ".m2" / "settings.xml").read_text(encoding="utf-8"), "<settings/>")
+
     def test_agent_environment_claude_code_uses_gateway(self):
         spec_c = ep.parse_spec(dict(BASE_SPEC, agent="CLAUDE_CODE", gateway=GATEWAY_JSON))
         env_c = ep.agent_environment(spec_c, {"HOME": "/tmp", "ANTHROPIC_API_KEY": "sk-ant"}, Path("/ws"), "bo_job_abc")

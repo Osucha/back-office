@@ -178,14 +178,33 @@ class SpringAiLlmGateway(
             try {
                 return callWithTimeout(chatModel, system, prompt)
             } catch (e: IntegrationException) {
-                if (!e.retryable || attempt >= properties.maxRetries) throw e
+                val cause = rootCause(e)
+                // ADR 0046: a timed out call already took a minute; repeating it here only multiplies the wait (callers
+                // such as benchmark attempts retry later with their own backoff)
+                if (!e.retryable || attempt >= properties.maxRetries || isTimeout(cause)) {
+                    log.warn("provider call failed system={} attempt={} cause={} message={}", system, attempt + 1, cause.javaClass.name, e.message)
+                    throw e
+                }
                 attempt++
                 val backoff = backoff(attempt)
-                log.warn("provider call failed system={} attempt={} retryIn={}ms message={}", system, attempt, backoff.toMillis(), e.message)
+                log.warn("provider call failed system={} attempt={} retryIn={}ms cause={} message={}", system, attempt, backoff.toMillis(), cause.javaClass.name, e.message)
                 sleeper(backoff)
             }
         }
     }
+
+    private fun rootCause(e: Throwable): Throwable {
+        var current = e
+        while (true) {
+            val next = current.cause ?: return current
+            if (next === current) return current
+            current = next
+        }
+    }
+
+    private fun isTimeout(cause: Throwable): Boolean =
+        cause is java.net.SocketTimeoutException || cause is java.net.http.HttpTimeoutException || cause is java.io.InterruptedIOException ||
+            cause.message?.let { it.equals("timeout", ignoreCase = true) || it.contains("timed out", ignoreCase = true) } == true
 
     private fun callWithTimeout(chatModel: ChatModel, system: String, prompt: Prompt): ChatResponse {
         val future = executor.submit<ChatResponse> { chatModel.call(prompt) }

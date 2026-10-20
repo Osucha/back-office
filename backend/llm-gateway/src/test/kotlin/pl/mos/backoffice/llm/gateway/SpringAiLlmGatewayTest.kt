@@ -254,6 +254,18 @@ class SpringAiLlmGatewayTest {
     }
 
     @Test
+    fun `a timed out call is not repeated inside the call, it stays retryable for the caller (ADR 0046)`() {
+        fake(Provider.OPENAI)
+            .fail(org.springframework.web.client.ResourceAccessException("I/O error", java.net.SocketTimeoutException("timeout")))
+            .reply("never asked")
+
+        assertThatThrownBy { gateway.chat(ModelRef(Provider.OPENAI, "gpt-5"), LlmRequest.of(null, "hi", context)) }
+            .isInstanceOfSatisfying(IntegrationException::class.java) { assertThat(it.retryable).isTrue() }
+        assertThat(fake(Provider.OPENAI).prompts).hasSize(1)
+        assertThat(sleeps).isEmpty()
+    }
+
+    @Test
     fun `gives up after max retries with a retryable integration exception`() {
         fake(Provider.MISTRAL)
             .fail(HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE))

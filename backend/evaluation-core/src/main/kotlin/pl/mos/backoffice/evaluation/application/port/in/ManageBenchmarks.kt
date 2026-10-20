@@ -116,5 +116,5 @@ interface EvaluationDashboardQuery {
 interface SeedStarterContent {
     fun seedIfEmpty(): SeedResult
 
-    data class SeedResult(val profilesCreated: Int, val suitesCreated: Int)
+    data class SeedResult(val profilesCreated: Int, val suitesCreated: Int, val suitesUpgraded: Int = 0)
 }

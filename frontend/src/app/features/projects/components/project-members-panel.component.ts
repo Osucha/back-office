@@ -31,6 +31,8 @@ import { ConfirmService } from '../../../core/ui/confirm.service';
 import { NotifyService } from '../../../core/ui/notify.service';
 import { TimeAgoPipe } from '../../../core/ui/pipes/time-ago.pipe';
 import { PrincipalPickerComponent } from '../../../core/ui/principal-picker.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 
 /**
  * Project members tab: users and groups with a project role. Everyone with `project.view` sees the
@@ -53,6 +55,7 @@ import { PrincipalPickerComponent } from '../../../core/ui/principal-picker.comp
     ActorComponent,
     TimeAgoPipe,
     PrincipalPickerComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -113,20 +116,20 @@ import { PrincipalPickerComponent } from '../../../core/ui/principal-picker.comp
     @if (loading() && !members().length) {
       <nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 4 }" />
     } @else {
-      <nz-table [nzData]="members()" [nzShowPagination]="members().length > 50" [nzPageSize]="50">
+      <nz-table [nzData]="rows()" [nzShowPagination]="rows().length > 50" [nzPageSize]="50">
         <thead>
           <tr>
-            <th i18n="@@projects.members.member">Member</th>
-            <th nzWidth="90px" i18n="@@projects.members.typeColumn">Type</th>
-            <th nzWidth="200px" i18n="@@projects.members.role">Role</th>
-            <th nzWidth="200px" i18n="@@projects.members.added">Added</th>
+            <th nzShowSort [boSort]="sort" boSortKey="member" i18n="@@projects.members.member">Member</th>
+            <th nzShowSort [boSort]="sort" boSortKey="type" nzWidth="106px" i18n="@@projects.members.typeColumn">Type</th>
+            <th nzShowSort [boSort]="sort" boSortKey="role" nzWidth="200px" i18n="@@projects.members.role">Role</th>
+            <th nzShowSort [boSort]="sort" boSortKey="added" nzWidth="200px" i18n="@@projects.members.added">Added</th>
             @if (canManage()) {
               <th nzWidth="80px"></th>
             }
           </tr>
         </thead>
         <tbody>
-          @for (m of members(); track m.id) {
+          @for (m of rows(); track m.id) {
             <tr>
               <td>
                 <div style="font-weight: 500">
@@ -236,6 +239,17 @@ export class ProjectMembersPanelComponent {
   readonly addType = signal<PrincipalType>('USER');
   readonly addPrincipal = signal<string | string[] | null>(null);
   readonly addRole = signal<string | null>('developer');
+  /** Column sorting (URL `?memberSort=`, apart from the other tabs of the project page). */
+  readonly sort = tableSort<ProjectMember>(
+    {
+      member: (m) => m.principal?.name,
+      type: (m) => m.principal?.type,
+      role: (m) => this.displayRole(m.role),
+      added: (m) => m.addedAt,
+    },
+    { param: 'memberSort' },
+  );
+  readonly rows = computed(() => this.sort.apply(this.members()));
 
   readonly principalOptions = [
     { label: $localize`:@@projects.members.optionUser:User`, value: 'USER' },

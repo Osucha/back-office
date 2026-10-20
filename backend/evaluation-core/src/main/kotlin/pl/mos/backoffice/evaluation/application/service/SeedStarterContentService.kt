@@ -8,9 +8,9 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.security.SystemOperation
 
 /**
- * Creates the dated model seed and the starter suite (docs/architecture/04-model-evaluation.md) when
- * the respective catalogue is empty. Idempotent: a non-empty catalogue is never touched, so the owner's
- * edits and deletions survive restarts.
+ * Creates the starter suite (docs/architecture/04-model-evaluation.md) when there is none. Idempotent: the owner's edits
+ * and deletions survive restarts. The one exception (ADR 0046): coding tasks that still point at the placeholder
+ * repository of the first seed are replaced by the Spring PetClinic tasks.
  */
 class SeedStarterContentService(
     private val profiles: ModelProfileRepository,
@@ -28,6 +28,10 @@ class SeedStarterContentService(
             suites.save(StarterContent.starterSuite(now))
             suitesCreated++
         }
-        return SeedResult(profilesCreated, suitesCreated)
+        var suitesUpgraded = 0
+        suites.findAll().forEach { suite ->
+            StarterContent.upgradeCodingTasks(suite, now)?.let { suites.save(it); suitesUpgraded++ }
+        }
+        return SeedResult(profilesCreated, suitesCreated, suitesUpgraded)
     }
 }

@@ -21,6 +21,8 @@ import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component';
 import { SidePanelComponent } from '../../../core/ui/relay/side-panel.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { LibraryNavComponent } from '../components/library-nav.component';
 import { SOURCE_KEY_PATTERN, emptySource, sourceInputOf, sourceProblems } from '../data/library-sources';
@@ -44,6 +46,7 @@ import { SOURCE_KEY_PATTERN, emptySource, sourceInputOf, sourceProblems } from '
     PageHeaderComponent,
     ProvenanceComponent,
     SidePanelComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -74,7 +77,7 @@ import { SOURCE_KEY_PATTERN, emptySource, sourceInputOf, sourceProblems } from '
       } @else {
         <nz-table
           #t
-          [nzData]="items()"
+          [nzData]="rows()"
           [nzLoading]="!loaded()"
           [nzShowPagination]="false"
           nzSize="middle"
@@ -82,11 +85,11 @@ import { SOURCE_KEY_PATTERN, emptySource, sourceInputOf, sourceProblems } from '
         >
           <thead>
             <tr>
-              <th i18n="@@library.sources.col.source">Source</th>
-              <th i18n="@@library.sources.col.purpose">Purpose</th>
-              <th i18n="@@library.sources.col.repository">Repository</th>
-              <th i18n="@@library.sources.col.inJob">In a job</th>
-              <th i18n="@@library.sources.col.changed">Changed</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.sources.col.source">Source</th>
+              <th nzShowSort [boSort]="sort" boSortKey="purpose" i18n="@@library.sources.col.purpose">Purpose</th>
+              <th nzShowSort [boSort]="sort" boSortKey="repository" i18n="@@library.sources.col.repository">Repository</th>
+              <th nzShowSort [boSort]="sort" boSortKey="inJob" i18n="@@library.sources.col.inJob">In a job</th>
+              <th nzShowSort [boSort]="sort" boSortKey="changed" i18n="@@library.sources.col.changed">Changed</th>
             </tr>
           </thead>
           <tbody>
@@ -302,6 +305,15 @@ export class LibrarySourcesPageComponent {
   private readonly confirm = inject(ConfirmService);
 
   readonly items = signal<LibrarySource[]>([]);
+  /** Column sorting (URL `?sort=`). */
+  readonly sort = tableSort<LibrarySource>({
+    name: (s) => s.name,
+    purpose: (s) => purposeLabel(s.purpose),
+    repository: (s) => shortRepoUrl(s.url),
+    inJob: (s) => s.jobKey,
+    changed: (s) => s.updatedAt,
+  });
+  readonly rows = computed(() => this.sort.apply(this.items()));
   readonly loaded = signal(false);
   readonly draft = signal<LibrarySourceInput | null>(null);
   readonly editing = signal<LibrarySource | null>(null);

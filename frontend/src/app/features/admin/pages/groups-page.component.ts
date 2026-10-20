@@ -28,6 +28,8 @@ import { listNavigation } from '../../../core/ui/relay/list-nav';
 import { PageHeaderComponent } from '../../../core/ui/relay/page-header.component';
 import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
+import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
+import { tableSort } from '../../../core/ui/relay/table-sort';
 import { AdminNavComponent } from '../components/admin-nav.component';
 
 /** Groups: members, platform roles and the synchronised identity-provider group. */
@@ -44,6 +46,7 @@ import { AdminNavComponent } from '../components/admin-nav.component';
     FilterBarComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    SortHeaderDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -113,17 +116,17 @@ import { AdminNavComponent } from '../components/admin-nav.component';
       } @else {
         <nz-table
           #t
-          [nzData]="rows()"
+          [nzData]="sorted()"
           [nzPageSize]="identity.pageSize()"
           [nzHideOnSinglePage]="true"
           nzSize="middle"
         >
           <thead>
             <tr>
-              <th i18n="@@admin.groups.col.group">Group</th>
-              <th nzWidth="100px" nzAlign="right" i18n="@@admin.groups.col.members">Members</th>
-              <th i18n="@@admin.groups.col.platformRoles">Platform roles</th>
-              <th nzWidth="220px" i18n="@@admin.groups.col.externalGroup">
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@admin.groups.col.group">Group</th>
+              <th nzShowSort [boSort]="sort" boSortKey="members" nzWidth="116px" nzAlign="right" i18n="@@admin.groups.col.members">Members</th>
+              <th nzShowSort [boSort]="sort" boSortKey="roles" i18n="@@admin.groups.col.platformRoles">Platform roles</th>
+              <th nzShowSort [boSort]="sort" boSortKey="external" nzWidth="236px" i18n="@@admin.groups.col.externalGroup">
                 Identity provider group
               </th>
               <th nzWidth="64px">
@@ -262,6 +265,14 @@ export class GroupsPageComponent {
         )
       : [...list].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
   });
+  /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
+  readonly sort = tableSort<Group>({
+    name: (g) => g.name,
+    members: (g) => this.members(g),
+    roles: (g) => (g.platformRoles ?? []).join(', '),
+    external: (g) => g.externalGroup,
+  });
+  readonly sorted = computed(() => this.sort.apply(this.rows()));
   readonly text = {
     noMatch: $localize`:@@admin.groups.empty.noMatch:No groups match these filters.`,
     empty: $localize`:@@admin.groups.empty.none:No groups yet.`,
@@ -277,7 +288,7 @@ export class GroupsPageComponent {
     },
   ]);
   readonly nav = listNavigation({
-    items: this.rows,
+    items: this.sorted,
     open: (g) => this.open(g),
     group: $localize`:@@admin.groups.shortcutGroup:Groups`,
   });

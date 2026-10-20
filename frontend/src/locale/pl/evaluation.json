@@ -341,5 +341,10 @@
   "evaluation.benchmarks.form.runnerHintNoShared": "Nie ma puli współdzielonych runnerów: administrator tworzy ją we Flocie runnerów; możesz też wybrać swój osobisty runner.",
   "evaluation.benchmarks.form.runnerHintOffline": "Żaden runner nie jest tam teraz online: zadania kodujące poczekają, aż któryś się połączy (najwyżej 24 godziny).",
   "evaluation.benchmarks.form.runnerHint": "Zadania kodujące agentów działają tam w piaskownicach; zadania promptowe nie potrzebują runnera.",
-  "evaluation.benchmarks.form.checkFailed": "Część modeli nie odpowiedziała (szczegóły niżej). Usuń je albo uruchom mimo to."
+  "evaluation.benchmarks.form.checkFailed": "Część modeli nie odpowiedziała (szczegóły niżej). Usuń je albo uruchom mimo to.",
+  "evaluation.board.latencyTooltip": "Czas odpowiedzi samego kandydata (odpowiedź modelu albo zadanie agenta), bez modelu oceniającego, kolejki i ponowień, z udanych prób: mediana / 95. percentyl (poniżej 20 prób najdłuższa próba)",
+  "evaluation.board.latency": "Czas p50 / p95",
+  "evaluation.board.latencyNote": "{count, plural, =0 {brak udanych prób} one {z # udanej próby} few {z # udanych prób} many {z # udanych prób} other {z # udanej próby}}",
+  "evaluation.benchmarks.form.judgeIsCandidate": "Model oceniający jest też kandydatem: oceniałby własne odpowiedzi. Wybierz oceniającego spoza porównania.",
+  "evaluation.benchmarks.form.sampleRepository": "{count, plural, one {# zadanie programistyczne wskazuje} few {# zadania programistyczne wskazują} many {# zadań programistycznych wskazuje} other {# zadania programistycznego wskazuje}} przykładowe repozytorium, które nie istnieje: zakończą się błędem. Wskaż w zestawie prawdziwe repozytorium albo je pomiń."
 }
