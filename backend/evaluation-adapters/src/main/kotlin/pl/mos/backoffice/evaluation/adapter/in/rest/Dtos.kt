@@ -4,6 +4,7 @@ import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.Capability
 import pl.mos.backoffice.evaluation.domain.model.Difficulty
+import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
 import pl.mos.backoffice.shared.llm.Provider
@@ -50,6 +51,7 @@ data class ModelProfileInputDto(
     val contextWindow: Int? = null,
     val notes: String? = null,
     val enabled: Boolean = true,
+    val runtime: ModelRuntime = ModelRuntime.API,
 )
 
 data class ModelProfileDto(
@@ -65,6 +67,7 @@ data class ModelProfileDto(
     val createdAt: Instant,
     val updatedAt: Instant,
     val updatedBy: ActorRefDto? = null,
+    val runtime: ModelRuntime = ModelRuntime.API,
 )
 
 data class ModelTestResultDto(val ok: Boolean, val latencyMs: Long, val usage: TokenUsageDto, val cost: MoneyDto, val sample: String?, val error: String?)
@@ -151,7 +154,7 @@ data class BenchmarkInputDto(
     val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
 )
 
-data class ExecutionTargetDto(val target: RunnerTarget, val pools: Int, val onlineRunners: Int)
+data class ExecutionTargetDto(val target: RunnerTarget, val pools: Int, val onlineRunners: Int, val localLogin: Boolean = false)
 
 data class ProgressDto(val total: Int, val done: Int, val failed: Int)
 

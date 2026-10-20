@@ -16,8 +16,11 @@ enum class AgentHarness { OPENCODE, CLAUDE_CODE }
 /** Where agent jobs of a benchmark run (ADR 0046): the shared runner fleet or the starting user's personal runner. */
 enum class RunnerTarget { SHARED, PERSONAL }
 
-/** What a [RunnerTarget] offers right now: its pools and the runners that called in recently. */
-data class ExecutionTarget(val target: RunnerTarget, val pools: Int, val onlineRunners: Int) {
+/**
+ * What a [RunnerTarget] offers right now: its pools and the runners that called in recently. [localLogin] (ADR 0048):
+ * a pool of the target lets Claude Code use its owner's own login (LOCAL_LOGIN).
+ */
+data class ExecutionTarget(val target: RunnerTarget, val pools: Int, val onlineRunners: Int, val localLogin: Boolean = false) {
     val exists: Boolean get() = pools > 0
 }
 enum class SpecKitPhase { SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT }

@@ -49,6 +49,49 @@ export function filterCatalog(rows: CatalogRow[], f: CatalogFilter): CatalogRow[
   );
 }
 
+/** ADR 0048: whether the profile runs Claude Code on the user's personal runner with their own Claude login. */
+export function isLoginProfile(p: Pick<ModelProfile, 'runtime'> | null | undefined): boolean {
+  return p?.runtime === 'CLAUDE_CODE_LOGIN';
+}
+
+/** Catalogue key of a profile: login profiles have their own namespace, apart from the API connections. */
+export function profileKey(p: Pick<ModelProfile, 'ref' | 'runtime'>): string {
+  return isLoginProfile(p) ? loginKey(p.ref.modelId) : catalogKey(p.ref.provider, p.ref.connection, p.ref.modelId);
+}
+
+export function loginKey(modelId: string): string {
+  return `login|${modelId}`;
+}
+
+/** ADR 0048: the models Claude Code takes as `--model` aliases, offered as "Claude Code (your login)". */
+export interface LoginModel {
+  alias: 'opus' | 'sonnet' | 'haiku';
+  displayName: string;
+}
+
+export function loginModels(): LoginModel[] {
+  return [
+    { alias: 'opus', displayName: $localize`:@@models.login.opus:Claude Opus via Claude Code (my login)` },
+    { alias: 'sonnet', displayName: $localize`:@@models.login.sonnet:Claude Sonnet via Claude Code (my login)` },
+    { alias: 'haiku', displayName: $localize`:@@models.login.haiku:Claude Haiku via Claude Code (my login)` },
+  ];
+}
+
+/** A profile without id for a Claude Code login model: Anthropic, no connection, nothing billed, coding only. */
+export function profileFromLogin(m: LoginModel): ModelProfile {
+  return {
+    id: undefined as unknown as string,
+    displayName: m.displayName,
+    runtime: 'CLAUDE_CODE_LOGIN',
+    ref: { provider: 'ANTHROPIC', modelId: m.alias, connection: null },
+    pricing: { inputPerMTok: 0, outputPerMTok: 0, currency: 'USD' },
+    capabilities: ['CODING'],
+    contextWindow: null,
+    notes: '',
+    enabled: true,
+  };
+}
+
 /**
  * A profile without id, prefilled from a catalogue row, for the profile drawer: provider, connection, model id, name,
  * the provider's prices (0 when unknown, with a note) and context window.

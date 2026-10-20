@@ -177,7 +177,8 @@ class ExecuteAttemptService(
         val withJob = attempt
         val result = runner.result(existing) ?: return null
         val usage = result.usage
-        val cost = result.reportedCostUsd?.let { Money(it).rounded() } ?: candidate.pricing.costOf(usage)
+        // ADR 0040/0048: with its user's own login Claude Code's figure is an estimate; nothing is billed
+        val cost = if (result.subscription) Money.ZERO else result.reportedCostUsd?.let { Money(it).rounded() } ?: candidate.pricing.costOf(usage)
         val verification = result.verification?.let { AttemptVerification(it.command, it.exitCode, it.outputTail) }
         val output = renderCodingOutput(result)
 

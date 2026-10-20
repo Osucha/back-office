@@ -4,12 +4,21 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.usage.Pricing
 import java.time.Instant
 
 /** Informational tags on a catalogue entry; they do not change how a model is called. */
 enum class Capability { CODING, REASONING, LONG_CONTEXT, TOOLS, VISION, CHEAP }
+
+/**
+ * How a model is reached. `API`: through the LLM gateway and a provider connection. `CLAUDE_CODE_LOGIN` (ADR 0048):
+ * Claude Code on the benchmark creator's personal runner, signed in with their own subscription (LOCAL_LOGIN); no API
+ * key, nothing billed, coding tasks only for now. [ModelRef.modelId] is what Claude Code gets as `--model` (`opus`,
+ * `sonnet`, `haiku` or a full model id).
+ */
+enum class ModelRuntime { API, CLAUDE_CODE_LOGIN }
 
 /**
  * Aggregate root: one entry of the model catalogue. Holds how to call a model (`ref`), what it costs
@@ -28,10 +37,17 @@ data class ModelProfile(
     val updatedAt: Instant,
     /** Who saved this version (ADR 0017); null for rows written before actor stamps existed. */
     val updatedBy: Actor? = null,
+    val runtime: ModelRuntime = ModelRuntime.API,
 ) {
     init {
         validate(displayName, pricing, contextWindow)
+        if (runtime == ModelRuntime.CLAUDE_CODE_LOGIN && ref.provider != Provider.ANTHROPIC) {
+            throw ValidationException("a Claude Code login model must use the ANTHROPIC provider", "ref.provider")
+        }
     }
+
+    /** ADR 0048: runs only as Claude Code on a personal runner with its owner's login, never through the gateway. */
+    val viaClaudeCodeLogin: Boolean get() = runtime == ModelRuntime.CLAUDE_CODE_LOGIN
 
     fun update(
         displayName: String,
@@ -43,6 +59,7 @@ data class ModelProfile(
         enabled: Boolean,
         now: Instant,
         actor: Actor? = null,
+        runtime: ModelRuntime = this.runtime,
     ): ModelProfile = copy(
         displayName = displayName,
         ref = ref,
@@ -53,6 +70,7 @@ data class ModelProfile(
         enabled = enabled,
         updatedAt = now,
         updatedBy = actor,
+        runtime = runtime,
     )
 
     /** Read-only view handed to other contexts through the `ModelCatalog` port. */
@@ -76,6 +94,7 @@ data class ModelProfile(
             now: Instant,
             id: ModelProfileId = ModelProfileId.new(),
             actor: Actor? = null,
+            runtime: ModelRuntime = ModelRuntime.API,
         ): ModelProfile = ModelProfile(
             id = id,
             displayName = displayName,
@@ -88,6 +107,7 @@ data class ModelProfile(
             createdAt = now,
             updatedAt = now,
             updatedBy = actor,
+            runtime = runtime,
         )
 
         private const val MUST_NOT_BE_NEGATIVE = "must not be negative"

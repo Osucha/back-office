@@ -65,6 +65,15 @@ import { EvaluationNavComponent } from '../../components/evaluation-nav.componen
 import { AttemptStripComponent } from '../components/attempt-strip.component';
 import { BENCHMARK_HOLDERS, benchmarkBaton, benchmarkHolder } from '../data/benchmark-view';
 import { categoryLabel } from '../../suites/data/suite-view';
+import {
+  applyLoginRules,
+  blocksSave,
+  fixable,
+  isLogin,
+  loginCandidates,
+  loginIssues,
+  type LoginIssue,
+} from '../data/login-rules';
 
 /**
  * Evaluation: benchmarks. Holder, suite and search filters live in the URL; attempt progress is
@@ -346,7 +355,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
               @for (p of profiles(); track p.id) {
                 <nz-option
                   [nzValue]="p.id"
-                  [nzLabel]="p.displayName"
+                  [nzLabel]="candidateLabel(p)"
                   [nzDisabled]="p.providerConfigured === false"
                 />
               }
@@ -358,7 +367,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
             >Judge model</nz-form-label
           >
           <nz-form-control
-            nzExtra="Fixed for the whole benchmark so scores stay comparable."
+            nzExtra="Fixed for the whole benchmark so scores stay comparable. Claude Code login models cannot judge."
             i18n-nzExtra="@@evaluation.benchmarks.form.judgeHint"
           >
             <nz-select
@@ -370,7 +379,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
               nzPlaceHolder="Select the judge"
               i18n-nzPlaceHolder="@@evaluation.benchmarks.form.selectJudge"
             >
-              @for (p of profiles(); track p.id) {
+              @for (p of judgeProfiles(); track p.id) {
                 <nz-option
                   [nzValue]="p.id"
                   [nzLabel]="p.displayName"
@@ -444,6 +453,27 @@ import { categoryLabel } from '../../suites/data/suite-view';
         @for (w of warnings(); track w) {
           <p class="warn" role="note"><bo-glyph holder="idle" [size]="11" /> {{ w }}</p>
         }
+        @if (loginProblems().length) {
+          <div class="login-rules" role="note" aria-live="polite">
+            <p class="warn">
+              <bo-glyph holder="blocked" [size]="11" />
+              {{ loginTitle() }}
+            </p>
+            <ul>
+              @for (i of loginProblems(); track i) {
+                <li>{{ loginIssueText(i) }}</li>
+              }
+            </ul>
+            @if (loginFixable()) {
+              <button nz-button nzSize="small" type="button" (click)="applyLogin()">
+                <nz-icon nzType="check" />
+                <ng-container i18n="@@evaluation.benchmarks.form.login.apply"
+                  >Use my personal runner, Claude Code and coding tasks only</ng-container
+                >
+              </button>
+            }
+          </div>
+        }
         @if (checks(); as cs) {
           <ul class="checks" aria-live="polite">
             @for (c of cs; track c.modelProfileId) {
@@ -485,7 +515,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
           type="submit"
           form="bench-form"
           [nzLoading]="saving() === 'draft'"
-          [disabled]="!valid()"
+          [disabled]="!valid() || loginBlocksSave()"
           i18n="@@evaluation.benchmarks.form.saveDraft"
         >
           Save as draft
@@ -496,7 +526,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
           type="button"
           (click)="createBenchmark(true, checksFailed())"
           [nzLoading]="saving() === 'start' || checking()"
-          [disabled]="!valid() || !runnerUsable()"
+          [disabled]="!valid() || !runnerUsable() || loginProblems().length > 0"
         >
           <nz-icon nzType="caret-right" />
           @if (checksFailed()) {
@@ -536,6 +566,22 @@ import { categoryLabel } from '../../suites/data/suite-view';
         margin: 8px 0 0;
         font-size: 12.5px;
         color: var(--bo-ink-2);
+      }
+      .login-rules {
+        margin: 8px 0 0;
+        padding: 8px 12px;
+        border: 1px solid var(--bo-line);
+        border-radius: var(--bo-radius-control);
+        background: var(--bo-surface-2);
+        font-size: 12.5px;
+        color: var(--bo-ink-2);
+      }
+      .login-rules .warn {
+        margin: 0;
+      }
+      .login-rules ul {
+        margin: 4px 0 8px;
+        padding-left: 20px;
       }
       .checks {
         list-style: none;
@@ -725,6 +771,57 @@ export class BenchmarksPageComponent {
     return out;
   }
 
+  /** ADR 0048: login profiles run only as candidates; the judge is always called through the API. */
+  readonly judgeProfiles = computed(() => this.profiles().filter((p) => !isLogin(p)));
+
+  candidateLabel(p: ModelProfile): string {
+    const name = p.displayName;
+    return isLogin(p)
+      ? $localize`:@@evaluation.benchmarks.form.loginCandidate:${name}:name: (Claude Code login)`
+      : name;
+  }
+
+  /** ADR 0048: what the selected Claude Code login candidates still need (empty without one). */
+  loginProblems(): LoginIssue[] {
+    return loginIssues(this.form, this.profiles(), this.suiteTasks(), this.targets());
+  }
+
+  loginBlocksSave(): boolean {
+    return blocksSave(this.loginProblems());
+  }
+
+  loginFixable(): boolean {
+    return fixable(this.loginProblems());
+  }
+
+  loginTitle(): string {
+    const names = loginCandidates(this.form, this.profiles())
+      .map((p) => p.displayName)
+      .join(', ');
+    return $localize`:@@evaluation.benchmarks.form.login.title:Claude Code with your own login (${names}:names:) needs, before the benchmark can start:`;
+  }
+
+  loginIssueText(i: LoginIssue): string {
+    switch (i) {
+      case 'target':
+        return $localize`:@@evaluation.benchmarks.form.login.target:Coding tasks must run on your personal runner.`;
+      case 'harness':
+        return $localize`:@@evaluation.benchmarks.form.login.harness:The coding harness must be Claude Code.`;
+      case 'promptTasks':
+        return $localize`:@@evaluation.benchmarks.form.login.promptTasks:Only coding tasks can be selected: prompt tasks with your login follow later.`;
+      case 'noCodingTasks':
+        return $localize`:@@evaluation.benchmarks.form.login.noCodingTasks:The selection has no coding task: pick coding tasks or another suite, or remove the Claude Code login models.`;
+      case 'localLogin':
+        return $localize`:@@evaluation.benchmarks.form.login.localLogin:Your personal runner must use your Claude Code login: set it up under My account (personal runner with Claude Code login). A draft can be saved before that.`;
+    }
+  }
+
+  /** One click: personal runner, Claude Code harness and only the coding tasks of the selection. */
+  applyLogin(): void {
+    this.form = applyLoginRules(this.form, this.suiteTasks());
+    this.checks.set(null);
+  }
+
   /** Coding tasks need a pool where they can go; prompt tasks need none. */
   runnerUsable(): boolean {
     return !this.codingSelected() || !!this.target()?.pools;
@@ -738,9 +835,12 @@ export class BenchmarksPageComponent {
 
   targetStatus(t: ExecutionTarget): string {
     if (!t.pools) return $localize`:@@evaluation.benchmarks.form.runnerNone:not set up`;
-    return icu($localize`:@@evaluation.benchmarks.form.runnerOnline:{count, plural, =0 {none online} one {# online} other {# online}}`, {
+    const online = icu($localize`:@@evaluation.benchmarks.form.runnerOnline:{count, plural, =0 {none online} one {# online} other {# online}}`, {
       count: t.onlineRunners,
     });
+    return t.localLogin
+      ? $localize`:@@evaluation.benchmarks.form.runnerLocalLogin:${online}:status:, Claude Code login`
+      : online;
   }
 
   runnerHint(): string {
@@ -910,6 +1010,13 @@ export class BenchmarksPageComponent {
     if (!this.isValid()) {
       this.message.warning(
         $localize`:@@evaluation.benchmarks.form.required:Name, suite, at least one model and a judge are required`,
+      );
+      return;
+    }
+    const login = this.loginProblems();
+    if (blocksSave(login) || (start && login.length)) {
+      this.message.warning(
+        $localize`:@@evaluation.benchmarks.form.login.blocked:The Claude Code login models need the settings listed in the form.`,
       );
       return;
     }

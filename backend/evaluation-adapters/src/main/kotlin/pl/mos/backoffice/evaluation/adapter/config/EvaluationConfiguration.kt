@@ -64,7 +64,8 @@ class EvaluationConfiguration {
     @Bean
     fun manageModelProfiles(
         profiles: ModelProfileRepository, benchmarks: BenchmarkRepository, gateway: LlmGateway, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageModelProfiles = TransactionalManageModelProfiles(ModelProfileService(profiles, benchmarks, gateway, clock, gate, audit))
+        runner: AgentRunner,
+    ): ManageModelProfiles = TransactionalManageModelProfiles(ModelProfileService(profiles, benchmarks, gateway, clock, gate, audit, runner))
 
     @Bean
     fun listProviders(gateway: LlmGateway, environment: Environment, gate: AuthorizationGate): ListProviders = ProviderService(

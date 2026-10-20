@@ -382,7 +382,7 @@ export class ProjectFormComponent {
   });
 
   constructor() {
-    this.modelProfiles.list(true).subscribe({
+    this.modelProfiles.listCallable().subscribe({
       next: (list) => {
         this.profiles.set(list);
         this.profilesLoading.set(false);

@@ -64,6 +64,29 @@ wygląda na darmowy; sprawdź ceny, zanim zaufasz **Kosztom** (**Costs**) lub ra
 
 Profil węzła wygrywa z profilem szablonu, a ten z domyślnym profilem projektu.
 
+<a id="claude-code-login"></a>
+### Claude Code z własnym logowaniem
+
+Jeśli Twój osobisty runner loguje Claude Code Twoją własną subskrypcją Claude (**Moje własne logowanie do
+Claude (subskrypcja)**, zob. [Osobisty runner](personal-runner.md#credentials)), możesz go testować w benchmarku bez klucza API. W sekcji **Dostępne
+u dostawców** (**Available from providers**) źródło **Claude Code (Twoje logowanie)** (**Claude Code (your
+login)**) oferuje `opus`, `sonnet` i `haiku`; **Dodaj jako profil** (**Add as profile**) tworzy profil
+oznaczony **Logowanie Claude Code** (**Claude Code login**). Taki profil:
+
+- działa jako Claude Code na osobistym runnerze osoby, która tworzy benchmark, z jej logowaniem;
+- wymaga **Mojego osobistego runnera** jako miejsca wykonania, **Claude Code** jako agenta kodującego i tylko
+  zadań programistycznych (zadania typu prompt przez Claude Code będą później);
+- nie może być modelem oceniającym: do tego wybierz model podłączonego dostawcy;
+- nic nie kosztuje w Back Office (płaci subskrypcja), ale zużywa jej limity;
+- nie jest oferowany projektom, szablonom ani krokom procesów.
+
+**Testuj profil** (**Test profile**) i **Sprawdź modele** (**Check models**) nie wywołują dla niego modelu:
+sprawdzają, czy Twój osobisty runner istnieje, używa Twojego logowania i jest dostępny. Claude Code dodaje
+własne instrukcje i czas uruchomienia, więc porównuj taki model z modelami API po ocenach, nie po czasach.
+
+Token subskrypcji (`sk-ant-oat...`, z `claude setup-token`) nie jest kluczem API: połączenie z dostawcą
+Anthropic go odrzuca.
+
 <a id="suites"></a>
 ## Zestawy zadań
 

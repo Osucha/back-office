@@ -11,6 +11,7 @@ import org.hibernate.type.SqlTypes
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.Difficulty
+import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
 import pl.mos.backoffice.shared.llm.Provider
@@ -50,6 +51,8 @@ class ModelProfileEntity(
     @Column(name = "updated_by_kind", length = 16) val updatedByKind: String? = null,
     @Column(name = "updated_by_id") val updatedById: UUID? = null,
     @Column(name = "updated_by_name", length = 200) val updatedByName: String? = null,
+    /** V206 (ADR 0048). */
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) val runtime: ModelRuntime = ModelRuntime.API,
 )
 
 @Entity

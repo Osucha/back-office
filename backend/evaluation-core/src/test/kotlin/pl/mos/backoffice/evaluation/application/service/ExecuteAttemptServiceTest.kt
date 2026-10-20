@@ -114,6 +114,27 @@ class ExecuteAttemptServiceTest {
     }
 
     @Test
+    fun `a coding job on its user's own Claude Code login costs nothing (ADR 0048)`() {
+        every { gateway.chat(any(), any()) } answers { llmResult(judge.ref, "{}", mapOf("criteria" to listOf(mapOf("name" to "Quality", "score" to 8, "comment" to "ok")))) }
+        val jobId = RunnerJobId.new()
+        every { runner.submit(any(), any()) } returns jobId
+        every { runner.result(jobId) } returns RunnerResult(
+            status = RunnerJobStatus.SUCCEEDED, summary = "done", branch = "eval/x", commitSha = "abc", diffStat = RunnerDiffStat(1, 2, 0),
+            verification = RunnerVerification("./gradlew test", 0, "ok"), artifacts = emptyList(), diff = "diff --git a/A.kt b/A.kt\n+x\n",
+            usage = TokenUsage(1_000, 100), reportedCostUsd = BigDecimal("0.42"), error = null, finishedAt = Fixtures.now, subscription = true,
+        )
+        val attempt = benchmarks.findAttempts(benchmark.id).first { it.taskId == codingTask.id }
+
+        service.execute(attempt.id)
+        service.execute(attempt.id)
+
+        val stored = benchmarks.findAttempt(attempt.id)!!
+        assertThat(stored.status).isEqualTo(AttemptStatus.SUCCEEDED)
+        assertThat(stored.cost).isEqualTo(Money.ZERO)
+        assertThat(stored.usage).isEqualTo(TokenUsage(1_000, 100))
+    }
+
+    @Test
     fun `coding attempt runs the agent job, judges the diff and finishes the benchmark when it is the last attempt`() {
         every { gateway.chat(any(), any()) } answers { llmResult(judge.ref, "{}", mapOf("criteria" to listOf(mapOf("name" to "Quality", "score" to 5, "comment" to "ok")), "rationale" to "ok")) }
         val specSlot = slot<RunnerJobSpec>()

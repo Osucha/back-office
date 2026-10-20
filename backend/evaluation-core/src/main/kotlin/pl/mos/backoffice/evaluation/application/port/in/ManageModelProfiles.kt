@@ -2,6 +2,7 @@ package pl.mos.backoffice.evaluation.application.port.`in`
 
 import pl.mos.backoffice.evaluation.domain.model.Capability
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
+import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.llm.ModelRef
@@ -17,7 +18,11 @@ interface ManageModelProfiles {
     fun list(enabled: Boolean? = null): List<ModelProfile>
     /** Fails with `InvalidStateException` when a benchmark references the profile. */
     fun delete(id: ModelProfileId)
-    /** Sends a tiny prompt through the gateway and books a `MODEL_TEST` usage record. Never throws on provider errors. */
+    /**
+     * Sends a tiny prompt through the gateway and books a `MODEL_TEST` usage record. Never throws on provider errors.
+     * ADR 0048: a Claude Code login model is not called; the check is that the caller's personal runner exists, uses
+     * their own login (LOCAL_LOGIN) and is online.
+     */
     fun test(id: ModelProfileId): ModelTestResult
 
     /**
@@ -34,6 +39,7 @@ interface ManageModelProfiles {
         val contextWindow: Int? = null,
         val notes: String? = null,
         val enabled: Boolean = true,
+        val runtime: ModelRuntime = ModelRuntime.API,
     )
 
     data class ModelTestResult(

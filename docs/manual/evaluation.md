@@ -57,6 +57,28 @@ of 0 makes a model look free; check prices before you trust **Costs** or a leade
 
 A node's profile wins over the template's, which wins over the project default.
 
+<a id="claude-code-login"></a>
+### Claude Code with your own login
+
+If your personal runner signs Claude Code in with your own Claude subscription (**My own Claude login
+(subscription)**, see [Personal runner](personal-runner.md#credentials)), you can benchmark
+it without an API key. Under **Available from providers**, the source **Claude Code (your login)** offers `opus`, `sonnet` and `haiku`; **Add as profile**
+creates a profile marked **Claude Code login**. Such a profile:
+
+- runs as Claude Code on the personal runner of whoever creates the benchmark, with that person's login;
+- needs **My personal runner** as the execution target, **Claude Code** as the coding agent and coding tasks
+  only (prompt tasks through Claude Code come later);
+- cannot be the judge: choose a model of a connected provider for that;
+- costs nothing in Back Office (the subscription pays), but uses up the subscription's usage limits;
+- is not offered to projects, templates or workflow steps.
+
+**Test profile** and **Check models** do not call the model for it: they check that your personal runner
+exists, uses your login and is online. Claude Code adds its own instructions and start-up time, so compare such
+a candidate with API models on scores, not on response times.
+
+A subscription token (`sk-ant-oat...`, from `claude setup-token`) is not an API key: an Anthropic provider
+connection refuses it.
+
 <a id="suites"></a>
 ## Task suites
 

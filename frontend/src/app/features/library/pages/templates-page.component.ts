@@ -480,7 +480,7 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
       { label: $localize`:@@library.templates.crumb.templates:Templates` },
     ]);
     this.projectsApi.list().subscribe((p) => this.projects.set(p));
-    this.profilesApi.list(true).subscribe((p) => this.profiles.set(p));
+    this.profilesApi.listCallable().subscribe((p) => this.profiles.set(p));
     effect(() => {
       this.f.values().projectId;
       untracked(() => this.load());

@@ -23,7 +23,15 @@ import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directiv
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { tableSort } from '../../../core/ui/relay/table-sort';
 import { icu } from '../../../core/i18n/icu';
-import { catalogRows, filterCatalog, profileFromCatalog, type CatalogRow } from '../data/model-catalog';
+import {
+  catalogRows,
+  filterCatalog,
+  loginKey,
+  loginModels,
+  profileFromCatalog,
+  profileFromLogin,
+  type CatalogRow,
+} from '../data/model-catalog';
 import { contextLabel, perMTok, providerLabel } from '../data/model-format';
 
 /**
@@ -186,6 +194,35 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
       } @else if (loading()) {
         <p class="sub" i18n="@@models.catalog.loading">Asking the providers for their models...</p>
       }
+
+      <div class="login" role="group" aria-labelledby="login-title">
+        <h3 id="login-title" i18n="@@models.login.title">Claude Code (your login)</h3>
+        <p class="sub" i18n="@@models.login.subtitle">
+          Runs Claude Code on your personal runner with your own Claude subscription (My account: personal runner with
+          Claude Code login). Coding tasks only, never as the judge, nothing is billed. Prompt tasks follow later.
+        </p>
+        <ul class="login-list">
+          @for (m of loginModels; track m.alias) {
+            <li>
+              <span class="cell-title">{{ m.displayName }}</span>
+              <span class="mono-cell sub">{{ m.alias }}</span>
+              <span class="chip" i18n="@@models.login.tag">Claude Code login</span>
+              <span class="grow"></span>
+              @if (existing().has(loginKeyOf(m.alias))) {
+                <span class="state-word"
+                  ><bo-glyph holder="done" [size]="11" />
+                  <ng-container i18n="@@models.catalog.added">profile exists</ng-container></span
+                >
+              } @else if (canManage()) {
+                <button nz-button nzSize="small" type="button" (click)="add.emit(prefillLogin(m))">
+                  <nz-icon nzType="plus" />
+                  <ng-container i18n="@@models.catalog.add">Add as profile</ng-container>
+                </button>
+              }
+            </li>
+          }
+        </ul>
+      </div>
     </section>
   `,
   styles: [
@@ -254,6 +291,39 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
       .chip.free {
         color: var(--bo-done-ink);
       }
+      .login {
+        margin-top: 24px;
+      }
+      h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--bo-ink);
+      }
+      .login-list {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+        border: 1px solid var(--bo-line);
+        border-radius: var(--bo-radius-card);
+      }
+      .login-list li {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+      .login-list li + li {
+        border-top: 1px solid var(--bo-line);
+      }
+      .login-list .sub {
+        margin: 0;
+      }
+      .grow {
+        flex: 1;
+      }
     `,
   ],
 })
@@ -276,6 +346,10 @@ export class ProviderCatalogComponent {
   readonly price = perMTok;
   readonly context = contextLabel;
   readonly prefill = profileFromCatalog;
+  /** ADR 0048: Claude Code with the user's own login, next to the provider catalogue. */
+  readonly loginModels = loginModels();
+  readonly loginKeyOf = loginKey;
+  readonly prefillLogin = profileFromLogin;
 
   readonly rows = computed<CatalogRow[]>(() => catalogRows(this.sections()));
   readonly failed = computed(() => this.sections().filter((s) => !s.ok));

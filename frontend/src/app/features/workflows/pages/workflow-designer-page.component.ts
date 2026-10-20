@@ -1346,7 +1346,7 @@ export class WorkflowDesignerPageComponent {
       ],
       this.destroyRef,
     );
-    this.profilesApi.list(true).subscribe((p) => this.profiles.set(p));
+    this.profilesApi.listCallable().subscribe((p) => this.profiles.set(p));
 
     effect(() => {
       const workflowId = this.workflowId();

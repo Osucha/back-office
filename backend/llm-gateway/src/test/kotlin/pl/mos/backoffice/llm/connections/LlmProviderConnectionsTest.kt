@@ -87,6 +87,15 @@ class LlmProviderConnectionsTest {
     }
 
     @Test
+    fun `a Claude subscription token is refused as an Anthropic API key (ADR 0048)`() {
+        assertThatThrownBy { admin.create(LlmProviderCommand("anthropic", "Anthropic", Provider.ANTHROPIC, apiKey = " sk-ant-oat01-abc")) }
+            .isInstanceOf(ValidationException::class.java).hasMessageContaining("subscription token")
+        val created = admin.create(LlmProviderCommand("anthropic", "Anthropic", Provider.ANTHROPIC, apiKey = "sk-ant-api03-abc"))
+        assertThatThrownBy { admin.update(created.id!!, LlmProviderCommand("anthropic", "Anthropic", Provider.ANTHROPIC, apiKey = "sk-ant-oat01-abc")) }
+            .isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
     fun `key and type are fixed, keys unique, only admins change, environment endpoints listed read only`() {
         val created = admin.create(LlmProviderCommand("ollama", "Ollama", Provider.OLLAMA, "http://localhost:11434"))
         assertThatThrownBy { admin.create(LlmProviderCommand("ollama", "Again", Provider.OLLAMA, "http://x")) }.isInstanceOf(ValidationException::class.java)

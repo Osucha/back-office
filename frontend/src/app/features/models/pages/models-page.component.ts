@@ -58,7 +58,7 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
 import { ProviderCatalogComponent } from '../components/provider-catalog.component';
 import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { tableSort } from '../../../core/ui/relay/table-sort';
-import { catalogKey } from '../data/model-catalog';
+import { isLoginProfile, profileKey } from '../data/model-catalog';
 
 /**
  * Models: the catalogue of model profiles. Filters live in the URL; rows open the profile side
@@ -210,7 +210,15 @@ import { catalogKey } from '../data/model-catalog';
                   <div class="cell-main">
                     <div class="cell-line">
                       <span class="cell-title">{{ p.displayName }}</span>
-                      @if (p.ref.options?.reasoning; as r) {
+                      @if (isLogin(p)) {
+                        <span
+                          class="chip login"
+                          nz-tooltip
+                          [nzTooltipTitle]="text.loginHint"
+                          i18n="@@models.login.tag"
+                          >Claude Code login</span
+                        >
+                      } @else if (p.ref.options?.reasoning; as r) {
                         <span class="chip" i18n="@@models.reasoningChip"
                           >{{ reasoning(r) }} reasoning</span
                         >
@@ -224,7 +232,12 @@ import { catalogKey } from '../data/model-catalog';
                 <td>
                   <div class="cell-main">
                     <span class="ink">{{ providerName(p.ref.provider) }}</span>
-                    @if (p.providerConfigured === false) {
+                    @if (isLogin(p)) {
+                      <span class="state-word"
+                        ><bo-glyph holder="done" [size]="11" />
+                        <ng-container i18n="@@models.login.yourLogin">your Claude login</ng-container></span
+                      >
+                    } @else if (p.providerConfigured === false) {
                       <span class="state-word"
                         ><bo-glyph holder="idle" [size]="11" />
                         <ng-container i18n="@@models.notConnected">not connected</ng-container></span
@@ -241,21 +254,25 @@ import { catalogKey } from '../data/model-catalog';
                   <span class="mono-cell">{{ p.ref.modelId }}</span>
                 </td>
                 <td nzAlign="right">
-                  <div class="cell-main right">
-                    <span class="mono-cell"
-                      >{{ price(p.pricing.inputPerMTok) }}
-                      <span class="quiet">/</span>
-                      {{ price(p.pricing.outputPerMTok) }}</span
-                    >
-                    @if (
-                      p.pricing.cacheReadPerMTok !== null &&
-                      p.pricing.cacheReadPerMTok !== undefined
-                    ) {
-                      <span class="sub-mono" i18n="@@models.cachePrice"
-                        >cache {{ price(p.pricing.cacheReadPerMTok) }}</span
+                  @if (isLogin(p)) {
+                    <span class="quiet" i18n="@@models.login.notBilled">not billed</span>
+                  } @else {
+                    <div class="cell-main right">
+                      <span class="mono-cell"
+                        >{{ price(p.pricing.inputPerMTok) }}
+                        <span class="quiet">/</span>
+                        {{ price(p.pricing.outputPerMTok) }}</span
                       >
-                    }
-                  </div>
+                      @if (
+                        p.pricing.cacheReadPerMTok !== null &&
+                        p.pricing.cacheReadPerMTok !== undefined
+                      ) {
+                        <span class="sub-mono" i18n="@@models.cachePrice"
+                          >cache {{ price(p.pricing.cacheReadPerMTok) }}</span
+                        >
+                      }
+                    </div>
+                  }
                 </td>
                 <td nzAlign="right">
                   <span class="mono-cell">{{ context(p.contextWindow) }}</span>
@@ -269,7 +286,9 @@ import { catalogKey } from '../data/model-catalog';
                   } @else if (results()[p.id]; as r) {
                     <span class="state-word" [attr.title]="r.error || null">
                       <bo-glyph [holder]="r.ok ? 'done' : 'blocked'" [size]="11" />
-                      @if (r.ok) {
+                      @if (r.ok && isLogin(p)) {
+                        <ng-container i18n="@@models.login.ready">runner ready</ng-container>
+                      } @else if (r.ok) {
                         <ng-container i18n="@@models.answered">answered</ng-container>
                       } @else {
                         <ng-container i18n="@@models.failed">failed</ng-container>
@@ -307,7 +326,11 @@ import { catalogKey } from '../data/model-catalog';
                         [disabled]="p.providerConfigured === false || testing() === p.id"
                         nz-tooltip
                         [nzTooltipTitle]="
-                          p.providerConfigured === false ? text.setKey : text.testHint
+                          p.providerConfigured === false
+                            ? text.setKey
+                            : isLogin(p)
+                              ? text.loginTestHint
+                              : text.testHint
                         "
                         [attr.aria-label]="testLabel(p)"
                       >
@@ -419,6 +442,9 @@ import { catalogKey } from '../data/model-catalog';
         font-size: 11px;
         color: var(--bo-ink-3);
       }
+      .chip.login {
+        color: var(--bo-you-ink);
+      }
       tr.off .cell-title,
       tr.off .mono-cell {
         color: var(--bo-ink-3);
@@ -460,7 +486,11 @@ export class ModelsPageComponent {
     create: $localize`:@@models.createAction:Create profile`,
     setKey: $localize`:@@models.setKeyFirst:Set the provider API key first`,
     testHint: $localize`:@@models.testHint:Send a tiny prompt and measure latency and cost`,
+    loginTestHint: $localize`:@@models.login.testHint:Check that your personal runner with Claude Code login is online`,
+    loginHint: $localize`:@@models.login.hint:Claude Code on your personal runner with your own Claude subscription: coding tasks only, never the judge, nothing billed.`,
   };
+  /** ADR 0048: Claude Code with the user's own login (personal runner, no API key, no price). */
+  readonly isLogin = isLoginProfile;
   /** ADR 0045: profiles whose provider is not connected are hidden unless asked for. */
   readonly showUnavailable = signal(false);
 
@@ -498,7 +528,7 @@ export class ModelsPageComponent {
   );
   /** Catalogue keys of the existing profiles, so the catalogue marks models already added. */
   readonly existingKeys = computed(
-    () => new Set(this.profiles().map((p) => catalogKey(p.ref.provider, p.ref.connection, p.ref.modelId))),
+    () => new Set(this.profiles().map((p) => profileKey(p))),
   );
   readonly providerOptions = computed(() =>
     [...new Set(this.profiles().map((p) => p.ref.provider))].sort(compareText),

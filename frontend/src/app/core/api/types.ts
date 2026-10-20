@@ -141,6 +141,8 @@ export type Skill = S['Skill'];
 export type Pricing = S['Pricing'];
 export type ModelProfileInput = S['ModelProfileInput'];
 export type ModelProfile = S['ModelProfile'];
+/** ADR 0048: API (LLM gateway) or CLAUDE_CODE_LOGIN (Claude Code with the user's own login on their personal runner). */
+export type ModelRuntime = S['ModelRuntime'];
 export type Capability = NonNullable<ModelProfileInput['capabilities']>[number];
 export type ModelTestResult = S['ModelTestResult'];
 export type ProviderStatus = S['ProviderStatus'];

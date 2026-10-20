@@ -13,6 +13,7 @@ import pl.mos.backoffice.evaluation.application.port.`in`.ManageModelProfiles
 import pl.mos.backoffice.evaluation.domain.model.AttemptId
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
+import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
 import pl.mos.backoffice.evaluation.support.Fixtures
 import pl.mos.backoffice.evaluation.support.InMemoryBenchmarkRepository
 import pl.mos.backoffice.evaluation.support.InMemoryModelProfileRepository
@@ -27,6 +28,10 @@ import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.LlmResult
 import pl.mos.backoffice.shared.llm.TokenUsage
+import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.llm.Provider
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.usage.UsageKind
 import java.time.Duration
@@ -190,5 +195,52 @@ class BenchmarkServiceTest {
         verify(exactly = 1) { gateway.chat(a.ref, any()) }
         val viewer = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_VIEW), audit)
         assertThatThrownBy { viewer.preflight(listOf(a.id)) }.isInstanceOf(pl.mos.backoffice.shared.InsufficientPermissionException::class.java)
+    }
+
+    private val login = Fixtures.profile("Opus (my login)", modelId = "opus").copy(runtime = ModelRuntime.CLAUDE_CODE_LOGIN)
+
+    @Test
+    fun `Claude Code login models run coding tasks on the personal runner with Claude Code and never judge (ADR 0048)`() {
+        profiles.save(login)
+        val coding = suite.tasks.single { it.kind == pl.mos.backoffice.evaluation.domain.model.TaskKind.CODING_JOB }
+        val ok = command().copy(
+            modelProfileIds = listOf(login.id, a.id), taskIds = listOf(coding.id),
+            codingHarness = AgentHarness.CLAUDE_CODE, runnerTarget = RunnerTarget.PERSONAL,
+        )
+        fun refused(c: ManageBenchmarks.BenchmarkCommand, field: String) =
+            assertThatThrownBy { service.create(c) }.isInstanceOfSatisfying(ValidationException::class.java) { e ->
+                assertThat(e.errors.map { it.field }).contains(field)
+            }
+        refused(ok.copy(judgeModelProfileId = login.id), "judgeModelProfileId")
+        refused(ok.copy(runnerTarget = RunnerTarget.SHARED), "runnerTarget")
+        refused(ok.copy(codingHarness = AgentHarness.OPENCODE), "codingHarness")
+        refused(ok.copy(taskIds = emptyList()), "taskIds")
+
+        val draft = service.create(ok)
+        every { runner.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = false))
+        assertThatThrownBy { service.start(draft.benchmark.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("own login")
+        every { runner.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = true))
+        assertThat(service.start(draft.benchmark.id).benchmark.status).isEqualTo(BenchmarkStatus.RUNNING)
+
+        assertThatThrownBy { login.copy(ref = ModelRef(Provider.OPENAI, "gpt-5")) }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `a Claude Code login model is checked on the personal runner, not called (ADR 0048)`() {
+        profiles.save(login)
+        val gateway = mockk<LlmGateway>()
+        val agents = mockk<AgentRunner>()
+        val models = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_RUN), audit, agents)
+        fun check(vararg targets: ExecutionTarget): String? {
+            every { agents.executionTargets(any()) } returns targets.toList()
+            return models.preflight(listOf(login.id)).single().second.let { if (it.ok) null else it.error }
+        }
+        assertThat(check(ExecutionTarget(RunnerTarget.SHARED, 1, 1))).contains("no personal runner")
+        assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1))).contains("own Claude Code login")
+        assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 0, localLogin = true))).contains("offline")
+        assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = true))).isNull()
+        verify(exactly = 0) { gateway.chat(any(), any()) }
+        assertThat(ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_RUN), audit)
+            .preflight(listOf(login.id)).single().second.ok).isFalse()
     }
 }

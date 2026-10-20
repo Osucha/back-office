@@ -25,6 +25,7 @@ import {
   type Capability,
   type ModelProfile,
   type ModelProfileInput,
+  type ModelRuntime,
   type ModelTestResult,
   type Provider,
   type ProviderStatus,
@@ -98,9 +99,15 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
           <div class="test-head">
             <div>
               <div class="test-title" i18n="@@models.drawer.test">Test profile</div>
-              <div class="test-sub" i18n="@@models.drawer.testSub">
-                Sends a tiny prompt and measures latency and cost.
-              </div>
+              @if (login()) {
+                <div class="test-sub" i18n="@@models.drawer.loginTestSub">
+                  Checks that your personal runner uses your Claude Code login and is online; no model is called.
+                </div>
+              } @else {
+                <div class="test-sub" i18n="@@models.drawer.testSub">
+                  Sends a tiny prompt and measures latency and cost.
+                </div>
+              }
             </div>
             <button
               nz-button
@@ -123,7 +130,7 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
             <div class="result" role="status">
               <bo-baton
                 [holder]="r.ok ? 'done' : 'blocked'"
-                [label]="r.ok ? text.answered : text.callFailed"
+                [label]="r.ok ? (login() ? text.runnerReady : text.answered) : text.callFailed"
                 size="sm"
               />
               @if (r.latencyMs !== null && r.latencyMs !== undefined) {
@@ -168,20 +175,38 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
             />
           </nz-form-control>
         </nz-form-item>
+        <nz-form-item>
+          <nz-form-label nzFor="mp-runtime" i18n="@@models.drawer.runtime">Runs through</nz-form-label>
+          <nz-form-control [nzExtra]="login() ? text.loginRuntimeHint : text.apiRuntimeHint">
+            <nz-select id="mp-runtime" formControlName="runtime">
+              <nz-option nzValue="API" [nzLabel]="text.runtimeApi" />
+              <nz-option nzValue="CLAUDE_CODE_LOGIN" [nzLabel]="text.runtimeLogin" />
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
         <div class="grid">
           <nz-form-item>
             <nz-form-label nzRequired nzFor="mp-provider" i18n="@@models.drawer.provider"
               >Provider</nz-form-label
             >
-            <nz-form-control [nzExtra]="providerHint()">
-              <nz-select id="mp-provider" formControlName="provider">
-                @for (p of providers(); track p.provider) {
-                  <nz-option [nzValue]="p.provider" [nzLabel]="providerOption(p)" />
-                }
-              </nz-select>
-            </nz-form-control>
+            @if (login()) {
+              <nz-form-control
+                nzExtra="Claude Code runs Anthropic models only."
+                i18n-nzExtra="@@models.drawer.loginProviderHint"
+              >
+                <input nz-input id="mp-provider" [value]="providerName('ANTHROPIC')" readonly />
+              </nz-form-control>
+            } @else {
+              <nz-form-control [nzExtra]="providerHint()">
+                <nz-select id="mp-provider" formControlName="provider">
+                  @for (p of providers(); track p.provider) {
+                    <nz-option [nzValue]="p.provider" [nzLabel]="providerOption(p)" />
+                  }
+                </nz-select>
+              </nz-form-control>
+            }
           </nz-form-item>
-          @if (connectionsOfType().length) {
+          @if (connectionsOfType().length && !login()) {
             <nz-form-item>
               <nz-form-label nzFor="mp-connection" i18n="@@models.drawer.connection">Connection</nz-form-label>
               <nz-form-control
@@ -204,149 +229,158 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
             <nz-form-control
               nzErrorTip="Required"
               i18n-nzErrorTip="@@models.drawer.required"
-              nzExtra="Exactly as the provider API expects it."
-              i18n-nzExtra="@@models.drawer.modelIdHint"
+              [nzExtra]="login() ? text.loginModelIdHint : text.modelIdHint"
             >
               <input
                 nz-input
                 id="mp-model"
                 class="mono"
                 formControlName="modelId"
-                [placeholder]="modelIdExample"
+                [placeholder]="login() ? loginModelIdExample : modelIdExample"
               />
             </nz-form-control>
           </nz-form-item>
         </div>
 
-        <h3 class="sec" i18n="@@models.drawer.defaults">Default options</h3>
-        <div class="grid three" formGroupName="options">
-          <nz-form-item>
-            <nz-form-label nzFor="mp-temp" i18n="@@models.drawer.temperature"
-              >Temperature</nz-form-label
-            >
-            <nz-form-control>
-              <nz-input-number
-                id="mp-temp"
-                formControlName="temperature"
-                [nzMin]="0"
-                [nzMax]="2"
-                [nzStep]="0.1"
-                nzPlaceHolder="provider default"
-                i18n-nzPlaceHolder="@@models.drawer.providerDefault"
-                style="width: 100%"
-              />
-            </nz-form-control>
-          </nz-form-item>
-          <nz-form-item>
-            <nz-form-label nzFor="mp-max" i18n="@@models.drawer.maxOutput"
-              >Max output tokens</nz-form-label
-            >
-            <nz-form-control>
-              <nz-input-number
-                id="mp-max"
-                formControlName="maxOutputTokens"
-                [nzMin]="1"
-                [nzStep]="1024"
-                [nzPrecision]="0"
-                nzPlaceHolder="provider default"
-                i18n-nzPlaceHolder="@@models.drawer.providerDefault"
-                style="width: 100%"
-              />
-            </nz-form-control>
-          </nz-form-item>
-          <nz-form-item>
-            <nz-form-label nzFor="mp-reasoning" i18n="@@models.drawer.reasoning"
-              >Reasoning effort</nz-form-label
-            >
-            <nz-form-control>
-              <nz-select id="mp-reasoning" formControlName="reasoning">
-                @for (r of reasoningLevels; track r) {
-                  <nz-option [nzValue]="r" [nzLabel]="reasoningName(r)" />
-                }
-              </nz-select>
-            </nz-form-control>
-          </nz-form-item>
-        </div>
-        <nz-form-item formGroupName="options">
-          <nz-form-label nzFor="mp-extra" i18n="@@models.drawer.extra"
-            >Extra options (JSON)</nz-form-label
-          >
-          <nz-form-control
-            nzExtra="Provider-specific parameters passed through as-is (e.g. top_p, thinking budgets)."
-            i18n-nzExtra="@@models.drawer.extraHint"
-            [nzValidateStatus]="extraError() ? 'error' : ''"
-            [nzErrorTip]="extraError() ?? ''"
-          >
-            <textarea
-              nz-input
-              id="mp-extra"
-              class="mono-textarea"
-              formControlName="extra"
-              [nzAutosize]="{ minRows: 2, maxRows: 8 }"
-              placeholder="{ }"
-            ></textarea>
-          </nz-form-control>
-        </nz-form-item>
+        @if (login()) {
+          <p class="login-note" role="note" i18n="@@models.drawer.loginNote">
+            Claude Code runs on your personal runner, signed in with your own Claude subscription (My account: personal
+            runner with Claude Code login). Benchmarks use it for coding tasks only, with the personal runner and the
+            Claude Code harness, never as the judge. Default options and pricing do not apply: nothing is billed.
+          </p>
+        }
 
-        <h3 class="sec">
-          <ng-container i18n="@@models.drawer.pricing">Pricing</ng-container>
-          <span class="sec-note" i18n="@@models.drawer.pricingNote">USD per million tokens</span>
-        </h3>
-        <div class="grid four" formGroupName="pricing">
-          <nz-form-item>
-            <nz-form-label nzRequired nzFor="mp-in" i18n="@@models.drawer.input"
-              >Input</nz-form-label
+        <div [hidden]="login()">
+          <h3 class="sec" i18n="@@models.drawer.defaults">Default options</h3>
+          <div class="grid three" formGroupName="options">
+            <nz-form-item>
+              <nz-form-label nzFor="mp-temp" i18n="@@models.drawer.temperature"
+                >Temperature</nz-form-label
+              >
+              <nz-form-control>
+                <nz-input-number
+                  id="mp-temp"
+                  formControlName="temperature"
+                  [nzMin]="0"
+                  [nzMax]="2"
+                  [nzStep]="0.1"
+                  nzPlaceHolder="provider default"
+                  i18n-nzPlaceHolder="@@models.drawer.providerDefault"
+                  style="width: 100%"
+                />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-label nzFor="mp-max" i18n="@@models.drawer.maxOutput"
+                >Max output tokens</nz-form-label
+              >
+              <nz-form-control>
+                <nz-input-number
+                  id="mp-max"
+                  formControlName="maxOutputTokens"
+                  [nzMin]="1"
+                  [nzStep]="1024"
+                  [nzPrecision]="0"
+                  nzPlaceHolder="provider default"
+                  i18n-nzPlaceHolder="@@models.drawer.providerDefault"
+                  style="width: 100%"
+                />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-label nzFor="mp-reasoning" i18n="@@models.drawer.reasoning"
+                >Reasoning effort</nz-form-label
+              >
+              <nz-form-control>
+                <nz-select id="mp-reasoning" formControlName="reasoning">
+                  @for (r of reasoningLevels; track r) {
+                    <nz-option [nzValue]="r" [nzLabel]="reasoningName(r)" />
+                  }
+                </nz-select>
+              </nz-form-control>
+            </nz-form-item>
+          </div>
+          <nz-form-item formGroupName="options">
+            <nz-form-label nzFor="mp-extra" i18n="@@models.drawer.extra"
+              >Extra options (JSON)</nz-form-label
             >
-            <nz-form-control nzErrorTip="Required" i18n-nzErrorTip="@@models.drawer.required">
-              <nz-input-number
-                id="mp-in"
-                formControlName="inputPerMTok"
-                [nzMin]="0"
-                [nzStep]="0.25"
-                style="width: 100%"
-              />
-            </nz-form-control>
-          </nz-form-item>
-          <nz-form-item>
-            <nz-form-label nzRequired nzFor="mp-out" i18n="@@models.drawer.output"
-              >Output</nz-form-label
+            <nz-form-control
+              nzExtra="Provider-specific parameters passed through as-is (e.g. top_p, thinking budgets)."
+              i18n-nzExtra="@@models.drawer.extraHint"
+              [nzValidateStatus]="extraError() ? 'error' : ''"
+              [nzErrorTip]="extraError() ?? ''"
             >
-            <nz-form-control nzErrorTip="Required" i18n-nzErrorTip="@@models.drawer.required">
-              <nz-input-number
-                id="mp-out"
-                formControlName="outputPerMTok"
-                [nzMin]="0"
-                [nzStep]="0.25"
-                style="width: 100%"
-              />
+              <textarea
+                nz-input
+                id="mp-extra"
+                class="mono-textarea"
+                formControlName="extra"
+                [nzAutosize]="{ minRows: 2, maxRows: 8 }"
+                placeholder="{ }"
+              ></textarea>
             </nz-form-control>
           </nz-form-item>
-          <nz-form-item>
-            <nz-form-label nzFor="mp-cr" i18n="@@models.drawer.cacheRead">Cache read</nz-form-label>
-            <nz-form-control>
-              <nz-input-number
-                id="mp-cr"
-                formControlName="cacheReadPerMTok"
-                [nzMin]="0"
-                [nzStep]="0.05"
-                style="width: 100%"
-              />
-            </nz-form-control>
-          </nz-form-item>
-          <nz-form-item>
-            <nz-form-label nzFor="mp-cw" i18n="@@models.drawer.cacheWrite"
-              >Cache write</nz-form-label
-            >
-            <nz-form-control>
-              <nz-input-number
-                id="mp-cw"
-                formControlName="cacheWritePerMTok"
-                [nzMin]="0"
-                [nzStep]="0.05"
-                style="width: 100%"
-              />
-            </nz-form-control>
-          </nz-form-item>
+  
+          <h3 class="sec">
+            <ng-container i18n="@@models.drawer.pricing">Pricing</ng-container>
+            <span class="sec-note" i18n="@@models.drawer.pricingNote">USD per million tokens</span>
+          </h3>
+          <div class="grid four" formGroupName="pricing">
+            <nz-form-item>
+              <nz-form-label nzRequired nzFor="mp-in" i18n="@@models.drawer.input"
+                >Input</nz-form-label
+              >
+              <nz-form-control nzErrorTip="Required" i18n-nzErrorTip="@@models.drawer.required">
+                <nz-input-number
+                  id="mp-in"
+                  formControlName="inputPerMTok"
+                  [nzMin]="0"
+                  [nzStep]="0.25"
+                  style="width: 100%"
+                />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-label nzRequired nzFor="mp-out" i18n="@@models.drawer.output"
+                >Output</nz-form-label
+              >
+              <nz-form-control nzErrorTip="Required" i18n-nzErrorTip="@@models.drawer.required">
+                <nz-input-number
+                  id="mp-out"
+                  formControlName="outputPerMTok"
+                  [nzMin]="0"
+                  [nzStep]="0.25"
+                  style="width: 100%"
+                />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-label nzFor="mp-cr" i18n="@@models.drawer.cacheRead">Cache read</nz-form-label>
+              <nz-form-control>
+                <nz-input-number
+                  id="mp-cr"
+                  formControlName="cacheReadPerMTok"
+                  [nzMin]="0"
+                  [nzStep]="0.05"
+                  style="width: 100%"
+                />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-label nzFor="mp-cw" i18n="@@models.drawer.cacheWrite"
+                >Cache write</nz-form-label
+              >
+              <nz-form-control>
+                <nz-input-number
+                  id="mp-cw"
+                  formControlName="cacheWritePerMTok"
+                  [nzMin]="0"
+                  [nzStep]="0.05"
+                  style="width: 100%"
+                />
+              </nz-form-control>
+            </nz-form-item>
+          </div>
         </div>
 
         <h3 class="sec" i18n="@@models.drawer.catalogue">Catalogue</h3>
@@ -514,6 +548,15 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
         margin-top: 8px;
         max-height: 180px;
       }
+      .login-note {
+        margin: 0 0 16px;
+        padding: 10px 12px;
+        border: 1px solid var(--bo-line);
+        border-radius: var(--bo-radius-card);
+        background: var(--bo-surface-2);
+        font-size: 12.5px;
+        color: var(--bo-ink-2);
+      }
       .enabled {
         display: flex;
         gap: 10px;
@@ -555,6 +598,7 @@ export class ModelProfileDrawerComponent {
   readonly reasoningName = reasoningLabel;
   readonly capabilityName = capabilityLabel;
   readonly modelIdExample = 'claude-opus-4-1'; // i18n-ignore: model id
+  readonly loginModelIdExample = 'sonnet'; // i18n-ignore: model alias
   readonly text = {
     newTitle: $localize`:@@models.drawer.newTitle:New model profile`,
     newSubtitle: $localize`:@@models.drawer.newSubtitle:A provider, a model id, default options and pricing`,
@@ -567,6 +611,13 @@ export class ModelProfileDrawerComponent {
     readOnly: $localize`:@@models.drawer.readOnly:Read-only: needs models.manage`,
     discard: $localize`:@@models.drawer.discard:Discard changes`,
     close: $localize`:@@models.drawer.close:Close`,
+    runnerReady: $localize`:@@models.drawer.runnerReady:your runner is ready`,
+    runtimeApi: $localize`:@@models.drawer.runtimeApi:Provider API (LLM gateway)`,
+    runtimeLogin: $localize`:@@models.drawer.runtimeLogin:Claude Code (my login)`,
+    apiRuntimeHint: $localize`:@@models.drawer.apiRuntimeHint:Called through a provider connection and billed per token.`,
+    loginRuntimeHint: $localize`:@@models.drawer.loginRuntimeHint:Claude Code on your personal runner with your own Claude subscription: coding tasks only, never the judge, nothing billed.`,
+    modelIdHint: $localize`:@@models.drawer.modelIdHint:Exactly as the provider API expects it.`,
+    loginModelIdHint: $localize`:@@models.drawer.loginModelIdHint:What Claude Code gets as --model: opus, sonnet, haiku or a full model id.`,
     defaultConnection: $localize`:@@models.drawer.defaultConnection:Default: the first connection of this type`,
   };
 
@@ -598,6 +649,7 @@ export class ModelProfileDrawerComponent {
 
   readonly form = this.fb.group({
     displayName: this.fb.nonNullable.control('', Validators.required),
+    runtime: this.fb.nonNullable.control<ModelRuntime>('API'),
     provider: this.fb.nonNullable.control<Provider>('ANTHROPIC', Validators.required),
     connection: this.fb.nonNullable.control(''),
     modelId: this.fb.nonNullable.control('', Validators.required),
@@ -617,6 +669,12 @@ export class ModelProfileDrawerComponent {
     contextWindow: this.fb.control<number | null>(null),
     notes: this.fb.nonNullable.control(''),
     enabled: this.fb.nonNullable.control(true),
+  });
+
+  /** ADR 0048: Claude Code with the user's own login: Anthropic only, no connection, options or pricing. */
+  readonly login = computed(() => {
+    this.status();
+    return this.form.controls.runtime.value === 'CLAUDE_CODE_LOGIN';
   });
 
   readonly valid = computed(() => {
@@ -647,6 +705,15 @@ export class ModelProfileDrawerComponent {
       const providers = this.providers();
       untracked(() => this.reset(p, providers));
     });
+    this.form.controls.runtime.valueChanges.pipe(takeUntilDestroyed(destroyRef)).subscribe((runtime) => {
+      if (runtime !== 'CLAUDE_CODE_LOGIN') return;
+      // nothing is billed and Claude Code runs Anthropic models only
+      this.form.patchValue({
+        provider: 'ANTHROPIC',
+        connection: '',
+        pricing: { inputPerMTok: 0, outputPerMTok: 0, cacheReadPerMTok: null, cacheWritePerMTok: null },
+      });
+    });
     this.form.controls.options.controls.extra.valueChanges
       .pipe(takeUntilDestroyed(destroyRef))
       .subscribe((v) => {
@@ -675,6 +742,7 @@ export class ModelProfileDrawerComponent {
     if (!p) {
       this.form.reset({
         displayName: '',
+        runtime: 'API',
         provider: providers.find((x) => x.configured)?.provider ?? 'ANTHROPIC',
         connection: '',
         modelId: '',
@@ -693,6 +761,7 @@ export class ModelProfileDrawerComponent {
     } else {
       this.form.reset({
         displayName: p.displayName,
+        runtime: p.runtime ?? 'API',
         provider: p.ref.provider,
         connection: p.ref.connection ?? '',
         modelId: p.ref.modelId,
@@ -731,11 +800,13 @@ export class ModelProfileDrawerComponent {
     const extra = v.options.extra.trim()
       ? (JSON.parse(v.options.extra) as Record<string, unknown>)
       : undefined;
+    const login = v.runtime === 'CLAUDE_CODE_LOGIN';
     const input: ModelProfileInput = {
       displayName: v.displayName.trim(),
+      runtime: v.runtime,
       ref: {
-        provider: v.provider,
-        connection: this.connectionsOfType().some((c) => c.key === v.connection) ? v.connection : null,
+        provider: login ? 'ANTHROPIC' : v.provider,
+        connection: !login && this.connectionsOfType().some((c) => c.key === v.connection) ? v.connection : null,
         modelId: v.modelId.trim(),
         options: {
           temperature: v.options.temperature,
@@ -744,13 +815,15 @@ export class ModelProfileDrawerComponent {
           ...(extra ? { extra } : {}),
         },
       },
-      pricing: {
-        inputPerMTok: v.pricing.inputPerMTok ?? 0,
-        outputPerMTok: v.pricing.outputPerMTok ?? 0,
-        cacheReadPerMTok: v.pricing.cacheReadPerMTok,
-        cacheWritePerMTok: v.pricing.cacheWritePerMTok,
-        currency: 'USD',
-      },
+      pricing: login
+        ? { inputPerMTok: 0, outputPerMTok: 0, currency: 'USD' }
+        : {
+            inputPerMTok: v.pricing.inputPerMTok ?? 0,
+            outputPerMTok: v.pricing.outputPerMTok ?? 0,
+            cacheReadPerMTok: v.pricing.cacheReadPerMTok,
+            cacheWritePerMTok: v.pricing.cacheWritePerMTok,
+            currency: 'USD',
+          },
       capabilities: v.capabilities,
       contextWindow: v.contextWindow,
       notes: v.notes.trim() || null,

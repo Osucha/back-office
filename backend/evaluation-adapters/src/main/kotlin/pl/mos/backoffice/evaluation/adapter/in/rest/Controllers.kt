@@ -34,7 +34,8 @@ class ModelProfileController(
     private val providers: ListProviders,
     private val gateway: LlmGateway,
 ) {
-    private fun dto(p: ModelProfile) = RestMappers.profile(p, gateway.isConfigured(p.ref))
+    // ADR 0048: a Claude Code login model needs no provider connection
+    private fun dto(p: ModelProfile) = RestMappers.profile(p, p.viaClaudeCodeLogin || gateway.isConfigured(p.ref))
 
     @GetMapping
     fun list(@RequestParam(required = false) enabled: Boolean?): List<ModelProfileDto> = profiles.list(enabled).map(::dto)
@@ -108,7 +109,7 @@ class TaskSuiteController(private val suites: ManageTaskSuites) {
 @RequestMapping("/api/v1/benchmarks")
 class BenchmarkController(private val benchmarks: ManageBenchmarks, private val gateway: LlmGateway, private val profiles: ManageModelProfiles) {
 
-    private fun dto(d: ManageBenchmarks.BenchmarkDetails) = RestMappers.benchmark(d) { gateway.isConfigured(it.ref) }
+    private fun dto(d: ManageBenchmarks.BenchmarkDetails) = RestMappers.benchmark(d) { it.viaClaudeCodeLogin || gateway.isConfigured(it.ref) }
 
     @GetMapping
     fun list(): List<BenchmarkSummaryDto> = benchmarks.list().map(RestMappers::benchmarkSummary)
@@ -122,7 +123,7 @@ class BenchmarkController(private val benchmarks: ManageBenchmarks, private val 
         }
 
     @GetMapping("/execution-targets")
-    fun executionTargets(): List<ExecutionTargetDto> = benchmarks.executionTargets().map { ExecutionTargetDto(it.target, it.pools, it.onlineRunners) }
+    fun executionTargets(): List<ExecutionTargetDto> = benchmarks.executionTargets().map { ExecutionTargetDto(it.target, it.pools, it.onlineRunners, it.localLogin) }
 
     @PostMapping
     fun create(@RequestBody body: BenchmarkInputDto): ResponseEntity<BenchmarkDto> {

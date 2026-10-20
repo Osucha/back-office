@@ -4195,6 +4195,8 @@ export interface components {
             weight: number;
         };
         ExecutionTarget: {
+            /** @description ADR 0048: a pool of the target lets Claude Code use its owner's own login (LOCAL_LOGIN) */
+            localLogin?: boolean;
             /** @description runners that called in within the online window */
             onlineRunners: number;
             /** @description runner pools of the target (0 = none set up) */
@@ -4813,6 +4815,7 @@ export interface components {
             notes?: string | null;
             pricing: components["schemas"]["Pricing"];
             ref: components["schemas"]["ModelRef"];
+            runtime?: components["schemas"]["ModelRuntime"];
         };
         ModelRef: {
             /** @description ADR 0045: key of the LLM provider connection serving the model; null = the first connection of the provider, else its environment configuration */
@@ -4821,6 +4824,12 @@ export interface components {
             options?: components["schemas"]["ModelOptions"];
             provider: components["schemas"]["Provider"];
         };
+        /**
+         * @description ADR 0048: API = called through the LLM gateway and a provider connection. CLAUDE_CODE_LOGIN = Claude Code on the benchmark creator's personal runner signed in with their own subscription (LOCAL_LOGIN): provider ANTHROPIC, modelId is Claude Code's --model (opus, sonnet, haiku or a full id), coding tasks only, never the judge, nothing billed. Such profiles are not offered to workflows.
+         * @default API
+         * @enum {string}
+         */
+        ModelRuntime: "API" | "CLAUDE_CODE_LOGIN";
         ModelTestResult: {
             cost?: components["schemas"]["Money"];
             error?: string | null;

@@ -66,6 +66,7 @@ class EvaluationMappers(private val json: JsonMapper) {
         updatedByKind = p.updatedBy?.kind?.name,
         updatedById = p.updatedBy?.userId,
         updatedByName = p.updatedBy?.displayName,
+        runtime = p.runtime,
     )
 
     fun toDomain(e: ModelProfileEntity): ModelProfile {

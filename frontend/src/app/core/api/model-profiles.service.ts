@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { params, silent, url } from './api-base';
 import type { ModelProfile, ModelProfileInput, ModelTestResult, ProviderStatus } from './types';
 
@@ -10,6 +10,14 @@ export class ModelProfilesApi {
 
   list(enabled?: boolean): Observable<ModelProfile[]> {
     return this.http.get<ModelProfile[]>(url('model-profiles'), { params: params({ enabled }) });
+  }
+
+  /**
+   * Enabled profiles the LLM gateway can call: what projects, templates and workflow steps may pick. Claude Code login
+   * profiles (ADR 0048) run only in benchmarks on a personal runner.
+   */
+  listCallable(): Observable<ModelProfile[]> {
+    return this.list(true).pipe(map((list) => list.filter((p) => p.runtime !== 'CLAUDE_CODE_LOGIN')));
   }
 
   get(profileId: string): Observable<ModelProfile> {

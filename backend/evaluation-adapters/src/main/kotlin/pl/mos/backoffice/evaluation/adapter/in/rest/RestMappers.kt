@@ -51,6 +51,7 @@ object RestMappers {
         createdAt = p.createdAt,
         updatedAt = p.updatedAt,
         updatedBy = actor(p.updatedBy),
+        runtime = p.runtime,
     )
 
     fun profileCommand(d: ModelProfileInputDto) = ManageModelProfiles.ProfileCommand(
@@ -61,6 +62,7 @@ object RestMappers {
         contextWindow = d.contextWindow,
         notes = d.notes,
         enabled = d.enabled,
+        runtime = d.runtime,
     )
 
     fun testResult(r: ManageModelProfiles.ModelTestResult) = ModelTestResultDto(r.ok, r.latencyMs, usage(r.usage), money(r.cost), r.sample, r.error)

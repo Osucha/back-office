@@ -4184,6 +4184,16 @@ components:
         contextWindow: { type: integer, nullable: true }
         notes: { type: string, nullable: true }
         enabled: { type: boolean, default: true }
+        runtime: { $ref: '#/components/schemas/ModelRuntime' }
+    ModelRuntime:
+      type: string
+      enum: [API, CLAUDE_CODE_LOGIN]
+      default: API
+      description: >-
+        ADR 0048: API = called through the LLM gateway and a provider connection. CLAUDE_CODE_LOGIN = Claude Code on the
+        benchmark creator's personal runner signed in with their own subscription (LOCAL_LOGIN): provider ANTHROPIC,
+        modelId is Claude Code's --model (opus, sonnet, haiku or a full id), coding tasks only, never the judge, nothing
+        billed. Such profiles are not offered to workflows.
     ModelProfile:
       allOf:
         - $ref: '#/components/schemas/ModelProfileInput'
@@ -4306,6 +4316,7 @@ components:
         target: { $ref: '#/components/schemas/RunnerTarget' }
         pools: { type: integer, description: 'runner pools of the target (0 = none set up)' }
         onlineRunners: { type: integer, description: 'runners that called in within the online window' }
+        localLogin: { type: boolean, description: 'ADR 0048: a pool of the target lets Claude Code use its owner''s own login (LOCAL_LOGIN)' }
     BenchmarkStatus:
       type: string
       enum: [DRAFT, RUNNING, COMPLETED, FAILED, CANCELLED]

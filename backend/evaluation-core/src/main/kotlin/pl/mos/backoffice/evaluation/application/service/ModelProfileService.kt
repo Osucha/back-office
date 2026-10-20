@@ -26,6 +26,9 @@ import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.usage.Pricing
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
+import pl.mos.backoffice.shared.runner.AgentRunner
+import pl.mos.backoffice.shared.runner.RunnerTarget
+import java.util.UUID
 import pl.mos.backoffice.shared.ValidationException
 
 /**
@@ -40,6 +43,8 @@ class ModelProfileService(
     private val clock: Clock,
     private val gate: AuthorizationGate,
     private val audit: AuditPort,
+    /** ADR 0048: where Claude Code login models run; null = no runner wiring (they never pass the check). */
+    private val runner: AgentRunner? = null,
 ) : ManageModelProfiles {
 
     override fun create(command: ProfileCommand): ModelProfile {
@@ -55,6 +60,7 @@ class ModelProfileService(
                 enabled = command.enabled,
                 now = clock.now(),
                 actor = user.actor,
+                runtime = command.runtime,
             ),
         )
         audit.record(entry("MODEL_PROFILE_CREATE", saved, snapshot(saved)))
@@ -75,6 +81,7 @@ class ModelProfileService(
                 enabled = command.enabled,
                 now = clock.now(),
                 actor = user.actor,
+                runtime = command.runtime,
             ),
         )
         val changes = diff(existing, saved)
@@ -103,24 +110,52 @@ class ModelProfileService(
     }
 
     override fun test(id: ModelProfileId): ModelTestResult {
-        gate.require(EvaluationPermissions.MODELS_MANAGE)
-        return probe(load(id))
+        val user = gate.require(EvaluationPermissions.MODELS_MANAGE)
+        return probe(load(id), user.userId?.value)
     }
 
     override fun preflight(ids: List<ModelProfileId>): List<Pair<ModelProfile, ModelTestResult>> {
-        gate.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
         if (ids.size > MAX_PREFLIGHT) throw ValidationException("at most $MAX_PREFLIGHT models", "modelProfileIds")
-        return ids.distinct().map { id -> load(id).let { it to probe(it) } }
+        return ids.distinct().map { id -> load(id).let { it to probe(it, user.userId?.value) } }
     }
 
-    private fun probe(profile: ModelProfile): ModelTestResult {
+    private fun probe(profile: ModelProfile, userId: UUID?): ModelTestResult {
+        val result = if (profile.viaClaudeCodeLogin) loginCheck(userId) else callModel(profile)
+        audit.record(
+            entry("MODEL_TEST", profile, mapOf("model" to profile.ref.label, "ok" to result.ok, "latencyMs" to result.latencyMs, "error" to result.error))
+                .copy(result = if (result.ok) AuditResult.SUCCESS else AuditResult.FAILURE),
+        )
+        return result
+    }
+
+    /** ADR 0048: a Claude Code login model needs the caller's personal runner with their own login, online. */
+    private fun loginCheck(userId: UUID?): ModelTestResult {
+        val personal = runner?.executionTargets(userId)?.firstOrNull { it.target == RunnerTarget.PERSONAL }
+        val error = when {
+            personal == null || !personal.exists -> "you have no personal runner; set one up under My account, Claude Code login models run there"
+            !personal.localLogin -> "your personal runner does not use your own Claude Code login; switch its LLM credentials to Claude Code login under My account"
+            personal.onlineRunners == 0 -> "your personal runner is offline; start it before the benchmark"
+            else -> null
+        }
+        return ModelTestResult(
+            ok = error == null,
+            latencyMs = 0,
+            usage = TokenUsage.ZERO,
+            cost = Money.ZERO,
+            sample = if (error == null) "Claude Code with your own login on your personal runner; the model answers in the benchmark" else null,
+            error = error,
+        )
+    }
+
+    private fun callModel(profile: ModelProfile): ModelTestResult {
         val request = LlmRequest(
             messages = listOf(LlmMessage.user(TEST_PROMPT)),
             usageContext = UsageContext(kind = UsageKind.MODEL_TEST),
             optionsOverride = profile.ref.options.copy(maxOutputTokens = TEST_MAX_TOKENS),
         )
         val started = clock.now()
-        val result = try {
+        return try {
             val result = gateway.chat(profile.ref, request)
             ModelTestResult(
                 ok = true,
@@ -140,11 +175,6 @@ class ModelProfileService(
                 error = e.message ?: e.javaClass.simpleName,
             )
         }
-        audit.record(
-            entry("MODEL_TEST", profile, mapOf("model" to profile.ref.label, "ok" to result.ok, "latencyMs" to result.latencyMs, "error" to result.error))
-                .copy(result = if (result.ok) AuditResult.SUCCESS else AuditResult.FAILURE),
-        )
-        return result
     }
 
     private fun load(id: ModelProfileId): ModelProfile = profiles.findById(id) ?: throw NotFoundException("ModelProfile", id)
@@ -162,6 +192,7 @@ class ModelProfileService(
             "provider" to p.ref.provider.name,
             "connection" to p.ref.connection,
             "modelId" to p.ref.modelId,
+            "runtime" to p.runtime.name,
             "pricing" to pricing(p.pricing),
             "enabled" to p.enabled,
         )
@@ -172,6 +203,7 @@ class ModelProfileService(
             "provider" to (old.ref.provider.name to new.ref.provider.name),
             "connection" to (old.ref.connection to new.ref.connection),
             "modelId" to (old.ref.modelId to new.ref.modelId),
+            "runtime" to (old.runtime.name to new.runtime.name),
             "options" to (old.ref.options.toString() to new.ref.options.toString()),
             "pricing.inputPerMTok" to (old.pricing.inputPerMTok.toPlainString() to new.pricing.inputPerMTok.toPlainString()),
             "pricing.outputPerMTok" to (old.pricing.outputPerMTok.toPlainString() to new.pricing.outputPerMTok.toPlainString()),

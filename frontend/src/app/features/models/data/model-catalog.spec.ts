@@ -1,5 +1,15 @@
 import type { ProviderCatalogSection } from '../../../core/api/types';
-import { catalogKey, catalogRows, filterCatalog, profileFromCatalog } from './model-catalog';
+import {
+  catalogKey,
+  catalogRows,
+  filterCatalog,
+  isLoginProfile,
+  loginKey,
+  loginModels,
+  profileFromCatalog,
+  profileFromLogin,
+  profileKey,
+} from './model-catalog';
 
 describe('model catalog', () => {
   const sections: ProviderCatalogSection[] = [
@@ -47,5 +57,21 @@ describe('model catalog', () => {
     expect(profileFromCatalog(paid).notes).toBe('');
     expect(profileFromCatalog(env).notes).not.toBe('');
     expect(catalogKey('ANTHROPIC', null, 'claude-x')).toBe(env.key);
+  });
+
+  it('offers Claude Code login models as unbilled coding profiles (ADR 0048)', () => {
+    const models = loginModels();
+    expect(models.map((m) => m.alias)).toEqual(['opus', 'sonnet', 'haiku']);
+    const p = profileFromLogin(models[0]);
+    expect(p.id).toBeUndefined();
+    expect(p.runtime).toBe('CLAUDE_CODE_LOGIN');
+    expect(p.ref).toEqual({ provider: 'ANTHROPIC', modelId: 'opus', connection: null });
+    expect(p.pricing).toEqual({ inputPerMTok: 0, outputPerMTok: 0, currency: 'USD' });
+    expect(p.capabilities).toEqual(['CODING']);
+    expect(isLoginProfile(p)).toBe(true);
+    expect(isLoginProfile({ runtime: 'API' })).toBe(false);
+    expect(isLoginProfile({})).toBe(false);
+    expect(profileKey(p)).toBe(loginKey('opus'));
+    expect(profileKey({ ref: { provider: 'ANTHROPIC', modelId: 'opus', connection: null } })).toBe('env:ANTHROPIC|opus');
   });
 });

@@ -7,6 +7,7 @@ import pl.mos.backoffice.runner.application.port.out.Transactions
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.FleetTokens
+import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.platform.JobTokenScope
@@ -133,7 +134,8 @@ class AgentJobService(
     override fun executionTargets(userId: UUID?): List<ExecutionTarget> {
         val all = pools.findAll()
         val online = lifecycle.onlineRunnersByPool()
-        fun target(kind: RunnerTarget, of: List<RunnerPool>) = ExecutionTarget(kind, of.size, of.sumOf { online[it.id] ?: 0 })
+        fun target(kind: RunnerTarget, of: List<RunnerPool>) =
+            ExecutionTarget(kind, of.size, of.sumOf { online[it.id] ?: 0 }, of.any { it.llmCredentials == LlmCredentials.LOCAL_LOGIN })
         return listOf(target(RunnerTarget.SHARED, all.filterNot { it.personal })) +
             (userId?.let { owner -> listOf(target(RunnerTarget.PERSONAL, all.filter { it.ownerUserId == owner })) } ?: emptyList())
     }

@@ -47,5 +47,14 @@ export function connectionProblems(input: LlmProviderInput, otherKeys: readonly 
   if (url && !/^https?:\/\//.test(url)) out.push($localize`:@@models.providers.problem.urlFormat:The base URL must start with http:// or https://.`);
   if (creating && input.provider !== 'OLLAMA' && !input.apiKey?.trim())
     out.push($localize`:@@models.providers.problem.apiKey:Paste the API key of this provider.`);
+  if (isSubscriptionToken(input)) out.push(SUBSCRIPTION_TOKEN_PROBLEM());
   return out;
 }
+
+/** ADR 0048: a Claude subscription (OAuth) token pasted where an Anthropic API key belongs. */
+export function isSubscriptionToken(input: Pick<LlmProviderInput, 'provider' | 'apiKey'>): boolean {
+  return input.provider === 'ANTHROPIC' && !!input.apiKey?.trim().startsWith('sk-ant-oat');
+}
+
+const SUBSCRIPTION_TOKEN_PROBLEM = () =>
+  $localize`:@@models.providers.problem.subscriptionToken:This is a Claude Code subscription token, not an API key: the API does not accept it. Create an API key in the Anthropic Console, or use your subscription through a personal runner with Claude Code login (My account) and a "Claude Code (your login)" model.`;

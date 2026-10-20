@@ -270,6 +270,7 @@ class LlmProviderService(
     fun create(command: LlmProviderCommand): LlmProviderView {
         val actor = gate.require(MANAGE).actor
         val key = command.key.trim()
+        rejectSubscriptionToken(command)
         if (store.findAll().any { it.key == key }) throw ValidationException("a provider connection $key already exists", "key")
         val id = UUID.randomUUID()
         val now = clock.now()
@@ -289,6 +290,7 @@ class LlmProviderService(
         val existing = store.findById(id) ?: throw NotFoundException("LlmProviderConnection", id)
         if (command.key.trim() != existing.key) throw ValidationException("the key cannot change: model profiles refer to it", "key")
         if (command.provider != existing.provider) throw ValidationException("the provider type cannot change; add a new connection", "provider")
+        rejectSubscriptionToken(command)
         val newKey = command.apiKey?.trim()?.ifEmpty { null }
         val apiKey = when {
             newKey != null -> seal(id, newKey)
@@ -361,6 +363,20 @@ class LlmProviderService(
         return lister.list(endpoint.first, endpoint.second)
     }
 
+    /**
+     * ADR 0048: a Claude subscription token (`claude setup-token`, `sk-ant-oat...`) works only inside Claude Code; the API
+     * answers 401 "invalid x-api-key". Say so before it is stored.
+     */
+    private fun rejectSubscriptionToken(command: LlmProviderCommand) {
+        if (command.provider == Provider.ANTHROPIC && command.apiKey?.trim()?.startsWith(SUBSCRIPTION_TOKEN_PREFIX) == true) {
+            throw ValidationException(
+                "this is a Claude subscription token for Claude Code, not an API key: create an API key in the Anthropic Console, " +
+                    "or use your login through a personal runner and a Claude Code (your login) model profile",
+                "apiKey",
+            )
+        }
+    }
+
     private fun seal(id: UUID, apiKey: String): SealedValue {
         val v = vault?.takeIf { it.configured }
             ?: throw InvalidStateException("no secret key is configured on this server (BACKOFFICE_SECRETS_KEY): API keys cannot be stored")
@@ -379,5 +395,6 @@ class LlmProviderService(
         const val VIEW = "models.view"
         const val MANAGE = "admin.settings.manage"
         val CATALOG_TTL: Duration = Duration.ofMinutes(10)
+        const val SUBSCRIPTION_TOKEN_PREFIX = "sk-ant-oat"
     }
 }
