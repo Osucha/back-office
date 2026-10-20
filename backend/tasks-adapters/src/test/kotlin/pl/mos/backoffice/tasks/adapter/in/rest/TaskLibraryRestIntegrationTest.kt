@@ -127,12 +127,12 @@ class TaskLibraryRestIntegrationTest {
     @Test
     fun `resolve returns the merged built-in implementer with lineage, config and skills`() {
         assertThat(mvc.get().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.IMPLEMENT_CLAUDE_CODE}")).hasStatusOk().bodyJson().satisfies(
-            { assertThat(it).extractingPath("$.lineage").asArray().containsExactly(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_AGENT) },
+            { assertThat(it).extractingPath("$.lineage").asArray().containsExactly(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_CODING_AGENT, BuiltInLibrary.BASE_AGENT) },
             { assertThat(it).extractingPath("$.executor").isEqualTo("IMPLEMENT") },
             { assertThat(it).extractingPath("$.config.agent").isEqualTo("CLAUDE_CODE") },
             { assertThat(it).extractingPath("$.config.push").isEqualTo(true) },
-            { assertThat(it).extractingPath("$.config.mergeRequest.titleTemplate").isEqualTo("{{issue.key}}: {{issue.summary}}") },
-            { assertThat(it).extractingPath("$.skills[*].key").asArray().containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS, BuiltInLibrary.CONVENTIONAL_COMMITS) },
+            { assertThat(it).extractingPath("$.config.mergeRequestTitleTemplate").isEqualTo("{{issue.key}}: {{issue.summary}}") },
+            { assertThat(it).extractingPath("$.skills[*].key").asArray().containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS) },
             { assertThat(it).extractingPath("$.interfaces").asArray().containsExactly(BuiltInLibrary.IMPLEMENTER) },
             { assertThat(it).extractingPath("$.produces").asArray().containsExactly("diff", "mr") },
             { assertThat(it).extractingPath("$.ports").asArray().containsExactly("success", "failure") },

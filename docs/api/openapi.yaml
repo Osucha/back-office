@@ -4233,9 +4233,20 @@ components:
           nullable: true
           properties:
             url: { type: string }
-            baseRef: { type: string }
+            baseRef: { type: string, description: 'branch, tag or commit; pin a commit so every benchmark sees the same code' }
             setupCommand: { type: string, nullable: true }
             verifyCommand: { type: string }
+            acceptance:
+              type: object
+              nullable: true
+              description: >-
+                ADR 0047: checks after the agent. files (path -> content) are hidden from the agent and written only for
+                the verification (hidden tests, golden files); a tracked file matching protectedPaths (git pathspecs)
+                that differs from the base fails the verification; requireChanges fails an untouched work tree.
+              properties:
+                files: { type: object, additionalProperties: { type: string } }
+                protectedPaths: { type: array, items: { type: string } }
+                requireChanges: { type: boolean, default: true }
         timeoutSeconds: { type: integer, default: 900 }
         weight: { type: number, default: 1 }
     EvalTask:

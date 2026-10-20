@@ -200,6 +200,24 @@ data class RunnerJobSpec(
     val personalRunnerOf: UUID? = null,
     /** ADR 0044: the run workspace the job works in; null = a throwaway workspace (and a new agent session). */
     val workspace: RunnerWorkspace? = null,
+    /** ADR 0047: the commit subject; null = the runner derives it from the first prompt line (older behaviour). */
+    val commitSubject: String? = null,
+    /** ADR 0047: the Spec Kit command argument (feature description, feedback); null = the whole prompt. */
+    val featureDescription: String? = null,
+    /** ADR 0047: checks after the agent (coding benchmarks): hidden files for the verification, protected paths. */
+    val acceptance: RunnerAcceptance? = null,
+)
+
+/**
+ * ADR 0047: what a verification checks besides `verifyCommand`. After the agent the runner fails the verification when
+ * [requireChanges] and nothing changed, or when a tracked file matching [protectedPaths] (git pathspecs) differs from
+ * the base; then it writes [files] (path → content), runs `verifyCommand` and removes them again, so they reach
+ * neither the commit nor the diff.
+ */
+data class RunnerAcceptance(
+    val files: Map<String, String> = emptyMap(),
+    val protectedPaths: List<String> = emptyList(),
+    val requireChanges: Boolean = false,
 )
 
 enum class RunnerJobStatus { CREATED, RUNNING, SUCCEEDED, FAILED, TIMED_OUT, CANCELLED }

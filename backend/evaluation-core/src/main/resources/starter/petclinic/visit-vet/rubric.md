@@ -1,0 +1,4 @@
+- Schema and data (0-10): FK (and index) named in the style of each file, H2 drop order fixed, the three data.sql files consistent; mentions that existing MySQL/PostgreSQL databases created with CREATE TABLE IF NOT EXISTS will not get the new column without a manual migration.
+- Binding design (0-10): the vet is bound by id through a Formatter/Converter (or an equally clean mechanism) with empty -> null and unknown id -> field error, not ad-hoc parsing spread over the controller; the fetch strategy is chosen deliberately given open-in-view=false.
+- Tests (0-10): VisitControllerTests changes limited to new mocks/filters and new methods; the new tests assert the bound vet (e.g. captured saved owner or model errors), not only the status.
+- Hygiene and i18n (0-10): the vet key is actually translated in every messages file (not English copies), no hard-coded text, formatting applied, no unrelated changes.

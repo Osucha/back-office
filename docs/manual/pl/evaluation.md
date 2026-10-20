@@ -71,8 +71,9 @@ Zestaw zadań to praca, na której mierzy się modele: zgłoszenia, specyfikacje
 programistyczne takie jak Twoje. **Ewaluacja** (**Evaluation**) → **Zestawy zadań** (**Task suites**,
 `/evaluation/suites`) wyświetla je. Zestaw startowy **Starter: SDLC tasks** pokazuje strukturę; skopiuj
 go i zastąp treść własną pracą. Jego pięć zadań programistycznych działa na Spring PetClinic
-(`https://github.com/spring-projects/spring-petclinic`, przypięty commit, weryfikacja `./mvnw -B -q test` w około
-100 sekund), więc pierwszy benchmark działa bez własnego repozytorium.
+(`https://github.com/spring-projects/spring-petclinic`, przypięty commit, weryfikacja `./mvnw -B test` w około
+minutę) z ukrytymi testami akceptacyjnymi, więc pierwszy benchmark działa bez własnego repozytorium. Zadania
+startowe, których nie edytowałeś, są przy następnym uruchomieniu aktualizowane do bieżącej wersji.
 
 ### Kroki: tworzenie zestawu i dodawanie zadań
 
@@ -88,6 +89,10 @@ go i zastąp treść własną pracą. Jego pięć zadań programistycznych dzia�
      (**Repository**): **URL do klonowania** (**Clone URL**), **Bazowa referencja** (**Base ref**),
      **Polecenie przygotowania** (**Setup command**) i **Polecenie weryfikacji** (**Verify command**; kod
      wyjścia 0 oznacza zaliczenie). Agent pracuje na gałęzi, która nigdy nie jest wypychana.
+     **Sprawdzenia akceptacyjne (JSON)** (**Acceptance checks (JSON)**) są ukryte przed agentem: `files`
+     (ścieżka → treść, na przykład testy akceptacyjne) są zapisywane tylko na czas polecenia weryfikacji
+     i potem usuwane, `protectedPaths` (wzorce ścieżek git, np. `src/test/**`) muszą pozostać niezmienione,
+     a `requireChanges` oblewa przebieg, który niczego nie zmienił.
 4. W sekcji **Wykonanie** (**Execution**) ustaw **Limit czasu (sekundy)** (**Timeout (seconds)**)
    i **Wagę** (**Weight**; względna waga w agregatach zestawu).
 5. Sprawdź kartę **Podgląd** (**Preview**), a potem kliknij **Dodaj zadanie**.
@@ -99,16 +104,22 @@ Z menu strony zestawu użyj **Edytuj zestaw** (**Edit suite**) i **Usuń zestaw*
 
 - Nazwij od 3 do 5 kryteriów, każde oceniane w skali 0–10, z jednym zdaniem opisującym, jak wygląda 10.
 - Wprost umieść w kryteriach to, co odrzuciłbyś na przeglądzie, na przykład „bez nazw technologii”.
-- Podaj odpowiedź wzorcową, gdy zadanie ma znaną odpowiedź; model oceniający traktuje ją jako jedną z dobrych
-  odpowiedzi.
+- Podaj limity za decydujące błędy, na przykład „błędna przyczyna źródłowa ogranicza to kryterium do 3”.
+- Podaj odpowiedź wzorcową, gdy zadanie ma znaną odpowiedź. Model oceniający traktuje ją jako wiążącą co do
+  faktów (przyczyny, celowo wprowadzone błędy, reguły); inne sformułowania czy równie dobre projekty są w porządku.
 - Oceniaj tylko to, o co prosiły instrukcje.
 
 Dobre zestawy mają od 8 do 20 zadań z różnych kategorii i poziomów trudności, co najmniej dwa na
 kategorię. Zadania programistyczne wymagają repozytorium, które runner może sklonować, i polecenia
-weryfikacji, które przechodzi na bazowej referencji.
+weryfikacji, które przechodzi na bazowej referencji. Zadanie programistyczne bez ukrytych testów
+akceptacyjnych mierzy głównie, czy agent niczego nie zepsuł: napisz testy, które nie przechodzą na bazowej
+referencji i przechodzą z rozwiązaniem wzorcowym, i sprawdź oba przypadki przed dodaniem.
 
-**Punktacja.** Zadania typu prompt dostają ocenę modelu oceniającego (0–100) i są zaliczone od 70. Zadania
-programistyczne dostają `verification × (passed ? 100 : 0) + judge × judge score`, z wagami zestawu.
+**Punktacja.** Model oceniający ocenia każde kryterium w skali 0–10, najpierw uzasadnienie; ocena zadania to
+średnia × 10, liczona przez Back Office. Zadania typu prompt są zaliczone od 70. Zadania programistyczne
+dostają `verification × (passed ? 100 : 0) + judge × judge score` z wagami zestawu i są zaliczone tylko wtedy,
+gdy weryfikacja (razem z testami akceptacyjnymi) przeszła, a ocena wynosi co najmniej 70. Przy zadaniach
+programistycznych model oceniający czyta diff względem bazowej referencji, a nie tylko podsumowanie agenta.
 
 <a id="benchmarks"></a>
 ## Benchmarki
@@ -169,7 +180,7 @@ Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**At
 | Kolumna rankingu | Znaczenie |
 |---|---|
 | **Wynik** (**Score**) | Średnia ocena z udanych prób. |
-| **Odsetek zaliczonych** (**Pass rate**) | Udział zaliczonych prób (programistyczne: testy przechodzą; prompt: ocena 70 lub więcej). Próby nieudane i przekraczające czas liczą się jako niezaliczone. |
+| **Odsetek zaliczonych** (**Pass rate**) | Udział zaliczonych prób (programistyczne: weryfikacja i testy akceptacyjne przechodzą, a ocena wynosi co najmniej 70; prompt: ocena 70 lub więcej). Próby nieudane i przekraczające czas liczą się jako niezaliczone. |
 | **Średni koszt** (**Mean cost**), **Łącznie** (**Total**) | Koszt kandydata na próbę i ogółem. |
 | **Wynik / $** (**Score / $**) | Średni wynik na dolara średniego kosztu. |
 | **Czas p50 / p95** (**Time p50 / p95**) | Czas odpowiedzi samego kandydata (odpowiedź modelu albo zadanie agenta od zlecenia do wyniku), bez modelu oceniającego, kolejki i ponowień, z udanych prób: połowa była szybsza niż p50, 95% szybsze niż p95. Poniżej 20 prób p95 to po prostu najwolniejsza próba; podpowiedź mówi, z ilu prób policzono czasy. |

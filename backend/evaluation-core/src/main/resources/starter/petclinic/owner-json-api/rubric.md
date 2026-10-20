@@ -1,0 +1,4 @@
+- Design (0-10): a separate @RestController with request/response records in the owner package, reusing OwnerRepository; the entity is never bound from or serialized to JSON; problem handling is scoped to the API (e.g. @RestControllerAdvice(assignableTypes = ...)) so the HTML error handling is untouched.
+- Validation fidelity (0-10): the DTO constraints mirror Owner/Person exactly (NotBlank, Size 30/30/255/80, the 10-digit pattern reusing the existing {telephone.invalid} message); no rules re-implemented by hand in the controller.
+- Tests (0-10): the agent's own MockMvc tests cover 201 with Location and body, 400 with the errors member (telephone rule) and 404, asserting headers and content type, not only status codes.
+- Hygiene (0-10): small focused diff, existing tests and templates untouched, formatting applied, no debug output, no unused code or dependencies.

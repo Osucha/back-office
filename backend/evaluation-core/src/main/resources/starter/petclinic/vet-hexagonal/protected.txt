@@ -1,0 +1,14 @@
+src/test/java/org/springframework/samples/petclinic/MysqlTestApplication.java
+src/test/java/org/springframework/samples/petclinic/PetClinicConcurrencyTests.java
+src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java
+src/test/java/org/springframework/samples/petclinic/owner/OwnerControllerTests.java
+src/test/java/org/springframework/samples/petclinic/owner/OwnerTests.java
+src/test/java/org/springframework/samples/petclinic/owner/PetControllerTests.java
+src/test/java/org/springframework/samples/petclinic/owner/PetTypeFormatterTests.java
+src/test/java/org/springframework/samples/petclinic/owner/PetValidatorTests.java
+src/test/java/org/springframework/samples/petclinic/owner/VisitControllerTests.java
+src/test/java/org/springframework/samples/petclinic/service/EntityUtils.java
+src/test/java/org/springframework/samples/petclinic/system/CrashControllerIntegrationTests.java
+src/test/java/org/springframework/samples/petclinic/system/CrashControllerTests.java
+src/test/java/org/springframework/samples/petclinic/system/I18nPropertiesSyncTest.java
+src/test/java/org/springframework/samples/petclinic/system/WelcomeControllerTests.java

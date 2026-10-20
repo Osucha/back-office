@@ -29,8 +29,15 @@ object RunStateKeys {
     /** Pending CI signal delivered with `GraphInput.resume`; consumed by the WAIT_FOR_CI node. */
     const val CI = "ci"
     const val LAST_CI = "lastCi"
-    /** Appender channel of revision comments. */
+    /** Appender channel of all revision comments of the run (history; decision expressions read it as `feedback`). */
     const val FEEDBACK = "feedback"
+    /**
+     * Revision comments given since the last task step ran (list of strings): a gate's `revise` adds its comment, the
+     * next task step that completes consumes them (they move to [FEEDBACK_BY_NODE] under that step's node id).
+     */
+    const val PENDING_FEEDBACK = "pendingFeedback"
+    /** Map node id -> revision comments that step already received on earlier attempts (oldest first). */
+    const val FEEDBACK_BY_NODE = "feedbackByNode"
     /** `SUCCESS` / `FAILURE` set by an END node, or `FAILED` / `CANCELLED` set by the system nodes. */
     const val RUN_OUTCOME = "runOutcome"
     /** Map node id -> number of visits (loop guard). */
@@ -47,4 +54,26 @@ object RunStateKeys {
 
     /** Synthetic status of a CI signal injected by the timeout sweep. */
     const val CI_STATUS_TIMEOUT = "TIMEOUT"
+
+    /** Revision comments not yet consumed by a task step ([PENDING_FEEDBACK]). */
+    fun pendingFeedback(state: Map<String, Any?>): List<String> =
+        (state[PENDING_FEEDBACK] as? List<*>)?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) } ?: emptyList()
+
+    /** Revision comments the step [nodeId] received on earlier attempts ([FEEDBACK_BY_NODE]), oldest first. */
+    fun feedbackOf(state: Map<String, Any?>, nodeId: String): List<String> =
+        ((state[FEEDBACK_BY_NODE] as? Map<*, *>)?.get(nodeId) as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+
+    /**
+     * State updates that hand the pending feedback to the task step [nodeId] which just completed: the comments move
+     * to its entry of [FEEDBACK_BY_NODE] (so a retry of the same step still sees them) and the pending list is
+     * cleared. Empty when nothing is pending.
+     */
+    fun consumeFeedback(state: Map<String, Any?>, nodeId: String): Map<String, Any?> {
+        val pending = pendingFeedback(state)
+        if (pending.isEmpty()) return emptyMap()
+        val byNode = LinkedHashMap<String, Any?>()
+        (state[FEEDBACK_BY_NODE] as? Map<*, *>)?.forEach { (k, v) -> byNode[k.toString()] = v }
+        byNode[nodeId] = feedbackOf(state, nodeId) + pending
+        return mapOf(PENDING_FEEDBACK to null, FEEDBACK_BY_NODE to byNode)
+    }
 }

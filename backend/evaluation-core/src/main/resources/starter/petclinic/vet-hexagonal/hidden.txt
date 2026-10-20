@@ -1,0 +1,6 @@
+src/test/java/org/springframework/samples/petclinic/acceptance/VetHexagonalArchitectureAcceptanceTests.java
+src/test/java/org/springframework/samples/petclinic/acceptance/VetResourcesGoldenAcceptanceTests.java
+src/test/resources/acceptance/vets-page-1.html
+src/test/resources/acceptance/vets-page-2.html
+src/test/resources/acceptance/vets.json
+src/test/resources/acceptance/vets.xml

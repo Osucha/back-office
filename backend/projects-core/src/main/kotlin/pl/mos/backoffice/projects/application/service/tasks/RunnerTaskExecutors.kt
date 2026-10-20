@@ -232,6 +232,10 @@ class RunnerTaskSupport(
             specKit = specKit,
             personalRunnerOf = personalRunnerOf(context),
             workspace = workspace,
+            // ADR 0047: the commit subject and the Spec Kit argument never contain the system prompt or the notices
+            commitSubject = UntrustedText.sanitize(renderer.renderText(config.string("commitSubjectTemplate") ?: DEFAULT_COMMIT_SUBJECT, model), MAX_COMMIT_SUBJECT)
+                .lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotBlank() && !it.startsWith(":") },
+            featureDescription = user.text.takeIf { mode == RunnerMode.SPEC_KIT && it.isNotBlank() },
         )
         if (logWarnings) {
             workspace?.let { w ->
@@ -416,6 +420,9 @@ class RunnerTaskSupport(
         }
 
         const val DEFAULT_MR_TITLE = "{{issue.key}}: {{issue.summary}}"
+        /** ADR 0047: without an issue (blank) the runner falls back to the first prompt line. */
+        const val DEFAULT_COMMIT_SUBJECT = "{{issue.key}}: {{issue.summary}}"
+        const val MAX_COMMIT_SUBJECT = 100
         const val DEFAULT_MR_DESCRIPTION = "Implements {{issue.key}}.\n\nBack-Office-Run: {{run.id}}"
         val DEFAULT_COLLECT = listOf("specs/**/*.md", "REVIEW.md")
 

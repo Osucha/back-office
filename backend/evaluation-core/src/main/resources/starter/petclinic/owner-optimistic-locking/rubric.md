@@ -1,0 +1,4 @@
+- Reproduction test (0-10): a deterministic test of the lost update (two edits based on the same version) that would fail on the original code; no sleeps or timing races; it asserts the stored data, not only the view.
+- Fix design (0-10): @Version on Owner, the version travels through the hidden field, the optimistic-locking failure (e.g. ObjectOptimisticLockingFailureException) is caught in the controller and reported on the form; no hand-written read-compare-write that races; an empty or missing version does not lead to a 500.
+- Explanation (0-10): short, accurate comment on the strategy and its limits: adding a pet increments the owner's version (Owner owns the pets association), clients that omit the version are not protected, existing MySQL/PostgreSQL databases need a migration.
+- Hygiene (0-10): minimal consistent schema/data changes, the message key translated in every messages file, existing tests untouched, formatting applied.

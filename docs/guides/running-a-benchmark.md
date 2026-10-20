@@ -152,8 +152,9 @@ Requirements for the repository: the runner image can clone it (public, or crede
 integrations secret), `verifyCommand` is green on `baseRef`, and it finishes well inside
 `timeoutSeconds` (the agent needs most of the budget). `baseRef` may be a branch, a tag or a commit; pin a commit
 so every benchmark sees the same code. The seeded coding tasks run against Spring PetClinic
-(`https://github.com/spring-projects/spring-petclinic`, pinned commit, `./mvnw -B -q test`, about 100 seconds);
-suites seeded earlier with the placeholder `gitlab.example.com` repository get these tasks at the next start.
+(`https://github.com/spring-projects/spring-petclinic`, pinned commit, `./mvnw -B test`, about one minute warm) with hidden acceptance tests
+(`repository.acceptance`, ADR 0047); suites seeded earlier with the placeholder `gitlab.example.com` repository, and
+starter tasks nobody edited, get the current tasks at the next start.
 `POST /benchmarks/{id}/start` is refused with 409 when coding tasks are selected and no runner is
 available (`backoffice.runner.mode=DISABLED`).
 

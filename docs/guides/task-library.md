@@ -21,13 +21,13 @@ Keys match `^[a-z][a-z0-9-]{1,63}$`. Interfaces are unique by key; templates and
 `(key, scope)` where scope is `GLOBAL` or `PROJECT(projectId)`.
 
 The built-in library (seeded on startup, `backoffice.tasks.seed-builtin=true`) contains the abstract
-`base-agent`, the Spec Kit phases, `implement-opencode` / `implement-claude-code`, `clarify-spec`,
+`base-agent` with its variants `base-llm` (in-process LLM steps) and `base-coding-agent` (runner steps), the Spec Kit phases, `implement-opencode` / `implement-claude-code`, `clarify-spec`,
 `code-review`, `analyse-issue` and the Jira tasks, the interfaces `specifier`, `clarifier`, `planner`,
 `task-planner`, `implementer`, `reviewer`, `analyst`, `requirement-writer`, `change-analyst`, the SDLC
 templates of section 8 and twelve skills. Seeding is idempotent by key:
-edit built-ins freely, an edited entry is never overwritten (only a never-edited built-in receives later
-shipped skills and config); delete a non-built-in copy and restart to get the
-shipped version back. Built-in templates cannot be deleted, only shadowed.
+edit built-ins freely, an edited entry is never overwritten (a never-edited built-in template, skill or
+interface is replaced by the shipped version when its content checksum differs); delete a non-built-in
+copy and restart to get the shipped version back. Built-in templates cannot be deleted, only shadowed.
 
 The Jira tasks:
 
@@ -101,7 +101,7 @@ POST /api/v1/task-templates
   "skills": ["conventional-commits"],
   "consumes": ["diff"],
   "produces": ["changelog"],
-  "config": { "maxChunkLines": 800 },
+  "config": { "maxInputChars": 100000 },
   "tags": ["docs"]
 }
 ```
@@ -186,11 +186,11 @@ plus two fields the executor never sees:
 {
   "key": "implement-claude-code",
   "executor": "IMPLEMENT",
-  "lineage": ["implement-claude-code", "implement-opencode", "base-agent"],
+  "lineage": ["implement-claude-code", "implement-opencode", "base-coding-agent", "base-agent"],
   "interfaces": ["implementer"],
   "prompt": { "system": "You are an engineering agent ... {{project.constitution}} ...", "user": "Implement the work below ..." },
-  "skills": [ { "key": "conventional-commits", "name": "Conventional commits" } ],
-  "config": { "agent": "CLAUDE_CODE", "branchTemplate": "feature/{{issue.key | lower}}", "push": true, "mergeRequest": { "create": true, "titleTemplate": "{{issue.key}}: {{issue.summary}}", "draft": false } },
+  "skills": [ { "key": "agent-ground-rules", "name": "Agent ground rules" }, { "key": "ask-dont-guess", "name": "Ask, don't guess" } ],
+  "config": { "agent": "CLAUDE_CODE", "branchTemplate": "feature/{{issue.key | lower}}", "push": true, "mergeRequest": true, "mergeRequestTitleTemplate": "{{issue.key}}: {{issue.summary}}", "mergeRequestDraft": false },
   "produces": ["diff", "mr"],
   "consumes": [],
   "ports": ["success", "failure"],
@@ -230,28 +230,29 @@ one project should change.
 
 ## 8. SDLC templates and skills (ADR 0019)
 
-Every agent inherits two skills through `base-agent`: `agent-ground-rules` (propose changes as
-before/after, change only what was asked, a search hit outside the task is not a task, narrowest edit,
-re-read a file before claiming anything about it, stop and report contradictions) and `ask-dont-guess`
-(source hierarchy; `[?] question (owner, by date)` markers instead of guesses; TODO/TBD with a reason;
-append, do not rewrite; never touch status fields). Remove them on a template with
+Every agent inherits two skills through `base-agent`: `agent-ground-rules` (evidence, scope and safety:
+re-read a file before claiming anything about it, paths as evidence, a search hit outside the task is not
+a task, narrowest edit, report contradictions) and `ask-dont-guess` (source hierarchy; one open-question
+marker per context, `[NEEDS CLARIFICATION: ...]` in Spec Kit specs and `[?] question` elsewhere, never an
+invented owner or date; TODO/TBD with a reason; append, do not rewrite; never touch status fields). Remove them on a template with
 `removeSkills` if a task must not see them.
 
 | Template | Use it for | Output |
 |---|---|---|
 | `impact-analysis` | a change request arrives as an issue | JSON with description, business justification, impact on artefacts/components/new stories/specification, estimate, options, recommendation, open questions, `confidence` |
-| `write-user-story` | turn the issue into a story with falsifiable acceptance criteria ("System: 1. displays ..., 2. validates ...") | artefact `user-story` (JSON: `userStory` markdown, `openQuestions`, `confidence`) |
+| `write-user-story` | turn the issue into a story with falsifiable acceptance criteria ("System: 1. displays ..., 2. validates ...") | artefact `user-story` (the markdown of the schema field `user-story`; `openQuestions` and `confidence` in the answer) |
 | `write-use-case` | expand an accepted story into flows A, A1.., rules RB-xx, postconditions, permissions | artefact `use-case` |
 | `write-adr` | draft a decision record (status Proposed, at least two options) | artefact `adr` (markdown) |
 | `plan-task-list` | break the plan / story into tasks for an autonomous agent | artefact `tasks`: `[{title, description, verification, test_command, completed: false}]`, always ending with "reformat, lint, and test" |
-| `implement-task-list` | execute that list with TDD, one commit per task, stop on the first red `test_command` | `diff`, `mr`, `work-log.md` with a "Noticed out of scope" section |
+| `implement-task-list` | execute that list with TDD, stop on the first red `test_command` (the runner commits once; the work log ends with `RESULT: GREEN` or `RESULT: STOPPED at <task>`, which `verifyCommand` checks) | `diff`, `mr`, artefact `work-log` with a "Noticed out of scope" section |
 | `review-against-spec` | review the diff against story, spec and task list | `review` with per-requirement coverage (MET/PARTIAL/MISSING) plus findings |
 
 Skills used by these templates: `definition-of-ready-done`, `user-story-format`, `use-case-format`,
 `adr-format`, `build-guardrails`. A human gate after `write-user-story` or `plan-task-list` with a DoR
 checklist (ADR 0017) is the usual way to stop a run on low `confidence`. The "Change request (delta)"
-workflow template chains `impact-analysis` → `write-user-story` → `plan-task-list` →
-`implement-task-list`.
+workflow template chains `fetch-issue` → `impact-analysis` → `write-user-story` → `plan-task-list` (which
+reads the approved impact analysis) → `implement-task-list`; after the AI review the rework prompt carries
+the `review` artefact.
 
 ## Where to look when it fails
 
@@ -259,7 +260,7 @@ workflow template chains `impact-analysis` → `write-user-story` → `plan-task
 |---|---|
 | `403` on a library call | the caller lacks the permission of the table in section 1 ("Who may do what"); the audit log has an `ACCESS_DENIED` row with the permission |
 | a project member does not see global templates | they hold `project.view` on the project but not `library.view` (normally granted by the SYSTEM `member` role) |
-| `base-agent` on an old installation lacks the ground rules | it was edited (version > 1), so the seed leaves it alone; add `agent-ground-rules` and `ask-dont-guess` to its `skills` by hand |
+| a built-in on an old installation does not get the shipped changes | it was edited (version > 1, or saved by a person), so the seed leaves it alone; compare it with a fresh installation and copy the changes by hand |
 | `400` on save with `executor: required on a concrete template` | the parent chain has no executor: set one on the template or mark it `abstract` |
 | `400` with `extendsKey: inheritance cycle ...` | the message prints the chain; break it at the template you are saving |
 | `400` with `outputSchema: not well-formed JSON at offset N` | the schema is checked as raw JSON; escape quotes when sending it as a string |

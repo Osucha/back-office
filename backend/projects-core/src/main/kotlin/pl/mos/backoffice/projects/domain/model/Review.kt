@@ -16,7 +16,17 @@ data class Finding(
     val suggestion: String? = null,
 )
 
-/** Result of a review task (`code-review` template): stored on the run and copied to the CI execution. */
+/** How far a change covers one agreed requirement (acceptance criterion, task verification) in a review against the specification. */
+enum class CoverageStatus { MET, PARTIAL, MISSING, NOT_APPLICABLE }
+
+/** One row of the coverage matrix of `review-against-spec`: the requirement, its status and the evidence (file and line). */
+data class RequirementCoverage(val requirement: String, val status: CoverageStatus, val evidence: String = "")
+
+/**
+ * Result of a review task (`code-review`, `review-against-spec`): stored on the run and copied to the CI execution.
+ * [coverage] is the requirement coverage matrix of a review against the specification (empty for a plain code review);
+ * it is part of the `review` artefact (markdown) but not of the stored run review.
+ */
 data class ReviewReport(
     val verdict: Verdict,
     val score: Int,
@@ -25,9 +35,13 @@ data class ReviewReport(
     val modelRef: ModelRef? = null,
     val usage: TokenUsage = TokenUsage.ZERO,
     val cost: Money = Money.ZERO,
+    val coverage: List<RequirementCoverage> = emptyList(),
 ) {
     val blockers: Int get() = findings.count { it.severity == Severity.BLOCKER }
     val majors: Int get() = findings.count { it.severity == Severity.MAJOR }
+
+    /** Agreed requirements the change does not implement at all; any of them means REQUEST_CHANGES. */
+    val missingRequirements: Int get() = coverage.count { it.status == CoverageStatus.MISSING }
 
     /**
      * A deterministic guard (prompt-injection markers, an invalid model answer) took the decision away from
@@ -44,6 +58,7 @@ data class ReviewReport(
         "majors" to majors,
         "findings" to findings.size,
         "humanReviewRequired" to humanReviewRequired,
+        "missingRequirements" to missingRequirements,
     )
 
     /** Markdown rendering used as the `review` artefact and printed by the CI job. */
@@ -58,7 +73,19 @@ data class ReviewReport(
             appendLine(summary)
             appendLine()
         }
+        if (coverage.isNotEmpty()) {
+            appendLine("### Requirement coverage" + if (missingRequirements > 0) " ($missingRequirements missing)" else "")
+            appendLine()
+            appendLine("| Requirement | Status | Evidence |")
+            appendLine("|---|---|---|")
+            coverage.forEach { c -> appendLine("| ${cell(c.requirement)} | ${c.status} | ${cell(c.evidence)} |") }
+            appendLine()
+        }
         if (findings.isNotEmpty()) {
+            if (coverage.isNotEmpty()) {
+                appendLine("### Findings")
+                appendLine()
+            }
             appendLine("| Severity | File | Line | Finding |")
             appendLine("|---|---|---|---|")
             findings.sortedBy { it.severity.ordinal }.forEach { f ->
@@ -67,6 +94,8 @@ data class ReviewReport(
             }
         }
     }
+
+    private fun cell(text: String): String = text.replace("|", "\\|").replace("\n", " ")
 
     companion object {
         /** Title prefix of findings raised by a deterministic guard rather than by the model. */

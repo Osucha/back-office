@@ -44,21 +44,23 @@ conventions of ADR 0019 `RequirementWriter` (`requirement-writer`; in: `issue`; 
 `user-story`) and `ChangeAnalyst` (`change-analyst`; in: `issue`; out: artefact `impact-analysis`, state
 `confidence`).
 
-Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-two in total, the fifteen below plus the
+Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-four in total, the seventeen below plus the
 seven SDLC templates):
 
 | Key | extends | implements | executor |
 |---|---|---|---|
-| `base-agent` (abstract) | — | — | — (system prompt: role, constitution placeholder, honesty and scope rules; skills `agent-ground-rules`, `ask-dont-guess`, inherited by every agent) |
-| `fetch-issue` | — | — | `FETCH_ISSUE` |
-| `spec-kit-specify` | `base-agent` | `Specifier` | `SPEC_KIT` (phase SPECIFY) |
-| `clarify-spec` | `base-agent` | `Clarifier` | `LLM` (schema with `confidence`, `questions[]`) |
-| `spec-kit-plan` | `base-agent` | `Planner` | `SPEC_KIT` (PLAN) |
-| `spec-kit-tasks` | `base-agent` | `TaskPlanner` | `SPEC_KIT` (TASKS) |
-| `implement-opencode` | `base-agent` | `Implementer` | `IMPLEMENT` (agent OPENCODE, push, MR push options, verifyCommand from config) |
+| `base-agent` (abstract) | — | — | — (short shared system prompt: role, constitution placeholder, honesty, scope and safety rules; skills `agent-ground-rules`, `ask-dont-guess`, inherited by every agent) |
+| `base-llm` (abstract) | `base-agent` | — | — (in-process LLM steps: no repository and no tools; with an output schema the answer is one JSON object, uncertainty goes into its fields) |
+| `base-coding-agent` (abstract) | `base-agent` | — | — (runner steps: work in the repository clone, file paths as evidence, never commit or push (the runner commits), never disable tests, skills are named in the task) |
+| `fetch-issue` | — | — | `FETCH_ISSUE` (summary, description, acceptance criteria, labels; no comments or attachments, no config) |
+| `spec-kit-specify` | `base-coding-agent` | `Specifier` | `SPEC_KIT` (phase SPECIFY; user prompt starts with `KEY: summary`, the issue text and acceptance criteria, then the instructions) |
+| `clarify-spec` | `base-llm` | `Clarifier` | `LLM` (schema with `confidence`, `clarifications` as markdown, `summary`) |
+| `spec-kit-plan` | `base-coding-agent` | `Planner` | `SPEC_KIT` (PLAN; the spec is read from the repository, the prompt carries feedback and the optional run parameter `techHints`) |
+| `spec-kit-tasks` | `base-coding-agent` | `TaskPlanner` | `SPEC_KIT` (TASKS; the plan is read from the repository) |
+| `implement-opencode` | `base-coding-agent` | `Implementer` | `IMPLEMENT` (agent OPENCODE, push, MR push options from `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`; `verifyCommand` from config, none by default; on a rework the prompt carries the latest `review` artefact) |
 | `implement-claude-code` | `implement-opencode` | — | `IMPLEMENT` (agent CLAUDE_CODE) |
-| `code-review` | `base-agent` | `Reviewer` | `LLM` (findings schema, chunked diff) |
-| `analyse-issue` | `base-agent` | `Analyst` | `LLM` |
+| `code-review` | `base-llm` | `Reviewer` | `LLM` (findings schema; instructions before the data, the diff last; the issue or, in CI runs, the merge request title and description as context; one call, no chunking) |
+| `analyse-issue` | `base-llm` | `Analyst` | `LLM` (the whole JSON answer is the `analysis` artefact) |
 | `llm-task` | — | — | `LLM` (generic task for any LLM work, ADR 0034: the prompt is written per node with the override "replace prompt", the run parameter `input` reaches the model as a data block, revision feedback is appended; used by the starter workflow **LLM task with review** of projects without a repository) |
 | `agent-task` | — | — | `IMPLEMENT` (generic coding-agent task: the prompt is written per node with "replace prompt"; issue, run parameter `input` and feedback are in the system prompt; agent CLAUDE_CODE, `push` false by default, true for a branch and merge request; `repositoryOptional`: in a project without repositories an empty workspace, the final answer becomes the `result` artefact; skills `agent-ground-rules`, `ask-dont-guess`) |
 | `prepare-workspace` | — | — | `IMPLEMENT` (ADR 0044: `prepareOnly`, `workspace` = `main`: clones the step's repositories and sources into the run workspace and runs `setupCommand`; no agent, never pushes) |
@@ -76,35 +78,41 @@ SDLC templates (ADR 0019, derived from a reference SDLC framework, written in En
 
 | Key | extends | implements | executor | consumes → produces | skills (besides the inherited ground rules) |
 |---|---|---|---|---|---|
-| `write-user-story` | `base-agent` | `RequirementWriter` | `LLM`, schema `userStory`, `openQuestions[]`, `confidence` (confidenceField) | `issue` → `user-story`, `confidence` | `user-story-format`, `ask-dont-guess`, `definition-of-ready-done` |
-| `write-use-case` | `base-agent` | — | `LLM`, schema `useCase`, `openQuestions[]`, `confidence` | `user-story` → `use-case`, `confidence` | `use-case-format`, `definition-of-ready-done` |
-| `write-adr` | `base-agent` | — | `LLM`, schema `adr`, `options[]`, `decision`, `openQuestions[]`, `confidence` | `issue` (+ `analysis`) → `adr`, `confidence` | `adr-format`, `definition-of-ready-done` |
-| `impact-analysis` | `base-agent` | `ChangeAnalyst` | `LLM`, CR sections: description, business justification, impact (artefacts, components, new stories, specification), estimate, options, recommendation, `openQuestions[]`, `confidence` | `issue` → `impact-analysis`, `confidence` | `definition-of-ready-done` |
-| `plan-task-list` | `base-agent` | `TaskPlanner` | `LLM`, schema `tasks[] {title, description, verification, test_command, completed: false}` + `finalTaskTitle` enum `reformat, lint, and test` | `plan`, `issue` (+ `user-story`) → `tasks` | `definition-of-ready-done`, `build-guardrails` |
-| `implement-task-list` | `implement-opencode` | (`Implementer`, inherited) | `IMPLEMENT`; user prompt replaced: tasks in order with TDD, run each `test_command`, stop on the first red verification, work log in `work-log.md` (collected), "Noticed out of scope" list without fixes | `tasks` → `diff`, `mr`, `work-log` | `build-guardrails`, `definition-of-ready-done` |
-| `review-against-spec` | `base-agent` | `Reviewer` | `LLM`, review schema plus `coverage[] {requirement, status MET/PARTIAL/MISSING/NOT_APPLICABLE, evidence}` | `diff`, `user-story`, `tasks` → `review` | `definition-of-ready-done`, `security-review-checklist` |
+| `write-user-story` | `base-llm` | `RequirementWriter` | `LLM`, schema `user-story`, `openQuestions[]`, `confidence` (confidenceField) | `issue` → `user-story`, `confidence` | `user-story-format`, `definition-of-ready-done` |
+| `write-use-case` | `base-llm` | — | `LLM`, schema `use-case`, `openQuestions[]`, `confidence` | `user-story` → `use-case`, `confidence` | `use-case-format`, `definition-of-ready-done` |
+| `write-adr` | `base-llm` | — | `LLM`, schema `adr`, `options[]`, `decision`, `openQuestions[]`, `confidence` | `issue` (+ `analysis`) → `adr`, `confidence` | `adr-format`, `definition-of-ready-done` |
+| `impact-analysis` | `base-llm` | `ChangeAnalyst` | `LLM`, CR sections: description, business justification, impact (artefacts, components, new stories, specification), estimate, options, recommendation, `openQuestions[]`, `confidence` | `issue` → `impact-analysis`, `confidence` | `definition-of-ready-done` |
+| `plan-task-list` | `base-llm` | `TaskPlanner` | `LLM`, schema `tasks[] {title, description, verification, test_command, completed: false}` + `finalTaskTitle` enum `reformat, lint, and test` | `plan`, `issue` (+ `impact-analysis`, `user-story`) → `tasks` | `definition-of-ready-done`, `build-guardrails` |
+| `implement-task-list` | `implement-opencode` | (`Implementer`, inherited) | `IMPLEMENT`; user prompt replaced: tasks in order with TDD, run each `test_command`, stop on the first red verification, no commits by the agent, work log in `work-log.md` (collected as `work-log`, kept out of the commit) ending with `RESULT: GREEN` or `RESULT: STOPPED at <task>`, which `verifyCommand` checks; "Noticed out of scope" list without fixes | `tasks` → `diff`, `mr`, `work-log` | `definition-of-ready-done` |
+| `review-against-spec` | `base-llm` | `Reviewer` | `LLM`, review schema plus `coverage[] {requirement, status MET/PARTIAL/MISSING/NOT_APPLICABLE, evidence}`; the matrix stays in the `review` artefact and a MISSING requirement makes `ReviewVerdictPolicy` return REQUEST_CHANGES | `diff`, `user-story`, `tasks` → `review` | `definition-of-ready-done`, `security-review-checklist` |
 
 The LLM executor turns a structured field into an artefact only when the field name equals the
-`produces` name; `write-user-story`, `write-use-case` and `impact-analysis` therefore store their whole
-JSON answer (document plus open questions and confidence) as the artefact, `write-adr` stores the
-markdown of `adr` and `plan-task-list` stores the `tasks` array.
+`produces` name, so the schemas name their document fields like the artefacts: `write-user-story`,
+`write-use-case` and `write-adr` store the markdown of `user-story`, `use-case` and `adr`, `clarify-spec`
+the markdown `clarifications` and `plan-task-list` the `tasks` array; `analyse-issue` and
+`impact-analysis` store their whole JSON answer on purpose. A seed test checks that every `produces` name
+of every built-in template is a schema field, a collected file (`work-log.md` becomes `work-log`) or an
+output of its executor.
 
 Skills: `spec-writing`, `kotlin-hexagonal`, `conventional-commits`, `security-review-checklist`,
-`angular-ng-zorro`, and the SDLC skills `agent-ground-rules` (edit protocol: before/after proposal,
-only what was asked, a grep hit outside scope is not a task, narrowest edit, re-read before claiming,
-stop on contradictions), `ask-dont-guess` (source hierarchy, `[?]` markers with owner and date,
-TODO/TBD with a reason, append not rewrite, never change status fields), `definition-of-ready-done`
+`angular-ng-zorro` (the last two describe the Back Office stack and are examples), and the SDLC skills
+`agent-ground-rules` (evidence, scope and safety: re-read before claiming, paths as evidence, a hit
+outside scope is not a task, narrowest edit, report contradictions), `ask-dont-guess` (source hierarchy,
+one open-question marker per context: `[NEEDS CLARIFICATION: ...]` in Spec Kit specs, `[?]` elsewhere,
+no invented owner or date, TODO/TBD with a reason, append not rewrite, never change status fields), `definition-of-ready-done`
 (binary DoR/DoD per user story, use case, ADR, implementation task and release; failing DoR returns to
 the author; exceptions only with a recorded decision; "DoD by vibe"), `user-story-format`,
 `use-case-format`, `adr-format` and `build-guardrails` (IDs `GR-A/S/Q/D`, a rule the build does not
 enforce does not exist, every rule has a negative test). Each is a SKILL.md with a frontmatter
-`name`/`description` and concrete rules.
+`name`/`description` ("Use when ...") and concrete rules; the prompts of the runner templates name the
+skills to apply.
 
-Seeding is idempotent by key. Entries that exist are not overwritten; the one exception is a built-in
-template nobody edited (version 1, saved by the system), which receives skills later added to its
-shipped definition and the shipped `config` when it changed, so older installations get the ground rules
-on `base-agent` and the corrected `notify-jira` / `transition-issue` config (`templatesUpgraded` in the
-startup log).
+Seeding is idempotent by key. A built-in template, skill or interface nobody edited (saved by the system
+or before actor stamps existed, and for templates still version 1) is replaced by the shipped definition
+when their content checksums differ; the checksum covers every editable field and normalises what the
+database changes (null config values, key order, number types), so an unchanged entry is not rewritten on
+every start. Edited entries and non-built-in copies are never overwritten (`templatesUpgraded`,
+`skillsUpgraded`, `interfacesUpgraded` in the startup log).
 
 ## Access and audit (ADR 0017, 0018)
 

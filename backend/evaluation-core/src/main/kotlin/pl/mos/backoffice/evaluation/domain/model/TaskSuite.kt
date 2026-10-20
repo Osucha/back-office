@@ -15,12 +15,40 @@ enum class TaskKind { PROMPT, CODING_JOB }
 
 private const val MUST_NOT_BE_BLANK = "must not be blank"
 
+/**
+ * ADR 0047: what decides whether a coding task was done, beyond the repository's own build: [files] the agent never
+ * sees (hidden tests, golden files; written only for the verification), [protectedPaths] it must not change (git
+ * pathspecs, e.g. the existing tests) and [requireChanges] (an untouched work tree fails).
+ */
+data class TaskAcceptance(
+    val files: Map<String, String> = emptyMap(),
+    val protectedPaths: List<String> = emptyList(),
+    val requireChanges: Boolean = true,
+) {
+    init {
+        val errors = mutableListOf<ValidationException.FieldError>()
+        if (files.size > MAX_FILES) errors += ValidationException.FieldError("repository.acceptance.files", "at most $MAX_FILES files")
+        files.keys.forEach { path ->
+            val parts = path.replace('\\', '/').split('/').filter { it.isNotEmpty() && it != "." }
+            if (parts.isEmpty() || path.startsWith("/") || ".." in parts || parts.first() == ".git" || ':' in parts.first()) {
+                errors += ValidationException.FieldError("repository.acceptance.files", "$path must be a relative path inside the repository")
+            }
+        }
+        if (errors.isNotEmpty()) throw ValidationException(errors)
+    }
+
+    companion object {
+        const val MAX_FILES = 50
+    }
+}
+
 /** Repository a `CODING_JOB` task is executed against. */
 data class TaskRepository(
     val url: String,
     val baseRef: String = "main",
     val verifyCommand: String,
     val setupCommand: String? = null,
+    val acceptance: TaskAcceptance? = null,
 ) {
     init {
         val errors = mutableListOf<ValidationException.FieldError>()

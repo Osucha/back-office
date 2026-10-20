@@ -64,7 +64,8 @@ A task suite is the work models are measured on: your kind of tickets, specs, re
 **Evaluation** → **Task suites** (`/evaluation/suites`) lists them. A starter suite, **Starter: SDLC
 tasks**, shows the shape; copy it and replace the content with your own work. Its five coding tasks run against
 Spring PetClinic (`https://github.com/spring-projects/spring-petclinic`, pinned to one commit, verified with
-`./mvnw -B -q test` in about 100 seconds), so a first benchmark works without your own repository.
+`./mvnw -B test` in about a minute) with hidden acceptance tests, so a first benchmark works without your own
+repository. Starter tasks you have not edited are updated to the current version at the next start.
 
 ### Steps: create a suite and add tasks
 
@@ -76,7 +77,10 @@ Spring PetClinic (`https://github.com/spring-projects/spring-petclinic`, pinned 
      scores the answer against the **Rubric (markdown)** and an optional **Reference answer**.
    - **Coding job**: runs in an agent job. Set the **Repository**: **Clone URL**, **Base ref**, **Setup
      command** and **Verify command** (exit code 0 means passed). The agent works on a branch that is
-     never pushed.
+     never pushed. **Acceptance checks (JSON)** are hidden from the agent: `files` (path → content, for
+     example acceptance tests) are written only for the verify command and removed afterwards,
+     `protectedPaths` (git pathspecs such as `src/test/**`) must stay unchanged, and `requireChanges` fails
+     a run that changed nothing.
 4. Under **Execution**, set **Timeout (seconds)** and **Weight** (relative weight in suite aggregates).
 5. Check the **Preview** tab, then click **Add task**.
 
@@ -87,14 +91,21 @@ benchmark for it.
 
 - Name 3 to 5 criteria, each scored 0–10, with one line saying what a 10 looks like.
 - Put what you would reject in a review into the rubric explicitly, for example "no technology names".
-- Give a reference answer when the task has a known answer; the judge treats it as one good answer.
+- State caps for decisive mistakes, for example "a wrong root cause caps this criterion at 3".
+- Give a reference answer when the task has a known answer. The judge takes it as authoritative on facts
+  (root causes, planted defects, rules); other wording or equally valid designs are fine.
 - Grade only what the instructions asked for.
 
 Good suites have 8 to 20 tasks across categories and difficulties, at least two per category. Coding
-tasks need a repository the runner can clone and a verify command that is green on the base ref.
+tasks need a repository the runner can clone and a verify command that is green on the base ref. A coding
+task without hidden acceptance tests mostly measures whether the agent broke nothing: write tests that
+fail on the base ref and pass with a reference solution, and check both before you add them.
 
-**Scoring.** Prompt tasks get the judge's score (0–100) and pass at 70. Coding jobs score
-`verification × (passed ? 100 : 0) + judge × judge score`, with the suite's weights.
+**Scoring.** The judge scores each rubric criterion 0–10, evidence first; the task score is the mean × 10,
+computed by Back Office. Prompt tasks pass at 70. Coding jobs score
+`verification × (passed ? 100 : 0) + judge × judge score` with the suite's weights, and pass only when the
+verification (including the acceptance checks) passed and the score is 70 or more. For coding jobs the
+judge reads the diff against the base ref, not the agent's summary alone.
 
 <a id="benchmarks"></a>
 ## Benchmarks
@@ -148,7 +159,7 @@ The benchmark page has the tabs **Leaderboard** and **Attempts · N**.
 | Leaderboard column | Meaning |
 |---|---|
 | **Score** | Mean judge score over successful attempts. |
-| **Pass rate** | Share of attempts that passed (coding: tests green; prompt: score of 70 or more). Failed and timed-out attempts count as not passed. |
+| **Pass rate** | Share of attempts that passed (coding: verification and acceptance checks green and a score of 70 or more; prompt: score of 70 or more). Failed and timed-out attempts count as not passed. |
 | **Mean cost**, **Total** | Candidate cost per attempt and overall. |
 | **Score / $** | Mean score per dollar of mean cost. |
 | **Time p50 / p95** | The candidate's own response time (the model's answer, or the agent job from submission to result), without the judge, queueing or retries, over succeeded attempts: half of them were faster than p50, 95% faster than p95. Below 20 attempts p95 is simply the slowest one; the tooltip says how many attempts the times come from. |

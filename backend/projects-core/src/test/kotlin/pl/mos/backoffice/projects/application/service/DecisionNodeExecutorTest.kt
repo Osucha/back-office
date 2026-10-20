@@ -77,6 +77,7 @@ class DecisionNodeExecutorTest {
         val revise = HumanGateNodeExecutor().execute(context(gate, mapOf(RunStateKeys.DECISION to mapOf("option" to "REVISE", "comment" to "more detail"))))
         assertThat(revise.port).isEqualTo("revise")
         assertThat(revise.stateUpdates[RunStateKeys.FEEDBACK]).isEqualTo(listOf("[Spec ok?] more detail"))
+        assertThat(revise.stateUpdates[RunStateKeys.PENDING_FEEDBACK]).describedAs("only the next task step receives it").isEqualTo(listOf("[Spec ok?] more detail"))
         assertThat(revise.stateUpdates[RunStateKeys.DECISION]).isNull()
         assertThat(HumanGateNodeExecutor().execute(context(gate, mapOf(RunStateKeys.DECISION to mapOf("option" to "timeout")))).port).isEqualTo("timeout")
         assertThat(HumanGateNodeExecutor().execute(context(gate, emptyMap())).failed).isTrue()

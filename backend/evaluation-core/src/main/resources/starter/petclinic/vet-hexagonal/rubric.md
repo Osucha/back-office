@@ -1,0 +1,4 @@
+- Layering quality (0-10): ports are small interfaces owned by the application layer; the service is framework-free and wired in an adapter/config class; the domain is immutable and meaningful (e.g. records with sorted specialties), without JPA leftovers.
+- Mapping and craft (0-10): small explicit mappers at both adapter boundaries; JPA entities never leave the persistence adapter; wire-format concerns (Jackson/JAXB, `new`, `nrOfSpecialties`) live in the web representations; reviewable diff (git moves rather than rewrites where possible).
+- ArchUnit test (0-10): the agent's own rules are meaningful (domain purity, dependency direction, controller -> inbound port only, entities in the persistence adapter) and would fail on the original structure.
+- Test discipline (0-10): changes to existing tests limited to imports, package moves, renamed types, mock targets and fixtures; no assertion weakened or removed; caching kept deliberately and explained.

@@ -89,9 +89,22 @@ class WorkflowValidatorTest {
         }
         val change = DefaultWorkflows.changeRequest(project.id, Fixtures.now)
         assertThat(change.nodes.filterIsInstance<WorkflowNode.Task>().map { it.task.templateKey })
-            .containsExactly("impact-analysis", "write-user-story", "plan-task-list", "implement-task-list", "code-review")
+            .containsExactly("fetch-issue", "impact-analysis", "write-user-story", "plan-task-list", "implement-task-list", "code-review")
         assertThat((change.requireNode("task-list-gate") as WorkflowNode.HumanGate).gate.checklist.map { it.text })
             .containsExactly("Every task has verification and test_command", "The last task is reformat, lint, and test")
+    }
+
+    @Test
+    fun `the change request starts by fetching the issue, its task-list gate shows the tasks artefact and the review loops back to implement`() {
+        val change = DefaultWorkflows.changeRequest(Fixtures.project().id, Fixtures.now)
+        val graph = WorkflowGraph(change.nodes, change.edges)
+        assertThat(change.edges.single { it.from == "start" }.to).isEqualTo("fetch-issue")
+        assertThat(change.edges.single { it.from == "fetch-issue" && it.fromPort == WorkflowNode.PORT_SUCCESS }.to).isEqualTo("impact-analysis")
+        assertThat((change.requireNode("task-list-gate") as WorkflowNode.HumanGate).gate.showArtifacts).containsExactly("user-story", "tasks")
+        assertThat(change.edges.single { it.from == "verdict" && it.fromPort == "changes" }.to).isEqualTo("implement")
+        assertThat(change.edges.map { it.id }).doesNotHaveDuplicates()
+        assertThat(graph.nodesOnCycles()).contains("implement", "code-review", "verdict")
+        assertThat(errorsOf(validator.validate(change.name, change.nodes, change.edges, triggers = change.triggers))).isEmpty()
     }
 
     @Test

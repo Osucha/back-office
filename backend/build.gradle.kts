@@ -160,6 +160,8 @@ sonar {
             listOf(
                 "**/build/**",
                 "**/node_modules/**",
+                // starter benchmark fixtures (ADR 0047): PetClinic acceptance tests run in the runner, not here
+                "**/src/main/resources/starter/**",
                 "**/.angular/**",
                 "frontend/src/**/*.spec.ts",
                 "frontend/src/test-setup.ts",

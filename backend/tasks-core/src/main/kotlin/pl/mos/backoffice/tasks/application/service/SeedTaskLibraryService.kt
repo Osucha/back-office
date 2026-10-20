@@ -1,6 +1,7 @@
 package pl.mos.backoffice.tasks.application.service
 
 import pl.mos.backoffice.shared.Clock
+import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
@@ -9,13 +10,22 @@ import pl.mos.backoffice.tasks.application.port.out.SkillRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskInterfaceRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.domain.model.Scope
+import pl.mos.backoffice.tasks.domain.model.Skill
+import pl.mos.backoffice.tasks.domain.model.TaskInterface
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 
 /**
- * Creates the built-in library ([BuiltInLibrary]) entry by entry, skipping every key that already exists
- * in the `GLOBAL` scope. Existing entries are never overwritten, so the owner's edits survive restarts
- * and upgrades; deleting a non-built-in copy and restarting restores the shipped version. Seeded entries
- * are stamped `updatedBy = system`.
+ * Creates the built-in library ([BuiltInLibrary]) entry by entry in the `GLOBAL` scope and keeps the entries nobody
+ * edited in line with the shipped definition. Seeded entries are stamped `updatedBy = system`.
+ *
+ * - A missing key is created (deleting a non-built-in copy and restarting restores the shipped version).
+ * - A stored built-in the owner never edited is upgraded when its content checksum ([BuiltInChecksum], over every
+ *   editable field, with null config values normalised) differs from the shipped one: templates, skills and
+ *   interfaces alike. Identity, version and creation time stay.
+ * - An entry a person edited, or one that is not built-in, is never touched.
+ *
+ * "Never edited" follows the audit stamps: built-in, last saved by the system (or by nobody, rows older than the
+ * actor stamps) and, for templates, still version 1 (every save through the API bumps the version).
  */
 class SeedTaskLibraryService(
     private val interfaces: TaskInterfaceRepository,
@@ -28,38 +38,50 @@ class SeedTaskLibraryService(
     override fun seed(): SeedResult {
         val now = clock.now()
         var interfacesCreated = 0
+        var interfacesUpgraded = 0
+        BuiltInLibrary.interfaces(now).forEach { shipped ->
+            val existing = interfaces.findByKey(shipped.key)
+            when {
+                existing == null -> { interfaces.save(shipped); interfacesCreated++ }
+                untouched(existing) && BuiltInChecksum.of(existing) != BuiltInChecksum.of(shipped) -> {
+                    interfaces.save(existing.copy(name = shipped.name, description = shipped.description, inputs = shipped.inputs, outputs = shipped.outputs, ports = shipped.ports, updatedAt = now, updatedBy = Actor.SYSTEM))
+                    interfacesUpgraded++
+                }
+            }
+        }
         var skillsCreated = 0
+        var skillsUpgraded = 0
+        BuiltInLibrary.skills(now).forEach { shipped ->
+            val existing = skills.findByKeyAndScope(shipped.key, Scope.Global)
+            when {
+                existing == null -> { skills.save(shipped); skillsCreated++ }
+                untouched(existing) && BuiltInChecksum.of(existing) != BuiltInChecksum.of(shipped) -> {
+                    skills.save(existing.copy(name = shipped.name, description = shipped.description, content = shipped.content, tags = shipped.tags, updatedAt = now, updatedBy = Actor.SYSTEM))
+                    skillsUpgraded++
+                }
+            }
+        }
         var templatesCreated = 0
-        BuiltInLibrary.interfaces(now).forEach {
-            if (interfaces.findByKey(it.key) == null) { interfaces.save(it); interfacesCreated++ }
-        }
-        BuiltInLibrary.skills(now).forEach {
-            if (skills.findByKeyAndScope(it.key, Scope.Global) == null) { skills.save(it); skillsCreated++ }
-        }
         var templatesUpgraded = 0
         BuiltInLibrary.templates(now).forEach { shipped ->
             val existing = templates.findByKeyAndScope(shipped.key, Scope.Global)
             when {
                 existing == null -> { templates.save(shipped); templatesCreated++ }
-                isUntouchedBuiltIn(existing) &&
-                    ((shipped.skills - existing.skills.toSet()).isNotEmpty() || shipped.config != existing.config ||
-                        shipped.prompt != existing.prompt || shipped.description != existing.description || shipped.produces != existing.produces) -> {
-                    // A never-edited built-in (version 1) follows the shipped definition: skills added later (e.g. the
-                    // SDLC ground rules on base-agent, ADR 0019), corrected config (e.g. the Notify Jira message
-                    // template), prompts, description and outputs. Edited copies stay as the owner left them.
-                    templates.save(
-                        existing.copy(
-                            skills = (existing.skills + shipped.skills).distinct(), config = shipped.config, prompt = shipped.prompt,
-                            description = shipped.description, produces = shipped.produces, updatedAt = now,
-                        ),
-                    )
+                untouched(existing) && BuiltInChecksum.of(existing) != BuiltInChecksum.of(shipped) -> {
+                    // the whole shipped content (prompts, skills, config, schema, produces, parent...) replaces the old one
+                    templates.save(shipped.copy(id = existing.id, version = existing.version, createdAt = existing.createdAt, updatedAt = now, updatedBy = Actor.SYSTEM))
                     templatesUpgraded++
                 }
             }
         }
-        return SeedResult(interfacesCreated, templatesCreated, skillsCreated, templatesUpgraded)
+        return SeedResult(interfacesCreated, templatesCreated, skillsCreated, templatesUpgraded, skillsUpgraded, interfacesUpgraded)
     }
 
-    private fun isUntouchedBuiltIn(t: TaskTemplate) =
-        t.builtIn && t.version == 1 && (t.updatedBy == null || t.updatedBy.kind == PrincipalKind.SYSTEM)
+    private fun untouched(t: TaskTemplate) = untouched(t.builtIn, t.updatedBy) && t.version == 1
+
+    private fun untouched(s: Skill) = untouched(s.builtIn, s.updatedBy)
+
+    private fun untouched(i: TaskInterface) = untouched(i.builtIn, i.updatedBy)
+
+    private fun untouched(builtIn: Boolean, updatedBy: Actor?) = builtIn && (updatedBy == null || updatedBy.kind == PrincipalKind.SYSTEM)
 }

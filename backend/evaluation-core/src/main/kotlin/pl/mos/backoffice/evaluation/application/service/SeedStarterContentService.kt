@@ -10,7 +10,8 @@ import pl.mos.backoffice.shared.security.SystemOperation
 /**
  * Creates the starter suite (docs/architecture/04-model-evaluation.md) when there is none. Idempotent: the owner's edits
  * and deletions survive restarts. The one exception (ADR 0046): coding tasks that still point at the placeholder
- * repository of the first seed are replaced by the Spring PetClinic tasks.
+ * repository of the first seed are replaced by the Spring PetClinic tasks, and (ADR 0047) starter tasks still in an
+ * earlier version get the current content.
  */
 class SeedStarterContentService(
     private val profiles: ModelProfileRepository,
@@ -30,7 +31,9 @@ class SeedStarterContentService(
         }
         var suitesUpgraded = 0
         suites.findAll().forEach { suite ->
-            StarterContent.upgradeCodingTasks(suite, now)?.let { suites.save(it); suitesUpgraded++ }
+            val placeholderFixed = StarterContent.upgradeCodingTasks(suite, now)
+            val upgraded = StarterContent.upgradeUntouchedTasks(placeholderFixed ?: suite, now) ?: placeholderFixed
+            upgraded?.let { suites.save(it); suitesUpgraded++ }
         }
         return SeedResult(profilesCreated, suitesCreated, suitesUpgraded)
     }

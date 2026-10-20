@@ -26,24 +26,23 @@ object JudgePrompts {
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["score", "passed", "criteria", "rationale"],
+          "required": ["criteria", "rationale"],
           "properties": {
-            "score": { "type": "number", "minimum": 0, "maximum": 100, "description": "Overall score 0-100" },
-            "passed": { "type": "boolean", "description": "Whether the output is acceptable as delivered work" },
             "criteria": {
               "type": "array",
+              "description": "One entry per rubric criterion, in rubric order",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["name", "score", "comment"],
+                "required": ["name", "comment", "score"],
                 "properties": {
                   "name": { "type": "string" },
-                  "score": { "type": "number", "minimum": 0, "maximum": 10 },
-                  "comment": { "type": "string" }
+                  "comment": { "type": "string", "description": "The evidence, written before the score" },
+                  "score": { "type": "number", "minimum": 0, "maximum": 10 }
                 }
               }
             },
-            "rationale": { "type": "string", "description": "Short justification of the overall score" }
+            "rationale": { "type": "string", "description": "Short summary of the strengths and the decisive problems" }
           }
         }
     """.trimIndent()
@@ -51,12 +50,15 @@ object JudgePrompts {
     val SYSTEM_PROMPT: String = """
         You are a strict, consistent senior software engineering reviewer acting as a judge in a model benchmark.
         You grade the output of a candidate model against a rubric. Rules:
-        - Score 0-100 overall. 90+ means production quality with no material issues; 70-89 acceptable with minor
-          issues; 40-69 partially useful but with significant gaps or errors; below 40 wrong, unsafe or off-task.
-        - Score each rubric criterion 0-10 and explain in one sentence.
-        - Judge only what is in the output. Do not reward verbosity or confident tone; penalise hallucinated facts,
-          ignored constraints and missing required elements.
-        - When a reference answer is given, treat it as one good answer, not the only one.
+        - Score every rubric criterion 0-10, in rubric order. For each, first write the evidence (one or two sentences
+          quoting or pointing at the output), then the score. 9-10: production quality, nothing material missing;
+          7-8: acceptable with minor issues; 4-6: partially useful, significant gaps or errors; 0-3: wrong, unsafe,
+          missing or off-task. Apply every cap the rubric states. The overall score is computed from your criteria.
+        - Judge only what is in the output (for coding tasks: the diff, the verification output and the summary; a
+          claim in the summary that the diff does not show counts as not done). Do not reward verbosity or confident
+          tone; penalise hallucinated facts, ignored constraints and missing required elements.
+        - The reference answer is authoritative on facts (root causes, planted defects, rules, known false claims);
+          other wording, structure or equally valid designs are fine.
         - Answer with a single JSON object matching the provided schema and nothing else.
     """.trimIndent()
 
@@ -118,6 +120,9 @@ object JudgePrompts {
         }
     }
 
+    /** ADR 0047: the part of the diff the judge reads (source and test files first). */
+    const val MAX_JUDGE_DIFF_CHARS = 80_000
+
     fun codingTaskJudgeMessage(
         task: EvalTask,
         summary: String?,
@@ -125,6 +130,7 @@ object JudgePrompts {
         verification: AttemptVerification?,
         artifacts: String?,
         blocks: PromptDataBlocks,
+        diff: String? = null,
     ): String = buildString {
         appendLine("# Task under evaluation")
         appendLine("Category: ${task.category}. Difficulty: ${task.difficulty}. Kind: CODING_JOB (agent changed a repository).")
@@ -155,6 +161,9 @@ object JudgePrompts {
         appendLine()
         appendLine("## Diff statistics")
         appendLine(diffStat ?: "(unknown)")
+        appendLine()
+        appendLine("## The change (git diff against the base)")
+        appendLine(blocks.wrap("diff", judgeDiff(diff)))
         if (!artifacts.isNullOrBlank()) {
             appendLine()
             appendLine("## Collected artefacts")
@@ -166,24 +175,51 @@ object JudgePrompts {
             appendLine(task.referenceAnswer.trim())
         }
         appendLine()
-        appendLine("Judge code quality, adherence to constraints and completeness from the evidence above. Verification status is combined separately; score the quality of the work itself.")
+        appendLine("Judge code quality, adherence to constraints and completeness from the diff above. Verification status (hidden acceptance tests included) is combined separately; score the quality of the work itself.")
+    }
+
+    /**
+     * The diff for the judge: the list of changed files, then the file sections, source and tests first, cut at
+     * [MAX_JUDGE_DIFF_CHARS] with a note naming the files left out.
+     */
+    fun judgeDiff(diff: String?): String {
+        val text = diff?.trim()?.takeIf { it.isNotEmpty() } ?: return "(no changes)"
+        val sections = text.split(Regex("(?m)^(?=diff --git )")).filter { it.isNotBlank() }
+        val file = { s: String -> Regex("^diff --git a/(\\S+)").find(s)?.groupValues?.get(1) ?: "?" }
+        val rank = { s: String ->
+            val f = file(s)
+            when {
+                "/src/main/" in "/$f" -> 0
+                "/src/test/" in "/$f" -> 1
+                else -> 2
+            }
+        }
+        val ordered = sections.sortedBy(rank)
+        val out = StringBuilder("Changed files: " + ordered.joinToString(", ") { file(it) } + "\n\n")
+        val omitted = mutableListOf<String>()
+        ordered.forEach { s -> if (out.length + s.length <= MAX_JUDGE_DIFF_CHARS) out.append(s) else omitted += file(s) }
+        if (omitted.isNotEmpty()) out.append("\n[... diff of ").append(omitted.joinToString(", ")).append(" left out (too long) ...]")
+        return out.toString()
     }
 
     /** Parses the structured judge answer; tolerant of numbers arriving as strings or integers. */
+    /**
+     * Parses the structured judge answer; tolerant of numbers arriving as strings or integers. ADR 0047: the overall
+     * score is the mean of the criteria × 10 (computed here, not by the judge); a judge answer without criteria falls
+     * back to its own `score` (older prompts).
+     */
     fun parseVerdict(structured: Map<String, Any?>?, rawContent: String): JudgeVerdict {
         val map = structured ?: throw ValidationException("judge did not return structured output: ${rawContent.take(200)}")
-        val score = number(map["score"]) ?: throw ValidationException("judge answer has no numeric score")
-        val passed = when (val p = map["passed"]) {
-            is Boolean -> p
-            is String -> p.equals("true", ignoreCase = true)
-            else -> score >= ScoreCombiner.PROMPT_PASS_THRESHOLD
-        }
         val criteria = (map["criteria"] as? List<*>)?.mapNotNull { item ->
             val c = item as? Map<*, *> ?: return@mapNotNull null
             val name = c["name"]?.toString() ?: return@mapNotNull null
             JudgeCriterion(name, (number(c["score"]) ?: 0.0).coerceIn(0.0, 10.0), c["comment"]?.toString())
         } ?: emptyList()
-        return JudgeVerdict(score.coerceIn(0.0, 100.0), passed, criteria, map["rationale"]?.toString())
+        val score = criteria.takeIf { it.isNotEmpty() }?.let { cs -> cs.sumOf { it.score } / cs.size * 10.0 }
+            ?: number(map["score"])
+            ?: throw ValidationException("judge answer has neither criteria nor a numeric score")
+        val bounded = score.coerceIn(0.0, 100.0)
+        return JudgeVerdict(bounded, bounded >= ScoreCombiner.PROMPT_PASS_THRESHOLD, criteria, map["rationale"]?.toString())
     }
 
     private fun number(value: Any?): Double? = when (value) {

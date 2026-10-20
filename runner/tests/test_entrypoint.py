@@ -464,6 +464,15 @@ class UploadTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
+    def test_feature_description_and_commit_subject_come_from_back_office(self):
+        # ADR 0047: the Spec Kit argument is the feature description only; the commit subject is chosen by Back Office
+        spec = ep.parse_spec(dict(BASE_SPEC, prompt="You are an engineering agent...\nlong rules", featureDescription="SHOP-123: cart with persistence",
+                                  commitSubject="SHOP-123: add the cart spec"))
+        self.assertEqual(ep.build_agent_prompt(spec, None), "/speckit.specify SHOP-123: cart with persistence")
+        self.assertEqual(ep.commit_subject_for(spec), "SHOP-123: add the cart spec")
+        legacy = ep.parse_spec(dict(BASE_SPEC))
+        self.assertEqual(ep.commit_subject_for(legacy), ep.commit_message("SPEC_KIT", legacy.prompt))
+
     def test_spec_kit_prompt_opencode(self):
         spec = ep.parse_spec(dict(BASE_SPEC, specKitPhase="PLAN", prompt="focus on the API"))
         self.assertEqual(ep.build_agent_prompt(spec, None), "/speckit.plan focus on the API")
@@ -608,6 +617,14 @@ class ArtifactTests(unittest.TestCase):
             by_name = {a["name"]: a for a in arts}
             self.assertEqual(set(by_name), {"spec", "plan", "tasks", "analysis", "specs/001-cart/research.md", "specs/001-cart/data.json", "REVIEW.txt"})
             self.assertEqual(by_name["spec"]["path"], "specs/001-cart/spec.md")
+            # a revised spec (new feature directory) is the one named spec
+            (repo / "specs" / "002-cart").mkdir()
+            (repo / "specs" / "002-cart" / "spec.md").write_text("# Spec v2")
+            (repo / "work-log.md").write_text("log")
+            arts2 = {a["name"]: a for a in ep.collect_artifacts(repo, ep.DEFAULT_SPEC_KIT_ARTIFACTS + ["work-log.md"], lambda m: None)}
+            self.assertEqual(arts2["spec"]["path"], "specs/002-cart/spec.md")
+            self.assertIn("specs/001-cart/spec.md", arts2)
+            self.assertEqual(arts2["work-log"]["path"], "work-log.md")
             self.assertEqual(by_name["spec"]["mediaType"], "text/markdown")
             self.assertEqual(by_name["specs/001-cart/data.json"]["mediaType"], "application/json")
             self.assertEqual(by_name["REVIEW.txt"]["mediaType"], "text/plain")
@@ -620,7 +637,8 @@ class ArtifactTests(unittest.TestCase):
                 (repo / "specs" / n).mkdir(parents=True)
                 (repo / "specs" / n / "spec.md").write_text(n)
             arts = ep.collect_artifacts(repo, ["specs/**/spec.md"], lambda m: None)
-            self.assertEqual([a["name"] for a in arts], ["spec", "specs/002-b/spec.md"])
+            # ADR 0047: the newest feature directory (a revised spec) gets the name, the older one keeps its path
+            self.assertEqual([(a["name"], a["path"]) for a in arts], [("spec", "specs/002-b/spec.md"), ("specs/001-a/spec.md", "specs/001-a/spec.md")])
 
     def test_large_file_is_capped(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -768,6 +786,44 @@ class GitIntegrationTests(unittest.TestCase):
             self.assertEqual(g.diff_stat("main")["files"], 1)
             self.assertLess(len(g.diff_text("main", max_bytes=40).encode()), 200)
             self.assertIn("truncated by runner", g.diff_text("main", max_bytes=40))
+
+    def test_acceptance_checks_hidden_files_and_ephemeral_work_log(self):
+        # ADR 0047: no-op and protected-file changes fail; hidden files exist only during verification
+        with tempfile.TemporaryDirectory() as tmp:
+            work = self.make_repo(Path(tmp))
+            (work / "src").mkdir()
+            (work / "src" / "ExistingTest.kt").write_text("test\n")
+            git(work, "add", "-A")
+            git(work, "commit", "-q", "-m", "tests")
+            git(work, "push", "-q", "origin", "main")
+            g = ep.Git(work, make_git_env(), lambda m: None)
+            acc = ep.parse_acceptance({"files": {"src/acceptance/HiddenTest.kt": "hidden\n"},
+                                       "protectedPaths": ["src/ExistingTest.kt"], "requireChanges": True})
+            self.assertEqual(ep.acceptance_problems(g, "main", acc), ["no changes: the work tree equals the base commit"])
+
+            (work / "src" / "Feature.kt").write_text("feature\n")
+            self.assertEqual(ep.acceptance_problems(g, "main", acc), [])
+            (work / "src" / "ExistingTest.kt").write_text("weakened\n")
+            self.assertEqual(ep.acceptance_problems(g, "main", acc), ["protected files changed: src/ExistingTest.kt"])
+
+            logs = []
+            written = ep.write_acceptance_files(work, acc.files, logs.append)
+            self.assertEqual((work / "src" / "acceptance" / "HiddenTest.kt").read_text(), "hidden\n")
+            ep.remove_acceptance_files(work, written, logs.append)
+            self.assertFalse((work / "src" / "acceptance").exists())
+
+            (work / "work-log.md").write_text("log\n")
+            g.configure_identity("Back Office Agent", "agent@backoffice.local")
+            g.commit_all("SHOP-1: feature", keep_out=ep.EPHEMERAL_ARTIFACT_FILES)
+            committed = git(work, "show", "--name-only", "--format=", "HEAD").split()
+            self.assertIn("src/Feature.kt", committed)
+            self.assertNotIn("work-log.md", committed)
+
+    def test_acceptance_paths_must_stay_in_the_repository(self):
+        for bad in ("../x.java", "/etc/x", ".git/hooks/pre-commit", "C:/x"):
+            with self.assertRaises(ValueError):
+                ep.parse_acceptance({"files": {bad: "x"}})
+        self.assertIsNone(ep.parse_acceptance(None))
 
     def test_commit_without_run_id_has_no_trailer(self):
         with tempfile.TemporaryDirectory() as tmp:

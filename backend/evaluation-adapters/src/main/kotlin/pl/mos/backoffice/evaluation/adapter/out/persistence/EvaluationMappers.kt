@@ -28,8 +28,12 @@ import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
 import java.time.Duration
 import java.util.UUID
+import pl.mos.backoffice.evaluation.domain.model.TaskAcceptance
 
 /** Domain <-> entity mapping; JSONB payloads go through Jackson 3 as plain maps and lists. */
+/** ADR 0047: `eval_task.repo_acceptance`. */
+data class AcceptanceRow(val files: Map<String, String> = emptyMap(), val protectedPaths: List<String> = emptyList(), val requireChanges: Boolean = true)
+
 class EvaluationMappers(private val json: JsonMapper) {
 
     // ----- model profile -------------------------------------------------------------------------
@@ -124,6 +128,7 @@ class EvaluationMappers(private val json: JsonMapper) {
         repoBaseRef = t.repository?.baseRef,
         repoSetupCommand = t.repository?.setupCommand,
         repoVerifyCommand = t.repository?.verifyCommand,
+        repoAcceptance = t.repository?.acceptance?.let { json.writeValueAsString(AcceptanceRow(it.files, it.protectedPaths, it.requireChanges)) },
         timeoutSeconds = t.timeout.seconds,
         weight = t.weight,
     )
@@ -149,7 +154,12 @@ class EvaluationMappers(private val json: JsonMapper) {
         context = e.context,
         rubric = e.rubric,
         referenceAnswer = e.referenceAnswer,
-        repository = e.repoUrl?.let { TaskRepository(it, e.repoBaseRef ?: "main", e.repoVerifyCommand ?: "", e.repoSetupCommand) },
+        repository = e.repoUrl?.let {
+            TaskRepository(
+                it, e.repoBaseRef ?: "main", e.repoVerifyCommand ?: "", e.repoSetupCommand,
+                e.repoAcceptance?.let { raw -> json.readValue(raw, AcceptanceRow::class.java).let { a -> TaskAcceptance(a.files, a.protectedPaths, a.requireChanges) } },
+            )
+        },
         timeout = Duration.ofSeconds(e.timeoutSeconds),
         weight = e.weight,
     )

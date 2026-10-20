@@ -85,7 +85,7 @@ class ExecuteAttemptServiceTest {
         val stored = benchmarks.findAttempt(attempt.id)!!
         assertThat(stored.status).isEqualTo(AttemptStatus.SUCCEEDED)
         assertThat(stored.output).isEqualTo("The bug is X.")
-        assertThat(stored.score).isEqualTo(85.0)
+        assertThat(stored.score).describedAs("the mean of the criteria x 10 (ADR 0047)").isEqualTo(90.0)
         assertThat(stored.passed).isTrue()
         assertThat(stored.judgeRationale).isEqualTo("Good answer.")
         assertThat(stored.judgeCriteria).hasSize(1)
@@ -115,7 +115,7 @@ class ExecuteAttemptServiceTest {
 
     @Test
     fun `coding attempt runs the agent job, judges the diff and finishes the benchmark when it is the last attempt`() {
-        every { gateway.chat(any(), any()) } answers { llmResult(judge.ref, "{}", mapOf("score" to 50, "passed" to true, "rationale" to "ok")) }
+        every { gateway.chat(any(), any()) } answers { llmResult(judge.ref, "{}", mapOf("criteria" to listOf(mapOf("name" to "Quality", "score" to 5, "comment" to "ok")), "rationale" to "ok")) }
         val specSlot = slot<RunnerJobSpec>()
         val jobId = RunnerJobId.new()
         every { runner.submit(capture(specSlot), any()) } returns jobId
@@ -127,6 +127,7 @@ class ExecuteAttemptServiceTest {
             diffStat = RunnerDiffStat(3, 40, 5),
             verification = RunnerVerification("./gradlew test", 0, "BUILD SUCCESSFUL"),
             artifacts = emptyList(),
+            diff = "diff --git a/src/main/Api.kt b/src/main/Api.kt\n+fun createCustomer() = Unit\n",
             usage = TokenUsage(50_000, 8_000),
             reportedCostUsd = BigDecimal("0.42"),
             error = null,
@@ -149,7 +150,10 @@ class ExecuteAttemptServiceTest {
         assertThat(spec.repository!!.branch).isEqualTo("eval/${attempt.id.short}")
         assertThat(spec.repository!!.push).isFalse()
         assertThat(spec.verifyCommand).isEqualTo("./gradlew test")
-        assertThat(spec.collectArtifacts).containsExactly("**/*.md")
+        assertThat(spec.collectArtifacts).describedAs("the judge reads the diff (ADR 0047)").isEmpty()
+        assertThat(spec.acceptance!!.files).containsKey("src/test/acceptance/HiddenTest.kt")
+        assertThat(spec.acceptance!!.protectedPaths).containsExactly("src/test/**")
+        assertThat(spec.acceptance!!.requireChanges).isTrue()
         assertThat(spec.jobLabel).isEqualTo("eval-${attempt.id.short}-1")
         assertThat(spec.usageContext.attemptId).isEqualTo(attempt.id.value)
 
@@ -167,6 +171,7 @@ class ExecuteAttemptServiceTest {
         val judgeRequest = slot<LlmRequest>()
         verify { gateway.chat(judge.ref, capture(judgeRequest)) }
         assertThat(judgeRequest.captured.messages.last().content).contains("3 files changed").contains("BUILD SUCCESSFUL")
+            .contains("+fun createCustomer() = Unit").contains("Changed files: src/main/Api.kt")
 
         assertThat(report.finished).isNotNull()
         assertThat(report.finished!!.status).isEqualTo(BenchmarkStatus.COMPLETED)
@@ -176,7 +181,7 @@ class ExecuteAttemptServiceTest {
 
     @Test
     fun `coding attempt with failed verification is not passed but still judged`() {
-        every { gateway.chat(any(), any()) } answers { llmResult(judge.ref, "{}", mapOf("score" to 70, "passed" to false)) }
+        every { gateway.chat(any(), any()) } answers { llmResult(judge.ref, "{}", mapOf("criteria" to listOf(mapOf("name" to "Quality", "score" to 7, "comment" to "ok")))) }
         every { runner.submit(any(), any()) } returns RunnerJobId.new()
         every { runner.result(any()) } returns RunnerResult(
             status = RunnerJobStatus.FAILED, summary = "tests red", branch = null, commitSha = null, diffStat = null,

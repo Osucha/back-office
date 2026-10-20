@@ -13,9 +13,13 @@ object ScoreCombiner {
 
     data class Combined(val score: Double, val passed: Boolean)
 
+    /**
+     * ADR 0047: passed = the verification passed (the repository's build and the hidden acceptance tests) AND the
+     * combined score reaches the same threshold as prompt tasks, so green tests with a poor change do not pass.
+     */
     fun coding(verificationPassed: Boolean, judgeScore: Double, weights: CodingScoreWeights): Combined {
-        val score = weights.verification * (if (verificationPassed) 100.0 else 0.0) + weights.judge * judgeScore
-        return Combined(score.coerceIn(0.0, 100.0), verificationPassed)
+        val score = (weights.verification * (if (verificationPassed) 100.0 else 0.0) + weights.judge * judgeScore).coerceIn(0.0, 100.0)
+        return Combined(score, verificationPassed && score >= PROMPT_PASS_THRESHOLD)
     }
 
     fun prompt(judgeScore: Double): Combined {

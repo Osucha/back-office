@@ -14,6 +14,12 @@ data class RenderedTemplate(val text: String, val warnings: List<String>) {
  * Paths walk nested maps, lists (numeric index) and simple objects exposed as maps. Missing values
  * render as an empty string and produce a warning so the caller can surface it in the run log.
  *
+ * Sections (Mustache style): `{{#path}}...{{/path}}` keeps its content only when the value at `path` is
+ * present (not null, not a blank string, not an empty list or map, not `false`); `{{^path}}...{{/path}}`
+ * only when it is absent. Sections nest when their paths differ. They are resolved on the template before
+ * any value is inserted, so a value can never open or close a section. When a template uses sections, runs
+ * of three or more line breaks left by removed sections collapse to one blank line.
+ *
  * Rendering is a single pass: values are inserted as literal text and are never scanned for placeholders
  * again, so an issue containing `{{project.constitution}}`, `${...}` or `#{T(...)}` stays literal text.
  * Prompts use [renderPrompt], which wraps every value from an untrusted root ([UNTRUSTED_ROOTS]) in a
@@ -36,7 +42,7 @@ class TemplateRenderer {
 
     private fun render(template: String, model: Map<String, Any?>, format: ((String, String) -> String)?): RenderedTemplate {
         val warnings = mutableListOf<String>()
-        val text = PLACEHOLDER.replace(template) { match ->
+        val text = PLACEHOLDER.replace(expandSections(template, model)) { match ->
             val expression = match.groupValues[1]
             val parts = expression.split("|").map { it.trim() }
             val path = parts.first()
@@ -58,6 +64,30 @@ class TemplateRenderer {
 
     /** Convenience for callers that only want the text. */
     fun renderText(template: String, model: Map<String, Any?>): String = render(template, model).text
+
+    /** Resolves `{{#path}}` / `{{^path}}` sections on the template text (never on inserted values). */
+    private fun expandSections(template: String, model: Map<String, Any?>): String {
+        if (!template.contains("{{#") && !template.contains("{{^")) return template
+        var text = template
+        repeat(MAX_SECTION_DEPTH) {
+            val next = SECTION.replace(text) { m ->
+                val inverted = m.groupValues[1] == "^"
+                if (isPresent(resolve(m.groupValues[2], model)) != inverted) m.groupValues[3] else ""
+            }
+            if (next == text) return BLANK_LINES.replace(text, "\n\n")
+            text = next
+        }
+        return BLANK_LINES.replace(text, "\n\n")
+    }
+
+    private fun isPresent(value: Any?): Boolean = when (value) {
+        null -> false
+        is String -> value.isNotBlank()
+        is Collection<*> -> value.isNotEmpty()
+        is Map<*, *> -> value.isNotEmpty()
+        is Boolean -> value
+        else -> true
+    }
 
     private fun resolve(path: String, model: Map<String, Any?>): Any? {
         var current: Any? = model
@@ -103,5 +133,10 @@ class TemplateRenderer {
         fun isUntrusted(path: String): Boolean = path.substringBefore('.').trim() in UNTRUSTED_ROOTS
 
         private val PLACEHOLDER = Regex("\\{\\{\\s*([^{}]*?)\\s*}}")
+
+        /** `{{#path}}body{{/path}}` or `{{^path}}body{{/path}}`; the closing tag must name the same path. */
+        private val SECTION = Regex("\\{\\{([#^])\\s*([A-Za-z0-9_.-]+)\\s*}}(.*?)\\{\\{/\\s*\\2\\s*}}", RegexOption.DOT_MATCHES_ALL)
+        private val BLANK_LINES = Regex("\\n[ \\t]*\\n(?:[ \\t]*\\n)+")
+        private const val MAX_SECTION_DEPTH = 8
     }
 }

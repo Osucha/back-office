@@ -53,7 +53,12 @@ The executor decides where a task runs:
    with the **Project**), **Model profile**.
 3. **Prompt**: choose **Append to parent** or **Replace parent**, then write the **System prompt** and
    the **User prompt**. Template values such as `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
-   and `{{project.constitution}}` are filled at run time.
+   and `{{project.constitution}}` are filled at run time. A section `{{#artifacts.review}}...{{/artifacts.review}}`
+   keeps its text only when the value is there (`{{^path}}...{{/path}}` only when it is not), so a prompt
+   shows no empty "Issue" or "Feedback" heading in a run without an issue or on a first attempt.
+   `{{feedback}}` holds only the revision comments given for this step: a gate's **Revise** comment goes
+   to the next step that runs, stays with that step for its later attempts, and never reaches the steps
+   after it (all comments of the run: `{{feedbackHistory}}`).
 4. **Skills**: add skills, and list inherited skills under **Remove inherited skills**.
 5. **Contract and configuration**: **Produces** and **Consumes** (artefact or state names),
    **Confidence field**, **Tags**, **Config (JSON)** and, for LLM tasks, **Output schema**.
@@ -136,6 +141,13 @@ deleted. Every agent inherits the skills `agent-ground-rules` and `ask-dont-gues
 `base-agent` template; remove them on a template with **Remove inherited skills** if a task must not see
 them.
 
+Write the **Description** as "Use when ...": agents decide by it whether to open a skill. Rules a task
+must always follow belong in its prompt, not only in a skill. A runner agent finds every skill in its
+workspace but reads only the ones it is told to, so the prompts of the built-in runner tasks end with
+"Apply the skills: ..."; when you attach another skill to such a task, add its key to that line.
+`kotlin-hexagonal` and `angular-ng-zorro` describe the Back Office code base itself: use them as examples
+and copy them into a project skill for your own stack.
+
 <a id="sources"></a>
 ## Sources
 
@@ -169,6 +181,54 @@ Back Office ships with templates for the Spec Kit phases, implementation with Op
 `write-user-story`, `plan-task-list`, `implement-task-list` and `review-against-spec`, plus their
 interfaces and skills. You can edit built-ins; Back Office never overwrites an edited entry.
 
+<a id="built-in-updates"></a>
+### Updates of the built-in library
+
+On every start Back Office compares each built-in template, skill and interface with the version it
+ships, field by field. A built-in nobody edited (still saved by the system, and for templates still
+version 1) is replaced by the shipped version when they differ; an entry a person saved, or a copy with
+the same key that is not built-in, is left as it is. To get the shipped version of an entry you changed,
+compare it with the **Resolved preview** of a fresh installation and copy what you need, or delete your
+non-built-in copy and restart.
+
+### How the built-in tasks are put together
+
+- Three abstract templates carry the shared rules: `base-agent` (role, constitution, honesty, scope,
+  safety, the two ground-rule skills), `base-llm` for the in-process LLM tasks (no repository; with an
+  output schema the answer is JSON only) and `base-coding-agent` for the runner tasks (work in the
+  repository, quote file paths, never commit or push: the runner commits and pushes after the agent).
+- **Spec Kit** tasks: the specify prompt starts with the line `KEY: summary`, then the issue description
+  and acceptance criteria, then the instructions. Plan and tasks do not paste the specification or the plan,
+  which Spec Kit reads from the repository; they pass the step's feedback and, for the plan, the optional
+  run parameter `techHints`.
+- **Implementers** (`implement-opencode`, `implement-claude-code`): the runner runs `verifyCommand` from
+  **Config** when you set one (none by default) and fails the step when it exits non-zero; the merge request
+  uses `mergeRequest` (true/false), `mergeRequestTitleTemplate` and `mergeRequestDraft`.
+- **Rework after a review**: when the run has a `review` artefact, the implementers' prompt contains it
+  under "Latest review findings", so the `changes` edge of **Review ok?** sends the findings back to the
+  implementation instead of repeating the same prompt.
+- `implement-task-list` executes the task list in order and ends `work-log.md` with `RESULT: GREEN` or
+  `RESULT: STOPPED at <task>`; its `verifyCommand` checks that line, so a stop on a red test fails the step.
+  The runner collects the file as the `work-log` artefact and keeps it out of the commit. To also run your
+  full test suite after the agent, set `verifyCommand` in the step, for example
+  `tail -n 3 work-log.md | grep -q "^RESULT: GREEN" && ./gradlew test`.
+- `code-review` puts its instructions before the diff, so a diff cut at `maxInputChars` never removes them;
+  in a CI run it uses the merge request title and description as context. The whole diff is reviewed in
+  one call.
+- `review-against-spec` keeps the requirement coverage table (MET, PARTIAL, MISSING, NOT_APPLICABLE) in the
+  `review` artefact; one MISSING requirement makes the verdict REQUEST_CHANGES.
+- `clarify-spec` writes `clarifications` as a markdown list (question, why it matters, suggested answer);
+  `write-user-story` and `write-use-case` store their documents as the `user-story` and `use-case`
+  artefacts. `fetch-issue` reads summary, description, acceptance criteria and labels, not comments or
+  attachments.
+- Open questions use one marker per document type: `[NEEDS CLARIFICATION: ...]` in a Spec Kit
+  specification, `[?]` everywhere else. Agents never invent an owner or a date, leave IDs such as
+  `US-<AREA>-<NN>` and ADR numbers `NNNN` as placeholders and never set a status such as Accepted.
+
+The seeded workflows of a new project follow these templates; the **Change request (delta)** workflow
+starts with **Fetch issue** and its task list is planned from the approved impact analysis. Projects
+created earlier keep the workflows they stored; change them in the designer if you want the same.
+
 <a id="generic-tasks"></a>
 ### Tasks with any prompt
 
@@ -181,7 +241,7 @@ Two built-in templates exist for work you describe yourself in the node: drop th
 | **Agent task** (`agent-task`) | a coding agent on a runner (Claude Code by default, `agent` in **Config**), with a clone of the project's repository | analysing code, reviewing, answering questions about the repository; with `push: true` in **Config** also changes on a branch with a merge request |
 
 Both put the issue (when the run has one), the run parameter `input` and the reviewer's feedback into the
-system prompt, so the replaced prompt can be just the task. The **Agent task** does not push by default; in a
+system prompt (each only when it is there), so the replaced prompt can be just the task. The **Agent task** does not push by default; in a
 project without repositories it runs in an empty workspace and its final answer becomes the `result` artefact. The
 **LLM task** runs on the Back Office server and needs a configured model provider (an API key); the **Agent task**
 runs on a runner, so on your [personal runner](personal-runner.md) it can use your own Claude login instead.

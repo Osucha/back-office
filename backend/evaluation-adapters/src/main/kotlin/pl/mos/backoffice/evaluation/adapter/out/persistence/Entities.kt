@@ -85,6 +85,7 @@ class EvalTaskEntity(
     @Column(name = "repo_base_ref", length = 200) val repoBaseRef: String? = null,
     @Column(name = "repo_setup_command", columnDefinition = "text") val repoSetupCommand: String? = null,
     @Column(name = "repo_verify_command", columnDefinition = "text") val repoVerifyCommand: String? = null,
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "repo_acceptance") val repoAcceptance: String? = null,
     @Column(name = "timeout_seconds", nullable = false) val timeoutSeconds: Long = 900,
     @Column(nullable = false) val weight: Double = 1.0,
 )

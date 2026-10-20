@@ -42,6 +42,7 @@ import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import pl.mos.backoffice.shared.runner.RunnerTarget
+import pl.mos.backoffice.shared.runner.RunnerAcceptance
 
 /**
  * Runs one attempt synchronously on the caller's thread (docs/architecture/04-model-evaluation.md):
@@ -156,7 +157,9 @@ class ExecuteAttemptService(
             setupCommand = repository.setupCommand,
             verifyCommand = repository.verifyCommand,
             timeout = task.timeout,
-            collectArtifacts = listOf("**/*.md"),
+            // ADR 0047: the judge reads the diff; collecting *.md only brought the repository's README
+            collectArtifacts = emptyList(),
+            acceptance = repository.acceptance?.let { RunnerAcceptance(it.files, it.protectedPaths, it.requireChanges) },
             usageContext = context,
             jobLabel = "eval-${attempt.id.short}-${attempt.repetition}",
             // benchmarks only read the repository: the runner cluster hands out its read-only token (ADR 0031)
@@ -195,7 +198,7 @@ class ExecuteAttemptService(
         val blocks = PromptDataBlocks.random()
         val signals = InjectionDetector.scan(result.summary, "agent_summary") + InjectionDetector.scan(artifacts, "artifacts") +
             InjectionDetector.scan(verification?.outputTail, "verification_output")
-        val (judged, judgeCost) = judge(judge, JudgePrompts.codingTaskJudgeMessage(task, result.summary, diffStat, verification, artifacts, blocks), blocks, context)
+        val (judged, judgeCost) = judge(judge, JudgePrompts.codingTaskJudgeMessage(task, result.summary, diffStat, verification, artifacts, blocks, result.diff), blocks, context)
         val verdict = JudgePrompts.guard(judged, signals)
         val passed = verification?.passed == true
         val combined = ScoreCombiner.coding(passed, verdict.score, weights)

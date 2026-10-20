@@ -1,0 +1,11 @@
+Visits do not say which vet handled them. Add an optional vet to a visit.
+
+1. Schema: a nullable column `vet_id` in `visits` with a foreign key to `vets(id)` in all three `src/main/resources/db/{h2,mysql,postgres}/schema.sql` (in H2 also drop `visits` before `vets`).
+2. Sample data: the visits inserts in `db/h2/data.sql` and `db/mysql/data.sql` are positional (`INSERT ... INTO visits VALUES (...)`), so each of them needs the new fifth value (or an explicit column list). In all three `data.sql` files the first visit (id 1, pet 7 Samantha, "rabies shot") is handled by vet 2 (Helen Leary) and the third visit (id 3, pet 8 Max, "neutered") by vet 3 (Linda Douglas); visits 2 and 4 have no vet.
+3. Mapping: `Visit` gets `@ManyToOne @JoinColumn(name = "vet_id")` field `vet` of type `org.springframework.samples.petclinic.vet.Vet` with `getVet()` / `setVet(Vet)`. Note `spring.jpa.open-in-view=false`: the owner page is rendered after the transaction ended.
+4. New-visit form `pets/createOrUpdateVisitForm.html`: a `<select>` whose request parameter is named `vet`. Each option's value is the vet id and its text is `firstName lastName`; the first option has the empty value `""` and means "no vet" (label: the existing message key `none`). An empty value, or no `vet` parameter at all, saves the visit without a vet. An unknown or non-numeric id is a field error on `vet` of the `visit` model attribute: the form is shown again (status 200, view `pets/createOrUpdateVisitForm`) and nothing is saved.
+5. Owner details page `owners/ownerDetails.html`: each pet's visits table gets a third column with the header message key `vet` ("Vet") showing `firstName lastName` of the visit's vet, empty when there is none.
+6. Every new message key goes into `messages.properties` and every translated `messages_*.properties` (`I18nPropertiesSyncTest`); no hard-coded text in templates.
+7. Tests: extend `VisitControllerTests` (you may add `@MockitoBean`s, include filters and new test methods; keep the existing test methods unchanged) with a visit with a vet, with the empty choice and with an unknown id. All other existing test files stay unchanged. All tests green.
+
+Run ./mvnw -B -q spring-javaformat:apply before you finish.

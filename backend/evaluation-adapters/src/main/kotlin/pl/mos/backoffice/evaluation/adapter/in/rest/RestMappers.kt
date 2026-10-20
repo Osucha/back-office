@@ -21,6 +21,7 @@ import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.usage.Pricing
 import java.time.Duration
+import pl.mos.backoffice.evaluation.domain.model.TaskAcceptance
 
 /** Pure DTO mapping for the evaluation controllers. */
 object RestMappers {
@@ -74,7 +75,9 @@ object RestMappers {
         context = t.context,
         rubric = t.rubric,
         referenceAnswer = t.referenceAnswer,
-        repository = t.repository?.let { TaskRepositoryDto(it.url, it.baseRef, it.setupCommand, it.verifyCommand) },
+        repository = t.repository?.let {
+            TaskRepositoryDto(it.url, it.baseRef, it.setupCommand, it.verifyCommand, it.acceptance?.let { a -> TaskAcceptanceDto(a.files, a.protectedPaths, a.requireChanges) })
+        },
         timeoutSeconds = t.timeout.seconds,
         weight = t.weight,
     )
@@ -88,7 +91,9 @@ object RestMappers {
         context = d.context,
         rubric = d.rubric,
         referenceAnswer = d.referenceAnswer,
-        repository = d.repository?.let { TaskRepository(it.url, it.baseRef, it.verifyCommand, it.setupCommand) },
+        repository = d.repository?.let {
+            TaskRepository(it.url, it.baseRef, it.verifyCommand, it.setupCommand, it.acceptance?.let { a -> TaskAcceptance(a.files, a.protectedPaths, a.requireChanges) })
+        },
         timeout = Duration.ofSeconds(d.timeoutSeconds),
         weight = d.weight,
     )

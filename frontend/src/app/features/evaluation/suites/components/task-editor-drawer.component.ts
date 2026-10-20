@@ -11,7 +11,7 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzInputModule } from 'ng-zorro-antd/input';
@@ -34,6 +34,35 @@ import { ActionBarComponent } from '../../../../core/ui/relay/action-bar.compone
 import { SidePanelComponent } from '../../../../core/ui/relay/side-panel.component';
 import { humanize } from '../../../../core/ui/status-tag.component';
 import { categoryLabel } from '../data/suite-view';
+
+type TaskAcceptanceInput = NonNullable<NonNullable<EvalTaskInput['repository']>['acceptance']>;
+
+/** ADR 0047: the acceptance JSON of the form; null when empty or not an object. */
+export function parseAcceptance(raw: string | null | undefined): TaskAcceptanceInput | null {
+  const text = (raw ?? '').trim();
+  if (!text) return null;
+  try {
+    const v = JSON.parse(text) as unknown;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    const o = v as Record<string, unknown>;
+    const files = o['files'] ?? {};
+    const paths = o['protectedPaths'] ?? [];
+    if (typeof files !== 'object' || Array.isArray(files) || !Array.isArray(paths)) return null;
+    if (Object.values(files as Record<string, unknown>).some((c) => typeof c !== 'string')) return null;
+    return {
+      files: files as Record<string, string>,
+      protectedPaths: (paths as unknown[]).map(String),
+      requireChanges: o['requireChanges'] !== false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function acceptanceValidator(c: AbstractControl): ValidationErrors | null {
+  const text = String(c.value ?? '').trim();
+  return !text || parseAcceptance(text) ? null : { acceptance: true };
+}
 
 /**
  * Task editor as a side panel next to the suite's task list: an edit tab (form) and a preview tab
@@ -279,6 +308,25 @@ import { categoryLabel } from '../data/suite-view';
                       [placeholder]="examples.verify"
                   /></nz-form-control>
                 </nz-form-item>
+                <nz-form-item class="full">
+                  <nz-form-label nzFor="t-acceptance" i18n="@@evaluation.task.acceptance"
+                    >Acceptance checks (JSON)</nz-form-label
+                  >
+                  <nz-form-control
+                    nzErrorTip="Not valid: an object with files (path to content), protectedPaths and requireChanges"
+                    i18n-nzErrorTip="@@evaluation.task.acceptanceInvalid"
+                    nzExtra="Hidden from the agent: files (e.g. acceptance tests) are written only for the verification command, protectedPaths (git pathspecs such as existing tests) must stay unchanged, requireChanges fails a run that changed nothing. Empty = none."
+                    i18n-nzExtra="@@evaluation.task.acceptanceHint"
+                    ><textarea
+                      nz-input
+                      id="t-acceptance"
+                      class="mono"
+                      formControlName="acceptance"
+                      rows="6"
+                      [placeholder]="examples.acceptance"
+                    ></textarea
+                  ></nz-form-control>
+                </nz-form-item>
               </div>
             }
 
@@ -365,6 +413,9 @@ import { categoryLabel } from '../data/suite-view';
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 0 16px;
       }
+      .full {
+        grid-column: 1 / -1;
+      }
       .span-2 {
         grid-column: span 2;
       }
@@ -422,6 +473,7 @@ export class TaskEditorDrawerComponent {
     baseRef: 'main', // i18n-ignore: branch name
     setup: './gradlew assemble', // i18n-ignore: command
     verify: './gradlew test', // i18n-ignore: command
+    acceptance: '{ "files": { "src/test/java/acceptance/HiddenTest.java": "..." }, "protectedPaths": ["src/test/java/**"], "requireChanges": true }', // i18n-ignore: sample JSON
   };
   readonly text = {
     details: $localize`:@@evaluation.task.tab.details:Details`,
@@ -461,6 +513,7 @@ export class TaskEditorDrawerComponent {
       baseRef: this.fb.nonNullable.control('main'),
       setupCommand: this.fb.nonNullable.control(''),
       verifyCommand: this.fb.nonNullable.control(''),
+      acceptance: this.fb.nonNullable.control('', [acceptanceValidator]),
     }),
     timeoutSeconds: this.fb.nonNullable.control(900),
     weight: this.fb.nonNullable.control(1),
@@ -487,7 +540,11 @@ export class TaskEditorDrawerComponent {
   });
   readonly repoText = computed(() => {
     const r = this.value().repository;
-    return `${r.url} @ ${r.baseRef}\nsetup:  ${r.setupCommand || '-'}\nverify: ${r.verifyCommand || '-'}`;
+    const a = parseAcceptance(r.acceptance);
+    const acceptance = a
+      ? `\nacceptance: ${Object.keys(a.files ?? {}).length} hidden file(s), ${(a.protectedPaths ?? []).length} protected path(s)${a.requireChanges === false ? '' : ', changes required'}`
+      : '';
+    return `${r.url} @ ${r.baseRef}\nsetup:  ${r.setupCommand || '-'}\nverify: ${r.verifyCommand || '-'}${acceptance}`;
   });
 
   constructor() {
@@ -518,6 +575,7 @@ export class TaskEditorDrawerComponent {
             baseRef: t?.repository?.baseRef ?? 'main',
             setupCommand: t?.repository?.setupCommand ?? '',
             verifyCommand: t?.repository?.verifyCommand ?? '',
+            acceptance: t?.repository?.acceptance ? JSON.stringify(t.repository.acceptance, null, 2) : '',
           },
           timeoutSeconds: t?.timeoutSeconds ?? 900,
           weight: t?.weight ?? 1,
@@ -567,6 +625,7 @@ export class TaskEditorDrawerComponent {
               baseRef: v.repository.baseRef.trim(),
               setupCommand: v.repository.setupCommand.trim() || null,
               verifyCommand: v.repository.verifyCommand.trim(),
+              acceptance: parseAcceptance(v.repository.acceptance),
             }
           : null,
       timeoutSeconds: v.timeoutSeconds,

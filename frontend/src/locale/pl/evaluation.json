@@ -346,5 +346,8 @@
   "evaluation.board.latency": "Czas p50 / p95",
   "evaluation.board.latencyNote": "{count, plural, =0 {brak udanych prób} one {z # udanej próby} few {z # udanych prób} many {z # udanych prób} other {z # udanej próby}}",
   "evaluation.benchmarks.form.judgeIsCandidate": "Model oceniający jest też kandydatem: oceniałby własne odpowiedzi. Wybierz oceniającego spoza porównania.",
-  "evaluation.benchmarks.form.sampleRepository": "{count, plural, one {# zadanie programistyczne wskazuje} few {# zadania programistyczne wskazują} many {# zadań programistycznych wskazuje} other {# zadania programistycznego wskazuje}} przykładowe repozytorium, które nie istnieje: zakończą się błędem. Wskaż w zestawie prawdziwe repozytorium albo je pomiń."
+  "evaluation.benchmarks.form.sampleRepository": "{count, plural, one {# zadanie programistyczne wskazuje} few {# zadania programistyczne wskazują} many {# zadań programistycznych wskazuje} other {# zadania programistycznego wskazuje}} przykładowe repozytorium, które nie istnieje: zakończą się błędem. Wskaż w zestawie prawdziwe repozytorium albo je pomiń.",
+  "evaluation.task.acceptance": "Sprawdzenia akceptacyjne (JSON)",
+  "evaluation.task.acceptanceInvalid": "Niepoprawne: obiekt z files (ścieżka do treści), protectedPaths i requireChanges",
+  "evaluation.task.acceptanceHint": "Ukryte przed agentem: files (np. testy akceptacyjne) są zapisywane tylko na czas komendy weryfikacji, protectedPaths (ścieżki git, np. istniejące testy) muszą pozostać bez zmian, requireChanges oblewa przebieg, który niczego nie zmienił. Puste = brak."
 }

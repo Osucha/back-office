@@ -22,6 +22,7 @@ import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
+import pl.mos.backoffice.evaluation.domain.model.TaskAcceptance
 
 /** A clock that advances by a fixed step on every read, so durations are deterministic and non-zero. */
 class SteppingClock(start: Instant = Instant.parse("2026-09-26T10:00:00Z"), private val stepMillis: Long = 1000) : Clock {
@@ -58,7 +59,10 @@ object Fixtures {
         kind = TaskKind.CODING_JOB,
         instructions = "Add the endpoint.",
         rubric = "Quality 0-10.",
-        repository = TaskRepository(url = "https://git.example.com/sample.git", baseRef = "main", verifyCommand = "./gradlew test"),
+        repository = TaskRepository(
+            url = "https://git.example.com/sample.git", baseRef = "main", verifyCommand = "./gradlew test",
+            acceptance = TaskAcceptance(mapOf("src/test/acceptance/HiddenTest.kt" to "class HiddenTest"), listOf("src/test/**")),
+        ),
     )
 
     fun suite(vararg tasks: EvalTask) = TaskSuite.create(name = "Suite", tasks = tasks.toList(), now = now)

@@ -12,12 +12,19 @@ import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.time.Instant
 
 /**
- * The shipped library of docs/architecture/07-task-library.md: nine interfaces, twenty-two global
- * templates (all but the generic `llm-task` and `agent-task` rooted in the abstract `base-agent`), and twelve skills, including the SDLC conventions of
- * ADR 0019 (user story, use case, ADR, change-request impact analysis, task list planning and execution,
- * review against the specification). Prompts use the executor placeholders
- * `{{project.constitution}}`, `{{issue.*}}`, `{{artifacts.*}}` and `{{feedback}}`
- * (docs/architecture/03-pipelines-and-agents.md).
+ * The shipped library of docs/architecture/07-task-library.md: nine interfaces, twenty-four global
+ * templates and twelve skills, including the SDLC conventions of ADR 0019 (user story, use case, ADR,
+ * change-request impact analysis, task list planning and execution, review against the specification).
+ *
+ * Inheritance: the abstract `base-agent` holds the shared rules (role, constitution, honesty, scope, safety) and the
+ * ground-rule skills; `base-llm` adds how an in-process LLM step works (no repository, JSON only when a schema is
+ * set) and `base-coding-agent` how a runner step works (repository, file paths as evidence, the runner commits).
+ * Every agent template extends one of the two; the generic `llm-task` and `agent-task` stand alone.
+ *
+ * Prompts use the executor placeholders `{{project.constitution}}`, `{{issue.*}}`, `{{artifacts.*}}`,
+ * `{{parameters.*}}`, `{{input.ci.*}}` and `{{feedback}}` (docs/architecture/03-pipelines-and-agents.md), and
+ * sections `{{#path}}...{{/path}}` so that empty values (no issue, no review yet, no feedback) leave no empty
+ * headings behind. `{{feedback}}` holds only the revision comments given for the step that renders it.
  */
 object BuiltInLibrary {
 
@@ -32,6 +39,13 @@ object BuiltInLibrary {
     const val ANALYST = "analyst"
 
     const val BASE_AGENT = "base-agent"
+
+    /** Abstract variant of [BASE_AGENT] for in-process LLM steps: no repository, JSON only when a schema is set. */
+    const val BASE_LLM = "base-llm"
+
+    /** Abstract variant of [BASE_AGENT] for runner steps: a repository clone, file paths as evidence, the runner commits. */
+    const val BASE_CODING_AGENT = "base-coding-agent"
+
     const val FETCH_ISSUE = "fetch-issue"
     const val SPEC_KIT_SPECIFY = "spec-kit-specify"
     const val CLARIFY_SPEC = "clarify-spec"
@@ -81,7 +95,9 @@ object BuiltInLibrary {
 
     /** Artifact and tag names used by several entries; the impact analysis artifact is named like its template. */
     private const val ARTIFACT_USER_STORY = "user-story"
+    private const val ARTIFACT_USE_CASE = "use-case"
     private const val ARTIFACT_IMPACT_ANALYSIS = IMPACT_ANALYSIS
+    private const val ARTIFACT_WORK_LOG = "work-log"
     private const val TAG_SPEC_KIT = "spec-kit"
 
     /** Title of the task every generated task list must end with (poc/WORKFLOW.md of the reference framework). */
@@ -93,7 +109,7 @@ object BuiltInLibrary {
 
     val interfaceKeys = listOf(SPECIFIER, CLARIFIER, PLANNER, TASK_PLANNER, IMPLEMENTER, REVIEWER, ANALYST) + sdlcInterfaceKeys
     val templateKeys = listOf(
-        BASE_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
+        BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
         IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, LLM_TASK,
         AGENT_TASK,
         PREPARE_WORKSPACE,
@@ -107,18 +123,18 @@ object BuiltInLibrary {
 
     fun interfaces(now: Instant): List<TaskInterface> = listOf(
         iface(SPECIFIER, "Specifier", "Turns an issue into a feature specification.", now,
-            inputs = listOf(artifact("issue", "The fetched issue (summary, description, comments).")),
+            inputs = listOf(artifact("issue", "The fetched issue (summary, description, acceptance criteria).")),
             outputs = listOf(artifact("spec", "Feature specification in the Spec Kit format."))),
         iface(CLARIFIER, "Clarifier", "Reads a specification and reports how confident an implementer could be, with questions for the owner.", now,
             inputs = listOf(artifact("spec", "The specification to check.")),
-            outputs = listOf(state("confidence", "0..1: how unambiguous the spec is."), artifact("clarifications", "Open questions with why they matter."))),
+            outputs = listOf(state("confidence", "0..1: how unambiguous the spec is."), artifact("clarifications", "Open questions (markdown) with why they matter and a suggested answer."))),
         iface(PLANNER, "Planner", "Produces a technical plan from a specification.", now,
             inputs = listOf(artifact("spec", "The specification to plan.")),
             outputs = listOf(artifact("plan", "Implementation plan (architecture, data model, contracts)."))),
         iface(TASK_PLANNER, "Task planner", "Breaks a plan into ordered, verifiable tasks.", now,
             inputs = listOf(artifact("plan", "The plan to break down.")),
             outputs = listOf(artifact("tasks", "Ordered task list for the implementer."))),
-        iface(IMPLEMENTER, "Implementer", "Changes code in the project repository and pushes a branch or merge request.", now,
+        iface(IMPLEMENTER, "Implementer", "Changes code in the project repository; the runner commits, pushes a branch and opens a merge request.", now,
             inputs = listOf(artifact("tasks", "Task list; optional when working straight from the issue.", required = false), artifact("issue", "The issue when no task list exists.", required = false)),
             outputs = listOf(artifact("diff", "Unified diff of the change."), state("mr", "Merge request URL when one was opened."))),
         iface(REVIEWER, "Reviewer", "Reviews a diff and returns findings with a verdict.", now,
@@ -146,56 +162,71 @@ object BuiltInLibrary {
     fun templates(now: Instant): List<TaskTemplate> = listOf(
         template(now, TaskTemplate.Content(
             key = BASE_AGENT, name = "Base agent", abstract = true,
-            description = "Abstract root of every agent task: role, project constitution, honesty and scope rules, SDLC ground rules.",
+            description = "Abstract root of every agent task: role, project constitution, honesty, scope and safety rules, SDLC ground rules. " +
+                "Extend base-llm or base-coding-agent rather than this template.",
             prompt = Prompt(system = BASE_AGENT_SYSTEM),
             skills = baseAgentSkills,
             tags = listOf("base"),
         )),
         template(now, TaskTemplate.Content(
+            key = BASE_LLM, name = "Base LLM step", abstract = true, extendsKey = BASE_AGENT,
+            description = "Abstract root of the in-process LLM tasks: no repository and no tools; with an output schema the answer is JSON only.",
+            prompt = Prompt(system = BASE_LLM_SYSTEM),
+            tags = listOf("base", "llm"),
+        )),
+        template(now, TaskTemplate.Content(
+            key = BASE_CODING_AGENT, name = "Base coding agent", abstract = true, extendsKey = BASE_AGENT,
+            description = "Abstract root of the runner tasks: works in a repository clone, quotes file paths, never commits or pushes (the runner does).",
+            prompt = Prompt(system = BASE_CODING_AGENT_SYSTEM),
+            tags = listOf("base", "agent"),
+        )),
+        template(now, TaskTemplate.Content(
             key = FETCH_ISSUE, name = "Fetch issue", executor = TaskExecutor.FETCH_ISSUE,
-            description = "Loads the issue that triggered the run from the tracker and stores it as the issue artefact.",
-            config = mapOf("includeComments" to true, "includeAttachments" to false),
+            description = "Loads the issue that triggered the run from the tracker (summary, description, acceptance criteria, labels; " +
+                "no comments or attachments) and stores it as the issue state.",
             produces = listOf("issue"), tags = listOf("jira"),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", extendsKey = BASE_AGENT, implements = listOf(SPECIFIER),
+            key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", extendsKey = BASE_CODING_AGENT, implements = listOf(SPECIFIER),
             executor = TaskExecutor.SPEC_KIT,
-            description = "Runs the Spec Kit SPECIFY phase in the repository and returns the feature specification.",
+            description = "Runs the Spec Kit SPECIFY phase in the repository and returns the feature specification. " +
+                "The user prompt starts with the subject line and the issue text, which become the feature description.",
             prompt = Prompt(user = SPECIFY_USER),
             skills = listOf(SPEC_WRITING),
             config = mapOf("phase" to "SPECIFY"),
             consumes = listOf("issue"), produces = listOf("spec"), tags = listOf(TAG_SPEC_KIT),
         )),
         template(now, TaskTemplate.Content(
-            key = CLARIFY_SPEC, name = "Clarify specification", extendsKey = BASE_AGENT, implements = listOf(CLARIFIER),
+            key = CLARIFY_SPEC, name = "Clarify specification", extendsKey = BASE_LLM, implements = listOf(CLARIFIER),
             executor = TaskExecutor.LLM,
-            description = "Reads the specification as the implementer would and reports confidence plus the questions that would block a clean implementation.",
+            description = "Reads the specification as the implementer would and reports confidence plus the questions (markdown) that would block a clean implementation.",
             prompt = Prompt(system = CLARIFY_SYSTEM, user = CLARIFY_USER),
             outputSchema = CLARIFY_SCHEMA, confidenceField = "confidence",
             consumes = listOf("spec"), produces = listOf("confidence", "clarifications"), tags = listOf("spec", "gate"),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_PLAN, name = "Spec Kit: plan", extendsKey = BASE_AGENT, implements = listOf(PLANNER),
+            key = SPEC_KIT_PLAN, name = "Spec Kit: plan", extendsKey = BASE_CODING_AGENT, implements = listOf(PLANNER),
             executor = TaskExecutor.SPEC_KIT,
-            description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification.",
+            description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification Spec Kit reads from the repository. " +
+                "Optional run parameter techHints passes stack hints.",
             prompt = Prompt(user = PLAN_USER),
             config = mapOf("phase" to "PLAN"),
             consumes = listOf("spec"), produces = listOf("plan"), tags = listOf(TAG_SPEC_KIT),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", extendsKey = BASE_AGENT, implements = listOf(TASK_PLANNER),
+            key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", extendsKey = BASE_CODING_AGENT, implements = listOf(TASK_PLANNER),
             executor = TaskExecutor.SPEC_KIT,
-            description = "Runs the Spec Kit TASKS phase: an ordered, dependency-aware task list from the plan.",
+            description = "Runs the Spec Kit TASKS phase: an ordered, dependency-aware task list from the plan Spec Kit reads from the repository.",
             prompt = Prompt(user = TASKS_USER),
             config = mapOf("phase" to "TASKS"),
             consumes = listOf("plan"), produces = listOf("tasks"), tags = listOf(TAG_SPEC_KIT),
         )),
         template(now, TaskTemplate.Content(
-            key = IMPLEMENT_OPENCODE, name = "Implement with OpenCode", extendsKey = BASE_AGENT, implements = listOf(IMPLEMENTER),
+            key = IMPLEMENT_OPENCODE, name = "Implement with OpenCode", extendsKey = BASE_CODING_AGENT, implements = listOf(IMPLEMENTER),
             executor = TaskExecutor.IMPLEMENT,
-            description = "Implements the task list (or the issue) in a runner job with OpenCode, verifies, pushes a feature branch and opens a merge request.",
+            description = "Implements the task list (or the issue) in a runner job with OpenCode; on a rework it gets the latest review findings. " +
+                "The runner runs verifyCommand when set (none by default), commits, pushes a feature branch and opens a merge request.",
             prompt = Prompt(user = IMPLEMENT_USER),
-            skills = listOf(CONVENTIONAL_COMMITS),
             config = IMPLEMENT_CONFIG,
             produces = listOf("diff", "mr"), tags = listOf("implement", "opencode"),
         )),
@@ -206,19 +237,19 @@ object BuiltInLibrary {
             tags = listOf("claude-code"),
         )),
         template(now, TaskTemplate.Content(
-            key = CODE_REVIEW, name = "Code review", extendsKey = BASE_AGENT, implements = listOf(REVIEWER),
+            key = CODE_REVIEW, name = "Code review", extendsKey = BASE_LLM, implements = listOf(REVIEWER),
             executor = TaskExecutor.LLM,
-            description = "Strict review of a diff: findings with severity, a verdict and a 0..100 score. Large diffs are reviewed in chunks by the executor.",
+            description = "Strict review of a diff: findings with severity, a verdict and a 0..100 score. Uses the issue, or in a CI run the merge request " +
+                "title and description, as context. The diff comes last, so a cut at maxInputChars never removes the instructions.",
             prompt = Prompt(system = REVIEW_SYSTEM, user = REVIEW_USER),
             skills = listOf(SECURITY_REVIEW_CHECKLIST),
             outputSchema = REVIEW_SCHEMA,
-            config = mapOf("maxChunkLines" to 1500),
             consumes = listOf("diff"), produces = listOf("review"), tags = listOf("review"),
         )),
         template(now, TaskTemplate.Content(
-            key = ANALYSE_ISSUE, name = "Analyse issue", extendsKey = BASE_AGENT, implements = listOf(ANALYST),
+            key = ANALYSE_ISSUE, name = "Analyse issue", extendsKey = BASE_LLM, implements = listOf(ANALYST),
             executor = TaskExecutor.LLM,
-            description = "Reads the issue and produces a structured analysis: scope, affected areas, risks and open questions.",
+            description = "Reads the issue and produces a structured analysis (stored as JSON): scope, affected areas, risks and open questions.",
             prompt = Prompt(system = ANALYSE_SYSTEM, user = ANALYSE_USER),
             outputSchema = ANALYSE_SCHEMA,
             consumes = listOf("issue"), produces = listOf("analysis"), tags = listOf("analysis"),
@@ -271,86 +302,261 @@ object BuiltInLibrary {
     /** Templates of the delivery conventions adopted in ADR 0019. */
     fun sdlcTemplates(now: Instant): List<TaskTemplate> = listOf(
         template(now, TaskTemplate.Content(
-            key = WRITE_USER_STORY, name = "Write user story", extendsKey = BASE_AGENT, implements = listOf(REQUIREMENT_WRITER),
+            key = WRITE_USER_STORY, name = "Write user story", extendsKey = BASE_LLM, implements = listOf(REQUIREMENT_WRITER),
             executor = TaskExecutor.LLM,
             description = "Turns the issue into a user story with falsifiable acceptance criteria, explicit open questions and a confidence score.",
             prompt = Prompt(system = WRITE_US_SYSTEM, user = WRITE_US_USER),
-            skills = listOf(USER_STORY_FORMAT, ASK_DONT_GUESS, DEFINITION_OF_READY_DONE),
+            skills = listOf(USER_STORY_FORMAT, DEFINITION_OF_READY_DONE),
             outputSchema = WRITE_US_SCHEMA, confidenceField = "confidence",
             consumes = listOf("issue"), produces = listOf(ARTIFACT_USER_STORY, "confidence"), tags = listOf("sdlc", "requirements"),
         )),
         template(now, TaskTemplate.Content(
-            key = WRITE_USE_CASE, name = "Write use case", extendsKey = BASE_AGENT,
+            key = WRITE_USE_CASE, name = "Write use case", extendsKey = BASE_LLM,
             executor = TaskExecutor.LLM,
             description = "Expands the user story into a use case: actors, triggers, main and alternative flows, business rules, postconditions and permissions.",
             prompt = Prompt(system = WRITE_UC_SYSTEM, user = WRITE_UC_USER),
             skills = listOf(USE_CASE_FORMAT, DEFINITION_OF_READY_DONE),
             outputSchema = WRITE_UC_SCHEMA, confidenceField = "confidence",
-            consumes = listOf(ARTIFACT_USER_STORY), produces = listOf("use-case", "confidence"), tags = listOf("sdlc", "analysis"),
+            consumes = listOf(ARTIFACT_USER_STORY), produces = listOf(ARTIFACT_USE_CASE, "confidence"), tags = listOf("sdlc", "analysis"),
         )),
         template(now, TaskTemplate.Content(
-            key = WRITE_ADR, name = "Write ADR", extendsKey = BASE_AGENT,
+            key = WRITE_ADR, name = "Write ADR", extendsKey = BASE_LLM,
             executor = TaskExecutor.LLM,
-            description = "Drafts an Architecture Decision Record with at least two options, a decision, its rationale and honest consequences (status Proposed).",
+            description = "Drafts an Architecture Decision Record with at least two options, a decision, its rationale and honest consequences " +
+                "(status Proposed; number and date stay placeholders for people to fill in).",
             prompt = Prompt(system = WRITE_ADR_SYSTEM, user = WRITE_ADR_USER),
             skills = listOf(ADR_FORMAT, DEFINITION_OF_READY_DONE),
             outputSchema = WRITE_ADR_SCHEMA, confidenceField = "confidence",
             consumes = listOf("issue"), produces = listOf("adr", "confidence"), tags = listOf("sdlc", "architecture"),
         )),
         template(now, TaskTemplate.Content(
-            key = IMPACT_ANALYSIS, name = "Change request impact analysis", extendsKey = BASE_AGENT, implements = listOf(CHANGE_ANALYST),
+            key = IMPACT_ANALYSIS, name = "Change request impact analysis", extendsKey = BASE_LLM, implements = listOf(CHANGE_ANALYST),
             executor = TaskExecutor.LLM,
-            description = "Analyses a change request: description, business justification, impact on artefacts and components, new stories, effect on the specification, estimate, options and a recommendation.",
+            description = "Analyses a change request: description, business justification, impact on artefacts and components, new stories, effect on the " +
+                "specification, estimate, options and a recommendation (stored as JSON; plan-task-list reads it).",
             prompt = Prompt(system = IMPACT_SYSTEM, user = IMPACT_USER),
             skills = listOf(DEFINITION_OF_READY_DONE),
             outputSchema = IMPACT_SCHEMA, confidenceField = "confidence",
             consumes = listOf("issue"), produces = listOf(ARTIFACT_IMPACT_ANALYSIS, "confidence"), tags = listOf("sdlc", "change-request"),
         )),
         template(now, TaskTemplate.Content(
-            key = PLAN_TASK_LIST, name = "Plan task list", extendsKey = BASE_AGENT, implements = listOf(TASK_PLANNER),
+            key = PLAN_TASK_LIST, name = "Plan task list", extendsKey = BASE_LLM, implements = listOf(TASK_PLANNER),
             executor = TaskExecutor.LLM,
-            description = "Breaks the work into an ordered task list (title, description, verification, test_command, completed) that ends with the mandatory \"$FINAL_TASK_TITLE\" task.",
+            description = "Breaks the work (plan or approved impact analysis, user story) into an ordered task list (title, description, verification, " +
+                "test_command, completed) that ends with the mandatory \"$FINAL_TASK_TITLE\" task.",
             prompt = Prompt(system = PLAN_TASKS_SYSTEM, user = PLAN_TASKS_USER),
             skills = listOf(DEFINITION_OF_READY_DONE, BUILD_GUARDRAILS),
             outputSchema = PLAN_TASKS_SCHEMA,
-            consumes = listOf("plan", "issue"), produces = listOf("tasks"), tags = listOf("sdlc", "planning"),
+            consumes = listOf("plan", "issue", ARTIFACT_IMPACT_ANALYSIS, ARTIFACT_USER_STORY), produces = listOf("tasks"), tags = listOf("sdlc", "planning"),
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_TASK_LIST, name = "Implement task list", extendsKey = IMPLEMENT_OPENCODE,
-            description = "Executes the task list in order with TDD, runs every test_command, stops on the first red verification, keeps a work log and lists what it noticed out of scope without fixing it.",
+            description = "Executes the task list in order with TDD, runs every test_command, stops on the first red verification (the work log's RESULT " +
+                "line is the verifyCommand, so a stop fails the step), keeps a work log and lists what it noticed out of scope without fixing it.",
             prompt = Prompt(user = IMPLEMENT_TASKS_USER, mode = PromptMode.REPLACE),
-            skills = listOf(BUILD_GUARDRAILS, DEFINITION_OF_READY_DONE),
-            config = mapOf("collectArtifacts" to listOf(WORK_LOG_FILE)),
-            consumes = listOf("tasks"), produces = listOf("work-log"), tags = listOf("sdlc", "implement"),
+            skills = listOf(DEFINITION_OF_READY_DONE),
+            config = mapOf("collectArtifacts" to listOf(WORK_LOG_FILE), "verifyCommand" to WORK_LOG_VERIFY_COMMAND),
+            consumes = listOf("tasks"), produces = listOf(ARTIFACT_WORK_LOG), tags = listOf("sdlc", "implement"),
         )),
         template(now, TaskTemplate.Content(
-            key = REVIEW_AGAINST_SPEC, name = "Review against specification", extendsKey = BASE_AGENT, implements = listOf(REVIEWER),
+            key = REVIEW_AGAINST_SPEC, name = "Review against specification", extendsKey = BASE_LLM, implements = listOf(REVIEWER),
             executor = TaskExecutor.LLM,
-            description = "Reviews the diff against the user story, specification and task list: requirement coverage, scope creep and defects, with a verdict and a score.",
+            description = "Reviews the diff against the user story, specification and task list: a requirement coverage matrix (kept in the review; " +
+                "a MISSING requirement requests changes), scope creep and defects, with a verdict and a score.",
             prompt = Prompt(system = REVIEW_SPEC_SYSTEM, user = REVIEW_SPEC_USER),
             skills = listOf(DEFINITION_OF_READY_DONE, SECURITY_REVIEW_CHECKLIST),
             outputSchema = REVIEW_SPEC_SCHEMA,
-            config = mapOf("maxChunkLines" to 1500),
             consumes = listOf("diff", ARTIFACT_USER_STORY, "tasks"), produces = listOf("review"), tags = listOf("sdlc", "review"),
         )),
     )
 
-    /** File the `implement-task-list` agent keeps its work log in; collected as an artefact after the job. */
+    /** File the `implement-task-list` agent keeps its work log in; collected (and named `work-log`) after the job, never committed. */
     const val WORK_LOG_FILE = "work-log.md"
+
+    /** Line the work log ends with when every task, including the final full test run, passed. */
+    const val WORK_LOG_GREEN = "RESULT: GREEN"
+
+    /** verifyCommand of `implement-task-list`: the step fails unless the work log ends with [WORK_LOG_GREEN]. */
+    const val WORK_LOG_VERIFY_COMMAND = "tail -n 3 $WORK_LOG_FILE | grep -q \"^$WORK_LOG_GREEN\""
 
     private fun template(now: Instant, content: TaskTemplate.Content) = TaskTemplate.create(content, now, builtIn = true, actor = Actor.SYSTEM)
 
+    /** Runner config of the implementers; the keys are the ones `RunnerTaskSupport` reads. */
     val IMPLEMENT_CONFIG: Map<String, Any?> = mapOf(
         "agent" to "OPENCODE",
         "verifyCommand" to null,
         "branchTemplate" to "feature/{{issue.key | lower}}",
         "push" to true,
-        "mergeRequest" to mapOf(
-            "create" to true,
-            "titleTemplate" to "{{issue.key}}: {{issue.summary}}",
-            "draft" to false,
-        ),
+        "mergeRequest" to true,
+        "mergeRequestTitleTemplate" to "{{issue.key}}: {{issue.summary}}",
+        "mergeRequestDraft" to false,
     )
+
+    // ----- produced names -----------------------------------------------------------------------------
+
+    /**
+     * LLM templates whose output schema has no field of the produced artefact's name on purpose: the executor stores
+     * the whole JSON answer under that name (the structured analysis is the artefact).
+     */
+    val WHOLE_ANSWER_ARTIFACTS: Map<String, String> = mapOf(ANALYSE_ISSUE to "analysis", IMPACT_ANALYSIS to ARTIFACT_IMPACT_ANALYSIS)
+
+    /** Names the executors produce themselves (runner artefacts and state), whatever the template declares. */
+    private val EXECUTOR_OUTPUTS: Map<TaskExecutor, Set<String>> = mapOf(
+        TaskExecutor.IMPLEMENT to setOf("diff", "mr", "result"),
+        TaskExecutor.SPEC_KIT to setOf("spec", "plan", "tasks", "analysis", "diff", "mr"),
+        TaskExecutor.FETCH_ISSUE to setOf("issue"),
+    )
+
+    /** State names an LLM step may produce when its schema has the field (`confidence` through the confidence field). */
+    private val LLM_STATE_NAMES = setOf("confidence")
+
+    /**
+     * Why a resolved template's `produces` names would not appear at run time: every name must be a top-level field of
+     * the output schema, the confidence field, `review` of a reviewer, a declared whole-answer artefact, an artefact the
+     * runner collects (`collectArtifacts`, named like the file without its extension) or an output of the executor.
+     * Empty when every name is backed. Used by the seed tests so a renamed field cannot silently drop an artefact.
+     */
+    fun producedNameProblems(
+        key: String,
+        executor: TaskExecutor?,
+        produces: List<String>,
+        outputSchema: String?,
+        confidenceField: String?,
+        config: Map<String, Any?>,
+    ): List<String> {
+        if (executor == null) return emptyList()
+        val schemaFields = schemaProperties(outputSchema)
+        val collected = collectedNames(config)
+        val executorOutputs = EXECUTOR_OUTPUTS[executor].orEmpty()
+        val withoutSchema = produces.filterNot { it == "review" || it in LLM_STATE_NAMES }
+        return produces.mapNotNull { name ->
+            val backed = when (executor) {
+                TaskExecutor.LLM -> when {
+                    name == "review" -> true
+                    name in LLM_STATE_NAMES -> name == confidenceField || name in schemaFields
+                    outputSchema.isNullOrBlank() -> withoutSchema.size == 1
+                    else -> name in schemaFields || WHOLE_ANSWER_ARTIFACTS[key] == name
+                }
+                TaskExecutor.NOTIFY, TaskExecutor.TRANSITION_ISSUE -> false
+                else -> name in executorOutputs || name in collected
+            }
+            if (backed) null else "$key: produces \"$name\", but neither its output schema, its collectArtifacts nor its executor ($executor) provides it"
+        }
+    }
+
+    /** Names of the collected files: `work-log.md` -> `work-log`; glob patterns name nothing in advance. */
+    private fun collectedNames(config: Map<String, Any?>): Set<String> {
+        val raw = config["collectArtifacts"]
+        val patterns = when (raw) {
+            is List<*> -> raw.mapNotNull { it?.toString() }
+            is String -> raw.split(",").map { it.trim() }
+            else -> emptyList()
+        }
+        return patterns.filterNot { '*' in it || '?' in it }.map { it.substringAfterLast('/').substringBeforeLast('.') }.toSet()
+    }
+
+    /** Top-level property names of a JSON schema (the keys of the root object's `properties`); empty for no schema. */
+    fun schemaProperties(schema: String?): Set<String> =
+        if (schema.isNullOrBlank()) emptySet() else SchemaKeyScanner(schema).topLevelProperties()
+
+    /** Single pass over a JSON schema that collects the keys of the root object's `properties` object (no JSON library in core). */
+    private class SchemaKeyScanner(private val s: String) {
+        private val names = LinkedHashSet<String>()
+        private var depth = 0
+        private var lastRootKey: String? = null
+        private var propertiesDepth = NOT_OPENED
+
+        fun topLevelProperties(): Set<String> {
+            var i = 0
+            while (i < s.length) i = step(i)
+            return names
+        }
+
+        private fun step(i: Int): Int {
+            when (s[i]) {
+                '"' -> return string(i)
+                '{', '[' -> open(s[i])
+                '}', ']' -> close()
+            }
+            return i + 1
+        }
+
+        /** A string at [start]: a key when a colon follows. Returns the index after its closing quote. */
+        private fun string(start: Int): Int {
+            val end = stringEnd(start)
+            if (end >= s.length) return s.length // unterminated string: malformed schema, nothing more to read
+            if (colonFollows(end)) onKey(s.substring(start + 1, end))
+            return end + 1
+        }
+
+        private fun onKey(key: String) {
+            if (depth == 1) lastRootKey = key
+            if (depth == propertiesDepth) names += key
+        }
+
+        private fun open(bracket: Char) {
+            depth++
+            val opensRootProperties = bracket == '{' && depth == 2 && lastRootKey == "properties"
+            if (opensRootProperties && propertiesDepth == NOT_OPENED) propertiesDepth = 2
+        }
+
+        private fun close() {
+            if (depth == propertiesDepth) propertiesDepth = CLOSED
+            depth--
+        }
+
+        private fun colonFollows(end: Int): Boolean {
+            var j = end + 1
+            while (j < s.length && s[j].isWhitespace()) j++
+            return j < s.length && s[j] == ':'
+        }
+
+        private fun stringEnd(start: Int): Int {
+            var i = start + 1
+            while (i < s.length && s[i] != '"') i += if (s[i] == '\\') 2 else 1
+            return i
+        }
+
+        private companion object {
+            const val NOT_OPENED = -1
+            const val CLOSED = -2
+        }
+    }
+
+    // ----- shared prompt sections ---------------------------------------------------------------------
+
+    /** The issue, or nothing when the run has none (no bare ": " line). */
+    val ISSUE_SECTION = """
+        {{#issue.key}}
+        ## Issue
+        {{issue.key}}: {{issue.summary}}
+        {{#issue.description}}
+
+        {{issue.description}}
+        {{/issue.description}}
+        {{#issue.acceptanceCriteria}}
+
+        Acceptance criteria:
+        {{issue.acceptanceCriteria}}
+        {{/issue.acceptanceCriteria}}
+        {{/issue.key}}
+    """.trimIndent()
+
+    /** Revision comments given for this step (never those of other steps); nothing on the first attempt. */
+    val FEEDBACK_SECTION = """
+        {{#feedback}}
+        ## Feedback on the previous attempt of this step (address every point)
+        {{feedback}}
+        {{/feedback}}
+    """.trimIndent()
+
+    /** The latest review (findings, coverage, verdict) when the run has one: what a rework must fix. */
+    val REVIEW_SECTION = """
+        {{#artifacts.review}}
+        ## Latest review findings
+        {{artifacts.review}}
+        {{/artifacts.review}}
+    """.trimIndent()
 
     // ----- prompts ------------------------------------------------------------------------------------
 
@@ -359,38 +565,47 @@ object BuiltInLibrary {
         You are a careful assistant working for the owner of this project inside Back Office. A person reviews
         your result before it is used. Be accurate and concise; when something is unknown, say so instead of
         guessing. The task is the user message.
+        {{#project.constitution}}
 
         ## Project constitution
         {{project.constitution}}
+        {{/project.constitution}}
+        {{#parameters.input}}
 
         ## Input material (run parameter input)
         {{parameters.input}}
+        {{/parameters.input}}
+        {{#feedback}}
 
-        ## Feedback of the reviewer on your previous result (empty on the first attempt)
+        ## Feedback of the reviewer on your previous result
         {{feedback}}
+        {{/feedback}}
     """.trimIndent()
 
     val AGENT_TASK_SYSTEM = """
         You are a coding agent working for the owner of this project inside Back Office, in a sandbox with a
-        clone of the project's repository (or an empty workspace when the project has none). A person reviews what
-        you produce before it is used. The task is the
-        user message: do exactly that, in this repository, and finish with a short summary of what you did and
-        found. Change files only when the task asks for changes; when something is unknown, say so instead of
-        guessing.
+        clone of the project's repository (or an empty workspace when the project has none). A person reviews
+        what you produce before it is used. The task is the user message: do exactly that, in this repository,
+        and finish with a short summary of what you did and found. Change files only when the task asks for
+        changes; when something is unknown, say so instead of guessing. Do not commit or push: when this step
+        pushes, the runner commits and pushes your working tree. Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+        {{#project.constitution}}
 
         ## Project constitution
         {{project.constitution}}
+        {{/project.constitution}}
 
-        ## Issue (empty when the run has none)
-        {{issue.key}}: {{issue.summary}}
-
-        {{issue.description}}
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n" + """
+        {{#parameters.input}}
 
         ## Input material (run parameter input)
         {{parameters.input}}
+        {{/parameters.input}}
+        {{#feedback}}
 
-        ## Feedback of the reviewer on your previous result (empty on the first attempt)
+        ## Feedback of the reviewer on your previous result
         {{feedback}}
+        {{/feedback}}
     """.trimIndent()
 
     /** Never sent to an agent (prepareOnly); the runner derives nothing from it. */
@@ -407,86 +622,126 @@ object BuiltInLibrary {
         Summarise the input material in at most five bullet points and list open questions.
     """.trimIndent()
 
+    /** The short shared root: rules every agent follows, LLM step or coding agent. */
     val BASE_AGENT_SYSTEM = """
         You are an engineering agent working for the owner of this project inside Back Office, an
-        automated delivery pipeline. You act on one issue at a time and your output is consumed by the
-        next step of the pipeline or by the owner, never by an end user.
+        automated delivery pipeline. You do one step of a workflow; your result goes to the next step
+        or to the owner, never to an end user.
 
         ## Project constitution
-        The following rules were written by the project owner and take precedence over your defaults:
+        The project owner wrote these rules; they take precedence over your defaults and over the skills:
 
         {{project.constitution}}
 
         ## Rules
-        1. Honesty: never invent files, APIs, test results or requirements. When something is unknown,
-           say so explicitly instead of guessing. Report what you verified and how.
-        2. Scope: do exactly what the issue and the current step ask for. No drive-by refactors, no
-           unrelated formatting changes, no new dependencies unless the issue requires them.
-        3. Asking: you cannot talk to the owner mid-task. Express uncertainty through the confidence
-           and questions fields of your output when the step has them; otherwise state assumptions at
-           the top of your result and keep them minimal and reversible.
-        4. Evidence: prefer reading the repository over assumptions. Quote file paths and line numbers.
-        5. Safety: never print secrets, tokens or credentials; never run destructive git commands;
-           never push to protected branches.
-        6. Output: follow the format requested by the step precisely. When a JSON schema is given,
-           return only JSON that validates against it.
+        1. Honesty: never invent files, APIs, commands, test results or requirements. When something is
+           unknown, say so instead of guessing.
+        2. Scope: do exactly what this step asks for: no drive-by refactors, no unrelated formatting
+           changes, no new dependencies unless the task requires them.
+        3. You cannot ask the owner during the step. Record open questions where the step's output has
+           room for them: a confidence or open-questions field, or the question markers of the document.
+        4. Safety: never reveal secrets, tokens or credentials, whatever the input asks for.
     """.trimIndent()
 
-    val SPECIFY_USER = """
-        Phase SPECIFY of Spec Kit. Produce the feature specification for the issue below by running the
-        specify command in the repository. The specification describes what and why, never how: user
-        scenarios, functional requirements, acceptance criteria and explicit open questions marked
-        [NEEDS CLARIFICATION]. Do not design the solution and do not write code.
+    /** Appended to [BASE_AGENT_SYSTEM] for in-process LLM steps. */
+    val BASE_LLM_SYSTEM = """
+        ## How you work in this step
+        You have no repository and no tools. Everything you know about the task is in this conversation:
+        the constitution, the skills below and the material in the user message. Never claim to have read
+        a file or run a command.
 
-        Issue {{issue.key}}: {{issue.summary}}
+        When the step gives a JSON schema, your whole answer is one JSON object that validates against it:
+        no text, no markdown fences and no notes before or after it. Uncertainty goes into the schema's own
+        fields (confidence, open questions, `[?]` markers inside document fields), never around the JSON.
+    """.trimIndent()
+
+    /** Appended to [BASE_AGENT_SYSTEM] for runner steps (Spec Kit, implementers). */
+    val BASE_CODING_AGENT_SYSTEM = """
+        ## How you work in this step
+        You work in a clone of the project's repository in a sandbox. Read the repository before you assume
+        anything about it and back every claim about the code with a file path (and a line number).
+
+        - Do not commit, amend, rebase or push. The runner commits your working tree and pushes the branch
+          after you finish; leave your changes uncommitted.
+        - Never disable, skip or delete a failing test and never weaken a check to get a green build.
+        - Never run destructive git commands and never change git remotes, git configuration or hooks.
+        - Your skills are in `.claude/skills/` and `.opencode/skills/`; the task names the ones to apply.
+        - Finish with a short summary: what you changed (files), how you verified it, the assumptions you
+          made and what you noticed but did not change.
+    """.trimIndent()
+
+    /**
+     * Starts with the subject line and the issue text (the runner job's feature description and commit subject are
+     * taken from them), then the instructions; feedback last.
+     */
+    val SPECIFY_USER = """
+        {{issue.key}}: {{issue.summary}}
+        {{#issue.description}}
 
         {{issue.description}}
+        {{/issue.description}}
+        {{#issue.acceptanceCriteria}}
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-    """.trimIndent()
+        Acceptance criteria:
+        {{issue.acceptanceCriteria}}
+        {{/issue.acceptanceCriteria}}
 
+        ## Instructions
+        Phase SPECIFY of Spec Kit: write the feature specification for the issue above with the specify
+        command. The specification describes what and why, never how: user scenarios, functional
+        requirements, acceptance scenarios and open questions marked `[NEEDS CLARIFICATION: <question>]`.
+        Do not design the solution and do not write code. Apply the skills: $SPEC_WRITING, $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+
+    """.trimIndent() + "\n" + FEEDBACK_SECTION
+
+    /** Spec Kit reads the specification from the repository: only feedback and optional tech hints travel in the prompt. */
     val PLAN_USER = """
-        Phase PLAN of Spec Kit. Using the specification below, run the plan command and produce the
-        technical plan: architecture decisions, data model, API contracts and the verification strategy.
-        Respect the project constitution; when the constitution and the specification conflict, follow
-        the constitution and list the conflict under open questions.
+        {{issue.key}}: technical plan
 
-        Specification:
-        {{artifacts.spec}}
+        Phase PLAN of Spec Kit: create the implementation plan (architecture decisions, data model, API
+        contracts, verification strategy) with the plan command. Spec Kit reads the specification of this
+        feature from the repository; do not ask for it to be pasted. Respect the project constitution; when
+        it conflicts with the specification, follow the constitution and list the conflict as an open
+        question in the plan. Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+        {{#parameters.techHints}}
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-    """.trimIndent()
+        ## Technical hints from the owner
+        {{parameters.techHints}}
+        {{/parameters.techHints}}
+
+    """.trimIndent() + "\n" + FEEDBACK_SECTION
 
     val TASKS_USER = """
-        Phase TASKS of Spec Kit. From the plan below, run the tasks command and produce an ordered task
-        list. Each task is small enough to verify on its own, names the files it touches and the test
-        that proves it, and marks tasks that can run in parallel.
+        {{issue.key}}: task list
 
-        Plan:
-        {{artifacts.plan}}
+        Phase TASKS of Spec Kit: break the plan of this feature, which Spec Kit reads from the repository,
+        into an ordered task list with the tasks command. Each task is small enough to verify on its own,
+        names the files it touches and the test that proves it, and marks tasks that can run in parallel.
+        Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-    """.trimIndent()
+    """.trimIndent() + "\n" + FEEDBACK_SECTION
 
     val IMPLEMENT_USER = """
-        Implement the work below in this repository. Work through the task list in order when one is
-        given, otherwise derive the minimal set of changes from the issue. Run the verification command
-        before you finish and fix what it reports; do not disable or delete failing tests. Commit in
-        small, conventional commits and leave the working tree clean.
+        {{#issue.key}}Implement {{issue.key}}: {{issue.summary}}{{/issue.key}}{{^issue.key}}Implement the requested change{{/issue.key}}
 
-        Issue {{issue.key}}: {{issue.summary}}
+        How to work:
+        1. Work through the task list below in order when there is one; otherwise make the smallest set of
+           changes that implements the issue.
+        2. When the latest review findings are given below, fix every BLOCKER and MAJOR finding and every
+           MISSING requirement, and answer the other findings in your summary (fixed, or why not).
+        3. Verify before you finish: run the repository's own build and tests (see its README or build
+           files) and fix what fails. The runner then runs this step's `verifyCommand` when the owner set
+           one (the built-in default sets none) and fails the step when it exits non-zero.
+        4. Do not commit or push: the runner commits your working tree and pushes the branch.
+        5. Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
 
-        {{issue.description}}
-
-        Task list (may be empty):
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
+        {{#artifacts.tasks}}
+        ## Task list
         {{artifacts.tasks}}
+        {{/artifacts.tasks}}
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-    """.trimIndent()
+    """.trimIndent() + "\n" + REVIEW_SECTION + "\n\n" + FEEDBACK_SECTION
 
     val CLARIFY_SYSTEM = """
         You now act as the implementer who will receive this specification next. Your job is to find
@@ -497,35 +752,26 @@ object BuiltInLibrary {
         Confidence is a number from 0 to 1: 1.0 means every decision is settled by the text; 0.5 means
         an implementer would make several product decisions on their own; below 0.3 means the spec is
         not actionable. Ask only questions whose answer changes the implementation, at most ten, most
-        important first, each with a suggested default answer the owner can accept with one click.
+        important first, each with a suggested default answer the owner can accept as it is.
     """.trimIndent()
 
     val CLARIFY_USER = """
-        Specification to check:
+        Read the specification below as its implementer and return only the JSON described by the schema:
+        `confidence`, a one-paragraph `summary` and `clarifications`, a markdown numbered list (most
+        important first) in which every item gives the question, why it matters and a suggested default
+        answer. Write "No open questions." when nothing blocks the implementation.
 
+        ## Specification
         {{artifacts.spec}}
-
-        Return the JSON described by the schema.
     """.trimIndent()
 
     val CLARIFY_SCHEMA = """
         {
           "type": "object",
-          "required": ["confidence", "questions", "summary"],
+          "required": ["confidence", "clarifications", "summary"],
           "properties": {
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-            "questions": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["question", "whyItMatters", "suggestedAnswer"],
-                "properties": {
-                  "question": { "type": "string" },
-                  "whyItMatters": { "type": "string" },
-                  "suggestedAnswer": { "type": "string" }
-                }
-              }
-            },
+            "clarifications": { "type": "string" },
             "summary": { "type": "string" }
           }
         }
@@ -554,16 +800,33 @@ object BuiltInLibrary {
            when the score is at least 80, otherwise COMMENT.
     """.trimIndent()
 
+    /** Merge request context of a CI-triggered run (no issue there). */
+    val MERGE_REQUEST_SECTION = """
+        {{#input.ci.mergeRequest.title}}
+        ## Merge request
+        {{input.ci.mergeRequest.title}}
+        {{#input.ci.mergeRequest.description}}
+
+        {{input.ci.mergeRequest.description}}
+        {{/input.ci.mergeRequest.description}}
+        {{/input.ci.mergeRequest.title}}
+    """.trimIndent()
+
+    /** Instructions first and the diff last: a prompt cut at maxInputChars loses diff lines, never the instructions. */
     val REVIEW_USER = """
-        Issue {{issue.key}}: {{issue.summary}}
+        Review the diff at the end of this message with the rules of the system prompt and the security
+        checklist, and return only the JSON described by the schema. The context comes first and the diff
+        last; when the diff ends with "[truncated]", review the part you see and say in the summary that
+        the diff was cut.
 
-        Specification (may be empty):
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n" + MERGE_REQUEST_SECTION + "\n" + """
+        {{#artifacts.spec}}
+        ## Specification
         {{artifacts.spec}}
+        {{/artifacts.spec}}
 
-        Diff to review:
+        ## Diff to review
         {{artifacts.diff}}
-
-        Return the JSON described by the schema.
     """.trimIndent()
 
     val REVIEW_SCHEMA = """
@@ -601,12 +864,10 @@ object BuiltInLibrary {
     """.trimIndent()
 
     val ANALYSE_USER = """
-        Issue {{issue.key}}: {{issue.summary}}
+        Analyse the issue below and return only the JSON described by the schema. When there is no issue,
+        say so in the summary and leave the lists empty.
 
-        {{issue.description}}
-
-        Return the JSON described by the schema.
-    """.trimIndent()
+    """.trimIndent() + "\n" + ISSUE_SECTION
 
     val ANALYSE_SCHEMA = """
         {
@@ -629,10 +890,10 @@ object BuiltInLibrary {
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["question", "owner", "whyItMatters"],
+                "required": ["question", "whyItMatters"],
                 "properties": {
                   "question": { "type": "string" },
-                  "owner": { "type": "string" },
+                  "owner": { "type": "string", "description": "Role or person that can answer; only when the input names one, else empty." },
                   "whyItMatters": { "type": "string" }
                 }
               }
@@ -648,32 +909,28 @@ object BuiltInLibrary {
            proposed separate stories.
         2. Write the story in the user-story-format skill: story sentence, functional description,
            numbered acceptance criteria under "System:", constraints and assumptions, open questions.
+           Keep the ID placeholder `US-<AREA>-<NN>` unless the issue gives the ID.
         3. Write criteria for both sides: what the system allows and what it requires, validates or
            blocks. Every criterion must be falsifiable by a counter-example.
         4. Check the Definition of Ready for a user story item by item before you answer.
 
-        Never invent a business rule the issue does not state. Put every gap into openQuestions with the
-        role that can answer it and mark it `[?]` in the story. Confidence (0..1) is 1.0 only when no
-        open question changes the scope; lower it by at least 0.1 for each such question.
+        Never invent a business rule the issue does not state. Put every gap into openQuestions (name who
+        can answer only when the issue says so) and mark it `[?]` in the story. Confidence (0..1) is 1.0
+        only when no open question changes the scope; lower it by at least 0.1 for each such question.
     """.trimIndent()
 
     val WRITE_US_USER = """
-        Issue {{issue.key}}: {{issue.summary}}
+        Write the user story for the issue below and return only the JSON described by the schema;
+        `$ARTIFACT_USER_STORY` is the complete markdown document.
 
-        {{issue.description}}
-
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-
-        Return the JSON described by the schema; `userStory` is the complete markdown document.
-    """.trimIndent()
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + FEEDBACK_SECTION
 
     val WRITE_US_SCHEMA = """
         {
           "type": "object",
-          "required": ["userStory", "openQuestions", "confidence", "summary"],
+          "required": ["$ARTIFACT_USER_STORY", "openQuestions", "confidence", "summary"],
           "properties": {
-            "userStory": { "type": "string" },$OPEN_QUESTIONS_SCHEMA,
+            "$ARTIFACT_USER_STORY": { "type": "string" },$OPEN_QUESTIONS_SCHEMA,
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
             "summary": { "type": "string" }
           }
@@ -688,7 +945,8 @@ object BuiltInLibrary {
         Follow the use-case-format skill: metadata with the linked story, actors, triggers and
         preconditions, main flow A, alternative flows A1, A2, ... with titles and self-contained steps,
         business rules RB-01..., postconditions and permissions stated positively. External systems
-        appear as actors; their mechanisms (protocols, retries, tables) do not appear at all.
+        appear as actors; their mechanisms (protocols, retries, tables) do not appear at all. Keep the ID
+        placeholder `UC-<AREA>-<NN>` unless the story gives the ID.
 
         Before answering, check that main flow + alternatives + rules let a tester derive a test for
         every acceptance criterion of the story. A criterion you cannot cover is an open question, not
@@ -697,23 +955,21 @@ object BuiltInLibrary {
     """.trimIndent()
 
     val WRITE_UC_USER = """
-        Issue {{issue.key}}: {{issue.summary}}
+        Expand the user story below into a use case and return only the JSON described by the schema;
+        `$ARTIFACT_USE_CASE` is the complete markdown document.
 
-        User story:
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
+        ## User story
         {{artifacts.user-story}}
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-
-        Return the JSON described by the schema; `useCase` is the complete markdown document.
-    """.trimIndent()
+    """.trimIndent() + "\n" + FEEDBACK_SECTION
 
     val WRITE_UC_SCHEMA = """
         {
           "type": "object",
-          "required": ["useCase", "openQuestions", "confidence", "summary"],
+          "required": ["$ARTIFACT_USE_CASE", "openQuestions", "confidence", "summary"],
           "properties": {
-            "useCase": { "type": "string" },$OPEN_QUESTIONS_SCHEMA,
+            "$ARTIFACT_USE_CASE": { "type": "string" },$OPEN_QUESTIONS_SCHEMA,
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
             "summary": { "type": "string" }
           }
@@ -722,29 +978,28 @@ object BuiltInLibrary {
 
     val WRITE_ADR_SYSTEM = """
         You are the architect drafting an Architecture Decision Record for the decision the issue asks
-        for. Follow the adr-format skill: status Proposed with today's date left as `YYYY-MM-DD`,
-        context without the decision, at least two options (A, B, ...) with pros and cons each, the
-        decision, the rationale by weighted criteria, positive and negative consequences and related
-        ADRs.
+        for. Follow the adr-format skill: title with the number left as `NNNN`, status Proposed with the
+        date left as `YYYY-MM-DD` (people assign both), context without the decision, at least two options
+        (A, B, ...) with pros and cons each, the decision, the rationale by weighted criteria, positive and
+        negative consequences and related ADRs.
 
         Ground every statement in the project constitution, the issue and the analysis when given. An
         option you cannot evaluate for lack of facts stays in the record with the missing facts listed
-        as open questions. Never mark the ADR Accepted: acceptance belongs to people.
+        as open questions. Never mark the ADR Accepted and never change any status: acceptance belongs to
+        people.
     """.trimIndent()
 
     val WRITE_ADR_USER = """
-        Issue {{issue.key}}: {{issue.summary}}
+        Draft the ADR for the issue below and return only the JSON described by the schema; `adr` is the
+        complete markdown document.
 
-        {{issue.description}}
-
-        Analysis (may be empty):
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
+        {{#artifacts.analysis}}
+        ## Analysis
         {{artifacts.analysis}}
+        {{/artifacts.analysis}}
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-
-        Return the JSON described by the schema; `adr` is the complete markdown document.
-    """.trimIndent()
+    """.trimIndent() + "\n" + FEEDBACK_SECTION
 
     val WRITE_ADR_SCHEMA = """
         {
@@ -781,15 +1036,9 @@ object BuiltInLibrary {
     """.trimIndent()
 
     val IMPACT_USER = """
-        Change request {{issue.key}}: {{issue.summary}}
+        Analyse the change request below and return only the JSON described by the schema.
 
-        {{issue.description}}
-
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-
-        Return the JSON described by the schema.
-    """.trimIndent()
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + FEEDBACK_SECTION
 
     val IMPACT_SCHEMA = """
         {
@@ -851,10 +1100,10 @@ object BuiltInLibrary {
         You turn the work below into a task list that an autonomous coding agent executes one task at
         a time, with a reviewer checking each task. Every task has:
 
-        - `title`: short summary, used as the first line of the commit message.
+        - `title`: short summary of the task; the work log and the review refer to it.
         - `description`: what to implement, with the files, classes or modules involved.
         - `verification`: the criteria the reviewer uses to judge the task, derived from the
-          acceptance criteria or the plan; observable and checkable.
+          acceptance criteria, the plan or the approved impact analysis; observable and checkable.
         - `test_command`: one shell command run after the task; exit code 0 means pass. Keep it
           focused on the task (a single test class, a module build); it must at least compile the code
           when no test exists yet.
@@ -868,25 +1117,30 @@ object BuiltInLibrary {
         4. The last task is always titled "$FINAL_TASK_TITLE": it reformats and lints the code and runs
            the entire test suite; its test_command runs the full suite. Set `finalTaskTitle` to exactly
            that title.
-        5. Do not add tasks for work the issue and plan do not ask for.
+        5. Do not add tasks for work the issue, the plan and the impact analysis do not ask for.
     """.trimIndent()
 
+    /** The planner gets whatever the run has: the approved impact analysis (change requests), a plan, the user story. */
     val PLAN_TASKS_USER = """
-        Issue {{issue.key}}: {{issue.summary}}
+        Break the work below into the task list and return only the JSON described by the schema.
 
-        {{issue.description}}
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
+        {{#artifacts.impact-analysis}}
+        ## Approved impact analysis
+        {{artifacts.impact-analysis}}
+        {{/artifacts.impact-analysis}}
+        {{#artifacts.plan}}
 
-        Plan or impact analysis (may be empty):
+        ## Plan
         {{artifacts.plan}}
+        {{/artifacts.plan}}
+        {{#artifacts.user-story}}
 
-        User story (may be empty):
+        ## User story
         {{artifacts.user-story}}
+        {{/artifacts.user-story}}
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-
-        Return the JSON described by the schema.
-    """.trimIndent()
+    """.trimIndent() + "\n" + FEEDBACK_SECTION
 
     val PLAN_TASKS_SCHEMA = """
         {
@@ -914,69 +1168,81 @@ object BuiltInLibrary {
     """.trimIndent()
 
     val IMPLEMENT_TASKS_USER = """
+        {{#issue.key}}Implement the task list of {{issue.key}}: {{issue.summary}}{{/issue.key}}{{^issue.key}}Implement the task list{{/issue.key}}
+
         Execute the task list below in this repository, strictly in order, one task at a time.
 
         For every task:
-        1. Read the description and the verification criteria. Write the test that proves the task
-           first and see it fail (TDD), then implement the smallest change that makes it pass.
-        2. Run the task's `test_command`. When it passes, commit with the task title as the first line
-           of the commit message and continue with the next task.
-        3. When `test_command` or the verification stays red after a reasonable fix attempt, STOP. Do
-           not continue with later tasks, do not disable, skip or delete tests. Report which task
-           failed, the command, its output tail and what you tried.
+        1. Read its description and verification criteria. Write the test that proves the task first
+           and see it fail (TDD), then make the smallest change that makes it pass.
+        2. Run the task's `test_command`. When it passes, record the task in the work log and continue
+           with the next task. Do not commit: the runner commits the whole result once you finish.
+        3. When `test_command` or the verification stays red after a reasonable fix attempt, STOP: do
+           not continue with later tasks and do not disable, skip or delete tests. Record in the work log
+           which task failed, the command, the tail of its output and what you tried.
 
-        Keep a work log in `$WORK_LOG_FILE` at the repository root (do not commit it). For every task
-        append: title, what changed (files), the test_command and its result, decisions you made.
+        Work log: keep it in `$WORK_LOG_FILE` at the repository root; the runner collects it as the
+        `$ARTIFACT_WORK_LOG` artefact and keeps it out of the commit. For every task append its title, what
+        changed (files), the test_command and its result, and the decisions you made. Then add a section
+        "Noticed out of scope": problems you saw outside the tasks (bugs, stale docs, risky code), with
+        file paths; do NOT fix them. The last line of the work log is exactly `$WORK_LOG_GREEN` when every
+        task passed, including the final "$FINAL_TASK_TITLE" task that runs the full suite, and
+        `RESULT: STOPPED at <task title>` otherwise. This step's verifyCommand checks that line, so a STOP
+        fails the step.
 
-        End the work log with a section "Noticed out of scope": problems you saw outside the tasks
-        (bugs, stale docs, risky code). List them with file paths; do NOT fix them.
+        When the latest review findings are given below, first fix every BLOCKER and MAJOR finding and
+        every MISSING requirement (as extra tasks before the final one), then run the final task again;
+        answer the other findings in the work log.
 
-        The last task ("$FINAL_TASK_TITLE") runs the full suite; the run is only successful when it is
-        green.
+        Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS, $DEFINITION_OF_READY_DONE.
 
-        Issue {{issue.key}}: {{issue.summary}}
-
-        Task list:
+        ## Task list
         {{artifacts.tasks}}
 
-        Owner feedback on a previous attempt, if any:
-        {{feedback}}
-    """.trimIndent()
+    """.trimIndent() + "\n" + REVIEW_SECTION + "\n\n" + FEEDBACK_SECTION
 
     val REVIEW_SPEC_SYSTEM = """
         You review a diff against what was agreed: the user story (acceptance criteria), the
         specification and the task list. Your first question is "does the change do what was agreed,
         all of it and nothing else?", your second is "is it correct and safe?".
 
-        1. For every acceptance criterion or verification item, decide MET, PARTIAL, MISSING or
-           NOT_APPLICABLE and quote the file and line that proves it. A criterion without evidence in
-           the diff is MISSING, not MET.
+        1. For every acceptance criterion or verification item, add a row to `coverage` with MET,
+           PARTIAL, MISSING or NOT_APPLICABLE and quote the file and line that proves it. A criterion
+           without evidence in the diff is MISSING, not MET. The owner sees this matrix in the review.
         2. Report changes that no criterion or task asks for as MAJOR findings titled "Out of scope".
         3. Then review for defects with the severities of the code review: BLOCKER, MAJOR, MINOR, NIT.
            Every finding points at a file (and line when possible) and says what to change.
-        4. A MISSING criterion is a MAJOR finding; a violated constitution rule or security checklist
-           item is a BLOCKER.
+        4. A MISSING criterion is also a MAJOR finding titled "Missing: <criterion>"; a violated
+           constitution rule or security checklist item is a BLOCKER.
         5. Score 0..100: start from 100, subtract 40 per BLOCKER, 15 per MAJOR, 5 per MINOR, 1 per NIT.
            Verdict: REQUEST_CHANGES with any BLOCKER or MISSING criterion, APPROVE when the score is at
-           least 80, otherwise COMMENT.
+           least 80, otherwise COMMENT. Back Office applies the same rule to your findings and coverage.
     """.trimIndent()
 
     val REVIEW_SPEC_USER = """
-        Issue {{issue.key}}: {{issue.summary}}
+        Review the diff at the end of this message against the agreed requirements below and return only
+        the JSON described by the schema. The diff comes last; when it ends with "[truncated]", review the
+        part you see, mark criteria you could not check as PARTIAL and say in the summary that the diff
+        was cut.
 
-        User story (may be empty):
+    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
+        {{#artifacts.user-story}}
+        ## User story
         {{artifacts.user-story}}
+        {{/artifacts.user-story}}
+        {{#artifacts.spec}}
 
-        Specification (may be empty):
+        ## Specification
         {{artifacts.spec}}
+        {{/artifacts.spec}}
+        {{#artifacts.tasks}}
 
-        Task list (may be empty):
+        ## Task list
         {{artifacts.tasks}}
+        {{/artifacts.tasks}}
 
-        Diff to review:
+        ## Diff to review
         {{artifacts.diff}}
-
-        Return the JSON described by the schema.
     """.trimIndent()
 
     val REVIEW_SPEC_SCHEMA = """
@@ -1021,40 +1287,65 @@ object BuiltInLibrary {
     // ----- skills -------------------------------------------------------------------------------------
 
     fun skills(now: Instant): List<Skill> = listOf(
-        skill(SPEC_WRITING, "Spec writing", "How to write a feature specification that an implementer and a reviewer can rely on.", SPEC_WRITING_MD, listOf("spec"), now),
-        skill(KOTLIN_HEXAGONAL, "Kotlin hexagonal architecture", "Layering and coding rules for Kotlin services built as core + adapters modules.", KOTLIN_HEXAGONAL_MD, listOf("kotlin", "architecture"), now),
-        skill(CONVENTIONAL_COMMITS, "Conventional commits", "Commit message format and granularity used across the projects.", CONVENTIONAL_COMMITS_MD, listOf("git"), now),
-        skill(SECURITY_REVIEW_CHECKLIST, "Security review checklist", "What a reviewer checks on every diff before looking at anything else.", SECURITY_REVIEW_MD, listOf("review", "security"), now),
-        skill(ANGULAR_NG_ZORRO, "Angular with NG-ZORRO", "Conventions for standalone Angular components using signals and NG-ZORRO.", ANGULAR_NG_ZORRO_MD, listOf("angular", "frontend"), now),
-        skill(AGENT_GROUND_RULES, "Agent ground rules", "Edit protocol and scope discipline every agent follows before it changes a file or claims anything about one.", AGENT_GROUND_RULES_MD, listOf("sdlc", "base"), now),
-        skill(ASK_DONT_GUESS, "Ask, don't guess", "Source hierarchy, open-question markers and append-only edits instead of guessing.", ASK_DONT_GUESS_MD, listOf("sdlc", "base"), now),
-        skill(DEFINITION_OF_READY_DONE, "Definition of Ready / Done", "Binary Definition of Ready and Definition of Done checklists per artefact type and what to do when one fails.", DEFINITION_OF_READY_DONE_MD, listOf("sdlc", "quality"), now),
-        skill(USER_STORY_FORMAT, "User story format", "Structure and wording of a user story with falsifiable acceptance criteria.", USER_STORY_FORMAT_MD, listOf("sdlc", "requirements"), now),
-        skill(USE_CASE_FORMAT, "Use case format", "Structure of a use case that expands a user story into observable flows without implementation detail.", USE_CASE_FORMAT_MD, listOf("sdlc", "analysis"), now),
-        skill(ADR_FORMAT, "ADR format", "Structure and lifecycle of an Architecture Decision Record.", ADR_FORMAT_MD, listOf("sdlc", "architecture"), now),
-        skill(BUILD_GUARDRAILS, "Build guardrails", "How build-enforced rules are identified, enforced and proven with negative tests.", BUILD_GUARDRAILS_MD, listOf("sdlc", "quality"), now),
+        skill(SPEC_WRITING, "Spec writing", SPEC_WRITING_DESCRIPTION, SPEC_WRITING_MD, listOf("spec"), now),
+        skill(KOTLIN_HEXAGONAL, "Kotlin hexagonal architecture", KOTLIN_HEXAGONAL_DESCRIPTION, KOTLIN_HEXAGONAL_MD, listOf("kotlin", "architecture", "example"), now),
+        skill(CONVENTIONAL_COMMITS, "Conventional commits", CONVENTIONAL_COMMITS_DESCRIPTION, CONVENTIONAL_COMMITS_MD, listOf("git"), now),
+        skill(SECURITY_REVIEW_CHECKLIST, "Security review checklist", SECURITY_REVIEW_DESCRIPTION, SECURITY_REVIEW_MD, listOf("review", "security"), now),
+        skill(ANGULAR_NG_ZORRO, "Angular with NG-ZORRO", ANGULAR_NG_ZORRO_DESCRIPTION, ANGULAR_NG_ZORRO_MD, listOf("angular", "frontend", "example"), now),
+        skill(AGENT_GROUND_RULES, "Agent ground rules", AGENT_GROUND_RULES_DESCRIPTION, AGENT_GROUND_RULES_MD, listOf("sdlc", "base"), now),
+        skill(ASK_DONT_GUESS, "Ask, don't guess", ASK_DONT_GUESS_DESCRIPTION, ASK_DONT_GUESS_MD, listOf("sdlc", "base"), now),
+        skill(DEFINITION_OF_READY_DONE, "Definition of Ready / Done", DEFINITION_OF_READY_DONE_DESCRIPTION, DEFINITION_OF_READY_DONE_MD, listOf("sdlc", "quality"), now),
+        skill(USER_STORY_FORMAT, "User story format", USER_STORY_FORMAT_DESCRIPTION, USER_STORY_FORMAT_MD, listOf("sdlc", "requirements"), now),
+        skill(USE_CASE_FORMAT, "Use case format", USE_CASE_FORMAT_DESCRIPTION, USE_CASE_FORMAT_MD, listOf("sdlc", "analysis"), now),
+        skill(ADR_FORMAT, "ADR format", ADR_FORMAT_DESCRIPTION, ADR_FORMAT_MD, listOf("sdlc", "architecture"), now),
+        skill(BUILD_GUARDRAILS, "Build guardrails", BUILD_GUARDRAILS_DESCRIPTION, BUILD_GUARDRAILS_MD, listOf("sdlc", "quality"), now),
     )
 
     private fun skill(key: String, name: String, description: String, content: String, tags: List<String>, now: Instant) =
         Skill.create(Skill.Content(key = key, name = name, description = description, content = content, tags = tags), now, builtIn = true, actor = Actor.SYSTEM)
 
+    // Descriptions say when to use the skill (agents pick skills by them); no ": " so the SKILL.md frontmatter stays valid YAML.
+    const val SPEC_WRITING_DESCRIPTION = "Use when you write or revise a feature specification (the Spec Kit specify phase). " +
+        "The Spec Kit spec template decides the structure, these rules decide the content."
+    const val KOTLIN_HEXAGONAL_DESCRIPTION = "Example for the Back Office stack. Use when you change a Kotlin service built as core and adapters " +
+        "modules with ArchUnit-enforced layers; copy and adapt it for other projects."
+    const val CONVENTIONAL_COMMITS_DESCRIPTION = "Use when you write a commit message, a merge request title or a branch name yourself. " +
+        "In Back Office runner steps the runner commits and pushes, so agents never commit."
+    const val SECURITY_REVIEW_DESCRIPTION = "Use when you review a diff or a merge request. The security checks to run before anything else; a hit is a BLOCKER."
+    const val ANGULAR_NG_ZORRO_DESCRIPTION = "Example for the Back Office stack. Use when you change an Angular frontend with standalone components, " +
+        "signals and NG-ZORRO; copy and adapt it for other projects."
+    const val AGENT_GROUND_RULES_DESCRIPTION = "Use when you are about to change a file or claim something about code, requirements or test results. " +
+        "Evidence, scope and safety rules of every agent step."
+    const val ASK_DONT_GUESS_DESCRIPTION = "Use when information you need is missing, ambiguous or contradictory. Source hierarchy, the one " +
+        "open-question marker per context and how to edit existing text."
+    const val DEFINITION_OF_READY_DONE_DESCRIPTION = "Use when you check or hand over an artefact (user story, use case, ADR, implementation task, " +
+        "release). Binary Definition of Ready and Done items and what to do when one fails."
+    const val USER_STORY_FORMAT_DESCRIPTION = "Use when you write or review a user story. Structure, wording and falsifiable acceptance criteria."
+    const val USE_CASE_FORMAT_DESCRIPTION = "Use when you expand a user story into a use case. Sections, flows and rules without implementation detail."
+    const val ADR_FORMAT_DESCRIPTION = "Use when you draft or review an Architecture Decision Record. Sections, options, consequences and lifecycle."
+    const val BUILD_GUARDRAILS_DESCRIPTION = "Use when a task adds or changes a rule a machine can check (architecture test, lint rule, CI check). " +
+        "Identifiers, the enforcing build step and the negative test."
+
     val SPEC_WRITING_MD = """
         ---
         name: spec-writing
-        description: How to write a feature specification that an implementer and a reviewer can rely on.
+        description: $SPEC_WRITING_DESCRIPTION
         ---
 
         # Spec writing
 
+        Follow the sections and numbering of the Spec Kit template (`spec-template.md`); where the template
+        and these rules differ, the template wins. These rules are about the content.
+
         1. Describe what and why. The how belongs to the plan; if you catch yourself naming classes or
            tables, move that sentence out.
         2. Start with the user scenarios: who does what, what they see, what changes for them.
-        3. Every functional requirement is numbered (FR-1, FR-2, ...) and testable: a reviewer must be
-           able to say pass or fail without interpretation.
-        4. Acceptance criteria use Given / When / Then and cover the unhappy paths (invalid input,
+        3. Number functional requirements the way the template does (FR-001, FR-002, ...); each is
+           testable, so a reviewer can say pass or fail without interpretation.
+        4. Acceptance scenarios use Given / When / Then and cover the unhappy paths (invalid input,
            permissions, concurrency, empty states).
-        5. Mark every unknown as [NEEDS CLARIFICATION: question] instead of choosing silently. Prefer
-           three precise markers over one vague paragraph.
+        5. Mark every unknown as `[NEEDS CLARIFICATION: <question>]`, the only open-question marker in a
+           specification, instead of choosing silently. Prefer three precise markers over one vague paragraph.
         6. State what is out of scope explicitly, especially things a reader would assume are included.
         7. Name the data that is read or written in domain terms (issue, merge request, workflow run),
            not in storage terms.
@@ -1066,10 +1357,13 @@ object BuiltInLibrary {
     val KOTLIN_HEXAGONAL_MD = """
         ---
         name: kotlin-hexagonal
-        description: Layering and coding rules for Kotlin services built as core + adapters modules.
+        description: $KOTLIN_HEXAGONAL_DESCRIPTION
         ---
 
-        # Kotlin hexagonal architecture
+        # Kotlin hexagonal architecture (Back Office example)
+
+        These are the rules of the Back Office codebase itself. For another project, copy the skill into the
+        project and change what differs; the constitution of the project wins over this example.
 
         ## Layering
         - `domain.model`: immutable data classes; behaviour as methods returning new instances.
@@ -1095,10 +1389,14 @@ object BuiltInLibrary {
     val CONVENTIONAL_COMMITS_MD = """
         ---
         name: conventional-commits
-        description: Commit message format and granularity used across the projects.
+        description: $CONVENTIONAL_COMMITS_DESCRIPTION
         ---
 
         # Conventional commits
+
+        In a Back Office runner step you do not commit: the runner commits your working tree once and takes
+        the subject from the task. Use these rules when the task asks you to write a commit message, a merge
+        request title or a branch name.
 
         1. Format: `type(scope): summary` in the imperative mood, at most 72 characters, no trailing period.
         2. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `perf`.
@@ -1109,13 +1407,13 @@ object BuiltInLibrary {
         7. One logical change per commit; a commit must compile and pass tests on its own.
         8. Never commit generated files, secrets, IDE settings or build output.
         9. Do not amend or rewrite commits that were already pushed.
-        10. Branch names follow `feature/<issue-key-lowercase>` unless the pipeline sets another template.
+        10. Branch names follow the step's `branchTemplate` (default `feature/<issue-key-lowercase>`).
     """.trimIndent()
 
     val SECURITY_REVIEW_MD = """
         ---
         name: security-review-checklist
-        description: What a reviewer checks on every diff before looking at anything else.
+        description: $SECURITY_REVIEW_DESCRIPTION
         ---
 
         # Security review checklist
@@ -1139,10 +1437,13 @@ object BuiltInLibrary {
     val ANGULAR_NG_ZORRO_MD = """
         ---
         name: angular-ng-zorro
-        description: Conventions for standalone Angular components using signals and NG-ZORRO.
+        description: $ANGULAR_NG_ZORRO_DESCRIPTION
         ---
 
-        # Angular with NG-ZORRO
+        # Angular with NG-ZORRO (Back Office example)
+
+        These are the rules of the Back Office frontend itself. For another project, copy the skill into the
+        project and change what differs; the constitution of the project wins over this example.
 
         1. Standalone components only; no NgModules. Dependencies via `inject()`, never constructor injection.
         2. State is signals: `signal`, `computed`, `effect`; expose read-only signals from services.
@@ -1163,81 +1464,77 @@ object BuiltInLibrary {
     val AGENT_GROUND_RULES_MD = """
         ---
         name: agent-ground-rules
-        description: Edit protocol and scope discipline every agent follows before it changes a file or claims anything about one.
+        description: $AGENT_GROUND_RULES_DESCRIPTION
         ---
 
         # Agent ground rules
 
-        ## Edit protocol
-        1. Before changing a file, state the exact fragment you will change and what it looks like after
-           (before / after). Show only the changed fragment, never whole sections.
-        2. Change only what the task asks for. Other problems you notice go to a "Noticed, not changed"
-           list in your result.
-        3. The scope is set by the task, not by search results: a grep hit outside the named files or
-           modules is information, not a task.
-        4. Make the narrowest edit that does the job: replace the smallest unique fragment, never rewrite
-           a file to change a few lines, never reformat code you did not change.
-        5. After your own mistake, revert your change and report it; do not add new rules or tasks on top.
-
         ## Evidence
-        6. Re-read a file right before you say anything about its current content; what you read earlier
+        1. Re-read a file right before you say anything about its current content; what you read earlier
            may be stale.
-        7. Back every claim about the code with a path (and line). Say what you checked and how.
-        8. Never invent files, APIs, commands, test results or requirements; unknown stays unknown.
+        2. Back every claim about the code with a path (and line); say what you checked and how.
+        3. Report test results only for commands you ran in this step, with the command and its exit code.
 
-        ## Contradictions
-        9. When the task contradicts the specification, the constitution or the code, stop and report the
-           contradiction with both sources quoted. Do not pick a side silently.
-        10. When a request is technically possible but architecturally wrong (it creates debt or breaks a
-            documented rule), say so before doing it.
-        11. When your change alters architecture, configuration or requirements, update the project
-            documentation in the same change.
+        ## Scope
+        4. The task sets the scope, not search results: a hit outside the named files or modules is
+           information, not work.
+        5. Make the narrowest edit that does the job: never rewrite a file to change a few lines and never
+           reformat code you did not change.
+        6. Problems you notice outside the task go to a "Noticed, not changed" list in your result.
+        7. When the task contradicts the specification, the constitution or the code, report the
+           contradiction with both sources quoted; do not pick a side silently.
+        8. When a request is possible but breaks a documented rule, say so in your result.
+        9. When your change alters documented architecture, configuration or behaviour, update that
+           documentation in the same change.
+        10. After your own mistake, revert it and report it; do not pile new changes on top.
 
         ## Safety
-        12. Never print or commit secrets, never run destructive git commands, never disable, skip or
-            delete a failing test to get a green build.
+        11. Never print, log or commit secrets, tokens or credentials.
+        12. Never run destructive commands and never disable, skip or delete a failing test to get a
+            green build.
     """.trimIndent()
 
     val ASK_DONT_GUESS_MD = """
         ---
         name: ask-dont-guess
-        description: Source hierarchy, open-question markers and append-only edits instead of guessing.
+        description: $ASK_DONT_GUESS_DESCRIPTION
         ---
 
         # Ask, don't guess
 
         ## Source hierarchy (highest first)
-        1. Decisions stated in the issue, its comments or the owner's feedback on this run.
+        1. Decisions stated in the issue (summary, description, acceptance criteria) or in the owner's
+           feedback on this run.
         2. Project rules: constitution, conventions, accepted ADRs.
         3. A style reference the owner pointed to explicitly.
-        4. Old stories, old acceptance criteria, legacy code, screenshots of other features: hypotheses to
-           verify, never facts to copy. Do not close a gap by merging fragments of lower sources.
+        4. Old stories, legacy code, screenshots of other features: hypotheses to verify, never facts to
+           copy. Do not close a gap by merging fragments of lower sources.
 
         ## When information is missing
         5. Do not fill a business gap by extrapolation, analogy with another feature or "common sense".
            An incomplete artefact with an explicit question beats a complete one built on a guess.
-        6. Mark every open point in place as `[?] <question> (owner: <role or person>, by: YYYY-MM-DD)`.
-           A marker without an owner and a date is incomplete.
-        7. Write `TODO: <what> - <why not now>` for work left in the artefact and
-           `TBD: <what> - <what decides it>` for a section that cannot be written yet. A bare TODO or TBD
-           is not allowed.
-        8. Collect all markers in an "Open questions" section at the end and report their number.
+        6. One marker per context: `[NEEDS CLARIFICATION: <question>]` in a Spec Kit specification,
+           `[?] <question>` everywhere else. Name an owner or a date only when the input gives them;
+           never invent a person, a role or a deadline.
+        7. `TODO: <what> - <why not now>` marks work left in an artefact and `TBD: <what> - <what decides
+           it>` a section that cannot be written yet; a bare TODO or TBD is not allowed.
+        8. Collect all markers in an "Open questions" section at the end, or in the open-question field
+           of a JSON answer.
         9. When the step has a confidence field, lower it for every open question that changes the
-           outcome; never report high confidence over unresolved `[?]` markers.
+           outcome; never report high confidence over unresolved markers.
 
         ## Editing existing text
         10. "Add" means append: insert a new item and renumber; do not reword existing items.
-        11. Do not rewrite sentences written by a person unless the task names them; factual corrections
-            only, shown as before / after.
+        11. Do not rewrite sentences written by a person unless the task names them; factual corrections only.
         12. Never change status fields (Status, Accepted, completed) of a document or task; they belong
             to the owner or the orchestrator.
-        13. Keep answered questions in the list with the answer, the date and who answered.
+        13. Keep answered questions in the list together with their answer.
     """.trimIndent()
 
     val DEFINITION_OF_READY_DONE_MD = """
         ---
         name: definition-of-ready-done
-        description: Binary Definition of Ready and Definition of Done checklists per artefact type and what to do when one fails.
+        description: $DEFINITION_OF_READY_DONE_DESCRIPTION
         ---
 
         # Definition of Ready / Definition of Done
@@ -1252,44 +1549,45 @@ object BuiltInLibrary {
            when and why. An unrecorded exception is untracked debt.
         5. Anti-pattern "DoD by vibe": merging because it looks finished. Tick each item explicitly.
         6. A project may tighten these lists, never loosen them.
+        7. An agent checks the items and reports the failed ones; items people decide (approvals, status
+           changes, numbers, dates) stay with people and an agent never sets them.
 
         ## User story (DoR)
-        7. "As a <specific role>, I want <goal>, so that <benefit>"; functional description of one to three
-           sentences; numbered criteria with at least one capability and one restriction, each falsifiable
-           by a counter-example, in the customer's language.
+        8. "As a <specific role>, I want <goal>, so that <benefit>"; functional description of one to three
+           sentences; numbered criteria with at least one capability and one restriction, each falsifiable.
 
         ## Use case (DoR)
-        8. Linked user story, main and alternative flows, feasibility confirmed by the architect,
+        9. Linked user story, main and alternative flows, feasibility confirmed by the architect,
            readiness confirmed by the analyst.
 
         ## ADR
-        9. DoR: title states the decision, number assigned, context, at least two options, decision,
-           consequences, status Proposed.
-        10. DoD: accepted by the architect and one more reviewer, status Accepted, related documents linked.
+        10. DoR: title states the decision, context, at least two options, decision, consequences, status
+            Proposed; the number is assigned by a person (an agent's draft keeps `NNNN`).
+        11. DoD (people only): accepted by the architect and one more reviewer, who set the status to
+            Accepted; related documents linked.
 
         ## Implementation task
-        11. DoR: linked story or use case, acceptance criteria rewritten as tests to write, approach agreed,
-            green build, no open blockers.
-        12. DoD: planned tests written and green, refactor done, CI green (lint, build, test), docs
-            updated, work log filled in, no out-of-scope changes (found ones became separate tasks).
+        12. DoR: linked story or use case, acceptance criteria rewritten as tests to write, approach agreed.
+        13. DoD: planned tests written and green, CI green (lint, build, test), docs updated, work log
+            filled in, no out-of-scope changes (found ones became separate tasks).
 
         ## Release
-        13. DoR: every story and task meets DoD, regression green, release notes and rollback plan written.
-        14. DoD: deployed by the pipeline, smoke tests green, monitoring confirms the non-functional
+        14. DoR: every story and task meets DoD, regression green, release notes and rollback plan written.
+        15. DoD: deployed by the pipeline, smoke tests green, monitoring confirms the non-functional
             criteria, version tagged.
     """.trimIndent()
 
     val USER_STORY_FORMAT_MD = """
         ---
         name: user-story-format
-        description: Structure and wording of a user story with falsifiable acceptance criteria.
+        description: $USER_STORY_FORMAT_DESCRIPTION
         ---
 
         # User story format
 
-        Sections, in this order: title `US-<AREA>-<NN>: <short name>`, Metadata (author, phase, priority,
-        status), User story, Functional description, Acceptance criteria, Examples (optional), Constraints
-        and assumptions, Dependencies, Open questions.
+        Sections, in this order: title `US-<AREA>-<NN>: <short name>` (keep the placeholder ID unless the
+        issue gives one), Metadata (author, phase, priority, status), User story, Functional description,
+        Acceptance criteria, Examples (optional), Constraints and assumptions, Dependencies, Open questions.
 
         1. Story sentence: "**As a** <specific role>, **I want** <what becomes possible>, **so that**
            <business benefit>". Name the domain role (cashier, release manager), never just "user".
@@ -1311,19 +1609,20 @@ object BuiltInLibrary {
         10. Constraints and assumptions list only what the criteria do not: out-of-scope items and
             context delivered by other stories, as full sentences.
         11. Keep the story small (INVEST); propose a split when it covers more than one goal.
-        12. Unknowns become `[?]` markers with owner and date under Open questions; never invent a rule.
+        12. Unknowns become `[?]` markers listed under Open questions; never invent a rule, a person or a date.
     """.trimIndent()
 
     val USE_CASE_FORMAT_MD = """
         ---
         name: use-case-format
-        description: Structure of a use case that expands a user story into observable flows without implementation detail.
+        description: $USE_CASE_FORMAT_DESCRIPTION
         ---
 
         # Use case format
 
         ## Sections, in this order
-        1. Metadata: ID `UC-<AREA>-<NN>`, linked user story, author, phase, status.
+        1. Metadata: ID `UC-<AREA>-<NN>` (keep the placeholder unless the input gives the ID), linked user
+           story, author, phase, status.
         2. Actors: people, the system and external systems, each with its role in one line.
         3. Triggers and preconditions: the event that starts the use case and what must hold before it.
         4. Main flow A: the typical path to the actor's goal; one step = one action or reaction of one actor.
@@ -1349,14 +1648,16 @@ object BuiltInLibrary {
     val ADR_FORMAT_MD = """
         ---
         name: adr-format
-        description: Structure and lifecycle of an Architecture Decision Record.
+        description: $ADR_FORMAT_DESCRIPTION
         ---
 
         # ADR format
 
         ## Sections
-        1. Title `NNNN - <decision in a few words>`; the number is sequential and never changed or reused.
-        2. Status: Proposed, Accepted, Deprecated or "Superseded by NNNN", with a date.
+        1. Title `NNNN - <decision in a few words>`; people assign the sequential number (a draft keeps
+           `NNNN`), and it is never changed or reused.
+        2. Status: Proposed, Accepted, Deprecated or "Superseded by NNNN", with a date. A draft written by
+           an agent is Proposed with the date `YYYY-MM-DD`; only people change the status.
         3. Context: the problem, constraints (technical, business, budget) and relevant non-functional
            requirements. No decision here.
         4. Options: at least two, labelled A, B, C, each with a description, pros and cons. Rejected
@@ -1374,13 +1675,13 @@ object BuiltInLibrary {
             the old one gets status "Superseded by <new>".
         12. Be honest about costs; an ADR without negative consequences is incomplete.
         13. Link the ADR to the stories, use cases and open questions that forced it.
-        14. Unknown facts are `[?]` markers with an owner and a date, not assumptions.
+        14. Unknown facts are `[?]` markers listed as open questions, not assumptions.
     """.trimIndent()
 
     val BUILD_GUARDRAILS_MD = """
         ---
         name: build-guardrails
-        description: How build-enforced rules are identified, enforced and proven with negative tests.
+        description: $BUILD_GUARDRAILS_DESCRIPTION
         ---
 
         # Build guardrails

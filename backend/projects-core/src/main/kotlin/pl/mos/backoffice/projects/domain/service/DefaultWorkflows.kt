@@ -25,6 +25,8 @@ import java.time.Instant
  * Gates carry Definition-of-Ready/Done checklists and approver rules with one accountable role (RACI).
  * Node positions are the designer's layered layout (main path on the top row, branches below, cards
  * 240 px wide with 96 px gaps); frontend `seeded-workflows.fixture.ts` checks they stay in sync.
+ * These factories run when a project is created: changing them changes only new projects, existing projects keep
+ * the workflows they stored.
  */
 object DefaultWorkflows {
 
@@ -72,6 +74,9 @@ object DefaultWorkflows {
     /** Artifacts are named like the task template that writes them. */
     private const val ARTIFACT_IMPACT_ANALYSIS = TEMPLATE_IMPACT_ANALYSIS
     private const val ARTIFACT_USER_STORY = "user-story"
+
+    /** The task list artefact of `plan-task-list` and the Spec Kit tasks phase. */
+    private const val ARTIFACT_TASKS = "tasks"
 
     /** Branch of the review decisions: taken unless the AI review requested changes. */
     private val REVIEW_APPROVED = DecisionBranch("approved", "no changes requested", "review.verdict != 'REQUEST_CHANGES'")
@@ -146,6 +151,11 @@ object DefaultWorkflows {
         updatedAt = now,
     )
 
+    /**
+     * Jira issue -> Spec Kit -> implementation -> CI -> AI review -> merge gate. The `changes` branch of the review
+     * returns to `implement`, whose prompt carries the latest `review` artefact (findings and verdict), so the rework
+     * is not a blind re-run; a gate's `revise` comment reaches only the step it sends the run back to.
+     */
     fun issueToReviewedMr(projectId: ProjectId, now: Instant): WorkflowDefinition = WorkflowDefinition(
         id = WorkflowDefinitionId.new(),
         projectId = projectId,
@@ -257,20 +267,23 @@ object DefaultWorkflows {
     )
 
     /**
-     * Change request against an existing system (ADR 0019): impact analysis -> gate -> user story ->
-     * task list -> gate -> implementation (TDD) -> CI tests -> AI review -> merge gate.
+     * Change request against an existing system (ADR 0019): fetch issue -> impact analysis -> gate -> user story ->
+     * task list (planned from the approved impact analysis) -> gate -> implementation (TDD) -> CI tests -> AI review
+     * (its findings reach the rework through `{{artifacts.review}}`) -> merge gate. Only new projects get this
+     * definition; existing projects keep the workflows stored when they were created.
      */
     fun changeRequest(projectId: ProjectId, now: Instant): WorkflowDefinition = WorkflowDefinition(
         id = WorkflowDefinitionId.new(),
         projectId = projectId,
         name = CHANGE_REQUEST,
-        description = "Delta change: impact analysis (approved by the owner) -> user story -> task list with verification per task (approved) -> implementation -> CI tests -> AI review -> merge gate (four-eyes).",
+        description = "Delta change: Jira issue -> impact analysis (approved by the owner) -> user story -> task list with verification per task (approved) -> implementation -> CI tests -> AI review -> merge gate (four-eyes).",
         version = 1,
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
-            WorkflowNode.Task(NODE_IMPACT_ANALYSIS, "Impact analysis", Point(316.0, 40.0), task = TaskBinding(TEMPLATE_IMPACT_ANALYSIS)),
+            WorkflowNode.Task(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), task = TaskBinding(TEMPLATE_FETCH_ISSUE)),
+            WorkflowNode.Task(NODE_IMPACT_ANALYSIS, "Impact analysis", Point(652.0, 40.0), task = TaskBinding(TEMPLATE_IMPACT_ANALYSIS)),
             WorkflowNode.HumanGate(
-                NODE_IMPACT_GATE, "Approve impact analysis?", Point(652.0, 40.0),
+                NODE_IMPACT_GATE, "Approve impact analysis?", Point(988.0, 40.0),
                 gate = GateSpec(
                     question = "Impact analysis for {{issue.key}} is ready. Approve the analysis, ask for a revision or reject the change?",
                     showArtifacts = listOf(ARTIFACT_IMPACT_ANALYSIS),
@@ -282,13 +295,13 @@ object DefaultWorkflows {
                     ),
                 ),
             ),
-            WorkflowNode.Task(NODE_USER_STORY, "Write user story", Point(988.0, 40.0), task = TaskBinding(TEMPLATE_WRITE_USER_STORY)),
-            WorkflowNode.Task(NODE_PLAN_TASKS, "Plan task list", Point(1324.0, 40.0), task = TaskBinding(TEMPLATE_PLAN_TASK_LIST)),
+            WorkflowNode.Task(NODE_USER_STORY, "Write user story", Point(1324.0, 40.0), task = TaskBinding(TEMPLATE_WRITE_USER_STORY)),
+            WorkflowNode.Task(NODE_PLAN_TASKS, "Plan task list", Point(1660.0, 40.0), task = TaskBinding(TEMPLATE_PLAN_TASK_LIST)),
             WorkflowNode.HumanGate(
-                NODE_TASK_LIST_GATE, "Approve task list?", Point(1660.0, 40.0),
+                NODE_TASK_LIST_GATE, "Approve task list?", Point(1996.0, 40.0),
                 gate = GateSpec(
                     question = "Task list for {{issue.key}} is ready. Approve, revise or reject?",
-                    showArtifacts = listOf(ARTIFACT_USER_STORY, "task-list"),
+                    showArtifacts = listOf(ARTIFACT_USER_STORY, ARTIFACT_TASKS),
                     approvers = GateApprovers(accountable = ACCOUNTABLE_ROLE),
                     checklist = listOf(
                         ChecklistItem("task-verification", "Every task has verification and test_command"),
@@ -296,19 +309,19 @@ object DefaultWorkflows {
                     ),
                 ),
             ),
-            WorkflowNode.Task("implement", "Implement task list", Point(1996.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_IMPLEMENT_TASK_LIST)),
-            WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(2332.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
-            WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(2698.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
-            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(2668.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_CODE_REVIEW)),
+            WorkflowNode.Task("implement", "Implement task list", Point(2332.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_IMPLEMENT_TASK_LIST)),
+            WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(2668.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
+            WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(3034.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
+            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3004.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_CODE_REVIEW)),
             WorkflowNode.Decision(
-                "verdict", LABEL_REVIEW_OK, Point(3004.0, 40.0),
+                "verdict", LABEL_REVIEW_OK, Point(3340.0, 40.0),
                 decision = DecisionSpec(
                     branches = listOf(REVIEW_APPROVED),
                     defaultBranch = "changes",
                 ),
             ),
             WorkflowNode.HumanGate(
-                NODE_MERGE_GATE, "Merge?", Point(3340.0, 40.0),
+                NODE_MERGE_GATE, "Merge?", Point(3676.0, 40.0),
                 gate = GateSpec(
                     question = "{{issue.key}} passed AI review (verdict {{review.verdict}}, score {{review.score}}). Merge request: {{mr.url}}. Merge?",
                     showArtifacts = listOf("review", "diff"),
@@ -316,25 +329,26 @@ object DefaultWorkflows {
                     checklist = MERGE_DONE,
                 ),
             ),
-            WorkflowNode.End("done", "Done", Point(3676.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
+            WorkflowNode.End("done", "Done", Point(4012.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
         ),
         edges = listOf(
-            WorkflowEdge("e1", "start", WorkflowNode.PORT_OUT, NODE_IMPACT_ANALYSIS),
-            WorkflowEdge("e2", NODE_IMPACT_ANALYSIS, WorkflowNode.PORT_SUCCESS, NODE_IMPACT_GATE),
-            WorkflowEdge("e3", NODE_IMPACT_GATE, GateSpec.APPROVE, NODE_USER_STORY),
-            WorkflowEdge("e4", NODE_IMPACT_GATE, GateSpec.REVISE, NODE_IMPACT_ANALYSIS, "revise"),
-            WorkflowEdge("e5", NODE_USER_STORY, WorkflowNode.PORT_SUCCESS, NODE_PLAN_TASKS),
-            WorkflowEdge("e6", NODE_PLAN_TASKS, WorkflowNode.PORT_SUCCESS, NODE_TASK_LIST_GATE),
-            WorkflowEdge("e7", NODE_TASK_LIST_GATE, GateSpec.APPROVE, "implement"),
-            WorkflowEdge("e8", NODE_TASK_LIST_GATE, GateSpec.REVISE, NODE_PLAN_TASKS, "revise"),
-            WorkflowEdge("e9", "implement", WorkflowNode.PORT_SUCCESS, NODE_CI_TESTS),
-            WorkflowEdge("e10", NODE_CI_TESTS, WorkflowNode.PORT_SUCCESS, NODE_CODE_REVIEW),
-            WorkflowEdge("e11", NODE_CI_TESTS, WorkflowNode.PORT_FAIL, NODE_TESTS_FAILED),
-            WorkflowEdge("e12", NODE_CODE_REVIEW, WorkflowNode.PORT_SUCCESS, "verdict"),
-            WorkflowEdge("e13", "verdict", "approved", NODE_MERGE_GATE),
-            WorkflowEdge("e14", "verdict", "changes", "implement", "rework"),
-            WorkflowEdge("e15", NODE_MERGE_GATE, GateSpec.APPROVE, "done"),
-            WorkflowEdge("e16", NODE_MERGE_GATE, GateSpec.REVISE, "implement", "revise"),
+            WorkflowEdge("e1", "start", WorkflowNode.PORT_OUT, NODE_FETCH_ISSUE),
+            WorkflowEdge("e2", NODE_FETCH_ISSUE, WorkflowNode.PORT_SUCCESS, NODE_IMPACT_ANALYSIS),
+            WorkflowEdge("e3", NODE_IMPACT_ANALYSIS, WorkflowNode.PORT_SUCCESS, NODE_IMPACT_GATE),
+            WorkflowEdge("e4", NODE_IMPACT_GATE, GateSpec.APPROVE, NODE_USER_STORY),
+            WorkflowEdge("e5", NODE_IMPACT_GATE, GateSpec.REVISE, NODE_IMPACT_ANALYSIS, "revise"),
+            WorkflowEdge("e6", NODE_USER_STORY, WorkflowNode.PORT_SUCCESS, NODE_PLAN_TASKS),
+            WorkflowEdge("e7", NODE_PLAN_TASKS, WorkflowNode.PORT_SUCCESS, NODE_TASK_LIST_GATE),
+            WorkflowEdge("e8", NODE_TASK_LIST_GATE, GateSpec.APPROVE, "implement"),
+            WorkflowEdge("e9", NODE_TASK_LIST_GATE, GateSpec.REVISE, NODE_PLAN_TASKS, "revise"),
+            WorkflowEdge("e10", "implement", WorkflowNode.PORT_SUCCESS, NODE_CI_TESTS),
+            WorkflowEdge("e11", NODE_CI_TESTS, WorkflowNode.PORT_SUCCESS, NODE_CODE_REVIEW),
+            WorkflowEdge("e12", NODE_CI_TESTS, WorkflowNode.PORT_FAIL, NODE_TESTS_FAILED),
+            WorkflowEdge("e13", NODE_CODE_REVIEW, WorkflowNode.PORT_SUCCESS, "verdict"),
+            WorkflowEdge("e14", "verdict", "approved", NODE_MERGE_GATE),
+            WorkflowEdge("e15", "verdict", "changes", "implement", "rework"),
+            WorkflowEdge("e16", NODE_MERGE_GATE, GateSpec.APPROVE, "done"),
+            WorkflowEdge("e17", NODE_MERGE_GATE, GateSpec.REVISE, "implement", "revise"),
         ),
         triggers = listOf(Trigger(TriggerType.MANUAL), Trigger(TriggerType.API)),
         enabled = true,

@@ -6,3 +6,7 @@ gradlew text eol=lf
 Dockerfile text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Starter benchmark fixtures (ADR 0047): hidden acceptance tests and golden files are compared byte for byte
+# in Linux runners.
+backend/evaluation-core/src/main/resources/starter/** -text

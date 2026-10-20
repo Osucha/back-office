@@ -1,0 +1,4 @@
+- Algorithm and concurrency design (0-10): correct token bucket with exact or carefully rounded arithmetic; atomic per-key updates (ConcurrentHashMap.compute, per-bucket locks or CAS) without one global lock; no race between eviction and acquisition that could admit extra requests.
+- Memory bounding (0-10): eviction of full buckets runs automatically, is cheap and bounded, and the reasoning (a full bucket equals no bucket) is explained in code or comments.
+- Integration (0-10): the filter is registered so @WebMvcTest slices and other tests are not throttled (e.g. FilterRegistrationBean in a @Configuration); properties bound via @ConfigurationProperties with defaults; Clock injectable; the X-Forwarded-For/proxy caveat considered.
+- Tests (0-10): the agent's own tests cover burst, fractional refill, concurrency with a start latch (no sleeps), eviction, and a MockMvc 429 with Retry-After; deterministic.

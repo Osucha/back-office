@@ -3,6 +3,7 @@ package pl.mos.backoffice.projects.application.service.nodes
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeExecutor
 import pl.mos.backoffice.projects.application.port.out.NodeResult
+import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
 import pl.mos.backoffice.projects.domain.model.NodeKind
 import pl.mos.backoffice.projects.domain.model.PendingWrite
@@ -43,20 +44,32 @@ class TaskNodeExecutor(
             context.log("input $missing consumed by ${task.key} is not available yet")
         }
         context.log("running task ${task.key} (${task.executor})")
-        return strategies.forExecutor(task.executor).execute(context, task)
+        return consumingFeedback(context, strategies.forExecutor(task.executor).execute(context, task))
     }
 
     override fun resume(context: NodeContext, jobId: RunnerJobId): NodeResult {
         val node = context.node as? WorkflowNode.Task ?: throw InvalidStateException("node ${context.node.id} is not a TASK node")
         val task = catalog.resolve(node.task.templateKey, context.project.id.value, node.task.overrides)
             ?: return NodeResult.failure("unknown task template ${node.task.templateKey}")
-        return strategies.forExecutor(task.executor).resume(context, task, jobId)
+        return consumingFeedback(context, strategies.forExecutor(task.executor).resume(context, task, jobId))
     }
 
     override fun commit(context: NodeContext, write: PendingWrite): NodeResult {
         val node = context.node as? WorkflowNode.Task ?: throw InvalidStateException("node ${context.node.id} is not a TASK node")
         val task = catalog.resolve(node.task.templateKey, context.project.id.value, node.task.overrides)
             ?: return NodeResult.failure("unknown task template ${node.task.templateKey}")
-        return strategies.forExecutor(task.executor).commit(context, task, write)
+        return consumingFeedback(context, strategies.forExecutor(task.executor).commit(context, task, write))
+    }
+
+    /**
+     * A step that completed (not failed, not waiting for a runner job or a write confirmation) consumed the pending
+     * revision feedback: it moves to this node's feedback history ([RunStateKeys.consumeFeedback]), so the next steps
+     * do not receive it as `{{feedback}}`. A failed step keeps it for its retry.
+     */
+    private fun consumingFeedback(context: NodeContext, result: NodeResult): NodeResult {
+        if (result.failed || result.awaitingJob != null || result.pendingWrite != null) return result
+        val updates = RunStateKeys.consumeFeedback(context.state, context.node.id)
+        if (updates.isEmpty()) return result
+        return result.copy(stateUpdates = updates + result.stateUpdates)
     }
 }

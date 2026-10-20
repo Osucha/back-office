@@ -8,7 +8,9 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.service.StepRepository
 
 /**
- * Builds the model available to templates: `issue`, `artifacts.<name>` (content), `feedback`,
+ * Builds the model available to templates: `issue`, `artifacts.<name>` (content), `feedback` (revision comments for
+ * this step only: those it received on earlier attempts plus those given since the last task step ran; `feedbackList`
+ * as a list, `feedbackHistory` every comment of the run),
  * `project.{key,name,constitution,repositories,repository,defaultBranch,repositoryUrl}` (ADR 0034: `repository` is the
  * primary repository and may be null, as may `defaultBranch` / `repositoryUrl`), `repos` (the repositories of the
  * current step: key, url, path, access, purpose, baseBranch, primary), `repositoryResults` (key -> latest result),
@@ -31,7 +33,10 @@ class TemplateModelBuilder {
     ): Map<String, Any?> {
         val primary = project.primaryRepository
         val artifactContents = run.artifacts.sortedBy { it.createdAt }.associate { it.name to it.content }
-        val feedback = (state[RunStateKeys.FEEDBACK] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
+        // feedback is scoped to the step (ADR 0019 rework loops): what this node received on earlier attempts plus the
+        // comments given since the last task step ran; the whole history stays available as feedbackHistory
+        val feedback = RunStateKeys.feedbackOf(state, node.id) + RunStateKeys.pendingFeedback(state)
+        val history = (state[RunStateKeys.FEEDBACK] as? List<Any?>)?.mapNotNull { it?.toString() } ?: emptyList()
         val review = run.review?.toStateMap() ?: (state[RunStateKeys.REVIEW] as? Map<String, Any?>) ?: emptyMap()
         val mr = (state[RunStateKeys.MR] as? Map<String, Any?>) ?: run.mergeRequest?.toMap() ?: emptyMap()
         val ci = (state[RunStateKeys.LAST_CI] as? Map<String, Any?>) ?: run.lastSignal?.toStateMap() ?: emptyMap()
@@ -41,6 +46,7 @@ class TemplateModelBuilder {
             "artifacts" to artifactContents,
             "feedback" to feedback.joinToString("\n\n"),
             "feedbackList" to feedback,
+            "feedbackHistory" to history.joinToString("\n\n"),
             "project" to mapOf(
                 "key" to project.key,
                 "name" to project.name,

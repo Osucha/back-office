@@ -75,7 +75,16 @@ data class PreflightResultDto(val modelProfileId: UUID, val displayName: String,
 
 data class ProviderStatusDto(val provider: Provider, val configured: Boolean, val baseUrl: String?)
 
-data class TaskRepositoryDto(val url: String, val baseRef: String = "main", val setupCommand: String? = null, val verifyCommand: String)
+data class TaskRepositoryDto(
+    val url: String,
+    val baseRef: String = "main",
+    val setupCommand: String? = null,
+    val verifyCommand: String,
+    val acceptance: TaskAcceptanceDto? = null,
+)
+
+/** ADR 0047: hidden files (path → content), protected paths and the no-op check of a coding task. */
+data class TaskAcceptanceDto(val files: Map<String, String> = emptyMap(), val protectedPaths: List<String> = emptyList(), val requireChanges: Boolean = true)
 
 data class EvalTaskInputDto(
     val name: String,

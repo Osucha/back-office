@@ -10,7 +10,9 @@ import pl.mos.backoffice.projects.application.service.ModelResolver
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.projects.application.service.TemplateModelBuilder
 import pl.mos.backoffice.projects.domain.model.ArtifactKind
+import pl.mos.backoffice.projects.domain.model.CoverageStatus
 import pl.mos.backoffice.projects.domain.model.Finding
+import pl.mos.backoffice.projects.domain.model.RequirementCoverage
 import pl.mos.backoffice.projects.domain.model.ReviewReport
 import pl.mos.backoffice.projects.domain.model.Severity
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
@@ -40,7 +42,9 @@ import pl.mos.backoffice.shared.usage.UsageKind
  * system prompt gets the constitution and a `<skills>` section; the user prompt is rendered with the
  * template model; `outputSchema` asks for structured output; `confidenceField` feeds `confidence`;
  * every `produces` name that matches a structured field (or the whole answer) becomes an artefact.
- * Tasks that produce `review` are assessed by [ReviewVerdictPolicy] and stored as the run review.
+ * Tasks that produce `review` are assessed by [ReviewVerdictPolicy] and stored as the run review; a `coverage`
+ * matrix in the answer (`review-against-spec`) is kept in the review artefact and a MISSING requirement requests
+ * changes. The `review` artefact is what a rework step reads as `{{artifacts.review}}`.
  *
  * Prompt-injection defences (ADR 0029, docs/architecture/12-prompt-injection.md):
  * - untrusted template values are rendered into data blocks with a per-call random boundary and the system
@@ -104,7 +108,11 @@ class LlmTaskExecutor(
         artifacts += producedArtifacts(task, result.content, structured, wholeContentUsed = review != null)
         if (artifacts.isEmpty()) artifacts += wholeAnswer(task.key, result.content, structured)
 
-        val summary = review?.let { "${it.verdict} (score ${it.score}, ${it.findings.size} findings)" + if (it.humanReviewRequired) ", needs human review" else "" }
+        val summary = review?.let {
+            "${it.verdict} (score ${it.score}, ${it.findings.size} findings" +
+                (if (it.missingRequirements > 0) ", ${it.missingRequirements} requirements missing" else "") + ")" +
+                if (it.humanReviewRequired) ", needs human review" else ""
+        }
             ?: structured?.get("summary")?.toString()
             ?: result.content.lineSequence().firstOrNull { it.isNotBlank() }?.take(200)
         return NodeResult(
@@ -175,12 +183,15 @@ class LlmTaskExecutor(
         guard.findingsOutsideDiff(modelFindings, diff).forEach { context.log("review finding cites ${it.file}, which the diff does not touch: ${it.title}") }
         val guardFindings = guard.findingsFor(signals, guardMode) + (if (invalid.isEmpty()) emptyList() else listOf(guard.invalidAnswerFinding(invalid)))
         val findings = verdictPolicy.deduplicate(guardFindings + modelFindings)
-        val assessment = verdictPolicy.assess(findings)
+        // review-against-spec: the coverage matrix stays in the report and a MISSING requirement blocks approval
+        val coverage = if (invalid.isEmpty()) parseCoverage(answer.structured?.get("coverage")) else emptyList()
+        val assessment = verdictPolicy.assess(findings, coverage)
         val summary = when {
             invalid.isNotEmpty() -> "The AI review answer was invalid; a person must review this change."
             else -> answer.structured?.get("summary")?.toString()?.takeIf { it.isNotBlank() } ?: answer.result.content.take(2000)
         }
-        val review = ReviewReport(assessment.verdict, assessment.score, summary, findings, ref, answer.usage, cost)
+        val review = ReviewReport(assessment.verdict, assessment.score, summary, findings, ref, answer.usage, cost, coverage)
+        if (review.missingRequirements > 0) context.log("review: ${review.missingRequirements} agreed requirement(s) MISSING, verdict ${review.verdict}")
         if (review.humanReviewRequired) {
             context.log("review needs a human: ${findings.count { it.title.startsWith(ReviewReport.NEEDS_HUMAN_PREFIX) }} guard finding(s), verdict ${review.verdict}")
         }
@@ -308,6 +319,17 @@ class LlmTaskExecutor(
         }
     }
 
+    /** The coverage matrix of a review against the specification; rows without a requirement are dropped, unknown statuses read as PARTIAL. */
+    private fun parseCoverage(raw: Any?): List<RequirementCoverage> {
+        val list = raw as? List<*> ?: return emptyList()
+        return list.mapNotNull { item ->
+            val m = item as? Map<*, *> ?: return@mapNotNull null
+            val requirement = m["requirement"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val status = m["status"]?.toString()?.uppercase()?.let { s -> CoverageStatus.entries.firstOrNull { it.name == s } } ?: CoverageStatus.PARTIAL
+            RequirementCoverage(requirement, status, m["evidence"]?.toString().orEmpty())
+        }
+    }
+
     companion object {
         const val DEFAULT_MAX_INPUT_CHARS = 200_000
         const val MAX_REPAIR_ECHO_CHARS = 20_000
@@ -316,7 +338,8 @@ class LlmTaskExecutor(
         private const val MEDIA_TYPE_MARKDOWN = "text/markdown"
         private const val MEDIA_TYPE_JSON = "application/json"
         const val DEFAULT_SYSTEM_PROMPT = "You are a meticulous software engineer working for the project {{project.name}}."
-        const val DEFAULT_USER_PROMPT = "Task: {{node.name}}\n\nIssue {{issue.key}}: {{issue.summary}}\n\n{{issue.description}}\n\nRevision feedback:\n{{feedback}}"
+        const val DEFAULT_USER_PROMPT = "Task: {{node.name}}\n\n{{#issue.key}}Issue {{issue.key}}: {{issue.summary}}\n\n{{#issue.description}}{{issue.description}}\n\n{{/issue.description}}{{/issue.key}}" +
+            "{{#feedback}}Revision feedback:\n{{feedback}}{{/feedback}}"
         val STATE_NAMES = setOf("confidence", "mr", "issue", "lastOutcome", "ci", "decision")
     }
 }

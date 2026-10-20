@@ -37,6 +37,7 @@ import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import pl.mos.backoffice.shared.runner.RunnerAcceptance
 
 /*
  * JSON documents of the runner protocol exactly as in openapi.yaml (`RunnerJobSpec`, `RunnerResult`,
@@ -204,6 +205,10 @@ data class RunnerJobSpecJson(
     val personalRunnerOf: String? = null,
     /** ADR 0044: the run workspace (volume / PVC name, key, session role); absent = a throwaway workspace. */
     val workspace: WorkspaceJson? = null,
+    /** ADR 0047: absent in older specs (their digests do not change). */
+    val commitSubject: String? = null,
+    val featureDescription: String? = null,
+    val acceptance: AcceptanceJson? = null,
 ) {
     companion object {
         fun of(spec: RunnerJobSpec) = RunnerJobSpecJson(
@@ -226,9 +231,19 @@ data class RunnerJobSpecJson(
             specKit = spec.specKit,
             personalRunnerOf = spec.personalRunnerOf?.toString(),
             workspace = spec.workspace?.let { WorkspaceJson.of(it) },
+            commitSubject = spec.commitSubject,
+            featureDescription = spec.featureDescription,
+            acceptance = spec.acceptance?.let { AcceptanceJson(it.files, it.protectedPaths, it.requireChanges) },
         )
     }
 }
+
+/** ADR 0047: `RunnerJobSpec.acceptance`. */
+data class AcceptanceJson(
+    val files: Map<String, String> = emptyMap(),
+    val protectedPaths: List<String> = emptyList(),
+    val requireChanges: Boolean = false,
+)
 
 /** ADR 0044: `RunnerJobSpec.workspace`; `sessionRole` and `prepareOnly` are omitted when unset. */
 data class WorkspaceJson(
@@ -471,5 +486,8 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         specKit = specKit,
         personalRunnerOf = personalRunnerOf?.let { runCatching { UUID.fromString(it) }.getOrNull() },
         workspace = workspace?.toWorkspace(),
+        commitSubject = commitSubject,
+        featureDescription = featureDescription,
+        acceptance = acceptance?.let { RunnerAcceptance(it.files, it.protectedPaths, it.requireChanges) },
     )
 }

@@ -2,6 +2,7 @@ package pl.mos.backoffice.evaluation.application.service
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import pl.mos.backoffice.evaluation.domain.model.Difficulty
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
@@ -48,9 +49,19 @@ class SeedStarterContentServiceTest {
             assertThat(it.kind).isEqualTo(TaskKind.CODING_JOB)
             assertThat(it.repository!!.url).isEqualTo(StarterContent.PETCLINIC_REPO_URL)
             assertThat(it.repository!!.baseRef).isEqualTo(StarterContent.PETCLINIC_COMMIT)
-            assertThat(it.repository!!.verifyCommand).isEqualTo("./mvnw -B -q test")
+            assertThat(it.repository!!.verifyCommand).isEqualTo("./mvnw -B test")
             assertThat(it.context).contains("spring-javaformat")
+            assertThat(it.referenceAnswer).isNotBlank()
+            // ADR 0047: hidden acceptance tests, the existing tests protected, a no-op fails
+            val acceptance = it.repository!!.acceptance!!
+            assertThat(acceptance.requireChanges).isTrue()
+            assertThat(acceptance.files.keys).anyMatch { p -> p.startsWith("src/test/java/org/springframework/samples/petclinic/acceptance/") }
+            assertThat(acceptance.files.values).allMatch { c -> c.isNotBlank() && '\r' !in c }
+            assertThat(acceptance.protectedPaths).isNotEmpty().allMatch { p -> p.startsWith("src/test/") }
         }
+        // golden files are compared byte for byte by the hidden tests
+        val golden = coding.single { it.difficulty == Difficulty.EXPERT }.repository!!.acceptance!!.files
+        assertThat(golden["src/test/resources/acceptance/vets.json"]).startsWith("{").doesNotEndWith("\n")
         assertThat(suite.tasks.filter { it.kind == TaskKind.PROMPT }).allSatisfy { assertThat(it.repository).isNull() }
     }
 
@@ -72,6 +83,29 @@ class SeedStarterContentServiceTest {
         assertThat(upgraded.tasks.filter { it.repository?.url == StarterContent.PETCLINIC_REPO_URL }).hasSize(5)
         assertThat(upgraded.tasks.map { it.name }).contains("Mine").containsAll(prompts.map { it.name })
         assertThat(service.seedIfEmpty().suitesUpgraded).isZero()
+    }
+
+    @Test
+    fun `starter tasks in an earlier version get the current content, edited ones stay (ADR 0047)`() {
+        val suite = StarterContent.starterSuite(Fixtures.now)
+        val (untouched, edited) = suite.tasks.take(2)
+        val oldUntouched = untouched.copy(instructions = "old wording", weight = 2.0)
+        val oldEdited = edited.copy(instructions = "the owner's wording")
+        val earlier = mapOf(StarterContent.contentHash(oldUntouched) to untouched.name)
+        val stale = suite.copy(tasks = listOf(oldUntouched, oldEdited) + suite.tasks.drop(2))
+
+        val upgraded = StarterContent.upgradeUntouchedTasks(stale, Fixtures.now, earlier)!!
+
+        assertThat(upgraded.tasks[0]).isEqualTo(untouched.copy(weight = 2.0))
+        assertThat(upgraded.tasks[0].id).isEqualTo(untouched.id)
+        assertThat(upgraded.tasks[1].instructions).isEqualTo("the owner's wording")
+        assertThat(StarterContent.upgradeUntouchedTasks(upgraded, Fixtures.now, earlier)).isNull()
+    }
+
+    @Test
+    fun `the current starter content is not an earlier version of itself`() {
+        assertThat(StarterContent.upgradeUntouchedTasks(StarterContent.starterSuite(Fixtures.now), Fixtures.now)).isNull()
+        assertThat(StarterContent.contentHash(StarterContent.codingTasks().first())).hasSize(32)
     }
 
     @Test

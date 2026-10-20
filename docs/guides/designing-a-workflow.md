@@ -73,10 +73,11 @@ options, returns the diff as artefact `diff` and the MR URL as `mr`. `FETCH_ISSU
 `TRANSITION_ISSUE` call Jira.
 
 Templates are Mustache-like: `{{issue.summary}}`, `{{artifacts.spec}}` (artefact content),
-`{{feedback}}` (all revision comments), `{{project.constitution}}`, `{{mr.url}}`, `{{review.score}}`,
+`{{feedback}}` (the revision comments for this step), `{{project.constitution}}`, `{{mr.url}}`, `{{review.score}}`,
 `{{input.ci.mergeRequest.targetBranch}}`, `{{ci.message}}`, `{{decision.comment}}`, `{{run.short}}`,
 `{{node.attempt}}`; filters `| lower`, `| upper`, `| trim`. Missing values render empty and add a
-warning to the run log.
+warning to the run log. Sections `{{#path}}...{{/path}}` keep their text only when the value is present
+(not empty), `{{^path}}...{{/path}}` only when it is absent.
 
 <a id="template-variables"></a>Template variables (`TemplateModelBuilder`, the same model for prompts, `messageTemplate`,
 `branchTemplate` and merge-request titles):
@@ -85,7 +86,8 @@ warning to the run log.
 |---|---|
 | `issue` | the fetched issue: `key`, `summary`, `description`, `type`, `priority`, `status`, `labels`, `components`, `acceptanceCriteria`, `url` |
 | `artifacts.<name>` | content of the run's artefact with that name (latest wins) |
-| `feedback` / `feedbackList` | all revision comments joined by a blank line / as a list |
+| `feedback` / `feedbackList` | the revision comments for this step, joined by a blank line / as a list: a gate's `revise` comment goes to the next task step that completes and stays with that step for its later attempts; later steps do not get it |
+| `feedbackHistory` | every revision comment of the run, joined by a blank line |
 | `project.{key,name,constitution,defaultBranch,repositoryUrl}` | the project; `defaultBranch` / `repositoryUrl` are the primary repository's (empty when there is none, kept for compatibility) |
 | `project.repositories`, `project.repository` | all repositories of the project (`key`, `url`, `defaultBranch`, `purpose`, `description`, `primary`) / the primary one (may be null) |
 | `repos` | this step's repositories: `key`, `url`, `path`, `access`, `purpose`, `baseBranch`, `primary` |
@@ -287,14 +289,15 @@ green in CI / review findings addressed / spec updated". People are involved at 
 `ADVISORY` mode).
 
 **Change request (delta)** (`MANUAL`, `API`; ADR 0019) for changing an existing system:
-`start -> impact-analysis` (template `impact-analysis`) `-> impact-gate` ("Approve impact analysis?",
+`start -> fetch-issue` (template `fetch-issue`) `-> impact-analysis` (template `impact-analysis`) `-> impact-gate` ("Approve impact analysis?",
 checklist: affected artefacts listed / estimate given / options compared; `revise -> impact-analysis`)
-`-> user-story` (`write-user-story`) `-> plan-tasks` (`plan-task-list`) `-> task-list-gate`
-("Approve task list?", checklist: every task has verification and test_command / the last task is
+`-> user-story` (`write-user-story`) `-> plan-tasks` (`plan-task-list`, planned from the approved impact
+analysis) `-> task-list-gate` ("Approve task list?", shows `user-story` and `tasks`, checklist: every task has verification and test_command / the last task is
 reformat, lint, and test; `revise -> plan-tasks`) `-> implement` (`implement-task-list`, TDD, stops on a
 red verification) `-> ci-tests` (`WAIT_FOR_CI tests`: `fail -> tests-failed`) `-> code-review -> verdict?`
-(`changes -> implement`) `-> merge-gate` (four-eyes, owner accountable, Definition of Done as above)
-`-> done`. `reject` on any gate cancels the run.
+(`changes -> implement`, whose prompt then carries the `review` artefact) `-> merge-gate` (four-eyes,
+owner accountable, Definition of Done as above) `-> done`. `reject` on any gate cancels the run. Projects
+created before the `fetch-issue` step was added keep their stored workflow; add the step in the designer.
 
 ## Example: workflow JSON
 

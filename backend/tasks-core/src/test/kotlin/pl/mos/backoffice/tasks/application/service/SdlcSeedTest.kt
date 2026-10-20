@@ -32,7 +32,7 @@ class SdlcSeedTest {
     fun `seeding twice creates the SDLC entries once`() {
         val first = service.seed()
         val second = service.seed()
-        assertThat(first.total).isEqualTo(9 + 22 + 12)
+        assertThat(first.total).isEqualTo(9 + 24 + 12)
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcTemplateKeys }).hasSize(BuiltInLibrary.sdlcTemplateKeys.size)
         assertThat(lib.skills.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcSkillKeys }).hasSize(BuiltInLibrary.sdlcSkillKeys.size)
@@ -68,11 +68,26 @@ class SdlcSeedTest {
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_USER_STORY, null)!!
         assertThat(task.executor).isEqualTo(TaskExecutor.LLM)
         assertThat(task.interfaces).containsExactly(BuiltInLibrary.REQUIREMENT_WRITER)
-        assertThat(task.lineage).containsExactly(BuiltInLibrary.WRITE_USER_STORY, BuiltInLibrary.BASE_AGENT)
+        assertThat(task.lineage).containsExactly(BuiltInLibrary.WRITE_USER_STORY, BuiltInLibrary.BASE_LLM, BuiltInLibrary.BASE_AGENT)
         assertThat(task.skills.map { it.key }).contains(BuiltInLibrary.USER_STORY_FORMAT, BuiltInLibrary.ASK_DONT_GUESS, BuiltInLibrary.DEFINITION_OF_READY_DONE)
         assertThat(task.confidenceField).isEqualTo("confidence")
-        assertThat(task.outputSchema).contains("\"userStory\"").contains("\"openQuestions\"").contains("\"confidence\"")
+        // the schema field is named like the produced artefact, so the story is stored as markdown, not as the whole JSON
+        assertThat(BuiltInLibrary.schemaProperties(task.outputSchema)).contains("user-story", "openQuestions", "confidence")
         assertThat(task.produces).contains("user-story")
+        assertThat(task.prompt.system).contains("US-<AREA>-<NN>")
+        assertThat(task.outputSchema).contains("\"required\": [\"question\", \"whyItMatters\"]")
+    }
+
+    @Test
+    fun `write-use-case produces the use-case field and write-adr leaves number, date and status to people`() {
+        service.seed()
+        val useCase = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_USE_CASE, null)!!
+        assertThat(BuiltInLibrary.schemaProperties(useCase.outputSchema)).contains("use-case")
+        assertThat(useCase.produces).contains("use-case")
+        val adr = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_ADR, null)!!
+        assertThat(adr.prompt.system).contains("`NNNN`").contains("`YYYY-MM-DD`").contains("Never mark the ADR Accepted")
+        val dod = lib.skills.findByKeyAndScope(BuiltInLibrary.DEFINITION_OF_READY_DONE, Scope.Global)!!.content
+        assertThat(dod).contains("an agent never sets them").contains("DoD (people only)")
     }
 
     @Test
@@ -93,19 +108,28 @@ class SdlcSeedTest {
         assertThat(task.outputSchema).contains("\"title\"", "\"description\"", "\"verification\"", "\"test_command\"", "\"completed\"")
             .contains("\"enum\": [false]").contains("\"finalTaskTitle\": { \"type\": \"string\", \"enum\": [\"reformat, lint, and test\"] }")
         assertThat(task.prompt.system).contains("reformat, lint, and test")
+        // the approved impact analysis of a change request reaches the planner
+        assertThat(task.prompt.user).contains("{{artifacts.impact-analysis}}").contains("{{artifacts.plan}}").contains("{{artifacts.user-story}}")
+        assertThat(task.consumes).contains("impact-analysis")
     }
 
     @Test
     fun `implement-task-list extends the OpenCode implementer and keeps a work log`() {
         service.seed()
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_TASK_LIST, null)!!
-        assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_AGENT)
+        assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_CODING_AGENT, BuiltInLibrary.BASE_AGENT)
         assertThat(task.executor).isEqualTo(TaskExecutor.IMPLEMENT)
         assertThat(task.interfaces).containsExactly(BuiltInLibrary.IMPLEMENTER)
         assertThat(task.produces).contains("diff", "mr", "work-log")
         assertThat(task.config["collectArtifacts"]).isEqualTo(listOf("work-log.md"))
         assertThat(task.config["agent"]).isEqualTo("OPENCODE")
-        assertThat(task.prompt.user).contains("test_command").contains("STOP").contains("Noticed out of scope").doesNotContain("Work through the task list in order when one is")
+        // a STOP fails the step: the verification command checks the RESULT line of the work log
+        assertThat(task.config["verifyCommand"]).isEqualTo(BuiltInLibrary.WORK_LOG_VERIFY_COMMAND)
+        assertThat(BuiltInLibrary.WORK_LOG_VERIFY_COMMAND).contains("work-log.md").contains(BuiltInLibrary.WORK_LOG_GREEN)
+        assertThat(task.prompt.user).contains("test_command").contains("STOP").contains("Noticed out of scope").contains(BuiltInLibrary.WORK_LOG_GREEN)
+            .contains("{{artifacts.review}}").contains("Do not commit").doesNotContain("Work through the task list in order when")
+            .doesNotContain("commit with the task title")
+        assertThat(task.skills.map { it.key }).doesNotContain(BuiltInLibrary.CONVENTIONAL_COMMITS, BuiltInLibrary.BUILD_GUARDRAILS)
     }
 
     @Test
@@ -115,6 +139,9 @@ class SdlcSeedTest {
         assertThat(task.interfaces).containsExactly(BuiltInLibrary.REVIEWER)
         assertThat(task.produces).containsExactly("review")
         assertThat(task.outputSchema).contains("\"findings\"", "\"verdict\"", "\"score\"", "\"coverage\"", "MISSING")
+        assertThat(task.config).doesNotContainKey("maxChunkLines")
+        val user = task.prompt.user!!
+        assertThat(user.indexOf("return only")).isLessThan(user.indexOf("{{artifacts.diff}}"))
     }
 
     @Test

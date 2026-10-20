@@ -1,0 +1,3 @@
+src/test/java/org/springframework/samples/petclinic/acceptance/RateLimitDefaultsAcceptanceTests.java
+src/test/java/org/springframework/samples/petclinic/acceptance/RateLimitHttpAcceptanceTests.java
+src/test/java/org/springframework/samples/petclinic/acceptance/RateLimiterAcceptanceTests.java

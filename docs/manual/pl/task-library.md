@@ -59,7 +59,13 @@ Wykonawca decyduje, gdzie działa zadanie:
 3. **Prompt**: wybierz **Dopisz do rodzica** (**Append to parent**) lub **Zastąp rodzica** (**Replace
    parent**), a następnie napisz **Prompt systemowy** (**System prompt**) i **Prompt użytkownika** (**User
    prompt**). Wartości szablonowe, takie jak `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
-   i `{{project.constitution}}`, są wypełniane w czasie wykonania.
+   i `{{project.constitution}}`, są wypełniane w czasie wykonania. Sekcja
+   `{{#artifacts.review}}...{{/artifacts.review}}` zachowuje swój tekst tylko wtedy, gdy wartość istnieje
+   (`{{^path}}...{{/path}}` tylko wtedy, gdy jej nie ma), więc prompt nie pokazuje pustego nagłówka
+   „Issue” czy „Feedback” w przebiegu bez zgłoszenia ani przy pierwszej próbie. `{{feedback}}` zawiera
+   wyłącznie uwagi do tego kroku: komentarz **Popraw** (**Revise**) z bramki trafia do następnego
+   uruchomionego kroku, zostaje przy nim na kolejne próby i nigdy nie dociera do kroków po nim (wszystkie
+   komentarze przebiegu: `{{feedbackHistory}}`).
 4. **Umiejętności** (**Skills**): dodaj umiejętności, a odziedziczone umiejętności do usunięcia wpisz w **Usuń
    odziedziczone umiejętności** (**Remove inherited skills**).
 5. **Kontrakt i konfiguracja** (**Contract and configuration**): **Produkuje** (**Produces**)
@@ -153,6 +159,14 @@ umiejętności wbudowanych nie można usuwać. Każdy agent dziedziczy umiejętn
 i `ask-dont-guess` przez wbudowany szablon `base-agent`; jeśli zadanie nie może ich widzieć, usuń je
 w szablonie przez **Usuń odziedziczone umiejętności**.
 
+**Opis** pisz w formie „Use when ...” („Użyj, gdy ...”): po nim agent decyduje, czy otworzyć umiejętność.
+Reguły, których zadanie musi zawsze przestrzegać, należą do jego promptu, nie tylko do umiejętności.
+Agent na runnerze znajduje wszystkie umiejętności w katalogu roboczym, ale czyta tylko te, które mu
+wskazano, dlatego prompty wbudowanych zadań na runnerze kończą się linią „Apply the skills: ...”; gdy
+dołączasz do takiego zadania kolejną umiejętność, dopisz jej klucz do tej linii. `kotlin-hexagonal`
+i `angular-ng-zorro` opisują kod samego Back Office: traktuj je jako przykłady i skopiuj do umiejętności
+projektowej dla własnego stosu.
+
 <a id="sources"></a>
 ## Źródła
 
@@ -189,6 +203,57 @@ Back Office zawiera szablony faz Spec Kit, implementacji z OpenCode lub Claude C
 interfejsami i umiejętnościami. Wpisy wbudowane możesz edytować; Back Office nigdy nie nadpisuje
 zmienionego wpisu.
 
+<a id="built-in-updates"></a>
+### Aktualizacje biblioteki wbudowanej
+
+Przy każdym starcie Back Office porównuje każdy wbudowany szablon, umiejętność i interfejs z wersją,
+którą dostarcza, pole po polu. Wpis wbudowany, którego nikt nie edytował (nadal zapisany przez system,
+a w przypadku szablonu nadal w wersji 1), jest zastępowany wersją dostarczoną, gdy się różnią; wpis
+zapisany przez człowieka albo kopia z tym samym kluczem, która nie jest wbudowana, zostaje bez zmian. Aby
+dostać dostarczoną wersję zmienionego wpisu, porównaj go z **Podglądem rozwiązanego zadania** na świeżej
+instalacji i przenieś to, czego potrzebujesz, albo usuń swoją niewbudowaną kopię i uruchom ponownie.
+
+### Jak zbudowane są zadania wbudowane
+
+- Wspólne reguły niosą trzy szablony abstrakcyjne: `base-agent` (rola, konstytucja, uczciwość, zakres,
+  bezpieczeństwo, dwie umiejętności podstawowe), `base-llm` dla zadań LLM w Back Office (bez repozytorium;
+  przy schemacie wyjścia odpowiedź to wyłącznie JSON) i `base-coding-agent` dla zadań na runnerze (praca
+  w repozytorium, cytowanie ścieżek plików, nigdy commit ani push: runner commituje i wypycha po agencie).
+- Zadania **Spec Kit**: prompt fazy specify zaczyna się linią `KLUCZ: podsumowanie`, potem opis zgłoszenia
+  i kryteria akceptacji, potem instrukcje. Fazy plan i tasks nie wklejają specyfikacji ani planu, które
+  Spec Kit czyta z repozytorium; przekazują uwagi do kroku i, w fazie plan, opcjonalny parametr przebiegu
+  `techHints`.
+- **Implementacja** (`implement-opencode`, `implement-claude-code`): runner uruchamia `verifyCommand`
+  z **Konfiguracji**, jeśli go ustawisz (domyślnie brak), i oznacza krok jako nieudany, gdy polecenie
+  zakończy się kodem różnym od zera; merge request używa kluczy `mergeRequest` (true/false),
+  `mergeRequestTitleTemplate` i `mergeRequestDraft`.
+- **Poprawki po przeglądzie**: gdy przebieg ma artefakt `review`, prompt implementacji zawiera go pod
+  nagłówkiem „Latest review findings”, więc krawędź `changes` węzła **Review ok?** przekazuje uwagi
+  z przeglądu do implementacji zamiast powtarzać ten sam prompt.
+- `implement-task-list` wykonuje listę zadań po kolei i kończy `work-log.md` linią `RESULT: GREEN` albo
+  `RESULT: STOPPED at <zadanie>`; jego `verifyCommand` sprawdza tę linię, więc zatrzymanie na czerwonym
+  teście oznacza nieudany krok. Runner zbiera plik jako artefakt `work-log` i nie dodaje go do commita.
+  Aby po agencie uruchomić też pełny zestaw testów, ustaw `verifyCommand` w kroku, na przykład
+  `tail -n 3 work-log.md | grep -q "^RESULT: GREEN" && ./gradlew test`.
+- `code-review` podaje instrukcje przed diffem, więc diff obcięty na `maxInputChars` nigdy ich nie usuwa;
+  w przebiegu z CI jako kontekstu używa tytułu i opisu merge requestu. Cały diff jest przeglądany w jednym
+  wywołaniu.
+- `review-against-spec` zachowuje w artefakcie `review` tabelę pokrycia wymagań (MET, PARTIAL, MISSING,
+  NOT_APPLICABLE); jedno wymaganie MISSING daje werdykt REQUEST_CHANGES.
+- `clarify-spec` zapisuje `clarifications` jako listę markdown (pytanie, dlaczego jest ważne, proponowana
+  odpowiedź); `write-user-story` i `write-use-case` zapisują swoje dokumenty jako artefakty `user-story`
+  i `use-case`. `fetch-issue` czyta podsumowanie, opis, kryteria akceptacji i etykiety, bez komentarzy
+  i załączników.
+- Otwarte pytania mają jeden znacznik na rodzaj dokumentu: `[NEEDS CLARIFICATION: ...]` w specyfikacji
+  Spec Kit, `[?]` wszędzie indziej. Agenci nigdy nie wymyślają właściciela ani terminu, zostawiają
+  identyfikatory takie jak `US-<AREA>-<NN>` i numery ADR `NNNN` jako symbole zastępcze i nigdy nie
+  ustawiają statusu, na przykład Accepted.
+
+Domyślne workflowy nowego projektu korzystają z tych szablonów; workflow **Change request (delta)**
+zaczyna się od **Fetch issue**, a jego lista zadań powstaje na podstawie zatwierdzonej analizy wpływu.
+Projekty utworzone wcześniej zachowują zapisane workflowy; zmień je w projektancie, jeśli chcesz tego
+samego.
+
 <a id="generic-tasks"></a>
 ### Zadania z dowolnym promptem
 
@@ -201,7 +266,7 @@ Do pracy, którą opisujesz sam w węźle, służą dwa wbudowane szablony: prze
 | **Agent task** (`agent-task`) | agent kodujący na runnerze (domyślnie Claude Code, `agent` w **Konfiguracji**), z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
 
 Oba wstawiają do promptu systemowego zgłoszenie (gdy przebieg je ma), parametr przebiegu `input` i uwagi
-recenzenta, więc zastąpiony prompt może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian; w projekcie
+recenzenta (każde tylko wtedy, gdy istnieje), więc zastąpiony prompt może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian; w projekcie
 bez repozytoriów działa w pustym katalogu roboczym, a jego końcowa odpowiedź staje się artefaktem `result`.
 **LLM task** działa na serwerze Back Office i wymaga skonfigurowanego dostawcy modeli (klucza API); **Agent task**
 działa na runnerze, więc na [osobistym runnerze](personal-runner.md) może zamiast tego korzystać z Twojego logowania

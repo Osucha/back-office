@@ -88,8 +88,8 @@ class TasksStartupListener(
         val result = seed.seed()
         if (result.total > 0) {
             log.info(
-                "seeded task library interfaces={} templates={} skills={} upgraded={}",
-                result.interfacesCreated, result.templatesCreated, result.skillsCreated, result.templatesUpgraded,
+                "seeded task library interfaces={} templates={} skills={} upgraded templates={} skills={} interfaces={}",
+                result.interfacesCreated, result.templatesCreated, result.skillsCreated, result.templatesUpgraded, result.skillsUpgraded, result.interfacesUpgraded,
             )
         }
     }

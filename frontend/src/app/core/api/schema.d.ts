@@ -4173,6 +4173,16 @@ export interface components {
             name: string;
             referenceAnswer?: string | null;
             repository?: {
+                /** @description ADR 0047: checks after the agent. files (path -> content) are hidden from the agent and written only for the verification (hidden tests, golden files); a tracked file matching protectedPaths (git pathspecs) that differs from the base fails the verification; requireChanges fails an untouched work tree. */
+                acceptance?: {
+                    files?: {
+                        [key: string]: string;
+                    };
+                    protectedPaths?: string[];
+                    /** @default true */
+                    requireChanges: boolean;
+                } | null;
+                /** @description branch, tag or commit; pin a commit so every benchmark sees the same code */
                 baseRef?: string;
                 setupCommand?: string | null;
                 url?: string;

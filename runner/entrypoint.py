@@ -143,7 +143,12 @@ ARTIFACT_NAME_BY_FILE = {
     "plan.md": "plan",
     "tasks.md": "tasks",
     "analysis.md": "analysis",
+    "work-log.md": "work-log",
 }
+# Collected for Back Office but not part of the change: kept out of the commit (implement-task-list's work log).
+EPHEMERAL_ARTIFACT_FILES = ("work-log.md",)
+# Hidden acceptance files (ADR 0047) may not be written outside the repository or into .git.
+MAX_ACCEPTANCE_FILES = 50
 
 SECRET_ENV_NAMES = (
     "GIT_TOKEN",
@@ -811,6 +816,12 @@ class JobSpec:
     llm_credentials: str = "GATEWAY"
     # ADR 0044: the run workspace; None = a throwaway workspace and a new agent session
     workspace: Optional[WorkspaceSpec] = None
+    # ADR 0047: the commit subject and the Spec Kit feature description chosen by Back Office; None = derived from the
+    # prompt as before
+    commit_subject: Optional[str] = None
+    feature_description: Optional[str] = None
+    # ADR 0047: checks after the agent (coding benchmarks): hidden files written only for the verification
+    acceptance: Optional["Acceptance"] = None
 
     @property
     def local_login(self) -> bool:
@@ -823,6 +834,40 @@ class JobSpec:
     @property
     def primary_repository(self) -> Optional[RepoSpec]:
         return next((r for r in self.repositories if r.primary), None)
+
+
+@dataclass
+class Acceptance:
+    """`RunnerJobSpec.acceptance` (ADR 0047): what the verification checks besides `verifyCommand`.
+
+    After the agent: with `require_changes` an untouched work tree fails; a tracked file matching `protected_paths`
+    (git pathspecs) that differs from the base fails; then `files` are written, `verifyCommand` runs (it sees them)
+    and they are removed again, so they never reach the commit, the diff or the agent."""
+
+    files: Dict[str, str] = field(default_factory=dict)
+    protected_paths: List[str] = field(default_factory=list)
+    require_changes: bool = False
+
+
+def _safe_relative(path: str) -> str:
+    p = path.replace("\\", "/").strip()
+    parts = [x for x in p.split("/") if x not in ("", ".")]
+    if not parts or p.startswith("/") or ".." in parts or parts[0] == ".git" or ":" in parts[0]:
+        raise ValueError(f"acceptance file path {path!r} must be relative and inside the repository")
+    return "/".join(parts)
+
+
+def parse_acceptance(raw: Any) -> Optional[Acceptance]:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("acceptance must be an object")
+    files_raw = raw.get("files") or {}
+    if not isinstance(files_raw, dict) or len(files_raw) > MAX_ACCEPTANCE_FILES:
+        raise ValueError(f"acceptance.files must map at most {MAX_ACCEPTANCE_FILES} paths to contents")
+    files = {_safe_relative(str(k)): str(v) for k, v in files_raw.items()}
+    protected = [str(p) for p in (raw.get("protectedPaths") or []) if str(p).strip()]
+    return Acceptance(files=files, protected_paths=protected, require_changes=bool(raw.get("requireChanges", False)))
 
 
 def stub_agent_enabled(env: Optional[Dict[str, str]] = None) -> bool:
@@ -1132,6 +1177,9 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         spec_kit=spec_kit,
         llm_credentials=llm_credentials,
         workspace=workspace,
+        commit_subject=_opt_str(raw, "commitSubject"),
+        feature_description=_opt_str(raw, "featureDescription"),
+        acceptance=parse_acceptance(raw.get("acceptance")),
     )
 
 
@@ -1471,7 +1519,10 @@ def has_tasks_md(repo_dir: Path) -> bool:
 def build_agent_prompt(spec: JobSpec, repo_dir: Optional[Path]) -> str:
     if spec.mode == "SPEC_KIT":
         phase = spec.spec_kit_phase or "SPECIFY"
-        return f"{speckit_command(spec.agent, phase, repo_dir)} {spec.prompt}".strip()
+        # ADR 0047: the command's argument is the feature description only (Spec Kit may write it into spec.md);
+        # role, rules and the security notice stay out of the committed files
+        argument = spec.feature_description or spec.prompt
+        return f"{speckit_command(spec.agent, phase, repo_dir)} {argument}".strip()
     if spec.mode == "IMPLEMENT":
         if spec.spec_kit_allowed and repo_dir is not None and has_tasks_md(repo_dir):
             cmd = speckit_command(spec.agent, "implement", repo_dir)
@@ -2265,9 +2316,12 @@ class Git:
     def has_changes(self) -> bool:
         return bool(self.run(["status", "--porcelain"]).stdout.strip())
 
-    def commit_all(self, message: str, run_id: Optional[str] = None) -> Optional[str]:
-        """Stage everything and commit with the `Back-Office-Run: <runId>` trailer (ADR 0013)."""
+    def commit_all(self, message: str, run_id: Optional[str] = None, keep_out: Iterable[str] = ()) -> Optional[str]:
+        """Stage everything and commit with the `Back-Office-Run: <runId>` trailer (ADR 0013). Files named in
+        [keep_out] (collected work logs) are left out of the commit unless the repository already tracks them."""
         self.run(["add", "-A"])
+        for name in keep_out:
+            self.run(["reset", "--quiet", "--", f":(glob)**/{name}"], check=False)
         if not self.run(["diff", *GIT_DIFF_SAFETY_ARGS, "--cached", "--quiet"], check=False).returncode == 0:
             self.run(["commit", "--quiet", "-m", commit_message_with_trailer(message, run_id)])
             return self.head()
@@ -2762,10 +2816,19 @@ def _read_artifact_content(path: Path) -> str:
     return content + ARTIFACT_TRUNCATED_MARKER if len(data) > ARTIFACT_MAX_BYTES else content
 
 
+def _newest_first(files: List[Path], repo_dir: Path) -> List[Path]:
+    """Files with a well-known name (spec.md, plan.md, ...) newest feature directory first, so a revised spec
+    (`specs/002-*`) gets the name `spec` and the earlier one keeps its path; other files keep their order."""
+    known = [p for p in files if p.name.lower() in ARTIFACT_NAME_BY_FILE]
+    known.sort(key=lambda p: p.relative_to(repo_dir).as_posix(), reverse=True)
+    it = iter(known)
+    return [next(it) if p.name.lower() in ARTIFACT_NAME_BY_FILE else p for p in files]
+
+
 def collect_artifacts(repo_dir: Path, patterns: List[str], log: Callable[[str], None]) -> List[Dict[str, Any]]:
     artifacts: List[Dict[str, Any]] = []
     taken: set = set()
-    for p in _artifact_files(repo_dir, patterns, log):
+    for p in _newest_first(_artifact_files(repo_dir, patterns, log), repo_dir):
         rel = p.relative_to(repo_dir).as_posix()
         try:
             content = _read_artifact_content(p)
@@ -3352,15 +3415,96 @@ def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     _kill_strays(run)
 
 
-def _run_verify(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
-    if not spec.verify_command or run.timed_out:
+def _run_verify(run: _Run, spec: JobSpec, repo_dir: Path, git: Optional["Git"] = None) -> None:
+    if run.timed_out or (not spec.verify_command and spec.acceptance is None):
         return
-    run.sink.progress(f"running verifyCommand: {spec.verify_command}")
-    verify_timeout = float(run.env.get("RUNNER_VERIFY_TIMEOUT") or 900)
-    run.verify_res = run_process([spec.verify_command], repo_dir, _untrusted_env(run, spec), timeout=verify_timeout, on_line=lambda l: run.log(f"[verify] {l}"), shell=True)
-    run.log(f"[verify] exited {run.verify_res.exit_code} timed_out={run.verify_res.timed_out}")
-    # verifyCommand is repository code, i.e. untrusted as well.
-    _kill_strays(run)
+    acceptance = spec.acceptance
+    problems: List[str] = []
+    written: List[Tuple[Path, Optional[bytes]]] = []
+    if acceptance is not None and git is not None and spec.repository is not None:
+        problems = acceptance_problems(git, spec.repository.base_ref, acceptance)
+        for p in problems:
+            run.log(f"[acceptance] FAIL {p}")
+        written = write_acceptance_files(repo_dir, acceptance.files, run.log)
+    try:
+        if spec.verify_command:
+            run.sink.progress(f"running verifyCommand: {spec.verify_command}")
+            verify_timeout = float(run.env.get("RUNNER_VERIFY_TIMEOUT") or 900)
+            run.verify_res = run_process([spec.verify_command], repo_dir, _untrusted_env(run, spec), timeout=verify_timeout, on_line=lambda l: run.log(f"[verify] {l}"), shell=True)
+            run.log(f"[verify] exited {run.verify_res.exit_code} timed_out={run.verify_res.timed_out}")
+            # verifyCommand is repository code, i.e. untrusted as well.
+            _kill_strays(run)
+    finally:
+        remove_acceptance_files(repo_dir, written, run.log)
+    if problems:
+        notes = "".join(f"[acceptance] FAIL {p}\n" for p in problems)
+        base = run.verify_res
+        run.verify_res = ProcessResult(
+            exit_code=1 if base is None or base.exit_code == 0 else base.exit_code,
+            timed_out=bool(base and base.timed_out),
+            tail=notes + (base.tail if base else ""),
+            duration_seconds=base.duration_seconds if base else 0.0,
+        )
+        if not spec.verify_command:
+            run.verify_command = "acceptance checks"
+
+
+def acceptance_problems(git: "Git", base_ref: str, acceptance: Acceptance) -> List[str]:
+    """ADR 0047: an untouched work tree (with requireChanges) and changed protected files fail the verification."""
+    problems: List[str] = []
+    base = git.resolve_base(base_ref)
+    if acceptance.require_changes:
+        changed = git.run(["diff", *GIT_DIFF_SAFETY_ARGS, "--quiet", base], check=False).returncode != 0
+        untracked = bool(git.run(["status", "--porcelain", "--untracked-files=all"], check=False).stdout.strip())
+        if not changed and not untracked:
+            problems.append("no changes: the work tree equals the base commit")
+    if acceptance.protected_paths:
+        out = git.run(["diff", *GIT_DIFF_SAFETY_ARGS, "--name-only", base, "--", *acceptance.protected_paths], check=False).stdout
+        touched = [line.strip() for line in out.splitlines() if line.strip()]
+        if touched:
+            problems.append("protected files changed: " + ", ".join(touched[:20]) + (" ..." if len(touched) > 20 else ""))
+    return problems
+
+
+def write_acceptance_files(repo_dir: Path, files: Dict[str, str], log: Callable[[str], None]) -> List[Tuple[Path, Optional[bytes]]]:
+    """Writes the hidden files; returns (path, previous content or None) so [remove_acceptance_files] restores them."""
+    written: List[Tuple[Path, Optional[bytes]]] = []
+    root = repo_dir.resolve()
+    for rel, content in files.items():
+        target = (repo_dir / rel).resolve()
+        if root not in target.parents:
+            log(f"[acceptance] WARN skipped {rel}: outside the repository")
+            continue
+        previous = target.read_bytes() if target.is_file() else None
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        written.append((target, previous))
+    if written:
+        log(f"[acceptance] wrote {len(written)} hidden file(s) for the verification")
+    return written
+
+
+def remove_acceptance_files(repo_dir: Path, written: List[Tuple[Path, Optional[bytes]]], log: Callable[[str], None]) -> None:
+    for target, previous in written:
+        try:
+            if previous is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(previous)
+        except OSError as e:
+            log(f"[acceptance] WARN cannot restore {target}: {e}")
+    # directories the hidden files created stay only when they hold other files
+    for target, previous in written:
+        parent = target.parent
+        while previous is None and parent != repo_dir and parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
+
+
+def commit_subject_for(spec: JobSpec) -> str:
+    """ADR 0047: the subject Back Office chose, else <mode>: <first prompt line> as before."""
+    subject = " ".join((spec.commit_subject or "").split())[:100]
+    return subject or commit_message(spec.mode, spec.prompt)
 
 
 def _collect_run_artifacts(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
@@ -3378,7 +3522,7 @@ def _commit_changes(run: _Run, spec: JobSpec, git: Git) -> None:
     if not git.has_changes():
         run.log("[git] no changes to commit")
         return
-    sha = git.commit_all(commit_message(spec.mode, spec.prompt), run_id=spec.run_id)
+    sha = git.commit_all(commit_subject_for(spec), run_id=spec.run_id, keep_out=EPHEMERAL_ARTIFACT_FILES)
     if sha:
         trailer = f" (trailer {RUN_TRAILER}: {spec.run_id})" if spec.run_id else ""
         run.log(f"[git] committed {sha[:12]}" + trailer)
@@ -3613,7 +3757,7 @@ def _commit_repository(run: _Run, spec: JobSpec, state: _RepoState) -> None:
         if git.has_changes():
             run.log(f"{state.tag} changes left uncommitted in the run workspace (access {state.repo.access})")
     elif git.has_changes():
-        sha = git.commit_all(commit_message(spec.mode, spec.prompt), run_id=spec.run_id)
+        sha = git.commit_all(commit_subject_for(spec), run_id=spec.run_id, keep_out=EPHEMERAL_ARTIFACT_FILES)
         if sha:
             run.log(f"{state.tag} committed {sha[:12]}" + (f" (trailer {RUN_TRAILER}: {spec.run_id})" if spec.run_id else ""))
     else:
@@ -3753,7 +3897,7 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
     _run_setup(run, spec, repo_dir)
     _prepare_spec_kit(run, spec, repo_dir)
     _run_agent(run, spec, repo_dir)
-    _run_verify(run, spec, repo_dir)
+    _run_verify(run, spec, repo_dir, git)
     # git integrity: nothing the agent planted in .git runs during commit/diff/push
     if git is not None:
         run.security["gitConfigRestored"] = git.restore_after_agent()
