@@ -5080,6 +5080,8 @@ export interface components {
     PersonalToken: {
       /** @description The token may decide human gates through the MCP tool decide_gate (ADR 0029) */
       allowMcpGateDecisions?: boolean;
+      /** @description The token may create and change workflows through the MCP tools create_workflow and update_workflow (ADR 0049) */
+      allowMcpWorkflowEdits?: boolean;
       /** Format: date-time */
       createdAt?: string;
       /** Format: date-time */
@@ -5104,6 +5106,11 @@ export interface components {
        * @default false
        */
       allowMcpGateDecisions: boolean;
+      /**
+       * @description Allow create_workflow and update_workflow through the MCP server; off by default because an AI agent holding the token could otherwise change a workflow on its own (for example remove a human gate)
+       * @default false
+       */
+      allowMcpWorkflowEdits: boolean;
       expiresInDays: number;
       name: string;
       permissions?: string[];

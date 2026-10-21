@@ -59,12 +59,13 @@ class McpServerIntegrationTest {
         return (result as ResolveLogin.LoginResult.Success).user
     }
 
-    private fun pat(user: User, gateDecisions: Boolean = false): String {
+    private fun pat(user: User, gateDecisions: Boolean = false, workflowEdits: Boolean = false): String {
         val generated = TokenCodec.generate()
         tokens.save(
             PersonalAccessToken(
                 TokenId.new(), user.id, "mcp", generated.hash, generated.prefix, emptySet(), Instant.now().plus(Duration.ofHours(1)), Instant.now(),
                 allowMcpGateDecisions = gateDecisions,
+                allowMcpWorkflowEdits = workflowEdits,
             ),
         )
         return generated.plaintext
@@ -123,6 +124,54 @@ class McpServerIntegrationTest {
             // permissions apply: an unknown run is a tool error, not a transport failure
             val missing = mcp.callTool(McpSchema.CallToolRequest("get_run", mapOf("runId" to "00000000-0000-0000-0000-000000000000")))
             assertThat(missing.isError).isTrue()
+        }
+    }
+
+    @Test
+    fun `an agent reads a workflow, validates it and creates a new one, edits need the token option (ADR 0049)`() {
+        val user = admin()
+        val bearer = pat(user, workflowEdits = true)
+        val rest = restClientBuilder.baseUrl("http://localhost:$port").defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer $bearer").build()
+        rest.post().uri("/api/v1/projects").contentType(MediaType.APPLICATION_JSON)
+            .body("""{"key":"MCPWF","name":"MCP workflows","repository":{"url":"https://git.example.com/mcpwf.git","defaultBranch":"main"}}""")
+            .retrieve().toBodilessEntity()
+
+        client(bearer).use { mcp ->
+            val projects = (mcp.call("list_projects", emptyMap())["projects"] as List<*>).map { (it as Map<*, *>)["key"] }
+            assertThat(projects).contains("MCPWF")
+            val palette = mcp.call("get_workflow_palette", mapOf("projectKey" to "MCPWF"))
+            assertThat((palette["controlNodes"] as List<*>).map { (it as Map<*, *>)["kind"] }).contains("HUMAN_GATE", "DECISION")
+            assertThat(palette["tasks"] as List<*>).isNotEmpty()
+
+            val workflowId = ((mcp.call("get_project_context", mapOf("projectKey" to "MCPWF"))["workflows"] as List<*>).first() as Map<*, *>)["id"].toString()
+            val existing = mcp.call("get_workflow", mapOf("workflowId" to workflowId))
+            @Suppress("UNCHECKED_CAST")
+            val definition = (existing["definition"] as Map<String, Any?>).toMutableMap()
+            assertThat(definition["nodes"] as List<*>).isNotEmpty()
+
+            definition["name"] = "Copy through MCP"
+            val text = json.writeValueAsString(definition)
+            assertThat(mcp.call("validate_workflow", mapOf("projectKey" to "MCPWF", "definition" to text))["valid"]).isEqualTo(true)
+            val created = mcp.call("create_workflow", mapOf("projectKey" to "MCPWF", "definition" to text))
+            assertThat(created["created"]).isEqualTo(true)
+            assertThat(created["version"]).isEqualTo(1)
+
+            // an update based on an outdated version is refused, so a concurrent edit is not overwritten
+            val stale = mcp.callTool(McpSchema.CallToolRequest("update_workflow", mapOf("workflowId" to created["id"], "definition" to text, "expectedVersion" to 7)))
+            assertThat(stale.isError).isTrue()
+            val updated = mcp.call("update_workflow", mapOf("workflowId" to created["id"], "definition" to text, "expectedVersion" to 1))
+            assertThat(updated["version"]).isEqualTo(2)
+
+            // an invalid graph is reported, not saved
+            val broken = json.writeValueAsString(definition + ("edges" to emptyList<Any>()))
+            val refusedGraph = mcp.call("create_workflow", mapOf("projectKey" to "MCPWF", "definition" to broken))
+            assertThat(refusedGraph["created"]).isEqualTo(false)
+            assertThat(refusedGraph["errors"] as List<*>).isNotEmpty()
+        }
+        client(pat(user)).use { mcp ->
+            val refused = mcp.callTool(McpSchema.CallToolRequest("create_workflow", mapOf("projectKey" to "MCPWF", "definition" to "{}")))
+            assertThat(refused.isError).isTrue()
+            assertThat(refused.content().filterIsInstance<McpSchema.TextContent>().joinToString { it.text() }).contains("Allow workflow edits via MCP")
         }
     }
 

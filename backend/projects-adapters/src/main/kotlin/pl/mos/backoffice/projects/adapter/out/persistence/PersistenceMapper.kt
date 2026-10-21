@@ -1,13 +1,13 @@
 package pl.mos.backoffice.projects.adapter.out.persistence
 
 import org.springframework.stereotype.Component
-import pl.mos.backoffice.projects.adapter.support.CanvasJson
-import pl.mos.backoffice.projects.adapter.support.ChecklistItemJson
-import pl.mos.backoffice.projects.adapter.support.GateApproversJson
-import pl.mos.backoffice.projects.adapter.support.TriggerJson
-import pl.mos.backoffice.projects.adapter.support.WorkflowEdgeJson
-import pl.mos.backoffice.projects.adapter.support.WorkflowJson
-import pl.mos.backoffice.projects.adapter.support.WorkflowNodeJson
+import pl.mos.backoffice.projects.application.port.`in`.CanvasJson
+import pl.mos.backoffice.projects.application.port.`in`.ChecklistItemJson
+import pl.mos.backoffice.projects.application.port.`in`.GateApproversJson
+import pl.mos.backoffice.projects.application.port.`in`.TriggerJson
+import pl.mos.backoffice.projects.application.port.`in`.WorkflowEdgeJson
+import pl.mos.backoffice.projects.application.port.`in`.WorkflowJson
+import pl.mos.backoffice.projects.application.port.`in`.WorkflowNodeJson
 import pl.mos.backoffice.projects.domain.model.WriteIdentity
 import pl.mos.backoffice.projects.domain.model.ConnectionId
 import pl.mos.backoffice.projects.domain.model.ProjectJiraConnections

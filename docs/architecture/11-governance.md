@@ -180,6 +180,12 @@ or failed call is an MCP tool error (`isError: true`), not a transport error. Di
 | `search_task_library` | find templates and skills by text | `ManageTaskTemplates.list`, `ManageSkills.list` | `library.view` |
 | `get_project_context` | constitution, repositories (key, url, purpose, primary), CI entrypoints, workflows, recent runs | `ManageProjects`, `ManageWorkflows`, `RunQueries` | `project.view` |
 | `get_delivery_insights` | the insights of a project (or of all visible projects) | `DeliveryInsightsQuery.get` | `project.view` |
+| `list_projects` | the projects the caller can see | `ManageProjects.list` | `project.view` |
+| `get_workflow_palette` | control nodes, task templates (ports, config schema) and state fields to build a workflow from | `ManageWorkflows.palette` | `project.view` |
+| `get_workflow` | one workflow with its definition as `WorkflowDefinitionInput` JSON | `ManageWorkflows.get` | `project.view` |
+| `validate_workflow` | check a definition without saving it (errors, warnings) | `ManageWorkflows.validate` | `project.view` |
+| `create_workflow` | create a workflow; validated first, nothing saved on errors | `ManageWorkflows.create` | `workflow.edit` + token option "Allow workflow edits via MCP" |
+| `update_workflow` | replace a definition (new version), optional `expectedVersion` against concurrent edits | `ManageWorkflows.update` | `workflow.edit` + token option "Allow workflow edits via MCP" |
 
 Prompt injection (ADR 0029, [12-prompt-injection.md](12-prompt-injection.md)): every tool carries MCP annotations
 (read tools `readOnlyHint`; `decide_gate` `destructiveHint=true`, `idempotentHint=false`, so clients ask the
@@ -188,6 +194,13 @@ user); `decide_gate` additionally needs a personal access token created with **A
 use case (approver roles, assignees, `forbidSelfApproval`) apply as in the UI. Text produced by agents, models or
 issue authors (artefact content, node summaries/errors, gate questions/summaries, failure messages) is returned
 sanitised inside `<untrusted-data>` blocks with a `notice` field.
+
+Workflow authoring (ADR 0049): definitions travel as JSON in the shape of `WorkflowDefinitionInput`
+(`WorkflowDocumentJson` / `WorkflowJson` in `projects.application.port.in`, the one encoding shared with REST and
+persistence). `create_workflow` and `update_workflow` need a token created with **Allow workflow edits via MCP**
+(`allowMcpWorkflowEdits`, `TokenCapabilities.MCP_WORKFLOW_EDITS`, default off; refusals audited as
+`MCP_WORKFLOW_EDIT` `DENIED`): an injected agent could otherwise remove a human gate. Every write is validated
+first and versioned by the use case; `update_workflow` is marked destructive.
 
 Architecture exception (ArchitectureTest `mcpServerUsesOnlyUseCasePortsOfOtherContexts`): `governance.adapter.in.mcp`
 and its wiring in `governance.adapter.config` are a driving adapter composing several contexts, like `app`; they may

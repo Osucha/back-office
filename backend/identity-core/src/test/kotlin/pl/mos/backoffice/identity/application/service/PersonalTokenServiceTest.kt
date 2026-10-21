@@ -15,6 +15,7 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.CiTokenIdentity
 import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.security.TokenCapabilities
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
@@ -85,19 +86,28 @@ class PersonalTokenServiceTest {
     }
 
     @Test
-    fun `only tokens created with the MCP option carry the gate-decision capability (ADR 0029)`() {
+    fun `only tokens created with an MCP option carry its capability, each option independently (ADR 0029, ADR 0049)`() {
         val owner = db.user("alice@example.com", id = FakeAuthorizationGate.TEST_USER_ID)
         db.assign(GrantLevel.SYSTEM, null, BuiltInRoles.MEMBER)
         val gate = FakeAuthorizationGate(loader.forUser(owner.id)!!)
         val plain = service(gate).create(CreateToken("ide", 10))
         val opted = service(gate).create(CreateToken("ide-gates", 10, setOf("library.view"), allowMcpGateDecisions = true))
+        assertThat(audit.entries.last().details)
+            .containsEntry("allowMcpGateDecisions", true).containsEntry("allowMcpWorkflowEdits", false)
+        val workflows = service(gate).create(CreateToken("ide-workflows", 10, allowMcpWorkflowEdits = true))
+        assertThat(audit.entries.last().details)
+            .containsEntry("allowMcpGateDecisions", false).containsEntry("allowMcpWorkflowEdits", true)
+        val both = service(gate).create(CreateToken("ide-both", 10, allowMcpGateDecisions = true, allowMcpWorkflowEdits = true))
 
         assertThat(plain.token.allowMcpGateDecisions).isFalse()
-        assertThat(audit.entries.last().details).containsEntry("allowMcpGateDecisions", true)
-        val plainPrincipal = loader.forPersonalToken(loader.forUser(owner.id)!!, loader.verifyPersonalToken(plain.plaintext)!!)
-        val optedPrincipal = loader.forPersonalToken(loader.forUser(owner.id)!!, loader.verifyPersonalToken(opted.plaintext)!!)
-        assertThat(plainPrincipal.tokenCapabilities).isEmpty()
-        assertThat(optedPrincipal.tokenCapabilities).containsExactly(pl.mos.backoffice.shared.security.TokenCapabilities.MCP_GATE_DECISIONS)
+        assertThat(plain.token.allowMcpWorkflowEdits).isFalse()
+        fun capabilitiesOf(plaintext: String) =
+            loader.forPersonalToken(loader.forUser(owner.id)!!, loader.verifyPersonalToken(plaintext)!!).tokenCapabilities
+        assertThat(capabilitiesOf(plain.plaintext)).isEmpty()
+        assertThat(capabilitiesOf(opted.plaintext)).containsExactly(TokenCapabilities.MCP_GATE_DECISIONS)
+        assertThat(capabilitiesOf(workflows.plaintext)).containsExactly(TokenCapabilities.MCP_WORKFLOW_EDITS)
+        assertThat(capabilitiesOf(both.plaintext))
+            .containsExactlyInAnyOrder(TokenCapabilities.MCP_GATE_DECISIONS, TokenCapabilities.MCP_WORKFLOW_EDITS)
         // a browser session never has token capabilities
         assertThat(loader.forUser(owner.id)!!.tokenCapabilities).isEmpty()
     }

@@ -98,6 +98,11 @@ data class PersonalAccessToken(
      * IDE agent holding the token can be steered by prompt injection in what it reads.
      */
     val allowMcpGateDecisions: Boolean = false,
+    /**
+     * Opt-in: the token may create and change workflows through the MCP server (ADR 0049). Off by default, because
+     * an AI agent holding the token could otherwise change a workflow on its own (for example remove a human gate).
+     */
+    val allowMcpWorkflowEdits: Boolean = false,
 ) {
     fun isUsable(now: Instant): Boolean = revokedAt == null && now.isBefore(expiresAt)
     fun revoke(now: Instant): PersonalAccessToken = if (revokedAt != null) this else copy(revokedAt = now)

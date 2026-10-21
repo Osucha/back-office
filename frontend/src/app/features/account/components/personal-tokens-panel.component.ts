@@ -156,6 +156,11 @@ import {
                     >MCP gate decisions</span
                   >
                 }
+                @if (t.allowMcpWorkflowEdits) {
+                  <span class="perm mono" i18n="@@account.tokens.mcpWorkflowsTag"
+                    >MCP workflow edits</span
+                  >
+                }
               </td>
               <td class="num" [title]="t.expiresAt | date: 'medium'">
                 {{ t.expiresAt | date: 'mediumDate' }}
@@ -294,6 +299,16 @@ import {
                 </label>
               </nz-form-control>
             </nz-form-item>
+            <nz-form-item>
+              <nz-form-control
+                nzExtra="Lets the MCP tools create_workflow and update_workflow create and change workflows with this token. Off by default: an agent could remove a human gate."
+                i18n-nzExtra="@@account.tokens.mcpWorkflowsHelp"
+              >
+                <label nz-checkbox name="mcpWorkflows" [(ngModel)]="allowMcpWorkflowEdits">
+                  <span i18n="@@account.tokens.mcpWorkflows">Allow workflow edits via MCP</span>
+                </label>
+              </nz-form-control>
+            </nz-form-item>
           </form>
         }
       </ng-container>
@@ -391,6 +406,8 @@ export class PersonalTokensPanelComponent {
   permissions: string[] = [];
   /** ADR 0029: decide_gate through the MCP server needs this explicit opt-in. */
   allowMcpGateDecisions = false;
+  /** ADR 0049: create_workflow / update_workflow through the MCP server need this explicit opt-in. */
+  allowMcpWorkflowEdits = false;
 
   readonly canCreate = computed(() => this.identity.can('tokens.personal'));
   readonly maxDays = computed(() => maxTokenDays(this.platformMaxDays()));
@@ -455,6 +472,7 @@ export class PersonalTokensPanelComponent {
     this.days = Math.min(DEFAULT_TOKEN_DAYS, this.maxDays());
     this.permissions = [];
     this.allowMcpGateDecisions = false;
+    this.allowMcpWorkflowEdits = false;
     this.touched.set(false);
     this.created.set(null);
     this.modalOpen.set(true);
@@ -477,6 +495,7 @@ export class PersonalTokensPanelComponent {
           expiresInDays: this.days!,
           permissions: this.permissions,
           allowMcpGateDecisions: this.allowMcpGateDecisions,
+          allowMcpWorkflowEdits: this.allowMcpWorkflowEdits,
         }),
       )
       .subscribe({

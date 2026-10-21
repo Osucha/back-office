@@ -1,4 +1,4 @@
-package pl.mos.backoffice.projects.adapter.support
+package pl.mos.backoffice.projects.application.port.`in`
 
 import pl.mos.backoffice.projects.domain.model.Canvas
 import pl.mos.backoffice.projects.domain.model.ChecklistItem
@@ -15,6 +15,7 @@ import pl.mos.backoffice.projects.domain.model.RunOutcome
 import pl.mos.backoffice.projects.domain.model.TaskBinding
 import pl.mos.backoffice.projects.domain.model.Trigger
 import pl.mos.backoffice.projects.domain.model.TriggerType
+import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.shared.ModelProfileId
@@ -24,8 +25,9 @@ import java.util.UUID
 
 /*
  * JSON shape of a workflow graph exactly as in openapi.yaml (`WorkflowNode`, `WorkflowEdge`, `Trigger`,
- * canvas). Shared by the REST layer (request/response bodies) and the persistence layer (JSONB columns and
- * the run's definition snapshot) so both agree on one encoding.
+ * canvas). Shared by the REST layer (request/response bodies), the persistence layer (JSONB columns and
+ * the run's definition snapshot) and the MCP server (ADR 0049) so all agree on one encoding. Plain data, no
+ * framework: it lives next to the use cases that take it.
  */
 
 data class PointJson(val x: Double = 0.0, val y: Double = 0.0)
@@ -78,6 +80,17 @@ data class WorkflowNodeJson(
 
 data class WorkflowEdgeJson(val id: String = "", val from: String = "", val fromPort: String = "", val to: String = "", val label: String? = null)
 data class TriggerJson(val type: String = "MANUAL", val status: String? = null)
+
+/** A whole workflow as `WorkflowDefinitionInput` in openapi.yaml: what the MCP tools read and write (ADR 0049). */
+data class WorkflowDocumentJson(
+    val name: String = "",
+    val description: String = "",
+    val nodes: List<WorkflowNodeJson> = emptyList(),
+    val edges: List<WorkflowEdgeJson> = emptyList(),
+    val triggers: List<TriggerJson> = listOf(TriggerJson()),
+    val enabled: Boolean = true,
+    val canvas: CanvasJson? = null,
+)
 
 /** Conversions between the JSON shape and the sealed domain model. Kind/section mismatches are validation errors. */
 object WorkflowJson {
@@ -171,6 +184,26 @@ object WorkflowJson {
 
     fun toDomain(c: CanvasJson?) = c?.let { Canvas(it.zoom, it.x, it.y) }
     fun toJson(c: Canvas?) = c?.let { CanvasJson(it.zoom, it.x, it.y) }
+
+    fun toCommand(d: WorkflowDocumentJson) = ManageWorkflows.WorkflowCommand(
+        name = d.name.trim(),
+        description = d.description,
+        nodes = d.nodes.map { toDomain(it) },
+        edges = d.edges.map { toDomain(it) },
+        triggers = d.triggers.map { toDomain(it) }.ifEmpty { listOf(Trigger(TriggerType.MANUAL)) },
+        enabled = d.enabled,
+        canvas = toDomain(d.canvas),
+    )
+
+    fun toDocument(d: WorkflowDefinition) = WorkflowDocumentJson(
+        name = d.name,
+        description = d.description,
+        nodes = d.nodes.map { toJson(it) },
+        edges = d.edges.map { toJson(it) },
+        triggers = d.triggers.map { toJson(it) },
+        enabled = d.enabled,
+        canvas = toJson(d.canvas),
+    )
 
     private fun defaultName(kind: NodeKind) = when (kind) {
         NodeKind.START -> "Start"

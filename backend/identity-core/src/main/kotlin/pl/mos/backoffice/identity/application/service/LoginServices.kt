@@ -200,7 +200,10 @@ class LoadCurrentUserService(
     @SystemOperation("authentication: narrows the owner's permissions to the token's subset")
     override fun forPersonalToken(owner: CurrentUser, token: PersonalAccessToken): CurrentUser {
         val subset = token.permissions
-        val capabilities = if (token.allowMcpGateDecisions) setOf(TokenCapabilities.MCP_GATE_DECISIONS) else emptySet()
+        val capabilities = buildSet {
+            if (token.allowMcpGateDecisions) add(TokenCapabilities.MCP_GATE_DECISIONS)
+            if (token.allowMcpWorkflowEdits) add(TokenCapabilities.MCP_WORKFLOW_EDITS)
+        }
         if (subset.isEmpty()) return owner.copy(kind = PrincipalKind.PERSONAL_TOKEN, tokenCapabilities = capabilities)
         return owner.copy(
             kind = PrincipalKind.PERSONAL_TOKEN,

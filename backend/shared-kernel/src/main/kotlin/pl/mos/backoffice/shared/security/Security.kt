@@ -12,6 +12,9 @@ enum class PrincipalKind { USER, PERSONAL_TOKEN, CI_TOKEN, SYSTEM }
 object TokenCapabilities {
     /** `decide_gate` through the MCP server; off by default. */
     const val MCP_GATE_DECISIONS = "mcp.gate-decisions"
+
+    /** `create_workflow` / `update_workflow` through the MCP server (ADR 0049); off by default: an agent could drop a gate. */
+    const val MCP_WORKFLOW_EDITS = "mcp.workflow-edits"
 }
 
 @JvmInline

@@ -210,7 +210,7 @@ każdy model da się oszukać, i otacza go deterministycznymi kontrolami (archit
 | Pewność (confidence) | Krok, którego wejście zawiera taki tekst, zgłasza pewność 0, więc decyzje „czy pewne?” trafiają do bramki człowieka |
 | Agent kodujący | Dostaje tylko token bramy. Nie może odczytać tokenu gita, przesłać wyniku zadania ani wypchnąć zmian: runner commituje i wypycha po zakończeniu agenta, tylko na gałąź zadania, nigdy na gałąź domyślną, i usuwa hooki oraz konfigurację gita podrzucone przez agenta |
 | Benchmarki | Próba, która usiłuje przekonać sędziego, dostaje najwyżej 40 punktów i nie jest zaliczona |
-| MCP | Agent w IDE może rozstrzygać bramki tylko tokenem utworzonym z opcją **Zezwól na decyzje bramek przez MCP** (**Allow gate decisions via MCP**) ([integrations-ide.md](integrations-ide.md#pat)) |
+| MCP | Agent w IDE może rozstrzygać bramki tylko tokenem utworzonym z opcją **Zezwól na decyzje bramek przez MCP** (**Allow gate decisions via MCP**), a tworzyć i zmieniać workflowy tylko z opcją **Zezwól na edycję workflowów przez MCP** (**Allow workflow edits via MCP**) ([integrations-ide.md](integrations-ide.md#pat)) |
 
 Każde wykrycie trafia do logu uruchomienia i do dziennika audytu (`PROMPT_INJECTION_SUSPECTED`).
 

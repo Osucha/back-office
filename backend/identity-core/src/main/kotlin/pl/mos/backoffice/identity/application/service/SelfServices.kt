@@ -189,6 +189,7 @@ class PersonalTokenService(
                 expiresAt = now.plus(Duration.ofDays(command.expiresInDays.toLong())),
                 createdAt = now,
                 allowMcpGateDecisions = command.allowMcpGateDecisions,
+                allowMcpWorkflowEdits = command.allowMcpWorkflowEdits,
             ),
         )
         audit.record(
@@ -197,6 +198,7 @@ class PersonalTokenService(
                 details = mapOf(
                     "name" to name, "prefix" to token.prefix, "expiresAt" to token.expiresAt.toString(), "permissions" to command.permissions.sorted(),
                     "allowMcpGateDecisions" to token.allowMcpGateDecisions,
+                    "allowMcpWorkflowEdits" to token.allowMcpWorkflowEdits,
                 ),
             ),
         )

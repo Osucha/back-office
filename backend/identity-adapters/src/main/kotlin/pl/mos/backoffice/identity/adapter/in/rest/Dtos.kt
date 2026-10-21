@@ -375,12 +375,13 @@ data class PersonalTokenDto(
     /** Only in the creation response. */
     val token: String? = null,
     val allowMcpGateDecisions: Boolean = false,
+    val allowMcpWorkflowEdits: Boolean = false,
 ) {
     companion object {
         fun of(t: PersonalAccessToken, plaintext: String? = null) =
             PersonalTokenDto(
                 t.id.value, t.name, t.prefix, t.permissions.sorted(), t.expiresAt, t.createdAt, t.lastUsedAt, t.revokedAt, plaintext,
-                t.allowMcpGateDecisions,
+                t.allowMcpGateDecisions, t.allowMcpWorkflowEdits,
             )
     }
 }
@@ -390,6 +391,7 @@ data class PersonalTokenInputDto(
     val expiresInDays: Int,
     val permissions: List<String>? = null,
     val allowMcpGateDecisions: Boolean? = null,
+    val allowMcpWorkflowEdits: Boolean? = null,
 )
 
 data class AuditEntryDto(

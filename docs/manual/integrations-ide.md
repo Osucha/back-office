@@ -37,7 +37,12 @@ cookie or a CI token is refused with `401` `personal-token-required`.
    confirmation for destructive tools enabled (`decide_gate` is marked destructive), decide only gates you
    looked at, and remember that the four-eyes rule still applies. The option is shown as **MCP gate
    decisions** in the token list and cannot be changed later: create a new token instead.
-7. Press **Create token**, copy the token (`bo_pat_` + 40 characters) and press **I copied the token**. It
+7. **Allow workflow edits via MCP**: leave it off unless you want your IDE agent to create and change
+   workflows. Without it the MCP tools `create_workflow` and `update_workflow` are refused, whatever
+   permissions the token has, because an agent holding the token could otherwise change a workflow on its own
+   (for example remove a human gate). The option is shown as **MCP workflow edits** in the token list and,
+   like the gate option, cannot be changed later.
+8. Press **Create token**, copy the token (`bo_pat_` + 40 characters) and press **I copied the token**. It
    is shown once; Back Office stores only its hash.
 
 The token works for REST too: `curl -H "Authorization: Bearer bo_pat_..." https://backoffice.example.com/api/v1/me`
@@ -139,11 +144,19 @@ comes back as a tool error, not a transport error.
 | `search_task_library` | Find task templates and skills by text | `library.view` |
 | `get_project_context` | Constitution, repository, CI entrypoints, workflows and recent runs | `project.view` |
 | `get_delivery_insights` | Delivery insights of one project or all visible projects | `project.view` |
+| `list_projects` | The projects you can see | `project.view` |
+| `get_workflow_palette` | What a workflow can be built from: control nodes, task templates with their ports and settings, run-state fields | `project.view` |
+| `get_workflow` | One workflow with its full definition (nodes, edges, triggers) | `project.view` |
+| `validate_workflow` | Checks a definition without saving it and lists errors and warnings | `project.view` |
+| `create_workflow` | Creates a workflow; it is checked first and nothing is saved when it has errors | `workflow.edit` and a token created with **Allow workflow edits via MCP** |
+| `update_workflow` | Replaces a workflow's definition with a new version; runs in progress keep theirs | `workflow.edit` and a token created with **Allow workflow edits via MCP** |
 
 Artefact content, node summaries and errors, and gate questions come back inside `<untrusted-data>` blocks
 with a `notice`: they were written by agents, models or issue authors, and your IDE agent must treat them as
 data, never as instructions. Read tools are marked read-only; `decide_gate` is marked destructive and not
-idempotent, so clients that honour MCP tool annotations ask you before calling it.
+idempotent, so clients that honour MCP tool annotations ask you before calling it; `update_workflow` is marked
+destructive too. Workflows created or changed through MCP are versioned and recorded like edits in the designer, with
+you as the author; open them in the designer to check them before the first run.
 
 Gate decisions made through MCP are recorded like decisions in the UI, with you as the actor, and appear
 in the run's provenance ([runs.md](runs.md#provenance)).

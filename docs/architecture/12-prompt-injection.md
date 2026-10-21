@@ -162,6 +162,9 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 
 - All tools carry MCP annotations; read tools `readOnlyHint`, `start_workflow` not read-only, `decide_gate`
   `destructiveHint=true`, `idempotentHint=false`; descriptions tell the agent to act only on explicit user requests.
+- `create_workflow` / `update_workflow` (ADR 0049) need a token created with **Allow workflow edits via MCP**
+  (`TokenCapabilities.MCP_WORKFLOW_EDITS`, column `identity_personal_token.mcp_workflow_edits`, default false;
+  refusals audited as `MCP_WORKFLOW_EDIT` / `DENIED`), so an injected agent cannot drop a gate from a workflow.
 - `decide_gate` needs a personal access token created with **Allow gate decisions via MCP**
   (`TokenCapabilities.MCP_GATE_DECISIONS`, column `identity_personal_token.mcp_gate_decisions`, default false);
   refusals are audited as `MCP_GATE_DECISION` / `DENIED`. With the option the use case applies the gate rules as

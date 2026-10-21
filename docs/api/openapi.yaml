@@ -3623,6 +3623,7 @@ components:
         lastUsedAt: { type: string, format: date-time, nullable: true }
         revokedAt: { type: string, format: date-time, nullable: true }
         allowMcpGateDecisions: { type: boolean, description: 'The token may decide human gates through the MCP tool decide_gate (ADR 0029)' }
+        allowMcpWorkflowEdits: { type: boolean, description: 'The token may create and change workflows through the MCP tools create_workflow and update_workflow (ADR 0049)' }
     PersonalTokenInput:
       type: object
       required: [name, expiresInDays]
@@ -3631,6 +3632,7 @@ components:
         expiresInDays: { type: integer, minimum: 1, maximum: 365 }
         permissions: { type: array, items: { type: string } }
         allowMcpGateDecisions: { type: boolean, default: false, description: 'Allow decide_gate through the MCP server; off by default because an IDE agent holding the token can be steered by prompt injection' }
+        allowMcpWorkflowEdits: { type: boolean, default: false, description: 'Allow create_workflow and update_workflow through the MCP server; off by default because an AI agent holding the token could otherwise change a workflow on its own (for example remove a human gate)' }
     PersonalTokenCreated:
       allOf:
         - $ref: '#/components/schemas/PersonalToken'

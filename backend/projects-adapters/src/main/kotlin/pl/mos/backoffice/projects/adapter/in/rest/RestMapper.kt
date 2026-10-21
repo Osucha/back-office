@@ -3,7 +3,7 @@ package pl.mos.backoffice.projects.adapter.`in`.rest
 import pl.mos.backoffice.projects.domain.model.WriteIdentity
 import pl.mos.backoffice.projects.application.port.`in`.WriteIdentityQuery
 import org.springframework.stereotype.Component
-import pl.mos.backoffice.projects.adapter.support.WorkflowJson
+import pl.mos.backoffice.projects.application.port.`in`.WorkflowJson
 import pl.mos.backoffice.projects.application.port.`in`.AssignApproval
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
 import pl.mos.backoffice.projects.application.port.`in`.IntegrationsStatus

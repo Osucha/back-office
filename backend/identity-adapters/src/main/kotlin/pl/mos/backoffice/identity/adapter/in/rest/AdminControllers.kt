@@ -259,7 +259,11 @@ class PersonalTokenController(private val tokens: ManagePersonalTokens) {
     @ResponseStatus(HttpStatus.CREATED)
     fun create(@RequestBody body: PersonalTokenInputDto): PersonalTokenDto {
         val created = tokens.create(
-            ManagePersonalTokens.CreateToken(body.name, body.expiresInDays, body.permissions.orEmpty().toSet(), body.allowMcpGateDecisions == true),
+            ManagePersonalTokens.CreateToken(
+                body.name, body.expiresInDays, body.permissions.orEmpty().toSet(),
+                allowMcpGateDecisions = body.allowMcpGateDecisions == true,
+                allowMcpWorkflowEdits = body.allowMcpWorkflowEdits == true,
+            ),
         )
         return PersonalTokenDto.of(created.token, created.plaintext)
     }

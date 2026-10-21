@@ -44,7 +44,13 @@ Ciasteczko sesji lub token CI są odrzucane z `401` `personal-token-required`.
    obejrzałeś, i pamiętaj, że zasada czterech oczu nadal obowiązuje. Opcja jest widoczna na liście tokenów
    jako **Decyzje bramek przez MCP** (**MCP gate decisions**) i nie da się jej później zmienić: utwórz nowy
    token.
-7. Naciśnij **Utwórz token**, skopiuj token (`bo_pat_` + 40 znaków) i naciśnij **Token skopiowany**
+7. **Zezwól na edycję workflowów przez MCP** (**Allow workflow edits via MCP**): pozostaw wyłączone, chyba
+   że chcesz, aby agent w IDE tworzył i zmieniał workflowy. Bez tej opcji narzędzia MCP `create_workflow`
+   i `update_workflow` są odrzucane, niezależnie od uprawnień tokenu, bo agent z tym tokenem mógłby
+   samodzielnie zmienić workflow (na przykład usunąć bramkę ludzką). Opcja jest widoczna na liście tokenów
+   jako **Edycja workflowów przez MCP** (**MCP workflow edits**) i, tak jak opcja bramek, nie da się jej
+   później zmienić.
+8. Naciśnij **Utwórz token**, skopiuj token (`bo_pat_` + 40 znaków) i naciśnij **Token skopiowany**
    (**I copied the token**). Jest wyświetlany tylko raz; Back Office przechowuje wyłącznie jego skrót.
 
 Token działa też z REST: `curl -H "Authorization: Bearer bo_pat_..." https://backoffice.example.com/api/v1/me`
@@ -151,6 +157,12 @@ Odrzucone wywołanie wraca jako błąd narzędzia, a nie błąd transportu.
 | `search_task_library` | Wyszukuje szablony zadań i umiejętności (skills) po tekście | `library.view` |
 | `get_project_context` | Konstytucja, repozytorium, punkty wejścia CI, workflowy i ostatnie uruchomienia | `project.view` |
 | `get_delivery_insights` | Wskaźniki dostarczania jednego projektu lub wszystkich widocznych projektów | `project.view` |
+| `list_projects` | Projekty, które widzisz | `project.view` |
+| `get_workflow_palette` | Z czego można zbudować workflow: węzły sterujące, szablony zadań z portami i ustawieniami, pola stanu uruchomienia | `project.view` |
+| `get_workflow` | Jeden workflow z pełną definicją (węzły, krawędzie, wyzwalacze) | `project.view` |
+| `validate_workflow` | Sprawdza definicję bez zapisywania i wypisuje błędy oraz ostrzeżenia | `project.view` |
+| `create_workflow` | Tworzy workflow; najpierw jest sprawdzany i przy błędach nic nie zostaje zapisane | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
+| `update_workflow` | Zastępuje definicję workflowu nową wersją; trwające uruchomienia zachowują swoją | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 
 Zawartość artefaktów, podsumowania i błędy węzłów oraz pytania bramek wracają w blokach `<untrusted-data>`
 z polem `notice`: napisali je agenci, modele lub autorzy zgłoszeń, więc agent w Twoim IDE musi traktować je

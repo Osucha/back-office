@@ -39,5 +39,7 @@ interface ManagePersonalTokens {
         val permissions: Set<String> = emptySet(),
         /** See `PersonalAccessToken.allowMcpGateDecisions`. */
         val allowMcpGateDecisions: Boolean = false,
+        /** See `PersonalAccessToken.allowMcpWorkflowEdits`. */
+        val allowMcpWorkflowEdits: Boolean = false,
     )
 }

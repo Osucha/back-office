@@ -199,7 +199,7 @@ fooled and puts deterministic checks around it (architecture: `docs/architecture
 | Confidence | A step whose input contains such text reports confidence 0, so "confident?" decisions go to the human gate |
 | Coding agent | It only gets a gateway token. It cannot read the git token, post the job result or push: the runner commits and pushes after the agent, only to the job's branch, never to the default branch, and removes git hooks and configuration the agent planted |
 | Benchmarks | An attempt that tries to talk to the judge is capped at 40 points and not passed |
-| MCP | An IDE agent can decide gates only with a token created with **Allow gate decisions via MCP** ([integrations-ide.md](integrations-ide.md#pat)) |
+| MCP | An IDE agent can decide gates only with a token created with **Allow gate decisions via MCP**, and create or change workflows only with **Allow workflow edits via MCP** ([integrations-ide.md](integrations-ide.md#pat)) |
 
 Every detection is in the run log and in the audit log (`PROMPT_INJECTION_SUSPECTED`).
 

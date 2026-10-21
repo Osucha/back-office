@@ -186,9 +186,9 @@ class JdbcPersonalTokenRepository(private val jdbc: JdbcClient) : PersonalTokenR
         jdbc.sql(
             """
             INSERT INTO identity_personal_token (id, user_id, name, token_hash, prefix, permissions, expires_at, created_at, last_used_at, revoked_at,
-                mcp_gate_decisions)
+                mcp_gate_decisions, mcp_workflow_edits)
             VALUES (:id, :userId, :name, :hash, :prefix, string_to_array(:permissions, ','), :expiresAt, :createdAt, :lastUsedAt, :revokedAt,
-                :mcpGateDecisions)
+                :mcpGateDecisions, :mcpWorkflowEdits)
             ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_used_at = EXCLUDED.last_used_at, revoked_at = EXCLUDED.revoked_at
             """.trimIndent(),
         )
@@ -197,6 +197,7 @@ class JdbcPersonalTokenRepository(private val jdbc: JdbcClient) : PersonalTokenR
             .param("expiresAt", JdbcSupport.ts(token.expiresAt)).param("createdAt", JdbcSupport.ts(token.createdAt))
             .param("lastUsedAt", JdbcSupport.ts(token.lastUsedAt)).param("revokedAt", JdbcSupport.ts(token.revokedAt))
             .param("mcpGateDecisions", token.allowMcpGateDecisions)
+            .param("mcpWorkflowEdits", token.allowMcpWorkflowEdits)
             .update()
         return token
     }
@@ -223,6 +224,7 @@ class JdbcPersonalTokenRepository(private val jdbc: JdbcClient) : PersonalTokenR
                 lastUsedAt = rs.instant("last_used_at"),
                 revokedAt = rs.instant("revoked_at"),
                 allowMcpGateDecisions = rs.getBoolean("mcp_gate_decisions"),
+                allowMcpWorkflowEdits = rs.getBoolean("mcp_workflow_edits"),
             )
         }.list()
 }
