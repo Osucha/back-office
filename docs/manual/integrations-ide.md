@@ -139,7 +139,7 @@ comes back as a tool error, not a transport error.
 | `list_my_turns` | Gates you may decide and failed runs you may retry, newest first | `project.view` (items filtered by `run.approve` / `run.start`) |
 | `get_run` | Run summary: status, outcome, cost, merge request, nodes, artefact list | `project.view` |
 | `get_artifact` | Content of one artefact (spec, plan, tasks, review, diff) by id or name | `project.view` |
-| `start_workflow` | Start a run of a workflow, optionally for an issue key | `run.start` |
+| `start_workflow` | Start a run of a workflow, optionally for an issue key and with run parameters (a JSON object) | `run.start` |
 | `decide_gate` | Approve, revise or reject a gate with a comment; approve needs the ids of required checklist items | `run.approve`, the gate's approver rule and a token created with **Allow gate decisions via MCP** |
 | `search_task_library` | Find task templates and skills by text | `library.view` |
 | `get_project_context` | Constitution, repository, CI entrypoints, workflows and recent runs | `project.view` |
@@ -150,6 +150,7 @@ comes back as a tool error, not a transport error.
 | `validate_workflow` | Checks a definition without saving it and lists errors and warnings | `project.view` |
 | `create_workflow` | Creates a workflow; it is checked first and nothing is saved when it has errors | `workflow.edit` and a token created with **Allow workflow edits via MCP** |
 | `update_workflow` | Replaces a workflow's definition with a new version; runs in progress keep theirs | `workflow.edit` and a token created with **Allow workflow edits via MCP** |
+| `create_project` | Creates a project with at most one repository, optionally private; it gets the default workflows | `projects.create` and a token created with **Allow workflow edits via MCP** |
 
 Artefact content, node summaries and errors, and gate questions come back inside `<untrusted-data>` blocks
 with a `notice`: they were written by agents, models or issue authors, and your IDE agent must treat them as

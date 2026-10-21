@@ -175,7 +175,7 @@ or failed call is an MCP tool error (`isError: true`), not a transport error. Di
 | `list_my_turns` | open gates the caller may decide and failed runs the caller may retry | `ApprovalQueries.list`, `RunQueries.list` | `project.view`; items filtered by `run.approve` / `run.start` |
 | `get_run` | run summary, nodes, artefact list | `RunQueries.get` | `project.view` |
 | `get_artifact` | artefact content (spec, plan, tasks, review, diff) by id or name | `RunQueries.artifact(s)` | `project.view` |
-| `start_workflow` | start a workflow run for an issue key | `StartRun.start` (trigger `API`) | `run.start` |
+| `start_workflow` | start a workflow run for an issue key and/or run parameters (JSON object) | `StartRun.start` (trigger `API`) | `run.start` |
 | `decide_gate` | approve / revise / reject with a comment (checklist ids required for approve) | `DecideApproval.decide` | `run.approve` + the gate's approver rule + token option "Allow gate decisions via MCP" |
 | `search_task_library` | find templates and skills by text | `ManageTaskTemplates.list`, `ManageSkills.list` | `library.view` |
 | `get_project_context` | constitution, repositories (key, url, purpose, primary), CI entrypoints, workflows, recent runs | `ManageProjects`, `ManageWorkflows`, `RunQueries` | `project.view` |
@@ -186,6 +186,7 @@ or failed call is an MCP tool error (`isError: true`), not a transport error. Di
 | `validate_workflow` | check a definition without saving it (errors, warnings) | `ManageWorkflows.validate` | `project.view` |
 | `create_workflow` | create a workflow; validated first, nothing saved on errors | `ManageWorkflows.create` | `workflow.edit` + token option "Allow workflow edits via MCP" |
 | `update_workflow` | replace a definition (new version), optional `expectedVersion` against concurrent edits | `ManageWorkflows.update` | `workflow.edit` + token option "Allow workflow edits via MCP" |
+| `create_project` | create a project with at most one repository (optionally private); the default workflows are seeded | `ManageProjects.create` | `projects.create` + token option "Allow workflow edits via MCP" |
 
 Prompt injection (ADR 0029, [12-prompt-injection.md](12-prompt-injection.md)): every tool carries MCP annotations
 (read tools `readOnlyHint`; `decide_gate` `destructiveHint=true`, `idempotentHint=false`, so clients ask the

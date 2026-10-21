@@ -152,7 +152,7 @@ Odrzucone wywołanie wraca jako błąd narzędzia, a nie błąd transportu.
 | `list_my_turns` | Bramki, które możesz rozstrzygnąć, i nieudane uruchomienia, które możesz ponowić, od najnowszych | `project.view` (elementy filtrowane przez `run.approve` / `run.start`) |
 | `get_run` | Podsumowanie uruchomienia: status, wynik, koszt, merge request, węzły, lista artefaktów | `project.view` |
 | `get_artifact` | Zawartość jednego artefaktu (spec, plan, tasks, review, diff) według id lub nazwy | `project.view` |
-| `start_workflow` | Rozpoczyna uruchomienie workflowu, opcjonalnie dla klucza zgłoszenia | `run.start` |
+| `start_workflow` | Rozpoczyna uruchomienie workflowu, opcjonalnie dla klucza zgłoszenia i z parametrami uruchomienia (obiekt JSON) | `run.start` |
 | `decide_gate` | Zatwierdza, odsyła do poprawy lub odrzuca bramkę z komentarzem; zatwierdzenie wymaga id wymaganych pozycji listy kontrolnej | `run.approve`, reguła zatwierdzających bramki i token utworzony z opcją **Zezwól na decyzje bramek przez MCP** |
 | `search_task_library` | Wyszukuje szablony zadań i umiejętności (skills) po tekście | `library.view` |
 | `get_project_context` | Konstytucja, repozytorium, punkty wejścia CI, workflowy i ostatnie uruchomienia | `project.view` |
@@ -163,6 +163,7 @@ Odrzucone wywołanie wraca jako błąd narzędzia, a nie błąd transportu.
 | `validate_workflow` | Sprawdza definicję bez zapisywania i wypisuje błędy oraz ostrzeżenia | `project.view` |
 | `create_workflow` | Tworzy workflow; najpierw jest sprawdzany i przy błędach nic nie zostaje zapisane | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 | `update_workflow` | Zastępuje definicję workflowu nową wersją; trwające uruchomienia zachowują swoją | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
+| `create_project` | Tworzy projekt z co najwyżej jednym repozytorium, opcjonalnie prywatny; dostaje domyślne workflowy | `projects.create` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 
 Zawartość artefaktów, podsumowania i błędy węzłów oraz pytania bramek wracają w blokach `<untrusted-data>`
 z polem `notice`: napisali je agenci, modele lub autorzy zgłoszeń, więc agent w Twoim IDE musi traktować je

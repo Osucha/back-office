@@ -106,7 +106,7 @@ class McpServerIntegrationTest {
             assertThat(context["constitution"]).isEqualTo("Small, reviewed changes.")
             val workflowId = (context["workflows"] as List<*>).map { it as Map<*, *> }.first()["id"].toString()
 
-            val started = mcp.call("start_workflow", mapOf("workflowId" to workflowId, "issueKey" to "MCP-1"))
+            val started = mcp.call("start_workflow", mapOf("workflowId" to workflowId, "issueKey" to "MCP-1", "parameters" to """{"title":"From MCP"}"""))
             val runId = started["runId"].toString()
             assertThat(started["issueKey"]).isEqualTo("MCP-1")
 

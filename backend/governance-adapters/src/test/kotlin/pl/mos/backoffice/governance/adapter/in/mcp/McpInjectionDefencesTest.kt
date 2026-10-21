@@ -91,9 +91,11 @@ class McpInjectionDefencesTest {
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("Allow workflow edits via MCP")
         assertThatThrownBy { tools(setOf(TokenCapabilities.MCP_GATE_DECISIONS)).updateWorkflow(workflowId, MINIMAL_WORKFLOW, 1) }
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("Allow workflow edits via MCP")
+        assertThatThrownBy { tools().createProject("Self", null, null, "https://git.example.com/self.git", null, null, true) }
+            .isInstanceOf(ValidationException::class.java).hasMessageContaining("Allow workflow edits via MCP")
         Mockito.verifyNoInteractions(workflows, projects)
         assertThat(audit.entries.map { it.operation to it.result }).containsOnly(BackOfficeMcpTools.OPERATION_MCP_WORKFLOW to AuditResult.DENIED)
-        assertThat(audit.entries.last().entityId).isEqualTo(workflowId)
+        assertThat(audit.entries.map { it.entityId }).contains(workflowId)
     }
 
     @Test

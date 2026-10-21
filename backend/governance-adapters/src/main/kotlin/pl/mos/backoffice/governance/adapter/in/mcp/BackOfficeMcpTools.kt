@@ -16,6 +16,7 @@ import pl.mos.backoffice.projects.application.port.out.RunFilter
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.ApprovalRequestId
 import pl.mos.backoffice.projects.domain.model.ApprovalStatus
+import pl.mos.backoffice.projects.domain.model.GitRepository
 import pl.mos.backoffice.projects.domain.model.ArtifactId
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.ProjectId
@@ -65,6 +66,7 @@ import java.util.UUID
  * | `get_workflow` | ManageWorkflows.get | `project.view` |
  * | `validate_workflow` | ManageWorkflows.validate | `project.view` |
  * | `create_workflow` / `update_workflow` | ManageWorkflows.create / update | `workflow.edit` + token option (ADR 0049) |
+ * | `create_project` | ManageProjects.create | `projects.create` + the same token option (ADR 0049) |
  *
  * This package is the one governance adapter allowed to import other contexts (`port.in` and the domain
  * types they return); ArchitectureTest enforces it.
@@ -160,15 +162,18 @@ class BackOfficeMcpTools(
 
     @McpTool(
         name = "start_workflow",
-        description = "Start a run of a workflow, optionally for an issue key. Returns the run summary. Starts agents that spend budget: call it only when the user asked for it.",
+        description = "Start a run of a workflow, optionally for an issue key and with run parameters (read by the workflow's prompts as " +
+            "{{parameters.name}}). Returns the run summary. Starts agents that spend budget: call it only when the user asked for it.",
         annotations = McpTool.McpAnnotations(title = "Start workflow", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = true),
     )
     fun startWorkflow(
         @McpToolParam(description = "Workflow id (UUID); see get_project_context", required = true) workflowId: String,
         @McpToolParam(description = "Issue key, e.g. SHOP-123", required = false) issueKey: String?,
+        @McpToolParam(description = "Run parameters as a JSON object, e.g. {\"title\": \"...\", \"idea\": \"...\"}", required = false) parameters: String?,
     ): Map<String, Any?> {
         caller()
-        val run = startRun.start(WorkflowDefinitionId(uuid(workflowId, "workflowId")), RunInput(issueKey = issueKey?.takeIf { it.isNotBlank() }), TriggerSource.API)
+        val input = RunInput(issueKey = issueKey?.takeIf { it.isNotBlank() }, parameters = parameters(parameters))
+        val run = startRun.start(WorkflowDefinitionId(uuid(workflowId, "workflowId")), input, TriggerSource.API)
         return runSummary(run, PromptDataBlocks.random())
     }
 
@@ -392,6 +397,38 @@ class BackOfficeMcpTools(
         return linkedMapOf("updated" to true, "id" to updated.id.toString(), "version" to updated.version) + validation(check)
     }
 
+    @McpTool(
+        name = "create_project",
+        description = "Create a project with at most one repository; the caller becomes its owner and the project gets the default workflows. " +
+            "A personal project is private to the caller and its agent steps can run on the caller's personal runner. Call it only when the user " +
+            "asked for this project. Needs a token created with 'Allow workflow edits via MCP'.",
+        annotations = McpTool.McpAnnotations(title = "Create project", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
+    )
+    fun createProject(
+        @McpToolParam(description = "Project name", required = true) name: String,
+        @McpToolParam(description = "Short key (letters/digits); generated from the name when omitted", required = false) key: String?,
+        @McpToolParam(description = "Description", required = false) description: String?,
+        @McpToolParam(description = "Clone URL of the source repository", required = false) repositoryUrl: String?,
+        @McpToolParam(description = "Default branch (default main)", required = false) defaultBranch: String?,
+        @McpToolParam(description = "Constitution: the rules every agent of the project follows (markdown)", required = false) constitution: String?,
+        @McpToolParam(description = "Private project of the caller (default false)", required = false) personal: Boolean?,
+    ): Map<String, Any?> {
+        requireWorkflowEdits("create-project")
+        val repositories = repositoryUrl?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            listOf(GitRepository(key = "main", url = it, defaultBranch = defaultBranch?.trim()?.ifEmpty { null } ?: "main", primary = true))
+        }.orEmpty()
+        val project = projects.create(
+            ManageProjects.ProjectCommand(
+                key = key?.trim()?.ifEmpty { null }, name = name.trim(), description = description.orEmpty(),
+                repositories = repositories, constitution = constitution.orEmpty(), specKit = false, personal = personal == true,
+            ),
+        )
+        return linkedMapOf(
+            "id" to project.id.toString(), "key" to project.key, "name" to project.name,
+            "workflows" to workflows.listByProject(project.id).map { linkedMapOf("id" to it.id.toString(), "name" to it.name, "version" to it.version) },
+        )
+    }
+
     // ------------------------------------------------------------------------------------------------
 
     /** ADR 0049: workflow writes need the token option; refusals are audited like the gate ones. */
@@ -415,6 +452,16 @@ class BackOfficeMcpTools(
         WorkflowJson.toCommand(json.readValue(definition, WorkflowDocumentJson::class.java))
     } catch (e: JacksonException) {
         throw ValidationException("definition is not valid workflow JSON: ${e.originalMessage}", "definition")
+    }
+
+    private fun parameters(text: String?): Map<String, Any?> {
+        if (text.isNullOrBlank()) return emptyMap()
+        val parsed = try {
+            json.readValue(text, Map::class.java)
+        } catch (e: JacksonException) {
+            throw ValidationException("parameters must be a JSON object: ${e.originalMessage}", "parameters")
+        }
+        return parsed.entries.associate { (k, v) -> k.toString() to v }
     }
 
     private fun validation(r: WorkflowValidationResult): Map<String, Any?> = linkedMapOf(
