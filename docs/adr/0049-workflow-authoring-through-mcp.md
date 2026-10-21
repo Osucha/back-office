@@ -25,7 +25,8 @@ domain lived in `projects-adapters`, which the MCP adapter may not import.
    a concurrent edit is not overwritten and is annotated destructive. Unknown JSON properties are errors.
 4. **Projects and run parameters.** `create_project` (`ManageProjects.create`, at most one repository, optionally
    private, Spec Kit off) needs the same token option; `start_workflow` also takes run parameters as a JSON object, so
-   workflows without an issue tracker can be started from the IDE.
+   workflows without an issue tracker can be started from the IDE. `list_workspaces`, `create_workspace` and
+   `update_workspace` manage the run workspaces of ADR 0044 (writes: `project.manage` and the same token option).
 5. **Token option.** Writes need a personal access token created with **Allow workflow edits via MCP**
    (`allowMcpWorkflowEdits`, `TokenCapabilities.MCP_WORKFLOW_EDITS`, identity V412, default off); refusals are
    audited as `MCP_WORKFLOW_EDIT` `DENIED`. Reason: an agent steered by injected text could otherwise remove a human

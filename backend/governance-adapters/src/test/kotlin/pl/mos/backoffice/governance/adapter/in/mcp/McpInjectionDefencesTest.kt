@@ -77,11 +77,13 @@ class McpInjectionDefencesTest {
         }
         assertThat(annotations("startWorkflow").readOnlyHint).isFalse()
         // ADR 0049: authoring reads are read-only, an update replaces a definition (clients confirm it)
-        listOf("listProjects", "getWorkflowPalette", "getWorkflow", "validateWorkflow").forEach {
+        listOf("listProjects", "getWorkflowPalette", "getWorkflow", "validateWorkflow", "listWorkspaces").forEach {
             assertThat(annotations(it).readOnlyHint).describedAs(it).isTrue()
         }
         assertThat(annotations("createWorkflow").readOnlyHint).isFalse()
         assertThat(annotations("updateWorkflow").destructiveHint).isTrue()
+        assertThat(annotations("createWorkspace").readOnlyHint).isFalse()
+        assertThat(annotations("updateWorkspace").destructiveHint).isTrue()
     }
 
     @Test
@@ -92,6 +94,8 @@ class McpInjectionDefencesTest {
         assertThatThrownBy { tools(setOf(TokenCapabilities.MCP_GATE_DECISIONS)).updateWorkflow(workflowId, MINIMAL_WORKFLOW, 1) }
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("Allow workflow edits via MCP")
         assertThatThrownBy { tools().createProject("Self", null, null, "https://git.example.com/self.git", null, null, true) }
+            .isInstanceOf(ValidationException::class.java).hasMessageContaining("Allow workflow edits via MCP")
+        assertThatThrownBy { tools().createWorkspace("shop", null, "main", null, null, listOf("main"), null, null, null) }
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("Allow workflow edits via MCP")
         Mockito.verifyNoInteractions(workflows, projects)
         assertThat(audit.entries.map { it.operation to it.result }).containsOnly(BackOfficeMcpTools.OPERATION_MCP_WORKFLOW to AuditResult.DENIED)

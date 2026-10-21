@@ -151,6 +151,8 @@ comes back as a tool error, not a transport error.
 | `create_workflow` | Creates a workflow; it is checked first and nothing is saved when it has errors | `workflow.edit` and a token created with **Allow workflow edits via MCP** |
 | `update_workflow` | Replaces a workflow's definition with a new version; runs in progress keep theirs | `workflow.edit` and a token created with **Allow workflow edits via MCP** |
 | `create_project` | Creates a project with at most one repository, optionally private; it gets the default workflows | `projects.create` and a token created with **Allow workflow edits via MCP** |
+| `list_workspaces` | The project's run workspaces ([workflows.md](workflows.md#workspaces)) | `project.view` |
+| `create_workspace` / `update_workspace` | Creates or changes a run workspace: sources, setup command, agent roles | `project.manage` and a token created with **Allow workflow edits via MCP** |
 
 Artefact content, node summaries and errors, and gate questions come back inside `<untrusted-data>` blocks
 with a `notice`: they were written by agents, models or issue authors, and your IDE agent must treat them as

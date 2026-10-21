@@ -167,6 +167,18 @@ class McpServerIntegrationTest {
             val refusedGraph = mcp.call("create_workflow", mapOf("projectKey" to "MCPWF", "definition" to broken))
             assertThat(refusedGraph["created"]).isEqualTo(false)
             assertThat(refusedGraph["errors"] as List<*>).isNotEmpty()
+
+            // run workspaces (ADR 0044) through MCP
+            val repositoryKey = ((mcp.call("get_project_context", mapOf("projectKey" to "MCPWF"))["repositories"] as List<*>).first() as Map<*, *>)["key"]
+            val workspace = mcp.call(
+                "create_workspace",
+                mapOf("projectKey" to "MCPWF", "key" to "main", "name" to "Main", "sources" to listOf(repositoryKey), "roles" to listOf("implementer")),
+            )
+            assertThat(workspace["sources"]).isEqualTo(listOf(repositoryKey))
+            val changed = mcp.call("update_workspace", mapOf("workspaceId" to workspace["id"], "key" to "main", "sources" to listOf(repositoryKey), "setupCommand" to "npm ci"))
+            assertThat(changed["setupCommand"]).isEqualTo("npm ci")
+            val listed = (mcp.call("list_workspaces", mapOf("projectKey" to "MCPWF"))["workspaces"] as List<*>).map { (it as Map<*, *>)["key"] }
+            assertThat(listed).containsExactly("main")
         }
         client(pat(user)).use { mcp ->
             val refused = mcp.callTool(McpSchema.CallToolRequest("create_workflow", mapOf("projectKey" to "MCPWF", "definition" to "{}")))

@@ -164,6 +164,8 @@ Odrzucone wywołanie wraca jako błąd narzędzia, a nie błąd transportu.
 | `create_workflow` | Tworzy workflow; najpierw jest sprawdzany i przy błędach nic nie zostaje zapisane | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 | `update_workflow` | Zastępuje definicję workflowu nową wersją; trwające uruchomienia zachowują swoją | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 | `create_project` | Tworzy projekt z co najwyżej jednym repozytorium, opcjonalnie prywatny; dostaje domyślne workflowy | `projects.create` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
+| `list_workspaces` | Obszary robocze uruchomień projektu ([workflows.md](workflows.md#workspaces)) | `project.view` |
+| `create_workspace` / `update_workspace` | Tworzy lub zmienia obszar roboczy uruchomień: źródła, polecenie przygotowania, role agentów | `project.manage` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 
 Zawartość artefaktów, podsumowania i błędy węzłów oraz pytania bramek wracają w blokach `<untrusted-data>`
 z polem `notice`: napisali je agenci, modele lub autorzy zgłoszeń, więc agent w Twoim IDE musi traktować je

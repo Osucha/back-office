@@ -6,6 +6,7 @@ import pl.mos.backoffice.governance.adapter.`in`.rest.DeliveryInsightsDto
 import pl.mos.backoffice.governance.application.port.`in`.DeliveryInsightsQuery
 import pl.mos.backoffice.projects.application.port.`in`.ApprovalQueries
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
+import pl.mos.backoffice.projects.application.port.`in`.ManageProjectWorkspaces
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.RunQueries
@@ -20,6 +21,9 @@ import pl.mos.backoffice.projects.domain.model.GitRepository
 import pl.mos.backoffice.projects.domain.model.ArtifactId
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.ProjectId
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
+import pl.mos.backoffice.projects.domain.model.ProjectWorkspaceId
+import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 import pl.mos.backoffice.projects.domain.model.RunInput
 import pl.mos.backoffice.projects.domain.model.RunStatus
 import pl.mos.backoffice.projects.domain.model.TriggerSource
@@ -67,6 +71,8 @@ import java.util.UUID
  * | `validate_workflow` | ManageWorkflows.validate | `project.view` |
  * | `create_workflow` / `update_workflow` | ManageWorkflows.create / update | `workflow.edit` + token option (ADR 0049) |
  * | `create_project` | ManageProjects.create | `projects.create` + the same token option (ADR 0049) |
+ * | `list_workspaces` | ManageProjectWorkspaces.list | `project.view` |
+ * | `create_workspace` / `update_workspace` | ManageProjectWorkspaces.create / update | `project.manage` + the same token option |
  *
  * This package is the one governance adapter allowed to import other contexts (`port.in` and the domain
  * types they return); ArchitectureTest enforces it.
@@ -96,6 +102,8 @@ class BackOfficeMcpTools(
     private val skills: ManageSkills,
     private val insights: DeliveryInsightsQuery,
     private val audit: AuditPort = AuditPort.NOOP,
+    /** ADR 0044 run workspaces; null = the workspace tools answer that they are not available. */
+    private val workspaces: ManageProjectWorkspaces? = null,
 ) {
 
     @McpTool(
@@ -429,7 +437,86 @@ class BackOfficeMcpTools(
         )
     }
 
+    @McpTool(
+        name = "list_workspaces",
+        description = "Run workspaces of a project (ADR 0044): coding steps that name the same workspace (config.workspace = its key) share " +
+            "/workspace within a run, with the sources cloned once, the setup command run once and agent sessions continued per role.",
+        annotations = McpTool.McpAnnotations(title = "List workspaces", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
+    )
+    fun listWorkspaces(
+        @McpToolParam(description = "Project key", required = false) projectKey: String?,
+        @McpToolParam(description = "Project id (UUID)", required = false) projectId: String?,
+    ): Map<String, Any?> {
+        caller()
+        return linkedMapOf("workspaces" to workspaceUseCases().list(project(projectKey, projectId).id).map(::workspace))
+    }
+
+    @McpTool(
+        name = "create_workspace",
+        description = "Create a run workspace in a project. sources: keys of project repositories (see get_project_context) cloned into " +
+            "/workspace/<key>; librarySources: keys of library sources (read only); setupCommand runs once per run before the first step; " +
+            "roles: agent session roles its steps may continue (empty = any). Steps use it with config.workspace = key and " +
+            "config.sessionRole. Call it only when the user asked for it. Needs a token created with 'Allow workflow edits via MCP'.",
+        annotations = McpTool.McpAnnotations(title = "Create workspace", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
+    )
+    fun createWorkspace(
+        @McpToolParam(description = "Project key", required = false) projectKey: String?,
+        @McpToolParam(description = "Project id (UUID)", required = false) projectId: String?,
+        @McpToolParam(description = "Key: 1-20 lower case letters, digits or hyphens; cannot change later", required = true) key: String,
+        @McpToolParam(description = "Name shown on the canvas", required = false) name: String?,
+        @McpToolParam(description = "Description", required = false) description: String?,
+        @McpToolParam(description = "Keys of project repositories cloned into it", required = false) sources: List<String>?,
+        @McpToolParam(description = "Keys of library sources cloned into it (read only)", required = false) librarySources: List<String>?,
+        @McpToolParam(description = "Setup command run once per run, e.g. npm ci", required = false) setupCommand: String?,
+        @McpToolParam(description = "Agent session roles, e.g. implementer, reviewer", required = false) roles: List<String>?,
+    ): Map<String, Any?> {
+        requireWorkflowEdits("create-workspace")
+        val command = workspaceCommand(key, name, description, sources, librarySources, setupCommand, roles)
+        return workspace(workspaceUseCases().create(project(projectKey, projectId).id, command))
+    }
+
+    @McpTool(
+        name = "update_workspace",
+        description = "Replace the settings of a run workspace (the key stays). Runs in progress keep the workspace they prepared; a changed " +
+            "setup command runs again in the next run. Call it only when the user asked for it. Needs a token created with 'Allow workflow edits via MCP'.",
+        annotations = McpTool.McpAnnotations(title = "Update workspace", readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = false),
+    )
+    fun updateWorkspace(
+        @McpToolParam(description = "Workspace id (UUID) from list_workspaces", required = true) workspaceId: String,
+        @McpToolParam(description = "Its key (unchanged)", required = true) key: String,
+        @McpToolParam(description = "Name shown on the canvas", required = false) name: String?,
+        @McpToolParam(description = "Description", required = false) description: String?,
+        @McpToolParam(description = "Keys of project repositories cloned into it", required = false) sources: List<String>?,
+        @McpToolParam(description = "Keys of library sources cloned into it (read only)", required = false) librarySources: List<String>?,
+        @McpToolParam(description = "Setup command run once per run", required = false) setupCommand: String?,
+        @McpToolParam(description = "Agent session roles", required = false) roles: List<String>?,
+    ): Map<String, Any?> {
+        requireWorkflowEdits("update-workspace", workspaceId)
+        val command = workspaceCommand(key, name, description, sources, librarySources, setupCommand, roles)
+        return workspace(workspaceUseCases().update(ProjectWorkspaceId(uuid(workspaceId, "workspaceId")), command))
+    }
+
     // ------------------------------------------------------------------------------------------------
+
+    private fun workspaceUseCases(): ManageProjectWorkspaces =
+        workspaces ?: throw ValidationException("run workspaces are not available on this server", "workspaces")
+
+    private fun workspaceCommand(
+        key: String, name: String?, description: String?, sources: List<String>?, librarySources: List<String>?, setupCommand: String?, roles: List<String>?,
+    ) = ManageProjectWorkspaces.WorkspaceCommand(
+        key = key.trim(),
+        name = name?.trim()?.ifEmpty { null },
+        description = description.orEmpty(),
+        sources = sources.orEmpty().map { WorkspaceSource(it.trim()) } + librarySources.orEmpty().map { WorkspaceSource(it.trim(), library = true) },
+        setupCommand = setupCommand?.trim()?.ifEmpty { null },
+        roles = roles.orEmpty().map { it.trim() },
+    )
+
+    private fun workspace(w: ProjectWorkspace): Map<String, Any?> = linkedMapOf(
+        "id" to w.id.toString(), "key" to w.key, "name" to w.name, "description" to w.description,
+        "sources" to w.sources.filterNot { it.library }.map { it.key }, "librarySources" to w.sources.filter { it.library }.map { it.key },
+        "setupCommand" to w.setupCommand, "roles" to w.roles, "updatedAt" to w.updatedAt.toString(),
+    )
 
     /** ADR 0049: workflow writes need the token option; refusals are audited like the gate ones. */
     private fun requireWorkflowEdits(action: String, workflowId: String? = null) {

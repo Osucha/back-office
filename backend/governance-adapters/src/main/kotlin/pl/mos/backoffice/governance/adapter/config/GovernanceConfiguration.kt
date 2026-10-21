@@ -29,6 +29,7 @@ import pl.mos.backoffice.governance.application.service.WorkflowInsightsService
 import pl.mos.backoffice.governance.application.service.ProvenanceQueryService
 import pl.mos.backoffice.projects.application.port.`in`.ApprovalQueries
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
+import pl.mos.backoffice.projects.application.port.`in`.ManageProjectWorkspaces
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.RunQueries
@@ -124,7 +125,8 @@ class McpServerConfiguration {
         skills: ManageSkills,
         insights: DeliveryInsightsQuery,
         audit: AuditPort,
-    ) = BackOfficeMcpTools(gate, runs, startRun, approvals, decideApproval, projects, workflows, templates, skills, insights, audit)
+        workspaces: ManageProjectWorkspaces,
+    ) = BackOfficeMcpTools(gate, runs, startRun, approvals, decideApproval, projects, workflows, templates, skills, insights, audit, workspaces)
 
     /** Before Spring Security's chain (order -100) so non-PAT credentials never reach the MCP transport. */
     @Bean
