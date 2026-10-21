@@ -77,14 +77,73 @@ import {
           <nz-table [nzData]="versionList()" [nzShowPagination]="false" nzSize="small">
             <thead>
               <tr>
-                <th nzShowSort [boSort]="versionSort" boSortKey="version" nzWidth="106px" i18n="@@library.metrics.col.version">Version</th>
-                <th nzShowSort [boSort]="versionSort" boSortKey="runs" nzAlign="right" i18n="@@library.metrics.col.runs">Runs</th>
-                <th nzShowSort [boSort]="versionSort" boSortKey="success" i18n="@@library.metrics.col.success">Success</th>
-                <th nzShowSort [boSort]="versionSort" boSortKey="firstPass" i18n="@@library.metrics.col.firstPass">First pass</th>
-                <th nzShowSort [boSort]="versionSort" boSortKey="rework" i18n="@@library.metrics.col.rework">Rework / run</th>
-                <th nzShowSort [boSort]="versionSort" boSortKey="duration" i18n="@@library.metrics.col.duration">Median time</th>
-                <th nzShowSort [boSort]="versionSort" boSortKey="active" i18n="@@library.metrics.col.active">Active time</th>
-                <th nzShowSort [boSort]="versionSort" boSortKey="cost" nzAlign="right" i18n="@@library.metrics.col.costPerSuccess">Cost / success</th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="version"
+                  nzWidth="106px"
+                  i18n="@@library.metrics.col.version"
+                >
+                  Version
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="runs"
+                  nzAlign="right"
+                  i18n="@@library.metrics.col.runs"
+                >
+                  Runs
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="success"
+                  i18n="@@library.metrics.col.success"
+                >
+                  Success
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="firstPass"
+                  i18n="@@library.metrics.col.firstPass"
+                >
+                  First pass
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="rework"
+                  i18n="@@library.metrics.col.rework"
+                >
+                  Rework / run
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="duration"
+                  i18n="@@library.metrics.col.duration"
+                >
+                  Median time
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="active"
+                  i18n="@@library.metrics.col.active"
+                >
+                  Active time
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="versionSort"
+                  boSortKey="cost"
+                  nzAlign="right"
+                  i18n="@@library.metrics.col.costPerSuccess"
+                >
+                  Cost / success
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -138,12 +197,56 @@ import {
             <nz-table [nzData]="projectList()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th nzShowSort [boSort]="projectSort" boSortKey="project" i18n="@@library.metrics.col.project">Project</th>
-                  <th nzShowSort [boSort]="projectSort" boSortKey="runs" nzAlign="right" i18n="@@library.metrics.col.runs">Runs</th>
-                  <th nzShowSort [boSort]="projectSort" boSortKey="success" i18n="@@library.metrics.col.success">Success</th>
-                  <th nzShowSort [boSort]="projectSort" boSortKey="firstPass" i18n="@@library.metrics.col.firstPass">First pass</th>
-                  <th nzShowSort [boSort]="projectSort" boSortKey="duration" i18n="@@library.metrics.col.duration">Median time</th>
-                  <th nzShowSort [boSort]="projectSort" boSortKey="cost" nzAlign="right" i18n="@@library.metrics.col.costPerSuccess">Cost / success</th>
+                  <th
+                    nzShowSort
+                    [boSort]="projectSort"
+                    boSortKey="project"
+                    i18n="@@library.metrics.col.project"
+                  >
+                    Project
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="projectSort"
+                    boSortKey="runs"
+                    nzAlign="right"
+                    i18n="@@library.metrics.col.runs"
+                  >
+                    Runs
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="projectSort"
+                    boSortKey="success"
+                    i18n="@@library.metrics.col.success"
+                  >
+                    Success
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="projectSort"
+                    boSortKey="firstPass"
+                    i18n="@@library.metrics.col.firstPass"
+                  >
+                    First pass
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="projectSort"
+                    boSortKey="duration"
+                    i18n="@@library.metrics.col.duration"
+                  >
+                    Median time
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="projectSort"
+                    boSortKey="cost"
+                    nzAlign="right"
+                    i18n="@@library.metrics.col.costPerSuccess"
+                  >
+                    Cost / success
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -180,12 +283,56 @@ import {
           <nz-table [nzData]="nodeList()" [nzShowPagination]="false" nzSize="small">
             <thead>
               <tr>
-                <th nzShowSort [boSort]="nodeSort" boSortKey="step" i18n="@@library.metrics.col.step">Step</th>
-                <th nzShowSort [boSort]="nodeSort" boSortKey="executions" nzAlign="right" i18n="@@library.metrics.col.executions">Executions</th>
-                <th nzShowSort [boSort]="nodeSort" boSortKey="failures" i18n="@@library.metrics.col.failures">Failures</th>
-                <th nzShowSort [boSort]="nodeSort" boSortKey="time" i18n="@@library.metrics.col.stepTime">Median / p90</th>
-                <th nzShowSort [boSort]="nodeSort" boSortKey="cost" nzAlign="right" i18n="@@library.metrics.col.cost">Cost</th>
-                <th nzShowSort [boSort]="nodeSort" boSortKey="ports" i18n="@@library.metrics.col.ports">Ports taken</th>
+                <th
+                  nzShowSort
+                  [boSort]="nodeSort"
+                  boSortKey="step"
+                  i18n="@@library.metrics.col.step"
+                >
+                  Step
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="nodeSort"
+                  boSortKey="executions"
+                  nzAlign="right"
+                  i18n="@@library.metrics.col.executions"
+                >
+                  Executions
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="nodeSort"
+                  boSortKey="failures"
+                  i18n="@@library.metrics.col.failures"
+                >
+                  Failures
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="nodeSort"
+                  boSortKey="time"
+                  i18n="@@library.metrics.col.stepTime"
+                >
+                  Median / p90
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="nodeSort"
+                  boSortKey="cost"
+                  nzAlign="right"
+                  i18n="@@library.metrics.col.cost"
+                >
+                  Cost
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="nodeSort"
+                  boSortKey="ports"
+                  i18n="@@library.metrics.col.ports"
+                >
+                  Ports taken
+                </th>
               </tr>
             </thead>
             <tbody>

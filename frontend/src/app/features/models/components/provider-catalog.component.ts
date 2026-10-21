@@ -81,7 +81,10 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
       @for (s of failed(); track s.name) {
         <div class="notice" role="note">
           <bo-glyph holder="blocked" [size]="12" />
-          <span><strong>{{ s.name }}</strong>: {{ s.error }}</span>
+          <span
+            ><strong>{{ s.name }}</strong
+            >: {{ s.error }}</span
+          >
         </div>
       }
 
@@ -121,7 +124,11 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
             </nz-select>
           }
           <label class="switch">
-            <nz-switch nzSize="small" [ngModel]="freeOnly()" (ngModelChange)="freeOnly.set($event)" />
+            <nz-switch
+              nzSize="small"
+              [ngModel]="freeOnly()"
+              (ngModelChange)="freeOnly.set($event)"
+            />
             <span i18n="@@models.catalog.freeOnly">Free only</span>
           </label>
           <span class="count">{{ countLabel() }}</span>
@@ -136,11 +143,41 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="model" i18n="@@models.catalog.col.model">Model</th>
-              <th nzShowSort [boSort]="sort" boSortKey="connection" nzWidth="186px" i18n="@@models.catalog.col.connection">Connection</th>
-              <th nzShowSort [boSort]="sort" boSortKey="price" nzWidth="166px" nzAlign="right" i18n="@@models.col.price">In / out per MTok</th>
-              <th nzShowSort [boSort]="sort" boSortKey="context" nzWidth="96px" nzAlign="right" i18n="@@models.col.context">Context</th>
-              <th nzWidth="150px"><span class="sr-only" i18n="@@models.col.actions">Actions</span></th>
+              <th nzShowSort [boSort]="sort" boSortKey="model" i18n="@@models.catalog.col.model">
+                Model
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="connection"
+                nzWidth="186px"
+                i18n="@@models.catalog.col.connection"
+              >
+                Connection
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="price"
+                nzWidth="166px"
+                nzAlign="right"
+                i18n="@@models.col.price"
+              >
+                In / out per MTok
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="context"
+                nzWidth="96px"
+                nzAlign="right"
+                i18n="@@models.col.context"
+              >
+                Context
+              </th>
+              <th nzWidth="150px">
+                <span class="sr-only" i18n="@@models.col.actions">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -178,7 +215,9 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
                   @if (existing().has(r.key)) {
                     <span class="state-word"
                       ><bo-glyph holder="done" [size]="11" />
-                      <ng-container i18n="@@models.catalog.added">profile exists</ng-container></span
+                      <ng-container i18n="@@models.catalog.added"
+                        >profile exists</ng-container
+                      ></span
                     >
                   } @else if (canManage()) {
                     <button nz-button nzSize="small" type="button" (click)="add.emit(prefill(r))">
@@ -198,8 +237,9 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
       <div class="login" role="group" aria-labelledby="login-title">
         <h3 id="login-title" i18n="@@models.login.title">Claude Code (your login)</h3>
         <p class="sub" i18n="@@models.login.subtitle">
-          Runs Claude Code on your personal runner with your own Claude subscription (My account: personal runner with
-          Claude Code login). Coding tasks only, never as the judge, nothing is billed. Prompt tasks follow later.
+          Runs Claude Code on your personal runner with your own Claude subscription (My account:
+          personal runner with Claude Code login). Coding tasks only, never as the judge, nothing is
+          billed. Prompt tasks follow later.
         </p>
         <ul class="login-list">
           @for (m of loginModels; track m.alias) {
@@ -354,7 +394,11 @@ export class ProviderCatalogComponent {
   readonly rows = computed<CatalogRow[]>(() => catalogRows(this.sections()));
   readonly failed = computed(() => this.sections().filter((s) => !s.ok));
   readonly filtered = computed(() =>
-    filterCatalog(this.rows(), { query: this.query(), connection: this.connection(), freeOnly: this.freeOnly() }),
+    filterCatalog(this.rows(), {
+      query: this.query(),
+      connection: this.connection(),
+      freeOnly: this.freeOnly(),
+    }),
   );
   /** Column sorting (URL `?catalogSort=`, apart from the profiles table above). */
   readonly sort = tableSort<CatalogRow>(

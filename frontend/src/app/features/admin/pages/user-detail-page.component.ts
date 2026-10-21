@@ -530,17 +530,44 @@ interface IssuedLink {
                 i18n-detail="@@admin.userDetail.membershipsManagedEmpty"
               />
             } @else {
-              <nz-table
-                [nzData]="memberships()"
-                [nzShowPagination]="false"
-                nzSize="small"
-              >
+              <nz-table [nzData]="memberships()" [nzShowPagination]="false" nzSize="small">
                 <thead>
                   <tr>
-                    <th nzShowSort [boSort]="membershipSort" boSortKey="project" nzWidth="136px" i18n="@@admin.userDetail.colProject">Project</th>
-                    <th nzShowSort [boSort]="membershipSort" boSortKey="role" nzWidth="156px" i18n="@@admin.userDetail.colRole">Role</th>
-                    <th nzShowSort [boSort]="membershipSort" boSortKey="via" nzWidth="176px" i18n="@@admin.userDetail.colVia">Via</th>
-                    <th nzShowSort [boSort]="membershipSort" boSortKey="permissions" i18n="@@admin.userDetail.colPermissions">Effective project permissions</th>
+                    <th
+                      nzShowSort
+                      [boSort]="membershipSort"
+                      boSortKey="project"
+                      nzWidth="136px"
+                      i18n="@@admin.userDetail.colProject"
+                    >
+                      Project
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="membershipSort"
+                      boSortKey="role"
+                      nzWidth="156px"
+                      i18n="@@admin.userDetail.colRole"
+                    >
+                      Role
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="membershipSort"
+                      boSortKey="via"
+                      nzWidth="176px"
+                      i18n="@@admin.userDetail.colVia"
+                    >
+                      Via
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="membershipSort"
+                      boSortKey="permissions"
+                      i18n="@@admin.userDetail.colPermissions"
+                    >
+                      Effective project permissions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -601,11 +628,50 @@ interface IssuedLink {
               <nz-table [nzData]="sortedSessions()" [nzShowPagination]="false" nzSize="small">
                 <thead>
                   <tr>
-                    <th nzShowSort [boSort]="sessionSort" boSortKey="session" nzWidth="156px" i18n="@@admin.userDetail.colSession">Session</th>
-                    <th nzShowSort [boSort]="sessionSort" boSortKey="started" nzWidth="170px" i18n="@@admin.userDetail.colStarted">Started</th>
-                    <th nzShowSort [boSort]="sessionSort" boSortKey="lastAccess" nzWidth="136px" i18n="@@admin.userDetail.colLastAccess">Last access</th>
-                    <th nzShowSort [boSort]="sessionSort" boSortKey="ip" nzWidth="140px" i18n="@@admin.userDetail.colIp">IP</th>
-                    <th nzShowSort [boSort]="sessionSort" boSortKey="browser" i18n="@@admin.userDetail.colBrowser">Browser</th>
+                    <th
+                      nzShowSort
+                      [boSort]="sessionSort"
+                      boSortKey="session"
+                      nzWidth="156px"
+                      i18n="@@admin.userDetail.colSession"
+                    >
+                      Session
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="sessionSort"
+                      boSortKey="started"
+                      nzWidth="170px"
+                      i18n="@@admin.userDetail.colStarted"
+                    >
+                      Started
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="sessionSort"
+                      boSortKey="lastAccess"
+                      nzWidth="136px"
+                      i18n="@@admin.userDetail.colLastAccess"
+                    >
+                      Last access
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="sessionSort"
+                      boSortKey="ip"
+                      nzWidth="140px"
+                      i18n="@@admin.userDetail.colIp"
+                    >
+                      IP
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="sessionSort"
+                      boSortKey="browser"
+                      i18n="@@admin.userDetail.colBrowser"
+                    >
+                      Browser
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

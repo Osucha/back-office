@@ -11,7 +11,13 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
+import {
+  FormBuilder,
+  ReactiveFormsModule,
+  Validators,
+  type AbstractControl,
+  type ValidationErrors,
+} from '@angular/forms';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzInputModule } from 'ng-zorro-antd/input';
@@ -48,7 +54,8 @@ export function parseAcceptance(raw: string | null | undefined): TaskAcceptanceI
     const files = o['files'] ?? {};
     const paths = o['protectedPaths'] ?? [];
     if (typeof files !== 'object' || Array.isArray(files) || !Array.isArray(paths)) return null;
-    if (Object.values(files as Record<string, unknown>).some((c) => typeof c !== 'string')) return null;
+    if (Object.values(files as Record<string, unknown>).some((c) => typeof c !== 'string'))
+      return null;
     return {
       files: files as Record<string, string>,
       protectedPaths: (paths as unknown[]).map(String),
@@ -317,15 +324,16 @@ function acceptanceValidator(c: AbstractControl): ValidationErrors | null {
                     i18n-nzErrorTip="@@evaluation.task.acceptanceInvalid"
                     nzExtra="Hidden from the agent: files (e.g. acceptance tests) are written only for the verification command, protectedPaths (git pathspecs such as existing tests) must stay unchanged, requireChanges fails a run that changed nothing. Empty = none."
                     i18n-nzExtra="@@evaluation.task.acceptanceHint"
-                    ><textarea
+                  >
+                    <textarea
                       nz-input
                       id="t-acceptance"
                       class="mono"
                       formControlName="acceptance"
                       rows="6"
                       [placeholder]="examples.acceptance"
-                    ></textarea
-                  ></nz-form-control>
+                    ></textarea>
+                  </nz-form-control>
                 </nz-form-item>
               </div>
             }
@@ -473,7 +481,8 @@ export class TaskEditorDrawerComponent {
     baseRef: 'main', // i18n-ignore: branch name
     setup: './gradlew assemble', // i18n-ignore: command
     verify: './gradlew test', // i18n-ignore: command
-    acceptance: '{ "files": { "src/test/java/acceptance/HiddenTest.java": "..." }, "protectedPaths": ["src/test/java/**"], "requireChanges": true }', // i18n-ignore: sample JSON
+    acceptance:
+      '{ "files": { "src/test/java/acceptance/HiddenTest.java": "..." }, "protectedPaths": ["src/test/java/**"], "requireChanges": true }', // i18n-ignore: sample JSON
   };
   readonly text = {
     details: $localize`:@@evaluation.task.tab.details:Details`,
@@ -575,7 +584,9 @@ export class TaskEditorDrawerComponent {
             baseRef: t?.repository?.baseRef ?? 'main',
             setupCommand: t?.repository?.setupCommand ?? '',
             verifyCommand: t?.repository?.verifyCommand ?? '',
-            acceptance: t?.repository?.acceptance ? JSON.stringify(t.repository.acceptance, null, 2) : '',
+            acceptance: t?.repository?.acceptance
+              ? JSON.stringify(t.repository.acceptance, null, 2)
+              : '',
           },
           timeoutSeconds: t?.timeoutSeconds ?? 900,
           weight: t?.weight ?? 1,

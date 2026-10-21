@@ -1,4 +1,8 @@
-import type { ProjectWorkspace, WorkflowDefinitionInput, WorkflowNode } from '../../../core/api/types';
+import type {
+  ProjectWorkspace,
+  WorkflowDefinitionInput,
+  WorkflowNode,
+} from '../../../core/api/types';
 import { workspaceProblems } from '../../../core/ui/workspaces';
 import {
   REGION_LABEL_SPACE,
@@ -10,22 +14,54 @@ import {
 } from './workspaces';
 
 const task = (id: string, config?: Record<string, unknown>): WorkflowNode =>
-  ({ id, name: id, kind: 'TASK', position: { x: 0, y: 0 }, task: { templateKey: 't', overrides: config ? { config } : {} } }) as WorkflowNode;
+  ({
+    id,
+    name: id,
+    kind: 'TASK',
+    position: { x: 0, y: 0 },
+    task: { templateKey: 't', overrides: config ? { config } : {} },
+  }) as WorkflowNode;
 
-const def = (nodes: WorkflowNode[]): WorkflowDefinitionInput => ({ name: 'w', nodes, edges: [], enabled: true });
+const def = (nodes: WorkflowNode[]): WorkflowDefinitionInput => ({
+  name: 'w',
+  nodes,
+  edges: [],
+  enabled: true,
+});
 
 const ws = (key: string, name = key): ProjectWorkspace =>
-  ({ id: key, projectId: 'p', key, name, sources: [], roles: [], createdAt: '', updatedAt: '' }) as ProjectWorkspace;
+  ({
+    id: key,
+    projectId: 'p',
+    key,
+    name,
+    sources: [],
+    roles: [],
+    createdAt: '',
+    updatedAt: '',
+  }) as ProjectWorkspace;
 
 describe('workspaces in the designer (ADR 0044)', () => {
   it('reads and writes the step settings, dropping role and prepare without a workspace', () => {
-    expect(stepWorkspace({ workspace: 'main', sessionRole: 'reviewer' })).toEqual({ workspace: 'main', sessionRole: 'reviewer', prepareOnly: false });
-    expect(withStepWorkspace({ push: true }, { workspace: 'main', sessionRole: 'implementer' })).toEqual({
-      push: true, workspace: 'main', sessionRole: 'implementer',
+    expect(stepWorkspace({ workspace: 'main', sessionRole: 'reviewer' })).toEqual({
+      workspace: 'main',
+      sessionRole: 'reviewer',
+      prepareOnly: false,
     });
-    expect(withStepWorkspace({ workspace: 'main', sessionRole: 'x' }, { workspace: null })).toBeUndefined();
+    expect(
+      withStepWorkspace({ push: true }, { workspace: 'main', sessionRole: 'implementer' }),
+    ).toEqual({
+      push: true,
+      workspace: 'main',
+      sessionRole: 'implementer',
+    });
+    expect(
+      withStepWorkspace({ workspace: 'main', sessionRole: 'x' }, { workspace: null }),
+    ).toBeUndefined();
     // a prepare step has no session
-    expect(withStepWorkspace({ workspace: 'main', sessionRole: 'x' }, { prepareOnly: true })).toEqual({ workspace: 'main', prepareOnly: true });
+    expect(
+      withStepWorkspace({ workspace: 'main', sessionRole: 'x' }, { prepareOnly: true }),
+    ).toEqual({ workspace: 'main', prepareOnly: true });
   });
 
   it('reports invalid keys, duplicates and roles', () => {
@@ -36,7 +72,12 @@ describe('workspaces in the designer (ADR 0044)', () => {
   });
 
   it('draws one region around the steps of each workspace the workflow uses', () => {
-    const d = def([task('a', { workspace: 'main' }), task('b', { workspace: 'main' }), task('c'), task('d', { workspace: 'gone' })]);
+    const d = def([
+      task('a', { workspace: 'main' }),
+      task('b', { workspace: 'main' }),
+      task('c'),
+      task('d', { workspace: 'gone' }),
+    ]);
     expect(membersOf(d, 'main')).toEqual(['a', 'b']);
     const rects = new Map([
       ['a', { x: 100, y: 100, width: 200, height: 80 }],

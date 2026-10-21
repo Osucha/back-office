@@ -11,8 +11,10 @@ export type SortAccessor<T> = (row: T) => unknown;
 
 /** Text compares by the UI locale (Polish letters in place), numbers numerically, booleans true first; empty last. */
 export function compareValues(a: unknown, b: unknown): number {
-  const emptyA = a === null || a === undefined || a === '' || (typeof a === 'number' && Number.isNaN(a));
-  const emptyB = b === null || b === undefined || b === '' || (typeof b === 'number' && Number.isNaN(b));
+  const emptyA =
+    a === null || a === undefined || a === '' || (typeof a === 'number' && Number.isNaN(a));
+  const emptyB =
+    b === null || b === undefined || b === '' || (typeof b === 'number' && Number.isNaN(b));
   if (emptyA || emptyB) return emptyA === emptyB ? 0 : emptyA ? 1 : -1;
   if (typeof a === 'number' && typeof b === 'number') return a - b;
   if (typeof a === 'boolean' && typeof b === 'boolean') return a === b ? 0 : a ? -1 : 1;
@@ -36,7 +38,10 @@ export function sortRows<T>(rows: readonly T[], accessor: SortAccessor<T>, order
 }
 
 /** `name.asc` / `name.desc` of the query parameter; null for anything else. */
-export function parseSort(raw: string | null | undefined, keys: readonly string[]): { key: string; order: SortOrder } | null {
+export function parseSort(
+  raw: string | null | undefined,
+  keys: readonly string[],
+): { key: string; order: SortOrder } | null {
   const m = /^(.+)\.(asc|desc)$/.exec((raw ?? '').trim());
   if (!m || !keys.includes(m[1])) return null;
   return { key: m[1], order: m[2] === 'asc' ? 'ascend' : 'descend' };
@@ -66,13 +71,18 @@ export interface TableSort<T> extends SortControl {
  *   readonly rows = computed(() => this.sort.apply(this.filtered()));
  *   <th nzShowSort [boSort]="sort" boSortKey="name">Name</th>
  */
-export function tableSort<T>(columns: Record<string, SortAccessor<T>>, options: { param?: string } = {}): TableSort<T> {
+export function tableSort<T>(
+  columns: Record<string, SortAccessor<T>>,
+  options: { param?: string } = {},
+): TableSort<T> {
   const param = options.param ?? 'sort';
   const keys = Object.keys(columns);
   const route = inject(ActivatedRoute, { optional: true });
   const router = inject(Router, { optional: true });
   const local = signal<string | null>(null);
-  const params = route ? toSignal(route.queryParamMap, { initialValue: route.snapshot.queryParamMap }) : null;
+  const params = route
+    ? toSignal(route.queryParamMap, { initialValue: route.snapshot.queryParamMap })
+    : null;
   const raw = computed(() => (params ? params().get(param) : local()));
   const state = computed(() => parseSort(raw(), keys));
 
@@ -86,7 +96,12 @@ export function tableSort<T>(columns: Record<string, SortAccessor<T>>, options: 
       const value = order ? `${key}.${order === 'ascend' ? 'asc' : 'desc'}` : null;
       if (value === raw()) return;
       if (router && route) {
-        void router.navigate([], { relativeTo: route, queryParams: { [param]: value }, queryParamsHandling: 'merge', replaceUrl: true });
+        void router.navigate([], {
+          relativeTo: route,
+          queryParams: { [param]: value },
+          queryParamsHandling: 'merge',
+          replaceUrl: true,
+        });
       } else {
         local.set(value);
       }

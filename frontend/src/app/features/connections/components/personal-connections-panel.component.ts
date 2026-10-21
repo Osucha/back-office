@@ -16,9 +16,10 @@ import { ConnectionsListComponent } from './connections-list.component';
   template: `
     <p class="lede">
       <span i18n="@@connections.personal.lede"
-        >Your own Jira connections. Workflow steps set to act as the person who approves or starts them
-        use one of these to comment or move issues as you, and only after your approval or when you
-        start the run. Nobody else can see or use them; administrators only see that they exist.</span
+        >Your own Jira connections. Workflow steps set to act as the person who approves or starts
+        them use one of these to comment or move issues as you, and only after your approval or when
+        you start the run. Nobody else can see or use them; administrators only see that they
+        exist.</span
       >
       <bo-help-link topic="connections.personal" variant="text"
         ><span i18n="@@connections.personal.help">How personal connections work</span></bo-help-link

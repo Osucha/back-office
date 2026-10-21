@@ -4,7 +4,12 @@ import { TestBed } from '@angular/core/testing';
 import type { Connection } from '../data/connection-types';
 import { ProjectJiraConnectionsComponent } from './project-jira-connections.component';
 
-const conn = (id: string, name: string, scope: 'PLATFORM' | 'PROJECT', capabilities: string[]): Connection => ({
+const conn = (
+  id: string,
+  name: string,
+  scope: 'PLATFORM' | 'PROJECT',
+  capabilities: string[],
+): Connection => ({
   id,
   scope,
   type: 'JIRA',

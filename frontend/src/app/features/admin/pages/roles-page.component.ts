@@ -117,9 +117,26 @@ import { AdminNavComponent } from '../components/admin-nav.component';
         <nz-table #t [nzData]="sorted()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="key" nzWidth="240px" i18n="@@admin.roles.col.key">Key</th>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@admin.roles.col.name">Name</th>
-              <th nzShowSort [boSort]="sort" boSortKey="permissions" nzWidth="136px" nzAlign="right" i18n="@@admin.roles.col.permissions">
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="key"
+                nzWidth="240px"
+                i18n="@@admin.roles.col.key"
+              >
+                Key
+              </th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@admin.roles.col.name">
+                Name
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="permissions"
+                nzWidth="136px"
+                nzAlign="right"
+                i18n="@@admin.roles.col.permissions"
+              >
                 Permissions
               </th>
               <th nzWidth="64px">

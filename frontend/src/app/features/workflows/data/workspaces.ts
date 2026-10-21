@@ -87,7 +87,11 @@ export function workspaceRegions(
   workspaces: readonly ProjectWorkspace[],
 ): WorkspaceRegion[] {
   const keys = [
-    ...new Set(def.nodes.map((n) => (n.kind === 'TASK' ? stepWorkspace(n.task?.overrides?.config).workspace : null))),
+    ...new Set(
+      def.nodes.map((n) =>
+        n.kind === 'TASK' ? stepWorkspace(n.task?.overrides?.config).workspace : null,
+      ),
+    ),
   ].filter((k): k is string => !!k);
   return keys.flatMap((key) => {
     const boxes = membersOf(def, key)

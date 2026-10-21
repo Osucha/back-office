@@ -44,7 +44,8 @@ export function ruleError(r: IntakeRuleInput): string | null {
   const n = r.pollIntervalMinutes ?? 5;
   if (!Number.isInteger(n) || n < 1 || n > 1440)
     return $localize`:@@my-work.rule.error.interval:Check every 1 to 1440 minutes`;
-  if (!r.workflowId) return $localize`:@@my-work.rule.error.workflow:Choose the workflow to propose`;
+  if (!r.workflowId)
+    return $localize`:@@my-work.rule.error.workflow:Choose the workflow to propose`;
   return null;
 }
 

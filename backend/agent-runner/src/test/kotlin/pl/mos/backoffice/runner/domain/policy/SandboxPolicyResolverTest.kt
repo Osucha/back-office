@@ -266,7 +266,7 @@ class PatternsTest {
     @Test
     fun `git hosts are taken from https and scp-style urls`() {
         assertThat(HostPatterns.hostOf("https://gitlab.example.com/group/shop.git")).isEqualTo("gitlab.example.com")
-        assertThat(HostPatterns.hostOf("https://oauth2:token@gitlab.example.com:8443/g/p.git")).isEqualTo("gitlab.example.com:8443")
+        assertThat(HostPatterns.hostOf("https://oauth2:token@gitlab.example.com:8443/g/p.git")).isEqualTo("gitlab.example.com:8443")  // trufflehog:ignore (test fixture)
         assertThat(HostPatterns.hostOf("git@github.com:org/repo.git")).isEqualTo("github.com")
         assertThat(HostPatterns.hostOf(null)).isNull()
     }

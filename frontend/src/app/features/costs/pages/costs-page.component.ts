@@ -329,12 +329,56 @@ const VIRTUAL_FROM = 100;
           >
             <thead>
               <tr>
-                <th nzShowSort [boSort]="sort" boSortKey="occurredAt" nzWidth="166px" i18n="@@costs.ledger.when">When</th>
-                <th nzShowSort [boSort]="sort" boSortKey="model" i18n="@@costs.ledger.model">Model</th>
-                <th nzShowSort [boSort]="sort" boSortKey="kind" nzWidth="276px" i18n="@@costs.ledger.work">Work</th>
-                <th nzShowSort [boSort]="sort" boSortKey="tokens" nzWidth="186px" i18n="@@costs.ledger.tokens">Tokens</th>
-                <th nzShowSort [boSort]="sort" boSortKey="duration" nzWidth="106px" nzAlign="right" i18n="@@costs.ledger.duration">Duration</th>
-                <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="116px" nzAlign="right" i18n="@@costs.ledger.cost">Cost</th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="occurredAt"
+                  nzWidth="166px"
+                  i18n="@@costs.ledger.when"
+                >
+                  When
+                </th>
+                <th nzShowSort [boSort]="sort" boSortKey="model" i18n="@@costs.ledger.model">
+                  Model
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="kind"
+                  nzWidth="276px"
+                  i18n="@@costs.ledger.work"
+                >
+                  Work
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="tokens"
+                  nzWidth="186px"
+                  i18n="@@costs.ledger.tokens"
+                >
+                  Tokens
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="duration"
+                  nzWidth="106px"
+                  nzAlign="right"
+                  i18n="@@costs.ledger.duration"
+                >
+                  Duration
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="cost"
+                  nzWidth="116px"
+                  nzAlign="right"
+                  i18n="@@costs.ledger.cost"
+                >
+                  Cost
+                </th>
               </tr>
             </thead>
             <tbody>

@@ -25,7 +25,12 @@ import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directiv
 import { tableSort } from '../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { LibraryNavComponent } from '../components/library-nav.component';
-import { SOURCE_KEY_PATTERN, emptySource, sourceInputOf, sourceProblems } from '../data/library-sources';
+import {
+  SOURCE_KEY_PATTERN,
+  emptySource,
+  sourceInputOf,
+  sourceProblems,
+} from '../data/library-sources';
 
 /**
  * Library: sources (ADR 0043). Git repositories with standards, templates or reference material that steps of every
@@ -85,11 +90,36 @@ import { SOURCE_KEY_PATTERN, emptySource, sourceInputOf, sourceProblems } from '
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.sources.col.source">Source</th>
-              <th nzShowSort [boSort]="sort" boSortKey="purpose" i18n="@@library.sources.col.purpose">Purpose</th>
-              <th nzShowSort [boSort]="sort" boSortKey="repository" i18n="@@library.sources.col.repository">Repository</th>
-              <th nzShowSort [boSort]="sort" boSortKey="inJob" i18n="@@library.sources.col.inJob">In a job</th>
-              <th nzShowSort [boSort]="sort" boSortKey="changed" i18n="@@library.sources.col.changed">Changed</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.sources.col.source">
+                Source
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="purpose"
+                i18n="@@library.sources.col.purpose"
+              >
+                Purpose
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="repository"
+                i18n="@@library.sources.col.repository"
+              >
+                Repository
+              </th>
+              <th nzShowSort [boSort]="sort" boSortKey="inJob" i18n="@@library.sources.col.inJob">
+                In a job
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="changed"
+                i18n="@@library.sources.col.changed"
+              >
+                Changed
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -246,7 +276,13 @@ import { SOURCE_KEY_PATTERN, emptySource, sourceInputOf, sourceProblems } from '
                   Save
                 </button>
                 @if (editing(); as s) {
-                  <button nz-button nzDanger type="button" (click)="remove(s)" i18n="@@library.sources.form.delete">
+                  <button
+                    nz-button
+                    nzDanger
+                    type="button"
+                    (click)="remove(s)"
+                    i18n="@@library.sources.form.delete"
+                  >
                     Delete
                   </button>
                 }

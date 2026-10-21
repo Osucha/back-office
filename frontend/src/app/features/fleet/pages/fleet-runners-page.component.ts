@@ -127,13 +127,64 @@ import { revokeConsequences, runnerBaton } from '../data/fleet-view';
         <nz-table #t [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@fleet.runners.col.runner">Runner</th>
-              <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="140px" i18n="@@fleet.runners.col.state">State</th>
-              <th nzShowSort [boSort]="sort" boSortKey="pool" nzWidth="120px" i18n="@@fleet.runners.col.pool">Pool</th>
-              <th nzShowSort [boSort]="sort" boSortKey="version" nzWidth="106px" i18n="@@fleet.runners.col.version">Version</th>
-              <th nzShowSort [boSort]="sort" boSortKey="backends" i18n="@@fleet.runners.col.backends">Backends and runtime classes</th>
-              <th nzShowSort [boSort]="sort" boSortKey="jobs" nzWidth="106px" nzAlign="right" i18n="@@fleet.runners.col.jobs">Jobs</th>
-              <th nzShowSort [boSort]="sort" boSortKey="lastSeen" nzWidth="126px" nzAlign="right" i18n="@@fleet.runners.col.lastSeen">Last seen</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@fleet.runners.col.runner">
+                Runner
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="state"
+                nzWidth="140px"
+                i18n="@@fleet.runners.col.state"
+              >
+                State
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="pool"
+                nzWidth="120px"
+                i18n="@@fleet.runners.col.pool"
+              >
+                Pool
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="version"
+                nzWidth="106px"
+                i18n="@@fleet.runners.col.version"
+              >
+                Version
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="backends"
+                i18n="@@fleet.runners.col.backends"
+              >
+                Backends and runtime classes
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="jobs"
+                nzWidth="106px"
+                nzAlign="right"
+                i18n="@@fleet.runners.col.jobs"
+              >
+                Jobs
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="lastSeen"
+                nzWidth="126px"
+                nzAlign="right"
+                i18n="@@fleet.runners.col.lastSeen"
+              >
+                Last seen
+              </th>
               <th nzWidth="90px" nzAlign="right">
                 <span class="sr-only" i18n="@@fleet.pools.col.actions">Actions</span>
               </th>

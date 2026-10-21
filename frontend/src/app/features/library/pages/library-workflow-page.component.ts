@@ -201,11 +201,51 @@ const TABS = ['performance', 'graph', 'versions', 'projects'] as const;
             <nz-table [nzData]="versionRows()" [nzShowPagination]="false" nzSize="middle">
               <thead>
                 <tr>
-                  <th nzShowSort [boSort]="versionSort" boSortKey="version" nzWidth="96px" i18n="@@library.workflow.col.version">Version</th>
-                  <th nzShowSort [boSort]="versionSort" boSortKey="changes" i18n="@@library.workflow.col.changes">What changed</th>
-                  <th nzShowSort [boSort]="versionSort" boSortKey="nodes" nzWidth="96px" nzAlign="right" i18n="@@library.workflow.col.nodes">Steps</th>
-                  <th nzShowSort [boSort]="versionSort" boSortKey="source" nzWidth="200px" i18n="@@library.workflow.col.source">Published from</th>
-                  <th nzShowSort [boSort]="versionSort" boSortKey="published" nzWidth="210px" i18n="@@library.workflow.col.published">Published</th>
+                  <th
+                    nzShowSort
+                    [boSort]="versionSort"
+                    boSortKey="version"
+                    nzWidth="96px"
+                    i18n="@@library.workflow.col.version"
+                  >
+                    Version
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="versionSort"
+                    boSortKey="changes"
+                    i18n="@@library.workflow.col.changes"
+                  >
+                    What changed
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="versionSort"
+                    boSortKey="nodes"
+                    nzWidth="96px"
+                    nzAlign="right"
+                    i18n="@@library.workflow.col.nodes"
+                  >
+                    Steps
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="versionSort"
+                    boSortKey="source"
+                    nzWidth="200px"
+                    i18n="@@library.workflow.col.source"
+                  >
+                    Published from
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="versionSort"
+                    boSortKey="published"
+                    nzWidth="210px"
+                    i18n="@@library.workflow.col.published"
+                  >
+                    Published
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -250,10 +290,41 @@ const TABS = ['performance', 'graph', 'versions', 'projects'] as const;
               <nz-table [nzData]="adoptionRows()" [nzShowPagination]="false" nzSize="middle">
                 <thead>
                   <tr>
-                    <th nzShowSort [boSort]="adoptionSort" boSortKey="project" nzWidth="136px" i18n="@@library.workflow.col.project">Project</th>
-                    <th nzShowSort [boSort]="adoptionSort" boSortKey="workflow" i18n="@@library.workflow.col.workflow">Workflow</th>
-                    <th nzShowSort [boSort]="adoptionSort" boSortKey="follows" nzWidth="260px" i18n="@@library.workflow.col.follows">Follows</th>
-                    <th nzShowSort [boSort]="adoptionSort" boSortKey="state" nzWidth="110px" i18n="@@library.workflow.col.state">State</th>
+                    <th
+                      nzShowSort
+                      [boSort]="adoptionSort"
+                      boSortKey="project"
+                      nzWidth="136px"
+                      i18n="@@library.workflow.col.project"
+                    >
+                      Project
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="adoptionSort"
+                      boSortKey="workflow"
+                      i18n="@@library.workflow.col.workflow"
+                    >
+                      Workflow
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="adoptionSort"
+                      boSortKey="follows"
+                      nzWidth="260px"
+                      i18n="@@library.workflow.col.follows"
+                    >
+                      Follows
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="adoptionSort"
+                      boSortKey="state"
+                      nzWidth="110px"
+                      i18n="@@library.workflow.col.state"
+                    >
+                      State
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

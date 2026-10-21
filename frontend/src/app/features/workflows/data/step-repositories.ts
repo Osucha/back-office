@@ -41,7 +41,9 @@ export function ownEditorKeys(
         k === STEP_REPOSITORIES_KEY ||
         (!!v &&
           typeof v === 'object' &&
-          ['repositories', 'workspace'].includes(String((v as Record<string, unknown>)['x-editor']))),
+          ['repositories', 'workspace'].includes(
+            String((v as Record<string, unknown>)['x-editor']),
+          )),
     )
     .map(([k]) => k);
 }
@@ -73,7 +75,9 @@ export function withStepRepositories(
   if (list === null) delete next[STEP_REPOSITORIES_KEY];
   else
     next[STEP_REPOSITORIES_KEY] = list.map((r) =>
-      isLibrary(r) ? { key: r.key, access: 'READ', library: true } : { key: r.key, access: r.access },
+      isLibrary(r)
+        ? { key: r.key, access: 'READ', library: true }
+        : { key: r.key, access: r.access },
     );
   return Object.keys(next).length ? next : undefined;
 }

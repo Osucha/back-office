@@ -24,7 +24,13 @@ export type Project = S['Project'];
 /** One git repository of a project (ADR 0034); a project has zero or more. */
 export type ProjectRepository = S['ProjectRepository'];
 export type RepositoryPurpose = S['RepositoryPurpose'];
-export const REPOSITORY_PURPOSES: RepositoryPurpose[] = ['SOURCE', 'DOCS', 'STANDARDS', 'TEMPLATES', 'OTHER'];
+export const REPOSITORY_PURPOSES: RepositoryPurpose[] = [
+  'SOURCE',
+  'DOCS',
+  'STANDARDS',
+  'TEMPLATES',
+  'OTHER',
+];
 /** Git access level of a runner job / of one job repository (ADR 0031). */
 export type GitAccess = S['GitAccess'];
 /** What a runner step did in one repository (ADR 0034). */

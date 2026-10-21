@@ -1,4 +1,9 @@
-import type { EvalTask, ExecutionTarget, ModelProfile, RunnerTarget } from '../../../../core/api/types';
+import type {
+  EvalTask,
+  ExecutionTarget,
+  ModelProfile,
+  RunnerTarget,
+} from '../../../../core/api/types';
 
 /** The part of the benchmark form the ADR 0048 rules look at. */
 export interface LoginRuleForm {

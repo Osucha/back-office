@@ -147,7 +147,9 @@ export interface PaletteDrop {
                 [attr.stroke]="r.color"
                 [attr.fill]="r.color"
               />
-              <text class="ws-label" [attr.x]="r.x + 12" [attr.y]="r.y + 18" [attr.fill]="r.color">{{ r.name }}</text>
+              <text class="ws-label" [attr.x]="r.x + 12" [attr.y]="r.y + 18" [attr.fill]="r.color">
+                {{ r.name }}
+              </text>
             }
           </g>
         </svg>
@@ -471,7 +473,9 @@ export class WorkflowCanvasComponent {
   });
 
   /** ADR 0044: run workspaces drawn around their steps (flow coordinates). */
-  readonly regions = computed(() => workspaceRegions(this.definition(), this.rects(), this.workspaces()));
+  readonly regions = computed(() =>
+    workspaceRegions(this.definition(), this.rects(), this.workspaces()),
+  );
   readonly regionTransform = computed(() => {
     const v = this.viewport();
     return `translate(${v.x} ${v.y}) scale(${v.zoom})`;

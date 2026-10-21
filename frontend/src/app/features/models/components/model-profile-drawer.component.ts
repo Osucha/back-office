@@ -101,7 +101,8 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
               <div class="test-title" i18n="@@models.drawer.test">Test profile</div>
               @if (login()) {
                 <div class="test-sub" i18n="@@models.drawer.loginTestSub">
-                  Checks that your personal runner uses your Claude Code login and is online; no model is called.
+                  Checks that your personal runner uses your Claude Code login and is online; no
+                  model is called.
                 </div>
               } @else {
                 <div class="test-sub" i18n="@@models.drawer.testSub">
@@ -176,7 +177,9 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
-          <nz-form-label nzFor="mp-runtime" i18n="@@models.drawer.runtime">Runs through</nz-form-label>
+          <nz-form-label nzFor="mp-runtime" i18n="@@models.drawer.runtime"
+            >Runs through</nz-form-label
+          >
           <nz-form-control [nzExtra]="login() ? text.loginRuntimeHint : text.apiRuntimeHint">
             <nz-select id="mp-runtime" formControlName="runtime">
               <nz-option nzValue="API" [nzLabel]="text.runtimeApi" />
@@ -208,7 +211,9 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
           </nz-form-item>
           @if (connectionsOfType().length && !login()) {
             <nz-form-item>
-              <nz-form-label nzFor="mp-connection" i18n="@@models.drawer.connection">Connection</nz-form-label>
+              <nz-form-label nzFor="mp-connection" i18n="@@models.drawer.connection"
+                >Connection</nz-form-label
+              >
               <nz-form-control
                 nzExtra="Which connection of this provider type serves the model (LLM providers)."
                 i18n-nzExtra="@@models.drawer.connectionHint"
@@ -244,9 +249,10 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
 
         @if (login()) {
           <p class="login-note" role="note" i18n="@@models.drawer.loginNote">
-            Claude Code runs on your personal runner, signed in with your own Claude subscription (My account: personal
-            runner with Claude Code login). Benchmarks use it for coding tasks only, with the personal runner and the
-            Claude Code harness, never as the judge. Default options and pricing do not apply: nothing is billed.
+            Claude Code runs on your personal runner, signed in with your own Claude subscription
+            (My account: personal runner with Claude Code login). Benchmarks use it for coding tasks
+            only, with the personal runner and the Claude Code harness, never as the judge. Default
+            options and pricing do not apply: nothing is billed.
           </p>
         }
 
@@ -320,7 +326,7 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
               ></textarea>
             </nz-form-control>
           </nz-form-item>
-  
+
           <h3 class="sec">
             <ng-container i18n="@@models.drawer.pricing">Pricing</ng-container>
             <span class="sec-note" i18n="@@models.drawer.pricingNote">USD per million tokens</span>
@@ -355,7 +361,9 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzFor="mp-cr" i18n="@@models.drawer.cacheRead">Cache read</nz-form-label>
+              <nz-form-label nzFor="mp-cr" i18n="@@models.drawer.cacheRead"
+                >Cache read</nz-form-label
+              >
               <nz-form-control>
                 <nz-input-number
                   id="mp-cr"
@@ -623,14 +631,18 @@ export class ModelProfileDrawerComponent {
 
   connectionOption(c: LlmProvider): string {
     const label = `${c.name} (${c.key})`;
-    return c.usable ? label : $localize`:@@models.drawer.connectionNotReady:${label}:connection: - not ready`;
+    return c.usable
+      ? label
+      : $localize`:@@models.drawer.connectionNotReady:${label}:connection: - not ready`;
   }
 
   /** Database connections of the selected provider type. */
   readonly connectionsOfType = computed(() => {
     this.status();
     const type = this.form.controls.provider.value;
-    return this.connections().filter((c) => c.source === 'DATABASE' && c.provider === type && !!c.key);
+    return this.connections().filter(
+      (c) => c.source === 'DATABASE' && c.provider === type && !!c.key,
+    );
   });
 
   providerOption(p: ProviderStatus): string {
@@ -705,15 +717,22 @@ export class ModelProfileDrawerComponent {
       const providers = this.providers();
       untracked(() => this.reset(p, providers));
     });
-    this.form.controls.runtime.valueChanges.pipe(takeUntilDestroyed(destroyRef)).subscribe((runtime) => {
-      if (runtime !== 'CLAUDE_CODE_LOGIN') return;
-      // nothing is billed and Claude Code runs Anthropic models only
-      this.form.patchValue({
-        provider: 'ANTHROPIC',
-        connection: '',
-        pricing: { inputPerMTok: 0, outputPerMTok: 0, cacheReadPerMTok: null, cacheWritePerMTok: null },
+    this.form.controls.runtime.valueChanges
+      .pipe(takeUntilDestroyed(destroyRef))
+      .subscribe((runtime) => {
+        if (runtime !== 'CLAUDE_CODE_LOGIN') return;
+        // nothing is billed and Claude Code runs Anthropic models only
+        this.form.patchValue({
+          provider: 'ANTHROPIC',
+          connection: '',
+          pricing: {
+            inputPerMTok: 0,
+            outputPerMTok: 0,
+            cacheReadPerMTok: null,
+            cacheWritePerMTok: null,
+          },
+        });
       });
-    });
     this.form.controls.options.controls.extra.valueChanges
       .pipe(takeUntilDestroyed(destroyRef))
       .subscribe((v) => {
@@ -806,7 +825,10 @@ export class ModelProfileDrawerComponent {
       runtime: v.runtime,
       ref: {
         provider: login ? 'ANTHROPIC' : v.provider,
-        connection: !login && this.connectionsOfType().some((c) => c.key === v.connection) ? v.connection : null,
+        connection:
+          !login && this.connectionsOfType().some((c) => c.key === v.connection)
+            ? v.connection
+            : null,
         modelId: v.modelId.trim(),
         options: {
           temperature: v.options.temperature,

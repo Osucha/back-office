@@ -262,10 +262,39 @@ const TABS = [
               <nz-table [nzData]="workflowRows()" [nzShowPagination]="false" nzSize="middle">
                 <thead>
                   <tr>
-                    <th nzShowSort [boSort]="workflowSort" boSortKey="name" i18n="@@projects.detail.workflows.workflow">Workflow</th>
-                    <th nzShowSort [boSort]="workflowSort" boSortKey="triggers" nzWidth="186px" i18n="@@projects.detail.workflows.triggers">Triggers</th>
-                    <th nzShowSort [boSort]="workflowSort" boSortKey="state" nzWidth="136px" i18n="@@projects.detail.workflows.state">State</th>
-                    <th nzShowSort [boSort]="workflowSort" boSortKey="lastChange" nzWidth="220px" i18n="@@projects.detail.workflows.lastChange">
+                    <th
+                      nzShowSort
+                      [boSort]="workflowSort"
+                      boSortKey="name"
+                      i18n="@@projects.detail.workflows.workflow"
+                    >
+                      Workflow
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="workflowSort"
+                      boSortKey="triggers"
+                      nzWidth="186px"
+                      i18n="@@projects.detail.workflows.triggers"
+                    >
+                      Triggers
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="workflowSort"
+                      boSortKey="state"
+                      nzWidth="136px"
+                      i18n="@@projects.detail.workflows.state"
+                    >
+                      State
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="workflowSort"
+                      boSortKey="lastChange"
+                      nzWidth="220px"
+                      i18n="@@projects.detail.workflows.lastChange"
+                    >
                       Last change
                     </th>
                     <th nzWidth="230px" nzAlign="right">
@@ -435,7 +464,10 @@ const TABS = [
           <nz-tab nzTitle="Sources" i18n-nzTitle="@@projects.detail.tab.sources">
             <ng-template nz-tab>
               <div class="two-col">
-                <nz-card nzTitle="Project repositories" i18n-nzTitle="@@projects.detail.sources.repositories">
+                <nz-card
+                  nzTitle="Project repositories"
+                  i18n-nzTitle="@@projects.detail.sources.repositories"
+                >
                   <app-project-form
                     [project]="p"
                     sections="sources"
@@ -934,7 +966,8 @@ export class ProjectDetailPageComponent {
     {
       name: (w) => w.name,
       triggers: (w) => this.triggerText(w),
-      state: (w) => (w.draft ? this.text.draft : w.enabled === false ? this.text.disabled : this.text.enabled),
+      state: (w) =>
+        w.draft ? this.text.draft : w.enabled === false ? this.text.disabled : this.text.enabled,
       lastChange: (w) => w.updatedAt,
     },
     { param: 'workflowSort' },

@@ -10,7 +10,12 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
-import type { LlmProvider, LlmProviderInput, Provider, ProviderModels } from '../../../core/api/types';
+import type {
+  LlmProvider,
+  LlmProviderInput,
+  Provider,
+  ProviderModels,
+} from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { BreadcrumbService } from '../../../core/ui/relay/breadcrumb.service';
@@ -22,7 +27,13 @@ import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directiv
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
 import { tableSort } from '../../../core/ui/relay/table-sort';
 import { providerLabel } from '../data/model-format';
-import { PROVIDER_TYPES, PRESETS, connectionProblems, emptyConnection, type ConnectionPreset } from '../data/llm-providers';
+import {
+  PROVIDER_TYPES,
+  PRESETS,
+  connectionProblems,
+  emptyConnection,
+  type ConnectionPreset,
+} from '../data/llm-providers';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 
 /**
@@ -79,14 +90,46 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
           i18n-detail="@@models.providers.empty.detail"
         />
       } @else {
-        <nz-table #t [nzData]="rows()" [nzLoading]="!loaded()" [nzShowPagination]="false" nzSize="middle" class="relay-table">
+        <nz-table
+          #t
+          [nzData]="rows()"
+          [nzLoading]="!loaded()"
+          [nzShowPagination]="false"
+          nzSize="middle"
+          class="relay-table"
+        >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@models.providers.col.connection">Connection</th>
-              <th nzShowSort [boSort]="sort" boSortKey="type" i18n="@@models.providers.col.type">Type</th>
-              <th nzShowSort [boSort]="sort" boSortKey="endpoint" i18n="@@models.providers.col.endpoint">Endpoint</th>
-              <th nzShowSort [boSort]="sort" boSortKey="state" i18n="@@models.providers.col.state">State</th>
-              <th nzShowSort [boSort]="sort" boSortKey="changed" i18n="@@models.providers.col.changed">Changed</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="name"
+                i18n="@@models.providers.col.connection"
+              >
+                Connection
+              </th>
+              <th nzShowSort [boSort]="sort" boSortKey="type" i18n="@@models.providers.col.type">
+                Type
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="endpoint"
+                i18n="@@models.providers.col.endpoint"
+              >
+                Endpoint
+              </th>
+              <th nzShowSort [boSort]="sort" boSortKey="state" i18n="@@models.providers.col.state">
+                State
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="changed"
+                i18n="@@models.providers.col.changed"
+              >
+                Changed
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -97,7 +140,9 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                   @if (p.key) {
                     <div class="mono muted small">{{ p.key }}</div>
                   } @else {
-                    <div class="muted small" i18n="@@models.providers.fromEnvironment">environment variables (read only)</div>
+                    <div class="muted small" i18n="@@models.providers.fromEnvironment">
+                      environment variables (read only)
+                    </div>
                   }
                 </td>
                 <td>{{ typeName(p.provider) }}</td>
@@ -108,13 +153,21 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                   } @else if (!p.enabled) {
                     <span class="muted" i18n="@@models.providers.state.disabled">disabled</span>
                   } @else {
-                    <span class="bad" i18n="@@models.providers.state.incomplete">missing key or URL</span>
+                    <span class="bad" i18n="@@models.providers.state.incomplete"
+                      >missing key or URL</span
+                    >
                   }
                   @if (p.hasApiKey) {
-                    <span class="muted small" i18n="@@models.providers.state.keySet"> · key set</span>
+                    <span class="muted small" i18n="@@models.providers.state.keySet">
+                      · key set</span
+                    >
                   }
                   @if (p.requestsPerDay) {
-                    <div class="small" [class.bad]="(p.requestsToday ?? 0) >= p.requestsPerDay" [class.muted]="(p.requestsToday ?? 0) < p.requestsPerDay">
+                    <div
+                      class="small"
+                      [class.bad]="(p.requestsToday ?? 0) >= p.requestsPerDay"
+                      [class.muted]="(p.requestsToday ?? 0) < p.requestsPerDay"
+                    >
                       {{ todayLabel(p) }}
                     </div>
                   }
@@ -138,14 +191,24 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                 <div class="presets">
                   <span class="muted small" i18n="@@models.providers.presets">Quick start:</span>
                   @for (preset of presets; track preset.id) {
-                    <button nz-button nzSize="small" type="button" (click)="applyPreset(preset)">{{ preset.label }}</button>
+                    <button nz-button nzSize="small" type="button" (click)="applyPreset(preset)">
+                      {{ preset.label }}
+                    </button>
                   }
                 </div>
               }
               <nz-form-item>
-                <nz-form-label nzRequired nzFor="lp-type" i18n="@@models.providers.form.type">Type</nz-form-label>
+                <nz-form-label nzRequired nzFor="lp-type" i18n="@@models.providers.form.type"
+                  >Type</nz-form-label
+                >
                 <nz-form-control>
-                  <nz-select nzId="lp-type" name="provider" [ngModel]="d.provider" (ngModelChange)="patch({ provider: $event })" [nzDisabled]="!!editing() || !canManage()">
+                  <nz-select
+                    nzId="lp-type"
+                    name="provider"
+                    [ngModel]="d.provider"
+                    (ngModelChange)="patch({ provider: $event })"
+                    [nzDisabled]="!!editing() || !canManage()"
+                  >
                     @for (t of types; track t) {
                       <nz-option [nzValue]="t" [nzLabel]="typeName(t)" />
                     }
@@ -154,29 +217,64 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
               </nz-form-item>
               <div class="grid">
                 <nz-form-item>
-                  <nz-form-label nzRequired nzFor="lp-name" i18n="@@models.providers.form.name">Name</nz-form-label>
+                  <nz-form-label nzRequired nzFor="lp-name" i18n="@@models.providers.form.name"
+                    >Name</nz-form-label
+                  >
                   <nz-form-control>
-                    <input nz-input id="lp-name" name="name" [ngModel]="d.name" (ngModelChange)="patch({ name: $event })" [readOnly]="!canManage()" />
+                    <input
+                      nz-input
+                      id="lp-name"
+                      name="name"
+                      [ngModel]="d.name"
+                      (ngModelChange)="patch({ name: $event })"
+                      [readOnly]="!canManage()"
+                    />
                   </nz-form-control>
                 </nz-form-item>
                 <nz-form-item>
-                  <nz-form-label nzRequired nzFor="lp-key" i18n="@@models.providers.form.key">Key</nz-form-label>
+                  <nz-form-label nzRequired nzFor="lp-key" i18n="@@models.providers.form.key"
+                    >Key</nz-form-label
+                  >
                   <nz-form-control
                     nzExtra="Model profiles refer to it; it cannot change."
                     i18n-nzExtra="@@models.providers.form.keyHint"
                   >
-                    <input nz-input id="lp-key" name="key" class="mono" [ngModel]="d.key" (ngModelChange)="patch({ key: $event })" [readOnly]="!!editing() || !canManage()" />
+                    <input
+                      nz-input
+                      id="lp-key"
+                      name="key"
+                      class="mono"
+                      [ngModel]="d.key"
+                      (ngModelChange)="patch({ key: $event })"
+                      [readOnly]="!!editing() || !canManage()"
+                    />
                   </nz-form-control>
                 </nz-form-item>
               </div>
               <nz-form-item>
-                <nz-form-label [nzRequired]="urlRequired()" nzFor="lp-url" i18n="@@models.providers.form.baseUrl">Base URL</nz-form-label>
+                <nz-form-label
+                  [nzRequired]="urlRequired()"
+                  nzFor="lp-url"
+                  i18n="@@models.providers.form.baseUrl"
+                  >Base URL</nz-form-label
+                >
                 <nz-form-control [nzExtra]="urlHint()">
-                  <input nz-input id="lp-url" name="baseUrl" class="mono" [placeholder]="defaultUrl(d.provider)" [ngModel]="d.baseUrl ?? ''" (ngModelChange)="patch({ baseUrl: $event || null })" [readOnly]="!canManage()" />
+                  <input
+                    nz-input
+                    id="lp-url"
+                    name="baseUrl"
+                    class="mono"
+                    [placeholder]="defaultUrl(d.provider)"
+                    [ngModel]="d.baseUrl ?? ''"
+                    (ngModelChange)="patch({ baseUrl: $event || null })"
+                    [readOnly]="!canManage()"
+                  />
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="lp-apikey" i18n="@@models.providers.form.apiKey">API key</nz-form-label>
+                <nz-form-label nzFor="lp-apikey" i18n="@@models.providers.form.apiKey"
+                  >API key</nz-form-label
+                >
                 <nz-form-control [nzExtra]="keyHint()">
                   <input
                     nz-input
@@ -194,32 +292,67 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
               </nz-form-item>
               @if (editing()?.hasApiKey && canManage()) {
                 <label class="small"
-                  ><input type="checkbox" name="clear" [ngModel]="d.clearApiKey" (ngModelChange)="patch({ clearApiKey: $event })" />
+                  ><input
+                    type="checkbox"
+                    name="clear"
+                    [ngModel]="d.clearApiKey"
+                    (ngModelChange)="patch({ clearApiKey: $event })"
+                  />
                   <span i18n="@@models.providers.form.clearKey"> Remove the stored key</span></label
                 >
               }
               <div class="grid">
                 <nz-form-item>
-                  <nz-form-label nzFor="lp-rpm" i18n="@@models.providers.form.rpm">Requests per minute</nz-form-label>
+                  <nz-form-label nzFor="lp-rpm" i18n="@@models.providers.form.rpm"
+                    >Requests per minute</nz-form-label
+                  >
                   <nz-form-control>
-                    <nz-input-number nzId="lp-rpm" name="rpm" [nzMin]="1" [nzPrecision]="0" style="width: 100%" [ngModel]="d.requestsPerMinute" (ngModelChange)="patch({ requestsPerMinute: $event || null })" [nzDisabled]="!canManage()" />
+                    <nz-input-number
+                      nzId="lp-rpm"
+                      name="rpm"
+                      [nzMin]="1"
+                      [nzPrecision]="0"
+                      style="width: 100%"
+                      [ngModel]="d.requestsPerMinute"
+                      (ngModelChange)="patch({ requestsPerMinute: $event || null })"
+                      [nzDisabled]="!canManage()"
+                    />
                   </nz-form-control>
                 </nz-form-item>
                 <nz-form-item>
-                  <nz-form-label nzFor="lp-rpd" i18n="@@models.providers.form.rpd">Requests per day</nz-form-label>
+                  <nz-form-label nzFor="lp-rpd" i18n="@@models.providers.form.rpd"
+                    >Requests per day</nz-form-label
+                  >
                   <nz-form-control>
-                    <nz-input-number nzId="lp-rpd" name="rpd" [nzMin]="1" [nzPrecision]="0" style="width: 100%" [ngModel]="d.requestsPerDay" (ngModelChange)="patch({ requestsPerDay: $event || null })" [nzDisabled]="!canManage()" />
+                    <nz-input-number
+                      nzId="lp-rpd"
+                      name="rpd"
+                      [nzMin]="1"
+                      [nzPrecision]="0"
+                      style="width: 100%"
+                      [ngModel]="d.requestsPerDay"
+                      (ngModelChange)="patch({ requestsPerDay: $event || null })"
+                      [nzDisabled]="!canManage()"
+                    />
                   </nz-form-control>
                 </nz-form-item>
               </div>
               <p class="muted small limits-hint" i18n="@@models.providers.form.limitsHint">
-                Optional. Back Office counts every request through this connection (steps, benchmarks, agents) and stops at
-                the limit instead of letting the provider refuse; the day ends at 00:00 UTC. Empty = no limit.
+                Optional. Back Office counts every request through this connection (steps,
+                benchmarks, agents) and stops at the limit instead of letting the provider refuse;
+                the day ends at 00:00 UTC. Empty = no limit.
               </p>
               <nz-form-item>
                 <nz-form-control>
-                  <nz-switch name="enabled" [ngModel]="d.enabled !== false" (ngModelChange)="patch({ enabled: $event })" [nzDisabled]="!canManage()" />
-                  <span class="muted small switch-label" i18n="@@models.providers.form.enabled">Enabled</span>
+                  <nz-switch
+                    name="enabled"
+                    [ngModel]="d.enabled !== false"
+                    (ngModelChange)="patch({ enabled: $event })"
+                    [nzDisabled]="!canManage()"
+                  />
+                  <span class="muted small switch-label" i18n="@@models.providers.form.enabled"
+                    >Enabled</span
+                  >
                 </nz-form-control>
               </nz-form-item>
               @for (p of problems(); track p) {
@@ -227,22 +360,58 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
               }
               @if (canManage()) {
                 <div class="actions">
-                  <button nz-button nzType="primary" type="submit" [nzLoading]="saving()" [disabled]="problems().length > 0" i18n="@@models.providers.form.save">Save</button>
+                  <button
+                    nz-button
+                    nzType="primary"
+                    type="submit"
+                    [nzLoading]="saving()"
+                    [disabled]="problems().length > 0"
+                    i18n="@@models.providers.form.save"
+                  >
+                    Save
+                  </button>
                   @if (editing(); as e) {
-                    <button nz-button type="button" [nzLoading]="testing()" (click)="test(e)" i18n="@@models.providers.form.test">Test and list models</button>
-                    <button nz-button nzDanger type="button" (click)="remove(e)" i18n="@@models.providers.form.delete">Delete</button>
+                    <button
+                      nz-button
+                      type="button"
+                      [nzLoading]="testing()"
+                      (click)="test(e)"
+                      i18n="@@models.providers.form.test"
+                    >
+                      Test and list models
+                    </button>
+                    <button
+                      nz-button
+                      nzDanger
+                      type="button"
+                      (click)="remove(e)"
+                      i18n="@@models.providers.form.delete"
+                    >
+                      Delete
+                    </button>
                   }
                 </div>
               }
             </form>
           } @else if (viewing(); as v) {
             <p class="muted" i18n="@@models.providers.envInfo">
-              This endpoint comes from the server's environment variables and is used when no connection of its type
-              exists. Add a connection here to manage it in Back Office instead.
+              This endpoint comes from the server's environment variables and is used when no
+              connection of its type exists. Add a connection here to manage it in Back Office
+              instead.
             </p>
-            <p class="mono small">{{ typeName(v.provider) }} · {{ v.baseUrl || defaultUrl(v.provider) }}</p>
+            <p class="mono small">
+              {{ typeName(v.provider) }} · {{ v.baseUrl || defaultUrl(v.provider) }}
+            </p>
             @if (canManage()) {
-              <button nz-button type="button" [nzLoading]="testing()" (click)="test(v)" i18n="@@models.providers.form.testEnv">Test and list models</button>
+              <button
+                nz-button
+                type="button"
+                [nzLoading]="testing()"
+                (click)="test(v)"
+                i18n="@@models.providers.form.testEnv"
+              >
+                Test and list models
+              </button>
             }
           }
           @if (models(); as m) {
@@ -353,7 +522,13 @@ export class LlmProvidersPageComponent {
   readonly problems = computed(() => {
     const d = this.draft();
     if (!d) return [];
-    return connectionProblems(d, this.items().filter((p) => p.key && p.id !== this.editing()?.id).map((p) => p.key!), !this.editing());
+    return connectionProblems(
+      d,
+      this.items()
+        .filter((p) => p.key && p.id !== this.editing()?.id)
+        .map((p) => p.key!),
+      !this.editing(),
+    );
   });
   readonly urlRequired = computed(() => {
     const t = this.draft()?.provider;
@@ -441,8 +616,15 @@ export class LlmProvidersPageComponent {
     this.viewing.set(null);
     this.editing.set(p);
     this.draft.set({
-      key: p.key ?? '', name: p.name, provider: p.provider, baseUrl: p.baseUrl ?? null, apiKey: null, clearApiKey: false, enabled: p.enabled,
-      requestsPerMinute: p.requestsPerMinute ?? null, requestsPerDay: p.requestsPerDay ?? null,
+      key: p.key ?? '',
+      name: p.name,
+      provider: p.provider,
+      baseUrl: p.baseUrl ?? null,
+      apiKey: null,
+      clearApiKey: false,
+      enabled: p.enabled,
+      requestsPerMinute: p.requestsPerMinute ?? null,
+      requestsPerDay: p.requestsPerDay ?? null,
     });
   }
 
@@ -460,8 +642,12 @@ export class LlmProvidersPageComponent {
 
   applyPreset(p: ConnectionPreset): void {
     this.patch({
-      provider: p.provider, name: p.label, key: p.id, baseUrl: p.baseUrl,
-      requestsPerMinute: p.requestsPerMinute ?? null, requestsPerDay: p.requestsPerDay ?? null,
+      provider: p.provider,
+      name: p.label,
+      key: p.id,
+      baseUrl: p.baseUrl,
+      requestsPerMinute: p.requestsPerMinute ?? null,
+      requestsPerDay: p.requestsPerDay ?? null,
     });
   }
 

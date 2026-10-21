@@ -13,10 +13,30 @@ describe('table sort', () => {
     expect(compareValues('a', 'B')).toBeLessThan(0);
     expect(compareValues(2, 10)).toBeLessThan(0);
     expect(compareValues(null, 1)).toBeGreaterThan(0);
-    expect(sortRows(rows, (r) => r.name, 'ascend').map((r) => r.name)).toEqual(['adam', 'Bartek', 'Ewa', 'Żaneta']);
-    expect(sortRows(rows, (r) => r.score, 'descend').map((r) => r.name)).toEqual(['Ewa', 'Żaneta', 'Bartek', 'adam']);
-    expect(sortRows(rows, (r) => r.score, 'ascend').map((r) => r.name)).toEqual(['Żaneta', 'Bartek', 'Ewa', 'adam']);
-    expect(sortRows(rows, (r) => r.at, 'descend').map((r) => r.name)).toEqual(['Bartek', 'Żaneta', 'adam', 'Ewa']);
+    expect(sortRows(rows, (r) => r.name, 'ascend').map((r) => r.name)).toEqual([
+      'adam',
+      'Bartek',
+      'Ewa',
+      'Żaneta',
+    ]);
+    expect(sortRows(rows, (r) => r.score, 'descend').map((r) => r.name)).toEqual([
+      'Ewa',
+      'Żaneta',
+      'Bartek',
+      'adam',
+    ]);
+    expect(sortRows(rows, (r) => r.score, 'ascend').map((r) => r.name)).toEqual([
+      'Żaneta',
+      'Bartek',
+      'Ewa',
+      'adam',
+    ]);
+    expect(sortRows(rows, (r) => r.at, 'descend').map((r) => r.name)).toEqual([
+      'Bartek',
+      'Żaneta',
+      'adam',
+      'Ewa',
+    ]);
     expect(sortRows(rows, (r) => r.name, null)).toEqual(rows);
   });
 
@@ -27,7 +47,9 @@ describe('table sort', () => {
   });
 
   it('keeps the state in memory without a router and ignores the reset of another header', () => {
-    const sort = TestBed.runInInjectionContext(() => tableSort<(typeof rows)[number]>({ name: (r) => r.name, score: (r) => r.score }));
+    const sort = TestBed.runInInjectionContext(() =>
+      tableSort<(typeof rows)[number]>({ name: (r) => r.name, score: (r) => r.score }),
+    );
     expect(sort.apply(rows)).toEqual(rows);
     sort.set('score', 'descend');
     sort.set('name', null);

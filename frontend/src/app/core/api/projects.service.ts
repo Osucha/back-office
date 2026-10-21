@@ -45,7 +45,11 @@ export class ProjectsApi {
 
   /** ADR 0036: "Add Spec Kit workflows"; errors are shown by the caller. */
   addSpecKitWorkflows(projectId: string): Observable<WorkflowDefinition[]> {
-    return this.http.post<WorkflowDefinition[]>(url('projects', projectId, 'spec-kit', 'workflows'), {}, silent());
+    return this.http.post<WorkflowDefinition[]>(
+      url('projects', projectId, 'spec-kit', 'workflows'),
+      {},
+      silent(),
+    );
   }
 
   // ---- CI entrypoints (entrypoint key -> workflow)

@@ -202,15 +202,70 @@ import {
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="holder" nzWidth="136px" i18n="@@evaluation.benchmarks.col.holder">Holder</th>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.benchmarks.col.benchmark">Benchmark</th>
-              <th nzShowSort [boSort]="sort" boSortKey="suite" nzWidth="170px" i18n="@@evaluation.benchmarks.col.suite">Suite</th>
-              <th nzShowSort [boSort]="sort" boSortKey="models" nzWidth="86px" nzAlign="right" i18n="@@evaluation.benchmarks.col.models">
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="holder"
+                nzWidth="136px"
+                i18n="@@evaluation.benchmarks.col.holder"
+              >
+                Holder
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="name"
+                i18n="@@evaluation.benchmarks.col.benchmark"
+              >
+                Benchmark
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="suite"
+                nzWidth="170px"
+                i18n="@@evaluation.benchmarks.col.suite"
+              >
+                Suite
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="models"
+                nzWidth="86px"
+                nzAlign="right"
+                i18n="@@evaluation.benchmarks.col.models"
+              >
                 Models
               </th>
-              <th nzShowSort [boSort]="sort" boSortKey="attempts" nzWidth="250px" i18n="@@evaluation.benchmarks.col.attempts">Attempts</th>
-              <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@evaluation.benchmarks.col.cost">Cost</th>
-              <th nzShowSort [boSort]="sort" boSortKey="created" nzWidth="190px" i18n="@@evaluation.benchmarks.col.created">Created</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="attempts"
+                nzWidth="250px"
+                i18n="@@evaluation.benchmarks.col.attempts"
+              >
+                Attempts
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="cost"
+                nzWidth="106px"
+                nzAlign="right"
+                i18n="@@evaluation.benchmarks.col.cost"
+              >
+                Cost
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="created"
+                nzWidth="190px"
+                i18n="@@evaluation.benchmarks.col.created"
+              >
+                Created
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -530,7 +585,9 @@ import {
         >
           <nz-icon nzType="caret-right" />
           @if (checksFailed()) {
-            <ng-container i18n="@@evaluation.benchmarks.form.startAnyway">Start anyway</ng-container>
+            <ng-container i18n="@@evaluation.benchmarks.form.startAnyway"
+              >Start anyway</ng-container
+            >
           } @else {
             <ng-container i18n="@@evaluation.benchmarks.form.createStart"
               >Create and start</ng-container
@@ -737,7 +794,9 @@ export class BenchmarksPageComponent {
   /** Whether the selected tasks (all of the suite when none is picked) include agent coding jobs. */
   codingSelected(): boolean {
     const picked = this.form.taskIds;
-    return this.suiteTasks().some((t) => t.kind === 'CODING_JOB' && (!picked.length || picked.includes(t.id!)));
+    return this.suiteTasks().some(
+      (t) => t.kind === 'CODING_JOB' && (!picked.length || picked.includes(t.id!)),
+    );
   }
 
   private target(): ExecutionTarget | undefined {
@@ -750,14 +809,19 @@ export class BenchmarksPageComponent {
    */
   warnings(): string[] {
     const out: string[] = [];
-    if (this.form.judgeModelProfileId && this.form.modelProfileIds.includes(this.form.judgeModelProfileId)) {
+    if (
+      this.form.judgeModelProfileId &&
+      this.form.modelProfileIds.includes(this.form.judgeModelProfileId)
+    ) {
       out.push(
         $localize`:@@evaluation.benchmarks.form.judgeIsCandidate:The judge is also a candidate: it would grade its own answers. Pick a judge that is not compared.`,
       );
     }
     const picked = this.form.taskIds;
     const samples = this.suiteTasks().filter(
-      (t) => (!picked.length || picked.includes(t.id!)) && /(^|[./@])example\.(com|org|net)([/:]|$)/i.test(t.repository?.url ?? ''),
+      (t) =>
+        (!picked.length || picked.includes(t.id!)) &&
+        /(^|[./@])example\.(com|org|net)([/:]|$)/i.test(t.repository?.url ?? ''),
     );
     if (samples.length) {
       const count = samples.length;
@@ -835,9 +899,12 @@ export class BenchmarksPageComponent {
 
   targetStatus(t: ExecutionTarget): string {
     if (!t.pools) return $localize`:@@evaluation.benchmarks.form.runnerNone:not set up`;
-    const online = icu($localize`:@@evaluation.benchmarks.form.runnerOnline:{count, plural, =0 {none online} one {# online} other {# online}}`, {
-      count: t.onlineRunners,
-    });
+    const online = icu(
+      $localize`:@@evaluation.benchmarks.form.runnerOnline:{count, plural, =0 {none online} one {# online} other {# online}}`,
+      {
+        count: t.onlineRunners,
+      },
+    );
     return t.localLogin
       ? $localize`:@@evaluation.benchmarks.form.runnerLocalLogin:${online}:status:, Claude Code login`
       : online;
@@ -858,7 +925,13 @@ export class BenchmarksPageComponent {
 
   /** ADR 0046: one tiny call per candidate and the judge; [then] gets whether all answered. */
   runChecks(then?: (allOk: boolean) => void): void {
-    const ids = [...new Set([...this.form.modelProfileIds, this.form.judgeModelProfileId].filter((x): x is string => !!x))];
+    const ids = [
+      ...new Set(
+        [...this.form.modelProfileIds, this.form.judgeModelProfileId].filter(
+          (x): x is string => !!x,
+        ),
+      ),
+    ];
     if (!ids.length) return;
     this.checking.set(true);
     this.api.preflight(ids).subscribe({

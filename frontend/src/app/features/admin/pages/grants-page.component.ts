@@ -201,8 +201,23 @@ import { matrixFor } from '../data/permission-matrix';
               >
                 <thead>
                   <tr>
-                    <th nzShowSort [boSort]="sort" boSortKey="module" nzWidth="156px" i18n="@@admin.grants.col.module">Module</th>
-                    <th nzShowSort [boSort]="sort" boSortKey="permission" i18n="@@admin.grants.col.permission">Permission</th>
+                    <th
+                      nzShowSort
+                      [boSort]="sort"
+                      boSortKey="module"
+                      nzWidth="156px"
+                      i18n="@@admin.grants.col.module"
+                    >
+                      Module
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="sort"
+                      boSortKey="permission"
+                      i18n="@@admin.grants.col.permission"
+                    >
+                      Permission
+                    </th>
                     <th nzWidth="230px" i18n="@@admin.grants.col.thisLevel">This level</th>
                   </tr>
                 </thead>

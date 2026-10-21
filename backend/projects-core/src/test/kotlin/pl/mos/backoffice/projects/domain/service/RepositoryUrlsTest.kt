@@ -26,7 +26,7 @@ class RepositoryUrlsTest {
             "https://gitlab.example.com/acme/app.git",
             "https://gitlab.example.com/acme/app",
             "https://GitLab.Example.com/acme/app/",
-            "https://ci-token:secret@gitlab.example.com/acme/app.git",
+            "https://ci-token:secret@gitlab.example.com/acme/app.git",  // trufflehog:ignore (test fixture)
             "ssh://git@gitlab.example.com:22/acme/app.git",
             "git@gitlab.example.com:acme/app.git",
             "https://gitlab.example.com:443/acme/app.git",
@@ -43,7 +43,7 @@ class RepositoryUrlsTest {
 
     @Test
     fun `an unknown URL is refused with the project repositories, without the credentials of the URL`() {
-        assertThatThrownBy { RepositoryUrls.match(project, CiContext(repositoryUrl = "https://bot:t0ken@gitlab.example.com/acme/web.git")) }
+        assertThatThrownBy { RepositoryUrls.match(project, CiContext(repositoryUrl = "https://bot:t0ken@gitlab.example.com/acme/web.git")) }  // trufflehog:ignore (test fixture)
             .isInstanceOf(ValidationException::class.java)
             .hasMessageContaining("https://gitlab.example.com/acme/web.git is not a repository of project SHOP")
             .hasMessageContaining("app: https://gitlab.example.com/acme/app.git, docs: git@gitlab.example.com:acme/docs.git")

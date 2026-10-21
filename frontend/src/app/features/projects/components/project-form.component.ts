@@ -43,223 +43,231 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
   template: `
     <form nz-form nzLayout="vertical" [formGroup]="form" (ngSubmit)="submit()">
       @if (sections() !== 'sources') {
-      <div class="grid">
-        <nz-form-item>
-          <nz-form-label nzFor="p-key" i18n="@@projects.form.keyOptional">Short code</nz-form-label>
-          <nz-form-control
-            [nzErrorTip]="keyTip"
-            [nzExtra]="project() ? text.keyRenameHint : text.keyHint"
-          >
-            <input
-              nz-input
-              id="p-key"
-              formControlName="key"
-              [placeholder]="project() ? examples.key : text.keyGenerated"
-              class="mono"
-              style="text-transform: uppercase"
-            />
-          </nz-form-control>
-        </nz-form-item>
-        <nz-form-item>
-          <nz-form-label nzRequired nzFor="p-name" i18n="@@projects.form.name">Name</nz-form-label>
-          <nz-form-control [nzErrorTip]="nameTip">
-            <input
-              nz-input
-              id="p-name"
-              formControlName="name"
-              placeholder="Shop API"
-              i18n-placeholder="@@projects.form.namePlaceholder"
-            />
-          </nz-form-control>
-        </nz-form-item>
-      </div>
-      <nz-form-item>
-        <nz-form-label nzFor="p-desc" i18n="@@projects.form.description">Description</nz-form-label>
-        <nz-form-control>
-          <textarea
-            nz-input
-            id="p-desc"
-            formControlName="description"
-            [nzAutosize]="{ minRows: 2, maxRows: 4 }"
-          ></textarea>
-        </nz-form-control>
-      </nz-form-item>
-
-      }
-      @if (sections() === 'all') {
-      <nz-divider
-        nzText="Repositories"
-        i18n-nzText="@@projects.form.repositories"
-        nzOrientation="left"
-        nzPlain
-      />
-      }
-      @if (sections() !== 'settings') {
-      <app-project-repositories-editor
-        [array]="form.controls.repositories"
-        [readonly]="readonly()"
-      />
-      }
-      @if (sections() !== 'sources') {
-
-      <nz-divider
-        nzText="Issue tracker (optional)"
-        i18n-nzText="@@projects.form.issueTracker"
-        nzOrientation="left"
-        nzPlain
-      />
-      <nz-form-item>
-        <nz-form-control>
-          <nz-switch
-            formControlName="jiraEnabled"
-            nzCheckedChildren="Jira"
-            nzUnCheckedChildren="none"
-            i18n-nzUnCheckedChildren="@@projects.form.jiraNone"
-          />
-          <span class="muted" style="margin-left: 8px" i18n="@@projects.form.jiraHint"
-            >Needed by fetch-issue / notify / transition tasks.</span
-          >
-          <bo-help-link topic="project.jira" style="margin-left: 4px" />
-        </nz-form-control>
-      </nz-form-item>
-      @if (form.controls.jiraEnabled.value) {
-        <div class="grid" formGroupName="issueTracker">
+        <div class="grid">
           <nz-form-item>
-            <nz-form-label nzRequired nzFor="p-jira" i18n="@@projects.form.jiraProjectKey"
-              >Jira project key</nz-form-label
+            <nz-form-label nzFor="p-key" i18n="@@projects.form.keyOptional"
+              >Short code</nz-form-label
             >
-            <nz-form-control [nzErrorTip]="text.jiraKeyRequired">
+            <nz-form-control
+              [nzErrorTip]="keyTip"
+              [nzExtra]="project() ? text.keyRenameHint : text.keyHint"
+            >
               <input
                 nz-input
-                id="p-jira"
-                formControlName="jiraProjectKey"
+                id="p-key"
+                formControlName="key"
+                [placeholder]="project() ? examples.key : text.keyGenerated"
                 class="mono"
                 style="text-transform: uppercase"
-                [placeholder]="examples.jiraKey"
               />
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
-            <nz-form-label nzFor="p-jql" i18n="@@projects.form.jql">JQL filter</nz-form-label>
-            <nz-form-control
-              nzExtra="Used by the Jira intake watcher (below); Back Office adds the Jira project and the time window."
-              i18n-nzExtra="@@projects.form.jqlHint"
+            <nz-form-label nzRequired nzFor="p-name" i18n="@@projects.form.name"
+              >Name</nz-form-label
             >
+            <nz-form-control [nzErrorTip]="nameTip">
               <input
                 nz-input
-                id="p-jql"
-                formControlName="jql"
-                [placeholder]="examples.jql"
-                class="mono"
+                id="p-name"
+                formControlName="name"
+                placeholder="Shop API"
+                i18n-placeholder="@@projects.form.namePlaceholder"
               />
             </nz-form-control>
           </nz-form-item>
         </div>
-      }
-
-      <nz-divider
-        nzText="Defaults"
-        i18n-nzText="@@projects.form.defaults"
-        nzOrientation="left"
-        nzPlain
-      />
-      <div class="grid" formGroupName="defaults">
         <nz-form-item>
-          <nz-form-label nzFor="p-model" i18n="@@projects.form.defaultModel"
-            >Default model profile</nz-form-label
+          <nz-form-label nzFor="p-desc" i18n="@@projects.form.description"
+            >Description</nz-form-label
           >
-          <nz-form-control
-            nzExtra="Used by LLM-backed tasks without an explicit profile."
-            i18n-nzExtra="@@projects.form.defaultModelHint"
-          >
-            <nz-select
-              id="p-model"
-              formControlName="modelProfileId"
-              nzAllowClear
-              nzShowSearch
-              nzPlaceHolder="Select a model"
-              i18n-nzPlaceHolder="@@projects.form.selectModel"
-              [nzLoading]="profilesLoading()"
-            >
-              @for (p of profiles(); track p.id) {
-                <nz-option
-                  [nzValue]="p.id"
-                  [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
-                />
-              }
-            </nz-select>
+          <nz-form-control>
+            <textarea
+              nz-input
+              id="p-desc"
+              formControlName="description"
+              [nzAutosize]="{ minRows: 2, maxRows: 4 }"
+            ></textarea>
           </nz-form-control>
         </nz-form-item>
+      }
+      @if (sections() === 'all') {
+        <nz-divider
+          nzText="Repositories"
+          i18n-nzText="@@projects.form.repositories"
+          nzOrientation="left"
+          nzPlain
+        />
+      }
+      @if (sections() !== 'settings') {
+        <app-project-repositories-editor
+          [array]="form.controls.repositories"
+          [readonly]="readonly()"
+        />
+      }
+      @if (sections() !== 'sources') {
+        <nz-divider
+          nzText="Issue tracker (optional)"
+          i18n-nzText="@@projects.form.issueTracker"
+          nzOrientation="left"
+          nzPlain
+        />
         <nz-form-item>
-          <nz-form-label nzFor="p-review-model" i18n="@@projects.form.reviewModel"
-            >Review model profile</nz-form-label
-          >
-          <nz-form-control
-            nzExtra="Used by code-review tasks for this project."
-            i18n-nzExtra="@@projects.form.reviewModelHint"
-          >
-            <nz-select
-              id="p-review-model"
-              formControlName="reviewModelProfileId"
-              nzAllowClear
-              nzShowSearch
-              nzPlaceHolder="Same as default"
-              i18n-nzPlaceHolder="@@projects.form.sameAsDefault"
-              [nzLoading]="profilesLoading()"
+          <nz-form-control>
+            <nz-switch
+              formControlName="jiraEnabled"
+              nzCheckedChildren="Jira"
+              nzUnCheckedChildren="none"
+              i18n-nzUnCheckedChildren="@@projects.form.jiraNone"
+            />
+            <span class="muted" style="margin-left: 8px" i18n="@@projects.form.jiraHint"
+              >Needed by fetch-issue / notify / transition tasks.</span
             >
-              @for (p of profiles(); track p.id) {
-                <nz-option
-                  [nzValue]="p.id"
-                  [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
-                />
-              }
-            </nz-select>
+            <bo-help-link topic="project.jira" style="margin-left: 4px" />
           </nz-form-control>
         </nz-form-item>
-      </div>
+        @if (form.controls.jiraEnabled.value) {
+          <div class="grid" formGroupName="issueTracker">
+            <nz-form-item>
+              <nz-form-label nzRequired nzFor="p-jira" i18n="@@projects.form.jiraProjectKey"
+                >Jira project key</nz-form-label
+              >
+              <nz-form-control [nzErrorTip]="text.jiraKeyRequired">
+                <input
+                  nz-input
+                  id="p-jira"
+                  formControlName="jiraProjectKey"
+                  class="mono"
+                  style="text-transform: uppercase"
+                  [placeholder]="examples.jiraKey"
+                />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-label nzFor="p-jql" i18n="@@projects.form.jql">JQL filter</nz-form-label>
+              <nz-form-control
+                nzExtra="Used by the Jira intake watcher (below); Back Office adds the Jira project and the time window."
+                i18n-nzExtra="@@projects.form.jqlHint"
+              >
+                <input
+                  nz-input
+                  id="p-jql"
+                  formControlName="jql"
+                  [placeholder]="examples.jql"
+                  class="mono"
+                />
+              </nz-form-control>
+            </nz-form-item>
+          </div>
+        }
 
-      <nz-divider
-        nzText="Spec Kit"
-        i18n-nzText="@@projects.form.specKit"
-        nzOrientation="left"
-        nzPlain
-      />
-      <nz-form-item>
-        <nz-form-control>
-          <nz-switch id="p-speckit" formControlName="specKit" />
-          <label for="p-speckit" class="muted" style="margin-left: 8px" i18n="@@projects.form.specKitHint"
-            >Use Spec Kit in this project: specify, plan and tasks steps and the constitution. Off: the
-            designer hides the Spec Kit steps and runs refuse them.</label
-          >
-          @if (!specKitAllowed()) {
-            <div class="muted" i18n="@@projects.form.specKitDisabled">
-              An administrator turned Spec Kit off for the whole platform; this setting has no effect
-              until it is allowed again.
-            </div>
-          }
-        </nz-form-control>
-      </nz-form-item>
-      @if (form.controls.specKit.value) {
-      <nz-form-item>
-        <nz-form-label nzFor="p-constitution" i18n="@@projects.form.constitutionLabel"
-          >Spec Kit constitution (markdown)</nz-form-label
-        >
-        <nz-form-control
-          nzExtra="Written to .specify/memory/constitution.md before spec, plan and implement tasks."
-          i18n-nzExtra="@@projects.form.constitutionHint"
-        >
-          <textarea
-            nz-input
-            id="p-constitution"
-            class="mono-textarea"
-            formControlName="constitution"
-            [nzAutosize]="{ minRows: 8, maxRows: 30 }"
-            placeholder="# Constitution&#10;&#10;## Principles&#10;- Hexagonal architecture ..."
-            i18n-placeholder="@@projects.form.constitutionPlaceholder"
-          ></textarea>
-        </nz-form-control>
-      </nz-form-item>
-      }
+        <nz-divider
+          nzText="Defaults"
+          i18n-nzText="@@projects.form.defaults"
+          nzOrientation="left"
+          nzPlain
+        />
+        <div class="grid" formGroupName="defaults">
+          <nz-form-item>
+            <nz-form-label nzFor="p-model" i18n="@@projects.form.defaultModel"
+              >Default model profile</nz-form-label
+            >
+            <nz-form-control
+              nzExtra="Used by LLM-backed tasks without an explicit profile."
+              i18n-nzExtra="@@projects.form.defaultModelHint"
+            >
+              <nz-select
+                id="p-model"
+                formControlName="modelProfileId"
+                nzAllowClear
+                nzShowSearch
+                nzPlaceHolder="Select a model"
+                i18n-nzPlaceHolder="@@projects.form.selectModel"
+                [nzLoading]="profilesLoading()"
+              >
+                @for (p of profiles(); track p.id) {
+                  <nz-option
+                    [nzValue]="p.id"
+                    [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
+                  />
+                }
+              </nz-select>
+            </nz-form-control>
+          </nz-form-item>
+          <nz-form-item>
+            <nz-form-label nzFor="p-review-model" i18n="@@projects.form.reviewModel"
+              >Review model profile</nz-form-label
+            >
+            <nz-form-control
+              nzExtra="Used by code-review tasks for this project."
+              i18n-nzExtra="@@projects.form.reviewModelHint"
+            >
+              <nz-select
+                id="p-review-model"
+                formControlName="reviewModelProfileId"
+                nzAllowClear
+                nzShowSearch
+                nzPlaceHolder="Same as default"
+                i18n-nzPlaceHolder="@@projects.form.sameAsDefault"
+                [nzLoading]="profilesLoading()"
+              >
+                @for (p of profiles(); track p.id) {
+                  <nz-option
+                    [nzValue]="p.id"
+                    [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
+                  />
+                }
+              </nz-select>
+            </nz-form-control>
+          </nz-form-item>
+        </div>
+
+        <nz-divider
+          nzText="Spec Kit"
+          i18n-nzText="@@projects.form.specKit"
+          nzOrientation="left"
+          nzPlain
+        />
+        <nz-form-item>
+          <nz-form-control>
+            <nz-switch id="p-speckit" formControlName="specKit" />
+            <label
+              for="p-speckit"
+              class="muted"
+              style="margin-left: 8px"
+              i18n="@@projects.form.specKitHint"
+              >Use Spec Kit in this project: specify, plan and tasks steps and the constitution.
+              Off: the designer hides the Spec Kit steps and runs refuse them.</label
+            >
+            @if (!specKitAllowed()) {
+              <div class="muted" i18n="@@projects.form.specKitDisabled">
+                An administrator turned Spec Kit off for the whole platform; this setting has no
+                effect until it is allowed again.
+              </div>
+            }
+          </nz-form-control>
+        </nz-form-item>
+        @if (form.controls.specKit.value) {
+          <nz-form-item>
+            <nz-form-label nzFor="p-constitution" i18n="@@projects.form.constitutionLabel"
+              >Spec Kit constitution (markdown)</nz-form-label
+            >
+            <nz-form-control
+              nzExtra="Written to .specify/memory/constitution.md before spec, plan and implement tasks."
+              i18n-nzExtra="@@projects.form.constitutionHint"
+            >
+              <textarea
+                nz-input
+                id="p-constitution"
+                class="mono-textarea"
+                formControlName="constitution"
+                [nzAutosize]="{ minRows: 8, maxRows: 30 }"
+                placeholder="# Constitution&#10;&#10;## Principles&#10;- Hexagonal architecture ..."
+                i18n-placeholder="@@projects.form.constitutionPlaceholder"
+              ></textarea>
+            </nz-form-control>
+          </nz-form-item>
+        }
       }
 
       @if (!readonly()) {
@@ -437,7 +445,8 @@ export class ProjectFormComponent {
   submit(): void {
     const jiraKey = this.form.controls.issueTracker.controls.jiraProjectKey;
     // the Jira key is never derived from the project key: required while Jira is on
-    if (this.form.controls.jiraEnabled.value && !jiraKey.value.trim()) jiraKey.setErrors({ required: true });
+    if (this.form.controls.jiraEnabled.value && !jiraKey.value.trim())
+      jiraKey.setErrors({ required: true });
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;

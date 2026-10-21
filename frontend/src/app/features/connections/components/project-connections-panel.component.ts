@@ -21,8 +21,8 @@ import { ProjectJiraConnectionsComponent } from './project-jira-connections.comp
         <bo-help-link topic="project.jiraConnections" />
       </h2>
       <p class="lede" i18n="@@connections.project.jiraLede">
-        The system connection is the default of every Jira step. Steps may also name a connection, or
-        act as the person who approves or starts them (that person's own connection, never anyone
+        The system connection is the default of every Jira step. Steps may also name a connection,
+        or act as the person who approves or starts them (that person's own connection, never anyone
         else's).
       </p>
       <app-project-jira-connections

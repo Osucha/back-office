@@ -154,11 +154,50 @@ const EMPTY: TaskInterfaceInput = {
         <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.interfaces.col.interface">Interface</th>
-              <th nzShowSort [boSort]="sort" boSortKey="inputs" nzWidth="18%" i18n="@@library.interfaces.inputs">Inputs</th>
-              <th nzShowSort [boSort]="sort" boSortKey="outputs" nzWidth="16%" i18n="@@library.interfaces.outputs">Outputs</th>
-              <th nzShowSort [boSort]="sort" boSortKey="ports" nzWidth="146px" i18n="@@library.interfaces.ports">Ports</th>
-              <th nzShowSort [boSort]="sort" boSortKey="implementedBy" nzWidth="16%" i18n="@@library.interfaces.col.implementedBy">Implemented by</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="name"
+                i18n="@@library.interfaces.col.interface"
+              >
+                Interface
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="inputs"
+                nzWidth="18%"
+                i18n="@@library.interfaces.col.inputs"
+              >
+                Inputs
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="outputs"
+                nzWidth="16%"
+                i18n="@@library.interfaces.col.outputs"
+              >
+                Outputs
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="ports"
+                nzWidth="146px"
+                i18n="@@library.interfaces.col.ports"
+              >
+                Ports
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="implementedBy"
+                nzWidth="16%"
+                i18n="@@library.interfaces.col.implementedBy"
+              >
+                Implemented by
+              </th>
               <th nzWidth="84px">
                 <span class="sr-only" i18n="@@library.interfaces.col.actions">Actions</span>
               </th>

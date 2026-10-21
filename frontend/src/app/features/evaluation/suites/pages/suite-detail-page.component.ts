@@ -201,13 +201,47 @@ const DIFFICULTY_ORDER: readonly string[] = ['EASY', 'MEDIUM', 'HARD', 'EXPERT']
           <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
             <thead>
               <tr>
-                <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.suite.col.task">Task</th>
-                <th nzShowSort [boSort]="sort" boSortKey="category" nzWidth="146px" i18n="@@evaluation.suite.col.category">Category</th>
-                <th nzShowSort [boSort]="sort" boSortKey="difficulty" nzWidth="116px" i18n="@@evaluation.suite.col.difficulty">Difficulty</th>
-                <th nzShowSort [boSort]="sort" boSortKey="timeout" nzWidth="106px" nzAlign="right" i18n="@@evaluation.suite.col.timeout">
+                <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.suite.col.task">
+                  Task
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="category"
+                  nzWidth="146px"
+                  i18n="@@evaluation.suite.col.category"
+                >
+                  Category
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="difficulty"
+                  nzWidth="116px"
+                  i18n="@@evaluation.suite.col.difficulty"
+                >
+                  Difficulty
+                </th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="timeout"
+                  nzWidth="106px"
+                  nzAlign="right"
+                  i18n="@@evaluation.suite.col.timeout"
+                >
                   Timeout
                 </th>
-                <th nzShowSort [boSort]="sort" boSortKey="weight" nzWidth="86px" nzAlign="right" i18n="@@evaluation.suite.col.weight">Weight</th>
+                <th
+                  nzShowSort
+                  [boSort]="sort"
+                  boSortKey="weight"
+                  nzWidth="86px"
+                  nzAlign="right"
+                  i18n="@@evaluation.suite.col.weight"
+                >
+                  Weight
+                </th>
                 <th nzWidth="96px">
                   <span class="sr-only" i18n="@@evaluation.suite.col.actions">Actions</span>
                 </th>

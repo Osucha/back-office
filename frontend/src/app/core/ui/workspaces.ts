@@ -15,14 +15,19 @@ export function workspaceColor(index: number): string {
 }
 
 /** What blocks saving a workspace (the backend refuses these too). */
-export function workspaceProblems(ws: ProjectWorkspaceInput, others: readonly { key: string }[]): string[] {
+export function workspaceProblems(
+  ws: ProjectWorkspaceInput,
+  others: readonly { key: string }[],
+): string[] {
   const out: string[] = [];
   if (!WORKSPACE_KEY_PATTERN.test(ws.key ?? ''))
     out.push(
       $localize`:@@core.workspaces.problem.key:Key: 1-20 lower case letters, digits or hyphens, starting with a letter.`,
     );
   else if (others.some((w) => w.key === ws.key))
-    out.push($localize`:@@core.workspaces.problem.duplicate:Another workspace of the project has this key.`);
+    out.push(
+      $localize`:@@core.workspaces.problem.duplicate:Another workspace of the project has this key.`,
+    );
   const badRole = (ws.roles ?? []).find((r) => !WORKSPACE_KEY_PATTERN.test(r));
   if (badRole)
     out.push(

@@ -56,9 +56,10 @@ import { CONNECTION_CHIP_STYLES } from './chip-styles';
           }
         </nz-select>
         <p class="hint" i18n="@@connections.projectJira.systemHint">
-          Every Jira step uses it unless the step chooses otherwise. It is still checked for the step's
-          capabilities: when it lacks one, the step takes the least-privileged connection of the list
-          below. Without a system connection, steps pick from every project and platform connection.
+          Every Jira step uses it unless the step chooses otherwise. It is still checked for the
+          step's capabilities: when it lacks one, the step takes the least-privileged connection of
+          the list below. Without a system connection, steps pick from every project and platform
+          connection.
         </p>
         @if (systemConnection(); as s) {
           <p class="chips">
@@ -144,7 +145,9 @@ import { CONNECTION_CHIP_STYLES } from './chip-styles';
       @if (canManage()) {
         <div class="footer">
           <bo-help-link topic="project.jiraConnections" variant="text"
-            ><span i18n="@@connections.projectJira.help">How steps choose a connection</span></bo-help-link
+            ><span i18n="@@connections.projectJira.help"
+              >How steps choose a connection</span
+            ></bo-help-link
           >
           <button
             nz-button
@@ -263,7 +266,9 @@ export class ProjectJiraConnectionsComponent {
       .filter((c): c is Connection => !!c),
   );
   readonly addable = computed(() =>
-    this.available().filter((c) => c.id !== this.systemId() && !this.additionalIds().includes(c.id)),
+    this.available().filter(
+      (c) => c.id !== this.systemId() && !this.additionalIds().includes(c.id),
+    ),
   );
   readonly dirty = computed(() => {
     const l = this.loaded();

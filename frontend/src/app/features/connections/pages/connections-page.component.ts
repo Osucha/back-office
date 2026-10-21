@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
@@ -51,21 +59,58 @@ import type { ConnectionOwner } from '../data/connection-types';
         <section class="personal" aria-labelledby="cp-personal">
           <h2 id="cp-personal" i18n="@@connections.page.personalTitle">Personal connections</h2>
           <p class="lede" i18n="@@connections.page.personalLede">
-            Connections people keep for themselves (My account → Connections). They are used only with
-            their owner's approval or run start; administrators see that they exist, not their e-mail
-            or token, and cannot use them.
+            Connections people keep for themselves (My account → Connections). They are used only
+            with their owner's approval or run start; administrators see that they exist, not their
+            e-mail or token, and cannot use them.
           </p>
           @if (!personal().length) {
-            <p class="quiet" i18n="@@connections.page.personalEmpty">Nobody has a personal connection.</p>
+            <p class="quiet" i18n="@@connections.page.personalEmpty">
+              Nobody has a personal connection.
+            </p>
           } @else {
             <nz-table [nzData]="personalRows()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th nzShowSort [boSort]="sort" boSortKey="owner" i18n="@@connections.page.personal.owner">Owner</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@connections.page.personal.connection">Connection</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="capabilities" i18n="@@connections.page.personal.capabilities">Capabilities</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="token" i18n="@@connections.page.personal.token">Token</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="check" i18n="@@connections.page.personal.check">Last check</th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="owner"
+                    i18n="@@connections.page.personal.owner"
+                  >
+                    Owner
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="name"
+                    i18n="@@connections.page.personal.connection"
+                  >
+                    Connection
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="capabilities"
+                    i18n="@@connections.page.personal.capabilities"
+                  >
+                    Capabilities
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="token"
+                    i18n="@@connections.page.personal.token"
+                  >
+                    Token
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="check"
+                    i18n="@@connections.page.personal.check"
+                  >
+                    Last check
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -134,7 +179,9 @@ export class ConnectionsPageComponent {
   readonly caps = (p: PersonalConnectionSummary) => capabilityLabels(p.capabilities ?? []);
   readonly kind = tokenKindLabel;
   readonly check = (p: PersonalConnectionSummary) =>
-    verificationChip(p.verificationStatus ? ({ status: p.verificationStatus } as ConnectionVerification) : null);
+    verificationChip(
+      p.verificationStatus ? ({ status: p.verificationStatus } as ConnectionVerification) : null,
+    );
   /** Column sorting of the personal connections (URL `?sort=`; the platform list uses `?connectionSort=`). */
   readonly sort = tableSort<PersonalConnectionSummary>({
     owner: (p) => p.ownerName,

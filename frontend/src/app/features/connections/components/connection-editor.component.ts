@@ -188,8 +188,8 @@ export type EditorMode = 'create' | 'edit' | 'rotate';
                         >Scoped API token (recommended)</span
                       >
                       <span class="cap-text" i18n="@@connections.form.kindScopedHint"
-                        >Limited to the scopes you choose at Atlassian, even when it belongs to your own
-                        account.</span
+                        >Limited to the scopes you choose at Atlassian, even when it belongs to your
+                        own account.</span
                       >
                     </label>
                     <label nz-radio nzValue="CLASSIC" class="kind">
@@ -375,8 +375,8 @@ export type EditorMode = 'create' | 'edit' | 'rotate';
                     />
                     <div class="hint" i18n="@@connections.form.cloudIdHint">
                       Empty: Back Office reads it from the site (/_edge/tenant_info) when you save.
-                      Scoped tokens are sent to api.atlassian.com/ex/jira/(cloud id); issue links keep
-                      the site URL.
+                      Scoped tokens are sent to api.atlassian.com/ex/jira/(cloud id); issue links
+                      keep the site URL.
                     </div>
                     @if (shown().cloudId) {
                       <div class="ferr">{{ shown().cloudId }}</div>
@@ -456,13 +456,13 @@ export type EditorMode = 'create' | 'edit' | 'rotate';
                 <ul class="notes">
                   @if (personal()) {
                     <li i18n="@@connections.guide.notePersonal">
-                      A personal connection is only used for steps you approve or runs you start; nobody
-                      else can see or use it.
+                      A personal connection is only used for steps you approve or runs you start;
+                      nobody else can see or use it.
                     </li>
                   } @else {
                     <li i18n="@@connections.guide.noteSeparate">
-                      Use separate connections for reading and for writing: steps that only read never
-                      get a token that can write.
+                      Use separate connections for reading and for writing: steps that only read
+                      never get a token that can write.
                     </li>
                   }
                   <li i18n="@@connections.guide.noteScoped">
@@ -470,8 +470,8 @@ export type EditorMode = 'create' | 'edit' | 'rotate';
                     personal account. A classic token inherits every permission of its account.
                   </li>
                   <li i18n="@@connections.guide.noteWriteScope">
-                    Moving issues needs write:issue:jira, which also allows editing issues; Back Office
-                    still only moves them, after your approval.
+                    Moving issues needs write:issue:jira, which also allows editing issues; Back
+                    Office still only moves them, after your approval.
                   </li>
                 </ul>
                 <p class="links">

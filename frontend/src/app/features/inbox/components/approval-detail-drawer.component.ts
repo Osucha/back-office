@@ -146,7 +146,8 @@ interface EditableArtifact {
                     <label nz-radio nzValue="PERSONAL" [nzDisabled]="!id.personalConnectionName">
                       @if (id.personalConnectionName) {
                         <span i18n="@@inbox.write.identity.personal"
-                          >You, through your personal connection {{ id.personalConnectionName }}</span
+                          >You, through your personal connection
+                          {{ id.personalConnectionName }}</span
                         >
                       } @else {
                         <span i18n="@@inbox.write.identity.personalNone"
@@ -166,14 +167,17 @@ interface EditableArtifact {
                 <p class="muted small" id="who-hint">
                   @if (writeAs() === 'PERSONAL') {
                     <span i18n="@@inbox.write.identity.personalHint"
-                      >Jira shows the comment or the move as yours. The audit log records "via personal
-                      connection".</span
+                      >Jira shows the comment or the move as yours. The audit log records "via
+                      personal connection".</span
                     >
                   } @else if (id.personalProblem) {
                     <span>{{ id.personalProblem }}</span>
                   }
                   @if (id.personalAllowed && !id.personalConnectionName) {
-                    <a routerLink="/account" [queryParams]="{ section: 'connections' }" i18n="@@inbox.write.identity.add"
+                    <a
+                      routerLink="/account"
+                      [queryParams]="{ section: 'connections' }"
+                      i18n="@@inbox.write.identity.add"
                       >Add a personal connection</a
                     >
                   }
@@ -1020,7 +1024,8 @@ export class ApprovalDetailDrawerComponent {
   private loadIdentity(a: ApprovalRequest | null): void {
     this.writeOptions.set(null);
     this.writeAs.set(null);
-    if (!a?.id || a.kind !== 'WRITE_CONFIRMATION' || a.status !== 'OPEN' || a.canDecide === false) return;
+    if (!a?.id || a.kind !== 'WRITE_CONFIRMATION' || a.status !== 'OPEN' || a.canDecide === false)
+      return;
     this.approvalsApi.writeIdentity(a.id).subscribe({
       next: (o) => {
         if (this.approval()?.id !== a.id) return;

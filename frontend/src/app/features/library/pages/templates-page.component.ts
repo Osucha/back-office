@@ -189,12 +189,59 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
           <ng-template #totalTpl let-total>{{ totalLabel(total) }}</ng-template>
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.templates.col.template">Template</th>
-              <th nzShowSort [boSort]="sort" boSortKey="extends" nzWidth="146px" i18n="@@library.templates.col.extends">Extends</th>
-              <th nzShowSort [boSort]="sort" boSortKey="implements" nzWidth="18%" i18n="@@library.templates.col.implements">Implements</th>
-              <th nzShowSort [boSort]="sort" boSortKey="executor" nzWidth="136px" i18n="@@library.templates.col.executor">Executor</th>
-              <th nzShowSort [boSort]="sort" boSortKey="scope" nzWidth="106px" i18n="@@library.templates.col.scope">Scope</th>
-              <th nzShowSort [boSort]="sort" boSortKey="updated" nzWidth="200px" i18n="@@library.templates.col.updated">Updated</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="name"
+                i18n="@@library.templates.col.template"
+              >
+                Template
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="extends"
+                nzWidth="146px"
+                i18n="@@library.templates.col.extends"
+              >
+                Extends
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="implements"
+                nzWidth="18%"
+                i18n="@@library.templates.col.implements"
+              >
+                Implements
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="executor"
+                nzWidth="136px"
+                i18n="@@library.templates.col.executor"
+              >
+                Executor
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="scope"
+                nzWidth="106px"
+                i18n="@@library.templates.col.scope"
+              >
+                Scope
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="updated"
+                nzWidth="200px"
+                i18n="@@library.templates.col.updated"
+              >
+                Updated
+              </th>
               <th nzWidth="118px">
                 <span class="sr-only" i18n="@@library.templates.col.actions">Actions</span>
               </th>
@@ -445,7 +492,8 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     implements: (t) => (t.implements ?? []).join(', '),
     executor: (t) => (t.executor ? executorLabel(t.executor) : null),
     // global templates first, then project templates by project key
-    scope: (t) => (t.scope.type === 'PROJECT' ? `PROJECT ${this.projectKey(t.scope.projectId)}` : 'GLOBAL'),
+    scope: (t) =>
+      t.scope.type === 'PROJECT' ? `PROJECT ${this.projectKey(t.scope.projectId)}` : 'GLOBAL',
     updated: (t) => t.updatedAt,
   });
   readonly rows = computed(() => this.sort.apply(this.filtered()));

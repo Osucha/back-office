@@ -90,15 +90,57 @@ const ROW_HEIGHT = 49;
         <ng-template #totalTpl let-total>{{ totalText(total) }}</ng-template>
         <thead>
           <tr>
-            <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="166px" i18n="@@runs.table.holder">Holder</th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="status"
+              nzWidth="166px"
+              i18n="@@runs.table.holder"
+            >
+              Holder
+            </th>
             <th nzShowSort [boSort]="sort" boSortKey="workflow" i18n="@@runs.table.run">Run</th>
             <th nzWidth="22%" i18n="@@runs.table.relay">Relay</th>
             @if (!projectId()) {
-              <th nzShowSort [boSort]="sort" boSortKey="project" nzWidth="106px" i18n="@@runs.table.project">Project</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="project"
+                nzWidth="106px"
+                i18n="@@runs.table.project"
+              >
+                Project
+              </th>
             }
-            <th nzShowSort [boSort]="sort" boSortKey="startedBy" nzWidth="166px" i18n="@@runs.table.startedBy">Started by</th>
-            <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@runs.table.cost">Cost</th>
-            <th nzShowSort [boSort]="sort" boSortKey="createdAt" nzWidth="106px" nzAlign="right" i18n="@@runs.table.age">Age</th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="startedBy"
+              nzWidth="166px"
+              i18n="@@runs.table.startedBy"
+            >
+              Started by
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="cost"
+              nzWidth="106px"
+              nzAlign="right"
+              i18n="@@runs.table.cost"
+            >
+              Cost
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="createdAt"
+              nzWidth="106px"
+              nzAlign="right"
+              i18n="@@runs.table.age"
+            >
+              Age
+            </th>
           </tr>
         </thead>
         <tbody>

@@ -237,7 +237,10 @@ ci:test:
 # ci/, runner/ or docs/ is ignored.
 repo:ignored-sources:
   stage: test
-  image: alpine/git:2.47.2
+  image:
+    name: alpine/git:2.47.2
+    # the image's entrypoint is git: without this the job script runs as "git sh"
+    entrypoint: [""]
   <<: *rules-mr-or-main
   needs: []
   script:
@@ -299,14 +302,17 @@ security:dependencies:
     - cd ..
   script:
     - echo "===== Trivy full report (informative) ====="
-    - trivy fs --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 0 --ignorefile ci/trivy-ignore.yaml --skip-dirs frontend/node_modules backend frontend runner
+    # one target (the repository); --skip-dirs takes a comma-separated list. Caches of this job hold
+    # third-party jars and the vulnerability DB, not our dependencies.
+    - export TRIVY_SKIP="--skip-dirs frontend/node_modules,.gradle,.trivycache,.npm"
+    - trivy fs --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 0 --ignorefile ci/trivy-ignore.yaml $TRIVY_SKIP .
     - echo "===== CycloneDX SBOMs ====="
     - mkdir -p sbom
     - trivy fs --format cyclonedx --output sbom/backend.cdx.json backend
     - trivy fs --format cyclonedx --output sbom/frontend.cdx.json --skip-dirs frontend/node_modules frontend
     - trivy fs --format cyclonedx --output sbom/runner.cdx.json runner
     - echo "===== Gate - HIGH/CRITICAL with a fix available ====="
-    - trivy fs --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile ci/trivy-ignore.yaml --skip-dirs frontend/node_modules backend frontend runner
+    - trivy fs --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile ci/trivy-ignore.yaml $TRIVY_SKIP .
   artifacts:
     when: always
     paths: [sbom/]

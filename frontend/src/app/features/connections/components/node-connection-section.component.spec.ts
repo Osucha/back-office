@@ -105,14 +105,23 @@ describe('NodeConnectionSectionComponent', () => {
     const emitted: Array<Record<string, unknown> | undefined> = [];
     c.configChange.subscribe((v) => emitted.push(v));
     c.setFlag('fallbackToSystem', true);
-    expect(emitted).toEqual([{ toStatus: 'Done', jiraConnection: 'ACTING_USER', fallbackToSystem: true }]);
+    expect(emitted).toEqual([
+      { toStatus: 'Done', jiraConnection: 'ACTING_USER', fallbackToSystem: true },
+    ]);
   });
 
   it('lets a SYSTEM write step allow the approver to write as themselves', () => {
     const fixture = create({ toStatus: 'Done' });
-    http.expectOne((r) => r.url === '/api/v1/projects/p1/connections/resolve').flush({
-      status: 'OK', required: ['ISSUE_TRANSITION'], connection: writer, excess: [], pinned: false, message: 'ok',
-    });
+    http
+      .expectOne((r) => r.url === '/api/v1/projects/p1/connections/resolve')
+      .flush({
+        status: 'OK',
+        required: ['ISSUE_TRANSITION'],
+        connection: writer,
+        excess: [],
+        pinned: false,
+        message: 'ok',
+      });
     const c = fixture.componentInstance;
     const emitted: Array<Record<string, unknown> | undefined> = [];
     c.configChange.subscribe((v) => emitted.push(v));

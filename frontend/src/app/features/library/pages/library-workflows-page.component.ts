@@ -165,12 +165,60 @@ import { type LibraryRow, filterLibraryWorkflows, libraryRows } from '../data/wo
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.workflows.col.workflow">Workflow</th>
-              <th nzShowSort [boSort]="sort" boSortKey="usedIn" nzWidth="126px" i18n="@@library.workflows.col.usedIn">Used in</th>
-              <th nzShowSort [boSort]="sort" boSortKey="runs" nzWidth="86px" nzAlign="right" i18n="@@library.workflows.col.runs">Runs</th>
-              <th nzShowSort [boSort]="sort" boSortKey="success" nzWidth="106px" i18n="@@library.workflows.col.success">Success</th>
-              <th nzShowSort [boSort]="sort" boSortKey="firstPass" nzWidth="106px" i18n="@@library.workflows.col.firstPass">First pass</th>
-              <th nzShowSort [boSort]="sort" boSortKey="duration" nzWidth="116px" i18n="@@library.workflows.col.duration">Median time</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="name"
+                i18n="@@library.workflows.col.workflow"
+              >
+                Workflow
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="usedIn"
+                nzWidth="126px"
+                i18n="@@library.workflows.col.usedIn"
+              >
+                Used in
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="runs"
+                nzWidth="86px"
+                nzAlign="right"
+                i18n="@@library.workflows.col.runs"
+              >
+                Runs
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="success"
+                nzWidth="106px"
+                i18n="@@library.workflows.col.success"
+              >
+                Success
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="firstPass"
+                nzWidth="106px"
+                i18n="@@library.workflows.col.firstPass"
+              >
+                First pass
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="duration"
+                nzWidth="116px"
+                i18n="@@library.workflows.col.duration"
+              >
+                Median time
+              </th>
               <th
                 nzShowSort
                 [boSort]="sort"
@@ -181,7 +229,15 @@ import { type LibraryRow, filterLibraryWorkflows, libraryRows } from '../data/wo
               >
                 Cost / success
               </th>
-              <th nzShowSort [boSort]="sort" boSortKey="published" nzWidth="190px" i18n="@@library.workflows.col.published">Latest version</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="published"
+                nzWidth="190px"
+                i18n="@@library.workflows.col.published"
+              >
+                Latest version
+              </th>
             </tr>
           </thead>
           <tbody>

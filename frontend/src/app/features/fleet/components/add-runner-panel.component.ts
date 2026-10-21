@@ -81,8 +81,8 @@ import {
         <p class="note">
           <ng-container i18n="@@fleet.addRunner.gitNote"
             >Agents clone and push with git credentials that stay in that cluster: per repository a
-            read-only token for jobs that only read and a push token (can open a merge request, never
-            merge) for jobs that push, as Secrets in the sandbox namespace (chart value
+            read-only token for jobs that only read and a push token (can open a merge request,
+            never merge) for jobs that push, as Secrets in the sandbox namespace (chart value
             <code>gitCredentials.repoSecrets</code>).</ng-container
           >
           <bo-help-link topic="fleet.gitAccess" variant="text" i18n="@@fleet.addRunner.gitAccess"

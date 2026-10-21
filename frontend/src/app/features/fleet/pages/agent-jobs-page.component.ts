@@ -175,13 +175,66 @@ import {
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="170px" i18n="@@fleet.jobs.col.state">State</th>
-              <th nzShowSort [boSort]="sort" boSortKey="label" i18n="@@fleet.jobs.col.work">Work</th>
-              <th nzShowSort [boSort]="sort" boSortKey="model" nzWidth="186px" i18n="@@fleet.jobs.col.model">Model</th>
-              <th nzShowSort [boSort]="sort" boSortKey="pool" nzWidth="126px" i18n="@@fleet.jobs.col.pool">Pool</th>
-              <th nzShowSort [boSort]="sort" boSortKey="duration" nzWidth="106px" nzAlign="right" i18n="@@fleet.jobs.col.duration">Duration</th>
-              <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@fleet.jobs.col.cost">Cost</th>
-              <th nzShowSort [boSort]="sort" boSortKey="queuedAt" nzWidth="116px" nzAlign="right" i18n="@@fleet.jobs.col.queued">Queued</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="status"
+                nzWidth="170px"
+                i18n="@@fleet.jobs.col.state"
+              >
+                State
+              </th>
+              <th nzShowSort [boSort]="sort" boSortKey="label" i18n="@@fleet.jobs.col.work">
+                Work
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="model"
+                nzWidth="186px"
+                i18n="@@fleet.jobs.col.model"
+              >
+                Model
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="pool"
+                nzWidth="126px"
+                i18n="@@fleet.jobs.col.pool"
+              >
+                Pool
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="duration"
+                nzWidth="106px"
+                nzAlign="right"
+                i18n="@@fleet.jobs.col.duration"
+              >
+                Duration
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="cost"
+                nzWidth="106px"
+                nzAlign="right"
+                i18n="@@fleet.jobs.col.cost"
+              >
+                Cost
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="queuedAt"
+                nzWidth="116px"
+                nzAlign="right"
+                i18n="@@fleet.jobs.col.queued"
+              >
+                Queued
+              </th>
             </tr>
           </thead>
           <tbody>

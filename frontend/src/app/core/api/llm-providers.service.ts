@@ -2,7 +2,13 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { silent, url } from './api-base';
-import type { LlmProvider, LlmProviderInput, Provider, ProviderCatalogSection, ProviderModels } from './types';
+import type {
+  LlmProvider,
+  LlmProviderInput,
+  Provider,
+  ProviderCatalogSection,
+  ProviderModels,
+} from './types';
 
 /** LLM provider connections (tag `llm-providers`, ADR 0045): API keys are write-only. */
 @Injectable({ providedIn: 'root' })
@@ -15,7 +21,9 @@ export class LlmProvidersApi {
 
   /** The models of every usable endpoint, the source of new model profiles; `refresh` asks the providers again. */
   catalog(refresh = false): Observable<ProviderCatalogSection[]> {
-    return this.http.get<ProviderCatalogSection[]>(url('llm-providers', 'catalog'), { params: new HttpParams().set('refresh', refresh) });
+    return this.http.get<ProviderCatalogSection[]>(url('llm-providers', 'catalog'), {
+      params: new HttpParams().set('refresh', refresh),
+    });
   }
 
   create(input: LlmProviderInput): Observable<LlmProvider> {
@@ -36,6 +44,10 @@ export class LlmProvidersApi {
   }
 
   environmentModels(provider: Provider): Observable<ProviderModels> {
-    return this.http.post<ProviderModels>(url('llm-providers', 'environment', 'models'), {}, { params: new HttpParams().set('provider', provider) });
+    return this.http.post<ProviderModels>(
+      url('llm-providers', 'environment', 'models'),
+      {},
+      { params: new HttpParams().set('provider', provider) },
+    );
   }
 }

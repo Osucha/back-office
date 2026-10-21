@@ -114,15 +114,59 @@ export function filterCi(
         <ng-template #totalTpl let-total>{{ totalText(total) }}</ng-template>
         <thead>
           <tr>
-            <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="166px" i18n="@@ci.table.gate">Gate</th>
-            <th nzShowSort [boSort]="sort" boSortKey="entrypoint" nzWidth="196px" i18n="@@ci.table.entrypoint">Entrypoint</th>
-            <th nzShowSort [boSort]="sort" boSortKey="ref" i18n="@@ci.table.mrOrRef">Merge request or ref</th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="status"
+              nzWidth="166px"
+              i18n="@@ci.table.gate"
+            >
+              Gate
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="entrypoint"
+              nzWidth="196px"
+              i18n="@@ci.table.entrypoint"
+            >
+              Entrypoint
+            </th>
+            <th nzShowSort [boSort]="sort" boSortKey="ref" i18n="@@ci.table.mrOrRef">
+              Merge request or ref
+            </th>
             <th nzWidth="100px" i18n="@@ci.table.commit">Commit</th>
             @if (!projectId()) {
-              <th nzShowSort [boSort]="sort" boSortKey="project" nzWidth="106px" i18n="@@ci.table.project">Project</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="project"
+                nzWidth="106px"
+                i18n="@@ci.table.project"
+              >
+                Project
+              </th>
             }
-            <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="106px" nzAlign="right" i18n="@@ci.table.cost">Cost</th>
-            <th nzShowSort [boSort]="sort" boSortKey="createdAt" nzWidth="106px" nzAlign="right" i18n="@@ci.table.age">Age</th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="cost"
+              nzWidth="106px"
+              nzAlign="right"
+              i18n="@@ci.table.cost"
+            >
+              Cost
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="createdAt"
+              nzWidth="106px"
+              nzAlign="right"
+              i18n="@@ci.table.age"
+            >
+              Age
+            </th>
           </tr>
         </thead>
         <tbody>

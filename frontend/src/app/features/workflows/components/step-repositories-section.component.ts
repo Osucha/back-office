@@ -128,7 +128,9 @@ import {
         }
       }
       @if (librarySources().length || libraryKeys().length) {
-        <div class="lib-head" i18n="@@workflows.repos.libraryTitle">Library sources (read only)</div>
+        <div class="lib-head" i18n="@@workflows.repos.libraryTitle">
+          Library sources (read only)
+        </div>
         <ul class="rows" [attr.aria-label]="text.libraryList">
           @for (s of librarySources(); track s.id) {
             <li class="row">

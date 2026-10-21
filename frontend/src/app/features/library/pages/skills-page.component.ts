@@ -185,11 +185,46 @@ const EMPTY: SkillInput = {
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.skills.col.skill">Skill</th>
-              <th nzShowSort [boSort]="sort" boSortKey="scope" nzWidth="106px" i18n="@@library.skills.scope">Scope</th>
-              <th nzShowSort [boSort]="sort" boSortKey="tags" nzWidth="20%" i18n="@@library.skills.tags">Tags</th>
-              <th nzShowSort [boSort]="sort" boSortKey="size" nzWidth="116px" nzAlign="right" i18n="@@library.skills.col.size">Size</th>
-              <th nzShowSort [boSort]="sort" boSortKey="updated" nzWidth="190px" i18n="@@library.skills.col.updated">Updated</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@library.skills.col.skill">
+                Skill
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="scope"
+                nzWidth="106px"
+                i18n="@@library.skills.col.scope"
+              >
+                Scope
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="tags"
+                nzWidth="20%"
+                i18n="@@library.skills.col.tags"
+              >
+                Tags
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="size"
+                nzWidth="116px"
+                nzAlign="right"
+                i18n="@@library.skills.col.size"
+              >
+                Size
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="updated"
+                nzWidth="190px"
+                i18n="@@library.skills.col.updated"
+              >
+                Updated
+              </th>
               <th nzWidth="84px">
                 <span class="sr-only" i18n="@@library.skills.col.actions">Actions</span>
               </th>

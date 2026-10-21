@@ -25,7 +25,7 @@ HAS_SH = shutil.which("sh") is not None
 RUN_ID = "11111111-2222-4333-8444-555555555555"
 DOCS_TOKEN = "glpat-docs-read-0123456789"
 SRC_TOKEN = "glpat-src-push-0123456789"
-TOOLS_TOKEN = "glpat-tools-none-0123456789"
+TOOLS_TOKEN = "glpat-tools-none-0123456789"  # trufflehog:ignore (test fixture)
 
 
 def base_spec(**kw) -> dict:

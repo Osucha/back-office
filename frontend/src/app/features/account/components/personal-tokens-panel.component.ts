@@ -87,20 +87,56 @@ import {
         help="account.tokens"
       />
     } @else {
-      <nz-table
-        [nzData]="rows()"
-        [nzLoading]="loading()"
-        [nzShowPagination]="false"
-        nzSize="small"
-      >
+      <nz-table [nzData]="rows()" [nzLoading]="loading()" [nzShowPagination]="false" nzSize="small">
         <thead>
           <tr>
-            <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@account.tokens.colName">Name</th>
-            <th nzShowSort [boSort]="sort" boSortKey="prefix" nzWidth="140px" i18n="@@account.tokens.colPrefix">Prefix</th>
-            <th nzShowSort [boSort]="sort" boSortKey="permissions" i18n="@@account.tokens.colPermissions">Permissions</th>
-            <th nzShowSort [boSort]="sort" boSortKey="expires" nzWidth="136px" i18n="@@account.tokens.colExpires">Expires</th>
-            <th nzShowSort [boSort]="sort" boSortKey="lastUsed" nzWidth="126px" i18n="@@account.tokens.colLastUsed">Last used</th>
-            <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="116px" i18n="@@account.tokens.colState">State</th>
+            <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@account.tokens.colName">
+              Name
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="prefix"
+              nzWidth="140px"
+              i18n="@@account.tokens.colPrefix"
+            >
+              Prefix
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="permissions"
+              i18n="@@account.tokens.colPermissions"
+            >
+              Permissions
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="expires"
+              nzWidth="136px"
+              i18n="@@account.tokens.colExpires"
+            >
+              Expires
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="lastUsed"
+              nzWidth="126px"
+              i18n="@@account.tokens.colLastUsed"
+            >
+              Last used
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="state"
+              nzWidth="116px"
+              i18n="@@account.tokens.colState"
+            >
+              State
+            </th>
             <th nzWidth="90px"></th>
           </tr>
         </thead>
@@ -116,7 +152,9 @@ import {
                   <span class="muted" i18n="@@account.tokens.allPermissions">All of yours</span>
                 }
                 @if (t.allowMcpGateDecisions) {
-                  <span class="perm mono" i18n="@@account.tokens.mcpGatesTag">MCP gate decisions</span>
+                  <span class="perm mono" i18n="@@account.tokens.mcpGatesTag"
+                    >MCP gate decisions</span
+                  >
                 }
               </td>
               <td class="num" [title]="t.expiresAt | date: 'medium'">

@@ -146,11 +146,48 @@ import { formatNumber } from '../../../core/i18n/numbers';
             <nz-table [nzData]="replicas()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th nzShowSort [boSort]="sort" boSortKey="instance" i18n="@@operations.replicas.instance">Instance</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="136px" i18n="@@operations.replicas.state">State</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="roles" i18n="@@operations.replicas.roles">Roles</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="version" nzWidth="106px" i18n="@@operations.replicas.version">Version</th>
-                  <th nzShowSort [boSort]="sort" boSortKey="lastSeen" nzWidth="106px" nzAlign="right" i18n="@@operations.replicas.lastSeen">
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="instance"
+                    i18n="@@operations.replicas.instance"
+                  >
+                    Instance
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="state"
+                    nzWidth="136px"
+                    i18n="@@operations.replicas.state"
+                  >
+                    State
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="roles"
+                    i18n="@@operations.replicas.roles"
+                  >
+                    Roles
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="version"
+                    nzWidth="106px"
+                    i18n="@@operations.replicas.version"
+                  >
+                    Version
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="sort"
+                    boSortKey="lastSeen"
+                    nzWidth="106px"
+                    nzAlign="right"
+                    i18n="@@operations.replicas.lastSeen"
+                  >
                     Last seen
                   </th>
                 </tr>
@@ -214,10 +251,43 @@ import { formatNumber } from '../../../core/i18n/numbers';
             <nz-table [nzData]="deadRows()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th nzShowSort [boSort]="deadSort" boSortKey="kind" nzWidth="186px" i18n="@@operations.dead.kind">Kind</th>
-                  <th nzShowSort [boSort]="deadSort" boSortKey="error" i18n="@@operations.dead.lastError">Last error</th>
-                  <th nzShowSort [boSort]="deadSort" boSortKey="attempts" nzWidth="96px" nzAlign="right" i18n="@@operations.dead.attempts">Attempts</th>
-                  <th nzShowSort [boSort]="deadSort" boSortKey="created" nzWidth="126px" nzAlign="right" i18n="@@operations.dead.created">Created</th>
+                  <th
+                    nzShowSort
+                    [boSort]="deadSort"
+                    boSortKey="kind"
+                    nzWidth="186px"
+                    i18n="@@operations.dead.kind"
+                  >
+                    Kind
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="deadSort"
+                    boSortKey="error"
+                    i18n="@@operations.dead.lastError"
+                  >
+                    Last error
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="deadSort"
+                    boSortKey="attempts"
+                    nzWidth="96px"
+                    nzAlign="right"
+                    i18n="@@operations.dead.attempts"
+                  >
+                    Attempts
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="deadSort"
+                    boSortKey="created"
+                    nzWidth="126px"
+                    nzAlign="right"
+                    i18n="@@operations.dead.created"
+                  >
+                    Created
+                  </th>
                   <th nzWidth="100px" nzAlign="right">
                     <span class="sr-only" i18n="@@operations.dead.actions">Actions</span>
                   </th>

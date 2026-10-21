@@ -20,8 +20,9 @@ import { purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
   template: `
     <nz-card nzTitle="Library sources" i18n-nzTitle="@@projects.sources.library.title">
       <p class="muted" i18n="@@projects.sources.library.intro">
-        Shared by all projects: standards, templates and reference material. Steps attach them read-only in
-        the designer (section Repositories of a step); the job gets them in /workspace/lib-&lt;key&gt;.
+        Shared by all projects: standards, templates and reference material. Steps attach them
+        read-only in the designer (section Repositories of a step); the job gets them in
+        /workspace/lib-&lt;key&gt;.
       </p>
       @if (!loaded()) {
         <p class="muted" i18n="@@projects.sources.library.loading">Loading…</p>
@@ -31,9 +32,30 @@ import { purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
         <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="small">
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="source" i18n="@@projects.sources.library.col.source">Source</th>
-              <th nzShowSort [boSort]="sort" boSortKey="purpose" i18n="@@projects.sources.library.col.purpose">Purpose</th>
-              <th nzShowSort [boSort]="sort" boSortKey="repository" i18n="@@projects.sources.library.col.repository">Repository</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="source"
+                i18n="@@projects.sources.library.col.source"
+              >
+                Source
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="purpose"
+                i18n="@@projects.sources.library.col.purpose"
+              >
+                Purpose
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="repository"
+                i18n="@@projects.sources.library.col.repository"
+              >
+                Repository
+              </th>
             </tr>
           </thead>
           <tbody>

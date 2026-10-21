@@ -13,8 +13,20 @@ import {
 import { StepRepositoriesSectionComponent } from './step-repositories-section.component';
 
 const repos: ProjectRepository[] = [
-  { key: 'main', url: 'https://g/main.git', defaultBranch: 'main', purpose: 'SOURCE', primary: true },
-  { key: 'docs', url: 'https://g/docs.git', defaultBranch: 'main', purpose: 'DOCS', primary: false },
+  {
+    key: 'main',
+    url: 'https://g/main.git',
+    defaultBranch: 'main',
+    purpose: 'SOURCE',
+    primary: true,
+  },
+  {
+    key: 'docs',
+    url: 'https://g/docs.git',
+    defaultBranch: 'main',
+    purpose: 'DOCS',
+    primary: false,
+  },
 ];
 
 const source = (key: string): LibrarySource => ({

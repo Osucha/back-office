@@ -182,13 +182,57 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@models.col.profile">Profile</th>
-              <th nzShowSort [boSort]="sort" boSortKey="provider" nzWidth="150px" i18n="@@models.col.provider">Provider</th>
-              <th nzShowSort [boSort]="sort" boSortKey="model" nzWidth="170px" i18n="@@models.col.modelId">Model id</th>
-              <th nzShowSort [boSort]="sort" boSortKey="price" nzWidth="150px" nzAlign="right" i18n="@@models.col.price">In / out per MTok</th>
-              <th nzShowSort [boSort]="sort" boSortKey="context" nzWidth="96px" nzAlign="right" i18n="@@models.col.context">Context</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@models.col.profile">
+                Profile
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="provider"
+                nzWidth="150px"
+                i18n="@@models.col.provider"
+              >
+                Provider
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="model"
+                nzWidth="170px"
+                i18n="@@models.col.modelId"
+              >
+                Model id
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="price"
+                nzWidth="150px"
+                nzAlign="right"
+                i18n="@@models.col.price"
+              >
+                In / out per MTok
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="context"
+                nzWidth="96px"
+                nzAlign="right"
+                i18n="@@models.col.context"
+              >
+                Context
+              </th>
               <th nzWidth="190px" i18n="@@models.col.lastTest">Last test</th>
-              <th nzShowSort [boSort]="sort" boSortKey="enabled" nzWidth="96px" i18n="@@models.col.enabled">Enabled</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="enabled"
+                nzWidth="96px"
+                i18n="@@models.col.enabled"
+              >
+                Enabled
+              </th>
               <th nzWidth="130px">
                 <span class="sr-only" i18n="@@models.col.actions">Actions</span>
               </th>
@@ -235,12 +279,16 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
                     @if (isLogin(p)) {
                       <span class="state-word"
                         ><bo-glyph holder="done" [size]="11" />
-                        <ng-container i18n="@@models.login.yourLogin">your Claude login</ng-container></span
+                        <ng-container i18n="@@models.login.yourLogin"
+                          >your Claude login</ng-container
+                        ></span
                       >
                     } @else if (p.providerConfigured === false) {
                       <span class="state-word"
                         ><bo-glyph holder="idle" [size]="11" />
-                        <ng-container i18n="@@models.notConnected">not connected</ng-container></span
+                        <ng-container i18n="@@models.notConnected"
+                          >not connected</ng-container
+                        ></span
                       >
                     } @else {
                       <span class="state-word"
@@ -387,7 +435,13 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
         <div class="notice" role="note">
           <bo-glyph holder="idle" [size]="13" />
           <span>{{ hiddenLabel() }}</span>
-          <button nz-button nzType="link" nzSize="small" type="button" (click)="showUnavailable.set(!showUnavailable())">
+          <button
+            nz-button
+            nzType="link"
+            nzSize="small"
+            type="button"
+            (click)="showUnavailable.set(!showUnavailable())"
+          >
             @if (showUnavailable()) {
               <ng-container i18n="@@models.unavailable.hide">Hide them</ng-container>
             } @else {
@@ -397,7 +451,11 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
         </div>
       }
 
-      <app-provider-catalog [existing]="existingKeys()" [canManage]="canManage()" (add)="addFromCatalog($event)" />
+      <app-provider-catalog
+        [existing]="existingKeys()"
+        [canManage]="canManage()"
+        (add)="addFromCatalog($event)"
+      />
     </div>
 
     <app-model-profile-drawer
@@ -502,7 +560,9 @@ export class ModelsPageComponent {
     }),
   );
   readonly visible = computed(() =>
-    this.showUnavailable() ? this.filtered() : this.filtered().filter((p) => p.providerConfigured !== false),
+    this.showUnavailable()
+      ? this.filtered()
+      : this.filtered().filter((p) => p.providerConfigured !== false),
   );
   /** Column sorting (URL `?sort=`); the same order for the table and keyboard navigation. */
   readonly sort = tableSort<ModelProfile>({
@@ -514,7 +574,9 @@ export class ModelsPageComponent {
     enabled: (p) => p.enabled !== false,
   });
   readonly rows = computed(() => this.sort.apply(this.visible()));
-  readonly hiddenCount = computed(() => this.filtered().filter((p) => p.providerConfigured === false).length);
+  readonly hiddenCount = computed(
+    () => this.filtered().filter((p) => p.providerConfigured === false).length,
+  );
   readonly hiddenLabel = computed(() =>
     this.showUnavailable()
       ? icu(
@@ -527,9 +589,7 @@ export class ModelsPageComponent {
         ),
   );
   /** Catalogue keys of the existing profiles, so the catalogue marks models already added. */
-  readonly existingKeys = computed(
-    () => new Set(this.profiles().map((p) => profileKey(p))),
-  );
+  readonly existingKeys = computed(() => new Set(this.profiles().map((p) => profileKey(p))));
   readonly providerOptions = computed(() =>
     [...new Set(this.profiles().map((p) => p.ref.provider))].sort(compareText),
   );
@@ -594,7 +654,9 @@ export class ModelsPageComponent {
     inject(BreadcrumbService).set([{ label: $localize`:@@models.group:Models` }]);
     this.load();
     this.api.providers().subscribe((p) => this.providers.set(p));
-    this.llmProvidersApi.list().subscribe({ next: (c) => this.connections.set(c), error: () => undefined });
+    this.llmProvidersApi
+      .list()
+      .subscribe({ next: (c) => this.connections.set(c), error: () => undefined });
     inject(ShortcutsService).register(
       [
         {

@@ -17,6 +17,7 @@
   "evaluation.attempt.bodyLabel": "Szczegóły próby",
   "evaluation.attempt.loading": "Wczytywanie próby",
   "evaluation.attempt.score": "Wynik",
+  "evaluation.attempt.col.score": "Wynik",
   "evaluation.attempt.tests": "Testy",
   "evaluation.attempt.passed": "zaliczone",
   "evaluation.attempt.failed": "niezaliczone",

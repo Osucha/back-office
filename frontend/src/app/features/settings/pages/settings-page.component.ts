@@ -197,8 +197,8 @@ const PROVIDERS: Record<string, string> = {
               >
             </header>
             <p class="what" i18n="@@settings.providers.whatConnections">
-              Add providers and their API keys under Models, LLM providers; several of one type are possible. Keys
-              from environment variables still work as a fallback.
+              Add providers and their API keys under Models, LLM providers; several of one type are
+              possible. Keys from environment variables still work as a fallback.
             </p>
             @if (!anyProviderKey()) {
               <p class="hint">

@@ -20,8 +20,22 @@ describe('model catalog', () => {
       source: 'DATABASE',
       ok: true,
       models: [
-        { id: 'google/gemma-4-31b-it:free', name: 'Gemma 4 (free)', contextWindow: 262144, inputPerMTok: 0, outputPerMTok: 0, free: true },
-        { id: 'vendor/paid', name: 'Paid', contextWindow: 32000, inputPerMTok: 2.5, outputPerMTok: 10, free: false },
+        {
+          id: 'google/gemma-4-31b-it:free',
+          name: 'Gemma 4 (free)',
+          contextWindow: 262144,
+          inputPerMTok: 0,
+          outputPerMTok: 0,
+          free: true,
+        },
+        {
+          id: 'vendor/paid',
+          name: 'Paid',
+          contextWindow: 32000,
+          inputPerMTok: 2.5,
+          outputPerMTok: 10,
+          free: false,
+        },
       ],
     },
     {
@@ -41,7 +55,9 @@ describe('model catalog', () => {
       'openrouter|vendor/paid',
       'env:ANTHROPIC|claude-x',
     ]);
-    expect(filterCatalog(rows, { freeOnly: true }).map((r) => r.model.id)).toEqual(['google/gemma-4-31b-it:free']);
+    expect(filterCatalog(rows, { freeOnly: true }).map((r) => r.model.id)).toEqual([
+      'google/gemma-4-31b-it:free',
+    ]);
     expect(filterCatalog(rows, { connection: 'env:ANTHROPIC' }).length).toBe(1);
     expect(filterCatalog(rows, { query: 'PAID' }).map((r) => r.model.id)).toEqual(['vendor/paid']);
   });
@@ -50,10 +66,18 @@ describe('model catalog', () => {
     const [free, paid, env] = catalogRows(sections);
     const p = profileFromCatalog(free);
     expect(p.id).toBeUndefined();
-    expect(p.ref).toEqual({ provider: 'OPENAI_COMPATIBLE', modelId: 'google/gemma-4-31b-it:free', connection: 'openrouter' });
+    expect(p.ref).toEqual({
+      provider: 'OPENAI_COMPATIBLE',
+      modelId: 'google/gemma-4-31b-it:free',
+      connection: 'openrouter',
+    });
     expect(p.capabilities).toEqual(['CHEAP', 'LONG_CONTEXT']);
     expect(p.contextWindow).toBe(262144);
-    expect(profileFromCatalog(paid).pricing).toEqual({ inputPerMTok: 2.5, outputPerMTok: 10, currency: 'USD' });
+    expect(profileFromCatalog(paid).pricing).toEqual({
+      inputPerMTok: 2.5,
+      outputPerMTok: 10,
+      currency: 'USD',
+    });
     expect(profileFromCatalog(paid).notes).toBe('');
     expect(profileFromCatalog(env).notes).not.toBe('');
     expect(catalogKey('ANTHROPIC', null, 'claude-x')).toBe(env.key);
@@ -72,6 +96,8 @@ describe('model catalog', () => {
     expect(isLoginProfile({ runtime: 'API' })).toBe(false);
     expect(isLoginProfile({})).toBe(false);
     expect(profileKey(p)).toBe(loginKey('opus'));
-    expect(profileKey({ ref: { provider: 'ANTHROPIC', modelId: 'opus', connection: null } })).toBe('env:ANTHROPIC|opus');
+    expect(profileKey({ ref: { provider: 'ANTHROPIC', modelId: 'opus', connection: null } })).toBe(
+      'env:ANTHROPIC|opus',
+    );
   });
 });

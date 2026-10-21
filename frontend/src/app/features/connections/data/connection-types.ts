@@ -26,6 +26,4 @@ export type JiraScopes = S['JiraScopes'];
 
 /** Where a connection lives: the platform registry, one project's, or the caller's own (personal). */
 export type ConnectionOwner =
-  | { kind: 'platform' }
-  | { kind: 'project'; projectId: string }
-  | { kind: 'personal' };
+  { kind: 'platform' } | { kind: 'project'; projectId: string } | { kind: 'personal' };

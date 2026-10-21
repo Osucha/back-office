@@ -32,8 +32,8 @@ import { NotifyService } from '../../../core/ui/notify.service';
       @if (status(); as s) {
         @if (!s.allowedByPlatform) {
           <p class="muted" i18n="@@projects.specKit.platformOff">
-            Spec Kit is turned off for the whole platform by an administrator. Spec Kit steps cannot run
-            in any project.
+            Spec Kit is turned off for the whole platform by an administrator. Spec Kit steps cannot
+            run in any project.
           </p>
         } @else if (!s.enabled) {
           <p class="muted" i18n="@@projects.specKit.off">
@@ -42,8 +42,8 @@ import { NotifyService } from '../../../core/ui/notify.service';
           </p>
         } @else {
           <p class="muted" i18n="@@projects.specKit.on">
-            On: Spec Kit steps can run and the constitution below is written to .specify/memory before
-            each Spec Kit job.
+            On: Spec Kit steps can run and the constitution below is written to .specify/memory
+            before each Spec Kit job.
           </p>
           @if (s.missingWorkflows.length) {
             <div class="add">

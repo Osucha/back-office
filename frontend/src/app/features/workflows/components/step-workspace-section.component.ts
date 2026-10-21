@@ -20,8 +20,8 @@ import { stepWorkspace, withStepWorkspace, type StepWorkspace } from '../data/wo
     <div class="sws">
       @if (!workspaces().length) {
         <p class="quiet" i18n="@@workflows.stepWorkspace.noneInProject">
-          The project has no workspaces: this step starts from a fresh directory and a new agent session. Add workspaces
-          in the project tab Workspaces.
+          The project has no workspaces: this step starts from a fresh directory and a new agent
+          session. Add workspaces in the project tab Workspaces.
         </p>
       } @else {
         <nz-select
@@ -42,8 +42,15 @@ import { stepWorkspace, withStepWorkspace, type StepWorkspace } from '../data/wo
             {{ sourcesText(w) }}
           </p>
           @if (canPrepare()) {
-            <label nz-checkbox [ngModel]="current().prepareOnly" (ngModelChange)="set({ prepareOnly: $event })" [nzDisabled]="readonly()">
-              <span i18n="@@workflows.stepWorkspace.prepareOnly">Only prepare the workspace (no agent, no push)</span>
+            <label
+              nz-checkbox
+              [ngModel]="current().prepareOnly"
+              (ngModelChange)="set({ prepareOnly: $event })"
+              [nzDisabled]="readonly()"
+            >
+              <span i18n="@@workflows.stepWorkspace.prepareOnly"
+                >Only prepare the workspace (no agent, no push)</span
+              >
             </label>
           }
           @if (!current().prepareOnly) {
@@ -148,9 +155,15 @@ export class StepWorkspaceSectionComponent {
   };
 
   readonly current = computed(() => stepWorkspace(this.config()));
-  readonly selected = computed(() => this.workspaces().find((w) => w.key === this.current().workspace) ?? null);
-  readonly color = computed(() => workspaceColor(this.workspaces().findIndex((w) => w.key === this.current().workspace)));
-  readonly issues = computed(() => (this.nodeIssues() ?? []).filter((i) => !!i.field && /(^|\.)config\.workspace\b/.test(i.field)));
+  readonly selected = computed(
+    () => this.workspaces().find((w) => w.key === this.current().workspace) ?? null,
+  );
+  readonly color = computed(() =>
+    workspaceColor(this.workspaces().findIndex((w) => w.key === this.current().workspace)),
+  );
+  readonly issues = computed(() =>
+    (this.nodeIssues() ?? []).filter((i) => !!i.field && /(^|\.)config\.workspace\b/.test(i.field)),
+  );
 
   sourcesText(w: ProjectWorkspace): string {
     const keys = sourceLabels(w);

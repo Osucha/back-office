@@ -22,7 +22,11 @@ export interface CatalogFilter {
 }
 
 /** Same key for a catalogue row and the profile created from it, so added models can be marked. */
-export function catalogKey(provider: Provider, connection: string | null | undefined, modelId: string): string {
+export function catalogKey(
+  provider: Provider,
+  connection: string | null | undefined,
+  modelId: string,
+): string {
   return `${connection || 'env:' + provider}|${modelId}`;
 }
 
@@ -45,7 +49,9 @@ export function filterCatalog(rows: CatalogRow[], f: CatalogFilter): CatalogRow[
     (r) =>
       (!f.connection || (r.connection ?? 'env:' + r.provider) === f.connection) &&
       (!f.freeOnly || r.model.free) &&
-      (!q || r.model.id.toLowerCase().includes(q) || (r.model.name ?? '').toLowerCase().includes(q)),
+      (!q ||
+        r.model.id.toLowerCase().includes(q) ||
+        (r.model.name ?? '').toLowerCase().includes(q)),
   );
 }
 
@@ -56,7 +62,9 @@ export function isLoginProfile(p: Pick<ModelProfile, 'runtime'> | null | undefin
 
 /** Catalogue key of a profile: login profiles have their own namespace, apart from the API connections. */
 export function profileKey(p: Pick<ModelProfile, 'ref' | 'runtime'>): string {
-  return isLoginProfile(p) ? loginKey(p.ref.modelId) : catalogKey(p.ref.provider, p.ref.connection, p.ref.modelId);
+  return isLoginProfile(p)
+    ? loginKey(p.ref.modelId)
+    : catalogKey(p.ref.provider, p.ref.connection, p.ref.modelId);
 }
 
 export function loginKey(modelId: string): string {
@@ -71,9 +79,18 @@ export interface LoginModel {
 
 export function loginModels(): LoginModel[] {
   return [
-    { alias: 'opus', displayName: $localize`:@@models.login.opus:Claude Opus via Claude Code (my login)` },
-    { alias: 'sonnet', displayName: $localize`:@@models.login.sonnet:Claude Sonnet via Claude Code (my login)` },
-    { alias: 'haiku', displayName: $localize`:@@models.login.haiku:Claude Haiku via Claude Code (my login)` },
+    {
+      alias: 'opus',
+      displayName: $localize`:@@models.login.opus:Claude Opus via Claude Code (my login)`,
+    },
+    {
+      alias: 'sonnet',
+      displayName: $localize`:@@models.login.sonnet:Claude Sonnet via Claude Code (my login)`,
+    },
+    {
+      alias: 'haiku',
+      displayName: $localize`:@@models.login.haiku:Claude Haiku via Claude Code (my login)`,
+    },
   ];
 }
 
@@ -106,7 +123,11 @@ export function profileFromCatalog(row: CatalogRow): ModelProfile {
     id: undefined as unknown as string,
     displayName: m.name || m.id,
     ref: { provider: row.provider, modelId: m.id, connection: row.connection },
-    pricing: { inputPerMTok: m.inputPerMTok ?? 0, outputPerMTok: m.outputPerMTok ?? 0, currency: 'USD' },
+    pricing: {
+      inputPerMTok: m.inputPerMTok ?? 0,
+      outputPerMTok: m.outputPerMTok ?? 0,
+      currency: 'USD',
+    },
     capabilities,
     contextWindow: m.contextWindow ?? null,
     notes:

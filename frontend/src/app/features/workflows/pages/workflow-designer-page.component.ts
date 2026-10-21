@@ -597,7 +597,9 @@ const MAX_HISTORY = 50;
                         </nz-form-control>
                       </nz-form-item>
                       <nz-form-item>
-                        <nz-form-label i18n="@@workflows.designer.workspaces">Workspaces</nz-form-label>
+                        <nz-form-label i18n="@@workflows.designer.workspaces"
+                          >Workspaces</nz-form-label
+                        >
                         <nz-form-control>
                           <ul class="ws-list">
                             @for (w of workspaces(); track w.key; let i = $index) {
@@ -1433,7 +1435,9 @@ export class WorkflowDesignerPageComponent {
     this.librarySourcesApi
       .list()
       .subscribe({ next: (s) => this.librarySources.set(s), error: () => undefined });
-    this.workspacesApi.list(projectId).subscribe({ next: (w) => this.workspaces.set(w), error: () => undefined });
+    this.workspacesApi
+      .list(projectId)
+      .subscribe({ next: (w) => this.workspaces.set(w), error: () => undefined });
     // Fresh repositories for the step repository picker (ADR 0034); the store may be older.
     this.projectsApi.get(projectId).subscribe({
       next: (p) => this.projectRepositories.set(projectRepositories(p)),

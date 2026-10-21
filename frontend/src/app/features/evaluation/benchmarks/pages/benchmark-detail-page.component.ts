@@ -214,9 +214,13 @@ const PROVIDERS: Record<string, string> = {
             <dt i18n="@@evaluation.benchmark.runner">Coding tasks run on</dt>
             <dd>
               @if (b.runnerTarget === 'PERSONAL') {
-                <ng-container i18n="@@evaluation.benchmark.runnerPersonal">personal runner</ng-container>
+                <ng-container i18n="@@evaluation.benchmark.runnerPersonal"
+                  >personal runner</ng-container
+                >
               } @else {
-                <ng-container i18n="@@evaluation.benchmark.runnerShared">shared runners</ng-container>
+                <ng-container i18n="@@evaluation.benchmark.runnerShared"
+                  >shared runners</ng-container
+                >
               }
             </dd>
           </div>
@@ -230,8 +234,8 @@ const PROVIDERS: Record<string, string> = {
           <div class="runner-notice" role="note">
             <bo-glyph holder="idle" [size]="12" />
             <span i18n="@@evaluation.benchmark.waitingForRunner"
-              >Coding attempts are waiting for a runner: none is online where this benchmark sends them.
-              They start when one connects and fail after 24 hours.</span
+              >Coding attempts are waiting for a runner: none is online where this benchmark sends
+              them. They start when one connects and fail after 24 hours.</span
             >
           </div>
         }
@@ -420,20 +424,79 @@ const PROVIDERS: Record<string, string> = {
               >
                 <thead>
                   <tr>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="status" nzWidth="130px" i18n="@@evaluation.benchmark.col.holder">Holder</th>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="task" i18n="@@evaluation.benchmark.col.task">Task</th>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="model" nzWidth="180px" i18n="@@evaluation.benchmark.col.model">Model</th>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="rep" nzWidth="70px" nzAlign="right" i18n="@@evaluation.benchmark.col.rep">
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="status"
+                      nzWidth="130px"
+                      i18n="@@evaluation.benchmark.col.holder"
+                    >
+                      Holder
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="task"
+                      i18n="@@evaluation.benchmark.col.task"
+                    >
+                      Task
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="model"
+                      nzWidth="180px"
+                      i18n="@@evaluation.benchmark.col.model"
+                    >
+                      Model
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="rep"
+                      nzWidth="70px"
+                      nzAlign="right"
+                      i18n="@@evaluation.benchmark.col.rep"
+                    >
                       Rep
                     </th>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="score" nzWidth="86px" nzAlign="right" i18n="@@evaluation.benchmark.col.score">
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="score"
+                      nzWidth="86px"
+                      nzAlign="right"
+                      i18n="@@evaluation.benchmark.col.score"
+                    >
                       Score
                     </th>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="passed" nzWidth="100px" i18n="@@evaluation.benchmark.col.tests">Tests</th>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="cost" nzWidth="100px" nzAlign="right" i18n="@@evaluation.benchmark.col.cost">
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="passed"
+                      nzWidth="100px"
+                      i18n="@@evaluation.benchmark.col.tests"
+                    >
+                      Tests
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="cost"
+                      nzWidth="100px"
+                      nzAlign="right"
+                      i18n="@@evaluation.benchmark.col.cost"
+                    >
                       Cost
                     </th>
-                    <th nzShowSort [boSort]="attemptSort" boSortKey="duration" nzWidth="100px" nzAlign="right" i18n="@@evaluation.benchmark.col.duration">
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="duration"
+                      nzWidth="100px"
+                      nzAlign="right"
+                      i18n="@@evaluation.benchmark.col.duration"
+                    >
                       Duration
                     </th>
                   </tr>
@@ -513,7 +576,9 @@ const PROVIDERS: Record<string, string> = {
         <thead>
           <tr>
             <th nzWidth="44px" nzAlign="right">#</th>
-            <th nzShowSort [boSort]="boardSort" boSortKey="model" i18n="@@evaluation.board.model">Model</th>
+            <th nzShowSort [boSort]="boardSort" boSortKey="model" i18n="@@evaluation.board.model">
+              Model
+            </th>
             <th
               nzShowSort
               [boSort]="boardSort"
@@ -526,9 +591,36 @@ const PROVIDERS: Record<string, string> = {
             >
               Score
             </th>
-            <th nzShowSort [boSort]="boardSort" boSortKey="passRate" nzWidth="96px" nzAlign="right" i18n="@@evaluation.board.passRate">Pass rate</th>
-            <th nzShowSort [boSort]="boardSort" boSortKey="meanCost" nzWidth="106px" nzAlign="right" i18n="@@evaluation.board.meanCost">Mean cost</th>
-            <th nzShowSort [boSort]="boardSort" boSortKey="total" nzWidth="96px" nzAlign="right" i18n="@@evaluation.board.total">Total</th>
+            <th
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="passRate"
+              nzWidth="96px"
+              nzAlign="right"
+              i18n="@@evaluation.board.passRate"
+            >
+              Pass rate
+            </th>
+            <th
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="meanCost"
+              nzWidth="106px"
+              nzAlign="right"
+              i18n="@@evaluation.board.meanCost"
+            >
+              Mean cost
+            </th>
+            <th
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="total"
+              nzWidth="96px"
+              nzAlign="right"
+              i18n="@@evaluation.board.total"
+            >
+              Total
+            </th>
             <th
               nzShowSort
               [boSort]="boardSort"
@@ -833,7 +925,9 @@ export class BenchmarkDetailPageComponent {
     if (b?.status !== 'RUNNING') return false;
     const target = this.targets().find((t) => t.target === (b.runnerTarget ?? 'SHARED'));
     if (!target || target.onlineRunners > 0) return false;
-    return this.attempts().some((a) => a.kind === 'CODING_JOB' && (a.status === 'RUNNING' || a.status === 'PENDING'));
+    return this.attempts().some(
+      (a) => a.kind === 'CODING_JOB' && (a.status === 'RUNNING' || a.status === 'PENDING'),
+    );
   });
   readonly attemptsLoading = signal(false);
   readonly attemptsLoaded = signal(false);
@@ -1054,7 +1148,9 @@ export class BenchmarkDetailPageComponent {
       next: (b) => {
         this.benchmark.set(b);
         if (b.status === 'RUNNING')
-          this.api.executionTargets().subscribe({ next: (t) => this.targets.set(t), error: () => undefined });
+          this.api
+            .executionTargets()
+            .subscribe({ next: (t) => this.targets.set(t), error: () => undefined });
         this.notFound.set(false);
         this.breadcrumb.set([
           { label: $localize`:@@evaluation.title:Evaluation`, link: '/evaluation/suites' },

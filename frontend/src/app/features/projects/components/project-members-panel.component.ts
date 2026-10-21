@@ -119,10 +119,36 @@ import { tableSort } from '../../../core/ui/relay/table-sort';
       <nz-table [nzData]="rows()" [nzShowPagination]="rows().length > 50" [nzPageSize]="50">
         <thead>
           <tr>
-            <th nzShowSort [boSort]="sort" boSortKey="member" i18n="@@projects.members.member">Member</th>
-            <th nzShowSort [boSort]="sort" boSortKey="type" nzWidth="106px" i18n="@@projects.members.typeColumn">Type</th>
-            <th nzShowSort [boSort]="sort" boSortKey="role" nzWidth="200px" i18n="@@projects.members.role">Role</th>
-            <th nzShowSort [boSort]="sort" boSortKey="added" nzWidth="200px" i18n="@@projects.members.added">Added</th>
+            <th nzShowSort [boSort]="sort" boSortKey="member" i18n="@@projects.members.member">
+              Member
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="type"
+              nzWidth="106px"
+              i18n="@@projects.members.typeColumn"
+            >
+              Type
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="role"
+              nzWidth="200px"
+              i18n="@@projects.members.role"
+            >
+              Role
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="added"
+              nzWidth="200px"
+              i18n="@@projects.members.added"
+            >
+              Added
+            </th>
             @if (canManage()) {
               <th nzWidth="80px"></th>
             }

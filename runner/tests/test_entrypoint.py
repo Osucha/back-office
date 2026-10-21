@@ -198,7 +198,7 @@ class ModelMappingTests(unittest.TestCase):
         spec = ep.parse_spec(dict(BASE_SPEC, agent="OPENCODE", gateway=GATEWAY_JSON))
         base = {"ANTHROPIC_API_KEY": "sk-ant-leak", "OPENAI_API_KEY": "sk-leak", "GIT_TOKEN": "glpat-x", "RUNNER_CALLBACK_TOKEN": "bo_job_x",
                 "NO_PROXY": "*", "HOME": "/tmp"}
-        env = ep.agent_environment(spec, base, Path("/ws"), "bo_job_abc", "http://job:secret@proxy:4750")
+        env = ep.agent_environment(spec, base, Path("/ws"), "bo_job_abc", "http://job:secret@proxy:4750")  # trufflehog:ignore (test fixture)
         for leaked in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GIT_TOKEN", "RUNNER_CALLBACK_TOKEN", "NO_PROXY"):
             self.assertNotIn(leaked, env)
         self.assertEqual(env["BACKOFFICE_JOB_TOKEN"], "bo_job_abc")
@@ -209,7 +209,7 @@ class ModelMappingTests(unittest.TestCase):
     def test_java_tools_get_the_egress_proxy(self):
         # ADR 0046: the JVM ignores HTTPS_PROXY; Gradle and the wrappers need system properties, Maven settings.xml
         env = {"HOME": "/tmp", "JAVA_TOOL_OPTIONS": "-Xmx1g"}
-        ep.apply_proxy_env(env, "http://job:s%40cret@proxy:4750")
+        ep.apply_proxy_env(env, "http://job:s%40cret@proxy:4750")  # trufflehog:ignore (test fixture)
         self.assertIn("-Xmx1g", env["JAVA_TOOL_OPTIONS"])
         self.assertIn("-Dhttps.proxyHost=proxy -Dhttps.proxyPort=4750", env["JAVA_TOOL_OPTIONS"])
         self.assertIn("-Dhttps.proxyPassword=s@cret", env["JAVA_TOOL_OPTIONS"])
@@ -1525,7 +1525,7 @@ class RunnerHelperTests(unittest.TestCase):
         self.assertEqual(ep._callback_url(ep.parse_spec(BASE_SPEC), {"RUNNER_CALLBACK_URL": "https://other"}), "https://other")
 
     def test_proxy_password_and_connection_settings(self):
-        self.assertEqual(ep.proxy_password("http://job:s3cret-pw@proxy:3128"), "s3cret-pw")
+        self.assertEqual(ep.proxy_password("http://job:s3cret-pw@proxy:3128"), "s3cret-pw")  # trufflehog:ignore (test fixture)
         self.assertEqual(ep.proxy_password("http://proxy:3128"), "")
         self.assertEqual(ep.proxy_password(None), "")
         env = {"RUNNER_JOB_ID": "j", "RUNNER_CALLBACK_TOKEN": "t", "RUNNER_CALLBACK_URL": "u"}

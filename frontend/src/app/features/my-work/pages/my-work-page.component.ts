@@ -140,9 +140,32 @@ const TABS: (IntakeProposalState | 'RULES')[] = ['NEW', 'STARTED', 'DISMISSED', 
             <nz-table [nzData]="sortedRules()" [nzShowPagination]="false" nzSize="middle">
               <thead>
                 <tr>
-                  <th nzShowSort [boSort]="ruleSort" boSortKey="name" i18n="@@my-work.rules.col.rule">Rule</th>
-                  <th nzShowSort [boSort]="ruleSort" boSortKey="workflow" nzWidth="220px" i18n="@@my-work.rules.col.workflow">Proposes</th>
-                  <th nzShowSort [boSort]="ruleSort" boSortKey="status" nzWidth="200px" i18n="@@my-work.rules.col.status">Status</th>
+                  <th
+                    nzShowSort
+                    [boSort]="ruleSort"
+                    boSortKey="name"
+                    i18n="@@my-work.rules.col.rule"
+                  >
+                    Rule
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="ruleSort"
+                    boSortKey="workflow"
+                    nzWidth="220px"
+                    i18n="@@my-work.rules.col.workflow"
+                  >
+                    Proposes
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="ruleSort"
+                    boSortKey="status"
+                    nzWidth="200px"
+                    i18n="@@my-work.rules.col.status"
+                  >
+                    Status
+                  </th>
                   <th nzWidth="120px">
                     <span class="sr-only" i18n="@@my-work.rules.col.actions">Actions</span>
                   </th>
@@ -233,8 +256,24 @@ const TABS: (IntakeProposalState | 'RULES')[] = ['NEW', 'STARTED', 'DISMISSED', 
           <thead>
             <tr>
               <th nzShowSort [boSort]="sort" boSortKey="issue" i18n="@@my-work.col.issue">Issue</th>
-              <th nzShowSort [boSort]="sort" boSortKey="workflow" nzWidth="230px" i18n="@@my-work.col.workflow">Workflow</th>
-              <th nzShowSort [boSort]="sort" boSortKey="found" nzWidth="146px" i18n="@@my-work.col.found">Found</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="workflow"
+                nzWidth="230px"
+                i18n="@@my-work.col.workflow"
+              >
+                Workflow
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="found"
+                nzWidth="146px"
+                i18n="@@my-work.col.found"
+              >
+                Found
+              </th>
               <th nzWidth="230px">
                 <span class="sr-only" i18n="@@my-work.col.actions">Actions</span>
               </th>

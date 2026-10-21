@@ -62,11 +62,15 @@ describe('connection model (ADR 0035)', () => {
     expect(uncoveredCapabilities(['ISSUE_READ', 'ISSUE_TRANSITION'], ['read:jira-work'])).toEqual([
       'ISSUE_TRANSITION',
     ]);
-    expect(uncoveredCapabilities(['ISSUE_COMMENT'], ['write:comment:jira', 'read:comment:jira'])).toEqual([]);
-    expect(excessWriteScopes(['ISSUE_READ'], ['read:jira-work', 'write:comment:jira', 'delete:issue:jira'])).toEqual([
-      'delete:issue:jira',
-      'write:comment:jira',
-    ]);
+    expect(
+      uncoveredCapabilities(['ISSUE_COMMENT'], ['write:comment:jira', 'read:comment:jira']),
+    ).toEqual([]);
+    expect(
+      excessWriteScopes(
+        ['ISSUE_READ'],
+        ['read:jira-work', 'write:comment:jira', 'delete:issue:jira'],
+      ),
+    ).toEqual(['delete:issue:jira', 'write:comment:jira']);
     expect(normalizeScopes(['Read:Jira-Work, write:comment:jira', 'read:jira-work'])).toEqual([
       'read:jira-work',
       'write:comment:jira',
@@ -131,7 +135,10 @@ describe('connection model (ADR 0035)', () => {
     const withFallback = withFlag(acting, 'fallbackToSystem', true);
     expect(configFlag(withFallback, 'fallbackToSystem')).toBe(true);
     expect(withActAs(withFallback, 'SYSTEM')).toEqual({ toStatus: 'Done' });
-    expect(withActAs({ toStatus: 'Done' }, 'SPECIFIC', 'c9')).toEqual({ toStatus: 'Done', jiraConnection: 'c9' });
+    expect(withActAs({ toStatus: 'Done' }, 'SPECIFIC', 'c9')).toEqual({
+      toStatus: 'Done',
+      jiraConnection: 'c9',
+    });
     expect(withActAs({ jiraConnection: 'c9' }, 'SYSTEM')).toBeUndefined();
     expect(withFlag({ allowActingUser: true }, 'allowActingUser', false)).toBeUndefined();
   });
@@ -149,11 +156,15 @@ describe('connection model (ADR 0035)', () => {
     });
     expect(view.text).toContain('uses Commenter from the project');
     expect(
-      verificationMessageText({ severity: 'ERROR', code: 'MISSING_SCOPES', text: 'needs write:comment:jira' }),
+      verificationMessageText({
+        severity: 'ERROR',
+        code: 'MISSING_SCOPES',
+        text: 'needs write:comment:jira',
+      }),
     ).toContain('needs write:comment:jira');
-    expect(verificationMessageText({ severity: 'WARNING', code: 'BROAD_SCOPE', text: '' })).toContain(
-      'write:jira-work',
-    );
+    expect(
+      verificationMessageText({ severity: 'WARNING', code: 'BROAD_SCOPE', text: '' }),
+    ).toContain('write:jira-work');
   });
 
   it('moves list items within bounds', () => {

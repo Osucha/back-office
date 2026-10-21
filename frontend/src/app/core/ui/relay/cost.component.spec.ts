@@ -11,7 +11,10 @@ describe('bo-cost', () => {
   }
 
   it('adds the cost at API prices only when it differs from the spent cost (ADR 0042)', () => {
-    const subscription = render({ amount: 0, currency: 'USD' }, { amount: 0.046579, currency: 'USD' });
+    const subscription = render(
+      { amount: 0, currency: 'USD' },
+      { amount: 0.046579, currency: 'USD' },
+    );
     expect(subscription.textContent).toContain('API');
     expect(subscription.querySelectorAll('.tick')).toHaveLength(2);
 

@@ -279,9 +279,35 @@ const successColumns = {
           <thead>
             <tr>
               <th nzShowSort [boSort]="sort" boSortKey="key">{{ col }}</th>
-              <th nzShowSort [boSort]="sort" boSortKey="jobs" nzWidth="86px" nzAlign="right" i18n="@@insights.tables.jobs">Jobs</th>
-              <th nzShowSort [boSort]="sort" boSortKey="rate" nzWidth="146px" i18n="@@insights.tables.success">Success</th>
-              <th nzShowSort [boSort]="sort" boSortKey="cost" nzWidth="96px" nzAlign="right" i18n="@@insights.tables.cost">Cost</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="jobs"
+                nzWidth="86px"
+                nzAlign="right"
+                i18n="@@insights.tables.jobs"
+              >
+                Jobs
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="rate"
+                nzWidth="146px"
+                i18n="@@insights.tables.success"
+              >
+                Success
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="cost"
+                nzWidth="96px"
+                nzAlign="right"
+                i18n="@@insights.tables.cost"
+              >
+                Cost
+              </th>
             </tr>
           </thead>
           <tbody>

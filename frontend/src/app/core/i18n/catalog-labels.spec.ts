@@ -38,7 +38,11 @@ const BACKEND_PERMISSIONS: ReadonlyArray<
     'PLATFORM',
     'create, edit, verify and delete platform connections (Jira credentials, ADR 0030)',
   ],
-  ['connections.personal', 'PLATFORM', 'create and use own personal connections (Jira as yourself, ADR 0035)'],
+  [
+    'connections.personal',
+    'PLATFORM',
+    'create and use own personal connections (Jira as yourself, ADR 0035)',
+  ],
   ['project.view', 'PROJECT', 'see the project, its workflows, runs, CI executions'],
   ['project.manage', 'PROJECT', 'edit project settings, CI entrypoints, delete the project'],
   ['project.ci.manage', 'PROJECT', 'create/revoke CI tokens'],

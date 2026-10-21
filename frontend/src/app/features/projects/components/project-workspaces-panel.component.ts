@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzCheckboxModule } from 'ng-zorro-antd/checkbox';
@@ -23,7 +32,14 @@ import { SidePanelComponent } from '../../../core/ui/relay/side-panel.component'
 import { purposeLabel } from '../../../core/ui/repositories';
 import { sourceLabels, workspaceColor, workspaceProblems } from '../../../core/ui/workspaces';
 
-const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sources: [], setupCommand: null, roles: [] };
+const EMPTY: ProjectWorkspaceInput = {
+  key: '',
+  name: '',
+  description: '',
+  sources: [],
+  setupCommand: null,
+  roles: [],
+};
 
 /**
  * Project tab Workspaces (ADR 0044): the run workspaces of the project, shared by all its workflows. A workspace says
@@ -50,8 +66,9 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
     <div class="pwp">
       <div class="bar">
         <p class="muted intro" i18n="@@projects.workspaces.intro">
-          Steps of a run that pick the same workspace share one directory: clones, uncommitted work, installed
-          dependencies and the agents' sessions per role. Every workflow of the project can use these workspaces.
+          Steps of a run that pick the same workspace share one directory: clones, uncommitted work,
+          installed dependencies and the agents' sessions per role. Every workflow of the project
+          can use these workspaces.
         </p>
         @if (canManage()) {
           <button nz-button nzType="primary" type="button" (click)="create()">
@@ -102,11 +119,17 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
         ><span i18n="@@projects.workspaces.guide">How workspaces work</span></bo-help-link
       >
 
-      <bo-side-panel [open]="!!draft()" [title]="editing() ? editing()!.name || editing()!.key : text.newTitle" (closed)="close()">
+      <bo-side-panel
+        [open]="!!draft()"
+        [title]="editing() ? editing()!.name || editing()!.key : text.newTitle"
+        (closed)="close()"
+      >
         @if (draft(); as d) {
           <form nz-form nzLayout="vertical" (ngSubmit)="save()">
             <nz-form-item>
-              <nz-form-label nzRequired nzFor="ws-key" i18n="@@projects.workspaces.form.key">Key</nz-form-label>
+              <nz-form-label nzRequired nzFor="ws-key" i18n="@@projects.workspaces.form.key"
+                >Key</nz-form-label
+              >
               <nz-form-control
                 nzExtra="Steps pick the workspace by it; it cannot change later."
                 i18n-nzExtra="@@projects.workspaces.form.keyHint"
@@ -123,16 +146,27 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzFor="ws-name" i18n="@@projects.workspaces.form.name">Name</nz-form-label>
+              <nz-form-label nzFor="ws-name" i18n="@@projects.workspaces.form.name"
+                >Name</nz-form-label
+              >
               <nz-form-control
                 nzExtra="Shown on the canvas around the steps of the workspace."
                 i18n-nzExtra="@@projects.workspaces.form.nameHint"
               >
-                <input nz-input id="ws-name" name="name" [ngModel]="d.name" (ngModelChange)="patch({ name: $event })" [readOnly]="!canManage()" />
+                <input
+                  nz-input
+                  id="ws-name"
+                  name="name"
+                  [ngModel]="d.name"
+                  (ngModelChange)="patch({ name: $event })"
+                  [readOnly]="!canManage()"
+                />
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzFor="ws-desc" i18n="@@projects.workspaces.form.description">Description</nz-form-label>
+              <nz-form-label nzFor="ws-desc" i18n="@@projects.workspaces.form.description"
+                >Description</nz-form-label
+              >
               <nz-form-control>
                 <textarea
                   nz-input
@@ -154,7 +188,13 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
             }
             <div class="checks">
               @for (r of repositories(); track r.key) {
-                <label nz-checkbox [ngModel]="has(r.key, false)" (ngModelChange)="toggleSource(r.key, false, $event)" [ngModelOptions]="{ standalone: true }" [nzDisabled]="!canManage()">
+                <label
+                  nz-checkbox
+                  [ngModel]="has(r.key, false)"
+                  (ngModelChange)="toggleSource(r.key, false, $event)"
+                  [ngModelOptions]="{ standalone: true }"
+                  [nzDisabled]="!canManage()"
+                >
                   <span class="mono">{{ r.key }}</span>
                   @if (r.purpose) {
                     <span class="chip">{{ purpose(r.purpose) }}</span>
@@ -165,7 +205,13 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
                 </label>
               }
               @for (s of librarySources(); track s.id) {
-                <label nz-checkbox [ngModel]="has(s.key, true)" (ngModelChange)="toggleSource(s.key, true, $event)" [ngModelOptions]="{ standalone: true }" [nzDisabled]="!canManage()">
+                <label
+                  nz-checkbox
+                  [ngModel]="has(s.key, true)"
+                  (ngModelChange)="toggleSource(s.key, true, $event)"
+                  [ngModelOptions]="{ standalone: true }"
+                  [nzDisabled]="!canManage()"
+                >
                   <span>{{ s.name }}</span>
                   <span class="mono muted small">{{ s.jobKey }}</span>
                   <span class="chip" i18n="@@projects.workspaces.form.library">library</span>
@@ -173,12 +219,15 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
               }
             </div>
             <p class="muted small" i18n="@@projects.workspaces.form.sourcesHint">
-              Steps of the workspace without repositories of their own work on these sources: the project's primary
-              repository among them gets the step's push access, the others are read only.
+              Steps of the workspace without repositories of their own work on these sources: the
+              project's primary repository among them gets the step's push access, the others are
+              read only.
             </p>
 
             <nz-form-item>
-              <nz-form-label nzFor="ws-setup" i18n="@@projects.workspaces.form.setup">Setup command</nz-form-label>
+              <nz-form-label nzFor="ws-setup" i18n="@@projects.workspaces.form.setup"
+                >Setup command</nz-form-label
+              >
               <nz-form-control
                 nzExtra="Runs once per run, before the first step of the workspace (again only when you change it)."
                 i18n-nzExtra="@@projects.workspaces.form.setupHint"
@@ -196,7 +245,9 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzFor="ws-roles" i18n="@@projects.workspaces.form.roles">Agent roles</nz-form-label>
+              <nz-form-label nzFor="ws-roles" i18n="@@projects.workspaces.form.roles"
+                >Agent roles</nz-form-label
+              >
               <nz-form-control
                 nzExtra="Steps with the same role continue one agent session, e.g. implementer and reviewer taking turns. Empty = any role."
                 i18n-nzExtra="@@projects.workspaces.form.rolesHint"
@@ -217,11 +268,26 @@ const EMPTY: ProjectWorkspaceInput = { key: '', name: '', description: '', sourc
             }
             @if (canManage()) {
               <div class="actions">
-                <button nz-button nzType="primary" type="submit" [nzLoading]="saving()" [disabled]="problems().length > 0" i18n="@@projects.workspaces.form.save">
+                <button
+                  nz-button
+                  nzType="primary"
+                  type="submit"
+                  [nzLoading]="saving()"
+                  [disabled]="problems().length > 0"
+                  i18n="@@projects.workspaces.form.save"
+                >
                   Save
                 </button>
                 @if (editing(); as w) {
-                  <button nz-button nzDanger type="button" (click)="remove(w)" i18n="@@projects.workspaces.form.delete">Delete</button>
+                  <button
+                    nz-button
+                    nzDanger
+                    type="button"
+                    (click)="remove(w)"
+                    i18n="@@projects.workspaces.form.delete"
+                  >
+                    Delete
+                  </button>
                 }
               </div>
             }
@@ -361,7 +427,9 @@ export class ProjectWorkspacesPanelComponent {
       const id = this.projectId();
       untracked(() => this.load(id));
     });
-    this.librarySourcesApi.list().subscribe({ next: (s) => this.librarySources.set(s), error: () => undefined });
+    this.librarySourcesApi
+      .list()
+      .subscribe({ next: (s) => this.librarySources.set(s), error: () => undefined });
   }
 
   roles(w: ProjectWorkspace): string {
@@ -404,7 +472,9 @@ export class ProjectWorkspacesPanelComponent {
   }
 
   toggleSource(key: string, library: boolean, on: boolean): void {
-    const rest = (this.draft()?.sources ?? []).filter((s) => !(s.key === key && !!s.library === library));
+    const rest = (this.draft()?.sources ?? []).filter(
+      (s) => !(s.key === key && !!s.library === library),
+    );
     this.patch({ sources: on ? [...rest, { key, library }] : rest });
   }
 
@@ -413,7 +483,9 @@ export class ProjectWorkspacesPanelComponent {
     if (!d || this.problems().length) return;
     this.saving.set(true);
     const existing = this.editing();
-    const req = existing ? this.api.update(this.projectId(), existing.id, d) : this.api.create(this.projectId(), d);
+    const req = existing
+      ? this.api.update(this.projectId(), existing.id, d)
+      : this.api.create(this.projectId(), d);
     req.subscribe({
       next: () => {
         this.saving.set(false);

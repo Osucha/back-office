@@ -136,9 +136,33 @@ import { categoryLabel } from '../../suites/data/suite-view';
               >
                 <thead>
                   <tr>
-                    <th nzShowSort [boSort]="criteriaSort" boSortKey="name" nzWidth="34%" i18n="@@evaluation.attempt.criterion">Criterion</th>
-                    <th nzShowSort [boSort]="criteriaSort" boSortKey="score" nzWidth="86px" nzAlign="right" i18n="@@evaluation.attempt.score">Score</th>
-                    <th nzShowSort [boSort]="criteriaSort" boSortKey="comment" i18n="@@evaluation.attempt.comment">Comment</th>
+                    <th
+                      nzShowSort
+                      [boSort]="criteriaSort"
+                      boSortKey="name"
+                      nzWidth="34%"
+                      i18n="@@evaluation.attempt.criterion"
+                    >
+                      Criterion
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="criteriaSort"
+                      boSortKey="score"
+                      nzWidth="86px"
+                      nzAlign="right"
+                      i18n="@@evaluation.attempt.col.score"
+                    >
+                      Score
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="criteriaSort"
+                      boSortKey="comment"
+                      i18n="@@evaluation.attempt.comment"
+                    >
+                      Comment
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

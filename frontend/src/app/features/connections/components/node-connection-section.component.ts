@@ -80,7 +80,9 @@ interface ResolveKey {
           >
           <label nz-radio nzValue="ACTING_USER">
             @if (writes()) {
-              <span i18n="@@connections.node.actAs.approver">The person who approves the write</span>
+              <span i18n="@@connections.node.actAs.approver"
+                >The person who approves the write</span
+              >
             } @else {
               <span i18n="@@connections.node.actAs.starter">The person who starts the run</span>
             }
@@ -124,8 +126,8 @@ interface ResolveKey {
             >
           } @else {
             <span i18n="@@connections.node.actingRead"
-              >Reads through the personal connection of the person who starts the run. Runs started by
-              the Jira intake watcher or CI have no such person.</span
+              >Reads through the personal connection of the person who starts the run. Runs started
+              by the Jira intake watcher or CI have no such person.</span
             >
           }
         </p>
@@ -169,7 +171,9 @@ interface ResolveKey {
             {{ v.text }}
             @if (v.guide) {
               <bo-help-link topic="connections.leastPrivilege" variant="text"
-                ><span i18n="@@connections.node.guide">How to set up connections</span></bo-help-link
+                ><span i18n="@@connections.node.guide"
+                  >How to set up connections</span
+                ></bo-help-link
               >
             }
           </p>
@@ -348,7 +352,8 @@ export class NodeConnectionSectionComponent {
   setActAs(mode: ActAs): void {
     if (this.readonly() || mode === this.actAs()) return;
     // a specific connection starts with the first one that covers the step
-    const first = mode === 'SPECIFIC' ? (this.options().find((o) => !o.disabled)?.id ?? null) : null;
+    const first =
+      mode === 'SPECIFIC' ? (this.options().find((o) => !o.disabled)?.id ?? null) : null;
     this.configChange.emit(withActAs(this.config(), mode, first));
   }
 

@@ -288,10 +288,41 @@ import {
             <nz-table [nzData]="tokenRows()" [nzShowPagination]="false" nzSize="small">
               <thead>
                 <tr>
-                  <th nzShowSort [boSort]="tokenSort" boSortKey="name" i18n="@@projects.ci.tokens.name">Name</th>
-                  <th nzShowSort [boSort]="tokenSort" boSortKey="prefix" nzWidth="166px" i18n="@@projects.ci.tokens.prefix">Prefix</th>
-                  <th nzShowSort [boSort]="tokenSort" boSortKey="created" nzWidth="126px" i18n="@@projects.ci.tokens.created">Created</th>
-                  <th nzShowSort [boSort]="tokenSort" boSortKey="lastUsed" nzWidth="126px" i18n="@@projects.ci.tokens.lastUsed">Last used</th>
+                  <th
+                    nzShowSort
+                    [boSort]="tokenSort"
+                    boSortKey="name"
+                    i18n="@@projects.ci.tokens.name"
+                  >
+                    Name
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="tokenSort"
+                    boSortKey="prefix"
+                    nzWidth="166px"
+                    i18n="@@projects.ci.tokens.prefix"
+                  >
+                    Prefix
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="tokenSort"
+                    boSortKey="created"
+                    nzWidth="126px"
+                    i18n="@@projects.ci.tokens.created"
+                  >
+                    Created
+                  </th>
+                  <th
+                    nzShowSort
+                    [boSort]="tokenSort"
+                    boSortKey="lastUsed"
+                    nzWidth="126px"
+                    i18n="@@projects.ci.tokens.lastUsed"
+                  >
+                    Last used
+                  </th>
                   <th nzWidth="100px"></th>
                 </tr>
               </thead>

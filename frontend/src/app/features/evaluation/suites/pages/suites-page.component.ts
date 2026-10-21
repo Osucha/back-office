@@ -122,10 +122,37 @@ import { filterSuites, weightsText } from '../data/suite-view';
         <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.suites.col.suite">Suite</th>
-              <th nzShowSort [boSort]="sort" boSortKey="tasks" nzWidth="106px" nzAlign="right" i18n="@@evaluation.suites.col.tasks">Tasks</th>
-              <th nzShowSort [boSort]="sort" boSortKey="weights" nzWidth="220px" i18n="@@evaluation.suites.col.codingScore">Coding score</th>
-              <th nzShowSort [boSort]="sort" boSortKey="changed" nzWidth="220px" i18n="@@evaluation.suites.col.changed">Changed</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@evaluation.suites.col.suite">
+                Suite
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="tasks"
+                nzWidth="106px"
+                nzAlign="right"
+                i18n="@@evaluation.suites.col.tasks"
+              >
+                Tasks
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="weights"
+                nzWidth="220px"
+                i18n="@@evaluation.suites.col.codingScore"
+              >
+                Coding score
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="changed"
+                nzWidth="220px"
+                i18n="@@evaluation.suites.col.changed"
+              >
+                Changed
+              </th>
             </tr>
           </thead>
           <tbody>

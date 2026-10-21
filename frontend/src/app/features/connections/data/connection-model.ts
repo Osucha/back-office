@@ -172,11 +172,23 @@ export function covers(connection: Pick<Connection, 'capabilities'>, required: r
  * the CLASSIC set or the GRANULAR set; `granularRecommended` is what the UI suggests ticking.
  */
 export const SCOPE_OPTIONS: Readonly<
-  Record<string, { classic: readonly string[]; granular: readonly string[]; granularRecommended: readonly string[] }>
+  Record<
+    string,
+    {
+      classic: readonly string[];
+      granular: readonly string[];
+      granularRecommended: readonly string[];
+    }
+  >
 > = {
   ISSUE_READ: {
     classic: ['read:jira-work'],
-    granular: ['read:issue:jira', 'read:issue-details:jira', 'read:jql:jira', 'read:audit-log:jira'],
+    granular: [
+      'read:issue:jira',
+      'read:issue-details:jira',
+      'read:jql:jira',
+      'read:audit-log:jira',
+    ],
     granularRecommended: [
       'read:issue:jira',
       'read:issue-details:jira',
@@ -241,7 +253,9 @@ export function recommendedScopes(
   capabilities: readonly string[],
   kind: 'GRANULAR' | 'CLASSIC' = 'GRANULAR',
 ): string[] {
-  const out = new Set<string>(kind === 'GRANULAR' ? VERIFICATION_SCOPES.granular : VERIFICATION_SCOPES.classic);
+  const out = new Set<string>(
+    kind === 'GRANULAR' ? VERIFICATION_SCOPES.granular : VERIFICATION_SCOPES.classic,
+  );
   for (const c of capabilities) {
     const o = SCOPE_OPTIONS[c];
     if (o) (kind === 'GRANULAR' ? o.granularRecommended : o.classic).forEach((s) => out.add(s));
@@ -250,7 +264,10 @@ export function recommendedScopes(
 }
 
 /** Capabilities the declared scopes do not cover with any option. */
-export function uncoveredCapabilities(capabilities: readonly string[], declared: readonly string[]): string[] {
+export function uncoveredCapabilities(
+  capabilities: readonly string[],
+  declared: readonly string[],
+): string[] {
   const have = new Set(declared);
   return sortCapabilities(
     capabilities.filter((c) => {
@@ -261,9 +278,15 @@ export function uncoveredCapabilities(capabilities: readonly string[], declared:
 }
 
 /** Declared write scopes no option of `capabilities` needs (the excess check). */
-export function excessWriteScopes(capabilities: readonly string[], declared: readonly string[]): string[] {
+export function excessWriteScopes(
+  capabilities: readonly string[],
+  declared: readonly string[],
+): string[] {
   const needed = new Set(
-    capabilities.flatMap((c) => [...(SCOPE_OPTIONS[c]?.granularRecommended ?? []), ...(SCOPE_OPTIONS[c]?.classic ?? [])]),
+    capabilities.flatMap((c) => [
+      ...(SCOPE_OPTIONS[c]?.granularRecommended ?? []),
+      ...(SCOPE_OPTIONS[c]?.classic ?? []),
+    ]),
   );
   return [...new Set(declared.filter((s) => isWriteScope(s) && !needed.has(s)))].sort();
 }
@@ -283,7 +306,8 @@ export function invalidScopes(scopes: readonly string[]): string[] {
   return scopes.filter((s) => !SCOPE_PATTERN.test(s));
 }
 
-export const CLOUD_ID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+export const CLOUD_ID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /** Short label of a token kind. */
 export function tokenKindLabel(kind: string | null | undefined): string {
@@ -577,7 +601,10 @@ export function actAsOf(config: Record<string, unknown> | null | undefined): Act
   return v.toUpperCase() === ACTING_USER ? 'ACTING_USER' : 'SPECIFIC';
 }
 
-export function configFlag(config: Record<string, unknown> | null | undefined, key: string): boolean {
+export function configFlag(
+  config: Record<string, unknown> | null | undefined,
+  key: string,
+): boolean {
   const v = config?.[key];
   return v === true || v === 'true';
 }
@@ -659,8 +686,8 @@ export function pinOptions(
       : c.scope === 'USER'
         ? $localize`:@@connections.pin.scope.personal:personal`
         : c.scope === 'PROJECT'
-        ? $localize`:@@connections.pin.scope.project:project`
-        : $localize`:@@connections.pin.scope.platform:platform`;
+          ? $localize`:@@connections.pin.scope.project:project`
+          : $localize`:@@connections.pin.scope.platform:platform`;
     return {
       id: c.id,
       label: `${c.name} (${scope}: ${capabilityLabels(c.capabilities ?? [])})`,

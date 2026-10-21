@@ -1,5 +1,12 @@
 import type { EvalTask, ExecutionTarget, ModelProfile } from '../../../../core/api/types';
-import { applyLoginRules, blocksSave, fixable, loginCandidates, loginIssues, type LoginRuleForm } from './login-rules';
+import {
+  applyLoginRules,
+  blocksSave,
+  fixable,
+  loginCandidates,
+  loginIssues,
+  type LoginRuleForm,
+} from './login-rules';
 
 describe('Claude Code login rules (ADR 0048)', () => {
   const profile = (id: string, runtime?: ModelProfile['runtime']): ModelProfile => ({
@@ -29,7 +36,9 @@ describe('Claude Code login rules (ADR 0048)', () => {
   });
 
   it('has nothing to say without a login candidate', () => {
-    expect(loginIssues(form({ modelProfileIds: ['api', 'legacy'] }), profiles, tasks, [])).toEqual([]);
+    expect(loginIssues(form({ modelProfileIds: ['api', 'legacy'] }), profiles, tasks, [])).toEqual(
+      [],
+    );
     expect(loginCandidates(form(), profiles).map((p) => p.id)).toEqual(['opus']);
   });
 
@@ -39,13 +48,20 @@ describe('Claude Code login rules (ADR 0048)', () => {
     expect(blocksSave(issues)).toBe(true);
     expect(fixable(issues)).toBe(true);
     expect(
-      loginIssues(form({ runnerTarget: 'PERSONAL', codingHarness: 'CLAUDE_CODE', taskIds: ['c1'] }), profiles, tasks, targets),
+      loginIssues(
+        form({ runnerTarget: 'PERSONAL', codingHarness: 'CLAUDE_CODE', taskIds: ['c1'] }),
+        profiles,
+        tasks,
+        targets,
+      ),
     ).toEqual([]);
   });
 
   it('needs a personal runner that uses the login, which blocks only the start', () => {
     const ok = form({ runnerTarget: 'PERSONAL', codingHarness: 'CLAUDE_CODE', taskIds: ['c1'] });
-    const issues = loginIssues(ok, profiles, tasks, [{ target: 'PERSONAL', pools: 1, onlineRunners: 0 }]);
+    const issues = loginIssues(ok, profiles, tasks, [
+      { target: 'PERSONAL', pools: 1, onlineRunners: 0 },
+    ]);
     expect(issues).toEqual(['localLogin']);
     expect(blocksSave(issues)).toBe(false);
     expect(fixable(issues)).toBe(false);

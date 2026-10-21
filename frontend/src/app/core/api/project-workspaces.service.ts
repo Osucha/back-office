@@ -14,11 +14,23 @@ export class ProjectWorkspacesApi {
   }
 
   create(projectId: string, input: ProjectWorkspaceInput): Observable<ProjectWorkspace> {
-    return this.http.post<ProjectWorkspace>(url('projects', projectId, 'workspaces'), input, silent());
+    return this.http.post<ProjectWorkspace>(
+      url('projects', projectId, 'workspaces'),
+      input,
+      silent(),
+    );
   }
 
-  update(projectId: string, id: string, input: ProjectWorkspaceInput): Observable<ProjectWorkspace> {
-    return this.http.put<ProjectWorkspace>(url('projects', projectId, 'workspaces', id), input, silent());
+  update(
+    projectId: string,
+    id: string,
+    input: ProjectWorkspaceInput,
+  ): Observable<ProjectWorkspace> {
+    return this.http.put<ProjectWorkspace>(
+      url('projects', projectId, 'workspaces', id),
+      input,
+      silent(),
+    );
   }
 
   delete(projectId: string, id: string): Observable<void> {

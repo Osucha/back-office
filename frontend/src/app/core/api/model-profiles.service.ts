@@ -17,7 +17,9 @@ export class ModelProfilesApi {
    * profiles (ADR 0048) run only in benchmarks on a personal runner.
    */
   listCallable(): Observable<ModelProfile[]> {
-    return this.list(true).pipe(map((list) => list.filter((p) => p.runtime !== 'CLAUDE_CODE_LOGIN')));
+    return this.list(true).pipe(
+      map((list) => list.filter((p) => p.runtime !== 'CLAUDE_CODE_LOGIN')),
+    );
   }
 
   get(profileId: string): Observable<ModelProfile> {

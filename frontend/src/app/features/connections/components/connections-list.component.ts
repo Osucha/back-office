@@ -113,10 +113,41 @@ import { VerificationResultComponent } from './verification-result.component';
       <nz-table [nzData]="rows()" [nzShowPagination]="false" nzSize="middle">
         <thead>
           <tr>
-            <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@connections.list.col.connection">Connection</th>
-            <th nzShowSort [boSort]="sort" boSortKey="capabilities" nzWidth="220px" i18n="@@connections.list.col.capabilities">Capabilities</th>
-            <th nzShowSort [boSort]="sort" boSortKey="projects" nzWidth="166px" i18n="@@connections.list.col.projects">Allowed projects</th>
-            <th nzShowSort [boSort]="sort" boSortKey="status" nzWidth="200px" i18n="@@connections.list.col.status">Status</th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="name"
+              i18n="@@connections.list.col.connection"
+            >
+              Connection
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="capabilities"
+              nzWidth="220px"
+              i18n="@@connections.list.col.capabilities"
+            >
+              Capabilities
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="projects"
+              nzWidth="166px"
+              i18n="@@connections.list.col.projects"
+            >
+              Allowed projects
+            </th>
+            <th
+              nzShowSort
+              [boSort]="sort"
+              boSortKey="status"
+              nzWidth="200px"
+              i18n="@@connections.list.col.status"
+            >
+              Status
+            </th>
             <th nzWidth="190px" nzAlign="right">
               <span class="sr-only" i18n="@@connections.list.col.actions">Actions</span>
             </th>
@@ -405,7 +436,10 @@ export class ConnectionsListComponent {
   readonly sort = tableSort<Connection>(
     {
       name: (c) => c.name,
-      capabilities: (c) => this.caps(c).map((cap) => this.capLabel(cap)).join(', '),
+      capabilities: (c) =>
+        this.caps(c)
+          .map((cap) => this.capLabel(cap))
+          .join(', '),
       projects: (c) => c.allowedProjectKeys.join(', '),
       status: (c) => this.vchip(c).label,
     },

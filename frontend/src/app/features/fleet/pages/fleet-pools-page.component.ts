@@ -145,8 +145,18 @@ import { formatLabels, isolationName } from '../data/policy';
         <nz-table #t [nzData]="rows()" [nzShowPagination]="false" nzSize="middle" class="pools">
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@fleet.pools.col.pool">Pool</th>
-              <th nzShowSort [boSort]="sort" boSortKey="state" nzWidth="150px" i18n="@@fleet.pools.col.state">State</th>
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@fleet.pools.col.pool">
+                Pool
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="state"
+                nzWidth="150px"
+                i18n="@@fleet.pools.col.state"
+              >
+                State
+              </th>
               <th
                 nzShowSort
                 [boSort]="sort"
@@ -157,9 +167,35 @@ import { formatLabels, isolationName } from '../data/policy';
               >
                 Runners online
               </th>
-              <th nzShowSort [boSort]="sort" boSortKey="running" nzWidth="106px" nzAlign="right" i18n="@@fleet.pools.col.running">Running</th>
-              <th nzShowSort [boSort]="sort" boSortKey="queued" nzWidth="106px" nzAlign="right" i18n="@@fleet.pools.col.queued">Queued</th>
-              <th nzShowSort [boSort]="sort" boSortKey="ceiling" nzWidth="190px" i18n="@@fleet.pools.col.ceiling">Isolation ceiling</th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="running"
+                nzWidth="106px"
+                nzAlign="right"
+                i18n="@@fleet.pools.col.running"
+              >
+                Running
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="queued"
+                nzWidth="106px"
+                nzAlign="right"
+                i18n="@@fleet.pools.col.queued"
+              >
+                Queued
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="ceiling"
+                nzWidth="190px"
+                i18n="@@fleet.pools.col.ceiling"
+              >
+                Isolation ceiling
+              </th>
               <th nzWidth="150px" nzAlign="right">
                 <span class="sr-only" i18n="@@fleet.pools.col.actions">Actions</span>
               </th>

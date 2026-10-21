@@ -328,9 +328,9 @@ import {
                     >Allow Spec Kit</span
                   >
                   <span class="t-help" i18n="@@admin.platformSettings.features.specKitHelp"
-                    >Projects may turn on Spec Kit (specify, plan and tasks steps, the constitution).
-                    When off, no project can run Spec Kit steps, whatever its own setting says; their
-                    settings and constitutions are kept.</span
+                    >Projects may turn on Spec Kit (specify, plan and tasks steps, the
+                    constitution). When off, no project can run Spec Kit steps, whatever its own
+                    setting says; their settings and constitutions are kept.</span
                   >
                 </label>
               </div>

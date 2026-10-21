@@ -123,10 +123,34 @@ import { AdminNavComponent } from '../components/admin-nav.component';
         >
           <thead>
             <tr>
-              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@admin.groups.col.group">Group</th>
-              <th nzShowSort [boSort]="sort" boSortKey="members" nzWidth="116px" nzAlign="right" i18n="@@admin.groups.col.members">Members</th>
-              <th nzShowSort [boSort]="sort" boSortKey="roles" i18n="@@admin.groups.col.platformRoles">Platform roles</th>
-              <th nzShowSort [boSort]="sort" boSortKey="external" nzWidth="236px" i18n="@@admin.groups.col.externalGroup">
+              <th nzShowSort [boSort]="sort" boSortKey="name" i18n="@@admin.groups.col.group">
+                Group
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="members"
+                nzWidth="116px"
+                nzAlign="right"
+                i18n="@@admin.groups.col.members"
+              >
+                Members
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="roles"
+                i18n="@@admin.groups.col.platformRoles"
+              >
+                Platform roles
+              </th>
+              <th
+                nzShowSort
+                [boSort]="sort"
+                boSortKey="external"
+                nzWidth="236px"
+                i18n="@@admin.groups.col.externalGroup"
+              >
                 Identity provider group
               </th>
               <th nzWidth="64px">
