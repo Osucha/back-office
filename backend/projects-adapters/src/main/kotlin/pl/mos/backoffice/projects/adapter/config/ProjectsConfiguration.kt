@@ -38,6 +38,11 @@ import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 import pl.mos.backoffice.projects.application.port.out.IssueTrackerFactory
 import pl.mos.backoffice.projects.application.port.out.LegacyConnectionSource
 import pl.mos.backoffice.projects.application.service.ConnectionService
+import pl.mos.backoffice.projects.adapter.out.scm.GitLabScmProbe
+import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
+import pl.mos.backoffice.projects.application.port.out.ScmProbePort
+import pl.mos.backoffice.projects.application.service.ScmConnectionService
+import tools.jackson.databind.json.JsonMapper
 import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
 import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
@@ -361,6 +366,15 @@ class ProjectsConfiguration {
         trackers: IssueTrackerFactory, selector: ConnectionSelector, policy: ConnectionVerificationPolicy, gate: AuthorizationGate,
         audit: AuditPort, clock: Clock, events: EventPublisher,
     ) = ConnectionService(connections, projects, legacy, cipher, trackers, selector, policy, gate, audit, clock, events)
+
+    /** ADR 0051: tokens of project repositories, tested against GitLab on save. */
+    @Bean fun gitLabScmProbe(cipher: AesGcmSecretCipher, json: JsonMapper) = GitLabScmProbe(cipher, json)
+
+    @Bean
+    fun scmConnectionService(
+        connections: ScmConnectionRepository, projects: ProjectRepository, cipher: AesGcmSecretCipher, probe: ScmProbePort,
+        gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+    ) = ScmConnectionService(connections, projects, cipher, probe, gate, audit, clock)
 
     // ---- engine
 

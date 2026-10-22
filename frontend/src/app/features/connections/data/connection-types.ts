@@ -24,6 +24,13 @@ export type ProjectJiraConnections = S['ProjectJiraConnections'];
 export type ProjectJiraConnectionsInput = S['ProjectJiraConnectionsInput'];
 export type JiraScopes = S['JiraScopes'];
 
+/** ADR 0051: tokens of the project's repositories (SCM connections). */
+export type ScmConnection = S['ScmConnection'];
+export type ScmConnectionInput = S['ScmConnectionInput'];
+export type ScmVerification = NonNullable<S['ScmVerification']>;
+export type ScmMessage = S['ScmMessage'];
+export type ScmCapability = S['ScmCapability'];
+
 /** Where a connection lives: the platform registry, one project's, or the caller's own (personal). */
 export type ConnectionOwner =
   { kind: 'platform' } | { kind: 'project'; projectId: string } | { kind: 'personal' };

@@ -1,11 +1,13 @@
 package pl.mos.backoffice.projects.adapter.out.secrets
 
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
 import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.RewrapScmConnectionSecrets
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 
 /**
@@ -14,7 +16,8 @@ import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
  * - connections exist but `BACKOFFICE_SECRETS_KEY` is missing, or a stored secret names a key id that is configured
  *   neither as the active nor as a previous key -> startup fails with a message saying what to set (unless the
  *   recovery switch `BACKOFFICE_SECRETS_ALLOW_UNREADABLE` is on, then it only warns);
- * - worker role: secrets wrapped with a previous key are re-wrapped to the active key (audited per connection).
+ * - worker role: secrets wrapped with a previous key are re-wrapped to the active key (audited per connection),
+ *   repository tokens (ADR 0051) included.
  */
 @Component
 class ConnectionSecretsStartup(
@@ -23,6 +26,7 @@ class ConnectionSecretsStartup(
     private val connections: ConnectionRepository,
     private val rewrap: RewrapConnectionSecrets,
     private val environment: Environment,
+    private val scmRewrap: ObjectProvider<RewrapScmConnectionSecrets>,
 ) : ApplicationRunner {
 
     private val log = LoggerFactory.getLogger(ConnectionSecretsStartup::class.java)
@@ -35,6 +39,8 @@ class ConnectionSecretsStartup(
         if (worker && cipher.configured) {
             val count = rewrap.rewrapSecrets()
             if (count > 0) log.info("re-wrapped {} connection secrets to key {}", count, cipher.activeKeyId)
+            val scm = scmRewrap.ifAvailable?.rewrapScmSecrets() ?: 0
+            if (scm > 0) log.info("re-wrapped {} repository tokens to key {}", scm, cipher.activeKeyId)
         }
     }
 

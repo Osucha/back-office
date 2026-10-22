@@ -212,6 +212,42 @@ Other hosts (Gitea, Bitbucket, Azure Repos) work the same way as GitHub: a read-
 repository write access used as HTTPS passwords, branch protection on the default branch, `mergeRequest` set
 to `false`.
 
+<a id="git-project-tokens"></a>
+## Repository access tokens in the project
+
+Since ADR 0051 a project keeps the tokens of its repositories itself, so they no longer have to be installed in
+every runner. A project owner adds them on the project's **Sources** tab, card **Repository access tokens**.
+They are being introduced step by step: in this release the tokens are stored, tested and shown, and jobs still
+use the runner pool's tokens below. Later releases switch cloning and pushing to the project's tokens, deliver
+them to the runner encrypted per job, and give agents read-only tools such as the CI logs.
+
+- **One token per permission level.** A repository can have several tokens. Each one declares what it is for:
+
+  | Capability | What Back Office uses it for | GitLab needs |
+  |---|---|---|
+  | GIT_READ | clone the repository | `read_repository`, role Reporter |
+  | CI_READ | read pipelines and job logs | `read_api`, role Reporter |
+  | PUSH_BRANCH | push the agent's branch | `write_repository`, role Developer |
+  | MR_WRITE | create and update merge requests | `api`, role Developer |
+  | MR_COMMENT | post review comments | `api`, role Reporter |
+  | PIPELINE_RUN | retry or start pipelines | `api`, role Developer |
+
+  Read capabilities (GIT_READ, CI_READ) may later be handed to an agent as a tool, but only when the token is
+  verified read-only. Write capabilities are used only by Back Office itself, never by an agent.
+- **A typical setup:** a project access token with role Reporter and scopes `read_repository` and `read_api`
+  (GIT_READ, CI_READ), and one with role Developer and scope `write_repository` (PUSH_BRANCH). Never use role
+  Maintainer: it can merge.
+- **Tested on save.** **Test before saving**, every save and **Test again** ask GitLab what the token can do: clone
+  and push (over git), its scopes and expiry, its role in the project and the default branch's protection. The
+  result lists the granted and missing capabilities and the **write powers** the token has beyond what it
+  declares, for example "git push", "api scope" or "merge into main". A missing capability marks the token as
+  failed; excess rights, an unprotected default branch or role Maintainer give a warning. The test only reads.
+- **Never shown again.** The token is encrypted with the installation's secret key (as Jira tokens are) and never
+  returned. Everyone who can see the project sees the list; only owners add, change, test and delete tokens.
+  Every change is audited (`SCM_CONNECTION_*`).
+- **Expiry.** Without an expiry date the one GitLab reports is used; tokens close to expiry are highlighted.
+- A token whose repository was removed from the project is shown as **orphaned** and is never used.
+
 <a id="git-install"></a>
 ## Install the tokens in the runner pool
 

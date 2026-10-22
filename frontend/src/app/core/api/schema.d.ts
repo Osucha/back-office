@@ -2511,6 +2511,86 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/projects/{projectId}/scm-connections': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    /** @description ADR 0051. Tokens of this project's repositories (needs `project.view`). Tokens are never returned. */
+    get: operations['listScmConnections'];
+    put?: never;
+    /** @description Needs `project.connections.manage` (project owners). `token` is required; it is tested against the SCM before it is stored (a failed test is stored, it does not block the save). Audited `SCM_CONNECTION_CREATE`. */
+    post: operations['createScmConnection'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/projects/{projectId}/scm-connections/{scmConnectionId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+        scmConnectionId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** @description Needs `project.connections.manage`. Omitting `token` keeps the stored one (audited `SCM_CONNECTION_UPDATE`); a new `token` replaces it (`SCM_CONNECTION_ROTATE`). Tested again either way. */
+    put: operations['updateScmConnection'];
+    post?: never;
+    /** @description Needs `project.connections.manage`. Audited `SCM_CONNECTION_DELETE`. */
+    delete: operations['deleteScmConnection'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/projects/{projectId}/scm-connections/{scmConnectionId}/verify': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+        scmConnectionId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Tests the stored token again (needs `project.connections.manage`); 409 when its repository is no longer part of the project. Audited `SCM_CONNECTION_VERIFY`. */
+    post: operations['verifyScmConnection'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/projects/{projectId}/scm-connections/test': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description "Test before saving": needs `project.connections.manage` and `token`. Read-only calls to the repository host; nothing is stored. Audited `SCM_CONNECTION_TEST`. */
+    post: operations['testScmConnectionDraft'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/projects/{projectId}/spec-kit': {
     parameters: {
       query?: never;
@@ -5904,6 +5984,84 @@ export interface components {
       /** @description project settings the ceiling narrowed, e.g. an egress host outside the pool allow-list */
       warnings?: string[];
     };
+    /**
+     * @description ADR 0051. Read capabilities (GIT_READ: clone, CI_READ: pipelines and job logs) may reach an agent as a tool when the token is verified read-only; write capabilities (PUSH_BRANCH, MR_WRITE, MR_COMMENT, PIPELINE_RUN) are used only by platform code. GitLab needs: GIT_READ read_repository + Reporter, CI_READ read_api + Reporter, PUSH_BRANCH write_repository + Developer, MR_COMMENT api + Reporter, MR_WRITE and PIPELINE_RUN api + Developer.
+     * @enum {string}
+     */
+    ScmCapability:
+      'GIT_READ' | 'CI_READ' | 'PUSH_BRANCH' | 'MR_WRITE' | 'MR_COMMENT' | 'PIPELINE_RUN';
+    ScmConnection: {
+      capabilities: components['schemas']['ScmCapability'][];
+      /** Format: date-time */
+      createdAt: string;
+      createdBy: string;
+      /** @enum {string} */
+      expiryStatus: 'NONE' | 'OK' | 'EXPIRING_SOON' | 'EXPIRED';
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /** @enum {string} */
+      provider: 'GITLAB';
+      /** @description declared read-only and verified without write powers: the only kind an agent tool may receive */
+      readOnly: boolean;
+      /** @description false when the repository was removed from the project (never selected) */
+      repositoryExists: boolean;
+      repositoryKey: string;
+      /** Format: date */
+      secretExpiresAt?: string | null;
+      /** Format: date-time */
+      updatedAt: string;
+      updatedBy: string;
+      verification?: components['schemas']['ScmVerification'];
+    };
+    ScmConnectionInput: {
+      capabilities: components['schemas']['ScmCapability'][];
+      /** @description unique in the project */
+      name: string;
+      /**
+       * @default GITLAB
+       * @enum {string}
+       */
+      provider: 'GITLAB';
+      /** @description key of one of the project's repositories */
+      repositoryKey: string;
+      /**
+       * Format: date
+       * @description omitted = the expiry GitLab reports for the token
+       */
+      secretExpiresAt?: string | null;
+      /** @description project or group access token; required on create and test, omitted on update = keep the stored one */
+      token?: string | null;
+    };
+    ScmMessage: {
+      /** @description UNREACHABLE, MISSING_<capability>, EXCESS, UNPROTECTED_DEFAULT_BRANCH, ROLE_TOO_HIGH, NO_API */
+      code: string;
+      /** @enum {string} */
+      severity: 'ERROR' | 'WARNING' | 'INFO';
+      /** @description English text */
+      text: string;
+    };
+    ScmVerification: {
+      /** Format: date-time */
+      checkedAt: string;
+      granted: components['schemas']['ScmCapability'][];
+      messages: components['schemas']['ScmMessage'][];
+      missing: components['schemas']['ScmCapability'][];
+      /** @description Guest, Reporter, Developer, Maintainer or Owner */
+      role?: string | null;
+      /** @description null when the token cannot call the API */
+      scopes?: string[] | null;
+      /**
+       * @description FAILED: unreachable, refused or a declared capability is missing; WARNING: more rights than declared, unprotected default branch or too high a role
+       * @enum {string}
+       */
+      status: 'OK' | 'WARNING' | 'FAILED';
+      /** Format: date */
+      tokenExpiresAt?: string | null;
+      tokenName?: string | null;
+      /** @description writes beyond the declared capabilities, e.g. "git push", "api scope", "merge into main" */
+      writePowers: string[];
+    } | null;
     Scope: {
       /** Format: uuid */
       projectId?: string | null;
@@ -11195,6 +11353,155 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['SandboxPolicyView'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  listScmConnections: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ScmConnection'][];
+        };
+      };
+    };
+  };
+  createScmConnection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ScmConnectionInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ScmConnection'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  updateScmConnection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+        scmConnectionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ScmConnectionInput'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ScmConnection'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  deleteScmConnection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+        scmConnectionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  verifyScmConnection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+        scmConnectionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ScmConnection'];
+        };
+      };
+      409: components['responses']['Problem'];
+    };
+  };
+  testScmConnectionDraft: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ScmConnectionInput'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ScmVerification'];
         };
       };
       400: components['responses']['Problem'];

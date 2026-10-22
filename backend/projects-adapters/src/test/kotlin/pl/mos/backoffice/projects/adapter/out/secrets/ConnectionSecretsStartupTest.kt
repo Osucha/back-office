@@ -4,6 +4,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.support.StaticListableBeanFactory
+import pl.mos.backoffice.projects.application.port.`in`.RewrapScmConnectionSecrets
 import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.mock.env.MockEnvironment
 import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectionSecrets
@@ -43,12 +45,14 @@ class ConnectionSecretsStartupTest {
     )
 
     private var rewraps = 0
+    private var scmRewraps = 0
 
     private fun startup(properties: SecretsProperties, rows: List<Connection>, roles: String = "api,worker") = ConnectionSecretsStartup(
         AesGcmSecretCipher(properties), properties, Rows(rows), RewrapConnectionSecrets { rewraps++; 0 },
         MockEnvironment()
             .withProperty("backoffice.platform.api-enabled", ("api" in roles).toString())
             .withProperty("backoffice.platform.worker-enabled", ("worker" in roles).toString()),
+        StaticListableBeanFactory(mapOf("scm" to RewrapScmConnectionSecrets { scmRewraps++; 0 })).getBeanProvider(RewrapScmConnectionSecrets::class.java),
     )
 
     @Test
@@ -73,6 +77,7 @@ class ConnectionSecretsStartupTest {
         assertThatCode { startup(SecretsProperties(key = k2, keyId = "k2", previousKeys = "k1:$k1"), listOf(stored("k1"))).run(DefaultApplicationArguments()) }
             .doesNotThrowAnyException()
         assertThat(rewraps).isEqualTo(1)
+        assertThat(scmRewraps).isEqualTo(1)
         assertThatCode { startup(SecretsProperties(key = k2, keyId = "k2", allowUnreadable = true), listOf(stored("k1"))).run(DefaultApplicationArguments()) }
             .doesNotThrowAnyException()
     }

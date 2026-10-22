@@ -2237,6 +2237,62 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Connection' } } } }
 
+  /projects/{projectId}/scm-connections:
+    parameters: [ { $ref: '#/components/parameters/projectId' } ]
+    get:
+      tags: [connections]
+      operationId: listScmConnections
+      description: ADR 0051. Tokens of this project's repositories (needs `project.view`). Tokens are never returned.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ScmConnection' } } } } }
+    post:
+      tags: [connections]
+      operationId: createScmConnection
+      description: Needs `project.connections.manage` (project owners). `token` is required; it is tested against the SCM before it is stored (a failed test is stored, it does not block the save). Audited `SCM_CONNECTION_CREATE`.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ScmConnectionInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ScmConnection' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/scm-connections/test:
+    parameters: [ { $ref: '#/components/parameters/projectId' } ]
+    post:
+      tags: [connections]
+      operationId: testScmConnectionDraft
+      description: '"Test before saving": needs `project.connections.manage` and `token`. Read-only calls to the repository host; nothing is stored. Audited `SCM_CONNECTION_TEST`.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ScmConnectionInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ScmVerification' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/scm-connections/{scmConnectionId}:
+    parameters:
+      - { $ref: '#/components/parameters/projectId' }
+      - { name: scmConnectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [connections]
+      operationId: updateScmConnection
+      description: Needs `project.connections.manage`. Omitting `token` keeps the stored one (audited `SCM_CONNECTION_UPDATE`); a new `token` replaces it (`SCM_CONNECTION_ROTATE`). Tested again either way.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ScmConnectionInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ScmConnection' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [connections]
+      operationId: deleteScmConnection
+      description: Needs `project.connections.manage`. Audited `SCM_CONNECTION_DELETE`.
+      responses:
+        '204': { description: Deleted }
+  /projects/{projectId}/scm-connections/{scmConnectionId}/verify:
+    parameters:
+      - { $ref: '#/components/parameters/projectId' }
+      - { name: scmConnectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [connections]
+      operationId: verifyScmConnection
+      description: Tests the stored token again (needs `project.connections.manage`); 409 when its repository is no longer part of the project. Audited `SCM_CONNECTION_VERIFY`.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ScmConnection' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+
   /events:
     get:
       tags: [events]
@@ -4726,6 +4782,64 @@ components:
         allowedByPlatform: { type: boolean }
         effective: { type: boolean, description: enabled and allowed }
         missingWorkflows: { type: array, items: { type: string }, description: 'seeded Spec Kit workflows the project lacks ("Add Spec Kit workflows")' }
+    ScmCapability:
+      type: string
+      enum: [GIT_READ, CI_READ, PUSH_BRANCH, MR_WRITE, MR_COMMENT, PIPELINE_RUN]
+      description: >-
+        ADR 0051. Read capabilities (GIT_READ: clone, CI_READ: pipelines and job logs) may reach an agent as a tool when
+        the token is verified read-only; write capabilities (PUSH_BRANCH, MR_WRITE, MR_COMMENT, PIPELINE_RUN) are used
+        only by platform code. GitLab needs: GIT_READ read_repository + Reporter, CI_READ read_api + Reporter,
+        PUSH_BRANCH write_repository + Developer, MR_COMMENT api + Reporter, MR_WRITE and PIPELINE_RUN api + Developer.
+    ScmConnectionInput:
+      type: object
+      required: [repositoryKey, name, capabilities]
+      properties:
+        repositoryKey: { type: string, description: key of one of the project's repositories }
+        name: { type: string, maxLength: 80, description: unique in the project }
+        provider: { type: string, enum: [GITLAB], default: GITLAB }
+        capabilities: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ScmCapability' } }
+        token: { type: string, nullable: true, maxLength: 4096, description: 'project or group access token; required on create and test, omitted on update = keep the stored one' }
+        secretExpiresAt: { type: string, format: date, nullable: true, description: omitted = the expiry GitLab reports for the token }
+    ScmConnection:
+      type: object
+      required: [id, repositoryKey, repositoryExists, name, provider, capabilities, expiryStatus, readOnly, createdAt, createdBy, updatedAt, updatedBy]
+      properties:
+        id: { type: string, format: uuid }
+        repositoryKey: { type: string }
+        repositoryExists: { type: boolean, description: false when the repository was removed from the project (never selected) }
+        name: { type: string }
+        provider: { type: string, enum: [GITLAB] }
+        capabilities: { type: array, items: { $ref: '#/components/schemas/ScmCapability' } }
+        secretExpiresAt: { type: string, format: date, nullable: true }
+        expiryStatus: { type: string, enum: [NONE, OK, EXPIRING_SOON, EXPIRED] }
+        readOnly: { type: boolean, description: 'declared read-only and verified without write powers: the only kind an agent tool may receive' }
+        verification: { $ref: '#/components/schemas/ScmVerification' }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { type: string }
+    ScmVerification:
+      type: object
+      nullable: true
+      required: [status, checkedAt, granted, missing, writePowers, messages]
+      properties:
+        status: { type: string, enum: [OK, WARNING, FAILED], description: 'FAILED: unreachable, refused or a declared capability is missing; WARNING: more rights than declared, unprotected default branch or too high a role' }
+        checkedAt: { type: string, format: date-time }
+        tokenName: { type: string, nullable: true }
+        scopes: { type: array, nullable: true, items: { type: string }, description: null when the token cannot call the API }
+        role: { type: string, nullable: true, description: 'Guest, Reporter, Developer, Maintainer or Owner' }
+        tokenExpiresAt: { type: string, format: date, nullable: true }
+        granted: { type: array, items: { $ref: '#/components/schemas/ScmCapability' } }
+        missing: { type: array, items: { $ref: '#/components/schemas/ScmCapability' } }
+        writePowers: { type: array, items: { type: string }, description: 'writes beyond the declared capabilities, e.g. "git push", "api scope", "merge into main"' }
+        messages: { type: array, items: { $ref: '#/components/schemas/ScmMessage' } }
+    ScmMessage:
+      type: object
+      required: [severity, code, text]
+      properties:
+        severity: { type: string, enum: [ERROR, WARNING, INFO] }
+        code: { type: string, description: 'UNREACHABLE, MISSING_<capability>, EXCESS, UNPROTECTED_DEFAULT_BRANCH, ROLE_TOO_HIGH, NO_API' }
+        text: { type: string, description: English text }
     ConnectionVerification:
       type: object
       nullable: true

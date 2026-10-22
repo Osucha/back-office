@@ -2,6 +2,7 @@
 export { ProjectConnectionsPanelComponent } from './components/project-connections-panel.component';
 export { NodeConnectionSectionComponent } from './components/node-connection-section.component';
 export { PersonalConnectionsPanelComponent } from './components/personal-connections-panel.component';
+export { ScmConnectionsPanelComponent } from './components/scm-connections-panel.component';
 export {
   JIRA_CONNECTION_KEY,
   capabilityLabel,

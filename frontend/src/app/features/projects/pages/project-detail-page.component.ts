@@ -55,7 +55,10 @@ import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
 import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { tableSort } from '../../../core/ui/relay/table-sort';
 import { ProjectBudgetPanelComponent } from '../../budgets/public-api';
-import { ProjectConnectionsPanelComponent } from '../../connections/public-api';
+import {
+  ProjectConnectionsPanelComponent,
+  ScmConnectionsPanelComponent,
+} from '../../connections/public-api';
 import { ProjectSandboxPanelComponent } from '../../fleet/public-api';
 import { RunsTableComponent } from '../../runs/public-api';
 import {
@@ -113,6 +116,7 @@ const TABS = [
     ProjectWorkspacesPanelComponent,
     ProjectBudgetPanelComponent,
     ProjectConnectionsPanelComponent,
+    ScmConnectionsPanelComponent,
     ProjectSandboxPanelComponent,
     BatonComponent,
     CostComponent,
@@ -483,6 +487,16 @@ const TABS = [
                 </nz-card>
                 <app-project-sources-panel />
               </div>
+              @defer (on immediate) {
+                <app-scm-connections-panel
+                  class="scm-tokens"
+                  [projectId]="p.id"
+                  [repositories]="repositories()"
+                  [canManage]="can('project.connections.manage')"
+                />
+              } @placeholder {
+                <bo-skeleton variant="table" [rows]="2" [columns]="4" />
+              }
             </ng-template>
           </nz-tab>
           <nz-tab nzTitle="Workspaces" i18n-nzTitle="@@projects.detail.tab.workspaces">
@@ -731,6 +745,10 @@ const TABS = [
   `,
   styles: [
     `
+      .scm-tokens {
+        display: block;
+        margin-top: var(--bo-space-4);
+      }
       .private {
         padding: 0 8px;
         border-radius: 999px;

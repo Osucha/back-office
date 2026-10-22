@@ -216,6 +216,44 @@ Inne hosty (Gitea, Bitbucket, Azure Repos) działają tak samo jak GitHub: token
 z prawem zapisu do repozytorium używane jako hasła HTTPS, ochrona gałęzi domyślnej, `mergeRequest` ustawione
 na `false`.
 
+<a id="git-project-tokens"></a>
+## Tokeny dostępu do repozytoriów w projekcie
+
+Od ADR 0051 projekt sam przechowuje tokeny swoich repozytoriów, więc nie trzeba ich instalować w każdym
+runnerze. Właściciel projektu dodaje je na zakładce **Źródła** projektu, w karcie **Tokeny dostępu do
+repozytoriów**. Wprowadzamy to etapami: w tej wersji tokeny są zapisywane, testowane i pokazywane, a zadania nadal
+używają tokenów puli runnerów opisanych niżej. Kolejne wersje przełączą klonowanie i wypychanie na tokeny projektu,
+będą dostarczać je runnerowi zaszyfrowane dla każdego zadania i dadzą agentom narzędzia tylko do odczytu, na
+przykład logi CI.
+
+- **Jeden token na poziom uprawnień.** Repozytorium może mieć kilka tokenów. Każdy deklaruje, do czego służy:
+
+  | Uprawnienie | Do czego używa go Back Office | Czego wymaga GitLab |
+  |---|---|---|
+  | GIT_READ | klonowanie repozytorium | `read_repository`, rola Reporter |
+  | CI_READ | odczyt pipeline'ów i logów jobów | `read_api`, rola Reporter |
+  | PUSH_BRANCH | wypchnięcie gałęzi agenta | `write_repository`, rola Developer |
+  | MR_WRITE | tworzenie i zmiana merge requestów | `api`, rola Developer |
+  | MR_COMMENT | komentarze z przeglądu | `api`, rola Reporter |
+  | PIPELINE_RUN | ponowne uruchomienie lub start pipeline'ów | `api`, rola Developer |
+
+  Uprawnienia do odczytu (GIT_READ, CI_READ) mogą później trafić do agenta jako narzędzie, ale tylko gdy token
+  jest zweryfikowany jako tylko do odczytu. Uprawnień do zapisu używa wyłącznie Back Office, nigdy agent.
+- **Typowa konfiguracja:** token dostępu projektu z rolą Reporter i zakresami `read_repository` oraz `read_api`
+  (GIT_READ, CI_READ) oraz token z rolą Developer i zakresem `write_repository` (PUSH_BRANCH). Nigdy nie używaj
+  roli Maintainer: może scalać.
+- **Testowany przy zapisie.** **Testuj przed zapisaniem**, każdy zapis i **Testuj ponownie** pytają GitLaba, co
+  token potrafi: klonować i wypychać (przez git), jakie ma zakresy i datę ważności, jaką ma rolę w projekcie i czy
+  gałąź domyślna jest chroniona. Wynik pokazuje nadane i brakujące uprawnienia oraz **uprawnienia do zapisu**
+  ponad zadeklarowane, na przykład „git push”, „api scope” albo „merge into main”. Brak uprawnienia oznacza test
+  nieudany; nadmiar uprawnień, niechroniona gałąź domyślna albo rola Maintainer dają ostrzeżenie. Test tylko czyta.
+- **Nigdy więcej nie jest pokazywany.** Token jest szyfrowany kluczem instalacji (tak jak tokeny Jiry) i nigdy nie
+  jest zwracany. Listę widzi każdy, kto widzi projekt; tokeny dodają, zmieniają, testują i usuwają tylko
+  właściciele. Każda zmiana trafia do audytu (`SCM_CONNECTION_*`).
+- **Ważność.** Bez podanej daty ważności używana jest ta, którą zgłasza GitLab; tokeny bliskie wygaśnięcia są
+  wyróżnione.
+- Token, którego repozytorium usunięto z projektu, jest oznaczony jako **osierocony** i nigdy nie jest używany.
+
 <a id="git-install"></a>
 ## Zainstaluj tokeny w puli runnerów
 

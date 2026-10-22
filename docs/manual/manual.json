@@ -24,7 +24,7 @@
       "chapters": [
         { "slug": "integrations-jira", "title": "Jira", "anchors": ["jira-overview", "jira-least-privilege", "jira-token", "jira-scoped-token", "jira-connections", "jira-system-connection", "jira-personal-connections", "jira-token-expiry", "jira-config", "jira-test", "jira-tasks", "jira-act-as", "jira-write-approval", "jira-intake"] },
         { "slug": "integrations-gitlab-ci", "title": "GitLab CI and other CI", "anchors": ["ci-overview", "ci-token", "ci-variables", "ci-template", "ci-other"] },
-        { "slug": "integrations-git", "title": "Git access for agents", "anchors": ["git-overview", "git-least-privilege", "gitlab-token", "gitlab-read-token", "gitlab-push-token", "gitlab-protect-branches", "github-token", "git-install", "git-multi-repo", "git-rotate"] },
+        { "slug": "integrations-git", "title": "Git access for agents", "anchors": ["git-overview", "git-least-privilege", "gitlab-token", "gitlab-read-token", "gitlab-push-token", "gitlab-protect-branches", "github-token", "git-project-tokens", "git-install", "git-multi-repo", "git-rotate"] },
         { "slug": "integrations-llm", "title": "LLM providers", "anchors": ["llm-overview", "anthropic", "openai", "google", "mistral", "ollama", "openai-compatible"] },
         { "slug": "integrations-identity", "title": "Sign-in (OIDC and local accounts)", "anchors": ["oidc-overview", "keycloak", "entra", "google-oidc", "gitlab-oidc", "local-accounts"] },
         { "slug": "integrations-ide", "title": "IDE and MCP", "anchors": ["pat", "claude-code", "cursor", "vscode", "mcp-tools"] },
