@@ -278,11 +278,12 @@ import {
         </div>
 
         @if (login()) {
-          <p class="login-note" role="note" i18n="@@models.drawer.loginNote">
+          <p class="login-note" role="note" i18n="@@models.drawer.loginNoteLlm">
             Claude Code runs on your personal runner, signed in with your own Claude subscription
-            (My account: personal runner with Claude Code login). Benchmarks use it for coding tasks
-            only, with the personal runner and the Claude Code harness, never as the judge. Default
-            options and pricing do not apply: nothing is billed.
+            (My account: personal runner with Claude Code login). It answers coding steps and LLM
+            steps of your private projects; in your benchmarks it can be a candidate (coding tasks
+            with the personal runner and the Claude Code harness) and the judge. Default options and
+            pricing do not apply: nothing is billed.
           </p>
         }
 
@@ -653,7 +654,7 @@ export class ModelProfileDrawerComponent {
     runtimeApi: $localize`:@@models.drawer.runtimeApi:Provider API (LLM gateway)`,
     runtimeLogin: $localize`:@@models.drawer.runtimeLogin:Claude Code (my login)`,
     apiRuntimeHint: $localize`:@@models.drawer.apiRuntimeHint:Called through a provider connection and billed per token.`,
-    loginRuntimeHint: $localize`:@@models.drawer.loginRuntimeHint:Claude Code on your personal runner with your own Claude subscription: coding tasks only, never the judge, nothing billed.`,
+    loginRuntimeHint: $localize`:@@models.drawer.loginRuntimeHintLlm:Claude Code on your personal runner with your own Claude subscription: coding steps and LLM steps of your private projects, benchmark candidates and the judge; nothing billed.`,
     modelIdHint: $localize`:@@models.drawer.modelIdHint:Exactly as the provider API expects it.`,
     loginModelIdHint: $localize`:@@models.drawer.loginModelIdHint:What Claude Code gets as --model: opus, sonnet, haiku or a full model id.`,
     defaultConnection: $localize`:@@models.drawer.defaultConnection:Default: the first connection of this type`,

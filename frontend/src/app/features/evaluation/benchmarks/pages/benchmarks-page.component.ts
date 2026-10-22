@@ -70,8 +70,8 @@ import {
   blocksSave,
   fixable,
   isLogin,
-  loginCandidates,
   loginIssues,
+  loginModels,
   type LoginIssue,
 } from '../data/login-rules';
 
@@ -422,8 +422,8 @@ import {
             >Judge model</nz-form-label
           >
           <nz-form-control
-            nzExtra="Fixed for the whole benchmark so scores stay comparable. Claude Code login models cannot judge."
-            i18n-nzExtra="@@evaluation.benchmarks.form.judgeHint"
+            nzExtra="Fixed for the whole benchmark so scores stay comparable. A Claude Code login model judges on your personal runner with your own login."
+            i18n-nzExtra="@@evaluation.benchmarks.form.judgeHintLogin"
           >
             <nz-select
               id="b-judge"
@@ -434,10 +434,10 @@ import {
               nzPlaceHolder="Select the judge"
               i18n-nzPlaceHolder="@@evaluation.benchmarks.form.selectJudge"
             >
-              @for (p of judgeProfiles(); track p.id) {
+              @for (p of profiles(); track p.id) {
                 <nz-option
                   [nzValue]="p.id"
-                  [nzLabel]="p.displayName"
+                  [nzLabel]="candidateLabel(p)"
                   [nzDisabled]="p.providerConfigured === false"
                 />
               }
@@ -522,8 +522,8 @@ import {
             @if (loginFixable()) {
               <button nz-button nzSize="small" type="button" (click)="applyLogin()">
                 <nz-icon nzType="check" />
-                <ng-container i18n="@@evaluation.benchmarks.form.login.apply"
-                  >Use my personal runner, Claude Code and coding tasks only</ng-container
+                <ng-container i18n="@@evaluation.benchmarks.form.login.applyRunner"
+                  >Use my personal runner and Claude Code</ng-container
                 >
               </button>
             }
@@ -835,9 +835,6 @@ export class BenchmarksPageComponent {
     return out;
   }
 
-  /** ADR 0048: login profiles run only as candidates; the judge is always called through the API. */
-  readonly judgeProfiles = computed(() => this.profiles().filter((p) => !isLogin(p)));
-
   candidateLabel(p: ModelProfile): string {
     const name = p.displayName;
     return isLogin(p)
@@ -845,7 +842,7 @@ export class BenchmarksPageComponent {
       : name;
   }
 
-  /** ADR 0048: what the selected Claude Code login candidates still need (empty without one). */
+  /** ADR 0048 / ADR 0050: what the Claude Code login models (candidates, judge) still need (empty without one). */
   loginProblems(): LoginIssue[] {
     return loginIssues(this.form, this.profiles(), this.suiteTasks(), this.targets());
   }
@@ -859,7 +856,7 @@ export class BenchmarksPageComponent {
   }
 
   loginTitle(): string {
-    const names = loginCandidates(this.form, this.profiles())
+    const names = loginModels(this.form, this.profiles())
       .map((p) => p.displayName)
       .join(', ');
     return $localize`:@@evaluation.benchmarks.form.login.title:Claude Code with your own login (${names}:names:) needs, before the benchmark can start:`;
@@ -871,18 +868,14 @@ export class BenchmarksPageComponent {
         return $localize`:@@evaluation.benchmarks.form.login.target:Coding tasks must run on your personal runner.`;
       case 'harness':
         return $localize`:@@evaluation.benchmarks.form.login.harness:The coding harness must be Claude Code.`;
-      case 'promptTasks':
-        return $localize`:@@evaluation.benchmarks.form.login.promptTasks:Only coding tasks can be selected: prompt tasks with your login follow later.`;
-      case 'noCodingTasks':
-        return $localize`:@@evaluation.benchmarks.form.login.noCodingTasks:The selection has no coding task: pick coding tasks or another suite, or remove the Claude Code login models.`;
       case 'localLogin':
         return $localize`:@@evaluation.benchmarks.form.login.localLogin:Your personal runner must use your Claude Code login: set it up under My account (personal runner with Claude Code login). A draft can be saved before that.`;
     }
   }
 
-  /** One click: personal runner, Claude Code harness and only the coding tasks of the selection. */
+  /** One click: personal runner and Claude Code harness for the coding tasks; the selection stays. */
   applyLogin(): void {
-    this.form = applyLoginRules(this.form, this.suiteTasks());
+    this.form = applyLoginRules(this.form, this.profiles(), this.suiteTasks());
     this.checks.set(null);
   }
 

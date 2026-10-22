@@ -72,7 +72,6 @@ start dialog) Back Office lists the models in two groups, **Platform** and **Per
 | Reason | What to do |
 |---|---|
 | the provider connection is not set up or has no API key | connect the provider in Settings (administrator) or pick another model |
-| a Claude Code login model runs coding-agent steps only | LLM steps (analysis, task list, review) need a platform model |
 | works only in private projects | use a platform model in shared projects |
 | needs Claude Code as the coding agent | set the step's coding agent to Claude Code |
 | no personal runner, or it does not use your login | set it up under My account, Personal runner |
@@ -85,8 +84,8 @@ administrators create **Platform** profiles for everyone. Claude Code login prof
 
 **Default models.** When neither a step, its template nor the project names a model, Back Office takes your own
 default for that kind of step (**LLM steps** or **Coding steps**), then the platform default set by an
-administrator. Set them on the **Models** page under **Default models**. An LLM step's default must be callable
-through the API, so a Claude Code login model can only be a default for coding steps.
+administrator. Set them on the **Models** page under **Default models**. A Claude Code login model can be the
+default for both: LLM steps then get their answer from Claude Code on your personal runner.
 
 The **model plan** of a workflow shows, for every step, the model a run would use and where it comes from (the
 step, its template, the project default or the review default). The designer marks steps whose model you cannot
@@ -103,12 +102,14 @@ creates a profile marked **Claude Code login**. You rarely need to: when your pe
 login, Back Office creates **Claude Opus (my login)**, **Claude Sonnet (my login)** and **Claude Haiku (my login)**
 for you. Such a profile:
 
-- runs as Claude Code on the personal runner of whoever creates the benchmark, with that person's login;
-- needs **My personal runner** as the execution target, **Claude Code** as the coding agent and coding tasks
-  only (prompt tasks through Claude Code come later);
-- cannot be the judge: choose a model of a connected provider for that;
-- costs nothing in Back Office (the subscription pays), but uses up the subscription's usage limits;
-- is not offered to projects, templates or workflow steps.
+- runs as Claude Code on the personal runner of whoever creates the benchmark or starts the run, with that
+  person's login;
+- answers coding tasks and coding steps as an agent (the benchmark then needs **My personal runner** as the
+  execution target and **Claude Code** as the coding agent), and prompt tasks, LLM steps and the judge's verdict as
+  a single answer: Back Office sends a short job to your personal runner, where Claude Code answers without tools;
+- works only in your private projects and your own benchmarks;
+- costs nothing in Back Office (the subscription pays), but uses up the subscription's usage limits, and each
+  answer takes a few seconds longer than an API call (the runner starts Claude Code for it).
 
 **Test profile** and **Check models** do not call the model for it: they check that your personal runner
 exists, uses your login and is online. Claude Code adds its own instructions and start-up time, so compare such

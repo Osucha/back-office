@@ -594,7 +594,7 @@ export class ModelsPageComponent {
     personalHint: $localize`:@@models.personal.hint:Your personal profile: only you see and use it, in your private projects and your own benchmarks.`,
     scopePlatform: $localize`:@@models.scope.platform:Platform profiles`,
     scopeMine: $localize`:@@models.scope.mine:My profiles`,
-    loginHint: $localize`:@@models.login.hint:Claude Code on your personal runner with your own Claude subscription: coding tasks only, never the judge, nothing billed.`,
+    loginHint: $localize`:@@models.login.hintLlm:Claude Code on your personal runner with your own Claude subscription: coding steps and LLM steps of your private projects, benchmark candidates and the judge; nothing billed.`,
   };
   /** ADR 0048: Claude Code with the user's own login (personal runner, no API key, no price). */
   readonly isLogin = isLoginProfile;

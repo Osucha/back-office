@@ -28,7 +28,11 @@ import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.LlmMessage
 import pl.mos.backoffice.shared.llm.LlmRequest
 import pl.mos.backoffice.shared.llm.LlmResult
+import pl.mos.backoffice.shared.llm.OwnLoginLlm
+import pl.mos.backoffice.shared.llm.chatAs
 import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.prompt.InjectionSignal
 import pl.mos.backoffice.shared.prompt.PromptDataBlocks
@@ -65,6 +69,8 @@ class LlmTaskExecutor(
     private val json: JsonCodec,
     private val audit: AuditPort = AuditPort.NOOP,
     private val guard: PromptInjectionGuard = PromptInjectionGuard(),
+    /** ADR 0050 step 4: answers of Claude Code login models (the starting user's personal runner); null = none. */
+    private val ownLogin: OwnLoginLlm? = null,
 ) : TaskExecutorStrategy {
 
     override val executor = TaskExecutor.LLM
@@ -89,7 +95,7 @@ class LlmTaskExecutor(
             responseSchema = task.outputSchema?.takeIf { it.isNotBlank() },
         )
         context.log("calling ${profile.ref.label}")
-        val answer = answerOf(context, task, profile.ref, request)
+        val answer = answerOf(context, task, profile, request)
         val result = answer.result
         val structured = answer.structured
         val usage = answer.usage
@@ -137,15 +143,17 @@ class LlmTaskExecutor(
     }
 
     /** Calls the model; an invalid review answer gets exactly one repair turn, and stays invalid (fail closed) if that fails too. */
-    private fun answerOf(context: NodeContext, task: ResolvedTask, ref: ModelRef, request: LlmRequest): Answer {
-        val result = llmGateway.chat(ref, request)
+    private fun answerOf(context: NodeContext, task: ResolvedTask, profile: ModelProfileSnapshot, request: LlmRequest): Answer {
+        val ref = profile.ref
+        if (profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) context.log("Claude Code answers on your own login (personal runner)")
+        val result = llmGateway.chatAs(profile.runtime, ref, request, ownLogin)
         val structured = structuredOf(result, task)
         val initial = Answer(result, structured, result.usage, emptyList())
         if (!task.producesReview) return initial
         val problems = guard.validateReviewAnswer(structured)
         if (problems.isEmpty()) return initial
         context.log("review answer invalid (${problems.joinToString("; ")}); asking the model once to repair it")
-        val repaired = llmGateway.chat(ref, repairRequest(request, result, problems))
+        val repaired = llmGateway.chatAs(profile.runtime, ref, repairRequest(request, result, problems), ownLogin)
         val usage = result.usage + repaired.usage
         val repairedStructured = structuredOf(repaired, task)
         val invalid = guard.validateReviewAnswer(repairedStructured)

@@ -126,7 +126,7 @@ class ModelStepCheckTest {
     }
 
     @Test
-    fun `at run time an LLM step refuses a login model and a shared project refuses it in a coding step`() {
+    fun `at run time a login model answers LLM and coding steps of a private project, a shared project refuses it`() {
         val snapshot = ModelProfileSnapshot(opusLogin, "Opus (my login)", ModelRef(Provider.ANTHROPIC, "opus"), Pricing.FREE, true, ModelRuntime.CLAUDE_CODE_LOGIN)
         val resolver = ModelResolver(object : ModelCatalog {
             override fun find(id: ModelProfileId) = snapshot.takeIf { id == opusLogin }
@@ -136,8 +136,9 @@ class ModelStepCheckTest {
         val llm = catalog.resolve("analyse-issue", null, TaskOverrides(modelProfileId = opusLogin))!!
         val coding = catalog.resolve("implement-claude-code", null, TaskOverrides(modelProfileId = opusLogin))!!
 
-        assertThatThrownBy { resolver.forLlmCall(llm, Fixtures.project().copy(personal = true)) }
-            .isInstanceOf(InvalidStateException::class.java).hasMessageContaining("needs a model of a connected provider")
+        assertThat(resolver.forLlmCall(llm, Fixtures.project().copy(personal = true))).isEqualTo(snapshot)
+        assertThatThrownBy { resolver.forLlmCall(llm, Fixtures.project()) }
+            .isInstanceOf(InvalidStateException::class.java).hasMessageContaining("only in private projects")
         assertThatThrownBy { resolver.forCodingAgent(coding, Fixtures.project()) }
             .isInstanceOf(InvalidStateException::class.java).hasMessageContaining("only in private projects")
         assertThat(resolver.forCodingAgent(coding, Fixtures.project().copy(personal = true))).isEqualTo(snapshot)

@@ -1,6 +1,6 @@
 # 0050 — Model availability: who may use which model, where and by which route
 
-- Status: accepted (steps 1 to 3 implemented; 4 planned)
+- Status: accepted (steps 1 to 4 implemented)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0040 (personal runners, LOCAL_LOGIN), 0045 (model profiles from providers), 0048 (Claude Code login
@@ -81,11 +81,17 @@ models are usable everywhere, private projects included.
 14. Availability: a login model is unusable while the personal runner is online without a login (its jobs would
     fail). Account, "My models" shows the runner's state, the defaults and the models the user can use.
 
-**Planned steps** (each usable on its own):
+**Step 4 (implemented): Claude Code answers single prompts.**
 
-3. Runners report their harnesses and active logins in the heartbeat; login models appear and disappear with the
-   runner instead of being created by hand; Account, "My models".
-4. A prompt mode of Claude Code in the runner, so LLM steps and the benchmark judge can run on a subscription.
+15. Runner mode `PROMPT`: Claude Code without a repository and without tools (`--disallowedTools`, a short turn
+    limit, no session), the step's system message as `--system-prompt`; the answer comes back as the `response`
+    artefact. Port `OwnLoginLlm` (agent-runner `ClaudeCodePromptLlm`): a PROMPT job on the acting user's personal
+    runner, awaited like a gateway call (minutes at most); with a response schema the answer is asked for and parsed
+    as one JSON object.
+16. LLM steps, benchmark prompt candidates and the judge choose the route by the profile's runtime (`chatAs`): the
+    gateway for API models, `OwnLoginLlm` for Claude Code login models. Login models are therefore usable in LLM
+    steps, as an LLM default and as the judge; benchmarks need the creator's personal runner with their login
+    whenever a login model takes part, and the PERSONAL target with Claude Code only for coding tasks.
 
 ## Consequences
 

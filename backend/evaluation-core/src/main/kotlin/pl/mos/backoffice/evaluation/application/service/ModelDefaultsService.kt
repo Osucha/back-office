@@ -85,9 +85,6 @@ class ModelDefaultsService(
     private fun checked(id: ModelProfileId, stepKind: StepKind, owner: UUID?): ModelProfile {
         val profile = profiles.findById(id)?.takeIf { it.visibleTo(owner) } ?: throw NotFoundException("ModelProfile", id)
         if (!profile.enabled) throw ValidationException("the model profile ${profile.displayName} is disabled", "profileId")
-        if (stepKind == StepKind.LLM_CALL && profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) {
-            throw ValidationException("${profile.displayName} is a Claude Code login model; the default for LLM steps must be callable through the API", "profileId")
-        }
         return profile
     }
 

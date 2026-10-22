@@ -47,15 +47,15 @@ describe('model options (ADR 0050)', () => {
       [
         option('api'),
         option('broken', { usable: false, problem: 'provider not connected' }),
-        login('mine', { usable: false, problem: 'LLM steps cannot use a login model' }),
+        option('agent', { usable: false, problem: 'not for LLM steps' }),
       ],
       [
         option('api'),
         option('broken', { usable: false, problem: 'provider not connected (coding)' }),
-        login('mine', { note: 'runner offline' }),
+        option('agent', { note: 'runner offline' }),
       ],
     );
-    expect(merged.map((o) => o.profileId)).toEqual(['api', 'mine', 'broken']);
+    expect(merged.map((o) => o.profileId)).toEqual(['api', 'agent', 'broken']);
     expect(merged[0].hint).toBeUndefined();
     expect(merged[1]).toMatchObject({
       usable: true,
@@ -63,6 +63,16 @@ describe('model options (ADR 0050)', () => {
       hint: 'coding steps only (LLM steps need their own model)',
     });
     expect(merged[2]).toMatchObject({ usable: false, problem: 'provider not connected' });
+  });
+
+  it('does not call a login model coding-only when the server lets LLM steps use it (ADR 0050 step 4)', () => {
+    const merged = mergeDefaultModelOptions(
+      [login('mine', { note: 'runner offline' })],
+      [login('mine', { note: 'runner offline' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ usable: true, route: 'OWN_LOGIN' });
+    expect(merged[0].hint).toBeUndefined();
   });
 
   it('gives an unusable login model the reason of coding steps', () => {

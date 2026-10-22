@@ -32,6 +32,7 @@ import pl.mos.backoffice.evaluation.application.service.ExecuteAttemptService
 import pl.mos.backoffice.evaluation.application.service.ModelAvailabilityService
 import pl.mos.backoffice.evaluation.application.service.ModelDefaultsService
 import pl.mos.backoffice.evaluation.application.service.PersonalLoginModelsService
+import pl.mos.backoffice.shared.llm.OwnLoginLlm
 import pl.mos.backoffice.shared.llm.PersonalLoginModels
 import pl.mos.backoffice.evaluation.application.service.ModelProfileService
 import pl.mos.backoffice.evaluation.application.service.ProviderService
@@ -125,7 +126,8 @@ class EvaluationConfiguration {
         gateway: LlmGateway,
         runner: AgentRunner,
         clock: Clock,
-    ): ExecuteAttempt = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock)
+        ownLogin: ObjectProvider<OwnLoginLlm>,
+    ): ExecuteAttempt = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, ownLogin.getIfAvailable())
 
 
     @Bean

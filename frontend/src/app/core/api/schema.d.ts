@@ -5667,8 +5667,11 @@ export interface components {
        * @enum {string|null}
        */
       llmCredentials?: 'GATEWAY' | 'LOCAL_LOGIN' | null;
-      /** @enum {string} */
-      mode: 'SPEC_KIT' | 'IMPLEMENT' | 'EVAL_CODING';
+      /**
+       * @description PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact
+       * @enum {string}
+       */
+      mode: 'SPEC_KIT' | 'IMPLEMENT' | 'EVAL_CODING' | 'PROMPT';
       model: components['schemas']['ModelRef'];
       prompt: string;
       /** @description Repositories of the job (ADR 0034). The workspace root is /workspace; each entry is cloned into /workspace/<path>; the agent works in the path of the `primary` entry (/workspace when the list is empty). Exactly one entry is primary when the list is not empty. Omitted for jobs built the legacy way (coding benchmarks, older Back Office): the runner then uses `repository`. When present, `repository` mirrors the primary entry and `gitAccess` is the highest access among the entries, for older runners. */
@@ -5705,6 +5708,8 @@ export interface components {
       specKit?: boolean | null;
       /** @enum {string|null} */
       specKitPhase?: 'SPECIFY' | 'CLARIFY' | 'PLAN' | 'TASKS' | 'ANALYZE' | 'IMPLEMENT' | null;
+      /** @description ADR 0050 step 4: the system prompt of a PROMPT job (prompt is then the user message) */
+      systemPrompt?: string | null;
       timeoutSeconds: number;
       verifyCommand?: string | null;
       /** @description ADR 0044: the run workspace of the job. The controller mounts the volume / PVC `name` at /workspace instead of a throwaway one (backends without workspaces log it and use a throwaway one); the runner reuses clones it made there for earlier jobs (rewriting .git/config first) and keeps their working trees. `sessionRole` continues the coding agent's session of that role (Claude Code --session-id / --resume, OpenCode --continue); `prepareOnly` clones and runs setupCommand without an agent. Back Office leases the jobs of one workspace only to the runner holding it, one at a time. Omitted = a throwaway workspace. Covered by the spec digest when present. */

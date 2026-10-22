@@ -4922,7 +4922,7 @@ components:
       type: object
       required: [mode, agent, model, prompt, timeoutSeconds]
       properties:
-        mode: { type: string, enum: [SPEC_KIT, IMPLEMENT, EVAL_CODING] }
+        mode: { type: string, enum: [SPEC_KIT, IMPLEMENT, EVAL_CODING, PROMPT], description: 'PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact' }
         agent: { type: string, enum: [OPENCODE, CLAUDE_CODE] }
         model: { $ref: '#/components/schemas/ModelRef' }
         repositories:
@@ -4956,6 +4956,7 @@ components:
         specKitPhase: { type: string, enum: [SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT], nullable: true }
         prompt: { type: string }
         constitution: { type: string, nullable: true }
+        systemPrompt: { type: string, nullable: true, description: 'ADR 0050 step 4: the system prompt of a PROMPT job (prompt is then the user message)' }
         setupCommand: { type: string, nullable: true }
         verifyCommand: { type: string, nullable: true }
         timeoutSeconds: { type: integer }

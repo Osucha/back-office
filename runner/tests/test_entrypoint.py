@@ -1757,6 +1757,21 @@ class MainFlowTests(unittest.TestCase):
             trailer = git(origin, "log", "-1", "--format=%(trailers:key=Back-Office-Run,valueonly)", "feature/stub").strip()
             self.assertEqual(trailer, "11111111-2222-4333-8444-555555555555")
 
+    def test_prompt_job_answers_without_a_repository(self):
+        """ADR 0050 step 4: a PROMPT job returns the answer as the response artefact and touches no repository."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            prompt = self.stub_command("print('the answer')")
+            spec = {"mode": "PROMPT", "agent": "STUB", "model": {"provider": "ANTHROPIC", "modelId": "opus"}, "prompt": prompt,
+                    "systemPrompt": "Answer briefly.", "timeoutSeconds": 120, "collectDiff": False}
+            result = self.run_main(tmp_path, spec)
+            self.assertEqual(result["status"], "SUCCEEDED", result)
+            response = [a for a in result["artifacts"] if a["name"] == "response"]
+            self.assertEqual(len(response), 1)
+            self.assertEqual(response[0]["content"], "the answer")
+            self.assertIsNone(result.get("branch"))
+            self.assertEqual(result["security"]["gitAccess"], "NONE")
+
     def test_read_job_commits_locally_but_never_pushes(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1827,6 +1842,36 @@ class MainFlowTests(unittest.TestCase):
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertEqual(result["policy"], {"askTreatedAsDeny": ["rm *"], "denials": []})
 
+
+
+class PromptModeTests(unittest.TestCase):
+    """ADR 0050 step 4: Claude Code answering one prompt on the user's own login."""
+
+    def model(self, reasoning=None):
+        return ep.ModelRef(provider="ANTHROPIC", model_id="opus", reasoning=reasoning)
+
+    def test_spec_accepts_prompt_mode_and_system_prompt(self):
+        raw = {"mode": "PROMPT", "agent": "CLAUDE_CODE", "model": {"provider": "ANTHROPIC", "modelId": "opus"},
+               "prompt": "Summarise", "systemPrompt": "You are terse.", "timeoutSeconds": 300}
+        spec = ep.parse_spec(raw)
+        self.assertEqual((spec.mode, spec.system_prompt, spec.repository), ("PROMPT", "You are terse.", None))
+        self.assertEqual(ep.derive_git_access("PROMPT", None), ep.GIT_ACCESS_NONE)
+
+    def test_command_has_no_tools_a_turn_limit_and_the_system_prompt(self):
+        help_text = "--system-prompt --disallowedTools --no-session-persistence --effort"
+        cmd = ep.build_prompt_command(self.model("HIGH"), "question", "rules", help_text)
+        self.assertEqual(cmd[:3], ["claude", "-p", "question"])
+        self.assertEqual(cmd[cmd.index("--system-prompt") + 1], "rules")
+        self.assertIn("Bash", cmd[cmd.index("--disallowedTools") + 1].split(","))
+        self.assertEqual(cmd[cmd.index("--max-turns") + 1], ep.PROMPT_MAX_TURNS)
+        self.assertIn("--no-session-persistence", cmd)
+        self.assertNotIn("--dangerously-skip-permissions", cmd)
+
+    def test_an_older_claude_code_gets_the_system_prompt_in_the_prompt(self):
+        cmd = ep.build_prompt_command(self.model(), "question", "rules", "")
+        self.assertEqual(cmd[2], "rules\n\nquestion")
+        self.assertNotIn("--system-prompt", cmd)
+        self.assertNotIn("--disallowedTools", cmd)
 
 if __name__ == "__main__":
     unittest.main()

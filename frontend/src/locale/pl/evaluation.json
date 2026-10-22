@@ -180,7 +180,7 @@
   "evaluation.benchmarks.form.modelsHint": "Nie można wybrać profili, których dostawca nie ma klucza API.",
   "evaluation.benchmarks.form.pickOne": "Wybierz co najmniej jeden",
   "evaluation.benchmarks.form.judge": "Model oceniający",
-  "evaluation.benchmarks.form.judgeHint": "Stały dla całego benchmarku, aby wyniki były porównywalne. Modele Claude Code z logowaniem nie mogą oceniać.",
+  "evaluation.benchmarks.form.judgeHintLogin": "Stały dla całego benchmarku, aby wyniki były porównywalne. Model z logowaniem Claude Code ocenia na Twoim osobistym runnerze z Twoim własnym logowaniem.",
   "evaluation.benchmarks.form.selectJudge": "Wybierz model oceniający",
   "evaluation.benchmarks.form.repetitions": "Powtórzenia",
   "evaluation.benchmarks.form.repetitionsHint": "1–5; więcej powtórzeń mierzy stabilność.",
@@ -352,13 +352,11 @@
   "evaluation.task.acceptanceInvalid": "Niepoprawne: obiekt z files (ścieżka do treści), protectedPaths i requireChanges",
   "evaluation.task.acceptanceHint": "Ukryte przed agentem: files (np. testy akceptacyjne) są zapisywane tylko na czas komendy weryfikacji, protectedPaths (ścieżki git, np. istniejące testy) muszą pozostać bez zmian, requireChanges oblewa przebieg, który niczego nie zmienił. Puste = brak.",
 
-  "evaluation.benchmarks.form.login.apply": "Użyj mojego osobistego runnera, Claude Code i tylko zadań programistycznych",
+  "evaluation.benchmarks.form.login.applyRunner": "Użyj mojego osobistego runnera i Claude Code",
   "evaluation.benchmarks.form.loginCandidate": "{$name} (logowanie Claude Code)",
   "evaluation.benchmarks.form.login.title": "Claude Code z Twoim własnym logowaniem ({$names}) wymaga przed startem benchmarku:",
   "evaluation.benchmarks.form.login.target": "Zadania programistyczne muszą działać na Twoim osobistym runnerze.",
   "evaluation.benchmarks.form.login.harness": "Agentem programistycznym musi być Claude Code.",
-  "evaluation.benchmarks.form.login.promptTasks": "Można wybrać tylko zadania programistyczne: zadania promptowe z Twoim logowaniem pojawią się później.",
-  "evaluation.benchmarks.form.login.noCodingTasks": "Wybór nie zawiera żadnego zadania programistycznego: wybierz zadania programistyczne lub inny zestaw albo usuń modele z logowaniem Claude Code.",
   "evaluation.benchmarks.form.login.localLogin": "Twój osobisty runner musi używać Twojego logowania Claude Code: skonfiguruj go w Moim koncie (osobisty runner z logowaniem Claude Code). Szkic można zapisać już wcześniej.",
   "evaluation.benchmarks.form.runnerLocalLogin": "{$status}, logowanie Claude Code",
   "evaluation.benchmarks.form.login.blocked": "Modele z logowaniem Claude Code wymagają ustawień wymienionych w formularzu."

@@ -60,7 +60,8 @@ class ModelAvailabilityServiceTest {
         fun problem(use: ModelUse) = service.check(login.id, use)!!.problem
 
         assertThat(service.check(login.id, coding)!!.let { Triple(it.usable, it.route, it.personal) }).isEqualTo(Triple(true, ModelRoute.OWN_LOGIN, true))
-        assertThat(problem(coding.copy(stepKind = StepKind.LLM_CALL))).contains("coding-agent steps only")
+        // ADR 0050 step 4: an LLM step's answer comes from Claude Code on the personal runner
+        assertThat(service.check(login.id, coding.copy(stepKind = StepKind.LLM_CALL, harness = null))!!.usable).isTrue()
         assertThat(problem(coding.copy(privateProject = false))).contains("private projects")
         assertThat(problem(coding.copy(harness = AgentHarness.OPENCODE))).contains("Claude Code as the coding agent")
 

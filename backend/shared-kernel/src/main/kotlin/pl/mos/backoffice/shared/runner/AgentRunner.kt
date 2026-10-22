@@ -10,7 +10,8 @@ import java.time.Instant
 import java.util.UUID
 import pl.mos.backoffice.shared.platform.WorkRequest
 
-enum class RunnerMode { SPEC_KIT, IMPLEMENT, EVAL_CODING }
+/** PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools (an LLM call on a user's own login). */
+enum class RunnerMode { SPEC_KIT, IMPLEMENT, EVAL_CODING, PROMPT }
 enum class AgentHarness { OPENCODE, CLAUDE_CODE }
 
 /** Where agent jobs of a benchmark run (ADR 0046): the shared runner fleet or the starting user's personal runner. */
@@ -172,6 +173,8 @@ data class RunnerJobSpec(
     val repository: RunnerRepository? = null,
     val specKitPhase: SpecKitPhase? = null,
     val constitution: String? = null,
+    /** ADR 0050 step 4: the system prompt of a PROMPT job; [prompt] is then the user message. */
+    val systemPrompt: String? = null,
     val setupCommand: String? = null,
     val verifyCommand: String? = null,
     val timeout: Duration = Duration.ofMinutes(60),

@@ -32,6 +32,8 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.LlmRequest
 import pl.mos.backoffice.shared.llm.LlmResult
+import pl.mos.backoffice.shared.llm.OwnLoginLlm
+import pl.mos.backoffice.shared.llm.chatAs
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
@@ -62,6 +64,8 @@ class ExecuteAttemptService(
     private val gateway: LlmGateway,
     private val runner: AgentRunner,
     private val clock: Clock,
+    /** ADR 0050 step 4: answers of Claude Code login models (candidates and judges) on the creator's runner; null = none. */
+    private val ownLogin: OwnLoginLlm? = null,
 ) : ExecuteAttempt {
 
     @SystemOperation("runs on the benchmark executor's threads after an authorised start; never exposed through a controller")
@@ -115,7 +119,7 @@ class ExecuteAttemptService(
     private fun runPrompt(attempt: Attempt, task: EvalTask, candidate: ModelProfile, judge: ModelProfile, context: UsageContext): Attempt {
         // a retry after the judge failed keeps the answer it already has (ADR 0046): the candidate is not asked twice
         val judging = attempt.output?.let { benchmarks.saveAttempt(attempt.judging(it, null, attempt.usage, attempt.cost)) } ?: run {
-            val candidateResult = gateway.chat(candidate.ref, LlmRequest.of(JudgePrompts.CANDIDATE_SYSTEM_PROMPT, task.prompt, context))
+            val candidateResult = gateway.chatAs(candidate.runtime, candidate.ref, LlmRequest.of(JudgePrompts.CANDIDATE_SYSTEM_PROMPT, task.prompt, context), ownLogin)
             benchmarks.saveAttempt(
                 attempt.judging(
                     output = candidateResult.content,
@@ -212,10 +216,12 @@ class ExecuteAttemptService(
     private fun judge(judge: ModelProfile, message: String, blocks: PromptDataBlocks, context: UsageContext): Pair<JudgeVerdict, Money> {
         // the verdict is a short JSON; a cap keeps a talkative (or reasoning) judge from writing pages and timing out
         val cap = judge.ref.options.maxOutputTokens?.coerceAtMost(JUDGE_MAX_OUTPUT_TOKENS) ?: JUDGE_MAX_OUTPUT_TOKENS
-        val result: LlmResult = gateway.chat(
+        val result: LlmResult = gateway.chatAs(
+            judge.runtime,
             judge.ref,
             LlmRequest.of(JudgePrompts.systemPrompt(blocks), message, context, responseSchema = JudgePrompts.RESPONSE_SCHEMA)
                 .copy(optionsOverride = judge.ref.options.copy(maxOutputTokens = cap)),
+            ownLogin,
         )
         return JudgePrompts.parseVerdict(result.structured, result.content) to judge.pricing.costOf(result.usage)
     }

@@ -66,7 +66,7 @@ class BenchmarkService(
         if (unknownTasks.isNotEmpty()) throw ValidationException("tasks not in suite: ${unknownTasks.joinToString()}", "taskIds")
         val tasks = if (command.taskIds.isEmpty()) suite.tasks else suite.tasks.filter { it.id in command.taskIds.toSet() }
         requireOwnModels(models + judge, user.userId?.value)
-        requireLoginModelRules(models, judge, tasks, command.codingHarness, command.runnerTarget)
+        requireLoginModelRules(models, tasks, command.codingHarness, command.runnerTarget)
         val benchmark = benchmarks.save(
             Benchmark.create(
                 name = command.name,
@@ -107,8 +107,9 @@ class BenchmarkService(
         val attempts = BenchmarkExecutionPlanner.plan(benchmark, suite, models, now)
         val tasks = if (benchmark.taskIds.isEmpty()) suite.tasks else suite.tasks.filter { it.id in benchmark.taskIds.toSet() }
         requireOwnModels(models + judge, benchmark.createdBy?.userId)
-        requireLoginModelRules(models, judge, tasks, benchmark.codingHarness, benchmark.runnerTarget)
+        requireLoginModelRules(models, tasks, benchmark.codingHarness, benchmark.runnerTarget)
         if (attempts.any { it.kind == TaskKind.CODING_JOB }) requireRunnerTarget(benchmark, models.any { it.viaClaudeCodeLogin })
+        if ((models + judge).any { it.viaClaudeCodeLogin }) requirePersonalLogin(benchmark)
         val started = benchmarks.save(benchmark.start(now, user.actor))
         benchmarks.saveAttempts(attempts)
         attempts.forEach { executor.submit(it.id) }
@@ -121,10 +122,6 @@ class BenchmarkService(
         return runner.executionTargets(user.userId?.value)
     }
 
-    /**
-     * ADR 0048: Claude Code login models run as Claude Code on the creator's personal runner, coding tasks only (prompt
-     * tasks need the Claude Code prompt mode, not built yet), and never judge: the judge is called through the gateway.
-     */
     /** ADR 0050 step 2: a personal model profile takes part only in its owner's benchmarks. */
     private fun requireOwnModels(models: List<ModelProfile>, creator: java.util.UUID?) {
         val foreign = models.filter { it.ownerUserId != null && it.ownerUserId != creator }
@@ -133,26 +130,31 @@ class BenchmarkService(
         }
     }
 
+    /**
+     * ADR 0048 / 0050 step 4: Claude Code login models answer prompt tasks and judge through PROMPT jobs on the
+     * creator's personal runner; for coding tasks they run as Claude Code there too, so the benchmark must send coding
+     * jobs to the personal runner with the Claude Code harness.
+     */
     private fun requireLoginModelRules(
         models: List<ModelProfile>,
-        judge: ModelProfile,
         tasks: List<EvalTask>,
         harness: AgentHarness,
         target: RunnerTarget,
     ) {
-        if (judge.viaClaudeCodeLogin) {
-            throw ValidationException("${judge.displayName} uses your Claude Code login and cannot judge; choose a model of a connected provider as the judge", "judgeModelProfileId")
-        }
         val login = models.filter { it.viaClaudeCodeLogin }
-        if (login.isEmpty()) return
+        if (login.isEmpty() || tasks.none { it.kind == TaskKind.CODING_JOB }) return
         val names = login.joinToString { it.displayName }
         if (target != RunnerTarget.PERSONAL) {
-            throw ValidationException("$names use your own Claude Code login and run only on your personal runner; choose it as the execution target", "runnerTarget")
+            throw ValidationException("$names use your own Claude Code login and run coding tasks only on your personal runner; choose it as the execution target", "runnerTarget")
         }
         if (harness != AgentHarness.CLAUDE_CODE) throw ValidationException("$names need Claude Code as the coding agent", "codingHarness")
-        val prompts = tasks.count { it.kind == TaskKind.PROMPT }
-        if (prompts > 0) {
-            throw ValidationException("$names run coding tasks only for now; leave out the $prompts prompt task(s) or use models of a connected provider", "taskIds")
+    }
+
+    /** ADR 0050 step 4: login models (candidates or the judge) answer on the creator's personal runner with their login. */
+    private fun requirePersonalLogin(benchmark: Benchmark) {
+        val personal = benchmark.createdBy?.userId?.let { owner -> runner.executionTargets(owner).firstOrNull { it.target == RunnerTarget.PERSONAL } }
+        if (personal == null || !personal.exists || !personal.localLogin) {
+            throw InvalidStateException("Claude Code login models need your personal runner to use your own login; set it up under My account")
         }
     }
 

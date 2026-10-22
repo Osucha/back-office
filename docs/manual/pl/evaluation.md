@@ -80,7 +80,6 @@ wyszarzony z podanym powodem, na przykład:
 | Powód | Co zrobić |
 |---|---|
 | połączenie z dostawcą nie jest skonfigurowane albo nie ma klucza API | podłącz dostawcę w Ustawieniach (administrator) albo wybierz inny model |
-| model z logowaniem Claude Code działa tylko w krokach agenta kodującego | kroki LLM (analiza, lista zadań, przegląd) potrzebują modelu platformowego |
 | działa tylko w projektach prywatnych | w projektach wspólnych użyj modelu platformowego |
 | wymaga Claude Code jako agenta kodującego | ustaw agenta kodującego kroku na Claude Code |
 | brak osobistego runnera albo nie używa Twojego logowania | skonfiguruj go w Moje konto, Osobisty runner |
@@ -95,8 +94,8 @@ i używasz, w swoich prywatnych projektach i własnych benchmarkach; administrat
 **Modele domyślne.** Gdy ani krok, ani jego szablon, ani projekt nie wskazuje modelu, Back Office bierze Twój
 własny model domyślny dla tego rodzaju kroku (**Kroki LLM** albo **Kroki kodujące**), a potem domyślny model
 platformy ustawiony przez administratora. Ustawisz je na stronie **Modele** (**Models**) w sekcji **Modele
-domyślne** (**Default models**). Model domyślny kroków LLM musi być wywoływany przez API, więc model z logowaniem
-Claude Code może być domyślny tylko dla kroków kodujących.
+domyślne** (**Default models**). Model z logowaniem Claude Code może być domyślny dla obu: kroki LLM dostają wtedy
+odpowiedź od Claude Code na Twoim osobistym runnerze.
 
 **Plan modeli** workflowu pokazuje dla każdego kroku model, którego użyłoby uruchomienie, i skąd pochodzi (krok,
 jego szablon, model domyślny projektu albo model przeglądu). Projektant oznacza ostrzeżeniem kroki z modelem,
@@ -115,12 +114,15 @@ oznaczony **Logowanie Claude Code** (**Claude Code login**). Rzadko jest to potr
 pierwszy raz zgłosi Twoje logowanie, Back Office sam tworzy profile **Claude Opus (my login)**, **Claude Sonnet (my
 login)** i **Claude Haiku (my login)**. Taki profil:
 
-- działa jako Claude Code na osobistym runnerze osoby, która tworzy benchmark, z jej logowaniem;
-- wymaga **Mojego osobistego runnera** jako miejsca wykonania, **Claude Code** jako agenta kodującego i tylko
-  zadań programistycznych (zadania typu prompt przez Claude Code będą później);
-- nie może być modelem oceniającym: do tego wybierz model podłączonego dostawcy;
-- nic nie kosztuje w Back Office (płaci subskrypcja), ale zużywa jej limity;
-- nie jest oferowany projektom, szablonom ani krokom procesów.
+- działa jako Claude Code na osobistym runnerze osoby, która tworzy benchmark albo uruchamia workflow, z jej
+  logowaniem;
+- wykonuje zadania i kroki programistyczne jako agent (benchmark wymaga wtedy **Mojego osobistego runnera** jako
+  miejsca wykonania i **Claude Code** jako agenta kodującego), a zadania typu prompt, kroki LLM i ocenę modelu
+  oceniającego jako jedną odpowiedź: Back Office wysyła krótkie zadanie na Twój osobisty runner, gdzie Claude Code
+  odpowiada bez narzędzi;
+- działa tylko w Twoich prywatnych projektach i własnych benchmarkach;
+- nic nie kosztuje w Back Office (płaci subskrypcja), ale zużywa jej limity, a każda odpowiedź trwa kilka sekund
+  dłużej niż wywołanie API (runner uruchamia do niej Claude Code).
 
 **Testuj profil** (**Test profile**) i **Sprawdź modele** (**Check models**) nie wywołują dla niego modelu:
 sprawdzają, czy Twój osobisty runner istnieje, używa Twojego logowania i jest dostępny. Claude Code dodaje

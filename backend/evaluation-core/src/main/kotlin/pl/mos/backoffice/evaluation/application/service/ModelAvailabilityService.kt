@@ -70,9 +70,8 @@ class ModelAvailabilityService(
     companion object {
         /** The rules of a login model that do not depend on the runner; null = they allow it. */
         private fun loginRules(use: ModelUse): Verdict? = when {
-            use.stepKind == StepKind.LLM_CALL ->
-                Verdict(problem = "a Claude Code login model runs coding-agent steps only; LLM steps need a model of a connected provider")
-            use.harness != null && use.harness != AgentHarness.CLAUDE_CODE ->
+            // ADR 0050 step 4: an LLM step's answer comes from Claude Code on the personal runner (PROMPT job)
+            use.stepKind == StepKind.CODING_AGENT && use.harness != null && use.harness != AgentHarness.CLAUDE_CODE ->
                 Verdict(problem = "a Claude Code login model needs Claude Code as the coding agent of the step")
             else -> null
         }

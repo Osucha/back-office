@@ -74,7 +74,7 @@ class PersonalModelsAndDefaultsTest {
     }
 
     @Test
-    fun `defaults, the platform's with models manage, the user's own may be personal, an LLM default cannot be a login model`() {
+    fun `defaults, the platform's with models manage, the user's own may be personal, also a login model for LLM steps`() {
         val login = profiles.save(Fixtures.profile("Opus (my login)", modelId = "opus").copy(runtime = ModelRuntime.CLAUDE_CODE_LOGIN, ownerUserId = me))
         val myKey = profiles.save(Fixtures.profile("My key").copy(ownerUserId = me))
 
@@ -83,7 +83,9 @@ class PersonalModelsAndDefaultsTest {
         defaultsOf(admin).setPlatform(StepKind.LLM_CALL, platform.id)
         defaultsOf(admin).setPlatform(StepKind.CODING_AGENT, platform.id)
 
-        assertThatThrownBy { defaultsOf(viewer).setMine(StepKind.LLM_CALL, login.id) }.isInstanceOf(ValidationException::class.java)
+        // ADR 0050 step 4: a login model answers LLM steps too (Claude Code prompt mode)
+        assertThat(defaultsOf(viewer).setMine(StepKind.LLM_CALL, login.id).mine[StepKind.LLM_CALL]!!.id).isEqualTo(login.id)
+        defaultsOf(viewer).setMine(StepKind.LLM_CALL, null)
         assertThatThrownBy { defaultsOf(viewer).setMine(StepKind.CODING_AGENT, theirs.id) }.isInstanceOf(NotFoundException::class.java)
         val set = defaultsOf(viewer).setMine(StepKind.CODING_AGENT, login.id)
         assertThat(set.mine[StepKind.CODING_AGENT]!!.id).isEqualTo(login.id)
@@ -99,6 +101,6 @@ class PersonalModelsAndDefaultsTest {
         assertThat(resolver.resolve(me, StepKind.CODING_AGENT)!!.personal).isFalse()
         defaultsOf(admin).setPlatform(StepKind.CODING_AGENT, null)
         assertThat(resolver.resolve(other, StepKind.CODING_AGENT)).isNull()
-        assertThat(audit.entries.filter { it.operation == "MODEL_DEFAULT_SET" }).hasSize(4)
+        assertThat(audit.entries.filter { it.operation == "MODEL_DEFAULT_SET" }).hasSize(6)
     }
 }

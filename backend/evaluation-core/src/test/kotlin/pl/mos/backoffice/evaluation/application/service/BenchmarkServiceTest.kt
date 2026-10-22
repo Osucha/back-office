@@ -200,7 +200,7 @@ class BenchmarkServiceTest {
     private val login = Fixtures.profile("Opus (my login)", modelId = "opus").copy(runtime = ModelRuntime.CLAUDE_CODE_LOGIN)
 
     @Test
-    fun `Claude Code login models run coding tasks on the personal runner with Claude Code and never judge (ADR 0048)`() {
+    fun `Claude Code login models run coding tasks on the personal runner with Claude Code, answer prompts and may judge (ADR 0048, 0050)`() {
         profiles.save(login)
         val coding = suite.tasks.single { it.kind == pl.mos.backoffice.evaluation.domain.model.TaskKind.CODING_JOB }
         val ok = command().copy(
@@ -211,10 +211,16 @@ class BenchmarkServiceTest {
             assertThatThrownBy { service.create(c) }.isInstanceOfSatisfying(ValidationException::class.java) { e ->
                 assertThat(e.errors.map { it.field }).contains(field)
             }
-        refused(ok.copy(judgeModelProfileId = login.id), "judgeModelProfileId")
         refused(ok.copy(runnerTarget = RunnerTarget.SHARED), "runnerTarget")
         refused(ok.copy(codingHarness = AgentHarness.OPENCODE), "codingHarness")
-        refused(ok.copy(taskIds = emptyList()), "taskIds")
+        // ADR 0050 step 4: prompt tasks and the judge are answered by Claude Code on the creator's personal runner
+        val promptOnly = ok.copy(
+            judgeModelProfileId = login.id, runnerTarget = RunnerTarget.SHARED, codingHarness = AgentHarness.OPENCODE,
+            taskIds = listOf(suite.tasks.single { it.kind == pl.mos.backoffice.evaluation.domain.model.TaskKind.PROMPT }.id),
+        )
+        val prompts = service.create(promptOnly)
+        every { runner.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = false))
+        assertThatThrownBy { service.start(prompts.benchmark.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("own login")
 
         val draft = service.create(ok)
         every { runner.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = false))

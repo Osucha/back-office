@@ -24,14 +24,9 @@ class ModelResolver(private val catalog: ModelCatalog, private val defaults: Mod
         return resolve(id, "task ${task.key}")
     }
 
-    /** ADR 0050: a Claude Code login model cannot answer a gateway call; a personal model only its owner's private work. */
+    /** ADR 0050: a personal model (a login model answers through Claude Code, step 4) only its owner's private work. */
     fun forLlmCall(task: ResolvedTask, project: Project, userId: UUID? = null): ModelProfileSnapshot =
-        forTask(task, project, userId, StepKind.LLM_CALL).also {
-            if (it.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) {
-                throw InvalidStateException("${it.displayName} is a Claude Code login model; the LLM step ${task.key} needs a model of a connected provider")
-            }
-            requirePersonalUse(it, project, userId, task)
-        }
+        forTask(task, project, userId, StepKind.LLM_CALL).also { requirePersonalUse(it, project, userId, task) }
 
     /** ADR 0050: a login model runs on its user's personal runner, which only private projects use (ADR 0040). */
     fun forCodingAgent(task: ResolvedTask, project: Project, userId: UUID? = null): ModelProfileSnapshot =

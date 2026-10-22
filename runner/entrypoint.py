@@ -822,6 +822,8 @@ class JobSpec:
     feature_description: Optional[str] = None
     # ADR 0047: checks after the agent (coding benchmarks): hidden files written only for the verification
     acceptance: Optional["Acceptance"] = None
+    # ADR 0050 step 4: the system prompt of a PROMPT job (the step's instructions; the prompt is the user message)
+    system_prompt: Optional[str] = None
 
     @property
     def local_login(self) -> bool:
@@ -891,7 +893,14 @@ LLM_CREDENTIALS_LOCAL_LOGIN = "LOCAL_LOGIN"
 LLM_CREDENTIALS = ("GATEWAY", LLM_CREDENTIALS_LOCAL_LOGIN)
 LOCAL_LOGIN_FILE = "claude-login-token"
 BILLING_SUBSCRIPTION = "SUBSCRIPTION"
-SPEC_MODES = ("SPEC_KIT", "IMPLEMENT", "EVAL_CODING")
+SPEC_MODES = ("SPEC_KIT", "IMPLEMENT", "EVAL_CODING", "PROMPT")
+
+# ADR 0050 step 4: a PROMPT job is one model answer (an LLM step or a judge on the user's own login): Claude Code
+# without a repository and without tools; the answer comes back as the `response` artefact.
+PROMPT_ARTIFACT = "response"
+PROMPT_MAX_TURNS = "2"
+PROMPT_DENIED_TOOLS = ("Bash", "Edit", "MultiEdit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "LS", "WebFetch",
+                       "WebSearch", "Task", "TodoWrite")
 SPEC_AGENTS = ("OPENCODE", "CLAUDE_CODE")
 
 
@@ -1180,6 +1189,7 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         commit_subject=_opt_str(raw, "commitSubject"),
         feature_description=_opt_str(raw, "featureDescription"),
         acceptance=parse_acceptance(raw.get("acceptance")),
+        system_prompt=_opt_str(raw, "systemPrompt"),
     )
 
 
@@ -3383,6 +3393,62 @@ def _kill_strays(run: _Run) -> None:
     run.security["strayProcessesKilled"] += kill_stray_processes(run.log, only_descendants=not run.sandboxed)
 
 
+def build_prompt_command(model: ModelRef, prompt: str, system_prompt: Optional[str], help_text: str = "") -> List[str]:
+    """ADR 0050 step 4: Claude Code for one answer: no tools, a short turn limit, the step's instructions as the system
+    prompt (folded into the prompt when this Claude Code has no --system-prompt), no session kept."""
+    text = prompt
+    if system_prompt and "--system-prompt" not in help_text:
+        text = f"{system_prompt}\n\n{prompt}"
+    cmd = ["claude", "-p", text, "--output-format", "stream-json", "--verbose", "--model", model.model_id,
+           "--max-turns", PROMPT_MAX_TURNS, "--permission-mode", "default"]
+    if system_prompt and "--system-prompt" in help_text:
+        cmd += ["--system-prompt", system_prompt]
+    if "--disallowedTools" in help_text:
+        cmd += ["--disallowedTools", ",".join(PROMPT_DENIED_TOOLS)]
+    if "--no-session-persistence" in help_text:
+        cmd.append("--no-session-persistence")
+    if model.reasoning and model.reasoning != "NONE" and "--effort" in help_text:
+        cmd += ["--effort", REASONING_TO_CLAUDE_EFFORT[model.reasoning]]
+    return cmd
+
+
+def _execute_prompt(run: _Run, spec: JobSpec) -> None:
+    """ADR 0050 step 4: one answer of the model, in an empty directory, returned as the `response` artefact."""
+    work_dir = run.workspace / "prompt"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token)
+    if spec.agent == STUB_AGENT:
+        cmd, parser, shell = [spec.prompt], parse_stub_line, True
+    elif spec.agent == "CLAUDE_CODE":
+        if spec.local_login:
+            if not run.local_login_token:
+                raise ValueError(f"llmCredentials LOCAL_LOGIN but no {LOCAL_LOGIN_FILE} in the job bundle: the runner-controller"
+                                 " needs CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) - ADR 0040")
+            run.subscription = True
+            run.log("[agent] Claude Code answers with the personal runner owner's own login (ADR 0050): not metered by Back Office")
+        else:
+            require_gateway(spec.gateway, "anthropic")
+        cmd, parser, shell = build_prompt_command(spec.model, spec.prompt, spec.system_prompt, _claude_help(agent_env)), parse_claude_line, False
+    else:
+        raise ValueError(f"PROMPT jobs run Claude Code, not {spec.agent}")
+    timeout = max(60.0, spec.timeout_seconds - (time.monotonic() - run.started))
+    run.log(f"[agent] prompt mode: {len(spec.prompt)} chars, system prompt {len(spec.system_prompt or '')} chars (timeout {int(timeout)}s)")
+    run.sink.progress("agent answering")
+    outcome = run.outcome
+
+    def on_line(line: str) -> None:
+        human = parser(line, outcome)
+        if human:
+            run.log(human)
+
+    res = run_process(cmd, work_dir, agent_env, timeout=timeout, on_line=on_line, shell=shell, tail_bytes=VERIFY_TAIL_BYTES)
+    run.agent_exit, run.timed_out = res.exit_code, res.timed_out
+    answer = outcome.summary()
+    run.log(f"[agent] answered {len(answer)} chars, exit {run.agent_exit} after {int(res.duration_seconds)}s usage={outcome.usage.to_json()}")
+    run.artifacts.append({"name": PROMPT_ARTIFACT, "path": None, "mediaType": "text/markdown", "content": answer})
+    _kill_strays(run)
+
+
 def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     prompt = with_repositories_section(build_agent_prompt(spec, repo_dir), spec, run.workspace) if spec.agent != STUB_AGENT else spec.prompt
     agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token)
@@ -3884,6 +3950,9 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
     _log_tool_policy(run)
     if spec.agent != STUB_AGENT:
         _log_tool_versions(run)
+    if spec.mode == "PROMPT":
+        _execute_prompt(run, spec)
+        return
     if spec.multi_repo:
         if git_token:
             run.log("[git] WARN a single-repository git token was delivered for a multi-repository job; it is not used")

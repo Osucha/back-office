@@ -97,7 +97,7 @@ export function loginModels(): LoginModel[] {
   ];
 }
 
-/** A profile without id for a Claude Code login model: Anthropic, no connection, nothing billed, coding only. */
+/** A profile without id for a Claude Code login model: Anthropic, no connection, nothing billed. */
 export function profileFromLogin(m: LoginModel): ModelProfile {
   return {
     id: undefined as unknown as string,

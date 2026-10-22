@@ -24,8 +24,9 @@ export class ModelProfilesApi {
   }
 
   /**
-   * Enabled profiles the LLM gateway can call: what projects, templates and workflow steps may pick. Claude Code login
-   * profiles (ADR 0048) run only in benchmarks on a personal runner.
+   * Enabled profiles the LLM gateway can call: what projects, templates and workflow steps may pick without a
+   * project's model options. Claude Code login profiles (ADR 0048, ADR 0050) run on their owner's personal runner and
+   * are offered only where the server's model options (`ModelOption`) allow them.
    */
   listCallable(): Observable<ModelProfile[]> {
     return this.list(true).pipe(

@@ -127,6 +127,14 @@ class RunnerConfiguration {
     fun projectSandboxPolicyService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>) =
         ProjectSandboxPolicyService(stores, stores, lifecycle, tx, gate, audit.getIfAvailable { AuditPort.NOOP })
 
+    /** ADR 0050 step 4: model calls of Claude Code login models, answered by PROMPT jobs on the user's personal runner. */
+    @Bean
+    fun ownLoginLlm(runner: AgentJobService): pl.mos.backoffice.shared.llm.OwnLoginLlm {
+        val json = tools.jackson.databind.json.JsonMapper.builder().build()
+        @Suppress("UNCHECKED_CAST")
+        return pl.mos.backoffice.runner.application.service.ClaudeCodePromptLlm(runner, { text -> json.readValue(text, Map::class.java) as Map<String, Any?> })
+    }
+
     @Bean
     fun runnerProtocolService(
         stores: JdbcFleetStores,

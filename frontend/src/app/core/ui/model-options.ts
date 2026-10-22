@@ -48,8 +48,9 @@ function usableFirst<T extends ModelOption>(options: T[]): T[] {
 
 /**
  * Options of the project default model, which applies to LLM steps and to coding steps without their own model:
- * a model is selectable when either kind may use it. Usable only for coding steps: a hint says so. Usable for
- * neither: the reason of the kind the model is meant for (a login model: coding steps).
+ * a model is selectable when either kind may use it. The server decides what each kind may use (ADR 0050 step 4:
+ * login models may answer LLM steps too); only when it refuses LLM steps but allows coding steps a hint says so.
+ * Usable for neither: the LLM reason, for a login model the coding one (it names the runner and the login).
  */
 export function mergeDefaultModelOptions(
   llm: readonly ModelOption[],

@@ -247,10 +247,10 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
 
       <div class="login" role="group" aria-labelledby="login-title">
         <h3 id="login-title" i18n="@@models.login.title">Claude Code (your login)</h3>
-        <p class="sub" i18n="@@models.login.subtitle">
+        <p class="sub" i18n="@@models.login.subtitleLlm">
           Runs Claude Code on your personal runner with your own Claude subscription (My account:
-          personal runner with Claude Code login). Coding tasks only, never as the judge, nothing is
-          billed. Prompt tasks follow later.
+          personal runner with Claude Code login). For coding steps and LLM steps of your private
+          projects, benchmark candidates and the judge; nothing is billed.
         </p>
         <ul class="login-list">
           @for (m of loginModels; track m.alias) {

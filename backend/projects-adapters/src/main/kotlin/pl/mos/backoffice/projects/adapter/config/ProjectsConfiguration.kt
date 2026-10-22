@@ -309,7 +309,8 @@ class ProjectsConfiguration {
     fun llmTaskExecutor(
         llmGateway: LlmGateway, modelResolver: ModelResolver, renderer: TemplateRenderer, templateModel: TemplateModelBuilder,
         verdictPolicy: ReviewVerdictPolicy, json: JsonCodec, audit: AuditPort,
-    ) = LlmTaskExecutor(llmGateway, modelResolver, renderer, templateModel, verdictPolicy, json, audit)
+        ownLogin: ObjectProvider<pl.mos.backoffice.shared.llm.OwnLoginLlm>,
+    ) = LlmTaskExecutor(llmGateway, modelResolver, renderer, templateModel, verdictPolicy, json, audit, ownLogin = ownLogin.getIfAvailable())
 
     @Bean
     fun runnerTaskSupport(
