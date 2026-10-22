@@ -1,4 +1,5 @@
-import type { LlmProviderInput, Provider } from '../../../core/api/types';
+import type { LlmProvider, LlmProviderInput, Provider } from '../../../core/api/types';
+import type { ProfileScope } from './model-scope';
 
 /** ADR 0045: provider connections added in Back Office. */
 export const PROVIDER_TYPES: Provider[] = [
@@ -56,8 +57,10 @@ export const PRESETS: ConnectionPreset[] = [
   },
 ];
 
-export function emptyConnection(): LlmProviderInput {
+/** A new connection; [personal] = the caller's own (ADR 0050 step 2b). */
+export function emptyConnection(personal = false): LlmProviderInput {
   return {
+    personal,
     key: '',
     name: '',
     provider: 'OPENAI_COMPATIBLE',
@@ -100,6 +103,34 @@ export function connectionProblems(
 /** ADR 0048: a Claude subscription (OAuth) token pasted where an Anthropic API key belongs. */
 export function isSubscriptionToken(input: Pick<LlmProviderInput, 'provider' | 'apiKey'>): boolean {
   return input.provider === 'ANTHROPIC' && !!input.apiKey?.trim().startsWith('sk-ant-oat');
+}
+
+/**
+ * ADR 0050 step 2b: scopes a new connection may get. Platform connections (everyone) need admin.settings.manage;
+ * anyone with models.view adds personal ones (their own API key).
+ */
+export function connectionScopes(canManagePlatform: boolean): ProfileScope[] {
+  return canManagePlatform ? ['PLATFORM', 'PERSONAL'] : ['PERSONAL'];
+}
+
+/** The scope of a new connection: the requested one when allowed, otherwise personal. */
+export function effectiveConnectionScope(
+  requested: ProfileScope,
+  canManagePlatform: boolean,
+): ProfileScope {
+  return connectionScopes(canManagePlatform).includes(requested) ? requested : 'PERSONAL';
+}
+
+/**
+ * Whether the user may change, test and delete the connection: personal ones belong to the caller (the list holds
+ * only the caller's own), platform ones need admin.settings.manage; environment endpoints (no id) are read-only.
+ */
+export function canEditConnection(
+  p: Pick<LlmProvider, 'id' | 'personal'> | null | undefined,
+  canManagePlatform: boolean,
+): boolean {
+  if (!p?.id) return false;
+  return !!p.personal || canManagePlatform;
 }
 
 const SUBSCRIPTION_TOKEN_PROBLEM = () =>

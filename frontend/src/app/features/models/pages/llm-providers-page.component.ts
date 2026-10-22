@@ -30,17 +30,25 @@ import { providerLabel } from '../data/model-format';
 import {
   PROVIDER_TYPES,
   PRESETS,
+  canEditConnection,
   connectionProblems,
+  connectionScopes,
+  effectiveConnectionScope,
   emptyConnection,
   type ConnectionPreset,
 } from '../data/llm-providers';
+import type { ProfileScope } from '../data/model-scope';
+import { problemMessage } from '../../../core/http/http-error.interceptor';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
+import { NzRadioModule } from 'ng-zorro-antd/radio';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 
 /**
  * LLM providers (ADR 0045): connections to model vendors with their API keys, added here instead of environment
  * variables. Several connections of one type are possible (OpenRouter and Groq side by side); model profiles pick one.
  * Keys are write-only and sealed with the server's secret key. Endpoints still configured by environment variables are
- * listed read-only.
+ * listed read-only. ADR 0050 step 2b: everyone with models.view adds personal connections (their own API keys) here;
+ * platform connections stay with admin.settings.manage and are read-only to the others.
  */
 @Component({
   selector: 'app-llm-providers-page',
@@ -52,9 +60,11 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
     NzIconModule,
     NzInputModule,
     NzInputNumberModule,
+    NzRadioModule,
     NzSelectModule,
     NzSwitchModule,
     NzTableModule,
+    NzTooltipModule,
     EmptyComponent,
     PageHeaderComponent,
     ProvenanceComponent,
@@ -71,16 +81,26 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
         subtitle="Connections to model vendors with their API keys. Model profiles pick one; you can have several of one type, for example OpenRouter and Groq."
         i18n-subtitle="@@models.providers.subtitle"
       >
-        @if (canManage()) {
+        @if (canCreate()) {
           <button boHeaderActions nz-button nzType="primary" type="button" (click)="create()">
             <nz-icon nzType="plus" />
-            <span i18n="@@models.providers.add">Add provider</span>
+            @if (canManagePlatform()) {
+              <span i18n="@@models.providers.add">Add provider</span>
+            } @else {
+              <span i18n="@@models.providers.addPersonal">Add my API key</span>
+            }
           </button>
         }
       </bo-page-header>
       <p class="muted small">
         <a routerLink="/models" i18n="@@models.providers.backToModels">Model profiles</a>
       </p>
+      @if (!canManagePlatform()) {
+        <p class="muted small" i18n="@@models.providers.personalIntro">
+          The platform's connections are managed by administrators. You can add your own API keys as
+          personal connections: only you see and use them, in your personal model profiles.
+        </p>
+      }
 
       @if (loaded() && !items().length) {
         <bo-empty
@@ -136,7 +156,18 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
             @for (p of t.data; track p.id ?? 'env-' + p.provider) {
               <tr class="row" tabindex="0" (click)="edit(p)" (keydown.enter)="edit(p)">
                 <td>
-                  <div class="name">{{ p.name }}</div>
+                  <div class="name">
+                    {{ p.name }}
+                    @if (p.personal) {
+                      <span
+                        class="chip personal"
+                        nz-tooltip
+                        [nzTooltipTitle]="text.personalHint"
+                        i18n="@@models.connection.personalTag"
+                        >Personal</span
+                      >
+                    }
+                  </div>
                   @if (p.key) {
                     <div class="mono muted small">{{ p.key }}</div>
                   } @else {
@@ -198,6 +229,38 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                 </div>
               }
               <nz-form-item>
+                <nz-form-label nzFor="lp-scope" i18n="@@models.providers.form.scope"
+                  >Available to</nz-form-label
+                >
+                <nz-form-control [nzExtra]="scopeHint()">
+                  @if (editing() || scopes().length === 1) {
+                    <input nz-input id="lp-scope" [value]="scopeName(scope())" readonly />
+                  } @else {
+                    <nz-radio-group
+                      id="lp-scope"
+                      name="scope"
+                      [ngModel]="scope()"
+                      (ngModelChange)="patch({ personal: $event === 'PERSONAL' })"
+                      aria-label="Available to"
+                      i18n-aria-label="@@models.providers.form.scope"
+                    >
+                      <label
+                        nz-radio-button
+                        nzValue="PLATFORM"
+                        i18n="@@models.providers.form.scope.platform"
+                        >Platform (everyone)</label
+                      >
+                      <label
+                        nz-radio-button
+                        nzValue="PERSONAL"
+                        i18n="@@models.providers.form.scope.personal"
+                        >Personal (only you, your own API key)</label
+                      >
+                    </nz-radio-group>
+                  }
+                </nz-form-control>
+              </nz-form-item>
+              <nz-form-item>
                 <nz-form-label nzRequired nzFor="lp-type" i18n="@@models.providers.form.type"
                   >Type</nz-form-label
                 >
@@ -207,7 +270,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                     name="provider"
                     [ngModel]="d.provider"
                     (ngModelChange)="patch({ provider: $event })"
-                    [nzDisabled]="!!editing() || !canManage()"
+                    [nzDisabled]="!!editing() || !editable()"
                   >
                     @for (t of types; track t) {
                       <nz-option [nzValue]="t" [nzLabel]="typeName(t)" />
@@ -227,7 +290,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                       name="name"
                       [ngModel]="d.name"
                       (ngModelChange)="patch({ name: $event })"
-                      [readOnly]="!canManage()"
+                      [readOnly]="!editable()"
                     />
                   </nz-form-control>
                 </nz-form-item>
@@ -246,7 +309,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                       class="mono"
                       [ngModel]="d.key"
                       (ngModelChange)="patch({ key: $event })"
-                      [readOnly]="!!editing() || !canManage()"
+                      [readOnly]="!!editing() || !editable()"
                     />
                   </nz-form-control>
                 </nz-form-item>
@@ -267,7 +330,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                     [placeholder]="defaultUrl(d.provider)"
                     [ngModel]="d.baseUrl ?? ''"
                     (ngModelChange)="patch({ baseUrl: $event || null })"
-                    [readOnly]="!canManage()"
+                    [readOnly]="!editable()"
                   />
                 </nz-form-control>
               </nz-form-item>
@@ -286,11 +349,11 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                     [placeholder]="editing()?.hasApiKey ? text.keepKey : ''"
                     [ngModel]="d.apiKey ?? ''"
                     (ngModelChange)="patch({ apiKey: $event || null })"
-                    [readOnly]="!canManage()"
+                    [readOnly]="!editable()"
                   />
                 </nz-form-control>
               </nz-form-item>
-              @if (editing()?.hasApiKey && canManage()) {
+              @if (editing()?.hasApiKey && editable()) {
                 <label class="small"
                   ><input
                     type="checkbox"
@@ -315,7 +378,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                       style="width: 100%"
                       [ngModel]="d.requestsPerMinute"
                       (ngModelChange)="patch({ requestsPerMinute: $event || null })"
-                      [nzDisabled]="!canManage()"
+                      [nzDisabled]="!editable()"
                     />
                   </nz-form-control>
                 </nz-form-item>
@@ -332,7 +395,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                       style="width: 100%"
                       [ngModel]="d.requestsPerDay"
                       (ngModelChange)="patch({ requestsPerDay: $event || null })"
-                      [nzDisabled]="!canManage()"
+                      [nzDisabled]="!editable()"
                     />
                   </nz-form-control>
                 </nz-form-item>
@@ -348,7 +411,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
                     name="enabled"
                     [ngModel]="d.enabled !== false"
                     (ngModelChange)="patch({ enabled: $event })"
-                    [nzDisabled]="!canManage()"
+                    [nzDisabled]="!editable()"
                   />
                   <span class="muted small switch-label" i18n="@@models.providers.form.enabled"
                     >Enabled</span
@@ -358,7 +421,10 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
               @for (p of problems(); track p) {
                 <p class="problem">{{ p }}</p>
               }
-              @if (canManage()) {
+              @if (saveError(); as err) {
+                <p class="problem" role="alert">{{ err }}</p>
+              }
+              @if (editable()) {
                 <div class="actions">
                   <button
                     nz-button
@@ -402,7 +468,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
             <p class="mono small">
               {{ typeName(v.provider) }} · {{ v.baseUrl || defaultUrl(v.provider) }}
             </p>
-            @if (canManage()) {
+            @if (canManagePlatform()) {
               <button
                 nz-button
                 type="button"
@@ -440,6 +506,10 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
       }
       .name {
         font-weight: 500;
+      }
+      .chip.personal {
+        margin-left: 6px;
+        color: var(--bo-you-ink);
       }
       .muted {
         color: var(--bo-ink-3);
@@ -517,7 +587,40 @@ export class LlmProvidersPageComponent {
     changed: (p) => p.updatedAt,
   });
   readonly rows = computed(() => this.sort.apply(this.items()));
-  readonly canManage = computed(() => this.identity.can('admin.settings.manage'));
+  /** Platform connections (everyone) need admin.settings.manage. */
+  readonly canManagePlatform = computed(() => this.identity.can('admin.settings.manage'));
+  /** ADR 0050 step 2b: anyone who reads models adds personal connections (their own API keys). */
+  readonly canCreate = computed(() => this.identity.can(['admin.settings.manage', 'models.view']));
+  /** Whether the open form can be saved: a new connection, the caller's own or a platform one for administrators. */
+  readonly editable = computed(() => {
+    if (!this.draft()) return false;
+    const e = this.editing();
+    return e ? canEditConnection(e, this.canManagePlatform()) : this.canCreate();
+  });
+  /** Scopes a new connection may get. */
+  readonly scopes = computed(() => connectionScopes(this.canManagePlatform()));
+  /** The scope of the open connection: its own when editing, otherwise the one it is created with. */
+  readonly scope = computed<ProfileScope>(() => {
+    const e = this.editing();
+    if (e) return e.personal ? 'PERSONAL' : 'PLATFORM';
+    return effectiveConnectionScope(
+      this.draft()?.personal ? 'PERSONAL' : 'PLATFORM',
+      this.canManagePlatform(),
+    );
+  });
+  readonly scopeHint = computed(() => {
+    const personal = this.scope() === 'PERSONAL';
+    const what = personal
+      ? $localize`:@@models.providers.scope.personalHint:Only you see and use it, in your personal model profiles (your private projects and your own benchmarks). Connection keys are unique across Back Office, for example openrouter-yourname.`
+      : $localize`:@@models.providers.scope.platformHint:Everyone can use it through the platform's model profiles.`;
+    if (this.editing() || !personal || this.canManagePlatform()) return what;
+    return (
+      what +
+      ' ' +
+      $localize`:@@models.providers.scope.manageHint:Platform connections are added by administrators (admin.settings.manage).`
+    );
+  });
+  readonly saveError = signal<string | null>(null);
   readonly panelOpen = computed(() => !!this.draft() || !!this.viewing());
   readonly problems = computed(() => {
     const d = this.draft();
@@ -541,7 +644,14 @@ export class LlmProvidersPageComponent {
   readonly text = {
     newTitle: $localize`:@@models.providers.form.newTitle:New LLM provider`,
     keepKey: $localize`:@@models.providers.form.keepKey:stored; type to replace`,
+    personalHint: $localize`:@@models.connection.personalHint:Your personal connection with your own API key: only you see and use it; profiles of its models are personal.`,
   };
+
+  scopeName(scope: ProfileScope): string {
+    return scope === 'PERSONAL'
+      ? $localize`:@@models.providers.form.scope.personal:Personal (only you, your own API key)`
+      : $localize`:@@models.providers.form.scope.platform:Platform (everyone)`;
+  }
 
   constructor() {
     inject(BreadcrumbService).set([
@@ -602,11 +712,14 @@ export class LlmProvidersPageComponent {
     this.editing.set(null);
     this.viewing.set(null);
     this.models.set(null);
-    this.draft.set(emptyConnection());
+    this.saveError.set(null);
+    // administrators start with a platform connection, everyone else with their own (ADR 0050 step 2b)
+    this.draft.set(emptyConnection(!this.canManagePlatform()));
   }
 
   edit(p: LlmProvider): void {
     this.models.set(null);
+    this.saveError.set(null);
     if (!p.id) {
       this.draft.set(null);
       this.editing.set(null);
@@ -625,10 +738,13 @@ export class LlmProvidersPageComponent {
       enabled: p.enabled,
       requestsPerMinute: p.requestsPerMinute ?? null,
       requestsPerDay: p.requestsPerDay ?? null,
+      // set on create only; the server keeps the scope
+      personal: !!p.personal,
     });
   }
 
   close(): void {
+    this.saveError.set(null);
     this.draft.set(null);
     this.editing.set(null);
     this.viewing.set(null);
@@ -662,8 +778,11 @@ export class LlmProvidersPageComponent {
     const d = this.draft();
     if (!d || this.problems().length) return;
     this.saving.set(true);
+    this.saveError.set(null);
     const existing = this.editing();
-    const req = existing?.id ? this.api.update(existing.id, d) : this.api.create(d);
+    const req = existing?.id
+      ? this.api.update(existing.id, d)
+      : this.api.create({ ...d, personal: this.scope() === 'PERSONAL' });
     req.subscribe({
       next: (saved) => {
         this.saving.set(false);
@@ -672,7 +791,11 @@ export class LlmProvidersPageComponent {
         // stay open on the saved connection so it can be tested at once
         this.edit(saved);
       },
-      error: () => this.saving.set(false),
+      error: (err: unknown) => {
+        this.saving.set(false);
+        // the requests are silent: show the server's reason (e.g. a key another user's connection has)
+        this.saveError.set(problemMessage(err));
+      },
     });
   }
 

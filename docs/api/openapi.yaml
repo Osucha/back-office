@@ -2382,6 +2382,13 @@ components:
         enabled: { type: boolean, default: true }
         requestsPerMinute: { type: integer, minimum: 1, nullable: true, description: 'ADR 0046: limit Back Office keeps for this connection (null = none)' }
         requestsPerDay: { type: integer, minimum: 1, nullable: true, description: 'ADR 0046: per UTC day; e.g. 50 for OpenRouter free models without credits' }
+        personal:
+          type: boolean
+          default: false
+          description: >-
+            ADR 0050 step 2b: the caller's own connection (their API key), created with models.view instead of
+            admin.settings.manage. Only its owner sees, changes and uses it (in personal profiles, for their own runs,
+            benchmarks and tests); a model without a named connection never falls back to it. Set on create only.
     LlmProvider:
       type: object
       required: [name, provider, hasApiKey, enabled, usable, source]
@@ -2400,6 +2407,7 @@ components:
         requestsPerMinute: { type: integer, nullable: true }
         requestsPerDay: { type: integer, nullable: true }
         requestsToday: { type: integer, nullable: true, description: 'requests sent through the connection today (UTC)' }
+        personal: { type: boolean, description: 'ADR 0050 step 2b: the caller''s own connection' }
     ProviderModels:
       type: object
       required: [ok, models]
@@ -2429,6 +2437,7 @@ components:
         ok: { type: boolean }
         error: { type: string, nullable: true }
         models: { type: array, items: { $ref: '#/components/schemas/ProviderModelInfo' } }
+        personal: { type: boolean, description: 'ADR 0050 step 2b: the caller''s own connection; profiles of its models are personal' }
 
     Dashboard:
       type: object

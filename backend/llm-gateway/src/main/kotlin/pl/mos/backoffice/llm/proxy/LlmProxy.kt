@@ -109,6 +109,9 @@ class LlmProxy(
                 response, 502, "Provider not configured",
                 "No usable connection is configured for ${provider.name.lowercase()}" + (connection?.let { " (connection $it)" } ?: ""), "provider-not-configured",
             )
+        ProviderRegistry.personalRefusal(endpoint, credential.actingUserId)?.let {
+            return ProxyProblems.write(response, 403, "Personal connection", it, "personal-connection")
+        }
         try {
             quota.admit(endpoint)
         } catch (e: IntegrationException) {
@@ -317,6 +320,7 @@ class LlmProxy(
             stepId = credential.nodeId,
             benchmarkId = credential.benchmarkId,
             attemptId = credential.attemptId,
+            actingUserId = credential.actingUserId,
         )
     }
 }

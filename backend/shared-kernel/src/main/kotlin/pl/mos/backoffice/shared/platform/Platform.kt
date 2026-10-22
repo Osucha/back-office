@@ -120,6 +120,8 @@ data class JobCredential(
     val scope: JobTokenScope = JobTokenScope.FULL,
     /** ADR 0045: `provider/modelId` label -> provider connection key, for models served by a named connection. */
     val modelConnections: Map<String, String> = emptyMap(),
+    /** ADR 0050 step 2b: whose work the job is; a personal provider connection serves only its owner. */
+    val actingUserId: UUID? = null,
 )
 
 fun interface JobTokenVerifier {

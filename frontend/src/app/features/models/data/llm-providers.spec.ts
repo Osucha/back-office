@@ -1,4 +1,11 @@
-import { connectionProblems, emptyConnection, isSubscriptionToken } from './llm-providers';
+import {
+  canEditConnection,
+  connectionProblems,
+  connectionScopes,
+  effectiveConnectionScope,
+  emptyConnection,
+  isSubscriptionToken,
+} from './llm-providers';
 
 describe('llm provider connections', () => {
   const anthropic = {
@@ -20,5 +27,28 @@ describe('llm provider connections', () => {
       false,
     );
     expect(isSubscriptionToken({ provider: 'ANTHROPIC', apiKey: null })).toBe(false);
+  });
+
+  it('creates platform connections by default and personal ones on request (ADR 0050 step 2b)', () => {
+    expect(emptyConnection().personal).toBe(false);
+    expect(emptyConnection(true).personal).toBe(true);
+  });
+
+  it('offers the platform scope only to administrators', () => {
+    expect(connectionScopes(true)).toEqual(['PLATFORM', 'PERSONAL']);
+    expect(connectionScopes(false)).toEqual(['PERSONAL']);
+    expect(effectiveConnectionScope('PLATFORM', true)).toBe('PLATFORM');
+    expect(effectiveConnectionScope('PLATFORM', false)).toBe('PERSONAL');
+    expect(effectiveConnectionScope('PERSONAL', true)).toBe('PERSONAL');
+  });
+
+  it('lets the owner edit personal connections and administrators platform ones', () => {
+    expect(canEditConnection({ id: 'a', personal: true }, false)).toBe(true);
+    expect(canEditConnection({ id: 'a', personal: false }, false)).toBe(false);
+    expect(canEditConnection({ id: 'a', personal: false }, true)).toBe(true);
+    expect(canEditConnection({ id: 'a' }, true)).toBe(true);
+    // environment endpoints are read-only for everyone
+    expect(canEditConnection({ id: null }, true)).toBe(false);
+    expect(canEditConnection(null, true)).toBe(false);
   });
 });

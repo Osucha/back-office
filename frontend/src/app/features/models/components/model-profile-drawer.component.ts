@@ -660,19 +660,39 @@ export class ModelProfileDrawerComponent {
   };
 
   connectionOption(c: LlmProvider): string {
-    const label = `${c.name} (${c.key})`;
+    const base = `${c.name} (${c.key})`;
+    const label = c.personal
+      ? $localize`:@@models.drawer.connectionPersonal:${base}:connection: - personal`
+      : base;
     return c.usable
       ? label
       : $localize`:@@models.drawer.connectionNotReady:${label}:connection: - not ready`;
   }
 
-  /** Database connections of the selected provider type. */
+  /**
+   * Database connections of the selected provider type. A platform profile cannot use a personal connection (ADR 0050
+   * step 2b), so an existing platform profile is offered platform connections only.
+   */
   readonly connectionsOfType = computed(() => {
     this.status();
     const type = this.form.controls.provider.value;
+    const p = this.profile();
+    const platformProfile = !!p?.id && !p.personal;
     return this.connections().filter(
-      (c) => c.source === 'DATABASE' && c.provider === type && !!c.key,
+      (c) =>
+        c.source === 'DATABASE' &&
+        c.provider === type &&
+        !!c.key &&
+        !(platformProfile && c.personal),
     );
+  });
+
+  /** ADR 0050 step 2b: the selected connection is the caller's own, so the profile must be personal. */
+  readonly personalConnection = computed(() => {
+    this.status();
+    if (this.login()) return false;
+    const key = this.form.controls.connection.value;
+    return !!key && this.connectionsOfType().some((c) => c.key === key && !!c.personal);
   });
 
   providerOption(p: ProviderStatus): string {
@@ -694,7 +714,11 @@ export class ModelProfileDrawerComponent {
   /** Scopes a new profile may get: a login profile and users without models.manage: personal only. */
   readonly scopes = computed(() => {
     this.status();
-    return allowedScopes(this.canManage(), this.form.controls.runtime.value);
+    return allowedScopes(
+      this.canManage(),
+      this.form.controls.runtime.value,
+      this.personalConnection(),
+    );
   });
 
   /** The profile's own scope (it does not change), or the one a new profile gets. */
@@ -706,6 +730,7 @@ export class ModelProfileDrawerComponent {
       this.form.controls.scope.value,
       this.canManage(),
       this.form.controls.runtime.value,
+      this.personalConnection(),
     );
   });
 
@@ -720,6 +745,12 @@ export class ModelProfileDrawerComponent {
         what +
         ' ' +
         $localize`:@@models.drawer.scope.loginHint:A Claude Code login profile is always personal.`
+      );
+    if (this.personalConnection())
+      return (
+        what +
+        ' ' +
+        $localize`:@@models.drawer.scope.connectionHint:It uses your personal connection (your own API key), so it is personal.`
       );
     if (!this.canManage())
       return (

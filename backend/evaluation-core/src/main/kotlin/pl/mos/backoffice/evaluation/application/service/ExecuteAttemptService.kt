@@ -83,7 +83,10 @@ class ExecuteAttemptService(
             val task = suite.task(attempt.taskId)
             val candidate = profiles.findById(attempt.modelProfileId) ?: throw NotFoundException("ModelProfile", attempt.modelProfileId)
             val judge = profiles.findById(benchmark.judgeModelProfileId) ?: throw NotFoundException("ModelProfile", benchmark.judgeModelProfileId)
-            val context = UsageContext(kind = UsageKind.BENCHMARK_ATTEMPT, benchmarkId = benchmark.id.value, attemptId = attempt.id.value)
+            // ADR 0050 step 2b: the benchmark is its creator's work (their personal connections may serve it)
+            val context = UsageContext(
+                kind = UsageKind.BENCHMARK_ATTEMPT, benchmarkId = benchmark.id.value, attemptId = attempt.id.value, actingUserId = benchmark.createdBy?.userId,
+            )
 
             when (task.kind) {
                 TaskKind.PROMPT -> runPrompt(attempt, task, candidate, judge, context)

@@ -85,7 +85,7 @@ class LlmTaskExecutor(
         val request = LlmRequest.of(
             system = systemPrompt(task, context, model, blocks),
             user = userText,
-            usageContext = UsageContext(UsageKind.PIPELINE_STEP, projectId = context.project.id.value, runId = context.run.id.value, stepId = context.node.id),
+            usageContext = UsageContext(UsageKind.PIPELINE_STEP, actingUserId = ActingUser.startedBy(context.run)?.userId, projectId = context.project.id.value, runId = context.run.id.value, stepId = context.node.id),
             responseSchema = task.outputSchema?.takeIf { it.isNotBlank() },
         )
         context.log("calling ${profile.ref.label}")

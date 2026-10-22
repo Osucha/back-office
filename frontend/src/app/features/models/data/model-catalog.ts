@@ -13,6 +13,8 @@ export interface CatalogRow {
   connectionName: string;
   provider: Provider;
   model: ProviderModelInfo;
+  /** ADR 0050 step 2b: the caller's own connection; a profile of this model is personal. */
+  personal: boolean;
 }
 
 export interface CatalogFilter {
@@ -38,6 +40,7 @@ export function catalogRows(sections: ProviderCatalogSection[]): CatalogRow[] {
       connectionName: s.name,
       provider: s.provider,
       model,
+      personal: !!s.personal,
     })),
   );
 }
@@ -137,7 +140,7 @@ export function profileFromCatalog(row: CatalogRow): ModelProfile {
         ? ''
         : $localize`:@@models.catalog.priceUnknown:The provider does not publish prices; set them before trusting cost figures.`,
     enabled: true,
-    // the drawer decides the scope (platform for managers, otherwise personal)
-    personal: false,
+    // the caller's own connection: personal (ADR 0050 step 2b); otherwise the drawer decides (platform for managers)
+    personal: row.personal,
   };
 }

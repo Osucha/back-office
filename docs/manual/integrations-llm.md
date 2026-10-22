@@ -11,7 +11,7 @@ where to put it, how to test it and how to rotate it.
 ## How provider keys are used
 
 **Add providers in Back Office** (ADR 0045): **Models** → **LLM providers** (`/models/providers`, you need
-`admin.settings.manage`) → **Add provider**. Pick the type, a name and a key (for example `openrouter`), the base
+`admin.settings.manage`; everyone else can add their own keys, see [Your own API keys](#personal-keys)) → **Add provider**. Pick the type, a name and a key (for example `openrouter`), the base
 URL where the type needs one, and paste the API key. **Quick start** fills in OpenRouter, Groq, GitHub Models,
 Mistral, Google Gemini, Ollama or LM Studio. **Test and list models** calls the provider and lists the model ids it
 offers: copy one into a model profile. You can add several connections of one type, for example OpenRouter and Groq;
@@ -77,6 +77,22 @@ a model profile picks one in its field **Connection** (empty = the first connect
 3. `kubectl -n back-office rollout restart deploy/back-office-api deploy/back-office-worker` (the chart
    restarts automatically only when it renders the Secret itself).
 4. Test a profile on **Models**, then delete the old key at the vendor.
+
+<a id="personal-keys"></a>
+## Your own API keys
+
+Anyone who can see models can add their **own** provider connection, with their own API key: **Models** →
+**LLM providers** → **Add my API key** (administrators choose **Available to: Personal (only you, your own API
+key)**). It works like a platform connection, with these differences (ADR 0050):
+
+- Only you see it, change it and use it; administrators do not see it either. Its key is stored encrypted like any
+  other.
+- Models from it are offered under **Available from providers** with a **Personal** tag, and profiles made from them
+  are personal profiles (see [evaluation.md](evaluation.md#model-availability)).
+- It serves only your own work: runs you start in your private projects, your benchmarks and your model tests. A
+  call for anyone else's work is refused, and a model without a named connection never falls back to it.
+- Connection keys are unique in the whole installation, including other users' hidden connections; pick a key like
+  `openrouter-yourname`.
 
 <a id="anthropic"></a>
 ## Anthropic

@@ -37,7 +37,10 @@ class PersonalModelsAndDefaultsTest {
     private val me = FakeAuthorizationGate.TEST_USER_ID.value
     private val other = UUID.randomUUID()
 
-    private fun models(gate: FakeAuthorizationGate) = ModelProfileService(profiles, InMemoryBenchmarkRepository(), mockk<LlmGateway>(), clock, gate, audit)
+    private val gateway = mockk<LlmGateway>().also { g ->
+        io.mockk.every { g.connectionOwner(any()) } answers { if (firstArg<ModelRef>().connection == "their-key") other else null }
+    }
+    private fun models(gate: FakeAuthorizationGate) = ModelProfileService(profiles, InMemoryBenchmarkRepository(), gateway, clock, gate, audit)
     private fun defaultsOf(gate: FakeAuthorizationGate) = ModelDefaultsService(defaults, profiles, gate, audit, clock)
 
     private val platform = Fixtures.profile("Sonnet API").also { profiles.save(it) }
@@ -62,6 +65,12 @@ class PersonalModelsAndDefaultsTest {
             .isInstanceOf(ValidationException::class.java)
         models(viewer).delete(login.id)
         assertThat(profiles.findById(login.id)).isNull()
+
+        // ADR 0050 step 2b: someone else's personal connection cannot back a profile, not even a platform one
+        val theirKey = ModelRef(Provider.OPENAI, "gpt-5", connection = "their-key")
+        assertThatThrownBy { models(viewer).create(ProfileCommand("Borrowed", theirKey, Pricing.FREE, personal = true)) }
+            .isInstanceOf(ValidationException::class.java).hasMessageContaining("personal connection")
+        assertThatThrownBy { models(admin).create(ProfileCommand("Borrowed", theirKey, Pricing.FREE)) }.isInstanceOf(ValidationException::class.java)
     }
 
     @Test

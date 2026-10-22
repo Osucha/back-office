@@ -83,6 +83,17 @@ describe('model catalog', () => {
     expect(catalogKey('ANTHROPIC', null, 'claude-x')).toBe(env.key);
   });
 
+  it('makes profiles of a personal connection personal (ADR 0050 step 2b)', () => {
+    const [free] = catalogRows(sections);
+    expect(free.personal).toBe(false);
+    expect(profileFromCatalog(free).personal).toBe(false);
+    const [mine] = catalogRows([{ ...sections[0], connection: 'my-openrouter', personal: true }]);
+    expect(mine.personal).toBe(true);
+    const p = profileFromCatalog(mine);
+    expect(p.personal).toBe(true);
+    expect(p.ref.connection).toBe('my-openrouter');
+  });
+
   it('offers Claude Code login models as unbilled coding profiles (ADR 0048)', () => {
     const models = loginModels();
     expect(models.map((m) => m.alias)).toEqual(['opus', 'sonnet', 'haiku']);

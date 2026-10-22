@@ -86,6 +86,8 @@ class SpringAiLlmGateway(
 
     override fun isConfigured(model: ModelRef): Boolean = registry.isConfigured(model)
 
+    override fun connectionOwner(model: ModelRef): java.util.UUID? = registry.ownerOf(model)
+
     override fun chat(model: ModelRef, request: LlmRequest): LlmResult {
         val provider = model.provider
         val system = provider.name.lowercase()
@@ -95,6 +97,7 @@ class SpringAiLlmGateway(
                 ?: "provider is not configured on this server (add a connection under Settings, LLM providers)",
             persistent = true,
         )
+        ProviderRegistry.personalRefusal(endpoint, request.usageContext.actingUserId)?.let { throw IntegrationException(system, it, persistent = true) }
         val options = merge(model.options, request.optionsOverride)
         val chatOptions = optionsMapper.map(model, options, request.responseSchema)
         val messages = toSpringMessages(request.messages, request.responseSchema)

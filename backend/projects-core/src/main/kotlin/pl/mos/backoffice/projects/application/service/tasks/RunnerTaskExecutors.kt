@@ -225,7 +225,10 @@ class RunnerTaskSupport(
             collectArtifacts = config.list("collectArtifacts").ifEmpty { DEFAULT_COLLECT },
             skills = task.skills.map { RunnerSkill(it.key, it.name, it.content) },
             collectDiff = true,
-            usageContext = UsageContext(UsageKind.PIPELINE_STEP, projectId = project.id.value, runId = context.run.id.value, stepId = node.id),
+            usageContext = UsageContext(
+                UsageKind.PIPELINE_STEP, projectId = project.id.value, runId = context.run.id.value, stepId = node.id,
+                actingUserId = ActingUser.startedBy(context.run)?.userId,
+            ),
             jobLabel = jobLabel(context.run.id.short, node.id, context.attempt),
             repositories = jobRepositories,
             gitAccess = GitAccess.highest(jobRepositories.map { it.access }),

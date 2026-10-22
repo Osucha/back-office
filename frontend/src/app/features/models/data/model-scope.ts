@@ -25,12 +25,18 @@ export function canEditProfile(
   return canManage || !!profile.personal;
 }
 
-/** Scopes a new profile may get: a Claude Code login profile and users without models.manage: personal only. */
+/**
+ * Scopes a new profile may get: a Claude Code login profile, a profile on the caller's personal connection (ADR 0050
+ * step 2b) and users without models.manage: personal only.
+ */
 export function allowedScopes(
   canManage: boolean,
   runtime: ModelRuntime | null | undefined,
+  personalConnection = false,
 ): ProfileScope[] {
-  return canManage && runtime !== 'CLAUDE_CODE_LOGIN' ? ['PLATFORM', 'PERSONAL'] : ['PERSONAL'];
+  return canManage && runtime !== 'CLAUDE_CODE_LOGIN' && !personalConnection
+    ? ['PLATFORM', 'PERSONAL']
+    : ['PERSONAL'];
 }
 
 /** The scope of a new profile: the requested one when allowed, otherwise the first allowed one. */
@@ -38,8 +44,9 @@ export function effectiveScope(
   requested: ProfileScope,
   canManage: boolean,
   runtime: ModelRuntime | null | undefined,
+  personalConnection = false,
 ): ProfileScope {
-  const allowed = allowedScopes(canManage, runtime);
+  const allowed = allowedScopes(canManage, runtime, personalConnection);
   return allowed.includes(requested) ? requested : allowed[0];
 }
 

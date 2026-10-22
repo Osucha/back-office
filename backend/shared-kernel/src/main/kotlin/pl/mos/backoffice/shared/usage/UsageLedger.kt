@@ -40,6 +40,11 @@ data class UsageContext(
     val reviewId: UUID? = null,
     val benchmarkId: UUID? = null,
     val attemptId: UUID? = null,
+    /**
+     * ADR 0050 step 2b: the user whose work the call is (who started the run, created the benchmark, tests the model);
+     * a personal provider connection serves only its owner's work. Null = nobody's own work (system calls).
+     */
+    val actingUserId: UUID? = null,
 )
 
 data class UsageRecord(

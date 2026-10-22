@@ -198,7 +198,18 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
                 </td>
                 <td>
                   <div class="cell-main">
-                    <span>{{ r.connectionName }}</span>
+                    <div class="cell-line">
+                      <span>{{ r.connectionName }}</span>
+                      @if (r.personal) {
+                        <span
+                          class="chip personal"
+                          nz-tooltip
+                          [nzTooltipTitle]="personalHint"
+                          i18n="@@models.connection.personalTag"
+                          >Personal</span
+                        >
+                      }
+                    </div>
                     <span class="sub">{{ providerName(r.provider) }}</span>
                   </div>
                 </td>
@@ -331,6 +342,9 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
       .chip.free {
         color: var(--bo-done-ink);
       }
+      .chip.personal {
+        color: var(--bo-you-ink);
+      }
       .login {
         margin-top: 24px;
       }
@@ -386,6 +400,8 @@ export class ProviderCatalogComponent {
   readonly price = perMTok;
   readonly context = contextLabel;
   readonly prefill = profileFromCatalog;
+  /** ADR 0050 step 2b: the caller's own connection. */
+  readonly personalHint = $localize`:@@models.connection.personalHint:Your personal connection with your own API key: only you see and use it; profiles of its models are personal.`;
   /** ADR 0048: Claude Code with the user's own login, next to the provider catalogue. */
   readonly loginModels = loginModels();
   readonly loginKeyOf = loginKey;

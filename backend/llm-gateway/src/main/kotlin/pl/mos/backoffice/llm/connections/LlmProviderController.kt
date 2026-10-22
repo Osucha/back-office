@@ -30,6 +30,8 @@ data class LlmProviderInputDto(
     /** ADR 0046: optional limits Back Office keeps (null = none). */
     val requestsPerMinute: Int? = null,
     val requestsPerDay: Int? = null,
+    /** ADR 0050 step 2b: the caller's own connection (create only). */
+    val personal: Boolean = false,
 )
 
 data class LlmProviderActorDto(val kind: String, val id: UUID?, val displayName: String)
@@ -49,6 +51,7 @@ data class LlmProviderDto(
     val requestsPerMinute: Int?,
     val requestsPerDay: Int?,
     val requestsToday: Int?,
+    val personal: Boolean = false,
 )
 
 data class ProviderModelInfoDto(
@@ -70,6 +73,7 @@ data class CatalogSectionDto(
     val ok: Boolean,
     val error: String?,
     val models: List<ProviderModelInfoDto>,
+    val personal: Boolean = false,
 )
 
 /** `llm-providers` tag of openapi.yaml (ADR 0045): provider connections managed in Back Office. */
@@ -83,7 +87,7 @@ class LlmProviderController(private val service: LlmProviderService) {
     /** The models of every usable provider endpoint, the source of new model profiles (`?refresh=true` asks again). */
     @GetMapping("/catalog")
     fun catalog(@RequestParam(defaultValue = "false") refresh: Boolean): List<CatalogSectionDto> = service.catalog(refresh).map { s ->
-        CatalogSectionDto(s.connection, s.name, s.provider.name, s.source.name, s.ok, s.error, s.models.map(::toDto))
+        CatalogSectionDto(s.connection, s.name, s.provider.name, s.source.name, s.ok, s.error, s.models.map(::toDto), s.personal)
     }
 
     @PostMapping
@@ -108,6 +112,7 @@ class LlmProviderController(private val service: LlmProviderService) {
     private fun command(body: LlmProviderInputDto) = LlmProviderCommand(
         key = body.key, name = body.name, provider = provider(body.provider), baseUrl = body.baseUrl, apiKey = body.apiKey,
         clearApiKey = body.clearApiKey, enabled = body.enabled, requestsPerMinute = body.requestsPerMinute, requestsPerDay = body.requestsPerDay,
+        personal = body.personal,
     )
 
     private fun provider(value: String): Provider =
@@ -116,7 +121,7 @@ class LlmProviderController(private val service: LlmProviderService) {
     private fun toDto(v: LlmProviderView) = LlmProviderDto(
         v.id, v.key, v.name, v.provider.name, v.baseUrl, v.hasApiKey, v.enabled, v.usable, v.source.name, v.updatedAt,
         v.updatedBy?.let { LlmProviderActorDto(it.kind.name, it.userId, it.displayName) },
-        v.requestsPerMinute, v.requestsPerDay, v.requestsToday,
+        v.requestsPerMinute, v.requestsPerDay, v.requestsToday, v.personal,
     )
 
     private fun toDto(m: ProviderModels) = ProviderModelsDto(m.ok, m.models, m.error, m.details.map(::toDto))

@@ -40,6 +40,12 @@ describe('model scope', () => {
     expect(effectiveScope('PERSONAL', true, 'API')).toBe('PERSONAL');
   });
 
+  it('keeps a profile on a personal connection personal, managers included (ADR 0050 step 2b)', () => {
+    expect(allowedScopes(true, 'API', true)).toEqual(['PERSONAL']);
+    expect(allowedScopes(true, 'API', false)).toEqual(['PLATFORM', 'PERSONAL']);
+    expect(effectiveScope('PLATFORM', true, 'API', true)).toBe('PERSONAL');
+  });
+
   it('filters profiles by scope', () => {
     const list = [P('a'), P('b', true), P('c')];
     expect(filterByScope(list, 'platform').map((p) => p.id)).toEqual(['a', 'c']);

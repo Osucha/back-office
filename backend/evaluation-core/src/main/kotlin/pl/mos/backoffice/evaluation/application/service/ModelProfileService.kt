@@ -52,6 +52,7 @@ class ModelProfileService(
         val personal = command.personal || command.runtime == ModelRuntime.CLAUDE_CODE_LOGIN
         val user = gate.require(if (personal) EvaluationPermissions.MODELS_VIEW else EvaluationPermissions.MODELS_MANAGE)
         val owner = if (personal) user.userId?.value ?: throw ValidationException("a personal model profile needs a signed-in user", "personal") else null
+        requireConnectionOwner(command, owner)
         val saved = profiles.save(
             ModelProfile.create(
                 displayName = command.displayName,
@@ -78,6 +79,7 @@ class ModelProfileService(
         if (!existing.personal && command.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) {
             throw ValidationException("a platform profile cannot become a Claude Code login profile; create a personal one", "runtime")
         }
+        requireConnectionOwner(command, existing.ownerUserId)
         val saved = profiles.save(
             existing.update(
                 displayName = command.displayName,
@@ -135,7 +137,7 @@ class ModelProfileService(
     }
 
     private fun probe(profile: ModelProfile, userId: UUID?): ModelTestResult {
-        val result = if (profile.viaClaudeCodeLogin) loginCheck(userId) else callModel(profile)
+        val result = if (profile.viaClaudeCodeLogin) loginCheck(userId) else callModel(profile, userId)
         audit.record(
             entry("MODEL_TEST", profile, mapOf("model" to profile.ref.label, "ok" to result.ok, "latencyMs" to result.latencyMs, "error" to result.error))
                 .copy(result = if (result.ok) AuditResult.SUCCESS else AuditResult.FAILURE),
@@ -162,10 +164,10 @@ class ModelProfileService(
         )
     }
 
-    private fun callModel(profile: ModelProfile): ModelTestResult {
+    private fun callModel(profile: ModelProfile, userId: UUID?): ModelTestResult {
         val request = LlmRequest(
             messages = listOf(LlmMessage.user(TEST_PROMPT)),
-            usageContext = UsageContext(kind = UsageKind.MODEL_TEST),
+            usageContext = UsageContext(kind = UsageKind.MODEL_TEST, actingUserId = userId),
             optionsOverride = profile.ref.options.copy(maxOutputTokens = TEST_MAX_TOKENS),
         )
         val started = clock.now()
@@ -187,6 +189,18 @@ class ModelProfileService(
                 cost = Money.ZERO,
                 sample = null,
                 error = e.message ?: e.javaClass.simpleName,
+            )
+        }
+    }
+
+    /** ADR 0050 step 2b: a personal connection (someone's own API key) serves only that owner's personal profiles. */
+    private fun requireConnectionOwner(command: ProfileCommand, owner: UUID?) {
+        if (command.ref.connection == null) return
+        val connectionOwner = gateway.connectionOwner(command.ref) ?: return
+        if (connectionOwner != owner) {
+            throw ValidationException(
+                "provider connection ${command.ref.connection} is a personal connection; only its owner can use it, in a personal profile",
+                "ref.connection",
             )
         }
     }

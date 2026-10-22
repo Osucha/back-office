@@ -299,6 +299,7 @@ class JobLifecycle(
             maxRequests = settings.maxLlmRequestsPerJob.takeIf { it > 0 },
             scope = scope,
             modelConnections = job.spec.model.connection?.let { mapOf(job.spec.model.label to it) }.orEmpty(),
+            actingUserId = usage.actingUserId,
         )
     }
 

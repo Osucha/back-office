@@ -85,4 +85,10 @@ interface LlmGateway {
 
     /** ADR 0045: whether [model] can be called (its connection, or a configured endpoint of its provider). */
     fun isConfigured(model: ModelRef): Boolean = isConfigured(model.provider)
+
+    /**
+     * ADR 0050 step 2b: the owner of [model]'s connection when it is a personal one (only their work may use it); null
+     * for a platform connection, an environment endpoint or no connection.
+     */
+    fun connectionOwner(model: ModelRef): java.util.UUID? = null
 }

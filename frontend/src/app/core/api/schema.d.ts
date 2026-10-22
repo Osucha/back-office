@@ -4854,6 +4854,8 @@ export interface components {
       id?: string | null;
       key?: string | null;
       name: string;
+      /** @description ADR 0050 step 2b: the caller's own connection */
+      personal?: boolean;
       provider: components['schemas']['Provider'];
       requestsPerDay?: number | null;
       requestsPerMinute?: number | null;
@@ -4881,6 +4883,11 @@ export interface components {
       enabled: boolean;
       key: string;
       name: string;
+      /**
+       * @description ADR 0050 step 2b: the caller's own connection (their API key), created with models.view instead of admin.settings.manage. Only its owner sees, changes and uses it (in personal profiles, for their own runs, benchmarks and tests); a model without a named connection never falls back to it. Set on create only.
+       * @default false
+       */
+      personal: boolean;
       provider: components['schemas']['Provider'];
       /** @description ADR 0046: per UTC day; e.g. 50 for OpenRouter free models without credits */
       requestsPerDay?: number | null;
@@ -5471,6 +5478,8 @@ export interface components {
       models: components['schemas']['ProviderModelInfo'][];
       name: string;
       ok: boolean;
+      /** @description ADR 0050 step 2b: the caller's own connection; profiles of its models are personal */
+      personal?: boolean;
       provider: components['schemas']['Provider'];
       /** @enum {string} */
       source: 'DATABASE' | 'ENVIRONMENT';

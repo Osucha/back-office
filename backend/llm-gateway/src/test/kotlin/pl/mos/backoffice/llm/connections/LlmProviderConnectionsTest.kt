@@ -54,6 +54,36 @@ class LlmProviderConnectionsTest {
     private val admin = service(LlmProviderService.MANAGE, LlmProviderService.VIEW)
 
     @Test
+    fun `a personal connection is added by any reader, seen and used only by its owner, never an implicit fallback (ADR 0050)`() {
+        val viewer = service(LlmProviderService.VIEW)
+        assertThatThrownBy { viewer.create(LlmProviderCommand("team-openai", "Team", Provider.OPENAI, apiKey = "sk-team")) }
+            .isInstanceOf(InsufficientPermissionException::class.java)
+        val mine = viewer.create(LlmProviderCommand("my-openai", "My OpenAI", Provider.OPENAI, apiKey = "sk-mine", personal = true))
+        assertThat(mine.personal).isTrue()
+        assertThat(viewer.list().single { it.key == "my-openai" }.usable).isTrue()
+
+        val otherUser = FakeAuthorizationGate.user(platform = setOf(LlmProviderService.VIEW, LlmProviderService.MANAGE))
+            .copy(userId = pl.mos.backoffice.shared.security.UserId(UUID.randomUUID()))
+        val otherAdmin = LlmProviderService(
+            store, vault, FakeAuthorizationGate(otherUser), audit, Clock { Instant.parse("2026-10-18T10:00:00Z") }, cache, registry,
+            ProviderModelLister(JsonMapper.builder().build()),
+        )
+        assertThat(otherAdmin.list().map { it.key }).doesNotContain("my-openai")
+        assertThatThrownBy { otherAdmin.delete(mine.id!!) }.isInstanceOf(pl.mos.backoffice.shared.NotFoundException::class.java)
+
+        // no platform OpenAI connection and no environment fallback: the personal one is not taken implicitly
+        assertThat(registry.resolve(Provider.OPENAI)).isNull()
+        val endpoint = registry.resolve(Provider.OPENAI, "my-openai")!!
+        val owner = FakeAuthorizationGate.TEST_USER_ID.value
+        assertThat(endpoint.ownerUserId).isEqualTo(owner)
+        assertThat(ProviderRegistry.personalRefusal(endpoint, owner)).isNull()
+        assertThat(ProviderRegistry.personalRefusal(endpoint, null)).contains("personal connection")
+        assertThat(ProviderRegistry.personalRefusal(endpoint, UUID.randomUUID())).contains("only its owner")
+        assertThat(registry.ownerOf(ModelRef(Provider.OPENAI, "gpt-5", connection = "my-openai"))).isEqualTo(owner)
+        assertThat(audit.entries.last().details["personal"]).isEqualTo(true)
+    }
+
+    @Test
     fun `connections are resolved by key, else the first of the type, else the environment`() {
         assertThat(registry.resolve(Provider.ANTHROPIC)!!.id).isEqualTo("env:ANTHROPIC")
         assertThat(registry.isConfigured(Provider.MISTRAL)).isFalse()

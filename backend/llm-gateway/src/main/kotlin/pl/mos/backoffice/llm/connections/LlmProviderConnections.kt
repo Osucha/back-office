@@ -47,7 +47,14 @@ data class LlmProviderConnection(
     /** ADR 0046: optional limits Back Office keeps for this connection (null = none). */
     val requestsPerMinute: Int? = null,
     val requestsPerDay: Int? = null,
+    /** ADR 0050 step 2b: the owner of a personal connection (their own API key); null = a platform connection. */
+    val ownerUserId: UUID? = null,
 ) {
+    val personal: Boolean get() = ownerUserId != null
+
+    /** Platform connections are listed to everyone who may read models, a personal one only to its owner. */
+    fun visibleTo(userId: UUID?): Boolean = ownerUserId == null || ownerUserId == userId
+
     init {
         if (!KEY.matches(key)) throw ValidationException("2-40 lower case letters, digits or hyphens, starting with a letter", "key")
         if (requestsPerMinute != null && requestsPerMinute <= 0) throw ValidationException("must be positive", "requestsPerMinute")
@@ -85,9 +92,9 @@ class JdbcLlmProviderConnectionStore(private val jdbc: JdbcClient) : LlmProvider
             """
             INSERT INTO llm_provider_connection (id, key, name, provider, base_url, secret_key_id, secret_wrapped_key, secret_ciphertext,
                                                  enabled, created_at, updated_at, updated_by_kind, updated_by_id, updated_by_name,
-                                                 requests_per_minute, requests_per_day)
+                                                 requests_per_minute, requests_per_day, owner_user_id)
             VALUES (:id, :key, :name, :provider, :baseUrl, :keyId, :wrapped, :cipher, :enabled, :created, :updated, :byKind, :byId, :byName,
-                    :rpm, :rpd)
+                    :rpm, :rpd, :owner)
             ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, base_url = EXCLUDED.base_url, secret_key_id = EXCLUDED.secret_key_id,
                 secret_wrapped_key = EXCLUDED.secret_wrapped_key, secret_ciphertext = EXCLUDED.secret_ciphertext, enabled = EXCLUDED.enabled,
                 updated_at = EXCLUDED.updated_at, updated_by_kind = EXCLUDED.updated_by_kind, updated_by_id = EXCLUDED.updated_by_id,
@@ -100,7 +107,7 @@ class JdbcLlmProviderConnectionStore(private val jdbc: JdbcClient) : LlmProvider
             .param("cipher", connection.apiKey?.ciphertext).param("enabled", connection.enabled)
             .param("created", connection.createdAt.atOffset(ZoneOffset.UTC)).param("updated", connection.updatedAt.atOffset(ZoneOffset.UTC))
             .param("byKind", connection.updatedBy?.kind?.name).param("byId", connection.updatedBy?.userId).param("byName", connection.updatedBy?.displayName)
-            .param("rpm", connection.requestsPerMinute).param("rpd", connection.requestsPerDay)
+            .param("rpm", connection.requestsPerMinute).param("rpd", connection.requestsPerDay).param("owner", connection.ownerUserId)
             .update()
         return connection
     }
@@ -126,6 +133,7 @@ class JdbcLlmProviderConnectionStore(private val jdbc: JdbcClient) : LlmProvider
             },
             requestsPerMinute = rs.getObject("requests_per_minute") as Int?,
             requestsPerDay = rs.getObject("requests_per_day") as Int?,
+            ownerUserId = rs.getObject("owner_user_id", UUID::class.java),
         )
     }
 }
@@ -157,7 +165,7 @@ class CachedProviderConnections(
     fun invalidate() = cache.set(null)
 
     private fun load(): List<ProviderConnection> = store.findAll().filter { it.enabled }.map { c ->
-        ProviderConnection(c.key, c.provider, ProviderSettings(apiKey = open(c), baseUrl = c.baseUrl), ConnectionLimits(c.requestsPerMinute, c.requestsPerDay))
+        ProviderConnection(c.key, c.provider, ProviderSettings(apiKey = open(c), baseUrl = c.baseUrl), ConnectionLimits(c.requestsPerMinute, c.requestsPerDay), c.ownerUserId)
     }
 
     private fun open(c: LlmProviderConnection): String? {
@@ -193,6 +201,8 @@ data class LlmProviderView(
     val requestsPerDay: Int? = null,
     /** Requests counted today (UTC) against [requestsPerDay]; null without limits. */
     val requestsToday: Int? = null,
+    /** ADR 0050 step 2b: the caller's own connection (their API key), invisible to everybody else. */
+    val personal: Boolean = false,
 )
 
 data class LlmProviderCommand(
@@ -207,6 +217,8 @@ data class LlmProviderCommand(
     val enabled: Boolean = true,
     val requestsPerMinute: Int? = null,
     val requestsPerDay: Int? = null,
+    /** ADR 0050 step 2b: create the caller's own connection (`models.view`) instead of a platform one. Ignored on update. */
+    val personal: Boolean = false,
 )
 
 /** One model a provider offers; prices in USD per million tokens when the provider publishes them (OpenRouter). */
@@ -230,12 +242,15 @@ data class CatalogSection(
     val ok: Boolean,
     val error: String?,
     val models: List<ProviderModelInfo>,
+    /** ADR 0050 step 2b: the caller's own connection: profiles of its models are personal. */
+    val personal: Boolean = false,
 )
 
 /**
  * ADR 0045: LLM provider connections managed in the UI (`admin.settings.manage`; listed with `models.view`). API keys
  * are sealed with the installation's secret key and never returned. Endpoints from environment variables are listed
- * read-only as the fallback they are.
+ * read-only as the fallback they are. ADR 0050 step 2b: every user with `models.view` may add personal connections
+ * (their own API keys); only the owner sees, changes and uses them, administrators included.
  */
 class LlmProviderService(
     private val store: LlmProviderConnectionStore,
@@ -250,13 +265,13 @@ class LlmProviderService(
 ) {
 
     fun list(): List<LlmProviderView> {
-        gate.require(VIEW)
+        val user = gate.require(VIEW)
         val usable = cache.connections().map { it.key to it.provider }.filter { (key, provider) -> registry.resolve(provider, key) != null }.toSet()
         val today = quota.usedToday()
-        val own = store.findAll().map { c ->
+        val own = store.findAll().filter { it.visibleTo(user.userId?.value) }.map { c ->
             LlmProviderView(
                 c.id, c.key, c.name, c.provider, c.baseUrl, c.apiKey != null, c.enabled, (c.key to c.provider) in usable, ConnectionSource.DATABASE,
-                c.updatedAt, c.updatedBy, c.requestsPerMinute, c.requestsPerDay, today[c.key] ?: 0,
+                c.updatedAt, c.updatedBy, c.requestsPerMinute, c.requestsPerDay, today[c.key] ?: 0, c.personal,
             )
         }
         val env = Provider.entries.mapNotNull { p ->
@@ -268,7 +283,9 @@ class LlmProviderService(
     }
 
     fun create(command: LlmProviderCommand): LlmProviderView {
-        val actor = gate.require(MANAGE).actor
+        val user = gate.require(if (command.personal) VIEW else MANAGE)
+        val actor = user.actor
+        val owner = if (command.personal) user.userId?.value ?: throw ValidationException("a personal connection needs a signed-in user", "personal") else null
         val key = command.key.trim()
         rejectSubscriptionToken(command)
         if (store.findAll().any { it.key == key }) throw ValidationException("a provider connection $key already exists", "key")
@@ -277,17 +294,19 @@ class LlmProviderService(
         val saved = store.save(
             LlmProviderConnection(
                 id, key, command.name.trim(), command.provider, baseUrl(command), command.apiKey?.trim()?.ifEmpty { null }?.let { seal(id, it) },
-                command.enabled, now, now, actor, command.requestsPerMinute, command.requestsPerDay,
+                command.enabled, now, now, actor, command.requestsPerMinute, command.requestsPerDay, owner,
             ),
         )
         cache.invalidate()
-        audit.record(AuditEntry("LLM_PROVIDER_CREATE", ENTITY, id.toString(), details = mapOf("key" to key, "provider" to saved.provider.name, "baseUrl" to saved.baseUrl, "apiKey" to (saved.apiKey != null), "requestsPerMinute" to saved.requestsPerMinute, "requestsPerDay" to saved.requestsPerDay)))
+        audit.record(AuditEntry("LLM_PROVIDER_CREATE", ENTITY, id.toString(), details = mapOf("key" to key, "provider" to saved.provider.name, "baseUrl" to saved.baseUrl, "apiKey" to (saved.apiKey != null), "requestsPerMinute" to saved.requestsPerMinute, "requestsPerDay" to saved.requestsPerDay, "personal" to saved.personal)))
         return view(saved)
     }
 
     fun update(id: UUID, command: LlmProviderCommand): LlmProviderView {
-        val actor = gate.require(MANAGE).actor
-        val existing = store.findById(id) ?: throw NotFoundException("LlmProviderConnection", id)
+        val found = store.findById(id)
+        val user = gate.require(if (found?.personal == true) VIEW else MANAGE)
+        val actor = user.actor
+        val existing = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("LlmProviderConnection", id)
         if (command.key.trim() != existing.key) throw ValidationException("the key cannot change: model profiles refer to it", "key")
         if (command.provider != existing.provider) throw ValidationException("the provider type cannot change; add a new connection", "provider")
         rejectSubscriptionToken(command)
@@ -316,8 +335,9 @@ class LlmProviderService(
     }
 
     fun delete(id: UUID) {
-        gate.require(MANAGE)
-        val existing = store.findById(id) ?: throw NotFoundException("LlmProviderConnection", id)
+        val found = store.findById(id)
+        val user = gate.require(if (found?.personal == true) VIEW else MANAGE)
+        val existing = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("LlmProviderConnection", id)
         store.delete(id)
         cache.invalidate()
         audit.record(AuditEntry("LLM_PROVIDER_DELETE", ENTITY, id.toString(), details = mapOf("key" to existing.key, "provider" to existing.provider.name)))
@@ -330,10 +350,11 @@ class LlmProviderService(
      * ten minutes; [refresh] asks the providers again.
      */
     fun catalog(refresh: Boolean): List<CatalogSection> {
-        gate.require(VIEW)
+        val user = gate.require(VIEW)
         val now = clock.now()
         val names = store.findAll().associate { it.key to it.name }
-        val connections = cache.connections()
+        // ADR 0050 step 2b: the caller's own connections are listed to them only
+        val connections = cache.connections().filter { it.ownerUserId == null || it.ownerUserId == user.userId?.value }
         val endpoints = connections.mapNotNull { c ->
             val endpoint = registry.resolve(c.provider, c.key) ?: return@mapNotNull null
             Triple(endpoint, names[c.key] ?: c.key, ConnectionSource.DATABASE)
@@ -344,15 +365,16 @@ class LlmProviderService(
         return endpoints.map { (endpoint, name, source) ->
             val cached = catalogCache[endpoint.fingerprint]?.takeIf { !refresh && it.first.plus(CATALOG_TTL).isAfter(now) }?.second
             val models = cached ?: lister.list(endpoint.provider, endpoint.settings).also { if (it.ok) catalogCache[endpoint.fingerprint] = now to it }
-            CatalogSection(endpoint.connection, name, endpoint.provider, source, models.ok, models.error, models.details)
+            CatalogSection(endpoint.connection, name, endpoint.provider, source, models.ok, models.error, models.details, personal = endpoint.ownerUserId != null)
         }
     }
 
     /** Lists the models the endpoint offers (also a connection test); [id] null = the environment endpoint of [provider]. */
     fun models(id: UUID?, provider: Provider?): ProviderModels {
-        gate.require(MANAGE)
+        val found = id?.let { store.findById(it) }
+        val user = gate.require(if (found?.personal == true) VIEW else MANAGE)
         val endpoint = if (id != null) {
-            val c = store.findById(id) ?: throw NotFoundException("LlmProviderConnection", id)
+            val c = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("LlmProviderConnection", id)
             cache.invalidate()
             registry.resolve(c.provider, c.key)?.let { c.provider to it.settings }
                 ?: return ProviderModels(false, emptyList(), if (!c.enabled) "the connection is disabled" else "the connection lacks an API key or base URL (or its key cannot be read)")
@@ -387,7 +409,7 @@ class LlmProviderService(
 
     private fun view(c: LlmProviderConnection) = LlmProviderView(
         c.id, c.key, c.name, c.provider, c.baseUrl, c.apiKey != null, c.enabled, registry.resolve(c.provider, c.key) != null,
-        ConnectionSource.DATABASE, c.updatedAt, c.updatedBy, c.requestsPerMinute, c.requestsPerDay, quota.usedToday()[c.key] ?: 0,
+        ConnectionSource.DATABASE, c.updatedAt, c.updatedBy, c.requestsPerMinute, c.requestsPerDay, quota.usedToday()[c.key] ?: 0, c.personal,
     )
 
     companion object {

@@ -1,6 +1,6 @@
 # 0050 — Model availability: who may use which model, where and by which route
 
-- Status: accepted (steps 1 and 2a implemented; 2b, 3 and 4 planned)
+- Status: accepted (steps 1, 2a and 2b implemented; 3 and 4 planned)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0040 (personal runners, LOCAL_LOGIN), 0045 (model profiles from providers), 0048 (Claude Code login
@@ -59,11 +59,19 @@ models are usable everywhere, private projects included.
    check. REST `/model-profiles/defaults`, `/defaults/platform`, `/defaults/mine`, `/model-profiles/options`.
 8. Fixed on the way: the profile mapper did not read `runtime` back, so login profiles were loaded as API ones.
 
+**Step 2b (implemented): personal API keys.**
+
+9. A provider connection has an owner (llm-gateway V8): anyone with `models.view` adds their own connection (their
+   API key, sealed like platform keys); only the owner sees, changes and uses it, administrators included. A model
+   without a named connection never falls back to a personal connection.
+10. Calls carry the user whose work they are (`UsageContext.actingUserId`: who started the run, created the
+    benchmark or tests the model; runner jobs carry it into their proxy credential). The gateway and the LLM proxy
+    refuse a personal connection for anyone else's work.
+11. A model profile on a personal connection must be a personal profile of the same owner; the catalogue of the
+    Models page lists the caller's own connections to them only.
+
 **Planned steps** (each usable on its own):
 
-2b. Personal API keys: personal provider connections (owner, sealed like platform keys) and personal profiles on
-   them; the gateway uses a personal connection only for work of its owner (the acting user of the run, benchmark
-   or test).
 3. Runners report their harnesses and active logins in the heartbeat; login models appear and disappear with the
    runner instead of being created by hand; Account, "My models".
 4. A prompt mode of Claude Code in the runner, so LLM steps and the benchmark judge can run on a subscription.

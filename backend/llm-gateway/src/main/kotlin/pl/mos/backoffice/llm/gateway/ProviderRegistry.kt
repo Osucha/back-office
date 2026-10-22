@@ -22,7 +22,14 @@ data class ProviderSettings(val apiKey: String? = null, val baseUrl: String? = n
  * ADR 0045: an LLM provider connection added in the UI (`llm_provider_connection`), decrypted. [key] is what a model
  * profile names in `ModelRef.connection`.
  */
-data class ProviderConnection(val key: String, val provider: Provider, val settings: ProviderSettings, val limits: ConnectionLimits = ConnectionLimits.NONE)
+data class ProviderConnection(
+    val key: String,
+    val provider: Provider,
+    val settings: ProviderSettings,
+    val limits: ConnectionLimits = ConnectionLimits.NONE,
+    /** ADR 0050 step 2b: the owner of a personal connection; null = a platform connection. */
+    val ownerUserId: java.util.UUID? = null,
+)
 
 /** ADR 0046: optional request limits of a connection, kept by Back Office ([pl.mos.backoffice.llm.connections.ConnectionQuota]). */
 data class ConnectionLimits(val requestsPerMinute: Int? = null, val requestsPerDay: Int? = null) {
@@ -52,6 +59,8 @@ data class ProviderEndpoint(
     val settings: ProviderSettings,
     val connection: String?,
     val limits: ConnectionLimits = ConnectionLimits.NONE,
+    /** ADR 0050 step 2b: set for a personal connection: only its owner's work may call it. */
+    val ownerUserId: java.util.UUID? = null,
 ) {
     /** Changes whenever the endpoint's URL or key changes: a cached client of an older fingerprint is replaced. */
     val fingerprint: String get() = "$id|${settings.baseUrl}|${settings.apiKey?.hashCode()}"
@@ -71,9 +80,11 @@ class ProviderRegistry(
         val all = source.connections()
         if (connection != null) {
             val c = all.firstOrNull { it.key == connection && it.provider == provider } ?: return null
-            return c.takeIf { it.settings.usableFor(provider) }?.let { ProviderEndpoint("db:${it.key}", provider, it.settings, it.key, it.limits) }
+            return c.takeIf { it.settings.usableFor(provider) }?.let { ProviderEndpoint("db:${it.key}", provider, it.settings, it.key, it.limits, it.ownerUserId) }
         }
-        all.firstOrNull { it.provider == provider && it.settings.usableFor(provider) }?.let { return ProviderEndpoint("db:${it.key}", provider, it.settings, it.key, it.limits) }
+        // ADR 0050 step 2b: a model without a named connection never falls back to somebody's personal connection
+        all.firstOrNull { it.provider == provider && it.ownerUserId == null && it.settings.usableFor(provider) }
+            ?.let { return ProviderEndpoint("db:${it.key}", provider, it.settings, it.key, it.limits) }
         val env = environment[provider] ?: return null
         return env.takeIf { it.usableFor(provider) }?.let { ProviderEndpoint("env:${provider.name}", provider, it, null) }
     }
@@ -86,6 +97,17 @@ class ProviderRegistry(
     fun isConfigured(provider: Provider): Boolean = resolve(provider) != null
 
     fun isConfigured(model: ModelRef): Boolean = resolve(model) != null
+
+    /** ADR 0050 step 2b: the owner of the named connection of [model] when it is personal (enabled or not usable yet). */
+    fun ownerOf(model: ModelRef): java.util.UUID? =
+        model.connection?.let { key -> source.connections().firstOrNull { it.key == key && it.provider == model.provider }?.ownerUserId }
+
+    companion object {
+        /** ADR 0050 step 2b: a personal endpoint serves only its owner's work; the message of a refusal, else null. */
+        fun personalRefusal(endpoint: ProviderEndpoint, actingUserId: java.util.UUID?): String? =
+            if (endpoint.ownerUserId == null || endpoint.ownerUserId == actingUserId) null
+            else "provider connection ${endpoint.connection} is a personal connection and serves only its owner's work"
+    }
 
     fun baseUrl(provider: Provider): String? = get(provider).baseUrl?.takeIf { it.isNotBlank() }
 

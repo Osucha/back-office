@@ -238,5 +238,17 @@
   "models.scope.mine": "Moje profile",
   "models.personal.tag": "Osobisty",
   "models.personal.hint": "Twój osobisty profil: widzisz go i używasz tylko Ty, w swoich prywatnych projektach i własnych benchmarkach.",
-  "models.duplicatePersonal": "Duplikuj jako mój profil"
+  "models.duplicatePersonal": "Duplikuj jako mój profil",
+  "models.connection.personalTag": "Osobiste",
+  "models.connection.personalHint": "Twoje osobiste połączenie z Twoim własnym kluczem API: widzisz je i używasz tylko Ty; profile jego modeli są osobiste.",
+  "models.drawer.connectionPersonal": "{$connection} - osobiste",
+  "models.drawer.scope.connectionHint": "Korzysta z Twojego osobistego połączenia (Twojego własnego klucza API), więc jest osobisty.",
+  "models.providers.addPersonal": "Dodaj mój klucz API",
+  "models.providers.personalIntro": "Połączeniami platformy zarządzają administratorzy. Możesz dodać własne klucze API jako osobiste połączenia: widzisz je i używasz tylko Ty, w swoich osobistych profilach modeli.",
+  "models.providers.form.scope": "Dostępne dla",
+  "models.providers.form.scope.platform": "Platforma (wszyscy)",
+  "models.providers.form.scope.personal": "Osobiste (tylko Ty, Twój własny klucz API)",
+  "models.providers.scope.personalHint": "Widzisz je i używasz tylko Ty, w swoich osobistych profilach modeli (w prywatnych projektach i własnych benchmarkach). Klucze połączeń są unikalne w całym Back Office, np. openrouter-twojeimie.",
+  "models.providers.scope.platformHint": "Każdy może z niego korzystać przez profile modeli platformy.",
+  "models.providers.scope.manageHint": "Połączenia platformy dodają administratorzy (admin.settings.manage)."
 }

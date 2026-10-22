@@ -79,6 +79,25 @@ profilu modelu. Połączeń jednego typu może być kilka, np. OpenRouter i Groq
    restartuje pody automatycznie tylko wtedy, gdy sam renderuje Secret).
 4. Przetestuj profil w **Modelach**, a następnie usuń stary klucz u dostawcy.
 
+<a id="personal-keys"></a>
+## Twoje własne klucze API
+
+Każdy, kto widzi modele, może dodać **własne** połączenie z dostawcą, z własnym kluczem API: **Modele** (**Models**)
+→ **Dostawcy LLM** (**LLM providers**) → **Dodaj mój klucz API** (**Add my API key**); administratorzy wybierają
+**Dostępne dla: Osobiste (tylko Ty, Twój własny klucz API)** (**Available to: Personal (only you, your own API
+key)**). Działa jak połączenie platformowe, z tymi różnicami (ADR 0050):
+
+- Tylko Ty je widzisz, zmieniasz i używasz; administratorzy też go nie widzą. Klucz jest przechowywany
+  zaszyfrowany jak każdy inny.
+- Modele z niego są oferowane w **Dostępne u dostawców** (**Available from providers**) z oznaczeniem **Osobiste**
+  (**Personal**), a profile z nich utworzone są profilami osobistymi (zob.
+  [evaluation.md](evaluation.md#model-availability)).
+- Obsługuje tylko Twoją pracę: uruchomienia, które startujesz w swoich prywatnych projektach, Twoje benchmarki
+  i Twoje testy modeli. Wywołanie dla cudzej pracy jest odrzucane, a model bez wskazanego połączenia nigdy nie
+  przechodzi na nie.
+- Klucze połączeń są unikalne w całej instalacji, także wśród ukrytych połączeń innych użytkowników; wybierz klucz
+  w rodzaju `openrouter-twojeimie`.
+
 <a id="anthropic"></a>
 ## Anthropic
 

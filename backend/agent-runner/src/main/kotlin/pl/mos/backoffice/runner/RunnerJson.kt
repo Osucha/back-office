@@ -268,6 +268,7 @@ data class UsageContextJson(
     val reviewId: String? = null,
     val benchmarkId: String? = null,
     val attemptId: String? = null,
+    val actingUserId: String? = null,
 )
 
 data class RunnerEventJson(val type: String = "LOG", val message: String, val at: Instant? = null)
@@ -445,6 +446,7 @@ data class WorkRequestJson(
 
 fun UsageContext.toJson() = UsageContextJson(
     kind.name, projectId?.toString(), runId?.toString(), stepId, reviewId?.toString(), benchmarkId?.toString(), attemptId?.toString(),
+    actingUserId?.toString(),
 )
 
 fun UsageContextJson.toContext() = UsageContext(
@@ -455,6 +457,7 @@ fun UsageContextJson.toContext() = UsageContext(
     reviewId = reviewId?.let(UUID::fromString),
     benchmarkId = benchmarkId?.let(UUID::fromString),
     attemptId = attemptId?.let(UUID::fromString),
+    actingUserId = actingUserId?.let(UUID::fromString),
 )
 
 /** Rebuilds the port-level spec from its stored JSON parts. */
