@@ -44,6 +44,14 @@ data class ModelOption(
     val note: String? = null,
 )
 
+/**
+ * ADR 0050 step 3: makes sure a user whose personal runner reported their Claude login has the Claude Code login
+ * model profiles (Opus, Sonnet, Haiku); existing ones are kept. Returns how many were created.
+ */
+fun interface PersonalLoginModels {
+    fun ensure(userId: UUID): Int
+}
+
 /** ADR 0050 step 2: a default model and whether it is the user's own default or the platform's. */
 data class DefaultModel(val profileId: ModelProfileId, val personal: Boolean)
 

@@ -145,6 +145,10 @@ data class RunnerNode(
     val registeredAt: Instant,
     val lastSeenAt: Instant,
     val revokedAt: Instant?,
+    /** ADR 0050 step 3: coding agents reported with the last lease; null = not reported. */
+    val harnesses: List<String>? = null,
+    /** ADR 0050 step 3: whether a Claude login is set for personal-runner jobs; null = not reported. */
+    val claudeLogin: Boolean? = null,
 ) {
     fun online(now: Instant, window: Duration): Boolean = revokedAt == null && !lastSeenAt.isBefore(now.minus(window))
 }

@@ -30,6 +30,9 @@ interface RunnerNodeStore {
     fun list(poolId: String?): List<RunnerNode>
     fun touch(id: UUID, at: Instant)
     fun revoke(id: UUID, at: Instant)
+
+    /** ADR 0050 step 3: stores what the runner reported with its lease. */
+    fun report(id: UUID, harnesses: List<String>?, claudeLogin: Boolean?)
 }
 
 interface RegistrationTokenStore {

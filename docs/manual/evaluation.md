@@ -99,7 +99,9 @@ and the reason. The MCP tools `get_model_options` and `get_model_plan` give an I
 If your personal runner signs Claude Code in with your own Claude subscription (**My own Claude login
 (subscription)**, see [Personal runner](personal-runner.md#credentials)), you can benchmark
 it without an API key. Under **Available from providers**, the source **Claude Code (your login)** offers `opus`, `sonnet` and `haiku`; **Add as profile**
-creates a profile marked **Claude Code login**. Such a profile:
+creates a profile marked **Claude Code login**. You rarely need to: when your personal runner first reports your
+login, Back Office creates **Claude Opus (my login)**, **Claude Sonnet (my login)** and **Claude Haiku (my login)**
+for you. Such a profile:
 
 - runs as Claude Code on the personal runner of whoever creates the benchmark, with that person's login;
 - needs **My personal runner** as the execution target, **Claude Code** as the coding agent and coding tasks

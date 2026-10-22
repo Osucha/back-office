@@ -182,7 +182,15 @@ data class BenchmarkInputDto(
     val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
 )
 
-data class ExecutionTargetDto(val target: RunnerTarget, val pools: Int, val onlineRunners: Int, val localLogin: Boolean = false)
+data class ExecutionTargetDto(
+    val target: RunnerTarget,
+    val pools: Int,
+    val onlineRunners: Int,
+    val localLogin: Boolean = false,
+    /** ADR 0050 step 3: an online runner reported a Claude login (true), none did (false), not reported (null). */
+    val claudeLogin: Boolean? = null,
+    val harnesses: List<String> = emptyList(),
+)
 
 data class ProgressDto(val total: Int, val done: Int, val failed: Int)
 

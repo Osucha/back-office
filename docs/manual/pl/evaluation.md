@@ -111,7 +111,9 @@ Jeśli Twój osobisty runner loguje Claude Code Twoją własną subskrypcją Cla
 Claude (subskrypcja)**, zob. [Osobisty runner](personal-runner.md#credentials)), możesz go testować w benchmarku bez klucza API. W sekcji **Dostępne
 u dostawców** (**Available from providers**) źródło **Claude Code (Twoje logowanie)** (**Claude Code (your
 login)**) oferuje `opus`, `sonnet` i `haiku`; **Dodaj jako profil** (**Add as profile**) tworzy profil
-oznaczony **Logowanie Claude Code** (**Claude Code login**). Taki profil:
+oznaczony **Logowanie Claude Code** (**Claude Code login**). Rzadko jest to potrzebne: gdy Twój osobisty runner
+pierwszy raz zgłosi Twoje logowanie, Back Office sam tworzy profile **Claude Opus (my login)**, **Claude Sonnet (my
+login)** i **Claude Haiku (my login)**. Taki profil:
 
 - działa jako Claude Code na osobistym runnerze osoby, która tworzy benchmark, z jej logowaniem;
 - wymaga **Mojego osobistego runnera** jako miejsca wykonania, **Claude Code** jako agenta kodującego i tylko

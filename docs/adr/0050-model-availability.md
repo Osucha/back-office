@@ -1,6 +1,6 @@
 # 0050 — Model availability: who may use which model, where and by which route
 
-- Status: accepted (steps 1, 2a and 2b implemented; 3 and 4 planned)
+- Status: accepted (steps 1 to 3 implemented; 4 planned)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0040 (personal runners, LOCAL_LOGIN), 0045 (model profiles from providers), 0048 (Claude Code login
@@ -69,6 +69,17 @@ models are usable everywhere, private projects included.
     refuse a personal connection for anyone else's work.
 11. A model profile on a personal connection must be a personal profile of the same owner; the catalogue of the
     Models page lists the caller's own connections to them only.
+
+**Step 3 (implemented): runners report what they can run.**
+
+12. The runner-controller sends with every lease its coding agents (`harnesses`, configured, by default the ones of
+    the runner image) and whether a Claude login is set (`claudeLogin`: DOCKER backend and CLAUDE_CODE_OAUTH_TOKEN);
+    Back Office keeps them on the runner (agent-runner V55). The execution target says whether an online runner has a
+    login (`ExecutionTarget.claudeLogin`: true, false = every reporting runner has none, null = not reported).
+13. The first login reported by the runner of a personal LOCAL_LOGIN pool creates its owner's personal profiles
+    Claude Opus / Sonnet / Haiku (my login) (port `PersonalLoginModels`); existing aliases are kept.
+14. Availability: a login model is unusable while the personal runner is online without a login (its jobs would
+    fail). Account, "My models" shows the runner's state, the defaults and the models the user can use.
 
 **Planned steps** (each usable on its own):
 

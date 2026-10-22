@@ -65,6 +65,12 @@ back at `backoffice.runner.api-url` (`RUNNER_API_URL`); for a Back Office starte
 OpenCode steps always use the gateway. You can switch at any time; restart the runner with a new command when you
 switch to your own login (the variable must be passed to the container).
 
+The runner tells Back Office with every request for work which coding agents it has and whether your login is set
+(ADR 0050). When it reports your login for the first time, you get the model profiles **Claude Opus (my login)**,
+**Claude Sonnet (my login)** and **Claude Haiku (my login)**; **Account** → **My models** shows the runner's state
+and the models you can use. A runner that is online without the login makes those models unusable (the model
+pickers and the start of a run say so) instead of failing the job later.
+
 <a id="security"></a>
 ## Before you use it
 

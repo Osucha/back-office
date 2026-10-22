@@ -16,6 +16,7 @@ import pl.mos.backoffice.runner.SandboxPolicyJson
 import pl.mos.backoffice.runner.application.port.`in`.JobHeartbeatInput
 import pl.mos.backoffice.runner.application.port.`in`.RunnerFleetProtocol
 import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistrationRequest
+import pl.mos.backoffice.runner.application.port.`in`.RunnerReport
 import pl.mos.backoffice.runner.application.port.`in`.SandboxCallbacks
 import pl.mos.backoffice.runner.application.port.`in`.SandboxEvent
 import pl.mos.backoffice.runner.application.port.`in`.UploadRequestInput
@@ -75,7 +76,7 @@ class RunnerProtocolController(
         val wait = Duration.ofSeconds((body?.waitSeconds ?: DEFAULT_WAIT_SECONDS).toLong().coerceAtLeast(0)).coerceAtMost(longPoll.maxWait)
         val deadline = clock.now().plus(wait)
         while (true) {
-            val leased = gate.asSystem(REASON) { protocol.lease(runner, body?.maxJobs ?: 1, body?.freeSlots) }
+            val leased = gate.asSystem(REASON) { protocol.lease(runner, body?.maxJobs ?: 1, body?.freeSlots, body?.let { RunnerReport(it.harnesses, it.claudeLogin) }) }
             if (leased.isNotEmpty()) return leased.map(signer::assignment)
             val remaining = Duration.between(clock.now(), deadline)
             if (remaining.isNegative || remaining.isZero) return emptyList()

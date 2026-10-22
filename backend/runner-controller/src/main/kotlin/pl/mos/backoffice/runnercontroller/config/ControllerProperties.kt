@@ -18,6 +18,8 @@ data class ControllerProperties(
     val cluster: String? = null,
     val backend: BackendChoice = BackendChoice.AUTO,
     val maxConcurrent: Int = 4,
+    /** ADR 0050 step 3: the coding agents the runner image provides, reported to Back Office. */
+    val harnesses: List<String> = listOf("OPENCODE", "CLAUDE_CODE"),
     val lease: Lease = Lease(),
     val heartbeatSeconds: Long = 15,
     val monitorIntervalMillis: Long = 2000,

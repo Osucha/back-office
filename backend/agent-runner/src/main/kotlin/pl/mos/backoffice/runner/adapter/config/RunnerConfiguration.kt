@@ -135,10 +135,12 @@ class RunnerConfiguration {
         audit: ObjectProvider<AuditPort>,
         signer: ObjectProvider<EnvelopeSigner>,
         budgetRefusals: ObjectProvider<BudgetRefusals>,
+        loginModels: ObjectProvider<pl.mos.backoffice.shared.llm.PersonalLoginModels>,
     ) = RunnerProtocolService(
         stores, stores, stores, stores, lifecycle, tx, audit.getIfAvailable { AuditPort.NOOP },
         signingKeys = { signer.getIfAvailable()?.publicJwks().orEmpty() },
         budgetRefusals = budgetRefusals.getIfAvailable { BudgetRefusals.NONE },
+        loginModels = loginModels.getIfAvailable(),
     )
 
     @Bean

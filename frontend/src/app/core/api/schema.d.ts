@@ -4344,6 +4344,10 @@ export interface components {
       weight: number;
     };
     ExecutionTarget: {
+      /** @description ADR 0050 step 3: an online runner reported a Claude login (true), every online runner reported none (false), not reported (null) */
+      claudeLogin?: boolean | null;
+      /** @description ADR 0050 step 3: coding agents the online runners reported */
+      harnesses?: string[];
       /** @description ADR 0048: a pool of the target lets Claude Code use its owner's own login (LOCAL_LOGIN) */
       localLogin?: boolean;
       /** @description runners that called in within the online window */
@@ -4702,7 +4706,11 @@ export interface components {
       totalCost?: components['schemas']['Money'];
     };
     LeaseRequest: {
+      /** @description ADR 0050 step 3: a Claude login (CLAUDE_CODE_OAUTH_TOKEN) is set for LOCAL_LOGIN jobs; the first true of a personal runner creates its owner's Claude Code login model profiles */
+      claudeLogin?: boolean;
       freeSlots?: number;
+      /** @description ADR 0050 step 3: the coding agents the runner image provides (omitted = not reported) */
+      harnesses?: ('OPENCODE' | 'CLAUDE_CODE')[];
       /** @default 1 */
       maxJobs: number;
       /** @default 25 */

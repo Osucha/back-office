@@ -38,6 +38,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Minimal Spring Boot application for agent-runner integration tests. */
@@ -139,9 +140,19 @@ class RunnerTestBeans {
     @Bean
     fun envelopeSigner(): FakeEnvelopeSigner = FakeEnvelopeSigner()
 
+    /** ADR 0050 step 3: records whose login models were requested. */
+    @Bean
+    fun personalLoginModels(): RecordingLoginModels = RecordingLoginModels()
+
     @Bean
     fun blobStore(): InMemoryBlobStore = InMemoryBlobStore()
 
     @Bean
     fun testProblemHandler() = TestProblemHandler()
+}
+
+/** ADR 0050 step 3: a [pl.mos.backoffice.shared.llm.PersonalLoginModels] that records the users it was asked for. */
+class RecordingLoginModels : pl.mos.backoffice.shared.llm.PersonalLoginModels {
+    val users = CopyOnWriteArrayList<UUID>()
+    override fun ensure(userId: UUID): Int { users += userId; return 3 }
 }

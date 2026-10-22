@@ -63,6 +63,12 @@ pod adresem `backoffice.runner.api-url` (`RUNNER_API_URL`); dla Back Office uruc
 - **Brama LLM Back Office**: jak na wspólnej flocie; Twój komputer daje tylko moc obliczeniową. Zużycie jest
   mierzone, budżety obowiązują.
 
+Runner przy każdym zapytaniu o pracę podaje Back Office, jakich agentów kodujących ma i czy Twoje logowanie jest
+ustawione (ADR 0050). Gdy pierwszy raz zgłosi Twoje logowanie, dostajesz profile modeli **Claude Opus (my login)**,
+**Claude Sonnet (my login)** i **Claude Haiku (my login)**; **Konto** (**Account**) → **Moje modele** (**My models**)
+pokazuje stan runnera i modele, których możesz użyć. Runner dostępny bez logowania sprawia, że te modele są
+niedostępne (mówią o tym listy wyboru modeli i start uruchomienia), zamiast że zadanie nie powiedzie się później.
+
 Kroki OpenCode zawsze używają bramy. Możesz przełączyć tryb w każdej chwili; po przełączeniu na własne logowanie
 uruchom runner ponownie z nowym poleceniem (zmienna musi trafić do kontenera).
 

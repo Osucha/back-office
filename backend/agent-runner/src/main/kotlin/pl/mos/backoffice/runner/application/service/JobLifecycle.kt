@@ -128,6 +128,12 @@ class JobLifecycle(
 
     /** ADR 0040: Claude Code with the owner's own login talks to Anthropic directly. */
     /** Runners per pool that called in within the online window. */
+    /** ADR 0050 step 3: the runners that called in within the online window. */
+    fun onlineRunners(): List<RunnerNode> {
+        val now = clock.now()
+        return nodes.list(null).filter { it.online(now, settings.onlineWindow) }
+    }
+
     fun onlineRunnersByPool(): Map<String, Int> {
         val now = clock.now()
         return nodes.list(null).filter { it.online(now, settings.onlineWindow) }.groupingBy { it.poolId }.eachCount()

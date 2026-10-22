@@ -48,6 +48,7 @@ import { PageHeaderComponent } from '../../../core/ui/relay/page-header.componen
 import { ConnectIdeSectionComponent } from '../components/connect-ide-section.component';
 import { PersonalTokensPanelComponent } from '../components/personal-tokens-panel.component';
 import { PersonalRunnerSectionComponent } from '../components/personal-runner-section.component';
+import { MyModelsSectionComponent } from '../components/my-models-section.component';
 import { NotificationsSectionComponent } from '../components/notifications-section.component';
 import { SecuritySectionComponent } from '../components/security-section.component';
 import { PersonalConnectionsPanelComponent } from '../../connections/public-api';
@@ -61,6 +62,7 @@ export const ACCOUNT_SECTIONS = [
   { id: 'connections', label: $localize`:@@account.index.connections:Connections` },
   { id: 'ide', label: $localize`:@@account.index.ide:Connect your IDE` },
   { id: 'runner', label: $localize`:@@account.index.runner:My computer as a runner` },
+  { id: 'models', label: $localize`:@@account.index.models:My models` },
   { id: 'access', label: $localize`:@@account.index.access:My access` },
 ] as const;
 export type AccountSection = (typeof ACCOUNT_SECTIONS)[number]['id'];
@@ -71,7 +73,8 @@ function isSection(id: unknown): id is AccountSection {
 
 /**
  * My account: one scrolling page with a section index (profile, preferences, notifications, security, personal
- * access tokens, personal Jira connections (ADR 0035), connect your IDE, my access). `?section=security` scrolls to a section; `?setup=mfa` opens the MFA
+ * access tokens, personal Jira connections (ADR 0035), connect your IDE, my computer as a runner, my models
+ * (ADR 0050), my access). `?section=security` scrolls to a section; `?setup=mfa` opens the MFA
  * set-up in the security section.
  */
 @Component({
@@ -92,6 +95,7 @@ function isSection(id: unknown): id is AccountSection {
     PersonalConnectionsPanelComponent,
     PersonalTokensPanelComponent,
     PersonalRunnerSectionComponent,
+    MyModelsSectionComponent,
     NotificationsSectionComponent,
     SecuritySectionComponent,
   ],
@@ -350,6 +354,15 @@ function isSection(id: unknown): id is AccountSection {
               <p class="muted" i18n="@@account.runner.notAllowed">
                 Your role does not include personal runners (permission fleet.personal).
               </p>
+            }
+          </section>
+
+          <section id="models" class="card" aria-labelledby="h-models">
+            <h2 id="h-models" class="card-title" i18n="@@account.models.title">My models</h2>
+            @defer (on viewport) {
+              <app-my-models-section />
+            } @placeholder {
+              <div class="ph" aria-hidden="true"></div>
             }
           </section>
 

@@ -84,6 +84,8 @@ class ModelAvailabilityService(
                 Verdict(problem = "your personal runner does not use your own Claude login; switch its LLM credentials under My account")
             target.onlineRunners == 0 ->
                 Verdict(note = "your personal runner is offline: its jobs wait until it connects")
+            target.claudeLogin == false ->
+                Verdict(problem = "your personal runner is online but has no Claude login; start it with -e CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)")
             else -> Verdict()
         }
     }

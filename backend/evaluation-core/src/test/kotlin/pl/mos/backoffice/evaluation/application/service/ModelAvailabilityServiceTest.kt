@@ -32,8 +32,9 @@ class ModelAvailabilityServiceTest {
     private val off = Fixtures.profile("Off").copy(enabled = false)
     private val user = UUID.randomUUID()
 
-    private fun personal(pools: Int = 1, online: Int = 1, localLogin: Boolean = true) {
-        every { runner.executionTargets(user) } returns listOf(ExecutionTarget(RunnerTarget.SHARED, 1, 1), ExecutionTarget(RunnerTarget.PERSONAL, pools, online, localLogin))
+    private fun personal(pools: Int = 1, online: Int = 1, localLogin: Boolean = true, claudeLogin: Boolean? = null) {
+        every { runner.executionTargets(user) } returns
+            listOf(ExecutionTarget(RunnerTarget.SHARED, 1, 1), ExecutionTarget(RunnerTarget.PERSONAL, pools, online, localLogin, claudeLogin))
     }
 
     init {
@@ -69,6 +70,11 @@ class ModelAvailabilityServiceTest {
         assertThat(problem(coding)).contains("does not use your own Claude login")
         personal(online = 0)
         assertThat(service.check(login.id, coding)!!.let { it.usable to it.note }).isEqualTo(true to "your personal runner is offline: its jobs wait until it connects")
+        // ADR 0050 step 3: the runner is online and reported no Claude login: its LOCAL_LOGIN jobs would fail
+        personal(claudeLogin = false)
+        assertThat(problem(coding)).contains("has no Claude login")
+        personal(claudeLogin = true)
+        assertThat(service.check(login.id, coding)!!.usable).isTrue()
         assertThat(ModelAvailabilityService(profiles, gateway).check(login.id, coding)!!.usable).isFalse()
     }
 

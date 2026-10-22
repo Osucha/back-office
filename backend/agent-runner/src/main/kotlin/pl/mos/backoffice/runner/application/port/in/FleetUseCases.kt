@@ -222,6 +222,9 @@ data class JobHeartbeatInput(
     val memoryBytes: Long? = null,
 )
 
+/** ADR 0050 step 3: what a runner reports with a lease; null fields = not reported. */
+data class RunnerReport(val harnesses: List<String>?, val claudeLogin: Boolean?)
+
 data class JobHeartbeatAck(val leaseExpiresAt: Instant, val cancelRequested: Boolean)
 
 data class QueueDepth(val queued: Int, val running: Int)
@@ -236,7 +239,7 @@ interface RunnerFleetProtocol {
     fun config(runner: RunnerNode): RunnerConfigView
 
     /** Leases up to [maxJobs] queued jobs of the runner's pool without waiting (the web adapter long-polls). */
-    fun lease(runner: RunnerNode, maxJobs: Int, freeSlots: Int?): List<LeasedJob>
+    fun lease(runner: RunnerNode, maxJobs: Int, freeSlots: Int?, report: RunnerReport? = null): List<LeasedJob>
 
     fun heartbeat(runner: RunnerNode, jobId: RunnerJobId, heartbeat: JobHeartbeatInput): JobHeartbeatAck
 

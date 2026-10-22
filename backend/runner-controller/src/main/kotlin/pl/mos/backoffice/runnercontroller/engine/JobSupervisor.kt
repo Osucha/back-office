@@ -207,7 +207,9 @@ class JobSupervisor(
             return false
         }
         if (Duration.between(lastConfigRefresh, now()) > Duration.ofMinutes(5)) runCatching { refreshConfig() }
-        val assignments = client.lease(LeaseRequest(minOf(free, props.lease.maxJobsPerLease), props.lease.waitSeconds, free))
+        val assignments = client.lease(
+            LeaseRequest(minOf(free, props.lease.maxJobsPerLease), props.lease.waitSeconds, free, props.harnesses, claudeLoginAvailable()),
+        )
         assignments.forEach { accept(it) }
         return true
     }
@@ -315,6 +317,9 @@ class JobSupervisor(
      * ADR 0040: for a LOCAL_LOGIN assignment the name of the variable holding the owner's Claude Code login, null for
      * gateway jobs. Throws when this controller cannot deliver it (not DOCKER, or the variable is not set).
      */
+    /** ADR 0050 step 3: a Claude login can serve LOCAL_LOGIN jobs (personal runner, DOCKER backend, token set). */
+    private fun claudeLoginAvailable(): Boolean = backend.kind == BackendKind.DOCKER && !env(props.localLogin.tokenEnv).isNullOrBlank()
+
     private fun localLoginCredential(spec: ObjectNode): String? {
         if (spec.get("llmCredentials")?.asString() != LOCAL_LOGIN) return null
         if (backend.kind != BackendKind.DOCKER) throw PolicyViolation("Claude Code with the owner's own login runs only on a personal runner (DOCKER backend)")

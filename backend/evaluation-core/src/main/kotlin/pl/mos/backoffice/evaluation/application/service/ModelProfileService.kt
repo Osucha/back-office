@@ -152,6 +152,7 @@ class ModelProfileService(
             personal == null || !personal.exists -> "you have no personal runner; set one up under My account, Claude Code login models run there"
             !personal.localLogin -> "your personal runner does not use your own Claude Code login; switch its LLM credentials to Claude Code login under My account"
             personal.onlineRunners == 0 -> "your personal runner is offline; start it before the benchmark"
+            personal.claudeLogin == false -> "your personal runner is online but has no Claude login; start it with -e CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)"
             else -> null
         }
         return ModelTestResult(

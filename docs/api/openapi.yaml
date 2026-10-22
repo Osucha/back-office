@@ -3974,6 +3974,8 @@ components:
         maxJobs: { type: integer, default: 1 }
         waitSeconds: { type: integer, default: 25, maximum: 30 }
         freeSlots: { type: integer }
+        harnesses: { type: array, items: { type: string, enum: [OPENCODE, CLAUDE_CODE] }, description: 'ADR 0050 step 3: the coding agents the runner image provides (omitted = not reported)' }
+        claudeLogin: { type: boolean, description: 'ADR 0050 step 3: a Claude login (CLAUDE_CODE_OAUTH_TOKEN) is set for LOCAL_LOGIN jobs; the first true of a personal runner creates its owner''s Claude Code login model profiles' }
     AgentJobStatus:
       type: string
       enum: [QUEUED, LEASED, STARTING, RUNNING, SUCCEEDED, FAILED, TIMED_OUT, CANCELLED, LOST]
@@ -4437,6 +4439,8 @@ components:
         pools: { type: integer, description: 'runner pools of the target (0 = none set up)' }
         onlineRunners: { type: integer, description: 'runners that called in within the online window' }
         localLogin: { type: boolean, description: 'ADR 0048: a pool of the target lets Claude Code use its owner''s own login (LOCAL_LOGIN)' }
+        claudeLogin: { type: boolean, nullable: true, description: 'ADR 0050 step 3: an online runner reported a Claude login (true), every online runner reported none (false), not reported (null)' }
+        harnesses: { type: array, items: { type: string }, description: 'ADR 0050 step 3: coding agents the online runners reported' }
     BenchmarkStatus:
       type: string
       enum: [DRAFT, RUNNING, COMPLETED, FAILED, CANCELLED]

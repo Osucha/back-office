@@ -31,6 +31,8 @@ import pl.mos.backoffice.evaluation.application.service.BenchmarkService
 import pl.mos.backoffice.evaluation.application.service.ExecuteAttemptService
 import pl.mos.backoffice.evaluation.application.service.ModelAvailabilityService
 import pl.mos.backoffice.evaluation.application.service.ModelDefaultsService
+import pl.mos.backoffice.evaluation.application.service.PersonalLoginModelsService
+import pl.mos.backoffice.shared.llm.PersonalLoginModels
 import pl.mos.backoffice.evaluation.application.service.ModelProfileService
 import pl.mos.backoffice.evaluation.application.service.ProviderService
 import pl.mos.backoffice.evaluation.application.service.SeedStarterContentService
@@ -71,6 +73,11 @@ class EvaluationConfiguration {
         defaults: ModelDefaultRepository, profiles: ModelProfileRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
         availability: ModelAvailability,
     ) = ModelDefaultsService(defaults, profiles, gate, audit, clock, availability)
+
+    /** ADR 0050 step 3: Claude Code login profiles for a user whose personal runner reported their login. */
+    @Bean
+    fun personalLoginModels(profiles: ModelProfileRepository, clock: Clock, audit: AuditPort): PersonalLoginModels =
+        PersonalLoginModelsService(profiles, clock, audit)
 
     /** ADR 0050: which models a use may take (shared port, read by Projects and the model pickers). */
     @Bean

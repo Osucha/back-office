@@ -20,7 +20,19 @@ enum class RunnerTarget { SHARED, PERSONAL }
  * What a [RunnerTarget] offers right now: its pools and the runners that called in recently. [localLogin] (ADR 0048):
  * a pool of the target lets Claude Code use its owner's own login (LOCAL_LOGIN).
  */
-data class ExecutionTarget(val target: RunnerTarget, val pools: Int, val onlineRunners: Int, val localLogin: Boolean = false) {
+data class ExecutionTarget(
+    val target: RunnerTarget,
+    val pools: Int,
+    val onlineRunners: Int,
+    val localLogin: Boolean = false,
+    /**
+     * ADR 0050 step 3: whether an online runner of the target reported a Claude login: true = one did, false = every online
+     * runner reported none (its LOCAL_LOGIN jobs would fail), null = not reported (older controllers) or none online.
+     */
+    val claudeLogin: Boolean? = null,
+    /** ADR 0050 step 3: the coding agents the online runners reported. */
+    val harnesses: List<String> = emptyList(),
+) {
     val exists: Boolean get() = pools > 0
 }
 enum class SpecKitPhase { SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT }

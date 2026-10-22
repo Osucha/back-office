@@ -133,9 +133,18 @@ class AgentJobService(
     /** ADR 0046: shared pools (every pool without an owner) and [userId]'s personal pool, with their online runners. */
     override fun executionTargets(userId: UUID?): List<ExecutionTarget> {
         val all = pools.findAll()
-        val online = lifecycle.onlineRunnersByPool()
-        fun target(kind: RunnerTarget, of: List<RunnerPool>) =
-            ExecutionTarget(kind, of.size, of.sumOf { online[it.id] ?: 0 }, of.any { it.llmCredentials == LlmCredentials.LOCAL_LOGIN })
+        val onlineNodes = lifecycle.onlineRunners()
+        fun target(kind: RunnerTarget, of: List<RunnerPool>): ExecutionTarget {
+            val ids = of.map { it.id }.toSet()
+            val nodes = onlineNodes.filter { it.poolId in ids }
+            val reported = nodes.mapNotNull { it.claudeLogin }
+            // ADR 0050 step 3: true = a runner has a login, false = every reporting runner has none, null = unknown
+            val login = if (reported.any { it }) true else if (reported.isNotEmpty() && reported.size == nodes.size) false else null
+            return ExecutionTarget(
+                kind, of.size, nodes.size, of.any { it.llmCredentials == LlmCredentials.LOCAL_LOGIN }, login,
+                nodes.flatMap { it.harnesses.orEmpty() }.distinct(),
+            )
+        }
         return listOf(target(RunnerTarget.SHARED, all.filterNot { it.personal })) +
             (userId?.let { owner -> listOf(target(RunnerTarget.PERSONAL, all.filter { it.ownerUserId == owner })) } ?: emptyList())
     }

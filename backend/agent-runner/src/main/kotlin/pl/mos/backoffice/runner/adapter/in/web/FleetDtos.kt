@@ -37,7 +37,14 @@ data class RunnerConfigJson(
     val signingKeys: List<Map<String, Any?>>,
 )
 
-data class LeaseRequestJson(val maxJobs: Int? = null, val waitSeconds: Int? = null, val freeSlots: Int? = null)
+data class LeaseRequestJson(
+    val maxJobs: Int? = null,
+    val waitSeconds: Int? = null,
+    val freeSlots: Int? = null,
+    /** ADR 0050 step 3: the runner's coding agents and whether a Claude login is set (null = not reported). */
+    val harnesses: List<String>? = null,
+    val claudeLogin: Boolean? = null,
+)
 
 /**
  * openapi `AgentJobAssignment`. `spec` and `policy` are canonical JSON trees (keys sorted, no nulls) so

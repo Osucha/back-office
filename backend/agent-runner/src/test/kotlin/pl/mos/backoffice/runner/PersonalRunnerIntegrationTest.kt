@@ -57,6 +57,7 @@ class PersonalRunnerIntegrationTest {
     @Autowired lateinit var adminJobs: ManageAgentJobs
     @Autowired lateinit var runner: AgentJobService
     @Autowired lateinit var runnerAdmin: pl.mos.backoffice.runner.application.service.FleetAdminService
+    @Autowired lateinit var loginModels: RecordingLoginModels
 
     private lateinit var me: UUID
 
@@ -126,12 +127,31 @@ class PersonalRunnerIntegrationTest {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun lease(runnerToken: String): List<Map<String, Any?>> {
+    private fun lease(runnerToken: String, report: String = ""): List<Map<String, Any?>> {
         val text = mvc.perform(
             post("/api/v1/runner/v2/jobs/lease").header("Authorization", "Bearer $runnerToken")
-                .contentType(MediaType.APPLICATION_JSON).content("""{"maxJobs":5,"waitSeconds":0}"""),
+                .contentType(MediaType.APPLICATION_JSON).content("""{"maxJobs":5,"waitSeconds":0$report}"""),
         ).andExpect(status().isOk).andReturn().response.contentAsString
         return json.readValue(text, List::class.java) as List<Map<String, Any?>>
+    }
+
+    @Test
+    fun `a runner reports its coding agents and Claude login with the lease, the first login creates the owner's login models (ADR 0050)`() {
+        personal.enable(LlmCredentials.LOCAL_LOGIN)
+        val runnerToken = registerPersonal()
+        fun target() = runner.executionTargets(me).single { it.target == pl.mos.backoffice.shared.runner.RunnerTarget.PERSONAL }
+
+        lease(runnerToken)
+        assertThat(target().claudeLogin).describedAs("not reported").isNull()
+
+        lease(runnerToken, ""","harnesses":["OPENCODE","CLAUDE_CODE"],"claudeLogin":false""")
+        assertThat(target().let { it.claudeLogin to it.harnesses }).isEqualTo(false to listOf("OPENCODE", "CLAUDE_CODE"))
+        assertThat(loginModels.users).doesNotContain(me)
+
+        lease(runnerToken, ""","harnesses":["OPENCODE","CLAUDE_CODE"],"claudeLogin":true""")
+        lease(runnerToken, ""","harnesses":["OPENCODE","CLAUDE_CODE"],"claudeLogin":true""")
+        assertThat(target().claudeLogin).isTrue()
+        assertThat(loginModels.users.filter { it == me }).describedAs("once, when the login appears").hasSize(1)
     }
 
     @Test

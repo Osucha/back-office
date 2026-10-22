@@ -152,7 +152,7 @@ class BenchmarkController(private val benchmarks: ManageBenchmarks, private val 
         }
 
     @GetMapping("/execution-targets")
-    fun executionTargets(): List<ExecutionTargetDto> = benchmarks.executionTargets().map { ExecutionTargetDto(it.target, it.pools, it.onlineRunners, it.localLogin) }
+    fun executionTargets(): List<ExecutionTargetDto> = benchmarks.executionTargets().map { ExecutionTargetDto(it.target, it.pools, it.onlineRunners, it.localLogin, it.claudeLogin, it.harnesses) }
 
     @PostMapping
     fun create(@RequestBody body: BenchmarkInputDto): ResponseEntity<BenchmarkDto> {

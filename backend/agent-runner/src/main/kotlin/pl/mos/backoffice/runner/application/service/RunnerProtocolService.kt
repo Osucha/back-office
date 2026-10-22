@@ -8,6 +8,7 @@ import pl.mos.backoffice.runner.application.port.`in`.RunnerConfigView
 import pl.mos.backoffice.runner.application.port.`in`.RunnerFleetProtocol
 import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistration
 import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistrationRequest
+import pl.mos.backoffice.runner.application.port.`in`.RunnerReport
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
 import pl.mos.backoffice.runner.application.port.out.RegistrationTokenStore
 import pl.mos.backoffice.runner.application.port.out.RunnerNodeStore
@@ -17,7 +18,9 @@ import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.FleetTokens
 import pl.mos.backoffice.runner.domain.JobCompletionReport
+import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.runner.domain.RunnerNode
+import pl.mos.backoffice.runner.domain.RunnerPool
 import pl.mos.backoffice.runner.domain.WorkspaceSync
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.InvalidStateException
@@ -27,6 +30,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.BudgetRefusals
+import pl.mos.backoffice.shared.llm.PersonalLoginModels
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
@@ -53,7 +57,10 @@ class RunnerProtocolService(
     private val signingKeys: () -> List<Map<String, Any?>>,
     /** Hard budget stops the LLM gateway applied (ADR 0025): a failed job they explain is tagged `budget-exceeded`. */
     private val budgetRefusals: BudgetRefusals = BudgetRefusals.NONE,
+    /** ADR 0050 step 3: creates the owner's Claude Code login models when their personal runner reports a login; null = none. */
+    private val loginModels: PersonalLoginModels? = null,
 ) : RunnerFleetProtocol {
+    private val log = org.slf4j.LoggerFactory.getLogger(RunnerProtocolService::class.java)
 
     @SystemOperation("runner-controller registration, authenticated by a single-use bo_rrt_ token")
     override fun register(request: RunnerRegistrationRequest): RunnerRegistration {
@@ -101,9 +108,24 @@ class RunnerProtocolService(
         return RunnerConfigView(pool.id, ceiling, pool.allowedImages, pool.warmPoolSize, lifecycle.settings.gateway, signingKeys())
     }
 
+    /**
+     * ADR 0050 step 3: keeps what the runner reported; when the runner of a personal LOCAL_LOGIN pool reports a login for
+     * the first time, its owner gets the Claude Code login model profiles. A failure there never blocks the lease.
+     */
+    private fun record(runner: RunnerNode, pool: RunnerPool, report: RunnerReport) {
+        if (report.harnesses == runner.harnesses && report.claudeLogin == runner.claudeLogin) return
+        nodes.report(runner.id, report.harnesses, report.claudeLogin)
+        val owner = pool.ownerUserId
+        if (report.claudeLogin == true && runner.claudeLogin != true && owner != null && pool.llmCredentials == LlmCredentials.LOCAL_LOGIN) {
+            runCatching { loginModels?.ensure(owner) }
+                .onFailure { log.warn("could not create the Claude Code login models of user {}: {}", owner, it.toString()) }
+        }
+    }
+
     @SystemOperation("lease of queued jobs of the runner's own pool")
-    override fun lease(runner: RunnerNode, maxJobs: Int, freeSlots: Int?): List<LeasedJob> = tx.inTransaction {
+    override fun lease(runner: RunnerNode, maxJobs: Int, freeSlots: Int?, report: RunnerReport?): List<LeasedJob> = tx.inTransaction {
         val pool = pools.find(runner.poolId) ?: return@inTransaction emptyList()
+        if (report != null) record(runner, pool, report)
         val capacity = minOf(
             maxJobs.coerceIn(1, MAX_JOBS_PER_LEASE),
             freeSlots ?: Int.MAX_VALUE,
