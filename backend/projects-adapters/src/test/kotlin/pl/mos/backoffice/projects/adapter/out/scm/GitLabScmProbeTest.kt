@@ -32,7 +32,7 @@ class GitLabScmProbeTest {
     private val server = WireMockServer(wireMockConfig().dynamicPort()).also { it.start() }
     private val cipher = AesGcmSecretCipher(SecretsProperties(key = Base64.getEncoder().encodeToString(ByteArray(32) { 7 }), keyId = "k1"))
     private val probe = GitLabScmProbe(cipher, JsonMapper.builder().build())
-    private val token = "glpat-reader"
+    private val token = "tkn-reader"
     private val basic = "Basic " + Base64.getEncoder().encodeToString("oauth2:$token".toByteArray())
     private val repository get() = GitRepository("main", "http://localhost:${server.port()}/group/app.git", "main", primary = true)
 

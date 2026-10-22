@@ -14,25 +14,16 @@ export function forShell(command: string, shell: Shell): string {
   return shell === 'powershell' ? command.replace(/ \\\n/g, ' `\n') : command;
 }
 
-/** Commands that prepare the variables the docker run command passes by name (`-e NAME`). */
+/**
+ * Commands that prepare the variables the docker run command passes by name (`-e NAME`): only the Claude login.
+ * Git tokens are no longer set on the runner (ADR 0051): the project's repository tokens reach each job sealed.
+ * Empty when there is nothing to prepare.
+ */
 export function setupCommands(shell: Shell, localLogin: boolean): string {
-  const lines: string[] = [];
-  if (shell === 'powershell') {
-    if (localLogin)
-      lines.push('claude setup-token', '$env:CLAUDE_CODE_OAUTH_TOKEN = "<token printed above>"');
-    lines.push(
-      '$env:BO_GIT_TOKEN_READ = "<read-only git token>"',
-      '$env:BO_GIT_TOKEN_PUSH = "<git token that may push>"',
-    );
-  } else {
-    if (localLogin)
-      lines.push('claude setup-token', 'export CLAUDE_CODE_OAUTH_TOKEN="<token printed above>"');
-    lines.push(
-      'export BO_GIT_TOKEN_READ="<read-only git token>"',
-      'export BO_GIT_TOKEN_PUSH="<git token that may push>"',
-    );
-  }
-  return lines.join('\n');
+  if (!localLogin) return '';
+  return shell === 'powershell'
+    ? ['claude setup-token', '$env:CLAUDE_CODE_OAUTH_TOKEN = "<token printed above>"'].join('\n')
+    : ['claude setup-token', 'export CLAUDE_CODE_OAUTH_TOKEN="<token printed above>"'].join('\n');
 }
 
 /** Online runners first, then by name. */

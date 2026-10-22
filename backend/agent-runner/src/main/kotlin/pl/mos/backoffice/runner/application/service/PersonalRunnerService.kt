@@ -163,7 +163,7 @@ class PersonalRunnerService(
             // Back Office on this computer: its address is private, the egress proxy must be allowed to reach it
             if (local) add("-e RUNNER_EGRESS_ALLOW_RANGES=$PRIVATE_RANGES")
             if (pool.llmCredentials == LlmCredentials.LOCAL_LOGIN) add("-e CLAUDE_CODE_OAUTH_TOKEN")
-            add("-e BO_GIT_TOKEN_READ -e BO_GIT_TOKEN_PUSH")
+            // ADR 0051: no git tokens on the runner; the project's repository tokens are released sealed per job
             add(settings.controllerImage)
         }
         return lines.joinToString(" \\\n  ")

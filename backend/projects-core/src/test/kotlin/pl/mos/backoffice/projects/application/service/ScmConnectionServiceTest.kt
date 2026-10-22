@@ -47,7 +47,7 @@ class ScmConnectionServiceTest {
     private val member = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
     private fun service(gate: FakeAuthorizationGate = owner) = ScmConnectionService(store, projects, sealer, probe, gate, audit, Clock.SYSTEM)
 
-    private val token = "glpat-very-secret-read-token"
+    private val token = "tkn-very-secret-read-token"
     private val repo = project.repositories.single().key
     private val read = ScmConnectionCommand(repo, "CI reader", setOf(GIT_READ, CI_READ), token)
 
@@ -94,7 +94,7 @@ class ScmConnectionServiceTest {
         assertThat(audit.entries.last().operation).isEqualTo("SCM_CONNECTION_UPDATE")
 
         answer = answer.copy(gitPush = true, accessLevel = 30)
-        val rotated = service().update(project.id, created.id, read.copy(capabilities = setOf(GIT_READ, PUSH_BRANCH), token = "glpat-new")).connection
+        val rotated = service().update(project.id, created.id, read.copy(capabilities = setOf(GIT_READ, PUSH_BRANCH), token = "tkn-new")).connection
         assertThat(rotated.verification!!.status).isEqualTo(VerificationStatus.OK)
         assertThat(audit.entries.last().operation).isEqualTo("SCM_CONNECTION_ROTATE")
         assertThat(audit.entries.last().details).containsEntry("token", "replaced")

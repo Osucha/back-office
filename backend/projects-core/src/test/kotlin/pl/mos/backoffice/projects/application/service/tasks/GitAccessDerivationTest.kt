@@ -1,5 +1,15 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.domain.model.ScmCapability
+import pl.mos.backoffice.projects.domain.model.ScmConnectionId
+import pl.mos.backoffice.projects.domain.model.ScmConnection
+import pl.mos.backoffice.projects.domain.model.ScmProvider
+import pl.mos.backoffice.projects.domain.model.ScmVerification
+import pl.mos.backoffice.projects.domain.model.SealedSecret
+import pl.mos.backoffice.projects.domain.model.VerificationStatus
+import pl.mos.backoffice.projects.domain.model.ProjectId
+import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
+import pl.mos.backoffice.shared.runner.JobCredentialRef
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
@@ -96,6 +106,45 @@ class GitAccessDerivationTest {
         val refused = support.run(context(noCode), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
         assertThat(refused.failed).isTrue()
         assertThat(runner.specs).hasSize(1)
+    }
+
+    @Test
+    fun `ADR 0051 - each repository gets the least privileged fitting project token by name, never a push token for reading`() {
+        val now = java.time.Instant.now()
+        fun token(name: String, caps: Set<ScmCapability>, powers: List<String> = emptyList(), status: VerificationStatus = VerificationStatus.OK) =
+            ScmConnection(
+                ScmConnectionId.new(), project.id, "main", name, ScmProvider.GITLAB, caps,
+                SealedSecret("k1", "w", "c"), null,
+                ScmVerification(status, now, null, null, null, null, caps, emptySet(), powers, emptyList()),
+                now, Actor.SYSTEM, now, Actor.SYSTEM,
+            )
+        val read = token("reader", setOf(ScmCapability.GIT_READ, ScmCapability.CI_READ))
+        val push = token("pusher", setOf(ScmCapability.GIT_READ, ScmCapability.PUSH_BRANCH), listOf("git push"))
+        val tokens = object : ScmConnectionRepository {
+            var rows = listOf(read, push)
+            override fun save(connection: ScmConnection) = connection
+            override fun findById(id: ScmConnectionId) = rows.firstOrNull { it.id == id }
+            override fun findByProject(projectId: ProjectId) = rows.filter { it.projectId == projectId }
+            override fun findAll() = rows
+            override fun delete(id: ScmConnectionId) = Unit
+            override fun replaceSecret(id: ScmConnectionId, expected: SealedSecret, replacement: SealedSecret) = false
+        }
+        val withTokens = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30), scmConnections = tokens)
+        fun specOf(config: Map<String, Any?>): RunnerJobSpec {
+            withTokens.run(context(), task(TaskExecutor.IMPLEMENT, config), RunnerMode.IMPLEMENT, null, "x")
+            return runner.specs.last()
+        }
+        val key = project.repositories.single().key
+        assertThat(specOf(mapOf("push" to false)).credentials.single()).isEqualTo(JobCredentialRef(read.id.toString(), key, "GIT_READ"))
+        assertThat(specOf(emptyMap()).credentials.single()).isEqualTo(JobCredentialRef(push.id.toString(), key, "PUSH_BRANCH"))
+        // only a push token: a READ job gets no project token (the pool's own read token is used instead)
+        tokens.rows = listOf(push)
+        assertThat(specOf(mapOf("push" to false)).credentials).isEmpty()
+        // a token whose test failed is never chosen
+        tokens.rows = listOf(token("broken", setOf(ScmCapability.GIT_READ, ScmCapability.PUSH_BRANCH), status = VerificationStatus.FAILED))
+        assertThat(specOf(emptyMap()).credentials).isEmpty()
+        // the spec only names the token, it never carries a value
+        assertThat(runner.specs.last().toString()).doesNotContain("SealedSecret")
     }
 
     @Test

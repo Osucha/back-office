@@ -74,7 +74,7 @@ class KubernetesSupport(
             .endMetadata()
             .withType("Opaque")
             .withImmutable(true)
-            .withStringData<String, String>(request.bundle.files(proxyUrl))
+            .withStringData<String, String>(request.bundle.files(proxyUrl) + request.projectTokens.secretEntries())
             .build()
         return client.secrets().inNamespace(namespace).resource(secret).create()
     }
@@ -116,6 +116,8 @@ class KubernetesSupport(
     fun gitTokenFiles(request: LaunchRequest): Map<String, String> = buildMap {
         gitToken(request.gitCredential)?.let { put("${PodSpecRenderer.GIT_DIR}/token", it) }
         request.repositoryTokens.forEach { repo -> gitToken(repo.credential)?.let { put("${PodSpecRenderer.GIT_DIR}/${repo.key}/token", it) } }
+        // ADR 0051: project tokens released for this job
+        putAll(request.projectTokens.files(PodSpecRenderer.GIT_DIR))
     }
 
     fun deleteJobSecret(jobId: String) {

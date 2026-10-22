@@ -33,6 +33,9 @@ interface RunnerNodeStore {
 
     /** ADR 0050 step 3: stores what the runner reported with its lease. */
     fun report(id: UUID, harnesses: List<String>?, claudeLogin: Boolean?)
+
+    /** ADR 0051: the controller's public key for sealed credentials. */
+    fun setPublicKey(id: UUID, publicKey: String, at: Instant)
 }
 
 interface RegistrationTokenStore {
@@ -78,6 +81,9 @@ interface AgentJobStore {
 
     /** Sets (or with null clears) the hash of the job's current `bo_job_` token. */
     fun setTokenHash(id: RunnerJobId, hash: String?)
+
+    /** ADR 0051: marks the job's tokens released for its current lease; false when they already were. */
+    fun markCredentialsReleased(id: RunnerJobId, at: Instant): Boolean
 
     fun findJobByTokenHash(hash: String): AgentJob?
 

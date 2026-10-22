@@ -46,6 +46,12 @@ class FakeBackOffice(bindHost: String = "127.0.0.1") : AutoCloseable {
     val heartbeatStatus = java.util.concurrent.ConcurrentHashMap<String, Int>()
     val registered = AtomicBoolean(false)
 
+    /** ADR 0051: the public key the controller registered, and the project tokens per job: ref -> (repository, token). */
+    @Volatile var runnerPublicKey: String? = null
+    val projectTokens = java.util.concurrent.ConcurrentHashMap<String, Map<String, Pair<String, String>>>()
+    /** ADR 0051: seal with this associated data instead of the real one (a tampered answer). */
+    @Volatile var credentialAad: String? = null
+
     /** Host name under which sandboxes reach this server (e.g. `host.docker.internal`). */
     var publicHost: String = bindHost
     var ceiling: Map<String, Any?> = mapOf("isolation" to "STANDARD", "resources" to mapOf("cpu" to "2", "memory" to "4Gi"), "timeoutSeconds" to 3600)
@@ -187,6 +193,29 @@ class FakeBackOffice(bindHost: String = "127.0.0.1") : AutoCloseable {
                     TimeUnit.MILLISECONDS.sleep(50)
                 }
                 respond(ex, 200, out)
+            }
+            path == "/api/v1/runner/v2/key" && call.method == "PUT" -> {
+                runnerPublicKey = json.readTree(body).get("publicKey").asString()
+                respond(ex, 204, null)
+            }
+            path.endsWith("/credentials") -> {
+                val jobId = path.split("/")[6]
+                val key = runnerPublicKey ?: return respond(ex, 409, mapOf("title" to "no public key"))
+                val expiresAt = Instant.now().plusSeconds(120).toString()
+                val hpke = org.bouncycastle.crypto.hpke.HPKE(
+                    org.bouncycastle.crypto.hpke.HPKE.mode_base, org.bouncycastle.crypto.hpke.HPKE.kem_X25519_SHA256,
+                    org.bouncycastle.crypto.hpke.HPKE.kdf_HKDF_SHA256, org.bouncycastle.crypto.hpke.HPKE.aead_AES_GCM256,
+                )
+                val recipient = hpke.deserializePublicKey(java.util.Base64.getDecoder().decode(key))
+                val sealed = projectTokens[jobId].orEmpty().map { (ref, value) ->
+                    val aad = credentialAad ?: "$jobId|$ref|$expiresAt"
+                    val r = hpke.seal(recipient, "back-office credentials v1".toByteArray(), aad.toByteArray(), value.second.toByteArray(), null, null, null)
+                    mapOf(
+                        "ref" to ref, "repository" to value.first, "capability" to "GIT_READ",
+                        "enc" to java.util.Base64.getEncoder().encodeToString(r[1]), "ciphertext" to java.util.Base64.getEncoder().encodeToString(r[0]),
+                    )
+                }
+                respond(ex, 200, mapOf("expiresAt" to expiresAt, "credentials" to sealed))
             }
             path.endsWith("/heartbeat") -> {
                 val jobId = path.split("/")[6]

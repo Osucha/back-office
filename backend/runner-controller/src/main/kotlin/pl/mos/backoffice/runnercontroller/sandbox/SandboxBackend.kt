@@ -48,7 +48,30 @@ data class LaunchRequest(
      * one; null = throwaway. Set only when the backend [SandboxBackend.supportsWorkspaces].
      */
     val workspace: String? = null,
+    /**
+     * ADR 0051: project repository tokens Back Office released sealed for this job (opened by the controller), by
+     * repository key ("" = the legacy single repository). They take the place of [repositoryTokens] / [gitCredential]
+     * for those repositories and are delivered the same way: `git/<key>/token` (or `git/token`).
+     */
+    val projectTokens: ProjectTokens = ProjectTokens.NONE,
 )
+
+/** ADR 0051: opened project repository tokens of one job; never printed. */
+class ProjectTokens(val byRepository: Map<String, String>) {
+    /** Keys of the per-job Kubernetes Secret: `scm-legacy` and `scm-repo-<key>`, moved to the git volume by the init container. */
+    fun secretEntries(): Map<String, String> = byRepository.mapKeys { (key, _) -> if (key.isEmpty()) SECRET_LEGACY else SECRET_PREFIX + key }
+
+    /** Files under the git directory: `token` (legacy) or `<key>/token`. */
+    fun files(gitDir: String): Map<String, String> = byRepository.mapKeys { (key, _) -> if (key.isEmpty()) "$gitDir/token" else "$gitDir/$key/token" }
+
+    override fun toString() = "ProjectTokens(${byRepository.keys})"
+
+    companion object {
+        val NONE = ProjectTokens(emptyMap())
+        const val SECRET_LEGACY = "scm-legacy"
+        const val SECRET_PREFIX = "scm-repo-"
+    }
+}
 
 /**
  * Files under `/var/run/backoffice/job/` (runner: `RUNNER_JOB_DIR`):

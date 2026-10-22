@@ -22,6 +22,7 @@ import pl.mos.backoffice.shared.platform.WorkRequest
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.JobMergeRequest
+import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.shared.runner.JobRepository
 import pl.mos.backoffice.shared.runner.RepoResult
 import pl.mos.backoffice.shared.runner.RunnerMode
@@ -210,6 +211,8 @@ data class RunnerJobSpecJson(
     val commitSubject: String? = null,
     val featureDescription: String? = null,
     val acceptance: AcceptanceJson? = null,
+    /** ADR 0051: absent when the job uses the runner pool's tokens (older specs keep their digests). */
+    val credentials: List<JobCredentialRefJson>? = null,
 ) {
     companion object {
         fun of(spec: RunnerJobSpec) = RunnerJobSpecJson(
@@ -236,9 +239,13 @@ data class RunnerJobSpecJson(
             commitSubject = spec.commitSubject,
             featureDescription = spec.featureDescription,
             acceptance = spec.acceptance?.let { AcceptanceJson(it.files, it.protectedPaths, it.requireChanges) },
+            credentials = spec.credentials.takeIf { it.isNotEmpty() }?.map { JobCredentialRefJson(it.ref, it.repository, it.capability) },
         )
     }
 }
+
+/** ADR 0051: `RunnerJobSpec.credentials` (names of project repository tokens, never values). */
+data class JobCredentialRefJson(val ref: String, val repository: String, val capability: String)
 
 /** ADR 0047: `RunnerJobSpec.acceptance`. */
 data class AcceptanceJson(
@@ -495,5 +502,6 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         commitSubject = commitSubject,
         featureDescription = featureDescription,
         acceptance = acceptance?.let { RunnerAcceptance(it.files, it.protectedPaths, it.requireChanges) },
+        credentials = credentials.orEmpty().map { JobCredentialRef(it.ref, it.repository, it.capability) },
     )
 }

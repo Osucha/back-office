@@ -79,6 +79,7 @@ class JobSupervisorTest {
     private val supervisor = JobSupervisor(
         props, client, backend, registry, PolicyResolver(PolicyDefaults(image = "back-office/runner:dev")), json, meters,
         env = { controllerEnv[it] },
+        keys = { holder.keys },
     )
 
     private val spec = mapOf(
@@ -89,8 +90,10 @@ class JobSupervisorTest {
     )
     private val policy = mapOf("network" to mapOf("allow" to listOf("registry.npmjs.org")), "tools" to mapOf("deny" to listOf("curl *")))
 
+    private val credentialsFile = Files.createTempDirectory("rc").resolve("creds.json")
+
     private fun register() {
-        val store = FileCredentialStore(Files.createTempDirectory("rc").resolve("creds.json"), json)
+        val store = FileCredentialStore(credentialsFile, json)
         RunnerRegistrar(client, store, holder).ensureRegistered(bo.registrationToken, "test", "dev", null, RunnerCapabilities(listOf(BackendKind.K8S_JOB), emptyList(), 2))
         supervisor.bootstrap()
     }
@@ -99,6 +102,52 @@ class JobSupervisorTest {
 
     @AfterEach
     fun close() = bo.close()
+
+    /** ADR 0051: a multi-repository spec naming one project token. */
+    private val sealedSpec = spec - "repository" + mapOf(
+        "repositories" to listOf(mapOf("key" to "main", "url" to "https://gitlab.example.com/g/app.git", "baseBranch" to "main", "access" to "READ", "primary" to true)),
+        "credentials" to listOf(mapOf("ref" to "ref-1", "repository" to "main", "capability" to "GIT_READ")),
+    )
+
+    @Test
+    fun `project tokens named in the signed spec are fetched sealed, opened with the controller's key and delivered instead of the pool's`() {
+        controllerEnv["BO_GIT_TOKEN_READ"] = "tkn-pool-read"
+        register()
+        val stored = json.readTree(Files.readString(credentialsFile))
+        assertThat(stored.get("publicKey").asString()).isEqualTo(bo.runnerPublicKey).isEqualTo(holder.keys!!.publicKey)
+        assertThat(stored.get("privateKey").asString()).isNotBlank()
+        // a restart keeps the key pair and registers the same public key again
+        val holder2 = RunnerTokenHolder()
+        RunnerRegistrar(BackOfficeClient(bo.url, json, holder2::token), FileCredentialStore(credentialsFile, json), holder2)
+            .ensureRegistered(bo.registrationToken, "n", "v", null, RunnerCapabilities(emptyList(), emptyList(), 1))
+        assertThat(holder2.keys!!.publicKey).isEqualTo(holder.keys!!.publicKey)
+
+        val jobId = bo.enqueue(sealedSpec, policy)
+        bo.projectTokens[jobId] = mapOf("ref-1" to ("main" to "tkn-project-read"))
+        leaseOnce()
+        val launched = backend.launched.getValue(jobId)
+        assertThat(launched.projectTokens.byRepository).containsExactlyEntriesOf(mapOf("main" to "tkn-project-read"))
+        assertThat(launched.repositoryTokens).isEmpty() // the pool's token is not used for this repository
+        assertThat(launched.toString()).doesNotContain("tkn-project-read")
+        assertThat(bo.calls.single { it.path.endsWith("/$jobId/credentials") }.body).doesNotContain("tkn-")
+    }
+
+    @Test
+    fun `a tampered or incomplete release fails the job before a sandbox starts`() {
+        register()
+        val tampered = bo.enqueue(sealedSpec, policy)
+        bo.projectTokens[tampered] = mapOf("ref-1" to ("main" to "tkn-project-read"))
+        bo.credentialAad = "another-job|ref-1|2026-10-22T12:00:00Z"
+        leaseOnce()
+        assertThat(backend.launched).doesNotContainKey(tampered)
+        assertThat(bo.completionOf(tampered)!!.get("reason").asString()).startsWith("credentials:").contains("does not open")
+
+        bo.credentialAad = null
+        val missing = bo.enqueue(sealedSpec, policy)
+        leaseOnce()
+        assertThat(backend.launched).doesNotContainKey(missing)
+        assertThat(bo.completionOf(missing)!!.get("reason").asString()).contains("no token released for repositories [main]")
+    }
 
     @Test
     fun `registration is persisted and reused`() {

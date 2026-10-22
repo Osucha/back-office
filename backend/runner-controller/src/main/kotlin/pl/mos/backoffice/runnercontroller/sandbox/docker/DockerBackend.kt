@@ -104,6 +104,14 @@ class DockerBackend(
             allowSandboxToDelete(repoDir)
             Files.writeString(repoDir.resolve("token"), token)
         }
+        // ADR 0051: project tokens released for this job (opened by the controller) replace the controller's own
+        request.projectTokens.byRepository.forEach { (key, token) ->
+            val file = if (key.isEmpty()) gitDir.resolve("token") else {
+                require(JobRepositories.KEY.matches(key)) { "invalid repository key $key" }
+                Files.createDirectories(gitDir.resolve(key)).also(::allowSandboxToDelete).resolve("token")
+            }
+            Files.writeString(file, token)
+        }
         val acl = EgressAcl.forSingleJob(AclService(jobId, request.poolId, request.policy.egressHosts))
         val aclFile = dir.resolve("acl.yaml")
         Files.writeString(aclFile, EgressAcl.toYaml(acl))

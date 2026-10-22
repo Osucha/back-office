@@ -149,7 +149,7 @@ describe('ScmConnectionEditorComponent (ADR 0051)', () => {
     expect(Object.keys(c.shown()).sort()).toEqual(['name', 'token']);
 
     c.set('name', 'Reader');
-    c.set('token', 'glpat-1');
+    c.set('token', 'tkn-1');
     c.toggle('CI_READ', true);
     expect(c.recommended()).toEqual({ role: 'Reporter', scopes: ['read_repository', 'read_api'] });
 
@@ -168,7 +168,7 @@ describe('ScmConnectionEditorComponent (ADR 0051)', () => {
       provider: 'GITLAB',
       capabilities: ['GIT_READ', 'CI_READ'],
       secretExpiresAt: null,
-      token: 'glpat-1',
+      token: 'tkn-1',
     });
     req.flush(reader);
     expect(c.result()?.id).toBe('r');
@@ -190,11 +190,11 @@ describe('ScmConnectionEditorComponent (ADR 0051)', () => {
     const c = open('rotate', pusher);
     c.save();
     expect(Object.keys(c.shown())).toEqual(['token']);
-    c.set('token', 'glpat-2');
+    c.set('token', 'tkn-2');
     c.save();
     const req = http.expectOne('/api/v1/projects/p1/scm-connections/w');
     expect(req.request.method).toBe('PUT');
-    expect(req.request.body.token).toBe('glpat-2');
+    expect(req.request.body.token).toBe('tkn-2');
     expect(req.request.body.name).toBe('Pusher');
     req.flush(pusher);
   });

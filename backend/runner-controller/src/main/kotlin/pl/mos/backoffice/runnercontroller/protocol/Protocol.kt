@@ -61,6 +61,14 @@ data class LeaseRequest(
 )
 
 /** ADR 0044: `POST /runner/v2/workspaces/sync`: what the controller holds, and what it deletes. */
+/** ADR 0051: `PUT /runner/v2/key`. */
+data class RunnerPublicKey(val publicKey: String)
+
+/** ADR 0051: answer of `POST /runner/v2/jobs/{jobId}/credentials`. */
+data class JobCredentials(val expiresAt: String = "", val credentials: List<SealedJobCredential> = emptyList())
+
+data class SealedJobCredential(val ref: String = "", val repository: String = "", val capability: String = "", val enc: String = "", val ciphertext: String = "")
+
 data class WorkspaceSync(val held: List<String>)
 
 data class WorkspaceSyncResult(val release: List<String> = emptyList())

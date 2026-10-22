@@ -149,6 +149,8 @@ data class RunnerNode(
     val harnesses: List<String>? = null,
     /** ADR 0050 step 3: whether a Claude login is set for personal-runner jobs; null = not reported. */
     val claudeLogin: Boolean? = null,
+    /** ADR 0051: the controller's X25519 public key (base64, 32 bytes) tokens are sealed to; null = none registered. */
+    val publicKey: String? = null,
 ) {
     fun online(now: Instant, window: Duration): Boolean = revokedAt == null && !lastSeenAt.isBefore(now.minus(window))
 }

@@ -16,7 +16,9 @@ describe('personal runner', () => {
     expect(setupCommands('bash', true)).toContain('export CLAUDE_CODE_OAUTH_TOKEN=');
     expect(setupCommands('powershell', true)).toContain('$env:CLAUDE_CODE_OAUTH_TOKEN');
     expect(setupCommands('bash', false)).not.toContain('CLAUDE_CODE_OAUTH_TOKEN');
-    expect(setupCommands('powershell', false)).toContain('$env:BO_GIT_TOKEN_READ');
+    // ADR 0051: no git tokens on the runner any more
+    expect(setupCommands('powershell', false)).toBe('');
+    expect(setupCommands('bash', true)).not.toContain('BO_GIT_TOKEN');
   });
 
   it('lists online runners first', () => {

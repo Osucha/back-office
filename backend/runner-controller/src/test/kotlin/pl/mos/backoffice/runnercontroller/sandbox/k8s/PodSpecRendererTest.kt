@@ -102,6 +102,8 @@ class PodSpecRendererTest {
         Files.writeString(p(PodSpecRenderer.JOB_SECRET_DIR).resolve("spec.json"), "{}")
         Files.createDirectories(p(PodSpecRenderer.JOB_DIR))
         Files.createDirectories(p(PodSpecRenderer.GIT_DIR))
+        // ADR 0051: project tokens arrive in the job Secret and move to the git volume (they win over a mounted Secret)
+        Files.writeString(p(PodSpecRenderer.JOB_SECRET_DIR).resolve("scm-repo-api"), "tkn-project")
         for ((key, token) in listOf("docs" to "glpat-docs", "src" to "glpat-src")) {
             Files.createDirectories(p("${PodSpecRenderer.REPO_SECRET_DIR}/$key"))
             Files.writeString(p("${PodSpecRenderer.REPO_SECRET_DIR}/$key/token"), token)
@@ -117,6 +119,8 @@ class PodSpecRendererTest {
         assertThat(p(PodSpecRenderer.GIT_DIR).resolve("token")).doesNotExist()
         assertThat(p(PodSpecRenderer.GIT_DIR).resolve("empty")).doesNotExist()
         assertThat(p(PodSpecRenderer.JOB_DIR).resolve("spec.json")).exists()
+        assertThat(Files.readString(p(PodSpecRenderer.GIT_DIR).resolve("api/token"))).isEqualTo("tkn-project")
+        assertThat(p(PodSpecRenderer.JOB_DIR).resolve("scm-repo-api")).doesNotExist()
     }
 
     @Test

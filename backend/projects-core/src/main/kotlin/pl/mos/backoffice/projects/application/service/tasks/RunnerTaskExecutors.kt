@@ -1,5 +1,11 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
+import pl.mos.backoffice.projects.domain.model.ProjectId
+import pl.mos.backoffice.projects.domain.model.ScmCapability
+import pl.mos.backoffice.projects.domain.model.ScmConnection
+import pl.mos.backoffice.projects.domain.model.ScmConnectionSelector
+import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
@@ -87,6 +93,8 @@ class RunnerTaskSupport(
     private val librarySources: LibrarySourceRepository? = null,
     /** ADR 0044: run workspaces of projects; null = none (tests). */
     private val projectWorkspaces: ProjectWorkspaceRepository? = null,
+    /** ADR 0051: tokens of project repositories; null = none (tests), jobs then use the runner pool's tokens. */
+    private val scmConnections: ScmConnectionRepository? = null,
 ) {
     private data class Plan(
         val spec: RunnerJobSpec,
@@ -200,6 +208,7 @@ class RunnerTaskSupport(
                 primary = r.primary,
             )
         }
+        val credentials = credentialsOf(project.id, jobRepositories)
         val primaryPushes = primary?.access == GitAccess.PUSH_MR
         // legacy mirror of the primary entry for runners older than ADR 0034; none for an empty workspace
         val repository = primary?.let {
@@ -239,6 +248,7 @@ class RunnerTaskSupport(
             commitSubject = UntrustedText.sanitize(renderer.renderText(config.string("commitSubjectTemplate") ?: DEFAULT_COMMIT_SUBJECT, model), MAX_COMMIT_SUBJECT)
                 .lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotBlank() && !it.startsWith(":") },
             featureDescription = user.text.takeIf { mode == RunnerMode.SPEC_KIT && it.isNotBlank() },
+            credentials = credentials.map { it.first },
         )
         if (logWarnings) {
             workspace?.let { w ->
@@ -249,8 +259,33 @@ class RunnerTaskSupport(
                 )
             }
             jobRepositories.forEach { r -> context.log("repository ${r.key} (/workspace/${r.path}${if (r.primary) ", primary" else ""}): git access ${r.access}, ${describe(r.access)}") }
+            jobRepositories.filter { it.access != GitAccess.NONE }.forEach { r ->
+                val token = credentials.firstOrNull { it.first.repository == r.key }?.second
+                context.log(
+                    "repository ${r.key}: " + (token?.let { "project token \"${it.name}\" (${credentials.first { c -> c.second == it }.first.capability}), delivered sealed to the runner" }
+                        ?: "no fitting project token, the runner pool's own token is used (deprecated, ADR 0051)"),
+                )
+            }
         }
         return Plan(spec, profile, branch, push, repos)
+    }
+
+    /**
+     * ADR 0051: the least-privileged project token of each repository for its git access: READ only a verified
+     * read-only token (a push token is never handed to a job that only reads, ADR 0031), PUSH_MR one that may push.
+     * A repository without one gets nothing here and the runner pool's own token is used (deprecated fallback).
+     */
+    private fun credentialsOf(projectId: ProjectId, repos: List<JobRepository>): List<Pair<JobCredentialRef, ScmConnection>> {
+        val connections = scmConnections?.findByProject(projectId).orEmpty()
+        if (connections.isEmpty()) return emptyList()
+        return repos.mapNotNull { r ->
+            val (needed, readOnly) = when (r.access) {
+                GitAccess.READ -> ScmCapability.GIT_READ to true
+                GitAccess.PUSH_MR -> ScmCapability.PUSH_BRANCH to false
+                GitAccess.NONE -> return@mapNotNull null
+            }
+            ScmConnectionSelector.select(connections, r.key, setOf(needed), readOnly)?.let { JobCredentialRef(it.id.toString(), r.key, needed.name) to it }
+        }
     }
 
     /** ADR 0044: what the agent is told about the shared workspace and its session. */

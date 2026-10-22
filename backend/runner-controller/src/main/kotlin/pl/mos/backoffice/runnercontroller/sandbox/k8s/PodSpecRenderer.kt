@@ -228,7 +228,11 @@ class PodSpecRenderer(
         val BUNDLE_COPY_SCRIPT = "set -e; cp -L $JOB_SECRET_DIR/* $JOB_DIR/; " +
             "if [ -d $GIT_SECRET_DIR ]; then for f in $GIT_SECRET_DIR/*; do [ -e \"${'$'}f\" ] && cp -L \"${'$'}f\" $GIT_DIR/; done; fi; " +
             "if [ -d $REPO_SECRET_DIR ]; then for d in $REPO_SECRET_DIR/*; do k=\"${'$'}{d##*/}\"; " +
-            "[ -e \"${'$'}d/token\" ] && mkdir -p \"$GIT_DIR/${'$'}k\" && cp -L \"${'$'}d/token\" \"$GIT_DIR/${'$'}k/token\"; done; fi; exit 0"
+            "[ -e \"${'$'}d/token\" ] && mkdir -p \"$GIT_DIR/${'$'}k\" && cp -L \"${'$'}d/token\" \"$GIT_DIR/${'$'}k/token\"; done; fi; " +
+            // ADR 0051: project tokens travel in the job Secret (scm-legacy, scm-repo-<key>) and move to the git volume
+            "if [ -e $JOB_DIR/scm-legacy ]; then mv $JOB_DIR/scm-legacy $GIT_DIR/token; fi; " +
+            "for f in $JOB_DIR/scm-repo-*; do [ -e \"${'$'}f\" ] || continue; k=\"${'$'}{f##*/scm-repo-}\"; " +
+            "mkdir -p \"$GIT_DIR/${'$'}k\" && mv \"${'$'}f\" \"$GIT_DIR/${'$'}k/token\"; done; exit 0"
         const val WORKSPACE = "/workspace"
         const val RUNNER_UID = 10001L
 

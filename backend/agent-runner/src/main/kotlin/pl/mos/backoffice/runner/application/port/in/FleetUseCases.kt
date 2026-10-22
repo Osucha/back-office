@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.application.port.`in`
 
+import pl.mos.backoffice.runner.application.port.out.SealedCredential
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.JobCompletionReport
 import pl.mos.backoffice.runner.domain.LlmCredentials
@@ -252,7 +253,21 @@ interface RunnerFleetProtocol {
      * unknown or now held elsewhere. Rows of this runner whose volume is gone are forgotten (they start over).
      */
     fun syncWorkspaces(runner: RunnerNode, held: List<String>): List<String>
+
+    /** ADR 0051: registers (or replaces) the controller's X25519 public key for sealed credentials. */
+    fun setPublicKey(runner: RunnerNode, publicKey: String)
+
+    /**
+     * ADR 0051: the project repository tokens named in the job's signed spec, sealed to the runner's key; once per
+     * lease, only to the runner holding the lease while it is valid. Empty when the spec names none.
+     */
+    fun releaseCredentials(runner: RunnerNode, jobId: RunnerJobId): CredentialRelease
 }
+
+/** ADR 0051: sealed tokens of one job; [expiresAt] is part of every token's associated data. */
+data class CredentialRelease(val expiresAt: Instant, val credentials: List<ReleasedCredential>)
+
+data class ReleasedCredential(val ref: String, val repository: String, val capability: String, val sealed: SealedCredential)
 
 // ------------------------------------------------------------------------------------------------
 // Sandbox callbacks (the agent inside the sandbox, authenticated by its `bo_job_` token) - system operations

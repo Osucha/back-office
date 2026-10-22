@@ -108,6 +108,9 @@ class TestProblemHandler {
     fun integration(e: IntegrationException) = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, e.message)
 }
 
+/** ADR 0051: the tokens [RunnerTestBeans.repositoryTokenSource] knows (ref -> plaintext). */
+val REPOSITORY_TOKENS: MutableMap<String, String> = java.util.concurrent.ConcurrentHashMap()
+
 /** Shared kernel beans normally provided by other modules, plus a throw-away PostgreSQL. */
 @TestConfiguration(proxyBeanMethods = false)
 class RunnerTestBeans {
@@ -146,6 +149,11 @@ class RunnerTestBeans {
 
     @Bean
     fun blobStore(): InMemoryBlobStore = InMemoryBlobStore()
+
+    /** ADR 0051: project repository tokens by ref (the projects context in the app). */
+    @Bean
+    fun repositoryTokenSource(): pl.mos.backoffice.shared.runner.RepositoryTokenSource =
+        pl.mos.backoffice.shared.runner.RepositoryTokenSource { ref -> REPOSITORY_TOKENS[ref] }
 
     @Bean
     fun testProblemHandler() = TestProblemHandler()

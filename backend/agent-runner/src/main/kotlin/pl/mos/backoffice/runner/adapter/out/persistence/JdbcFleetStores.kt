@@ -133,7 +133,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
     // ================================================================ runners
 
     private val nodeColumns =
-        "id, pool_id, name, version, cluster, backends, runtime_classes, max_concurrent, registered_at, last_seen_at, revoked_at, harnesses, claude_login"
+        "id, pool_id, name, version, cluster, backends, runtime_classes, max_concurrent, registered_at, last_seen_at, revoked_at, harnesses, claude_login, public_key"
 
     private fun node(rs: ResultSet) = RunnerNode(
         id = rs.getObject("id", UUID::class.java),
@@ -149,6 +149,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
         revokedAt = rs.instant("revoked_at"),
         harnesses = rs.getString("harnesses")?.let { json.readValue(it, STRING_LIST) },
         claudeLogin = rs.getObject("claude_login") as Boolean?,
+        publicKey = rs.getString("public_key"),
     )
 
     override fun insert(node: RunnerNode, tokenHash: String) {
@@ -180,6 +181,13 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
 
     override fun revoke(id: UUID, at: Instant) {
         db.update("UPDATE runner SET revoked_at = :at WHERE id = :id AND revoked_at IS NULL", MapSqlParameterSource().addValue("id", id).addValue("at", at.ts()))
+    }
+
+    override fun setPublicKey(id: UUID, publicKey: String, at: Instant) {
+        db.update(
+            "UPDATE runner SET public_key = :key, public_key_set_at = :at WHERE id = :id",
+            MapSqlParameterSource().addValue("id", id).addValue("key", publicKey).addValue("at", at.ts()),
+        )
     }
 
     override fun report(id: UUID, harnesses: List<String>?, claudeLogin: Boolean?) {
@@ -368,6 +376,13 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
                 .addValue("cost", job.costUsd),
         )
     }
+
+    override fun markCredentialsReleased(id: RunnerJobId, at: Instant): Boolean = db.update(
+        // once per lease: a re-queued job leased again (leased_at later than the last release) may fetch again
+        "UPDATE agent_job SET credentials_released_at = :at WHERE id = :id " +
+            "AND (credentials_released_at IS NULL OR (leased_at IS NOT NULL AND credentials_released_at < leased_at))",
+        MapSqlParameterSource().addValue("id", id.value).addValue("at", at.ts()),
+    ) == 1
 
     override fun setTokenHash(id: RunnerJobId, hash: String?) {
         // a new lease (or the end of the job) also invalidates the gateway-only agent token of the previous one

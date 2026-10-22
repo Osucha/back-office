@@ -14,6 +14,8 @@ dependencies {
     implementation(libs.jackson.kotlin)
     implementation(libs.kotlin.reflect)
     implementation(libs.springdoc)
+    // ADR 0051: HPKE (RFC 9180) to seal project repository tokens to a runner-controller's key
+    implementation(libs.bouncycastle.prov)
 
     runtimeOnly(libs.postgresql)
     annotationProcessor(libs.spring.boot.configuration.processor)

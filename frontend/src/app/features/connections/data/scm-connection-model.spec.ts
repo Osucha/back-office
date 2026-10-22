@@ -148,7 +148,7 @@ describe('scm-connection-model (ADR 0051)', () => {
   });
 
   it('validates the draft and maps it to the request body', () => {
-    const d = { ...emptyScmDraft('api'), name: '  Reader ', token: ' glpat-1 ' };
+    const d = { ...emptyScmDraft('api'), name: '  Reader ', token: ' tkn-1 ' };
     expect(validateScmDraft(d, true, ['api'])).toEqual({});
     expect(Object.keys(validateScmDraft(emptyScmDraft(), true, ['api'])).sort()).toEqual([
       'name',
@@ -165,7 +165,7 @@ describe('scm-connection-model (ADR 0051)', () => {
       provider: 'GITLAB',
       capabilities: ['GIT_READ', 'CI_READ'],
       secretExpiresAt: null,
-      token: 'glpat-1',
+      token: 'tkn-1',
     });
     const keep = toScmInput({ ...d, token: '', secretExpiresAt: '2027-01-31' });
     expect('token' in keep).toBe(false);

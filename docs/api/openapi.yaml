@@ -306,6 +306,35 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkspaceSync' } } } }
       responses:
         '200': { description: Workspaces to delete, content: { application/json: { schema: { $ref: '#/components/schemas/WorkspaceSyncResult' } } } }
+  /runner/v2/key:
+    put:
+      tags: [runner-v2]
+      operationId: setRunnerPublicKey
+      security: [ { RunnerFleetToken: [] } ]
+      description: >-
+        ADR 0051: the controller's X25519 public key (base64 of the raw 32 bytes) the project repository tokens of its
+        jobs are sealed to. Sent on every start; idempotent; a new key replaces the old one (audited
+        `RUNNER_PUBLIC_KEY_SET`). The private key never leaves the controller.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RunnerPublicKey' } } } }
+      responses:
+        '204': { description: Stored }
+        '400': { $ref: '#/components/responses/Problem' }
+  /runner/v2/jobs/{jobId}/credentials:
+    parameters: [ { name: jobId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [runner-v2]
+      operationId: releaseJobCredentials
+      security: [ { RunnerFleetToken: [] } ]
+      description: >-
+        ADR 0051: the project repository tokens named in the job's signed spec (`credentials`), each sealed to the
+        runner's public key with HPKE (RFC 9180 base mode, DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-256-GCM, info
+        `back-office credentials v1`, associated data `<jobId>|<ref>|<expiresAt>`). Only for the runner holding the
+        job's lease while it is valid, and once per lease (409 otherwise, also when the runner has no key or a token no
+        longer exists). Fetched right before the sandbox starts; audited `RUNNER_CREDENTIALS_RELEASED`. Conformance
+        vector: docs/api/fixtures/sealed-credential-vector.json.
+      responses:
+        '200': { description: Sealed tokens (empty list when the spec names none), content: { application/json: { schema: { $ref: '#/components/schemas/JobCredentials' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
   /runner/v2/pools/{poolId}/queue:
     parameters: [ { name: poolId, in: path, required: true, schema: { type: string } } ]
     get:
@@ -5020,6 +5049,27 @@ components:
           properties:
             askTreatedAsDeny: { type: array, items: { type: string } }
             denials: { type: array, items: { type: object, properties: { tool: { type: string }, input: { type: string } } } }
+    RunnerPublicKey:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey: { type: string, description: base64 of the 32-byte raw X25519 public key }
+    JobCredentials:
+      type: object
+      required: [expiresAt, credentials]
+      properties:
+        expiresAt: { type: string, format: date-time, description: part of every token's associated data; the controller refuses the answer after it }
+        credentials:
+          type: array
+          items:
+            type: object
+            required: [ref, repository, capability, enc, ciphertext]
+            properties:
+              ref: { type: string }
+              repository: { type: string, description: 'repositories[].key of the spec ("" = the legacy single repository)' }
+              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH] }
+              enc: { type: string, description: HPKE encapsulated key, base64 }
+              ciphertext: { type: string, description: the sealed token, base64 }
     WorkspaceSync:
       type: object
       description: 'ADR 0044: the run workspaces a runner-controller holds.'
@@ -5119,6 +5169,21 @@ components:
             anthropicBaseUrl: { type: string }
             openaiBaseUrl: { type: string }
             apiBaseUrl: { type: string }
+        credentials:
+          type: array
+          nullable: true
+          description: >-
+            ADR 0051: project repository tokens of the job, by name only (never values): the controller fetches them
+            sealed with POST /runner/v2/jobs/{jobId}/credentials before the sandbox starts and delivers each as the
+            token of its repository. Absent = the runner pool's own git tokens (deprecated fallback). Covered by the
+            spec digest when present.
+          items:
+            type: object
+            required: [ref, repository, capability]
+            properties:
+              ref: { type: string, description: the repository token (its connection id) }
+              repository: { type: string }
+              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH] }
     JobRepository:
       type: object
       description: >-

@@ -15,6 +15,8 @@ dependencies {
     implementation(libs.jackson.kotlin)
     implementation(libs.kotlin.reflect)
     implementation(libs.fabric8.client)
+    // ADR 0051: HPKE (RFC 9180) to open the project repository tokens Back Office seals to this controller
+    implementation(libs.bouncycastle.prov)
     implementation("io.micrometer:micrometer-registry-prometheus")
     annotationProcessor(libs.spring.boot.configuration.processor)
 

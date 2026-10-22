@@ -9,7 +9,10 @@ import pl.mos.backoffice.runner.application.port.`in`.RunnerFleetProtocol
 import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistration
 import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistrationRequest
 import pl.mos.backoffice.runner.application.port.`in`.RunnerReport
+import pl.mos.backoffice.runner.application.port.`in`.CredentialRelease
+import pl.mos.backoffice.runner.application.port.`in`.ReleasedCredential
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
+import pl.mos.backoffice.runner.application.port.out.CredentialSealer
 import pl.mos.backoffice.runner.application.port.out.RegistrationTokenStore
 import pl.mos.backoffice.runner.application.port.out.RunnerNodeStore
 import pl.mos.backoffice.runner.application.port.out.RunnerPoolStore
@@ -31,6 +34,7 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.BudgetRefusals
 import pl.mos.backoffice.shared.llm.PersonalLoginModels
+import pl.mos.backoffice.shared.runner.RepositoryTokenSource
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
@@ -59,6 +63,9 @@ class RunnerProtocolService(
     private val budgetRefusals: BudgetRefusals = BudgetRefusals.NONE,
     /** ADR 0050 step 3: creates the owner's Claude Code login models when their personal runner reports a login; null = none. */
     private val loginModels: PersonalLoginModels? = null,
+    /** ADR 0051: opens project repository tokens; null = none (tests), jobs naming tokens then fail to fetch them. */
+    private val repositoryTokens: RepositoryTokenSource? = null,
+    private val sealer: CredentialSealer? = null,
 ) : RunnerFleetProtocol {
     private val log = org.slf4j.LoggerFactory.getLogger(RunnerProtocolService::class.java)
 
@@ -89,6 +96,52 @@ class RunnerProtocolService(
             )
             RunnerRegistration(runnerId, runnerToken.plaintext, pool.id)
         }
+    }
+
+    @SystemOperation("runner-controller registering its own public key, authenticated by its bo_rt_ token")
+    override fun setPublicKey(runner: RunnerNode, publicKey: String) {
+        val sealer = sealer ?: throw InvalidStateException("this Back Office cannot seal credentials")
+        val key = publicKey.trim()
+        if (!sealer.valid(key)) throw ValidationException("must be the base64 of a 32-byte X25519 public key", "publicKey")
+        if (runner.publicKey == key) return
+        nodes.setPublicKey(runner.id, key, lifecycle.now())
+        audit.record(
+            AuditEntry(
+                "RUNNER_PUBLIC_KEY_SET", "Runner", runner.id.toString(),
+                details = mapOf("poolId" to runner.poolId, "name" to runner.name, "replaced" to (runner.publicKey != null)),
+                actor = Actor(PrincipalKind.SYSTEM, null, "runner:${runner.name}"),
+            ),
+        )
+    }
+
+    @SystemOperation("release of the tokens named in a job's signed spec to the runner holding its lease")
+    override fun releaseCredentials(runner: RunnerNode, jobId: RunnerJobId): CredentialRelease = tx.inTransaction {
+        val job = ownedActiveJob(runner, jobId)
+        val now = lifecycle.now()
+        val expiresAt = now.plus(CREDENTIAL_VALIDITY)
+        val refs = job.spec.credentials
+        if (refs.isEmpty()) return@inTransaction CredentialRelease(expiresAt, emptyList())
+        if (job.leaseExpiresAt == null || !job.leaseExpiresAt.isAfter(now)) throw InvalidStateException("the lease of agent job $jobId has expired")
+        val key = runner.publicKey ?: throw InvalidStateException("runner ${runner.name} has no public key; update the runner-controller (ADR 0051)")
+        val sealer = sealer ?: throw InvalidStateException("this Back Office cannot seal credentials")
+        val source = repositoryTokens ?: throw InvalidStateException("no project repository tokens are available")
+        if (!jobs.markCredentialsReleased(jobId, now)) throw InvalidStateException("the tokens of agent job $jobId were already released for this lease")
+        val released = refs.map { ref ->
+            val token = source.open(ref.ref)
+                ?: throw InvalidStateException("the project token for repository '${ref.repository}' no longer exists or cannot be opened; check the project's repository access tokens")
+            ReleasedCredential(ref.ref, ref.repository, ref.capability, sealer.seal(key, token, CredentialSealer.associatedData(jobId.toString(), ref.ref, expiresAt.toString())))
+        }
+        audit.record(
+            AuditEntry(
+                "RUNNER_CREDENTIALS_RELEASED", "AgentJob", jobId.toString(), projectId = job.spec.usageContext.projectId,
+                details = mapOf(
+                    "runnerId" to runner.id.toString(), "runner" to runner.name, "poolId" to runner.poolId,
+                    "credentials" to refs.map { mapOf("ref" to it.ref, "repository" to it.repository, "capability" to it.capability) },
+                ),
+                actor = Actor(PrincipalKind.SYSTEM, null, "runner:${runner.name}"),
+            ),
+        )
+        CredentialRelease(expiresAt, released)
     }
 
     @SystemOperation("token lookup for the runner-fleet endpoints")
@@ -224,6 +277,9 @@ class RunnerProtocolService(
 
     companion object {
         const val DEFAULT_MAX_CONCURRENT = 4
+
+        /** ADR 0051: how long a sealed answer is accepted (part of its associated data); fetched right before launch. */
+        val CREDENTIAL_VALIDITY: java.time.Duration = java.time.Duration.ofMinutes(2)
         const val MAX_CONCURRENT_CAP = 1000
         const val MAX_JOBS_PER_LEASE = 20
         const val MAX_SYNCED_WORKSPACES = 500

@@ -225,6 +225,28 @@ Job bundle (`/var/run/backoffice/job`): `spec.json` (the `RunnerJobSpec` with `g
 `policy.json` (resolved `SandboxPolicy`), `job-id`, `job-token`, `proxy-url`, `ready` (written last). No
 per-job data is passed in environment variables, so cold and warm sandboxes look the same to the runner.
 
+## Project repository tokens (ADR 0051)
+
+Projects keep the tokens of their repositories (`scm_connection`, sealed with the installation's secret key). When a
+step builds its job, Back Office picks per repository the least-privileged fitting token (READ: a verified read-only
+GIT_READ token; PUSH_MR: a PUSH_BRANCH token) and names it in the signed spec (`credentials: [{ref, repository,
+capability}]`), never its value.
+
+- **Controller key.** At its first start the runner-controller generates an X25519 key pair and keeps it with its
+  runner token (0600 file or the credential Secret); on every start it sends the public key (`PUT /runner/v2/key`).
+- **Release.** Right before launching a job whose spec names tokens, the controller calls
+  `POST /runner/v2/jobs/{id}/credentials`. Back Office answers only the runner holding the lease, while it is valid,
+  once per lease, and seals each token with HPKE (RFC 9180 base mode, DHKEM(X25519, HKDF-SHA256), HKDF-SHA256,
+  AES-256-GCM, info `back-office credentials v1`, associated data `<jobId>|<ref>|<expiresAt>`, two minutes). TLS
+  inspection on the way sees ciphertext only. Audited `RUNNER_CREDENTIALS_RELEASED` (references, never values).
+- **Delivery.** The controller opens the tokens and delivers them like pool tokens, as `git/<key>/token`: Docker
+  writes the file; Kubernetes puts them into the per-job Secret (`scm-repo-<key>`) from which the init container moves
+  them to the in-memory git volume; warm pods get the file written. The runner reads and deletes it before the agent
+  starts. A repository with a project token gets none of the pool's tokens; a token that is not released, does not
+  open or arrives after its expiry fails the job (`credentials: ...`) before any sandbox exists.
+- **Fallback.** Repositories without a fitting project token use the pool's tokens below (deprecated).
+- Conformance vector: `docs/api/fixtures/sealed-credential-vector.json` (both sides open it in their tests).
+
 ## Git access (ADR 0031)
 
 Back Office never holds a git credential (ADR 0013); it decides only **how much** git a job needs and signs

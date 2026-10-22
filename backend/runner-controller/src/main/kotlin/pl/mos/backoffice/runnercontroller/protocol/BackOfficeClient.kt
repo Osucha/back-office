@@ -50,6 +50,16 @@ class BackOfficeClient(
         send("POST", "/runner/v2/jobs/$jobId/complete", completion, timeout = Duration.ofSeconds(20))
     }
 
+    /** ADR 0051: registers this controller's public key for sealed credentials. */
+    fun setKey(publicKey: String) {
+        send("PUT", "/runner/v2/key", RunnerPublicKey(publicKey), timeout = Duration.ofSeconds(20))
+    }
+
+    /** ADR 0051: the project repository tokens of a job, sealed to this controller's key (once per lease). */
+    fun credentials(jobId: String): JobCredentials =
+        send("POST", "/runner/v2/jobs/$jobId/credentials", null, timeout = Duration.ofSeconds(20))
+            .let { json.readValue(it, JobCredentials::class.java) }
+
     /** ADR 0044: reports the held run workspaces; returns the ones to delete. */
     fun syncWorkspaces(held: List<String>): List<String> =
         send("POST", "/runner/v2/workspaces/sync", WorkspaceSync(held), timeout = Duration.ofSeconds(30))

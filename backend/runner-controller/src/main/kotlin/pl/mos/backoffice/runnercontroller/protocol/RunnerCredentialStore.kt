@@ -9,8 +9,19 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.Base64
 
-/** What registration returns and every later start needs: the runner token (`bo_rt_`). */
-data class RunnerCredentials(val runnerId: String?, val runnerToken: String, val poolId: String?)
+/**
+ * What registration returns and every later start needs: the runner token (`bo_rt_`), plus (ADR 0051) the X25519 key
+ * pair job tokens are sealed to (base64 raw keys; generated on the first start of a controller that has none).
+ */
+data class RunnerCredentials(
+    val runnerId: String?,
+    val runnerToken: String,
+    val poolId: String?,
+    val privateKey: String? = null,
+    val publicKey: String? = null,
+) {
+    override fun toString() = "RunnerCredentials(runnerId=$runnerId, poolId=$poolId, publicKey=$publicKey)"
+}
 
 /** Persists the runner token so a restart does not need a new (single-use) registration token. */
 interface RunnerCredentialStore {
@@ -42,7 +53,7 @@ class KubernetesSecretCredentialStore(
         val secret = client.secrets().inNamespace(namespace).withName(secretName).get() ?: return null
         val data = secret.data.orEmpty().mapValues { String(Base64.getDecoder().decode(it.value)) } + secret.stringData.orEmpty()
         val token = data["runnerToken"]?.takeIf { it.isNotBlank() } ?: return null
-        return RunnerCredentials(data["runnerId"], token, data["poolId"])
+        return RunnerCredentials(data["runnerId"], token, data["poolId"], data["privateKey"]?.ifBlank { null }, data["publicKey"]?.ifBlank { null })
     }
 
     override fun save(credentials: RunnerCredentials) {
@@ -56,6 +67,8 @@ class KubernetesSecretCredentialStore(
             .addToStringData("runnerToken", credentials.runnerToken)
             .addToStringData("runnerId", credentials.runnerId ?: "")
             .addToStringData("poolId", credentials.poolId ?: "")
+            .addToStringData("privateKey", credentials.privateKey ?: "")
+            .addToStringData("publicKey", credentials.publicKey ?: "")
             .build()
         client.secrets().inNamespace(namespace).resource(secret).createOr { it.update() }
     }

@@ -141,7 +141,7 @@ class ControllerRuntime(
         }
         val d = props.defaults
         val resolver = PolicyResolver(PolicyDefaults(d.image, d.cpu, d.memory, d.ephemeralStorage, d.pids, d.timeoutSeconds), props.egress.alwaysAllow)
-        return JobSupervisor(props, client, backend, registry, resolver, json, meters)
+        return JobSupervisor(props, client, backend, registry, resolver, json, meters, keys = { holder.keys })
     }
 
     override fun stop() {

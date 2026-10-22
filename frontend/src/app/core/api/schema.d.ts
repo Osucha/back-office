@@ -2742,6 +2742,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/runner/v2/jobs/{jobId}/credentials': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        jobId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description ADR 0051: the project repository tokens named in the job's signed spec (`credentials`), each sealed to the runner's public key with HPKE (RFC 9180 base mode, DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-256-GCM, info `back-office credentials v1`, associated data `<jobId>|<ref>|<expiresAt>`). Only for the runner holding the job's lease while it is valid, and once per lease (409 otherwise, also when the runner has no key or a token no longer exists). Fetched right before the sandbox starts; audited `RUNNER_CREDENTIALS_RELEASED`. Conformance vector: docs/api/fixtures/sealed-credential-vector.json. */
+    post: operations['releaseJobCredentials'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/runner/v2/jobs/{jobId}/heartbeat': {
     parameters: {
       query?: never;
@@ -2790,6 +2809,23 @@ export interface paths {
     put?: never;
     /** @description Long poll (up to `waitSeconds`, max 30). Returns at most `maxJobs` signed assignments for the runner's pool. */
     post: operations['leaseAgentJobs'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/runner/v2/key': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** @description ADR 0051: the controller's X25519 public key (base64 of the raw 32 bytes) the project repository tokens of its jobs are sealed to. Sent on every start; idempotent; a new key replaces the old one (audited `RUNNER_PUBLIC_KEY_SET`). The private key never leaves the controller. */
+    put: operations['setRunnerPublicKey'];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -4704,6 +4740,24 @@ export interface components {
       reason?: string | null;
       status: components['schemas']['AgentJobStatus'];
     };
+    JobCredentials: {
+      credentials: {
+        /** @enum {string} */
+        capability: 'GIT_READ' | 'PUSH_BRANCH';
+        /** @description the sealed token */
+        ciphertext: string;
+        /** @description HPKE encapsulated key */
+        enc: string;
+        ref: string;
+        /** @description repositories[].key of the spec ("" = the legacy single repository) */
+        repository: string;
+      }[];
+      /**
+       * Format: date-time
+       * @description part of every token's associated data; the controller refuses the answer after it
+       */
+      expiresAt: string;
+    };
     JobHeartbeat: {
       cpuMillis?: number | null;
       /** Format: int64 */
@@ -5735,6 +5789,16 @@ export interface components {
       /** @default true */
       collectDiff: boolean;
       constitution?: string | null;
+      /** @description ADR 0051: project repository tokens of the job, by name only (never values): the controller fetches them sealed with POST /runner/v2/jobs/{jobId}/credentials before the sandbox starts and delivers each as the token of its repository. Absent = the runner pool's own git tokens (deprecated fallback). Covered by the spec digest when present. */
+      credentials?:
+        | {
+            /** @enum {string} */
+            capability: 'GIT_READ' | 'PUSH_BRANCH';
+            /** @description the repository token (its connection id) */
+            ref: string;
+            repository: string;
+          }[]
+        | null;
       /** @description set in v2 assignments; the sandbox uses these instead of provider keys */
       gateway?: {
         anthropicBaseUrl?: string;
@@ -5832,6 +5896,10 @@ export interface components {
       projectIds?: string[];
       /** @default 2 */
       warmPoolSize: number;
+    };
+    RunnerPublicKey: {
+      /** @description base64 of the 32-byte raw X25519 public key */
+      publicKey: string;
     };
     RunnerRegistered: {
       poolId?: string;
@@ -11771,6 +11839,29 @@ export interface operations {
       409: components['responses']['Problem'];
     };
   };
+  releaseJobCredentials: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        jobId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sealed tokens (empty list when the spec names none) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobCredentials'];
+        };
+      };
+      409: components['responses']['Problem'];
+    };
+  };
   heartbeatAgentJob: {
     parameters: {
       query?: never;
@@ -11846,6 +11937,29 @@ export interface operations {
           'application/json': components['schemas']['AgentJobAssignment'][];
         };
       };
+    };
+  };
+  setRunnerPublicKey: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RunnerPublicKey'];
+      };
+    };
+    responses: {
+      /** @description Stored */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      400: components['responses']['Problem'];
     };
   };
   getPoolQueue: {

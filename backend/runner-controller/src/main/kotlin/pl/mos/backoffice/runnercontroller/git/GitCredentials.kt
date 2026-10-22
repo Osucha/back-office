@@ -125,10 +125,15 @@ class GitCredentialSelector(
      * multi-repository specs select per repository by its own URL and `access`. A refusal names the repository:
      * `repository 'docs': git credential: READ job for ..., but ... has only a push credential`.
      */
-    fun plan(spec: JsonNode): JobGitPlan {
+    fun plan(spec: JsonNode, covered: Set<String> = emptySet()): JobGitPlan {
         val repos = JobRepositories.of(spec)
-        if (!repos.multi) return JobGitPlan(repos, select(repos.repositories.firstOrNull()?.url, repos.access))
+        if (!repos.multi) {
+            val legacy = if ("" in covered) GitCredentialSelection(repos.access, notes = listOf(PROJECT_TOKEN)) else select(repos.repositories.firstOrNull()?.url, repos.access)
+            return JobGitPlan(repos, legacy)
+        }
         val selections = repos.repositories.map { repo ->
+            // ADR 0051: a repository with a project token released by Back Office needs none of the pool's
+            if (repo.key in covered) return@map repo to GitCredentialSelection(repo.access, notes = listOf(PROJECT_TOKEN))
             val selection = try {
                 select(repo.url, repo.access)
             } catch (e: PolicyViolation) {
@@ -164,6 +169,7 @@ class GitCredentialSelector(
 
     companion object {
         val EMPTY = GitCredentialSelector()
+        const val PROJECT_TOKEN = "project token released sealed by Back Office (ADR 0051)"
 
         /** Kubernetes backends: Secrets of `git.repo-secrets`, `git.secrets` as push-level fallback. */
         fun forSecrets(git: ControllerProperties.Git) =

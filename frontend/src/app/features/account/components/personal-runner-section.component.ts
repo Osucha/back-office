@@ -173,16 +173,18 @@ import {
               [code]="buildCommands"
             />
           </li>
-          <li>
-            <span i18n="@@account.runner.stepSecrets"
-              >Put your secrets into the shell (they stay on your computer):</span
-            >
-            <app-code-block
-              label="Shell"
-              i18n-label="@@account.runner.secretsLabel"
-              [code]="setup()"
-            />
-          </li>
+          @if (setup()) {
+            <li>
+              <span i18n="@@account.runner.stepSecrets"
+                >Put your secrets into the shell (they stay on your computer):</span
+              >
+              <app-code-block
+                label="Shell"
+                i18n-label="@@account.runner.secretsLabel"
+                [code]="setup()"
+              />
+            </li>
+          }
           <li>
             <span i18n="@@account.runner.stepRun"
               >Start the runner in the same shell. The token works once and expires on

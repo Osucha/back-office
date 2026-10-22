@@ -217,9 +217,15 @@ to `false`.
 
 Since ADR 0051 a project keeps the tokens of its repositories itself, so they no longer have to be installed in
 every runner. A project owner adds them on the project's **Sources** tab, card **Repository access tokens**.
-They are being introduced step by step: in this release the tokens are stored, tested and shown, and jobs still
-use the runner pool's tokens below. Later releases switch cloning and pushing to the project's tokens, deliver
-them to the runner encrypted per job, and give agents read-only tools such as the CI logs.
+Jobs clone and push with them: for each repository a step reads with the least-privileged verified read-only
+token (GIT_READ) and pushes with a PUSH_BRANCH token. Back Office hands them to the runner that runs the job,
+encrypted to that runner's own key, once per job, right before the sandbox starts; a proxy that inspects TLS on
+the way sees only ciphertext. A repository without a fitting token falls back to the runner pool's tokens below
+(deprecated; the job log says which one was used). Read-only tools for agents (for example the CI logs) follow
+in a later release.
+
+- **Never a push token for reading.** A step that only reads gets only a token declared and verified read-only;
+  with nothing but a push token for that repository it falls back to the pool.
 
 - **One token per permission level.** A repository can have several tokens. Each one declares what it is for:
 

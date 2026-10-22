@@ -1,5 +1,7 @@
 package pl.mos.backoffice.runnercontroller.engine
 
+import pl.mos.backoffice.runnercontroller.security.CredentialKeys
+import pl.mos.backoffice.runnercontroller.sandbox.ProjectTokens
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
@@ -34,6 +36,7 @@ import pl.mos.backoffice.runnercontroller.sandbox.SandboxPhase
 import pl.mos.backoffice.runnercontroller.sandbox.Workspaces
 import pl.mos.backoffice.runnercontroller.security.AssignmentVerifier
 import pl.mos.backoffice.runnercontroller.security.Verification
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
 import java.time.Duration
@@ -84,6 +87,8 @@ class JobSupervisor(
     private val now: () -> Instant = Instant::now,
     private val configProvider: () -> RunnerConfig = client::config,
     private val env: (String) -> String? = System::getenv,
+    /** ADR 0051: the key pair project tokens are sealed to; null = none (jobs naming project tokens fail). */
+    private val keys: () -> CredentialKeys? = { null },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -226,6 +231,35 @@ class JobSupervisor(
         }
     }
 
+    /**
+     * ADR 0051: the project repository tokens named in the signed spec, released by Back Office sealed to this
+     * controller's key and opened here. Every named token must arrive for its own repository and open with the
+     * associated data `jobId|ref|expiresAt` before the answer expires; anything else fails the job.
+     */
+    private fun projectTokens(jobId: String, spec: JsonNode): ProjectTokens {
+        val named = spec.get("credentials")?.takeIf { it.isArray && it.size() > 0 } ?: return ProjectTokens.NONE
+        val signed = named.associate { (it.get("ref")?.asString() ?: "") to (it.get("repository")?.asString() ?: "") }
+        val keys = keys() ?: throw PolicyViolation("this controller has no key for sealed project tokens")
+        val answer = try {
+            client.credentials(jobId)
+        } catch (e: Exception) {
+            throw PolicyViolation("Back Office did not release the project tokens: ${e.message}")
+        }
+        val expires = runCatching { Instant.parse(answer.expiresAt) }.getOrNull()
+        if (expires == null || !expires.isAfter(now())) throw PolicyViolation("the released project tokens have expired")
+        val tokens = answer.credentials.associate { c ->
+            val repository = signed[c.ref] ?: throw PolicyViolation("token ${c.ref} is not named in the signed spec")
+            if (repository != c.repository) throw PolicyViolation("token ${c.ref} was released for repository '${c.repository}', not '$repository'")
+            val token = runCatching { keys.open(c.enc, c.ciphertext, "$jobId|${c.ref}|${answer.expiresAt}") }
+                .getOrElse { throw PolicyViolation("the token for repository '$repository' does not open with this controller's key") }
+            repository to token
+        }
+        val missing = signed.values.toSet() - tokens.keys
+        if (missing.isNotEmpty()) throw PolicyViolation("no token released for repositories ${missing.sorted()}")
+        log.info("job {}: project tokens for repositories {} released sealed and opened", jobId, tokens.keys.sorted())
+        return ProjectTokens(tokens)
+    }
+
     /** Verifies, resolves and launches one assignment. Returns true when a sandbox was started. */
     fun accept(a: AgentJobAssignment): Boolean {
         var verification = verifier.verify(a)
@@ -250,9 +284,18 @@ class JobSupervisor(
             report(a.jobId, JobCompletion(AgentJobStatus.FAILED, reason = "local-login: ${e.message}"))
             return false
         }
+        val projectTokens = try {
+            projectTokens(a.jobId, spec)
+        } catch (e: PolicyViolation) {
+            log.warn("job {}: {}", a.jobId, e.message)
+            rejectedCounter("credentials").increment()
+            report(a.jobId, JobCompletion(AgentJobStatus.FAILED, reason = "credentials: ${e.message}"))
+            return false
+        }
         val (git, policy) = try {
-            // least privilege (ADR 0031), per repository: READ gets the read token, PUSH_MR the push token, NONE nothing
-            val plan = backend.gitCredentials.plan(spec)
+            // least privilege (ADR 0031), per repository: READ gets the read token, PUSH_MR the push token, NONE nothing;
+            // repositories with a project token (ADR 0051) need none of the pool's
+            val plan = backend.gitCredentials.plan(spec, projectTokens.byRepository.keys)
             plan to resolver.resolve(
                 requested = SandboxPolicy.from(a.policy),
                 ceiling = SandboxPolicy.from(config.ceiling),
@@ -292,6 +335,7 @@ class JobSupervisor(
             repositoryAccess = git.repositories.repositories.filter { git.repositories.multi }.associate { it.key to it.access },
             localLoginCredential = localLogin,
             workspace = workspaceOf(a.jobId, spec),
+            projectTokens = projectTokens,
         )
         val handle = try {
             backend.launch(request)

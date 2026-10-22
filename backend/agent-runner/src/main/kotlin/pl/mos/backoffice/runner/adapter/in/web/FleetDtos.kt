@@ -225,3 +225,11 @@ data class SandboxPolicyViewJson(
 }
 
 fun GatewayUrls.toJson() = GatewayJson(anthropicBaseUrl, openaiBaseUrl, apiBaseUrl)
+
+/** ADR 0051: `PUT /runner/v2/key`. */
+data class RunnerPublicKeyJson(val publicKey: String)
+
+/** ADR 0051: answer of `POST /runner/v2/jobs/{jobId}/credentials`; [expiresAt] is part of every token's associated data. */
+data class JobCredentialsJson(val expiresAt: String, val credentials: List<SealedCredentialJson>)
+
+data class SealedCredentialJson(val ref: String, val repository: String, val capability: String, val enc: String, val ciphertext: String)

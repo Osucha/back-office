@@ -42,6 +42,9 @@ import pl.mos.backoffice.projects.adapter.out.scm.GitLabScmProbe
 import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
 import pl.mos.backoffice.projects.application.port.out.ScmProbePort
 import pl.mos.backoffice.projects.application.service.ScmConnectionService
+import pl.mos.backoffice.projects.domain.model.ScmConnection
+import pl.mos.backoffice.projects.domain.model.ScmConnectionId
+import pl.mos.backoffice.shared.runner.RepositoryTokenSource
 import tools.jackson.databind.json.JsonMapper
 import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
 import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
@@ -321,9 +324,10 @@ class ProjectsConfiguration {
     fun runnerTaskSupport(
         runner: AgentRunner, modelResolver: ModelResolver, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, settings: RunnerSettings,
         features: ObjectProvider<PlatformFeatures>, librarySources: LibrarySourceRepository, projectWorkspaces: ProjectWorkspaceRepository,
+        scmConnections: ScmConnectionRepository,
     ) = RunnerTaskSupport(
         runner, modelResolver, renderer, templateModel, settings.defaultTimeout, features.getIfAvailable { PlatformFeatures.DEFAULTS }, librarySources,
-        projectWorkspaces,
+        projectWorkspaces, scmConnections,
     )
 
     @Bean fun specKitTaskExecutor(support: RunnerTaskSupport) = SpecKitTaskExecutor(support)
@@ -375,6 +379,13 @@ class ProjectsConfiguration {
         connections: ScmConnectionRepository, projects: ProjectRepository, cipher: AesGcmSecretCipher, probe: ScmProbePort,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock,
     ) = ScmConnectionService(connections, projects, cipher, probe, gate, audit, clock)
+
+    /** ADR 0051: opens a project repository token only for its sealed release to the runner holding the job (agent-runner). */
+    @Bean
+    fun repositoryTokenSource(connections: ScmConnectionRepository, cipher: AesGcmSecretCipher) = RepositoryTokenSource { ref ->
+        val connection = runCatching { ScmConnectionId.of(ref) }.getOrNull()?.let(connections::findById) ?: return@RepositoryTokenSource null
+        runCatching { cipher.open(connection.secret, ScmConnection.secretAssociatedData(connection.id)) }.getOrNull()
+    }
 
     // ---- engine
 

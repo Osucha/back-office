@@ -1,6 +1,6 @@
 # 0051 — SCM connections on project repositories, sealed credential delivery and agent tools
 
-- Status: accepted (step 1 implemented; 2 to 5 planned)
+- Status: accepted (steps 1 to 3 implemented; 4 and 5 planned)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0013 (no SCM API), 0024 (sandboxed runner fleet), 0029 (prompt-injection defences), 0030
@@ -64,9 +64,12 @@ of a prompt-injected agent.
 
 Implementation steps (each usable on its own):
 
-1. Connections on project repositories: model, encryption, API, Test, UI (Settings, repositories).
+1. Connections on project repositories: model, encryption, API, Test, UI (Sources tab). *Implemented.*
 2. Sealed credential channel: runner key pair, credential release endpoint, HPKE in controller and Back Office.
+   *Implemented together with 3* (Bouncy Castle's RFC 9180 implementation on both sides; conformance vector
+   docs/api/fixtures/sealed-credential-vector.json).
 3. Clone and push with project connections (gitAccess resolved to connections), fallback to runner tokens.
+   *Implemented*; the personal runner's command no longer sets git tokens.
 4. Agent tool `gitlab-read` (`glab` in the runner image), step `tools`, designer and start checks.
 5. Write operations: merge request review comments and commit status first.
 

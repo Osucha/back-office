@@ -31,6 +31,7 @@ object TestPolicies {
         gitCredential: String? = "git-gitlab",
         repositoryTokens: List<RepositoryToken> = emptyList(),
         repositoryAccess: Map<String, GitAccess> = emptyMap(),
+        projectTokens: ProjectTokens = ProjectTokens.NONE,
     ) = LaunchRequest(
         jobId = jobId,
         poolId = "pool-a",
@@ -44,6 +45,7 @@ object TestPolicies {
         deadline = Instant.parse("2026-09-28T11:00:00Z"),
         repositoryTokens = repositoryTokens,
         repositoryAccess = repositoryAccess,
+        projectTokens = projectTokens,
     )
 
     /** A docs repository (READ), a source repository (PUSH_MR) and a NONE repository without a token. */

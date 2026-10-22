@@ -35,10 +35,11 @@ Then open **My account → My computer as a runner**:
 1. Choose how Claude Code reaches the model (below).
 2. Click **Connect this computer**. Back Office creates your pool and a **single-use registration token** (valid for
    24 hours, shown once) and builds a `docker run` command with it, for bash or PowerShell.
-3. In a terminal, put your secrets into variables (they never leave your computer and are not part of the command):
-   `CLAUDE_CODE_OAUTH_TOKEN` (when you use your own Claude login, see below) and `BO_GIT_TOKEN_READ` /
-   `BO_GIT_TOKEN_PUSH` (git tokens for cloning and for pushing branches, see
-   [Git access for agents](integrations-git.md#git-least-privilege)).
+3. When you use your own Claude login (see below), put it into a variable in a terminal (it never leaves your
+   computer and is not part of the command): `CLAUDE_CODE_OAUTH_TOKEN`. Git tokens are not set on the runner: the
+   project's repository tokens reach each job encrypted to your runner's key
+   ([Repository access tokens in the project](integrations-git.md#git-project-tokens)). A runner started earlier
+   with `BO_GIT_TOKEN_READ` / `BO_GIT_TOKEN_PUSH` still uses them for repositories without a project token.
 4. Run the command in the same terminal. The controller registers, stores its runner token in
    `/var/lib/back-office-runner` (in Docker's file system) and restarts with Docker. The registration token is not
    needed again; to connect another computer, click **Connect this computer** again.

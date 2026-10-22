@@ -144,12 +144,20 @@ class RunnerConfiguration {
         signer: ObjectProvider<EnvelopeSigner>,
         budgetRefusals: ObjectProvider<BudgetRefusals>,
         loginModels: ObjectProvider<pl.mos.backoffice.shared.llm.PersonalLoginModels>,
+        repositoryTokens: ObjectProvider<pl.mos.backoffice.shared.runner.RepositoryTokenSource>,
+        sealer: pl.mos.backoffice.runner.application.port.out.CredentialSealer,
     ) = RunnerProtocolService(
         stores, stores, stores, stores, lifecycle, tx, audit.getIfAvailable { AuditPort.NOOP },
         signingKeys = { signer.getIfAvailable()?.publicJwks().orEmpty() },
         budgetRefusals = budgetRefusals.getIfAvailable { BudgetRefusals.NONE },
         loginModels = loginModels.getIfAvailable(),
+        repositoryTokens = repositoryTokens.getIfAvailable(),
+        sealer = sealer,
     )
+
+    /** ADR 0051: HPKE sealing of project repository tokens to runner-controller keys. */
+    @Bean fun credentialSealer(): pl.mos.backoffice.runner.application.port.out.CredentialSealer =
+        pl.mos.backoffice.runner.adapter.out.crypto.HpkeCredentialSealer()
 
     @Bean
     fun sandboxCallbackService(

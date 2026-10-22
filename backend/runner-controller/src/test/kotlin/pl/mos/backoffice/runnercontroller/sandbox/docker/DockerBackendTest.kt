@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runnercontroller.sandbox.docker
 
+import pl.mos.backoffice.runnercontroller.sandbox.ProjectTokens
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -67,6 +68,22 @@ class DockerBackendTest {
 
         val (_, noneToken) = launch(ControllerProperties.Git(), env, GitAccess.NONE)
         assertThat(noneToken).doesNotExist()
+    }
+
+    @Test
+    fun `ADR 0051 - released project tokens are written to the git directory, the pool's variable is not used for them`() {
+        val docker = RecordingDocker()
+        val props = ControllerProperties(docker = ControllerProperties.Docker(workDir = dir.toString()))
+        val backend = DockerBackend(props, docker, JsonMapper.builder().build(), mapOf("BO_GIT_TOKEN_READ" to "pool-read")::get)
+        val spec = JsonMapper.builder().build().readTree("""{"repositories":[{"key":"main","url":"https://gitlab.example.com/shop/api.git","access":"READ","path":"main"}]}""")
+        val plan = backend.gitCredentials.plan(spec, setOf("main"))
+        assertThat(plan.tokens).isEmpty()
+        val request = TestPolicies.launch(gitAccess = plan.access, gitCredential = null, repositoryTokens = plan.tokens, projectTokens = ProjectTokens(mapOf("main" to "tkn-project")))
+        backend.launch(request)
+        val gitDir = dir.resolve(request.jobId).resolve("git")
+        assertThat(Files.readString(gitDir.resolve("main/token"))).isEqualTo("tkn-project")
+        val args = docker.calls.single { it.firstOrNull() == "run" && "bo-job-${request.jobId}" in it }
+        assertThat(args.joinToString(" ")).doesNotContain("tkn-project")
     }
 
     @Test

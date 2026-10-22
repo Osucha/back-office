@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -118,6 +119,23 @@ class RunnerProtocolController(
     fun syncWorkspaces(request: HttpServletRequest, @RequestBody(required = false) body: WorkspaceSyncJson?): WorkspaceSyncResultJson {
         val release = gate.asSystem(REASON) { protocol.syncWorkspaces(RunnerTokenFilter.runner(request), body?.held.orEmpty()) }
         return WorkspaceSyncResultJson(release)
+    }
+
+    /** ADR 0051: the controller's X25519 public key (base64, 32 bytes) its job tokens are sealed to; idempotent. */
+    @PutMapping("/key")
+    fun setKey(request: HttpServletRequest, @RequestBody body: RunnerPublicKeyJson): ResponseEntity<Void> {
+        gate.asSystem(REASON) { protocol.setPublicKey(RunnerTokenFilter.runner(request), body.publicKey) }
+        return ResponseEntity.noContent().build()
+    }
+
+    /** ADR 0051: the project repository tokens named in the job's signed spec, sealed to the runner's key, once per lease. */
+    @PostMapping("/jobs/{jobId}/credentials")
+    fun credentials(request: HttpServletRequest, @PathVariable jobId: UUID): JobCredentialsJson {
+        val release = gate.asSystem(REASON) { protocol.releaseCredentials(RunnerTokenFilter.runner(request), RunnerJobId(jobId)) }
+        return JobCredentialsJson(
+            release.expiresAt.toString(),
+            release.credentials.map { SealedCredentialJson(it.ref, it.repository, it.capability, it.sealed.enc, it.sealed.ciphertext) },
+        )
     }
 
     /** Queue depth for autoscaling (KEDA metrics-api scaler). */

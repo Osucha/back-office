@@ -224,7 +224,20 @@ data class RunnerJobSpec(
     val featureDescription: String? = null,
     /** ADR 0047: checks after the agent (coding benchmarks): hidden files for the verification, protected paths. */
     val acceptance: RunnerAcceptance? = null,
+    /**
+     * ADR 0051: tokens of the project's repositories the runner-controller fetches sealed to its own key
+     * (`POST /runner/v2/jobs/{id}/credentials`) before the sandbox starts. Names only, never values; part of the
+     * signed spec, so a runner can fetch nothing else. Empty = the runner pool's own tokens (deprecated fallback).
+     */
+    val credentials: List<JobCredentialRef> = emptyList(),
 )
+
+/**
+ * ADR 0051: one project repository token of a job. [ref] identifies the token (its connection id), [repository] the
+ * job repository it is for (a `repositories[].key`, or "" for the single legacy `repository`), [capability] what
+ * the runner uses it for (`GIT_READ`: clone, `PUSH_BRANCH`: clone and push).
+ */
+data class JobCredentialRef(val ref: String, val repository: String, val capability: String)
 
 /**
  * ADR 0047: what a verification checks besides `verifyCommand`. After the agent the runner fails the verification when

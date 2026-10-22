@@ -9,7 +9,7 @@ const input: ScmConnectionInput = {
   name: 'Reader',
   provider: 'GITLAB',
   capabilities: ['GIT_READ'],
-  token: 'glpat-1',
+  token: 'tkn-1',
 };
 
 describe('ScmConnectionsApi (ADR 0051)', () => {

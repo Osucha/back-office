@@ -221,10 +221,15 @@ na `false`.
 
 Od ADR 0051 projekt sam przechowuje tokeny swoich repozytoriów, więc nie trzeba ich instalować w każdym
 runnerze. Właściciel projektu dodaje je na zakładce **Źródła** projektu, w karcie **Tokeny dostępu do
-repozytoriów**. Wprowadzamy to etapami: w tej wersji tokeny są zapisywane, testowane i pokazywane, a zadania nadal
-używają tokenów puli runnerów opisanych niżej. Kolejne wersje przełączą klonowanie i wypychanie na tokeny projektu,
-będą dostarczać je runnerowi zaszyfrowane dla każdego zadania i dadzą agentom narzędzia tylko do odczytu, na
-przykład logi CI.
+repozytoriów**. Zadania klonują i wypychają za ich pomocą: dla każdego repozytorium krok czyta najmniej uprzywilejowanym
+zweryfikowanym tokenem tylko do odczytu (GIT_READ), a wypycha tokenem PUSH_BRANCH. Back Office przekazuje je
+runnerowi, który wykonuje zadanie, zaszyfrowane do jego własnego klucza, raz na zadanie, tuż przed startem
+sandboxa; serwer proxy, który po drodze zagląda w ruch TLS, widzi tylko szyfrogram. Repozytorium bez pasującego
+tokenu korzysta z tokenów puli runnerów opisanych niżej (wycofywane; dziennik zadania mówi, którego użyto).
+Narzędzia tylko do odczytu dla agentów (na przykład logi CI) pojawią się w kolejnej wersji.
+
+- **Nigdy token do wypychania do czytania.** Krok, który tylko czyta, dostaje wyłącznie token zadeklarowany
+  i zweryfikowany jako tylko do odczytu; gdy dla tego repozytorium jest tylko token do wypychania, używa puli.
 
 - **Jeden token na poziom uprawnień.** Repozytorium może mieć kilka tokenów. Każdy deklaruje, do czego służy:
 
