@@ -11,7 +11,7 @@ import org.hibernate.type.SqlTypes
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.Difficulty
-import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
 import pl.mos.backoffice.shared.llm.Provider

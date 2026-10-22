@@ -152,6 +152,7 @@ comes back as a tool error, not a transport error.
 | `update_workflow` | Replaces a workflow's definition with a new version; runs in progress keep theirs | `workflow.edit` and a token created with **Allow workflow edits via MCP** |
 | `create_project` | Creates a project with at most one repository, optionally private; it gets the default workflows | `projects.create` and a token created with **Allow workflow edits via MCP** |
 | `list_workspaces` | The project's run workspaces ([workflows.md](workflows.md#workspaces)) | `project.view` |
+| `get_model_options` / `get_model_plan` | The models a step may use for you, with route and reason; the model of every step of a workflow ([evaluation.md](evaluation.md#model-availability)) | `project.view` |
 | `create_workspace` / `update_workspace` | Creates or changes a run workspace: sources, setup command, agent roles | `project.manage` and a token created with **Allow workflow edits via MCP** |
 
 Artefact content, node summaries and errors, and gate questions come back inside `<untrusted-data>` blocks

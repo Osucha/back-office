@@ -149,6 +149,14 @@ export type ModelProfileInput = S['ModelProfileInput'];
 export type ModelProfile = S['ModelProfile'];
 /** ADR 0048: API (LLM gateway) or CLAUDE_CODE_LOGIN (Claude Code with the user's own login on their personal runner). */
 export type ModelRuntime = S['ModelRuntime'];
+/** ADR 0050: LLM_CALL (one gateway call) or CODING_AGENT (a runner job). */
+export type StepKind = S['StepKind'];
+/** ADR 0050: the coding agent of a CODING_AGENT step. */
+export type CodingHarness = NonNullable<S['StepModelPlan']['harness']>;
+/** ADR 0050: a model profile as a step may use it (route, platform / personal, why not). */
+export type ModelOption = S['ModelOption'];
+/** ADR 0050: the model of one task step as a run would resolve it. */
+export type StepModelPlan = S['StepModelPlan'];
 export type Capability = NonNullable<ModelProfileInput['capabilities']>[number];
 export type ModelTestResult = S['ModelTestResult'];
 export type ProviderStatus = S['ProviderStatus'];

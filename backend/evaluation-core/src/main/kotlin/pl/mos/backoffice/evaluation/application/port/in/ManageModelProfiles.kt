@@ -2,7 +2,7 @@ package pl.mos.backoffice.evaluation.application.port.`in`
 
 import pl.mos.backoffice.evaluation.domain.model.Capability
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
-import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.llm.ModelRef

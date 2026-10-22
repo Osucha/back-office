@@ -188,6 +188,7 @@ or failed call is an MCP tool error (`isError: true`), not a transport error. Di
 | `update_workflow` | replace a definition (new version), optional `expectedVersion` against concurrent edits | `ManageWorkflows.update` | `workflow.edit` + token option "Allow workflow edits via MCP" |
 | `create_project` | create a project with at most one repository (optionally private); the default workflows are seeded | `ManageProjects.create` | `projects.create` + token option "Allow workflow edits via MCP" |
 | `list_workspaces` | the run workspaces of a project (ADR 0044) | `ManageProjectWorkspaces.list` | `project.view` |
+| `get_model_options` / `get_model_plan` | the models a step may use for the caller (route, reason) and the model of every step of a workflow (ADR 0050) | `ManageWorkflows.modelOptions` / `modelPlan` | `project.view` |
 | `create_workspace` / `update_workspace` | create or replace a run workspace (sources, library sources, setup command, roles) | `ManageProjectWorkspaces.create` / `update` | `project.manage` + token option "Allow workflow edits via MCP" |
 
 Prompt injection (ADR 0029, [12-prompt-injection.md](12-prompt-injection.md)): every tool carries MCP annotations

@@ -40,6 +40,7 @@ import { LibrarySourcesApi } from '../../../core/api/library-sources.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
 import { projectRepositories } from '../../../core/ui/repositories';
 import type {
+  ModelOption,
   ModelProfile,
   Point,
   LibrarySource,
@@ -72,6 +73,7 @@ import { TriggersEditorComponent } from '../components/triggers-editor.component
 import { ProjectWorkspacesApi } from '../../../core/api/project-workspaces.service';
 import { workspaceColor } from '../../../core/ui/workspaces';
 import { membersOf } from '../data/workspaces';
+import { type StepModelUse, stepModelUseKey } from '../data/model-step';
 import { WorkflowCanvasComponent, type PaletteDrop } from '../components/workflow-canvas.component';
 import { autoLayout, needsLayout } from '../data/auto-layout';
 import {
@@ -491,6 +493,8 @@ const MAX_HISTORY = 50;
                     [palette]="palette()"
                     [issues]="issuesFor(n.id)"
                     [profiles]="profiles()"
+                    [modelOptions]="modelOptions()"
+                    (modelOptionsNeeded)="loadModelOptions($event)"
                     [skills]="skills()"
                     [projectId]="resolvedProjectId()"
                     [projectRepositories]="projectRepositories()"
@@ -1095,6 +1099,9 @@ export class WorkflowDesignerPageComponent {
   readonly palette = signal<WorkflowPalette | null>(null);
   readonly paletteLoading = signal(false);
   readonly profiles = signal<ModelProfile[]>([]);
+  /** Model options per step use (ADR 0050), loaded when a node needs them; null = the request failed. */
+  readonly modelOptions = signal<Record<string, ModelOption[] | null>>({});
+  private readonly modelOptionsPending = new Set<string>();
   readonly skills = signal<Skill[]>([]);
   readonly loading = signal(true);
   readonly saving = signal(false);
@@ -1417,6 +1424,24 @@ export class WorkflowDesignerPageComponent {
         if (focus && d.nodes.some((n) => n.id === focus)) this.select(focus);
       },
       error: () => this.loading.set(false),
+    });
+  }
+
+  /** Loads the model options of a step use once per page (ADR 0050). */
+  loadModelOptions(use: StepModelUse): void {
+    const projectId = this.resolvedProjectId();
+    const key = stepModelUseKey(use);
+    if (!projectId || key in this.modelOptions() || this.modelOptionsPending.has(key)) return;
+    this.modelOptionsPending.add(key);
+    this.workflowsApi.modelOptions(projectId, use.stepKind, use.harness).subscribe({
+      next: (list) => {
+        this.modelOptionsPending.delete(key);
+        this.modelOptions.update((m) => ({ ...m, [key]: list }));
+      },
+      error: () => {
+        this.modelOptionsPending.delete(key);
+        this.modelOptions.update((m) => ({ ...m, [key]: null }));
+      },
     });
   }
 

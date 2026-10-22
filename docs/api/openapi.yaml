@@ -1026,6 +1026,29 @@ paths:
       parameters: [ { name: projectId, in: query, required: true, schema: { type: string, format: uuid } } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowPalette' } } } }
+  /workflows/model-options:
+    get:
+      tags: [workflows]
+      operationId: getModelOptions
+      description: >-
+        ADR 0050: the models a step of the project may use for the caller, usable ones first: route (GATEWAY or
+        OWN_LOGIN), whether it is personal, and why a model cannot be used. Needs project.view.
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: stepKind, in: query, required: true, schema: { $ref: '#/components/schemas/StepKind' } }
+        - { name: harness, in: query, required: false, schema: { type: string, enum: [OPENCODE, CLAUDE_CODE] }, description: 'coding agent of a CODING_AGENT step' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ModelOption' } } } } }
+  /workflows/{workflowId}/model-plan:
+    get:
+      tags: [workflows]
+      operationId: getWorkflowModelPlan
+      description: >-
+        ADR 0050: the model of every task step as a run would resolve it (node, template, project default or review
+        default) and whether the caller can use it; a step with a problem stops a run from starting. Needs project.view.
+      parameters: [ { name: workflowId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StepModelPlan' } } } } }
   /workflows/expressions/validate:
     post:
       tags: [workflows]
@@ -4311,6 +4334,37 @@ components:
       enum: [SHARED, PERSONAL]
       default: SHARED
       description: 'ADR 0046: where coding jobs run: the shared runner fleet or the personal runner of the user who created the benchmark'
+    StepKind:
+      type: string
+      enum: [LLM_CALL, CODING_AGENT]
+      description: 'ADR 0050: LLM_CALL = one call through the gateway (LLM tasks, judges); CODING_AGENT = a runner job'
+    ModelOption:
+      type: object
+      required: [profileId, displayName, provider, modelId, runtime, route, personal, usable]
+      properties:
+        profileId: { type: string, format: uuid }
+        displayName: { type: string }
+        provider: { type: string }
+        modelId: { type: string }
+        runtime: { $ref: '#/components/schemas/ModelRuntime' }
+        route: { type: string, enum: [GATEWAY, OWN_LOGIN], description: 'GATEWAY = a provider connection; OWN_LOGIN = the user''s own login on their personal runner' }
+        personal: { type: boolean, description: 'usable only by its owner, in private projects and personal benchmarks' }
+        usable: { type: boolean }
+        problem: { type: string, nullable: true, description: 'why a step cannot run with this model' }
+        note: { type: string, nullable: true, description: 'a warning that does not stop the step (e.g. personal runner offline)' }
+    StepModelPlan:
+      type: object
+      required: [nodeId, nodeName, stepKind, source]
+      properties:
+        nodeId: { type: string }
+        nodeName: { type: string }
+        stepKind: { $ref: '#/components/schemas/StepKind' }
+        harness: { type: string, nullable: true, enum: [OPENCODE, CLAUDE_CODE, null] }
+        source: { type: string, enum: [NODE, TEMPLATE, PROJECT, PROJECT_REVIEW, NONE], description: 'where the model comes from' }
+        profileId: { type: string, format: uuid, nullable: true }
+        model: { allOf: [ { $ref: '#/components/schemas/ModelOption' } ], nullable: true }
+        problem: { type: string, nullable: true, description: 'set = a run of this workflow does not start' }
+        note: { type: string, nullable: true }
     ExecutionTarget:
       type: object
       required: [target, pools, onlineRunners]

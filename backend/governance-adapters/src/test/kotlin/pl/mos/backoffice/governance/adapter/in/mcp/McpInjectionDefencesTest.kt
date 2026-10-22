@@ -77,7 +77,7 @@ class McpInjectionDefencesTest {
         }
         assertThat(annotations("startWorkflow").readOnlyHint).isFalse()
         // ADR 0049: authoring reads are read-only, an update replaces a definition (clients confirm it)
-        listOf("listProjects", "getWorkflowPalette", "getWorkflow", "validateWorkflow", "listWorkspaces").forEach {
+        listOf("listProjects", "getWorkflowPalette", "getWorkflow", "validateWorkflow", "listWorkspaces", "getModelOptions", "getModelPlan").forEach {
             assertThat(annotations(it).readOnlyHint).describedAs(it).isTrue()
         }
         assertThat(annotations("createWorkflow").readOnlyHint).isFalse()

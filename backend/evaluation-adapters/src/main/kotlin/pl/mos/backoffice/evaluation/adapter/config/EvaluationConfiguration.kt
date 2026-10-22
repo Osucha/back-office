@@ -28,6 +28,7 @@ import pl.mos.backoffice.evaluation.application.port.out.ModelProfileRepository
 import pl.mos.backoffice.evaluation.application.port.out.TaskSuiteRepository
 import pl.mos.backoffice.evaluation.application.service.BenchmarkService
 import pl.mos.backoffice.evaluation.application.service.ExecuteAttemptService
+import pl.mos.backoffice.evaluation.application.service.ModelAvailabilityService
 import pl.mos.backoffice.evaluation.application.service.ModelProfileService
 import pl.mos.backoffice.evaluation.application.service.ProviderService
 import pl.mos.backoffice.evaluation.application.service.SeedStarterContentService
@@ -36,6 +37,7 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.LlmGateway
+import pl.mos.backoffice.shared.llm.ModelAvailability
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.security.AuthorizationGate
@@ -60,6 +62,11 @@ class EvaluationConfiguration {
     /** The evaluation permissions for the identity context's catalogue (ADR 0017). */
     @Bean
     fun evaluationPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { EvaluationPermissions.definitions }
+
+    /** ADR 0050: which models a use may take (shared port, read by Projects and the model pickers). */
+    @Bean
+    fun modelAvailability(profiles: ModelProfileRepository, gateway: LlmGateway, runner: AgentRunner): ModelAvailability =
+        ModelAvailabilityService(profiles, gateway, runner)
 
     @Bean
     fun manageModelProfiles(

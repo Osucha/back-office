@@ -362,5 +362,11 @@
   "projects.workspaces.deleteTitle": "Usunąć przestrzeń \"{$name}\"?",
   "projects.workspaces.deleteContent": "Kroki workflowów, które ją wybierają, nie przejdą walidacji i zostaną wersjami roboczymi, dopóki nie wybiorą innej przestrzeni.",
   "projects.workspaces.deleteConfirm": "Usuń przestrzeń",
-  "projects.detail.tab.workspaces": "Przestrzenie robocze"
+  "projects.detail.tab.workspaces": "Przestrzenie robocze",
+  "projects.start.models": "Modele kroków",
+  "projects.start.modelsLoading": " Sprawdzanie modeli... ",
+  "projects.start.noModelSteps": " Żaden krok tego workflowu nie używa modelu. ",
+  "projects.start.blocked": " Uruchomienia tego workflowu nie wystartują, dopóki każdy krok nie będzie miał modelu, którego możesz użyć: zmień krok, szablon albo domyślny model projektu. ",
+  "projects.start.modelsUnavailable": " Nie udało się sprawdzić modeli kroków; serwer sprawdzi je przy starcie uruchomienia. ",
+  "projects.start.noModel": "brak"
 }

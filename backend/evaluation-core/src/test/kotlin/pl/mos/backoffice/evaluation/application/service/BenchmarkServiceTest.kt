@@ -13,7 +13,7 @@ import pl.mos.backoffice.evaluation.application.port.`in`.ManageModelProfiles
 import pl.mos.backoffice.evaluation.domain.model.AttemptId
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
-import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.evaluation.support.Fixtures
 import pl.mos.backoffice.evaluation.support.InMemoryBenchmarkRepository
 import pl.mos.backoffice.evaluation.support.InMemoryModelProfileRepository

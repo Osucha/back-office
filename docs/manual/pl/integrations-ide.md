@@ -165,6 +165,7 @@ Odrzucone wywołanie wraca jako błąd narzędzia, a nie błąd transportu.
 | `update_workflow` | Zastępuje definicję workflowu nową wersją; trwające uruchomienia zachowują swoją | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 | `create_project` | Tworzy projekt z co najwyżej jednym repozytorium, opcjonalnie prywatny; dostaje domyślne workflowy | `projects.create` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 | `list_workspaces` | Obszary robocze uruchomień projektu ([workflows.md](workflows.md#workspaces)) | `project.view` |
+| `get_model_options` / `get_model_plan` | Modele, których krok może użyć w Twoim imieniu, z drogą wywołania i powodem; model każdego kroku workflowu ([evaluation.md](evaluation.md#model-availability)) | `project.view` |
 | `create_workspace` / `update_workspace` | Tworzy lub zmienia obszar roboczy uruchomień: źródła, polecenie przygotowania, role agentów | `project.manage` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |
 
 Zawartość artefaktów, podsumowania i błędy węzłów oraz pytania bramek wracają w blokach `<untrusted-data>`

@@ -57,6 +57,33 @@ of 0 makes a model look free; check prices before you trust **Costs** or a leade
 
 A node's profile wins over the template's, which wins over the project default.
 
+<a id="model-availability"></a>
+### Which models a step can use
+
+A model is either a **platform** model (a provider connection added by an administrator, called through the API,
+usable by everyone and counted against budgets) or a **personal** one (today: Claude Code with your own login on
+your personal runner, usable only by you). Personal models work only in your private projects and your own
+benchmarks; platform models work everywhere, private projects included.
+
+Wherever you pick a model (a step in the workflow designer, the project's default and review models, the
+start dialog) Back Office lists the models in two groups, **Platform** and **Personal**, each with its route
+(**API** or **your login**). A model that cannot be used there is greyed out with the reason, for example:
+
+| Reason | What to do |
+|---|---|
+| the provider connection is not set up or has no API key | connect the provider in Settings (administrator) or pick another model |
+| a Claude Code login model runs coding-agent steps only | LLM steps (analysis, task list, review) need a platform model |
+| works only in private projects | use a platform model in shared projects |
+| needs Claude Code as the coding agent | set the step's coding agent to Claude Code |
+| no personal runner, or it does not use your login | set it up under My account, Personal runner |
+
+A personal runner that is offline is only a warning: the jobs wait until it connects.
+
+The **model plan** of a workflow shows, for every step, the model a run would use and where it comes from (the
+step, its template, the project default or the review default). The designer marks steps whose model you cannot
+use with a warning, and a run does not start while a step has no usable model; the start dialog lists the steps
+and the reason. The MCP tools `get_model_options` and `get_model_plan` give an IDE agent the same information.
+
 <a id="claude-code-login"></a>
 ### Claude Code with your own login
 

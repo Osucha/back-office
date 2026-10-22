@@ -131,6 +131,45 @@ data class CiTokenCreatedDto(
 
 // ---- workflows
 
+/** ADR 0050: one model for one kind of step. */
+data class ModelOptionDto(
+    val profileId: UUID,
+    val displayName: String,
+    val provider: String,
+    val modelId: String,
+    val runtime: String,
+    val route: String,
+    val personal: Boolean,
+    val usable: Boolean,
+    val problem: String?,
+    val note: String?,
+) {
+    companion object {
+        fun of(o: pl.mos.backoffice.shared.llm.ModelOption) = ModelOptionDto(
+            o.profileId.value, o.displayName, o.ref.provider.name, o.ref.modelId, o.runtime.name, o.route.name, o.personal, o.usable, o.problem, o.note,
+        )
+    }
+}
+
+/** ADR 0050: one task step of a workflow's model plan. */
+data class StepModelPlanDto(
+    val nodeId: String,
+    val nodeName: String,
+    val stepKind: String,
+    val harness: String?,
+    val source: String,
+    val profileId: UUID?,
+    val model: ModelOptionDto?,
+    val problem: String?,
+    val note: String?,
+) {
+    companion object {
+        fun of(p: pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.StepModelPlan) = StepModelPlanDto(
+            p.nodeId, p.nodeName, p.stepKind.name, p.harness?.name, p.source, p.profileId?.value, p.model?.let(ModelOptionDto::of), p.problem, p.note,
+        )
+    }
+}
+
 data class WorkflowDefinitionInputDto(
     @field:NotBlank val name: String = "",
     val description: String = "",

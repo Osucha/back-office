@@ -20,6 +20,8 @@ import pl.mos.backoffice.projects.domain.model.TriggerSource
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.runner.AgentHarness
 import java.util.UUID
 
 /** `workflows` endpoints: get/update/delete, duplicate, validate, palette, expression check and starting runs. */
@@ -47,6 +49,16 @@ class WorkflowController(
 
     @GetMapping("/palette")
     fun palette(@RequestParam projectId: UUID): WorkflowPaletteDto = mapper.toDto(workflows.palette(ProjectId(projectId)))
+
+    /** ADR 0050: the models a step of the project may use for the caller. */
+    @GetMapping("/model-options")
+    fun modelOptions(@RequestParam projectId: UUID, @RequestParam stepKind: StepKind, @RequestParam(required = false) harness: AgentHarness?): List<ModelOptionDto> =
+        workflows.modelOptions(ProjectId(projectId), stepKind, harness).map(ModelOptionDto::of)
+
+    /** ADR 0050: the model of every task step and whether the caller can use it. */
+    @GetMapping("/{workflowId}/model-plan")
+    fun modelPlan(@PathVariable workflowId: UUID): List<StepModelPlanDto> =
+        workflows.modelPlan(WorkflowDefinitionId(workflowId)).map(StepModelPlanDto::of)
 
     @PostMapping("/expressions/validate")
     fun validateExpression(@RequestBody @Valid body: ExpressionInputDto): ExpressionCheckDto = mapper.toDto(workflows.validateExpression(body.expression ?: ""))

@@ -12,6 +12,10 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.ControlNodeDescriptor
 import pl.mos.backoffice.projects.domain.service.StateField
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
+import pl.mos.backoffice.shared.ModelProfileId
+import pl.mos.backoffice.shared.llm.ModelOption
+import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.util.UUID
 
@@ -26,6 +30,25 @@ interface ManageWorkflows {
     fun validate(projectId: ProjectId, command: WorkflowCommand): WorkflowValidationResult
     fun palette(projectId: ProjectId): Palette
     fun validateExpression(expression: String): ExpressionCheck
+
+    /** ADR 0050: the model of every task step of a workflow and whether the caller can use it (`project.view`). */
+    fun modelPlan(id: WorkflowDefinitionId): List<StepModelPlan>
+
+    /** ADR 0050: the models a step of the project may use, usable ones first, with route and reason (`project.view`). */
+    fun modelOptions(projectId: ProjectId, stepKind: StepKind, harness: AgentHarness?): List<ModelOption>
+
+    /** One task step of [modelPlan]: [source] NODE, TEMPLATE, PROJECT, PROJECT_REVIEW or NONE; [problem] stops a run. */
+    data class StepModelPlan(
+        val nodeId: String,
+        val nodeName: String,
+        val stepKind: StepKind,
+        val harness: AgentHarness?,
+        val source: String,
+        val profileId: ModelProfileId?,
+        val model: ModelOption?,
+        val problem: String?,
+        val note: String?,
+    )
 
     data class WorkflowCommand(
         val name: String,

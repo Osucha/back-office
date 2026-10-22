@@ -89,7 +89,7 @@ class McpServerIntegrationTest {
 
     @Test
     fun `a personal token lists the tools, starts a workflow and reads the run and the caller's turns`() {
-        val bearer = pat(admin())
+        val bearer = pat(admin(), workflowEdits = true)
         val rest = restClientBuilder.baseUrl("http://localhost:$port").defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer $bearer").build()
         val created = rest.post().uri("/api/v1/projects").contentType(MediaType.APPLICATION_JSON)
             .body("""{"key":"MCP","name":"MCP demo","repository":{"url":"https://git.example.com/mcp.git","defaultBranch":"main"},"constitution":"Small, reviewed changes."}""")
@@ -104,7 +104,15 @@ class McpServerIntegrationTest {
 
             val context = mcp.call("get_project_context", mapOf("projectKey" to "MCP"))
             assertThat(context["constitution"]).isEqualTo("Small, reviewed changes.")
-            val workflowId = (context["workflows"] as List<*>).map { it as Map<*, *> }.first()["id"].toString()
+            // ADR 0050: the seeded workflows need a model the test platform does not have, so the run uses a workflow
+            // without task steps; the model plan of a seeded one says why it would not start
+            val seeded = (context["workflows"] as List<*>).map { it as Map<*, *> }.first()["id"].toString()
+            val plan = mcp.call("get_model_plan", mapOf("workflowId" to seeded))
+            assertThat(plan["startable"]).isEqualTo(false)
+            assertThat(((plan["steps"] as List<*>).first() as Map<*, *>)["problem"].toString()).contains("no model profile")
+            val minimal = """{"name":"Minimal","nodes":[{"id":"start","kind":"START","name":"Start"},
+                {"id":"done","kind":"END","name":"Done","end":{"outcome":"SUCCESS"}}],"edges":[{"id":"e1","from":"start","fromPort":"out","to":"done"}]}"""
+            val workflowId = mcp.call("create_workflow", mapOf("projectKey" to "MCP", "definition" to minimal))["id"].toString()
 
             val started = mcp.call("start_workflow", mapOf("workflowId" to workflowId, "issueKey" to "MCP-1", "parameters" to """{"title":"From MCP"}"""))
             val runId = started["runId"].toString()

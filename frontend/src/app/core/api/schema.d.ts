@@ -3249,6 +3249,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/workflows/{workflowId}/model-plan': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0050: the model of every task step as a run would resolve it (node, template, project default or review default) and whether the caller can use it; a step with a problem stops a run from starting. Needs project.view. */
+    get: operations['getWorkflowModelPlan'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/workflows/{workflowId}/publish': {
     parameters: {
       query?: never;
@@ -3296,6 +3313,23 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations['validateExpression'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/workflows/model-options': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0050: the models a step of the project may use for the caller, usable ones first: route (GATEWAY or OWN_LOGIN), whether it is personal, and why a model cannot be used. Needs project.view. */
+    get: operations['getModelOptions'];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -4844,6 +4878,26 @@ export interface components {
       mfaToken: string;
       recoveryCode?: string | null;
     };
+    ModelOption: {
+      displayName: string;
+      modelId: string;
+      /** @description a warning that does not stop the step (e.g. personal runner offline) */
+      note?: string | null;
+      /** @description usable only by its owner, in private projects and personal benchmarks */
+      personal: boolean;
+      /** @description why a step cannot run with this model */
+      problem?: string | null;
+      /** Format: uuid */
+      profileId: string;
+      provider: string;
+      /**
+       * @description GATEWAY = a provider connection; OWN_LOGIN = the user's own login on their personal runner
+       * @enum {string}
+       */
+      route: 'GATEWAY' | 'OWN_LOGIN';
+      runtime: components['schemas']['ModelRuntime'];
+      usable: boolean;
+    };
     ModelOptions: {
       extra?: {
         [key: string]: unknown;
@@ -5802,6 +5856,29 @@ export interface components {
       parameters?: {
         [key: string]: unknown;
       };
+    };
+    /**
+     * @description ADR 0050: LLM_CALL = one call through the gateway (LLM tasks, judges); CODING_AGENT = a runner job
+     * @enum {string}
+     */
+    StepKind: 'LLM_CALL' | 'CODING_AGENT';
+    StepModelPlan: {
+      /** @enum {string|null} */
+      harness?: 'OPENCODE' | 'CLAUDE_CODE' | null;
+      model?: components['schemas']['ModelOption'] | null;
+      nodeId: string;
+      nodeName: string;
+      note?: string | null;
+      /** @description set = a run of this workflow does not start */
+      problem?: string | null;
+      /** Format: uuid */
+      profileId?: string | null;
+      /**
+       * @description where the model comes from
+       * @enum {string}
+       */
+      source: 'NODE' | 'TEMPLATE' | 'PROJECT' | 'PROJECT_REVIEW' | 'NONE';
+      stepKind: components['schemas']['StepKind'];
     };
     /** @enum {string} */
     TaskCategory: 'CODING' | 'ANALYSIS' | 'SPECIFICATION' | 'REVIEW' | 'ARCHITECTURE';
@@ -12423,6 +12500,28 @@ export interface operations {
       409: components['responses']['Problem'];
     };
   };
+  getWorkflowModelPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workflowId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StepModelPlan'][];
+        };
+      };
+    };
+  };
   publishWorkflow: {
     parameters: {
       query?: never;
@@ -12502,6 +12601,31 @@ export interface operations {
             message?: string | null;
             valid?: boolean;
           };
+        };
+      };
+    };
+  };
+  getModelOptions: {
+    parameters: {
+      query: {
+        /** @description coding agent of a CODING_AGENT step */
+        harness?: 'OPENCODE' | 'CLAUDE_CODE';
+        projectId: string;
+        stepKind: components['schemas']['StepKind'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelOption'][];
         };
       };
     };

@@ -8,7 +8,7 @@ import pl.mos.backoffice.evaluation.application.port.out.TaskSuiteRepository
 import pl.mos.backoffice.evaluation.domain.model.Attempt
 import pl.mos.backoffice.evaluation.domain.model.AttemptId
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
-import pl.mos.backoffice.evaluation.domain.model.ModelRuntime
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.evaluation.domain.model.Benchmark
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
@@ -47,11 +47,10 @@ class ModelCatalogAdapter(
     private val jpa: ModelProfileJpaRepository,
     private val mappers: EvaluationMappers,
 ) : ModelCatalog {
-    // ADR 0048: Claude Code login models are not callable through the gateway, so other contexts never see them
-    override fun find(id: ModelProfileId): ModelProfileSnapshot? =
-        jpa.findById(id.value).filter { it.runtime == ModelRuntime.API }.map { mappers.toDomain(it).toSnapshot() }.orElse(null)
-    override fun findAllEnabled(): List<ModelProfileSnapshot> =
-        jpa.findAllByEnabled(true).filter { it.runtime == ModelRuntime.API }.map { mappers.toDomain(it).toSnapshot() }
+    // ADR 0050: login models are visible (with their runtime): coding steps of private projects may use them, LLM steps
+    // refuse them; the gateway never prices them
+    override fun find(id: ModelProfileId): ModelProfileSnapshot? = jpa.findById(id.value).map { mappers.toDomain(it).toSnapshot() }.orElse(null)
+    override fun findAllEnabled(): List<ModelProfileSnapshot> = jpa.findAllByEnabled(true).map { mappers.toDomain(it).toSnapshot() }
     override fun findPricing(ref: ModelRef): Pricing? = jpa.findAll()
         .filter { it.runtime == ModelRuntime.API && it.provider == ref.provider && it.modelId == ref.modelId }
         .sortedByDescending { it.enabled }

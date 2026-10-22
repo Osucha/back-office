@@ -15,10 +15,14 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
+import { forkJoin } from 'rxjs';
 import { ModelProfilesApi } from '../../../core/api/model-profiles.service';
+import { WorkflowsApi } from '../../../core/api/workflows.service';
 import type { ModelProfile, Project, ProjectInput } from '../../../core/api/types';
 import { reportFormError } from '../../../core/forms/server-errors';
 import { HelpLinkComponent } from '../../../core/help/help-link.component';
+import { type ModelChoice, mergeDefaultModelOptions } from '../../../core/ui/model-options';
+import { ModelSelectComponent } from '../../../core/ui/model-select.component';
 import { NotifyService } from '../../../core/ui/notify.service';
 import { projectRepositories } from '../../../core/ui/repositories';
 import { repositoriesArray, repositoriesValue, repositoryGroup } from '../data/repositories-form';
@@ -38,6 +42,7 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
     NzDividerModule,
     HelpLinkComponent,
     ProjectRepositoriesEditorComponent,
+    ModelSelectComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -176,22 +181,32 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
               nzExtra="Used by LLM-backed tasks without an explicit profile."
               i18n-nzExtra="@@projects.form.defaultModelHint"
             >
-              <nz-select
-                id="p-model"
-                formControlName="modelProfileId"
-                nzAllowClear
-                nzShowSearch
-                nzPlaceHolder="Select a model"
-                i18n-nzPlaceHolder="@@projects.form.selectModel"
-                [nzLoading]="profilesLoading()"
-              >
-                @for (p of profiles(); track p.id) {
-                  <nz-option
-                    [nzValue]="p.id"
-                    [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
-                  />
-                }
-              </nz-select>
+              @if (availability(); as a) {
+                <app-model-select
+                  selectId="p-model"
+                  formControlName="modelProfileId"
+                  [placeholder]="text.selectModel"
+                  [options]="a.defaults"
+                  [loading]="a.loading"
+                />
+              } @else {
+                <nz-select
+                  id="p-model"
+                  formControlName="modelProfileId"
+                  nzAllowClear
+                  nzShowSearch
+                  nzPlaceHolder="Select a model"
+                  i18n-nzPlaceHolder="@@projects.form.selectModel"
+                  [nzLoading]="profilesLoading()"
+                >
+                  @for (p of profiles(); track p.id) {
+                    <nz-option
+                      [nzValue]="p.id"
+                      [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
+                    />
+                  }
+                </nz-select>
+              }
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
@@ -202,22 +217,32 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
               nzExtra="Used by code-review tasks for this project."
               i18n-nzExtra="@@projects.form.reviewModelHint"
             >
-              <nz-select
-                id="p-review-model"
-                formControlName="reviewModelProfileId"
-                nzAllowClear
-                nzShowSearch
-                nzPlaceHolder="Same as default"
-                i18n-nzPlaceHolder="@@projects.form.sameAsDefault"
-                [nzLoading]="profilesLoading()"
-              >
-                @for (p of profiles(); track p.id) {
-                  <nz-option
-                    [nzValue]="p.id"
-                    [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
-                  />
-                }
-              </nz-select>
+              @if (availability(); as a) {
+                <app-model-select
+                  selectId="p-review-model"
+                  formControlName="reviewModelProfileId"
+                  [placeholder]="text.sameAsDefault"
+                  [options]="a.review"
+                  [loading]="a.loading"
+                />
+              } @else {
+                <nz-select
+                  id="p-review-model"
+                  formControlName="reviewModelProfileId"
+                  nzAllowClear
+                  nzShowSearch
+                  nzPlaceHolder="Same as default"
+                  i18n-nzPlaceHolder="@@projects.form.sameAsDefault"
+                  [nzLoading]="profilesLoading()"
+                >
+                  @for (p of profiles(); track p.id) {
+                    <nz-option
+                      [nzValue]="p.id"
+                      [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
+                    />
+                  }
+                </nz-select>
+              }
             </nz-form-control>
           </nz-form-item>
         </div>
@@ -332,6 +357,7 @@ export class ProjectFormComponent {
   private readonly fb = inject(FormBuilder);
   private readonly modelProfiles = inject(ModelProfilesApi);
   private readonly notify = inject(NotifyService);
+  private readonly workflowsApi = inject(WorkflowsApi);
 
   /** Existing project for edit mode; null creates. */
   readonly project = input<Project | null>(null);
@@ -354,6 +380,16 @@ export class ProjectFormComponent {
 
   readonly profiles = signal<ModelProfile[]>([]);
   readonly profilesLoading = signal(true);
+  /**
+   * ADR 0050, only for an existing project: the models its steps may use for the current user (default model: LLM
+   * or coding steps; review model: LLM steps). Null = a new project or the options could not be loaded (plain list).
+   */
+  readonly availability = signal<{
+    loading: boolean;
+    defaults: ModelChoice[];
+    review: ModelChoice[];
+  } | null>(null);
+  private availabilityFor: string | null = null;
 
   readonly text = {
     keyPattern: $localize`:@@projects.form.keyPattern:Uppercase letters, digits and underscore, 2-16 chars (e.g. SHOP)`,
@@ -362,6 +398,8 @@ export class ProjectFormComponent {
     keyGenerated: $localize`:@@projects.form.keyGenerated:generated from the name`,
     jiraKeyRequired: $localize`:@@projects.form.jiraKeyRequired:Enter the key of the Jira project (the prefix of its issue keys, e.g. LFV in LFV-123)`,
     nameRequired: $localize`:@@projects.form.nameRequired:Name is required`,
+    selectModel: $localize`:@@projects.form.selectModel:Select a model`,
+    sameAsDefault: $localize`:@@projects.form.sameAsDefault:Same as default`,
   };
   /** Example values in placeholders: code and data, the same in every language. */
   readonly examples = {
@@ -400,6 +438,7 @@ export class ProjectFormComponent {
     effect(() => {
       const p = this.project();
       if (!p) return;
+      this.loadAvailability(p.id);
       const repos = this.form.controls.repositories;
       repos.clear({ emitEvent: false });
       for (const r of projectRepositories(p)) repos.push(repositoryGroup(r), { emitEvent: false });
@@ -439,6 +478,24 @@ export class ProjectFormComponent {
     this.form.controls.key.valueChanges.subscribe((v) => {
       const upper = v.toUpperCase();
       if (upper !== v) this.form.controls.key.setValue(upper, { emitEvent: false });
+    });
+  }
+
+  private loadAvailability(projectId: string): void {
+    if (this.availabilityFor === projectId) return;
+    this.availabilityFor = projectId;
+    this.availability.set({ loading: true, defaults: [], review: [] });
+    forkJoin({
+      llm: this.workflowsApi.modelOptions(projectId, 'LLM_CALL'),
+      coding: this.workflowsApi.modelOptions(projectId, 'CODING_AGENT', 'CLAUDE_CODE'),
+    }).subscribe({
+      next: ({ llm, coding }) =>
+        this.availability.set({
+          loading: false,
+          defaults: mergeDefaultModelOptions(llm, coding),
+          review: llm,
+        }),
+      error: () => this.availability.set(null),
     });
   }
 

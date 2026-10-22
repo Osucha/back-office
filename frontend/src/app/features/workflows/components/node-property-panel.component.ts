@@ -27,8 +27,10 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { Subject, catchError, of, switchMap } from 'rxjs';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
+import { ModelSelectComponent } from '../../../core/ui/model-select.component';
 import type {
   DecisionBranch,
+  ModelOption,
   ModelProfile,
   PaletteTask,
   LibrarySource,
@@ -63,6 +65,7 @@ import {
 import { StepRepositoriesSectionComponent } from './step-repositories-section.component';
 import { StepWorkspaceSectionComponent } from './step-workspace-section.component';
 import { WORKSPACE_CONFIG_KEYS, stepWorkspace } from '../data/workspaces';
+import { type StepModelUse, stepModelUse, stepModelUseKey } from '../data/model-step';
 
 type PromptMode = 'none' | 'append' | 'replace';
 
@@ -94,6 +97,7 @@ type PromptMode = 'none' | 'append' | 'replace';
     WriteApprovalSectionComponent,
     StepRepositoriesSectionComponent,
     StepWorkspaceSectionComponent,
+    ModelSelectComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -348,24 +352,37 @@ type PromptMode = 'none' | 'append' | 'replace';
                   nzExtra="Overrides the template / project default for this node."
                   i18n-nzExtra="@@workflows.props.modelProfile.extra"
                 >
-                  <nz-select
-                    id="pp-model"
-                    name="modelProfileId"
-                    nzAllowClear
-                    nzShowSearch
-                    nzPlaceHolder="Inherited"
-                    i18n-nzPlaceHolder="@@workflows.props.inherited"
-                    [ngModel]="n.task?.overrides?.modelProfileId ?? null"
-                    (ngModelChange)="patchOverrides({ modelProfileId: $event ?? null })"
-                    [disabled]="readonly()"
-                  >
-                    @for (p of profiles(); track p.id) {
-                      <nz-option
-                        [nzValue]="p.id"
-                        [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
-                      />
-                    }
-                  </nz-select>
+                  @if (modelUse() && modelChoices() !== null) {
+                    <app-model-select
+                      name="modelProfileId"
+                      selectId="pp-model"
+                      [placeholder]="text.inherited"
+                      [options]="modelChoices() ?? []"
+                      [loading]="modelChoices() === undefined"
+                      [ngModel]="n.task?.overrides?.modelProfileId ?? null"
+                      (ngModelChange)="patchOverrides({ modelProfileId: $event ?? null })"
+                      [disabled]="readonly()"
+                    />
+                  } @else {
+                    <nz-select
+                      id="pp-model"
+                      name="modelProfileId"
+                      nzAllowClear
+                      nzShowSearch
+                      nzPlaceHolder="Inherited"
+                      i18n-nzPlaceHolder="@@workflows.props.inherited"
+                      [ngModel]="n.task?.overrides?.modelProfileId ?? null"
+                      (ngModelChange)="patchOverrides({ modelProfileId: $event ?? null })"
+                      [disabled]="readonly()"
+                    >
+                      @for (p of profiles(); track p.id) {
+                        <nz-option
+                          [nzValue]="p.id"
+                          [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
+                        />
+                      }
+                    </nz-select>
+                  }
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
@@ -1006,6 +1023,11 @@ export class NodePropertyPanelComponent {
   readonly palette = input<WorkflowPalette | null>(null);
   readonly issues = input<Issues | null>(null);
   readonly profiles = input<ModelProfile[]>([]);
+  /**
+   * Model options per step use (ADR 0050, key `stepModelUseKey`), cached by the page: missing = not loaded yet,
+   * null = could not be loaded (the plain profile list is shown instead).
+   */
+  readonly modelOptions = input<Record<string, ModelOption[] | null>>({});
   readonly skills = input<Skill[]>([]);
   readonly projectId = input<string | null>(null);
   /** The project's repositories (ADR 0034), for the repositories of runner steps. */
@@ -1028,9 +1050,12 @@ export class NodePropertyPanelComponent {
   readonly nodeChange = output<WorkflowNode>();
   readonly remove = output<void>();
   readonly duplicate = output<void>();
+  /** The node needs the model options of this step use and they are not cached yet. */
+  readonly modelOptionsNeeded = output<StepModelUse>();
 
   readonly text = {
     idLocked: $localize`:@@workflows.props.id.locked:Ids of saved nodes are fixed (runs and logs reference them).`,
+    inherited: $localize`:@@workflows.props.inherited:Inherited`,
     idHint: $localize`:@@workflows.props.id.hint:Slug, unique in the workflow; edges follow a rename.`,
     questionHint: $localize`:@@workflows.props.question.hint:Template; ${'{{issue.key}}'}:example1:, ${'{{review.score}}'}:example2: ... are rendered.`,
   };
@@ -1106,6 +1131,21 @@ export class NodePropertyPanelComponent {
     const key = this.node()?.task?.templateKey;
     return (key ? this.palette()?.tasks?.find((x) => x.key === key) : undefined) ?? null;
   });
+  /** How the node's step uses a model (ADR 0050): step kind and coding harness; null = no model. */
+  readonly modelUse = computed<StepModelUse | null>(
+    () =>
+      stepModelUse(
+        this.paletteTask(),
+        this.node()?.task?.overrides?.config,
+        this.resolved()?.config,
+      ),
+    { equal: (a, b) => (a ? stepModelUseKey(a) : null) === (b ? stepModelUseKey(b) : null) },
+  );
+  /** Options of the node's step use: undefined while loading, null when they could not be loaded. */
+  readonly modelChoices = computed<ModelOption[] | null | undefined>(() => {
+    const use = this.modelUse();
+    return use ? this.modelOptions()[stepModelUseKey(use)] : null;
+  });
   /** IMPLEMENT / SPEC_KIT steps run in the runner and use repositories (ADR 0034). */
   readonly runnerStep = computed(() => isRunnerTask(this.paletteTask()));
   /** Whether the runner step pushes (node config, template config, schema default). */
@@ -1156,6 +1196,11 @@ export class NodePropertyPanelComponent {
   private readonly resolve$ = new Subject<string | null>();
 
   constructor() {
+    effect(() => {
+      const use = this.modelUse();
+      if (use && !(stepModelUseKey(use) in this.modelOptions()))
+        untracked(() => this.modelOptionsNeeded.emit(use));
+    });
     // Reset drafts when another node is selected.
     effect(() => {
       const n = this.node();

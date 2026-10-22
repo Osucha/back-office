@@ -51,6 +51,7 @@
 | [0047](0047-benchmarks-that-measure-and-library-wiring.md) | Hidden acceptance checks and the diff for the judge in coding benchmarks, scores computed from criteria, PetClinic tasks, commit subject and Spec Kit argument from Back Office, library wiring (review findings in rework, scoped feedback, checked artifact names, built-in upgrades) | accepted |
 | [0048](0048-claude-code-login-models.md) | Claude Code on its user's own login as a benchmark candidate: model profile runtime CLAUDE_CODE_LOGIN (personal runner with LOCAL_LOGIN, Claude Code harness, coding tasks only, never the judge, nothing billed), checked instead of called, hidden from workflows; subscription tokens refused as Anthropic API keys | accepted |
 | [0049](0049-workflow-authoring-through-mcp.md) | Workflow authoring through MCP: list_projects, get_workflow_palette, get_workflow, validate_workflow, create_workflow, update_workflow; one workflow JSON encoding in projects-core; writes need the token option Allow workflow edits via MCP | accepted |
+| [0050](0050-model-availability.md) | Model availability: platform vs personal models, gateway vs own-login route; one availability service used by every model picker, the designer validation, the run start check and a per-step model plan (step 1); personal API keys, runner-reported logins and a Claude Code prompt mode planned | accepted |
 
 Template: context, decision, alternatives considered, consequences. Dates are the day the decision was
 taken. A superseded record keeps its text and gains a link to the successor.

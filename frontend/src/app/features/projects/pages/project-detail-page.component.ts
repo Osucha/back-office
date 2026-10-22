@@ -27,6 +27,7 @@ import type {
   LibraryLink,
   Project,
   ProjectInput,
+  StepModelPlan,
   WorkflowDefinition,
   WorkflowInsights,
   WorkflowRunSummary,
@@ -37,6 +38,7 @@ import { projectCan } from '../../../core/auth/project-access';
 import { PendingSavesService } from '../../../core/state/pending-saves.service';
 import { ProjectsStore, monogram } from '../../../core/state/projects.store';
 import { ConfirmService } from '../../../core/ui/confirm.service';
+import { planSourceLabel, routeLabel, summarizeModelPlan } from '../../../core/ui/model-options';
 import { SpecKitCardComponent } from '../components/spec-kit-card.component';
 import { projectRepositories, purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
 import { batonOf, type BatonHolder } from '../../../core/ui/relay/baton';
@@ -620,6 +622,7 @@ const TABS = [
       nzCancelText="Cancel"
       i18n-nzCancelText="@@projects.start.cancel"
       [nzOkLoading]="startingBusy()"
+      [nzOkDisabled]="planBlocked()"
       (nzOnOk)="startRun()"
       (nzOnCancel)="closeStart()"
     >
@@ -649,6 +652,51 @@ const TABS = [
         ></textarea>
         @if (paramsError()) {
           <div class="danger small">{{ paramsError() }}</div>
+        }
+        <div class="field-label plan-label" i18n="@@projects.start.models">Models of the steps</div>
+        @if (modelPlanLoading()) {
+          <div class="muted small" i18n="@@projects.start.modelsLoading">
+            Checking the models...
+          </div>
+        } @else if (modelPlan(); as plan) {
+          @if (plan.length) {
+            <ul class="model-plan">
+              @for (s of plan; track s.nodeId) {
+                <li>
+                  <div class="plan-row">
+                    <span class="truncate plan-step">{{ s.nodeName }}</span>
+                    <span class="truncate">{{ s.model?.displayName ?? text.noModel }}</span>
+                    <span class="muted small">{{ sourceLabel(s.source) }}</span>
+                    @if (s.model) {
+                      <span class="plan-route" [class.own]="s.model.route === 'OWN_LOGIN'">{{
+                        route(s.model.route)
+                      }}</span>
+                    }
+                  </div>
+                  @if (s.problem) {
+                    <div class="danger small">{{ s.problem }}</div>
+                  } @else if (s.note || s.model?.note) {
+                    <div class="warning small">{{ s.note || s.model?.note }}</div>
+                  }
+                </li>
+              }
+            </ul>
+          } @else {
+            <div class="muted small" i18n="@@projects.start.noModelSteps">
+              No step of this workflow uses a model.
+            </div>
+          }
+          @if (planBlocked()) {
+            <div class="danger small" role="alert" i18n="@@projects.start.blocked">
+              Runs of this workflow cannot start until every step has a model you can use: change
+              the step, the template or the project default.
+            </div>
+          }
+        } @else {
+          <div class="muted small" i18n="@@projects.start.modelsUnavailable">
+            The models of the steps could not be checked; the server checks them when the run
+            starts.
+          </div>
         }
       </ng-container>
     </nz-modal>
@@ -689,6 +737,41 @@ const TABS = [
         font-size: 11.5px;
         font-weight: 500;
         box-shadow: inset 0 0 0 1px var(--bo-line-strong);
+      }
+      .plan-label {
+        display: block;
+        margin-top: 12px;
+      }
+      .model-plan {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .plan-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: center;
+        font-size: 13px;
+      }
+      .plan-step {
+        font-weight: 500;
+      }
+      .plan-route {
+        padding: 0 6px;
+        border-radius: 999px;
+        font-size: 11px;
+        color: var(--bo-ink-2);
+        box-shadow: inset 0 0 0 1px var(--bo-line-strong);
+      }
+      .plan-route.own {
+        color: var(--bo-agent-ink);
+      }
+      .warning {
+        color: var(--bo-you-ink);
       }
       .private-note {
         margin: 0 0 12px;
@@ -882,6 +965,16 @@ export class ProjectDetailPageComponent {
   readonly starting = signal<WorkflowDefinition | null>(null);
   readonly startingBusy = signal(false);
   readonly paramsError = signal<string | null>(null);
+  /** ADR 0050: the model of every step of the workflow being started; null when it could not be loaded. */
+  readonly modelPlan = signal<StepModelPlan[] | null>(null);
+  readonly modelPlanLoading = signal(false);
+  /** A step has no usable model: the server refuses the run, so Start is disabled. */
+  readonly planBlocked = computed(() => {
+    const plan = this.modelPlan();
+    return !!plan && summarizeModelPlan(plan).blocked > 0;
+  });
+  readonly sourceLabel = planSourceLabel;
+  readonly route = routeLabel;
   /** Workflow library (ADR 0037): "Add from library", the workflow being published, the workflow whose metrics are open. */
   readonly adoptOpen = signal(false);
   readonly publishing = signal<WorkflowDefinition | null>(null);
@@ -958,6 +1051,7 @@ export class ProjectDetailPageComponent {
     draft: $localize`:@@projects.detail.workflows.draft:draft (has errors)`,
     enabled: $localize`:@@projects.detail.workflows.enabled:enabled`,
     settings: $localize`:@@projects.detail.settings:Project settings`,
+    noModel: $localize`:@@projects.start.noModel:none`,
     settingsReadOnly: $localize`:@@projects.detail.settingsReadOnly:Project settings (read-only)`,
     manual: $localize`:@@projects.detail.trigger.manual:Manual`,
   };
@@ -1205,6 +1299,18 @@ export class ProjectDetailPageComponent {
     this.paramsJson = '';
     this.paramsError.set(null);
     this.starting.set(w);
+    this.modelPlan.set(null);
+    this.modelPlanLoading.set(true);
+    this.workflowsApi.modelPlan(w.id).subscribe({
+      next: (plan) => {
+        if (this.starting()?.id !== w.id) return;
+        this.modelPlan.set(plan);
+        this.modelPlanLoading.set(false);
+      },
+      error: () => {
+        if (this.starting()?.id === w.id) this.modelPlanLoading.set(false);
+      },
+    });
   }
 
   closeStart(): void {
@@ -1219,7 +1325,7 @@ export class ProjectDetailPageComponent {
 
   startRun(): void {
     const w = this.starting();
-    if (!w) return;
+    if (!w || this.planBlocked()) return;
     let parameters: Record<string, unknown> = {};
     if (this.paramsJson.trim()) {
       try {

@@ -4,6 +4,7 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.usage.Pricing
@@ -12,13 +13,6 @@ import java.time.Instant
 /** Informational tags on a catalogue entry; they do not change how a model is called. */
 enum class Capability { CODING, REASONING, LONG_CONTEXT, TOOLS, VISION, CHEAP }
 
-/**
- * How a model is reached. `API`: through the LLM gateway and a provider connection. `CLAUDE_CODE_LOGIN` (ADR 0048):
- * Claude Code on the benchmark creator's personal runner, signed in with their own subscription (LOCAL_LOGIN); no API
- * key, nothing billed, coding tasks only for now. [ModelRef.modelId] is what Claude Code gets as `--model` (`opus`,
- * `sonnet`, `haiku` or a full model id).
- */
-enum class ModelRuntime { API, CLAUDE_CODE_LOGIN }
 
 /**
  * Aggregate root: one entry of the model catalogue. Holds how to call a model (`ref`), what it costs
@@ -80,6 +74,7 @@ data class ModelProfile(
         ref = ref,
         pricing = pricing,
         enabled = enabled,
+        runtime = runtime,
     )
 
     companion object {

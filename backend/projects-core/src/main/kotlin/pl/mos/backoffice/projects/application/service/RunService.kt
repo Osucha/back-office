@@ -67,6 +67,8 @@ class RunService(
     private val repositorySteps: RepositoryStepCheck? = null,
     /** Refuses runs with Spec Kit steps when Spec Kit is off for the project or the platform (ADR 0036); null = not checked. */
     private val specKitSteps: pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck? = null,
+    /** ADR 0050: refuses runs whose step has no model the starting user can use; null = not checked. */
+    private val modelSteps: pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck? = null,
 ) : StartRun, CancelRun, RetryRun, RunQueries {
 
     override fun start(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource): WorkflowRun {
@@ -118,6 +120,9 @@ class RunService(
         }
         repositorySteps?.runBlockers(project, definition.nodes)?.takeIf { it.isNotEmpty() }?.let { blockers ->
             throw InvalidStateException("workflow ${definition.name} cannot start: " + blockers.joinToString("; ") + " (manual: $REPOSITORIES_GUIDE)")
+        }
+        modelSteps?.runBlockers(project, definition.nodes, actor.userId)?.takeIf { it.isNotEmpty() }?.let { blockers ->
+            throw InvalidStateException("workflow ${definition.name} cannot start: " + blockers.joinToString("; ") + " (manual: $MODELS_GUIDE)")
         }
         val now = clock.now()
         var run = WorkflowRun.create(project, definition, trigger, input, now, startedBy = actor).start(now)
@@ -208,5 +213,6 @@ class RunService(
 
         /** Manual section on project repositories and step repositories (ADR 0034). */
         const val REPOSITORIES_GUIDE = "workflows#step-repositories"
+        const val MODELS_GUIDE = "evaluation#model-availability"
     }
 }

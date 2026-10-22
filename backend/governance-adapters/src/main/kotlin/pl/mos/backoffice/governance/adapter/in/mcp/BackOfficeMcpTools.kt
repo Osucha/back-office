@@ -36,6 +36,9 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditResult
+import pl.mos.backoffice.shared.llm.ModelOption
+import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.prompt.UntrustedText
 import pl.mos.backoffice.shared.security.AuthorizationGate
@@ -72,6 +75,7 @@ import java.util.UUID
  * | `create_workflow` / `update_workflow` | ManageWorkflows.create / update | `workflow.edit` + token option (ADR 0049) |
  * | `create_project` | ManageProjects.create | `projects.create` + the same token option (ADR 0049) |
  * | `list_workspaces` | ManageProjectWorkspaces.list | `project.view` |
+ * | `get_model_options` / `get_model_plan` | ManageWorkflows.modelOptions / modelPlan (ADR 0050) | `project.view` |
  * | `create_workspace` / `update_workspace` | ManageProjectWorkspaces.create / update | `project.manage` + the same token option |
  *
  * This package is the one governance adapter allowed to import other contexts (`port.in` and the domain
@@ -438,6 +442,42 @@ class BackOfficeMcpTools(
     }
 
     @McpTool(
+        name = "get_model_options",
+        description = "The models a step of a project may use for the caller (ADR 0050), usable ones first: route GATEWAY (a provider " +
+            "connection of the platform) or OWN_LOGIN (the caller's own Claude Code login on their personal runner, private projects and " +
+            "Claude Code coding steps only), and why a model cannot be used. Use it to pick task.overrides.modelProfileId.",
+        annotations = McpTool.McpAnnotations(title = "Get model options", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
+    )
+    fun getModelOptions(
+        @McpToolParam(description = "Project key", required = false) projectKey: String?,
+        @McpToolParam(description = "Project id (UUID)", required = false) projectId: String?,
+        @McpToolParam(description = "LLM_CALL (LLM tasks) or CODING_AGENT (runner steps)", required = true) stepKind: String,
+        @McpToolParam(description = "Coding agent of a CODING_AGENT step: OPENCODE or CLAUDE_CODE", required = false) harness: String?,
+    ): Map<String, Any?> {
+        caller()
+        val kind = enumValue<StepKind>(stepKind, "stepKind")
+        val agent = harness?.takeIf { it.isNotBlank() }?.let { enumValue<AgentHarness>(it, "harness") }
+        return linkedMapOf("models" to workflows.modelOptions(project(projectKey, projectId).id, kind, agent).map(::modelOption))
+    }
+
+    @McpTool(
+        name = "get_model_plan",
+        description = "The model of every task step of a workflow as a run would resolve it (node, template, project default or review default), " +
+            "where it comes from, its route and whether the caller can use it. A step with a problem stops a run from starting (ADR 0050).",
+        annotations = McpTool.McpAnnotations(title = "Get model plan", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
+    )
+    fun getModelPlan(@McpToolParam(description = "Workflow id (UUID)", required = true) workflowId: String): Map<String, Any?> {
+        caller()
+        val steps = workflows.modelPlan(WorkflowDefinitionId(uuid(workflowId, "workflowId"))).map {
+            linkedMapOf(
+                "nodeId" to it.nodeId, "nodeName" to it.nodeName, "stepKind" to it.stepKind.name, "harness" to it.harness?.name, "source" to it.source,
+                "profileId" to it.profileId?.toString(), "model" to it.model?.let(::modelOption), "problem" to it.problem, "note" to it.note,
+            )
+        }
+        return linkedMapOf("startable" to steps.none { it["problem"] != null }, "steps" to steps)
+    }
+
+    @McpTool(
         name = "list_workspaces",
         description = "Run workspaces of a project (ADR 0044): coding steps that name the same workspace (config.workspace = its key) share " +
             "/workspace within a run, with the sources cloned once, the setup command run once and agent sessions continued per role.",
@@ -497,6 +537,15 @@ class BackOfficeMcpTools(
     }
 
     // ------------------------------------------------------------------------------------------------
+
+    private fun modelOption(o: ModelOption): Map<String, Any?> = linkedMapOf(
+        "profileId" to o.profileId.toString(), "displayName" to o.displayName, "provider" to o.ref.provider.name, "modelId" to o.ref.modelId,
+        "runtime" to o.runtime.name, "route" to o.route.name, "personal" to o.personal, "usable" to o.usable, "problem" to o.problem, "note" to o.note,
+    )
+
+    private inline fun <reified E : Enum<E>> enumValue(value: String, field: String): E =
+        enumValues<E>().firstOrNull { it.name.equals(value.trim(), ignoreCase = true) }
+            ?: throw ValidationException("must be one of ${enumValues<E>().joinToString()}", field)
 
     private fun workspaceUseCases(): ManageProjectWorkspaces =
         workspaces ?: throw ValidationException("run workspaces are not available on this server", "workspaces")

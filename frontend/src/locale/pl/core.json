@@ -503,5 +503,17 @@
   "core.help.topic.workspaces": "Przestrzenie robocze i sesje agentów",
   "core.workspaces.problem.key": "Klucz: 1-20 małych liter, cyfr lub myślników, zaczyna się literą.",
   "core.workspaces.problem.duplicate": "Inna przestrzeń projektu ma ten klucz.",
-  "core.workspaces.problem.role": "Rola {$role}: małe litery, cyfry lub myślniki."
+  "core.workspaces.problem.role": "Rola {$role}: małe litery, cyfry lub myślniki.",
+  "core.modelSelect.platform": "Platforma",
+  "core.modelSelect.personal": "Osobiste (Twoje logowanie Claude)",
+  "core.modelSelect.route.ownLogin": "Twoje logowanie",
+  "core.modelSelect.route.api": "API",
+  "core.modelSelect.codingOnly": "tylko kroki programistyczne (kroki LLM potrzebują własnego modelu)",
+  "core.modelSelect.unknown": "Nieznany profil modelu",
+  "core.modelSelect.missing": "Ten profil modelu jest niedostępny (usunięty, wyłączony lub niewidoczny dla Ciebie).",
+  "core.modelPlan.source.node": "krok",
+  "core.modelPlan.source.template": "szablon",
+  "core.modelPlan.source.project": "domyślny projektu",
+  "core.modelPlan.source.review": "domyślny przeglądu",
+  "core.modelPlan.source.none": "nie ustawiono"
 }

@@ -5,6 +5,7 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 
 /**
@@ -16,6 +17,20 @@ class ModelResolver(private val catalog: ModelCatalog) {
     fun forTask(task: ResolvedTask, project: Project): ModelProfileSnapshot {
         val projectDefault = if (task.producesReview) project.defaults.reviewModelProfileId ?: project.defaults.modelProfileId else project.defaults.modelProfileId
         return resolve(task.modelProfileId ?: projectDefault, "task ${task.key}")
+    }
+
+    /** ADR 0050: a Claude Code login model cannot answer a gateway call. */
+    fun forLlmCall(task: ResolvedTask, project: Project): ModelProfileSnapshot = forTask(task, project).also {
+        if (it.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) {
+            throw InvalidStateException("${it.displayName} is a Claude Code login model; the LLM step ${task.key} needs a model of a connected provider")
+        }
+    }
+
+    /** ADR 0050: a login model runs on its user's personal runner, which only private projects use (ADR 0040). */
+    fun forCodingAgent(task: ResolvedTask, project: Project): ModelProfileSnapshot = forTask(task, project).also {
+        if (it.runtime == ModelRuntime.CLAUDE_CODE_LOGIN && !project.personal) {
+            throw InvalidStateException("${it.displayName} uses a personal Claude login, which works only in private projects; choose a model of a connected provider for ${task.key}")
+        }
     }
 
     fun resolve(id: ModelProfileId?, purpose: String): ModelProfileSnapshot {

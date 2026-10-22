@@ -24,7 +24,13 @@ import pl.mos.backoffice.projects.domain.service.TaskPortsProvider
 import pl.mos.backoffice.projects.domain.service.TaskTemplateInfo
 import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
 import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
+import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
+import pl.mos.backoffice.shared.llm.ModelAvailability
+import pl.mos.backoffice.shared.llm.ModelOption
+import pl.mos.backoffice.shared.llm.ModelUse
+import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck
 import pl.mos.backoffice.projects.domain.model.ConnectionCapability
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
@@ -69,10 +75,13 @@ class WorkflowService(
     librarySources: LibrarySourceRepository? = null,
     /** ADR 0044: run workspaces of projects steps may pick; null = none (tests). */
     projectWorkspaces: ProjectWorkspaceRepository? = null,
+    /** ADR 0050: which models the caller may use; null = models are not checked (tests). */
+    private val availability: ModelAvailability? = null,
 ) : ManageWorkflows {
 
     private val jiraSteps = jira?.let { JiraStepCheck(taskCatalog, it) }
     private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources, projectWorkspaces)
+    private val modelSteps = availability?.let { ModelStepCheck(taskCatalog, it) }
 
     override fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition {
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value).actor
@@ -213,10 +222,31 @@ class WorkflowService(
         val (errors, warnings) = connectionIssues(projectId, command.nodes, command.triggers)
         val (repoErrors, repoWarnings) = repositoryIssues(projectId, command.nodes)
         val specKitErrors = specKit?.let { check -> projects.findById(projectId)?.let { check.designIssues(it, command.nodes) } }.orEmpty()
+        // ADR 0050: a model the current user cannot use is a warning (it may become usable); the run start refuses it
+        val modelWarnings = modelSteps?.let { check -> projects.findById(projectId)?.let { check.designIssues(it, command.nodes, currentUserId()) } }.orEmpty()
         val allErrors = errors + repoErrors + specKitErrors
-        val allWarnings = warnings + repoWarnings
+        val allWarnings = warnings + repoWarnings + modelWarnings
         return if (allErrors.isEmpty() && allWarnings.isEmpty()) graph else WorkflowValidationResult(graph.errors + allErrors, graph.warnings + allWarnings)
     }
+
+    override fun modelPlan(id: WorkflowDefinitionId): List<ManageWorkflows.StepModelPlan> {
+        val definition = workflows.findById(id) ?: throw NotFoundException("WorkflowDefinition", id)
+        val user = gate.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
+        val project = projects.findById(definition.projectId) ?: throw NotFoundException("Project", definition.projectId)
+        val check = modelSteps ?: return emptyList()
+        return check.plan(project, definition.nodes, user.userId?.value).map {
+            ManageWorkflows.StepModelPlan(it.nodeId, it.nodeName, it.stepKind, it.harness, it.source.name, it.profileId, it.model, it.problem, it.model?.note)
+        }
+    }
+
+    override fun modelOptions(projectId: ProjectId, stepKind: StepKind, harness: AgentHarness?): List<ModelOption> {
+        val user = gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        val project = projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
+        return availability?.options(ModelUse(stepKind, harness, project.personal, user.userId?.value)).orEmpty()
+    }
+
+    /** The user the designer validates for; null outside a request (system work). */
+    private fun currentUserId() = runCatching { gate.currentUser().userId?.value }.getOrNull()
 
     /** ADR 0034: the repositories each runner step works on ([RepositoryStepCheck]); a step that cannot get one is an error. */
     private fun repositoryIssues(projectId: ProjectId, nodes: List<WorkflowNode>): Pair<List<ValidationIssue>, List<ValidationIssue>> {

@@ -64,6 +64,35 @@ wygląda na darmowy; sprawdź ceny, zanim zaufasz **Kosztom** (**Costs**) lub ra
 
 Profil węzła wygrywa z profilem szablonu, a ten z domyślnym profilem projektu.
 
+<a id="model-availability"></a>
+### Których modeli może użyć krok
+
+Model jest albo **platformowy** (połączenie z dostawcą dodane przez administratora, wywoływany przez API, dostępny
+dla wszystkich i liczony do budżetów), albo **osobisty** (dziś: Claude Code z Twoim własnym logowaniem na Twoim
+osobistym runnerze, dostępny tylko dla Ciebie). Modele osobiste działają tylko w Twoich prywatnych projektach
+i Twoich benchmarkach; modele platformowe działają wszędzie, także w projektach prywatnych.
+
+Wszędzie, gdzie wybierasz model (krok w projektancie workflowów, model domyślny i model przeglądu projektu, okno
+uruchamiania), Back Office pokazuje modele w dwóch grupach, **Platformowe** (**Platform**) i **Osobiste**
+(**Personal**), z drogą wywołania (**API** albo **Twoje logowanie**). Model, którego nie da się tam użyć, jest
+wyszarzony z podanym powodem, na przykład:
+
+| Powód | Co zrobić |
+|---|---|
+| połączenie z dostawcą nie jest skonfigurowane albo nie ma klucza API | podłącz dostawcę w Ustawieniach (administrator) albo wybierz inny model |
+| model z logowaniem Claude Code działa tylko w krokach agenta kodującego | kroki LLM (analiza, lista zadań, przegląd) potrzebują modelu platformowego |
+| działa tylko w projektach prywatnych | w projektach wspólnych użyj modelu platformowego |
+| wymaga Claude Code jako agenta kodującego | ustaw agenta kodującego kroku na Claude Code |
+| brak osobistego runnera albo nie używa Twojego logowania | skonfiguruj go w Moje konto, Osobisty runner |
+
+Osobisty runner offline to tylko ostrzeżenie: zadania czekają, aż się połączy.
+
+**Plan modeli** workflowu pokazuje dla każdego kroku model, którego użyłoby uruchomienie, i skąd pochodzi (krok,
+jego szablon, model domyślny projektu albo model przeglądu). Projektant oznacza ostrzeżeniem kroki z modelem,
+którego nie możesz użyć, a uruchomienie nie wystartuje, dopóki któryś krok nie ma dostępnego modelu; okno
+uruchamiania wypisuje kroki i powód. Narzędzia MCP `get_model_options` i `get_model_plan` dają agentowi w IDE te
+same informacje.
+
 <a id="claude-code-login"></a>
 ### Claude Code z własnym logowaniem
 

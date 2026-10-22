@@ -40,7 +40,9 @@ import pl.mos.backoffice.projects.application.port.out.LegacyConnectionSource
 import pl.mos.backoffice.projects.application.service.ConnectionService
 import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
 import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
+import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
+import pl.mos.backoffice.shared.llm.ModelAvailability
 import pl.mos.backoffice.projects.application.service.JiraIntakeService
 import pl.mos.backoffice.projects.application.port.out.JiraIntakeRepository
 import pl.mos.backoffice.projects.domain.service.JiraIntakePlanner
@@ -170,8 +172,11 @@ class ProjectsConfiguration {
         workflows: WorkflowDefinitionRepository, projects: ProjectRepository, runs: WorkflowRunRepository, validator: WorkflowValidator,
         taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
         jira: JiraConnectionAccess, specKit: SpecKitStepCheck, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
-        projectWorkspaces: ProjectWorkspaceRepository,
-    ) = WorkflowService(workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources, projectWorkspaces)
+        projectWorkspaces: ProjectWorkspaceRepository, availability: ObjectProvider<ModelAvailability>,
+    ) = WorkflowService(
+        workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources, projectWorkspaces,
+        availability.getIfAvailable(),
+    )
 
     /** Sources of the library (ADR 0043). */
     @Bean
@@ -209,8 +214,13 @@ class ProjectsConfiguration {
         runs: WorkflowRunRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository, logs: RunLogRepository,
         engine: WorkflowEngine, progress: RecordRunProgress, validator: WorkflowValidator, events: EventPublisher,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock, jiraSteps: JiraStepCheck, repositorySteps: RepositoryStepCheck,
-        specKitSteps: SpecKitStepCheck,
-    ) = RunService(runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps, specKitSteps)
+        specKitSteps: SpecKitStepCheck, taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>,
+    ) = RunService(
+        runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps, specKitSteps,
+        // ADR 0050: the model of every task step must be usable by the starting user; without the model catalogue (the
+        // Projects module alone) models are not checked
+        availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it) },
+    )
 
     // ---- Jira intake watcher (ADR 0033)
 
