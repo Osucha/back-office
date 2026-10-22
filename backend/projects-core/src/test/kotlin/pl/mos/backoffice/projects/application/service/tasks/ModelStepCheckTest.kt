@@ -142,4 +142,31 @@ class ModelStepCheckTest {
             .isInstanceOf(InvalidStateException::class.java).hasMessageContaining("only in private projects")
         assertThat(resolver.forCodingAgent(coding, Fixtures.project().copy(personal = true))).isEqualTo(snapshot)
     }
+
+    @Test
+    fun `after the project defaults the user's own default and then the platform default are used (ADR 0050 step 2)`() {
+        val personal = ModelProfileId.new()
+        val defaults = object : pl.mos.backoffice.shared.llm.ModelDefaults {
+            override fun resolve(userId: UUID?, stepKind: StepKind) = when {
+                userId == user && stepKind == StepKind.CODING_AGENT -> pl.mos.backoffice.shared.llm.DefaultModel(personal, personal = true)
+                else -> pl.mos.backoffice.shared.llm.DefaultModel(gpt, personal = false)
+            }
+        }
+        val withDefaults = ModelStepCheck(catalog, availability, defaults)
+        val project = Fixtures.project().copy(personal = true, defaults = ProjectDefaults())
+        val plan = withDefaults.plan(project, listOf(node("ask", "analyse-issue"), node("impl", "implement-claude-code", config = mapOf("agent" to "CLAUDE_CODE"))), user)
+            .associateBy { it.nodeId }
+        assertThat(plan["ask"]!!.let { it.source to it.profileId }).isEqualTo(ModelStepCheck.Source.PLATFORM_DEFAULT to gpt)
+        assertThat(plan["impl"]!!.let { it.source to it.profileId }).isEqualTo(ModelStepCheck.Source.PERSONAL_DEFAULT to personal)
+
+        val foreign = ModelProfileSnapshot(personal, "Their key", ModelRef(Provider.OPENAI, "gpt-5"), Pricing.FREE, true, ModelRuntime.API, ownerUserId = UUID.randomUUID())
+        val resolver = ModelResolver(object : ModelCatalog {
+            override fun find(id: ModelProfileId) = foreign.takeIf { id == personal }
+            override fun findAllEnabled() = listOf(foreign)
+            override fun findPricing(ref: ModelRef): Pricing? = null
+        }, defaults)
+        val llm = catalog.resolve("analyse-issue", null, TaskOverrides(modelProfileId = personal))!!
+        assertThatThrownBy { resolver.forLlmCall(llm, project, user) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("another user")
+    }
+
 }

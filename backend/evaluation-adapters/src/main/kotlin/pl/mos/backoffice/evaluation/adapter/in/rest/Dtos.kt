@@ -52,6 +52,8 @@ data class ModelProfileInputDto(
     val notes: String? = null,
     val enabled: Boolean = true,
     val runtime: ModelRuntime = ModelRuntime.API,
+    /** ADR 0050 step 2: create a personal profile of the caller (a login profile always is one). */
+    val personal: Boolean = false,
 )
 
 data class ModelProfileDto(
@@ -68,7 +70,33 @@ data class ModelProfileDto(
     val updatedAt: Instant,
     val updatedBy: ActorRefDto? = null,
     val runtime: ModelRuntime = ModelRuntime.API,
+    val personal: Boolean = false,
 )
+
+/** ADR 0050: one model for one use (same shape as the projects' model options). */
+data class ModelOptionDto(
+    val profileId: UUID,
+    val displayName: String,
+    val provider: String,
+    val modelId: String,
+    val runtime: String,
+    val route: String,
+    val personal: Boolean,
+    val usable: Boolean,
+    val problem: String?,
+    val note: String?,
+) {
+    companion object {
+        fun of(o: pl.mos.backoffice.shared.llm.ModelOption) = ModelOptionDto(
+            o.profileId.value, o.displayName, o.ref.provider.name, o.ref.modelId, o.runtime.name, o.route.name, o.personal, o.usable, o.problem, o.note,
+        )
+    }
+}
+
+/** ADR 0050 step 2: the default model per kind of step, the platform's and the caller's own. */
+data class ModelDefaultsDto(val platform: Map<String, ModelProfileDto>, val mine: Map<String, ModelProfileDto>)
+
+data class ModelDefaultInputDto(val stepKind: pl.mos.backoffice.shared.llm.StepKind, val profileId: UUID? = null)
 
 data class ModelTestResultDto(val ok: Boolean, val latencyMs: Long, val usage: TokenUsageDto, val cost: MoneyDto, val sample: String?, val error: String?)
 

@@ -7,6 +7,7 @@ import pl.mos.backoffice.projects.domain.service.StepWorkspace
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.llm.ModelAvailability
+import pl.mos.backoffice.shared.llm.ModelDefaults
 import pl.mos.backoffice.shared.llm.ModelOption
 import pl.mos.backoffice.shared.llm.ModelUse
 import pl.mos.backoffice.shared.llm.StepKind
@@ -22,10 +23,15 @@ import java.util.UUID
  * Gives the designer warnings ([designIssues]), the start check ([runBlockers]) and the per-step [plan] shown before
  * a run starts. Steps without a model (Jira, notifications, workspace preparation) are left out.
  */
-class ModelStepCheck(private val catalog: TaskCatalog, private val availability: ModelAvailability) {
+class ModelStepCheck(
+    private val catalog: TaskCatalog,
+    private val availability: ModelAvailability,
+    /** ADR 0050 step 2: the user's own and the platform default models; null = none (tests). */
+    private val defaults: ModelDefaults? = null,
+) {
 
     /** Where a step's model comes from. */
-    enum class Source { NODE, TEMPLATE, PROJECT, PROJECT_REVIEW, NONE }
+    enum class Source { NODE, TEMPLATE, PROJECT, PROJECT_REVIEW, PERSONAL_DEFAULT, PLATFORM_DEFAULT, NONE }
 
     data class StepModel(
         val nodeId: String,
@@ -39,7 +45,7 @@ class ModelStepCheck(private val catalog: TaskCatalog, private val availability:
         /** Why the step cannot run with its model; null = it can. */
         val problem: String?
             get() = when {
-                profileId == null -> "no model profile is set on the step, its template or the project defaults"
+                profileId == null -> "no model profile is set on the step, its template, the project defaults or a default model"
                 model == null -> "its model profile no longer exists"
                 !model.usable -> "${model.displayName}: ${model.problem}"
                 else -> null
@@ -51,12 +57,17 @@ class ModelStepCheck(private val catalog: TaskCatalog, private val availability:
             val task = runCatching { catalog.resolve(node.task.templateKey, project.id.value, node.task.overrides) }.getOrNull() ?: return@mapNotNull null
             val kind = stepKind(task) ?: return@mapNotNull null
             val harness = if (kind == StepKind.CODING_AGENT) harness(task) else null
-            val (profileId, source) = modelOf(node, task, project)
+            val (profileId, source) = modelOf(node, task, project) ?: defaultModel(userId, kind)
             val use = ModelUse(kind, harness, project.personal, userId)
             StepModel(node.id, node.name, kind, harness, source, profileId, profileId?.let { availability.check(it, use) })
         }
 
     /** Warnings: a workflow is saved even when a model is not usable now (a runner may connect, a key may be added). */
+    /** ADR 0050 step 2: the user's own default for the kind of step, then the platform's (as [ModelResolver] does). */
+    private fun defaultModel(userId: UUID?, kind: StepKind): Pair<ModelProfileId?, Source> =
+        defaults?.resolve(userId, kind)?.let { it.profileId to if (it.personal) Source.PERSONAL_DEFAULT else Source.PLATFORM_DEFAULT }
+            ?: (null to Source.NONE)
+
     fun designIssues(project: Project, nodes: List<WorkflowNode>, userId: UUID?): List<ValidationIssue> =
         plan(project, nodes, userId).mapNotNull { step ->
             step.problem?.let { ValidationIssue(nodeId = step.nodeId, field = FIELD, message = it) }
@@ -80,12 +91,12 @@ class ModelStepCheck(private val catalog: TaskCatalog, private val availability:
         fun harness(task: ResolvedTask): AgentHarness =
             AgentHarness.entries.firstOrNull { it.name.equals(task.config["agent"]?.toString(), ignoreCase = true) } ?: AgentHarness.OPENCODE
 
-        private fun modelOf(node: WorkflowNode.Task, task: ResolvedTask, project: Project): Pair<ModelProfileId?, Source> = when {
+        private fun modelOf(node: WorkflowNode.Task, task: ResolvedTask, project: Project): Pair<ModelProfileId?, Source>? = when {
             node.task.overrides.modelProfileId != null -> node.task.overrides.modelProfileId to Source.NODE
             task.modelProfileId != null -> task.modelProfileId to Source.TEMPLATE
             task.producesReview && project.defaults.reviewModelProfileId != null -> project.defaults.reviewModelProfileId to Source.PROJECT_REVIEW
             project.defaults.modelProfileId != null -> project.defaults.modelProfileId to Source.PROJECT
-            else -> null to Source.NONE
+            else -> null
         }
     }
 }

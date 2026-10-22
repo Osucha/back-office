@@ -44,6 +44,17 @@ data class ModelOption(
     val note: String? = null,
 )
 
+/** ADR 0050 step 2: a default model and whether it is the user's own default or the platform's. */
+data class DefaultModel(val profileId: ModelProfileId, val personal: Boolean)
+
+/**
+ * ADR 0050 step 2: the default models used when neither a step, its template nor the project names one: the user's
+ * personal default for the kind of step, then the platform default. Implemented by the Evaluation context.
+ */
+interface ModelDefaults {
+    fun resolve(userId: UUID?, stepKind: StepKind): DefaultModel?
+}
+
 /**
  * ADR 0050: which models a user may use for a kind of step, by which route, and why not. Implemented by the
  * Evaluation context (owner of the model catalogue) over [LlmGateway] and the runner port.

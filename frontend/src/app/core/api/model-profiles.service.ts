@@ -2,7 +2,18 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { params, silent, url } from './api-base';
-import type { ModelProfile, ModelProfileInput, ModelTestResult, ProviderStatus } from './types';
+import type {
+  CodingHarness,
+  ModelDefaultInput,
+  ModelDefaultScope,
+  ModelDefaults,
+  ModelOption,
+  ModelProfile,
+  ModelProfileInput,
+  ModelTestResult,
+  ProviderStatus,
+  StepKind,
+} from './types';
 
 @Injectable({ providedIn: 'root' })
 export class ModelProfilesApi {
@@ -45,5 +56,33 @@ export class ModelProfilesApi {
 
   providers(): Observable<ProviderStatus[]> {
     return this.http.get<ProviderStatus[]>(url('model-profiles', 'providers'));
+  }
+
+  /** ADR 0050 step 2: the platform default models and the caller's own, per step kind. */
+  defaults(): Observable<ModelDefaults> {
+    return this.http.get<ModelDefaults>(url('model-profiles', 'defaults'));
+  }
+
+  /** Sets (or with null clears) a platform default; needs models.manage. */
+  setPlatformDefault(stepKind: StepKind, profileId: string | null): Observable<ModelDefaults> {
+    const body: ModelDefaultInput = { stepKind, profileId };
+    return this.http.put<ModelDefaults>(url('model-profiles', 'defaults', 'platform'), body);
+  }
+
+  /** Sets (or with null clears) the caller's own default. */
+  setMyDefault(stepKind: StepKind, profileId: string | null): Observable<ModelDefaults> {
+    const body: ModelDefaultInput = { stepKind, profileId };
+    return this.http.put<ModelDefaults>(url('model-profiles', 'defaults', 'mine'), body);
+  }
+
+  /** The models that may be picked as a default of this step kind and scope. */
+  defaultOptions(
+    stepKind: StepKind,
+    scope: ModelDefaultScope,
+    harness?: CodingHarness | null,
+  ): Observable<ModelOption[]> {
+    return this.http.get<ModelOption[]>(url('model-profiles', 'options'), {
+      params: params({ stepKind, scope, harness }),
+    });
   }
 }

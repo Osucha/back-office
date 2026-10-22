@@ -2041,6 +2041,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/model-profiles/defaults': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0050 step 2: the platform default models and the caller's own, per kind of step (models.view). */
+    get: operations['getModelDefaults'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/model-profiles/defaults/mine': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** @description Sets or clears the caller's own default; models.view; a platform profile or one of the caller's personal ones. */
+    put: operations['setMyModelDefault'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/model-profiles/defaults/platform': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** @description Sets or (profileId null) clears a platform default; models.manage; a platform profile; LLM_CALL needs an API model. */
+    put: operations['setPlatformModelDefault'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/model-profiles/options': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0050 step 2: the models that can be picked as a default for a kind of step, with route and reason; scope PLATFORM = platform profiles as a shared project would use them, PERSONAL = as the caller's own private work would. */
+    get: operations['getDefaultModelOptions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/model-profiles/providers': {
     parameters: {
       query?: never;
@@ -4878,6 +4946,24 @@ export interface components {
       mfaToken: string;
       recoveryCode?: string | null;
     };
+    ModelDefaultInput: {
+      /**
+       * Format: uuid
+       * @description null clears the default
+       */
+      profileId?: string | null;
+      stepKind: components['schemas']['StepKind'];
+    };
+    ModelDefaults: {
+      /** @description by StepKind */
+      mine: {
+        [key: string]: components['schemas']['ModelProfile'];
+      };
+      /** @description by StepKind */
+      platform: {
+        [key: string]: components['schemas']['ModelProfile'];
+      };
+    };
     ModelOption: {
       displayName: string;
       modelId: string;
@@ -4924,6 +5010,11 @@ export interface components {
       /** @default true */
       enabled: boolean;
       notes?: string | null;
+      /**
+       * @description ADR 0050 step 2: a personal profile of the caller, seen and used only by them (in private projects and their own benchmarks); needs models.view instead of models.manage. A Claude Code login profile is always personal. Set on create only; the scope of a profile does not change.
+       * @default false
+       */
+      personal: boolean;
       pricing: components['schemas']['Pricing'];
       ref: components['schemas']['ModelRef'];
       runtime?: components['schemas']['ModelRuntime'];
@@ -5874,10 +5965,17 @@ export interface components {
       /** Format: uuid */
       profileId?: string | null;
       /**
-       * @description where the model comes from
+       * @description where the model comes from (ADR 0050 step 2: after the project defaults the starting user's own default, then the platform default)
        * @enum {string}
        */
-      source: 'NODE' | 'TEMPLATE' | 'PROJECT' | 'PROJECT_REVIEW' | 'NONE';
+      source:
+        | 'NODE'
+        | 'TEMPLATE'
+        | 'PROJECT'
+        | 'PROJECT_REVIEW'
+        | 'PERSONAL_DEFAULT'
+        | 'PLATFORM_DEFAULT'
+        | 'NONE';
       stepKind: components['schemas']['StepKind'];
     };
     /** @enum {string} */
@@ -10137,6 +10235,98 @@ export interface operations {
         };
       };
       502: components['responses']['Problem'];
+    };
+  };
+  getModelDefaults: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelDefaults'];
+        };
+      };
+    };
+  };
+  setMyModelDefault: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ModelDefaultInput'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelDefaults'];
+        };
+      };
+    };
+  };
+  setPlatformModelDefault: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ModelDefaultInput'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelDefaults'];
+        };
+      };
+    };
+  };
+  getDefaultModelOptions: {
+    parameters: {
+      query: {
+        harness?: 'OPENCODE' | 'CLAUDE_CODE';
+        scope?: 'PLATFORM' | 'PERSONAL';
+        stepKind: components['schemas']['StepKind'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelOption'][];
+        };
+      };
     };
   };
   listProviders: {

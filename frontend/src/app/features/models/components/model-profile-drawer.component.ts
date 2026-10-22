@@ -19,6 +19,7 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
+import { NzRadioModule } from 'ng-zorro-antd/radio';
 import {
   CAPABILITIES,
   REASONING_LEVELS,
@@ -43,6 +44,12 @@ import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component
 import { SidePanelComponent } from '../../../core/ui/relay/side-panel.component';
 import { humanize } from '../../../core/ui/status-tag.component';
 import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-format';
+import {
+  type ProfileScope,
+  allowedScopes,
+  canEditProfile,
+  effectiveScope,
+} from '../data/model-scope';
 
 /**
  * Model profile side panel: provenance, a "Test profile" check with its result inline, and the
@@ -59,6 +66,7 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
     NzInputNumberModule,
     NzSelectModule,
     NzSwitchModule,
+    NzRadioModule,
     NzButtonModule,
     NzIconModule,
     ActionBarComponent,
@@ -94,7 +102,7 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
         />
       }
 
-      @if (profile()?.id && canManage()) {
+      @if (profile()?.id && editable()) {
         <section class="test" aria-label="Test profile" i18n-aria-label="@@models.drawer.test">
           <div class="test-head">
             <div>
@@ -158,7 +166,7 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
         nz-form
         nzLayout="vertical"
         [formGroup]="form"
-        [boReadonly]="!canManage()"
+        [boReadonly]="!editable()"
         id="model-profile-form"
         (ngSubmit)="submit()"
       >
@@ -185,6 +193,28 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
               <nz-option nzValue="API" [nzLabel]="text.runtimeApi" />
               <nz-option nzValue="CLAUDE_CODE_LOGIN" [nzLabel]="text.runtimeLogin" />
             </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+        <nz-form-item>
+          <nz-form-label nzFor="mp-scope" i18n="@@models.drawer.scope">Available to</nz-form-label>
+          <nz-form-control [nzExtra]="scopeHint()">
+            @if (profile()?.id || scopes().length === 1) {
+              <input nz-input id="mp-scope" [value]="scopeName(scope())" readonly />
+            } @else {
+              <nz-radio-group
+                id="mp-scope"
+                formControlName="scope"
+                aria-label="Available to"
+                i18n-aria-label="@@models.drawer.scope"
+              >
+                <label nz-radio-button nzValue="PLATFORM" i18n="@@models.drawer.scope.platform"
+                  >Platform (everyone)</label
+                >
+                <label nz-radio-button nzValue="PERSONAL" i18n="@@models.drawer.scope.personal"
+                  >Personal (only you)</label
+                >
+              </nz-radio-group>
+            }
           </nz-form-control>
         </nz-form-item>
         <div class="grid">
@@ -460,10 +490,10 @@ import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-fo
           [saving]="saving()"
           [canSave]="valid()"
           [requireDirty]="!!profile()?.id"
-          [showSave]="open() && canManage()"
+          [showSave]="open() && editable()"
           [saveLabel]="profile()?.id ? text.save : text.create"
           [cleanLabel]="
-            canManage() ? (profile()?.id ? text.noChanges : text.notSaved) : text.readOnly
+            editable() ? (profile()?.id ? text.noChanges : text.notSaved) : text.readOnly
           "
           (save)="submit()"
         >
@@ -656,12 +686,61 @@ export class ModelProfileDrawerComponent {
   readonly usage = (r: ModelTestResult) => formatUsage(r.usage);
   readonly extraError = signal<string | null>(null);
   readonly canManage = computed(() => this.identity.can('models.manage'));
+  /** ADR 0050 step 2: managers edit every profile, owners their personal ones; anyone creates one (personal). */
+  readonly editable = computed(() => canEditProfile(this.profile(), this.canManage()));
   readonly dirty = signal(false);
   private readonly status = signal(0);
+
+  /** Scopes a new profile may get: a login profile and users without models.manage: personal only. */
+  readonly scopes = computed(() => {
+    this.status();
+    return allowedScopes(this.canManage(), this.form.controls.runtime.value);
+  });
+
+  /** The profile's own scope (it does not change), or the one a new profile gets. */
+  readonly scope = computed<ProfileScope>(() => {
+    this.status();
+    const p = this.profile();
+    if (p?.id) return p.personal ? 'PERSONAL' : 'PLATFORM';
+    return effectiveScope(
+      this.form.controls.scope.value,
+      this.canManage(),
+      this.form.controls.runtime.value,
+    );
+  });
+
+  readonly scopeHint = computed(() => {
+    const personal = this.scope() === 'PERSONAL';
+    const what = personal
+      ? $localize`:@@models.drawer.scope.personalHint:Only you see and use it: in your private projects and your own benchmarks.`
+      : $localize`:@@models.drawer.scope.platformHint:Everyone can pick it, in every project; called through the platform's provider connections.`;
+    if (this.profile()?.id || !personal) return what;
+    if (this.login())
+      return (
+        what +
+        ' ' +
+        $localize`:@@models.drawer.scope.loginHint:A Claude Code login profile is always personal.`
+      );
+    if (!this.canManage())
+      return (
+        what +
+        ' ' +
+        $localize`:@@models.drawer.scope.manageHint:Platform profiles need models.manage.`
+      );
+    return what;
+  });
+
+  scopeName(scope: ProfileScope): string {
+    return scope === 'PERSONAL'
+      ? $localize`:@@models.drawer.scope.personal:Personal (only you)`
+      : $localize`:@@models.drawer.scope.platform:Platform (everyone)`;
+  }
 
   readonly form = this.fb.group({
     displayName: this.fb.nonNullable.control('', Validators.required),
     runtime: this.fb.nonNullable.control<ModelRuntime>('API'),
+    /** Create only (ADR 0050 step 2). */
+    scope: this.fb.nonNullable.control<ProfileScope>('PLATFORM'),
     provider: this.fb.nonNullable.control<Provider>('ANTHROPIC', Validators.required),
     connection: this.fb.nonNullable.control(''),
     modelId: this.fb.nonNullable.control('', Validators.required),
@@ -762,6 +841,7 @@ export class ModelProfileDrawerComponent {
       this.form.reset({
         displayName: '',
         runtime: 'API',
+        scope: this.canManage() ? 'PLATFORM' : 'PERSONAL',
         provider: providers.find((x) => x.configured)?.provider ?? 'ANTHROPIC',
         connection: '',
         modelId: '',
@@ -781,6 +861,7 @@ export class ModelProfileDrawerComponent {
       this.form.reset({
         displayName: p.displayName,
         runtime: p.runtime ?? 'API',
+        scope: p.personal || !this.canManage() ? 'PERSONAL' : 'PLATFORM',
         provider: p.ref.provider,
         connection: p.ref.connection ?? '',
         modelId: p.ref.modelId,
@@ -850,6 +931,8 @@ export class ModelProfileDrawerComponent {
       contextWindow: v.contextWindow,
       notes: v.notes.trim() || null,
       enabled: v.enabled,
+      // set on create only; the server keeps the scope of an existing profile
+      personal: this.scope() === 'PERSONAL',
     };
     this.saved.emit(input);
   }

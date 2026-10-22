@@ -67,6 +67,7 @@ class EvaluationMappers(private val json: JsonMapper) {
         updatedById = p.updatedBy?.userId,
         updatedByName = p.updatedBy?.displayName,
         runtime = p.runtime,
+        ownerUserId = p.ownerUserId,
     )
 
     fun toDomain(e: ModelProfileEntity): ModelProfile {
@@ -95,6 +96,9 @@ class EvaluationMappers(private val json: JsonMapper) {
             createdAt = e.createdAt,
             updatedAt = e.updatedAt,
             updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
+            // ADR 0048 / 0050: without these a login profile read back as an API one and lost its owner
+            runtime = e.runtime,
+            ownerUserId = e.ownerUserId,
         )
     }
 

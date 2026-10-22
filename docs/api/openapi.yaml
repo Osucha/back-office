@@ -1629,6 +1629,42 @@ paths:
       parameters: [ { name: provider, in: query, required: true, schema: { $ref: '#/components/schemas/Provider' } } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProviderModels' } } } }
+  /model-profiles/defaults:
+    get:
+      tags: [model-profiles]
+      operationId: getModelDefaults
+      description: 'ADR 0050 step 2: the platform default models and the caller''s own, per kind of step (models.view).'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ModelDefaults' } } } }
+  /model-profiles/defaults/platform:
+    put:
+      tags: [model-profiles]
+      operationId: setPlatformModelDefault
+      description: 'Sets or (profileId null) clears a platform default; models.manage; a platform profile; LLM_CALL needs an API model.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ModelDefaultInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ModelDefaults' } } } }
+  /model-profiles/defaults/mine:
+    put:
+      tags: [model-profiles]
+      operationId: setMyModelDefault
+      description: 'Sets or clears the caller''s own default; models.view; a platform profile or one of the caller''s personal ones.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ModelDefaultInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ModelDefaults' } } } }
+  /model-profiles/options:
+    get:
+      tags: [model-profiles]
+      operationId: getDefaultModelOptions
+      description: >-
+        ADR 0050 step 2: the models that can be picked as a default for a kind of step, with route and reason; scope PLATFORM
+        = platform profiles as a shared project would use them, PERSONAL = as the caller's own private work would.
+      parameters:
+        - { name: stepKind, in: query, required: true, schema: { $ref: '#/components/schemas/StepKind' } }
+        - { name: harness, in: query, required: false, schema: { type: string, enum: [OPENCODE, CLAUDE_CODE] } }
+        - { name: scope, in: query, required: false, schema: { type: string, enum: [PLATFORM, PERSONAL], default: PERSONAL } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ModelOption' } } } } }
   /model-profiles/providers:
     get:
       tags: [model-profiles]
@@ -4210,6 +4246,13 @@ components:
         notes: { type: string, nullable: true }
         enabled: { type: boolean, default: true }
         runtime: { $ref: '#/components/schemas/ModelRuntime' }
+        personal:
+          type: boolean
+          default: false
+          description: >-
+            ADR 0050 step 2: a personal profile of the caller, seen and used only by them (in private projects and their own
+            benchmarks); needs models.view instead of models.manage. A Claude Code login profile is always personal. Set on
+            create only; the scope of a profile does not change.
     ModelRuntime:
       type: string
       enum: [API, CLAUDE_CODE_LOGIN]
@@ -4352,6 +4395,18 @@ components:
         usable: { type: boolean }
         problem: { type: string, nullable: true, description: 'why a step cannot run with this model' }
         note: { type: string, nullable: true, description: 'a warning that does not stop the step (e.g. personal runner offline)' }
+    ModelDefaults:
+      type: object
+      required: [platform, mine]
+      properties:
+        platform: { type: object, additionalProperties: { $ref: '#/components/schemas/ModelProfile' }, description: 'by StepKind' }
+        mine: { type: object, additionalProperties: { $ref: '#/components/schemas/ModelProfile' }, description: 'by StepKind' }
+    ModelDefaultInput:
+      type: object
+      required: [stepKind]
+      properties:
+        stepKind: { $ref: '#/components/schemas/StepKind' }
+        profileId: { type: string, format: uuid, nullable: true, description: 'null clears the default' }
     StepModelPlan:
       type: object
       required: [nodeId, nodeName, stepKind, source]
@@ -4360,7 +4415,7 @@ components:
         nodeName: { type: string }
         stepKind: { $ref: '#/components/schemas/StepKind' }
         harness: { type: string, nullable: true, enum: [OPENCODE, CLAUDE_CODE, null] }
-        source: { type: string, enum: [NODE, TEMPLATE, PROJECT, PROJECT_REVIEW, NONE], description: 'where the model comes from' }
+        source: { type: string, enum: [NODE, TEMPLATE, PROJECT, PROJECT_REVIEW, PERSONAL_DEFAULT, PLATFORM_DEFAULT, NONE], description: 'where the model comes from (ADR 0050 step 2: after the project defaults the starting user''s own default, then the platform default)' }
         profileId: { type: string, format: uuid, nullable: true }
         model: { allOf: [ { $ref: '#/components/schemas/ModelOption' } ], nullable: true }
         problem: { type: string, nullable: true, description: 'set = a run of this workflow does not start' }

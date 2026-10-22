@@ -5,10 +5,19 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
+import pl.mos.backoffice.shared.llm.StepKind
 import java.util.UUID
 
 interface ModelProfileJpaRepository : JpaRepository<ModelProfileEntity, UUID> {
     fun findAllByEnabled(enabled: Boolean): List<ModelProfileEntity>
+}
+
+/** ADR 0050 step 2: the platform defaults have no owner, so they have their own finders. */
+interface ModelDefaultJpaRepository : JpaRepository<ModelDefaultEntity, UUID> {
+    fun findByOwnerUserIdAndStepKind(ownerUserId: UUID, stepKind: StepKind): ModelDefaultEntity?
+    fun findByOwnerUserIdIsNullAndStepKind(stepKind: StepKind): ModelDefaultEntity?
+    fun findAllByOwnerUserId(ownerUserId: UUID): List<ModelDefaultEntity>
+    fun findAllByOwnerUserIdIsNull(): List<ModelDefaultEntity>
 }
 
 interface TaskSuiteJpaRepository : JpaRepository<TaskSuiteEntity, UUID>

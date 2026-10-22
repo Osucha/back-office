@@ -1,6 +1,6 @@
 # 0050 — Model availability: who may use which model, where and by which route
 
-- Status: accepted (step 1 implemented; steps 2-4 planned)
+- Status: accepted (steps 1 and 2a implemented; 2b, 3 and 4 planned)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0040 (personal runners, LOCAL_LOGIN), 0045 (model profiles from providers), 0048 (Claude Code login
@@ -45,11 +45,25 @@ models are usable everywhere, private projects included.
 5. UI: model pickers group platform and personal models, show the route and grey out unusable ones with the
    reason; the start dialog shows the model plan.
 
+**Step 2a (implemented): personal profiles and default models.**
+
+6. A model profile has an owner (`ownerUserId`, evaluation V207); null = a platform profile. Personal profiles are
+   created by anyone with `models.view` (platform ones still need `models.manage`), and only their owner sees,
+   changes, tests and uses them; Claude Code login profiles are always personal (existing ones belong to the user
+   who created them). Availability: another user's personal profile is never usable, a personal one only in private
+   projects and the owner's own benchmarks; a benchmark refuses another user's personal candidate or judge.
+7. Default models per kind of step (`model_default`): the platform's (`models.manage`, platform profiles only) and
+   every user's own (platform or own personal profiles); an LLM default must be callable through the API. The
+   resolution order becomes step > template > project default (review default for review steps) > the starting
+   user's own default > the platform default (port `ModelDefaults`), in the run, the model plan and the start
+   check. REST `/model-profiles/defaults`, `/defaults/platform`, `/defaults/mine`, `/model-profiles/options`.
+8. Fixed on the way: the profile mapper did not read `runtime` back, so login profiles were loaded as API ones.
+
 **Planned steps** (each usable on its own):
 
-2. Personal scope for model profiles (owner) and personal API keys (personal provider connections, sealed like
-   platform keys); a personal default model per step kind in the resolution order node > template > project >
-   personal > platform default.
+2b. Personal API keys: personal provider connections (owner, sealed like platform keys) and personal profiles on
+   them; the gateway uses a personal connection only for work of its owner (the acting user of the run, benchmark
+   or test).
 3. Runners report their harnesses and active logins in the heartbeat; login models appear and disappear with the
    runner instead of being created by hand; Account, "My models".
 4. A prompt mode of Claude Code in the runner, so LLM steps and the benchmark judge can run on a subscription.

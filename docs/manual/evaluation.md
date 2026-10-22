@@ -79,6 +79,15 @@ start dialog) Back Office lists the models in two groups, **Platform** and **Per
 
 A personal runner that is offline is only a warning: the jobs wait until it connects.
 
+**Personal profiles.** Anyone who can see models can create profiles for themselves: on **Create profile** choose
+**Personal (only you)**. Only you see, change, test and use them, in your private projects and your own benchmarks;
+administrators create **Platform** profiles for everyone. Claude Code login profiles are always personal.
+
+**Default models.** When neither a step, its template nor the project names a model, Back Office takes your own
+default for that kind of step (**LLM steps** or **Coding steps**), then the platform default set by an
+administrator. Set them on the **Models** page under **Default models**. An LLM step's default must be callable
+through the API, so a Claude Code login model can only be a default for coding steps.
+
 The **model plan** of a workflow shows, for every step, the model a run would use and where it comes from (the
 step, its template, the project default or the review default). The designer marks steps whose model you cannot
 use with a warning, and a run does not start while a step has no usable model; the start dialog lists the steps

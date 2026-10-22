@@ -10,7 +10,10 @@ import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.usage.Pricing
 
-/** Use case: maintain the model catalogue and smoke-test a profile against its provider. */
+/**
+ * Use case: maintain the model catalogue and smoke-test a profile against its provider. ADR 0050 step 2: platform profiles need `models.manage` to change; personal profiles are created, changed, tested
+ * and seen only by their owner (`models.view`); others never see them.
+ */
 interface ManageModelProfiles {
     fun create(command: ProfileCommand): ModelProfile
     fun update(id: ModelProfileId, command: ProfileCommand): ModelProfile
@@ -40,6 +43,11 @@ interface ManageModelProfiles {
         val notes: String? = null,
         val enabled: Boolean = true,
         val runtime: ModelRuntime = ModelRuntime.API,
+        /**
+         * ADR 0050 step 2: a personal profile of the caller (needs only `models.view`); a Claude Code login profile is
+         * always personal. Ignored on update: the scope of a profile does not change.
+         */
+        val personal: Boolean = false,
     )
 
     data class ModelTestResult(

@@ -28,7 +28,7 @@ export function groupModelOptions(options: readonly ModelChoice[]): ModelChoiceG
   if (personal.length)
     groups.push({
       key: 'personal',
-      label: $localize`:@@core.modelSelect.personal:Personal (your Claude login)`,
+      label: $localize`:@@core.modelSelect.personal:Personal (only you)`,
       options: personal,
     });
   return groups;
@@ -85,6 +85,10 @@ export function planSourceLabel(source: StepModelPlan['source']): string {
       return $localize`:@@core.modelPlan.source.project:project default`;
     case 'PROJECT_REVIEW':
       return $localize`:@@core.modelPlan.source.review:review default`;
+    case 'PERSONAL_DEFAULT':
+      return $localize`:@@core.modelPlan.source.personal:your default`;
+    case 'PLATFORM_DEFAULT':
+      return $localize`:@@core.modelPlan.source.platform:platform default`;
     default:
       return $localize`:@@core.modelPlan.source.none:not set`;
   }

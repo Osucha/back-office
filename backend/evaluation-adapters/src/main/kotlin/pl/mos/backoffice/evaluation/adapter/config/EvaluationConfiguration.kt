@@ -24,11 +24,13 @@ import pl.mos.backoffice.evaluation.application.port.`in`.RecoverBenchmarks
 import pl.mos.backoffice.evaluation.application.port.`in`.SeedStarterContent
 import pl.mos.backoffice.evaluation.application.port.out.AttemptExecutor
 import pl.mos.backoffice.evaluation.application.port.out.BenchmarkRepository
+import pl.mos.backoffice.evaluation.application.port.out.ModelDefaultRepository
 import pl.mos.backoffice.evaluation.application.port.out.ModelProfileRepository
 import pl.mos.backoffice.evaluation.application.port.out.TaskSuiteRepository
 import pl.mos.backoffice.evaluation.application.service.BenchmarkService
 import pl.mos.backoffice.evaluation.application.service.ExecuteAttemptService
 import pl.mos.backoffice.evaluation.application.service.ModelAvailabilityService
+import pl.mos.backoffice.evaluation.application.service.ModelDefaultsService
 import pl.mos.backoffice.evaluation.application.service.ModelProfileService
 import pl.mos.backoffice.evaluation.application.service.ProviderService
 import pl.mos.backoffice.evaluation.application.service.SeedStarterContentService
@@ -62,6 +64,13 @@ class EvaluationConfiguration {
     /** The evaluation permissions for the identity context's catalogue (ADR 0017). */
     @Bean
     fun evaluationPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { EvaluationPermissions.definitions }
+
+    /** ADR 0050 step 2: platform and personal default models; also the shared `ModelDefaults` port Projects resolve with. */
+    @Bean
+    fun modelDefaultsService(
+        defaults: ModelDefaultRepository, profiles: ModelProfileRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+        availability: ModelAvailability,
+    ) = ModelDefaultsService(defaults, profiles, gate, audit, clock, availability)
 
     /** ADR 0050: which models a use may take (shared port, read by Projects and the model pickers). */
     @Bean

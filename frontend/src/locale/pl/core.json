@@ -505,7 +505,7 @@
   "core.workspaces.problem.duplicate": "Inna przestrzeń projektu ma ten klucz.",
   "core.workspaces.problem.role": "Rola {$role}: małe litery, cyfry lub myślniki.",
   "core.modelSelect.platform": "Platforma",
-  "core.modelSelect.personal": "Osobiste (Twoje logowanie Claude)",
+  "core.modelSelect.personal": "Osobiste (tylko Ty)",
   "core.modelSelect.route.ownLogin": "Twoje logowanie",
   "core.modelSelect.route.api": "API",
   "core.modelSelect.codingOnly": "tylko kroki programistyczne (kroki LLM potrzebują własnego modelu)",
@@ -515,5 +515,7 @@
   "core.modelPlan.source.template": "szablon",
   "core.modelPlan.source.project": "domyślny projektu",
   "core.modelPlan.source.review": "domyślny przeglądu",
+  "core.modelPlan.source.personal": "Twój domyślny",
+  "core.modelPlan.source.platform": "domyślny platformy",
   "core.modelPlan.source.none": "nie ustawiono"
 }

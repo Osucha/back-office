@@ -15,6 +15,8 @@ data class ModelProfileSnapshot(
     val enabled: Boolean,
     /** ADR 0050: how the model is reached; Projects refuse a login model in an LLM step. */
     val runtime: ModelRuntime = ModelRuntime.API,
+    /** ADR 0050 step 2: the owner of a personal profile; null = a platform profile. */
+    val ownerUserId: java.util.UUID? = null,
 )
 
 /** Outbound port implemented by the Evaluation context adapters. */

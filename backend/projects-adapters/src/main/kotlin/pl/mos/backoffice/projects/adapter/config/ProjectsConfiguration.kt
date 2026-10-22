@@ -43,6 +43,7 @@ import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
 import pl.mos.backoffice.shared.llm.ModelAvailability
+import pl.mos.backoffice.shared.llm.ModelDefaults
 import pl.mos.backoffice.projects.application.service.JiraIntakeService
 import pl.mos.backoffice.projects.application.port.out.JiraIntakeRepository
 import pl.mos.backoffice.projects.domain.service.JiraIntakePlanner
@@ -140,7 +141,7 @@ class ProjectsConfiguration {
 
     @Bean fun templateModelBuilder() = TemplateModelBuilder()
 
-    @Bean fun modelResolver(catalog: ModelCatalog) = ModelResolver(catalog)
+    @Bean fun modelResolver(catalog: ModelCatalog, defaults: ObjectProvider<ModelDefaults>) = ModelResolver(catalog, defaults.getIfAvailable())
 
     @Bean fun tokenHasher(): TokenHasher = Sha256TokenHasher()
 
@@ -172,10 +173,10 @@ class ProjectsConfiguration {
         workflows: WorkflowDefinitionRepository, projects: ProjectRepository, runs: WorkflowRunRepository, validator: WorkflowValidator,
         taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
         jira: JiraConnectionAccess, specKit: SpecKitStepCheck, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
-        projectWorkspaces: ProjectWorkspaceRepository, availability: ObjectProvider<ModelAvailability>,
+        projectWorkspaces: ProjectWorkspaceRepository, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
     ) = WorkflowService(
         workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources, projectWorkspaces,
-        availability.getIfAvailable(),
+        availability.getIfAvailable(), defaults.getIfAvailable(),
     )
 
     /** Sources of the library (ADR 0043). */
@@ -214,12 +215,12 @@ class ProjectsConfiguration {
         runs: WorkflowRunRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository, logs: RunLogRepository,
         engine: WorkflowEngine, progress: RecordRunProgress, validator: WorkflowValidator, events: EventPublisher,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock, jiraSteps: JiraStepCheck, repositorySteps: RepositoryStepCheck,
-        specKitSteps: SpecKitStepCheck, taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>,
+        specKitSteps: SpecKitStepCheck, taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
     ) = RunService(
         runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps, specKitSteps,
         // ADR 0050: the model of every task step must be usable by the starting user; without the model catalogue (the
         // Projects module alone) models are not checked
-        availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it) },
+        availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it, defaults.getIfAvailable()) },
     )
 
     // ---- Jira intake watcher (ADR 0033)

@@ -87,6 +87,17 @@ wyszarzony z podanym powodem, na przykład:
 
 Osobisty runner offline to tylko ostrzeżenie: zadania czekają, aż się połączy.
 
+**Profile osobiste.** Każdy, kto widzi modele, może tworzyć profile dla siebie: przy **Utwórz profil** (**Create
+profile**) wybierz **Osobisty (tylko Ty)** (**Personal (only you)**). Tylko Ty je widzisz, zmieniasz, testujesz
+i używasz, w swoich prywatnych projektach i własnych benchmarkach; administratorzy tworzą profile **Platformowe**
+(**Platform**) dla wszystkich. Profile z logowaniem Claude Code są zawsze osobiste.
+
+**Modele domyślne.** Gdy ani krok, ani jego szablon, ani projekt nie wskazuje modelu, Back Office bierze Twój
+własny model domyślny dla tego rodzaju kroku (**Kroki LLM** albo **Kroki kodujące**), a potem domyślny model
+platformy ustawiony przez administratora. Ustawisz je na stronie **Modele** (**Models**) w sekcji **Modele
+domyślne** (**Default models**). Model domyślny kroków LLM musi być wywoływany przez API, więc model z logowaniem
+Claude Code może być domyślny tylko dla kroków kodujących.
+
 **Plan modeli** workflowu pokazuje dla każdego kroku model, którego użyłoby uruchomienie, i skąd pochodzi (krok,
 jego szablon, model domyślny projektu albo model przeglądu). Projektant oznacza ostrzeżeniem kroki z modelem,
 którego nie możesz użyć, a uruchomienie nie wystartuje, dopóki któryś krok nie ma dostępnego modelu; okno

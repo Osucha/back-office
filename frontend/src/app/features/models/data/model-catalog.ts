@@ -106,6 +106,8 @@ export function profileFromLogin(m: LoginModel): ModelProfile {
     contextWindow: null,
     notes: '',
     enabled: true,
+    // ADR 0050 step 2: a Claude Code login profile is always personal
+    personal: true,
   };
 }
 
@@ -135,5 +137,7 @@ export function profileFromCatalog(row: CatalogRow): ModelProfile {
         ? ''
         : $localize`:@@models.catalog.priceUnknown:The provider does not publish prices; set them before trusting cost figures.`,
     enabled: true,
+    // the drawer decides the scope (platform for managers, otherwise personal)
+    personal: false,
   };
 }

@@ -22,7 +22,10 @@ import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 import pl.mos.backoffice.evaluation.domain.model.TaskSuiteId
 import pl.mos.backoffice.shared.ModelProfileId
+import pl.mos.backoffice.evaluation.application.port.`in`.ManageModelDefaults
 import pl.mos.backoffice.shared.llm.LlmGateway
+import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.runner.AgentHarness
 import java.net.URI
 import java.util.UUID
 
@@ -33,6 +36,7 @@ class ModelProfileController(
     private val profiles: ManageModelProfiles,
     private val providers: ListProviders,
     private val gateway: LlmGateway,
+    private val defaults: ManageModelDefaults,
 ) {
     // ADR 0048: a Claude Code login model needs no provider connection
     private fun dto(p: ModelProfile) = RestMappers.profile(p, p.viaClaudeCodeLogin || gateway.isConfigured(p.ref))
@@ -45,6 +49,31 @@ class ModelProfileController(
         val created = profiles.create(RestMappers.profileCommand(body))
         return ResponseEntity.created(URI.create("/api/v1/model-profiles/${created.id}")).body(dto(created))
     }
+
+    /** ADR 0050 step 2: the platform default models and the caller's own, per kind of step. */
+    @GetMapping("/defaults")
+    fun defaults(): ModelDefaultsDto = defaultsDto(defaults.get())
+
+    @PutMapping("/defaults/platform")
+    fun setPlatformDefault(@RequestBody body: ModelDefaultInputDto): ModelDefaultsDto =
+        defaultsDto(defaults.setPlatform(body.stepKind, body.profileId?.let(::ModelProfileId)))
+
+    @PutMapping("/defaults/mine")
+    fun setMyDefault(@RequestBody body: ModelDefaultInputDto): ModelDefaultsDto =
+        defaultsDto(defaults.setMine(body.stepKind, body.profileId?.let(::ModelProfileId)))
+
+    /** ADR 0050 step 2: the models that can be picked as a default (scope PLATFORM or PERSONAL), with route and reason. */
+    @GetMapping("/options")
+    fun options(
+        @RequestParam stepKind: StepKind,
+        @RequestParam(required = false) harness: AgentHarness?,
+        @RequestParam(defaultValue = "PERSONAL") scope: String,
+    ): List<ModelOptionDto> = defaults.options(stepKind, harness, scope.equals("PLATFORM", ignoreCase = true)).map(ModelOptionDto::of)
+
+    private fun defaultsDto(d: ManageModelDefaults.Defaults) = ModelDefaultsDto(
+        platform = d.platform.entries.associate { (k, v) -> k.name to dto(v) },
+        mine = d.mine.entries.associate { (k, v) -> k.name to dto(v) },
+    )
 
     @GetMapping("/providers")
     fun providers(): List<ProviderStatusDto> = providers.list().map { ProviderStatusDto(it.provider, it.configured, it.baseUrl) }

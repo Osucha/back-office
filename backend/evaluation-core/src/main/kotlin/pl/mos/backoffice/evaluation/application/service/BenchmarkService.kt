@@ -65,6 +65,7 @@ class BenchmarkService(
         val unknownTasks = command.taskIds.filterNot { id -> suite.tasks.any { it.id == id } }
         if (unknownTasks.isNotEmpty()) throw ValidationException("tasks not in suite: ${unknownTasks.joinToString()}", "taskIds")
         val tasks = if (command.taskIds.isEmpty()) suite.tasks else suite.tasks.filter { it.id in command.taskIds.toSet() }
+        requireOwnModels(models + judge, user.userId?.value)
         requireLoginModelRules(models, judge, tasks, command.codingHarness, command.runnerTarget)
         val benchmark = benchmarks.save(
             Benchmark.create(
@@ -105,6 +106,7 @@ class BenchmarkService(
         val now = clock.now()
         val attempts = BenchmarkExecutionPlanner.plan(benchmark, suite, models, now)
         val tasks = if (benchmark.taskIds.isEmpty()) suite.tasks else suite.tasks.filter { it.id in benchmark.taskIds.toSet() }
+        requireOwnModels(models + judge, benchmark.createdBy?.userId)
         requireLoginModelRules(models, judge, tasks, benchmark.codingHarness, benchmark.runnerTarget)
         if (attempts.any { it.kind == TaskKind.CODING_JOB }) requireRunnerTarget(benchmark, models.any { it.viaClaudeCodeLogin })
         val started = benchmarks.save(benchmark.start(now, user.actor))
@@ -123,6 +125,14 @@ class BenchmarkService(
      * ADR 0048: Claude Code login models run as Claude Code on the creator's personal runner, coding tasks only (prompt
      * tasks need the Claude Code prompt mode, not built yet), and never judge: the judge is called through the gateway.
      */
+    /** ADR 0050 step 2: a personal model profile takes part only in its owner's benchmarks. */
+    private fun requireOwnModels(models: List<ModelProfile>, creator: java.util.UUID?) {
+        val foreign = models.filter { it.ownerUserId != null && it.ownerUserId != creator }
+        if (foreign.isNotEmpty()) {
+            throw ValidationException("personal model profiles of another user cannot take part: ${foreign.joinToString { it.displayName }}", "modelProfileIds")
+        }
+    }
+
     private fun requireLoginModelRules(
         models: List<ModelProfile>,
         judge: ModelProfile,

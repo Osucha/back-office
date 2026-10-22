@@ -30,6 +30,7 @@ class ModelAvailabilityService(
     override fun options(use: ModelUse): List<ModelOption> {
         val personalRunner = lazy { personalTarget(use) }
         return profiles.findAll(enabled = true)
+            .filter { it.visibleTo(use.userId) }
             .map { evaluate(it, use, personalRunner) }
             .sortedWith(compareBy<ModelOption>({ !it.usable }, { it.personal }, { it.displayName.lowercase() }))
     }
@@ -41,20 +42,23 @@ class ModelAvailabilityService(
         use.userId?.let { user -> runner?.executionTargets(user)?.firstOrNull { it.target == RunnerTarget.PERSONAL } }
 
     private fun evaluate(profile: ModelProfile, use: ModelUse, personalRunner: Lazy<ExecutionTarget?>): ModelOption {
-        val verdict = if (!profile.enabled) {
-            Verdict(problem = "the model profile is disabled")
-        } else if (profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) {
-            loginRules(use) ?: runnerRules(personalRunner.value)
-        } else {
-            Verdict(problem = "the provider connection of this model is not set up or has no API key".takeUnless { gateway.isConfigured(profile.ref) })
+        val login = profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN
+        // a login profile from before ADR 0050 step 2 may have no owner: it is still personal (it runs on a personal runner)
+        val personal = profile.personal || login
+        val verdict = when {
+            !profile.enabled -> Verdict(problem = "the model profile is disabled")
+            profile.ownerUserId != null && profile.ownerUserId != use.userId -> Verdict(problem = "this is another user's personal model profile")
+            personal && !use.privateProject -> Verdict(problem = "personal models work only in your private projects and your own benchmarks")
+            login -> loginRules(use) ?: runnerRules(personalRunner.value)
+            else -> Verdict(problem = "the provider connection of this model is not set up or has no API key".takeUnless { gateway.isConfigured(profile.ref) })
         }
         return ModelOption(
             profileId = profile.id,
             displayName = profile.displayName,
             ref = profile.ref,
             runtime = profile.runtime,
-            route = if (profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) ModelRoute.OWN_LOGIN else ModelRoute.GATEWAY,
-            personal = profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN,
+            route = if (login) ModelRoute.OWN_LOGIN else ModelRoute.GATEWAY,
+            personal = personal,
             usable = verdict.problem == null,
             problem = verdict.problem,
             note = verdict.note,
@@ -68,8 +72,6 @@ class ModelAvailabilityService(
         private fun loginRules(use: ModelUse): Verdict? = when {
             use.stepKind == StepKind.LLM_CALL ->
                 Verdict(problem = "a Claude Code login model runs coding-agent steps only; LLM steps need a model of a connected provider")
-            !use.privateProject ->
-                Verdict(problem = "your own Claude login works only in your private projects and personal benchmarks")
             use.harness != null && use.harness != AgentHarness.CLAUDE_CODE ->
                 Verdict(problem = "a Claude Code login model needs Claude Code as the coding agent of the step")
             else -> null

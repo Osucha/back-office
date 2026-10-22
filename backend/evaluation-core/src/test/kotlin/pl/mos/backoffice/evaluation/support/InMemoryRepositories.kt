@@ -25,6 +25,14 @@ class InMemoryModelProfileRepository : ModelProfileRepository {
     override fun count(): Long = store.size.toLong()
 }
 
+class InMemoryModelDefaultRepository : pl.mos.backoffice.evaluation.application.port.out.ModelDefaultRepository {
+    val store = ConcurrentHashMap<Pair<java.util.UUID?, pl.mos.backoffice.shared.llm.StepKind>, pl.mos.backoffice.evaluation.domain.model.ModelDefault>()
+    override fun find(ownerUserId: java.util.UUID?, stepKind: pl.mos.backoffice.shared.llm.StepKind) = store[ownerUserId to stepKind]
+    override fun findFor(ownerUserId: java.util.UUID?) = store.values.filter { it.ownerUserId == ownerUserId }
+    override fun save(default: pl.mos.backoffice.evaluation.domain.model.ModelDefault) = default.also { store[it.ownerUserId to it.stepKind] = it }
+    override fun delete(ownerUserId: java.util.UUID?, stepKind: pl.mos.backoffice.shared.llm.StepKind) { store.remove(ownerUserId to stepKind) }
+}
+
 class InMemoryTaskSuiteRepository : TaskSuiteRepository {
     val store = ConcurrentHashMap<TaskSuiteId, TaskSuite>()
     override fun save(suite: TaskSuite): TaskSuite { store[suite.id] = suite; return suite }

@@ -54,6 +54,7 @@ class EvaluationPersistenceIntegrationTest {
     @Autowired lateinit var suites: TaskSuiteRepository
     @Autowired lateinit var benchmarks: BenchmarkRepository
     @Autowired lateinit var catalog: ModelCatalog
+    @Autowired lateinit var defaults: pl.mos.backoffice.evaluation.application.port.out.ModelDefaultRepository
 
     private val now: Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
     private val actor = Actor(PrincipalKind.USER, UUID.randomUUID(), "Eve Evaluator")
@@ -156,4 +157,33 @@ class EvaluationPersistenceIntegrationTest {
         assertThat(benchmarks.findById(benchmark.id)).isNull()
         assertThat(benchmarks.findAttempt(succeeded.id)).isNull()
     }
+
+    @Test
+    fun `a personal login profile keeps its runtime and owner, and defaults are stored per owner and kind (ADR 0050)`() {
+        val owner = UUID.randomUUID()
+        val login = profiles.save(
+            ModelProfile.create(
+                "Opus (my login)", ModelRef(Provider.ANTHROPIC, "opus"), Pricing.FREE, now = now,
+                runtime = pl.mos.backoffice.shared.llm.ModelRuntime.CLAUDE_CODE_LOGIN, ownerUserId = owner,
+            ),
+        )
+        val read = profiles.findById(login.id)!!
+        assertThat(read.runtime).isEqualTo(pl.mos.backoffice.shared.llm.ModelRuntime.CLAUDE_CODE_LOGIN)
+        assertThat(read.ownerUserId).isEqualTo(owner)
+        assertThat(catalog.find(login.id)!!.let { it.runtime to it.ownerUserId }).isEqualTo(pl.mos.backoffice.shared.llm.ModelRuntime.CLAUDE_CODE_LOGIN to owner)
+
+        val platform = profiles.save(ModelProfile.create("Platform", ModelRef(Provider.ANTHROPIC, "claude-sonnet-5"), Pricing.FREE, now = now))
+        val kind = pl.mos.backoffice.shared.llm.StepKind.CODING_AGENT
+        defaults.save(pl.mos.backoffice.evaluation.domain.model.ModelDefault(null, kind, platform.id, now, actor))
+        defaults.save(pl.mos.backoffice.evaluation.domain.model.ModelDefault(owner, kind, platform.id, now, actor))
+        defaults.save(pl.mos.backoffice.evaluation.domain.model.ModelDefault(owner, kind, login.id, now, actor))
+        assertThat(defaults.find(owner, kind)!!.profileId).describedAs("replaced, not duplicated").isEqualTo(login.id)
+        assertThat(defaults.findFor(owner)).hasSize(1)
+        assertThat(defaults.find(null, kind)!!.let { it.profileId to it.updatedBy?.displayName }).isEqualTo(platform.id to "Eve Evaluator")
+        defaults.delete(owner, kind)
+        assertThat(defaults.find(owner, kind)).isNull()
+        assertThat(defaults.find(null, kind)).isNotNull()
+        defaults.delete(null, kind)
+    }
+
 }

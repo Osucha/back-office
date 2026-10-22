@@ -14,6 +14,7 @@ describe('Claude Code login rules (ADR 0048)', () => {
     displayName: id,
     runtime,
     enabled: true,
+    personal: runtime === 'CLAUDE_CODE_LOGIN',
     ref: { provider: 'ANTHROPIC', modelId: id },
     pricing: { inputPerMTok: 0, outputPerMTok: 0, currency: 'USD' },
   });

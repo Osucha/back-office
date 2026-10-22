@@ -32,6 +32,8 @@ data class ModelProfile(
     /** Who saved this version (ADR 0017); null for rows written before actor stamps existed. */
     val updatedBy: Actor? = null,
     val runtime: ModelRuntime = ModelRuntime.API,
+    /** ADR 0050 step 2: the owner of a personal profile (only they see and use it); null = a platform profile. */
+    val ownerUserId: java.util.UUID? = null,
 ) {
     init {
         validate(displayName, pricing, contextWindow)
@@ -42,6 +44,12 @@ data class ModelProfile(
 
     /** ADR 0048: runs only as Claude Code on a personal runner with its owner's login, never through the gateway. */
     val viaClaudeCodeLogin: Boolean get() = runtime == ModelRuntime.CLAUDE_CODE_LOGIN
+
+    /** ADR 0050 step 2: usable only by [ownerUserId], in their private projects and own benchmarks. */
+    val personal: Boolean get() = ownerUserId != null
+
+    /** A platform profile is visible to everyone who may read models, a personal one only to its owner. */
+    fun visibleTo(userId: java.util.UUID?): Boolean = ownerUserId == null || ownerUserId == userId
 
     fun update(
         displayName: String,
@@ -75,6 +83,7 @@ data class ModelProfile(
         pricing = pricing,
         enabled = enabled,
         runtime = runtime,
+        ownerUserId = ownerUserId,
     )
 
     companion object {
@@ -90,6 +99,7 @@ data class ModelProfile(
             id: ModelProfileId = ModelProfileId.new(),
             actor: Actor? = null,
             runtime: ModelRuntime = ModelRuntime.API,
+            ownerUserId: java.util.UUID? = null,
         ): ModelProfile = ModelProfile(
             id = id,
             displayName = displayName,
@@ -103,6 +113,7 @@ data class ModelProfile(
             updatedAt = now,
             updatedBy = actor,
             runtime = runtime,
+            ownerUserId = ownerUserId,
         )
 
         private const val MUST_NOT_BE_NEGATIVE = "must not be negative"

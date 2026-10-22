@@ -157,6 +157,11 @@ export type CodingHarness = NonNullable<S['StepModelPlan']['harness']>;
 export type ModelOption = S['ModelOption'];
 /** ADR 0050: the model of one task step as a run would resolve it. */
 export type StepModelPlan = S['StepModelPlan'];
+/** ADR 0050 step 2: the platform default models and the caller's own, per step kind. */
+export type ModelDefaults = S['ModelDefaults'];
+export type ModelDefaultInput = S['ModelDefaultInput'];
+/** ADR 0050 step 2: which default a model option is offered for. */
+export type ModelDefaultScope = 'PLATFORM' | 'PERSONAL';
 export type Capability = NonNullable<ModelProfileInput['capabilities']>[number];
 export type ModelTestResult = S['ModelTestResult'];
 export type ProviderStatus = S['ProviderStatus'];

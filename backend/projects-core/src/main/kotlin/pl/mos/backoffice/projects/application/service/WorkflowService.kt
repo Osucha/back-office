@@ -27,6 +27,7 @@ import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
 import pl.mos.backoffice.shared.llm.ModelAvailability
+import pl.mos.backoffice.shared.llm.ModelDefaults
 import pl.mos.backoffice.shared.llm.ModelOption
 import pl.mos.backoffice.shared.llm.ModelUse
 import pl.mos.backoffice.shared.llm.StepKind
@@ -77,11 +78,13 @@ class WorkflowService(
     projectWorkspaces: ProjectWorkspaceRepository? = null,
     /** ADR 0050: which models the caller may use; null = models are not checked (tests). */
     private val availability: ModelAvailability? = null,
+    /** ADR 0050 step 2: the default models after the project defaults; null = none. */
+    defaults: ModelDefaults? = null,
 ) : ManageWorkflows {
 
     private val jiraSteps = jira?.let { JiraStepCheck(taskCatalog, it) }
     private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources, projectWorkspaces)
-    private val modelSteps = availability?.let { ModelStepCheck(taskCatalog, it) }
+    private val modelSteps = availability?.let { ModelStepCheck(taskCatalog, it, defaults) }
 
     override fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition {
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value).actor

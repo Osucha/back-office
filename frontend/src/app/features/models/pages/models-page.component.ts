@@ -44,7 +44,9 @@ import { ShortcutsService } from '../../../core/ui/relay/shortcuts.service';
 import { panelParam } from '../../../core/ui/relay/side-panel.component';
 import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
 import { RELAY_TABLE_STYLES } from '../../../core/ui/relay/table-styles';
+import { DefaultModelsComponent } from '../components/default-models.component';
 import { ModelProfileDrawerComponent } from '../components/model-profile-drawer.component';
+import { canEditProfile, filterByScope } from '../data/model-scope';
 import {
   contextLabel,
   filterProfiles,
@@ -82,6 +84,7 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
     GlyphComponent,
     PageHeaderComponent,
     SkeletonComponent,
+    DefaultModelsComponent,
     ModelProfileDrawerComponent,
     ProviderCatalogComponent,
     SortHeaderDirective,
@@ -101,13 +104,15 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
           <nz-icon nzType="api" />
           <ng-container i18n="@@models.providersLink">LLM providers</ng-container>
         </a>
-        @if (canManage()) {
+        @if (canCreate()) {
           <button boHeaderActions nz-button nzType="primary" type="button" (click)="create()">
             <nz-icon nzType="plus" />
             <ng-container i18n="@@models.create">Create profile</ng-container>
           </button>
         }
       </bo-page-header>
+
+      <app-default-models #defaults [canManage]="canManage()" />
 
       <bo-filter-bar
         #bar
@@ -137,6 +142,19 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
             <nz-option [nzValue]="p" [nzLabel]="providerName(p)" />
           }
         </nz-select>
+        <nz-select
+          [ngModel]="f.values().scope"
+          (ngModelChange)="f.set({ scope: $event })"
+          nzAllowClear
+          nzPlaceHolder="Platform and my profiles"
+          i18n-nzPlaceHolder="@@models.scope.all"
+          style="width: 190px"
+          aria-label="Filter by scope"
+          i18n-aria-label="@@models.scope.filter"
+        >
+          <nz-option nzValue="platform" [nzLabel]="text.scopePlatform" />
+          <nz-option nzValue="mine" [nzLabel]="text.scopeMine" />
+        </nz-select>
       </bo-filter-bar>
 
       @if (loading() && !loaded()) {
@@ -165,7 +183,7 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
             i18n-title="@@models.empty"
             detail="Add the models you want workflow steps and benchmarks to run with."
             i18n-detail="@@models.emptyDetail"
-            [actionLabel]="canManage() ? text.create : null"
+            [actionLabel]="canCreate() ? text.create : null"
             (action)="create()"
             help="settings.llm"
             guideLabel="Connect a provider"
@@ -254,6 +272,15 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
                   <div class="cell-main">
                     <div class="cell-line">
                       <span class="cell-title">{{ p.displayName }}</span>
+                      @if (p.personal) {
+                        <span
+                          class="chip personal"
+                          nz-tooltip
+                          [nzTooltipTitle]="text.personalHint"
+                          i18n="@@models.personal.tag"
+                          >Personal</span
+                        >
+                      }
                       @if (isLogin(p)) {
                         <span
                           class="chip login"
@@ -357,14 +384,14 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
                     [ngModel]="p.enabled !== false"
                     (ngModelChange)="toggle(p, $event)"
                     [nzLoading]="busy() === p.id"
-                    [nzDisabled]="!canManage()"
+                    [nzDisabled]="!canEdit(p)"
                     nzSize="small"
                     [attr.aria-label]="enableLabel(p)"
                   />
                 </td>
                 <td (click)="$event.stopPropagation()">
                   <div class="row-actions">
-                    @if (canManage()) {
+                    @if (canEdit(p)) {
                       <button
                         nz-button
                         nzType="text"
@@ -422,6 +449,19 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
                       >
                         <nz-icon nzType="eye" />
                       </button>
+                      <button
+                        nz-button
+                        nzType="text"
+                        nzSize="small"
+                        type="button"
+                        (click)="duplicate(p)"
+                        nz-tooltip
+                        nzTooltipTitle="Duplicate as my profile"
+                        i18n-nzTooltipTitle="@@models.duplicatePersonal"
+                        [attr.aria-label]="duplicateLabel(p)"
+                      >
+                        <nz-icon nzType="copy" />
+                      </button>
                     }
                   </div>
                 </td>
@@ -453,7 +493,7 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
 
       <app-provider-catalog
         [existing]="existingKeys()"
-        [canManage]="canManage()"
+        [canManage]="canCreate()"
         (add)="addFromCatalog($event)"
       />
     </div>
@@ -500,7 +540,8 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
         font-size: 11px;
         color: var(--bo-ink-3);
       }
-      .chip.login {
+      .chip.login,
+      .chip.personal {
         color: var(--bo-you-ink);
       }
       tr.off .cell-title,
@@ -515,9 +556,10 @@ export class ModelsPageComponent {
   private readonly message = inject(NzMessageService);
   private readonly confirm = inject(ConfirmService);
   private readonly bar = viewChild<FilterBarComponent>('bar');
+  private readonly defaultsCard = viewChild<DefaultModelsComponent>('defaults');
   readonly identity = inject(IdentityService);
 
-  readonly f = urlFilters({ q: 'string', provider: 'string', state: 'string' });
+  readonly f = urlFilters({ q: 'string', provider: 'string', state: 'string', scope: 'string' });
   readonly panel = panelParam('profile');
   readonly profiles = signal<ModelProfile[]>([]);
   readonly providers = signal<ProviderStatus[]>([]);
@@ -534,6 +576,10 @@ export class ModelsPageComponent {
   private readonly copyOf = signal<ModelProfile | null>(null);
 
   readonly canManage = computed(() => this.identity.can('models.manage'));
+  /** ADR 0050 step 2: without models.manage a user creates personal profiles (models.view). */
+  readonly canCreate = computed(() => this.identity.can(['models.manage', 'models.view']));
+  /** Platform profiles need models.manage; personal ones (only the caller's own are listed) their owner. */
+  readonly canEdit = (p: ModelProfile) => canEditProfile(p, this.canManage());
   readonly providerName = providerLabel;
   readonly price = perMTok;
   readonly context = contextLabel;
@@ -545,6 +591,9 @@ export class ModelsPageComponent {
     setKey: $localize`:@@models.setKeyFirst:Set the provider API key first`,
     testHint: $localize`:@@models.testHint:Send a tiny prompt and measure latency and cost`,
     loginTestHint: $localize`:@@models.login.testHint:Check that your personal runner with Claude Code login is online`,
+    personalHint: $localize`:@@models.personal.hint:Your personal profile: only you see and use it, in your private projects and your own benchmarks.`,
+    scopePlatform: $localize`:@@models.scope.platform:Platform profiles`,
+    scopeMine: $localize`:@@models.scope.mine:My profiles`,
     loginHint: $localize`:@@models.login.hint:Claude Code on your personal runner with your own Claude subscription: coding tasks only, never the judge, nothing billed.`,
   };
   /** ADR 0048: Claude Code with the user's own login (personal runner, no API key, no price). */
@@ -553,7 +602,7 @@ export class ModelsPageComponent {
   readonly showUnavailable = signal(false);
 
   readonly filtered = computed(() =>
-    filterProfiles(this.profiles(), {
+    filterProfiles(filterByScope(this.profiles(), this.f.values().scope), {
       query: this.f.values().q,
       provider: this.f.values().provider,
       state: this.f.values().state,
@@ -612,7 +661,7 @@ export class ModelsPageComponent {
   });
   readonly panelOpen = computed(() => {
     const id = this.panel.value();
-    return id === 'new' ? this.canManage() : !!this.editing();
+    return id === 'new' ? this.canCreate() : !!this.editing();
   });
   readonly chips = computed<FilterChip[]>(() => {
     const v = this.f.values();
@@ -624,6 +673,11 @@ export class ModelsPageComponent {
         label: $localize`:@@models.chip.provider:Provider: ${provider}:provider:`,
       });
     }
+    if (v.scope === 'platform' || v.scope === 'mine')
+      out.push({
+        id: 'scope',
+        label: v.scope === 'mine' ? this.text.scopeMine : this.text.scopePlatform,
+      });
     return out;
   });
   readonly presets = computed<FilterPreset[]>(() => {
@@ -669,7 +723,7 @@ export class ModelsPageComponent {
           keys: 'c',
           description: $localize`:@@models.createAction:Create profile`,
           group: $localize`:@@models.group:Models`,
-          when: () => this.canManage() && !this.panelOpen(),
+          when: () => this.canCreate() && !this.panelOpen(),
           handler: () => this.create(),
         },
       ],
@@ -708,6 +762,7 @@ export class ModelsPageComponent {
 
   removeChip(id: string): void {
     if (id === 'provider') this.f.set({ provider: null });
+    if (id === 'scope') this.f.set({ scope: null });
   }
 
   load(): void {
@@ -766,6 +821,7 @@ export class ModelsPageComponent {
         this.copyOf.set(null);
         this.panel.close();
         this.load();
+        this.defaultsCard()?.load();
       },
       error: () => this.saving.set(false),
     });
@@ -816,6 +872,7 @@ export class ModelsPageComponent {
       this.message.success($localize`:@@models.deleted:Profile deleted`);
       if (this.panel.value() === p.id) this.panel.close();
       this.load();
+      this.defaultsCard()?.load();
     });
   }
 }

@@ -76,6 +76,8 @@ describe('model options (ADR 0050)', () => {
   it('labels plan sources and counts blocked and warned steps', () => {
     expect(planSourceLabel('PROJECT')).toBe('project default');
     expect(planSourceLabel('PROJECT_REVIEW')).toBe('review default');
+    expect(planSourceLabel('PERSONAL_DEFAULT')).toBe('your default');
+    expect(planSourceLabel('PLATFORM_DEFAULT')).toBe('platform default');
     expect(planSourceLabel('NONE')).toBe('not set');
     const step = (changes: Partial<StepModelPlan>): StepModelPlan => ({
       nodeId: 'n',

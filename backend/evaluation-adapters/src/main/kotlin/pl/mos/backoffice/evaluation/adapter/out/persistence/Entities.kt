@@ -12,6 +12,7 @@ import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.Difficulty
 import pl.mos.backoffice.shared.llm.ModelRuntime
+import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
 import pl.mos.backoffice.shared.llm.Provider
@@ -53,6 +54,22 @@ class ModelProfileEntity(
     @Column(name = "updated_by_name", length = 200) val updatedByName: String? = null,
     /** V206 (ADR 0048). */
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) val runtime: ModelRuntime = ModelRuntime.API,
+    /** V207 (ADR 0050 step 2): owner of a personal profile; null = platform. */
+    @Column(name = "owner_user_id") val ownerUserId: UUID? = null,
+)
+
+/** V207 (ADR 0050 step 2): a default model per kind of step; [ownerUserId] null = the platform default. */
+@Entity
+@Table(name = "model_default")
+class ModelDefaultEntity(
+    @Id val id: UUID = UUID.randomUUID(),
+    @Column(name = "owner_user_id") val ownerUserId: UUID? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "step_kind", nullable = false, length = 32) val stepKind: StepKind = StepKind.LLM_CALL,
+    @Column(name = "model_profile_id", nullable = false) val modelProfileId: UUID = UUID.randomUUID(),
+    @Column(name = "updated_at", nullable = false) val updatedAt: Instant = Instant.EPOCH,
+    @Column(name = "updated_by_kind", length = 16) val updatedByKind: String? = null,
+    @Column(name = "updated_by_id") val updatedById: UUID? = null,
+    @Column(name = "updated_by_name", length = 200) val updatedByName: String? = null,
 )
 
 @Entity

@@ -71,4 +71,17 @@ class ModelAvailabilityServiceTest {
         assertThat(service.check(login.id, coding)!!.let { it.usable to it.note }).isEqualTo(true to "your personal runner is offline: its jobs wait until it connects")
         assertThat(ModelAvailabilityService(profiles, gateway).check(login.id, coding)!!.usable).isFalse()
     }
+
+    @Test
+    fun `personal profiles are hidden from other users and need a private project (ADR 0050 step 2)`() {
+        val myKey = profiles.save(Fixtures.profile("My key").copy(ownerUserId = user))
+        val theirs = profiles.save(Fixtures.profile("Their key").copy(ownerUserId = UUID.randomUUID()))
+        val llm = ModelUse(StepKind.LLM_CALL, privateProject = true, userId = user)
+
+        assertThat(service.options(llm).map { it.displayName }).contains("My key").doesNotContain("Their key")
+        assertThat(service.check(myKey.id, llm)!!.let { it.usable to it.personal }).isEqualTo(true to true)
+        assertThat(service.check(myKey.id, llm.copy(privateProject = false))!!.problem).contains("only in your private projects")
+        assertThat(service.check(theirs.id, llm)!!.problem).contains("another user")
+    }
+
 }

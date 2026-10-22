@@ -3,6 +3,7 @@ package pl.mos.backoffice.evaluation.adapter.out.persistence
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import pl.mos.backoffice.evaluation.application.port.out.BenchmarkRepository
+import pl.mos.backoffice.evaluation.application.port.out.ModelDefaultRepository
 import pl.mos.backoffice.evaluation.application.port.out.ModelProfileRepository
 import pl.mos.backoffice.evaluation.application.port.out.TaskSuiteRepository
 import pl.mos.backoffice.evaluation.domain.model.Attempt
@@ -13,6 +14,7 @@ import pl.mos.backoffice.evaluation.domain.model.Benchmark
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
+import pl.mos.backoffice.evaluation.domain.model.ModelDefault
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 import pl.mos.backoffice.evaluation.domain.model.TaskSuite
 import pl.mos.backoffice.evaluation.domain.model.TaskSuiteId
@@ -20,7 +22,11 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.usage.Pricing
+import java.util.UUID
 
 /** `ModelProfileRepository` on JPA. */
 @Repository
@@ -35,6 +41,40 @@ class ModelProfilePersistenceAdapter(
         (if (enabled == null) jpa.findAll() else jpa.findAllByEnabled(enabled)).map(mappers::toDomain)
     override fun delete(id: ModelProfileId) = jpa.deleteById(id.value)
     override fun count(): Long = jpa.count()
+}
+
+/** `ModelDefaultRepository` on JPA (ADR 0050 step 2). Saving replaces the default of the same owner and kind. */
+@Repository
+@Transactional
+class ModelDefaultPersistenceAdapter(private val jpa: ModelDefaultJpaRepository) : ModelDefaultRepository {
+    override fun find(ownerUserId: UUID?, stepKind: StepKind): ModelDefault? = entity(ownerUserId, stepKind)?.let(::toDomain)
+
+    override fun findFor(ownerUserId: UUID?): List<ModelDefault> =
+        (if (ownerUserId == null) jpa.findAllByOwnerUserIdIsNull() else jpa.findAllByOwnerUserId(ownerUserId)).map(::toDomain)
+
+    override fun save(default: ModelDefault): ModelDefault {
+        val existing = entity(default.ownerUserId, default.stepKind)
+        val saved = jpa.save(
+            ModelDefaultEntity(
+                id = existing?.id ?: UUID.randomUUID(), ownerUserId = default.ownerUserId, stepKind = default.stepKind,
+                modelProfileId = default.profileId.value, updatedAt = default.updatedAt, updatedByKind = default.updatedBy?.kind?.name,
+                updatedById = default.updatedBy?.userId, updatedByName = default.updatedBy?.displayName,
+            ),
+        )
+        return toDomain(saved)
+    }
+
+    override fun delete(ownerUserId: UUID?, stepKind: StepKind) {
+        entity(ownerUserId, stepKind)?.let { jpa.delete(it) }
+    }
+
+    private fun entity(ownerUserId: UUID?, stepKind: StepKind) =
+        if (ownerUserId == null) jpa.findByOwnerUserIdIsNullAndStepKind(stepKind) else jpa.findByOwnerUserIdAndStepKind(ownerUserId, stepKind)
+
+    private fun toDomain(e: ModelDefaultEntity) = ModelDefault(
+        e.ownerUserId, e.stepKind, ModelProfileId(e.modelProfileId), e.updatedAt,
+        e.updatedByKind?.let { kind -> Actor(PrincipalKind.valueOf(kind), e.updatedById, e.updatedByName ?: "") },
+    )
 }
 
 /**

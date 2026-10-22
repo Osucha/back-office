@@ -13,6 +13,7 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditResult
@@ -48,7 +49,9 @@ class ModelProfileService(
 ) : ManageModelProfiles {
 
     override fun create(command: ProfileCommand): ModelProfile {
-        val user = gate.require(EvaluationPermissions.MODELS_MANAGE)
+        val personal = command.personal || command.runtime == ModelRuntime.CLAUDE_CODE_LOGIN
+        val user = gate.require(if (personal) EvaluationPermissions.MODELS_VIEW else EvaluationPermissions.MODELS_MANAGE)
+        val owner = if (personal) user.userId?.value ?: throw ValidationException("a personal model profile needs a signed-in user", "personal") else null
         val saved = profiles.save(
             ModelProfile.create(
                 displayName = command.displayName,
@@ -61,6 +64,7 @@ class ModelProfileService(
                 now = clock.now(),
                 actor = user.actor,
                 runtime = command.runtime,
+                ownerUserId = owner,
             ),
         )
         audit.record(entry("MODEL_PROFILE_CREATE", saved, snapshot(saved)))
@@ -68,8 +72,12 @@ class ModelProfileService(
     }
 
     override fun update(id: ModelProfileId, command: ProfileCommand): ModelProfile {
-        val user = gate.require(EvaluationPermissions.MODELS_MANAGE)
-        val existing = load(id)
+        val existing = profiles.findById(id)
+        val user = gate.require(if (existing?.personal == true) EvaluationPermissions.MODELS_VIEW else EvaluationPermissions.MODELS_MANAGE)
+        if (existing == null || !existing.visibleTo(user.userId?.value)) throw NotFoundException("ModelProfile", id)
+        if (!existing.personal && command.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) {
+            throw ValidationException("a platform profile cannot become a Claude Code login profile; create a personal one", "runtime")
+        }
         val saved = profiles.save(
             existing.update(
                 displayName = command.displayName,
@@ -90,18 +98,19 @@ class ModelProfileService(
     }
 
     override fun get(id: ModelProfileId): ModelProfile {
-        gate.require(EvaluationPermissions.MODELS_VIEW)
-        return load(id)
+        val user = gate.require(EvaluationPermissions.MODELS_VIEW)
+        return load(id).takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("ModelProfile", id)
     }
 
     override fun list(enabled: Boolean?): List<ModelProfile> {
-        gate.require(EvaluationPermissions.MODELS_VIEW)
-        return profiles.findAll(enabled).sortedBy { it.displayName.lowercase() }
+        val user = gate.require(EvaluationPermissions.MODELS_VIEW)
+        return profiles.findAll(enabled).filter { it.visibleTo(user.userId?.value) }.sortedBy { it.displayName.lowercase() }
     }
 
     override fun delete(id: ModelProfileId) {
-        gate.require(EvaluationPermissions.MODELS_MANAGE)
-        val existing = load(id)
+        val found = profiles.findById(id)
+        val user = gate.require(if (found?.personal == true) EvaluationPermissions.MODELS_VIEW else EvaluationPermissions.MODELS_MANAGE)
+        val existing = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("ModelProfile", id)
         if (benchmarks.existsReferencingModel(id)) {
             throw InvalidStateException("model profile $id is referenced by a benchmark; disable it instead of deleting")
         }
@@ -110,14 +119,19 @@ class ModelProfileService(
     }
 
     override fun test(id: ModelProfileId): ModelTestResult {
-        val user = gate.require(EvaluationPermissions.MODELS_MANAGE)
-        return probe(load(id), user.userId?.value)
+        val found = profiles.findById(id)
+        val user = gate.require(if (found?.personal == true) EvaluationPermissions.MODELS_VIEW else EvaluationPermissions.MODELS_MANAGE)
+        val profile = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("ModelProfile", id)
+        return probe(profile, user.userId?.value)
     }
 
     override fun preflight(ids: List<ModelProfileId>): List<Pair<ModelProfile, ModelTestResult>> {
         val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
         if (ids.size > MAX_PREFLIGHT) throw ValidationException("at most $MAX_PREFLIGHT models", "modelProfileIds")
-        return ids.distinct().map { id -> load(id).let { it to probe(it, user.userId?.value) } }
+        return ids.distinct().map { id ->
+            val profile = load(id).takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("ModelProfile", id)
+            profile to probe(profile, user.userId?.value)
+        }
     }
 
     private fun probe(profile: ModelProfile, userId: UUID?): ModelTestResult {
@@ -193,6 +207,7 @@ class ModelProfileService(
             "connection" to p.ref.connection,
             "modelId" to p.ref.modelId,
             "runtime" to p.runtime.name,
+            "personal" to p.personal,
             "pricing" to pricing(p.pricing),
             "enabled" to p.enabled,
         )

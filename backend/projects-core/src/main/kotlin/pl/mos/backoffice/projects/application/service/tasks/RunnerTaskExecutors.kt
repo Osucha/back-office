@@ -147,7 +147,7 @@ class RunnerTaskSupport(
         val primary = repositoryPlan.primary
         if (primary == null && repos.isNotEmpty()) throw RepositoryPlanException("step ${node.id} has no primary repository")
         if (primary == null && !StepRepositories.repositoryOptional(config)) throw RepositoryPlanException("step ${node.id} has no repository")
-        val profile = modelResolver.forCodingAgent(task, project)
+        val profile = modelResolver.forCodingAgent(task, project, ActingUser.startedBy(context.run)?.userId)
         val model = templateModel.build(context, repos)
         val blocks = PromptDataBlocks.random()
         val system = task.prompt.system?.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks).text }

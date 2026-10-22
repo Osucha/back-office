@@ -7,10 +7,13 @@ import pl.mos.backoffice.evaluation.domain.model.Benchmark
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
+import pl.mos.backoffice.evaluation.domain.model.ModelDefault
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 import pl.mos.backoffice.evaluation.domain.model.TaskSuite
 import pl.mos.backoffice.evaluation.domain.model.TaskSuiteId
+import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.ModelProfileId
+import java.util.UUID
 
 /** Persistence of the model catalogue. */
 interface ModelProfileRepository {
@@ -19,6 +22,14 @@ interface ModelProfileRepository {
     fun findAll(enabled: Boolean? = null): List<ModelProfile>
     fun delete(id: ModelProfileId)
     fun count(): Long
+}
+
+/** ADR 0050 step 2: default models; [ownerUserId] null = the platform defaults. */
+interface ModelDefaultRepository {
+    fun find(ownerUserId: UUID?, stepKind: StepKind): ModelDefault?
+    fun findFor(ownerUserId: UUID?): List<ModelDefault>
+    fun save(default: ModelDefault): ModelDefault
+    fun delete(ownerUserId: UUID?, stepKind: StepKind)
 }
 
 /** Persistence of task suites; tasks are saved together with their suite. */
