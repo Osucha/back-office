@@ -2062,8 +2062,10 @@ def run_process(
     on_line: Callable[[str], None],
     shell: bool = False,
     tail_bytes: int = VERIFY_TAIL_BYTES,
+    stdin_text: Optional[str] = None,
 ) -> ProcessResult:
-    """Run a command in its own process group, stream stdout+stderr lines, kill the group on timeout."""
+    """Run a command in its own process group, stream stdout+stderr lines, kill the group on timeout. `stdin_text`
+    is written to the command's stdin (otherwise it reads nothing)."""
     start = time.monotonic()
     tail: List[str] = []
     tail_size = 0
@@ -2072,7 +2074,7 @@ def run_process(
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -2082,6 +2084,8 @@ def run_process(
         popen_kwargs["start_new_session"] = True
     proc = subprocess.Popen(cmd if not shell else cmd[0], shell=shell, **popen_kwargs)  # noqa: S603
     timed_out = False
+    if stdin_text is not None:
+        threading.Thread(target=_feed_stdin, args=(proc, stdin_text), daemon=True).start()
 
     def _kill() -> None:
         nonlocal timed_out
@@ -2110,6 +2114,16 @@ def run_process(
         if timer:
             timer.cancel()
     return ProcessResult(proc.returncode, timed_out, "\n".join(tail)[-tail_bytes:], time.monotonic() - start)
+
+
+def _feed_stdin(proc: subprocess.Popen, text: str) -> None:
+    """Writes the input in its own thread, so a command that answers before reading all of it cannot block the reader."""
+    try:
+        assert proc.stdin is not None
+        proc.stdin.write(text)
+        proc.stdin.close()
+    except (BrokenPipeError, OSError, ValueError):
+        pass
 
 
 def _terminate(proc: subprocess.Popen) -> None:
@@ -3393,13 +3407,16 @@ def _kill_strays(run: _Run) -> None:
     run.security["strayProcessesKilled"] += kill_stray_processes(run.log, only_descendants=not run.sandboxed)
 
 
-def build_prompt_command(model: ModelRef, prompt: str, system_prompt: Optional[str], help_text: str = "") -> List[str]:
+def build_prompt_command(
+    model: ModelRef, prompt: str, system_prompt: Optional[str], help_text: str = "",
+) -> Tuple[List[str], str]:
     """ADR 0050 step 4: Claude Code for one answer: no tools, a short turn limit, the step's instructions as the system
-    prompt (folded into the prompt when this Claude Code has no --system-prompt), no session kept."""
+    prompt (folded into the prompt when this Claude Code has no --system-prompt), no session kept. Returns the command
+    and the prompt for its stdin: a review prompt with a diff easily exceeds the 128 KiB limit of one argument."""
     text = prompt
     if system_prompt and "--system-prompt" not in help_text:
         text = f"{system_prompt}\n\n{prompt}"
-    cmd = ["claude", "-p", text, "--output-format", "stream-json", "--verbose", "--model", model.model_id,
+    cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--model", model.model_id,
            "--max-turns", PROMPT_MAX_TURNS, "--permission-mode", "default"]
     if system_prompt and "--system-prompt" in help_text:
         cmd += ["--system-prompt", system_prompt]
@@ -3409,7 +3426,7 @@ def build_prompt_command(model: ModelRef, prompt: str, system_prompt: Optional[s
         cmd.append("--no-session-persistence")
     if model.reasoning and model.reasoning != "NONE" and "--effort" in help_text:
         cmd += ["--effort", REASONING_TO_CLAUDE_EFFORT[model.reasoning]]
-    return cmd
+    return cmd, text
 
 
 def _execute_prompt(run: _Run, spec: JobSpec) -> None:
@@ -3417,6 +3434,7 @@ def _execute_prompt(run: _Run, spec: JobSpec) -> None:
     work_dir = run.workspace / "prompt"
     work_dir.mkdir(parents=True, exist_ok=True)
     agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token)
+    stdin_text: Optional[str] = None
     if spec.agent == STUB_AGENT:
         cmd, parser, shell = [spec.prompt], parse_stub_line, True
     elif spec.agent == "CLAUDE_CODE":
@@ -3428,7 +3446,8 @@ def _execute_prompt(run: _Run, spec: JobSpec) -> None:
             run.log("[agent] Claude Code answers with the personal runner owner's own login (ADR 0050): not metered by Back Office")
         else:
             require_gateway(spec.gateway, "anthropic")
-        cmd, parser, shell = build_prompt_command(spec.model, spec.prompt, spec.system_prompt, _claude_help(agent_env)), parse_claude_line, False
+        cmd, stdin_text = build_prompt_command(spec.model, spec.prompt, spec.system_prompt, _claude_help(agent_env))
+        parser, shell = parse_claude_line, False
     else:
         raise ValueError(f"PROMPT jobs run Claude Code, not {spec.agent}")
     timeout = max(60.0, spec.timeout_seconds - (time.monotonic() - run.started))
@@ -3441,7 +3460,8 @@ def _execute_prompt(run: _Run, spec: JobSpec) -> None:
         if human:
             run.log(human)
 
-    res = run_process(cmd, work_dir, agent_env, timeout=timeout, on_line=on_line, shell=shell, tail_bytes=VERIFY_TAIL_BYTES)
+    res = run_process(cmd, work_dir, agent_env, timeout=timeout, on_line=on_line, shell=shell, tail_bytes=VERIFY_TAIL_BYTES,
+                      stdin_text=stdin_text)
     run.agent_exit, run.timed_out = res.exit_code, res.timed_out
     answer = outcome.summary()
     run.log(f"[agent] answered {len(answer)} chars, exit {run.agent_exit} after {int(res.duration_seconds)}s usage={outcome.usage.to_json()}")

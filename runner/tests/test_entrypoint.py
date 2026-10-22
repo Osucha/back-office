@@ -1859,8 +1859,10 @@ class PromptModeTests(unittest.TestCase):
 
     def test_command_has_no_tools_a_turn_limit_and_the_system_prompt(self):
         help_text = "--system-prompt --disallowedTools --no-session-persistence --effort"
-        cmd = ep.build_prompt_command(self.model("HIGH"), "question", "rules", help_text)
-        self.assertEqual(cmd[:3], ["claude", "-p", "question"])
+        cmd, stdin = ep.build_prompt_command(self.model("HIGH"), "question", "rules", help_text)
+        self.assertEqual(cmd[:3], ["claude", "-p", "--output-format"])
+        self.assertEqual(stdin, "question")
+        self.assertNotIn("question", cmd)
         self.assertEqual(cmd[cmd.index("--system-prompt") + 1], "rules")
         self.assertIn("Bash", cmd[cmd.index("--disallowedTools") + 1].split(","))
         self.assertEqual(cmd[cmd.index("--max-turns") + 1], ep.PROMPT_MAX_TURNS)
@@ -1868,10 +1870,19 @@ class PromptModeTests(unittest.TestCase):
         self.assertNotIn("--dangerously-skip-permissions", cmd)
 
     def test_an_older_claude_code_gets_the_system_prompt_in_the_prompt(self):
-        cmd = ep.build_prompt_command(self.model(), "question", "rules", "")
-        self.assertEqual(cmd[2], "rules\n\nquestion")
+        cmd, stdin = ep.build_prompt_command(self.model(), "question", "rules", "")
+        self.assertEqual(stdin, "rules\n\nquestion")
         self.assertNotIn("--system-prompt", cmd)
         self.assertNotIn("--disallowedTools", cmd)
+
+    @unittest.skipUnless(os.name == "posix", "needs a POSIX shell")
+    def test_a_prompt_beyond_the_argument_limit_goes_through_stdin(self):
+        big = "x" * (300 * 1024)
+        lines = []
+        res = ep.run_process(["wc", "-c"], Path(tempfile.gettempdir()), dict(os.environ), timeout=30,
+                             on_line=lines.append, stdin_text=big)
+        self.assertEqual(res.exit_code, 0)
+        self.assertEqual(lines[-1].strip(), str(len(big)))
 
 if __name__ == "__main__":
     unittest.main()
