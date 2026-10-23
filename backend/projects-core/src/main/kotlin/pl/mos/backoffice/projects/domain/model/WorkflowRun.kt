@@ -356,13 +356,15 @@ data class WorkflowRun(
 
     /**
      * Re-opens a `FAILED` run so the engine can continue from the failing node. A node that used up its `maxVisits`
-     * gets that many attempts more: the person retrying decided it should run again.
+     * gets that many attempts more, and so does any other node that used them up (the gate of a retry loop): the
+     * person retrying decided the work should go on.
      */
     fun retry(now: Instant): WorkflowRun {
         requireStatus(RunStatus.FAILED)
         val from = retryNodeId()
-        val node = from?.let { definitionSnapshot.nodes.firstOrNull { n -> n.id == it } }
-        val granted = if (node != null && visits(node.id) >= visitLimit(node)) extraVisits + (node.id to (extraVisits[node.id] ?: 0) + node.maxVisits) else extraVisits
+        // every node that used up its attempts (the failing step and, for example, the gate of its retry loop)
+        val granted = extraVisits + definitionSnapshot.nodes.filter { visits(it.id) >= visitLimit(it) }
+            .associate { it.id to (extraVisits[it.id] ?: 0) + it.maxVisits }
         return copy(status = RunStatus.RUNNING, outcome = null, failure = null, finishedAt = null, currentNodeId = from, extraVisits = granted)
     }
 

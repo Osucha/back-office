@@ -129,6 +129,16 @@ class WorkflowRunTest {
     }
 
     @Test
+    fun `a retry also renews a used-up gate of the retry loop even when the failure names the step`() {
+        var run = running()
+        repeat(gate.maxVisits) { run = run.nodeStarted(gate, now).nodeFinished("spec-gate", "revise", now) }
+        run = run.nodeStarted(specify, now).nodeFailed("specify", "agent stopped", now)
+        val retried = run.failed(RunFailure("specify", "node spec-gate exceeded maxVisits=${gate.maxVisits}"), now).retry(now)
+        assertThat(retried.extraVisits).containsEntry("spec-gate", gate.maxVisits).doesNotContainKey("specify")
+        assertThat(retried.nodeStarted(gate, now).nodes.last().attempt).isEqualTo(gate.maxVisits + 1)
+    }
+
+    @Test
     fun `artefacts are attached, replaced by name lookup and size-limited`() {
         val artifact = Artifact(ArtifactId.new(), "specify", "spec", ArtifactKind.SPEC, content = "# Spec", createdAt = now)
         val run = running().addArtifact(artifact).replaceArtifactContent(artifact.id, "# Better spec")
