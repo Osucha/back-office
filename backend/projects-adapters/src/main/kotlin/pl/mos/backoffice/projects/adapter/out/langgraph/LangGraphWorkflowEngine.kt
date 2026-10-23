@@ -208,7 +208,7 @@ class LangGraphWorkflowEngine(
         val next = snapshot.next()
         val nextNode = next?.let { run.definitionSnapshot.node(it) }
         return when {
-            kind == RunAdvance.RETRY && attempt <= 1 -> GraphInput.args(retryUpdate(run, resume))
+            kind == RunAdvance.RETRY && attempt <= 1 -> GraphInput.args(retryUpdate(run, resume, snapshot.state()))
             next.isNullOrBlank() || next == GraphDefinition.END -> null
             isAwait(next) -> if (runnerResultReady(run.id, snapshot.state())) GraphInput.resume() else null
             isConfirm(next) -> if (kind == RunAdvance.RESUME_DECISION && resume[RunAdvance.DECISION] != null) {
@@ -299,7 +299,7 @@ class LangGraphWorkflowEngine(
         ),
     )
 
-    private fun retryUpdate(run: WorkflowRun, resume: Map<String, Any?>): Map<String, Any?> {
+    private fun retryUpdate(run: WorkflowRun, resume: Map<String, Any?>, state: WorkflowState? = null): Map<String, Any?> {
         val update = HashMap<String, Any?>()
         update[RunStateKeys.RUN_ID] = run.id.toString()
         update[RunStateKeys.ENTRY_NODE] = resume[RunAdvance.FROM_NODE]?.toString() ?: run.currentNodeId
@@ -312,7 +312,8 @@ class LangGraphWorkflowEngine(
         // a retry's comment reaches the next task step as {{feedback}}, like a gate's revise comment
         resume[RunAdvance.FEEDBACK]?.toString()?.takeIf { it.isNotBlank() }?.let { entry ->
             update[RunStateKeys.FEEDBACK] = listOf(entry)
-            update[RunStateKeys.PENDING_FEEDBACK] = listOf(entry)
+            // added to what is still pending (e.g. a revise comment whose step could not start), never replacing it
+            update[RunStateKeys.PENDING_FEEDBACK] = (state?.let { RunStateKeys.pendingFeedback(it.data()) }.orEmpty()) + entry
         }
         return update
     }

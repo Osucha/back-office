@@ -230,6 +230,36 @@ class LangGraphWorkflowEngineTest {
     }
 
     @Test
+    fun `a retry comment reaches the retried step as feedback`() {
+        val project = newProject(key("RCM"))
+        tasks.llm("one-c", "one", produces = listOf("one"))
+        tasks.llm("two-c", "two{{#feedback}} | {{feedback}}{{/feedback}}", produces = listOf("two"))
+        val workflow = workflows.create(
+            project.id,
+            ManageWorkflows.WorkflowCommand(
+                name = "retry-comment",
+                nodes = listOf(
+                    WorkflowNode.Start("start"), WorkflowNode.Task("first", "First", task = TaskBinding("one-c")),
+                    WorkflowNode.Task("second", "Second", task = TaskBinding("two-c")), WorkflowNode.End("ok", "ok", end = EndSpec(RunOutcome.SUCCESS)),
+                ),
+                edges = listOf(edge("start", "out", "first"), edge("first", "success", "second"), edge("second", "success", "ok")),
+            ),
+        )
+        llm.reset()
+        llm.answer("ok")
+        llm.answers += { throw pl.mos.backoffice.shared.IntegrationException("anthropic", "rate limited", retryable = true) }
+        val started = startRun.start(workflow.id, RunInput("RCM-1"))
+        assertThat(awaitStatus(started.id, RunStatus.FAILED, RunStatus.SUCCEEDED).status).isEqualTo(RunStatus.FAILED)
+
+        llm.reset()
+        llm.answer("recovered")
+        retryRun.retry(started.id, "skip the Docker tests")
+        assertThat(awaitStatus(started.id, RunStatus.SUCCEEDED, RunStatus.FAILED).status).isEqualTo(RunStatus.SUCCEEDED)
+        val prompt = llm.prompts.single().messages.last().content
+        assertThat(prompt).startsWith("two | [Retry by ").endsWith("] skip the Docker tests")
+    }
+
+    @Test
     fun `the loop guard stops a workflow that revises forever`() {
         val project = newProject(key("LOO"))
         tasks.llm("spin", "spin", produces = listOf("spin"))
