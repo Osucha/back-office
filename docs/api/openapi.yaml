@@ -2724,6 +2724,8 @@ components:
           properties:
             signal: { type: string, pattern: '^[a-z][a-z0-9-]{0,39}$', example: tests }
             timeoutSeconds: { type: integer, nullable: true }
+            watchPipeline: { type: boolean, nullable: true, description: 'ADR 0052: Back Office watches the pipeline of the run''s branch itself with the project''s CI_READ token and delivers the signal when it finished; a failure passes the failed jobs and their log tails to the next step as feedback' }
+            repository: { type: string, nullable: true, description: repository key whose pipeline is watched; omitted = the primary repository }
         end:
           type: object
           nullable: true

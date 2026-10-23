@@ -69,7 +69,17 @@ data class GateSpec(
 }
 
 /** A `WAIT_FOR_CI` node: pauses until the project's CI sends `signal` for the run. */
-data class CiWaitSpec(val signal: String, val timeoutSeconds: Long? = null)
+/**
+ * [watchPipeline] (ADR 0052): Back Office itself watches the pipeline of the run's branch in [repository] (a project
+ * repository key; null = the primary one) with the project's CI_READ token and delivers [signal] when it finishes,
+ * instead of waiting for the project's CI to call `backoffice-ci signal`.
+ */
+data class CiWaitSpec(
+    val signal: String,
+    val timeoutSeconds: Long? = null,
+    val watchPipeline: Boolean = false,
+    val repository: String? = null,
+)
 
 data class EndSpec(val outcome: RunOutcome)
 

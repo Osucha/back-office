@@ -6632,9 +6632,13 @@ export interface components {
     };
     WorkflowNode: {
       ci?: {
+        /** @description repository key whose pipeline is watched; omitted = the primary repository */
+        repository?: string | null;
         /** @example tests */
         signal: string;
         timeoutSeconds?: number | null;
+        /** @description ADR 0052: Back Office watches the pipeline of the run's branch itself with the project's CI_READ token and delivers the signal when it finished; a failure passes the failed jobs and their log tails to the next step as feedback */
+        watchPipeline?: boolean | null;
       } | null;
       decision?: {
         branches: components['schemas']['DecisionBranch'][];

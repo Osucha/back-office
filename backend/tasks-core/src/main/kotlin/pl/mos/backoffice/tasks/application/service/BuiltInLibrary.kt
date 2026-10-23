@@ -376,8 +376,14 @@ object BuiltInLibrary {
     /** Line the work log ends with when every task, including the final full test run, passed. */
     const val WORK_LOG_GREEN = "RESULT: GREEN"
 
-    /** verifyCommand of `implement-task-list`: the step fails unless the work log ends with [WORK_LOG_GREEN]. */
-    const val WORK_LOG_VERIFY_COMMAND = "tail -n 3 $WORK_LOG_FILE | grep -q \"^$WORK_LOG_GREEN\""
+    /**
+     * ADR 0052: every check the sandbox can run passed, the rest (tests that need Docker, the real pipeline) is left to
+     * CI. A workflow follows it with a pipeline watch, so the step succeeds.
+     */
+    const val WORK_LOG_PARTIAL = "RESULT: PARTIAL"
+
+    /** verifyCommand of `implement-task-list`: the step fails unless the work log ends with [WORK_LOG_GREEN] or [WORK_LOG_PARTIAL]. */
+    const val WORK_LOG_VERIFY_COMMAND = "tail -n 3 $WORK_LOG_FILE | grep -qE \"^($WORK_LOG_GREEN|$WORK_LOG_PARTIAL)\""
 
     private fun template(now: Instant, content: TaskTemplate.Content) = TaskTemplate.create(content, now, builtIn = true, actor = Actor.SYSTEM)
 
@@ -1118,6 +1124,11 @@ object BuiltInLibrary {
            the entire test suite; its test_command runs the full suite. Set `finalTaskTitle` to exactly
            that title.
         5. Do not add tasks for work the issue, the plan and the impact analysis do not ask for.
+        6. The agent works in a sandbox: no Docker daemon (Testcontainers and `docker` commands cannot
+           run there), network only to package registries and the repository host. A `test_command` must
+           run there; when a check needs Docker or the real CI (integration tests, image builds, the
+           pipeline itself), give a sandbox-runnable command (unit tests, compile, lint) and name the
+           CI-only part in `verification` as "confirmed by CI".
     """.trimIndent()
 
     /** The planner gets whatever the run has: the approved impact analysis (change requests), a plan, the user story. */
@@ -1186,9 +1197,13 @@ object BuiltInLibrary {
         changed (files), the test_command and its result, and the decisions you made. Then add a section
         "Noticed out of scope": problems you saw outside the tasks (bugs, stale docs, risky code), with
         file paths; do NOT fix them. The last line of the work log is exactly `$WORK_LOG_GREEN` when every
-        task passed, including the final "$FINAL_TASK_TITLE" task that runs the full suite, and
-        `RESULT: STOPPED at <task title>` otherwise. This step's verifyCommand checks that line, so a STOP
-        fails the step.
+        task passed, including the final "$FINAL_TASK_TITLE" task that runs the full suite;
+        `$WORK_LOG_PARTIAL` when every check this sandbox can run passed and only checks that need what
+        the sandbox does not have are left (it has no Docker daemon, so Testcontainers tests and image
+        builds run only in CI): then list those checks under "Left to CI" with the commands CI runs; and
+        `RESULT: STOPPED at <task title>` otherwise. Never use PARTIAL to hide a failure you could see
+        here. This step's verifyCommand checks that line, so a STOP fails the step; after PARTIAL the
+        workflow waits for the real pipeline and sends you its failures.
 
         When the latest review findings are given below, first fix every BLOCKER and MAJOR finding and
         every MISSING requirement (as extra tasks before the final one), then run the final task again;

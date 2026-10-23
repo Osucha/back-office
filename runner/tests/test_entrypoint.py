@@ -1935,6 +1935,21 @@ class ExtraCaTests(unittest.TestCase):
             self.assertNotIn("SSL_CERT_FILE", env)
 
 
+class SandboxSectionTests(unittest.TestCase):
+    """ADR 0052: the agent learns the sandbox's limits from its prompt instead of by failing."""
+
+    def test_no_docker_and_the_allowed_hosts_are_named(self):
+        hosts = ep.egress_hosts_of({"network": {"allow": ["registry.npmjs.org", "git.example.com"]}})
+        self.assertEqual(hosts, ["registry.npmjs.org", "git.example.com"])
+        section = ep.sandbox_prompt_section({}, hosts) if not Path("/var/run/docker.sock").exists() else ""
+        if section:
+            self.assertIn("No Docker daemon", section)
+            self.assertIn("Left to CI", section)
+            self.assertIn("git.example.com, registry.npmjs.org", section)
+        self.assertIn("A Docker daemon is reachable", ep.sandbox_prompt_section({"DOCKER_HOST": "tcp://docker:2376"}, []))
+        self.assertEqual(ep.egress_hosts_of(None), [])
+
+
 class AgentToolTests(unittest.TestCase):
     """ADR 0051 step 4: gitlab-read gives the agent glab with the read-only token of its repository, nothing else."""
 

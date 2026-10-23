@@ -1,4 +1,8 @@
 {
+  "workflows.props.ciWatch": "Obserwuj pipeline",
+  "workflows.props.ciWatch.extra": "Back Office sam odczytuje pipeline gałęzi uruchomienia (token CI_READ repozytorium); porażka przekazuje nieudane joby i ich logi następnemu krokowi. Twoje CI nie wysyła sygnału.",
+  "workflows.props.ciRepository": "Repozytorium",
+  "workflows.props.ciRepository.extra": "Puste = repozytorium główne.",
   "workflows.minimap.label": "Mapa poglądowa workflowu; kliknij, aby przesunąć widok",
   "workflows.expression.parses": "Wyrażenie jest poprawne",
   "workflows.expression.offline": "Walidacja na serwerze niedostępna",

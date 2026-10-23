@@ -69,7 +69,10 @@ object ControlNodeCatalog {
             ),
         ),
         ControlNodeDescriptor(
-            NodeKind.WAIT_FOR_CI, "Wait for CI", "Pauses until the project's CI reports the signal with backoffice-ci signal <name>.",
+            NodeKind.WAIT_FOR_CI, "Wait for CI",
+            "Pauses until the project's CI reports the signal with backoffice-ci signal <name>, or - with watchPipeline - until the " +
+                "pipeline of the run's branch finishes (Back Office reads it with the project's CI_READ token; failed jobs and " +
+                "their log tails go to the next step as feedback).",
             listOf(WorkflowNode.PORT_SUCCESS, WorkflowNode.PORT_FAIL, WorkflowNode.PORT_TIMEOUT),
             schema(
                 mapOf(
@@ -77,6 +80,8 @@ object ControlNodeCatalog {
                         mapOf(
                             "signal" to string("Signal name, e.g. tests", pattern = WorkflowNode.SIGNAL_PATTERN.pattern),
                             "timeoutSeconds" to integer("Leave through the timeout port after this many seconds"),
+                            "watchPipeline" to boolean("Back Office watches the pipeline of the run's branch itself (needs a CI_READ token of the repository)", false),
+                            "repository" to string("Repository key whose pipeline is watched; empty = the primary repository"),
                         ),
                         listOf("signal"),
                     ),

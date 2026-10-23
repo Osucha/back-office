@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.adapter.config
 
+import pl.mos.backoffice.projects.adapter.out.scm.GitLabPipelineStatus
+import pl.mos.backoffice.projects.application.port.out.PipelineStatusPort
+import pl.mos.backoffice.projects.application.service.PipelineWatchService
 import pl.mos.backoffice.shared.platform.PlatformFeatures
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
@@ -379,6 +382,15 @@ class ProjectsConfiguration {
         connections: ScmConnectionRepository, projects: ProjectRepository, cipher: AesGcmSecretCipher, probe: ScmProbePort,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock,
     ) = ScmConnectionService(connections, projects, cipher, probe, gate, audit, clock)
+
+    /** ADR 0052: Back Office watches the pipeline of a run's branch itself (WAIT_FOR_CI with watchPipeline). */
+    @Bean fun gitLabPipelineStatus(cipher: AesGcmSecretCipher, json: JsonMapper) = GitLabPipelineStatus(cipher, json)
+
+    @Bean
+    fun pipelineWatchService(
+        runs: WorkflowRunRepository, projects: ProjectRepository, connections: ScmConnectionRepository, pipelines: PipelineStatusPort,
+        engine: WorkflowEngine, clock: Clock,
+    ) = PipelineWatchService(runs, projects, connections, pipelines, engine, clock)
 
     /** ADR 0051: opens a project repository token only for its sealed release to the runner holding the job (agent-runner). */
     @Bean

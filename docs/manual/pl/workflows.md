@@ -126,6 +126,16 @@ Ustaw nazwę **Sygnału** (**Signal**) (na przykład `tests`) i opcjonalny **Lim
 uruchomienie wychodzi przez `success` lub `fail` albo przez `timeout`. Zob.
 [GitLab CI](integrations-gitlab-ci.md#ci-overview).
 
+Po włączeniu **Obserwuj pipeline** (**Watch pipeline**) Back Office sam obserwuje pipeline, a Twoje CI nic nie wysyła:
+co minutę odczytuje najnowszy pipeline gałęzi, którą uruchomienie wypchnęło (w **Repozytorium** kroku, puste = główne),
+tokenem projektu tylko do odczytu z uprawnieniem CI_READ
+([Tokeny dostępu do repozytoriów](integrations-git.md#git-project-tokens)). Gdy pipeline się powiedzie, uruchomienie
+wychodzi przez `success`; gdy się nie powiedzie, przez `fail`, a następny krok dostaje nieudane joby (poza tymi, którym
+wolno się nie udać) z ostatnimi liniami ich logów jako uwagi do poprawki. Połącz `fail` z powrotem z krokiem
+implementacji, a agent poprawi to, co zgłasza CI; **Maks. odwiedzin** kroku ogranicza pętlę. Krok implementacji, który
+kończy dziennik pracy linią `RESULT: PARTIAL` (wszystko, co dało się sprawdzić w sandboxie, przeszło, reszta wymaga
+CI), powinien stać przed takim węzłem.
+
 <a id="step-repositories"></a>
 ## Repozytoria kroku
 

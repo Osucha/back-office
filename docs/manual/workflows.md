@@ -119,6 +119,15 @@ Set the **Signal** name (for example `tests`) and an optional **Timeout (seconds
 `backoffice-ci signal tests --status success|fail`; the run leaves through `success` or `fail`, or through
 `timeout`. See [GitLab CI](integrations-gitlab-ci.md#ci-overview).
 
+With **Watch pipeline** on, Back Office watches the pipeline itself and your CI sends nothing: it reads the latest
+pipeline of the branch the run pushed (in the step's **Repository**, empty = the primary one) once a minute with the
+project's read-only token that has CI_READ ([Repository access tokens](integrations-git.md#git-project-tokens)).
+When the pipeline succeeds the run leaves through `success`; when it fails, through `fail`, and the next step receives
+the failed jobs (except those allowed to fail) with the last lines of their logs as feedback. Connect `fail` back to
+the implementing step and the agent fixes what CI reports; the step's **Max visits** bounds the loop. An implementing
+step that ends its work log with `RESULT: PARTIAL` (everything it could check in its sandbox passed, the rest needs
+CI) belongs in front of such a node.
+
 <a id="step-repositories"></a>
 ## Repositories of a step
 

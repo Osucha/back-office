@@ -69,3 +69,8 @@ interface RunQueries {
 interface ExpireWaits {
     fun sweep(): Int
 }
+
+/** ADR 0052: resume runs waiting for the pipeline of their branch once it finished. Returns how many were resumed. */
+interface WatchPipelines {
+    fun sweep(): Int
+}

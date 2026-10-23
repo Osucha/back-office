@@ -59,7 +59,7 @@ data class GateSectionJson(
     val approvers: GateApproversJson? = null,
     val checklist: List<ChecklistItemJson> = emptyList(),
 )
-data class CiSectionJson(val signal: String = "", val timeoutSeconds: Long? = null)
+data class CiSectionJson(val signal: String = "", val timeoutSeconds: Long? = null, val watchPipeline: Boolean? = null, val repository: String? = null)
 data class EndSectionJson(val outcome: String = "SUCCESS")
 data class NoteSectionJson(val text: String = "")
 
@@ -132,7 +132,10 @@ object WorkflowJson {
             }
             NodeKind.WAIT_FOR_CI -> {
                 val ci = n.ci ?: throw ValidationException("ci section is required for WAIT_FOR_CI nodes", "nodes.$id.ci")
-                WorkflowNode.WaitForCi(id, name, position, n.timeoutSeconds, n.maxVisits, CiWaitSpec(ci.signal.trim(), ci.timeoutSeconds))
+                WorkflowNode.WaitForCi(
+                    id, name, position, n.timeoutSeconds, n.maxVisits,
+                    CiWaitSpec(ci.signal.trim(), ci.timeoutSeconds, ci.watchPipeline == true, ci.repository?.trim()?.takeIf { it.isNotEmpty() }),
+                )
             }
             NodeKind.NOTE -> WorkflowNode.Note(id, name, position, n.timeoutSeconds, n.maxVisits, NoteSpec(n.note?.text ?: ""))
         }
@@ -145,7 +148,7 @@ object WorkflowJson {
         gate = (n as? WorkflowNode.HumanGate)?.let {
             GateSectionJson(it.gate.question, it.gate.options, it.gate.showArtifacts, it.gate.timeoutSeconds, toJson(it.gate.approvers), it.gate.checklist.map(::toJson))
         },
-        ci = (n as? WorkflowNode.WaitForCi)?.let { CiSectionJson(it.ci.signal, it.ci.timeoutSeconds) },
+        ci = (n as? WorkflowNode.WaitForCi)?.let { CiSectionJson(it.ci.signal, it.ci.timeoutSeconds, it.ci.watchPipeline.takeIf { w -> w }, it.ci.repository) },
         end = (n as? WorkflowNode.End)?.let { EndSectionJson(it.end.outcome.name) },
         note = (n as? WorkflowNode.Note)?.let { NoteSectionJson(it.note.text) },
     )
