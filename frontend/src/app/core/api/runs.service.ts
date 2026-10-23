@@ -65,8 +65,9 @@ export class RunsApi {
     return this.http.post<WorkflowRun>(url('runs', runId, 'cancel'), {});
   }
 
-  retry(runId: string): Observable<WorkflowRun> {
-    return this.http.post<WorkflowRun>(url('runs', runId, 'retry'), {});
+  /** [comment] reaches the retried step as feedback; null = none. */
+  retry(runId: string, comment: string | null = null): Observable<WorkflowRun> {
+    return this.http.post<WorkflowRun>(url('runs', runId, 'retry'), comment ? { comment } : {});
   }
 
   /** Owner-side equivalent of a CI signal, e.g. to unblock a WAIT_FOR_CI node by hand. */

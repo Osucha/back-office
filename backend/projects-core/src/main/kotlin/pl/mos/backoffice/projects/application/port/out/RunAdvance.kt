@@ -18,6 +18,8 @@ object RunAdvance {
     const val DECISION = "decision"
     const val CI = "ci"
     const val FROM_NODE = "fromNodeId"
+    /** A retry's comment for the next task step (pending feedback). */
+    const val FEEDBACK = "feedback"
     const val JOB_ID = "jobId"
 
     const val START = "START"

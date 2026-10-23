@@ -27,7 +27,8 @@ interface CancelRun {
 
 /** Use case: retry a FAILED run from its failing node on the same engine thread. */
 interface RetryRun {
-    fun retry(runId: WorkflowRunId): WorkflowRun
+    /** [comment]: what the retried step should do differently; it receives it as `{{feedback}}`, like a gate's revise comment. */
+    fun retry(runId: WorkflowRunId, comment: String? = null): WorkflowRun
 }
 
 /**

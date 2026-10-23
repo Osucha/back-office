@@ -74,7 +74,8 @@ class RunController(
 
     @PostMapping("/{runId}/retry")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun retry(@PathVariable runId: UUID): WorkflowRunDto = mapper.toDto(retryRun.retry(WorkflowRunId(runId)))
+    fun retry(@PathVariable runId: UUID, @RequestBody(required = false) body: RunRetryDto?): WorkflowRunDto =
+        mapper.toDto(retryRun.retry(WorkflowRunId(runId), body?.comment))
 
     @PostMapping("/{runId}/signals")
     fun signal(@PathVariable runId: UUID, @RequestBody @Valid body: ManualSignalDto): WorkflowRunDto =

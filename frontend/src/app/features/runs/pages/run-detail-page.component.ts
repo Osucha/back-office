@@ -18,6 +18,7 @@ import { RouterLink } from '@angular/router';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
+import { NzModalModule } from 'ng-zorro-antd/modal';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
@@ -89,6 +90,7 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
     NzButtonModule,
     NzIconModule,
     NzInputModule,
+    NzModalModule,
     NzRadioModule,
     NzSwitchModule,
     NzTabsModule,
@@ -152,7 +154,7 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
               nz-button
               nzType="primary"
               type="button"
-              (click)="retry()"
+              (click)="retryOpen.set(true)"
               [nzLoading]="busy() === 'retry'"
               [disabled]="r.failure?.retryable === false"
               nz-tooltip
@@ -161,6 +163,35 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
             >
               Retry from failed step
             </button>
+            <nz-modal
+              [nzVisible]="retryOpen()"
+              nzTitle="Retry from the failed step"
+              i18n-nzTitle="@@runs.detail.retry.title"
+              [nzOkText]="text.retryConfirm"
+              [nzOkLoading]="busy() === 'retry'"
+              (nzOnOk)="retry()"
+              (nzOnCancel)="retryOpen.set(false)"
+            >
+              <ng-container *nzModalContent>
+                <label
+                  class="retry-label"
+                  for="retry-comment"
+                  i18n="@@runs.detail.retry.commentLabel"
+                  >What should the step do differently? (optional)</label
+                >
+                <textarea
+                  id="retry-comment"
+                  nz-input
+                  rows="5"
+                  [(ngModel)]="retryComment"
+                  placeholder="e.g. the sandbox has no Docker: skip the Testcontainers tests and list what CI must confirm"
+                  i18n-placeholder="@@runs.detail.retry.commentPlaceholder"
+                ></textarea>
+                <p class="retry-hint" i18n="@@runs.detail.retry.commentHint">
+                  The step receives your comment as feedback, like a revise comment at a gate.
+                </p>
+              </ng-container>
+            </nz-modal>
           }
           <div boHeaderBelow class="track">
             <bo-run-track
@@ -663,6 +694,16 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
   `,
   styles: [
     `
+      .retry-label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 500;
+      }
+      .retry-hint {
+        margin: 8px 0 0;
+        color: var(--bo-ink-2);
+        font-size: 12px;
+      }
       .track {
         padding: 14px 16px 10px;
         background: var(--bo-surface);
@@ -1006,6 +1047,7 @@ export class RunDetailPageComponent {
     triggeredBy: $localize`:@@runs.detail.triggeredBy:triggered by`,
     notRetryable: $localize`:@@runs.detail.notRetryable:The engine marked this failure as not retryable`,
     retryHint: $localize`:@@runs.detail.retryHint:Continue from the failing step`,
+    retryConfirm: $localize`:@@runs.detail.retry.confirm:Retry`,
   };
 
   runTitle(r: WorkflowRun): string {
@@ -1367,12 +1409,18 @@ export class RunDetailPageComponent {
     });
   }
 
+  /** The retry dialog: open, and the optional comment for the retried step. */
+  readonly retryOpen = signal(false);
+  retryComment = '';
+
   retry(): void {
     this.busy.set('retry');
-    this.api.retry(this.runId()).subscribe({
+    this.api.retry(this.runId(), this.retryComment.trim() || null).subscribe({
       next: (r) => {
         this.run.set(r);
         this.busy.set(null);
+        this.retryOpen.set(false);
+        this.retryComment = '';
         this.message.success(
           $localize`:@@runs.detail.retry.done:Run continues from the failed step`,
         );

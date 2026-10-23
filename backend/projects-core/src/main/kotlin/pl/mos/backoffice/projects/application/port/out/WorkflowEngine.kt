@@ -20,8 +20,8 @@ interface WorkflowEngine {
     /** Continues a run paused at a `WAIT_FOR_CI` node with the received signal (or a synthetic timeout). */
     fun resumeWithSignal(run: WorkflowRun, signal: CiSignal?)
 
-    /** Continues a previously `FAILED` run from [fromNodeId] on the same thread. */
-    fun retry(run: WorkflowRun, fromNodeId: String)
+    /** Continues a previously `FAILED` run from [fromNodeId] on the same thread; [feedback] goes to the next task step. */
+    fun retry(run: WorkflowRun, fromNodeId: String, feedback: String? = null)
 
     /** Best-effort stop of an in-flight run; the run itself is marked cancelled by the caller. */
     fun cancel(runId: WorkflowRunId)

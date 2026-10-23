@@ -281,7 +281,7 @@ data class WorkflowRun(
         val updated = if (running != null) {
             nodes.map { if (it.id == running.id) it.copy(status = NodeExecutionStatus.WAITING) else it }
         } else {
-            if (visits(node.id) + 1 > node.maxVisits) throw InvalidStateException("node ${node.id} exceeded maxVisits=${node.maxVisits}")
+            if (visits(node.id) + 1 > visitLimit(node)) throw InvalidStateException("node ${node.id} exceeded maxVisits=${visitLimit(node)}")
             nodes + NodeExecution(
                 id = NodeExecutionId.new(), nodeId = node.id, nodeName = node.name, kind = node.kind,
                 attempt = visits(node.id) + 1, status = NodeExecutionStatus.WAITING, startedAt = now,

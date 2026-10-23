@@ -3021,7 +3021,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Retries a FAILED run from its failing node. */
+    /** @description Retries a FAILED run from its failing node. A node that used up its maxVisits (the failing step or the gate of its retry loop) gets that many attempts more. An optional comment reaches the retried step as {{feedback}}, like a gate's revise comment. Audited RUN_RETRY. */
     post: operations['retryRun'];
     delete?: never;
     options?: never;
@@ -12221,7 +12221,14 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        'application/json': {
+          /** @description what the retried step should do differently */
+          comment?: string | null;
+        };
+      };
+    };
     responses: {
       /** @description Accepted */
       202: {

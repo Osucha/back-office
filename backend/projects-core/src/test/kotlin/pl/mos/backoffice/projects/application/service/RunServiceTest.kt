@@ -80,8 +80,14 @@ class RunServiceTest {
         val retried = service.retry(failed.id)
         assertThat(retried.status).isEqualTo(RunStatus.RUNNING)
         assertThat(retried.id).isEqualTo(failed.id)
-        verify { engine.retry(retried, "specify") }
+        verify { engine.retry(retried, "specify", null) }
         assertThat(audit.operations()).containsExactly("RUN_RETRY")
+
+        // a comment goes to the retried step as feedback, named after the person, and into the audit
+        every { runs.findById(failed.id) } returns failed
+        val again = service.retry(failed.id, "  no Docker here: skip Testcontainers  ")
+        verify { engine.retry(again, "specify", match { it.startsWith("[Retry by ") && it.endsWith("] no Docker here: skip Testcontainers") }) }
+        assertThat(audit.entries.last().details).containsEntry("comment", "no Docker here: skip Testcontainers")
 
         every { runs.findById(failed.id) } returns failed.retry(now)
         assertThatThrownBy { service.retry(failed.id) }.isInstanceOf(InvalidStateException::class.java)

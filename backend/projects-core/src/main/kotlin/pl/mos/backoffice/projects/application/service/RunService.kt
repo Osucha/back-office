@@ -155,20 +155,23 @@ class RunService(
         return cancelled
     }
 
-    override fun retry(runId: WorkflowRunId): WorkflowRun {
+    override fun retry(runId: WorkflowRunId, comment: String?): WorkflowRun {
         val run = load(runId)
         gate.require(ProjectsPermissions.RUN_START, run.projectId.value)
         if (run.status != RunStatus.FAILED) throw InvalidStateException("run $runId is ${run.status}; only FAILED runs can be retried")
         val fromNode = run.retryNodeId() ?: throw InvalidStateException("run $runId has no node to retry from")
+        val user = gate.currentUser()
         val retried = runs.save(run.retry(clock.now()))
+        val note = comment?.trim()?.takeIf { it.isNotEmpty() }?.take(MAX_RETRY_COMMENT)
         val granted = retried.extraVisits.mapValues { (node, n) -> n - (run.extraVisits[node] ?: 0) }.filterValues { it > 0 }
         audit.record(
             AuditEntry(
                 "RUN_RETRY", ENTITY, runId.toString(), projectId = run.projectId.value,
-                details = mapOf("fromNode" to fromNode) + (if (granted.isNotEmpty()) mapOf("extraVisits" to granted) else emptyMap()),
+                details = mapOf("fromNode" to fromNode) + (if (granted.isNotEmpty()) mapOf("extraVisits" to granted) else emptyMap()) +
+                    (note?.let { mapOf("comment" to it) } ?: emptyMap()),
             ),
         )
-        engine.retry(retried, fromNode)
+        engine.retry(retried, fromNode, note?.let { "[Retry by ${user.displayName}] $it" })
         return retried
     }
 
@@ -212,6 +215,8 @@ class RunService(
     }
 
     companion object {
+        /** A retry comment is a short instruction, not a document. */
+        const val MAX_RETRY_COMMENT = 4000
         const val ENTITY = "WorkflowRun"
 
         /** `startedBy` of runs started by the Jira intake watcher (ADR 0033). */

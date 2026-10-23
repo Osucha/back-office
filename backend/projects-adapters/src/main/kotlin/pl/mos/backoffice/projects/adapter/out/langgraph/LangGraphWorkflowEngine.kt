@@ -114,8 +114,14 @@ class LangGraphWorkflowEngine(
         queue.enqueue(RunAdvance.request(run.id, mapOf(RunAdvance.KIND to RunAdvance.RESUME_CI, RunAdvance.NODE_ID to run.waitingOn?.nodeId, RunAdvance.CI to WorkflowState.normalise(ci))))
     }
 
-    override fun retry(run: WorkflowRun, fromNodeId: String) =
-        queue.enqueue(RunAdvance.request(run.id, mapOf(RunAdvance.KIND to RunAdvance.RETRY, RunAdvance.FROM_NODE to fromNodeId)))
+    override fun retry(run: WorkflowRun, fromNodeId: String, feedback: String?) =
+        queue.enqueue(
+            RunAdvance.request(
+                run.id,
+                mapOf(RunAdvance.KIND to RunAdvance.RETRY, RunAdvance.FROM_NODE to fromNodeId) +
+                    (feedback?.let { mapOf(RunAdvance.FEEDBACK to it) } ?: emptyMap()),
+            ),
+        )
 
     override fun cancel(runId: WorkflowRunId) {
         inflight[runId.value]?.interrupt()
@@ -303,6 +309,11 @@ class LangGraphWorkflowEngine(
         update[RunStateKeys.LAST_ERROR] = null
         update[RunStateKeys.LAST_PORT] = null
         update[RunStateKeys.PENDING_JOB] = null
+        // a retry's comment reaches the next task step as {{feedback}}, like a gate's revise comment
+        resume[RunAdvance.FEEDBACK]?.toString()?.takeIf { it.isNotBlank() }?.let { entry ->
+            update[RunStateKeys.FEEDBACK] = listOf(entry)
+            update[RunStateKeys.PENDING_FEEDBACK] = listOf(entry)
+        }
         return update
     }
 

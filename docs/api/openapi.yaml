@@ -1314,7 +1314,18 @@ paths:
     post:
       tags: [runs]
       operationId: retryRun
-      description: Retries a FAILED run from its failing node.
+      description: >-
+        Retries a FAILED run from its failing node. A node that used up its maxVisits (the failing step or the gate of its
+        retry loop) gets that many attempts more. An optional comment reaches the retried step as {{feedback}}, like a
+        gate's revise comment. Audited RUN_RETRY.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment: { type: string, nullable: true, maxLength: 4000, description: what the retried step should do differently }
       responses:
         '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRun' } } } }
         '409': { $ref: '#/components/responses/Problem' }

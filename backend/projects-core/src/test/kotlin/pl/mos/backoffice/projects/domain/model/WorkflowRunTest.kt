@@ -136,6 +136,10 @@ class WorkflowRunTest {
         val retried = run.failed(RunFailure("specify", "node spec-gate exceeded maxVisits=${gate.maxVisits}"), now).retry(now)
         assertThat(retried.extraVisits).containsEntry("spec-gate", gate.maxVisits).doesNotContainKey("specify")
         assertThat(retried.nodeStarted(gate, now).nodes.last().attempt).isEqualTo(gate.maxVisits + 1)
+        // the engine pauses at a gate without starting it first: that check uses the run's limit too
+        assertThatThrownBy { run.failed(RunFailure("specify", "x"), now).retry(now).copy(extraVisits = emptyMap()).waitingForHuman(gate, ApprovalRequestId.new(), now) }
+            .hasMessageContaining("maxVisits=${gate.maxVisits}")
+        assertThat(retried.waitingForHuman(gate, ApprovalRequestId.new(), now).waitingOn!!.nodeId).isEqualTo("spec-gate")
     }
 
     @Test

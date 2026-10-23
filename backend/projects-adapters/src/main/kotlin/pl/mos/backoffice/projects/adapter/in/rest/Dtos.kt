@@ -415,6 +415,9 @@ data class WorkflowRunDto(
     val failure: RunFailureDto?,
     val repositories: List<RepositoryResultDto> = emptyList(),
 )
+/** Optional body of POST /runs/{runId}/retry: what the retried step should do differently. */
+data class RunRetryDto(val comment: String? = null)
+
 data class ManualSignalDto(@field:NotBlank val signal: String = "", @field:NotBlank val status: String = "", val message: String? = null)
 data class ArtifactSummaryDto(val id: UUID, val nodeId: String, val name: String, val kind: String, val mediaType: String, val sizeBytes: Long, val createdAt: Instant)
 data class ArtifactDto(val id: UUID, val nodeId: String, val name: String, val kind: String, val mediaType: String, val sizeBytes: Long, val createdAt: Instant, val content: String)
