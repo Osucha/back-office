@@ -382,6 +382,10 @@ two-repository vector).
   workspace is busy or on another runner; the lease claims it with one conditional `UPDATE` (`active_job_id`), and
   `finish` / `requeue` free it. `RunProgressService.finished` calls `AgentRunner.releaseWorkspaces` (now; 24 h after
   a failure). `POST /runner/v2/workspaces/sync` (`WorkspaceSync.decide`) tells a controller what to delete.
+  A workspace whose runner is revoked (for example the same computer connected again as a new runner) is not lost:
+  a runner of the same pool that reports holding its volume adopts it, and until then any runner of the pool may
+  lease its jobs (`lockQueued` and `claim` treat a revoked holder as free). Only a volume held by a live runner
+  elsewhere, or by a runner of another pool, is deleted.
 - runner-controller: DOCKER mounts a named volume (`docker volume create`, labels managed-by / pool /
   `backoffice.io/workspace`); K8S_JOB and AGENT_SANDBOX a ReadWriteOnce PVC sized by `ephemeralStorage`
   (`workspace-storage-class`), never a warm pod. A sync every `workspace-sync-seconds` (60) deletes released volumes

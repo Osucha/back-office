@@ -45,6 +45,7 @@ class RunWorkspaceIntegrationTest {
     @Autowired lateinit var gate: FakeAuthorizationGate
     @Autowired lateinit var pools: ManageRunnerPools
     @Autowired lateinit var runner: AgentJobService
+    @Autowired lateinit var runners: pl.mos.backoffice.runner.application.port.`in`.ManageRunners
 
     private lateinit var poolId: String
     private lateinit var selector: Map<String, String>
@@ -72,13 +73,17 @@ class RunWorkspaceIntegrationTest {
 
     private fun submit(step: String) = runner.submit(spec(step), WorkRequest(WorkKinds.RUN_ADVANCE, mapOf("runId" to runId.toString()), dedupeKey = "RUN_ADVANCE:$runId:$step"))
 
-    private fun register(name: String): String {
+    private fun register(name: String): String = registerWithId(name).first
+
+    /** Runner token and runner id. */
+    private fun registerWithId(name: String): Pair<String, UUID> {
         val issued = pools.issueRegistrationToken(poolId)
         val body = """{"registrationToken":"${issued.token}","name":"$name-$poolId","version":"2.0.0",
             "capabilities":{"backends":["DOCKER"],"runtimeClasses":[],"maxConcurrent":3}}"""
         val response = mvc.perform(post("/api/v1/runner/v2/register").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated).andReturn().response.contentAsString
-        return json.readTree(response).get("runnerToken").asString()
+        val node = json.readTree(response)
+        return node.get("runnerToken").asString() to UUID.fromString(node.get("runnerId").asString())
     }
 
     private fun lease(token: String): List<Map<String, Any?>> {
@@ -144,6 +149,40 @@ class RunWorkspaceIntegrationTest {
         // a later job of the same workspace starts over and may go to any runner of the pool
         val third = submit("implementer-2")
         assertThat(lease(b).map { it["jobId"] }).containsExactly(third.value.toString())
+    }
+
+    @Test
+    fun `the same computer connected again (old runner revoked) adopts its workspace and continues the queued job`() {
+        val (old, oldId) = registerWithId("laptop")
+        val first = submit("implementer")
+        assertThat(lease(old).map { it["jobId"] }).containsExactly(first.value.toString())
+        complete(old, first.value)
+        val retry = submit("implementer-retry")
+
+        // the owner connects the computer again: the old runner is revoked, a new one registers in the same pool
+        runners.revoke(oldId)
+        val (fresh, _) = registerWithId("laptop-again")
+        val other = register("someone-else")
+        // the new runner holds the volume (same Docker host): it is adopted, not deleted
+        assertThat(sync(fresh, workspaceName)).isEmpty()
+        // once adopted, another runner reporting a stale copy is told to delete it, as before
+        assertThat(sync(other, workspaceName)).containsExactly(workspaceName)
+        assertThat(lease(other)).isEmpty()
+        val continued = lease(fresh)
+        assertThat(continued.map { it["jobId"] }).containsExactly(retry.value.toString())
+        assertThat(workspaceOf(continued[0])).isEqualTo(workspaceName)
+    }
+
+    @Test
+    fun `a job whose workspace runner was revoked is not stuck, even before any sync`() {
+        val (old, oldId) = registerWithId("laptop")
+        val first = submit("implementer")
+        lease(old)
+        complete(old, first.value)
+        val retry = submit("implementer-retry")
+        runners.revoke(oldId)
+        val fresh = register("laptop-again")
+        assertThat(lease(fresh).map { it["jobId"] }).containsExactly(retry.value.toString())
     }
 
     @Test

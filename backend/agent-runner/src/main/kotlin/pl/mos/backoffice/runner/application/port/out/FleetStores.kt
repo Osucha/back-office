@@ -160,6 +160,9 @@ interface RunWorkspaceStore {
 
     fun markReleased(names: Collection<String>, now: Instant)
 
+    /** Moves [names] to [runnerId]: their runner is gone and this runner of the same pool holds the volumes. */
+    fun adopt(names: Collection<String>, runnerId: UUID)
+
     /** Drops the runner of [names] (their volume is gone): the next job starts an empty workspace anywhere in the pool. */
     fun forget(names: Collection<String>)
 }

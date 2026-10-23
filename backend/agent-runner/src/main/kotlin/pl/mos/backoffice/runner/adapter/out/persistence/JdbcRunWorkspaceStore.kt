@@ -50,7 +50,7 @@ class JdbcRunWorkspaceStore(private val db: NamedParameterJdbcTemplate) : RunWor
            SET runner_id = :runner, active_job_id = :job, last_used_at = :now
          WHERE name = :name AND released_at IS NULL
            AND (active_job_id IS NULL OR active_job_id = :job)
-           AND (runner_id IS NULL OR runner_id = :runner)
+           AND (runner_id IS NULL OR runner_id = :runner OR runner_id IN (SELECT id FROM runner WHERE revoked_at IS NOT NULL))
         """.trimIndent(),
         mapOf("name" to name, "runner" to runnerId, "job" to jobId, "now" to now.ts()),
     ) == 1
@@ -87,6 +87,14 @@ class JdbcRunWorkspaceStore(private val db: NamedParameterJdbcTemplate) : RunWor
         db.update(
             "UPDATE runner_workspace SET released_at = :now, active_job_id = NULL WHERE name IN (:names) AND released_at IS NULL",
             mapOf("names" to names, "now" to now.ts()),
+        )
+    }
+
+    override fun adopt(names: Collection<String>, runnerId: UUID) {
+        if (names.isEmpty()) return
+        db.update(
+            "UPDATE runner_workspace SET runner_id = :runner WHERE name IN (:names) AND released_at IS NULL AND active_job_id IS NULL",
+            mapOf("names" to names, "runner" to runnerId),
         )
     }
 

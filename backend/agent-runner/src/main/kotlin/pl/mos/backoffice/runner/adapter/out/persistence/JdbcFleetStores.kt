@@ -323,7 +323,9 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
           AND (workspace_name IS NULL OR EXISTS (
                 SELECT 1 FROM runner_workspace w
                  WHERE w.name = agent_job.workspace_name AND w.released_at IS NULL AND w.active_job_id IS NULL
-                   AND (w.runner_id IS NULL OR w.runner_id = :runner)))
+                   AND (w.runner_id IS NULL OR w.runner_id = :runner
+                        -- the workspace's runner is gone (revoked): any runner of the pool continues it
+                        OR EXISTS (SELECT 1 FROM runner r WHERE r.id = w.runner_id AND r.revoked_at IS NOT NULL))))
         ORDER BY priority DESC, queued_at ASC LIMIT :limit
         FOR UPDATE OF agent_job SKIP LOCKED
         """.trimIndent(),

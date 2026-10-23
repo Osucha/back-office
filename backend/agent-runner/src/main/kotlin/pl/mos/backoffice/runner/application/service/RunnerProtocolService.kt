@@ -255,9 +255,15 @@ class RunnerProtocolService(
         val store = lifecycle.workspaces ?: return@inTransaction emptyList()
         val names = held.filter { it.startsWith(RunnerWorkspace.NAME_PREFIX) }.distinct().take(MAX_SYNCED_WORKSPACES)
         val now = lifecycle.now()
-        val decision = WorkspaceSync.decide(runner.id, names, store.lockForSync(runner.id, names), now)
+        val rows = store.lockForSync(runner.id, names)
+        // runners that are gone (revoked): a runner of the same pool holding their volumes adopts them instead of deleting
+        val departed = rows.mapNotNull { it.runnerId }.filter { it != runner.id }.distinct()
+            .filter { id -> nodes.find(id)?.revokedAt != null }.toSet()
+        val decision = WorkspaceSync.decide(runner.id, names, rows, now, runner.poolId, departed)
         store.markReleased(decision.release, now)
         store.forget(decision.forget)
+        store.adopt(decision.adopt, runner.id)
+        decision.adopt.forEach { log.info("runner {} adopts run workspace {} of a revoked runner", runner.name, it) }
         decision.delete
     }
 

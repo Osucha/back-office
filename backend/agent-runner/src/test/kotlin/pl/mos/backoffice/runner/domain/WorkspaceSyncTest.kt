@@ -23,6 +23,20 @@ class WorkspaceSyncTest {
     }
 
     @Test
+    fun `a held workspace of a revoked runner of the same pool is adopted, of a live or foreign-pool runner deleted`() {
+        val rows = listOf(row("orphan", runner = other), row("live-elsewhere", runner = UUID.randomUUID()), row("unbound", runner = null))
+        val d = WorkspaceSync.decide(me, listOf("orphan", "live-elsewhere", "unbound"), rows, now, "pool", setOf(other))
+        assertThat(d.adopt).containsExactlyInAnyOrder("orphan", "unbound")
+        assertThat(d.delete).containsExactly("live-elsewhere")
+        val otherPool = WorkspaceSync.decide(me, listOf("orphan"), rows, now, "another-pool", setOf(other))
+        assertThat(otherPool.adopt).isEmpty()
+        assertThat(otherPool.delete).containsExactly("orphan")
+        val due = WorkspaceSync.decide(me, listOf("orphan"), listOf(row("orphan", runner = other, releaseAfter = now)), now, "pool", setOf(other))
+        assertThat(due.release).containsExactly("orphan")
+        assertThat(due.delete).containsExactly("orphan")
+    }
+
+    @Test
     fun `a due workspace is released and deleted unless a job uses it`() {
         val rows = listOf(row("due", releaseAfter = now), row("busy", active = UUID.randomUUID(), releaseAfter = now), row("later", releaseAfter = now.plusSeconds(60)))
         val d = WorkspaceSync.decide(me, listOf("due", "busy", "later"), rows, now)

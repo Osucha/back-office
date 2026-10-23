@@ -26,9 +26,15 @@ data class RunWorkspace(
 /**
  * What a runner does with the workspaces it reports (`POST /runner/v2/workspaces/sync`) and what Back Office records:
  * [delete] = volumes the runner removes, [release] = rows marked released now, [forget] = rows of this runner whose
- * volume is gone (the next job starts on any runner of the pool with an empty workspace).
+ * volume is gone (the next job starts on any runner of the pool with an empty workspace), [adopt] = rows whose runner
+ * is gone (revoked, e.g. the same computer connected again) and that this runner of the same pool holds: they move to it.
  */
-data class WorkspaceSyncDecision(val delete: List<String>, val release: List<String>, val forget: List<String>)
+data class WorkspaceSyncDecision(
+    val delete: List<String>,
+    val release: List<String>,
+    val forget: List<String>,
+    val adopt: List<String> = emptyList(),
+)
 
 object WorkspaceSync {
     /**
@@ -36,14 +42,30 @@ object WorkspaceSync {
      * this runner that are not released. A volume is deleted when Back Office does not know it, when it is released or
      * due (and unused), or when its workspace now belongs elsewhere.
      */
-    fun decide(runnerId: UUID, held: Collection<String>, rows: Collection<RunWorkspace>, now: Instant): WorkspaceSyncDecision {
+    fun decide(
+        runnerId: UUID,
+        held: Collection<String>,
+        rows: Collection<RunWorkspace>,
+        now: Instant,
+        /** The reporting runner's pool and the runners that are gone (revoked): their workspaces may be adopted. */
+        poolId: String? = null,
+        departed: Set<UUID> = emptySet(),
+    ): WorkspaceSyncDecision {
         val byName = rows.associateBy { it.name }
         val delete = mutableListOf<String>()
         val release = mutableListOf<String>()
+        val adopt = mutableListOf<String>()
         for (name in held.distinct()) {
             val row = byName[name]
             when {
                 row == null || row.released -> delete += name
+                // the volume is here and its runner is gone: the same machine connected again, keep the work
+                row.runnerId != runnerId && adoptable(row, poolId, departed) -> if (due(row, now)) {
+                    release += name
+                    delete += name
+                } else {
+                    adopt += name
+                }
                 row.runnerId != runnerId -> delete += name
                 due(row, now) -> {
                     release += name
@@ -58,8 +80,11 @@ object WorkspaceSync {
             if (row.name in heldSet || row.runnerId != runnerId || row.released) continue
             if (due(row, now)) release += row.name else if (row.activeJobId == null) forget += row.name
         }
-        return WorkspaceSyncDecision(delete, release, forget)
+        return WorkspaceSyncDecision(delete, release, forget, adopt)
     }
+
+    private fun adoptable(row: RunWorkspace, poolId: String?, departed: Set<UUID>): Boolean =
+        poolId != null && (row.poolId == null || row.poolId == poolId) && (row.runnerId == null || row.runnerId in departed)
 
     private fun due(row: RunWorkspace, now: Instant): Boolean =
         row.activeJobId == null && row.releaseAfter != null && !row.releaseAfter.isAfter(now)
