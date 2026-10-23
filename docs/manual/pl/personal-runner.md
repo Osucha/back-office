@@ -73,6 +73,26 @@ niedostępne (mówią o tym listy wyboru modeli i start uruchomienia), zamiast �
 Kroki OpenCode zawsze używają bramy. Możesz przełączyć tryb w każdej chwili; po przełączeniu na własne logowanie
 uruchom runner ponownie z nowym poleceniem (zmienna musi trafić do kontenera).
 
+<a id="corporate-proxy"></a>
+## Za firmowym proxy, które zagląda w TLS
+
+Niektóre sieci firmowe (Cisco Umbrella, Zscaler i podobne) odszyfrowują po drodze ruch HTTPS i podpisują go
+ponownie własnym certyfikatem głównym. Twój komputer temu certyfikatowi ufa, sandboxy nie: npm kończy się wtedy
+błędem `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, a narzędzia Javy błędem `PKIX path building failed`. Agenci nigdy nie
+wyłączają sprawdzania TLS, żeby to obejść; zatrzymują się i to zgłaszają.
+
+Przekaż runnerowi certyfikat główny firmy (plik PEM, poproś dział IT albo wyeksportuj go z przeglądarki): dodaj
+dwie opcje do polecenia `docker run`, przed nazwą obrazu:
+
+```
+-v <ścieżka do certyfikatu na Twoim komputerze>:/etc/back-office/extra-ca.pem:ro
+-e RUNNER_EXTRA_CA_FILE=/etc/back-office/extra-ca.pem
+```
+
+Kontroler sprawdza plik przy starcie (tylko certyfikaty, bez klucza prywatnego) i przekazuje go każdemu zadaniu;
+runner dodaje go do certyfikatów systemowych dla gita, npm, Javy i Gradle'a, Pythona i narzędzi Go. Dziennik zadania
+pokazuje „trusting N extra CA certificate(s)”. Nic więcej się nie zmienia: każde sprawdzanie TLS pozostaje włączone.
+
 <a id="security"></a>
 ## Zanim zaczniesz
 

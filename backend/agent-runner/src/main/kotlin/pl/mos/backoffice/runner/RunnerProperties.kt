@@ -72,6 +72,8 @@ data class RunnerProperties(
         val networkAllow: List<String> = listOf(
             "registry.npmjs.org", "repo.maven.apache.org", "repo1.maven.org", "plugins.gradle.org", "services.gradle.org",
             "downloads.gradle.org", "*.gradle.org", "pypi.org", "files.pythonhosted.org", "proxy.golang.org", "crates.io", "static.crates.io",
+            // Gradle wrapper distributions: services.gradle.org redirects to GitHub Releases (read only, no credentials)
+            "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com",
         ),
         val toolsAllow: List<String> = emptyList(),
         val toolsDeny: List<String> = listOf("curl *", "wget *", "ssh *", "scp *", "docker *", "sudo *"),

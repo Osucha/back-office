@@ -1368,6 +1368,73 @@ def apply_proxy_env(env: Dict[str, str], proxy_url: Optional[str]) -> None:
             env["JAVA_TOOL_OPTIONS"] = (current + " " + java).strip()
 
 
+EXTRA_CA_FILE = "extra-ca.pem"
+SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
+JAVA_TRUSTSTORE_PASSWORD = "changeit"
+
+
+def load_extra_ca(env: Dict[str, str]) -> str:
+    """Extra CA certificates of the runner-controller (`RUNNER_EXTRA_CA_FILE`), from the bundle; "" when none.
+    Not a secret: kept as it is (a public certificate)."""
+    path = Path(env.get("RUNNER_JOB_DIR") or DEFAULT_JOB_DIR) / EXTRA_CA_FILE
+    try:
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    except OSError:
+        return ""
+    return text if "-----BEGIN CERTIFICATE-----" in text and "PRIVATE KEY" not in text else ""
+
+
+def split_pem(text: str) -> List[str]:
+    return re.findall(r"-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----", text, flags=re.S)
+
+
+def apply_extra_ca(env: Dict[str, str], workspace: Path, extra_ca: str, log: Callable[[str], None]) -> None:
+    """Makes git, npm, Java/Gradle, Python and Go tools trust [extra_ca] besides the system CAs, e.g. the root of a
+    TLS-inspecting corporate proxy on the way to the internet. Never turns any TLS check off."""
+    certs = split_pem(extra_ca)
+    if not certs:
+        return
+    ca_dir = workspace / ".runner" / "ca"
+    ca_dir.mkdir(parents=True, exist_ok=True)
+    extra = ca_dir / "extra.pem"
+    extra.write_text("\n".join(certs) + "\n", encoding="utf-8")
+    system = Path(env.get("RUNNER_SYSTEM_CA_BUNDLE") or SYSTEM_CA_BUNDLE)
+    bundle = ca_dir / "bundle.pem"
+    bundle.write_text((system.read_text(encoding="utf-8") if system.is_file() else "") + "\n" + extra.read_text(encoding="utf-8"), encoding="utf-8")
+    env["NODE_EXTRA_CA_CERTS"] = str(extra)
+    for name in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CERT", "GIT_SSL_CAINFO"):
+        env[name] = str(bundle)
+    store = java_truststore(ca_dir, certs, log)
+    if store:
+        current = env.get("JAVA_TOOL_OPTIONS", "")
+        if "-Djavax.net.ssl.trustStore=" not in current:
+            env["JAVA_TOOL_OPTIONS"] = (current + f" -Djavax.net.ssl.trustStore={store} -Djavax.net.ssl.trustStorePassword={JAVA_TRUSTSTORE_PASSWORD}").strip()
+    log(f"[runner] trusting {len(certs)} extra CA certificate(s) of the runner-controller (git, npm, Python, Go" + (", Java)" if store else "; Java: no JDK truststore found)"))
+
+
+def java_truststore(ca_dir: Path, certs: List[str], log: Callable[[str], None]) -> Optional[Path]:
+    """A copy of the JDK's cacerts with [certs] added; None without a JDK (keytool) in the image."""
+    keytool = shutil.which("keytool")
+    if not keytool:
+        return None
+    cacerts = Path(os.path.realpath(keytool)).parent.parent / "lib" / "security" / "cacerts"
+    if not cacerts.is_file():
+        return None
+    store = ca_dir / "cacerts"
+    shutil.copyfile(cacerts, store)
+    for i, cert in enumerate(certs):
+        pem = ca_dir / f"extra-{i}.pem"
+        pem.write_text(cert + "\n", encoding="utf-8")
+        res = subprocess.run(
+            [keytool, "-importcert", "-noprompt", "-keystore", str(store), "-storepass", JAVA_TRUSTSTORE_PASSWORD, "-alias", f"back-office-extra-{i}", "-file", str(pem)],
+            capture_output=True, text=True, timeout=60,
+        )
+        if res.returncode != 0:
+            log(f"[runner] WARN keytool could not import extra CA certificate {i}: {(res.stdout + res.stderr).strip()[:300]}")
+            return None
+    return store
+
+
 def _proxy_parts(proxy_url: str) -> Optional[Tuple[str, int, str, str]]:
     """(host, port, user, password) of the egress proxy URL; None when it cannot be read."""
     parsed = urllib.parse.urlsplit(proxy_url)
@@ -4202,6 +4269,8 @@ def main() -> int:
     uploader = Uploader(client, log)
     for line in early_log:
         log(line)
+    # extra CA certificates of the runner-controller (a TLS-inspecting corporate proxy): for every tool of the job
+    apply_extra_ca(env, workspace, load_extra_ca(env), log)
 
     if not client.enabled:
         log("[runner] WARN no callback URL or job id: running in offline mode (events -> stdout only)")

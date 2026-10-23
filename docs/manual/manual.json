@@ -8,7 +8,7 @@
         { "slug": "getting-started", "title": "Getting started", "anchors": ["what-is", "concepts", "baton", "first-steps"] },
         { "slug": "your-turn", "title": "Your turn and the inbox", "anchors": ["home", "inbox", "gates", "write-confirmations", "assign-steps"] },
         { "slug": "my-work", "title": "My work", "anchors": ["my-work", "private-projects", "rules", "notifications"] },
-        { "slug": "personal-runner", "title": "My computer as a runner", "anchors": ["personal-runner", "connect", "credentials", "security"] },
+        { "slug": "personal-runner", "title": "My computer as a runner", "anchors": ["personal-runner", "connect", "credentials", "corporate-proxy", "security"] },
         { "slug": "projects", "title": "Projects", "anchors": ["create-project", "who-creates", "repositories", "sources", "no-repository", "members", "project-ci", "spec-kit", "project-connections", "sandbox-policy", "project-budget"] },
         { "slug": "workflows", "title": "Designing workflows", "anchors": ["designer", "nodes", "step-repositories", "workspaces", "decisions", "gates-config", "write-confirmations", "start-run"] },
         { "slug": "runs", "title": "Runs", "anchors": ["run-list", "run-detail", "repository-results", "retry-cancel", "provenance", "ci-executions"] },

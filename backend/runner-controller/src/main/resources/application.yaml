@@ -35,6 +35,8 @@ runner-controller:
     credential-file: ${RUNNER_TOKEN_FILE:./runner-credentials.json}
   backend: ${RUNNER_BACKEND:${BO_RUNNER_BACKEND:AUTO}}
   max-concurrent: ${RUNNER_MAX_CONCURRENT:${BO_RUNNER_MAX_CONCURRENT:4}}
+  # PEM file with extra CA certificates the sandboxes trust (a TLS-inspecting corporate proxy); empty = none
+  extra-ca-file: ${RUNNER_EXTRA_CA_FILE:}
   defaults:
     image: ${RUNNER_DEFAULT_IMAGE:${BO_RUNNER_DEFAULT_IMAGE:}}
   egress:

@@ -72,6 +72,26 @@ The runner tells Back Office with every request for work which coding agents it 
 and the models you can use. A runner that is online without the login makes those models unusable (the model
 pickers and the start of a run say so) instead of failing the job later.
 
+<a id="corporate-proxy"></a>
+## Behind a TLS-inspecting corporate proxy
+
+Some company networks (Cisco Umbrella, Zscaler and similar) decrypt HTTPS on the way and re-sign it with their
+own root certificate. Your computer trusts that root, the sandboxes do not: npm then fails with
+`UNABLE_TO_GET_ISSUER_CERT_LOCALLY` and Java tools with `PKIX path building failed`. Agents never switch TLS
+checks off to get round it; they stop and report it.
+
+Give the runner the company's root certificate (a PEM file, ask your IT department or export it from the
+browser): add two options to the `docker run` command, before the image name:
+
+```
+-v <path to the certificate on your computer>:/etc/back-office/extra-ca.pem:ro
+-e RUNNER_EXTRA_CA_FILE=/etc/back-office/extra-ca.pem
+```
+
+The controller checks the file at start (certificates only, no private key) and gives it to every job; the
+runner adds it to the system certificates for git, npm, Java and Gradle, Python and Go tools. The job log says
+"trusting N extra CA certificate(s)". Nothing else changes: every TLS check stays on.
+
 <a id="security"></a>
 ## Before you use it
 

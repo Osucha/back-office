@@ -40,6 +40,12 @@ data class ControllerProperties(
     val localLogin: LocalLogin = LocalLogin(),
     /** Keep finished sandboxes for debugging instead of deleting them (never in production). */
     val keepFinishedSandboxes: Boolean = false,
+    /**
+     * PEM file with extra CA certificates every sandbox trusts, e.g. the root of a TLS-inspecting corporate proxy
+     * (Cisco Umbrella, Zscaler). Delivered as the bundle file `extra-ca.pem`; the runner adds it for git, npm, Java,
+     * Python and Go tools. Empty = only the image's CAs.
+     */
+    val extraCaFile: String = "",
 ) {
     data class BackOffice(
         /** Back Office origin, e.g. `https://backoffice.example.com` (a trailing `/api/v1` is accepted). */

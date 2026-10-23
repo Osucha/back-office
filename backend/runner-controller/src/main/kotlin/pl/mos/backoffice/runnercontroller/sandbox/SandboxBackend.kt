@@ -93,15 +93,30 @@ class ProjectTokens(val byRepository: Map<String, String>, val tools: Map<String
  * (bo_job_), `proxy-url` (HTTPS_PROXY for the sandbox; filled in by the backend) and `ready` (written last).
  * LOCAL_LOGIN jobs (ADR 0040, DOCKER backend) also get `claude-login-token`, written before `ready`.
  */
-data class JobBundle(val specJson: String, val policyJson: String, val jobId: String, val jobToken: String) {
+data class JobBundle(
+    val specJson: String,
+    val policyJson: String,
+    val jobId: String,
+    val jobToken: String,
+    /** Extra CA certificates (PEM) the sandbox trusts (`runner-controller.extra-ca-file`); null = none. */
+    val extraCa: String? = null,
+) {
     fun files(proxyUrl: String): Map<String, String> = linkedMapOf(
         "spec.json" to specJson,
         "policy.json" to policyJson,
         "job-id" to jobId,
         "job-token" to jobToken,
         "proxy-url" to proxyUrl,
-        "ready" to "1",
-    )
+    ).apply {
+        extraCa?.let { put(EXTRA_CA_FILE, it) }
+        put("ready", "1")
+    }
+
+    override fun toString() = "JobBundle(jobId=$jobId)"
+
+    companion object {
+        const val EXTRA_CA_FILE = "extra-ca.pem"
+    }
 }
 
 data class SandboxHandle(val jobId: String, val name: String, val backend: BackendKind)

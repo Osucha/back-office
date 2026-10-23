@@ -76,6 +76,21 @@ class RunningJob(
  * as many jobs as there are free slots; one monitor thread observes sandboxes, sends heartbeats every
  * `heartbeatSeconds`, enforces deadlines and reports completions.
  */
+/**
+ * `runner-controller.extra-ca-file` (RUNNER_EXTRA_CA_FILE): PEM certificates only, at most 512 KiB. Null when not
+ * configured; throws when configured but missing or not PEM, so a typo does not silently leave jobs without the CA.
+ */
+internal fun loadExtraCa(path: String): String? {
+    if (path.isBlank()) return null
+    val file = java.nio.file.Path.of(path.trim())
+    require(java.nio.file.Files.isRegularFile(file)) { "RUNNER_EXTRA_CA_FILE: $path is not a readable file" }
+    require(java.nio.file.Files.size(file) <= 512 * 1024) { "RUNNER_EXTRA_CA_FILE: $path is larger than 512 KiB" }
+    val text = java.nio.file.Files.readString(file)
+    require(text.contains("-----BEGIN CERTIFICATE-----")) { "RUNNER_EXTRA_CA_FILE: $path holds no PEM certificate" }
+    require(!text.contains("PRIVATE KEY")) { "RUNNER_EXTRA_CA_FILE: $path contains a private key; give only the CA certificate" }
+    return text
+}
+
 /** ADR 0051 step 4: the capability of the read-only tokens that agent tools receive. */
 private const val TOOL_CAPABILITY = "CI_READ"
 
@@ -94,6 +109,9 @@ class JobSupervisor(
     private val keys: () -> CredentialKeys? = { null },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** Extra CA certificates for every sandbox, read once; a configured but unusable file stops the controller. */
+    private val extraCa: String? = loadExtraCa(props.extraCaFile)
 
     val running = ConcurrentHashMap<String, RunningJob>()
     private val pendingCompletions = ConcurrentHashMap<String, JobCompletion>()
@@ -334,7 +352,7 @@ class JobSupervisor(
             projectId = a.projectId ?: spec.get("projectId")?.takeIf { it.isString }?.asString(),
             runId = spec.get("runId")?.takeIf { it.isString }?.asString(),
             policy = policy,
-            bundle = JobBundle(json.writeValueAsString(spec), json.writeValueAsString(policy.toContractMap()), a.jobId, a.jobToken),
+            bundle = JobBundle(json.writeValueAsString(spec), json.writeValueAsString(policy.toContractMap()), a.jobId, a.jobToken, extraCa),
             gitAccess = git.access,
             gitCredential = git.legacy.credential,
             proxy = proxy,

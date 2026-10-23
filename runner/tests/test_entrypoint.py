@@ -970,7 +970,8 @@ class OfflineMainTests(unittest.TestCase):
             env.pop("RUNNER_CALLBACK_URL", None)
             env["RUNNER_JOB_DIR"] = str(tmp_path / "no-bundle")
             env["RUNNER_SPEC"] = b64(dict(BASE_SPEC, repository=None, setupCommand=None, verifyCommand="test -f specs/001-x/spec.md", gateway=GATEWAY_JSON))
-            cp = subprocess.run([sys.executable, str(Path(ep.__file__))], env=env, capture_output=True, text=True, timeout=120)
+            # cwd in the temp dir: the fake agent writes relative paths, which must not land in the caller's checkout
+            cp = subprocess.run([sys.executable, str(Path(ep.__file__))], env=env, capture_output=True, text=True, timeout=120, cwd=tmp)
             self.assertEqual(cp.returncode, 0, cp.stdout + cp.stderr)
             result = json.loads((tmp_path / "result.json").read_text())
             self.assertEqual(result["status"], "SUCCEEDED", result)
@@ -1883,6 +1884,55 @@ class PromptModeTests(unittest.TestCase):
                              on_line=lines.append, stdin_text=big)
         self.assertEqual(res.exit_code, 0)
         self.assertEqual(lines[-1].strip(), str(len(big)))
+
+
+TEST_CA = """-----BEGIN CERTIFICATE-----
+MIIBbzCCARagAwIBAgIIX47xYH0x/p4wCgYIKoZIzj0EAwMwIzEhMB8GA1UEAxMY
+VGVzdCBJbnNwZWN0aW5nIFByb3h5IENBMCAXDTI2MTAyMzA4MzcyNFoYDzIxMjYw
+OTI5MDgzNzI0WjAjMSEwHwYDVQQDExhUZXN0IEluc3BlY3RpbmcgUHJveHkgQ0Ew
+WTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASyB1dHSdNT9RlovWVLI1qGNx7jLHFj
+S7ibgKtQsx05rN+gNEmBAwJ1GYrlV4U9AC/TLSW87DkN4M4S1hzclP9oozIwMDAd
+BgNVHQ4EFgQUe02SR3pGtT32FVV+7Z7nCD0sXlowDwYDVR0TAQH/BAUwAwEB/zAK
+BggqhkjOPQQDAwNHADBEAiAqXln6VuscrU+bpQJ84hjNDWOcofQ1UKG4L3Qcs0pU
+rAIgNN5sL7qdAtNZo1nhp3cFaS1X9HzqRjoGQ7VSmRLVPPs=
+-----END CERTIFICATE-----
+"""
+
+
+class ExtraCaTests(unittest.TestCase):
+    """The runner-controller's extra CA (a TLS-inspecting corporate proxy) is trusted by every tool, never by turning TLS off."""
+
+    def test_extra_ca_is_added_to_the_system_bundle_for_every_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "job").mkdir()
+            (tmp_path / "job" / "extra-ca.pem").write_text("comment\n" + TEST_CA)
+            system = tmp_path / "system.pem"
+            system.write_text("SYSTEM-CAS\n")
+            env = {"RUNNER_JOB_DIR": str(tmp_path / "job"), "RUNNER_SYSTEM_CA_BUNDLE": str(system), "JAVA_TOOL_OPTIONS": "-Dhttps.proxyHost=p"}
+            logs = []
+            ep.apply_extra_ca(env, tmp_path / "ws", ep.load_extra_ca(env), logs.append)
+            bundle = Path(env["SSL_CERT_FILE"]).read_text()
+            self.assertTrue(bundle.startswith("SYSTEM-CAS"))
+            self.assertIn("MIIBbzCCARag", bundle)
+            self.assertNotIn("comment", Path(env["NODE_EXTRA_CA_CERTS"]).read_text())
+            for name in ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CERT", "GIT_SSL_CAINFO"):
+                self.assertEqual(env[name], env["SSL_CERT_FILE"])
+            self.assertNotIn("NODE_TLS_REJECT_UNAUTHORIZED", env)
+            self.assertIn("extra CA certificate", logs[-1])
+            keytool = shutil.which("keytool")
+            if keytool and (Path(os.path.realpath(keytool)).parent.parent / "lib" / "security" / "cacerts").is_file():
+                self.assertIn("-Djavax.net.ssl.trustStore=", env["JAVA_TOOL_OPTIONS"])
+                self.assertIn("-Dhttps.proxyHost=p", env["JAVA_TOOL_OPTIONS"])
+
+    def test_no_file_or_a_private_key_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"RUNNER_JOB_DIR": tmp}
+            self.assertEqual(ep.load_extra_ca(env), "")
+            (Path(tmp) / "extra-ca.pem").write_text(TEST_CA + "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n")
+            self.assertEqual(ep.load_extra_ca(env), "")
+            ep.apply_extra_ca(env, Path(tmp) / "ws", "", lambda _: None)
+            self.assertNotIn("SSL_CERT_FILE", env)
 
 
 class AgentToolTests(unittest.TestCase):
