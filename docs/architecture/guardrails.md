@@ -106,11 +106,12 @@ openssl x509 -in cert-01 -noout -subject -issuer
 ```
 
 The private key is not in a certificate bundle and must be provided separately as `key.pem`. Check that it
-belongs to the client certificate: both commands must print the same modulus.
+belongs to the client certificate: both commands must print the same hash of the public key. This works for
+RSA, EC and Ed25519 keys; `openssl rsa -modulus` works for RSA keys only.
 
 ```sh
-openssl x509 -in cert.pem -noout -modulus | openssl sha256
-openssl rsa -in key.pem -noout -modulus | openssl sha256
+openssl x509 -in cert.pem -noout -pubkey | openssl sha256
+openssl pkey -in key.pem -pubout | openssl sha256
 ```
 
 The client certificate needs the extended key usage `clientAuth`.
