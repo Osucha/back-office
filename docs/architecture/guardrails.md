@@ -61,6 +61,81 @@ and fails only on new ones.
 Re-run the negative test of a rule whenever its tool, version or configuration changes (e.g. a
 TruffleHog or detekt upgrade, a new exclusion) and add a row here.
 
+## CI runner: Docker-in-Docker with TLS
+
+`backend:test` runs the Testcontainers tests against the `docker:27-dind` service over TLS. The global
+variables in `.gitlab-ci.yml` stay as they are: `DOCKER_HOST=tcp://docker:2376`, `DOCKER_TLS_VERIFY=1`,
+`DOCKER_CERT_PATH=/certs/client`, `DOCKER_TLS_CERTDIR=/certs` and `TESTCONTAINERS_HOST_OVERRIDE=docker`.
+With `DOCKER_TLS_CERTDIR=/certs`, dind generates a CA, a server certificate (`/certs/server`) and a client
+certificate (`/certs/client`) when it starts.
+
+**Shared volume.** The Docker executor shares `/certs/client` between the service and the build container.
+The Kubernetes executor does not, so the build container sees no certificates and Testcontainers fails
+with `certificate path (DOCKER_CERT_PATH) '/certs/client' doesn't exist`. The runner's `config.toml`
+must mount a shared volume there:
+
+```toml
+[[runners.kubernetes.volumes.empty_dir]]
+  name = "docker-certs"
+  mount_path = "/certs/client"
+  medium = "Memory"
+```
+
+Volumes from `config.toml` are mounted into the build container and the service containers of the job
+pod, so dind writes the client certificates into the volume and the test JVM reads them from it.
+
+**Readiness.** dind writes the certificates a moment after the pod starts. The first `before_script`
+step of `backend:test` waits up to 60 s for `ca.pem`, `cert.pem` and `key.pem` in `$DOCKER_CERT_PATH`.
+If they do not appear, the job fails with a message that points here. That usually means the volume
+above is missing.
+
+**Own certificates delivered as one PEM file.** Docker expects three separate files in
+`DOCKER_CERT_PATH`: `ca.pem` (the CA that signed the dind server certificate), `cert.pem` (the client
+certificate) and `key.pem` (the client private key). A bundle with two certificates must be split:
+
+```sh
+# either: print every certificate of the bundle, one PEM block after the other
+openssl crl2pkcs7 -nocrl -certfile bundle.pem | openssl pkcs7 -print_certs
+# or: one file per certificate (cert-00, cert-01, ...)
+csplit -z -f cert- bundle.pem '/-----BEGIN CERTIFICATE-----/' '{*}'
+
+# identify each part: the self-signed or issuing CA (subject = issuer, or the issuer of the other one)
+# becomes ca.pem, the client certificate becomes cert.pem
+openssl x509 -in cert-00 -noout -subject -issuer
+openssl x509 -in cert-01 -noout -subject -issuer
+```
+
+The private key is not in a certificate bundle and must be provided separately as `key.pem`. Check that it
+belongs to the client certificate: both commands must print the same hash of the public key. This works for
+RSA, EC and Ed25519 keys; `openssl rsa -modulus` works for RSA keys only.
+
+```sh
+openssl x509 -in cert.pem -noout -pubkey | openssl sha256
+openssl pkey -in key.pem -pubout | openssl sha256
+```
+
+The client certificate needs the extended key usage `clientAuth`.
+
+Store the three files as a Kubernetes Secret and mount it instead of the `empty_dir`:
+
+```sh
+kubectl create secret generic dind-client-certs --from-file=ca.pem --from-file=cert.pem --from-file=key.pem
+```
+
+```toml
+[[runners.kubernetes.volumes.secret]]
+  name = "dind-client-certs"
+  mount_path = "/certs/client"
+```
+
+With own client certificates, the dind server must use a server certificate from the same CA. Mount a
+second Secret with its `ca.pem`, `cert.pem` and `key.pem` at `/certs/server` and keep `DOCKER_TLS_CERTDIR`
+pointed at `/certs`. The server certificate must name the service alias `docker` as a subject alternative
+name, because the client connects to `tcp://docker:2376` and verifies the host name.
+
+For CI, the dind-generated certificates with the `empty_dir` volume are simpler: nothing to rotate, and
+the certificates live only as long as the job pod.
+
 ## Adding a guardrail
 
 1. Pick the next ID in the group and add a row above: rule in one sentence, the enforcing job/test, the negative test.

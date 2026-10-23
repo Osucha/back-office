@@ -10,7 +10,7 @@
     "watch": "npm run manual:link && npm run i18n:merge && ng build --watch --configuration development",
     "test": "npm run manual:link && npm run i18n:merge && ng test",
     "test:ci": "npm run manual:link && npm run i18n:merge && npm run test:scripts && ng test --watch=false --coverage",
-    "api:types": "openapi-typescript ../docs/api/openapi.yaml -o src/app/core/api/schema.d.ts --alphabetize",
+    "api:types": "openapi-typescript ../docs/api/openapi.yaml -o src/app/core/api/schema.d.ts --alphabetize && prettier --write src/app/core/api/schema.d.ts",
     "lint:format": "prettier --check \"src/**/*.{ts,html,less}\"",
     "format": "prettier --write \"src/**/*.{ts,html,less}\"",
     "e2e:smoke": "node e2e/smoke.mjs",

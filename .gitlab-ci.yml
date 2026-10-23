@@ -162,6 +162,20 @@ backend:test:
     paths: [.gradle/caches, .gradle/wrapper]
     fallback_keys: [gradle-$CI_DEFAULT_BRANCH]
   before_script:
+    # Testcontainers talks to dind over TLS: wait up to 60 s for the client certificates that dind writes
+    # to the volume the runner shares at /certs/client (docs/architecture/guardrails.md, "CI runner").
+    - |
+      waited=0
+      until [ -f "$DOCKER_CERT_PATH/ca.pem" ] && [ -f "$DOCKER_CERT_PATH/cert.pem" ] && [ -f "$DOCKER_CERT_PATH/key.pem" ]; do
+        if [ "$waited" -ge 60 ]; then
+          echo "No dind client certificates (ca.pem, cert.pem, key.pem) in $DOCKER_CERT_PATH after 60 s."
+          echo "The runner must mount a volume shared with the dind service at /certs/client,"
+          echo "see docs/architecture/guardrails.md, section CI runner: Docker-in-Docker with TLS."
+          exit 1
+        fi
+        sleep 1
+        waited=$((waited + 1))
+      done
     - cd backend
     - chmod +x gradlew
   script:
