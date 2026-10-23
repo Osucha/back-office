@@ -348,6 +348,8 @@ services:
     build:
       context: ../..
       dockerfile: frontend/Dockerfile
+      # root certificate of a TLS-inspecting corporate proxy for npm during the build (BO_EXTRA_CA_FILE); none by default
+      secrets: [extra_ca]
     image: back-office/web:dev
     container_name: back-office-web
     depends_on:
@@ -446,3 +448,8 @@ volumes:
   sonarqube-data:
   sonarqube-extensions:
   sonarqube-logs:
+
+secrets:
+  # PEM certificate(s) trusted while building images behind a TLS-inspecting proxy; the empty default trusts nothing extra
+  extra_ca:
+    file: ${BO_EXTRA_CA_FILE:-./no-extra-ca.pem}

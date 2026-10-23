@@ -12,9 +12,14 @@ FROM node:22-alpine AS build
 WORKDIR /workspace
 
 # Install dependencies first so the layer is cached while sources change.
+# Behind a TLS-inspecting proxy pass its root certificate as the BuildKit secret `extra_ca` (compose: BO_EXTRA_CA_FILE);
+# it is used only while npm downloads and never stored in the image.
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/
 RUN --mount=type=cache,target=/root/.npm \
-    cd frontend && npm ci --no-audit --no-fund
+    --mount=type=secret,id=extra_ca,required=false \
+    cd frontend \
+ && if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi \
+ && npm ci --no-audit --no-fund
 
 # The OpenAPI contract is the single source of the API types.
 COPY docs/api/openapi.yaml ./docs/api/openapi.yaml
