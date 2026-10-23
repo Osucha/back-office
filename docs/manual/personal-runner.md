@@ -92,6 +92,16 @@ The controller checks the file at start (certificates only, no private key) and 
 runner adds it to the system certificates for git, npm, Java and Gradle, Python and Go tools. The job log says
 "trusting N extra CA certificate(s)". Nothing else changes: every TLS check stays on.
 
+Some of these proxies also redirect requests to their own host names, which the sandbox's egress filter refuses
+(the job ends with "407 Request rejected by proxy" and the job's denied hosts name them). Cisco Umbrella uses
+names under `id.opendns.com`; allow them for every job of your runner with one more option:
+
+```
+-e RUNNER_EGRESS_ALWAYS_ALLOW=*.id.opendns.com
+```
+
+Several hosts are separated by commas.
+
 <a id="security"></a>
 ## Before you use it
 

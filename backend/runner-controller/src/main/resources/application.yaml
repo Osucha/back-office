@@ -44,6 +44,8 @@ runner-controller:
     proxy-port: ${RUNNER_EGRESS_PROXY_PORT:4750}
     # comma-separated CIDRs the proxy may connect to, e.g. a Back Office on this computer (personal runner, ADR 0040)
     allow-ranges: ${RUNNER_EGRESS_ALLOW_RANGES:}
+    # comma-separated hosts every job may reach besides gateway and git hosts, e.g. *.id.opendns.com behind Cisco Umbrella
+    always-allow: ${RUNNER_EGRESS_ALWAYS_ALLOW:}
   git:
     # least privilege (ADR 0031): a READ job never receives a push credential unless this is true
     allow-push-credential-for-read: ${RUNNER_GIT_ALLOW_PUSH_CREDENTIAL_FOR_READ:false}

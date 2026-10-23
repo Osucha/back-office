@@ -93,6 +93,17 @@ Kontroler sprawdza plik przy starcie (tylko certyfikaty, bez klucza prywatnego) 
 runner dodaje go do certyfikatów systemowych dla gita, npm, Javy i Gradle'a, Pythona i narzędzi Go. Dziennik zadania
 pokazuje „trusting N extra CA certificate(s)”. Nic więcej się nie zmienia: każde sprawdzanie TLS pozostaje włączone.
 
+Niektóre z tych proxy przekierowują też żądania na własne nazwy hostów, których filtr ruchu wychodzącego sandboxa
+nie przepuszcza (zadanie kończy się błędem „407 Request rejected by proxy”, a lista odrzuconych hostów zadania je
+wymienia). Cisco Umbrella używa nazw w domenie `id.opendns.com`; dopuść je dla wszystkich zadań swojego runnera jeszcze
+jedną opcją:
+
+```
+-e RUNNER_EGRESS_ALWAYS_ALLOW=*.id.opendns.com
+```
+
+Kilka hostów oddziela się przecinkami.
+
 <a id="security"></a>
 ## Zanim zaczniesz
 
