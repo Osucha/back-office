@@ -145,6 +145,22 @@ class GitAccessDerivationTest {
         assertThat(specOf(emptyMap()).credentials).isEmpty()
         // the spec only names the token, it never carries a value
         assertThat(runner.specs.last().toString()).doesNotContain("SealedSecret")
+
+        // ADR 0051 step 4: gitlab-read takes the verified read-only CI_READ token, never one with write powers
+        val ci = token("ci-reader", setOf(ScmCapability.GIT_READ, ScmCapability.CI_READ))
+        val apiWriter = token("api-writer", setOf(ScmCapability.CI_READ, ScmCapability.MR_COMMENT), listOf("api scope"))
+        tokens.rows = listOf(apiWriter, ci, push)
+        val withTool = specOf(mapOf("push" to false, "agentTools" to listOf("gitlab-read")))
+        assertThat(withTool.agentTools).containsExactly(pl.mos.backoffice.shared.runner.AgentTool("gitlab-read", key))
+        assertThat(withTool.credentials).contains(JobCredentialRef(ci.id.toString(), key, "CI_READ"))
+        assertThat(withTool.credentials.map { it.ref }).doesNotContain(apiWriter.id.toString())
+
+        tokens.rows = listOf(apiWriter, push)
+        val refused = withTokens.run(context(), task(TaskExecutor.IMPLEMENT, mapOf("agentTools" to listOf("gitlab-read"))), RunnerMode.IMPLEMENT, null, "x")
+        assertThat(refused.failed).isTrue()
+        assertThat(refused.error).contains("read-only token with CI_READ")
+        val unknown = withTokens.run(context(), task(TaskExecutor.IMPLEMENT, mapOf("agentTools" to listOf("root-shell"))), RunnerMode.IMPLEMENT, null, "x")
+        assertThat(unknown.error).contains("unknown agent tool 'root-shell'")
     }
 
     @Test

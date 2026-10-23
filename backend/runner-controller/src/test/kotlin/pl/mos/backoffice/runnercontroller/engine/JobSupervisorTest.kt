@@ -133,6 +133,23 @@ class JobSupervisorTest {
     }
 
     @Test
+    fun `ADR 0051 step 4 - a CI_READ token named twice with the clone token goes to the agent tool, not to git`() {
+        register()
+        val toolSpec = sealedSpec + mapOf(
+            "credentials" to listOf(mapOf("ref" to "ref-1", "repository" to "main", "capability" to "GIT_READ"), mapOf("ref" to "ref-1", "repository" to "main", "capability" to "CI_READ")),
+            "agentTools" to listOf(mapOf("name" to "gitlab-read", "repository" to "main")),
+        )
+        val jobId = bo.enqueue(toolSpec, policy)
+        bo.projectTokens[jobId] = mapOf("ref-1" to ("main" to "tkn-reader"))
+        bo.credentialCapabilities = listOf("GIT_READ", "CI_READ")
+        leaseOnce()
+        val launched = backend.launched.getValue(jobId)
+        assertThat(launched.projectTokens.byRepository).containsExactlyEntriesOf(mapOf("main" to "tkn-reader"))
+        assertThat(launched.projectTokens.tools).containsExactlyEntriesOf(mapOf("main" to "tkn-reader"))
+        assertThat(launched.projectTokens.secretEntries()).containsKeys("scm-repo-main", "tool-token-main")
+    }
+
+    @Test
     fun `a tampered or incomplete release fails the job before a sandbox starts`() {
         register()
         val tampered = bo.enqueue(sealedSpec, policy)

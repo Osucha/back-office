@@ -22,6 +22,7 @@ import pl.mos.backoffice.shared.platform.WorkRequest
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.JobMergeRequest
+import pl.mos.backoffice.shared.runner.AgentTool
 import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.shared.runner.JobRepository
 import pl.mos.backoffice.shared.runner.RepoResult
@@ -213,6 +214,8 @@ data class RunnerJobSpecJson(
     val acceptance: AcceptanceJson? = null,
     /** ADR 0051: absent when the job uses the runner pool's tokens (older specs keep their digests). */
     val credentials: List<JobCredentialRefJson>? = null,
+    /** ADR 0051 step 4: absent when the agent gets no tools. */
+    val agentTools: List<AgentToolJson>? = null,
 ) {
     companion object {
         fun of(spec: RunnerJobSpec) = RunnerJobSpecJson(
@@ -240,12 +243,16 @@ data class RunnerJobSpecJson(
             featureDescription = spec.featureDescription,
             acceptance = spec.acceptance?.let { AcceptanceJson(it.files, it.protectedPaths, it.requireChanges) },
             credentials = spec.credentials.takeIf { it.isNotEmpty() }?.map { JobCredentialRefJson(it.ref, it.repository, it.capability) },
+            agentTools = spec.agentTools.takeIf { it.isNotEmpty() }?.map { AgentToolJson(it.name, it.repository) },
         )
     }
 }
 
 /** ADR 0051: `RunnerJobSpec.credentials` (names of project repository tokens, never values). */
 data class JobCredentialRefJson(val ref: String, val repository: String, val capability: String)
+
+/** ADR 0051 step 4: `RunnerJobSpec.agentTools`. */
+data class AgentToolJson(val name: String, val repository: String)
 
 /** ADR 0047: `RunnerJobSpec.acceptance`. */
 data class AcceptanceJson(
@@ -503,5 +510,6 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         featureDescription = featureDescription,
         acceptance = acceptance?.let { RunnerAcceptance(it.files, it.protectedPaths, it.requireChanges) },
         credentials = credentials.orEmpty().map { JobCredentialRef(it.ref, it.repository, it.capability) },
+        agentTools = agentTools.orEmpty().map { AgentTool(it.name, it.repository) },
     )
 }

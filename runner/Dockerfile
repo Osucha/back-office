@@ -27,6 +27,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Base tooling ------------------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg git git-lfs openssh-client jq \
+      glab \
       python3 python3-pip python3-venv \
       unzip zip xz-utils tar wget less procps tini \
       build-essential pkg-config \

@@ -230,7 +230,21 @@ data class RunnerJobSpec(
      * signed spec, so a runner can fetch nothing else. Empty = the runner pool's own tokens (deprecated fallback).
      */
     val credentials: List<JobCredentialRef> = emptyList(),
+    /**
+     * ADR 0051 step 4: read-only tools the agent gets (e.g. `gitlab-read` = glab with the CI_READ token of a repository,
+     * named in [credentials] with that capability). Empty = none.
+     */
+    val agentTools: List<AgentTool> = emptyList(),
 )
+
+/** ADR 0051 step 4: one agent tool of a job and the repository its token belongs to. */
+data class AgentTool(val name: String, val repository: String) {
+    companion object {
+        /** glab with a verified read-only token (CI_READ): pipelines, job logs, merge requests, issues of the repository. */
+        const val GITLAB_READ = "gitlab-read"
+        val KNOWN = setOf(GITLAB_READ)
+    }
+}
 
 /**
  * ADR 0051: one project repository token of a job. [ref] identifies the token (its connection id), [repository] the

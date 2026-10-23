@@ -76,6 +76,9 @@ class RunningJob(
  * as many jobs as there are free slots; one monitor thread observes sandboxes, sends heartbeats every
  * `heartbeatSeconds`, enforces deadlines and reports completions.
  */
+/** ADR 0051 step 4: the capability of the read-only tokens that agent tools receive. */
+private const val TOOL_CAPABILITY = "CI_READ"
+
 class JobSupervisor(
     private val props: ControllerProperties,
     private val client: BackOfficeClient,
@@ -238,7 +241,8 @@ class JobSupervisor(
      */
     private fun projectTokens(jobId: String, spec: JsonNode): ProjectTokens {
         val named = spec.get("credentials")?.takeIf { it.isArray && it.size() > 0 } ?: return ProjectTokens.NONE
-        val signed = named.associate { (it.get("ref")?.asString() ?: "") to (it.get("repository")?.asString() ?: "") }
+        // (ref, capability) -> repository: one token may be named twice (clone and an agent tool)
+        val signed = named.associate { ((it.get("ref")?.asString() ?: "") to (it.get("capability")?.asString() ?: "")) to (it.get("repository")?.asString() ?: "") }
         val keys = keys() ?: throw PolicyViolation("this controller has no key for sealed project tokens")
         val answer = try {
             client.credentials(jobId)
@@ -247,17 +251,21 @@ class JobSupervisor(
         }
         val expires = runCatching { Instant.parse(answer.expiresAt) }.getOrNull()
         if (expires == null || !expires.isAfter(now())) throw PolicyViolation("the released project tokens have expired")
-        val tokens = answer.credentials.associate { c ->
-            val repository = signed[c.ref] ?: throw PolicyViolation("token ${c.ref} is not named in the signed spec")
+        val opened = answer.credentials.associate { c ->
+            val key = c.ref to c.capability
+            val repository = signed[key] ?: throw PolicyViolation("token ${c.ref} (${c.capability}) is not named in the signed spec")
             if (repository != c.repository) throw PolicyViolation("token ${c.ref} was released for repository '${c.repository}', not '$repository'")
             val token = runCatching { keys.open(c.enc, c.ciphertext, "$jobId|${c.ref}|${answer.expiresAt}") }
                 .getOrElse { throw PolicyViolation("the token for repository '$repository' does not open with this controller's key") }
-            repository to token
+            key to (repository to token)
         }
-        val missing = signed.values.toSet() - tokens.keys
-        if (missing.isNotEmpty()) throw PolicyViolation("no token released for repositories ${missing.sorted()}")
-        log.info("job {}: project tokens for repositories {} released sealed and opened", jobId, tokens.keys.sorted())
-        return ProjectTokens(tokens)
+        val missing = signed.keys - opened.keys
+        if (missing.isNotEmpty()) throw PolicyViolation("no token released for repositories ${missing.map { signed.getValue(it) }.distinct().sorted()}")
+        // CI_READ tokens belong to agent tools (ADR 0051 step 4); all others are the runner's own git tokens
+        val (tools, git) = opened.entries.partition { it.key.second == TOOL_CAPABILITY }
+        val tokens = ProjectTokens(git.associate { it.value }, tools.associate { it.value })
+        log.info("job {}: project tokens released sealed and opened: git {}, agent tools {}", jobId, tokens.byRepository.keys.sorted(), tokens.tools.keys.sorted())
+        return tokens
     }
 
     /** Verifies, resolves and launches one assignment. Returns true when a sandbox was started. */

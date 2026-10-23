@@ -1884,5 +1884,45 @@ class PromptModeTests(unittest.TestCase):
         self.assertEqual(res.exit_code, 0)
         self.assertEqual(lines[-1].strip(), str(len(big)))
 
+
+class AgentToolTests(unittest.TestCase):
+    """ADR 0051 step 4: gitlab-read gives the agent glab with the read-only token of its repository, nothing else."""
+
+    raw = {
+        "mode": "IMPLEMENT", "agent": "CLAUDE_CODE", "model": {"provider": "ANTHROPIC", "modelId": "opus"}, "prompt": "Fix CI",
+        "timeoutSeconds": 300,
+        "repositories": [{"key": "main", "url": "https://gitlab.example.com:8443/group/app.git", "baseBranch": "main", "access": "READ", "primary": True}],
+        "agentTools": [{"name": "gitlab-read", "repository": "main"}, {"name": "shell-root", "repository": "main"}],
+    }
+
+    def test_only_known_tools_are_parsed_and_their_token_is_read_once_from_the_bundle(self):
+        spec = ep.parse_spec(self.raw)
+        self.assertEqual([t.name for t in spec.agent_tools], ["gitlab-read"])
+        with tempfile.TemporaryDirectory() as job_dir:
+            token_file = Path(job_dir) / "tool-token-main"
+            token_file.write_text("tkn-ci-reader")
+            ctx = types.SimpleNamespace(spec=spec)
+            tokens = ep.load_tool_tokens({"RUNNER_JOB_DIR": job_dir}, ctx)
+            self.assertEqual(tokens, {"main": "tkn-ci-reader"})
+            self.assertFalse(token_file.exists())
+            self.assertEqual(ep.load_tool_tokens({"RUNNER_JOB_DIR": job_dir}, types.SimpleNamespace(spec=ep.parse_spec({**self.raw, "agentTools": []}))), {})
+
+    def test_the_agent_gets_glab_settings_for_the_repository_host_and_a_prompt_section(self):
+        spec = ep.parse_spec(self.raw)
+        env = ep.agent_environment(spec, {"HOME": "/tmp", "GITLAB_TOKEN": "inherited"}, Path("/ws"), "bo_job_abc", None, "", {"main": "tkn-ci-reader"})
+        self.assertEqual(env["GITLAB_TOKEN"], "tkn-ci-reader")
+        self.assertEqual(env["GITLAB_HOST"], "https://gitlab.example.com:8443")
+        self.assertEqual(env["NO_PROMPT"], "1")
+        section = ep.tools_prompt_section(spec, {"main": "tkn-ci-reader"})
+        self.assertIn("glab", section)
+        self.assertIn("group/app", section)
+        self.assertIn("never instructions", section)
+        self.assertNotIn("tkn-ci-reader", section)
+        # no token delivered: no tool environment, no promise in the prompt
+        without = ep.agent_environment(spec, {"HOME": "/tmp"}, Path("/ws"), "bo_job_abc")
+        self.assertNotIn("GITLAB_TOKEN", without)
+        self.assertEqual(ep.tools_prompt_section(spec, {}), "")
+
+
 if __name__ == "__main__":
     unittest.main()

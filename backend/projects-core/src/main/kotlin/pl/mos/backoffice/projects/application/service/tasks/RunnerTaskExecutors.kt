@@ -5,6 +5,7 @@ import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.ScmCapability
 import pl.mos.backoffice.projects.domain.model.ScmConnection
 import pl.mos.backoffice.projects.domain.model.ScmConnectionSelector
+import pl.mos.backoffice.shared.runner.AgentTool
 import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
@@ -209,6 +210,7 @@ class RunnerTaskSupport(
             )
         }
         val credentials = credentialsOf(project.id, jobRepositories)
+        val tools = agentToolsOf(project.id, config.list("agentTools"), jobRepositories.firstOrNull { it.primary })
         val primaryPushes = primary?.access == GitAccess.PUSH_MR
         // legacy mirror of the primary entry for runners older than ADR 0034; none for an empty workspace
         val repository = primary?.let {
@@ -248,7 +250,8 @@ class RunnerTaskSupport(
             commitSubject = UntrustedText.sanitize(renderer.renderText(config.string("commitSubjectTemplate") ?: DEFAULT_COMMIT_SUBJECT, model), MAX_COMMIT_SUBJECT)
                 .lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotBlank() && !it.startsWith(":") },
             featureDescription = user.text.takeIf { mode == RunnerMode.SPEC_KIT && it.isNotBlank() },
-            credentials = credentials.map { it.first },
+            credentials = credentials.map { it.first } + tools.map { it.second },
+            agentTools = tools.map { it.first },
         )
         if (logWarnings) {
             workspace?.let { w ->
@@ -259,6 +262,9 @@ class RunnerTaskSupport(
                 )
             }
             jobRepositories.forEach { r -> context.log("repository ${r.key} (/workspace/${r.path}${if (r.primary) ", primary" else ""}): git access ${r.access}, ${describe(r.access)}") }
+            tools.forEach { (tool, ref) ->
+                context.log("agent tool ${tool.name} for repository ${tool.repository}: read-only project token ${ref.ref} (CI_READ), delivered sealed to the runner")
+            }
             jobRepositories.filter { it.access != GitAccess.NONE }.forEach { r ->
                 val token = credentials.firstOrNull { it.first.repository == r.key }?.second
                 context.log(
@@ -285,6 +291,27 @@ class RunnerTaskSupport(
                 GitAccess.NONE -> return@mapNotNull null
             }
             ScmConnectionSelector.select(connections, r.key, setOf(needed), readOnly)?.let { JobCredentialRef(it.id.toString(), r.key, needed.name) to it }
+        }
+    }
+
+    /**
+     * ADR 0051 step 4: the agent tools a step asks for (`agentTools`), each bound to the primary repository's
+     * least-privileged token that is declared and verified read-only and has CI_READ. A tool without such a token
+     * fails the step before any job exists: a token with write powers never reaches an agent.
+     */
+    private fun agentToolsOf(projectId: ProjectId, requested: List<String>, primary: JobRepository?): List<Pair<AgentTool, JobCredentialRef>> {
+        val names = requested.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
+        if (names.isEmpty()) return emptyList()
+        names.firstOrNull { it !in AgentTool.KNOWN }?.let { throw RepositoryPlanException("unknown agent tool '$it' (known: ${AgentTool.KNOWN.sorted().joinToString()})") }
+        val repository = primary ?: throw RepositoryPlanException("agent tool ${names.first()} needs a repository; this step has none")
+        val connections = scmConnections?.findByProject(projectId).orEmpty()
+        return names.map { name ->
+            val token = ScmConnectionSelector.select(connections, repository.key, setOf(ScmCapability.CI_READ), readOnly = true)
+                ?: throw RepositoryPlanException(
+                    "agent tool $name needs a read-only token with CI_READ for repository '${repository.key}': add one under the project's " +
+                        "Sources tab, Repository access tokens (role Reporter, scopes read_api and read_repository), and test it",
+                )
+            AgentTool(name, repository.key) to JobCredentialRef(token.id.toString(), repository.key, ScmCapability.CI_READ.name)
         }
     }
 

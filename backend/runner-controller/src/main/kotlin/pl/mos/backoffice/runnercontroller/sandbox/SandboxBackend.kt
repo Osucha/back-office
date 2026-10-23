@@ -56,20 +56,34 @@ data class LaunchRequest(
     val projectTokens: ProjectTokens = ProjectTokens.NONE,
 )
 
-/** ADR 0051: opened project repository tokens of one job; never printed. */
-class ProjectTokens(val byRepository: Map<String, String>) {
-    /** Keys of the per-job Kubernetes Secret: `scm-legacy` and `scm-repo-<key>`, moved to the git volume by the init container. */
-    fun secretEntries(): Map<String, String> = byRepository.mapKeys { (key, _) -> if (key.isEmpty()) SECRET_LEGACY else SECRET_PREFIX + key }
+/**
+ * ADR 0051: opened project repository tokens of one job; never printed. [byRepository] are git tokens (clone, push)
+ * the runner keeps to itself; [tools] are the read-only tokens of agent tools (step 4, capability CI_READ) by
+ * repository, which the runner hands to the agent.
+ */
+class ProjectTokens(val byRepository: Map<String, String>, val tools: Map<String, String> = emptyMap()) {
+    /**
+     * Keys of the per-job Kubernetes Secret: `scm-legacy` and `scm-repo-<key>` (moved to the git volume by the init
+     * container) and `tool-token[-<key>]` (stay in the job directory with the rest of the bundle).
+     */
+    fun secretEntries(): Map<String, String> =
+        byRepository.mapKeys { (key, _) -> if (key.isEmpty()) SECRET_LEGACY else SECRET_PREFIX + key } + tools.mapKeys { (key, _) -> toolFile(key) }
 
     /** Files under the git directory: `token` (legacy) or `<key>/token`. */
     fun files(gitDir: String): Map<String, String> = byRepository.mapKeys { (key, _) -> if (key.isEmpty()) "$gitDir/token" else "$gitDir/$key/token" }
 
-    override fun toString() = "ProjectTokens(${byRepository.keys})"
+    /** Agent tool tokens under the job directory: `tool-token` (legacy) or `tool-token-<key>`. */
+    fun toolFiles(jobDir: String): Map<String, String> = tools.mapKeys { (key, _) -> "$jobDir/${toolFile(key)}" }
+
+    override fun toString() = "ProjectTokens(${byRepository.keys}, tools=${tools.keys})"
 
     companion object {
         val NONE = ProjectTokens(emptyMap())
         const val SECRET_LEGACY = "scm-legacy"
         const val SECRET_PREFIX = "scm-repo-"
+        const val TOOL_FILE = "tool-token"
+
+        fun toolFile(key: String) = if (key.isEmpty()) TOOL_FILE else "$TOOL_FILE-$key"
     }
 }
 

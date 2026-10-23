@@ -4742,8 +4742,11 @@ export interface components {
     };
     JobCredentials: {
       credentials: {
-        /** @enum {string} */
-        capability: 'GIT_READ' | 'PUSH_BRANCH';
+        /**
+         * @description CI_READ = the read-only token of an agent tool (agentTools)
+         * @enum {string}
+         */
+        capability: 'GIT_READ' | 'PUSH_BRANCH' | 'CI_READ';
         /** @description the sealed token */
         ciphertext: string;
         /** @description HPKE encapsulated key */
@@ -5785,6 +5788,14 @@ export interface components {
     RunnerJobSpec: {
       /** @enum {string} */
       agent: 'OPENCODE' | 'CLAUDE_CODE';
+      /** @description ADR 0051 step 4: read-only tools of the agent. gitlab-read = glab (GITLAB_TOKEN, GITLAB_HOST) with the CI_READ token of the repository, named in credentials and delivered as the bundle file tool-token-<repository>; the runner hands only this token to the agent and redacts it everywhere. Covered by the spec digest when present. */
+      agentTools?:
+        | {
+            /** @enum {string} */
+            name: 'gitlab-read';
+            repository: string;
+          }[]
+        | null;
       collectArtifacts?: string[];
       /** @default true */
       collectDiff: boolean;
@@ -5793,7 +5804,7 @@ export interface components {
       credentials?:
         | {
             /** @enum {string} */
-            capability: 'GIT_READ' | 'PUSH_BRANCH';
+            capability: 'GIT_READ' | 'PUSH_BRANCH' | 'CI_READ';
             /** @description the repository token (its connection id) */
             ref: string;
             repository: string;

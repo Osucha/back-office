@@ -226,7 +226,15 @@ zweryfikowanym tokenem tylko do odczytu (GIT_READ), a wypycha tokenem PUSH_BRANC
 runnerowi, który wykonuje zadanie, zaszyfrowane do jego własnego klucza, raz na zadanie, tuż przed startem
 sandboxa; serwer proxy, który po drodze zagląda w ruch TLS, widzi tylko szyfrogram. Repozytorium bez pasującego
 tokenu korzysta z tokenów puli runnerów opisanych niżej (wycofywane; dziennik zadania mówi, którego użyto).
-Narzędzia tylko do odczytu dla agentów (na przykład logi CI) pojawią się w kolejnej wersji.
+
+<a id="git-agent-tools"></a>
+**Narzędzia agenta.** Krok kodujący może dać swojemu agentowi narzędzia tylko do odczytu w polu konfiguracji
+**agentTools**. `gitlab-read` daje agentowi `glab`, czyli CLI GitLaba, z tokenem repozytorium zadeklarowanym jako
+tylko do odczytu (CI_READ) i zweryfikowanym jako pozbawiony uprawnień do zapisu: agent może czytać pipeline'y, logi
+jobów, merge requesty i issues, na przykład żeby przeanalizować nieudany pipeline, i niczego nie może zmienić. Bez
+takiego tokenu dla głównego repozytorium kroku krok od razu kończy się błędem z informacją, jaki token dodać. Token
+trafia tylko do agenta tego kroku; jest maskowany we wszystkich logach i artefaktach, a dziennik zadania wymienia
+narzędzie.
 
 - **Nigdy token do wypychania do czytania.** Krok, który tylko czyta, dostaje wyłącznie token zadeklarowany
   i zweryfikowany jako tylko do odczytu; gdy dla tego repozytorium jest tylko token do wypychania, używa puli.

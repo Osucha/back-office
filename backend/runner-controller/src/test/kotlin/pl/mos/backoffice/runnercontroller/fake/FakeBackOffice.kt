@@ -51,6 +51,8 @@ class FakeBackOffice(bindHost: String = "127.0.0.1") : AutoCloseable {
     val projectTokens = java.util.concurrent.ConcurrentHashMap<String, Map<String, Pair<String, String>>>()
     /** ADR 0051: seal with this associated data instead of the real one (a tampered answer). */
     @Volatile var credentialAad: String? = null
+    /** ADR 0051 step 4: every token is answered once per capability listed here. */
+    @Volatile var credentialCapabilities: List<String> = listOf("GIT_READ")
 
     /** Host name under which sandboxes reach this server (e.g. `host.docker.internal`). */
     var publicHost: String = bindHost
@@ -207,13 +209,15 @@ class FakeBackOffice(bindHost: String = "127.0.0.1") : AutoCloseable {
                     org.bouncycastle.crypto.hpke.HPKE.kdf_HKDF_SHA256, org.bouncycastle.crypto.hpke.HPKE.aead_AES_GCM256,
                 )
                 val recipient = hpke.deserializePublicKey(java.util.Base64.getDecoder().decode(key))
-                val sealed = projectTokens[jobId].orEmpty().map { (ref, value) ->
-                    val aad = credentialAad ?: "$jobId|$ref|$expiresAt"
-                    val r = hpke.seal(recipient, "back-office credentials v1".toByteArray(), aad.toByteArray(), value.second.toByteArray(), null, null, null)
-                    mapOf(
-                        "ref" to ref, "repository" to value.first, "capability" to "GIT_READ",
-                        "enc" to java.util.Base64.getEncoder().encodeToString(r[1]), "ciphertext" to java.util.Base64.getEncoder().encodeToString(r[0]),
-                    )
+                val sealed = projectTokens[jobId].orEmpty().flatMap { (ref, value) ->
+                    credentialCapabilities.map { capability ->
+                        val aad = credentialAad ?: "$jobId|$ref|$expiresAt"
+                        val r = hpke.seal(recipient, "back-office credentials v1".toByteArray(), aad.toByteArray(), value.second.toByteArray(), null, null, null)
+                        mapOf(
+                            "ref" to ref, "repository" to value.first, "capability" to capability,
+                            "enc" to java.util.Base64.getEncoder().encodeToString(r[1]), "ciphertext" to java.util.Base64.getEncoder().encodeToString(r[0]),
+                        )
+                    }
                 }
                 respond(ex, 200, mapOf("expiresAt" to expiresAt, "credentials" to sealed))
             }

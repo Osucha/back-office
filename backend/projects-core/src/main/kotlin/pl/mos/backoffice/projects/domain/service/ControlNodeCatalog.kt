@@ -104,6 +104,7 @@ object ControlNodeCatalog {
                 "push" to boolean("Push the branch when done. On: git access PUSH_MR (the runner token may push this branch and open a merge request, never merge). Off: READ (read-only token, nothing is pushed)", true),
                 "setupCommand" to string("Command run before the agent, e.g. npm ci"),
                 "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
+                "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
                 StepRepositories.CONFIG_KEY to repositoriesSetting(),
             ) + workspaceSettings(prepare = false),
         )
@@ -119,6 +120,7 @@ object ControlNodeCatalog {
                 "mergeRequestDescriptionTemplate" to string("MR description template"),
                 "mergeRequestDraft" to boolean("Open the MR as draft", false),
                 "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
+                "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
                 StepRepositories.CONFIG_KEY to repositoriesSetting(),
             ) + workspaceSettings(prepare = true),
         )

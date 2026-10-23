@@ -5067,7 +5067,7 @@ components:
             properties:
               ref: { type: string }
               repository: { type: string, description: 'repositories[].key of the spec ("" = the legacy single repository)' }
-              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH] }
+              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH, CI_READ], description: 'CI_READ = the read-only token of an agent tool (agentTools)' }
               enc: { type: string, description: HPKE encapsulated key, base64 }
               ciphertext: { type: string, description: the sealed token, base64 }
     WorkspaceSync:
@@ -5183,7 +5183,20 @@ components:
             properties:
               ref: { type: string, description: the repository token (its connection id) }
               repository: { type: string }
-              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH] }
+              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH, CI_READ] }
+        agentTools:
+          type: array
+          nullable: true
+          description: >-
+            ADR 0051 step 4: read-only tools of the agent. gitlab-read = glab (GITLAB_TOKEN, GITLAB_HOST) with the CI_READ
+            token of the repository, named in credentials and delivered as the bundle file tool-token-<repository>; the
+            runner hands only this token to the agent and redacts it everywhere. Covered by the spec digest when present.
+          items:
+            type: object
+            required: [name, repository]
+            properties:
+              name: { type: string, enum: [gitlab-read] }
+              repository: { type: string }
     JobRepository:
       type: object
       description: >-

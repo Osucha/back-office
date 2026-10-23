@@ -221,8 +221,14 @@ Jobs clone and push with them: for each repository a step reads with the least-p
 token (GIT_READ) and pushes with a PUSH_BRANCH token. Back Office hands them to the runner that runs the job,
 encrypted to that runner's own key, once per job, right before the sandbox starts; a proxy that inspects TLS on
 the way sees only ciphertext. A repository without a fitting token falls back to the runner pool's tokens below
-(deprecated; the job log says which one was used). Read-only tools for agents (for example the CI logs) follow
-in a later release.
+(deprecated; the job log says which one was used). 
+<a id="git-agent-tools"></a>
+**Agent tools.** A coding step can give its agent read-only tools in its configuration field **agentTools**.
+`gitlab-read` gives the agent `glab`, the GitLab CLI, with the repository's token that is declared read-only
+(CI_READ) and verified to have no write powers: the agent can read pipelines, job logs, merge requests and issues,
+for example to analyse a failing pipeline, and cannot change anything. Without such a token for the step's primary
+repository the step fails at once with a message saying which token to add. The token reaches only that step's
+agent; it is masked in every log and artefact, and the job log names the tool.
 
 - **Never a push token for reading.** A step that only reads gets only a token declared and verified read-only;
   with nothing but a push token for that repository it falls back to the pool.

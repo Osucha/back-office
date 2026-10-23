@@ -1,6 +1,6 @@
 # 0051 — SCM connections on project repositories, sealed credential delivery and agent tools
 
-- Status: accepted (steps 1 to 3 implemented; 4 and 5 planned)
+- Status: accepted (steps 1 to 4 implemented; 5 planned)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0013 (no SCM API), 0024 (sandboxed runner fleet), 0029 (prompt-injection defences), 0030
@@ -70,7 +70,11 @@ Implementation steps (each usable on its own):
    docs/api/fixtures/sealed-credential-vector.json).
 3. Clone and push with project connections (gitAccess resolved to connections), fallback to runner tokens.
    *Implemented*; the personal runner's command no longer sets git tokens.
-4. Agent tool `gitlab-read` (`glab` in the runner image), step `tools`, designer and start checks.
+4. Agent tool `gitlab-read` (`glab` in the runner image), step `tools`, designer and start checks. *Implemented*:
+   step config `agentTools: ["gitlab-read"]` binds the primary repository's verified read-only CI_READ token; a
+   step without one fails before any job exists. The token travels like the git tokens (sealed, capability
+   CI_READ) and becomes the bundle file `tool-token-<repository>`; the runner sets `GITLAB_TOKEN` / `GITLAB_HOST`
+   for the agent only, adds a "Tools" section to the prompt and `glab *` to an allow-list policy.
 5. Write operations: merge request review comments and commit status first.
 
 ## Alternatives considered

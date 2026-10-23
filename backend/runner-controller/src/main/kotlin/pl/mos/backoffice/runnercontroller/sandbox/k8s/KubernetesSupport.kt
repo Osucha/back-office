@@ -118,6 +118,7 @@ class KubernetesSupport(
         request.repositoryTokens.forEach { repo -> gitToken(repo.credential)?.let { put("${PodSpecRenderer.GIT_DIR}/${repo.key}/token", it) } }
         // ADR 0051: project tokens released for this job
         putAll(request.projectTokens.files(PodSpecRenderer.GIT_DIR))
+        putAll(request.projectTokens.toolFiles(PodSpecRenderer.JOB_DIR))
     }
 
     fun deleteJobSecret(jobId: String) {

@@ -78,10 +78,15 @@ class DockerBackendTest {
         val spec = JsonMapper.builder().build().readTree("""{"repositories":[{"key":"main","url":"https://gitlab.example.com/shop/api.git","access":"READ","path":"main"}]}""")
         val plan = backend.gitCredentials.plan(spec, setOf("main"))
         assertThat(plan.tokens).isEmpty()
-        val request = TestPolicies.launch(gitAccess = plan.access, gitCredential = null, repositoryTokens = plan.tokens, projectTokens = ProjectTokens(mapOf("main" to "tkn-project")))
+        val request = TestPolicies.launch(
+            gitAccess = plan.access, gitCredential = null, repositoryTokens = plan.tokens,
+            projectTokens = ProjectTokens(mapOf("main" to "tkn-project"), tools = mapOf("main" to "tkn-tool")),
+        )
         backend.launch(request)
         val gitDir = dir.resolve(request.jobId).resolve("git")
         assertThat(Files.readString(gitDir.resolve("main/token"))).isEqualTo("tkn-project")
+        // ADR 0051 step 4: the agent tool's token is a bundle file next to the job token
+        assertThat(Files.readString(dir.resolve(request.jobId).resolve("job/tool-token-main"))).isEqualTo("tkn-tool")
         val args = docker.calls.single { it.firstOrNull() == "run" && "bo-job-${request.jobId}" in it }
         assertThat(args.joinToString(" ")).doesNotContain("tkn-project")
     }

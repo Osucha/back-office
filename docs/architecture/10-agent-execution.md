@@ -245,6 +245,10 @@ capability}]`), never its value.
   starts. A repository with a project token gets none of the pool's tokens; a token that is not released, does not
   open or arrives after its expiry fails the job (`credentials: ...`) before any sandbox exists.
 - **Fallback.** Repositories without a fitting project token use the pool's tokens below (deprecated).
+- **Agent tools (step 4).** `agentTools: [{name: gitlab-read, repository}]` in the spec with a CI_READ credential: the
+  controller delivers that token as the bundle file `tool-token-<repository>` (Docker file, Kubernetes job Secret key,
+  warm pods a written file); the runner reads and deletes it and sets `GITLAB_TOKEN` / `GITLAB_HOST` only in the
+  agent's environment. It is the one token an agent may hold, always verified read-only.
 - Conformance vector: `docs/api/fixtures/sealed-credential-vector.json` (both sides open it in their tests).
 
 ## Git access (ADR 0031)
