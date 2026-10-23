@@ -50,6 +50,7 @@ import { BatonComponent } from '../../../core/ui/relay/baton.component';
 import { BreadcrumbService } from '../../../core/ui/relay/breadcrumb.service';
 import { icu } from '../../../core/i18n/icu';
 import { fixed, formatNumber } from '../../../core/i18n/numbers';
+import { triggerLabel } from '../data/run-trigger';
 import { absolute, stepFacts, type Fact } from '../data/step-facts';
 import { EmptyComponent } from '../../../core/ui/relay/empty.component';
 import { GlyphComponent } from '../../../core/ui/relay/glyph.component';
@@ -127,7 +128,7 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
           <bo-provenance
             boHeaderMeta
             [verb]="r.startedBy ? text.startedBy : text.triggeredBy"
-            [who]="r.startedBy ? null : (r.trigger?.type ?? 'system')"
+            [who]="r.startedBy ? null : triggerLabel(r.trigger?.type ?? 'system')"
             [actor]="r.startedBy"
             [at]="r.createdAt"
             [durationMs]="durationMs()"
@@ -1040,6 +1041,8 @@ export class RunDetailPageComponent {
     return !!projectId && this.identity.canInProject(permission, projectId);
   }
 
+  readonly triggerLabel = triggerLabel;
+
   readonly text = {
     startedBy: $localize`:@@runs.detail.startedBy:started by`,
     triggeredBy: $localize`:@@runs.detail.triggeredBy:triggered by`,
@@ -1544,16 +1547,6 @@ function runFacts(r: WorkflowRun, steps: number): Fact[] {
       value: absolute(r.finishedAt),
     });
   return out;
-}
-
-function triggerLabel(type: string): string {
-  const labels: Record<string, string> = {
-    MANUAL: $localize`:@@runs.detail.fact.triggerManual:manual`,
-    CI: 'CI',
-    API: 'API',
-    JIRA_TRANSITION: $localize`:@@runs.detail.fact.triggerJira:Jira transition`,
-  };
-  return labels[type] ?? type.toLowerCase();
 }
 
 function lastNode(r: WorkflowRun): string | null {

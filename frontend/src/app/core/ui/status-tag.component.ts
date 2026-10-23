@@ -56,6 +56,7 @@ const STYLES: Record<string, { color: string; icon?: string; spin?: boolean }> =
   JIRA_TRANSITION: { color: 'blue' },
   JIRA: { color: 'blue' },
   CI: { color: 'geekblue' },
+  SCHEDULE: { color: 'cyan', icon: 'field-time' },
   PIPELINE: { color: 'purple' },
   // CI entrypoint mode / run outcome
   BLOCKING: { color: 'volcano' },
@@ -81,6 +82,8 @@ const STYLES: Record<string, { color: string; icon?: string; spin?: boolean }> =
   FETCH_ISSUE: { color: 'default' },
   NOTIFY: { color: 'default' },
   TRANSITION_ISSUE: { color: 'default' },
+  START_WORKFLOW: { color: 'green' },
+  PROJECT_DIGEST: { color: 'purple' },
   // Node kinds
   START: { color: 'green' },
   END: { color: 'default' },
@@ -168,6 +171,9 @@ function statusLabels(): Record<string, string> {
     CONFIGURED: $localize`:@@core.status.configured:Configured`,
     NOT_CONFIGURED: $localize`:@@core.status.notConfigured:Not configured`,
     MANUAL: $localize`:@@core.status.manual:Manual`,
+    SCHEDULE: $localize`:@@core.status.schedule:Schedule`,
+    START_WORKFLOW: $localize`:@@core.status.startWorkflow:Start workflow`,
+    PROJECT_DIGEST: $localize`:@@core.status.projectDigest:Project digest`,
     BLOCKING: $localize`:@@core.status.blocking:Blocking`,
     ADVISORY: $localize`:@@core.status.advisory:Advisory`,
     SUCCESS: $localize`:@@core.status.success:Success`,

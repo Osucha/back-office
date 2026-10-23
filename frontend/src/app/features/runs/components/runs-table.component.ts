@@ -32,6 +32,7 @@ import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
 import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { serverSort } from '../../../core/ui/relay/table-sort';
 import { filterRuns, statusesForHolders } from '../data/run-filters';
+import { runStarter } from '../data/run-trigger';
 
 const VIRTUAL_FROM = 100;
 const ROW_HEIGHT = 49;
@@ -299,7 +300,7 @@ export class RunsTableComponent {
 
   baton = (r: WorkflowRunSummary) => batonOf.run(r);
   who = (r: WorkflowRunSummary) =>
-    r.startedBy ? actorName(r.startedBy) : r.trigger?.type === 'CI' ? 'CI' : '-';
+    runStarter(r.startedBy ? actorName(r.startedBy) : null, r.trigger?.type);
   ago = timeAgo;
   abs = absoluteTime;
   trackById = (_: number, r: WorkflowRunSummary) => r.id;

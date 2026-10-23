@@ -2752,8 +2752,9 @@ components:
         JIRA_TRANSITION is used by the project's Jira intake watcher (ADR 0033): with `status`, an issue entering that status
         starts a run with its `issueKey`; without, a new issue matching the project's JQL does.
       properties:
-        type: { type: string, enum: [MANUAL, JIRA_TRANSITION, API, CI] }
+        type: { type: string, enum: [MANUAL, JIRA_TRANSITION, API, CI, SCHEDULE] }
         status: { type: string, nullable: true }
+        intervalMinutes: { type: integer, nullable: true, minimum: 5, description: "SCHEDULE (ADR 0052): start every that many minutes after the latest run began, never while a run of the workflow is active; the run gets the parameter since (when the previous run started)" }
     WorkflowDefinitionInput:
       type: object
       required: [name, nodes, edges]
@@ -3137,7 +3138,7 @@ components:
         workflowId: { type: string, format: uuid }
         workflowName: { type: string }
         workflowVersion: { type: integer }
-        trigger: { type: object, properties: { type: { type: string, enum: [MANUAL, API, CI, JIRA] }, ciExecutionId: { type: string, format: uuid, nullable: true } } }
+        trigger: { type: object, properties: { type: { type: string, enum: [MANUAL, API, CI, JIRA, SCHEDULE] }, ciExecutionId: { type: string, format: uuid, nullable: true } } }
         issueKey: { type: string, nullable: true }
         status: { $ref: '#/components/schemas/RunStatus' }
         outcome: { $ref: '#/components/schemas/RunOutcome' }
@@ -3407,7 +3408,7 @@ components:
     # ---- task library
     TaskExecutor:
       type: string
-      enum: [LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE]
+      enum: [LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST]
     Scope:
       type: object
       required: [type]

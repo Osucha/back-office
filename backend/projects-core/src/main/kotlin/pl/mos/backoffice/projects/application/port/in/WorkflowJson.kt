@@ -79,7 +79,7 @@ data class WorkflowNodeJson(
 )
 
 data class WorkflowEdgeJson(val id: String = "", val from: String = "", val fromPort: String = "", val to: String = "", val label: String? = null)
-data class TriggerJson(val type: String = "MANUAL", val status: String? = null)
+data class TriggerJson(val type: String = "MANUAL", val status: String? = null, val intervalMinutes: Int? = null)
 
 /** A whole workflow as `WorkflowDefinitionInput` in openapi.yaml: what the MCP tools read and write (ADR 0049). */
 data class WorkflowDocumentJson(
@@ -182,8 +182,8 @@ object WorkflowJson {
     fun toDomain(e: WorkflowEdgeJson) = WorkflowEdge(e.id.trim().ifBlank { "${e.from}-${e.fromPort}-${e.to}" }, e.from.trim(), e.fromPort.trim(), e.to.trim(), e.label?.takeIf { it.isNotBlank() })
     fun toJson(e: WorkflowEdge) = WorkflowEdgeJson(e.id, e.from, e.fromPort, e.to, e.label)
 
-    fun toDomain(t: TriggerJson) = Trigger(enum<TriggerType>(t.type, "triggers.type"), t.status?.takeIf { it.isNotBlank() })
-    fun toJson(t: Trigger) = TriggerJson(t.type.name, t.status)
+    fun toDomain(t: TriggerJson) = Trigger(enum<TriggerType>(t.type, "triggers.type"), t.status?.takeIf { it.isNotBlank() }, t.intervalMinutes)
+    fun toJson(t: Trigger) = TriggerJson(t.type.name, t.status, t.intervalMinutes)
 
     fun toDomain(c: CanvasJson?) = c?.let { Canvas(it.zoom, it.x, it.y) }
     fun toJson(c: Canvas?) = c?.let { CanvasJson(it.zoom, it.x, it.y) }

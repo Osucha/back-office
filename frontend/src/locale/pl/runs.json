@@ -120,6 +120,7 @@
   "runs.detail.fact.trigger": "Wyzwalacz",
   "runs.detail.fact.triggerManual": "ręczny",
   "runs.detail.fact.triggerJira": "przejście w Jira",
+  "runs.detail.fact.triggerSchedule": "harmonogram",
   "runs.detail.fact.issue": "Zgłoszenie",
   "runs.detail.fact.mergeRequest": "Merge request",
   "runs.detail.fact.ref": "Ref",

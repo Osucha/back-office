@@ -10,6 +10,8 @@ const executorLabels = (): Record<string, string> => ({
   FETCH_ISSUE: $localize`:@@library.executor.fetchIssue:Fetch issue`,
   NOTIFY: $localize`:@@library.executor.notify:Notify`,
   TRANSITION_ISSUE: $localize`:@@library.executor.transitionIssue:Transition issue`,
+  START_WORKFLOW: $localize`:@@library.executor.startWorkflow:Start workflow`,
+  PROJECT_DIGEST: $localize`:@@library.executor.projectDigest:Project digest`,
 });
 
 /** "LLM", "Spec Kit", "Fetch issue" (sentence case, acronyms kept). */

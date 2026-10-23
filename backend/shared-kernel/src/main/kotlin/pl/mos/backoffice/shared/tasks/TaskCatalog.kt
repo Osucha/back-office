@@ -8,7 +8,7 @@ import java.util.UUID
  * Library context only stores the value. `LLM` is a single structured model call in-process, `SPEC_KIT`
  * and `IMPLEMENT` run in the agent runner, the rest are integrations.
  */
-enum class TaskExecutor { LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE }
+enum class TaskExecutor { LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST }
 
 /** A reusable prompt fragment / Agent Skill attached to a task (docs/architecture/07-task-library.md). */
 data class SkillSnapshot(val key: String, val name: String, val content: String)

@@ -6240,7 +6240,15 @@ export interface components {
     /** @enum {string} */
     TaskCategory: 'CODING' | 'ANALYSIS' | 'SPECIFICATION' | 'REVIEW' | 'ARCHITECTURE';
     /** @enum {string} */
-    TaskExecutor: 'LLM' | 'SPEC_KIT' | 'IMPLEMENT' | 'FETCH_ISSUE' | 'NOTIFY' | 'TRANSITION_ISSUE';
+    TaskExecutor:
+      | 'LLM'
+      | 'SPEC_KIT'
+      | 'IMPLEMENT'
+      | 'FETCH_ISSUE'
+      | 'NOTIFY'
+      | 'TRANSITION_ISSUE'
+      | 'START_WORKFLOW'
+      | 'PROJECT_DIGEST';
     TaskInterface: components['schemas']['TaskInterfaceInput'] & {
       builtIn?: boolean;
       /** Format: uuid */
@@ -6364,9 +6372,11 @@ export interface components {
     };
     /** @description JIRA_TRANSITION is used by the project's Jira intake watcher (ADR 0033): with `status`, an issue entering that status starts a run with its `issueKey`; without, a new issue matching the project's JQL does. */
     Trigger: {
+      /** @description SCHEDULE (ADR 0052): start every that many minutes after the latest run began, never while a run of the workflow is active; the run gets the parameter since (when the previous run started) */
+      intervalMinutes?: number | null;
       status?: string | null;
       /** @enum {string} */
-      type: 'MANUAL' | 'JIRA_TRANSITION' | 'API' | 'CI';
+      type: 'MANUAL' | 'JIRA_TRANSITION' | 'API' | 'CI' | 'SCHEDULE';
     };
     UploadRequest: {
       contentType: string;
@@ -6764,7 +6774,7 @@ export interface components {
         /** Format: uuid */
         ciExecutionId?: string | null;
         /** @enum {string} */
-        type?: 'MANUAL' | 'API' | 'CI' | 'JIRA';
+        type?: 'MANUAL' | 'API' | 'CI' | 'JIRA' | 'SCHEDULE';
       };
       waitingOn?: {
         /** Format: uuid */

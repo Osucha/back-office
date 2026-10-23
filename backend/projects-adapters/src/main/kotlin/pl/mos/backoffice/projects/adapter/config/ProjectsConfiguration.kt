@@ -339,6 +339,23 @@ class ProjectsConfiguration {
 
     @Bean fun fetchIssueTaskExecutor(jira: JiraConnectionAccess, json: JsonCodec) = FetchIssueTaskExecutor(jira, json)
 
+    /** ADR 0052: what happened in a project, for a watcher's retrospective. */
+    @Bean
+    fun projectDigestTaskExecutor(runs: WorkflowRunRepository, connections: ScmConnectionRepository, pipelines: PipelineStatusPort, clock: Clock) =
+        pl.mos.backoffice.projects.application.service.tasks.ProjectDigestTaskExecutor(runs, connections, pipelines, clock)
+
+    /** ADR 0052: workflows with a SCHEDULE trigger. */
+    @Bean
+    fun scheduledRunService(
+        projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: WorkflowRunRepository,
+        startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRun>, clock: Clock,
+    ) = pl.mos.backoffice.projects.application.service.ScheduledRunService(projects, workflows, runs, { startRun.getObject() }, clock)
+
+    /** ADR 0052: a step starts another workflow of the project; StartRun is looked up late (it depends on the engine). */
+    @Bean
+    fun startWorkflowTaskExecutor(startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRun>, workflows: WorkflowDefinitionRepository, json: JsonCodec) =
+        pl.mos.backoffice.projects.application.service.tasks.StartWorkflowTaskExecutor({ startRun.getObject() }, workflows, json)
+
     @Bean
     fun notifyTaskExecutor(jira: JiraConnectionAccess, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, audit: AuditPort) =
         NotifyTaskExecutor(jira, renderer, templateModel, audit)

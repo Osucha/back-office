@@ -144,6 +144,10 @@ ARTIFACT_NAME_BY_FILE = {
     "tasks.md": "tasks",
     "analysis.md": "analysis",
     "work-log.md": "work-log",
+    # ADR 0052: the watcher's retrospective and proposals, the side session's answer
+    "retro.md": "retro",
+    "proposals.json": "proposals",
+    "answer.md": "answer",
 }
 # Collected for Back Office but not part of the change: kept out of the commit (implement-task-list's work log).
 EPHEMERAL_ARTIFACT_FILES = ("work-log.md",)

@@ -7,6 +7,8 @@
   "library.executor.fetchIssue": "Pobierz zgłoszenie",
   "library.executor.notify": "Powiadom",
   "library.executor.transitionIssue": "Zmień status zgłoszenia",
+  "library.executor.startWorkflow": "Uruchom workflow",
+  "library.executor.projectDigest": "Podsumowanie projektu",
   "library.executor.inherited": "dziedziczony",
   "library.size.chars": "{count, plural, one {# znak} few {# znaki} many {# znaków} other {# znaku}}",
   "library.size.kChars": "{$value} tys. znaków",

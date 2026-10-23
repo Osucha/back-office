@@ -38,7 +38,7 @@ enum class ArtifactKind {
     }
 }
 
-enum class TriggerSource { MANUAL, API, CI, JIRA }
+enum class TriggerSource { MANUAL, API, CI, JIRA, SCHEDULE }
 
 data class RunTrigger(val type: TriggerSource, val ciExecutionId: CiExecutionId? = null)
 

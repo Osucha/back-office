@@ -1149,7 +1149,9 @@ export class ProjectDetailPageComponent {
               ? 'API'
               : x.type === 'CI'
                 ? 'CI'
-                : x.type,
+                : x.type === 'SCHEDULE'
+                  ? $localize`:@@projects.detail.trigger.schedule:every ${x.intervalMinutes ?? '?'}:minutes: min`
+                  : x.type,
       )
       .join(', ');
   }

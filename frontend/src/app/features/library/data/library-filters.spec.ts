@@ -15,6 +15,8 @@ describe('library filters', () => {
     expect(executorLabel('LLM')).toBe('LLM');
     expect(executorLabel('FETCH_ISSUE')).toBe('Fetch issue');
     expect(executorLabel('SOMETHING_NEW')).toBe('Something new');
+    expect(executorLabel('START_WORKFLOW')).toBe('Start workflow');
+    expect(executorLabel('PROJECT_DIGEST')).toBe('Project digest');
     expect(executorLabel(null)).toBe('inherited');
   });
 

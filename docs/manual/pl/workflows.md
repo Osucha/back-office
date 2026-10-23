@@ -113,6 +113,20 @@ jest błędem walidacji, a uruchomienia nie startują. **Szablony Jiry** mają s
 **Działaj jako**: połączenie systemowe projektu, wskazane połączenie albo osoba, która zatwierdza zapis lub
 rozpoczyna uruchomienie ([Działaj jako](integrations-jira.md#jira-act-as)).
 
+Dwa szablony nie uruchamiają modelu ani agenta (ADR 0052):
+
+- **Uruchom workflow** (**Start workflow**) uruchamia inny workflow projektu, jedno uruchomienie na każdy element
+  artefaktu JSON (**Parametry z** (**Parameters from**), na przykład `proposals` napisane przez agenta), a pola
+  elementu stają się parametrami uruchomienia (`title`, `idea`, ...). Musi stać bezpośrednio za bramką: agent
+  proponuje, Ty akceptujesz, Back Office uruchamia. Przy **Wyborze** (**Selection**) `DECISION` uruchamiane są tylko
+  elementy, których numery wpiszesz w komentarzu na bramce (`1, 3`; `all` uruchamia wszystkie); przy `ALL` wszystkie.
+  Uruchomione przebiegi są wymienione w jego artefakcie `started-runs`.
+- **Podsumowanie projektu** (**Project digest**) zapisuje artefakt `digest`: co działo się w projekcie od parametru
+  uruchomienia `since` (dostaje go uruchomienie z harmonogramu) - uruchomienia innych workflowów z wynikiem, czasem
+  i kosztem, kroki uruchomione więcej niż raz albo nieudane wraz z błędami, decyzje na bramkach z komentarzami oraz
+  najnowsze pipeline'y **Gałęzi pipeline'ów** (**Pipeline branches**) z nieudanymi jobami (wymaga tokenu
+  repozytorium z CI_READ). Krok agenta po nim czyta `{{artifacts.digest}}`.
+
 Prompty są szablonami: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}` (wszystkie komentarze
 z poprawek), `{{project.constitution}}`, `{{mr.url}}`. Brakująca wartość jest wstawiana jako pusta
 i dodaje ostrzeżenie do logu uruchomienia. Ponieważ węzły odwołują się do szablonów po kluczu, zmiana
@@ -368,6 +382,11 @@ dokumentuje, jak workflow ma być uruchamiany; trzech pierwszych Back Office nie
 `Ready for AI`) zgłoszenie, które trafi do tego statusu, uruchamia workflow ze swoim kluczem; bez statusu
 robi to nowe zgłoszenie zgodne z filtrem JQL projektu. Monitor włącza się osobno w każdym projekcie i może
 uruchamiać tylko workflow z tym wyzwalaczem ([Monitor zgłoszeń Jira](integrations-jira.md#jira-intake)).
+
+Wyzwalacz **Harmonogram** (**Schedule**, `SCHEDULE`, ADR 0052) sam uruchamia workflow **co N minut** (co najmniej
+5) od rozpoczęcia jego ostatniego uruchomienia, nigdy gdy któreś jego uruchomienie jeszcze trwa ani gdy workflow jest
+wyłączony. Uruchomienie dostaje parametr `since` (kiedy rozpoczęło się poprzednie), więc obserwator zgłasza tylko
+nowe rzeczy.
 
 Uruchomienie nie wystartuje (`409`), gdy krok Jiry w workflowie nie ma połączenia, którego mógłby użyć;
 komunikat wskazuje krok. Zapis workflowu tylko o tym ostrzega

@@ -134,6 +134,20 @@ object ControlNodeCatalog {
         )
         TaskExecutor.NOTIFY -> schema(mapOf("messageTemplate" to string("Jira comment body (template)"), APPROVAL_FIELD to approvalSetting()), listOf("messageTemplate"))
         TaskExecutor.TRANSITION_ISSUE -> schema(mapOf("toStatus" to string("Target Jira status name, e.g. In Review"), APPROVAL_FIELD to approvalSetting()), listOf("toStatus"))
+        TaskExecutor.START_WORKFLOW -> schema(
+            mapOf(
+                "workflow" to string("Id or name of the workflow of this project to start"),
+                "parametersFrom" to string("Artefact with the run parameters: a JSON object (one run) or an array of objects (one run per entry)"),
+                "selection" to enum("ALL: every entry; DECISION: the entries whose numbers the owner wrote in the comment of the gate just before (or all)", listOf("ALL", "DECISION"), "ALL"),
+            ),
+            listOf("workflow", "parametersFrom"),
+        )
+        TaskExecutor.PROJECT_DIGEST -> schema(
+            mapOf(
+                "maxRuns" to integer("At most this many runs (newest first)"),
+                "pipelineRefs" to string("Comma-separated branches whose latest pipeline is reported, e.g. develop,main (needs a CI_READ token)"),
+            ),
+        )
     }
 
     private const val APPROVAL_FIELD = "approval"

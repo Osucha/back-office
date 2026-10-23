@@ -57,6 +57,8 @@ object BuiltInLibrary {
     const val ANALYSE_ISSUE = "analyse-issue"
     const val NOTIFY_JIRA = "notify-jira"
     const val TRANSITION_ISSUE = "transition-issue"
+    const val START_WORKFLOW = "start-workflow"
+    const val PROJECT_DIGEST = "project-digest"
 
     /** Generic LLM task of projects without repositories (ADR 0034): the prompt is written in the designer. */
     const val LLM_TASK = "llm-task"
@@ -112,7 +114,7 @@ object BuiltInLibrary {
         BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
         IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, LLM_TASK,
         AGENT_TASK,
-        PREPARE_WORKSPACE,
+        PREPARE_WORKSPACE, PROJECT_DIGEST, START_WORKFLOW,
     ) + sdlcTemplateKeys
     val skillKeys = listOf(SPEC_WRITING, KOTLIN_HEXAGONAL, CONVENTIONAL_COMMITS, SECURITY_REVIEW_CHECKLIST, ANGULAR_NG_ZORRO) + sdlcSkillKeys
 
@@ -265,6 +267,20 @@ object BuiltInLibrary {
             description = "Moves the issue to a target status by transition name.",
             config = mapOf("toStatus" to "In Review", "failIfMissing" to false),
             tags = listOf("jira"),
+        )),
+        template(now, TaskTemplate.Content(
+            key = PROJECT_DIGEST, name = "Project digest", executor = TaskExecutor.PROJECT_DIGEST,
+            description = "Writes what happened in the project since the run parameter since (ADR 0052): runs of other workflows with " +
+                "outcome, duration and cost, repeated and failed steps, gate decisions, and the latest pipelines of pipelineRefs. Produces digest.",
+            config = mapOf("maxRuns" to 20, "pipelineRefs" to "develop,main"),
+            produces = listOf("digest"), tags = listOf("workflow", "retrospective"),
+        )),
+        template(now, TaskTemplate.Content(
+            key = START_WORKFLOW, name = "Start workflow", executor = TaskExecutor.START_WORKFLOW,
+            description = "Starts another workflow of the project (ADR 0052), right after a human gate: one run per entry of a JSON " +
+                "artefact (for example accepted proposals), with the entry's fields as run parameters. Produces started-runs.",
+            config = mapOf("workflow" to "", "parametersFrom" to "proposals", "selection" to "DECISION"),
+            produces = listOf("started-runs"), tags = listOf("workflow"),
         )),
         template(now, TaskTemplate.Content(
             key = LLM_TASK, name = "LLM task", executor = TaskExecutor.LLM,
@@ -444,6 +460,8 @@ object BuiltInLibrary {
                     else -> name in schemaFields || WHOLE_ANSWER_ARTIFACTS[key] == name
                 }
                 TaskExecutor.NOTIFY, TaskExecutor.TRANSITION_ISSUE -> false
+                TaskExecutor.START_WORKFLOW -> name == "started-runs"
+                TaskExecutor.PROJECT_DIGEST -> name == "digest"
                 else -> name in executorOutputs || name in collected
             }
             if (backed) null else "$key: produces \"$name\", but neither its output schema, its collectArtifacts nor its executor ($executor) provides it"

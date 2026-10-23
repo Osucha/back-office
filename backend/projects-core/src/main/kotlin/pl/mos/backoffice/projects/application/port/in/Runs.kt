@@ -70,6 +70,11 @@ interface ExpireWaits {
     fun sweep(): Int
 }
 
+/** ADR 0052: start the workflows whose SCHEDULE trigger is due. Returns how many runs were started. */
+interface StartScheduledRuns {
+    fun sweep(): Int
+}
+
 /** ADR 0052: resume runs waiting for the pipeline of their branch once it finished. Returns how many were resumed. */
 interface WatchPipelines {
     fun sweep(): Int

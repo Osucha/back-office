@@ -10,12 +10,23 @@ enum class NodeKind { START, END, TASK, DECISION, HUMAN_GATE, WAIT_FOR_CI, NOTE 
 
 enum class RunOutcome { SUCCESS, FAILURE }
 
-enum class TriggerType { MANUAL, JIRA_TRANSITION, API, CI }
+enum class TriggerType { MANUAL, JIRA_TRANSITION, API, CI, SCHEDULE }
 
 /** Lower-case slug of up to 40 characters: role keys, node ids and CI signal names. */
 private const val SLUG_PATTERN = "^[a-z][a-z0-9-]{0,39}$"
 
-data class Trigger(val type: TriggerType, val status: String? = null)
+/** [intervalMinutes] (ADR 0052): a SCHEDULE trigger starts the workflow every that many minutes, never while a run of it is active. */
+data class Trigger(val type: TriggerType, val status: String? = null, val intervalMinutes: Int? = null) {
+    init {
+        if (type == TriggerType.SCHEDULE && (intervalMinutes == null || intervalMinutes < MIN_INTERVAL_MINUTES)) {
+            throw pl.mos.backoffice.shared.ValidationException("a schedule needs intervalMinutes of at least $MIN_INTERVAL_MINUTES", "triggers.intervalMinutes")
+        }
+    }
+
+    companion object {
+        const val MIN_INTERVAL_MINUTES = 5
+    }
+}
 
 data class Point(val x: Double, val y: Double)
 

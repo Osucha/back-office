@@ -108,6 +108,19 @@ error and runs refuse to start. **Jira templates** have a **Jira connection** se
 project's system connection, a specific connection, or the person who approves the write or starts the run
 ([Act as](integrations-jira.md#jira-act-as)).
 
+Two templates do not run a model or an agent (ADR 0052):
+
+- **Start workflow** starts another workflow of the project, one run per entry of a JSON artefact (**Parameters
+  from**, for example the `proposals` an agent wrote), with the entry's fields as run parameters (`title`, `idea`,
+  ...). It must follow a gate directly: an agent proposes, you accept, Back Office starts. With **Selection**
+  `DECISION` only the entries whose numbers you write in the gate's comment are started (`1, 3`; `all` starts every
+  one); with `ALL` every entry. The started runs are listed in its `started-runs` artefact.
+- **Project digest** writes the `digest` artefact: what happened in the project since the run parameter `since`
+  (a scheduled run gets it) - the runs of the other workflows with outcome, duration and cost, steps that ran more
+  than once or failed with their errors, gate decisions with their comments, and the latest pipelines of
+  **Pipeline branches** with their failed jobs (needs a repository token with CI_READ). An agent step after it reads
+  `{{artifacts.digest}}`.
+
 Prompts are templates: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}` (all revision comments),
 `{{project.constitution}}`, `{{mr.url}}`. A missing value renders empty and adds a warning to the run log.
 Because nodes refer to templates by key, changing a template changes every workflow that uses it on its
@@ -345,6 +358,10 @@ The **Jira (intake watcher)** trigger (`JIRA_TRANSITION`) is used by the project
 example `Ready for AI`), an issue that enters that status starts a run with its key; without a status, a
 new issue matching the project's JQL filter does. The watcher is switched on per project and can start
 only a workflow that has this trigger ([Jira intake watcher](integrations-jira.md#jira-intake)).
+
+The **Schedule** trigger (`SCHEDULE`, ADR 0052) starts the workflow by itself **every N minutes** (at least 5)
+after its latest run began, never while one of its runs is still active and never while the workflow is disabled.
+The run gets the parameter `since` (when the previous run started), so a watcher reports only what is new.
 
 A run refuses to start (`409`) when a Jira step of the workflow has no usable connection; the message
 names the step. It also refuses to start when a coding step names a repository the project does not have, or

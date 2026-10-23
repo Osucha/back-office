@@ -1,6 +1,6 @@
 # 0052 — Back Office develops itself: pipeline in the loop, workflows that start workflows, a watcher and a session
 
-- Status: accepted (step 1 implemented; 2 to 4 planned)
+- Status: accepted (steps 1 to 4 implemented)
 - Date: 2026-10-23
 - Deciders: owner
 - Related: ADR 0029 (prompt injection), 0033 (approval before write), 0044 (run workspaces), 0049 (MCP), 0050
@@ -30,15 +30,22 @@ going on and to ask questions.
    "Left to CI". The step succeeds and the workflow continues with the pipeline watch. Every coding prompt carries a
    "Sandbox" section (Docker or not, the hosts the proxy allows, TLS stays on), and the planner writes test commands the
    sandbox can run.
-3. **Workflows start workflows (step 2, planned).** A `START_WORKFLOW` node starts another workflow of the same
-   project with parameters taken from an artefact of an earlier step (for example a proposal: title and idea). It is
-   always placed behind a human gate: an agent proposes, the owner accepts, Back Office starts.
-4. **A watcher of Back Office's own development (step 3, planned).** A scheduled workflow collects what happened since
-   its last run - runs and their failures, gate decisions and retries, pipelines and failed jobs - lets an agent write
-   a retrospective with concrete improvement proposals, and offers each proposal at a gate whose "do it" option
-   starts the change workflow through point 3. For now only the project Back Office itself.
-5. **A side session (step 4, planned).** A workflow loop "question at a gate -> answer by an agent with the repository,
-   CI (glab) and the run history -> next question" keeps one Claude Code session for the whole conversation.
+3. **Workflows start workflows (step 2).** A task executor `START_WORKFLOW` (template "Start workflow") starts another
+   workflow of the same project, one run per entry of a JSON artefact (an object or an array of objects whose fields
+   become run parameters), never itself. It runs only right after a human gate; with `selection: DECISION` only the
+   entries whose numbers the owner wrote in the gate's comment are started ("all" starts every one). An executor and
+   not a new node kind, so the designer renders it from its config schema.
+4. **A watcher of Back Office's own development (step 3).** A trigger `SCHEDULE` (`intervalMinutes`, at least 5)
+   starts a workflow every N minutes after its latest run began, never while one is active; the run gets `since`.
+   A task executor `PROJECT_DIGEST` writes deterministically what happened since then (runs of the other workflows,
+   repeated and failed steps with errors, gate decisions with comments, the latest pipelines of configured branches
+   with failed jobs) - the agent gets this artefact, not access to Back Office. The workflow "Back Office: watch the
+   development" lets a coding agent (repository read-only, `gitlab-read`) write `retro.md` and, when worthwhile,
+   `proposals.json`; a gate offers them and "Start workflow" starts the change workflow for the picked ones. For now
+   only the project Back Office itself.
+5. **A side session (step 4).** The workflow "Back Office: ask the agent" loops "question in a gate's comment ->
+   answer by a coding agent (repository, `gitlab-read`, the project digest) in `answer.md` -> next question"; the run
+   workspace keeps one Claude Code session for the whole conversation. Built from existing nodes only.
 
 ## Consequences
 

@@ -273,4 +273,20 @@ describe('validateLocally', () => {
     expect(reachableNodes(def).has('lost')).toBe(false);
     expect(reachableNodes(def).has('end')).toBe(true);
   });
+
+  it('requires a SCHEDULE trigger interval of at least 5 whole minutes (ADR 0052)', () => {
+    const scheduled = (intervalMinutes: number | null) => ({
+      ...issueToMergeRequestTemplate(),
+      triggers: [{ type: 'SCHEDULE' as const, intervalMinutes }],
+    });
+    const errors = (minutes: number | null) =>
+      validateLocally(scheduled(minutes), palette).errors.filter((e) => e.field === 'triggers');
+    expect(errors(5)).toEqual([]);
+    expect(errors(60)).toEqual([]);
+    for (const bad of [null, 4, 0, 7.5]) {
+      expect(errors(bad).map((e) => e.message)).toEqual([
+        'SCHEDULE trigger needs an interval of at least 5 whole minutes',
+      ]);
+    }
+  });
 });

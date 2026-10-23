@@ -26,6 +26,8 @@ object RunStateKeys {
     /** Pending human decision delivered with `GraphInput.resume`; consumed by the gate node. */
     const val DECISION = "decision"
     const val LAST_DECISION = "lastDecision"
+    /** ADR 0052: runs a START_WORKFLOW step started ({runId, entry, title}). */
+    const val STARTED_RUNS = "startedRuns"
     /** Pending CI signal delivered with `GraphInput.resume`; consumed by the WAIT_FOR_CI node. */
     const val CI = "ci"
     const val LAST_CI = "lastCi"
