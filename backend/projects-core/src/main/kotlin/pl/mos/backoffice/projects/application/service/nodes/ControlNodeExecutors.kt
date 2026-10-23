@@ -60,9 +60,11 @@ class DecisionNodeExecutor(private val evaluator: ExpressionEvaluator) : NodeExe
  * `HUMAN_GATE`: runs after the owner decided (the engine interrupts before the node). Consumes the
  * pending decision from the state, records revision feedback and leaves through the option's port.
  *
- * A `revise` comment goes to the run's feedback history ([RunStateKeys.FEEDBACK]) and to the pending feedback
+ * The comment of an option that sends work back (`revise`, `retry` or any option other than `approve`, `reject` and a
+ * timeout) goes to the run's feedback history ([RunStateKeys.FEEDBACK]) and to the pending feedback
  * ([RunStateKeys.PENDING_FEEDBACK]) that only the next task step receives as `{{feedback}}` ([TaskNodeExecutor]
  * consumes it), so a comment on the specification does not reappear in the plan, tasks and implementation prompts.
+ * `approve` comments reach later prompts as `{{decision.comment}}` instead.
  */
 class HumanGateNodeExecutor : NodeExecutor {
     override val kind = NodeKind.HUMAN_GATE
@@ -82,16 +84,19 @@ class HumanGateNodeExecutor : NodeExecutor {
         val updates = HashMap<String, Any?>()
         updates[RunStateKeys.LAST_DECISION] = decision
         updates[RunStateKeys.DECISION] = null
-        if (port.equals(GateSpec.REVISE, ignoreCase = true)) {
+        if (sendsWorkBack(port)) {
             comment?.let {
                 val entry = "[${node.name}] $it"
                 updates[RunStateKeys.FEEDBACK] = listOf(entry)
                 updates[RunStateKeys.PENDING_FEEDBACK] = RunStateKeys.pendingFeedback(context.state) + entry
             }
-            updates[RunStateKeys.CONFIDENCE] = -1.0
         }
+        if (port.equals(GateSpec.REVISE, ignoreCase = true)) updates[RunStateKeys.CONFIDENCE] = -1.0
         return NodeResult(port = port, summary = "Decision: ${port.uppercase()}" + (comment?.let { " - $it" } ?: ""), stateUpdates = updates)
     }
+
+    private fun sendsWorkBack(port: String): Boolean =
+        listOf(GateSpec.APPROVE, GateSpec.REJECT, WorkflowNode.PORT_TIMEOUT).none { it.equals(port, ignoreCase = true) }
 }
 
 /**

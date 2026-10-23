@@ -376,7 +376,7 @@ class RunnerTaskSupport(
             artifacts = artifacts,
             mergeRequest = mr,
             stateUpdates = updates,
-            error = if (succeeded) null else (result.error ?: summary),
+            error = if (succeeded) null else failureMessage(result, summary),
             repositories = repositories,
         )
     }
@@ -406,6 +406,17 @@ class RunnerTaskSupport(
         }
     }
 
+    /**
+     * What a failed step reports (node error, `{{lastError}}` of the gate that follows): the runner's reason, and the
+     * agent's own account of where and why it stopped, so the owner can decide without opening the job log.
+     */
+    private fun failureMessage(result: RunnerResult, summary: String): String {
+        val reason = result.error ?: summary
+        val agent = result.summary?.trim()?.takeIf { it.isNotBlank() && !reason.contains(it) } ?: return reason
+        val excerpt = agent.split("\n\n").take(2).joinToString("\n\n").take(MAX_AGENT_EXCERPT)
+        return "$reason\n\nThe agent reports:\n$excerpt" + if (excerpt.length < agent.length) "\n[...] (full report in the step's result and work log)" else ""
+    }
+
     private fun summarise(result: RunnerResult, verificationFailed: Boolean): String = when {
         result.status == RunnerJobStatus.TIMED_OUT -> "runner job timed out"
         result.status != RunnerJobStatus.SUCCEEDED -> "runner job ${result.status}: ${result.error ?: "no details"}"
@@ -415,6 +426,7 @@ class RunnerTaskSupport(
 
     companion object {
         const val MAX_MR_TITLE = 255
+        const val MAX_AGENT_EXCERPT = 1500
         const val MAX_MR_DESCRIPTION = 4000
         const val DEFAULT_BRANCH_TEMPLATE = "feature/{{issue.key | lower}}"
 

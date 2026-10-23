@@ -228,6 +228,20 @@ class GitAccessDerivationTest {
         assertThat(metered.cost.amount).isEqualByComparingTo("0.42")
     }
 
+    @Test
+    fun `a failed step reports the runner's reason and the agent's own account of where it stopped`() {
+        val jobId = RunnerJobId(UUID.randomUUID())
+        val report = "I stopped at Task 3: the sandbox has no Docker.\n\n**What I changed:** only work-log.md.\n\n**Details:** long text"
+        runner.results[jobId] = RunnerResult(
+            status = RunnerJobStatus.FAILED, summary = report, branch = null, commitSha = null, diffStat = null, verification = null,
+            artifacts = emptyList(), usage = pl.mos.backoffice.shared.llm.TokenUsage.ZERO, reportedCostUsd = null,
+            error = "verifyCommand exited with code 1", finishedAt = now,
+        )
+        val failed = support.complete(context(), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
+        assertThat(failed.error).startsWith("verifyCommand exited with code 1\n\nThe agent reports:\nI stopped at Task 3")
+        assertThat(failed.error).contains("only work-log.md").doesNotContain("long text").endsWith("(full report in the step's result and work log)")
+    }
+
     private class CapturingRunner : AgentRunner {
         val specs = mutableListOf<RunnerJobSpec>()
         val results = mutableMapOf<RunnerJobId, RunnerResult>()

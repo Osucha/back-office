@@ -56,9 +56,11 @@ The executor decides where a task runs:
    and `{{project.constitution}}` are filled at run time. A section `{{#artifacts.review}}...{{/artifacts.review}}`
    keeps its text only when the value is there (`{{^path}}...{{/path}}` only when it is not), so a prompt
    shows no empty "Issue" or "Feedback" heading in a run without an issue or on a first attempt.
-   `{{feedback}}` holds only the revision comments given for this step: a gate's **Revise** comment goes
+   `{{feedback}}` holds only the revision comments given for this step: the comment of a gate option that
+   sends the work back (**Revise**, **Retry** or any option other than **Approve** and **Reject**) goes
    to the next step that runs, stays with that step for its later attempts, and never reaches the steps
-   after it (all comments of the run: `{{feedbackHistory}}`).
+   after it (all comments of the run: `{{feedbackHistory}}`). An **Approve** comment reaches later prompts as
+   `{{decision.comment}}`.
 4. **Skills**: add skills, and list inherited skills under **Remove inherited skills**.
 5. **Contract and configuration**: **Produces** and **Consumes** (artefact or state names),
    **Confidence field**, **Tags**, **Config (JSON)** and, for LLM tasks, **Output schema**.

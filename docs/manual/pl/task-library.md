@@ -63,9 +63,11 @@ Wykonawca decyduje, gdzie działa zadanie:
    `{{#artifacts.review}}...{{/artifacts.review}}` zachowuje swój tekst tylko wtedy, gdy wartość istnieje
    (`{{^path}}...{{/path}}` tylko wtedy, gdy jej nie ma), więc prompt nie pokazuje pustego nagłówka
    „Issue” czy „Feedback” w przebiegu bez zgłoszenia ani przy pierwszej próbie. `{{feedback}}` zawiera
-   wyłącznie uwagi do tego kroku: komentarz **Popraw** (**Revise**) z bramki trafia do następnego
+   wyłącznie uwagi do tego kroku: komentarz opcji bramki, która odsyła pracę (**Popraw** (**Revise**),
+   **Ponów** (**Retry**) albo każda opcja inna niż **Zatwierdź** i **Odrzuć**), trafia do następnego
    uruchomionego kroku, zostaje przy nim na kolejne próby i nigdy nie dociera do kroków po nim (wszystkie
-   komentarze przebiegu: `{{feedbackHistory}}`).
+   komentarze przebiegu: `{{feedbackHistory}}`). Komentarz **Zatwierdź** trafia do kolejnych promptów jako
+   `{{decision.comment}}`.
 4. **Umiejętności** (**Skills**): dodaj umiejętności, a odziedziczone umiejętności do usunięcia wpisz w **Usuń
    odziedziczone umiejętności** (**Remove inherited skills**).
 5. **Kontrakt i konfiguracja** (**Contract and configuration**): **Produkuje** (**Produces**)

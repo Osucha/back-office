@@ -117,6 +117,19 @@ class FeedbackAndReworkTest {
     }
 
     @Test
+    fun `a retry comment reaches the next step like a revise comment, approve and reject comments do not`() {
+        fun decide(option: String, comment: String): Map<String, Any?> {
+            val decided = mapOf<String, Any?>(RunStateKeys.DECISION to mapOf("option" to option, "comment" to comment))
+            return decided.after(HumanGateNodeExecutor().execute(context("spec-gate", decided)))
+        }
+        assertThat(feedbackFor("specify", decide("retry", "no Docker here: skip Testcontainers"))).isEqualTo("[Spec ok?] no Docker here: skip Testcontainers")
+        assertThat(feedbackFor("specify", decide("approve", "fine, go"))).isEmpty()
+        assertThat(feedbackFor("specify", decide("reject", "no"))).isEmpty()
+        // only revise lowers the confidence; retry keeps it
+        assertThat(decide("retry", "again")[RunStateKeys.CONFIDENCE]).isNull()
+    }
+
+    @Test
     fun `a second revise adds to the comments the step already received`() {
         val first = revise("one").let { it.after(taskNode.execute(context("specify", it))) }
         val second = revise("two", first)
