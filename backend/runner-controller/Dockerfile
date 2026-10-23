@@ -13,7 +13,7 @@ RUN sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew --version --no-dae
 COPY . .
 ARG APP_VERSION=0.1.0
 ENV APP_VERSION=${APP_VERSION}
-RUN --mount=type=cache,target=/root/.gradle sed -i 's/\r$//' gradlew && ./gradlew :runner-controller:bootJar -x test --no-daemon
+RUN --mount=type=cache,target=/root/.gradle sed -i 's/\r$//' gradlew && ./gradlew :runner-controller:bootJar -x test --no-daemon -Pkotlin.compiler.execution.strategy=in-process
 
 FROM eclipse-temurin:21-jre AS runtime
 # The DOCKER backend (laptops, personal runners - ADR 0040) drives the host daemon through the docker CLI.

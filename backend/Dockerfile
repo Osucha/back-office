@@ -12,7 +12,7 @@ RUN sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew --version --no-dae
 COPY . .
 ARG APP_VERSION=0.1.0
 ENV APP_VERSION=${APP_VERSION}
-RUN --mount=type=cache,target=/root/.gradle sed -i 's/\r$//' gradlew && ./gradlew :app:bootJar -x test --no-daemon
+RUN --mount=type=cache,target=/root/.gradle sed -i 's/\r$//' gradlew && ./gradlew :app:bootJar -x test --no-daemon -Pkotlin.compiler.execution.strategy=in-process
 
 # Runtime stage: minimal JRE, non-root, layered jar for fast rebuilds.
 FROM eclipse-temurin:21-jre AS runtime
