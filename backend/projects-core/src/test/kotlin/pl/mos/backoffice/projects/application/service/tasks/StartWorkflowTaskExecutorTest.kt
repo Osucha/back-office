@@ -9,7 +9,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
-import pl.mos.backoffice.projects.application.port.`in`.StartRun
+import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
 import pl.mos.backoffice.projects.application.port.out.JsonCodec
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.RunStateKeys
@@ -28,6 +28,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
+import java.util.UUID
 
 /** ADR 0052 step 2: an agent proposes, the owner picks at a gate, the step starts one run per picked proposal. */
 class StartWorkflowTaskExecutorTest {
@@ -50,9 +51,9 @@ class StartWorkflowTaskExecutorTest {
         every { toJson(any()) } returns "[]"
     }
     private val started = mutableListOf<RunInput>()
-    private val startRun = mockk<StartRun> {
+    private val startRun = mockk<StartRunOnBehalf> {
         val input = slot<RunInput>()
-        every { start(target.id, capture(input), TriggerSource.API) } answers { started += input.captured; Fixtures.runningRun(project, target) }
+        every { startOnBehalf(target.id, capture(input), TriggerSource.API, DECIDER) } answers { started += input.captured; Fixtures.runningRun(project, target) }
     }
     private val executor = StartWorkflowTaskExecutor({ startRun }, workflows, json)
     private val gate = WorkflowNode.HumanGate("pick", "Pick proposals", gate = GateSpec("Which proposals?", listOf("do", "skip")))
@@ -69,7 +70,7 @@ class StartWorkflowTaskExecutorTest {
             .addArtifact(Artifact(ArtifactId.new(), "retro", "proposals", ArtifactKind.JSON, "application/json", "[...]", createdAt = now))
         if (afterGate) run = run.nodeStarted(gate, now).nodeFinished("pick", "do", now)
         run = run.nodeStarted(node, now)
-        return NodeContext(run, project, node, run.nodes.last(), mapOf(RunStateKeys.LAST_DECISION to mapOf("option" to "do", "comment" to comment)))
+        return NodeContext(run, project, node, run.nodes.last(), mapOf(RunStateKeys.LAST_DECISION to mapOf("option" to "do", "comment" to comment, "decidedByUserId" to DECIDER.toString())))
     }
 
     @Test
@@ -97,6 +98,10 @@ class StartWorkflowTaskExecutorTest {
         assertThatThrownBy { executor.execute(context("1"), task(config + ("workflow" to "unknown"))) }.isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { executor.execute(context("1"), task(config + ("workflow" to watcher.name))) }.hasMessageContaining("cannot start itself")
         assertThatThrownBy { executor.execute(context("1"), task(config + ("parametersFrom" to "missing"))) }.hasMessageContaining("missing")
-        verify(exactly = 0) { startRun.start(any(), any(), any()) }
+        verify(exactly = 0) { startRun.startOnBehalf(any(), any(), any(), any()) }
+    }
+
+    private companion object {
+        val DECIDER: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000d1")
     }
 }

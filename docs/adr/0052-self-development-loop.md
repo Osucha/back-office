@@ -33,10 +33,11 @@ going on and to ask questions.
 3. **Workflows start workflows (step 2).** A task executor `START_WORKFLOW` (template "Start workflow") starts another
    workflow of the same project, one run per entry of a JSON artefact (an object or an array of objects whose fields
    become run parameters), never itself. It runs only right after a human gate; with `selection: DECISION` only the
-   entries whose numbers the owner wrote in the gate's comment are started ("all" starts every one). An executor and
+   entries whose numbers the owner wrote in the gate's comment are started ("all" starts every one), on behalf of the
+   person who decided at the gate (`StartRunOnBehalf`: their `run.start`, their personal model profiles). An executor and
    not a new node kind, so the designer renders it from its config schema.
 4. **A watcher of Back Office's own development (step 3).** A trigger `SCHEDULE` (`intervalMinutes`, at least 5)
-   starts a workflow every N minutes after its latest run began, never while one is active; the run gets `since`.
+   starts a workflow every N minutes after its latest run began, never while one is active; the run gets `since` and is started on behalf of whoever last saved the workflow.
    A task executor `PROJECT_DIGEST` writes deterministically what happened since then (runs of the other workflows,
    repeated and failed steps with errors, gate decisions with comments, the latest pipelines of configured branches
    with failed jobs) - the agent gets this artefact, not access to Back Office. The workflow "Back Office: watch the

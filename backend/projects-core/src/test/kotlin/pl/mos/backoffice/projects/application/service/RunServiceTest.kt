@@ -25,7 +25,11 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.application.port.out.RunFilter
+import pl.mos.backoffice.shared.security.CurrentUser
+import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectFilter
+import pl.mos.backoffice.shared.security.UserId
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.PageOf
@@ -67,6 +71,33 @@ class RunServiceTest {
 
         every { workflows.findById(definition.id) } returns definition.copy(enabled = false)
         assertThatThrownBy { service.start(definition.id, RunInput("SHOP-1")) }.isInstanceOf(InvalidStateException::class.java)
+    }
+
+    @Test
+    fun `a schedule or a Start workflow step starts the run on behalf of a user who may start runs`() {
+        val bob = CurrentUser(
+            PrincipalKind.USER, UserId.new(), "bob@example.com", "Bob", emptySet(), mapOf(project.id.value to setOf(ProjectsPermissions.RUN_START)),
+        )
+        val viewer = bob.copy(userId = UserId.new(), displayName = "Viewer", projectPermissions = emptyMap())
+        val directory = mockk<ProjectAccessDirectory> {
+            every { user(bob.userId!!.value) } returns bob
+            every { user(viewer.userId!!.value) } returns viewer
+            every { user(not(or(bob.userId!!.value, viewer.userId!!.value))) } returns null
+        }
+        val system = RunService(
+            runs, workflows, projects, mockk<RunLogRepository>(), engine, progress, WorkflowValidator(), EventPublisher.NOOP, gate, audit,
+            Clock.fixed(now), directory = directory,
+        )
+
+        val run = system.startOnBehalf(definition.id, RunInput(null, mapOf("since" to "x")), TriggerSource.SCHEDULE, bob.userId!!.value)
+
+        assertThat(run.startedBy).isEqualTo(bob.actor)
+        assertThat(run.trigger.type).isEqualTo(TriggerSource.SCHEDULE)
+        assertThat(gate.checked).isEmpty()
+        assertThatThrownBy { system.startOnBehalf(definition.id, RunInput(null), TriggerSource.API, viewer.userId!!.value) }
+            .hasMessageContaining("Viewer may not start runs")
+        assertThatThrownBy { system.startOnBehalf(definition.id, RunInput(null), TriggerSource.API, null) }
+            .hasMessageContaining("no user to start it on behalf of")
     }
 
     @Test

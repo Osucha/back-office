@@ -9,7 +9,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
-import pl.mos.backoffice.projects.application.port.`in`.StartRun
+import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
 import pl.mos.backoffice.projects.application.port.out.FailedJob
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.PipelineReport
@@ -58,7 +58,7 @@ class WatcherBuildingBlocksTest {
         val workflows = mockk<WorkflowDefinitionRepository> { every { findByProjectId(project.id) } returns listOf(watcher, change) }
         val projects = mockk<ProjectRepository> { every { findAll(any()) } returns listOf(project) }
         val input = slot<RunInput>()
-        val startRun = mockk<StartRun> { every { start(watcher.id, capture(input), TriggerSource.SCHEDULE) } returns Fixtures.runningRun(project, watcher) }
+        val startRun = mockk<StartRunOnBehalf> { every { startOnBehalf(watcher.id, capture(input), TriggerSource.SCHEDULE, any()) } returns Fixtures.runningRun(project, watcher) }
         val previous = Fixtures.runningRun(project, watcher).copy(createdAt = now.minus(Duration.ofMinutes(61)))
         every { runs.existsActiveByWorkflow(watcher.id) } returns false
         every { runs.find(any(), any(), 0, 1) } returns PageOf(listOf(previous), 0, 1, 1)
@@ -72,7 +72,7 @@ class WatcherBuildingBlocksTest {
         every { runs.find(any(), any(), 0, 1) } returns PageOf(emptyList(), 0, 1, 0)
         every { runs.existsActiveByWorkflow(watcher.id) } returns true
         assertThat(service.sweep()).isZero()
-        verify(exactly = 1) { startRun.start(any(), any(), any()) }
+        verify(exactly = 1) { startRun.startOnBehalf(any(), any(), any(), any()) }
 
         assertThatThrownBy { Trigger(TriggerType.SCHEDULE, intervalMinutes = 1) }.isInstanceOf(ValidationException::class.java)
     }

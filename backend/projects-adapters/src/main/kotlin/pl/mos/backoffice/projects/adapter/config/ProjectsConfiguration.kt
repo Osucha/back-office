@@ -227,11 +227,13 @@ class ProjectsConfiguration {
         engine: WorkflowEngine, progress: RecordRunProgress, validator: WorkflowValidator, events: EventPublisher,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock, jiraSteps: JiraStepCheck, repositorySteps: RepositoryStepCheck,
         specKitSteps: SpecKitStepCheck, taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
+        directory: ObjectProvider<ProjectAccessDirectory>,
     ) = RunService(
         runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps, specKitSteps,
         // ADR 0050: the model of every task step must be usable by the starting user; without the model catalogue (the
         // Projects module alone) models are not checked
         availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it, defaults.getIfAvailable()) },
+        directory.getIfAvailable(),
     )
 
     // ---- Jira intake watcher (ADR 0033)
@@ -348,12 +350,12 @@ class ProjectsConfiguration {
     @Bean
     fun scheduledRunService(
         projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: WorkflowRunRepository,
-        startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRun>, clock: Clock,
+        startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf>, clock: Clock,
     ) = pl.mos.backoffice.projects.application.service.ScheduledRunService(projects, workflows, runs, { startRun.getObject() }, clock)
 
     /** ADR 0052: a step starts another workflow of the project; StartRun is looked up late (it depends on the engine). */
     @Bean
-    fun startWorkflowTaskExecutor(startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRun>, workflows: WorkflowDefinitionRepository, json: JsonCodec) =
+    fun startWorkflowTaskExecutor(startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf>, workflows: WorkflowDefinitionRepository, json: JsonCodec) =
         pl.mos.backoffice.projects.application.service.tasks.StartWorkflowTaskExecutor({ startRun.getObject() }, workflows, json)
 
     @Bean

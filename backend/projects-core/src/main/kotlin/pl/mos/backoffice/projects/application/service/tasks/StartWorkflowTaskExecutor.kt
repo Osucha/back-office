@@ -1,6 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
-import pl.mos.backoffice.projects.application.port.`in`.StartRun
+import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
 import pl.mos.backoffice.projects.application.port.out.JsonCodec
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
@@ -29,7 +29,7 @@ import java.util.UUID
  * person accepts, Back Office starts.
  */
 class StartWorkflowTaskExecutor(
-    private val startRun: () -> StartRun,
+    private val startRun: () -> StartRunOnBehalf,
     private val workflows: WorkflowDefinitionRepository,
     private val json: JsonCodec,
 ) : TaskExecutorStrategy {
@@ -56,10 +56,14 @@ class StartWorkflowTaskExecutor(
             else -> entries.withIndex().toList()
         }
         if (picked.isEmpty()) return NodeResult(port = WorkflowNode.PORT_SUCCESS, summary = "nothing selected, no workflow started")
+        // the person who decided at the gate starts the runs: their permissions and personal model profiles apply
+        val decider = (context.state[RunStateKeys.LAST_DECISION] as? Map<String, Any?>)?.get("decidedByUserId")?.toString()
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            ?: throw InvalidStateException("the gate before ${task.key} was not decided by a user; nobody to start the runs for")
         val started = picked.map { (index, entry) ->
             val parameters = entry.filterValues { it is String || it is Number || it is Boolean } +
                 mapOf("startedByRun" to context.run.id.toString(), "proposal" to (index + 1))
-            val run = startRun().start(target.id, RunInput(null, parameters), TriggerSource.API)
+            val run = startRun().startOnBehalf(target.id, RunInput(null, parameters), TriggerSource.API, decider)
             context.log("started ${target.name} as run ${run.id} for entry ${index + 1}" + (entry["title"]?.let { ": $it" } ?: ""))
             mapOf("runId" to run.id.toString(), "entry" to index + 1, "title" to entry["title"])
         }

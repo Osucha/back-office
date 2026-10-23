@@ -114,7 +114,8 @@ Two templates do not run a model or an agent (ADR 0052):
   from**, for example the `proposals` an agent wrote), with the entry's fields as run parameters (`title`, `idea`,
   ...). It must follow a gate directly: an agent proposes, you accept, Back Office starts. With **Selection**
   `DECISION` only the entries whose numbers you write in the gate's comment are started (`1, 3`; `all` starts every
-  one); with `ALL` every entry. The started runs are listed in its `started-runs` artefact.
+  one); with `ALL` every entry. The runs are started on behalf of the person who decided at the gate (their
+  permissions and personal model profiles apply) and are listed in its `started-runs` artefact.
 - **Project digest** writes the `digest` artefact: what happened in the project since the run parameter `since`
   (a scheduled run gets it) - the runs of the other workflows with outcome, duration and cost, steps that ran more
   than once or failed with their errors, gate decisions with their comments, and the latest pipelines of
@@ -361,7 +362,9 @@ only a workflow that has this trigger ([Jira intake watcher](integrations-jira.m
 
 The **Schedule** trigger (`SCHEDULE`, ADR 0052) starts the workflow by itself **every N minutes** (at least 5)
 after its latest run began, never while one of its runs is still active and never while the workflow is disabled.
-The run gets the parameter `since` (when the previous run started), so a watcher reports only what is new.
+The run gets the parameter `since` (when the previous run started), so a watcher reports only what is new. It is
+started on behalf of whoever last saved the workflow: their `run.start` permission and their personal model profiles
+apply, so a schedule may use your own subscription model profile.
 
 A run refuses to start (`409`) when a Jira step of the workflow has no usable connection; the message
 names the step. It also refuses to start when a coding step names a repository the project does not have, or

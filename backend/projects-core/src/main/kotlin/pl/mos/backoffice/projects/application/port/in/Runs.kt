@@ -14,10 +14,20 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.shared.usage.PageOf
 import java.time.Instant
+import java.util.UUID
 
 /** Use case: start a run of a workflow (manual / API); the run is handed to the engine and returned as `RUNNING`. */
 interface StartRun {
     fun start(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource = TriggerSource.MANUAL): WorkflowRun
+}
+
+/**
+ * Use case: a platform mechanism starts a run on behalf of a person (ADR 0052): a schedule for whoever last saved the
+ * workflow, a "Start workflow" step for whoever decided at its gate. The run is theirs (`startedBy`, their personal
+ * model profiles); they must still hold `run.start` in the project.
+ */
+interface StartRunOnBehalf {
+    fun startOnBehalf(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource, onBehalfOf: UUID?): WorkflowRun
 }
 
 /** Use case: cancel an active run (RUNNING or WAITING); open approvals expire. */
