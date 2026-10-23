@@ -202,8 +202,8 @@ class ModelMappingTests(unittest.TestCase):
         for leaked in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GIT_TOKEN", "RUNNER_CALLBACK_TOKEN", "NO_PROXY"):
             self.assertNotIn(leaked, env)
         self.assertEqual(env["BACKOFFICE_JOB_TOKEN"], "bo_job_abc")
-        self.assertEqual(env["HTTPS_PROXY"], "http://job:secret@proxy:4750")
-        self.assertEqual(env["http_proxy"], "http://job:secret@proxy:4750")
+        self.assertEqual(env["HTTPS_PROXY"], "http://job:secret@proxy:4750")  # trufflehog:ignore (test fixture)
+        self.assertEqual(env["http_proxy"], "http://job:secret@proxy:4750")  # trufflehog:ignore (test fixture)
         self.assertTrue(env["OPENCODE_CONFIG"].endswith("opencode.json"))
 
     def test_java_tools_get_the_egress_proxy(self):
@@ -214,7 +214,7 @@ class ModelMappingTests(unittest.TestCase):
         self.assertIn("-Dhttps.proxyHost=proxy -Dhttps.proxyPort=4750", env["JAVA_TOOL_OPTIONS"])
         self.assertIn("-Dhttps.proxyPassword=s@cret", env["JAVA_TOOL_OPTIONS"])
         self.assertIn("-Djdk.http.auth.tunneling.disabledSchemes=", env["JAVA_TOOL_OPTIONS"])
-        ep.apply_proxy_env(env, "http://job:s%40cret@proxy:4750")
+        ep.apply_proxy_env(env, "http://job:s%40cret@proxy:4750")  # trufflehog:ignore (test fixture)
         self.assertEqual(env["JAVA_TOOL_OPTIONS"].count("-Dhttps.proxyHost="), 1)
         self.assertEqual(ep.java_proxy_options("http://egress:4750"),
                          "-Dhttp.proxyHost=egress -Dhttp.proxyPort=4750 -Dhttps.proxyHost=egress -Dhttps.proxyPort=4750"
@@ -223,7 +223,7 @@ class ModelMappingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as home:
             logs = []
-            ep.write_maven_proxy_settings({"HOME": home}, "http://job:a<b@proxy:4750", logs.append)
+            ep.write_maven_proxy_settings({"HOME": home}, "http://job:a<b@proxy:4750", logs.append)  # trufflehog:ignore (test fixture)
             settings = (Path(home) / ".m2" / "settings.xml").read_text(encoding="utf-8")
             maven_env = {"HOME": home, "MAVEN_OPTS": "-Xmx1g"}
             ep.write_maven_proxy_settings(maven_env, "http://proxy:4750", logs.append)
