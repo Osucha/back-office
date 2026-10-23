@@ -163,35 +163,6 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
             >
               Retry from failed step
             </button>
-            <nz-modal
-              [nzVisible]="retryOpen()"
-              nzTitle="Retry from the failed step"
-              i18n-nzTitle="@@runs.detail.retry.title"
-              [nzOkText]="text.retryConfirm"
-              [nzOkLoading]="busy() === 'retry'"
-              (nzOnOk)="retry()"
-              (nzOnCancel)="retryOpen.set(false)"
-            >
-              <ng-container *nzModalContent>
-                <label
-                  class="retry-label"
-                  for="retry-comment"
-                  i18n="@@runs.detail.retry.commentLabel"
-                  >What should the step do differently? (optional)</label
-                >
-                <textarea
-                  id="retry-comment"
-                  nz-input
-                  rows="5"
-                  [(ngModel)]="retryComment"
-                  placeholder="e.g. the sandbox has no Docker: skip the Testcontainers tests and list what CI must confirm"
-                  i18n-placeholder="@@runs.detail.retry.commentPlaceholder"
-                ></textarea>
-                <p class="retry-hint" i18n="@@runs.detail.retry.commentHint">
-                  The step receives your comment as feedback, like a revise comment at a gate.
-                </p>
-              </ng-container>
-            </nz-modal>
           }
           <div boHeaderBelow class="track">
             <bo-run-track
@@ -691,6 +662,33 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
       (closed)="assigning.set(null)"
       (assigned)="assigning.set(null); onGateChanged($event)"
     />
+    <!-- outside the header: a control-flow block projected into boHeaderActions must keep a single root -->
+    <nz-modal
+      [nzVisible]="retryOpen()"
+      nzTitle="Retry from the failed step"
+      i18n-nzTitle="@@runs.detail.retry.title"
+      [nzOkText]="text.retryConfirm"
+      [nzOkLoading]="busy() === 'retry'"
+      (nzOnOk)="retry()"
+      (nzOnCancel)="retryOpen.set(false)"
+    >
+      <ng-container *nzModalContent>
+        <label class="retry-label" for="retry-comment" i18n="@@runs.detail.retry.commentLabel"
+          >What should the step do differently? (optional)</label
+        >
+        <textarea
+          id="retry-comment"
+          nz-input
+          rows="5"
+          [(ngModel)]="retryComment"
+          placeholder="e.g. the sandbox has no Docker: skip the Testcontainers tests and list what CI must confirm"
+          i18n-placeholder="@@runs.detail.retry.commentPlaceholder"
+        ></textarea>
+        <p class="retry-hint" i18n="@@runs.detail.retry.commentHint">
+          The step receives your comment as feedback, like a revise comment at a gate.
+        </p>
+      </ng-container>
+    </nz-modal>
   `,
   styles: [
     `
