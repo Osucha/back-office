@@ -4,6 +4,7 @@ gradlew text eol=lf
 *.sh text eol=lf
 *.py text eol=lf
 Dockerfile text eol=lf
+runner/with-extra-ca text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
