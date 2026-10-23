@@ -145,6 +145,11 @@ data class WorkflowRun(
     val finishedAt: Instant? = null,
     /** Who started the run (the CI token actor for CI-triggered runs); kept for audit and self-approval rules. */
     val startedBy: Actor? = null,
+    /**
+     * Attempts granted on top of a node's `maxVisits` by a person retrying the run after the node used them up: the
+     * loop guard stops runaway automatic loops, not a person's decision to try again.
+     */
+    val extraVisits: Map<String, Int> = emptyMap(),
 ) {
     val workflowName: String get() = definitionSnapshot.name
     val issueKey: String? get() = input.issueKey
@@ -154,6 +159,9 @@ data class WorkflowRun(
 
     /** How many times [nodeId] has started in this run (attempts), for the `maxVisits` loop guard. */
     fun visits(nodeId: String): Int = nodes.count { it.nodeId == nodeId }
+
+    /** The loop guard of [node] in this run: its `maxVisits` plus what retries by a person granted. */
+    fun visitLimit(node: WorkflowNode): Int = node.maxVisits + (extraVisits[node.id] ?: 0)
 
     fun start(now: Instant): WorkflowRun {
         requireStatus(RunStatus.PENDING)
@@ -171,7 +179,7 @@ data class WorkflowRun(
         val other = runningNode()
         if (other != null) throw InvalidStateException("run $id already has running node ${other.nodeId}")
         val attempt = visits(node.id) + 1
-        if (attempt > node.maxVisits) throw InvalidStateException("node ${node.id} exceeded maxVisits=${node.maxVisits}")
+        if (attempt > visitLimit(node)) throw InvalidStateException("node ${node.id} exceeded maxVisits=${visitLimit(node)}")
         val execution = NodeExecution(
             id = NodeExecutionId.new(),
             nodeId = node.id,
@@ -346,10 +354,16 @@ data class WorkflowRun(
         return copy(status = RunStatus.CANCELLED, finishedAt = now, waitingOn = null, nodes = closeOpenNodes(now))
     }
 
-    /** Re-opens a `FAILED` run so the engine can continue from the failing node. */
+    /**
+     * Re-opens a `FAILED` run so the engine can continue from the failing node. A node that used up its `maxVisits`
+     * gets that many attempts more: the person retrying decided it should run again.
+     */
     fun retry(now: Instant): WorkflowRun {
         requireStatus(RunStatus.FAILED)
-        return copy(status = RunStatus.RUNNING, outcome = null, failure = null, finishedAt = null, currentNodeId = retryNodeId())
+        val from = retryNodeId()
+        val node = from?.let { definitionSnapshot.nodes.firstOrNull { n -> n.id == it } }
+        val granted = if (node != null && visits(node.id) >= visitLimit(node)) extraVisits + (node.id to (extraVisits[node.id] ?: 0) + node.maxVisits) else extraVisits
+        return copy(status = RunStatus.RUNNING, outcome = null, failure = null, finishedAt = null, currentNodeId = from, extraVisits = granted)
     }
 
     /** The node a retry starts from: the failing node, else the last failed execution, else START. */

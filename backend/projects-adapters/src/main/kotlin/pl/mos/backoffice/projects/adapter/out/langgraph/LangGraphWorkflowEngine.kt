@@ -413,8 +413,10 @@ class LangGraphWorkflowEngine(
 
     private fun nodeBody(node: WorkflowNode, topology: WorkflowGraph, state: WorkflowState): Map<String, Any?> {
         val runId = WorkflowRunId.of(state.string(RunStateKeys.RUN_ID) ?: error("state has no runId"))
-        if (state.visits(node.id) >= node.maxVisits) {
-            val error = "node ${node.id} exceeded maxVisits=${node.maxVisits}"
+        // the run's limit: maxVisits plus attempts a person granted by retrying the run (the compiled graph is cached per version)
+        val limit = runs.findById(runId)?.visitLimit(node) ?: node.maxVisits
+        if (state.visits(node.id) >= limit) {
+            val error = "node ${node.id} exceeded maxVisits=$limit"
             progress.appendLog(runId, node.id, LogLevel.ERROR, error)
             return failUpdates(node, error)
         }

@@ -162,6 +162,8 @@ class WorkflowRunEntity(
     @Column(name = "library_workflow_id") var libraryWorkflowId: UUID? = null,
     @Column(name = "library_version") var libraryVersion: Int? = null,
     @Column(name = "library_modified", nullable = false) var libraryModified: Boolean = false,
+    /** V120: attempts granted beyond maxVisits by retries of a person (node id -> count). */
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "extra_visits", nullable = false, columnDefinition = "jsonb") var extraVisits: String = "{}",
 )
 
 @Entity

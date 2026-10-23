@@ -387,6 +387,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         startedBy = writeActor(r.startedBy),
         libraryWorkflowId = r.definitionSnapshot.library?.libraryWorkflowId?.value, libraryVersion = r.definitionSnapshot.library?.version,
         libraryModified = r.definitionSnapshot.library?.modified ?: false,
+        extraVisits = write(r.extraVisits),
     )
 
     fun toDomain(e: WorkflowRunEntity, artifacts: List<Artifact>): WorkflowRun {
@@ -408,6 +409,7 @@ class PersistenceMapper(private val json: JsonMapper) {
             lastSignal = e.lastSignal?.let { toDomain(read<CiSignalDoc>(it)) },
             failure = e.failure?.let { read<RunFailureDoc>(it) }?.let { RunFailure(it.nodeId, it.message, it.retryable) },
             createdAt = e.createdAt, startedAt = e.startedAt, finishedAt = e.finishedAt, startedBy = readActor(e.startedBy),
+            extraVisits = json.readValue(e.extraVisits, anyMap).mapValues { (_, v) -> (v as Number).toInt() },
         )
     }
 

@@ -114,6 +114,18 @@ class WorkflowRunTest {
         assertThat(retried.outcome).isNull()
         assertThat(retried.retryNodeId()).isEqualTo("specify")
         assertThat(retried.nodeStarted(specify, now).nodes.last().attempt).isEqualTo(2)
+        assertThat(retried.extraVisits).isEmpty() // attempts left: nothing granted
+    }
+
+    @Test
+    fun `a person retrying a node that used up maxVisits grants it that many attempts more`() {
+        var run = running()
+        repeat(specify.maxVisits) { run = run.nodeStarted(specify, now).nodeFailed("specify", "agent stopped", now) }
+        assertThatThrownBy { run.nodeStarted(specify, now) }.hasMessageContaining("maxVisits")
+        val retried = run.failed(RunFailure("specify", "node specify exceeded maxVisits=${specify.maxVisits}"), now).retry(now)
+        assertThat(retried.extraVisits).containsEntry("specify", specify.maxVisits)
+        assertThat(retried.visitLimit(specify)).isEqualTo(2 * specify.maxVisits)
+        assertThat(retried.nodeStarted(specify, now).nodes.last().attempt).isEqualTo(specify.maxVisits + 1)
     }
 
     @Test

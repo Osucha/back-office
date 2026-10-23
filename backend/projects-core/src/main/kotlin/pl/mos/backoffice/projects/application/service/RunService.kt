@@ -161,7 +161,13 @@ class RunService(
         if (run.status != RunStatus.FAILED) throw InvalidStateException("run $runId is ${run.status}; only FAILED runs can be retried")
         val fromNode = run.retryNodeId() ?: throw InvalidStateException("run $runId has no node to retry from")
         val retried = runs.save(run.retry(clock.now()))
-        audit.record(AuditEntry("RUN_RETRY", ENTITY, runId.toString(), projectId = run.projectId.value, details = mapOf("fromNode" to fromNode)))
+        val granted = (retried.extraVisits[fromNode] ?: 0) - (run.extraVisits[fromNode] ?: 0)
+        audit.record(
+            AuditEntry(
+                "RUN_RETRY", ENTITY, runId.toString(), projectId = run.projectId.value,
+                details = mapOf("fromNode" to fromNode) + (if (granted > 0) mapOf("extraVisits" to granted) else emptyMap()),
+            ),
+        )
         engine.retry(retried, fromNode)
         return retried
     }
