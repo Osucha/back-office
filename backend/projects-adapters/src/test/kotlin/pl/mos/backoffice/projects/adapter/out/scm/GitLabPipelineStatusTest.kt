@@ -68,6 +68,19 @@ class GitLabPipelineStatusTest {
     }
 
     @Test
+    fun `a branch without its own pipeline reports the pipeline of its open merge request`() {
+        json("/projects/group%2Fapp/pipelines?ref=develop&sha=abc&per_page=1&order_by=id&sort=desc", "[]")
+        json("/projects/group%2Fapp/merge_requests?source_branch=develop&state=opened&per_page=1&order_by=updated_at&sort=desc", """[{"iid":7}]""")
+        json("/projects/group%2Fapp/pipelines?ref=refs%2Fmerge-requests%2F7%2Fhead&sha=abc&per_page=1&order_by=id&sort=desc",
+            """[{"id":43,"status":"success","web_url":"http://gitlab/p/43"}]""")
+
+        val report = status.latest(repository, connection, "develop", "abc")
+
+        assertThat(report.state).isEqualTo(PipelineState.SUCCESS)
+        assertThat(report.id).isEqualTo(43)
+    }
+
+    @Test
     fun `running, successful and missing pipelines, and an unreachable host`() {
         json("/projects/group%2Fapp/pipelines?ref=bo%2F1&per_page=1&order_by=id&sort=desc", """[{"id":5,"status":"running"}]""")
         assertThat(status.latest(repository, connection, "bo/1", null).state).isEqualTo(PipelineState.RUNNING)

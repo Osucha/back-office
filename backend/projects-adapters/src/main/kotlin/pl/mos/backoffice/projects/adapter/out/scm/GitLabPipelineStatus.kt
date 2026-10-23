@@ -19,7 +19,8 @@ import java.nio.charset.StandardCharsets
 import java.time.Duration
 
 /**
- * ADR 0052: the latest GitLab pipeline of a branch, read-only (`GET /projects/:path/pipelines?ref=&sha=`, its failed
+ * ADR 0052: the latest GitLab pipeline of a branch, or of the open merge request from it when the CI runs only for merge
+ * requests, read-only (`GET /projects/:path/pipelines?ref=&sha=`, its failed
  * jobs and their traces). Failed jobs that may fail (`allow_failure`) are left out; each log is reduced to its last
  * [LOG_TAIL_LINES] lines without ANSI colours, so the report fits a prompt.
  */
@@ -35,8 +36,9 @@ class GitLabPipelineStatus(
         val token = cipher.open(connection.secret, ScmConnection.secretAssociatedData(connection.id))
         val at = GitLabScmProbe.RepoLocation.of(repository.url)
         val project = "/projects/${encode(at.path)}"
-        val query = "ref=${encode(ref)}" + (sha?.let { "&sha=${encode(it)}" } ?: "") + "&per_page=1&order_by=id&sort=desc"
-        val pipeline = get(at, token, "$project/pipelines?$query")?.takeIf { it.isArray && it.size() > 0 }?.get(0)
+        val pipeline = newest(at, token, project, ref, sha)
+            // a CI that runs only for merge requests: the pipeline of the open merge request from this branch
+            ?: openMergeRequest(at, token, project, ref)?.let { iid -> newest(at, token, project, "refs/merge-requests/$iid/head", sha) }
         if (pipeline == null) {
             PipelineReport(PipelineState.NONE)
         } else {
@@ -50,6 +52,15 @@ class GitLabPipelineStatus(
         log.info("pipeline of {} on {} not readable: {}", ref, repository.url, e.toString())
         PipelineReport(PipelineState.NONE)
     }
+
+    private fun newest(at: GitLabScmProbe.RepoLocation, token: String, project: String, ref: String, sha: String?): JsonNode? {
+        val query = "ref=${encode(ref)}" + (sha?.let { "&sha=${encode(it)}" } ?: "") + "&per_page=1&order_by=id&sort=desc"
+        return get(at, token, "$project/pipelines?$query")?.takeIf { it.isArray && it.size() > 0 }?.get(0)
+    }
+
+    private fun openMergeRequest(at: GitLabScmProbe.RepoLocation, token: String, project: String, branch: String): Long? =
+        get(at, token, "$project/merge_requests?source_branch=${encode(branch)}&state=opened&per_page=1&order_by=updated_at&sort=desc")
+            ?.takeIf { it.isArray && it.size() > 0 }?.get(0)?.path("iid")?.asLong()
 
     private fun failedJobs(at: GitLabScmProbe.RepoLocation, token: String, project: String, pipelineId: Long): List<FailedJob> {
         val jobs = get(at, token, "$project/pipelines/$pipelineId/jobs?scope[]=failed&per_page=100") ?: return emptyList()
