@@ -9,7 +9,7 @@ const fields: RunInputField[] = [
   { name: 'input', label: 'Input material', type: 'MULTILINE', required: false, help: 'Notes' },
 ];
 
-describe('StartRunInputsComponent (ADR 0052)', () => {
+describe('StartRunInputsComponent (ADR 0053)', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {

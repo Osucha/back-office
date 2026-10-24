@@ -10,7 +10,7 @@ import pl.mos.backoffice.shared.tasks.TaskCatalog
 import java.util.UUID
 
 /**
- * The run start form of a workflow (ADR 0052): library tasks declare run inputs, a workflow asks for the union of
+ * The run start form of a workflow (ADR 0053): library tasks declare run inputs, a workflow asks for the union of
  * the inputs of its task steps. The START node declares nothing of its own.
  */
 object RunInputs {

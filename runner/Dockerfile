@@ -33,8 +33,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
+# Behind a TLS-inspecting proxy pass its root certificate as the BuildKit secret extra_ca (compose: BO_EXTRA_CA_FILE).
+# with-extra-ca trusts it for curl, git, uv and npm in that one RUN only; it is never stored in the image.
+COPY with-extra-ca /usr/local/bin/with-extra-ca
+
 # Temurin JDK 21 (Adoptium apt repo) + Node 22 (NodeSource) ---------------------------------------
-RUN install -d -m 0755 /etc/apt/keyrings \
+RUN \
+    --mount=type=secret,id=extra_ca,required=false --mount=type=tmpfs,target=/run/ca \
+    . /usr/local/bin/with-extra-ca \
+    && install -d -m 0755 /etc/apt/keyrings \
     && curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(. /etc/os-release && echo $VERSION_CODENAME) main" > /etc/apt/sources.list.d/adoptium.list \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -47,18 +54,30 @@ RUN install -d -m 0755 /etc/apt/keyrings \
 ENV JAVA_HOME=/usr/lib/jvm/default-jdk
 
 # uv (Astral) at a fixed, root-owned path -----------------------------------------------------------
-RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
+RUN \
+    --mount=type=secret,id=extra_ca,required=false --mount=type=tmpfs,target=/run/ca \
+    . /usr/local/bin/with-extra-ca \
+    && curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \
     && uv --version
 
 # Coding agents ------------------------------------------------------------------------------------
-RUN npm install -g --no-fund --no-audit "opencode-ai@${OPENCODE_VERSION}" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+RUN \
+    --mount=type=secret,id=extra_ca,required=false --mount=type=tmpfs,target=/run/ca \
+    . /usr/local/bin/with-extra-ca \
+    && npm install -g --no-fund --no-audit "opencode-ai@${OPENCODE_VERSION}" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    # npm skips a failed optional dependency silently (the native Claude Code binary, large, behind a proxy): install it explicitly
+    && (claude --version || npm install -g --no-fund --no-audit \
+        "@anthropic-ai/claude-code-linux-$(case "$(uname -m)" in aarch64) echo arm64 ;; *) echo x64 ;; esac)@${CLAUDE_CODE_VERSION}") \
     && npm cache clean --force \
     && opencode --version && claude --version
 
 # Spec Kit CLI (specify) ---------------------------------------------------------------------------
 ENV UV_TOOL_DIR=/opt/uv/tools \
     UV_TOOL_BIN_DIR=/usr/local/bin
-RUN uv tool install "specify-cli" --from "git+https://github.com/github/spec-kit.git@${SPEC_KIT_REF}" \
+RUN \
+    --mount=type=secret,id=extra_ca,required=false --mount=type=tmpfs,target=/run/ca \
+    . /usr/local/bin/with-extra-ca \
+    && uv tool install "specify-cli" --from "git+https://github.com/github/spec-kit.git@${SPEC_KIT_REF}" \
     && rm -rf /root/.cache/uv \
     && specify --help >/dev/null
 

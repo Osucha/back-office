@@ -20,12 +20,12 @@ class SeedTaskLibraryServiceTest {
     fun `seeds the documented library once and never twice`() {
         val first = service.seed()
         assertThat(first.interfacesCreated).isEqualTo(9)
-        assertThat(first.templatesCreated).isEqualTo(24)
+        assertThat(first.templatesCreated).isEqualTo(26)
         assertThat(first.skillsCreated).isEqualTo(12)
 
         val second = service.seed()
         assertThat(second.total).isZero()
-        assertThat(lib.templates.rows).hasSize(24)
+        assertThat(lib.templates.rows).hasSize(26)
         assertThat(lib.interfaces.findAll().map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.interfaceKeys)
         assertThat(lib.templates.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.templateKeys)
         assertThat(lib.skills.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.skillKeys)
@@ -40,7 +40,7 @@ class SeedTaskLibraryServiceTest {
 
         val result = service.seed()
 
-        assertThat(result.templatesCreated).isEqualTo(23)
+        assertThat(result.templatesCreated).isEqualTo(25)
         assertThat(result.skillsCreated).isEqualTo(11)
         assertThat(result.templatesUpgraded + result.skillsUpgraded).describedAs("entries that are not built-in are never upgraded").isZero()
         assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!.name).isEqualTo("My review")
@@ -202,7 +202,7 @@ class SeedTaskLibraryServiceTest {
         val plan = resolvedPlan.prompt.user!!
         val tasks = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_TASKS, null)!!.prompt.user!!
         assertThat(plan).doesNotContain("{{artifacts.spec}}").contains("{{feedback}}")
-        // ADR 0052: the technical hints are a declared run input, rendered in the inherited "Run input" section
+        // ADR 0053: the technical hints are a declared run input, rendered in the inherited "Run input" section
         assertThat(resolvedPlan.runInputs.map { it.name }).contains("techHints")
         assertThat(resolvedPlan.prompt.system).contains("{{runInputText}}")
         assertThat(tasks).doesNotContain("{{artifacts.plan}}").contains("{{feedback}}")

@@ -35,7 +35,7 @@ interface ManageWorkflows {
     /** ADR 0050: the model of every task step of a workflow and whether the caller can use it (`project.view`). */
     fun modelPlan(id: WorkflowDefinitionId): List<StepModelPlan>
 
-    /** ADR 0052: the effective run inputs of a workflow for the start dialog, the union over its task steps (`project.view`). */
+    /** ADR 0053: the effective run inputs of a workflow for the start dialog, the union over its task steps (`project.view`). */
     fun runInputs(id: WorkflowDefinitionId): List<RunInputField>
 
     /** ADR 0050: the models a step of the project may use, usable ones first, with route and reason (`project.view`). */

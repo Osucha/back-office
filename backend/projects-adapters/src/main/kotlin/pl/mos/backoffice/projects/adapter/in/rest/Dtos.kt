@@ -151,7 +151,7 @@ data class ModelOptionDto(
     }
 }
 
-/** `RunInputField` schema (ADR 0052): one field of a workflow's run start form. */
+/** `RunInputField` schema (ADR 0053): one field of a workflow's run start form. */
 data class RunInputFieldDto(val name: String, val label: String, val type: String, val required: Boolean, val help: String?) {
     companion object {
         fun of(f: pl.mos.backoffice.shared.tasks.RunInputField) = RunInputFieldDto(f.name, f.label, f.type.name, f.required, f.help)

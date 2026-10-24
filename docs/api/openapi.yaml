@@ -1091,7 +1091,7 @@ paths:
       tags: [runs]
       operationId: startRun
       description: >-
-        ADR 0052: the declared run inputs of the workflow (`GET /workflows/{workflowId}/run-inputs`) are checked here,
+        ADR 0053: the declared run inputs of the workflow (`GET /workflows/{workflowId}/run-inputs`) are checked here,
         for interactive and API-token calls alike: a required input that is missing or blank, or any declared input
         longer than 20 000 characters, is rejected with a validation problem naming the field. Undeclared parameters
         are kept. The value of an `ISSUE_KEY` input becomes the run's issue key unless `issueKey` is given.
@@ -1105,7 +1105,7 @@ paths:
       tags: [workflows]
       operationId: getWorkflowRunInputs
       description: >-
-        ADR 0052: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its
+        ADR 0053: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its
         task steps (required when any step requires it, the first label wins). Needs project.view, like reading the workflow.
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RunInputField' } } } } }
@@ -2741,6 +2741,8 @@ components:
           properties:
             signal: { type: string, pattern: '^[a-z][a-z0-9-]{0,39}$', example: tests }
             timeoutSeconds: { type: integer, nullable: true }
+            watchPipeline: { type: boolean, nullable: true, description: 'ADR 0052: Back Office watches the pipeline of the run''s branch itself with the project''s CI_READ token and delivers the signal when it finished; a failure passes the failed jobs and their log tails to the next step as feedback' }
+            repository: { type: string, nullable: true, description: repository key whose pipeline is watched; omitted = the primary repository }
         end:
           type: object
           nullable: true
@@ -2767,8 +2769,9 @@ components:
         JIRA_TRANSITION is used by the project's Jira intake watcher (ADR 0033): with `status`, an issue entering that status
         starts a run with its `issueKey`; without, a new issue matching the project's JQL does.
       properties:
-        type: { type: string, enum: [MANUAL, JIRA_TRANSITION, API, CI] }
+        type: { type: string, enum: [MANUAL, JIRA_TRANSITION, API, CI, SCHEDULE] }
         status: { type: string, nullable: true }
+        intervalMinutes: { type: integer, nullable: true, minimum: 5, description: "SCHEDULE (ADR 0052): start every that many minutes after the latest run began, never while a run of the workflow is active; the run gets the parameter since (when the previous run started)" }
     WorkflowDefinitionInput:
       type: object
       required: [name, nodes, edges]
@@ -3061,7 +3064,7 @@ components:
     StartRunRequest:
       type: object
       description: >-
-        Declared run inputs (ADR 0052) go into `parameters` by name. On REST starts a required declared input that is
+        Declared run inputs (ADR 0053) go into `parameters` by name. On REST starts a required declared input that is
         missing or blank, or a declared input longer than 20 000 characters, is rejected with a validation problem.
       properties:
         issueKey: { type: string, nullable: true }
@@ -3155,7 +3158,7 @@ components:
         workflowId: { type: string, format: uuid }
         workflowName: { type: string }
         workflowVersion: { type: integer }
-        trigger: { type: object, properties: { type: { type: string, enum: [MANUAL, API, CI, JIRA] }, ciExecutionId: { type: string, format: uuid, nullable: true } } }
+        trigger: { type: object, properties: { type: { type: string, enum: [MANUAL, API, CI, JIRA, SCHEDULE] }, ciExecutionId: { type: string, format: uuid, nullable: true } } }
         issueKey: { type: string, nullable: true }
         status: { $ref: '#/components/schemas/RunStatus' }
         outcome: { $ref: '#/components/schemas/RunOutcome' }
@@ -3425,7 +3428,7 @@ components:
     # ---- task library
     TaskExecutor:
       type: string
-      enum: [LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE]
+      enum: [LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST]
     Scope:
       type: object
       required: [type]
@@ -3487,11 +3490,11 @@ components:
         produces: { type: array, items: { type: string } }
         consumes: { type: array, items: { type: string } }
         tags: { type: array, items: { type: string } }
-        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: 'Run inputs this task asks for when a run starts (ADR 0052); inherited child-wins by name' }
+        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: 'Run inputs this task asks for when a run starts (ADR 0053); inherited child-wins by name' }
         sandboxPolicy: { $ref: '#/components/schemas/SandboxPolicy' }
     RunInputField:
       type: object
-      description: A field of the run start form declared by a library task (ADR 0052).
+      description: A field of the run start form declared by a library task (ADR 0053).
       required: [name, label, type, required]
       properties:
         name: { type: string, description: key of the value in the run parameters }
@@ -3527,7 +3530,7 @@ components:
         interfaces: { type: array, items: { type: string } }
         lineage: { type: array, items: { type: string } }
         ports: { type: array, items: { type: string } }
-        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0052) }
+        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0053) }
         abstract: { type: boolean }
         interfaceCheck: { type: object, properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
     SkillInput:

@@ -24,7 +24,7 @@ import java.time.Instant
  * Every agent template extends one of the two; the generic `llm-task` and `agent-task` stand alone.
  *
  * Prompts use the executor placeholders `{{project.constitution}}`, `{{issue.*}}`, `{{artifacts.*}}`,
- * `{{runInputText}}` (ADR 0052: the run inputs the task declares; `base-agent`, `llm-task` and `agent-task` render them as
+ * `{{runInputText}}` (ADR 0053: the run inputs the task declares; `base-agent`, `llm-task` and `agent-task` render them as
  * a "Run input" section), `{{input.ci.*}}` and `{{feedback}}` (docs/architecture/03-pipelines-and-agents.md), and
  * sections `{{#path}}...{{/path}}` so that empty values (no issue, no review yet, no feedback) leave no empty
  * headings behind. `{{feedback}}` holds only the revision comments given for the step that renders it.
@@ -60,6 +60,8 @@ object BuiltInLibrary {
     const val ANALYSE_ISSUE = "analyse-issue"
     const val NOTIFY_JIRA = "notify-jira"
     const val TRANSITION_ISSUE = "transition-issue"
+    const val START_WORKFLOW = "start-workflow"
+    const val PROJECT_DIGEST = "project-digest"
 
     /** Generic LLM task of projects without repositories (ADR 0034): the prompt is written in the designer. */
     const val LLM_TASK = "llm-task"
@@ -115,7 +117,7 @@ object BuiltInLibrary {
         BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
         IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, LLM_TASK,
         AGENT_TASK,
-        PREPARE_WORKSPACE,
+        PREPARE_WORKSPACE, PROJECT_DIGEST, START_WORKFLOW,
     ) + sdlcTemplateKeys
     val skillKeys = listOf(SPEC_WRITING, KOTLIN_HEXAGONAL, CONVENTIONAL_COMMITS, SECURITY_REVIEW_CHECKLIST, ANGULAR_NG_ZORRO) + sdlcSkillKeys
 
@@ -280,6 +282,20 @@ object BuiltInLibrary {
             runInputs = listOf(ISSUE_KEY_INPUT),
         )),
         template(now, TaskTemplate.Content(
+            key = PROJECT_DIGEST, name = "Project digest", executor = TaskExecutor.PROJECT_DIGEST,
+            description = "Writes what happened in the project since the run parameter since (ADR 0052): runs of other workflows with " +
+                "outcome, duration and cost, repeated and failed steps, gate decisions, and the latest pipelines of pipelineRefs. Produces digest.",
+            config = mapOf("maxRuns" to 20, "pipelineRefs" to "develop,main"),
+            produces = listOf("digest"), tags = listOf("workflow", "retrospective"),
+        )),
+        template(now, TaskTemplate.Content(
+            key = START_WORKFLOW, name = "Start workflow", executor = TaskExecutor.START_WORKFLOW,
+            description = "Starts another workflow of the project (ADR 0052), right after a human gate: one run per entry of a JSON " +
+                "artefact (for example accepted proposals), with the entry's fields as run parameters. Produces started-runs.",
+            config = mapOf("workflow" to "", "parametersFrom" to "proposals", "selection" to "DECISION"),
+            produces = listOf("started-runs"), tags = listOf("workflow"),
+        )),
+        template(now, TaskTemplate.Content(
             key = LLM_TASK, name = "LLM task", executor = TaskExecutor.LLM,
             description = "Generic LLM work without a repository (ADR 0034): replace the user prompt in the designer with the task; " +
                 "the run input material is what it works on and revision comments come back as feedback (both in the system prompt). " +
@@ -391,8 +407,14 @@ object BuiltInLibrary {
     /** Line the work log ends with when every task, including the final full test run, passed. */
     const val WORK_LOG_GREEN = "RESULT: GREEN"
 
-    /** verifyCommand of `implement-task-list`: the step fails unless the work log ends with [WORK_LOG_GREEN]. */
-    const val WORK_LOG_VERIFY_COMMAND = "tail -n 3 $WORK_LOG_FILE | grep -q \"^$WORK_LOG_GREEN\""
+    /**
+     * ADR 0052: every check the sandbox can run passed, the rest (tests that need Docker, the real pipeline) is left to
+     * CI. A workflow follows it with a pipeline watch, so the step succeeds.
+     */
+    const val WORK_LOG_PARTIAL = "RESULT: PARTIAL"
+
+    /** verifyCommand of `implement-task-list`: the step fails unless the work log ends with [WORK_LOG_GREEN] or [WORK_LOG_PARTIAL]. */
+    const val WORK_LOG_VERIFY_COMMAND = "tail -n 3 $WORK_LOG_FILE | grep -qE \"^($WORK_LOG_GREEN|$WORK_LOG_PARTIAL)\""
 
     private fun template(now: Instant, content: TaskTemplate.Content) = TaskTemplate.create(content, now, builtIn = true, actor = Actor.SYSTEM)
 
@@ -453,6 +475,8 @@ object BuiltInLibrary {
                     else -> name in schemaFields || WHOLE_ANSWER_ARTIFACTS[key] == name
                 }
                 TaskExecutor.NOTIFY, TaskExecutor.TRANSITION_ISSUE -> false
+                TaskExecutor.START_WORKFLOW -> name == "started-runs"
+                TaskExecutor.PROJECT_DIGEST -> name == "digest"
                 else -> name in executorOutputs || name in collected
             }
             if (backed) null else "$key: produces \"$name\", but neither its output schema, its collectArtifacts nor its executor ($executor) provides it"
@@ -573,7 +597,7 @@ object BuiltInLibrary {
         {{/artifacts.review}}
     """.trimIndent()
 
-    // ----- run inputs (ADR 0052) -----------------------------------------------------------------------
+    // ----- run inputs (ADR 0053) -----------------------------------------------------------------------
 
     /** The free-text box of the start dialog: material an agent step works on. */
     val INPUT_MATERIAL = RunInputField(
@@ -1147,6 +1171,11 @@ object BuiltInLibrary {
            the entire test suite; its test_command runs the full suite. Set `finalTaskTitle` to exactly
            that title.
         5. Do not add tasks for work the issue, the plan and the impact analysis do not ask for.
+        6. The agent works in a sandbox: no Docker daemon (Testcontainers and `docker` commands cannot
+           run there), network only to package registries and the repository host. A `test_command` must
+           run there; when a check needs Docker or the real CI (integration tests, image builds, the
+           pipeline itself), give a sandbox-runnable command (unit tests, compile, lint) and name the
+           CI-only part in `verification` as "confirmed by CI".
     """.trimIndent()
 
     /** The planner gets whatever the run has: the approved impact analysis (change requests), a plan, the user story. */
@@ -1168,6 +1197,13 @@ object BuiltInLibrary {
         ## User story
         {{artifacts.user-story}}
         {{/artifacts.user-story}}
+        {{#feedback}}
+        {{#artifacts.tasks}}
+
+        ## Your previous task list (revise it: keep what the feedback does not question)
+        {{artifacts.tasks}}
+        {{/artifacts.tasks}}
+        {{/feedback}}
 
     """.trimIndent() + "\n" + FEEDBACK_SECTION
 
@@ -1215,9 +1251,13 @@ object BuiltInLibrary {
         changed (files), the test_command and its result, and the decisions you made. Then add a section
         "Noticed out of scope": problems you saw outside the tasks (bugs, stale docs, risky code), with
         file paths; do NOT fix them. The last line of the work log is exactly `$WORK_LOG_GREEN` when every
-        task passed, including the final "$FINAL_TASK_TITLE" task that runs the full suite, and
-        `RESULT: STOPPED at <task title>` otherwise. This step's verifyCommand checks that line, so a STOP
-        fails the step.
+        task passed, including the final "$FINAL_TASK_TITLE" task that runs the full suite;
+        `$WORK_LOG_PARTIAL` when every check this sandbox can run passed and only checks that need what
+        the sandbox does not have are left (it has no Docker daemon, so Testcontainers tests and image
+        builds run only in CI): then list those checks under "Left to CI" with the commands CI runs; and
+        `RESULT: STOPPED at <task title>` otherwise. Never use PARTIAL to hide a failure you could see
+        here. This step's verifyCommand checks that line, so a STOP fails the step; after PARTIAL the
+        workflow waits for the real pipeline and sends you its failures.
 
         When the latest review findings are given below, first fix every BLOCKER and MAJOR finding and
         every MISSING requirement (as extra tasks before the final one), then run the final task again;

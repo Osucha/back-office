@@ -49,7 +49,7 @@ data class TaskResolution(
     val interfaceCheck: InterfaceCheck,
     /** Version of the leaf template. */
     val version: Int? = null,
-    /** Run inputs merged root to leaf, child-wins by name (ADR 0052). */
+    /** Run inputs merged root to leaf, child-wins by name (ADR 0053). */
     val runInputs: List<RunInputField> = emptyList(),
 ) {
     /** True when an executor can run this: concrete, has an executor, all interfaces satisfied. */

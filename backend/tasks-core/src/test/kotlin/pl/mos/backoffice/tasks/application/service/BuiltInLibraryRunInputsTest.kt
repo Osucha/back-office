@@ -9,7 +9,7 @@ import pl.mos.backoffice.tasks.domain.service.TaskResolver
 import pl.mos.backoffice.tasks.support.Library
 import java.time.Instant
 
-/** ADR 0052: the built-ins declare the run inputs they read, and their prompts show them as a "Run input" list. */
+/** ADR 0053: the built-ins declare the run inputs they read, and their prompts show them as a "Run input" list. */
 class BuiltInLibraryRunInputsTest {
 
     private val now = Instant.parse("2026-10-24T10:00:00Z")

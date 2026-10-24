@@ -5,6 +5,7 @@ import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
 import pl.mos.backoffice.projects.application.port.`in`.RetryRun
 import pl.mos.backoffice.projects.application.port.`in`.RunQueries
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
+import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.RunFilter
@@ -38,6 +39,7 @@ import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.PublicOperation
 import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.tasks.TaskCatalog
@@ -45,6 +47,7 @@ import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
 import pl.mos.backoffice.shared.usage.PageOf
 import java.time.Instant
+import java.util.UUID
 
 /**
  * Implements [StartRun] and [RetryRun] (`run.start`), [CancelRun] (`run.cancel`) and [RunQueries]
@@ -71,9 +74,11 @@ class RunService(
     private val specKitSteps: pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck? = null,
     /** ADR 0050: refuses runs whose step has no model the starting user can use; null = not checked. */
     private val modelSteps: pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck? = null,
-    /** ADR 0052: resolves the run inputs the workflow's tasks declare for [startChecked]; null = not checked. */
+    /** ADR 0052: who a schedule or a "Start workflow" step starts runs for; null = such starts are refused. */
+    private val directory: ProjectAccessDirectory? = null,
+    /** ADR 0053: resolves the run inputs the workflow's tasks declare for [startChecked]; null = not checked. */
     private val runInputs: TaskCatalog? = null,
-) : StartRun, CancelRun, RetryRun, RunQueries {
+) : StartRun, StartRunOnBehalf, CancelRun, RetryRun, RunQueries {
 
     override fun start(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource): WorkflowRun {
         val definition = loadDefinition(workflowId)
@@ -96,6 +101,17 @@ class RunService(
         val definition = loadDefinition(workflowId)
         val actor = gate.require(ProjectsPermissions.CI_EXECUTE, definition.projectId.value).actor
         return launch(definition, RunTrigger(TriggerSource.CI, executionId), input, initialArtifacts, actor)
+    }
+
+    @SystemOperation("schedules and Start workflow steps (ADR 0052); the person they act for must hold run.start")
+    override fun startOnBehalf(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource, onBehalfOf: UUID?): WorkflowRun {
+        val definition = loadDefinition(workflowId)
+        val user = onBehalfOf?.let { directory?.user(it) }
+            ?: throw InvalidStateException("workflow ${definition.name} cannot start: there is no user to start it on behalf of")
+        if (!user.can(ProjectsPermissions.RUN_START, definition.projectId.value)) {
+            throw InvalidStateException("workflow ${definition.name} cannot start: ${user.displayName} may not start runs in this project")
+        }
+        return launch(definition, RunTrigger(source), input, emptyList(), user.actor)
     }
 
     /**

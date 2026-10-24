@@ -18,7 +18,7 @@ data class WorkflowValidationResult(val errors: List<ValidationIssue>, val warni
 /**
  * What the validator needs to know about a task template: its output ports, whether it is abstract,
  * whether it can push to the repository (runner-backed `IMPLEMENT` / `SPEC_KIT` with `push` not false), the run
- * inputs it declares and, for Jira reads, the template's `issueKeyFrom` setting (ADR 0052).
+ * inputs it declares and, for Jira reads, the template's `issueKeyFrom` setting (ADR 0053).
  */
 data class TaskTemplateInfo(
     val ports: List<String>,
@@ -109,7 +109,7 @@ class WorkflowValidator {
     }
 
     /**
-     * ADR 0052, warnings only: a step that reads the issue key from a run parameter (`issueKeyFrom`) that no task of
+     * ADR 0053, warnings only: a step that reads the issue key from a run parameter (`issueKeyFrom`) that no task of
      * the workflow declares gets no field for it in the start form; two tasks that declare the same run input with
      * different labels show only the first label.
      */

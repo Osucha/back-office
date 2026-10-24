@@ -31,7 +31,7 @@ const audience: RunInputField = {
   required: true,
 };
 
-describe('run inputs (ADR 0052)', () => {
+describe('run inputs (ADR 0053)', () => {
   it('reports blank required fields and values over the limit', () => {
     expect(runInputErrors([issue, input, audience], { issueKey: '  ', input: '' })).toEqual({
       issueKey: 'required',

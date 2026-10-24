@@ -59,7 +59,7 @@ data class GateSectionJson(
     val approvers: GateApproversJson? = null,
     val checklist: List<ChecklistItemJson> = emptyList(),
 )
-data class CiSectionJson(val signal: String = "", val timeoutSeconds: Long? = null)
+data class CiSectionJson(val signal: String = "", val timeoutSeconds: Long? = null, val watchPipeline: Boolean? = null, val repository: String? = null)
 data class EndSectionJson(val outcome: String = "SUCCESS")
 data class NoteSectionJson(val text: String = "")
 
@@ -79,7 +79,7 @@ data class WorkflowNodeJson(
 )
 
 data class WorkflowEdgeJson(val id: String = "", val from: String = "", val fromPort: String = "", val to: String = "", val label: String? = null)
-data class TriggerJson(val type: String = "MANUAL", val status: String? = null)
+data class TriggerJson(val type: String = "MANUAL", val status: String? = null, val intervalMinutes: Int? = null)
 
 /** A whole workflow as `WorkflowDefinitionInput` in openapi.yaml: what the MCP tools read and write (ADR 0049). */
 data class WorkflowDocumentJson(
@@ -132,7 +132,10 @@ object WorkflowJson {
             }
             NodeKind.WAIT_FOR_CI -> {
                 val ci = n.ci ?: throw ValidationException("ci section is required for WAIT_FOR_CI nodes", "nodes.$id.ci")
-                WorkflowNode.WaitForCi(id, name, position, n.timeoutSeconds, n.maxVisits, CiWaitSpec(ci.signal.trim(), ci.timeoutSeconds))
+                WorkflowNode.WaitForCi(
+                    id, name, position, n.timeoutSeconds, n.maxVisits,
+                    CiWaitSpec(ci.signal.trim(), ci.timeoutSeconds, ci.watchPipeline == true, ci.repository?.trim()?.takeIf { it.isNotEmpty() }),
+                )
             }
             NodeKind.NOTE -> WorkflowNode.Note(id, name, position, n.timeoutSeconds, n.maxVisits, NoteSpec(n.note?.text ?: ""))
         }
@@ -145,7 +148,7 @@ object WorkflowJson {
         gate = (n as? WorkflowNode.HumanGate)?.let {
             GateSectionJson(it.gate.question, it.gate.options, it.gate.showArtifacts, it.gate.timeoutSeconds, toJson(it.gate.approvers), it.gate.checklist.map(::toJson))
         },
-        ci = (n as? WorkflowNode.WaitForCi)?.let { CiSectionJson(it.ci.signal, it.ci.timeoutSeconds) },
+        ci = (n as? WorkflowNode.WaitForCi)?.let { CiSectionJson(it.ci.signal, it.ci.timeoutSeconds, it.ci.watchPipeline.takeIf { w -> w }, it.ci.repository) },
         end = (n as? WorkflowNode.End)?.let { EndSectionJson(it.end.outcome.name) },
         note = (n as? WorkflowNode.Note)?.let { NoteSectionJson(it.note.text) },
     )
@@ -179,8 +182,8 @@ object WorkflowJson {
     fun toDomain(e: WorkflowEdgeJson) = WorkflowEdge(e.id.trim().ifBlank { "${e.from}-${e.fromPort}-${e.to}" }, e.from.trim(), e.fromPort.trim(), e.to.trim(), e.label?.takeIf { it.isNotBlank() })
     fun toJson(e: WorkflowEdge) = WorkflowEdgeJson(e.id, e.from, e.fromPort, e.to, e.label)
 
-    fun toDomain(t: TriggerJson) = Trigger(enum<TriggerType>(t.type, "triggers.type"), t.status?.takeIf { it.isNotBlank() })
-    fun toJson(t: Trigger) = TriggerJson(t.type.name, t.status)
+    fun toDomain(t: TriggerJson) = Trigger(enum<TriggerType>(t.type, "triggers.type"), t.status?.takeIf { it.isNotBlank() }, t.intervalMinutes)
+    fun toJson(t: Trigger) = TriggerJson(t.type.name, t.status, t.intervalMinutes)
 
     fun toDomain(c: CanvasJson?) = c?.let { Canvas(it.zoom, it.x, it.y) }
     fun toJson(c: Canvas?) = c?.let { CanvasJson(it.zoom, it.x, it.y) }

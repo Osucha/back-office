@@ -9,18 +9,18 @@ import java.util.UUID
  * Library context only stores the value. `LLM` is a single structured model call in-process, `SPEC_KIT`
  * and `IMPLEMENT` run in the agent runner, the rest are integrations.
  */
-enum class TaskExecutor { LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE }
+enum class TaskExecutor { LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST }
 
 /** A reusable prompt fragment / Agent Skill attached to a task (docs/architecture/07-task-library.md). */
 data class SkillSnapshot(val key: String, val name: String, val content: String)
 
 data class TaskPrompt(val system: String?, val user: String?)
 
-/** How the run start form shows a [RunInputField]; `ISSUE_KEY` values become the run's issue key (ADR 0052). */
+/** How the run start form shows a [RunInputField]; `ISSUE_KEY` values become the run's issue key (ADR 0053). */
 enum class RunInputType { TEXT, MULTILINE, ISSUE_KEY }
 
 /**
- * A field of the run start form declared by a library task (ADR 0052). [name] is the key of the value in the run
+ * A field of the run start form declared by a library task (ADR 0053). [name] is the key of the value in the run
  * parameters; a workflow's form is the union of the fields of its task steps.
  */
 data class RunInputField(
@@ -87,7 +87,7 @@ data class ResolvedTask(
     val ports: List<String>,
     /** Version of the concrete (leaf) template, recorded in provenance attestations. */
     val version: Int? = null,
-    /** Run start form fields this task asks for, merged over the lineage (ADR 0052). */
+    /** Run start form fields this task asks for, merged over the lineage (ADR 0053). */
     val runInputs: List<RunInputField> = emptyList(),
 )
 

@@ -432,6 +432,7 @@ services:
     build:
       context: ../../runner
       dockerfile: Dockerfile
+      secrets: [extra_ca]
     image: back-office/runner:dev
     entrypoint: ["/bin/true"]
     restart: "no"

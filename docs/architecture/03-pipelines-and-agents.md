@@ -153,7 +153,7 @@ part of the template's system prompt, so replacing the task keeps them.
 
 ### Run inputs
 
-Library tasks declare the run inputs they ask for (`runInputs`, [ADR 0052](../adr/0052-run-inputs-declared-by-tasks.md),
+Library tasks declare the run inputs they ask for (`runInputs`, [ADR 0053](../adr/0053-run-inputs-declared-by-tasks.md),
 [Task Library](07-task-library.md)). A workflow's start form is the union of the run inputs of its task steps
 (`GET /workflows/{id}/run-inputs`: required when any step requires it, the first label wins); the START node
 declares nothing and shows the list read-only. The values travel as run `parameters` by name; the value of an

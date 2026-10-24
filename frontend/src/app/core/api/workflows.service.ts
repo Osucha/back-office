@@ -76,7 +76,7 @@ export class WorkflowsApi {
     return this.http.get<StepModelPlan[]>(url('workflows', workflowId, 'model-plan'), silent());
   }
 
-  /** ADR 0052: the run inputs the workflow's task steps declare, for the start dialog. */
+  /** ADR 0053: the run inputs the workflow's task steps declare, for the start dialog. */
   runInputs(workflowId: string): Observable<RunInputField[]> {
     return this.http.get<RunInputField[]>(url('workflows', workflowId, 'run-inputs'), silent());
   }

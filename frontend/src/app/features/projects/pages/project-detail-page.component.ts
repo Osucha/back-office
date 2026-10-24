@@ -961,7 +961,7 @@ export class ProjectDetailPageComponent {
   readonly saving = signal(false);
   readonly saveError = signal<unknown>(null);
   readonly starting = signal<WorkflowDefinition | null>(null);
-  /** ADR 0052: the start dialog's form of the workflow's run inputs. */
+  /** ADR 0053: the start dialog's form of the workflow's run inputs. */
   private readonly inputForm = viewChild(RunInputFormComponent);
   readonly startingBusy = signal(false);
   /** ADR 0050: the model of every step of the workflow being started; null when it could not be loaded. */
@@ -1128,7 +1128,9 @@ export class ProjectDetailPageComponent {
               ? 'API'
               : x.type === 'CI'
                 ? 'CI'
-                : x.type,
+                : x.type === 'SCHEDULE'
+                  ? $localize`:@@projects.detail.trigger.schedule:every ${x.intervalMinutes ?? '?'}:minutes: min`
+                  : x.type,
       )
       .join(', ');
   }
@@ -1320,7 +1322,7 @@ export class ProjectDetailPageComponent {
   startRun(): void {
     const w = this.starting();
     if (!w || this.planBlocked()) return;
-    // ADR 0052: the form of the declared run inputs builds the request, or marks what is missing
+    // ADR 0053: the form of the declared run inputs builds the request, or marks what is missing
     const request = this.inputForm()?.request();
     if (!request) return;
     this.startingBusy.set(true);

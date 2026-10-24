@@ -17,7 +17,7 @@ import pl.mos.backoffice.shared.tasks.RunInputType
  * primary repository and may be null, as may `defaultBranch` / `repositoryUrl`), `repos` (the repositories of the
  * current step: key, url, path, access, purpose, baseBranch, primary), `repositoryResults` (key -> latest result),
  * `mr`, `review`, `ci` (last signal), `decision`, `input` (incl. `input.ci`), `parameters`, `run.id`, `node`,
- * `branch`, `confidence`, `lastOutcome`, and `runInput` (ADR 0052: the current task's declared run inputs that have a
+ * `branch`, `confidence`, `lastOutcome`, and `runInput` (ADR 0053: the current task's declared run inputs that have a
  * value, as `{name, label, value}` in declaration order; an `ISSUE_KEY` field falls back to the run's issue key) with
  * `runInputText`, the same list as `Label: value` paragraphs for prompts (sections cannot iterate lists).
  */

@@ -3478,7 +3478,7 @@ export interface paths {
       };
       cookie?: never;
     };
-    /** @description ADR 0052: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its task steps (required when any step requires it, the first label wins). Needs project.view, like reading the workflow. */
+    /** @description ADR 0053: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its task steps (required when any step requires it, the first label wins). Needs project.view, like reading the workflow. */
     get: operations['getWorkflowRunInputs'];
     put?: never;
     post?: never;
@@ -3499,7 +3499,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description ADR 0052: the declared run inputs of the workflow (`GET /workflows/{workflowId}/run-inputs`) are checked here, for interactive and API-token calls alike: a required input that is missing or blank, or any declared input longer than 20 000 characters, is rejected with a validation problem naming the field. Undeclared parameters are kept. The value of an `ISSUE_KEY` input becomes the run's issue key unless `issueKey` is given. */
+    /** @description ADR 0053: the declared run inputs of the workflow (`GET /workflows/{workflowId}/run-inputs`) are checked here, for interactive and API-token calls alike: a required input that is missing or blank, or any declared input longer than 20 000 characters, is rejected with a validation problem naming the field. Undeclared parameters are kept. The value of an `ISSUE_KEY` input becomes the run's issue key unless `issueKey` is given. */
     post: operations['startRun'];
     delete?: never;
     options?: never;
@@ -5735,7 +5735,7 @@ export interface components {
         system?: string | null;
         user?: string | null;
       };
-      /** @description merged run inputs of the lineage (ADR 0052) */
+      /** @description merged run inputs of the lineage (ADR 0053) */
       runInputs?: components['schemas']['RunInputField'][];
       skills?: {
         key?: string;
@@ -5767,7 +5767,7 @@ export interface components {
       permissions: string[];
       scope: components['schemas']['PermissionScope'];
     };
-    /** @description A field of the run start form declared by a library task (ADR 0052). */
+    /** @description A field of the run start form declared by a library task (ADR 0053). */
     RunInputField: {
       help?: string | null;
       label: string;
@@ -6236,7 +6236,7 @@ export interface components {
       /** @description seeded Spec Kit workflows the project lacks ("Add Spec Kit workflows") */
       missingWorkflows: string[];
     };
-    /** @description Declared run inputs (ADR 0052) go into `parameters` by name. On REST starts a required declared input that is missing or blank, or a declared input longer than 20 000 characters, is rejected with a validation problem. */
+    /** @description Declared run inputs (ADR 0053) go into `parameters` by name. On REST starts a required declared input that is missing or blank, or a declared input longer than 20 000 characters, is rejected with a validation problem. */
     StartRunRequest: {
       issueKey?: string | null;
       parameters?: {
@@ -6276,7 +6276,15 @@ export interface components {
     /** @enum {string} */
     TaskCategory: 'CODING' | 'ANALYSIS' | 'SPECIFICATION' | 'REVIEW' | 'ARCHITECTURE';
     /** @enum {string} */
-    TaskExecutor: 'LLM' | 'SPEC_KIT' | 'IMPLEMENT' | 'FETCH_ISSUE' | 'NOTIFY' | 'TRANSITION_ISSUE';
+    TaskExecutor:
+      | 'LLM'
+      | 'SPEC_KIT'
+      | 'IMPLEMENT'
+      | 'FETCH_ISSUE'
+      | 'NOTIFY'
+      | 'TRANSITION_ISSUE'
+      | 'START_WORKFLOW'
+      | 'PROJECT_DIGEST';
     TaskInterface: components['schemas']['TaskInterfaceInput'] & {
       builtIn?: boolean;
       /** Format: uuid */
@@ -6376,7 +6384,7 @@ export interface components {
       produces?: string[];
       prompt?: components['schemas']['TaskPrompt'];
       removeSkills?: string[];
-      /** @description Run inputs this task asks for when a run starts (ADR 0052); inherited child-wins by name */
+      /** @description Run inputs this task asks for when a run starts (ADR 0053); inherited child-wins by name */
       runInputs?: components['schemas']['RunInputField'][];
       sandboxPolicy?: components['schemas']['SandboxPolicy'];
       scope: components['schemas']['Scope'];
@@ -6402,9 +6410,11 @@ export interface components {
     };
     /** @description JIRA_TRANSITION is used by the project's Jira intake watcher (ADR 0033): with `status`, an issue entering that status starts a run with its `issueKey`; without, a new issue matching the project's JQL does. */
     Trigger: {
+      /** @description SCHEDULE (ADR 0052): start every that many minutes after the latest run began, never while a run of the workflow is active; the run gets the parameter since (when the previous run started) */
+      intervalMinutes?: number | null;
       status?: string | null;
       /** @enum {string} */
-      type: 'MANUAL' | 'JIRA_TRANSITION' | 'API' | 'CI';
+      type: 'MANUAL' | 'JIRA_TRANSITION' | 'API' | 'CI' | 'SCHEDULE';
     };
     UploadRequest: {
       contentType: string;
@@ -6670,9 +6680,13 @@ export interface components {
     };
     WorkflowNode: {
       ci?: {
+        /** @description repository key whose pipeline is watched; omitted = the primary repository */
+        repository?: string | null;
         /** @example tests */
         signal: string;
         timeoutSeconds?: number | null;
+        /** @description ADR 0052: Back Office watches the pipeline of the run's branch itself with the project's CI_READ token and delivers the signal when it finished; a failure passes the failed jobs and their log tails to the next step as feedback */
+        watchPipeline?: boolean | null;
       } | null;
       decision?: {
         branches: components['schemas']['DecisionBranch'][];
@@ -6798,7 +6812,7 @@ export interface components {
         /** Format: uuid */
         ciExecutionId?: string | null;
         /** @enum {string} */
-        type?: 'MANUAL' | 'API' | 'CI' | 'JIRA';
+        type?: 'MANUAL' | 'API' | 'CI' | 'JIRA' | 'SCHEDULE';
       };
       waitingOn?: {
         /** Format: uuid */

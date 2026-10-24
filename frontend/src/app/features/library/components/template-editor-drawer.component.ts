@@ -1221,7 +1221,7 @@ export class TemplateEditorDrawerComponent {
     parentCandidates(this.templates(), this.template()?.key ?? null),
   );
   readonly delta = computed(() => draftSkillDelta(this.draft(), this.preview()));
-  /** ADR 0052: the resolved run inputs and the template each comes from. */
+  /** ADR 0053: the resolved run inputs and the template each comes from. */
   readonly previewRunInputs = computed(() => {
     const pv = this.preview();
     return pv ? withOrigins(pv.runInputs, pv.lineage, this.templates()) : [];

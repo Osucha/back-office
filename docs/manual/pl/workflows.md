@@ -113,6 +113,21 @@ jest błędem walidacji, a uruchomienia nie startują. **Szablony Jiry** mają s
 **Działaj jako**: połączenie systemowe projektu, wskazane połączenie albo osoba, która zatwierdza zapis lub
 rozpoczyna uruchomienie ([Działaj jako](integrations-jira.md#jira-act-as)).
 
+Dwa szablony nie uruchamiają modelu ani agenta (ADR 0052):
+
+- **Uruchom workflow** (**Start workflow**) uruchamia inny workflow projektu, jedno uruchomienie na każdy element
+  artefaktu JSON (**Parametry z** (**Parameters from**), na przykład `proposals` napisane przez agenta), a pola
+  elementu stają się parametrami uruchomienia (`title`, `idea`, ...). Musi stać bezpośrednio za bramką: agent
+  proponuje, Ty akceptujesz, Back Office uruchamia. Przy **Wyborze** (**Selection**) `DECISION` uruchamiane są tylko
+  elementy, których numery wpiszesz w komentarzu na bramce (`1, 3`; `all` uruchamia wszystkie); przy `ALL` wszystkie.
+  Uruchomione przebiegi są wymienione w jego artefakcie `started-runs`. Przebiegi są uruchamiane w imieniu osoby, która podjęła decyzję na bramce
+  (obowiązują jej uprawnienia i osobiste profile modeli).
+- **Podsumowanie projektu** (**Project digest**) zapisuje artefakt `digest`: co działo się w projekcie od parametru
+  uruchomienia `since` (dostaje go uruchomienie z harmonogramu) - uruchomienia innych workflowów z wynikiem, czasem
+  i kosztem, kroki uruchomione więcej niż raz albo nieudane wraz z błędami, decyzje na bramkach z komentarzami oraz
+  najnowsze pipeline'y **Gałęzi pipeline'ów** (**Pipeline branches**) z nieudanymi jobami (wymaga tokenu
+  repozytorium z CI_READ). Krok agenta po nim czyta `{{artifacts.digest}}`.
+
 Prompty są szablonami: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}` (wszystkie komentarze
 z poprawek), `{{project.constitution}}`, `{{mr.url}}`. Brakująca wartość jest wstawiana jako pusta
 i dodaje ostrzeżenie do logu uruchomienia. Ponieważ węzły odwołują się do szablonów po kluczu, zmiana
@@ -125,6 +140,16 @@ Ustaw nazwę **Sygnału** (**Signal**) (na przykład `tests`) i opcjonalny **Lim
 (**Timeout (seconds)**). Twój pipeline wysyła `backoffice-ci signal tests --status success|fail`;
 uruchomienie wychodzi przez `success` lub `fail` albo przez `timeout`. Zob.
 [GitLab CI](integrations-gitlab-ci.md#ci-overview).
+
+Po włączeniu **Obserwuj pipeline** (**Watch pipeline**) Back Office sam obserwuje pipeline, a Twoje CI nic nie wysyła:
+co minutę odczytuje najnowszy pipeline gałęzi, którą uruchomienie wypchnęło (w **Repozytorium** kroku, puste = główne),
+tokenem projektu tylko do odczytu z uprawnieniem CI_READ
+([Tokeny dostępu do repozytoriów](integrations-git.md#git-project-tokens)). Gdy pipeline się powiedzie, uruchomienie
+wychodzi przez `success`; gdy się nie powiedzie, przez `fail`, a następny krok dostaje nieudane joby (poza tymi, którym
+wolno się nie udać) z ostatnimi liniami ich logów jako uwagi do poprawki. Połącz `fail` z powrotem z krokiem
+implementacji, a agent poprawi to, co zgłasza CI; **Maks. odwiedzin** kroku ogranicza pętlę. Krok implementacji, który
+kończy dziennik pracy linią `RESULT: PARTIAL` (wszystko, co dało się sprawdzić w sandboxie, przeszło, reszta wymaga
+CI), powinien stać przed takim węzłem.
 
 <a id="step-repositories"></a>
 ## Repozytoria kroku
@@ -370,6 +395,12 @@ dokumentuje, jak workflow ma być uruchamiany; trzech pierwszych Back Office nie
 `Ready for AI`) zgłoszenie, które trafi do tego statusu, uruchamia workflow ze swoim kluczem; bez statusu
 robi to nowe zgłoszenie zgodne z filtrem JQL projektu. Monitor włącza się osobno w każdym projekcie i może
 uruchamiać tylko workflow z tym wyzwalaczem ([Monitor zgłoszeń Jira](integrations-jira.md#jira-intake)).
+
+Wyzwalacz **Harmonogram** (**Schedule**, `SCHEDULE`, ADR 0052) sam uruchamia workflow **co N minut** (co najmniej
+5) od rozpoczęcia jego ostatniego uruchomienia, nigdy gdy któreś jego uruchomienie jeszcze trwa ani gdy workflow jest
+wyłączony. Uruchomienie dostaje parametr `since` (kiedy rozpoczęło się poprzednie), więc obserwator zgłasza tylko
+nowe rzeczy. Uruchomienie odbywa się w imieniu osoby, która ostatnio zapisała workflow: obowiązuje jej uprawnienie
+`run.start` i jej osobiste profile modeli, więc harmonogram może korzystać z Twojego profilu modelu z subskrypcją.
 
 Uruchomienie nie wystartuje (`409`), gdy krok Jiry w workflowie nie ma połączenia, którego mógłby użyć;
 komunikat wskazuje krok. Zapis workflowu tylko o tym ostrzega

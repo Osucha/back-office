@@ -16,6 +16,7 @@ import {
   type CanvasIssueCounts,
 } from './graph-model';
 import { gateRuleProblems } from './gate-rules';
+import { MIN_SCHEDULE_MINUTES, validScheduleInterval } from './trigger-model';
 
 export interface Issues {
   errors: ValidationIssue[];
@@ -138,6 +139,11 @@ export function validateLocally(
         {
           field: 'triggers',
         },
+      );
+    if (t.type === 'SCHEDULE' && !validScheduleInterval(t.intervalMinutes))
+      sink.err(
+        $localize`:@@workflows.validation.scheduleInterval:SCHEDULE trigger needs an interval of at least ${MIN_SCHEDULE_MINUTES}:minutes: whole minutes`,
+        { field: 'triggers' },
       );
   }
   return { valid: errors.length === 0, errors, warnings };

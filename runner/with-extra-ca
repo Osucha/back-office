@@ -1,0 +1,10 @@
+# Sourced by RUN steps of the runner Dockerfile (not executable on purpose). When the BuildKit secret extra_ca is
+# mounted, trusts it next to the system roots for apt, curl, git, uv/Python and npm in that RUN only; the combined
+# bundle lives in the tmpfs /run/ca and never reaches an image layer.
+if [ -s /run/secrets/extra_ca ]; then
+    cat /etc/ssl/certs/ca-certificates.crt /run/secrets/extra_ca > /run/ca/build-ca.pem
+    echo "Acquire::https::CAInfo \"/run/ca/build-ca.pem\";" > /run/ca/apt.conf
+    export SSL_CERT_FILE=/run/ca/build-ca.pem CURL_CA_BUNDLE=/run/ca/build-ca.pem GIT_SSL_CAINFO=/run/ca/build-ca.pem \
+        REQUESTS_CA_BUNDLE=/run/ca/build-ca.pem NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca UV_NATIVE_TLS=1 \
+        APT_CONFIG=/run/ca/apt.conf
+fi

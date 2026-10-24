@@ -108,6 +108,20 @@ error and runs refuse to start. **Jira templates** have a **Jira connection** se
 project's system connection, a specific connection, or the person who approves the write or starts the run
 ([Act as](integrations-jira.md#jira-act-as)).
 
+Two templates do not run a model or an agent (ADR 0052):
+
+- **Start workflow** starts another workflow of the project, one run per entry of a JSON artefact (**Parameters
+  from**, for example the `proposals` an agent wrote), with the entry's fields as run parameters (`title`, `idea`,
+  ...). It must follow a gate directly: an agent proposes, you accept, Back Office starts. With **Selection**
+  `DECISION` only the entries whose numbers you write in the gate's comment are started (`1, 3`; `all` starts every
+  one); with `ALL` every entry. The runs are started on behalf of the person who decided at the gate (their
+  permissions and personal model profiles apply) and are listed in its `started-runs` artefact.
+- **Project digest** writes the `digest` artefact: what happened in the project since the run parameter `since`
+  (a scheduled run gets it) - the runs of the other workflows with outcome, duration and cost, steps that ran more
+  than once or failed with their errors, gate decisions with their comments, and the latest pipelines of
+  **Pipeline branches** with their failed jobs (needs a repository token with CI_READ). An agent step after it reads
+  `{{artifacts.digest}}`.
+
 Prompts are templates: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}` (all revision comments),
 `{{project.constitution}}`, `{{mr.url}}`. A missing value renders empty and adds a warning to the run log.
 Because nodes refer to templates by key, changing a template changes every workflow that uses it on its
@@ -118,6 +132,15 @@ next run (see [Task library](task-library.md#templates)).
 Set the **Signal** name (for example `tests`) and an optional **Timeout (seconds)**. Your pipeline sends
 `backoffice-ci signal tests --status success|fail`; the run leaves through `success` or `fail`, or through
 `timeout`. See [GitLab CI](integrations-gitlab-ci.md#ci-overview).
+
+With **Watch pipeline** on, Back Office watches the pipeline itself and your CI sends nothing: it reads the latest
+pipeline of the branch the run pushed (in the step's **Repository**, empty = the primary one) once a minute with the
+project's read-only token that has CI_READ ([Repository access tokens](integrations-git.md#git-project-tokens)).
+When the pipeline succeeds the run leaves through `success`; when it fails, through `fail`, and the next step receives
+the failed jobs (except those allowed to fail) with the last lines of their logs as feedback. Connect `fail` back to
+the implementing step and the agent fixes what CI reports; the step's **Max visits** bounds the loop. An implementing
+step that ends its work log with `RESULT: PARTIAL` (everything it could check in its sandbox passed, the rest needs
+CI) belongs in front of such a node.
 
 <a id="step-repositories"></a>
 ## Repositories of a step
@@ -346,6 +369,12 @@ The **Jira (intake watcher)** trigger (`JIRA_TRANSITION`) is used by the project
 example `Ready for AI`), an issue that enters that status starts a run with its key; without a status, a
 new issue matching the project's JQL filter does. The watcher is switched on per project and can start
 only a workflow that has this trigger ([Jira intake watcher](integrations-jira.md#jira-intake)).
+
+The **Schedule** trigger (`SCHEDULE`, ADR 0052) starts the workflow by itself **every N minutes** (at least 5)
+after its latest run began, never while one of its runs is still active and never while the workflow is disabled.
+The run gets the parameter `since` (when the previous run started), so a watcher reports only what is new. It is
+started on behalf of whoever last saved the workflow: their `run.start` permission and their personal model profiles
+apply, so a schedule may use your own subscription model profile.
 
 A run refuses to start (`409`) when a Jira step of the workflow has no usable connection; the message
 names the step. It also refuses to start when a coding step names a repository the project does not have, or

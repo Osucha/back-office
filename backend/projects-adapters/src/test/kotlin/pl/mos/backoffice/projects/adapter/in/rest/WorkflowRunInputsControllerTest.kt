@@ -14,7 +14,7 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import java.util.UUID
 
-/** `GET /workflows/{workflowId}/run-inputs` (ADR 0052): the `RunInputField` list of openapi.yaml. */
+/** `GET /workflows/{workflowId}/run-inputs` (ADR 0053): the `RunInputField` list of openapi.yaml. */
 class WorkflowRunInputsControllerTest {
 
     private val workflows = Mockito.mock(ManageWorkflows::class.java)

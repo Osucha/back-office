@@ -23,6 +23,7 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzSelectModule } from 'ng-zorro-antd/select';
+import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { Subject, catchError, of, switchMap } from 'rxjs';
@@ -83,6 +84,7 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
     NzInputModule,
     NzInputNumberModule,
     NzSelectModule,
+    NzSwitchModule,
     NzRadioModule,
     NzButtonModule,
     NzIconModule,
@@ -824,6 +826,48 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                   />
                 </nz-form-control>
               </nz-form-item>
+              <nz-form-item>
+                <nz-form-label nzFor="pp-ci-watch" i18n="@@workflows.props.ciWatch"
+                  >Watch pipeline</nz-form-label
+                >
+                <nz-form-control
+                  nzExtra="Back Office reads the pipeline of the run's branch itself (CI_READ token of the repository); a failure sends the failed jobs and their logs to the next step. Your CI sends no signal."
+                  i18n-nzExtra="@@workflows.props.ciWatch.extra"
+                >
+                  <nz-switch
+                    id="pp-ci-watch"
+                    name="ciWatch"
+                    [ngModel]="n.ci?.watchPipeline ?? false"
+                    (ngModelChange)="patchCi({ watchPipeline: $event || null })"
+                    [nzDisabled]="readonly()"
+                  />
+                </nz-form-control>
+              </nz-form-item>
+              @if (n.ci?.watchPipeline) {
+                <nz-form-item>
+                  <nz-form-label nzFor="pp-ci-repo" i18n="@@workflows.props.ciRepository"
+                    >Repository</nz-form-label
+                  >
+                  <nz-form-control
+                    nzExtra="Empty = the primary repository."
+                    i18n-nzExtra="@@workflows.props.ciRepository.extra"
+                  >
+                    <nz-select
+                      nzId="pp-ci-repo"
+                      name="ciRepository"
+                      nzAllowClear
+                      [ngModel]="n.ci?.repository ?? null"
+                      (ngModelChange)="patchCi({ repository: $event ?? null })"
+                      [nzDisabled]="readonly()"
+                      style="width: 220px"
+                    >
+                      @for (r of projectRepositories(); track r.key) {
+                        <nz-option [nzValue]="r.key" [nzLabel]="r.key" />
+                      }
+                    </nz-select>
+                  </nz-form-control>
+                </nz-form-item>
+              }
             }
 
             @case ('END') {
@@ -1041,7 +1085,7 @@ export class NodePropertyPanelComponent {
   readonly modelOptions = input<Record<string, ModelOption[] | null>>({});
   readonly skills = input<Skill[]>([]);
   readonly projectId = input<string | null>(null);
-  /** ADR 0052: the saved workflow, for the START node's read-only run inputs; null while unsaved. */
+  /** ADR 0053: the saved workflow, for the START node's read-only run inputs; null while unsaved. */
   readonly workflowId = input<string | null>(null);
   /** The project's repositories (ADR 0034), for the repositories of runner steps. */
   readonly projectRepositories = input<readonly ProjectRepository[]>([]);

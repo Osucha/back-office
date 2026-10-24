@@ -118,7 +118,13 @@ class WaitForCiNodeExecutor : NodeExecutor {
             else -> WorkflowNode.PORT_FAIL
         }
         val message = signal["message"]?.toString()?.takeIf { it.isNotBlank() }
-        val updates = mapOf(RunStateKeys.LAST_CI to signal, RunStateKeys.CI to null)
+        val updates = HashMap<String, Any?>(mapOf(RunStateKeys.LAST_CI to signal, RunStateKeys.CI to null))
+        // ADR 0052: a watched pipeline that failed tells the next step (the implementer) what broke, like a revise comment
+        if (node.ci.watchPipeline && port == WorkflowNode.PORT_FAIL && message != null) {
+            val entry = "[${node.name}] $message"
+            updates[RunStateKeys.FEEDBACK] = listOf(entry)
+            updates[RunStateKeys.PENDING_FEEDBACK] = RunStateKeys.pendingFeedback(context.state) + entry
+        }
         return NodeResult(port = port, summary = "CI signal ${node.ci.signal}: $status" + (message?.let { " - $it" } ?: ""), stateUpdates = updates)
     }
 }

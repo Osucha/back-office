@@ -375,9 +375,11 @@ export const TASK_EXECUTORS: TaskExecutor[] = [
   'FETCH_ISSUE',
   'NOTIFY',
   'TRANSITION_ISSUE',
+  'START_WORKFLOW',
+  'PROJECT_DIGEST',
 ];
 export const SLOT_KINDS: SlotKind[] = ['INPUT', 'STATE', 'ARTIFACT'];
-export const TRIGGER_TYPES: TriggerType[] = ['MANUAL', 'JIRA_TRANSITION', 'API', 'CI'];
+export const TRIGGER_TYPES: TriggerType[] = ['MANUAL', 'JIRA_TRANSITION', 'API', 'CI', 'SCHEDULE'];
 export const PROVIDERS: Provider[] = [
   'ANTHROPIC',
   'OPENAI',

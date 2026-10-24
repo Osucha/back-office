@@ -125,7 +125,7 @@ class TemplateRenderer {
         /**
          * Roots of the template model whose values come from outside the trust boundary: issue tracker,
          * artefacts of agents and LLM steps, CI payloads, merge-request data, run input and parameters
-         * (including the declared run inputs `runInput` / `runInputText`, ADR 0052), model verdicts and errors. Everything else (`project`, `node`, `run`, `feedback`, `decision`,
+         * (including the declared run inputs `runInput` / `runInputText`, ADR 0053), model verdicts and errors. Everything else (`project`, `node`, `run`, `feedback`, `decision`,
          * `confidence`, `lastOutcome`) is written by people with project permissions or by the platform.
          */
         val UNTRUSTED_ROOTS = setOf("issue", "artifacts", "mr", "review", "ci", "input", "parameters", "runInput", "runInputText", "branch", "lastError")

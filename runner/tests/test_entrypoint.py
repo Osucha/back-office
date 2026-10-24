@@ -244,6 +244,10 @@ class ModelMappingTests(unittest.TestCase):
         self.assertEqual(env_c["ANTHROPIC_AUTH_TOKEN"], "bo_job_abc")
         self.assertNotIn("ANTHROPIC_API_KEY", env_c)
         self.assertEqual(env_c["MAX_THINKING_TOKENS"], str(ep.REASONING_TO_BUDGET["HIGH"]))
+        # headless: no background commands that outlive the turn, long foreground timeouts instead
+        self.assertEqual(env_c["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"], "1")
+        self.assertEqual(env_c["BASH_DEFAULT_TIMEOUT_MS"], str(20 * 60 * 1000))
+        self.assertEqual(env_c["BASH_MAX_TIMEOUT_MS"], str(60 * 60 * 1000))
 
     def test_agent_environment_claude_code_local_login_skips_gateway(self):
         # ADR 0040: the owner's own login, no gateway URL and no gateway token for Claude Code
@@ -1933,6 +1937,21 @@ class ExtraCaTests(unittest.TestCase):
             self.assertEqual(ep.load_extra_ca(env), "")
             ep.apply_extra_ca(env, Path(tmp) / "ws", "", lambda _: None)
             self.assertNotIn("SSL_CERT_FILE", env)
+
+
+class SandboxSectionTests(unittest.TestCase):
+    """ADR 0052: the agent learns the sandbox's limits from its prompt instead of by failing."""
+
+    def test_no_docker_and_the_allowed_hosts_are_named(self):
+        hosts = ep.egress_hosts_of({"network": {"allow": ["registry.npmjs.org", "git.example.com"]}})
+        self.assertEqual(hosts, ["registry.npmjs.org", "git.example.com"])
+        section = ep.sandbox_prompt_section({}, hosts) if not Path("/var/run/docker.sock").exists() else ""
+        if section:
+            self.assertIn("No Docker daemon", section)
+            self.assertIn("Left to CI", section)
+            self.assertIn("git.example.com, registry.npmjs.org", section)
+        self.assertIn("A Docker daemon is reachable", ep.sandbox_prompt_section({"DOCKER_HOST": "tcp://docker:2376"}, []))
+        self.assertEqual(ep.egress_hosts_of(None), [])
 
 
 class AgentToolTests(unittest.TestCase):

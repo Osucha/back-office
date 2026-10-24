@@ -35,7 +35,7 @@ import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
-/** ADR 0052: REST starts check the declared run inputs; intake, CI, MCP and other system starters do not. */
+/** ADR 0053: REST starts check the declared run inputs; intake, CI, MCP and other system starters do not. */
 class RunStartInputTest {
 
     private val project = Fixtures.project()

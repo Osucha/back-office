@@ -59,7 +59,7 @@ data class TaskInterfaceDto(
     val updatedBy: ActorRefDto? = null,
 )
 
-/** `RunInputField` schema (ADR 0052). */
+/** `RunInputField` schema (ADR 0053). */
 data class RunInputFieldDto(
     @field:NotBlank val name: String,
     @field:NotBlank val label: String,

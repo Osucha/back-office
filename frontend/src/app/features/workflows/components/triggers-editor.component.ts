@@ -3,13 +3,28 @@ import { FormsModule } from '@angular/forms';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
+import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import type { Trigger, TriggerType } from '../../../core/api/types';
+import {
+  addTrigger,
+  changeTriggerType,
+  MIN_SCHEDULE_MINUTES,
+  patchTrigger,
+  validScheduleInterval,
+} from '../data/trigger-model';
 
-/** Editable list of workflow triggers (MANUAL / JIRA_TRANSITION(status) / API / CI). */
+/** Editable list of workflow triggers (MANUAL / JIRA_TRANSITION(status) / API / CI / SCHEDULE(interval)). */
 @Component({
   selector: 'app-triggers-editor',
-  imports: [FormsModule, NzSelectModule, NzInputModule, NzButtonModule, NzIconModule],
+  imports: [
+    FormsModule,
+    NzSelectModule,
+    NzInputModule,
+    NzInputNumberModule,
+    NzButtonModule,
+    NzIconModule,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="triggers">
@@ -17,12 +32,7 @@ import type { Trigger, TriggerType } from '../../../core/api/types';
         <div class="row">
           <nz-select
             [ngModel]="t.type"
-            (ngModelChange)="
-              update(i, {
-                type: $event,
-                status: $event === 'JIRA_TRANSITION' ? (t.status ?? '') : null,
-              })
-            "
+            (ngModelChange)="changeType(i, $event)"
             nzSize="small"
             style="width: 190px"
             [attr.aria-label]="typeLabel(i)"
@@ -44,6 +54,11 @@ import type { Trigger, TriggerType } from '../../../core/api/types';
               nzLabel="CI entrypoint"
               i18n-nzLabel="@@workflows.triggers.ci"
             />
+            <nz-option
+              nzValue="SCHEDULE"
+              nzLabel="Schedule (every N minutes)"
+              i18n-nzLabel="@@workflows.triggers.schedule"
+            />
           </nz-select>
           @if (t.type === 'JIRA_TRANSITION') {
             <input
@@ -64,6 +79,26 @@ import type { Trigger, TriggerType } from '../../../core/api/types';
           @if (t.type === 'CI') {
             <span class="muted small" i18n="@@workflows.triggers.viaCi"
               >via a CI entrypoint (Project &rsaquo; CI)</span
+            >
+          }
+          @if (t.type === 'SCHEDULE') {
+            <span class="small" i18n="@@workflows.triggers.every">Every (minutes)</span>
+            <nz-input-number
+              nzSize="small"
+              [nzMin]="minMinutes"
+              [nzStep]="5"
+              [nzPrecision]="0"
+              [ngModel]="t.intervalMinutes ?? null"
+              (ngModelChange)="update(i, { intervalMinutes: $event })"
+              [nzStatus]="intervalValid(t) ? '' : 'error'"
+              [nzDisabled]="readonly()"
+              [attr.aria-label]="intervalLabel(i)"
+              [attr.aria-invalid]="!intervalValid(t)"
+              style="width: 90px"
+            />
+            <span class="muted small" i18n="@@workflows.triggers.scheduleHint"
+              >after the latest run began, never while a run is active; the run gets the parameter
+              since</span
             >
           }
           @if (!readonly()) {
@@ -126,6 +161,7 @@ export class TriggersEditorComponent {
   readonly readonly = input(false);
   readonly triggersChange = output<Trigger[]>();
   readonly apiPath = 'POST /api/v1/workflows/:id/runs'; // i18n-ignore
+  readonly minMinutes = MIN_SCHEDULE_MINUTES;
 
   typeLabel(index: number): string {
     return $localize`:@@workflows.triggers.typeLabel:Trigger ${index + 1}:number: type`;
@@ -135,20 +171,24 @@ export class TriggersEditorComponent {
     return $localize`:@@workflows.triggers.statusLabel:Trigger ${index + 1}:number: status`;
   }
 
+  intervalLabel(index: number): string {
+    return $localize`:@@workflows.triggers.intervalLabel:Trigger ${index + 1}:number: every (minutes)`;
+  }
+
+  intervalValid(t: Trigger): boolean {
+    return validScheduleInterval(t.intervalMinutes);
+  }
+
   add(): void {
-    const has = new Set(this.triggers().map((t) => t.type));
-    const order: TriggerType[] = ['MANUAL', 'JIRA_TRANSITION', 'API', 'CI'];
-    const type = order.find((t) => !has.has(t)) ?? 'API';
-    this.triggersChange.emit([
-      ...this.triggers(),
-      type === 'JIRA_TRANSITION' ? { type, status: '' } : { type },
-    ]);
+    this.triggersChange.emit(addTrigger(this.triggers()));
+  }
+
+  changeType(index: number, type: TriggerType): void {
+    this.triggersChange.emit(changeTriggerType(this.triggers(), index, type));
   }
 
   update(index: number, patch: Partial<Trigger>): void {
-    const next = this.triggers().map((t, i) => (i === index ? { ...t, ...patch } : t));
-    for (const t of next) if (t.type !== 'JIRA_TRANSITION') delete t.status;
-    this.triggersChange.emit(next);
+    this.triggersChange.emit(patchTrigger(this.triggers(), index, patch));
   }
 
   removeAt(index: number): void {

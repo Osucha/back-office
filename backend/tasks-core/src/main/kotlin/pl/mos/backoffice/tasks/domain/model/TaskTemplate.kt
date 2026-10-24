@@ -47,7 +47,7 @@ data class TaskTemplate(
     val produces: List<String>,
     val consumes: List<String>,
     val tags: List<String>,
-    /** Run start form fields this task asks for (ADR 0052); merged child-wins by name over the lineage. */
+    /** Run start form fields this task asks for (ADR 0053); merged child-wins by name over the lineage. */
     val runInputs: List<RunInputField>,
     val builtIn: Boolean,
     val version: Int,

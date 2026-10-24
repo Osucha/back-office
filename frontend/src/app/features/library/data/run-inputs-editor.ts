@@ -1,5 +1,5 @@
 /**
- * Run inputs of a task template (ADR 0052), pure helpers for the template editor: the list editor (add,
+ * Run inputs of a task template (ADR 0053), pure helpers for the template editor: the list editor (add,
  * remove, reorder, patch), the save check, and where each field of the resolved view comes from.
  */
 import type { RunInputField, TaskTemplate } from '../../../core/api/types';

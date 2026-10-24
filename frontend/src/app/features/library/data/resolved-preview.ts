@@ -15,7 +15,7 @@ export interface ResolvedPreview {
   ports: string[];
   produces: string[];
   consumes: string[];
-  /** ADR 0052: the run inputs merged over the lineage. */
+  /** ADR 0053: the run inputs merged over the lineage. */
   runInputs: RunInputField[];
   config: Record<string, unknown>;
   abstract: boolean;

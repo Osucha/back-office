@@ -27,7 +27,7 @@ const baseAgent: TaskTemplate = {
   runInputs: [{ name: 'input', label: 'Input material', type: 'MULTILINE', required: false }],
 };
 
-describe('TemplateEditorDrawerComponent run inputs (ADR 0052)', () => {
+describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
   let http: HttpTestingController;
 
   beforeEach(async () => {

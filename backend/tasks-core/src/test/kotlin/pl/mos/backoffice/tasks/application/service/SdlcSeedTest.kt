@@ -32,7 +32,7 @@ class SdlcSeedTest {
     fun `seeding twice creates the SDLC entries once`() {
         val first = service.seed()
         val second = service.seed()
-        assertThat(first.total).isEqualTo(9 + 24 + 12)
+        assertThat(first.total).isEqualTo(9 + 26 + 12)
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcTemplateKeys }).hasSize(BuiltInLibrary.sdlcTemplateKeys.size)
         assertThat(lib.skills.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcSkillKeys }).hasSize(BuiltInLibrary.sdlcSkillKeys.size)
@@ -110,6 +110,8 @@ class SdlcSeedTest {
         assertThat(task.prompt.system).contains("reformat, lint, and test")
         // the approved impact analysis of a change request reaches the planner
         assertThat(task.prompt.user).contains("{{artifacts.impact-analysis}}").contains("{{artifacts.plan}}").contains("{{artifacts.user-story}}")
+        // a revision starts from the previous task list, not from scratch
+        assertThat(task.prompt.user).contains("{{#feedback}}\n{{#artifacts.tasks}}", "Your previous task list", "{{artifacts.tasks}}")
         assertThat(task.consumes).contains("impact-analysis")
     }
 

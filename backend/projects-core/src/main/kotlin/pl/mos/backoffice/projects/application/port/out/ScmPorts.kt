@@ -18,6 +18,22 @@ interface ScmConnectionRepository {
     fun replaceSecret(id: ScmConnectionId, expected: SealedSecret, replacement: SealedSecret): Boolean
 }
 
+/** ADR 0052: what the latest pipeline of a branch looks like. */
+enum class PipelineState { NONE, RUNNING, SUCCESS, FAILED }
+
+/** One failed job of a pipeline that may not fail (allow_failure jobs are left out) and the end of its log. */
+data class FailedJob(val name: String, val stage: String, val url: String?, val logTail: String)
+
+data class PipelineReport(val state: PipelineState, val id: Long? = null, val url: String? = null, val status: String? = null, val failedJobs: List<FailedJob> = emptyList())
+
+/**
+ * ADR 0052: reads the latest pipeline of [ref] (and [sha] when known) in [repository] with [connection] (CI_READ). Never
+ * throws for an unreachable SCM: that is [PipelineState.NONE] (the watch keeps waiting until its timeout).
+ */
+fun interface PipelineStatusPort {
+    fun latest(repository: GitRepository, connection: ScmConnection, ref: String, sha: String?): PipelineReport
+}
+
 /** The token whose rights are tested: typed in the form, or the stored one (opened by the adapter only). */
 sealed interface ScmToken {
     data class Plain(val value: String) : ScmToken {

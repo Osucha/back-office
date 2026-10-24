@@ -63,6 +63,7 @@
   "projects.detail.workflows.duplicate": "Duplikuj workflow",
   "projects.detail.workflows.delete": "Usuń workflow",
   "projects.detail.trigger.manual": "Ręcznie",
+  "projects.detail.trigger.schedule": "co {$minutes} min",
   "projects.detail.runs.empty": "W tym projekcie nie ma jeszcze uruchomień.",
   "projects.detail.settings": "Ustawienia projektu",
   "projects.detail.settingsReadOnly": "Ustawienia projektu (tylko do odczytu)",

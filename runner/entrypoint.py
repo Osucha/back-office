@@ -114,6 +114,9 @@ REASONING_TO_EFFORT = {
     "XHIGH": "xhigh",
     "MAX": "xhigh",
 }
+# Claude Code Bash tool: default and maximum timeout of one command (a full Gradle or Angular test run fits)
+BASH_DEFAULT_TIMEOUT_MS = 20 * 60 * 1000
+BASH_MAX_TIMEOUT_MS = 60 * 60 * 1000
 # ModelOptions.reasoning -> Anthropic thinking budget (tokens)
 REASONING_TO_BUDGET = {
     "LOW": 4000,
@@ -144,6 +147,10 @@ ARTIFACT_NAME_BY_FILE = {
     "tasks.md": "tasks",
     "analysis.md": "analysis",
     "work-log.md": "work-log",
+    # ADR 0052: the watcher's retrospective and proposals, the side session's answer
+    "retro.md": "retro",
+    "proposals.json": "proposals",
+    "answer.md": "answer",
 }
 # Collected for Back Office but not part of the change: kept out of the commit (implement-task-list's work log).
 EPHEMERAL_ARTIFACT_FILES = ("work-log.md",)
@@ -1850,6 +1857,12 @@ def agent_environment(
         env.setdefault("DISABLE_AUTOUPDATER", "1")
         env.setdefault("DISABLE_TELEMETRY", "1")
         env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+        # Headless Claude Code exits when the model ends its turn: a test run sent to the background (by the agent, or
+        # automatically after the Bash timeout) is lost and the step ends "still waiting". Long commands run in the
+        # foreground instead, with timeouts that fit a Gradle or Angular test suite.
+        env.setdefault("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1")
+        env.setdefault("BASH_DEFAULT_TIMEOUT_MS", str(BASH_DEFAULT_TIMEOUT_MS))
+        env.setdefault("BASH_MAX_TIMEOUT_MS", str(BASH_MAX_TIMEOUT_MS))
         if spec.local_login:
             # Anthropic directly with the owner's subscription; a gateway token would take precedence over the login
             if local_login_token:
@@ -1895,6 +1908,32 @@ def tool_environment(spec: JobSpec, tool_tokens: Dict[str, str], workspace: Path
             "NO_PROMPT": "1",
         })
     return env
+
+
+def egress_hosts_of(policy: Optional[Dict[str, Any]]) -> List[str]:
+    network = policy.get("network") if isinstance(policy, dict) else None
+    hosts = network.get("allow") if isinstance(network, dict) else None
+    return [str(h) for h in hosts if str(h).strip()] if isinstance(hosts, list) else []
+
+
+def docker_available(env: Dict[str, str]) -> bool:
+    return bool(env.get("DOCKER_HOST")) or Path("/var/run/docker.sock").exists()
+
+
+def sandbox_prompt_section(env: Dict[str, str], egress_hosts: List[str]) -> str:
+    """ADR 0052: what this sandbox can and cannot do, so the agent plans its checks instead of discovering the limits
+    by failing (a missing Docker daemon cost whole attempts)."""
+    lines = ["## Sandbox", "You work in an isolated sandbox. Plan your checks around what it has:"]
+    if docker_available(env):
+        lines.append("- A Docker daemon is reachable.")
+    else:
+        lines.append("- No Docker daemon: Testcontainers tests, image builds and docker commands cannot run here; they run in "
+                     "CI. Run the checks that do not need Docker and list the rest under \"Left to CI\" in your work log.")
+    if egress_hosts:
+        lines.append("- Network only to: " + ", ".join(sorted(set(egress_hosts))) + ". Anything else is refused by the proxy "
+                     "(HTTP 407); do not try to work around it, report it.")
+    lines.append("- TLS checks stay on; never disable them (strict-ssl, NODE_TLS_REJECT_UNAUTHORIZED, -k).")
+    return "\n".join(lines)
 
 
 def tools_prompt_section(spec: JobSpec, tool_tokens: Dict[str, str]) -> str:
@@ -3315,6 +3354,8 @@ class _Run:
     local_login_token: str = ""
     # ADR 0051 step 4: read-only tokens of agent tools by repository key
     tool_tokens: Dict[str, str] = field(default_factory=dict)
+    # ADR 0052: hosts the egress proxy lets this job reach (from the resolved policy), for the prompt's sandbox section
+    egress_hosts: List[str] = field(default_factory=list)
     subscription: bool = False
 
     def log(self, message: str) -> None:
@@ -3634,6 +3675,8 @@ def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     tools_section = tools_prompt_section(spec, run.tool_tokens)
     if tools_section and spec.agent != STUB_AGENT:
         prompt = f"{prompt}\n\n{tools_section}"
+    if spec.agent != STUB_AGENT:
+        prompt = f"{prompt}\n\n{sandbox_prompt_section(run.env, run.egress_hosts)}"
     agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token, run.tool_tokens)
     for tool in spec.agent_tools:
         run.log(f"[agent] tool {tool.name} for repository '{tool.repository or 'main'}': " + ("read-only token delivered" if tool.repository in run.tool_tokens else "no token arrived, tool not available"))
@@ -4285,6 +4328,7 @@ def main() -> int:
         uploader=uploader, security=security, agent_credential=agent_token or callback_token,
         tools=tool_policy_from(ctx.policy) if ctx else None, fatal_error=ctx_error, repo_tokens=repo_tokens,
         local_login_token=local_login_token, tool_tokens=tool_tokens,
+        egress_hosts=egress_hosts_of(ctx.policy if ctx else None),
     )
     if ctx is not None and ctx.spec.agent_tools and run.tools is not None and run.tools.allow:
         # an allow-list policy must let the agent run the tool it was given

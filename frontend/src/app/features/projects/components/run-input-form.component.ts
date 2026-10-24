@@ -22,7 +22,7 @@ import {
 } from '../data/run-inputs';
 
 /**
- * The start dialog's form (ADR 0052): one field per run input the workflow's task steps declare (a text
+ * The start dialog's form (ADR 0053): one field per run input the workflow's task steps declare (a text
  * area for MULTILINE, an input for TEXT and ISSUE_KEY), so the Jira issue key appears only for workflows
  * with a Jira step. "Advanced (JSON)" stays collapsed and adds extra parameters only. The parent asks
  * [request] for the start request when the user starts the run.

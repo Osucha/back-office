@@ -283,7 +283,7 @@ class WorkflowValidatorTest {
         assertThat(WorkflowValidator.expressionRoots("review.verdict != 'REQUEST_CHANGES'")).containsExactly("review")
     }
 
-    // ---- run inputs (ADR 0052)
+    // ---- run inputs (ADR 0053)
 
     private val issueField = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true)
     private val inputs = TaskPortsProvider { key ->

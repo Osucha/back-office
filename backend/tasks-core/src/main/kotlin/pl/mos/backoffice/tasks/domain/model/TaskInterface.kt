@@ -39,7 +39,7 @@ data class TaskInterface(
     val requiredConsumes: List<String>
         get() = inputs.filter { it.required && it.kind != SlotKind.INPUT }.map { it.name }
 
-    /** `INPUT` slots that must be declared in a template's `runInputs` (rule 5, ADR 0052). */
+    /** `INPUT` slots that must be declared in a template's `runInputs` (rule 5, ADR 0053). */
     val requiredRunInputs: List<String>
         get() = inputs.filter { it.required && it.kind == SlotKind.INPUT }.map { it.name }
 

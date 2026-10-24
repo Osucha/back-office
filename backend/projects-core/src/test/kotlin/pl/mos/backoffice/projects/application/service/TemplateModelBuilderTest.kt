@@ -7,7 +7,7 @@ import pl.mos.backoffice.projects.domain.model.RunInput
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 
-/** ADR 0052: `runInput` lists the current task's declared fields with label and value; `parameters.*` stays. */
+/** ADR 0053: `runInput` lists the current task's declared fields with label and value; `parameters.*` stays. */
 class TemplateModelBuilderTest {
 
     private val project = Fixtures.project()

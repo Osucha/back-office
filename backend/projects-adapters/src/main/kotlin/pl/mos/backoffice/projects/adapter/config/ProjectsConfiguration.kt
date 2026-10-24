@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.adapter.config
 
+import pl.mos.backoffice.projects.adapter.out.scm.GitLabPipelineStatus
+import pl.mos.backoffice.projects.application.port.out.PipelineStatusPort
+import pl.mos.backoffice.projects.application.service.PipelineWatchService
 import pl.mos.backoffice.shared.platform.PlatformFeatures
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
@@ -224,12 +227,14 @@ class ProjectsConfiguration {
         engine: WorkflowEngine, progress: RecordRunProgress, validator: WorkflowValidator, events: EventPublisher,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock, jiraSteps: JiraStepCheck, repositorySteps: RepositoryStepCheck,
         specKitSteps: SpecKitStepCheck, taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
+        directory: ObjectProvider<ProjectAccessDirectory>,
     ) = RunService(
         runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps, specKitSteps,
         // ADR 0050: the model of every task step must be usable by the starting user; without the model catalogue (the
         // Projects module alone) models are not checked
         availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it, defaults.getIfAvailable()) },
-        // ADR 0052: REST starts check the run inputs the workflow's tasks declare
+        directory.getIfAvailable(),
+        // ADR 0053: REST starts check the run inputs the workflow's tasks declare
         runInputs = taskCatalog,
     )
 
@@ -338,6 +343,23 @@ class ProjectsConfiguration {
 
     @Bean fun fetchIssueTaskExecutor(jira: JiraConnectionAccess, json: JsonCodec) = FetchIssueTaskExecutor(jira, json)
 
+    /** ADR 0052: what happened in a project, for a watcher's retrospective. */
+    @Bean
+    fun projectDigestTaskExecutor(runs: WorkflowRunRepository, connections: ScmConnectionRepository, pipelines: PipelineStatusPort, clock: Clock) =
+        pl.mos.backoffice.projects.application.service.tasks.ProjectDigestTaskExecutor(runs, connections, pipelines, clock)
+
+    /** ADR 0052: workflows with a SCHEDULE trigger. */
+    @Bean
+    fun scheduledRunService(
+        projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: WorkflowRunRepository,
+        startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf>, clock: Clock,
+    ) = pl.mos.backoffice.projects.application.service.ScheduledRunService(projects, workflows, runs, { startRun.getObject() }, clock)
+
+    /** ADR 0052: a step starts another workflow of the project; StartRun is looked up late (it depends on the engine). */
+    @Bean
+    fun startWorkflowTaskExecutor(startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf>, workflows: WorkflowDefinitionRepository, json: JsonCodec) =
+        pl.mos.backoffice.projects.application.service.tasks.StartWorkflowTaskExecutor({ startRun.getObject() }, workflows, json)
+
     @Bean
     fun notifyTaskExecutor(jira: JiraConnectionAccess, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, audit: AuditPort) =
         NotifyTaskExecutor(jira, renderer, templateModel, audit)
@@ -381,6 +403,15 @@ class ProjectsConfiguration {
         connections: ScmConnectionRepository, projects: ProjectRepository, cipher: AesGcmSecretCipher, probe: ScmProbePort,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock,
     ) = ScmConnectionService(connections, projects, cipher, probe, gate, audit, clock)
+
+    /** ADR 0052: Back Office watches the pipeline of a run's branch itself (WAIT_FOR_CI with watchPipeline). */
+    @Bean fun gitLabPipelineStatus(cipher: AesGcmSecretCipher, json: JsonMapper) = GitLabPipelineStatus(cipher, json)
+
+    @Bean
+    fun pipelineWatchService(
+        runs: WorkflowRunRepository, projects: ProjectRepository, connections: ScmConnectionRepository, pipelines: PipelineStatusPort,
+        engine: WorkflowEngine, clock: Clock,
+    ) = PipelineWatchService(runs, projects, connections, pipelines, engine, clock)
 
     /** ADR 0051: opens a project repository token only for its sealed release to the runner holding the job (agent-runner). */
     @Bean

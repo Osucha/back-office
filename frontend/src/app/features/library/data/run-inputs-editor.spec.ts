@@ -22,7 +22,7 @@ const issue: RunInputField = {
   required: true,
 };
 
-describe('run inputs editor (ADR 0052)', () => {
+describe('run inputs editor (ADR 0053)', () => {
   it('adds a field with a free name, removes and reorders', () => {
     let list = addRunInput([]);
     expect(list).toEqual([

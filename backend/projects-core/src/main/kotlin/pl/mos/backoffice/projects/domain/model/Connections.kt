@@ -79,7 +79,7 @@ enum class ConnectionCapability(val write: Boolean, val jiraPermissions: Set<Jir
             TaskExecutor.FETCH_ISSUE -> setOf(ISSUE_READ)
             TaskExecutor.NOTIFY -> setOf(ISSUE_COMMENT)
             TaskExecutor.TRANSITION_ISSUE -> setOf(ISSUE_TRANSITION, ISSUE_READ)
-            TaskExecutor.LLM, TaskExecutor.SPEC_KIT, TaskExecutor.IMPLEMENT -> emptySet()
+            TaskExecutor.LLM, TaskExecutor.SPEC_KIT, TaskExecutor.IMPLEMENT, TaskExecutor.START_WORKFLOW, TaskExecutor.PROJECT_DIGEST -> emptySet()
         }
     }
 }

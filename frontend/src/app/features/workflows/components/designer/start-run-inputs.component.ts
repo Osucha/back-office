@@ -11,7 +11,7 @@ import type { RunInputField } from '../../../../core/api/types';
 import { WorkflowsApi } from '../../../../core/api/workflows.service';
 
 /**
- * START node panel (ADR 0052): the run inputs a run of this workflow asks for, the union of what its task
+ * START node panel (ADR 0053): the run inputs a run of this workflow asks for, the union of what its task
  * steps declare in the task library. Read-only: START declares no fields of its own (decision L1).
  */
 @Component({
