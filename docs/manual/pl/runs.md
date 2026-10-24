@@ -55,7 +55,7 @@ segment, aby zaznaczyć dany krok.
 |---|---|
 | **Oś czasu** (**Timeline**) | Po lewej: wszystkie kroki po kolei, z numerem próby, portem, przez który krok wyszedł, autorem wyniku, czasem trwania, kosztem i błędami. Po prawej: zaznaczony krok (lub **Całe uruchomienie**, **Whole run**) z podsumowaniem, pewnością i faktami oraz kartami **Artefakty (N)** (**Artefacts (N)**), **Logi** (**Logs**) i, po przeglądzie kodu, **Przegląd** (**Review**). |
 | **Odtworzenie na kanwie** (**Canvas replay**) | Wersja workflowu, z którą wystartowało uruchomienie, ze ścieżką, którą przeszło. |
-| **Wejście** (**Input**) | Wejście uruchomienia: klucz zgłoszenia, parametry i, dla uruchomień z CI, kontekst CI. |
+| **Wejście** (**Input**) | Wejście uruchomienia: klucz zgłoszenia, parametry (wartości danych wejściowych z formularza startu i ewentualne dodatkowe parametry) i, dla uruchomień z CI, kontekst CI. |
 | **Pochodzenie** (**Provenance**) | Podpisane atestacje uruchomienia (zob. [Pochodzenie](runs.md#provenance)). |
 
 - **Artefakty** to dokumenty wytworzone przez kroki: `spec`, `plan`, `tasks`, `review`, `diff` i inne.

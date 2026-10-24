@@ -1324,18 +1324,16 @@ export class ProjectDetailPageComponent {
     const request = this.inputForm()?.request();
     if (!request) return;
     this.startingBusy.set(true);
-    this.workflowsApi
-      .startRun(w.id, request)
-      .subscribe({
-        next: (run) => {
-          this.startingBusy.set(false);
-          this.starting.set(null);
-          this.message.success(
-            $localize`:@@projects.start.started:Run started for ${run.issueKey || w.name}:subject:`,
-          );
-          void this.router.navigate(['/runs', run.id]);
-        },
-        error: () => this.startingBusy.set(false),
-      });
+    this.workflowsApi.startRun(w.id, request).subscribe({
+      next: (run) => {
+        this.startingBusy.set(false);
+        this.starting.set(null);
+        this.message.success(
+          $localize`:@@projects.start.started:Run started for ${run.issueKey || w.name}:subject:`,
+        );
+        void this.router.navigate(['/runs', run.id]);
+      },
+      error: () => this.startingBusy.set(false),
+    });
   }
 }

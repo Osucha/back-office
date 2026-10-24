@@ -73,6 +73,7 @@ type PromptMode = 'none' | 'append' | 'replace';
  * Right drawer of the designer: edits the selected node. Emits an updated copy on every change
  * (the page owns the definition). Kind-specific sections per NodeKind.
  */
+import { StartRunInputsComponent } from './designer/start-run-inputs.component';
 @Component({
   selector: 'app-node-property-panel',
   imports: [
@@ -98,6 +99,7 @@ type PromptMode = 'none' | 'append' | 'replace';
     StepRepositoriesSectionComponent,
     StepWorkspaceSectionComponent,
     ModelSelectComponent,
+    StartRunInputsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -193,6 +195,15 @@ type PromptMode = 'none' | 'append' | 'replace';
           </nz-form-item>
 
           @switch (n.kind) {
+            @case ('START') {
+              <nz-divider
+                nzText="Run inputs"
+                i18n-nzText="@@workflows.props.runInputs"
+                nzOrientation="left"
+                nzPlain
+              />
+              <app-start-run-inputs [workflowId]="workflowId()" />
+            }
             @case ('TASK') {
               <nz-divider
                 nzText="Task template"
@@ -1030,6 +1041,8 @@ export class NodePropertyPanelComponent {
   readonly modelOptions = input<Record<string, ModelOption[] | null>>({});
   readonly skills = input<Skill[]>([]);
   readonly projectId = input<string | null>(null);
+  /** ADR 0052: the saved workflow, for the START node's read-only run inputs; null while unsaved. */
+  readonly workflowId = input<string | null>(null);
   /** The project's repositories (ADR 0034), for the repositories of runner steps. */
   readonly projectRepositories = input<readonly ProjectRepository[]>([]);
   /** Sources of the library (ADR 0043) a runner step may attach. */

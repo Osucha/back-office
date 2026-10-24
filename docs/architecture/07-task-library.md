@@ -8,8 +8,9 @@ how they are prompted, independent of any single workflow (ADR 0015). Projects u
 
 | Concept | Analogy | Content |
 |---|---|---|
-| `TaskInterface` | interface | `key`, `name`, `description`, `inputs[]` (name, kind `INPUT|STATE|ARTIFACT`, required), `outputs[]` (name, kind `STATE|ARTIFACT`), `ports[]` (default `success`, `failure`) |
-| `TaskTemplate` | class | `key`, `name`, `description`, `abstract`, `extendsKey`, `implements[]`, `executor`, `scope` (`GLOBAL` or `PROJECT(projectId)`), `modelProfileId`, `prompt {system, user, mode APPEND|REPLACE}`, `skills[]`, `config{}`, `outputSchema`, `confidenceField`, `produces[]`, `consumes[]`, `tags[]`, `builtIn`, `version` |
+| `TaskInterface` | interface | `key`, `name`, `description`, `inputs[]` (name, kind `INPUT|STATE|ARTIFACT`, required; an `INPUT` slot names a run input, see rule 5), `outputs[]` (name, kind `STATE|ARTIFACT`), `ports[]` (default `success`, `failure`) |
+| `TaskTemplate` | class | `key`, `name`, `description`, `abstract`, `extendsKey`, `implements[]`, `executor`, `scope` (`GLOBAL` or `PROJECT(projectId)`), `modelProfileId`, `prompt {system, user, mode APPEND|REPLACE}`, `skills[]`, `config{}`, `outputSchema`, `confidenceField`, `produces[]`, `consumes[]`, `tags[]`, `runInputs[]` (fields of the run start form, ADR 0052), `builtIn`, `version` |
+| `RunInputField` | form field | `name` (key in the run parameters), `label`, `type` `TEXT|MULTILINE|ISSUE_KEY`, `required`, `help`; shared kernel, so the Projects context reads it from `ResolvedTask.runInputs` |
 | `Skill` | mixin / library | `key`, `name`, `description`, `content` (markdown, Agent Skills `SKILL.md` convention), `scope`, `tags`, `builtIn` |
 | `ResolvedTask` | instance | the merged result used by executors |
 
@@ -24,11 +25,13 @@ how they are prompted, independent of any single workflow (ADR 0015). Projects u
    - `prompt.system` / `prompt.user`: child `APPEND` = parent + blank line + child; `REPLACE` = child only;
    - `skills`: union in order, minus the child's `removeSkills`;
    - `config`: deep merge, child keys win, `null` deletes;
-   - `produces`, `consumes`, `implements`, `tags`: union.
+   - `produces`, `consumes`, `implements`, `tags`: union;
+   - `runInputs`: union by `name`; a child field replaces the parent's field of the same name in its place, new
+     fields go last (ADR 0052). Node overrides do not change run inputs.
 4. Apply node overrides (`TaskOverrides`): model, prompt append/replace, add/remove skills, config merge.
 5. Check interfaces: every interface implemented anywhere in the lineage must have all `outputs` in
-   `produces` and all required `ARTIFACT`/`STATE` inputs in `consumes`; `ports` are the union of interface
-   ports. Missing pieces are reported as `interfaceCheck.problems` and make `resolve` throw.
+   `produces`, all required `ARTIFACT`/`STATE` inputs in `consumes` and all required `INPUT` slots by name in
+   `runInputs` (ADR 0052); `ports` are the union of interface ports. Missing pieces are reported as `interfaceCheck.problems` and make `resolve` throw.
 6. An `abstract` leaf cannot be resolved for execution (it can be previewed).
 
 `GET /task-templates/resolve/{key}?projectId=` returns the merged view with `lineage` and

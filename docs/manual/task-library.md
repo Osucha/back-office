@@ -64,10 +64,13 @@ The executor decides where a task runs:
 4. **Skills**: add skills, and list inherited skills under **Remove inherited skills**.
 5. **Contract and configuration**: **Produces** and **Consumes** (artefact or state names),
    **Confidence field**, **Tags**, **Config (JSON)** and, for LLM tasks, **Output schema**.
-6. **Sandbox** (runner tasks): narrow the project's sandbox policy for jobs of this template, for example
+6. **Run inputs**: the fields this task asks for when a run starts (see [Run inputs](#run-inputs)). **Add run
+   input**, then set **Name**, **Label**, the type (**Single line**, **Multi-line text** or **Jira issue key**),
+   **Required** and an optional help text; move fields with the arrows or remove them.
+7. **Sandbox** (runner tasks): narrow the project's sandbox policy for jobs of this template, for example
    stronger isolation or fewer hosts. The project and pool ceilings still apply (see
    [Sandbox policy](projects.md#sandbox-policy)).
-7. Click **Create template** (or **Save template** for an existing one).
+8. Click **Create template** (or **Save template** for an existing one).
 
 ### Merging with the parent
 
@@ -79,12 +82,25 @@ The executor decides where a task runs:
 | Skills | Union along the chain, minus removed skills. |
 | Config | Merged key by key; the child wins; `null` deletes a key. |
 | Produces, consumes, implements, tags | Union. |
+| Run inputs | Union by name; a child's field replaces the parent's field with the same name. |
+
+<a id="run-inputs"></a>
+### Run inputs
+
+A task declares the run inputs it needs, for example the built-in `base-agent` declares **Input material**
+(multi-line, optional) and `fetch-issue` the **Jira issue key** (required). Every task that extends a template
+inherits its fields. When a run starts, the start form shows the fields of all steps of the workflow: a field
+is required when any step requires it, and when two steps use the same name the first label wins (the
+designer warns about it). The values reach the step's prompt in a **Run input** section, as data; templates
+can also read `{{runInputText}}` and, as before, `{{parameters.name}}`. A **Jira issue key** field also sets the
+run's issue key.
 
 ### The resolved preview
 
 The right side of the editor shows **Resolved preview**: exactly what an agent receives after inheritance
 and project shadowing, for the global library or for a project you pick. It shows the lineage, executor,
-interfaces and ports, and tabs **System prompt**, **User prompt**, **Skills** and **Config**. If an
+interfaces and ports, and tabs **System prompt**, **User prompt**, **Skills**, **Config** and **Run inputs**
+(the merged fields, with the template each one is inherited from). If an
 implemented interface is not satisfied, **Interface check failed** lists what is missing, and the task
 cannot run until it is fixed. The preview reflects the saved version; unsaved changes are listed as deltas.
 
@@ -108,7 +124,8 @@ extends cannot be deleted either.
 An interface has a **Key**, **Name**, **Description**, inputs and outputs (each with a name, a kind and,
 for inputs, **required**) and **Ports**: the output ports a node of this interface shows on the canvas. A
 template that implements the interface must list every required artefact or state input under
-**Consumes** and every output under **Produces**; the resolved preview checks it.
+**Consumes**, every required **Run input** slot under **Run inputs** (by name) and every output under
+**Produces**; the resolved preview checks it.
 
 Click **Create interface**, fill in the fields (**Add input**, **Add output**) and click **Create
 interface**. Changing interfaces needs `library.manage`. An interface that templates still implement
@@ -202,7 +219,7 @@ non-built-in copy and restart.
 - **Spec Kit** tasks: the specify prompt starts with the line `KEY: summary`, then the issue description
   and acceptance criteria, then the instructions. Plan and tasks do not paste the specification or the plan,
   which Spec Kit reads from the repository; they pass the step's feedback and, for the plan, the optional
-  run parameter `techHints`.
+  run input **Technical hints** (`techHints`).
 - **Implementers** (`implement-opencode`, `implement-claude-code`): the runner runs `verifyCommand` from
   **Config** when you set one (none by default) and fails the step when it exits non-zero; the merge request
   uses `mergeRequest` (true/false), `mergeRequestTitleTemplate` and `mergeRequestDraft`.
@@ -242,7 +259,7 @@ Two built-in templates exist for work you describe yourself in the node: drop th
 | **LLM task** (`llm-task`) | one model call, no repository | summaries, drafts, answers about the run's input material |
 | **Agent task** (`agent-task`) | a coding agent on a runner (Claude Code by default, `agent` in **Config**), with a clone of the project's repository | analysing code, reviewing, answering questions about the repository; with `push: true` in **Config** also changes on a branch with a merge request |
 
-Both put the issue (when the run has one), the run parameter `input` and the reviewer's feedback into the
+Both put the issue (when the run has one), the run input **Input material** and the reviewer's feedback into the
 system prompt (each only when it is there), so the replaced prompt can be just the task. The **Agent task** does not push by default; in a
 project without repositories it runs in an empty workspace and its final answer becomes the `result` artefact. The
 **LLM task** runs on the Back Office server and needs a configured model provider (an API key); the **Agent task**

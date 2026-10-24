@@ -147,9 +147,27 @@ dispatches on `executor`:
 
 LLM, Jira, decision, gate and CI-wait nodes need no repository; a project without repositories (ADR 0034)
 runs workflows made of these. The built-in `llm-task` template (`LLM`; standalone, it does not extend the engineering-oriented `base-agent`) is the generic
-step of such workflows: its task (the user prompt) is written per node (override "replace prompt"); the run
-parameter `input` (as a data block) and the revision feedback (`{{feedback}}`, filled on a second visit) are
+step of such workflows: its task (the user prompt) is written per node (override "replace prompt"); its run
+input `input` ("Input material") and the revision feedback (`{{feedback}}`, filled on a second visit) are
 part of the template's system prompt, so replacing the task keeps them.
+
+### Run inputs
+
+Library tasks declare the run inputs they ask for (`runInputs`, [ADR 0052](../adr/0052-run-inputs-declared-by-tasks.md),
+[Task Library](07-task-library.md)). A workflow's start form is the union of the run inputs of its task steps
+(`GET /workflows/{id}/run-inputs`: required when any step requires it, the first label wins); the START node
+declares nothing and shows the list read-only. The values travel as run `parameters` by name; the value of an
+`ISSUE_KEY` field also becomes the run's `issueKey` unless the request gives one.
+
+- **Checked starters:** `POST /workflows/{id}/runs` (the start dialog and API-token calls) refuses a missing or blank
+  required input and any declared input longer than 20 000 characters, with a validation problem naming the field.
+  The personal intake, the Jira intake watcher, CI and the MCP `start_workflow` tool are not checked.
+- **Prompts:** the template model has `runInput` (the current task's declared inputs that have a value, as
+  `{name, label, value}`) and `runInputText` (the same as `Label: value` paragraphs). Both are untrusted roots, so
+  prompts get them as data blocks. `base-agent`, `llm-task` and `agent-task` render a "Run input" section from
+  `runInputText`. `{{parameters.*}}` keeps working for custom templates.
+- **Design time:** `WorkflowValidator` warns when a step reads `issueKeyFrom` from a run parameter no task declares,
+  and when two tasks declare the same input with different labels.
 
 The seeded `code-review` template is an `LLM` task with `consumes: [diff]`, `produces: [review]` and a
 schema for `{summary, findings[], verdict, score}`; the verdict policy (blocker → REQUEST_CHANGES,

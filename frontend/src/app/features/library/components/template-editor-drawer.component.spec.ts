@@ -30,11 +30,12 @@ const baseAgent: TaskTemplate = {
 describe('TemplateEditorDrawerComponent run inputs (ADR 0052)', () => {
   let http: HttpTestingController;
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({
+  beforeEach(async () => {
+    // the drawer has a @defer block: its metadata resolves asynchronously
+    await TestBed.configureTestingModule({
       imports: [TemplateEditorDrawerComponent],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    });
+    }).compileComponents();
     http = TestBed.inject(HttpTestingController);
   });
 
@@ -82,14 +83,16 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0052)', () => {
   it('lists the inherited fields of the resolved view with the template they come from', async () => {
     const { fixture, drawer } = create(writer);
     await new Promise((r) => setTimeout(r, 200));
-    http.expectOne((r) => r.url === '/api/v1/task-templates/resolve/writer').flush({
-      key: 'writer',
-      lineage: ['writer', 'base-agent'],
-      runInputs: [
-        { name: 'input', label: 'Input material', type: 'MULTILINE', required: false },
-        { name: 'audience', label: 'Audience', type: 'TEXT', required: true },
-      ],
-    });
+    http
+      .expectOne((r) => r.url === '/api/v1/task-templates/resolve/writer')
+      .flush({
+        key: 'writer',
+        lineage: ['writer', 'base-agent'],
+        runInputs: [
+          { name: 'input', label: 'Input material', type: 'MULTILINE', required: false },
+          { name: 'audience', label: 'Audience', type: 'TEXT', required: true },
+        ],
+      });
     fixture.detectChanges();
 
     expect(drawer.previewRunInputs().map((f) => [f.name, f.from])).toEqual([

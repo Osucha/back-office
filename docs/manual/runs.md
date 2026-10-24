@@ -50,7 +50,7 @@ relay track with labels, durations and costs; click a segment to select that ste
 |---|---|
 | **Timeline** | Left: every step in order, with attempt number, the port it left through, who produced it, duration, cost and errors. Right: the selected step (or **Whole run**) with its summary, confidence and facts, and the tabs **Artefacts (N)**, **Logs** and, after a code review, **Review**. |
 | **Canvas replay** | The workflow version the run started with, with the path the run took. |
-| **Input** | The run input: issue key, parameters and, for CI-started runs, the CI context. |
+| **Input** | The run input: issue key, parameters (the values of the start form's run inputs and any extra parameters) and, for CI-started runs, the CI context. |
 | **Provenance** | The signed attestations of the run (see [Provenance](runs.md#provenance)). |
 
 - **Artefacts** are the documents the steps produced: `spec`, `plan`, `tasks`, `review`, `diff` and

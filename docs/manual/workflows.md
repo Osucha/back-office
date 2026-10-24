@@ -320,11 +320,21 @@ must be enabled.
 
 1. Open the project, tab **Workflows**, and click **Start run** next to the workflow. Or press `Ctrl K`,
    choose **Start run…** and pick a workflow.
-2. Enter the **Jira issue key (optional)**, for example `SHOP-123`. Workflows that fetch the issue need
-   it.
-3. Optionally enter **Parameters (JSON, optional)**; expressions read them as
-   `input.parameters['name']`.
+2. Fill in the form. Its fields are the **run inputs** the workflow's steps declare in the task library
+   (see [Run inputs](task-library.md#run-inputs)): a text area for longer text such as **Input material**, a
+   single line for short values. Fields marked `*` are required; every field takes at most 20 000 characters.
+   A **Jira issue key** field (for example `SHOP-123`) appears only when the workflow has a Jira step.
+3. Optional: open **Advanced (JSON)** to add extra parameters as a JSON object, for example `{"depth": 2}`.
+   It is for values no step declares; the issue key and the form's fields are set in the form.
 4. Click **Start run**. The run page opens.
+
+Expressions read the values as `input.parameters['name']`; the issue key is `input.issueKey`. A start through
+the REST API (`POST /api/v1/workflows/:id/runs`, also with a personal access token) is checked the same way: a
+missing required input is refused with a message that names the field. Starts by CI, the Jira intake watcher, your
+personal intake and the MCP tool `start_workflow` are not checked.
+
+In the designer, the **Start** node lists the workflow's run inputs read-only; change them on the tasks in
+the task library.
 
 Other ways to start a run: your pipeline through a CI entrypoint (see [Projects](projects.md#project-ci)),
 the REST API (`POST /api/v1/workflows/:id/runs`), and the MCP tool `start_workflow` from your IDE (see

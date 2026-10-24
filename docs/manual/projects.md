@@ -106,12 +106,12 @@ analysis, translation, reviews of documents. Create the project with an empty **
 gets the starter workflow **LLM task with review**:
 
 1. **Start** → **LLM task** (template `llm-task`): write what the model should do in the node's **User
-   prompt** with **Replace**. The run parameter `input` is given to the model as material (data, not
-   instructions).
+   prompt** with **Replace**. The run input **Input material** is given to the model as material (data,
+   not instructions).
 2. → **Result ok?** (a gate): **approve** finishes the run with success, **revise** sends your comment back to
    the task, **reject** finishes the run with failure.
 
-Start it with **Start run** and parameters such as `{"input": "text to work on"}`
+Start it with **Start run** and write the text to work on into **Input material**
 ([Starting a run](workflows.md#start-run)). Coding steps cannot be used until the project has a repository.
 When you add the first repository, the three SDLC workflows and the `code-review` entrypoint are added once
 (not if workflows with those names already exist).

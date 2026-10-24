@@ -15,12 +15,19 @@ const input: RunInputField = {
   type: 'MULTILINE',
   required: false,
 };
-const issue: RunInputField = { name: 'issueKey', label: 'Jira issue', type: 'ISSUE_KEY', required: true };
+const issue: RunInputField = {
+  name: 'issueKey',
+  label: 'Jira issue',
+  type: 'ISSUE_KEY',
+  required: true,
+};
 
 describe('run inputs editor (ADR 0052)', () => {
   it('adds a field with a free name, removes and reorders', () => {
     let list = addRunInput([]);
-    expect(list).toEqual([{ name: 'field-1', label: '', type: 'TEXT', required: false, help: null }]);
+    expect(list).toEqual([
+      { name: 'field-1', label: '', type: 'TEXT', required: false, help: null },
+    ]);
     list = addRunInput(list);
     expect(list.map((f) => f.name)).toEqual(['field-1', 'field-2']);
     list = moveRunInput(list, 1, -1);
@@ -39,7 +46,10 @@ describe('run inputs editor (ADR 0052)', () => {
   it('names the first problem: blank name or label, duplicate names', () => {
     expect(runInputProblem([input, issue])).toBeNull();
     expect(runInputProblem([{ ...input, name: ' ' }])).toEqual({ kind: 'blankName' });
-    expect(runInputProblem([{ ...input, label: '' }])).toEqual({ kind: 'blankLabel', name: 'input' });
+    expect(runInputProblem([{ ...input, label: '' }])).toEqual({
+      kind: 'blankLabel',
+      name: 'input',
+    });
     expect(runInputProblem([input, { ...issue, name: 'input' }])).toEqual({
       kind: 'duplicate',
       name: 'input',
@@ -62,7 +72,12 @@ describe('run inputs editor (ADR 0052)', () => {
 
   it('drafts carry run inputs: empty for a new template, copied when editing', () => {
     expect(emptyTemplate().runInputs).toEqual([]);
-    const t = { key: 'k', name: 'n', scope: { type: 'GLOBAL' }, runInputs: [issue] } as TaskTemplate;
+    const t = {
+      key: 'k',
+      name: 'n',
+      scope: { type: 'GLOBAL' },
+      runInputs: [issue],
+    } as TaskTemplate;
     expect(toTemplateInput(t as TaskTemplate & Record<string, unknown>).runInputs).toEqual([issue]);
     const old = { key: 'k', name: 'n', scope: { type: 'GLOBAL' } } as TaskTemplate;
     expect(toTemplateInput(old as TaskTemplate & Record<string, unknown>).runInputs).toEqual([]);

@@ -24,7 +24,12 @@ const input: RunInputField = {
   required: false,
   help: null,
 };
-const audience: RunInputField = { name: 'audience', label: 'Audience', type: 'TEXT', required: true };
+const audience: RunInputField = {
+  name: 'audience',
+  label: 'Audience',
+  type: 'TEXT',
+  required: true,
+};
 
 describe('run inputs (ADR 0052)', () => {
   it('reports blank required fields and values over the limit', () => {
@@ -32,9 +37,9 @@ describe('run inputs (ADR 0052)', () => {
       issueKey: 'required',
       audience: 'required',
     });
-    expect(
-      runInputErrors([input], { input: 'x'.repeat(MAX_RUN_INPUT_LENGTH + 1) }),
-    ).toEqual({ input: 'tooLong' });
+    expect(runInputErrors([input], { input: 'x'.repeat(MAX_RUN_INPUT_LENGTH + 1) })).toEqual({
+      input: 'tooLong',
+    });
     expect(runInputErrors([input], { input: 'x'.repeat(MAX_RUN_INPUT_LENGTH) })).toEqual({});
   });
 
@@ -65,7 +70,10 @@ describe('run inputs (ADR 0052)', () => {
     expect(parseAdvanced('{"ticket":"X-1"}', [{ ...issue, name: 'ticket' }]).error).toEqual({
       kind: 'issueKey',
     });
-    expect(parseAdvanced('{"input":"x"}', [input]).error).toEqual({ kind: 'declared', name: 'input' });
+    expect(parseAdvanced('{"input":"x"}', [input]).error).toEqual({
+      kind: 'declared',
+      name: 'input',
+    });
     expect(parseAdvanced('[1]', []).error).toEqual({ kind: 'notObject' });
     expect(parseAdvanced('{oops', []).error?.kind).toBe('json');
     expect(parseAdvanced('  ', []).params).toEqual({});

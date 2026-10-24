@@ -558,8 +558,8 @@ function invalidJson(e: unknown): string {
             <h3 class="sec" i18n="@@library.templates.runInputs.title">Run inputs</h3>
             <p class="sec-help" i18n="@@library.templates.runInputs.help">
               Fields of the start form this task asks for. A workflow asks for the fields of all its
-              steps; a field with the name of an inherited one replaces it. The values reach the prompt
-              as the Run input list; an issue key field is also the run's issue key.
+              steps; a field with the name of an inherited one replaces it. The values reach the
+              prompt as the Run input list; an issue key field is also the run's issue key.
             </p>
             @for (f of draft().runInputs ?? []; track $index; let i = $index) {
               <div class="run-input-row" [attr.data-run-input]="i">
@@ -954,6 +954,38 @@ function invalidJson(e: unknown): string {
       .sandbox-ph {
         height: 320px;
       }
+      .run-input-row {
+        display: grid;
+        grid-template-columns: 140px 1fr 150px auto;
+        gap: 6px 8px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .run-input-row .ri-help {
+        grid-column: 1 / 4;
+      }
+      .ri-required,
+      .ri-actions {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        font-size: 12px;
+      }
+      .ri-add {
+        margin-bottom: 16px;
+      }
+      .ri-resolved {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .ri-resolved li {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 4px 0;
+      }
       .sec {
         margin: 20px 0 10px;
         font-size: 12px;
@@ -1196,8 +1228,14 @@ export class TemplateEditorDrawerComponent {
   });
   readonly runInputTypes: Array<{ value: RunInputField['type']; label: string }> = [
     { value: 'TEXT', label: $localize`:@@library.templates.runInputs.type.text:Single line` },
-    { value: 'MULTILINE', label: $localize`:@@library.templates.runInputs.type.multiline:Multi-line text` },
-    { value: 'ISSUE_KEY', label: $localize`:@@library.templates.runInputs.type.issueKey:Jira issue key` },
+    {
+      value: 'MULTILINE',
+      label: $localize`:@@library.templates.runInputs.type.multiline:Multi-line text`,
+    },
+    {
+      value: 'ISSUE_KEY',
+      label: $localize`:@@library.templates.runInputs.type.issueKey:Jira issue key`,
+    },
   ];
   private readonly runInputBlocker = computed(() => {
     const p = runInputProblem(this.draft().runInputs ?? []);

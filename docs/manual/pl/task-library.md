@@ -74,10 +74,14 @@ Wykonawca decyduje, gdzie działa zadanie:
    i **Konsumuje** (**Consumes**) (nazwy artefaktów lub pól stanu), **Pole pewności** (**Confidence
    field**), **Tagi** (**Tags**), **Konfiguracja (JSON)** (**Config (JSON)**) oraz, dla zadań LLM, **Schemat
    wyjścia** (**Output schema**).
-6. **Sandbox** (zadania na runnerze): zawęź politykę sandboxa projektu dla zadań tego szablonu, na
+6. **Dane wejściowe uruchomienia** (**Run inputs**): pola, o które zadanie prosi przy starcie uruchomienia
+   (zob. [Dane wejściowe uruchomienia](#run-inputs)). Kliknij **Dodaj daną wejściową** (**Add run input**),
+   potem ustaw **Nazwę**, **Etykietę**, typ (**Jedna linia**, **Tekst wieloliniowy** lub **Klucz zgłoszenia
+   Jira**), **Wymagane** i opcjonalny tekst pomocy; przesuwaj pola strzałkami albo je usuwaj.
+7. **Sandbox** (zadania na runnerze): zawęź politykę sandboxa projektu dla zadań tego szablonu, na
    przykład silniejszą izolacją lub mniejszą liczbą hostów. Pułapy projektu i puli nadal obowiązują (zob.
    [Polityka sandboxa](projects.md#sandbox-policy)).
-7. Kliknij **Utwórz szablon** (**Create template**) (lub **Zapisz szablon**, **Save template**, dla
+8. Kliknij **Utwórz szablon** (**Create template**) (lub **Zapisz szablon**, **Save template**, dla
    istniejącego).
 
 ### Scalanie z rodzicem
@@ -90,13 +94,26 @@ Wykonawca decyduje, gdzie działa zadanie:
 | Umiejętności | Suma wzdłuż łańcucha minus usunięte umiejętności. |
 | Konfiguracja | Scalana klucz po kluczu; wygrywa potomek; `null` usuwa klucz. |
 | Produkuje, konsumuje, implementuje, tagi | Suma. |
+| Dane wejściowe uruchomienia | Suma według nazwy; pole dziecka zastępuje pole rodzica o tej samej nazwie. |
+
+<a id="run-inputs"></a>
+### Dane wejściowe uruchomienia
+
+Zadanie deklaruje dane wejściowe, których potrzebuje, na przykład wbudowany `base-agent` deklaruje
+**Materiał wejściowy** (wieloliniowy, opcjonalny), a `fetch-issue` **Klucz zgłoszenia Jira** (wymagany). Każde
+zadanie rozszerzające szablon dziedziczy jego pola. Przy starcie uruchomienia formularz pokazuje pola wszystkich
+kroków workflowu: pole jest wymagane, gdy wymaga go którykolwiek krok, a gdy dwa kroki używają tej samej nazwy,
+wygrywa pierwsza etykieta (projektant ostrzega o tym). Wartości trafiają do promptu kroku w sekcji **Run input**,
+jako dane; szablony mogą też czytać `{{runInputText}}` i, jak dotąd, `{{parameters.name}}`. Pole **Klucz
+zgłoszenia Jira** ustawia też klucz zgłoszenia uruchomienia.
 
 ### Podgląd rozwiązanego zadania
 
 Prawa strona edytora pokazuje **Podgląd rozwiązanego zadania** (**Resolved preview**): dokładnie to, co
 otrzymuje agent po dziedziczeniu i przesłonięciu przez projekt, dla biblioteki globalnej lub wybranego
 projektu. Pokazuje rodowód, wykonawcę, interfejsy i porty oraz karty **Prompt systemowy**, **Prompt
-użytkownika**, **Umiejętności** i **Konfiguracja**. Jeśli implementowany interfejs nie jest spełniony,
+użytkownika**, **Umiejętności**, **Konfiguracja** i **Dane wejściowe** (**Run inputs**: scalone pola wraz
+z szablonem, z którego każde jest dziedziczone). Jeśli implementowany interfejs nie jest spełniony,
 **Kontrola interfejsu nie powiodła się** (**Interface check failed**) wymienia braki, a zadanie nie może
 działać, dopóki ich nie usuniesz. Podgląd odzwierciedla zapisaną wersję; niezapisane zmiany są
 wymienione jako różnice.
@@ -123,7 +140,8 @@ szablonu, który rozszerza inny szablon.
 Interfejs ma **Klucz**, **Nazwę**, **Opis**, wejścia i wyjścia (każde z nazwą, rodzajem i, dla wejść,
 oznaczeniem **wymagane**, **required**) oraz **Porty**: porty wyjściowe, które węzeł z tym interfejsem
 pokazuje na kanwie. Szablon implementujący interfejs musi wymienić każde wymagane wejście (artefakt lub
-pole stanu) w **Konsumuje** i każde wyjście w **Produkuje**; podgląd rozwiązanego zadania to sprawdza.
+pole stanu) w **Konsumuje**, każdy wymagany slot **Run input** (po nazwie) w **Danych wejściowych
+uruchomienia** i każde wyjście w **Produkuje**; podgląd rozwiązanego zadania to sprawdza.
 
 Kliknij **Utwórz interfejs** (**Create interface**), wypełnij pola (**Dodaj wejście**, **Add input**;
 **Dodaj wyjście**, **Add output**) i kliknij **Utwórz interfejs**. Zmiana interfejsów wymaga
@@ -223,8 +241,8 @@ instalacji i przenieś to, czego potrzebujesz, albo usuń swoją niewbudowaną k
   w repozytorium, cytowanie ścieżek plików, nigdy commit ani push: runner commituje i wypycha po agencie).
 - Zadania **Spec Kit**: prompt fazy specify zaczyna się linią `KLUCZ: podsumowanie`, potem opis zgłoszenia
   i kryteria akceptacji, potem instrukcje. Fazy plan i tasks nie wklejają specyfikacji ani planu, które
-  Spec Kit czyta z repozytorium; przekazują uwagi do kroku i, w fazie plan, opcjonalny parametr przebiegu
-  `techHints`.
+  Spec Kit czyta z repozytorium; przekazują uwagi do kroku i, w fazie plan, opcjonalną daną wejściową
+  **Wskazówki techniczne** (`techHints`).
 - **Implementacja** (`implement-opencode`, `implement-claude-code`): runner uruchamia `verifyCommand`
   z **Konfiguracji**, jeśli go ustawisz (domyślnie brak), i oznacza krok jako nieudany, gdy polecenie
   zakończy się kodem różnym od zera; merge request używa kluczy `mergeRequest` (true/false),
@@ -267,7 +285,7 @@ Do pracy, którą opisujesz sam w węźle, służą dwa wbudowane szablony: prze
 | **LLM task** (`llm-task`) | jedno wywołanie modelu, bez repozytorium | podsumowania, szkice, odpowiedzi na podstawie materiału wejściowego przebiegu |
 | **Agent task** (`agent-task`) | agent kodujący na runnerze (domyślnie Claude Code, `agent` w **Konfiguracji**), z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
 
-Oba wstawiają do promptu systemowego zgłoszenie (gdy przebieg je ma), parametr przebiegu `input` i uwagi
+Oba wstawiają do promptu systemowego zgłoszenie (gdy przebieg je ma), daną wejściową **Materiał wejściowy** i uwagi
 recenzenta (każde tylko wtedy, gdy istnieje), więc zastąpiony prompt może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian; w projekcie
 bez repozytoriów działa w pustym katalogu roboczym, a jego końcowa odpowiedź staje się artefaktem `result`.
 **LLM task** działa na serwerze Back Office i wymaga skonfigurowanego dostawcy modeli (klucza API); **Agent task**

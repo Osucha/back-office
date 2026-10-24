@@ -69,7 +69,9 @@ export function withOrigins(
 ): RunInputWithOrigin[] {
   return resolved.map((field) => {
     const from = lineage.find((key) =>
-      templates.some((t) => t.key === key && (t.runInputs ?? []).some((r) => r.name === field.name)),
+      templates.some(
+        (t) => t.key === key && (t.runInputs ?? []).some((r) => r.name === field.name),
+      ),
     );
     return { ...field, from: from ?? null };
   });

@@ -497,6 +497,7 @@ const MAX_HISTORY = 50;
                     (modelOptionsNeeded)="loadModelOptions($event)"
                     [skills]="skills()"
                     [projectId]="resolvedProjectId()"
+                    [workflowId]="workflowId() ?? null"
                     [projectRepositories]="projectRepositories()"
                     [librarySources]="librarySources()"
                     [workspaces]="workspaces()"

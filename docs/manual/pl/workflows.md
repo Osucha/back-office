@@ -341,11 +341,23 @@ musi być włączony.
 
 1. Otwórz projekt, kartę **Workflowy**, i kliknij **Uruchom** obok workflowu. Możesz też nacisnąć
    `Ctrl K`, wybrać **Uruchom…** (**Start run…**) i wskazać workflow.
-2. Wpisz **Klucz zgłoszenia Jira (opcjonalnie)** (**Jira issue key (optional)**), na przykład
-   `SHOP-123`. Workflowy, które pobierają zgłoszenie, go wymagają.
-3. Opcjonalnie wpisz **Parametry (JSON, opcjonalnie)** (**Parameters (JSON, optional)**); wyrażenia
-   odczytują je jako `input.parameters['name']`.
+2. Wypełnij formularz. Jego pola to **dane wejściowe uruchomienia** (**run inputs**), które kroki workflowu
+   deklarują w bibliotece zadań (zob. [Dane wejściowe uruchomienia](task-library.md#run-inputs)): pole
+   wieloliniowe na dłuższy tekst, na przykład **Materiał wejściowy** (**Input material**), i pole jednoliniowe
+   na krótkie wartości. Pola oznaczone `*` są wymagane; każde pole przyjmuje najwyżej 20 000 znaków. Pole
+   **Klucz zgłoszenia Jira** (na przykład `SHOP-123`) pojawia się tylko wtedy, gdy workflow ma krok Jira.
+3. Opcjonalnie: otwórz **Zaawansowane (JSON)** (**Advanced (JSON)**), aby dodać dodatkowe parametry jako
+   obiekt JSON, na przykład `{"depth": 2}`. Służy do wartości, których żaden krok nie deklaruje; klucz
+   zgłoszenia i pola formularza ustawiasz w formularzu.
 4. Kliknij **Uruchom**. Otworzy się strona uruchomienia.
+
+Wyrażenia odczytują wartości jako `input.parameters['name']`; klucz zgłoszenia to `input.issueKey`. Start
+przez REST API (`POST /api/v1/workflows/:id/runs`, także z osobistym tokenem dostępu) jest sprawdzany tak samo:
+brak wymaganego pola kończy się odmową z komunikatem, który nazywa pole. Starty z CI, z obserwatora zgłoszeń
+Jira, z Twojego osobistego przyjmowania pracy i przez narzędzie MCP `start_workflow` nie są sprawdzane.
+
+W projektancie węzeł **Start** pokazuje dane wejściowe uruchomienia workflowu tylko do odczytu; zmieniasz je
+w zadaniach biblioteki.
 
 Inne sposoby uruchomienia: Twój pipeline przez punkt wejścia CI (zob. [Projekty](projects.md#project-ci)),
 REST API (`POST /api/v1/workflows/:id/runs`) i narzędzie MCP `start_workflow` z IDE (zob.

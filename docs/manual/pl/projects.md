@@ -111,13 +111,13 @@ językowymi: pisanie, analizy, tłumaczenia, przeglądy dokumentów. Utwórz pro
 **Repozytoria**. Dostanie on workflow startowy **LLM task with review**:
 
 1. **Start** → **Zadanie LLM** (szablon `llm-task`): opisz, co model ma zrobić, w polu **Prompt
-   użytkownika** węzła z opcją **Zastąp** (**Replace**). Parametr uruchomienia `input` trafia do modelu
-   jako materiał (dane, nie polecenia).
+   użytkownika** węzła z opcją **Zastąp** (**Replace**). Dana wejściowa **Materiał wejściowy** (**Input
+   material**) trafia do modelu jako materiał (dane, nie polecenia).
 2. → **Result ok?** (bramka): **approve** kończy uruchomienie sukcesem, **revise** odsyła Twój komentarz do
    zadania, **reject** kończy uruchomienie porażką.
 
-Uruchom go przyciskiem **Uruchom** (**Start run**) z parametrami takimi jak `{"input": "tekst do
-opracowania"}` ([Uruchamianie workflowu](workflows.md#start-run)). Kroków programistycznych nie da się użyć,
+Uruchom go przyciskiem **Uruchom** (**Start run**) i wpisz tekst do opracowania w polu **Materiał
+wejściowy** ([Uruchamianie workflowu](workflows.md#start-run)). Kroków programistycznych nie da się użyć,
 dopóki projekt nie ma repozytorium. Gdy dodasz pierwsze repozytorium, trzy workflowy SDLC i punkt wejścia
 `code-review` zostaną dodane jednorazowo (chyba że workflowy o tych nazwach już istnieją).
 

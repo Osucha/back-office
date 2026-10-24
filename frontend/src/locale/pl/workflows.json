@@ -364,5 +364,12 @@
   "workflows.stepWorkspace.unknownInProject": "Projekt nie ma przestrzeni {$key}; wybierz inną.",
   "workflows.designer.noWorkspaces": " Projekt nie ma przestrzeni roboczych. ",
   "workflows.designer.manageWorkspaces": "Skonfiguruj w zakładce projektu Przestrzenie robocze",
-  "workflows.designer.workspaceSteps": "kroki tutaj: {$count}"
+  "workflows.designer.workspaceSteps": "kroki tutaj: {$count}",
+  "workflows.props.runInputs.help": " Formularz startu prosi o dane wejściowe, które kroki zadań deklarują w bibliotece zadań (wersja zapisana). Zmieniaj je w zadaniach, nie tutaj. ",
+  "workflows.props.runInputs.unsaved": " Zapisz workflow, aby zobaczyć jego dane wejściowe. ",
+  "workflows.props.runInputs.loading": "Wczytywanie...",
+  "workflows.props.runInputs.failed": " Nie udało się wczytać danych wejściowych. ",
+  "workflows.props.runInputs.none": " Ten workflow nie prosi o żadne dane przy starcie. ",
+  "workflows.props.runInputs.required": "wymagane",
+  "workflows.props.runInputs": "Dane wejściowe uruchomienia"
 }
