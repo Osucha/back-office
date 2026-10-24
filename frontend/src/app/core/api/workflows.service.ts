@@ -6,6 +6,7 @@ import type {
   CodingHarness,
   ExpressionValidation,
   ModelOption,
+  RunInputField,
   StartRunRequest,
   StepKind,
   StepModelPlan,
@@ -73,6 +74,11 @@ export class WorkflowsApi {
   /** ADR 0050: the model of every task step as a run would resolve it; a step with a problem blocks a run. */
   modelPlan(workflowId: string): Observable<StepModelPlan[]> {
     return this.http.get<StepModelPlan[]>(url('workflows', workflowId, 'model-plan'), silent());
+  }
+
+  /** ADR 0052: the run inputs the workflow's task steps declare, for the start dialog. */
+  runInputs(workflowId: string): Observable<RunInputField[]> {
+    return this.http.get<RunInputField[]>(url('workflows', workflowId, 'run-inputs'), silent());
   }
 
   validateExpression(expression: string): Observable<ExpressionValidation> {

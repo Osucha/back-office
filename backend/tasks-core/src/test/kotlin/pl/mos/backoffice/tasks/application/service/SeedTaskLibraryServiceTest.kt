@@ -198,9 +198,13 @@ class SeedTaskLibraryServiceTest {
         assertThat(specify.indexOf("{{issue.description}}")).isLessThan(specify.indexOf("Phase SPECIFY"))
         assertThat(specify).doesNotContain("You are an engineering agent")
 
-        val plan = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.prompt.user!!
+        val resolvedPlan = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!
+        val plan = resolvedPlan.prompt.user!!
         val tasks = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_TASKS, null)!!.prompt.user!!
-        assertThat(plan).doesNotContain("{{artifacts.spec}}").contains("{{feedback}}").contains("{{parameters.techHints}}")
+        assertThat(plan).doesNotContain("{{artifacts.spec}}").contains("{{feedback}}")
+        // ADR 0052: the technical hints are a declared run input, rendered in the inherited "Run input" section
+        assertThat(resolvedPlan.runInputs.map { it.name }).contains("techHints")
+        assertThat(resolvedPlan.prompt.system).contains("{{runInputText}}")
         assertThat(tasks).doesNotContain("{{artifacts.plan}}").contains("{{feedback}}")
     }
 

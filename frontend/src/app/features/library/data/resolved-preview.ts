@@ -2,7 +2,7 @@
  * Pure mapping of a `ResolvedTask` into what the template editor preview shows: lineage
  * breadcrumb, effective prompts, skills, interface check and diff against the draft.
  */
-import type { ResolvedTask, TaskTemplateInput } from '../../../core/api/types';
+import type { ResolvedTask, RunInputField, TaskTemplateInput } from '../../../core/api/types';
 
 export interface ResolvedPreview {
   lineage: string[];
@@ -15,6 +15,8 @@ export interface ResolvedPreview {
   ports: string[];
   produces: string[];
   consumes: string[];
+  /** ADR 0052: the run inputs merged over the lineage. */
+  runInputs: RunInputField[];
   config: Record<string, unknown>;
   abstract: boolean;
   ok: boolean;
@@ -34,6 +36,7 @@ export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview |
     ports: r.ports ?? [],
     produces: r.produces ?? [],
     consumes: r.consumes ?? [],
+    runInputs: r.runInputs ?? [],
     config: r.config ?? {},
     abstract: !!r.abstract,
     ok: r.interfaceCheck?.ok !== false,
@@ -100,6 +103,7 @@ export function emptyTemplate(): TaskTemplateInput {
     produces: [],
     consumes: [],
     tags: [],
+    runInputs: [],
   };
 }
 
@@ -128,6 +132,7 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     produces: t.produces ?? [],
     consumes: t.consumes ?? [],
     tags: t.tags ?? [],
+    runInputs: t.runInputs ?? [],
     ...(t.sandboxPolicy && Object.keys(t.sandboxPolicy).length
       ? { sandboxPolicy: t.sandboxPolicy }
       : {}),

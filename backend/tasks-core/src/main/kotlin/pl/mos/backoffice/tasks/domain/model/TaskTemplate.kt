@@ -3,6 +3,7 @@ package pl.mos.backoffice.tasks.domain.model
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.time.Instant
 
@@ -46,6 +47,8 @@ data class TaskTemplate(
     val produces: List<String>,
     val consumes: List<String>,
     val tags: List<String>,
+    /** Run start form fields this task asks for (ADR 0052); merged child-wins by name over the lineage. */
+    val runInputs: List<RunInputField>,
     val builtIn: Boolean,
     val version: Int,
     val createdAt: Instant,
@@ -79,12 +82,13 @@ data class TaskTemplate(
         val produces: List<String> = emptyList(),
         val consumes: List<String> = emptyList(),
         val tags: List<String> = emptyList(),
+        val runInputs: List<RunInputField> = emptyList(),
     )
 
     val content: Content
         get() = Content(
             key, name, description, abstract, extendsKey, implements, executor, scope, modelProfileId, prompt,
-            skills, removeSkills, config, outputSchema, confidenceField, produces, consumes, tags,
+            skills, removeSkills, config, outputSchema, confidenceField, produces, consumes, tags, runInputs,
         )
 
     /** Replaces the editable content and bumps [version]. */
@@ -114,6 +118,7 @@ data class TaskTemplate(
             produces = c.produces.distinct(),
             consumes = c.consumes.distinct(),
             tags = c.tags.distinct(),
+            runInputs = c.runInputs,
             builtIn = builtIn,
             version = version,
             createdAt = createdAt,

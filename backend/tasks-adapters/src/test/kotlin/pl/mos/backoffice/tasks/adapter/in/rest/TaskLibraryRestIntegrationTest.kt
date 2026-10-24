@@ -148,6 +148,29 @@ class TaskLibraryRestIntegrationTest {
     }
 
     @Test
+    fun `run inputs round-trip through create, update and read and are inherited in the resolved view`() {
+        val key = "inputs-$suffix"
+        val created = post(
+            "/api/v1/task-templates",
+            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","executor":"LLM","runInputs":[{"name":"audience","label":"Audience","type":"TEXT","required":true,"help":"who reads it"}]"""),
+        ).exchange()
+        assertThat(created).hasStatus(HttpStatus.CREATED)
+        val id = idOf(created.response.contentAsString)
+        assertThat(created).bodyJson().extractingPath("$.runInputs[0].name").isEqualTo("audience")
+
+        assertThat(put("/api/v1/task-templates/$id", templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","executor":"LLM","runInputs":[{"name":"audience","label":"Readers","type":"MULTILINE","required":false}]""")))
+            .hasStatusOk().bodyJson().extractingPath("$.runInputs[0].label").isEqualTo("Readers")
+        assertThat(mvc.get().uri("/api/v1/task-templates/$id")).hasStatusOk().bodyJson().satisfies(
+            { assertThat(it).extractingPath("$.runInputs[0].type").isEqualTo("MULTILINE") },
+            { assertThat(it).extractingPath("$.runInputs[0].required").isEqualTo(false) },
+        )
+        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/$key")).hasStatusOk().bodyJson()
+            .extractingPath("$.runInputs[*].name").asArray().containsExactly("input", "audience")
+
+        assertThat(mvc.delete().uri("/api/v1/task-templates/$id")).hasStatus(HttpStatus.NO_CONTENT)
+    }
+
+    @Test
     fun `a project template shadows the built-in one for that project only and merges the skills`() {
         val projectId = UUID.randomUUID()
         val skill = post("/api/v1/skills", """{"key":"mine-$suffix","name":"Mine","content":"# mine","scope":{"type":"PROJECT","projectId":"$projectId"},"tags":["p"]}""").exchange()

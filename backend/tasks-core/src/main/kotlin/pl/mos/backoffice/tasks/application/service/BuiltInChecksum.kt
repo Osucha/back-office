@@ -25,6 +25,7 @@ object BuiltInChecksum {
                 "promptSystem" to t.prompt.system, "promptUser" to t.prompt.user, "promptMode" to t.prompt.mode.name,
                 "skills" to t.skills, "removeSkills" to t.removeSkills, "config" to t.config, "outputSchema" to t.outputSchema,
                 "confidenceField" to t.confidenceField, "produces" to t.produces, "consumes" to t.consumes, "tags" to t.tags,
+                "runInputs" to t.runInputs.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "help" to it.help) },
             ),
         ),
     )

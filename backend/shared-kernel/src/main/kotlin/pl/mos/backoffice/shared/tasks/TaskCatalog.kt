@@ -1,6 +1,7 @@
 package pl.mos.backoffice.shared.tasks
 
 import pl.mos.backoffice.shared.ModelProfileId
+import pl.mos.backoffice.shared.ValidationException
 import java.util.UUID
 
 /**
@@ -14,6 +15,31 @@ enum class TaskExecutor { LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSIT
 data class SkillSnapshot(val key: String, val name: String, val content: String)
 
 data class TaskPrompt(val system: String?, val user: String?)
+
+/** How the run start form shows a [RunInputField]; `ISSUE_KEY` values become the run's issue key (ADR 0052). */
+enum class RunInputType { TEXT, MULTILINE, ISSUE_KEY }
+
+/**
+ * A field of the run start form declared by a library task (ADR 0052). [name] is the key of the value in the run
+ * parameters; a workflow's form is the union of the fields of its task steps.
+ */
+data class RunInputField(
+    val name: String,
+    val label: String,
+    val type: RunInputType = RunInputType.TEXT,
+    val required: Boolean = false,
+    val help: String? = null,
+) {
+    init {
+        if (name.isBlank()) throw ValidationException("run input name must not be blank", "runInputs.name")
+        if (label.isBlank()) throw ValidationException("run input $name: label must not be blank", "runInputs.label")
+    }
+
+    companion object {
+        /** Longest value accepted for one field on a checked start; bounds prompt size and cost. */
+        const val MAX_LENGTH = 20_000
+    }
+}
 
 /**
  * Node-level customisation of a task template inside a workflow. Applied last, after the template's
@@ -61,6 +87,8 @@ data class ResolvedTask(
     val ports: List<String>,
     /** Version of the concrete (leaf) template, recorded in provenance attestations. */
     val version: Int? = null,
+    /** Run start form fields this task asks for, merged over the lineage (ADR 0052). */
+    val runInputs: List<RunInputField> = emptyList(),
 )
 
 data class TaskSummary(

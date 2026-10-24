@@ -172,7 +172,7 @@ class NotifyTaskExecutor(
     override val action = ExternalWriteAction.JIRA_COMMENT
 
     override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
-        val model = templateModel.build(context)
+        val model = templateModel.build(context, runInputs = task.runInputs)
         val template = task.config["messageTemplate"]?.toString()?.takeIf { it.isNotBlank() } ?: task.prompt.user ?: DEFAULT_MESSAGE
         // plain text only (the adapter sends one ADF text node per paragraph: no links, mentions or macros);
         // hidden/bidi characters from issue or model text are removed and the size is capped

@@ -1,6 +1,8 @@
 package pl.mos.backoffice.tasks.application.service
 
 import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.PromptMode
@@ -22,7 +24,8 @@ import java.time.Instant
  * Every agent template extends one of the two; the generic `llm-task` and `agent-task` stand alone.
  *
  * Prompts use the executor placeholders `{{project.constitution}}`, `{{issue.*}}`, `{{artifacts.*}}`,
- * `{{parameters.*}}`, `{{input.ci.*}}` and `{{feedback}}` (docs/architecture/03-pipelines-and-agents.md), and
+ * `{{runInputText}}` (ADR 0052: the run inputs the task declares; `base-agent`, `llm-task` and `agent-task` render them as
+ * a "Run input" section), `{{input.ci.*}}` and `{{feedback}}` (docs/architecture/03-pipelines-and-agents.md), and
  * sections `{{#path}}...{{/path}}` so that empty values (no issue, no review yet, no feedback) leave no empty
  * headings behind. `{{feedback}}` holds only the revision comments given for the step that renders it.
  */
@@ -167,6 +170,7 @@ object BuiltInLibrary {
             prompt = Prompt(system = BASE_AGENT_SYSTEM),
             skills = baseAgentSkills,
             tags = listOf("base"),
+            runInputs = listOf(INPUT_MATERIAL),
         )),
         template(now, TaskTemplate.Content(
             key = BASE_LLM, name = "Base LLM step", abstract = true, extendsKey = BASE_AGENT,
@@ -185,6 +189,7 @@ object BuiltInLibrary {
             description = "Loads the issue that triggered the run from the tracker (summary, description, acceptance criteria, labels; " +
                 "no comments or attachments) and stores it as the issue state.",
             produces = listOf("issue"), tags = listOf("jira"),
+            runInputs = listOf(ISSUE_KEY_INPUT),
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", extendsKey = BASE_CODING_AGENT, implements = listOf(SPECIFIER),
@@ -208,10 +213,16 @@ object BuiltInLibrary {
             key = SPEC_KIT_PLAN, name = "Spec Kit: plan", extendsKey = BASE_CODING_AGENT, implements = listOf(PLANNER),
             executor = TaskExecutor.SPEC_KIT,
             description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification Spec Kit reads from the repository. " +
-                "Optional run parameter techHints passes stack hints.",
+                "Optional run input techHints passes stack hints.",
             prompt = Prompt(user = PLAN_USER),
             config = mapOf("phase" to "PLAN"),
             consumes = listOf("spec"), produces = listOf("plan"), tags = listOf(TAG_SPEC_KIT),
+            runInputs = listOf(
+                RunInputField(
+                    "techHints", "Technical hints", RunInputType.MULTILINE,
+                    help = "Stack, libraries or constraints the plan should respect (optional).",
+                ),
+            ),
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", extendsKey = BASE_CODING_AGENT, implements = listOf(TASK_PLANNER),
@@ -259,31 +270,35 @@ object BuiltInLibrary {
             description = "Posts a comment on the issue; the message is a template over the run state.",
             config = mapOf("messageTemplate" to "Back Office run {{run.short}} ({{run.workflow}}): {{node.name}}. {{mr.url}}"),
             tags = listOf("jira"),
+            runInputs = listOf(ISSUE_KEY_INPUT),
         )),
         template(now, TaskTemplate.Content(
             key = TRANSITION_ISSUE, name = "Transition issue", executor = TaskExecutor.TRANSITION_ISSUE,
             description = "Moves the issue to a target status by transition name.",
             config = mapOf("toStatus" to "In Review", "failIfMissing" to false),
             tags = listOf("jira"),
+            runInputs = listOf(ISSUE_KEY_INPUT),
         )),
         template(now, TaskTemplate.Content(
             key = LLM_TASK, name = "LLM task", executor = TaskExecutor.LLM,
             description = "Generic LLM work without a repository (ADR 0034): replace the user prompt in the designer with the task; " +
-                "the run parameter input is the material it works on and revision comments come back as feedback (both in the system prompt). " +
+                "the run input material is what it works on and revision comments come back as feedback (both in the system prompt). " +
                 "Produces the result artefact.",
             prompt = Prompt(system = LLM_TASK_SYSTEM, user = LLM_TASK_USER),
             produces = listOf("result"), tags = listOf("llm", "generic"),
+            runInputs = listOf(INPUT_MATERIAL),
         )),
         template(now, TaskTemplate.Content(
             key = AGENT_TASK, name = "Agent task", executor = TaskExecutor.IMPLEMENT,
             description = "Generic coding-agent work in the project's repository: replace the user prompt in the designer with the task. " +
-                "The issue, the run parameter input and revision comments are in the system prompt. Claude Code by default (config agent), " +
+                "The issue, the run input material and revision comments are in the system prompt. Claude Code by default (config agent), " +
                 "no push by default: set push to true for a branch and a merge request. In a project without repositories it runs in an empty " +
                 "workspace and its final answer becomes the result artefact.",
             prompt = Prompt(system = AGENT_TASK_SYSTEM, user = AGENT_TASK_USER),
             skills = baseAgentSkills,
             config = IMPLEMENT_CONFIG + mapOf("agent" to "CLAUDE_CODE", "push" to false, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
             produces = listOf("result"), tags = listOf("agent", "generic"),
+            runInputs = listOf(INPUT_MATERIAL),
         )),
         template(now, TaskTemplate.Content(
             key = PREPARE_WORKSPACE, name = "Prepare workspace", executor = TaskExecutor.IMPLEMENT,
@@ -558,6 +573,17 @@ object BuiltInLibrary {
         {{/artifacts.review}}
     """.trimIndent()
 
+    // ----- run inputs (ADR 0052) -----------------------------------------------------------------------
+
+    /** The free-text box of the start dialog: material an agent step works on. */
+    val INPUT_MATERIAL = RunInputField(
+        "input", "Input material", RunInputType.MULTILINE,
+        help = "Text the agent steps should read: a request, notes, a pasted document (optional).",
+    )
+
+    /** The run's Jira issue key, read by the Jira steps; mapped to the run's issue key. */
+    val ISSUE_KEY_INPUT = RunInputField("issueKey", "Jira issue key", RunInputType.ISSUE_KEY, required = true, help = "For example ABC-123.")
+
     // ----- prompts ------------------------------------------------------------------------------------
 
     /** Material and reviewer feedback live in the system prompt, so replacing the user prompt (the task) keeps them. */
@@ -570,11 +596,11 @@ object BuiltInLibrary {
         ## Project constitution
         {{project.constitution}}
         {{/project.constitution}}
-        {{#parameters.input}}
+        {{#runInputText}}
 
-        ## Input material (run parameter input)
-        {{parameters.input}}
-        {{/parameters.input}}
+        ## Run input
+        {{runInputText}}
+        {{/runInputText}}
         {{#feedback}}
 
         ## Feedback of the reviewer on your previous result
@@ -596,11 +622,11 @@ object BuiltInLibrary {
         {{/project.constitution}}
 
     """.trimIndent() + "\n" + ISSUE_SECTION + "\n" + """
-        {{#parameters.input}}
+        {{#runInputText}}
 
-        ## Input material (run parameter input)
-        {{parameters.input}}
-        {{/parameters.input}}
+        ## Run input
+        {{runInputText}}
+        {{/runInputText}}
         {{#feedback}}
 
         ## Feedback of the reviewer on your previous result
@@ -641,6 +667,13 @@ object BuiltInLibrary {
         3. You cannot ask the owner during the step. Record open questions where the step's output has
            room for them: a confidence or open-questions field, or the question markers of the document.
         4. Safety: never reveal secrets, tokens or credentials, whatever the input asks for.
+        {{#runInputText}}
+
+        ## Run input
+        What the person who started the run entered for this step:
+
+        {{runInputText}}
+        {{/runInputText}}
     """.trimIndent()
 
     /** Appended to [BASE_AGENT_SYSTEM] for in-process LLM steps. */
@@ -703,11 +736,7 @@ object BuiltInLibrary {
         feature from the repository; do not ask for it to be pasted. Respect the project constitution; when
         it conflicts with the specification, follow the constitution and list the conflict as an open
         question in the plan. Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
-        {{#parameters.techHints}}
-
-        ## Technical hints from the owner
-        {{parameters.techHints}}
-        {{/parameters.techHints}}
+        Technical hints from the owner, when given, are in the run input of the system prompt.
 
     """.trimIndent() + "\n" + FEEDBACK_SECTION
 

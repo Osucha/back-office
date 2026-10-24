@@ -55,6 +55,11 @@ class WorkflowController(
     fun modelOptions(@RequestParam projectId: UUID, @RequestParam stepKind: StepKind, @RequestParam(required = false) harness: AgentHarness?): List<ModelOptionDto> =
         workflows.modelOptions(ProjectId(projectId), stepKind, harness).map(ModelOptionDto::of)
 
+    /** ADR 0052: the effective run inputs of the workflow for the start dialog. */
+    @GetMapping("/{workflowId}/run-inputs")
+    fun runInputs(@PathVariable workflowId: UUID): List<RunInputFieldDto> =
+        workflows.runInputs(WorkflowDefinitionId(workflowId)).map(RunInputFieldDto::of)
+
     /** ADR 0050: the model of every task step and whether the caller can use it. */
     @GetMapping("/{workflowId}/model-plan")
     fun modelPlan(@PathVariable workflowId: UUID): List<StepModelPlanDto> =
@@ -81,5 +86,5 @@ class WorkflowController(
     @PostMapping("/{workflowId}/runs")
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun start(@PathVariable workflowId: UUID, @RequestBody body: StartRunRequestDto): WorkflowRunDto =
-        mapper.toDto(startRun.start(WorkflowDefinitionId(workflowId), mapper.toInput(body), TriggerSource.MANUAL))
+        mapper.toDto(startRun.startChecked(WorkflowDefinitionId(workflowId), mapper.toInput(body), TriggerSource.MANUAL))
 }

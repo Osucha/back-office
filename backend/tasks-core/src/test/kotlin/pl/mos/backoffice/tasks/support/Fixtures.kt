@@ -1,6 +1,7 @@
 package pl.mos.backoffice.tasks.support
 
 import pl.mos.backoffice.shared.Clock
+import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
 import pl.mos.backoffice.tasks.domain.model.Prompt
@@ -46,12 +47,13 @@ class Library {
         consumes: List<String> = emptyList(),
         tags: List<String> = emptyList(),
         name: String = key,
+        runInputs: List<RunInputField> = emptyList(),
     ): TaskTemplate = templates.save(
         TaskTemplate.create(
             TaskTemplate.Content(
                 key = key, name = name, abstract = abstract, extendsKey = extendsKey, implements = implements, executor = executor,
                 scope = scope, prompt = prompt, skills = skills, removeSkills = removeSkills, config = config, outputSchema = outputSchema,
-                confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags,
+                confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags, runInputs = runInputs,
             ),
             now,
         ),
@@ -60,6 +62,6 @@ class Library {
     companion object {
         fun artifact(name: String, required: Boolean = true) = Slot(name, SlotKind.ARTIFACT, required)
         fun state(name: String, required: Boolean = true) = Slot(name, SlotKind.STATE, required)
-        fun input(name: String) = Slot(name, SlotKind.INPUT, true)
+        fun input(name: String, required: Boolean = true) = Slot(name, SlotKind.INPUT, required)
     }
 }

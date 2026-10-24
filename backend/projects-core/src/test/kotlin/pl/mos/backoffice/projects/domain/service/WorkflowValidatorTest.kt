@@ -17,6 +17,9 @@ import pl.mos.backoffice.projects.domain.model.Trigger
 import pl.mos.backoffice.projects.domain.model.TriggerType
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 
 class WorkflowValidatorTest {
 
@@ -278,5 +281,63 @@ class WorkflowValidatorTest {
         // a deterministic signal (CI) is fine
         assertThat(WorkflowValidator.expressionRoots("ci.status == 'SUCCESS' and issue.priority != 'review'")).containsExactlyInAnyOrder("ci", "issue")
         assertThat(WorkflowValidator.expressionRoots("review.verdict != 'REQUEST_CHANGES'")).containsExactly("review")
+    }
+
+    // ---- run inputs (ADR 0052)
+
+    private val issueField = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true)
+    private val inputs = TaskPortsProvider { key ->
+        when (key) {
+            "fetch-issue" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(issueField))
+            "fetch-from-param" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(issueField), issueKeyFrom = "story")
+            "story-writer" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(RunInputField("story", "Story key", RunInputType.ISSUE_KEY)))
+            "notes" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(RunInputField("input", "Notes", RunInputType.MULTILINE)))
+            "material" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(RunInputField("input", "Input material", RunInputType.MULTILINE)))
+            else -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS)
+        }
+    }
+
+    private fun chain(vararg tasks: WorkflowNode.Task): Pair<List<WorkflowNode>, List<WorkflowEdge>> {
+        val ids = listOf("start") + tasks.map { it.id } + "done"
+        return (listOf(start()) + tasks + end()) to ids.zipWithNext().map { (a, b) -> edge(a, if (a == "start") "out" else "success", b) }
+    }
+
+    @Test
+    fun `a Jira step reading the issue key from an undeclared run parameter is a warning, not an error`() {
+        val fromOverride = WorkflowNode.Task("fetch", "Fetch", task = TaskBinding("fetch-issue", TaskOverrides(config = mapOf("issueKeyFrom" to "ticket"))))
+        val (nodes, edges) = chain(fromOverride)
+
+        val result = validator.validate("wf", nodes, edges, inputs)
+
+        assertThat(result.valid).isTrue()
+        assertThat(result.warnings.single { it.nodeId == "fetch" }).satisfies({
+            assertThat(it.field).isEqualTo("task.config.issueKeyFrom")
+            assertThat(it.message).contains("ticket").contains("no task of this workflow declares")
+        })
+    }
+
+    @Test
+    fun `issueKeyFrom input, a declared parameter or the template default declared elsewhere do not warn`() {
+        val (plain, plainEdges) = chain(task("fetch", "fetch-issue"))
+        assertThat(validator.validate("wf", plain, plainEdges, inputs).warnings.filter { it.field == "task.config.issueKeyFrom" }).isEmpty()
+
+        val (declared, declaredEdges) = chain(task("write", "story-writer"), task("fetch", "fetch-from-param"))
+        assertThat(validator.validate("wf", declared, declaredEdges, inputs).warnings.filter { it.field == "task.config.issueKeyFrom" }).isEmpty()
+
+        val (undeclared, undeclaredEdges) = chain(task("fetch", "fetch-from-param"))
+        assertThat(validator.validate("wf", undeclared, undeclaredEdges, inputs).warnings.map { it.nodeId to it.field })
+            .contains("fetch" to "task.config.issueKeyFrom")
+    }
+
+    @Test
+    fun `two tasks declaring the same run input with different labels is a warning naming both`() {
+        val (nodes, edges) = chain(task("a", "material"), task("b", "notes"), task("c", "material"))
+
+        val result = validator.validate("wf", nodes, edges, inputs)
+
+        assertThat(result.valid).isTrue()
+        val warning = result.warnings.single { it.field == "runInputs.input" }
+        assertThat(warning.nodeId).isEqualTo("b")
+        assertThat(warning.message).contains("Input material").contains("Notes").contains("first label wins")
     }
 }

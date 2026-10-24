@@ -7,6 +7,7 @@ import pl.mos.backoffice.projects.domain.model.Trigger
 import pl.mos.backoffice.projects.domain.model.TriggerType
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.tasks.RunInputField
 
 data class ValidationIssue(val nodeId: String? = null, val edgeId: String? = null, val field: String? = null, val message: String)
 
@@ -15,10 +16,17 @@ data class WorkflowValidationResult(val errors: List<ValidationIssue>, val warni
 }
 
 /**
- * What the validator needs to know about a task template: its output ports, whether it is abstract and
- * whether it can push to the repository (runner-backed `IMPLEMENT` / `SPEC_KIT` with `push` not false).
+ * What the validator needs to know about a task template: its output ports, whether it is abstract,
+ * whether it can push to the repository (runner-backed `IMPLEMENT` / `SPEC_KIT` with `push` not false), the run
+ * inputs it declares and, for Jira reads, the template's `issueKeyFrom` setting (ADR 0052).
  */
-data class TaskTemplateInfo(val ports: List<String>, val abstract: Boolean = false, val pushCapable: Boolean = false)
+data class TaskTemplateInfo(
+    val ports: List<String>,
+    val abstract: Boolean = false,
+    val pushCapable: Boolean = false,
+    val runInputs: List<RunInputField> = emptyList(),
+    val issueKeyFrom: String? = null,
+)
 
 /**
  * Looks up a template key for validation. Returns null for unknown keys. The default provider treats
@@ -96,7 +104,44 @@ class WorkflowValidator {
             warnings += ValidationIssue(message = "workflow has no human gate; it will run fully unattended")
         }
         if (errors.none { it.field == "id" }) warnings += modelRoutedPushes(nodes, edges, taskPorts)
+        warnings += runInputWarnings(nodes, taskPorts)
         return WorkflowValidationResult(errors, warnings)
+    }
+
+    /**
+     * ADR 0052, warnings only: a step that reads the issue key from a run parameter (`issueKeyFrom`) that no task of
+     * the workflow declares gets no field for it in the start form; two tasks that declare the same run input with
+     * different labels show only the first label.
+     */
+    private fun runInputWarnings(nodes: List<WorkflowNode>, taskPorts: TaskPortsProvider): List<ValidationIssue> {
+        val tasks = nodes.filterIsInstance<WorkflowNode.Task>().filter { it.task.templateKey.isNotBlank() }
+            .map { it to taskPorts.lookup(it.task.templateKey) }
+        val declared = tasks.flatMap { (_, info) -> info?.runInputs.orEmpty() }.map { it.name }.toSet()
+        val warnings = mutableListOf<ValidationIssue>()
+        tasks.forEach { (node, info) ->
+            val from = (node.task.overrides.config[ISSUE_KEY_FROM]?.toString() ?: info?.issueKeyFrom)?.trim()
+            if (!from.isNullOrEmpty() && from != ISSUE_KEY_FROM_INPUT && from !in declared) {
+                warnings += ValidationIssue(
+                    nodeId = node.id, field = "task.config.$ISSUE_KEY_FROM",
+                    message = "this step reads the issue key from the run parameter $from, but no task of this workflow declares it as a run " +
+                        "input, so the start form has no field for it; declare it in the task library or use issueKeyFrom input",
+                )
+            }
+        }
+        val firstLabel = mutableMapOf<String, String>()
+        tasks.forEach { (node, info) ->
+            info?.runInputs.orEmpty().forEach { field ->
+                val first = firstLabel.getOrPut(field.name) { field.label }
+                if (first != field.label) {
+                    warnings += ValidationIssue(
+                        nodeId = node.id, field = "runInputs.${field.name}",
+                        message = "run input ${field.name} is declared with the label \"$first\" by an earlier step and \"${field.label}\" here; " +
+                            "the start form shows one field and the first label wins",
+                    )
+                }
+            }
+        }
+        return warnings
     }
 
     /**
@@ -165,6 +210,8 @@ class WorkflowValidator {
         val MODEL_PRODUCED_ROOTS = setOf("confidence", "review")
 
         private const val MUST_NOT_BE_BLANK = "must not be blank"
+        private const val ISSUE_KEY_FROM = "issueKeyFrom"
+        private const val ISSUE_KEY_FROM_INPUT = "input"
         private const val MUST_BE_POSITIVE = "must be positive"
         private const val FIELD_TEMPLATE_KEY = "task.templateKey"
         private const val FIELD_DEFAULT_BRANCH = "decision.defaultBranch"

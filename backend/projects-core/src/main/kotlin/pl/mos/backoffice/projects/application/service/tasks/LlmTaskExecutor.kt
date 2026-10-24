@@ -77,7 +77,7 @@ class LlmTaskExecutor(
 
     override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
         val profile = modelResolver.forLlmCall(task, context.project, ActingUser.startedBy(context.run)?.userId)
-        val model = templateModel.build(context)
+        val model = templateModel.build(context, runInputs = task.runInputs)
         val maxChars = (task.config["maxInputChars"] as? Number)?.toInt() ?: task.config["maxInputChars"]?.toString()?.toIntOrNull() ?: DEFAULT_MAX_INPUT_CHARS
         val blocks = PromptDataBlocks.random()
         val guardMode = InjectionGuardMode.of(task.config["injectionGuard"])

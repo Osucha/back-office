@@ -47,6 +47,8 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.PublicOperation
 import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.projects.domain.service.RunInputs
+import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
@@ -211,7 +213,10 @@ class WorkflowService(
         try {
             taskCatalog.resolve(key, projectId.value)?.let { task ->
                 val pushes = task.executor in PUSHING_EXECUTORS && task.config["push"]?.toString()?.lowercase() != "false"
-                TaskTemplateInfo(task.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS }, pushCapable = pushes)
+                TaskTemplateInfo(
+                    task.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS }, pushCapable = pushes,
+                    runInputs = task.runInputs, issueKeyFrom = task.config["issueKeyFrom"]?.toString(),
+                )
             }
         } catch (e: ValidationException) {
             TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, abstract = true)
@@ -240,6 +245,12 @@ class WorkflowService(
         return check.plan(project, definition.nodes, user.userId?.value).map {
             ManageWorkflows.StepModelPlan(it.nodeId, it.nodeName, it.stepKind, it.harness, it.source.name, it.profileId, it.model, it.problem, it.model?.note)
         }
+    }
+
+    override fun runInputs(id: WorkflowDefinitionId): List<RunInputField> {
+        val definition = workflows.findById(id) ?: throw NotFoundException("WorkflowDefinition", id)
+        gate.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
+        return RunInputs.effective(definition, taskCatalog)
     }
 
     override fun modelOptions(projectId: ProjectId, stepKind: StepKind, harness: AgentHarness?): List<ModelOption> {

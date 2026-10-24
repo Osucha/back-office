@@ -5,6 +5,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.tasks.domain.model.Prompt
@@ -209,7 +211,7 @@ class TaskResolverTest {
         lib.iface("reviewer", inputs = listOf(artifact("diff"), artifact("spec", required = false), Library.input("mode")), outputs = listOf(artifact("review"), state("review")), ports = listOf("success", "failure", "changes-requested"))
         lib.iface("notifier", ports = listOf("success", "sent"))
         lib.template("root", abstract = true, executor = TaskExecutor.LLM, implements = listOf("notifier"))
-        lib.template("good", extendsKey = "root", implements = listOf("reviewer"), consumes = listOf("diff"), produces = listOf("review"))
+        lib.template("good", extendsKey = "root", implements = listOf("reviewer"), consumes = listOf("diff"), produces = listOf("review"), runInputs = listOf(RunInputField("mode", "Mode")))
         lib.template("bad", extendsKey = "root", implements = listOf("reviewer", "missing"), consumes = listOf("spec"), produces = listOf("summary"))
 
         val good = resolver.preview("good", null)!!
@@ -223,6 +225,7 @@ class TaskResolverTest {
         assertThat(bad.interfaceCheck.problems).containsExactly(
             "interface reviewer: output review is not in produces",
             "interface reviewer: required input diff is not in consumes",
+            "interface reviewer: required run input mode is not in runInputs",
             "interface missing does not exist",
         )
         assertThatThrownBy { resolver.resolve("bad", null) }
@@ -246,5 +249,44 @@ class TaskResolverTest {
 
         assertThat(resolver.resolve("child", null)!!.prompt.system).isEqualTo("global base\n\nchild")
         assertThat(resolver.resolve("child", lib.projectId)!!.prompt.system).isEqualTo("project base\n\nchild")
+    }
+
+    @Test
+    fun `run inputs are unioned root to leaf by name and the child field wins in place`() {
+        lib.template("root", abstract = true, executor = TaskExecutor.LLM, runInputs = listOf(RunInputField("input", "Input material", RunInputType.MULTILINE), RunInputField("hints", "Hints")))
+        lib.template("middle", abstract = true, extendsKey = "root", runInputs = listOf(RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true)))
+        lib.template("leaf", extendsKey = "middle", runInputs = listOf(RunInputField("input", "Story text", RunInputType.MULTILINE, required = true, help = "paste the story")))
+
+        val leaf = resolver.resolve("leaf", null)!!
+
+        assertThat(leaf.runInputs).containsExactly(
+            RunInputField("input", "Story text", RunInputType.MULTILINE, required = true, help = "paste the story"),
+            RunInputField("hints", "Hints"),
+            RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true),
+        )
+        assertThat(resolver.preview("middle", null)!!.runInputs.map { it.name }).containsExactly("input", "hints", "issueKey")
+    }
+
+    @Test
+    fun `a template without run inputs inherits its parent fields unchanged`() {
+        lib.template("root", abstract = true, executor = TaskExecutor.LLM, runInputs = listOf(RunInputField("input", "Input material")))
+        lib.template("leaf", extendsKey = "root")
+
+        assertThat(resolver.resolve("leaf", null)!!.runInputs).containsExactly(RunInputField("input", "Input material"))
+    }
+
+    @Test
+    fun `a required interface INPUT slot must be declared as a run input, an optional one need not`() {
+        lib.iface("jira-reader", inputs = listOf(Library.input("issueKey"), Library.input("notes", required = false)))
+        lib.template("root", abstract = true, executor = TaskExecutor.FETCH_ISSUE, runInputs = listOf(RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true)))
+        lib.template("declared", extendsKey = "root", implements = listOf("jira-reader"))
+        lib.template("undeclared", executor = TaskExecutor.FETCH_ISSUE, implements = listOf("jira-reader"))
+
+        assertThat(resolver.preview("declared", null)!!.interfaceCheck).isEqualTo(InterfaceCheck.OK)
+        assertThat(resolver.preview("undeclared", null)!!.interfaceCheck.problems)
+            .containsExactly("interface jira-reader: required run input issueKey is not in runInputs")
+        assertThatThrownBy { resolver.resolve("undeclared", null) }
+            .isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("required run input issueKey is not in runInputs")
     }
 }

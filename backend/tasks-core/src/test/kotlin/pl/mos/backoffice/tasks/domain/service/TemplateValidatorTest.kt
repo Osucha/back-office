@@ -4,6 +4,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
@@ -24,10 +26,11 @@ class TemplateValidatorTest {
         outputSchema: String? = null,
         confidenceField: String? = null,
         scope: Scope = Scope.Global,
+        runInputs: List<RunInputField> = emptyList(),
     ) = TaskTemplate.create(
         TaskTemplate.Content(
             key = key, name = key, extendsKey = extendsKey, abstract = abstract, executor = executor, implements = implements,
-            skills = skills, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope,
+            skills = skills, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope, runInputs = runInputs,
         ),
         lib.now,
     )
@@ -112,5 +115,20 @@ class TemplateValidatorTest {
         lib.template("aa", extendsKey = "bb", executor = TaskExecutor.LLM)
         lib.template("bb", extendsKey = "aa")
         assertThat(fields(candidate(extendsKey = "aa", executor = null))).isEmpty()
+    }
+
+    @Test
+    fun `run input names must be unique within a template`() {
+        val problems = validator.problems(candidate(runInputs = listOf(RunInputField("input", "Input"), RunInputField("input", "Again", RunInputType.MULTILINE))))
+
+        assertThat(problems.map { it.field }).containsExactly("runInputs")
+        assertThat(problems.single().message).contains("input").contains("unique")
+        assertThat(fields(candidate(runInputs = listOf(RunInputField("input", "Input"), RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY))))).isEmpty()
+    }
+
+    @Test
+    fun `run input names and labels must not be blank`() {
+        assertThatThrownBy { candidate(runInputs = listOf(RunInputField(" ", "Input"))) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("name")
+        assertThatThrownBy { candidate(runInputs = listOf(RunInputField("input", " "))) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("label")
     }
 }

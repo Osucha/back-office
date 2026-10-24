@@ -81,6 +81,7 @@ export type ExpressionValidation = NonNullable<
 
 // ---- runs
 export type StartRunRequest = S['StartRunRequest'];
+export type RunInputField = S['RunInputField'];
 export type RunStatus = S['RunStatus'];
 export type RunOutcome = S['RunOutcome'];
 export type NodeExecutionStatus = S['NodeExecutionStatus'];

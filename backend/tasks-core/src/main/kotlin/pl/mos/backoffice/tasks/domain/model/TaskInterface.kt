@@ -39,6 +39,10 @@ data class TaskInterface(
     val requiredConsumes: List<String>
         get() = inputs.filter { it.required && it.kind != SlotKind.INPUT }.map { it.name }
 
+    /** `INPUT` slots that must be declared in a template's `runInputs` (rule 5, ADR 0052). */
+    val requiredRunInputs: List<String>
+        get() = inputs.filter { it.required && it.kind == SlotKind.INPUT }.map { it.name }
+
     fun update(
         name: String, description: String, inputs: List<Slot>, outputs: List<Slot>, ports: List<String>, now: Instant, actor: Actor? = null,
     ): TaskInterface = copy(name = name, description = description, inputs = inputs, outputs = outputs, ports = ports, updatedAt = now, updatedBy = actor)

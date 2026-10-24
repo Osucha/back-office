@@ -11,7 +11,7 @@ import java.util.UUID
  * Structural checks of a template against the rest of the library, run before a template is saved:
  * key format, parent existence and no self-extension, executor present on concrete templates unless an
  * ancestor provides one, `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`,
- * implemented interfaces and referenced skills exist. All problems are collected into one
+ * implemented interfaces and referenced skills exist, run input names are unique. All problems are collected into one
  * `ValidationException`.
  */
 class TemplateValidator(private val lookup: LibraryLookup) {
@@ -46,6 +46,10 @@ class TemplateValidator(private val lookup: LibraryLookup) {
         }
         template.skills.forEach { key ->
             if (lookup.visibleSkill(key, projectId) == null) errors += FieldError("skills", "skill $key does not exist")
+        }
+        // blank names and labels are refused by RunInputField itself
+        template.runInputs.groupBy { it.name }.filterValues { it.size > 1 }.keys.forEach { name ->
+            errors += FieldError("runInputs", "run input names must be unique; $name is declared more than once")
         }
         return errors
     }

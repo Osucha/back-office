@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import pl.mos.backoffice.tasks.domain.model.SlotKind
@@ -58,6 +59,15 @@ data class TaskInterfaceDto(
     val updatedBy: ActorRefDto? = null,
 )
 
+/** `RunInputField` schema (ADR 0052). */
+data class RunInputFieldDto(
+    @field:NotBlank val name: String,
+    @field:NotBlank val label: String,
+    val type: RunInputType = RunInputType.TEXT,
+    val required: Boolean = false,
+    val help: String? = null,
+)
+
 data class TaskPromptDto(val system: String? = null, val user: String? = null, val mode: PromptMode = PromptMode.APPEND)
 
 data class TaskTemplateInputDto(
@@ -79,6 +89,7 @@ data class TaskTemplateInputDto(
     val produces: List<String> = emptyList(),
     val consumes: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
+    @field:Valid val runInputs: List<RunInputFieldDto> = emptyList(),
 )
 
 data class TaskTemplateDto(
@@ -101,6 +112,7 @@ data class TaskTemplateDto(
     val produces: List<String>,
     val consumes: List<String>,
     val tags: List<String>,
+    val runInputs: List<RunInputFieldDto>,
     val builtIn: Boolean,
     val version: Int,
     val createdAt: Instant,
@@ -130,6 +142,7 @@ data class ResolvedTaskDto(
     val interfaces: List<String>,
     val lineage: List<String>,
     val ports: List<String>,
+    val runInputs: List<RunInputFieldDto>,
     val abstract: Boolean,
     val interfaceCheck: InterfaceCheckDto,
 )

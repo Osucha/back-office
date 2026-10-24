@@ -1090,9 +1090,26 @@ paths:
     post:
       tags: [runs]
       operationId: startRun
+      description: >-
+        ADR 0052: the declared run inputs of the workflow (`GET /workflows/{workflowId}/run-inputs`) are checked here,
+        for interactive and API-token calls alike: a required input that is missing or blank, or any declared input
+        longer than 20 000 characters, is rejected with a validation problem naming the field. Undeclared parameters
+        are kept. The value of an `ISSUE_KEY` input becomes the run's issue key unless `issueKey` is given.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StartRunRequest' } } } }
       responses:
         '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRun' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /workflows/{workflowId}/run-inputs:
+    parameters: [ { $ref: '#/components/parameters/workflowId' } ]
+    get:
+      tags: [workflows]
+      operationId: getWorkflowRunInputs
+      description: >-
+        ADR 0052: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its
+        task steps (required when any step requires it, the first label wins). Needs project.view, like reading the workflow.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RunInputField' } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
 
   # ---------------------------------------------------------------- workflow library (ADR 0037)
   /projects/{projectId}/workspaces:
@@ -3043,6 +3060,9 @@ components:
     # ---- runs
     StartRunRequest:
       type: object
+      description: >-
+        Declared run inputs (ADR 0052) go into `parameters` by name. On REST starts a required declared input that is
+        missing or blank, or a declared input longer than 20 000 characters, is rejected with a validation problem.
       properties:
         issueKey: { type: string, nullable: true }
         parameters: { type: object, additionalProperties: true }
@@ -3467,7 +3487,18 @@ components:
         produces: { type: array, items: { type: string } }
         consumes: { type: array, items: { type: string } }
         tags: { type: array, items: { type: string } }
+        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: 'Run inputs this task asks for when a run starts (ADR 0052); inherited child-wins by name' }
         sandboxPolicy: { $ref: '#/components/schemas/SandboxPolicy' }
+    RunInputField:
+      type: object
+      description: A field of the run start form declared by a library task (ADR 0052).
+      required: [name, label, type, required]
+      properties:
+        name: { type: string, description: key of the value in the run parameters }
+        label: { type: string }
+        type: { type: string, enum: [TEXT, MULTILINE, ISSUE_KEY], description: 'TEXT single line, MULTILINE text area, ISSUE_KEY the run''s issue key' }
+        required: { type: boolean }
+        help: { type: string, nullable: true }
     TaskTemplate:
       allOf:
         - $ref: '#/components/schemas/TaskTemplateInput'
@@ -3496,6 +3527,7 @@ components:
         interfaces: { type: array, items: { type: string } }
         lineage: { type: array, items: { type: string } }
         ports: { type: array, items: { type: string } }
+        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0052) }
         abstract: { type: boolean }
         interfaceCheck: { type: object, properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
     SkillInput:

@@ -17,7 +17,14 @@ import java.time.Instant
 
 /** Use case: start a run of a workflow (manual / API); the run is handed to the engine and returned as `RUNNING`. */
 interface StartRun {
+    /** Starts without checking the declared run inputs: system starters (personal intake, MCP) send what they always sent. */
     fun start(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource = TriggerSource.MANUAL): WorkflowRun
+
+    /**
+     * The REST start (UI and API token, ADR 0052): like [start], but the workflow's declared run inputs are checked
+     * first (required, at most 20 000 characters) and an `ISSUE_KEY` input becomes the run's issue key.
+     */
+    fun startChecked(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource = TriggerSource.MANUAL): WorkflowRun
 }
 
 /** Use case: cancel an active run (RUNNING or WAITING); open approvals expire. */

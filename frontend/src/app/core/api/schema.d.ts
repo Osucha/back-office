@@ -3469,6 +3469,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/workflows/{workflowId}/run-inputs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workflowId: components['parameters']['workflowId'];
+      };
+      cookie?: never;
+    };
+    /** @description ADR 0052: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its task steps (required when any step requires it, the first label wins). Needs project.view, like reading the workflow. */
+    get: operations['getWorkflowRunInputs'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/workflows/{workflowId}/runs': {
     parameters: {
       query?: never;
@@ -3480,6 +3499,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description ADR 0052: the declared run inputs of the workflow (`GET /workflows/{workflowId}/run-inputs`) are checked here, for interactive and API-token calls alike: a required input that is missing or blank, or any declared input longer than 20 000 characters, is rejected with a validation problem naming the field. Undeclared parameters are kept. The value of an `ISSUE_KEY` input becomes the run's issue key unless `issueKey` is given. */
     post: operations['startRun'];
     delete?: never;
     options?: never;
@@ -5715,6 +5735,8 @@ export interface components {
         system?: string | null;
         user?: string | null;
       };
+      /** @description merged run inputs of the lineage (ADR 0052) */
+      runInputs?: components['schemas']['RunInputField'][];
       skills?: {
         key?: string;
         name?: string;
@@ -5744,6 +5766,19 @@ export interface components {
       name: string;
       permissions: string[];
       scope: components['schemas']['PermissionScope'];
+    };
+    /** @description A field of the run start form declared by a library task (ADR 0052). */
+    RunInputField: {
+      help?: string | null;
+      label: string;
+      /** @description key of the value in the run parameters */
+      name: string;
+      required: boolean;
+      /**
+       * @description TEXT single line, MULTILINE text area, ISSUE_KEY the run's issue key
+       * @enum {string}
+       */
+      type: 'TEXT' | 'MULTILINE' | 'ISSUE_KEY';
     };
     Runner: {
       backends?: ('AGENT_SANDBOX' | 'K8S_JOB' | 'DOCKER')[];
@@ -6201,6 +6236,7 @@ export interface components {
       /** @description seeded Spec Kit workflows the project lacks ("Add Spec Kit workflows") */
       missingWorkflows: string[];
     };
+    /** @description Declared run inputs (ADR 0052) go into `parameters` by name. On REST starts a required declared input that is missing or blank, or a declared input longer than 20 000 characters, is rejected with a validation problem. */
     StartRunRequest: {
       issueKey?: string | null;
       parameters?: {
@@ -6340,6 +6376,8 @@ export interface components {
       produces?: string[];
       prompt?: components['schemas']['TaskPrompt'];
       removeSkills?: string[];
+      /** @description Run inputs this task asks for when a run starts (ADR 0052); inherited child-wins by name */
+      runInputs?: components['schemas']['RunInputField'][];
       sandboxPolicy?: components['schemas']['SandboxPolicy'];
       scope: components['schemas']['Scope'];
       skills?: string[];
@@ -13201,6 +13239,29 @@ export interface operations {
       409: components['responses']['Problem'];
     };
   };
+  getWorkflowRunInputs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workflowId: components['parameters']['workflowId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunInputField'][];
+        };
+      };
+      404: components['responses']['Problem'];
+    };
+  };
   startRun: {
     parameters: {
       query?: never;
@@ -13225,6 +13286,7 @@ export interface operations {
           'application/json': components['schemas']['WorkflowRun'];
         };
       };
+      400: components['responses']['Problem'];
     };
   };
   validateExpression: {

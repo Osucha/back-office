@@ -26,6 +26,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
+import pl.mos.backoffice.projects.domain.service.RunInputs
 import pl.mos.backoffice.projects.domain.service.WorkflowValidator
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
@@ -39,6 +40,7 @@ import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.PublicOperation
 import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
 import pl.mos.backoffice.shared.usage.PageOf
@@ -69,12 +71,21 @@ class RunService(
     private val specKitSteps: pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck? = null,
     /** ADR 0050: refuses runs whose step has no model the starting user can use; null = not checked. */
     private val modelSteps: pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck? = null,
+    /** ADR 0052: resolves the run inputs the workflow's tasks declare for [startChecked]; null = not checked. */
+    private val runInputs: TaskCatalog? = null,
 ) : StartRun, CancelRun, RetryRun, RunQueries {
 
     override fun start(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource): WorkflowRun {
         val definition = loadDefinition(workflowId)
         val actor = gate.require(ProjectsPermissions.RUN_START, definition.projectId.value).actor
         return launch(definition, RunTrigger(source), input, emptyList(), actor)
+    }
+
+    override fun startChecked(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource): WorkflowRun {
+        val definition = loadDefinition(workflowId)
+        val actor = gate.require(ProjectsPermissions.RUN_START, definition.projectId.value).actor
+        val checked = runInputs?.let { RunInputs.check(RunInputs.effective(definition, it), input) } ?: input
+        return launch(definition, RunTrigger(source), checked, emptyList(), actor)
     }
 
     /**

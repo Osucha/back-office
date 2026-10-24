@@ -229,6 +229,8 @@ class ProjectsConfiguration {
         // ADR 0050: the model of every task step must be usable by the starting user; without the model catalogue (the
         // Projects module alone) models are not checked
         availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it, defaults.getIfAvailable()) },
+        // ADR 0052: REST starts check the run inputs the workflow's tasks declare
+        runInputs = taskCatalog,
     )
 
     // ---- Jira intake watcher (ADR 0033)

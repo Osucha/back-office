@@ -3,6 +3,7 @@ package pl.mos.backoffice.tasks.domain.service
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
+import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
@@ -48,6 +49,8 @@ data class TaskResolution(
     val interfaceCheck: InterfaceCheck,
     /** Version of the leaf template. */
     val version: Int? = null,
+    /** Run inputs merged root to leaf, child-wins by name (ADR 0052). */
+    val runInputs: List<RunInputField> = emptyList(),
 ) {
     /** True when an executor can run this: concrete, has an executor, all interfaces satisfied. */
     val executable: Boolean get() = !abstract && executor != null && interfaceCheck.ok
@@ -76,6 +79,7 @@ data class TaskResolution(
             lineage = lineage,
             ports = ports,
             version = version,
+            runInputs = runInputs,
         )
     }
 }
@@ -86,9 +90,11 @@ data class TaskResolution(
  * 1. project shadowing for the leaf and every ancestor,
  * 2. `extends` chain of at most [MAX_DEPTH] templates, cycles rejected,
  * 3. root-to-leaf merge (executor nearest wins; scalars child-wins; prompts append/replace; skills
- *    union minus `removeSkills`; config deep-merged with `null` deleting; list fields unioned),
+ *    union minus `removeSkills`; config deep-merged with `null` deleting; list fields unioned; run inputs
+ *    unioned by name, child field wins),
  * 4. node overrides,
- * 5. interface check and port union,
+ * 5. interface check (outputs in `produces`, required inputs in `consumes`, required `INPUT` slots in
+ *    `runInputs`) and port union,
  * 6. abstract leaves preview but do not execute.
  */
 class TaskResolver(private val lookup: LibraryLookup) {
@@ -145,6 +151,10 @@ class TaskResolver(private val lookup: LibraryLookup) {
             definition.requiredConsumes.filter { it !in merged.consumes }.forEach {
                 problems += "interface $interfaceKey: required input $it is not in consumes"
             }
+            val declared = merged.runInputs.map { it.name }
+            definition.requiredRunInputs.filter { it !in declared }.forEach {
+                problems += "interface $interfaceKey: required run input $it is not in runInputs"
+            }
             definition.ports.forEach { if (it !in ports) ports += it }
         }
         val skills = merged.skills.mapNotNull { skillKey ->
@@ -174,6 +184,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             abstract = leaf.abstract,
             projectId = projectId,
             interfaceCheck = InterfaceCheck.of(problems),
+            runInputs = merged.runInputs,
         )
     }
 
@@ -191,6 +202,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val consumes: List<String> = emptyList(),
         val interfaces: List<String> = emptyList(),
         val tags: List<String> = emptyList(),
+        val runInputs: List<RunInputField> = emptyList(),
     ) {
         fun merge(t: TaskTemplate): Merged = Merged(
             executor = t.executor ?: executor,
@@ -205,6 +217,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             consumes = (consumes + t.consumes).distinct(),
             interfaces = (interfaces + t.implements).distinct(),
             tags = (tags + t.tags).distinct(),
+            runInputs = mergeRunInputs(runInputs, t.runInputs),
         )
 
         fun applyOverrides(o: TaskOverrides): Merged = copy(
@@ -214,6 +227,12 @@ class TaskResolver(private val lookup: LibraryLookup) {
             skills = (skills + o.addSkills).distinct().filter { it !in o.removeSkills },
             config = ConfigMerge.deepMerge(config, o.config),
         )
+
+        /** Union by name: a child field replaces the parent's field of the same name in its place; new fields go last. */
+        private fun mergeRunInputs(parent: List<RunInputField>, child: List<RunInputField>): List<RunInputField> {
+            val byName = child.associateBy { it.name }
+            return parent.map { byName[it.name] ?: it } + child.filter { field -> parent.none { it.name == field.name } }
+        }
 
         private fun combine(parent: String?, child: String?, mode: PromptMode): String? = when {
             child == null -> parent

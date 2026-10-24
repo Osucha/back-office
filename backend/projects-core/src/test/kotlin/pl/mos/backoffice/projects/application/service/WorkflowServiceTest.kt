@@ -24,7 +24,12 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.WorkflowValidator
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.InsufficientPermissionException
+import pl.mos.backoffice.shared.tasks.ResolvedTask
+import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
+import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
@@ -77,6 +82,24 @@ class WorkflowServiceTest {
         assertThat(audit.entries[1].details).containsOnlyKeys("name", "enabled", "version")
         assertThat(audit.entries[1].details["version"]).isEqualTo(mapOf("old" to 1, "new" to 2))
         assertThat(audit.entries.map { it.projectId }).containsOnly(project.id.value)
+    }
+
+    @Test
+    fun `viewers read the effective run inputs of a workflow, others are refused before anything is resolved`() {
+        val issue = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true)
+        every { catalog.resolve("fetch-issue", project.id.value, any()) } returns ResolvedTask(
+            "fetch-issue", "Fetch issue", TaskExecutor.FETCH_ISSUE, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null,
+            emptyList(), emptyList(), emptyList(), listOf("fetch-issue"), listOf("success", "failure"), runInputs = listOf(issue),
+        )
+        val definition = Fixtures.issueWorkflow(project).also { store[it.id] = it }
+
+        assertThat(service(viewer).runInputs(definition.id)).containsExactly(issue)
+        assertThat(viewer.checked).containsExactly("project.view@${project.id}")
+
+        val stranger = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW)
+        assertThatThrownBy { service(stranger).runInputs(definition.id) }
+            .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("project.view") }
+        assertThatThrownBy { service(viewer).runInputs(WorkflowDefinitionId.new()) }.isInstanceOf(pl.mos.backoffice.shared.NotFoundException::class.java)
     }
 
     @Test

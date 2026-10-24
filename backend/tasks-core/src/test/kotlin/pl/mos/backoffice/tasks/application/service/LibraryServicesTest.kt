@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
@@ -81,6 +83,26 @@ class LibraryServicesTest {
         lib.templates.save(child.copy(builtIn = true))
         assertThatThrownBy { templates.delete(child.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("built in")
         assertThatThrownBy { templates.get(pl.mos.backoffice.tasks.domain.model.TaskTemplateId.new()) }.isInstanceOf(NotFoundException::class.java)
+    }
+
+    @Test
+    fun `run inputs are saved, returned, audited on change and inherited in the resolved view`() {
+        val input = RunInputField("input", "Input material", RunInputType.MULTILINE)
+        val issue = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true, help = "e.g. ABC-1")
+        val base = templates.create(content("base", abstract = true).copy(runInputs = listOf(input)))
+        val child = templates.create(content("child", extendsKey = "base", executor = null).copy(runInputs = listOf(issue)))
+        assertThat(templates.get(base.id).runInputs).containsExactly(input)
+        assertThat(audit.entries.last().details["runInputs"]).isEqualTo(listOf("issueKey"))
+
+        val updated = templates.update(child.id, child.content.copy(runInputs = listOf(issue.copy(required = false))))
+
+        assertThat(templates.get(child.id).runInputs).containsExactly(issue.copy(required = false))
+        assertThat(updated.version).isEqualTo(2)
+        val change = audit.entries.last()
+        assertThat(change.operation).isEqualTo("TEMPLATE_UPDATE")
+        assertThat(change.details).containsEntry("runInputsChanged", mapOf("old" to false, "new" to true))
+        assertThat(templates.resolve("child").runInputs).containsExactly(input, issue.copy(required = false))
+        assertThat(catalog.resolve("child", null)!!.runInputs).containsExactly(input, issue.copy(required = false))
     }
 
     @Test

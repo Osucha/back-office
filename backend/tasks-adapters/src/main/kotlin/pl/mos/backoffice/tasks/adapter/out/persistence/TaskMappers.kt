@@ -3,6 +3,8 @@ package pl.mos.backoffice.tasks.adapter.out.persistence
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
@@ -88,6 +90,7 @@ class TaskMappers(private val json: JsonMapper) {
         produces = json.writeValueAsString(t.produces),
         consumes = json.writeValueAsString(t.consumes),
         tags = json.writeValueAsString(t.tags),
+        runInputs = json.writeValueAsString(t.runInputs.map(::runInputMap)),
         builtIn = t.builtIn,
         version = t.version,
         createdAt = t.createdAt,
@@ -117,12 +120,27 @@ class TaskMappers(private val json: JsonMapper) {
         produces = readStrings(e.produces),
         consumes = readStrings(e.consumes),
         tags = readStrings(e.tags),
+        runInputs = readList(e.runInputs).map(::runInput),
         builtIn = e.builtIn,
         version = e.version,
         createdAt = e.createdAt,
         updatedAt = e.updatedAt,
         updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
     )
+
+    private fun runInputMap(f: RunInputField) =
+        mapOf("name" to f.name, "label" to f.label, "type" to f.type.name, "required" to f.required, "help" to f.help)
+
+    private fun runInput(raw: Any?): RunInputField {
+        val m = raw as Map<*, *>
+        return RunInputField(
+            name = m["name"].toString(),
+            label = m["label"].toString(),
+            type = RunInputType.entries.firstOrNull { it.name == m["type"]?.toString() } ?: RunInputType.TEXT,
+            required = (m["required"] as? Boolean) ?: false,
+            help = m["help"] as? String,
+        )
+    }
 
     // ----- skills -------------------------------------------------------------------------------------
 

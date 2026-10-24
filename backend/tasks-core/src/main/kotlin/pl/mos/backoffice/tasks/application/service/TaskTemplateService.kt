@@ -119,6 +119,7 @@ class TaskTemplateService(
             "skills" to t.skills,
             "systemPromptLength" to (t.prompt.system?.length ?: 0),
             "userPromptLength" to (t.prompt.user?.length ?: 0),
+            "runInputs" to t.runInputs.map { it.name },
         )
 
         /** `{field: {old, new}}` for everything an owner can edit; prompts and schemas by length, not content. */
@@ -146,6 +147,8 @@ class TaskTemplateService(
             "produces" to (old.produces to new.produces),
             "consumes" to (old.consumes to new.consumes),
             "tags" to (old.tags to new.tags),
+            "runInputs" to (old.runInputs.map { it.name } to new.runInputs.map { it.name }),
+            "runInputsChanged" to (false to (old.runInputs != new.runInputs)),
         )
     }
 }

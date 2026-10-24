@@ -2,6 +2,7 @@ package pl.mos.backoffice.tasks.adapter.`in`.rest
 
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces.InterfaceCommand
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces.TaskInterfaceDetails
 import pl.mos.backoffice.tasks.domain.model.Prompt
@@ -40,6 +41,9 @@ object RestMappers {
         )
     }
 
+    private fun runInput(dto: RunInputFieldDto) = RunInputField(dto.name, dto.label, dto.type, dto.required, dto.help?.takeIf { it.isNotBlank() })
+    private fun runInput(f: RunInputField) = RunInputFieldDto(f.name, f.label, f.type, f.required, f.help)
+
     fun templateContent(dto: TaskTemplateInputDto) = TaskTemplate.Content(
         key = dto.key,
         name = dto.name,
@@ -59,6 +63,7 @@ object RestMappers {
         produces = dto.produces,
         consumes = dto.consumes,
         tags = dto.tags,
+        runInputs = dto.runInputs.map(::runInput),
     )
 
     fun template(t: TaskTemplate) = TaskTemplateDto(
@@ -81,6 +86,7 @@ object RestMappers {
         produces = t.produces,
         consumes = t.consumes,
         tags = t.tags,
+        runInputs = t.runInputs.map(::runInput),
         builtIn = t.builtIn,
         version = t.version,
         createdAt = t.createdAt,
@@ -103,6 +109,7 @@ object RestMappers {
         interfaces = r.interfaces,
         lineage = r.lineage,
         ports = r.ports,
+        runInputs = r.runInputs.map(::runInput),
         abstract = r.abstract,
         interfaceCheck = InterfaceCheckDto(r.interfaceCheck.ok, r.interfaceCheck.problems),
     )

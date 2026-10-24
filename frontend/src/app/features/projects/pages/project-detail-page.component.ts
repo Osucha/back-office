@@ -7,14 +7,13 @@ import {
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { NzIconModule } from 'ng-zorro-antd/icon';
-import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalModule } from 'ng-zorro-antd/modal';
 import { NzTableModule } from 'ng-zorro-antd/table';
@@ -40,6 +39,7 @@ import { ProjectsStore, monogram } from '../../../core/state/projects.store';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { planSourceLabel, routeLabel, summarizeModelPlan } from '../../../core/ui/model-options';
 import { SpecKitCardComponent } from '../components/spec-kit-card.component';
+import { RunInputFormComponent } from '../components/run-input-form.component';
 import { projectRepositories, purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
 import { batonOf, type BatonHolder } from '../../../core/ui/relay/baton';
 import { BatonComponent } from '../../../core/ui/relay/baton.component';
@@ -97,7 +97,6 @@ const TABS = [
 @Component({
   selector: 'app-project-detail-page',
   imports: [
-    FormsModule,
     RouterLink,
     NzTabsModule,
     NzButtonModule,
@@ -106,8 +105,8 @@ const TABS = [
     NzTableModule,
     NzDropDownModule,
     NzModalModule,
-    NzInputModule,
     SpecKitCardComponent,
+    RunInputFormComponent,
     RunsTableComponent,
     ProjectCiPanelComponent,
     ProjectFormComponent,
@@ -641,31 +640,12 @@ const TABS = [
       (nzOnCancel)="closeStart()"
     >
       <ng-container *nzModalContent>
-        <label for="issue-key" class="field-label" i18n="@@projects.start.issueKey"
-          >Jira issue key (optional)</label
-        >
-        <input
-          id="issue-key"
-          nz-input
-          [(ngModel)]="issueKey"
-          [placeholder]="(project()?.issueTracker?.jiraProjectKey || 'ABC') + '-123'"
-          class="mono"
-          style="margin: 4px 0 12px"
-          (keydown.enter)="startRun()"
-        />
-        <label for="run-params" class="field-label" i18n="@@projects.start.parameters"
-          >Parameters (JSON, optional)</label
-        >
-        <textarea
-          id="run-params"
-          nz-input
-          class="mono-textarea"
-          [(ngModel)]="paramsJson"
-          [nzAutosize]="{ minRows: 3, maxRows: 10 }"
-          placeholder="{ }"
-        ></textarea>
-        @if (paramsError()) {
-          <div class="danger small">{{ paramsError() }}</div>
+        @if (starting(); as w) {
+          <app-run-input-form
+            [workflowId]="w.id"
+            [issueKeyPlaceholder]="(project()?.issueTracker?.jiraProjectKey || 'ABC') + '-123'"
+            (submitted)="startRun()"
+          />
         }
         <div class="field-label plan-label" i18n="@@projects.start.models">Models of the steps</div>
         @if (modelPlanLoading()) {
@@ -981,8 +961,9 @@ export class ProjectDetailPageComponent {
   readonly saving = signal(false);
   readonly saveError = signal<unknown>(null);
   readonly starting = signal<WorkflowDefinition | null>(null);
+  /** ADR 0052: the start dialog's form of the workflow's run inputs. */
+  private readonly inputForm = viewChild(RunInputFormComponent);
   readonly startingBusy = signal(false);
-  readonly paramsError = signal<string | null>(null);
   /** ADR 0050: the model of every step of the workflow being started; null when it could not be loaded. */
   readonly modelPlan = signal<StepModelPlan[] | null>(null);
   readonly modelPlanLoading = signal(false);
@@ -1004,8 +985,6 @@ export class ProjectDetailPageComponent {
     () =>
       $localize`:@@projects.detail.metrics.title:Performance: ${this.metricsFor()?.name ?? ''}:workflow:`,
   );
-  issueKey = '';
-  paramsJson = '';
 
   readonly myRoles = computed(() => {
     const p = this.project();
@@ -1313,9 +1292,6 @@ export class ProjectDetailPageComponent {
   }
 
   openStart(w: WorkflowDefinition): void {
-    this.issueKey = '';
-    this.paramsJson = '';
-    this.paramsError.set(null);
     this.starting.set(w);
     this.modelPlan.set(null);
     this.modelPlanLoading.set(true);
@@ -1344,21 +1320,12 @@ export class ProjectDetailPageComponent {
   startRun(): void {
     const w = this.starting();
     if (!w || this.planBlocked()) return;
-    let parameters: Record<string, unknown> = {};
-    if (this.paramsJson.trim()) {
-      try {
-        parameters = JSON.parse(this.paramsJson) as Record<string, unknown>;
-      } catch (e) {
-        this.paramsError.set(
-          $localize`:@@projects.start.invalidJson:The parameters are not valid JSON: ${(e as Error).message}:error:`,
-        );
-        return;
-      }
-    }
-    this.paramsError.set(null);
+    // ADR 0052: the form of the declared run inputs builds the request, or marks what is missing
+    const request = this.inputForm()?.request();
+    if (!request) return;
     this.startingBusy.set(true);
     this.workflowsApi
-      .startRun(w.id, { issueKey: this.issueKey.trim() || null, parameters })
+      .startRun(w.id, request)
       .subscribe({
         next: (run) => {
           this.startingBusy.set(false);
