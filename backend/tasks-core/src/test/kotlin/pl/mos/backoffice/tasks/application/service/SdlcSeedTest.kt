@@ -110,6 +110,8 @@ class SdlcSeedTest {
         assertThat(task.prompt.system).contains("reformat, lint, and test")
         // the approved impact analysis of a change request reaches the planner
         assertThat(task.prompt.user).contains("{{artifacts.impact-analysis}}").contains("{{artifacts.plan}}").contains("{{artifacts.user-story}}")
+        // a revision starts from the previous task list, not from scratch
+        assertThat(task.prompt.user).contains("{{#feedback}}\n{{#artifacts.tasks}}", "Your previous task list", "{{artifacts.tasks}}")
         assertThat(task.consumes).contains("impact-analysis")
     }
 

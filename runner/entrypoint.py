@@ -114,6 +114,9 @@ REASONING_TO_EFFORT = {
     "XHIGH": "xhigh",
     "MAX": "xhigh",
 }
+# Claude Code Bash tool: default and maximum timeout of one command (a full Gradle or Angular test run fits)
+BASH_DEFAULT_TIMEOUT_MS = 20 * 60 * 1000
+BASH_MAX_TIMEOUT_MS = 60 * 60 * 1000
 # ModelOptions.reasoning -> Anthropic thinking budget (tokens)
 REASONING_TO_BUDGET = {
     "LOW": 4000,
@@ -1854,6 +1857,12 @@ def agent_environment(
         env.setdefault("DISABLE_AUTOUPDATER", "1")
         env.setdefault("DISABLE_TELEMETRY", "1")
         env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+        # Headless Claude Code exits when the model ends its turn: a test run sent to the background (by the agent, or
+        # automatically after the Bash timeout) is lost and the step ends "still waiting". Long commands run in the
+        # foreground instead, with timeouts that fit a Gradle or Angular test suite.
+        env.setdefault("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1")
+        env.setdefault("BASH_DEFAULT_TIMEOUT_MS", str(BASH_DEFAULT_TIMEOUT_MS))
+        env.setdefault("BASH_MAX_TIMEOUT_MS", str(BASH_MAX_TIMEOUT_MS))
         if spec.local_login:
             # Anthropic directly with the owner's subscription; a gateway token would take precedence over the login
             if local_login_token:

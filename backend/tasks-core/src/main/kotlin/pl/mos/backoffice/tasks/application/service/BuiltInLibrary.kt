@@ -1168,6 +1168,13 @@ object BuiltInLibrary {
         ## User story
         {{artifacts.user-story}}
         {{/artifacts.user-story}}
+        {{#feedback}}
+        {{#artifacts.tasks}}
+
+        ## Your previous task list (revise it: keep what the feedback does not question)
+        {{artifacts.tasks}}
+        {{/artifacts.tasks}}
+        {{/feedback}}
 
     """.trimIndent() + "\n" + FEEDBACK_SECTION
 

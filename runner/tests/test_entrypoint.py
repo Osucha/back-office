@@ -244,6 +244,10 @@ class ModelMappingTests(unittest.TestCase):
         self.assertEqual(env_c["ANTHROPIC_AUTH_TOKEN"], "bo_job_abc")
         self.assertNotIn("ANTHROPIC_API_KEY", env_c)
         self.assertEqual(env_c["MAX_THINKING_TOKENS"], str(ep.REASONING_TO_BUDGET["HIGH"]))
+        # headless: no background commands that outlive the turn, long foreground timeouts instead
+        self.assertEqual(env_c["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"], "1")
+        self.assertEqual(env_c["BASH_DEFAULT_TIMEOUT_MS"], str(20 * 60 * 1000))
+        self.assertEqual(env_c["BASH_MAX_TIMEOUT_MS"], str(60 * 60 * 1000))
 
     def test_agent_environment_claude_code_local_login_skips_gateway(self):
         # ADR 0040: the owner's own login, no gateway URL and no gateway token for Claude Code
