@@ -36,8 +36,8 @@ object RunInputs {
 
     /**
      * Checks [input] against the declared [fields] of a REST start: a required field must not be missing or blank, no
-     * declared field may be longer than [RunInputField.MAX_LENGTH]. An `ISSUE_KEY` field reads its parameter, else the
-     * request's issue key; its value becomes the run's issue key unless the request names one. Undeclared parameters
+     * declared field may be longer than [RunInputField.MAX_LENGTH], an `ISSUE_KEY` value must look like `ABC-123`. An
+     * `ISSUE_KEY` field reads its parameter, else the request's issue key; its value becomes the run's issue key unless the request names one. Undeclared parameters
      * are kept as they are. Throws one `ValidationException` naming every failing field (`parameters.<name>`).
      */
     fun check(fields: List<RunInputField>, input: RunInput): RunInput {
@@ -52,6 +52,12 @@ object RunInputs {
                         "parameters.${field.name}",
                         "run input \"${field.label}\" (${field.name}) is longer than ${RunInputField.MAX_LENGTH} characters",
                     )
+                // the value becomes the run's issue key: it reaches Jira calls and branch names, so only key-shaped text passes
+                field.type == RunInputType.ISSUE_KEY && !value.isNullOrBlank() && !ISSUE_KEY.matches(value.trim()) ->
+                    ValidationException.FieldError(
+                        "parameters.${field.name}",
+                        "run input \"${field.label}\" (${field.name}) must be an issue key such as ABC-123",
+                    )
                 else -> null
             }
         }
@@ -61,18 +67,32 @@ object RunInputs {
         return input.copy(issueKey = issueKey)
     }
 
+    private const val ISSUE_KEY_FROM = "issueKeyFrom"
+    private const val ISSUE_KEY_FROM_INPUT = "input"
+
+    /** A Jira issue key: project key, dash, number (`ABC-123`); upper or lower case. */
+    private val ISSUE_KEY = Regex("^[A-Z][A-Z0-9_]{0,19}-[0-9]{1,10}$", RegexOption.IGNORE_CASE)
+
     private fun valueOf(field: RunInputField, input: RunInput, requestKey: String?): String? {
         val value = input.parameters[field.name]?.toString()
         return if (field.type == RunInputType.ISSUE_KEY && value.isNullOrBlank()) requestKey ?: value else value
     }
 
-    /** The run inputs the template of [node] declares, or none when the template is unknown or cannot be resolved. */
+    /**
+     * The run inputs the template of [node] declares, or none when the template is unknown or cannot be resolved. When
+     * the step reads the issue key from another parameter (`config.issueKeyFrom` other than `input`), its `ISSUE_KEY`
+     * fields are optional.
+     */
     fun ofTask(node: WorkflowNode.Task, projectId: UUID, catalog: TaskCatalog): List<RunInputField> {
         if (node.task.templateKey.isBlank()) return emptyList()
-        return try {
-            catalog.resolve(node.task.templateKey, projectId, node.task.overrides)?.runInputs.orEmpty()
+        val task = try {
+            catalog.resolve(node.task.templateKey, projectId, node.task.overrides)
         } catch (_: ValidationException) {
-            emptyList()
-        }
+            null
+        } ?: return emptyList()
+        // a step that reads the issue key from another run parameter (`issueKeyFrom`) does not need the run's key
+        val from = task.config[ISSUE_KEY_FROM]?.toString()?.trim()
+        if (from.isNullOrEmpty() || from == ISSUE_KEY_FROM_INPUT) return task.runInputs
+        return task.runInputs.map { if (it.type == RunInputType.ISSUE_KEY) it.copy(required = false) else it }
     }
 }

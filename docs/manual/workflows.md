@@ -353,7 +353,8 @@ must be enabled.
 
 Expressions read the values as `input.parameters['name']`; the issue key is `input.issueKey`. A start through
 the REST API (`POST /api/v1/workflows/:id/runs`, also with a personal access token) is checked the same way: a
-missing required input is refused with a message that names the field. Starts by CI, the Jira intake watcher, your
+missing required input, or an issue key not shaped like `ABC-123`, is refused with a message that names the field.
+A Jira step that reads the key from another field (**issueKeyFrom**) does not make the issue key required. Starts by CI, the Jira intake watcher, your
 personal intake and the MCP tool `start_workflow` are not checked.
 
 In the designer, the **Start** node lists the workflow's run inputs read-only; change them on the tasks in

@@ -119,8 +119,13 @@ class TaskTemplateService(
             "skills" to t.skills,
             "systemPromptLength" to (t.prompt.system?.length ?: 0),
             "userPromptLength" to (t.prompt.user?.length ?: 0),
-            "runInputs" to t.runInputs.map { it.name },
+            "runInputs" to runInputSummary(t),
         )
+
+        /** Run inputs for the audit log: `name:TYPE:required|optional:label:help=<length>` per field, help by length like prompts. */
+        private fun runInputSummary(t: TaskTemplate): List<String> = t.runInputs.map {
+            "${it.name}:${it.type.name}:${if (it.required) "required" else "optional"}:${it.label}:help=${it.help?.length ?: 0}"
+        }
 
         /** `{field: {old, new}}` for everything an owner can edit; prompts and schemas by length, not content. */
         fun diff(old: TaskTemplate, new: TaskTemplate): Map<String, Any?> = AuditableChanges.changed(
@@ -147,8 +152,7 @@ class TaskTemplateService(
             "produces" to (old.produces to new.produces),
             "consumes" to (old.consumes to new.consumes),
             "tags" to (old.tags to new.tags),
-            "runInputs" to (old.runInputs.map { it.name } to new.runInputs.map { it.name }),
-            "runInputsChanged" to (false to (old.runInputs != new.runInputs)),
+            "runInputs" to (runInputSummary(old) to runInputSummary(new)),
         )
     }
 }

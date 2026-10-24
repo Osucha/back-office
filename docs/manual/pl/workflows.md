@@ -378,7 +378,9 @@ musi być włączony.
 
 Wyrażenia odczytują wartości jako `input.parameters['name']`; klucz zgłoszenia to `input.issueKey`. Start
 przez REST API (`POST /api/v1/workflows/:id/runs`, także z osobistym tokenem dostępu) jest sprawdzany tak samo:
-brak wymaganego pola kończy się odmową z komunikatem, który nazywa pole. Starty z CI, z obserwatora zgłoszeń
+brak wymaganego pola albo klucz zgłoszenia o innej postaci niż `ABC-123` kończy się odmową z komunikatem, który
+nazywa pole. Krok Jira, który czyta klucz z innego pola (**issueKeyFrom**), nie czyni klucza zgłoszenia wymaganym.
+Starty z CI, z obserwatora zgłoszeń
 Jira, z Twojego osobistego przyjmowania pracy i przez narzędzie MCP `start_workflow` nie są sprawdzane.
 
 W projektancie węzeł **Start** pokazuje dane wejściowe uruchomienia workflowu tylko do odczytu; zmieniasz je

@@ -100,4 +100,20 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
       ['audience', 'writer'],
     ]);
   });
+
+  it('keeps the run input controls disabled in a read-only drawer', async () => {
+    const { fixture } = create(writer);
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 50));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const row = document.querySelector('[data-run-input="0"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    const inputs = Array.from(row.querySelectorAll('input')) as HTMLInputElement[];
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(inputs.every((i) => i.disabled)).toBe(true);
+    expect(document.querySelector('.ri-add')).toBeNull();
+  });
 });

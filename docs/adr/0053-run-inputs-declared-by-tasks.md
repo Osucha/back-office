@@ -49,7 +49,9 @@ L1. L3 can be added later without breaking L1.
    /workflows/{id}/run-inputs` returns the effective list for the start dialog.
 5. **Issue key.** The value of an `ISSUE_KEY` field is mapped to `RunInput.issueKey` (the `issueKey` of the request
    wins when both are given, and also satisfies a required `ISSUE_KEY` field), so the Jira steps keep reading the
-   run's key.
+   run's key. On checked starts the value must look like an issue key (`ABC-123`, any case), because it reaches Jira
+   calls and branch names. A step whose `issueKeyFrom` names another run parameter does not need the run's key, so
+   its `ISSUE_KEY` fields count as optional.
 6. **Checked starters.** Manual and API-token starts through `POST /workflows/{id}/runs` are checked: a required
    field that is missing or blank, or any declared field longer than **20 000 characters**, is rejected with a
    validation error naming the field. The personal intake, the Jira intake watcher, CI and MCP starts are not

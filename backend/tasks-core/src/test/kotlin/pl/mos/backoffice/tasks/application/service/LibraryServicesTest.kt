@@ -92,7 +92,7 @@ class LibraryServicesTest {
         val base = templates.create(content("base", abstract = true).copy(runInputs = listOf(input)))
         val child = templates.create(content("child", extendsKey = "base", executor = null).copy(runInputs = listOf(issue)))
         assertThat(templates.get(base.id).runInputs).containsExactly(input)
-        assertThat(audit.entries.last().details["runInputs"]).isEqualTo(listOf("issueKey"))
+        assertThat(audit.entries.last().details["runInputs"]).isEqualTo(listOf("issueKey:ISSUE_KEY:required:Jira issue:help=10"))
 
         val updated = templates.update(child.id, child.content.copy(runInputs = listOf(issue.copy(required = false))))
 
@@ -100,7 +100,11 @@ class LibraryServicesTest {
         assertThat(updated.version).isEqualTo(2)
         val change = audit.entries.last()
         assertThat(change.operation).isEqualTo("TEMPLATE_UPDATE")
-        assertThat(change.details).containsEntry("runInputsChanged", mapOf("old" to false, "new" to true))
+        // a real old/new pair of the field summaries, no computed flag in the change map
+        assertThat(change.details).containsEntry(
+            "runInputs", mapOf("old" to listOf("issueKey:ISSUE_KEY:required:Jira issue:help=10"), "new" to listOf("issueKey:ISSUE_KEY:optional:Jira issue:help=10")),
+        )
+        assertThat(change.details).doesNotContainKey("runInputsChanged")
         assertThat(templates.resolve("child").runInputs).containsExactly(input, issue.copy(required = false))
         assertThat(catalog.resolve("child", null)!!.runInputs).containsExactly(input, issue.copy(required = false))
     }

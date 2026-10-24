@@ -114,6 +114,22 @@ class RunStartInputTest {
     }
 
     @Test
+    fun `an ISSUE_KEY value must look like an issue key, from the parameter or from the request`() {
+        listOf(
+            RunInput(null, mapOf("issueKey" to "../x ~^:..", "audience" to "devs")),
+            RunInput("SHOP-1; rm -rf", mapOf("audience" to "devs")),
+            RunInput(null, mapOf("issueKey" to "SHOP", "audience" to "devs")),
+        ).forEach { input ->
+            val problems = errors { service().startChecked(definition.id, input) }
+            assertThat(problems.map { it.field }).describedAs(input.toString()).containsExactly("parameters.issueKey")
+            assertThat(problems.single().message).contains("issue key").contains("ABC-123")
+        }
+
+        val lower = service().startChecked(definition.id, RunInput(null, mapOf("issueKey" to "shop-12", "audience" to "devs")))
+        assertThat(lower.issueKey).isEqualTo("shop-12")
+    }
+
+    @Test
     fun `undeclared parameters are kept`() {
         val run = service().startChecked(definition.id, RunInput("SHOP-1", mapOf("audience" to "devs", "extra" to "kept", "depth" to 3)))
 

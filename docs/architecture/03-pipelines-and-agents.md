@@ -160,7 +160,9 @@ declares nothing and shows the list read-only. The values travel as run `paramet
 `ISSUE_KEY` field also becomes the run's `issueKey` unless the request gives one.
 
 - **Checked starters:** `POST /workflows/{id}/runs` (the start dialog and API-token calls) refuses a missing or blank
-  required input and any declared input longer than 20 000 characters, with a validation problem naming the field.
+  required input, any declared input longer than 20 000 characters and an `ISSUE_KEY` value that is not shaped like
+  `ABC-123`, with a validation problem naming the field. A step whose `issueKeyFrom` names another parameter makes
+  its `ISSUE_KEY` input optional.
   The personal intake, the Jira intake watcher, CI and the MCP `start_workflow` tool are not checked.
 - **Prompts:** the template model has `runInput` (the current task's declared inputs that have a value, as
   `{name, label, value}`) and `runInputText` (the same as `Label: value` paragraphs). Both are untrusted roots, so

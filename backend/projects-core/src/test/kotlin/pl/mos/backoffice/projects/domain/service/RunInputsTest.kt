@@ -88,4 +88,15 @@ class RunInputsTest {
         assertThat(RunInputs.ofTask(node, project.id.value, catalog)).containsExactly(issue)
         assertThat(RunInputs.ofTask(task("x", "ghost"), project.id.value, catalog)).isEmpty()
     }
+
+    @Test
+    fun `a step that reads the issue key from another parameter does not make the issue key required`() {
+        val elsewhere = TaskOverrides(config = mapOf("issueKeyFrom" to "ticket"))
+        val fromInput = TaskOverrides(config = mapOf("issueKeyFrom" to "input"))
+
+        assertThat(RunInputs.effective(workflow(task("f", "fetch", elsewhere)), catalog)).containsExactly(issue.copy(required = false))
+        assertThat(RunInputs.effective(workflow(task("f", "fetch", fromInput)), catalog)).containsExactly(issue)
+        // another step that reads the run's key still requires it
+        assertThat(RunInputs.effective(workflow(task("f", "fetch", elsewhere), task("g", "fetch")), catalog)).containsExactly(issue)
+    }
 }
