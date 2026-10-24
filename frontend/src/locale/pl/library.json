@@ -515,5 +515,7 @@
   "library.templates.runInputs.type.issueKey": "Klucz zgłoszenia Jira",
   "library.templates.runInputs.blocker.name": "Każda dana wejściowa potrzebuje nazwy",
   "library.templates.runInputs.blocker.label": "Dana wejściowa {$name} potrzebuje etykiety",
-  "library.templates.runInputs.blocker.duplicate": "Nazwa danej wejściowej {$name} występuje dwa razy"
+  "library.templates.runInputs.blocker.duplicate": "Nazwa danej wejściowej {$name} występuje dwa razy",
+  "library.templates.runInputs.blocker.badName": "Nazwa danej wejściowej {$name} musi zaczynać się literą i zawierać tylko litery, cyfry, - i _ (najwyżej 64)",
+  "library.templates.runInputs.blocker.tooLong": "Dana wejściowa {$name} ma etykietę dłuższą niż 200 albo tekst pomocy dłuższy niż 1000 znaków"
 }

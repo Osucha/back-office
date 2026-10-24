@@ -77,7 +77,9 @@ Wykonawca decyduje, gdzie działa zadanie:
 6. **Dane wejściowe uruchomienia** (**Run inputs**): pola, o które zadanie prosi przy starcie uruchomienia
    (zob. [Dane wejściowe uruchomienia](#run-inputs)). Kliknij **Dodaj daną wejściową** (**Add run input**),
    potem ustaw **Nazwę**, **Etykietę**, typ (**Jedna linia**, **Tekst wieloliniowy** lub **Klucz zgłoszenia
-   Jira**), **Wymagane** i opcjonalny tekst pomocy; przesuwaj pola strzałkami albo je usuwaj.
+   Jira**), **Wymagane** i opcjonalny tekst pomocy; przesuwaj pola strzałkami albo je usuwaj. Nazwa zaczyna się
+   literą i zawiera tylko litery, cyfry, `-` i `_` (najwyżej 64 znaki); etykieta ma najwyżej 200 znaków, tekst
+   pomocy 1 000.
 7. **Sandbox** (zadania na runnerze): zawęź politykę sandboxa projektu dla zadań tego szablonu, na
    przykład silniejszą izolacją lub mniejszą liczbą hostów. Pułapy projektu i puli nadal obowiązują (zob.
    [Polityka sandboxa](projects.md#sandbox-policy)).

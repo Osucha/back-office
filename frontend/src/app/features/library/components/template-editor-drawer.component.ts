@@ -1247,6 +1247,10 @@ export class TemplateEditorDrawerComponent {
         return $localize`:@@library.templates.runInputs.blocker.label:Run input ${p.name}:name: needs a label`;
       case 'duplicate':
         return $localize`:@@library.templates.runInputs.blocker.duplicate:Run input name ${p.name}:name: is used twice`;
+      case 'badName':
+        return $localize`:@@library.templates.runInputs.blocker.badName:Run input name ${p.name}:name: must start with a letter and use only letters, digits, - and _ (at most 64)`;
+      case 'tooLong':
+        return $localize`:@@library.templates.runInputs.blocker.tooLong:Run input ${p.name}:name: has a label over 200 or a help text over 1000 characters`;
     }
   });
 

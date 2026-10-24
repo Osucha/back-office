@@ -36,7 +36,8 @@ L1. L3 can be added later without breaking L1.
 
 1. **Field model.** A library task template has `runInputs`, a list of `RunInputField`: `name`, `label`, `type`
    (`TEXT` single line, `MULTILINE`, `ISSUE_KEY`), `required` and an optional `help`. Names are unique within a
-   template and not blank; labels are not blank. `RunInputField` lives in the shared kernel because the Projects
+   template and identifiers (`^[A-Za-z][A-Za-z0-9_-]{0,63}$`, they become run-parameter keys); labels are not blank
+   and at most 200 characters, help at most 1 000. `RunInputField` lives in the shared kernel because the Projects
    context reads it through `ResolvedTask.runInputs`.
 2. **Inheritance.** `TaskResolver` merges `runInputs` from root to leaf: union by name, the child's field wins
    (it replaces the parent's field of the same name in place). Node overrides do not change run inputs.

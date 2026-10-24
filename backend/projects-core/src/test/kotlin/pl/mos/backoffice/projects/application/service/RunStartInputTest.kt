@@ -125,6 +125,11 @@ class RunStartInputTest {
             assertThat(problems.single().message).contains("issue key").contains("ABC-123")
         }
 
+        // the request key wins for the run, so it is checked even when the parameter holds a valid key
+        val both = errors { service().startChecked(definition.id, RunInput("SHOP-1; rm -rf", mapOf("issueKey" to "SHOP-1", "audience" to "devs"))) }
+        assertThat(both.map { it.field }).containsExactly("issueKey")
+        assertThat(both.single().message).contains("ABC-123")
+
         val lower = service().startChecked(definition.id, RunInput(null, mapOf("issueKey" to "shop-12", "audience" to "devs")))
         assertThat(lower.issueKey).isEqualTo("shop-12")
     }

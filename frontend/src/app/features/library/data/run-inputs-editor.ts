@@ -7,7 +7,14 @@ import type { RunInputField, TaskTemplate } from '../../../core/api/types';
 export type RunInputProblem =
   | { kind: 'blankName' }
   | { kind: 'blankLabel'; name: string }
-  | { kind: 'duplicate'; name: string };
+  | { kind: 'duplicate'; name: string }
+  | { kind: 'badName'; name: string }
+  | { kind: 'tooLong'; name: string };
+
+/** The server's limits (RunInputField in the shared kernel, RunInputField in openapi.yaml). */
+export const RUN_INPUT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+export const MAX_RUN_INPUT_LABEL = 200;
+export const MAX_RUN_INPUT_HELP = 1000;
 
 /** A resolved field and the template of the lineage that declares it (null when none of them does). */
 export type RunInputWithOrigin = RunInputField & { from: string | null };
@@ -51,7 +58,10 @@ export function runInputProblem(list: readonly RunInputField[]): RunInputProblem
   for (const f of list) {
     const name = f.name.trim();
     if (!name) return { kind: 'blankName' };
+    if (!RUN_INPUT_NAME_PATTERN.test(name)) return { kind: 'badName', name };
     if (!f.label.trim()) return { kind: 'blankLabel', name };
+    if (f.label.length > MAX_RUN_INPUT_LABEL || (f.help ?? '').length > MAX_RUN_INPUT_HELP)
+      return { kind: 'tooLong', name };
     if (seen.has(name)) return { kind: 'duplicate', name };
     seen.add(name);
   }

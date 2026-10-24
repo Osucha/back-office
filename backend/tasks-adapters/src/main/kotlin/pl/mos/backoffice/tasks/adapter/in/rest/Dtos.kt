@@ -3,6 +3,7 @@ package pl.mos.backoffice.tasks.adapter.`in`.rest
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputType
@@ -61,11 +62,11 @@ data class TaskInterfaceDto(
 
 /** `RunInputField` schema (ADR 0053). */
 data class RunInputFieldDto(
-    @field:NotBlank val name: String,
-    @field:NotBlank val label: String,
+    @field:NotBlank @field:Pattern(regexp = "^[A-Za-z][A-Za-z0-9_-]{0,63}$") val name: String,
+    @field:NotBlank @field:Size(max = 200) val label: String,
     val type: RunInputType = RunInputType.TEXT,
     val required: Boolean = false,
-    val help: String? = null,
+    @field:Size(max = 1000) val help: String? = null,
 )
 
 data class TaskPromptDto(val system: String? = null, val user: String? = null, val mode: PromptMode = PromptMode.APPEND)

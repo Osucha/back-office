@@ -1,6 +1,7 @@
 package pl.mos.backoffice.tasks.adapter.out.persistence
 
 import pl.mos.backoffice.shared.ModelProfileId
+import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputField
@@ -120,7 +121,7 @@ class TaskMappers(private val json: JsonMapper) {
         produces = readStrings(e.produces),
         consumes = readStrings(e.consumes),
         tags = readStrings(e.tags),
-        runInputs = readList(e.runInputs).map(::runInput),
+        runInputs = readList(e.runInputs).mapNotNull(::runInput),
         builtIn = e.builtIn,
         version = e.version,
         createdAt = e.createdAt,
@@ -131,15 +132,26 @@ class TaskMappers(private val json: JsonMapper) {
     private fun runInputMap(f: RunInputField) =
         mapOf("name" to f.name, "label" to f.label, "type" to f.type.name, "required" to f.required, "help" to f.help)
 
-    private fun runInput(raw: Any?): RunInputField {
-        val m = raw as Map<*, *>
-        return RunInputField(
-            name = m["name"].toString(),
-            label = m["label"].toString(),
-            type = RunInputType.entries.firstOrNull { it.name == m["type"]?.toString() } ?: RunInputType.TEXT,
-            required = (m["required"] as? Boolean) ?: false,
-            help = m["help"] as? String,
-        )
+    /**
+     * One stored run input, or null for an entry that is not an object or no longer forms a valid field (no name, a
+     * name or label the domain refuses): one bad entry must not break every workflow that resolves the template. An
+     * unknown type reads as TEXT.
+     */
+    private fun runInput(raw: Any?): RunInputField? {
+        val m = raw as? Map<*, *> ?: return null
+        val name = m["name"] as? String ?: return null
+        val label = m["label"] as? String ?: return null
+        return try {
+            RunInputField(
+                name = name,
+                label = label,
+                type = RunInputType.entries.firstOrNull { it.name == m["type"]?.toString() } ?: RunInputType.TEXT,
+                required = (m["required"] as? Boolean) ?: false,
+                help = m["help"] as? String,
+            )
+        } catch (_: ValidationException) {
+            null
+        }
     }
 
     // ----- skills -------------------------------------------------------------------------------------

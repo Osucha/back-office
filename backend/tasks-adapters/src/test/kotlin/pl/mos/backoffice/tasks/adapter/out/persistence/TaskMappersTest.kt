@@ -41,4 +41,22 @@ class TaskMappersTest {
         assertThat(entity.runInputs).isEqualTo("[]")
         assertThat(mappers.toDomain(entity).runInputs).isEmpty()
     }
+
+    @Test
+    fun `malformed stored run inputs are skipped instead of breaking the template`() {
+        val template = TaskTemplate.create(TaskTemplate.Content(key = "plain", name = "Plain", executor = TaskExecutor.LLM), Instant.parse("2026-10-24T10:00:00Z"))
+        val stored = mappers.toEntity(template)
+        val broken = TaskTemplateEntity(
+            id = stored.id, key = stored.key, name = stored.name, executor = stored.executor, createdAt = stored.createdAt, updatedAt = stored.updatedAt,
+            runInputs = """["text", {"label": "No name"}, {"name": "has space", "label": "Bad"}, {"name": "audience", "label": "Audience", "type": "FANCY"},
+                {"name": "issueKey", "label": "Issue", "type": "ISSUE_KEY", "required": true}]""",
+        )
+
+        val inputs = mappers.toDomain(broken).runInputs
+
+        assertThat(inputs).containsExactly(
+            RunInputField("audience", "Audience", RunInputType.TEXT),
+            RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true),
+        )
+    }
 }

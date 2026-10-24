@@ -54,6 +54,18 @@ describe('run inputs editor (ADR 0053)', () => {
       kind: 'duplicate',
       name: 'input',
     });
+    expect(runInputProblem([{ ...input, name: 'has space' }])).toEqual({
+      kind: 'badName',
+      name: 'has space',
+    });
+    expect(runInputProblem([{ ...input, label: 'l'.repeat(201) }])).toEqual({
+      kind: 'tooLong',
+      name: 'input',
+    });
+    expect(runInputProblem([{ ...input, help: 'h'.repeat(1001) }])).toEqual({
+      kind: 'tooLong',
+      name: 'input',
+    });
   });
 
   it('marks where each resolved field comes from: the nearest template of the lineage declaring it', () => {

@@ -66,7 +66,8 @@ The executor decides where a task runs:
    **Confidence field**, **Tags**, **Config (JSON)** and, for LLM tasks, **Output schema**.
 6. **Run inputs**: the fields this task asks for when a run starts (see [Run inputs](#run-inputs)). **Add run
    input**, then set **Name**, **Label**, the type (**Single line**, **Multi-line text** or **Jira issue key**),
-   **Required** and an optional help text; move fields with the arrows or remove them.
+   **Required** and an optional help text; move fields with the arrows or remove them. A name starts with a letter
+   and uses only letters, digits, `-` and `_` (at most 64); a label has at most 200 characters, a help text 1 000.
 7. **Sandbox** (runner tasks): narrow the project's sandbox policy for jobs of this template, for example
    stronger isolation or fewer hosts. The project and pool ceilings still apply (see
    [Sandbox policy](projects.md#sandbox-policy)).

@@ -34,4 +34,15 @@ class RunInputFieldTest {
 
         assertThat(task.runInputs).isEmpty()
     }
+
+    @Test
+    fun `names are identifiers and labels and help are bounded`() {
+        listOf("audience", "issueKey", "tech_hints", "field-1", "a").forEach { RunInputField(it, "Label") }
+        listOf("has space", "1st", "a.b", "x\ty", "n".repeat(65)).forEach { name ->
+            assertThatThrownBy { RunInputField(name, "Label") }.describedAs(name).isInstanceOf(ValidationException::class.java).hasMessageContaining("name")
+        }
+        RunInputField("a", "l".repeat(RunInputField.MAX_LABEL_LENGTH), help = "h".repeat(RunInputField.MAX_HELP_LENGTH))
+        assertThatThrownBy { RunInputField("a", "l".repeat(RunInputField.MAX_LABEL_LENGTH + 1)) }.hasMessageContaining("label")
+        assertThatThrownBy { RunInputField("a", "Label", help = "h".repeat(RunInputField.MAX_HELP_LENGTH + 1)) }.hasMessageContaining("help")
+    }
 }

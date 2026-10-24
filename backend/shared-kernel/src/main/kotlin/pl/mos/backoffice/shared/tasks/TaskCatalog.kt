@@ -32,12 +32,19 @@ data class RunInputField(
 ) {
     init {
         if (name.isBlank()) throw ValidationException("run input name must not be blank", "runInputs.name")
+        // the name is a run-parameter key and appears in error paths (`parameters.<name>`)
+        if (!NAME_PATTERN.matches(name)) throw ValidationException("run input name must match ${NAME_PATTERN.pattern}", "runInputs.name")
         if (label.isBlank()) throw ValidationException("run input $name: label must not be blank", "runInputs.label")
+        if (label.length > MAX_LABEL_LENGTH) throw ValidationException("run input $name: label is longer than $MAX_LABEL_LENGTH characters", "runInputs.label")
+        if ((help?.length ?: 0) > MAX_HELP_LENGTH) throw ValidationException("run input $name: help is longer than $MAX_HELP_LENGTH characters", "runInputs.help")
     }
 
     companion object {
         /** Longest value accepted for one field on a checked start; bounds prompt size and cost. */
         const val MAX_LENGTH = 20_000
+        const val MAX_LABEL_LENGTH = 200
+        const val MAX_HELP_LENGTH = 1_000
+        val NAME_PATTERN: Regex = Regex("^[A-Za-z][A-Za-z0-9_-]{0,63}$")
     }
 }
 
