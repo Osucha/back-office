@@ -64,6 +64,7 @@ class RunnerConfiguration {
     fun fleetSettings(props: RunnerProperties, @Value("\${backoffice.public-url:http://localhost:8080}") publicUrl: String) = FleetSettings(
         apiUrl = props.apiUrl.ifBlank { publicUrl },
         leaseDuration = props.leaseDuration,
+        restartGrace = props.restartGrace,
         onlineWindow = props.onlineWindow,
         queueTimeout = props.queueTimeout,
         maxUnacknowledgedLeases = props.maxUnacknowledgedLeases,

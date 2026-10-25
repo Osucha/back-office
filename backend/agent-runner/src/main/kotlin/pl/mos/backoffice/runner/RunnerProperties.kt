@@ -18,6 +18,11 @@ data class RunnerProperties(
     val apiUrl: String = "",
     /** A lease lives this long without a heartbeat (heartbeats every 15 s extend it). The job token expires with it. */
     val leaseDuration: Duration = Duration.ofSeconds(60),
+    /**
+     * After this Back Office process starts, the lease scan does not declare running jobs lost: their heartbeats could not
+     * reach Back Office while it was down (a restart, a deployment). A heartbeat renews even an expired lease.
+     */
+    val restartGrace: Duration = Duration.ofMinutes(5),
     /** A runner is online when it called the API within this window. */
     val onlineWindow: Duration = Duration.ofSeconds(90),
     /** Upper bound of the lease long poll (`waitSeconds`). */

@@ -12,6 +12,7 @@ backoffice:
     lease-scan:
       enabled: false
     max-lease-wait: PT2S
+    restart-grace: PT0S
     lease-poll-interval: PT0.1S
     extra-allowed-models: [ "anthropic/claude-haiku-*" ]
 logging:

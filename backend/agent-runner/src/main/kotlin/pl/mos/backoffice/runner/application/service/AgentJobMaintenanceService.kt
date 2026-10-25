@@ -18,6 +18,9 @@ import pl.mos.backoffice.shared.security.SystemOperation
  *   (it was still starting, or its spec does not push), otherwise it ends LOST with evidence.
  * - QUEUED past the queue deadline: TIMED_OUT (`queue-timeout`).
  * - QUEUED without a pool: routed again (a pool may have been created or changed).
+ *
+ * Within `restart-grace` after this process started, STARTING/RUNNING jobs are left alone: Back Office itself was
+ * down, so missing heartbeats say nothing about the runner (a heartbeat renews even an expired lease).
  */
 class AgentJobMaintenanceService(
     private val jobs: AgentJobStore,
@@ -25,13 +28,16 @@ class AgentJobMaintenanceService(
     private val tx: Transactions,
 ) : MaintainAgentJobs {
 
+    private val startedAt = lifecycle.now()
+
     @SystemOperation("scheduled lease scan")
     override fun scan(): LeaseScanOutcome = tx.inTransaction {
         if (!jobs.tryAdvisoryLock(ADVISORY_LOCK_KEY)) return@inTransaction LeaseScanOutcome(ran = false)
         val now = lifecycle.now()
         var requeued = 0
         var lost = 0
-        jobs.lockExpiredLeases(now, BATCH).forEach { job ->
+        val inGrace = now.isBefore(startedAt.plus(lifecycle.settings.restartGrace))
+        jobs.lockExpiredLeases(now, BATCH).filterNot { inGrace && it.status != AgentJobStatus.LEASED }.forEach { job ->
             when (expired(job)) {
                 Outcome.REQUEUED -> requeued++
                 Outcome.LOST -> lost++

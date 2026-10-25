@@ -37,6 +37,8 @@ import org.slf4j.LoggerFactory
 data class FleetSettings(
     val apiUrl: String,
     val leaseDuration: Duration = Duration.ofSeconds(60),
+    /** Running jobs are not declared lost within this time after the process started (heartbeats could not arrive). */
+    val restartGrace: Duration = Duration.ofMinutes(5),
     val onlineWindow: Duration = Duration.ofSeconds(90),
     val queueTimeout: Duration = Duration.ofHours(24),
     val maxUnacknowledgedLeases: Int = 5,
