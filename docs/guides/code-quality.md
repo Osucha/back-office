@@ -67,7 +67,7 @@ Experience) and uses the matching rating and severity metrics.
    | `SONAR_BRANCH_ANALYSIS` | `true` with Developer Edition+ or SonarQube Cloud, otherwise leave unset | - |
    | `SONAR_ORGANIZATION` | SonarQube Cloud only: the organization key | - |
 
-3. The next pipeline on the default branch contains `quality:sonar`.
+3. The next pipeline on the release branch (`main`, CI variable `RELEASE_BRANCH`) contains `quality:sonar`.
 
 Behaviour by mode:
 
