@@ -39,23 +39,25 @@ które można rozszerzać, ale nigdy wykonać. Filtruj tekstem, wykonawcą (**Do
 executor**) oraz przełącznikiem **Szablony globalne** / **Globalne + KEY** (**Global templates** /
 **Global + KEY**), aby uwzględnić własne szablony projektu.
 
-Wykonawca decyduje, gdzie działa zadanie:
+Wykonawca decyduje, kto wykonuje pracę (ADR 0054 nazywa wykonawców według tego, co robią; wartość techniczna jest
+pokazana drobno):
 
-| Wykonawca | Działa jako |
+| Wykonawca | Robi |
 |---|---|
-| **LLM** | Jedno wywołanie modelu wewnątrz Back Office; umiejętności trafiają do promptu systemowego; może zwrócić ustrukturyzowany JSON i pewność. |
-| **Spec Kit** | Faza Spec Kit (specify, plan, tasks) w zadaniu agenta na runnerze. |
-| **Implementacja** (**Implement**) | Agent programistyczny (OpenCode lub Claude Code) w zadaniu agenta; wypycha gałąź i otwiera merge request przez push options. |
-| **Pobierz zgłoszenie** (**Fetch issue**), **Powiadom** (**Notify**), **Zmień status zgłoszenia** (**Transition issue**) | Wywołania Jiry: odczyt zgłoszenia, dodanie komentarza, przeniesienie zgłoszenia do statusu (zob. [Jira](integrations-jira.md#jira-tasks)). |
+| **Odpowiedź modelu** (**Model answer**, `LLM`) | Jedno wywołanie modelu wewnątrz Back Office, bez repozytorium; umiejętności trafiają do promptu systemowego; może zwrócić ustrukturyzowany JSON i pewność. |
+| **Agent kodujący** (**Coding agent**, `IMPLEMENT`) | Claude Code lub OpenCode w sandboxie na runnerze, z repozytorium; może wypchnąć gałąź i otworzyć merge request. Służy też do analizy i przygotowania obszaru roboczego. |
+| **Krok Spec Kit** (**Spec Kit step**, `SPEC_KIT`) | Faza Spec Kit (specify, clarify, plan, tasks) wykonywana przez agenta kodującego. |
+| **Jira: pobierz zgłoszenie**, **Jira: komentarz**, **Jira: zmień status** | Wywołania Jiry (zob. [Jira](integrations-jira.md#jira-tasks)). |
+| **Uruchom workflowy** (**Start workflows**), **Podsumowanie projektu** (**Project digest**) | Operacje Back Office bez modelu ([Workflowy](workflows.md)). |
 
 ### Kroki: tworzenie szablonu
 
 1. Kliknij **Nowy szablon** (**New template**) (wymaga `library.manage` albo `library.project.manage` dla
    szablonu projektu).
-2. **Typ** (**Type**): **Klucz** (**Key**; slug), **Nazwa**, **Opis**, **Rozszerza** (jeden rodzic),
-   **Implementuje** (interfejsy), **Wykonawca** (puste oznacza dziedziczony), **Abstrakcyjny**
-   (**Abstract**), **Zakres** (**Globalny** lub **Projektowy** z wyborem **Projektu**), **Profil modelu**
-   (**Model profile**).
+2. **Typ** (**Type**): **Klucz** (**Key**; slug), **Nazwa**, **Opis**, **Na bazie** (**Based on**; jeden
+   rodzic: szablon dziedziczy jego prompty, umiejętności i konfigurację, a zmienia tylko to, co ustawisz),
+   **Wykonawca** (puste oznacza dziedziczony; edytor pokazuje, który i co robi), **Zakres** (**Globalny** lub
+   **Projektowy** z wyborem **Projektu**), **Profil modelu** (**Model profile**).
 3. **Prompt**: wybierz **Dopisz do rodzica** (**Append to parent**) lub **Zastąp rodzica** (**Replace
    parent**), a następnie napisz **Prompt systemowy** (**System prompt**) i **Prompt użytkownika** (**User
    prompt**). Wartości szablonowe, takie jak `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
@@ -70,10 +72,17 @@ Wykonawca decyduje, gdzie działa zadanie:
    `{{decision.comment}}`.
 4. **Umiejętności** (**Skills**): dodaj umiejętności, a odziedziczone umiejętności do usunięcia wpisz w **Usuń
    odziedziczone umiejętności** (**Remove inherited skills**).
-5. **Kontrakt i konfiguracja** (**Contract and configuration**): **Produkuje** (**Produces**)
-   i **Konsumuje** (**Consumes**) (nazwy artefaktów lub pól stanu), **Pole pewności** (**Confidence
-   field**), **Tagi** (**Tags**), **Konfiguracja (JSON)** (**Config (JSON)**) oraz, dla zadań LLM, **Schemat
-   wyjścia** (**Output schema**).
+5. **Konfiguracja** (**Configuration**): formularz z ustawieniami wykonawcy (dla agenta kodującego: agent,
+   polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania, narzędzia agenta, obszar
+   roboczy, ...). Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
+   (**Raw JSON**) pokazuje te same ustawienia jako JSON, także klucze, których formularz nie zna.
+   **Zaawansowane: kontrakty, artefakty, schemat wyjścia, sandbox** (zwinięte; większość szablonów niczego tu nie
+   potrzebuje): **Abstrakcyjny** (**Abstract**; tylko baza dla innych szablonów, nigdy samodzielny krok),
+   **Implementuje** (**Implements**; interfejsy sprawdzane przy rozwiązywaniu szablonu), **Produkuje**
+   (**Produces**) i **Konsumuje** (**Consumes**) (nazwy artefaktów, które krok zapisuje i odczytuje; kontrola
+   workflowu ostrzega, gdy krok czyta coś, czego nikt nie zapisuje), **Pole pewności** (**Confidence field**; pole
+   odpowiedzi modelu kopiowane do `state.confidence` na potrzeby decyzji takich jak `confidence < 0.7`), **Tagi**
+   (**Tags**), **Schemat wyjścia** (**Output schema**; tylko Odpowiedź modelu) i **Sandbox** (krok 7).
 6. **Dane wejściowe uruchomienia** (**Run inputs**): pola, o które zadanie prosi przy starcie uruchomienia
    (zob. [Dane wejściowe uruchomienia](#run-inputs)). Kliknij **Dodaj daną wejściową** (**Add run input**),
    potem ustaw **Nazwę**, **Etykietę**, typ (**Jedna linia**, **Tekst wieloliniowy** lub **Klucz zgłoszenia
@@ -224,6 +233,11 @@ Back Office zawiera szablony faz Spec Kit, implementacji z OpenCode lub Claude C
 `write-user-story`, `plan-task-list`, `implement-task-list` i `review-against-spec`, wraz z ich
 interfejsami i umiejętnościami. Wpisy wbudowane możesz edytować; Back Office nigdy nie nadpisuje
 zmienionego wpisu.
+
+Szablon z tagiem `deprecated` działa dalej w krokach, które go używają, ale projektant, paleta MCP i lista (chyba
+że włączysz **Pokaż przestarzałe**, **Show deprecated**) już go nie proponują. Przestarzałe są teraz (ADR 0054):
+`implement-claude-code` (użyj `implement-opencode`, `implement-task-list` albo `agent-task` z agentem Claude Code
+w **Konfiguracji**) oraz `analyse-issue` (użyj `impact-analysis`).
 
 <a id="built-in-updates"></a>
 ### Aktualizacje biblioteki wbudowanej

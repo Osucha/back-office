@@ -6,7 +6,9 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import type { NodeKind, PaletteTask, WorkflowPalette } from '../../../core/api/types';
+import { executorLabel } from '../../../core/ui/executors';
 import { NODE_KIND_META, type NodeKindMeta } from '../data/graph-model';
+import { paletteTasks } from '../data/palette-tasks';
 import { NODE_DRAG_MIME } from './workflow-canvas.component';
 
 export interface PalettePick {
@@ -117,7 +119,9 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
                   <span class="ports mono">{{ t.key }}</span>
                 </span>
                 @if (t.executor) {
-                  <span class="exec">{{ t.executor }}</span>
+                  <span class="exec" [attr.title]="t.executor">{{
+                    executorLabel(t.executor)
+                  }}</span>
                 }
                 @if (t.projectScoped) {
                   <nz-icon
@@ -244,9 +248,12 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
 export class NodePaletteComponent {
   readonly palette = input<WorkflowPalette | null>(null);
   readonly loading = input(false);
+  /** ADR 0054: keys of deprecated templates; never offered for new steps. */
+  readonly deprecatedKeys = input<ReadonlySet<string>>(new Set());
   readonly pick = output<PalettePick>();
 
   readonly query = signal('');
+  readonly executorLabel = executorLabel;
 
   readonly controls = computed<NodeKindMeta[]>(() => {
     const q = this.query().trim().toLowerCase();
@@ -266,13 +273,7 @@ export class NodePaletteComponent {
   readonly groups = computed<TaskGroup[]>(() => {
     const p = this.palette();
     const q = this.query().trim().toLowerCase();
-    const tasks = (p?.tasks ?? []).filter(
-      (t) =>
-        !q ||
-        (t.name ?? '').toLowerCase().includes(q) ||
-        (t.key ?? '').toLowerCase().includes(q) ||
-        (t.interfaces ?? []).some((i) => i.toLowerCase().includes(q)),
-    );
+    const tasks = paletteTasks(p?.tasks ?? [], q, this.deprecatedKeys());
     const names = new Map((p?.interfaces ?? []).map((i) => [i.key, i.name || i.key]));
     const groups = new Map<string, TaskGroup>();
     for (const t of tasks) {

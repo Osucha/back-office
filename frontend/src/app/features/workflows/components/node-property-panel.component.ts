@@ -26,9 +26,13 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
-import { Subject, catchError, of, switchMap } from 'rxjs';
+import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
+import { executorDescription, executorLabel } from '../../../core/ui/executors';
+import { JsonViewComponent } from '../../../core/ui/json-view.component';
 import { ModelSelectComponent } from '../../../core/ui/model-select.component';
+import { deprecatedHint, deprecatedLabel } from '../../../core/ui/template-tags';
+import { deprecatedPaletteTask } from '../data/palette-tasks';
 import type {
   DecisionBranch,
   ModelOption,
@@ -70,6 +74,13 @@ import { type StepModelUse, stepModelUse, stepModelUseKey } from '../data/model-
 
 type PromptMode = 'none' | 'append' | 'replace';
 
+/** ADR 0054: one POST resolve of a step (template key, the step's overrides, project). */
+interface StepResolveRequest {
+  key: string;
+  overrides: TaskOverrides;
+  projectId: string | null;
+}
+
 /**
  * Right drawer of the designer: edits the selected node. Emits an updated copy on every change
  * (the page owns the definition). Kind-specific sections per NodeKind.
@@ -102,6 +113,7 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
     StepWorkspaceSectionComponent,
     ModelSelectComponent,
     StartRunInputsComponent,
+    JsonViewComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -233,7 +245,7 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                         @for (t of g.tasks; track t.key) {
                           <nz-option
                             [nzValue]="t.key"
-                            [nzLabel]="(t.name || t.key) + ' (' + t.executor + ')'"
+                            [nzLabel]="(t.name || t.key) + ' (' + executorLabel(t.executor) + ')'"
                           />
                         }
                       </nz-option-group>
@@ -262,7 +274,22 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                   </div>
                   <div class="chips">
                     @if (r.executor) {
-                      <nz-tag nzColor="purple">{{ r.executor }}</nz-tag>
+                      <nz-tag
+                        nzColor="purple"
+                        nz-tooltip
+                        [nzTooltipTitle]="executorDescription(r.executor)"
+                        [attr.data-executor]="r.executor"
+                        >{{ executorLabel(r.executor) }}</nz-tag
+                      >
+                    }
+                    @if (templateDeprecated()) {
+                      <nz-tag
+                        nzColor="red"
+                        nz-tooltip
+                        [nzTooltipTitle]="text.deprecatedHint"
+                        data-deprecated
+                        >{{ text.deprecated }}</nz-tag
+                      >
                     }
                     @for (i of r.interfaces ?? []; track i) {
                       <nz-tag nzColor="blue">{{ i }}</nz-tag>
@@ -286,6 +313,83 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                 </div>
               } @else if (resolveError()) {
                 <p class="muted small">{{ resolveError() }}</p>
+                @if (templateDeprecated()) {
+                  <nz-tag nzColor="red" data-deprecated>{{ text.deprecated }}</nz-tag>
+                }
+              }
+
+              @if (n.task?.templateKey) {
+                <nz-collapse nzGhost class="step-gets">
+                  <nz-collapse-panel
+                    nzHeader="What this step gets"
+                    i18n-nzHeader="@@workflows.props.stepGets"
+                    [nzActive]="stepGetsOpen()"
+                    (nzActiveChange)="stepGetsOpen.set($event)"
+                  >
+                    <p class="muted small" i18n="@@workflows.props.stepGets.help">
+                      The template with this step's overrides applied: exactly what the model or the
+                      coding agent receives (before the run fills in the variables).
+                    </p>
+                    @if (stepResolving()) {
+                      <p class="muted small">
+                        <nz-icon nzType="loading" nzSpin />
+                        <span i18n="@@workflows.props.stepGets.resolving">resolving the step</span>
+                      </p>
+                    }
+                    @if (stepView(); as v) {
+                      <dl class="gets" data-step-gets>
+                        <dt i18n="@@workflows.props.stepGets.model">Model profile</dt>
+                        <dd>{{ profileName(v.modelProfileId) }}</dd>
+                        <dt i18n="@@workflows.props.stepGets.system">System prompt</dt>
+                        <dd>
+                          <pre class="prompt" tabindex="0">{{
+                            v.prompt?.system || text.empty
+                          }}</pre>
+                        </dd>
+                        <dt i18n="@@workflows.props.stepGets.user">User prompt</dt>
+                        <dd>
+                          <pre class="prompt" tabindex="0">{{ v.prompt?.user || text.empty }}</pre>
+                        </dd>
+                        <dt i18n="@@workflows.props.stepGets.skills">Skills</dt>
+                        <dd class="chips">
+                          @for (s of v.skills ?? []; track s.key) {
+                            <nz-tag nz-tooltip [nzTooltipTitle]="s.key">{{
+                              s.name || s.key
+                            }}</nz-tag>
+                          } @empty {
+                            <span class="muted small" i18n="@@workflows.props.stepGets.noSkills"
+                              >none</span
+                            >
+                          }
+                        </dd>
+                        <dt i18n="@@workflows.props.stepGets.config">Configuration</dt>
+                        <dd>
+                          <app-json-view [value]="v.config ?? {}" maxHeight="240px" />
+                        </dd>
+                        <dt i18n="@@workflows.props.stepGets.runInputs">Run inputs</dt>
+                        <dd>
+                          @for (f of v.runInputs ?? []; track f.name) {
+                            <div class="run-input">
+                              <span class="mono">{{ f.name }}</span>
+                              <span>{{ f.label }}</span>
+                              @if (f.required) {
+                                <nz-tag nzColor="red" i18n="@@workflows.props.stepGets.required"
+                                  >required</nz-tag
+                                >
+                              }
+                            </div>
+                          } @empty {
+                            <span class="muted small" i18n="@@workflows.props.stepGets.noRunInputs"
+                              >This step asks for no run input.</span
+                            >
+                          }
+                        </dd>
+                      </dl>
+                    } @else if (stepError()) {
+                      <p class="muted small">{{ stepError() }}</p>
+                    }
+                  </nz-collapse-panel>
+                </nz-collapse>
               }
 
               @if (requiredCapabilities().length) {
@@ -1066,6 +1170,48 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
         display: block;
         margin-bottom: 6px;
       }
+      .step-gets {
+        margin-bottom: 8px;
+      }
+      .step-gets ::ng-deep .ant-collapse-header {
+        padding-left: 0 !important;
+        font-weight: 600;
+      }
+      .step-gets ::ng-deep .ant-collapse-content-box {
+        padding: 0 !important;
+      }
+      .gets {
+        margin: 0;
+      }
+      .gets dt {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--bo-ink-2);
+        margin: 8px 0 2px;
+      }
+      .gets dd {
+        margin: 0;
+      }
+      .prompt {
+        white-space: pre-wrap;
+        font-family: var(--bo-font-mono);
+        font-size: 11.5px;
+        background: var(--bo-surface);
+        border: 1px solid var(--bo-line);
+        border-radius: 4px;
+        padding: 8px;
+        margin: 0;
+        max-height: 240px;
+        overflow: auto;
+      }
+      .run-input {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        font-size: 12px;
+        padding: 2px 0;
+      }
     `,
   ],
 })
@@ -1076,6 +1222,8 @@ export class NodePropertyPanelComponent {
   readonly node = input<WorkflowNode | null>(null);
   readonly allIds = input<string[]>([]);
   readonly palette = input<WorkflowPalette | null>(null);
+  /** ADR 0054: keys of deprecated templates (not offered; a step using one is tagged). */
+  readonly deprecatedKeys = input<ReadonlySet<string>>(new Set());
   readonly issues = input<Issues | null>(null);
   readonly profiles = input<ModelProfile[]>([]);
   /**
@@ -1115,7 +1263,12 @@ export class NodePropertyPanelComponent {
     inherited: $localize`:@@workflows.props.inherited:Inherited`,
     idHint: $localize`:@@workflows.props.id.hint:Slug, unique in the workflow; edges follow a rename.`,
     questionHint: $localize`:@@workflows.props.question.hint:Template; ${'{{issue.key}}'}:example1:, ${'{{review.score}}'}:example2: ... are rendered.`,
+    deprecated: deprecatedLabel(),
+    deprecatedHint: deprecatedHint(),
+    empty: $localize`:@@workflows.props.stepGets.empty:(empty)`,
   };
+  readonly executorLabel = executorLabel;
+  readonly executorDescription = executorDescription;
 
   readonly KNOWN_ARTIFACTS = [
     'spec',
@@ -1148,14 +1301,39 @@ export class NodePropertyPanelComponent {
     const p = this.palette();
     const names = new Map((p?.interfaces ?? []).map((i) => [i.key, i.name || i.key]));
     const groups = new Map<string, { title: string; tasks: PaletteTask[] }>();
+    // ADR 0054: deprecated templates are not offered; the step's own template stays selectable.
+    const current = this.node()?.task?.templateKey;
+    const hidden = this.deprecatedKeys();
     for (const t of p?.tasks ?? []) {
+      if (t.key !== current && deprecatedPaletteTask(t, hidden)) continue;
       const k = t.interfaces?.[0] ?? '-';
       const title =
         k === '-' ? $localize`:@@workflows.props.otherGroup:Other` : (names.get(k) ?? k);
       if (!groups.has(k)) groups.set(k, { title, tasks: [] });
       groups.get(k)!.tasks.push(t);
     }
+    // A template the palette no longer offers (deprecated) still shows as the step's choice.
+    if (current && !(p?.tasks ?? []).some((t) => t.key === current)) {
+      const r = this.resolved();
+      groups.set('\u0000current', {
+        title: $localize`:@@workflows.props.currentGroup:Current template`,
+        tasks: [
+          {
+            key: current,
+            name: r?.key === current ? (r.name ?? current) : current,
+            executor: r?.key === current ? r.executor : undefined,
+          },
+        ],
+      });
+    }
     return Array.from(groups.values());
+  });
+  /** ADR 0054: the step's template carries the `deprecated` tag. */
+  readonly templateDeprecated = computed(() => {
+    const key = this.node()?.task?.templateKey;
+    if (!key) return false;
+    const t = this.palette()?.tasks?.find((x) => x.key === key);
+    return this.deprecatedKeys().has(key) || (!!t && deprecatedPaletteTask(t));
   });
   readonly configSchema = computed<JsonSchema | null>(() => {
     const key = this.node()?.task?.templateKey;
@@ -1252,7 +1430,54 @@ export class NodePropertyPanelComponent {
   );
   private readonly resolve$ = new Subject<string | null>();
 
+  /** ADR 0054: "What this step gets" is expanded (kept while other nodes are selected). */
+  readonly stepGetsOpen = signal(false);
+  /** The template with the step's overrides applied (POST resolve); null while closed. */
+  readonly stepView = signal<ResolvedTask | null>(null);
+  readonly stepResolving = signal(false);
+  readonly stepError = signal<string | null>(null);
+  private readonly step$ = new Subject<StepResolveRequest | null>();
+
   constructor() {
+    // ADR 0054: resolve the step with its overrides while the section is open, debounced.
+    effect(() => {
+      const n = this.node();
+      const key = n?.kind === 'TASK' ? n.task?.templateKey : null;
+      const request: StepResolveRequest | null =
+        this.stepGetsOpen() && key
+          ? { key, overrides: n?.task?.overrides ?? {}, projectId: this.projectId() }
+          : null;
+      untracked(() => this.step$.next(request));
+    });
+    this.step$
+      .pipe(
+        debounceTime(300),
+        distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+        switchMap((req) => {
+          this.stepError.set(null);
+          if (!req) {
+            this.stepView.set(null);
+            this.stepResolving.set(false);
+            return of(undefined);
+          }
+          this.stepResolving.set(true);
+          return this.library.resolveStep(req.key, req.overrides, req.projectId).pipe(
+            catchError(() => {
+              this.stepError.set(
+                $localize`:@@workflows.props.stepGets.error:Could not resolve this step with its overrides.`,
+              );
+              return of(null);
+            }),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((r) => {
+        if (r === undefined) return;
+        this.stepView.set(r);
+        this.stepResolving.set(false);
+      });
+
     effect(() => {
       const use = this.modelUse();
       if (use && !(stepModelUseKey(use) in this.modelOptions()))
@@ -1374,6 +1599,13 @@ export class NodePropertyPanelComponent {
         $localize`:@@workflows.props.config.invalid:Invalid JSON: ${(e as Error).message}:error:`,
       );
     }
+  }
+
+  /** Display name of a model profile; the project default when none is set. */
+  profileName(id: string | null | undefined): string {
+    if (!id) return $localize`:@@workflows.props.stepGets.defaultModel:Project default`;
+    const p = this.profiles().find((x) => x.id === id);
+    return p ? `${p.displayName} (${p.ref.modelId})` : id;
   }
 
   branchExpressionLabel(id: string): string {

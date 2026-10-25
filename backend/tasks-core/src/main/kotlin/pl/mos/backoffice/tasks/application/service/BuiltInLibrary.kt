@@ -63,6 +63,9 @@ object BuiltInLibrary {
     const val START_WORKFLOW = "start-workflow"
     const val PROJECT_DIGEST = "project-digest"
 
+    /** ADR 0054: a built-in template that stays for existing workflows but is hidden from the palette and the list. */
+    const val DEPRECATED_TAG = "deprecated"
+
     /** Generic LLM task of projects without repositories (ADR 0034): the prompt is written in the designer. */
     const val LLM_TASK = "llm-task"
 
@@ -245,9 +248,10 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_CLAUDE_CODE, name = "Implement with Claude Code", extendsKey = IMPLEMENT_OPENCODE,
-            description = "Same as implement-opencode but drives Claude Code in the runner.",
+            description = "Deprecated (ADR 0054): use implement-opencode, implement-task-list or agent-task and choose the agent " +
+                "Claude Code in the step's configuration. Same as implement-opencode but drives Claude Code in the runner.",
             config = mapOf("agent" to "CLAUDE_CODE"),
-            tags = listOf("claude-code"),
+            tags = listOf("claude-code", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
             key = CODE_REVIEW, name = "Code review", extendsKey = BASE_LLM, implements = listOf(REVIEWER),
@@ -262,10 +266,11 @@ object BuiltInLibrary {
         template(now, TaskTemplate.Content(
             key = ANALYSE_ISSUE, name = "Analyse issue", extendsKey = BASE_LLM, implements = listOf(ANALYST),
             executor = TaskExecutor.LLM,
-            description = "Reads the issue and produces a structured analysis (stored as JSON): scope, affected areas, risks and open questions.",
+            description = "Deprecated (ADR 0054): use impact-analysis. Reads the issue and produces a structured analysis (stored as JSON): " +
+                "scope, affected areas, risks and open questions.",
             prompt = Prompt(system = ANALYSE_SYSTEM, user = ANALYSE_USER),
             outputSchema = ANALYSE_SCHEMA,
-            consumes = listOf("issue"), produces = listOf("analysis"), tags = listOf("analysis"),
+            consumes = listOf("issue"), produces = listOf("analysis"), tags = listOf("analysis", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
             key = NOTIFY_JIRA, name = "Notify Jira", executor = TaskExecutor.NOTIFY,

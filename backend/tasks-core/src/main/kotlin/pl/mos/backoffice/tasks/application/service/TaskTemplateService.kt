@@ -12,6 +12,7 @@ import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
 import pl.mos.backoffice.tasks.domain.service.TaskResolution
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.util.UUID
 
 /**
@@ -87,6 +88,11 @@ class TaskTemplateService(
     override fun resolve(key: String, projectId: UUID?): TaskResolution {
         val access = gate.requireListing(projectId)
         return lookup.resolver.preview(key, access.projectId) ?: throw NotFoundException("TaskTemplate", key)
+    }
+
+    override fun resolveStep(key: String, projectId: UUID?, overrides: TaskOverrides): TaskResolution {
+        val access = gate.requireListing(projectId)
+        return lookup.resolver.preview(key, access.projectId, overrides) ?: throw NotFoundException("TaskTemplate", key)
     }
 
     private fun load(id: TaskTemplateId): TaskTemplate = templates.findById(id) ?: throw NotFoundException("TaskTemplate", id)

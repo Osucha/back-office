@@ -3,6 +3,7 @@ package pl.mos.backoffice.tasks.adapter.`in`.rest
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces.InterfaceCommand
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces.TaskInterfaceDetails
 import pl.mos.backoffice.tasks.domain.model.Prompt
@@ -92,6 +93,16 @@ object RestMappers {
         createdAt = t.createdAt,
         updatedAt = t.updatedAt,
         updatedBy = ActorRefDto.of(t.updatedBy),
+    )
+
+    fun overrides(o: TaskOverridesDto) = TaskOverrides(
+        modelProfileId = o.modelProfileId?.let(::ModelProfileId),
+        systemPromptAppend = o.systemPromptAppend,
+        promptAppend = o.promptAppend,
+        promptReplace = o.promptReplace,
+        addSkills = o.addSkills,
+        removeSkills = o.removeSkills,
+        config = o.config,
     )
 
     fun resolved(r: TaskResolution) = ResolvedTaskDto(

@@ -127,6 +127,17 @@ data class ResolvedSkillDto(val key: String, val name: String)
 
 data class InterfaceCheckDto(val ok: Boolean, val problems: List<String>)
 
+/** `TaskOverrides` schema: a workflow step's overrides of its template (ADR 0054, POST resolve). */
+data class TaskOverridesDto(
+    val modelProfileId: UUID? = null,
+    val systemPromptAppend: String? = null,
+    val promptAppend: String? = null,
+    val promptReplace: String? = null,
+    val addSkills: List<String> = emptyList(),
+    val removeSkills: List<String> = emptyList(),
+    val config: Map<String, Any?> = emptyMap(),
+)
+
 /** `ResolvedTask` schema: the merged preview, including abstract templates (then `executor` may be null). */
 data class ResolvedTaskDto(
     val key: String,

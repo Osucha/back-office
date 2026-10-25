@@ -11,13 +11,26 @@ const T = (over: Partial<TaskTemplate>): TaskTemplate =>
   ({ key: 'k', name: 'N', scope: { type: 'GLOBAL' }, ...over }) as TaskTemplate;
 
 describe('library filters', () => {
-  it('labels executors in sentence case', () => {
-    expect(executorLabel('LLM')).toBe('LLM');
-    expect(executorLabel('FETCH_ISSUE')).toBe('Fetch issue');
+  it('labels executors with the shared plain names', () => {
+    expect(executorLabel('LLM')).toBe('Model answer');
+    expect(executorLabel('FETCH_ISSUE')).toBe('Jira: read issue');
     expect(executorLabel('SOMETHING_NEW')).toBe('Something new');
-    expect(executorLabel('START_WORKFLOW')).toBe('Start workflow');
-    expect(executorLabel('PROJECT_DIGEST')).toBe('Project digest');
     expect(executorLabel(null)).toBe('inherited');
+  });
+
+  it('hides deprecated templates unless asked to show them', () => {
+    const list = [
+      T({ key: 'implement-claude-code', executor: 'IMPLEMENT', tags: ['deprecated'] }),
+      T({ key: 'implement', executor: 'IMPLEMENT' }),
+    ];
+    expect(filterTemplates(list, {}).map((t) => t.key)).toEqual(['implement']);
+    expect(filterTemplates(list, { showDeprecated: true }).map((t) => t.key)).toEqual([
+      'implement-claude-code',
+      'implement',
+    ]);
+    expect(filterTemplates(list, { query: 'coding agent' }).map((t) => t.key)).toEqual([
+      'implement',
+    ]);
   });
 
   it('filters templates by text and executor', () => {

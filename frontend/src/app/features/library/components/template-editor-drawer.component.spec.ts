@@ -101,6 +101,43 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     ]);
   });
 
+  it('renders the configuration from the schema of the inherited executor (ADR 0054)', async () => {
+    const { fixture, drawer } = create(null);
+    http.expectOne('/api/v1/workflows/task-executors').flush([
+      {
+        executor: 'IMPLEMENT',
+        configSchema: {
+          type: 'object',
+          required: ['agent'],
+          properties: { agent: { type: 'string', enum: ['OPENCODE', 'CLAUDE_CODE'] } },
+        },
+      },
+    ]);
+    fixture.componentRef.setInput('templates', [
+      baseAgent,
+      { ...writer, key: 'coder', executor: 'IMPLEMENT', extendsKey: 'base-agent' },
+    ]);
+    drawer.patch({ key: 'my-coder', name: 'My coder', executor: null, extendsKey: 'coder' });
+    fixture.detectChanges();
+
+    expect(drawer.effectiveExecutor()).toBe('IMPLEMENT');
+    expect(drawer.configSchema()?.required).toBeUndefined();
+    expect(drawer.executorHelp()).toContain('Coding agent');
+    expect(document.querySelector('[data-config-form]')).not.toBeNull();
+
+    drawer.onConfigForm({ agent: 'CLAUDE_CODE', extra: 1 });
+    expect(drawer.draft().config).toEqual({ agent: 'CLAUDE_CODE', extra: 1 });
+    expect(JSON.parse(drawer.configText())).toEqual({ agent: 'CLAUDE_CODE', extra: 1 });
+
+    drawer.setConfigRaw(true);
+    fixture.detectChanges();
+    expect(document.querySelector('[data-config-form]')).toBeNull();
+    drawer.onConfig('{ broken');
+    expect(drawer.configError()).toBeTruthy();
+    drawer.setConfigRaw(false);
+    expect(drawer.configRaw()).toBe(true);
+  });
+
   it('keeps the run input controls disabled in a read-only drawer', async () => {
     const { fixture } = create(writer);
     fixture.componentRef.setInput('readonly', true);

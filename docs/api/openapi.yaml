@@ -1055,6 +1055,15 @@ paths:
       parameters: [ { name: projectId, in: query, required: true, schema: { type: string, format: uuid } } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowPalette' } } } }
+  /workflows/task-executors:
+    get:
+      tags: [workflows]
+      operationId: listTaskExecutors
+      description: >-
+        ADR 0054: every task executor with the JSON Schema of its `config` keys, the same schema the designer uses for
+        a step. The library editor renders a template's configuration from it. Static; any signed-in user.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TaskExecutorDescriptor' } } } } }
   /workflows/model-options:
     get:
       tags: [workflows]
@@ -1556,6 +1565,20 @@ paths:
         - { name: projectId, in: query, schema: { type: string, format: uuid } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ResolvedTask' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [task-library]
+      operationId: resolveTaskStep
+      description: >-
+        ADR 0054: what a workflow step gets - the template a project sees under the key with the step's overrides
+        applied (prompt append or replace, skills, config, model). The designer shows it next to the step. Same
+        access as the GET.
+      parameters:
+        - { name: projectId, in: query, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TaskOverrides' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ResolvedTask' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
   /skills:
     get:
@@ -3042,6 +3065,7 @@ components:
         ports: { type: array, items: { type: string } }
         projectScoped: { type: boolean }
         configSchema: { type: object, additionalProperties: true, description: JSON Schema for `overrides.config` derived from the executor }
+        deprecated: { type: boolean, description: 'ADR 0054: kept for the steps that use it; not offered for new steps' }
         requiredCapabilities:
           type: array
           items: { $ref: '#/components/schemas/ConnectionCapability' }
@@ -3426,6 +3450,12 @@ components:
         message: { type: string }
 
     # ---- task library
+    TaskExecutorDescriptor:
+      type: object
+      required: [executor, configSchema]
+      properties:
+        executor: { $ref: '#/components/schemas/TaskExecutor' }
+        configSchema: { type: object, additionalProperties: true, description: JSON Schema of the executor's config keys }
     TaskExecutor:
       type: string
       enum: [LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST]

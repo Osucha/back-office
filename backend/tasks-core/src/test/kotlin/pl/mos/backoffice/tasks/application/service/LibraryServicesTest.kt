@@ -9,6 +9,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
@@ -136,6 +137,22 @@ class LibraryServicesTest {
     }
 
     @Test
+    fun `resolveStep shows what a workflow step gets with its overrides applied`() {
+        templates.create(content("step").copy(prompt = Prompt(system = "rules", user = "do the work"), config = mapOf("agent" to "OPENCODE", "push" to true)))
+
+        val step = templates.resolveStep(
+            "step", null,
+            TaskOverrides(systemPromptAppend = "be brief", promptReplace = "only analyse", config = mapOf("agent" to "CLAUDE_CODE")),
+        )
+
+        assertThat(step.prompt.system).contains("rules", "be brief")
+        assertThat(step.prompt.user).isEqualTo("only analyse")
+        assertThat(step.config).containsEntry("agent", "CLAUDE_CODE").containsEntry("push", true)
+        assertThat(templates.resolve("step").prompt.user).isEqualTo("do the work")
+        assertThatThrownBy { templates.resolveStep("nope", null, TaskOverrides.NONE) }.isInstanceOf(NotFoundException::class.java)
+    }
+
+    @Test
     fun `skills are unique per scope and cannot be deleted or renamed while used`() {
         val skill = skills.create(Skill.Content(key = "ss", name = "S", content = "# s"))
         assertThatThrownBy { skills.create(Skill.Content(key = "ss", name = "S", content = "# s")) }.isInstanceOf(InvalidStateException::class.java)
@@ -155,6 +172,15 @@ class LibraryServicesTest {
         skills.delete(mine.id)
         skills.delete(skill.id)
         assertThatThrownBy { skills.get(mine.id) }.isInstanceOf(NotFoundException::class.java)
+    }
+
+    @Test
+    fun `a deprecated template stays in the palette flagged, for the steps that use it, and still resolves`() {
+        templates.create(content("old-way", executor = TaskExecutor.LLM).copy(tags = listOf(BuiltInLibrary.DEPRECATED_TAG)))
+        templates.create(content("new-way", executor = TaskExecutor.LLM))
+
+        assertThat(catalog.palette(null).associate { it.key to it.deprecated }).containsExactlyInAnyOrderEntriesOf(mapOf("old-way" to true, "new-way" to false))
+        assertThat(catalog.resolve("old-way", null)).isNotNull()
     }
 
     @Test

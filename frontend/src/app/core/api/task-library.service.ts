@@ -1,11 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, catchError, shareReplay, throwError } from 'rxjs';
 import { params, silent, url } from './api-base';
 import type {
   ResolvedTask,
   Skill,
   SkillInput,
+  TaskExecutorDescriptor,
+  TaskOverrides,
   TaskInterface,
   TaskInterfaceInput,
   TaskTemplate,
@@ -70,6 +72,36 @@ export class TaskLibraryApi {
       ...silent(),
     });
   }
+
+  /**
+   * ADR 0054: what a workflow step gets - the template with the step's overrides applied
+   * (prompts, skills, config, model); errors handled by the caller.
+   */
+  resolveStep(
+    key: string,
+    overrides: TaskOverrides,
+    projectId?: string | null,
+  ): Observable<ResolvedTask> {
+    return this.http.post<ResolvedTask>(url('task-templates', 'resolve', key), overrides, {
+      params: params({ projectId }),
+      ...silent(),
+    });
+  }
+
+  /** ADR 0054: every executor with the JSON Schema of its config (static; loaded once). */
+  taskExecutors(): Observable<TaskExecutorDescriptor[]> {
+    this.executors$ ??= this.http
+      .get<TaskExecutorDescriptor[]>(url('workflows', 'task-executors'), silent())
+      .pipe(
+        catchError((e: unknown) => {
+          this.executors$ = undefined;
+          return throwError(() => e);
+        }),
+        shareReplay(1),
+      );
+    return this.executors$;
+  }
+  private executors$?: Observable<TaskExecutorDescriptor[]>;
 
   // ---- skills
 

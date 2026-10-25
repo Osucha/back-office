@@ -242,6 +242,11 @@ class CiRestTest {
             .andExpect(jsonPath("$.controlNodes[?(@.kind == 'WAIT_FOR_CI')].ports[0]").value("success"))
             .andExpect(jsonPath("$.tasks[?(@.key == 'code-review')].interfaces[0]").value("Reviewer"))
             .andExpect(jsonPath("$.stateFields[?(@.path == 'review.verdict')]").isNotEmpty)
+        // ADR 0054: the config schema of every executor, for the library editor
+        mvc.perform(get("/api/v1/workflows/task-executors"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(pl.mos.backoffice.shared.tasks.TaskExecutor.entries.size))
+            .andExpect(jsonPath("$[?(@.executor == 'IMPLEMENT')].configSchema.properties.agent.enum[1]").value("CLAUDE_CODE"))
         mvc.perform(post("/api/v1/workflows/expressions/validate").contentType(MediaType.APPLICATION_JSON).content("""{"expression":"review.verdict != 'REQUEST_CHANGES'"}"""))
             .andExpect(status().isOk).andExpect(jsonPath("$.valid").value(true))
         mvc.perform(post("/api/v1/workflows/expressions/validate").contentType(MediaType.APPLICATION_JSON).content("""{"expression":"review.verdict !="}"""))

@@ -91,8 +91,11 @@ validation warns about other unconnected ports.
 
 ### Task nodes
 
-Pick the **Template**. Under it you see the template's lineage, executor, interfaces and ports, and **Open
-in library**. **Overrides** change the template for this node only:
+Pick the **Template** (deprecated templates are not offered; a step that already uses one shows the tag
+**Deprecated**). Under it you see the template's lineage, executor, interfaces and ports, and **Open in library**.
+**What this step gets** (collapsed) shows the template with this step's overrides applied: the model profile,
+the system and user prompt, skills, configuration and run inputs, exactly what the model or coding agent receives
+before the run fills in the values. **Overrides** change the template for this node only:
 
 | Override | Effect |
 |---|---|

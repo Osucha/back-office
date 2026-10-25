@@ -14,6 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzButtonModule } from 'ng-zorro-antd/button';
+import { NzCollapseModule } from 'ng-zorro-antd/collapse';
 import { NzDrawerModule } from 'ng-zorro-antd/drawer';
 import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzIconModule } from 'ng-zorro-antd/icon';
@@ -32,11 +33,16 @@ import {
   type Project,
   type RunInputField,
   type Skill,
+  type TaskExecutorDescriptor,
   type TaskInterface,
   type TaskTemplate,
   type TaskTemplateInput,
 } from '../../../core/api/types';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
+import { executorDescription, executorInfos, executorLabel } from '../../../core/ui/executors';
+import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
+import { SchemaFormComponent } from '../../workflows/public-api';
+import { effectiveExecutor, templateConfigSchema } from '../data/template-config';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { SLUG_PATTERN } from '../../../core/forms/patterns';
@@ -82,8 +88,10 @@ function invalidJson(e: unknown): string {
     NzAlertModule,
     NzTabsModule,
     NzTooltipModule,
+    NzCollapseModule,
     JsonViewComponent,
     SandboxPolicyEditorComponent,
+    SchemaFormComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -119,6 +127,11 @@ function invalidJson(e: unknown): string {
           }
           @if (draft().abstract) {
             <span class="title-chip" i18n="@@library.templateEditor.abstractChip">abstract</span>
+          }
+          @if (deprecated()) {
+            <span class="title-chip deprecated" [attr.title]="text.deprecatedHint">{{
+              text.deprecated
+            }}</span>
           }
           @if (readonly()) {
             <span class="title-chip" i18n="@@library.templateEditor.readOnlyChip">read-only</span>
@@ -199,10 +212,10 @@ function invalidJson(e: unknown): string {
             <div class="grid">
               <nz-form-item>
                 <nz-form-label nzFor="tt-extends" i18n="@@library.templateEditor.extends"
-                  >Extends</nz-form-label
+                  >Based on</nz-form-label
                 >
                 <nz-form-control
-                  nzExtra="Single parent; prompts append or replace, config deep-merges."
+                  nzExtra="The template this one starts from: it inherits its prompts, skills and configuration and changes only what you set here."
                   i18n-nzExtra="@@library.templateEditor.extends.extra"
                 >
                   <nz-select
@@ -227,37 +240,10 @@ function invalidJson(e: unknown): string {
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="tt-impl" i18n="@@library.templateEditor.implements"
-                  >Implements</nz-form-label
-                >
-                <nz-form-control
-                  nzExtra="Interfaces this template must satisfy (checked on resolve)."
-                  i18n-nzExtra="@@library.templateEditor.implements.extra"
-                >
-                  <nz-select
-                    id="tt-impl"
-                    name="implements"
-                    nzMode="multiple"
-                    nzShowSearch
-                    nzPlaceHolder="none"
-                    i18n-nzPlaceHolder="@@library.templateEditor.none"
-                    [ngModel]="draft().implements ?? []"
-                    (ngModelChange)="patch({ implements: $event })"
-                  >
-                    @for (i of interfaces(); track i.key) {
-                      <nz-option [nzValue]="i.key" [nzLabel]="i.name + ' (' + i.key + ')'" />
-                    }
-                  </nz-select>
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
                 <nz-form-label nzFor="tt-exec" i18n="@@library.templateEditor.executor"
                   >Executor</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Required on concrete templates unless inherited."
-                  i18n-nzExtra="@@library.templateEditor.executor.extra"
-                >
+                <nz-form-control [nzExtra]="executorHelp()">
                   <nz-select
                     id="tt-exec"
                     name="executor"
@@ -267,23 +253,16 @@ function invalidJson(e: unknown): string {
                     [ngModel]="draft().executor ?? null"
                     (ngModelChange)="patch({ executor: $event ?? null })"
                   >
-                    @for (e of executors; track e) {
-                      <nz-option [nzValue]="e" [nzLabel]="e" />
+                    @for (e of executors; track e.executor) {
+                      <nz-option nzCustomContent [nzValue]="e.executor" [nzLabel]="e.label">
+                        <div class="exec-option">
+                          <span class="exec-label">{{ e.label }}</span>
+                          <span class="exec-enum">{{ e.executor }}</span>
+                        </div>
+                        <div class="exec-desc">{{ e.description }}</div>
+                      </nz-option>
                     }
                   </nz-select>
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label i18n="@@library.templateEditor.abstract">Abstract</nz-form-label>
-                <nz-form-control
-                  nzExtra="Abstract templates can only be extended, never executed."
-                  i18n-nzExtra="@@library.templateEditor.abstract.extra"
-                >
-                  <nz-switch
-                    name="abstract"
-                    [ngModel]="draft().abstract"
-                    (ngModelChange)="patch({ abstract: $event })"
-                  />
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
@@ -470,91 +449,6 @@ function invalidJson(e: unknown): string {
               </nz-form-item>
             </div>
 
-            <h3 class="sec" i18n="@@library.templateEditor.contract">Contract and configuration</h3>
-            <div class="grid">
-              <nz-form-item>
-                <nz-form-label nzFor="tt-produces" i18n="@@library.templateEditor.produces"
-                  >Produces</nz-form-label
-                >
-                <nz-form-control
-                  nzExtra="Artefact / state names this task writes."
-                  i18n-nzExtra="@@library.templateEditor.produces.extra"
-                >
-                  <nz-select
-                    id="tt-produces"
-                    name="produces"
-                    nzMode="tags"
-                    nzPlaceHolder="spec, review"
-                    i18n-nzPlaceHolder="@@library.templateEditor.produces.placeholder"
-                    [ngModel]="draft().produces ?? []"
-                    (ngModelChange)="patch({ produces: $event })"
-                  >
-                    @for (n of SLOT_SUGGESTIONS; track n) {
-                      <nz-option [nzValue]="n" [nzLabel]="n" />
-                    }
-                  </nz-select>
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label nzFor="tt-consumes" i18n="@@library.templateEditor.consumes"
-                  >Consumes</nz-form-label
-                >
-                <nz-form-control
-                  nzExtra="Artefact / state names this task reads."
-                  i18n-nzExtra="@@library.templateEditor.consumes.extra"
-                >
-                  <nz-select
-                    id="tt-consumes"
-                    name="consumes"
-                    nzMode="tags"
-                    nzPlaceHolder="issue, diff"
-                    i18n-nzPlaceHolder="@@library.templateEditor.consumes.placeholder"
-                    [ngModel]="draft().consumes ?? []"
-                    (ngModelChange)="patch({ consumes: $event })"
-                  >
-                    @for (n of SLOT_SUGGESTIONS; track n) {
-                      <nz-option [nzValue]="n" [nzLabel]="n" />
-                    }
-                  </nz-select>
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label nzFor="tt-confidence" i18n="@@library.templateEditor.confidence"
-                  >Confidence field</nz-form-label
-                >
-                <nz-form-control
-                  nzExtra="Field of the structured output copied to state.confidence."
-                  i18n-nzExtra="@@library.templateEditor.confidence.extra"
-                >
-                  <input
-                    nz-input
-                    id="tt-confidence"
-                    name="confidenceField"
-                    class="mono"
-                    [ngModel]="draft().confidenceField ?? ''"
-                    (ngModelChange)="patch({ confidenceField: $event || null })"
-                    placeholder="confidence"
-                    i18n-placeholder="@@library.templateEditor.confidence.placeholder"
-                  />
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label nzFor="tt-tags" i18n="@@library.templateEditor.tags"
-                  >Tags</nz-form-label
-                >
-                <nz-form-control>
-                  <nz-select
-                    id="tt-tags"
-                    name="tags"
-                    nzMode="tags"
-                    nzPlaceHolder="tags"
-                    i18n-nzPlaceHolder="@@library.templateEditor.tags.placeholder"
-                    [ngModel]="draft().tags ?? []"
-                    (ngModelChange)="patch({ tags: $event })"
-                  ></nz-select>
-                </nz-form-control>
-              </nz-form-item>
-            </div>
             <h3 class="sec" i18n="@@library.templates.runInputs.title">Run inputs</h3>
             <p class="sec-help" i18n="@@library.templates.runInputs.help">
               Fields of the start form this task asks for. A workflow asks for the fields of all its
@@ -666,67 +560,242 @@ function invalidJson(e: unknown): string {
                 Add run input
               </button>
             }
-            <nz-form-item>
-              <nz-form-label nzFor="tt-config" i18n="@@library.templateEditor.config"
-                >Config (JSON)</nz-form-label
+            <h3 class="sec">
+              <span i18n="@@library.templateEditor.configuration">Configuration</span>
+              @if (configSchema() && !readonly()) {
+                <label class="raw-toggle">
+                  <nz-switch
+                    nzSize="small"
+                    name="configRaw"
+                    [ngModel]="configRaw()"
+                    (ngModelChange)="setConfigRaw($event)"
+                    [nzDisabled]="!!configError()"
+                  />
+                  <span i18n="@@library.templateEditor.config.raw">Raw JSON</span>
+                </label>
+              }
+            </h3>
+            <p class="sec-help">
+              @if (configHelpFor(); as help) {
+                <span>{{ help }}</span>
+              }
+              <span i18n="@@library.templateEditor.config.help"
+                >Set only what differs from the parent template; empty fields are inherited.</span
               >
-              <nz-form-control
-                nzExtra="Executor-specific keys (phase, agent, verifyCommand, push, ...). Deep-merged over the parent; null deletes."
-                i18n-nzExtra="@@library.templateEditor.config.extra"
-              >
-                <textarea
-                  nz-input
-                  id="tt-config"
-                  name="config"
-                  class="mono-textarea"
-                  [ngModel]="configText()"
-                  (ngModelChange)="onConfig($event)"
-                  [nzAutosize]="{ minRows: 4, maxRows: 16 }"
-                ></textarea>
-                @if (configError()) {
-                  <div class="danger" style="font-size: 12px">{{ configError() }}</div>
-                }
-              </nz-form-control>
-            </nz-form-item>
-            <nz-form-item>
-              <nz-form-label nzFor="tt-schema" i18n="@@library.templateEditor.outputSchema"
-                >Output schema (JSON Schema, LLM executor)</nz-form-label
-              >
-              <nz-form-control>
-                <textarea
-                  nz-input
-                  id="tt-schema"
-                  name="outputSchema"
-                  class="mono-textarea"
-                  [ngModel]="draft().outputSchema ?? ''"
-                  (ngModelChange)="onSchema($event)"
-                  [nzAutosize]="{ minRows: 4, maxRows: 16 }"
-                  [placeholder]="schemaPlaceholder"
-                ></textarea>
-                @if (schemaError()) {
-                  <div class="danger" style="font-size: 12px">{{ schemaError() }}</div>
-                }
-              </nz-form-control>
-            </nz-form-item>
-            <h3 class="sec" i18n="@@library.templateEditor.sandbox">Sandbox</h3>
-            <p class="sec-help" i18n="@@library.templateEditor.sandbox.help">
-              Narrows the project's sandbox policy for jobs of this template (stronger isolation,
-              fewer hosts and tools, lower caps). Empty fields inherit. The platform, pool and
-              project ceilings are checked when the job is resolved.
             </p>
-            @defer (on viewport) {
-              <app-sandbox-policy-editor
-                [policy]="draft().sandboxPolicy ?? null"
-                [readonly]="readonly()"
-                ceilingLabel="The project"
-                i18n-ceilingLabel="@@library.templateEditor.ceilingLabel"
-                (policyChange)="
-                  patch({ sandboxPolicy: $any(isEmpty($event) ? undefined : $event) })
-                "
-              />
-            } @placeholder {
-              <div class="sandbox-ph" aria-hidden="true"></div>
+            @if (configSchema() && !configRaw() && !readonly()) {
+              @for (k of [configFormKey()]; track k) {
+                <div class="config-form" data-config-form>
+                  <app-schema-form
+                    [schema]="configSchema()"
+                    [config]="draft().config ?? {}"
+                    (configChange)="onConfigForm($event)"
+                    idPrefix="tt-cfg"
+                  />
+                </div>
+              }
+            } @else {
+              <nz-form-item>
+                <nz-form-label nzFor="tt-config" i18n="@@library.templateEditor.config"
+                  >Config (JSON)</nz-form-label
+                >
+                <nz-form-control
+                  nzExtra="Executor-specific keys (phase, agent, verifyCommand, push, ...). Deep-merged over the parent; null deletes."
+                  i18n-nzExtra="@@library.templateEditor.config.extra"
+                >
+                  <textarea
+                    nz-input
+                    id="tt-config"
+                    name="config"
+                    class="mono-textarea"
+                    [ngModel]="configText()"
+                    (ngModelChange)="onConfig($event)"
+                    [nzAutosize]="{ minRows: 4, maxRows: 16 }"
+                  ></textarea>
+                  @if (configError()) {
+                    <div class="danger" style="font-size: 12px">{{ configError() }}</div>
+                  }
+                </nz-form-control>
+              </nz-form-item>
             }
+
+            <nz-collapse nzGhost class="advanced">
+              <nz-collapse-panel
+                nzHeader="Advanced: contracts, artefacts, output schema, sandbox"
+                i18n-nzHeader="@@library.templateEditor.advanced"
+              >
+                <p class="sec-help" i18n="@@library.templateEditor.advanced.help">
+                  Most templates need nothing here. These settings matter for base templates,
+                  decisions on the model answer and coding agents with special sandbox needs.
+                </p>
+                <div class="grid">
+                  <nz-form-item>
+                    <nz-form-label i18n="@@library.templateEditor.abstract">Abstract</nz-form-label>
+                    <nz-form-control
+                      nzExtra="Only a base for other templates, never a step itself."
+                      i18n-nzExtra="@@library.templateEditor.abstract.extra"
+                    >
+                      <nz-switch
+                        name="abstract"
+                        [ngModel]="draft().abstract"
+                        (ngModelChange)="patch({ abstract: $event })"
+                      />
+                    </nz-form-control>
+                  </nz-form-item>
+                  <nz-form-item>
+                    <nz-form-label nzFor="tt-impl" i18n="@@library.templateEditor.implements"
+                      >Implements</nz-form-label
+                    >
+                    <nz-form-control
+                      nzExtra="Contracts checked when the template is resolved; you rarely need them."
+                      i18n-nzExtra="@@library.templateEditor.implements.extra"
+                    >
+                      <nz-select
+                        id="tt-impl"
+                        name="implements"
+                        nzMode="multiple"
+                        nzShowSearch
+                        nzPlaceHolder="none"
+                        i18n-nzPlaceHolder="@@library.templateEditor.none"
+                        [ngModel]="draft().implements ?? []"
+                        (ngModelChange)="patch({ implements: $event })"
+                      >
+                        @for (i of interfaces(); track i.key) {
+                          <nz-option [nzValue]="i.key" [nzLabel]="i.name + ' (' + i.key + ')'" />
+                        }
+                      </nz-select>
+                    </nz-form-control>
+                  </nz-form-item>
+                  <nz-form-item>
+                    <nz-form-label nzFor="tt-produces" i18n="@@library.templateEditor.produces"
+                      >Produces</nz-form-label
+                    >
+                    <nz-form-control
+                      nzExtra="Artefact names this step writes."
+                      i18n-nzExtra="@@library.templateEditor.produces.extra"
+                    >
+                      <nz-select
+                        id="tt-produces"
+                        name="produces"
+                        nzMode="tags"
+                        nzPlaceHolder="spec, review"
+                        i18n-nzPlaceHolder="@@library.templateEditor.produces.placeholder"
+                        [ngModel]="draft().produces ?? []"
+                        (ngModelChange)="patch({ produces: $event })"
+                      >
+                        @for (n of SLOT_SUGGESTIONS; track n) {
+                          <nz-option [nzValue]="n" [nzLabel]="n" />
+                        }
+                      </nz-select>
+                    </nz-form-control>
+                  </nz-form-item>
+                  <nz-form-item>
+                    <nz-form-label nzFor="tt-consumes" i18n="@@library.templateEditor.consumes"
+                      >Consumes</nz-form-label
+                    >
+                    <nz-form-control
+                      nzExtra="Artefact names this step reads; the workflow check warns when a step reads something nobody writes."
+                      i18n-nzExtra="@@library.templateEditor.consumes.extra"
+                    >
+                      <nz-select
+                        id="tt-consumes"
+                        name="consumes"
+                        nzMode="tags"
+                        nzPlaceHolder="issue, diff"
+                        i18n-nzPlaceHolder="@@library.templateEditor.consumes.placeholder"
+                        [ngModel]="draft().consumes ?? []"
+                        (ngModelChange)="patch({ consumes: $event })"
+                      >
+                        @for (n of SLOT_SUGGESTIONS; track n) {
+                          <nz-option [nzValue]="n" [nzLabel]="n" />
+                        }
+                      </nz-select>
+                    </nz-form-control>
+                  </nz-form-item>
+                  <nz-form-item>
+                    <nz-form-label nzFor="tt-confidence" i18n="@@library.templateEditor.confidence"
+                      >Confidence field</nz-form-label
+                    >
+                    <nz-form-control
+                      nzExtra="Field of the model answer copied to state.confidence, for decisions such as confidence < 0.7."
+                      i18n-nzExtra="@@library.templateEditor.confidence.extra"
+                    >
+                      <input
+                        nz-input
+                        id="tt-confidence"
+                        name="confidenceField"
+                        class="mono"
+                        [ngModel]="draft().confidenceField ?? ''"
+                        (ngModelChange)="patch({ confidenceField: $event || null })"
+                        placeholder="confidence"
+                        i18n-placeholder="@@library.templateEditor.confidence.placeholder"
+                      />
+                    </nz-form-control>
+                  </nz-form-item>
+                  <nz-form-item>
+                    <nz-form-label nzFor="tt-tags" i18n="@@library.templateEditor.tags"
+                      >Tags</nz-form-label
+                    >
+                    <nz-form-control
+                      nzExtra="Free labels for search. The tag deprecated hides the template from new steps."
+                      i18n-nzExtra="@@library.templateEditor.tags.extra"
+                    >
+                      <nz-select
+                        id="tt-tags"
+                        name="tags"
+                        nzMode="tags"
+                        nzPlaceHolder="tags"
+                        i18n-nzPlaceHolder="@@library.templateEditor.tags.placeholder"
+                        [ngModel]="draft().tags ?? []"
+                        (ngModelChange)="patch({ tags: $event })"
+                      ></nz-select>
+                    </nz-form-control>
+                  </nz-form-item>
+                </div>
+                <nz-form-item>
+                  <nz-form-label nzFor="tt-schema" i18n="@@library.templateEditor.outputSchema"
+                    >Output schema (JSON Schema, LLM executor)</nz-form-label
+                  >
+                  <nz-form-control
+                    nzExtra="Shape of the model answer when it must be structured JSON; empty for free text."
+                    i18n-nzExtra="@@library.templateEditor.outputSchema.extra"
+                  >
+                    <textarea
+                      nz-input
+                      id="tt-schema"
+                      name="outputSchema"
+                      class="mono-textarea"
+                      [ngModel]="draft().outputSchema ?? ''"
+                      (ngModelChange)="onSchema($event)"
+                      [nzAutosize]="{ minRows: 4, maxRows: 16 }"
+                      [placeholder]="schemaPlaceholder"
+                    ></textarea>
+                    @if (schemaError()) {
+                      <div class="danger" style="font-size: 12px">{{ schemaError() }}</div>
+                    }
+                  </nz-form-control>
+                </nz-form-item>
+                <h3 class="sec" i18n="@@library.templateEditor.sandbox">Sandbox</h3>
+                <p class="sec-help" i18n="@@library.templateEditor.sandbox.help">
+                  Narrows the project's sandbox policy for jobs of this template (stronger
+                  isolation, fewer hosts and tools, lower caps). Empty fields inherit. The platform,
+                  pool and project ceilings are checked when the job is resolved.
+                </p>
+                @defer (on viewport) {
+                  <app-sandbox-policy-editor
+                    [policy]="draft().sandboxPolicy ?? null"
+                    [readonly]="readonly()"
+                    ceilingLabel="The project"
+                    i18n-ceilingLabel="@@library.templateEditor.ceilingLabel"
+                    (policyChange)="
+                      patch({ sandboxPolicy: $any(isEmpty($event) ? undefined : $event) })
+                    "
+                  />
+                } @placeholder {
+                  <div class="sandbox-ph" aria-hidden="true"></div>
+                }
+              </nz-collapse-panel>
+            </nz-collapse>
           </form>
 
           <aside
@@ -777,7 +846,18 @@ function invalidJson(e: unknown): string {
               </div>
               <div class="chips">
                 @if (pv.executor) {
-                  <nz-tag nzColor="purple">{{ pv.executor }}</nz-tag>
+                  <nz-tag
+                    nzColor="purple"
+                    nz-tooltip
+                    [nzTooltipTitle]="executorDescription(pv.executor)"
+                    [attr.data-executor]="pv.executor"
+                    >{{ executorLabel(pv.executor) }}</nz-tag
+                  >
+                }
+                @if (deprecated()) {
+                  <nz-tag nzColor="red" nz-tooltip [nzTooltipTitle]="text.deprecatedHint">{{
+                    text.deprecated
+                  }}</nz-tag>
                 }
                 @if (pv.abstract) {
                   <nz-tag i18n="@@library.templateEditor.abstractChip">abstract</nz-tag>
@@ -1038,6 +1118,53 @@ function invalidJson(e: unknown): string {
       .blocker {
         color: var(--bo-you-ink);
       }
+      .title-chip.deprecated {
+        color: var(--bo-blocked-ink);
+        box-shadow: inset 0 0 0 1px currentColor;
+      }
+      .exec-option {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+      .exec-label {
+        font-weight: 500;
+      }
+      .exec-enum {
+        font-family: var(--bo-font-mono);
+        font-size: 10.5px;
+        color: var(--bo-ink-3);
+      }
+      .exec-desc {
+        font-size: 11.5px;
+        color: var(--bo-ink-3);
+        white-space: normal;
+        line-height: 1.35;
+      }
+      .raw-toggle {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        font-weight: 400;
+        letter-spacing: 0;
+        order: 2;
+      }
+      .config-form {
+        margin-bottom: 8px;
+      }
+      .advanced {
+        margin-top: 16px;
+        border-top: 1px solid var(--bo-line);
+      }
+      .advanced ::ng-deep .ant-collapse-content-box {
+        padding: 4px 0 0 !important;
+      }
+      .advanced ::ng-deep .ant-collapse-header {
+        padding-left: 0 !important;
+        font-weight: 600;
+        color: var(--bo-ink-2);
+      }
       /* The action bar is the footer (it brings its own hairline and padding). */
       ::ng-deep .bo-editor-drawer .ant-drawer-footer {
         padding: 0;
@@ -1132,7 +1259,16 @@ export class TemplateEditorDrawerComponent {
   readonly saved = output<TaskTemplateInput>();
   readonly closed = output<void>();
 
-  readonly executors = TASK_EXECUTORS;
+  /** ADR 0054: executors with plain names and one-sentence descriptions. */
+  readonly executors = executorInfos(TASK_EXECUTORS);
+  readonly executorLabel = executorLabel;
+  readonly executorDescription = executorDescription;
+  /** Executor descriptors with their config schema; null until loaded or when they failed. */
+  readonly descriptors = signal<TaskExecutorDescriptor[] | null>(null);
+  /** The configuration is edited as raw JSON instead of the form. */
+  readonly configRaw = signal(false);
+  /** Bumped to re-create the configuration form (another template, back from raw JSON). */
+  readonly configFormKey = signal(0);
   readonly SLOT_SUGGESTIONS = [
     'issue',
     'spec',
@@ -1173,7 +1309,35 @@ export class TemplateEditorDrawerComponent {
     fillIn: $localize`:@@library.templateEditor.fillIn:Fill in a key and a name to create the template`,
     close: $localize`:@@library.templateEditor.close:Close`,
     discard: $localize`:@@library.templateEditor.discard:Discard changes`,
+    deprecated: deprecatedLabel(),
+    deprecatedHint: deprecatedHint(),
   };
+
+  /** ADR 0054: the executor the template runs with (own or inherited). */
+  readonly effectiveExecutor = computed(() =>
+    effectiveExecutor(this.draft(), this.templates(), this.preview()?.executor ?? null),
+  );
+  /** Form of the configuration: the effective executor's config schema; null = raw JSON only. */
+  readonly configSchema = computed(() =>
+    templateConfigSchema(this.descriptors(), this.effectiveExecutor()),
+  );
+  /** Help under the executor select: what the chosen or inherited executor does. */
+  readonly executorHelp = computed(() => {
+    const own = this.draft().executor;
+    const ex = this.effectiveExecutor();
+    if (own) return executorDescription(own);
+    if (ex)
+      return $localize`:@@library.templateEditor.executor.inheritedHelp:Inherited: ${executorLabel(ex)}:executor:. ${executorDescription(ex)}:description:`;
+    return $localize`:@@library.templateEditor.executor.extra:Required on concrete templates unless inherited.`;
+  });
+  readonly configHelpFor = computed(() => {
+    const ex = this.effectiveExecutor();
+    return ex
+      ? $localize`:@@library.templateEditor.config.helpFor:Settings of ${executorLabel(ex)}:executor: steps.`
+      : null;
+  });
+  /** The template carries the `deprecated` tag. */
+  readonly deprecated = computed(() => isDeprecated(this.draft()));
 
   readonly keyError = computed(() => {
     const k = this.draft().key;
@@ -1255,6 +1419,11 @@ export class TemplateEditorDrawerComponent {
   });
 
   constructor() {
+    // ADR 0054: static; without it the configuration stays a JSON text area.
+    this.api
+      .taskExecutors()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ next: (d) => this.descriptors.set(d), error: () => undefined });
     effect(() => {
       const t = this.template();
       const open = this.open();
@@ -1267,6 +1436,8 @@ export class TemplateEditorDrawerComponent {
         this.initialJson.set(JSON.stringify(d));
         this.configText.set(JSON.stringify(d.config ?? {}, null, 2));
         this.configError.set(null);
+        this.configRaw.set(false);
+        this.configFormKey.update((k) => k + 1);
         this.schemaError.set(null);
         this.previewProjectId.set(d.scope.type === 'PROJECT' ? (d.scope.projectId ?? null) : null);
         this.preview.set(null);
@@ -1361,6 +1532,21 @@ export class TemplateEditorDrawerComponent {
     } catch (e) {
       this.configError.set(invalidJson(e));
     }
+  }
+
+  /** A change in the configuration form; the JSON text follows it. */
+  onConfigForm(config: Record<string, unknown>): void {
+    this.patch({ config });
+    this.configText.set(JSON.stringify(config, null, 2));
+    this.configError.set(null);
+  }
+
+  /** Switches between the form and the raw JSON (only while the JSON is valid). */
+  setConfigRaw(raw: boolean): void {
+    if (!raw && this.configError()) return;
+    this.configText.set(JSON.stringify(this.draft().config ?? {}, null, 2));
+    this.configRaw.set(raw);
+    if (!raw) this.configFormKey.update((k) => k + 1);
   }
 
   onSchema(text: string): void {

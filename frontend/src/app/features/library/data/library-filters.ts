@@ -2,29 +2,11 @@
 import type { Skill, TaskInterface, TaskTemplate } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
 import { fixed } from '../../../core/i18n/numbers';
+import { executorLabel } from '../../../core/ui/executors';
+import { isDeprecated } from '../../../core/ui/template-tags';
 
-const executorLabels = (): Record<string, string> => ({
-  LLM: 'LLM',
-  SPEC_KIT: 'Spec Kit',
-  IMPLEMENT: $localize`:@@library.executor.implement:Implement`,
-  FETCH_ISSUE: $localize`:@@library.executor.fetchIssue:Fetch issue`,
-  NOTIFY: $localize`:@@library.executor.notify:Notify`,
-  TRANSITION_ISSUE: $localize`:@@library.executor.transitionIssue:Transition issue`,
-  START_WORKFLOW: $localize`:@@library.executor.startWorkflow:Start workflow`,
-  PROJECT_DIGEST: $localize`:@@library.executor.projectDigest:Project digest`,
-});
-
-/** "LLM", "Spec Kit", "Fetch issue" (sentence case, acronyms kept). */
-export function executorLabel(executor: string | null | undefined): string {
-  if (!executor) return $localize`:@@library.executor.inherited:inherited`;
-  return (
-    executorLabels()[executor] ??
-    executor
-      .replace(/_/g, ' ')
-      .toLowerCase()
-      .replace(/^\w/, (c) => c.toUpperCase())
-  );
-}
+/** ADR 0054: the shared executor names (core/ui/executors). */
+export { executorLabel };
 
 function matches(q: string, ...fields: (string | null | undefined | readonly string[])[]): boolean {
   return fields.some((f) =>
@@ -34,16 +16,29 @@ function matches(q: string, ...fields: (string | null | undefined | readonly str
   );
 }
 
-/** Templates matching the search (key, name, description, interface, tag) and executor. */
+/**
+ * Templates matching the search (key, name, description, interface, tag, executor label) and
+ * executor; deprecated templates (ADR 0054) only with `showDeprecated`.
+ */
 export function filterTemplates(
   list: readonly TaskTemplate[],
-  opts: { query?: string | null; executor?: string | null },
+  opts: { query?: string | null; executor?: string | null; showDeprecated?: boolean | null },
 ): TaskTemplate[] {
   const q = (opts.query ?? '').trim().toLowerCase();
   return list.filter(
     (t) =>
+      (opts.showDeprecated || !isDeprecated(t)) &&
       (!opts.executor || t.executor === opts.executor) &&
-      (!q || matches(q, t.key, t.name, t.description, t.implements ?? [], t.tags ?? [])),
+      (!q ||
+        matches(
+          q,
+          t.key,
+          t.name,
+          t.description,
+          t.implements ?? [],
+          t.tags ?? [],
+          t.executor ? executorLabel(t.executor) : null,
+        )),
   );
 }
 

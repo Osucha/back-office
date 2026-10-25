@@ -300,6 +300,7 @@ data class PaletteTaskDto(
     val configSchema: Map<String, Any?>,
     val requiredCapabilities: List<String> = emptyList(),
     val externalWrite: Boolean = false,
+    val deprecated: Boolean = false,
 )
 data class StateFieldDto(val path: String, val description: String)
 data class WorkflowPaletteDto(

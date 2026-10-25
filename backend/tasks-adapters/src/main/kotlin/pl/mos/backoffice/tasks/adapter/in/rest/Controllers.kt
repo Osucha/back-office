@@ -69,6 +69,11 @@ class TaskTemplateController(private val templates: ManageTaskTemplates) {
     fun resolve(@PathVariable key: String, @RequestParam(required = false) projectId: UUID?): ResolvedTaskDto =
         RestMappers.resolved(templates.resolve(key, projectId))
 
+    /** ADR 0054: what a workflow step gets, the template with the step's overrides applied. */
+    @PostMapping("/resolve/{key}")
+    fun resolveStep(@PathVariable key: String, @RequestParam(required = false) projectId: UUID?, @RequestBody body: TaskOverridesDto): ResolvedTaskDto =
+        RestMappers.resolved(templates.resolveStep(key, projectId, RestMappers.overrides(body)))
+
     @GetMapping("/{templateId}")
     fun get(@PathVariable templateId: UUID): TaskTemplateDto = RestMappers.template(templates.get(TaskTemplateId(templateId)))
 

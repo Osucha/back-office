@@ -20,6 +20,9 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.util.UUID
 
+/** ADR 0054: a task executor and the JSON Schema of its `config` keys. */
+data class TaskExecutorDescriptor(val executor: TaskExecutor, val configSchema: Map<String, Any?>)
+
 /** Use case: design workflows. `update` bumps the version; `delete` refuses while runs are active. */
 interface ManageWorkflows {
     fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition
@@ -31,6 +34,9 @@ interface ManageWorkflows {
     fun validate(projectId: ProjectId, command: WorkflowCommand): WorkflowValidationResult
     fun palette(projectId: ProjectId): Palette
     fun validateExpression(expression: String): ExpressionCheck
+
+    /** ADR 0054: every task executor with the JSON Schema of its config keys (static, any signed-in user). */
+    fun taskExecutors(): List<TaskExecutorDescriptor>
 
     /** ADR 0050: the model of every task step of a workflow and whether the caller can use it (`project.view`). */
     fun modelPlan(id: WorkflowDefinitionId): List<StepModelPlan>
@@ -77,6 +83,8 @@ interface ManageWorkflows {
         val requiredCapabilities: List<ConnectionCapability> = emptyList(),
         /** The task writes to an external system (a required capability has the `write` flag): approval before write applies (ADR 0033). */
         val externalWrite: Boolean = false,
+        /** ADR 0054: kept for the steps that use it; the designer and MCP do not offer it for new steps. */
+        val deprecated: Boolean = false,
     )
 
     /** `interfaces` is owned by the Task Library context and left empty here. */

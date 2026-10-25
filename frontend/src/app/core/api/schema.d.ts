@@ -3268,7 +3268,8 @@ export interface paths {
     /** @description Effective merged task for a project, with lineage and interface check. */
     get: operations['resolveTaskTemplate'];
     put?: never;
-    post?: never;
+    /** @description ADR 0054: what a workflow step gets - the template a project sees under the key with the step's overrides applied (prompt append or replace, skills, config, model). The designer shows it next to the step. Same access as the GET. */
+    post: operations['resolveTaskStep'];
     delete?: never;
     options?: never;
     head?: never;
@@ -3549,6 +3550,23 @@ export interface paths {
     };
     /** @description Control nodes and concrete task templates (grouped by interface) available to the designer for a project. */
     get: operations['getWorkflowPalette'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/workflows/task-executors': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0054: every task executor with the JSON Schema of its `config` keys, the same schema the designer uses for a step. The library editor renders a template's configuration from it. Static; any signed-in user. */
+    get: operations['listTaskExecutors'];
     put?: never;
     post?: never;
     delete?: never;
@@ -5298,6 +5316,8 @@ export interface components {
       configSchema?: {
         [key: string]: unknown;
       };
+      /** @description ADR 0054: kept for the steps that use it; not offered for new steps */
+      deprecated?: boolean;
       description?: string;
       executor?: components['schemas']['TaskExecutor'];
       /** @description The task writes to an external system (a required capability is a write). Approval before write applies (ADR 0033): node config `overrides.config.approval` REQUIRED (default, also when missing) or NOT_REQUIRED, and `overrides.config.approvers` ({projectRoles, users, accountable, forbidSelfApproval}; default owner and maintainer). */
@@ -6285,6 +6305,13 @@ export interface components {
       | 'TRANSITION_ISSUE'
       | 'START_WORKFLOW'
       | 'PROJECT_DIGEST';
+    TaskExecutorDescriptor: {
+      /** @description JSON Schema of the executor's config keys */
+      configSchema: {
+        [key: string]: unknown;
+      };
+      executor: components['schemas']['TaskExecutor'];
+    };
     TaskInterface: components['schemas']['TaskInterfaceInput'] & {
       builtIn?: boolean;
       /** Format: uuid */
@@ -12921,6 +12948,36 @@ export interface operations {
       404: components['responses']['Problem'];
     };
   };
+  resolveTaskStep: {
+    parameters: {
+      query?: {
+        projectId?: string;
+      };
+      header?: never;
+      path: {
+        key: components['parameters']['key'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TaskOverrides'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ResolvedTask'];
+        };
+      };
+      400: components['responses']['Problem'];
+      404: components['responses']['Problem'];
+    };
+  };
   listMyTokens: {
     parameters: {
       query?: never;
@@ -13375,6 +13432,26 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['WorkflowPalette'];
+        };
+      };
+    };
+  };
+  listTaskExecutors: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TaskExecutorDescriptor'][];
         };
       };
     };

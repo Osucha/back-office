@@ -141,6 +141,8 @@ export type PromptMode = TaskPrompt['mode'];
 export type TaskTemplateInput = S['TaskTemplateInput'];
 export type TaskTemplate = S['TaskTemplate'];
 export type ResolvedTask = S['ResolvedTask'];
+/** ADR 0054: a task executor with the JSON Schema of its `config` keys. */
+export type TaskExecutorDescriptor = S['TaskExecutorDescriptor'];
 export type SkillInput = S['SkillInput'];
 export type Skill = S['Skill'];
 

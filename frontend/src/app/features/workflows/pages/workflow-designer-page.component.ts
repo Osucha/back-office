@@ -35,6 +35,7 @@ import {
 } from 'rxjs';
 import { ModelProfilesApi } from '../../../core/api/model-profiles.service';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
+import { deprecatedKeys } from '../../../core/ui/template-tags';
 import { WorkflowsApi } from '../../../core/api/workflows.service';
 import { LibrarySourcesApi } from '../../../core/api/library-sources.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
@@ -367,6 +368,7 @@ const MAX_HISTORY = 50;
                   <app-node-palette
                     [palette]="palette()"
                     [loading]="paletteLoading()"
+                    [deprecatedKeys]="deprecatedKeys()"
                     (pick)="addFromPalette($event)"
                   />
                 }
@@ -491,6 +493,7 @@ const MAX_HISTORY = 50;
                     [node]="n"
                     [allIds]="nodeIds()"
                     [palette]="palette()"
+                    [deprecatedKeys]="deprecatedKeys()"
                     [issues]="issuesFor(n.id)"
                     [profiles]="profiles()"
                     [modelOptions]="modelOptions()"
@@ -1099,6 +1102,8 @@ export class WorkflowDesignerPageComponent {
   readonly existing = signal<WorkflowDefinition | null>(null);
   readonly palette = signal<WorkflowPalette | null>(null);
   readonly paletteLoading = signal(false);
+  /** ADR 0054: keys of templates tagged deprecated (hidden in the palette, tagged on their steps). */
+  readonly deprecatedKeys = signal<ReadonlySet<string>>(new Set());
   readonly profiles = signal<ModelProfile[]>([]);
   /** Model options per step use (ADR 0050), loaded when a node needs them; null = the request failed. */
   readonly modelOptions = signal<Record<string, ModelOption[] | null>>({});
@@ -1458,6 +1463,10 @@ export class WorkflowDesignerPageComponent {
     this.library
       .listSkills(projectId)
       .subscribe({ next: (s) => this.skills.set(s), error: () => undefined });
+    this.library.listTemplates({ projectId }).subscribe({
+      next: (list) => this.deprecatedKeys.set(deprecatedKeys(list)),
+      error: () => undefined,
+    });
     this.librarySourcesApi
       .list()
       .subscribe({ next: (s) => this.librarySources.set(s), error: () => undefined });

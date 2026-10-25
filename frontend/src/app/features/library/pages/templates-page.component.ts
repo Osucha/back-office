@@ -16,6 +16,7 @@ import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzSelectModule } from 'ng-zorro-antd/select';
+import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { forkJoin } from 'rxjs';
@@ -55,6 +56,8 @@ import {
   canEditScope,
   editableProjects,
 } from '../data/library-access';
+import { executorDescription } from '../../../core/ui/executors';
+import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
 import { executorLabel, filterTemplates } from '../data/library-filters';
 
 /**
@@ -69,6 +72,7 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
     NzButtonModule,
     NzIconModule,
     NzSelectModule,
+    NzSwitchModule,
     NzTooltipModule,
     EmptyComponent,
     FilterBarComponent,
@@ -144,6 +148,14 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
             <nz-option [nzValue]="e" [nzLabel]="executorLabel(e)" />
           }
         </nz-select>
+        <label class="show-deprecated">
+          <nz-switch
+            nzSize="small"
+            [ngModel]="!!f.values().deprecated"
+            (ngModelChange)="f.set({ deprecated: $event ? '1' : null })"
+          />
+          <span i18n="@@library.templates.filter.showDeprecated">Show deprecated</span>
+        </label>
       </bo-filter-bar>
 
       @if (loading() && !loaded()) {
@@ -204,7 +216,7 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
                 nzWidth="146px"
                 i18n="@@library.templates.col.extends"
               >
-                Extends
+                Based on
               </th>
               <th
                 nzShowSort
@@ -274,6 +286,14 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
                           >abstract</span
                         >
                       }
+                      @if (isDeprecated(tpl)) {
+                        <span
+                          class="chip deprecated"
+                          nz-tooltip
+                          [nzTooltipTitle]="text.deprecatedHint"
+                          >{{ text.deprecated }}</span
+                        >
+                      }
                     </div>
                     @if (tpl.description) {
                       <span class="cell-sub" [attr.title]="tpl.description">{{
@@ -310,7 +330,13 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
                 </td>
                 <td>
                   @if (tpl.executor) {
-                    <span class="chip">{{ executorLabel(tpl.executor) }}</span>
+                    <span
+                      class="chip"
+                      nz-tooltip
+                      [nzTooltipTitle]="executorDescription(tpl.executor)"
+                      [attr.data-executor]="tpl.executor"
+                      >{{ executorLabel(tpl.executor) }}</span
+                    >
                   } @else {
                     <span class="quiet" i18n="@@library.templates.inherited">inherited</span>
                   }
@@ -421,6 +447,19 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
         flex-wrap: nowrap;
         white-space: nowrap;
       }
+      .show-deprecated {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 12.5px;
+        color: var(--bo-ink-2);
+        white-space: nowrap;
+      }
+      .chip.deprecated {
+        color: var(--bo-blocked-ink);
+        box-shadow: inset 0 0 0 1px currentColor;
+        background: transparent;
+      }
     `,
   ],
 })
@@ -441,7 +480,13 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   /** `?create=1` (command palette "Create template") opens the editor for a new template. */
   readonly create = input<string | undefined>();
 
-  readonly f = urlFilters({ q: 'string', projectId: 'string', executor: 'string' });
+  readonly f = urlFilters({
+    q: 'string',
+    projectId: 'string',
+    executor: 'string',
+    /** ADR 0054: `1` shows deprecated templates (hidden by default). */
+    deprecated: 'string',
+  });
   readonly templates = signal<TaskTemplate[]>([]);
   readonly interfaces = signal<TaskInterface[]>([]);
   readonly skills = signal<Skill[]>([]);
@@ -463,7 +508,11 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   });
 
   readonly executorLabel = executorLabel;
+  readonly executorDescription = executorDescription;
+  readonly isDeprecated = isDeprecated;
   readonly text = {
+    deprecated: deprecatedLabel(),
+    deprecatedHint: deprecatedHint(),
     reload: $localize`:@@library.templates.reload:Reload templates`,
     new: $localize`:@@library.templates.new:New template`,
     edit: $localize`:@@library.templates.edit:Edit template`,
@@ -484,6 +533,7 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     filterTemplates(this.templates(), {
       query: this.f.values().q,
       executor: this.f.values().executor,
+      showDeprecated: !!this.f.values().deprecated,
     }),
   );
   readonly sort = tableSort<TaskTemplate>({
@@ -509,6 +559,11 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
       out.push({
         id: 'executor',
         label: $localize`:@@library.templates.chip.executor:Executor: ${executorLabel(v.executor)}:executor:`,
+      });
+    if (v.deprecated)
+      out.push({
+        id: 'deprecated',
+        label: $localize`:@@library.templates.chip.deprecated:Including deprecated`,
       });
     return out;
   });
@@ -575,6 +630,7 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   removeChip(id: string): void {
     if (id === 'projectId') this.f.set({ projectId: null });
     else if (id === 'executor') this.f.set({ executor: null });
+    else if (id === 'deprecated') this.f.set({ deprecated: null });
   }
 
   canEdit(t: TaskTemplate): boolean {

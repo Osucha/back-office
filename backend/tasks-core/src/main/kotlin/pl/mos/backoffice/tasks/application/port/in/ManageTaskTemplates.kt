@@ -3,6 +3,7 @@ package pl.mos.backoffice.tasks.application.port.`in`
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
 import pl.mos.backoffice.tasks.domain.service.TaskResolution
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.util.UUID
 
 /**
@@ -25,4 +26,7 @@ interface ManageTaskTemplates {
      * unknown; `ValidationException` on inheritance cycles or missing parents.
      */
     fun resolve(key: String, projectId: UUID? = null): TaskResolution
+
+    /** ADR 0054: [resolve] with a workflow step's [overrides] applied: what the step gets (same access as [resolve]). */
+    fun resolveStep(key: String, projectId: UUID?, overrides: TaskOverrides): TaskResolution
 }

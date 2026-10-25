@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.projects.application.port.`in`.TaskExecutorDescriptor
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.ExpressionCheck
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.Palette
@@ -196,10 +197,15 @@ class WorkflowService(
                 configSchema = ControlNodeCatalog.configSchema(t.executor),
                 requiredCapabilities = ConnectionCapability.requiredBy(t.executor).sorted(),
                 externalWrite = ConnectionCapability.requiredBy(t.executor).any { it.write },
+                deprecated = t.deprecated,
             )
         }
         return Palette(ControlNodeCatalog.controlNodes(), tasks, ControlNodeCatalog.stateFields())
     }
+
+    @PublicOperation("static JSON Schemas of the task executors' config keys; reads no project data")
+    override fun taskExecutors(): List<TaskExecutorDescriptor> =
+        TaskExecutor.entries.map { TaskExecutorDescriptor(it, ControlNodeCatalog.configSchema(it)) }
 
     @PublicOperation("syntax check of a SpEL expression; reads no project data")
     override fun validateExpression(expression: String): ExpressionCheck {

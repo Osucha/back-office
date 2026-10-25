@@ -148,6 +148,21 @@ class TaskLibraryRestIntegrationTest {
     }
 
     @Test
+    fun `resolve with a step's overrides returns what the step gets`() {
+        val overrides = """{"promptReplace":"Only analyse, change nothing.","config":{"agent":"CLAUDE_CODE","push":false},"addSkills":[]}"""
+        assertThat(
+            mvc.post().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.AGENT_TASK}").contentType(MediaType.APPLICATION_JSON).content(overrides),
+        ).hasStatusOk().bodyJson().satisfies(
+            { assertThat(it).extractingPath("$.prompt.user").asString().contains("Only analyse, change nothing.") },
+            { assertThat(it).extractingPath("$.config.agent").isEqualTo("CLAUDE_CODE") },
+            { assertThat(it).extractingPath("$.config.push").isEqualTo(false) },
+        )
+        assertThat(
+            mvc.post().uri("/api/v1/task-templates/resolve/nope-$suffix").contentType(MediaType.APPLICATION_JSON).content("{}"),
+        ).hasStatus(HttpStatus.NOT_FOUND)
+    }
+
+    @Test
     fun `run inputs round-trip through create, update and read and are inherited in the resolved view`() {
         val key = "inputs-$suffix"
         val created = post(

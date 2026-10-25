@@ -95,9 +95,12 @@ niepołączony port `failure`, `fail` lub `timeout`, kończy się niepowodzeniem
 
 ### Węzły zadań
 
-Wybierz **Szablon**. Pod nim widać rodowód szablonu, wykonawcę, interfejsy i porty oraz **Otwórz
-w bibliotece** (**Open in library**). **Nadpisania** (**Overrides**) zmieniają szablon tylko dla tego
-węzła:
+Wybierz **Szablon** (przestarzałe szablony nie są proponowane; krok, który już go używa, ma znacznik
+**Przestarzały**, **Deprecated**). Pod nim widać rodowód szablonu, wykonawcę, interfejsy i porty oraz **Otwórz
+w bibliotece** (**Open in library**). **Co dostaje ten krok** (**What this step gets**, zwinięte) pokazuje szablon
+z nadpisaniami tego kroku: profil modelu, prompt systemowy i użytkownika, umiejętności, konfigurację i dane
+wejściowe przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości.
+**Nadpisania** (**Overrides**) zmieniają szablon tylko dla tego węzła:
 
 | Nadpisanie | Skutek |
 |---|---|

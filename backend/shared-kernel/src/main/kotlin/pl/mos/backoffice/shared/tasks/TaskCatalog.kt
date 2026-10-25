@@ -107,6 +107,8 @@ data class TaskSummary(
     val abstract: Boolean,
     val projectId: UUID?,
     val ports: List<String>,
+    /** ADR 0054: kept for the steps that use it, not offered for new ones. */
+    val deprecated: Boolean = false,
 )
 
 /** Outbound port implemented by the Task Library context; used by the Projects context. */

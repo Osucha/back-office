@@ -10,6 +10,7 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { CustomNodeComponent, Vflow } from 'ngx-vflow';
 import type { NodeKind } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
+import { executorLabel } from '../../../core/ui/executors';
 import { humanize } from '../../../core/ui/status-tag.component';
 import { capabilityLabels, pinnedConnection } from '../../connections/public-api';
 import { NODE_KIND_META, portHandleId, type CanvasNodeData } from '../data/graph-model';
@@ -381,7 +382,7 @@ export class EndNodeComponent extends WorkflowNodeBase {}
           <span class="key" i18n="@@workflows.node.noTemplate">no template</span>
         }
         @if (d.executor) {
-          <span class="exec">{{ d.executor }}</span>
+          <span class="exec" [title]="d.executor">{{ executorLabel(d.executor) }}</span>
         }
       </div>
       @if (d.interfaces.length || hasOverrides() || d.requiredCapabilities?.length) {
@@ -459,6 +460,8 @@ export class EndNodeComponent extends WorkflowNodeBase {}
   ],
 })
 export class TaskNodeComponent extends WorkflowNodeBase {
+  /** ADR 0054: plain executor names ("Coding agent"); the enum value is the title. */
+  readonly executorLabel = executorLabel;
   /** "needs: Read issues, Move issues" (+ pinned) for the Jira chip. */
   readonly jiraTitle = computed(() => {
     const d = this.data();

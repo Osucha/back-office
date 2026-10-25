@@ -36,21 +36,23 @@ the lists show who changed an entry last.
 extended but never run. Filter by text, by executor (**Any executor**), and with **Global templates** /
 **Global + KEY** to include a project's own templates.
 
-The executor decides where a task runs:
+The executor decides who does the work (ADR 0054 names them by what they do; the technical value is shown small):
 
-| Executor | Runs |
+| Executor | Does |
 |---|---|
-| **LLM** | One model call inside Back Office; skills go into the system prompt; can return structured JSON and a confidence. |
-| **Spec Kit** | A Spec Kit phase (specify, plan, tasks) in an agent job on a runner. |
-| **Implement** | A coding agent (OpenCode or Claude Code) in an agent job; pushes a branch and opens a merge request through push options. |
-| **Fetch issue**, **Notify**, **Transition issue** | Jira calls: read the issue, post a comment, move the issue to a status (see [Jira](integrations-jira.md#jira-tasks)). |
+| **Model answer** (`LLM`) | One model call inside Back Office, no repository; skills go into the system prompt; can return structured JSON and a confidence. |
+| **Coding agent** (`IMPLEMENT`) | Claude Code or OpenCode in a sandbox on a runner, with the repository; may push a branch and open a merge request. Also used for analysis and workspace preparation. |
+| **Spec Kit step** (`SPEC_KIT`) | A Spec Kit phase (specify, clarify, plan, tasks) run by a coding agent. |
+| **Jira: read issue**, **Jira: comment**, **Jira: change status** | Jira calls (see [Jira](integrations-jira.md#jira-tasks)). |
+| **Start workflows**, **Project digest** | Back Office operations without a model ([Workflows](workflows.md)). |
 
 ### Steps: create a template
 
 1. Click **New template** (needs `library.manage`, or `library.project.manage` for a project template).
-2. **Type**: **Key** (a slug), **Name**, **Description**, **Extends** (one parent), **Implements**
-   (interfaces), **Executor** (empty means inherited), **Abstract**, **Scope** (**Global** or **Project**
-   with the **Project**), **Model profile**.
+2. **Type**: **Key** (a slug), **Name**, **Description**, **Based on** (one parent: the template inherits its
+   prompts, skills and configuration and changes only what you set), **Executor** (empty means inherited; the
+   editor says which one and what it does), **Scope** (**Global** or **Project** with the **Project**),
+   **Model profile**.
 3. **Prompt**: choose **Append to parent** or **Replace parent**, then write the **System prompt** and
    the **User prompt**. Template values such as `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
    and `{{project.constitution}}` are filled at run time. A section `{{#artifacts.review}}...{{/artifacts.review}}`
@@ -62,8 +64,16 @@ The executor decides where a task runs:
    after it (all comments of the run: `{{feedbackHistory}}`). An **Approve** comment reaches later prompts as
    `{{decision.comment}}`.
 4. **Skills**: add skills, and list inherited skills under **Remove inherited skills**.
-5. **Contract and configuration**: **Produces** and **Consumes** (artefact or state names),
-   **Confidence field**, **Tags**, **Config (JSON)** and, for LLM tasks, **Output schema**.
+5. **Configuration**: a form with the settings of the executor (for a coding agent: agent, verify and setup
+   command, push, merge request, artefacts to collect, agent tools, workspace, ...). Set only what differs from the
+   template it is based on; empty fields are inherited. **Raw JSON** shows the same settings as JSON, also keys the
+   form does not know.
+   **Advanced: contracts, artefacts, output schema, sandbox** (collapsed; most templates need nothing here):
+   **Abstract** (only a base for other templates, never a step), **Implements** (interfaces checked when the
+   template is resolved), **Produces** and **Consumes** (artefact names the step writes and reads; the workflow
+   check warns when a step reads something nobody writes), **Confidence field** (a field of the model answer copied
+   to `state.confidence` for decisions such as `confidence < 0.7`), **Tags**, **Output schema** (Model answer only)
+   and **Sandbox** (step 7).
 6. **Run inputs**: the fields this task asks for when a run starts (see [Run inputs](#run-inputs)). **Add run
    input**, then set **Name**, **Label**, the type (**Single line**, **Multi-line text** or **Jira issue key**),
    **Required** and an optional help text; move fields with the arrows or remove them. A name starts with a letter
@@ -200,6 +210,11 @@ Back Office ships with templates for the Spec Kit phases, implementation with Op
 `clarify-spec`, `code-review`, `analyse-issue`, the Jira tasks, and SDLC tasks such as `impact-analysis`,
 `write-user-story`, `plan-task-list`, `implement-task-list` and `review-against-spec`, plus their
 interfaces and skills. You can edit built-ins; Back Office never overwrites an edited entry.
+
+A template tagged `deprecated` keeps working in the steps that use it, but the designer, the MCP palette and the
+list (unless **Show deprecated**) no longer offer it. Deprecated now (ADR 0054): `implement-claude-code` (use
+`implement-opencode`, `implement-task-list` or `agent-task` with the agent Claude Code in **Configuration**) and
+`analyse-issue` (use `impact-analysis`).
 
 <a id="built-in-updates"></a>
 ### Updates of the built-in library

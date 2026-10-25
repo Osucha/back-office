@@ -323,7 +323,8 @@ class BackOfficeMcpTools(
             "controlNodes" to palette.controlNodes.map {
                 linkedMapOf("kind" to it.kind.name, "title" to it.title, "description" to it.description, "ports" to it.ports, "configSchema" to it.configSchema)
             },
-            "tasks" to palette.tasks.map {
+            // ADR 0054: deprecated templates still work in existing steps but are not offered for new ones
+            "tasks" to palette.tasks.filterNot { it.deprecated }.map {
                 linkedMapOf(
                     "templateKey" to it.key, "name" to it.name, "description" to it.description, "executor" to it.executor.name,
                     "interfaces" to it.interfaces, "ports" to it.ports, "projectScoped" to it.projectScoped, "configSchema" to it.configSchema,
