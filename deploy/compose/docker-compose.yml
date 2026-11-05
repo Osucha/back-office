@@ -316,7 +316,11 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness || exit 1"]
       interval: 15s
       timeout: 5s
-      start_period: 90s
+      # Flyway plus startup can take several minutes on a loaded laptop; worker and runner-controller wait for
+      # "healthy", and an api marked unhealthy too early leaves them not started. The first passing check ends the
+      # start period, so a fast start is not delayed.
+      start_period: 600s
+      start_interval: 5s
       retries: 10
     restart: unless-stopped
 

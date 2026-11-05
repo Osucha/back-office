@@ -13,9 +13,8 @@ if errorlevel 1 (
 
 docker compose -f docker-compose.yml --profile full up -d --build
 if errorlevel 1 (
-  echo Starting the stack failed; see the messages above.
-  pause
-  exit /b 1
+  rem Often only the api took longer than compose waited; the services that depend on it are started below.
+  echo Some services did not start yet; waiting for the api and starting them again.
 )
 
 echo.
@@ -35,6 +34,13 @@ pause
 exit /b 1
 
 :ready
+rem Start what waited for a healthy api (worker, runner-controller) if compose gave up on it earlier.
+docker compose -f docker-compose.yml --profile full up -d
+if errorlevel 1 (
+  echo Starting the remaining services failed; see the messages above.
+  pause
+  exit /b 1
+)
 echo.
 echo Back Office runs on http://localhost:8080
 echo Sign in with admin@example.com / ChangeMe-Local-123 (you set your own password at the first sign-in).
