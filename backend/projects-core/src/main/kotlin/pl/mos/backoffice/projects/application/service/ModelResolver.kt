@@ -10,6 +10,7 @@ import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.StepKind
 import java.util.UUID
 import pl.mos.backoffice.shared.tasks.ResolvedTask
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 
 /**
  * Resolves the model profile of a task: the resolved task's profile (template or node override), then the project
@@ -54,6 +55,6 @@ class ModelResolver(private val catalog: ModelCatalog, private val defaults: Mod
 
     companion object {
         val ResolvedTask.producesReview: Boolean
-            get() = "review" in produces || interfaces.any { it.equals("Reviewer", ignoreCase = true) }
+            get() = "review" in produces || category == TemplateCategory.REVIEW
     }
 }

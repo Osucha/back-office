@@ -191,7 +191,7 @@ class WorkflowService(
                 name = t.name,
                 description = t.description,
                 executor = t.executor,
-                interfaces = t.interfaces,
+                category = t.category,
                 ports = t.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS },
                 projectScoped = t.projectId != null,
                 configSchema = ControlNodeCatalog.configSchema(t.executor),

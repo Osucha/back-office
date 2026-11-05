@@ -10,12 +10,14 @@ import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
+import pl.mos.backoffice.tasks.domain.model.Keys
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.SkillId
 import java.util.UUID
 
 /**
- * Skill CRUD. A skill referenced by any template keeps its key and cannot be deleted. Same access rules as
+ * Skill CRUD. A new skill without a key gets one derived from its name (ADR 0055); a skill referenced by any template
+ * keeps its key and cannot be deleted. Same access rules as
  * templates (global: `library.view` / `library.manage`; project: members read, `library.project.manage`
  * writes); changes are audited as `SKILL_CREATE`, `SKILL_UPDATE`, `SKILL_DELETE`.
  */
@@ -29,10 +31,11 @@ class SkillService(
 
     override fun create(command: Skill.Content): Skill {
         val user = gate.requireWrite(command.scope)
-        if (skills.findByKeyAndScope(command.key, command.scope) != null) {
-            throw InvalidStateException("skill ${command.key} already exists in scope ${command.scope.describe()}")
+        val key = command.key ?: Keys.unique(Keys.fromName(command.name, KEY_PREFIX)) { skills.existsByKey(it) }
+        if (skills.findByKeyAndScope(key, command.scope) != null) {
+            throw InvalidStateException("skill $key already exists in scope ${command.scope.describe()}")
         }
-        val saved = skills.save(Skill.create(command, clock.now(), actor = user.actor))
+        val saved = skills.save(Skill.create(command.copy(key = key), clock.now(), actor = user.actor))
         audit.record(entry("SKILL_CREATE", saved, mapOf("key" to saved.key, "scope" to saved.scope.describe(), "contentLength" to saved.content.length)))
         return saved
     }
@@ -41,13 +44,14 @@ class SkillService(
         val user = gate.requireWrite(command.scope)
         val existing = load(id)
         if (existing.scope != command.scope) gate.requireWrite(existing.scope)
-        skills.findByKeyAndScope(command.key, command.scope)?.let { clash ->
-            if (clash.id != id) throw InvalidStateException("skill ${command.key} already exists in scope ${command.scope.describe()}")
+        val key = command.key ?: existing.key
+        skills.findByKeyAndScope(key, command.scope)?.let { clash ->
+            if (clash.id != id) throw InvalidStateException("skill $key already exists in scope ${command.scope.describe()}")
         }
-        if ((command.key != existing.key || command.scope != existing.scope) && templates.existsUsingSkill(existing.key)) {
+        if ((key != existing.key || command.scope != existing.scope) && templates.existsUsingSkill(existing.key)) {
             throw InvalidStateException("skill ${existing.key} is used by templates; its key and scope cannot change")
         }
-        val saved = skills.save(existing.update(command, clock.now(), user.actor))
+        val saved = skills.save(existing.update(command.copy(key = key), clock.now(), user.actor))
         val changes = AuditableChanges.changed(
             "key" to (existing.key to saved.key),
             "name" to (existing.name to saved.name),
@@ -71,7 +75,7 @@ class SkillService(
         val access = gate.requireListing(projectId)
         return skills.findVisible(access.projectId)
             .filter { access.allows(it.scope) }
-            .sortedWith(compareBy({ it.key }, { it.scope.projectId != null }))
+            .sortedWith(compareBy({ it.name.lowercase() }, { it.scope.projectId != null }))
     }
 
     override fun delete(id: SkillId) {
@@ -86,4 +90,8 @@ class SkillService(
 
     private fun entry(operation: String, s: Skill, details: Map<String, Any?>) =
         AuditEntry(operation = operation, entityType = "Skill", entityId = s.id.toString(), projectId = s.scope.projectId, details = details)
+
+    private companion object {
+        const val KEY_PREFIX = "skill"
+    }
 }

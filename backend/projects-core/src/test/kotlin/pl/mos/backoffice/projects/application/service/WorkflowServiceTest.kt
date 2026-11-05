@@ -89,7 +89,7 @@ class WorkflowServiceTest {
         val issue = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true)
         every { catalog.resolve("fetch-issue", project.id.value, any()) } returns ResolvedTask(
             "fetch-issue", "Fetch issue", TaskExecutor.FETCH_ISSUE, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null,
-            emptyList(), emptyList(), emptyList(), listOf("fetch-issue"), listOf("success", "failure"), runInputs = listOf(issue),
+            emptyList(), emptyList(), null, listOf("fetch-issue"), listOf("success", "failure"), runInputs = listOf(issue),
         )
         val definition = Fixtures.issueWorkflow(project).also { store[it.id] = it }
 

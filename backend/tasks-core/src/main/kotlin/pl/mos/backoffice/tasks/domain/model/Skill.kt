@@ -29,8 +29,9 @@ data class Skill(
         if (content.isBlank()) throw ValidationException("must not be blank", "content")
     }
 
+    /** Editable fields; a null [key] is derived from the name on create and kept on update (ADR 0055). */
     data class Content(
-        val key: String,
+        val key: String? = null,
         val name: String,
         val description: String = "",
         val content: String,
@@ -39,14 +40,14 @@ data class Skill(
     )
 
     fun update(c: Content, now: Instant, actor: Actor? = null): Skill = copy(
-        key = c.key, name = c.name, description = c.description, content = c.content, scope = c.scope, tags = c.tags.distinct(),
+        key = c.key ?: key, name = c.name, description = c.description, content = c.content, scope = c.scope, tags = c.tags.distinct(),
         updatedAt = now, updatedBy = actor,
     )
 
     companion object {
         fun create(c: Content, now: Instant, builtIn: Boolean = false, actor: Actor? = null): Skill = Skill(
             id = SkillId.new(),
-            key = c.key,
+            key = c.key ?: throw ValidationException("required", "key"),
             name = c.name,
             description = c.description,
             content = c.content,

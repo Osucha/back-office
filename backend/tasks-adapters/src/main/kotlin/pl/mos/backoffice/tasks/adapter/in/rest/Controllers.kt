@@ -13,39 +13,14 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
-import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
+import pl.mos.backoffice.tasks.domain.model.RuleId
 import pl.mos.backoffice.tasks.domain.model.SkillId
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
 import java.net.URI
 import java.util.UUID
-
-/** `/api/v1/task-interfaces` (openapi tag `task-library`). */
-@RestController
-@RequestMapping("/api/v1/task-interfaces")
-class TaskInterfaceController(private val interfaces: ManageTaskInterfaces) {
-
-    @GetMapping
-    fun list(): List<TaskInterfaceDto> = interfaces.list().map(RestMappers::taskInterface)
-
-    @PostMapping
-    fun create(@Valid @RequestBody body: TaskInterfaceInputDto): ResponseEntity<TaskInterfaceDto> {
-        val created = interfaces.create(RestMappers.interfaceCommand(body))
-        return ResponseEntity.created(URI.create("/api/v1/task-interfaces/${created.definition.key}")).body(RestMappers.taskInterface(created))
-    }
-
-    @GetMapping("/{key}")
-    fun get(@PathVariable key: String): TaskInterfaceDto = RestMappers.taskInterface(interfaces.get(key))
-
-    @PutMapping("/{key}")
-    fun update(@PathVariable key: String, @Valid @RequestBody body: TaskInterfaceInputDto): TaskInterfaceDto =
-        RestMappers.taskInterface(interfaces.update(key, RestMappers.interfaceCommand(body)))
-
-    @DeleteMapping("/{key}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun delete(@PathVariable key: String) = interfaces.delete(key)
-}
 
 /** `/api/v1/task-templates` including `/resolve/{key}` (openapi tag `task-library`). */
 @RestController
@@ -110,4 +85,30 @@ class SkillController(private val skills: ManageSkills) {
     @DeleteMapping("/{skillId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(@PathVariable skillId: UUID) = skills.delete(SkillId(skillId))
+}
+
+/** `/api/v1/rules` (openapi tag `task-library`, ADR 0055). */
+@RestController
+@RequestMapping("/api/v1/rules")
+class RuleController(private val rules: ManageRules) {
+
+    @GetMapping
+    fun list(@RequestParam(required = false) projectId: UUID?): List<RuleDto> = rules.list(projectId).map(RestMappers::rule)
+
+    @PostMapping
+    fun create(@Valid @RequestBody body: RuleInputDto): ResponseEntity<RuleDto> {
+        val created = rules.create(RestMappers.ruleContent(body))
+        return ResponseEntity.created(URI.create("/api/v1/rules/${created.id}")).body(RestMappers.rule(created))
+    }
+
+    @GetMapping("/{ruleId}")
+    fun get(@PathVariable ruleId: UUID): RuleDto = RestMappers.rule(rules.get(RuleId(ruleId)))
+
+    @PutMapping("/{ruleId}")
+    fun update(@PathVariable ruleId: UUID, @Valid @RequestBody body: RuleInputDto): RuleDto =
+        RestMappers.rule(rules.update(RuleId(ruleId), RestMappers.ruleContent(body)))
+
+    @DeleteMapping("/{ruleId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(@PathVariable ruleId: UUID) = rules.delete(RuleId(ruleId))
 }

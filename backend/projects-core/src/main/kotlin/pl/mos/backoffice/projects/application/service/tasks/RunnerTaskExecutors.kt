@@ -170,7 +170,7 @@ class RunnerTaskSupport(
             )
         }
         val prompt = listOfNotNull(
-            system, user.text, repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) }, workspace?.let(::workspaceSection), agentNotice(blocks),
+            system, RulesPrompt.section(task.rules), user.text, repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) }, workspace?.let(::workspaceSection), agentNotice(blocks),
         ).joinToString("\n\n")
         val fallbackBranch = "run/${context.run.id.short}"
         // the job branch must not be the base branch of any repository it may be pushed to (nor HEAD / a ref path)

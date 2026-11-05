@@ -87,7 +87,7 @@ class NonBlockingRunnerNodeTest {
         runner.queue = queue
         tasks.register(
             ResolvedTask("implement-x", "Implement", TaskExecutor.IMPLEMENT, null, TaskPrompt(null, "implement {{input.issueKey}}"), emptyList(), mapOf("mergeRequest" to false),
-                null, null, listOf("diff"), emptyList(), emptyList(), listOf("implement-x"), listOf("success", "failure")),
+                null, null, listOf("diff"), emptyList(), null, listOf("implement-x"), listOf("success", "failure")),
         )
         val projectKey = key("NBR")
         val project = projects.create(

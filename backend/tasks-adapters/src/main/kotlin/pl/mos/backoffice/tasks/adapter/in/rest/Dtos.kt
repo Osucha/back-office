@@ -8,8 +8,8 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.PromptMode
-import pl.mos.backoffice.tasks.domain.model.SlotKind
 import java.time.Instant
 import java.util.UUID
 
@@ -29,37 +29,6 @@ data class ActorRefDto(val kind: PrincipalKind, val userId: UUID?, val displayNa
 /** `Scope` schema: `PROJECT` requires `projectId`, `GLOBAL` ignores it. */
 data class ScopeDto(val type: ScopeTypeDto, val projectId: UUID? = null)
 
-data class SlotDto(
-    @field:NotBlank val name: String,
-    val kind: SlotKind,
-    val required: Boolean = true,
-    val description: String? = null,
-)
-
-data class TaskInterfaceInputDto(
-    @field:Pattern(regexp = KEY_PATTERN) val key: String,
-    @field:NotBlank val name: String,
-    val description: String = "",
-    @field:Valid val inputs: List<SlotDto> = emptyList(),
-    @field:Valid val outputs: List<SlotDto> = emptyList(),
-    val ports: List<String> = listOf("success", "failure"),
-)
-
-data class TaskInterfaceDto(
-    val id: UUID,
-    val key: String,
-    val name: String,
-    val description: String,
-    val inputs: List<SlotDto>,
-    val outputs: List<SlotDto>,
-    val ports: List<String>,
-    val builtIn: Boolean,
-    val implementedBy: List<String>,
-    val createdAt: Instant,
-    val updatedAt: Instant,
-    val updatedBy: ActorRefDto? = null,
-)
-
 /** `RunInputField` schema (ADR 0053). */
 data class RunInputFieldDto(
     @field:NotBlank @field:Pattern(regexp = "^[A-Za-z][A-Za-z0-9_-]{0,63}$") val name: String,
@@ -71,19 +40,22 @@ data class RunInputFieldDto(
 
 data class TaskPromptDto(val system: String? = null, val user: String? = null, val mode: PromptMode = PromptMode.APPEND)
 
+/** ADR 0055: [key] omitted on create is derived from the name; omitted on update it stays. */
 data class TaskTemplateInputDto(
-    @field:Pattern(regexp = KEY_PATTERN) val key: String,
+    @field:Pattern(regexp = KEY_PATTERN) val key: String? = null,
     @field:NotBlank val name: String,
     val description: String = "",
     val abstract: Boolean = false,
     val extendsKey: String? = null,
-    val implements: List<String> = emptyList(),
+    val category: TemplateCategory? = null,
     val executor: TaskExecutor? = null,
     val scope: ScopeDto,
     val modelProfileId: UUID? = null,
     val prompt: TaskPromptDto = TaskPromptDto(),
     val skills: List<String> = emptyList(),
     val removeSkills: List<String> = emptyList(),
+    val rules: List<String> = emptyList(),
+    val removeRules: List<String> = emptyList(),
     val config: Map<String, Any?> = emptyMap(),
     val outputSchema: String? = null,
     val confidenceField: String? = null,
@@ -100,13 +72,15 @@ data class TaskTemplateDto(
     val description: String,
     val abstract: Boolean,
     val extendsKey: String?,
-    val implements: List<String>,
+    val category: TemplateCategory?,
     val executor: TaskExecutor?,
     val scope: ScopeDto,
     val modelProfileId: UUID?,
     val prompt: TaskPromptDto,
     val skills: List<String>,
     val removeSkills: List<String>,
+    val rules: List<String>,
+    val removeRules: List<String>,
     val config: Map<String, Any?>,
     val outputSchema: String?,
     val confidenceField: String?,
@@ -125,7 +99,9 @@ data class ResolvedPromptDto(val system: String?, val user: String?)
 
 data class ResolvedSkillDto(val key: String, val name: String)
 
-data class InterfaceCheckDto(val ok: Boolean, val problems: List<String>)
+data class ResolvedRuleDto(val key: String, val name: String, val automatic: Boolean)
+
+data class ResolutionCheckDto(val ok: Boolean, val problems: List<String>)
 
 /** `TaskOverrides` schema: a workflow step's overrides of its template (ADR 0054, POST resolve). */
 data class TaskOverridesDto(
@@ -151,16 +127,17 @@ data class ResolvedTaskDto(
     val confidenceField: String?,
     val produces: List<String>,
     val consumes: List<String>,
-    val interfaces: List<String>,
+    val category: TemplateCategory?,
+    val rules: List<ResolvedRuleDto>,
     val lineage: List<String>,
     val ports: List<String>,
     val runInputs: List<RunInputFieldDto>,
     val abstract: Boolean,
-    val interfaceCheck: InterfaceCheckDto,
+    val check: ResolutionCheckDto,
 )
 
 data class SkillInputDto(
-    @field:Pattern(regexp = KEY_PATTERN) val key: String,
+    @field:Pattern(regexp = KEY_PATTERN) val key: String? = null,
     @field:NotBlank val name: String,
     val description: String = "",
     @field:NotBlank val content: String,
@@ -175,6 +152,32 @@ data class SkillDto(
     val description: String,
     val content: String,
     val scope: ScopeDto,
+    val tags: List<String>,
+    val builtIn: Boolean,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val updatedBy: ActorRefDto? = null,
+)
+
+/** `RuleInput` schema (ADR 0055): [key] omitted on create is derived from the name; omitted on update it stays. */
+data class RuleInputDto(
+    @field:Pattern(regexp = KEY_PATTERN) val key: String? = null,
+    @field:NotBlank val name: String,
+    val description: String = "",
+    @field:NotBlank val content: String,
+    val scope: ScopeDto,
+    val automatic: Boolean = false,
+    val tags: List<String> = emptyList(),
+)
+
+data class RuleDto(
+    val id: UUID,
+    val key: String,
+    val name: String,
+    val description: String,
+    val content: String,
+    val scope: ScopeDto,
+    val automatic: Boolean,
     val tags: List<String>,
     val builtIn: Boolean,
     val createdAt: Instant,

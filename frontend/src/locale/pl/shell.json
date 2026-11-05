@@ -1,7 +1,6 @@
 {
   "shell.app.title": "Back Office",
   "shell.skipToContent": "Przejdź do treści",
-
   "shell.route.signIn": "Logowanie",
   "shell.route.setYourPassword": "Ustaw hasło",
   "shell.route.changeYourPassword": "Zmień hasło",
@@ -18,7 +17,6 @@
   "shell.route.ciExecutions": "Wykonania CI",
   "shell.route.ciExecution": "Wykonanie CI",
   "shell.route.taskTemplates": "Szablony zadań",
-  "shell.route.taskInterfaces": "Interfejsy zadań",
   "shell.route.skills": "Umiejętności",
   "shell.route.librarySources": "Źródła biblioteki",
   "shell.route.myWork": "Moja praca",
@@ -51,7 +49,6 @@
   "shell.route.operations": "Operacje",
   "shell.route.auditLog": "Dziennik audytu",
   "shell.route.accessDenied": "Brak dostępu",
-
   "shell.nav.home": "Strona główna",
   "shell.nav.home.keywords": "pulpit, start, strona główna, dashboard",
   "shell.nav.inbox": "Twoja kolej",
@@ -67,7 +64,6 @@
   "shell.nav.ci.keywords": "przegląd kodu, pipeline'y, code review",
   "shell.nav.library": "Biblioteka",
   "shell.nav.templates": "Szablony",
-  "shell.nav.interfaces": "Interfejsy",
   "shell.nav.skills": "Umiejętności",
   "shell.nav.librarySources": "Źródła",
   "shell.nav.libraryWorkflows": "Workflowy",
@@ -89,7 +85,6 @@
   "shell.nav.audit": "Dziennik audytu",
   "shell.nav.settings": "Ustawienia",
   "shell.nav.settings.keywords": "integracje, klucze dostawców",
-
   "shell.rail.brand": "Back Office – strona startowa",
   "shell.rail.projects": "Projekty",
   "shell.rail.projectTile": "Projekt {$key}, {$name}",
@@ -100,7 +95,6 @@
   "shell.rail.unpin": "Odepnij",
   "shell.rail.keepOpen": "Przypnij",
   "shell.rail.waiting": "{$label}, czeka: {$count}",
-
   "shell.topbar.breadcrumb": "Ścieżka",
   "shell.topbar.search": "Szukaj lub przejdź do…",
   "shell.topbar.turnTitle": "Twoja kolej: bramki, o których możesz zdecydować",
@@ -112,7 +106,6 @@
   "shell.topbar.live.on": "Aktualizacje na żywo włączone",
   "shell.topbar.live.connecting": "Łączenie z aktualizacjami na żywo",
   "shell.topbar.live.off": "Aktualizacje na żywo wyłączone; ponawiam połączenie",
-
   "shell.avatar.trigger": "Menu konta: {$name}",
   "shell.avatar.menu": "Konto",
   "shell.avatar.account": "Konto",
@@ -128,19 +121,16 @@
   "shell.avatar.manual": "Podręcznik",
   "shell.avatar.signOut": "Wyloguj",
   "shell.avatar.signedIn": "Zalogowano",
-
   "shell.dock.title": "Aktywność",
   "shell.dock.close": "Zamknij aktywność",
   "shell.dock.empty": "Na razie cisza. Zdarzenia na żywo pojawią się tutaj, gdy agenci i CI będą oddawać pracę.",
   "shell.dock.allProjects": "Wszystkie projekty",
-
   "shell.shortcut.group.global": "Ogólne",
   "shell.shortcut.palette": "Wyszukiwanie i polecenia",
   "shell.shortcut.shortcuts": "Skróty klawiszowe",
   "shell.shortcut.dock": "Panel aktywności",
   "shell.shortcut.theme": "Przełącz motyw",
   "shell.shortcut.help": "Pomoc do tej strony",
-
   "shell.palette.group.goTo": "Przejdź do",
   "shell.palette.group.actions": "Akcje",
   "shell.palette.group.projects": "Projekty",
@@ -214,10 +204,12 @@
   "shell.palette.chapter.keywords": "pomoc, podręcznik",
   "shell.avatar.notifications": "Powiadomienia na pulpicie",
   "shell.route.connections": "Połączenia",
-
   "shell.nav.connections": "Połączenia",
   "shell.palette.openConnections.title": "Otwórz połączenia",
   "shell.palette.openConnections.subtitle": "Poświadczenia Jiry platformy z minimalnymi uprawnieniami",
   "shell.palette.openConnections.keywords": "jira, poświadczenia, token api, odczyt, zapis",
-  "shell.route.llmProviders": "Dostawcy LLM"
+  "shell.route.llmProviders": "Dostawcy LLM",
+  "shell.route.rules": "Reguły",
+  "shell.nav.libraryTasks": "Zadania",
+  "shell.nav.rules": "Reguły"
 }

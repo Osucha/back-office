@@ -31,13 +31,15 @@ import {
   TASK_EXECUTORS,
   type ModelProfile,
   type Project,
+  type Rule,
   type RunInputField,
   type Skill,
   type TaskExecutorDescriptor,
-  type TaskInterface,
   type TaskTemplate,
   type TaskTemplateInput,
 } from '../../../core/api/types';
+import { TEMPLATE_CATEGORIES, categoryLabel } from '../../../core/ui/template-categories';
+import { effectiveCategory, nameOfKey } from '../data/library-filters';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
 import { executorDescription, executorInfos, executorLabel } from '../../../core/ui/executors';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
@@ -45,14 +47,16 @@ import { SchemaFormComponent } from '../../workflows/public-api';
 import { effectiveExecutor, templateConfigSchema } from '../data/template-config';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { ConfirmService } from '../../../core/ui/confirm.service';
-import { SLUG_PATTERN } from '../../../core/forms/patterns';
 import { ActionBarComponent } from '../../../core/ui/relay/action-bar.component';
 import { SandboxPolicyEditorComponent } from '../../fleet/public-api';
 import {
+  automaticRules,
+  draftRuleDelta,
   draftSkillDelta,
   emptyTemplate,
   parentCandidates,
   toPreview,
+  toSavePayload,
   toTemplateInput,
   type ResolvedPreview,
 } from '../data/resolved-preview';
@@ -113,9 +117,6 @@ function invalidJson(e: unknown): string {
           } @else {
             <span i18n="@@library.templateEditor.titleNew">New template</span>
           }
-          @if (template()?.key) {
-            <span class="title-key">{{ template()?.key }}</span>
-          }
           @if (template()?.version) {
             <span class="title-key">v{{ template()?.version }}</span>
           }
@@ -151,30 +152,16 @@ function invalidJson(e: unknown): string {
             [boReadonly]="readonly()"
             (submit)="$event.preventDefault()"
           >
+            @if (customizing()) {
+              <nz-alert
+                nzType="info"
+                nzShowIcon
+                nzMessage="This project gets its own version of the global template. Change only what differs; everything left empty is inherited from the global one."
+                i18n-nzMessage="@@library.templateEditor.customizing"
+                style="margin-bottom: 12px"
+              />
+            }
             <div class="grid">
-              <nz-form-item>
-                <nz-form-label nzRequired nzFor="tt-key" i18n="@@library.templateEditor.key"
-                  >Key</nz-form-label
-                >
-                <nz-form-control
-                  [nzValidateStatus]="keyError() ? 'error' : ''"
-                  [nzErrorTip]="keyError() ?? ''"
-                  nzExtra="Slug. A PROJECT template with the same key shadows the global one."
-                  i18n-nzExtra="@@library.templateEditor.key.extra"
-                >
-                  <input
-                    nz-input
-                    id="tt-key"
-                    name="key"
-                    class="mono"
-                    [ngModel]="draft().key"
-                    (ngModelChange)="patch({ key: $event })"
-                    [readOnly]="!!template()"
-                    placeholder="code-review-strict"
-                    i18n-placeholder="@@library.templateEditor.key.placeholder"
-                  />
-                </nz-form-control>
-              </nz-form-item>
               <nz-form-item>
                 <nz-form-label nzRequired nzFor="tt-name" i18n="@@library.templateEditor.name"
                   >Name</nz-form-label
@@ -189,6 +176,28 @@ function invalidJson(e: unknown): string {
                     placeholder="Strict code review"
                     i18n-placeholder="@@library.templateEditor.name.placeholder"
                   />
+                </nz-form-control>
+              </nz-form-item>
+              <nz-form-item>
+                <nz-form-label nzFor="tt-category" i18n="@@library.templateEditor.category"
+                  >Category</nz-form-label
+                >
+                <nz-form-control
+                  nzExtra="Groups the template in the library and in the workflow designer. Empty: inherited."
+                  i18n-nzExtra="@@library.templateEditor.category.extra"
+                >
+                  <nz-select
+                    id="tt-category"
+                    name="category"
+                    nzAllowClear
+                    [nzPlaceHolder]="categoryPlaceholder()"
+                    [ngModel]="draft().category ?? null"
+                    (ngModelChange)="patch({ category: $event ?? null })"
+                  >
+                    @for (c of categories; track c.value) {
+                      <nz-option [nzValue]="c.value" [nzLabel]="c.label" />
+                    }
+                  </nz-select>
                 </nz-form-control>
               </nz-form-item>
             </div>
@@ -229,12 +238,7 @@ function invalidJson(e: unknown): string {
                     (ngModelChange)="patch({ extendsKey: $event ?? null })"
                   >
                     @for (t of parents(); track t.key) {
-                      <nz-option
-                        [nzValue]="t.key"
-                        [nzLabel]="
-                          t.name + ' (' + t.key + ')' + (t.abstract ? text.abstractSuffix : '')
-                        "
-                      />
+                      <nz-option [nzValue]="t.key" [nzLabel]="parentLabel(t)" />
                     }
                   </nz-select>
                 </nz-form-control>
@@ -401,14 +405,14 @@ function invalidJson(e: unknown): string {
               </nz-form-control>
             </nz-form-item>
 
-            <h3 class="sec" i18n="@@library.templateEditor.skills">Skills</h3>
+            <h3 class="sec" i18n="@@library.templateEditor.skillsAndRules">Skills and rules</h3>
             <div class="grid">
               <nz-form-item>
                 <nz-form-label nzFor="tt-skills" i18n="@@library.templateEditor.skills"
                   >Skills</nz-form-label
                 >
                 <nz-form-control
-                  nzExtra="Appended to the system prompt (LLM) or written as SKILL.md files (runner)."
+                  nzExtra="Knowledge the agent loads when it needs it."
                   i18n-nzExtra="@@library.templateEditor.skills.extra"
                 >
                   <nz-select
@@ -421,33 +425,47 @@ function invalidJson(e: unknown): string {
                     [ngModel]="draft().skills ?? []"
                     (ngModelChange)="patch({ skills: $event })"
                   >
-                    @for (s of skills(); track s.key) {
-                      <nz-option [nzValue]="s.key" [nzLabel]="s.name + ' (' + s.key + ')'" />
+                    @for (s of skillOptions(); track s.key) {
+                      <nz-option [nzValue]="s.key" [nzLabel]="s.label" />
                     }
                   </nz-select>
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="tt-rm-skills" i18n="@@library.templateEditor.removeSkills"
-                  >Remove inherited skills</nz-form-label
+                <nz-form-label nzFor="tt-rules" i18n="@@library.templateEditor.rules"
+                  >Rules</nz-form-label
                 >
-                <nz-form-control>
+                <nz-form-control
+                  nzExtra="Always in the agent's context, for every step of this template."
+                  i18n-nzExtra="@@library.templateEditor.rules.extra"
+                >
                   <nz-select
-                    id="tt-rm-skills"
-                    name="removeSkills"
-                    nzMode="tags"
+                    id="tt-rules"
+                    name="rules"
+                    nzMode="multiple"
+                    nzShowSearch
                     nzPlaceHolder="none"
                     i18n-nzPlaceHolder="@@library.templateEditor.none"
-                    [ngModel]="draft().removeSkills ?? []"
-                    (ngModelChange)="patch({ removeSkills: $event })"
+                    [ngModel]="draft().rules ?? []"
+                    (ngModelChange)="patch({ rules: $event })"
                   >
-                    @for (s of preview()?.skills ?? []; track s.key) {
-                      <nz-option [nzValue]="s.key" [nzLabel]="s.key" />
+                    @for (r of ruleOptions(); track r.key) {
+                      <nz-option [nzValue]="r.key" [nzLabel]="r.label" />
                     }
                   </nz-select>
                 </nz-form-control>
               </nz-form-item>
             </div>
+            @if (automatic().length) {
+              <p class="sec-help automatic" data-automatic-rules>
+                <span i18n="@@library.templateEditor.automaticRules"
+                  >Applied anyway (automatic rules):</span
+                >
+                @for (r of automatic(); track r.key) {
+                  <nz-tag>{{ r.name }}</nz-tag>
+                }
+              </p>
+            }
 
             <h3 class="sec" i18n="@@library.templates.runInputs.title">Run inputs</h3>
             <p class="sec-help" i18n="@@library.templates.runInputs.help">
@@ -621,13 +639,21 @@ function invalidJson(e: unknown): string {
 
             <nz-collapse nzGhost class="advanced">
               <nz-collapse-panel
-                nzHeader="Advanced: contracts, artefacts, output schema, sandbox"
+                nzHeader="Advanced: inherited skills and rules, artefacts, output schema, sandbox"
                 i18n-nzHeader="@@library.templateEditor.advanced"
               >
                 <p class="sec-help" i18n="@@library.templateEditor.advanced.help">
                   Most templates need nothing here. These settings matter for base templates,
                   decisions on the model answer and coding agents with special sandbox needs.
                 </p>
+                @if (template()?.id && template()?.key) {
+                  <p class="sec-help" data-template-key>
+                    <span i18n="@@library.templateEditor.keyNote"
+                      >Technical key (workflow steps, MCP, support):</span
+                    >
+                    <span class="mono">{{ template()?.key }}</span>
+                  </p>
+                }
                 <div class="grid">
                   <nz-form-item>
                     <nz-form-label i18n="@@library.templateEditor.abstract">Abstract</nz-form-label>
@@ -643,25 +669,42 @@ function invalidJson(e: unknown): string {
                     </nz-form-control>
                   </nz-form-item>
                   <nz-form-item>
-                    <nz-form-label nzFor="tt-impl" i18n="@@library.templateEditor.implements"
-                      >Implements</nz-form-label
+                    <nz-form-label nzFor="tt-rm-skills" i18n="@@library.templateEditor.removeSkills"
+                      >Remove inherited skills</nz-form-label
                     >
-                    <nz-form-control
-                      nzExtra="Contracts checked when the template is resolved; you rarely need them."
-                      i18n-nzExtra="@@library.templateEditor.implements.extra"
-                    >
+                    <nz-form-control>
                       <nz-select
-                        id="tt-impl"
-                        name="implements"
+                        id="tt-rm-skills"
+                        name="removeSkills"
+                        nzMode="tags"
+                        nzPlaceHolder="none"
+                        i18n-nzPlaceHolder="@@library.templateEditor.none"
+                        [ngModel]="draft().removeSkills ?? []"
+                        (ngModelChange)="patch({ removeSkills: $event })"
+                      >
+                        @for (s of preview()?.skills ?? []; track s.key) {
+                          <nz-option [nzValue]="s.key" [nzLabel]="s.name || s.key" />
+                        }
+                      </nz-select>
+                    </nz-form-control>
+                  </nz-form-item>
+                  <nz-form-item>
+                    <nz-form-label nzFor="tt-rm-rules" i18n="@@library.templateEditor.removeRules"
+                      >Drop inherited or automatic rules</nz-form-label
+                    >
+                    <nz-form-control>
+                      <nz-select
+                        id="tt-rm-rules"
+                        name="removeRules"
                         nzMode="multiple"
                         nzShowSearch
                         nzPlaceHolder="none"
                         i18n-nzPlaceHolder="@@library.templateEditor.none"
-                        [ngModel]="draft().implements ?? []"
-                        (ngModelChange)="patch({ implements: $event })"
+                        [ngModel]="draft().removeRules ?? []"
+                        (ngModelChange)="patch({ removeRules: $event })"
                       >
-                        @for (i of interfaces(); track i.key) {
-                          <nz-option [nzValue]="i.key" [nzLabel]="i.name + ' (' + i.key + ')'" />
+                        @for (r of removableRules(); track r.key) {
+                          <nz-option [nzValue]="r.key" [nzLabel]="r.label" />
                         }
                       </nz-select>
                     </nz-form-control>
@@ -838,7 +881,7 @@ function invalidJson(e: unknown): string {
                 i18n-aria-label="@@library.templateEditor.lineage"
               >
                 @for (k of pv.lineage; track k; let last = $last) {
-                  <span class="mono" [class.leaf]="last">{{ k }}</span>
+                  <span [class.leaf]="last">{{ templateName(k) }}</span>
                   @if (!last) {
                     <nz-icon nzType="right" class="muted" />
                   }
@@ -862,9 +905,7 @@ function invalidJson(e: unknown): string {
                 @if (pv.abstract) {
                   <nz-tag i18n="@@library.templateEditor.abstractChip">abstract</nz-tag>
                 }
-                @for (i of pv.interfaces; track i) {
-                  <nz-tag nzColor="blue">{{ i }}</nz-tag>
-                }
+                <nz-tag nzColor="blue" data-category>{{ categoryLabel(pv.category) }}</nz-tag>
                 @for (p of pv.ports; track p) {
                   <nz-tag i18n="@@library.templateEditor.port">port: {{ p }}</nz-tag>
                 }
@@ -873,7 +914,7 @@ function invalidJson(e: unknown): string {
                 <nz-alert
                   nzType="error"
                   nzShowIcon
-                  nzMessage="Interface check failed"
+                  nzMessage="Some skills or rules do not exist"
                   i18n-nzMessage="@@library.templateEditor.checkFailed"
                   [nzDescription]="problemsTpl"
                   style="margin-top: 8px"
@@ -885,14 +926,6 @@ function invalidJson(e: unknown): string {
                     }
                   </ul>
                 </ng-template>
-              } @else if (pv.interfaces.length) {
-                <nz-alert
-                  nzType="success"
-                  nzShowIcon
-                  nzMessage="All implemented interfaces are satisfied"
-                  i18n-nzMessage="@@library.templateEditor.checkOk"
-                  style="margin-top: 8px"
-                />
               }
               @if (delta().added.length || delta().removed.length) {
                 <p class="muted small" style="margin-top: 8px">
@@ -921,7 +954,22 @@ function invalidJson(e: unknown): string {
                   }
                   <div class="chips">
                     @for (s of pv.skills; track s.key) {
-                      <nz-tag nz-tooltip [nzTooltipTitle]="s.key">{{ s.name }}</nz-tag>
+                      <nz-tag>{{ s.name }}</nz-tag>
+                    }
+                  </div>
+                </nz-tab>
+                <nz-tab nzTitle="Rules" i18n-nzTitle="@@library.templateEditor.rules">
+                  @if (!pv.rules.length) {
+                    <p class="muted small" i18n="@@library.templateEditor.noRules">No rules.</p>
+                  }
+                  <div class="chips">
+                    @for (r of pv.rules; track r.key) {
+                      <nz-tag [nzColor]="r.automatic ? 'gold' : 'default'" [attr.data-rule]="r.key"
+                        >{{ r.name }}
+                        @if (r.automatic) {
+                          <span i18n="@@library.templateEditor.automaticSuffix">(automatic)</span>
+                        }
+                      </nz-tag>
                     }
                   </div>
                 </nz-tab>
@@ -959,7 +1007,7 @@ function invalidJson(e: unknown): string {
                         }
                         @if (f.from && f.from !== template()?.key) {
                           <span class="muted small" i18n="@@library.templates.runInputs.inherited"
-                            >inherited from {{ f.from }}</span
+                            >inherited from {{ templateName(f.from) }}</span
                           >
                         }
                       </li>
@@ -1030,6 +1078,13 @@ function invalidJson(e: unknown): string {
         margin: -4px 0 12px;
         font-size: 12px;
         color: var(--bo-ink-3);
+      }
+      .sec-help.automatic {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+        margin-top: -12px;
       }
       .sandbox-ph {
         height: 320px;
@@ -1242,8 +1297,14 @@ export class TemplateEditorDrawerComponent {
   /** Existing template (edit) or null (create). */
   readonly template = input<TaskTemplate | null>(null);
   readonly templates = input<TaskTemplate[]>([]);
-  readonly interfaces = input<TaskInterface[]>([]);
+  /**
+   * ADR 0055: a prefilled new template when `template` is null, e.g. "Customize for project" (a
+   * PROJECT template with the global key, extending it).
+   */
+  readonly preset = input<TaskTemplateInput | null>(null);
   readonly skills = input<Skill[]>([]);
+  /** ADR 0055: rules a template may list. */
+  readonly rules = input<Rule[]>([]);
   readonly profiles = input<ModelProfile[]>([]);
   readonly projects = input<Project[]>([]);
   readonly saving = input(false);
@@ -1306,7 +1367,8 @@ export class TemplateEditorDrawerComponent {
     create: $localize`:@@library.templateEditor.create:Create template`,
     readOnlyClean: $localize`:@@library.templateEditor.readOnlyClean:Read-only: you cannot change templates in this scope`,
     allSaved: $localize`:@@library.templateEditor.allSaved:All changes saved`,
-    fillIn: $localize`:@@library.templateEditor.fillIn:Fill in a key and a name to create the template`,
+    fillIn: $localize`:@@library.templateEditor.fillIn:Fill in a name to create the template`,
+    inherited: $localize`:@@library.templateEditor.inherited:inherited`,
     close: $localize`:@@library.templateEditor.close:Close`,
     discard: $localize`:@@library.templateEditor.discard:Discard changes`,
     deprecated: deprecatedLabel(),
@@ -1339,27 +1401,54 @@ export class TemplateEditorDrawerComponent {
   /** The template carries the `deprecated` tag. */
   readonly deprecated = computed(() => isDeprecated(this.draft()));
 
-  readonly keyError = computed(() => {
-    const k = this.draft().key;
-    if (!k) return $localize`:@@library.templateEditor.required:Required`;
-    if (!SLUG_PATTERN.test(k) || k.length < 2)
-      return $localize`:@@library.templateEditor.keySlug:Slug: lowercase letters, digits, dashes (2-64 chars)`;
-    if (
-      !this.template() &&
-      this.templates().some(
-        (t) =>
-          t.key === k &&
-          t.scope?.type === this.draft().scope.type &&
-          (t.scope?.projectId ?? null) === (this.draft().scope.projectId ?? null),
-      )
-    )
-      return $localize`:@@library.templateEditor.keyTaken:A template with this key already exists in this scope`;
-    return null;
+  /** ADR 0055: a new project template that customises a global one (same key, extends it). */
+  readonly customizing = computed(() => {
+    const d = this.draft();
+    return !this.template()?.id && !!d.key && d.extendsKey === d.key && d.scope.type === 'PROJECT';
+  });
+  /** ADR 0055: the category select; its placeholder names the inherited one. */
+  readonly categories = TEMPLATE_CATEGORIES.map((c) => ({ value: c, label: categoryLabel(c) }));
+  readonly categoryLabel = categoryLabel;
+  readonly categoryPlaceholder = computed(() => {
+    const d = this.draft();
+    // the resolved view is the inherited one while the saved template has no own category
+    const resolved = this.template()?.category ? null : this.preview()?.category;
+    const c =
+      resolved ??
+      (d.extendsKey
+        ? effectiveCategory({ ...d, category: null, key: '' }, this.templates())
+        : null);
+    return c
+      ? $localize`:@@library.templateEditor.category.inheritedValue:inherited: ${categoryLabel(c)}:category:`
+      : this.text.inherited;
+  });
+  /** Skills and rules by name (the key only when there is no name). */
+  readonly skillOptions = computed(() =>
+    this.skills().map((s) => ({ key: s.key ?? '', label: s.name || s.key || '' })),
+  );
+  readonly ruleOptions = computed(() =>
+    this.rules().map((r) => ({ key: r.key ?? '', label: r.name || r.key || '' })),
+  );
+  /** Rules the step gets anyway (automatic, from the resolved preview). */
+  readonly automatic = computed(() => automaticRules(this.preview()));
+  /** Rules the template may drop: those of the resolved preview plus every known rule. */
+  readonly removableRules = computed(() => {
+    const seen = new Set<string>();
+    const out: Array<{ key: string; label: string }> = [];
+    for (const r of [
+      ...(this.preview()?.rules ?? []).map((x) => ({ key: x.key, label: x.name })),
+      ...this.ruleOptions(),
+    ]) {
+      if (r.key && !seen.has(r.key)) {
+        seen.add(r.key);
+        out.push(r);
+      }
+    }
+    return out;
   });
   readonly canSave = computed(() => {
     const d = this.draft();
     return (
-      !this.keyError() &&
       !!d.name.trim() &&
       !this.configError() &&
       !this.schemaError() &&
@@ -1370,8 +1459,6 @@ export class TemplateEditorDrawerComponent {
   /** Why Save is disabled, in words (shown in the action bar). */
   readonly saveBlocker = computed(() => {
     const d = this.draft();
-    const keyError = this.keyError();
-    if (keyError) return $localize`:@@library.templateEditor.blocker.key:Key: ${keyError}:error:`;
     if (!d.name.trim()) return $localize`:@@library.templateEditor.blocker.name:Name is required`;
     if (this.configError())
       return $localize`:@@library.templateEditor.blocker.config:Config is not valid JSON`;
@@ -1381,10 +1468,33 @@ export class TemplateEditorDrawerComponent {
       return $localize`:@@library.templateEditor.blocker.project:Pick the project`;
     return this.runInputBlocker();
   });
-  readonly parents = computed(() =>
-    parentCandidates(this.templates(), this.template()?.key ?? null),
-  );
-  readonly delta = computed(() => draftSkillDelta(this.draft(), this.preview()));
+  readonly parents = computed(() => {
+    const self = this.template()?.key ?? null;
+    const list = parentCandidates(this.templates(), self);
+    // a project template customising the global one of its own key extends that global one
+    const extendsKey = this.draft().extendsKey;
+    const global =
+      extendsKey && extendsKey === self && !list.some((t) => t.key === extendsKey)
+        ? this.templates().filter((t) => t.key === extendsKey && t.scope?.type !== 'PROJECT')
+        : [];
+    const seen = new Set<string>();
+    return [...global, ...list].filter((t) => !seen.has(t.key ?? '') && seen.add(t.key ?? ''));
+  });
+  /** Unsaved skills and rules versus the resolved view, by name. */
+  readonly delta = computed(() => {
+    const skills = draftSkillDelta(this.draft(), this.preview());
+    const rules = draftRuleDelta(this.draft(), this.preview());
+    const skillName = (k: string) => nameOfKey(this.skills(), k);
+    const ruleName = (k: string) =>
+      nameOfKey(
+        this.removableRules().map((r) => ({ key: r.key, name: r.label })),
+        k,
+      );
+    return {
+      added: [...skills.added.map(skillName), ...rules.added.map(ruleName)],
+      removed: [...skills.removed.map(skillName), ...rules.removed.map(ruleName)],
+    };
+  });
   /** ADR 0053: the resolved run inputs and the template each comes from. */
   readonly previewRunInputs = computed(() => {
     const pv = this.preview();
@@ -1429,9 +1539,12 @@ export class TemplateEditorDrawerComponent {
       const open = this.open();
       untracked(() => {
         if (!open) return;
+        const preset = this.preset();
         const d = t
           ? toTemplateInput(t as TaskTemplateInput & Record<string, unknown>)
-          : emptyTemplate();
+          : preset
+            ? structuredClone(preset)
+            : emptyTemplate();
         this.draft.set(d);
         this.initialJson.set(JSON.stringify(d));
         this.configText.set(JSON.stringify(d.config ?? {}, null, 2));
@@ -1445,7 +1558,8 @@ export class TemplateEditorDrawerComponent {
       });
     });
     effect(() => {
-      const key = this.template()?.key ?? null;
+      // a "Customize for project" draft previews the global template it starts from
+      const key = this.template()?.key ?? this.preset()?.key ?? null;
       const projectId = this.previewProjectId();
       this.savedVersion();
       if (this.open()) this.resolve$.next({ key, projectId });
@@ -1460,7 +1574,7 @@ export class TemplateEditorDrawerComponent {
           return this.api.resolveTemplate(key, projectId).pipe(
             catchError(() => {
               this.previewError.set(
-                $localize`:@@library.templateEditor.resolveError:Could not resolve the template (missing parent or interface?).`,
+                $localize`:@@library.templateEditor.resolveError:Could not resolve the template (missing parent?).`,
               );
               return of(null);
             }),
@@ -1584,6 +1698,21 @@ export class TemplateEditorDrawerComponent {
 
   submit(): void {
     if (!this.canSave()) return;
-    this.saved.emit(this.draft());
+    this.saved.emit(toSavePayload(this.draft(), !!this.template()?.id));
+  }
+
+  /** A template referred to by key, shown by name. */
+  templateName(key: string | null | undefined): string {
+    return nameOfKey(this.templates(), key);
+  }
+
+  parentLabel(t: TaskTemplate): string {
+    const scope =
+      t.scope?.type === 'PROJECT'
+        ? ''
+        : this.draft().scope.type === 'PROJECT' && t.key === this.draft().key
+          ? $localize`:@@library.templateEditor.globalSuffix: (global)`
+          : '';
+    return (t.name || t.key || '') + scope + (t.abstract ? this.text.abstractSuffix : '');
   }
 }

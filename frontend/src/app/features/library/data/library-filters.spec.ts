@@ -1,9 +1,11 @@
-import type { Skill, TaskInterface, TaskTemplate } from '../../../core/api/types';
+import type { Rule, Skill, TaskTemplate } from '../../../core/api/types';
 import {
+  effectiveCategory,
   executorLabel,
-  filterInterfaces,
+  filterRules,
   filterSkills,
   filterTemplates,
+  nameOfKey,
   sizeLabel,
 } from './library-filters';
 
@@ -35,7 +37,7 @@ describe('library filters', () => {
 
   it('filters templates by text and executor', () => {
     const list = [
-      T({ key: 'code-review', name: 'Code review', executor: 'LLM', implements: ['reviewer'] }),
+      T({ key: 'code-review', name: 'Code review', executor: 'LLM', category: 'REVIEW' }),
       T({ key: 'fetch-issue', name: 'Fetch issue', executor: 'FETCH_ISSUE', tags: ['jira'] }),
       T({ key: 'base', name: 'Base agent', description: 'Abstract root' }),
     ];
@@ -46,21 +48,62 @@ describe('library filters', () => {
     expect(filterTemplates(list, {}).length).toBe(3);
   });
 
-  it('filters interfaces by slots and implementers', () => {
+  it('filters templates by their own or inherited category (ADR 0055)', () => {
     const list = [
-      {
-        key: 'reviewer',
-        name: 'Reviewer',
-        inputs: [{ name: 'diff', kind: 'ARTIFACT' }],
-        outputs: [{ name: 'review', kind: 'ARTIFACT' }],
-        ports: [],
-        implementedBy: ['code-review'],
-      },
-      { key: 'analyst', name: 'Analyst', inputs: [], outputs: [], ports: [] },
-    ] as unknown as TaskInterface[];
-    expect(filterInterfaces(list, 'diff').map((i) => i.key)).toEqual(['reviewer']);
-    expect(filterInterfaces(list, 'code-review').map((i) => i.key)).toEqual(['reviewer']);
-    expect(filterInterfaces(list, '').length).toBe(2);
+      T({ key: 'base', name: 'Base' }),
+      T({ key: 'review', name: 'Review', extendsKey: 'base', category: 'REVIEW' }),
+      T({ key: 'strict', name: 'Strict review', extendsKey: 'review' }),
+      T({ key: 'other', name: 'Other', extendsKey: 'base' }),
+    ];
+    expect(filterTemplates(list, { category: 'REVIEW' }).map((t) => t.key)).toEqual([
+      'review',
+      'strict',
+    ]);
+    expect(filterTemplates(list, { category: 'GENERAL' }).map((t) => t.key)).toEqual([
+      'base',
+      'other',
+    ]);
+    // the category label is searchable
+    expect(filterTemplates(list, { query: 'review' }).map((t) => t.key)).toEqual([
+      'review',
+      'strict',
+    ]);
+  });
+
+  it('takes the category of a project parent over the global one', () => {
+    const list = [
+      T({ key: 'impl', category: 'IMPLEMENTATION' }),
+      T({ key: 'impl', category: 'OPERATIONS', scope: { type: 'PROJECT', projectId: 'p1' } }),
+    ];
+    const child = T({
+      key: 'mine',
+      extendsKey: 'impl',
+      scope: { type: 'PROJECT', projectId: 'p1' },
+    });
+    expect(effectiveCategory(child, list)).toBe('OPERATIONS');
+    expect(effectiveCategory(T({ key: 'g', extendsKey: 'impl' }), list)).toBe('IMPLEMENTATION');
+    // a loop in the chain ends in General
+    const loop = [T({ key: 'a', extendsKey: 'b' }), T({ key: 'b', extendsKey: 'a' })];
+    expect(effectiveCategory(loop[0], loop)).toBe('GENERAL');
+  });
+
+  it('filters rules by text and automatic', () => {
+    const list = [
+      { key: 'no-secrets', name: 'No secrets', automatic: true, tags: ['security'] },
+      { key: 'polish', name: 'Answer in Polish', automatic: false, description: 'language' },
+    ] as unknown as Rule[];
+    expect(filterRules(list, { query: 'security' }).map((r) => r.key)).toEqual(['no-secrets']);
+    expect(filterRules(list, { query: 'LANGUAGE' }).map((r) => r.key)).toEqual(['polish']);
+    expect(filterRules(list, { automatic: true }).map((r) => r.key)).toEqual(['no-secrets']);
+    expect(filterRules(list, {}).length).toBe(2);
+  });
+
+  it('shows names for keys and falls back to the key', () => {
+    const list = [{ key: 'kotlin', name: 'Kotlin rules' }, { key: 'bare' }];
+    expect(nameOfKey(list, 'kotlin')).toBe('Kotlin rules');
+    expect(nameOfKey(list, 'bare')).toBe('bare');
+    expect(nameOfKey(list, 'missing')).toBe('missing');
+    expect(nameOfKey(list, null)).toBe('');
   });
 
   it('filters skills and sizes their body', () => {

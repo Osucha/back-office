@@ -58,7 +58,7 @@ describe('help map', () => {
       ['/ci', 'ci'],
       ['/ci/e1', 'ci'],
       ['/library/templates', 'templates'],
-      ['/library/interfaces', 'interfaces'],
+      ['/library/rules', 'rules'],
       ['/library/skills', 'skills'],
       ['/my-work', 'myWork'],
       ['/library/workflows', 'libraryWorkflows'],

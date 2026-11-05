@@ -1,8 +1,8 @@
 package pl.mos.backoffice.tasks.adapter.config
 
 import org.springframework.transaction.annotation.Transactional
+import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
-import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 
 /*
@@ -15,7 +15,7 @@ import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 class TransactionalManageTaskTemplates(delegate: ManageTaskTemplates) : ManageTaskTemplates by delegate
 
 @Transactional
-class TransactionalManageTaskInterfaces(delegate: ManageTaskInterfaces) : ManageTaskInterfaces by delegate
+class TransactionalManageRules(delegate: ManageRules) : ManageRules by delegate
 
 @Transactional
 class TransactionalManageSkills(delegate: ManageSkills) : ManageSkills by delegate

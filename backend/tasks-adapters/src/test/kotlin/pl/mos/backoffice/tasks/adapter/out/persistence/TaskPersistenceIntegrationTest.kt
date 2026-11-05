@@ -11,17 +11,16 @@ import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.PostgresTestSupport
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
-import pl.mos.backoffice.tasks.application.port.out.TaskInterfaceRepository
+import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
-import pl.mos.backoffice.tasks.domain.model.Slot
-import pl.mos.backoffice.tasks.domain.model.SlotKind
-import pl.mos.backoffice.tasks.domain.model.TaskInterface
+import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -31,7 +30,7 @@ import java.util.UUID
 @Import(PostgresTestSupport::class)
 class TaskPersistenceIntegrationTest {
 
-    @Autowired lateinit var interfaces: TaskInterfaceRepository
+    @Autowired lateinit var rules: RuleRepository
     @Autowired lateinit var templates: TaskTemplateRepository
     @Autowired lateinit var skills: SkillRepository
     @Autowired lateinit var catalog: TaskCatalog
@@ -41,24 +40,30 @@ class TaskPersistenceIntegrationTest {
     private val suffix = UUID.randomUUID().toString().substring(0, 8)
 
     @Test
-    fun `task interface round trips slots and ports`() {
-        val saved = interfaces.save(
-            TaskInterface.create(
-                key = "rt-$suffix", name = "Round trip", description = "d",
-                inputs = listOf(Slot("diff", SlotKind.ARTIFACT, true, "the diff"), Slot("mode", SlotKind.INPUT, false)),
-                outputs = listOf(Slot("review", SlotKind.ARTIFACT), Slot("review", SlotKind.STATE)),
-                ports = listOf("success", "failure", "changes"), builtIn = true, now = now,
-            ),
-        )
+    fun `rule round trips, is looked up per scope and answers the automatic and key queries`() {
+        val global = rules.save(Rule.create(Rule.Content(key = "ru-$suffix", name = "G", description = "d", content = "Be brief.", automatic = true, tags = listOf("a", "b")), now, builtIn = true, actor = Actor.SYSTEM))
+        val mine = rules.save(Rule.create(Rule.Content(key = "ru-$suffix", name = "P", content = "Be briefer.", scope = Scope.Project(projectId)), now))
+        val auto = rules.save(Rule.create(Rule.Content(key = "ra-$suffix", name = "A", content = "x", scope = Scope.Project(projectId), automatic = true), now))
 
-        val loaded = interfaces.findById(saved.id)!!
-        assertThat(loaded).isEqualTo(saved)
-        assertThat(interfaces.findByKey(saved.key)).isEqualTo(saved)
-        assertThat(interfaces.findAll()).contains(saved)
-        assertThat(loaded.requiredConsumes).containsExactly("diff")
+        assertThat(rules.findById(global.id)).isEqualTo(global)
+        assertThat(rules.findById(mine.id)).isEqualTo(mine)
+        assertThat(rules.findByKeyAndScope("ru-$suffix", Scope.Global)).isEqualTo(global)
+        assertThat(rules.findByKeyAndScope("ru-$suffix", Scope.Project(projectId))).isEqualTo(mine)
+        assertThat(rules.findByKeyAndScope("ru-$suffix", Scope.Project(UUID.randomUUID()))).isNull()
+        assertThat(rules.findVisible(null)).contains(global).doesNotContain(mine, auto)
+        assertThat(rules.findVisible(projectId)).contains(global, mine, auto)
+        assertThat(rules.findAutomatic(Scope.Global)).contains(global).doesNotContain(mine, auto)
+        assertThat(rules.findAutomatic(Scope.Project(projectId))).containsExactly(auto)
+        assertThat(rules.existsByKey("ru-$suffix")).isTrue()
+        assertThat(rules.existsByKey("none-$suffix")).isFalse()
 
-        interfaces.delete(saved.id)
-        assertThat(interfaces.findByKey(saved.key)).isNull()
+        val updated = rules.save(global.update(Rule.Content(name = "G2", content = "Shorter.", automatic = false), now.plusSeconds(1), Actor.SYSTEM))
+        assertThat(rules.findById(global.id)).isEqualTo(updated)
+        assertThat(rules.findAutomatic(Scope.Global)).doesNotContain(updated)
+
+        listOf(global, mine, auto).forEach { rules.delete(it.id) }
+        assertThat(rules.findById(global.id)).isNull()
+        assertThat(rules.existsByKey("ru-$suffix")).isFalse()
     }
 
     @Test
@@ -67,8 +72,9 @@ class TaskPersistenceIntegrationTest {
         val model = ModelProfileId.new()
         val content = TaskTemplate.Content(
             key = "tpl-$suffix", name = "Template", description = "desc", abstract = false, extendsKey = "base-$suffix",
-            implements = listOf("if-$suffix"), executor = TaskExecutor.IMPLEMENT, scope = Scope.Project(projectId), modelProfileId = model,
+            category = TemplateCategory.IMPLEMENTATION, executor = TaskExecutor.IMPLEMENT, scope = Scope.Project(projectId), modelProfileId = model,
             prompt = Prompt("sys", "usr", PromptMode.REPLACE), skills = listOf(skill.key), removeSkills = listOf("other"),
+            rules = listOf("rl-$suffix", "rl2-$suffix"), removeRules = listOf("ask-dont-guess"),
             config = mapOf("agent" to "OPENCODE", "verifyCommand" to null, "push" to true, "mergeRequest" to mapOf("create" to true, "labels" to listOf("ai", 1))),
             outputSchema = """{"type":"object"}""", confidenceField = "confidence", produces = listOf("diff"), consumes = listOf("tasks"), tags = listOf("x", "y"),
         )
@@ -82,6 +88,9 @@ class TaskPersistenceIntegrationTest {
         assertThat(loaded.scope).isEqualTo(Scope.Project(projectId))
         assertThat(loaded.prompt.mode).isEqualTo(PromptMode.REPLACE)
         assertThat(loaded.updatedBy).isEqualTo(actor)
+        assertThat(loaded.category).isEqualTo(TemplateCategory.IMPLEMENTATION)
+        assertThat(loaded.rules).containsExactly("rl-$suffix", "rl2-$suffix")
+        assertThat(loaded.removeRules).containsExactly("ask-dont-guess")
 
         assertThat(templates.findByKeyAndScope(saved.key, Scope.Project(projectId))).isEqualTo(saved)
         assertThat(templates.findByKeyAndScope(saved.key, Scope.Global)).isNull()
@@ -90,9 +99,11 @@ class TaskPersistenceIntegrationTest {
         assertThat(templates.findVisible(UUID.randomUUID())).doesNotContain(saved)
         assertThat(templates.existsExtending("base-$suffix")).isTrue()
         assertThat(templates.existsExtending("nobody-$suffix")).isFalse()
-        assertThat(templates.findKeysImplementing("if-$suffix")).containsExactly(saved.key)
-        assertThat(templates.existsImplementing("if-$suffix")).isTrue()
-        assertThat(templates.existsImplementing("if-none-$suffix")).isFalse()
+        assertThat(templates.existsUsingRule("rl2-$suffix")).isTrue()
+        assertThat(templates.existsUsingRule("ask-dont-guess-$suffix")).isFalse()
+        assertThat(templates.existsUsingRule("rl-")).describedAs("whole keys only").isFalse()
+        assertThat(templates.existsByKey(saved.key)).isTrue()
+        assertThat(templates.existsByKey("none-$suffix")).isFalse()
         assertThat(templates.existsUsingSkill(skill.key)).isTrue()
         assertThat(templates.existsUsingSkill("other")).isFalse()
 
@@ -123,10 +134,10 @@ class TaskPersistenceIntegrationTest {
 
     @Test
     fun `the TaskCatalog bean resolves through the database with shadowing and overrides`() {
-        val iface = interfaces.save(TaskInterface.create(key = "cat-if-$suffix", name = "I", outputs = listOf(Slot("out", SlotKind.ARTIFACT)), ports = listOf("success", "failure", "extra"), now = now))
+        val rule = rules.save(Rule.create(Rule.Content(key = "cat-ru-$suffix", name = "R", content = "Rule text"), now))
         val skill = skills.save(Skill.create(Skill.Content(key = "cat-sk-$suffix", name = "S", content = "# s"), now))
         val base = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-base-$suffix", name = "Base", abstract = true, executor = TaskExecutor.LLM, prompt = Prompt(system = "base"), config = mapOf("a" to 1)), now))
-        val leaf = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-leaf-$suffix", name = "Leaf", extendsKey = base.key, implements = listOf(iface.key), prompt = Prompt(system = "leaf"), produces = listOf("out"), skills = listOf(skill.key)), now))
+        val leaf = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-leaf-$suffix", name = "Leaf", extendsKey = base.key, category = TemplateCategory.REVIEW, rules = listOf(rule.key), prompt = Prompt(system = "leaf"), produces = listOf("out"), skills = listOf(skill.key)), now))
         val shadow = templates.save(TaskTemplate.create(TaskTemplate.Content(key = leaf.key, name = "Mine", extendsKey = base.key, scope = Scope.Project(projectId), prompt = Prompt(system = "mine", mode = PromptMode.REPLACE), executor = TaskExecutor.SPEC_KIT), now))
 
         val global = catalog.resolve(leaf.key, null)!!
@@ -134,7 +145,9 @@ class TaskPersistenceIntegrationTest {
         assertThat(global.executor).isEqualTo(TaskExecutor.LLM)
         assertThat(global.prompt.system).isEqualTo("base\n\nleaf")
         assertThat(global.skills.map { it.key }).containsExactly(skill.key)
-        assertThat(global.ports).containsExactly("success", "failure", "extra")
+        assertThat(global.ports).containsExactly("success", "failure")
+        assertThat(global.category).isEqualTo(TemplateCategory.REVIEW)
+        assertThat(global.rules.map { it.key to it.content }).contains(rule.key to "Rule text")
 
         val mine = catalog.resolve(leaf.key, projectId, TaskOverrides(config = mapOf("a" to null, "b" to 2), promptAppend = "go"))!!
         assertThat(mine.name).isEqualTo("Mine")
@@ -148,9 +161,10 @@ class TaskPersistenceIntegrationTest {
         val entry = catalog.palette(projectId).single { it.key == leaf.key }
         assertThat(entry.projectId).isEqualTo(projectId)
         assertThat(entry.executor).isEqualTo(TaskExecutor.SPEC_KIT)
+        assertThat(catalog.palette(null).single { it.key == leaf.key }.category).isEqualTo(TemplateCategory.REVIEW)
 
         listOf(shadow, leaf, base).forEach { templates.delete(it.id) }
         skills.delete(skill.id)
-        interfaces.delete(iface.id)
+        rules.delete(rule.id)
     }
 }

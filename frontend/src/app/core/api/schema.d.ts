@@ -2707,6 +2707,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/rules': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0055: global rules plus, with projectId, that project's own. */
+    get: operations['listRules'];
+    put?: never;
+    post: operations['createRule'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/rules/{ruleId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ruleId: string;
+      };
+      cookie?: never;
+    };
+    get: operations['getRule'];
+    put: operations['updateRule'];
+    post?: never;
+    /** @description Refused (409) while a template lists the rule. */
+    delete: operations['deleteRule'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/runner/v2/config': {
     parameters: {
       query?: never;
@@ -3116,40 +3152,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/task-interfaces': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations['listTaskInterfaces'];
-    put?: never;
-    post: operations['createTaskInterface'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/task-interfaces/{key}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        key: components['parameters']['key'];
-      };
-      cookie?: never;
-    };
-    get: operations['getTaskInterface'];
-    put: operations['updateTaskInterface'];
-    post?: never;
-    delete: operations['deleteTaskInterface'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   '/task-suites': {
     parameters: {
       query?: never;
@@ -3265,7 +3267,7 @@ export interface paths {
       };
       cookie?: never;
     };
-    /** @description Effective merged task for a project, with lineage and interface check. */
+    /** @description Effective merged task for a project, with lineage, rules and the check of skills and rules. */
     get: operations['resolveTaskTemplate'];
     put?: never;
     /** @description ADR 0054: what a workflow step gets - the template a project sees under the key with the step's overrides applied (prompt append or replace, skills, config, model). The designer shows it next to the step. Same access as the GET. */
@@ -3548,7 +3550,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Control nodes and concrete task templates (grouped by interface) available to the designer for a project. */
+    /** @description Control nodes and concrete task templates (with their category, ADR 0055) available to the designer for a project. */
     get: operations['getWorkflowPalette'];
     put?: never;
     post?: never;
@@ -5312,6 +5314,7 @@ export interface components {
       };
     };
     PaletteTask: {
+      category?: components['schemas']['TemplateCategory'];
       /** @description JSON Schema for `overrides.config` derived from the executor */
       configSchema?: {
         [key: string]: unknown;
@@ -5322,7 +5325,6 @@ export interface components {
       executor?: components['schemas']['TaskExecutor'];
       /** @description The task writes to an external system (a required capability is a write). Approval before write applies (ADR 0033): node config `overrides.config.approval` REQUIRED (default, also when missing) or NOT_REQUIRED, and `overrides.config.approvers` ({projectRoles, users, accountable, forbidSelfApproval}; default owner and maintainer). */
       externalWrite?: boolean;
-      interfaces?: string[];
       key?: string;
       name?: string;
       ports?: string[];
@@ -5732,17 +5734,18 @@ export interface components {
     };
     ResolvedTask: {
       abstract?: boolean;
+      category?: components['schemas']['TemplateCategory'] | null;
+      /** @description skills and rules that do not exist */
+      check?: {
+        ok?: boolean;
+        problems?: string[];
+      };
       confidenceField?: string | null;
       config?: {
         [key: string]: unknown;
       };
       consumes?: string[];
       executor?: components['schemas']['TaskExecutor'];
-      interfaceCheck?: {
-        ok?: boolean;
-        problems?: string[];
-      };
-      interfaces?: string[];
       key?: string;
       lineage?: string[];
       /** Format: uuid */
@@ -5755,6 +5758,12 @@ export interface components {
         system?: string | null;
         user?: string | null;
       };
+      /** @description ADR 0055: the rules the step gets, automatic ones (global, then project) first */
+      rules?: {
+        automatic?: boolean;
+        key?: string;
+        name?: string;
+      }[];
       /** @description merged run inputs of the lineage (ADR 0053) */
       runInputs?: components['schemas']['RunInputField'][];
       skills?: {
@@ -5786,6 +5795,30 @@ export interface components {
       name: string;
       permissions: string[];
       scope: components['schemas']['PermissionScope'];
+    };
+    Rule: components['schemas']['RuleInput'] & {
+      builtIn?: boolean;
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: uuid */
+      id?: string;
+      /** Format: date-time */
+      updatedAt?: string;
+      /** @description who saved the current version (ADR 0017) */
+      readonly updatedBy?: components['schemas']['ActorRef'];
+    };
+    /** @description ADR 0055: a rule is always in the agent's context (a skill is loaded on demand). Model answer steps get it in the system prompt, coding agents at the start of their prompt. An automatic rule applies to every step of its scope (global: every project; project: that project); other rules apply to the templates that list them. */
+    RuleInput: {
+      /** @default false */
+      automatic: boolean;
+      /** @description markdown */
+      content: string;
+      description?: string;
+      /** @description derived from the name when omitted on create; kept when omitted on update */
+      key?: string | null;
+      name: string;
+      scope: components['schemas']['Scope'];
+      tags?: string[];
     };
     /** @description A field of the run start form declared by a library task (ADR 0053). */
     RunInputField: {
@@ -6234,18 +6267,11 @@ export interface components {
       /** @description SKILL.md body (markdown) */
       content: string;
       description?: string;
-      key: string;
+      /** @description ADR 0055: derived from the name when omitted on create; kept when omitted on update */
+      key?: string | null;
       name: string;
       scope: components['schemas']['Scope'];
       tags?: string[];
-    };
-    Slot: {
-      description?: string | null;
-      /** @enum {string} */
-      kind: 'INPUT' | 'STATE' | 'ARTIFACT';
-      name: string;
-      /** @default true */
-      required: boolean;
     };
     SpecKitStatus: {
       allowedByPlatform: boolean;
@@ -6312,28 +6338,6 @@ export interface components {
       };
       executor: components['schemas']['TaskExecutor'];
     };
-    TaskInterface: components['schemas']['TaskInterfaceInput'] & {
-      builtIn?: boolean;
-      /** Format: uuid */
-      id?: string;
-      readonly implementedBy?: string[];
-      /** @description who saved the current version (ADR 0017) */
-      readonly updatedBy?: components['schemas']['ActorRef'];
-    };
-    TaskInterfaceInput: {
-      description?: string;
-      inputs?: components['schemas']['Slot'][];
-      key: string;
-      name: string;
-      outputs?: components['schemas']['Slot'][];
-      /**
-       * @default [
-       *       "success",
-       *       "failure"
-       *     ]
-       */
-      ports: string[];
-    };
     TaskOverrides: {
       addSkills?: string[];
       config?: {
@@ -6392,6 +6396,8 @@ export interface components {
     TaskTemplateInput: {
       /** @default false */
       abstract: boolean;
+      /** @description empty means inherited */
+      category?: components['schemas']['TemplateCategory'] | null;
       confidenceField?: string | null;
       config?: {
         [key: string]: unknown;
@@ -6401,8 +6407,8 @@ export interface components {
       /** @description required on concrete templates unless inherited */
       executor?: components['schemas']['TaskExecutor'] | null;
       extendsKey?: string | null;
-      implements?: string[];
-      key: string;
+      /** @description ADR 0055: technical identifier that workflow steps and other templates refer to. Omitted on create, it is derived from the name (unique across scopes); omitted on update, it stays. Given on create of a project template together with the same extendsKey, the template customises the global one of that key for the project. */
+      key?: string | null;
       /** Format: uuid */
       modelProfileId?: string | null;
       name: string;
@@ -6410,7 +6416,11 @@ export interface components {
       outputSchema?: string | null;
       produces?: string[];
       prompt?: components['schemas']['TaskPrompt'];
+      /** @description rule keys inherited or automatic that this template drops */
+      removeRules?: string[];
       removeSkills?: string[];
+      /** @description ADR 0055: keys of rules this template adds (inherited, unioned) */
+      rules?: string[];
       /** @description Run inputs this task asks for when a run starts (ADR 0053); inherited child-wins by name */
       runInputs?: components['schemas']['RunInputField'][];
       sandboxPolicy?: components['schemas']['SandboxPolicy'];
@@ -6418,6 +6428,19 @@ export interface components {
       skills?: string[];
       tags?: string[];
     };
+    /**
+     * @description ADR 0055: what kind of work a template does; groups the library list and the designer palette. Inherited, child wins.
+     * @enum {string}
+     */
+    TemplateCategory:
+      | 'ANALYSIS'
+      | 'SPECIFICATION'
+      | 'PLANNING'
+      | 'IMPLEMENTATION'
+      | 'REVIEW'
+      | 'JIRA'
+      | 'OPERATIONS'
+      | 'GENERAL';
     TokenUsage: {
       /** Format: int64 */
       cacheReadTokens?: number;
@@ -6779,7 +6802,6 @@ export interface components {
     };
     WorkflowPalette: {
       controlNodes?: components['schemas']['ControlNodeDescriptor'][];
-      interfaces?: components['schemas']['TaskInterface'][];
       /** @description for the expression editor */
       stateFields?: {
         description?: string;
@@ -11884,6 +11906,123 @@ export interface operations {
       };
     };
   };
+  listRules: {
+    parameters: {
+      query?: {
+        projectId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Rule'][];
+        };
+      };
+    };
+  };
+  createRule: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuleInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Rule'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  getRule: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ruleId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Rule'];
+        };
+      };
+    };
+  };
+  updateRule: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ruleId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuleInput'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Rule'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  deleteRule: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ruleId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      409: components['responses']['Problem'];
+    };
+  };
   getRunnerConfig: {
     parameters: {
       query?: never;
@@ -12490,119 +12629,6 @@ export interface operations {
       header?: never;
       path: {
         skillId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Deleted */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      409: components['responses']['Problem'];
-    };
-  };
-  listTaskInterfaces: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TaskInterface'][];
-        };
-      };
-    };
-  };
-  createTaskInterface: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['TaskInterfaceInput'];
-      };
-    };
-    responses: {
-      /** @description Created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TaskInterface'];
-        };
-      };
-    };
-  };
-  getTaskInterface: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        key: components['parameters']['key'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TaskInterface'];
-        };
-      };
-    };
-  };
-  updateTaskInterface: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        key: components['parameters']['key'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['TaskInterfaceInput'];
-      };
-    };
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TaskInterface'];
-        };
-      };
-    };
-  };
-  deleteTaskInterface: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        key: components['parameters']['key'];
       };
       cookie?: never;
     };

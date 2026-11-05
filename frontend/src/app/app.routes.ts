@@ -165,15 +165,8 @@ export const routes: Routes = [
             (m) => m.TemplatesPageComponent,
           ),
       },
-      {
-        path: 'library/interfaces',
-        title: $localize`:@@shell.route.taskInterfaces:Task interfaces`,
-        data: access({ permission: 'library.view' }),
-        loadComponent: () =>
-          import('./features/library/pages/interfaces-page.component').then(
-            (m) => m.InterfacesPageComponent,
-          ),
-      },
+      // ADR 0055: task interfaces are gone; old links land on the templates.
+      { path: 'library/interfaces', redirectTo: 'library/templates' },
       {
         path: 'library/skills',
         title: $localize`:@@shell.route.skills:Skills`,
@@ -182,6 +175,14 @@ export const routes: Routes = [
           import('./features/library/pages/skills-page.component').then(
             (m) => m.SkillsPageComponent,
           ),
+      },
+      {
+        // ADR 0055: rules are always in the agent's context; automatic ones apply to every step.
+        path: 'library/rules',
+        title: $localize`:@@shell.route.rules:Rules`,
+        data: access({ permission: 'library.view' }),
+        loadComponent: () =>
+          import('./features/library/pages/rules-page.component').then((m) => m.RulesPageComponent),
       },
       {
         // Library sources (ADR 0043): git repositories steps of every project attach read-only.

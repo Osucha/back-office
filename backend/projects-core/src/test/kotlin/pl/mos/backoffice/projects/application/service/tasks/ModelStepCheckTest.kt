@@ -48,7 +48,7 @@ class ModelStepCheckTest {
             }
             return ResolvedTask(
                 key, key, executor, overrides.modelProfileId ?: templateModel.takeIf { key == "with-model" }, TaskPrompt(null, null), emptyList(),
-                overrides.config, null, null, if (key == "code-review") listOf("review") else emptyList(), emptyList(), emptyList(), listOf(key),
+                overrides.config, null, null, if (key == "code-review") listOf("review") else emptyList(), emptyList(), null, listOf(key),
                 WorkflowNode.DEFAULT_TASK_PORTS,
             )
         }

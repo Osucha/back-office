@@ -62,9 +62,9 @@ const PERMISSIONS: Readonly<Record<string, () => string>> = {
     $localize`:@@core.permission.evaluation.run:Create suites and tasks; create, start and cancel benchmarks`,
   'library.view': () => $localize`:@@core.permission.library.view:Read the global task library`,
   'library.manage': () =>
-    $localize`:@@core.permission.library.manage:Create and edit global templates, interfaces and skills`,
+    $localize`:@@core.permission.library.manage:Create and edit global templates, skills and rules`,
   'library.project.manage': () =>
-    $localize`:@@core.permission.library.project.manage:Create and edit project-scoped templates and skills`,
+    $localize`:@@core.permission.library.project.manage:Create and edit project-scoped templates, skills and rules`,
   'usage.view': () =>
     $localize`:@@core.permission.usage.view:Read the usage ledger for all projects and benchmarks`,
   'project.usage.view': () =>

@@ -24,9 +24,6 @@ Zob. [Budżety](costs-insights.md#budgets).
 **Dziennik audytu** (audit log): Zapis każdej zmiany, decyzji, logowania i odmowy dostępu. Zob.
 [Administracja](administration.md#audit).
 
-**Interfejs, interfejs zadania** (interface, task interface): Kontrakt, który obiecuje szablon zadania: wejścia, których
-potrzebuje, wyjścia, które wytwarza, i jego porty. Zob. [Interfejsy](task-library.md#interfaces).
-
 **Konstytucja** (constitution): Zasady projektu w Markdownie, przekazywane do Spec Kit i dostępne w promptach. Zob.
 [Tworzenie projektu](projects.md#create-project).
 
@@ -118,8 +115,11 @@ zasobami, siecią i narzędziami. Zob. [Jak działają zadania agentów](agent-e
 **Sygnał CI** (CI signal): Komunikat, który pipeline wysyła poleceniem `backoffice-ci signal <name> --status success|fail`,
 aby zwolnić uruchomienie czekające na CI. Zob. [Węzły oczekiwania na CI](workflows.md#nodes).
 
-**Szablon zadania** (task template): Zadanie wielokrotnego użytku: wykonawca, prompty, umiejętności i konfiguracja;
-rozszerza jednego rodzica i implementuje interfejsy. Zob. [Szablony](task-library.md#templates).
+**Reguła** (rule): Coś, czego agent musi zawsze przestrzegać; jest zawsze w jego kontekście, a reguły automatyczne
+obowiązują w każdym kroku swojego zakresu. Zob. [Reguły](task-library.md#rules).
+
+**Szablon zadania** (task template): Zadanie wielokrotnego użytku: wykonawca, kategoria, prompty, umiejętności, reguły
+i konfiguracja; ma jednego rodzica. Zob. [Szablony](task-library.md#templates).
 
 **Ścieżka sztafety** (relay track): Pasek segmentów, po jednym na każdy odwiedzony krok, pokolorowanych według tego, kto
 trzymał dany krok. Zob. [Pałeczka](getting-started.md#baton).
@@ -136,8 +136,8 @@ a zadania agentów kończą się błędem. Zob. [Budżety](costs-insights.md#bud
 **Twoja kolej** (turn, your turn): Coś, co wymaga Twojej uwagi: bramka do rozstrzygnięcia, nieudane uruchomienie lub
 przegląd CI, budżet. Zbierane w kolejce **Twoja kolej**. Zob. [Twoja kolej](your-turn.md#inbox).
 
-**Umiejętność** (skill): Blok instrukcji wielokrotnego użytku (`SKILL.md`) dodawany do promptów lub przestrzeni roboczych
-szablonów, które go wymieniają. Zob. [Umiejętności](task-library.md#skills).
+**Umiejętność** (skill): Wiedza lub procedura (`SKILL.md`), którą agent otwiera, gdy zadanie jej wymaga; dostają ją
+szablony, które ją wymieniają. Zob. [Umiejętności](task-library.md#skills).
 
 **Uprawnienie** (permission): Prawo, takie jak `run.approve` lub `library.manage`, na poziomie platformy lub projektu.
 Role grupują uprawnienia. Zob. [Członkowie i role projektowe](projects.md#members).

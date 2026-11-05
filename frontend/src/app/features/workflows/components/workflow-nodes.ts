@@ -11,6 +11,7 @@ import { CustomNodeComponent, Vflow } from 'ngx-vflow';
 import type { NodeKind } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
 import { executorLabel } from '../../../core/ui/executors';
+import { categoryLabel } from '../../../core/ui/template-categories';
 import { humanize } from '../../../core/ui/status-tag.component';
 import { capabilityLabels, pinnedConnection } from '../../connections/public-api';
 import { NODE_KIND_META, portHandleId, type CanvasNodeData } from '../data/graph-model';
@@ -377,7 +378,7 @@ export class EndNodeComponent extends WorkflowNodeBase {}
     <app-node-shell [data]="d" [selected]="selected()" [takenPorts]="taken()">
       <div class="tpl">
         @if (d.node.task?.templateKey; as key) {
-          <span class="key" [title]="key">{{ key }}</span>
+          <span class="key" [title]="d.templateName ?? key">{{ d.templateName ?? key }}</span>
         } @else {
           <span class="key" i18n="@@workflows.node.noTemplate">no template</span>
         }
@@ -385,13 +386,15 @@ export class EndNodeComponent extends WorkflowNodeBase {}
           <span class="exec" [title]="d.executor">{{ executorLabel(d.executor) }}</span>
         }
       </div>
-      @if (d.interfaces.length || hasOverrides() || d.requiredCapabilities?.length) {
+      @if (d.category || hasOverrides() || d.requiredCapabilities?.length) {
         <div class="ifaces">
           @if (d.requiredCapabilities?.length) {
             <span class="jira" [title]="jiraTitle()">Jira</span>
           }
-          @for (i of d.interfaces; track i) {
-            <span class="iface">{{ i }}</span>
+          @if (d.category) {
+            <span class="iface" [attr.data-category]="d.category">{{
+              categoryLabel(d.category)
+            }}</span>
           }
           @if (hasOverrides()) {
             <span class="ov" i18n="@@workflows.node.overrides">overrides</span>
@@ -462,6 +465,7 @@ export class EndNodeComponent extends WorkflowNodeBase {}
 export class TaskNodeComponent extends WorkflowNodeBase {
   /** ADR 0054: plain executor names ("Coding agent"); the enum value is the title. */
   readonly executorLabel = executorLabel;
+  readonly categoryLabel = categoryLabel;
   /** "needs: Read issues, Move issues" (+ pinned) for the Jira chip. */
   readonly jiraTitle = computed(() => {
     const d = this.data();

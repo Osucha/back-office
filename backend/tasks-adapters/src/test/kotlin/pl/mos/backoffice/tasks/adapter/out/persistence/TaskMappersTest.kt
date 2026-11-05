@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.tasks.domain.model.Rule
+import pl.mos.backoffice.tasks.domain.model.Scope
+import java.util.UUID
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import tools.jackson.databind.json.JsonMapper
 import java.time.Instant
@@ -58,5 +63,26 @@ class TaskMappersTest {
             RunInputField("audience", "Audience", RunInputType.TEXT),
             RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true),
         )
+    }
+
+    @Test
+    fun `template category, rules and removeRules survive the entity`() {
+        val template = TaskTemplate.create(
+            TaskTemplate.Content(key = "cat", name = "Cat", executor = TaskExecutor.LLM, category = TemplateCategory.PLANNING, rules = listOf("r1", "r2"), removeRules = listOf("r3")),
+            Instant.parse("2026-10-24T10:00:00Z"),
+        )
+        val entity = mappers.toEntity(template)
+        assertThat(entity.rules).isEqualTo("[\"r1\",\"r2\"]")
+        assertThat(mappers.toDomain(entity)).isEqualTo(template)
+    }
+
+    @Test
+    fun `a rule survives domain to entity to domain in both scopes`() {
+        val now = Instant.parse("2026-10-24T10:00:00Z")
+        val global = Rule.create(Rule.Content(key = "be-brief", name = "Be brief", description = "d", content = "Short.", automatic = true, tags = listOf("a")), now, builtIn = true, actor = Actor.SYSTEM)
+        val project = Rule.create(Rule.Content(key = "be-brief", name = "P", content = "Shorter.", scope = Scope.Project(UUID.randomUUID())), now)
+
+        assertThat(mappers.toDomain(mappers.toEntity(global))).isEqualTo(global)
+        assertThat(mappers.toDomain(mappers.toEntity(project))).isEqualTo(project)
     }
 }

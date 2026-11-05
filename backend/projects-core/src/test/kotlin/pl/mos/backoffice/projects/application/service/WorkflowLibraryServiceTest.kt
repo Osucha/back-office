@@ -63,12 +63,12 @@ class WorkflowLibraryServiceTest {
     private val catalog = mockk<TaskCatalog> {
         every { resolve(any(), any(), any()) } answers {
             val key = firstArg<String>()
-            if (key == "missing") null else ResolvedTask(key, key, TaskExecutor.LLM, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(), emptyList(), listOf(key), listOf("success", "failure"))
+            if (key == "missing") null else ResolvedTask(key, key, TaskExecutor.LLM, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         every { palette(any()) } answers {
             val projectId = firstArg<java.util.UUID?>()
-            listOf(TaskSummary("llm-task", "LLM task", "", TaskExecutor.LLM, emptyList(), false, null, listOf("success", "failure"))) +
-                if (projectId == shop.id.value) listOf(TaskSummary("shop-only", "Shop only", "", TaskExecutor.LLM, emptyList(), false, projectId, listOf("success", "failure"))) else emptyList()
+            listOf(TaskSummary("llm-task", "LLM task", "", TaskExecutor.LLM, null, false, null, listOf("success", "failure"))) +
+                if (projectId == shop.id.value) listOf(TaskSummary("shop-only", "Shop only", "", TaskExecutor.LLM, null, false, projectId, listOf("success", "failure"))) else emptyList()
         }
     }
 

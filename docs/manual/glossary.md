@@ -74,9 +74,6 @@ reject. See [Deciding a gate](your-turn.md#gates).
 
 **Human wait**: The time runs spend waiting at gates; the headline figure of Insights. See [Insights](costs-insights.md#insights).
 
-**Interface (task interface)**: A contract a task template promises: the inputs it needs, the outputs it produces and its ports. See
-[Interfaces](task-library.md#interfaces).
-
 **Isolation level**: How strongly a sandbox separates the agent from the machine: Dev, Standard (gVisor) or High (Kata
 microVM). See [How agent jobs run](agent-execution.md#isolation-levels).
 
@@ -145,12 +142,15 @@ See [Sandbox policy](projects.md#sandbox-policy).
 **Shadowing**: A project template or skill with the same key as a global one replaces it for that project. See
 [Templates](task-library.md#templates).
 
-**Skill**: A reusable block of instructions (`SKILL.md`) added to the prompts or workspaces of the templates that
+**Rule**: Something an agent must always follow, always in its context; automatic rules apply to every step of
+their scope. See [Rules](task-library.md#rules).
+
+**Skill**: Knowledge or a procedure (`SKILL.md`) an agent opens when the task needs it; given to the templates that
 list it. See [Skills](task-library.md#skills).
 
 **Suite (task suite)**: The set of prompt tasks and coding jobs models are measured on. See [Task suites](evaluation.md#suites).
 
-**Task template**: A reusable task: executor, prompts, skills and config; it extends one parent and implements interfaces.
+**Task template**: A reusable task: executor, category, prompts, skills, rules and config; it is based on one parent.
 See [Templates](task-library.md#templates).
 
 **Trigger**: How a workflow is meant to start: manual, API, CI entrypoint or Jira transition. See

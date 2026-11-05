@@ -3,13 +3,12 @@ package pl.mos.backoffice.tasks.support
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
 import pl.mos.backoffice.tasks.domain.model.Prompt
+import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
-import pl.mos.backoffice.tasks.domain.model.Slot
-import pl.mos.backoffice.tasks.domain.model.SlotKind
-import pl.mos.backoffice.tasks.domain.model.TaskInterface
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.time.Instant
 import java.util.UUID
@@ -18,17 +17,17 @@ import java.util.UUID
 class Library {
     val now: Instant = Instant.parse("2026-09-26T10:00:00Z")
     val clock: Clock = Clock.fixed(now)
-    val interfaces = InMemoryTaskInterfaceRepository()
     val templates = InMemoryTaskTemplateRepository()
     val skills = InMemorySkillRepository()
-    val lookup = RepositoryLookup(templates, interfaces, skills)
+    val rules = InMemoryRuleRepository()
+    val lookup = RepositoryLookup(templates, skills, rules)
     val projectId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
-
-    fun iface(key: String, inputs: List<Slot> = emptyList(), outputs: List<Slot> = emptyList(), ports: List<String> = TaskInterface.DEFAULT_PORTS): TaskInterface =
-        interfaces.save(TaskInterface.create(key = key, name = key, inputs = inputs, outputs = outputs, ports = ports, now = now))
 
     fun skill(key: String, scope: Scope = Scope.Global, content: String = "# $key"): Skill =
         skills.save(Skill.create(Skill.Content(key = key, name = key, content = content, scope = scope), now))
+
+    fun rule(key: String, scope: Scope = Scope.Global, automatic: Boolean = false, content: String = "Rule $key"): Rule =
+        rules.save(Rule.create(Rule.Content(key = key, name = key, content = content, scope = scope, automatic = automatic), now))
 
     fun template(
         key: String,
@@ -36,7 +35,7 @@ class Library {
         abstract: Boolean = false,
         executor: TaskExecutor? = null,
         scope: Scope = Scope.Global,
-        implements: List<String> = emptyList(),
+        category: TemplateCategory? = null,
         prompt: Prompt = Prompt.EMPTY,
         skills: List<String> = emptyList(),
         removeSkills: List<String> = emptyList(),
@@ -48,20 +47,17 @@ class Library {
         tags: List<String> = emptyList(),
         name: String = key,
         runInputs: List<RunInputField> = emptyList(),
+        rules: List<String> = emptyList(),
+        removeRules: List<String> = emptyList(),
     ): TaskTemplate = templates.save(
         TaskTemplate.create(
             TaskTemplate.Content(
-                key = key, name = name, abstract = abstract, extendsKey = extendsKey, implements = implements, executor = executor,
+                key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category, executor = executor,
                 scope = scope, prompt = prompt, skills = skills, removeSkills = removeSkills, config = config, outputSchema = outputSchema,
                 confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags, runInputs = runInputs,
+                rules = rules, removeRules = removeRules,
             ),
             now,
         ),
     )
-
-    companion object {
-        fun artifact(name: String, required: Boolean = true) = Slot(name, SlotKind.ARTIFACT, required)
-        fun state(name: String, required: Boolean = true) = Slot(name, SlotKind.STATE, required)
-        fun input(name: String, required: Boolean = true) = Slot(name, SlotKind.INPUT, required)
-    }
 }

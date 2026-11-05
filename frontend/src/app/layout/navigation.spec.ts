@@ -1,6 +1,6 @@
 import { buildPermissionView, isAllowed } from '../core/auth/permissions';
 import { meFixture } from '../core/auth/testing';
-import { NAVIGATION, visibleNavigation } from './navigation';
+import { NAVIGATION, childGroupStart, visibleNavigation } from './navigation';
 import { initialsOf } from './shell.component';
 import { navTarget } from './navigation';
 
@@ -45,6 +45,25 @@ describe('menu built from permissions', () => {
       (m) => m.label === 'Administration',
     )!;
     expect(navTarget(admin)).toBe('/admin/audit');
+  });
+
+  it('groups the library into Tasks, Workflows and Sources (ADR 0055)', () => {
+    const library = NAVIGATION.find((m) => m.path === '/library')!;
+    const children = library.children!;
+    expect(children.map((c) => c.path)).toEqual([
+      '/library/templates',
+      '/library/skills',
+      '/library/rules',
+      '/library/workflows',
+      '/library/sources',
+    ]);
+    expect(children.map((_, i) => childGroupStart(children, i))).toEqual([
+      { label: 'Tasks' },
+      null,
+      null,
+      { label: undefined },
+      { label: undefined },
+    ]);
   });
 
   it('avatar initials', () => {

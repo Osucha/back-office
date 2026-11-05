@@ -12,13 +12,13 @@ import pl.mos.backoffice.shared.security.PermissionScope
 object TasksPermissions {
     const val MODULE = "tasks"
 
-    /** Read the global task library (templates, interfaces, skills, resolution previews). */
+    /** Read the global task library (templates, skills, rules, resolution previews). */
     const val LIBRARY_VIEW = "library.view"
 
-    /** Create, edit and delete global templates, interfaces and skills. */
+    /** Create, edit and delete global templates, skills and rules. */
     const val LIBRARY_MANAGE = "library.manage"
 
-    /** Create, edit and delete templates and skills scoped to one project. */
+    /** Create, edit and delete templates, skills and rules scoped to one project. */
     const val LIBRARY_PROJECT_MANAGE = "library.project.manage"
 
     /** Declared by the Projects context; members of a project see the project's own library entries. */
@@ -26,7 +26,7 @@ object TasksPermissions {
 
     val definitions: List<PermissionDefinition> = listOf(
         PermissionDefinition(LIBRARY_VIEW, PermissionScope.PLATFORM, MODULE, "Read the global task library"),
-        PermissionDefinition(LIBRARY_MANAGE, PermissionScope.PLATFORM, MODULE, "Create and edit global templates, interfaces and skills"),
-        PermissionDefinition(LIBRARY_PROJECT_MANAGE, PermissionScope.PROJECT, MODULE, "Create and edit project-scoped templates and skills"),
+        PermissionDefinition(LIBRARY_MANAGE, PermissionScope.PLATFORM, MODULE, "Create and edit global templates, skills and rules"),
+        PermissionDefinition(LIBRARY_PROJECT_MANAGE, PermissionScope.PROJECT, MODULE, "Create and edit project-scoped templates, skills and rules"),
     )
 }

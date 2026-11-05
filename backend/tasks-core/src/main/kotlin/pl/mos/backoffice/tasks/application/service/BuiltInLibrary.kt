@@ -4,22 +4,21 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.PromptMode
+import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Skill
-import pl.mos.backoffice.tasks.domain.model.Slot
-import pl.mos.backoffice.tasks.domain.model.SlotKind
-import pl.mos.backoffice.tasks.domain.model.TaskInterface
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.time.Instant
 
 /**
- * The shipped library of docs/architecture/07-task-library.md: nine interfaces, twenty-four global
- * templates and twelve skills, including the SDLC conventions of ADR 0019 (user story, use case, ADR,
- * change-request impact analysis, task list planning and execution, review against the specification).
+ * The shipped library of docs/architecture/07-task-library.md: global templates, eight skills and four rules (ADR 0055),
+ * including the SDLC conventions of ADR 0019 (user story, use case, ADR, change-request impact analysis, task list
+ * planning and execution, review against the specification). Every concrete template has a category.
  *
  * Inheritance: the abstract `base-agent` holds the shared rules (role, constitution, honesty, scope, safety) and the
- * ground-rule skills; `base-llm` adds how an in-process LLM step works (no repository, JSON only when a schema is
+ * ground rules (`agent-ground-rules`, `ask-dont-guess`); `base-llm` adds how an in-process LLM step works (no repository, JSON only when a schema is
  * set) and `base-coding-agent` how a runner step works (repository, file paths as evidence, the runner commits).
  * Every agent template extends one of the two; the generic `llm-task` and `agent-task` stand alone.
  *
@@ -32,14 +31,6 @@ import java.time.Instant
 object BuiltInLibrary {
 
     // ----- keys ---------------------------------------------------------------------------------------
-
-    const val SPECIFIER = "specifier"
-    const val CLARIFIER = "clarifier"
-    const val PLANNER = "planner"
-    const val TASK_PLANNER = "task-planner"
-    const val IMPLEMENTER = "implementer"
-    const val REVIEWER = "reviewer"
-    const val ANALYST = "analyst"
 
     const val BASE_AGENT = "base-agent"
 
@@ -82,9 +73,6 @@ object BuiltInLibrary {
     const val ANGULAR_NG_ZORRO = "angular-ng-zorro"
 
     // SDLC conventions derived from a reference framework (ADR 0019)
-    const val REQUIREMENT_WRITER = "requirement-writer"
-    const val CHANGE_ANALYST = "change-analyst"
-
     const val WRITE_USER_STORY = "write-user-story"
     const val WRITE_USE_CASE = "write-use-case"
     const val WRITE_ADR = "write-adr"
@@ -111,59 +99,22 @@ object BuiltInLibrary {
     /** Title of the task every generated task list must end with (poc/WORKFLOW.md of the reference framework). */
     const val FINAL_TASK_TITLE = "reformat, lint, and test"
 
-    val sdlcInterfaceKeys = listOf(REQUIREMENT_WRITER, CHANGE_ANALYST)
     val sdlcTemplateKeys = listOf(WRITE_USER_STORY, WRITE_USE_CASE, WRITE_ADR, IMPACT_ANALYSIS, PLAN_TASK_LIST, IMPLEMENT_TASK_LIST, REVIEW_AGAINST_SPEC)
-    val sdlcSkillKeys = listOf(AGENT_GROUND_RULES, ASK_DONT_GUESS, DEFINITION_OF_READY_DONE, USER_STORY_FORMAT, USE_CASE_FORMAT, ADR_FORMAT, BUILD_GUARDRAILS)
+    val sdlcSkillKeys = listOf(DEFINITION_OF_READY_DONE, USER_STORY_FORMAT, USE_CASE_FORMAT, ADR_FORMAT, BUILD_GUARDRAILS)
 
-    val interfaceKeys = listOf(SPECIFIER, CLARIFIER, PLANNER, TASK_PLANNER, IMPLEMENTER, REVIEWER, ANALYST) + sdlcInterfaceKeys
     val templateKeys = listOf(
         BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
         IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, LLM_TASK,
         AGENT_TASK,
         PREPARE_WORKSPACE, PROJECT_DIGEST, START_WORKFLOW,
     ) + sdlcTemplateKeys
-    val skillKeys = listOf(SPEC_WRITING, KOTLIN_HEXAGONAL, CONVENTIONAL_COMMITS, SECURITY_REVIEW_CHECKLIST, ANGULAR_NG_ZORRO) + sdlcSkillKeys
+    val skillKeys = listOf(SPEC_WRITING, CONVENTIONAL_COMMITS, SECURITY_REVIEW_CHECKLIST) + sdlcSkillKeys
 
-    /** Skills every agent inherits through `base-agent`. */
-    val baseAgentSkills = listOf(AGENT_GROUND_RULES, ASK_DONT_GUESS)
+    /** ADR 0055: built-in skills that were rules in fact (always in context); moved by V303 in existing databases. */
+    val ruleKeys = listOf(AGENT_GROUND_RULES, ASK_DONT_GUESS, KOTLIN_HEXAGONAL, ANGULAR_NG_ZORRO)
 
-    // ----- interfaces ---------------------------------------------------------------------------------
-
-    fun interfaces(now: Instant): List<TaskInterface> = listOf(
-        iface(SPECIFIER, "Specifier", "Turns an issue into a feature specification.", now,
-            inputs = listOf(artifact("issue", "The fetched issue (summary, description, acceptance criteria).")),
-            outputs = listOf(artifact("spec", "Feature specification in the Spec Kit format."))),
-        iface(CLARIFIER, "Clarifier", "Reads a specification and reports how confident an implementer could be, with questions for the owner.", now,
-            inputs = listOf(artifact("spec", "The specification to check.")),
-            outputs = listOf(state("confidence", "0..1: how unambiguous the spec is."), artifact("clarifications", "Open questions (markdown) with why they matter and a suggested answer."))),
-        iface(PLANNER, "Planner", "Produces a technical plan from a specification.", now,
-            inputs = listOf(artifact("spec", "The specification to plan.")),
-            outputs = listOf(artifact("plan", "Implementation plan (architecture, data model, contracts)."))),
-        iface(TASK_PLANNER, "Task planner", "Breaks a plan into ordered, verifiable tasks.", now,
-            inputs = listOf(artifact("plan", "The plan to break down.")),
-            outputs = listOf(artifact("tasks", "Ordered task list for the implementer."))),
-        iface(IMPLEMENTER, "Implementer", "Changes code in the project repository; the runner commits, pushes a branch and opens a merge request.", now,
-            inputs = listOf(artifact("tasks", "Task list; optional when working straight from the issue.", required = false), artifact("issue", "The issue when no task list exists.", required = false)),
-            outputs = listOf(artifact("diff", "Unified diff of the change."), state("mr", "Merge request URL when one was opened."))),
-        iface(REVIEWER, "Reviewer", "Reviews a diff and returns findings with a verdict.", now,
-            inputs = listOf(artifact("diff", "The unified diff to review.")),
-            outputs = listOf(artifact("review", "Findings, summary and verdict."), state("review", "Verdict and score for routing."))),
-        iface(ANALYST, "Analyst", "Analyses an issue before any work starts: scope, risks, open questions.", now,
-            inputs = listOf(artifact("issue", "The fetched issue.")),
-            outputs = listOf(artifact("analysis", "Structured analysis of the issue."))),
-        iface(REQUIREMENT_WRITER, "Requirement writer", "Turns an issue into a user story with falsifiable acceptance criteria.", now,
-            inputs = listOf(artifact("issue", "The fetched issue.")),
-            outputs = listOf(artifact(ARTIFACT_USER_STORY, "User story with acceptance criteria and open questions."))),
-        iface(CHANGE_ANALYST, "Change analyst", "Analyses a change request: impact on artefacts and components, estimate, options and a recommendation.", now,
-            inputs = listOf(artifact("issue", "The change request as an issue.")),
-            outputs = listOf(artifact(ARTIFACT_IMPACT_ANALYSIS, "Impact analysis in the change-request format."), state("confidence", "0..1: how complete the analysis is."))),
-    )
-
-    private fun iface(key: String, name: String, description: String, now: Instant, inputs: List<Slot>, outputs: List<Slot>) =
-        TaskInterface.create(key = key, name = name, description = description, inputs = inputs, outputs = outputs, builtIn = true, now = now, actor = Actor.SYSTEM)
-
-    private fun artifact(name: String, description: String, required: Boolean = true) = Slot(name, SlotKind.ARTIFACT, required, description)
-    private fun state(name: String, description: String) = Slot(name, SlotKind.STATE, true, description)
+    /** Rules every agent inherits through `base-agent`. */
+    val baseAgentRules = listOf(AGENT_GROUND_RULES, ASK_DONT_GUESS)
 
     // ----- templates ----------------------------------------------------------------------------------
 
@@ -173,7 +124,7 @@ object BuiltInLibrary {
             description = "Abstract root of every agent task: role, project constitution, honesty, scope and safety rules, SDLC ground rules. " +
                 "Extend base-llm or base-coding-agent rather than this template.",
             prompt = Prompt(system = BASE_AGENT_SYSTEM),
-            skills = baseAgentSkills,
+            rules = baseAgentRules,
             tags = listOf("base"),
             runInputs = listOf(INPUT_MATERIAL),
         )),
@@ -190,14 +141,14 @@ object BuiltInLibrary {
             tags = listOf("base", "agent"),
         )),
         template(now, TaskTemplate.Content(
-            key = FETCH_ISSUE, name = "Fetch issue", executor = TaskExecutor.FETCH_ISSUE,
+            key = FETCH_ISSUE, name = "Fetch issue", executor = TaskExecutor.FETCH_ISSUE, category = TemplateCategory.JIRA,
             description = "Loads the issue that triggered the run from the tracker (summary, description, acceptance criteria, labels; " +
                 "no comments or attachments) and stores it as the issue state.",
             produces = listOf("issue"), tags = listOf("jira"),
             runInputs = listOf(ISSUE_KEY_INPUT),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", extendsKey = BASE_CODING_AGENT, implements = listOf(SPECIFIER),
+            key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.SPECIFICATION,
             executor = TaskExecutor.SPEC_KIT,
             description = "Runs the Spec Kit SPECIFY phase in the repository and returns the feature specification. " +
                 "The user prompt starts with the subject line and the issue text, which become the feature description.",
@@ -207,7 +158,7 @@ object BuiltInLibrary {
             consumes = listOf("issue"), produces = listOf("spec"), tags = listOf(TAG_SPEC_KIT),
         )),
         template(now, TaskTemplate.Content(
-            key = CLARIFY_SPEC, name = "Clarify specification", extendsKey = BASE_LLM, implements = listOf(CLARIFIER),
+            key = CLARIFY_SPEC, name = "Clarify specification", extendsKey = BASE_LLM, category = TemplateCategory.SPECIFICATION,
             executor = TaskExecutor.LLM,
             description = "Reads the specification as the implementer would and reports confidence plus the questions (markdown) that would block a clean implementation.",
             prompt = Prompt(system = CLARIFY_SYSTEM, user = CLARIFY_USER),
@@ -215,7 +166,7 @@ object BuiltInLibrary {
             consumes = listOf("spec"), produces = listOf("confidence", "clarifications"), tags = listOf("spec", "gate"),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_PLAN, name = "Spec Kit: plan", extendsKey = BASE_CODING_AGENT, implements = listOf(PLANNER),
+            key = SPEC_KIT_PLAN, name = "Spec Kit: plan", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.PLANNING,
             executor = TaskExecutor.SPEC_KIT,
             description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification Spec Kit reads from the repository. " +
                 "Optional run input techHints passes stack hints.",
@@ -230,7 +181,7 @@ object BuiltInLibrary {
             ),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", extendsKey = BASE_CODING_AGENT, implements = listOf(TASK_PLANNER),
+            key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.PLANNING,
             executor = TaskExecutor.SPEC_KIT,
             description = "Runs the Spec Kit TASKS phase: an ordered, dependency-aware task list from the plan Spec Kit reads from the repository.",
             prompt = Prompt(user = TASKS_USER),
@@ -238,7 +189,7 @@ object BuiltInLibrary {
             consumes = listOf("plan"), produces = listOf("tasks"), tags = listOf(TAG_SPEC_KIT),
         )),
         template(now, TaskTemplate.Content(
-            key = IMPLEMENT_OPENCODE, name = "Implement with OpenCode", extendsKey = BASE_CODING_AGENT, implements = listOf(IMPLEMENTER),
+            key = IMPLEMENT_OPENCODE, name = "Implement with OpenCode", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.IMPLEMENTATION,
             executor = TaskExecutor.IMPLEMENT,
             description = "Implements the task list (or the issue) in a runner job with OpenCode; on a rework it gets the latest review findings. " +
                 "The runner runs verifyCommand when set (none by default), commits, pushes a feature branch and opens a merge request.",
@@ -254,7 +205,7 @@ object BuiltInLibrary {
             tags = listOf("claude-code", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
-            key = CODE_REVIEW, name = "Code review", extendsKey = BASE_LLM, implements = listOf(REVIEWER),
+            key = CODE_REVIEW, name = "Code review", extendsKey = BASE_LLM, category = TemplateCategory.REVIEW,
             executor = TaskExecutor.LLM,
             description = "Strict review of a diff: findings with severity, a verdict and a 0..100 score. Uses the issue, or in a CI run the merge request " +
                 "title and description, as context. The diff comes last, so a cut at maxInputChars never removes the instructions.",
@@ -264,7 +215,7 @@ object BuiltInLibrary {
             consumes = listOf("diff"), produces = listOf("review"), tags = listOf("review"),
         )),
         template(now, TaskTemplate.Content(
-            key = ANALYSE_ISSUE, name = "Analyse issue", extendsKey = BASE_LLM, implements = listOf(ANALYST),
+            key = ANALYSE_ISSUE, name = "Analyse issue", extendsKey = BASE_LLM, category = TemplateCategory.ANALYSIS,
             executor = TaskExecutor.LLM,
             description = "Deprecated (ADR 0054): use impact-analysis. Reads the issue and produces a structured analysis (stored as JSON): " +
                 "scope, affected areas, risks and open questions.",
@@ -273,35 +224,35 @@ object BuiltInLibrary {
             consumes = listOf("issue"), produces = listOf("analysis"), tags = listOf("analysis", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
-            key = NOTIFY_JIRA, name = "Notify Jira", executor = TaskExecutor.NOTIFY,
+            key = NOTIFY_JIRA, name = "Notify Jira", executor = TaskExecutor.NOTIFY, category = TemplateCategory.JIRA,
             description = "Posts a comment on the issue; the message is a template over the run state.",
             config = mapOf("messageTemplate" to "Back Office run {{run.short}} ({{run.workflow}}): {{node.name}}. {{mr.url}}"),
             tags = listOf("jira"),
             runInputs = listOf(ISSUE_KEY_INPUT),
         )),
         template(now, TaskTemplate.Content(
-            key = TRANSITION_ISSUE, name = "Transition issue", executor = TaskExecutor.TRANSITION_ISSUE,
+            key = TRANSITION_ISSUE, name = "Transition issue", executor = TaskExecutor.TRANSITION_ISSUE, category = TemplateCategory.JIRA,
             description = "Moves the issue to a target status by transition name.",
             config = mapOf("toStatus" to "In Review", "failIfMissing" to false),
             tags = listOf("jira"),
             runInputs = listOf(ISSUE_KEY_INPUT),
         )),
         template(now, TaskTemplate.Content(
-            key = PROJECT_DIGEST, name = "Project digest", executor = TaskExecutor.PROJECT_DIGEST,
+            key = PROJECT_DIGEST, name = "Project digest", executor = TaskExecutor.PROJECT_DIGEST, category = TemplateCategory.OPERATIONS,
             description = "Writes what happened in the project since the run parameter since (ADR 0052): runs of other workflows with " +
                 "outcome, duration and cost, repeated and failed steps, gate decisions, and the latest pipelines of pipelineRefs. Produces digest.",
             config = mapOf("maxRuns" to 20, "pipelineRefs" to "develop,main"),
             produces = listOf("digest"), tags = listOf("workflow", "retrospective"),
         )),
         template(now, TaskTemplate.Content(
-            key = START_WORKFLOW, name = "Start workflow", executor = TaskExecutor.START_WORKFLOW,
+            key = START_WORKFLOW, name = "Start workflow", executor = TaskExecutor.START_WORKFLOW, category = TemplateCategory.OPERATIONS,
             description = "Starts another workflow of the project (ADR 0052), right after a human gate: one run per entry of a JSON " +
                 "artefact (for example accepted proposals), with the entry's fields as run parameters. Produces started-runs.",
             config = mapOf("workflow" to "", "parametersFrom" to "proposals", "selection" to "DECISION"),
             produces = listOf("started-runs"), tags = listOf("workflow"),
         )),
         template(now, TaskTemplate.Content(
-            key = LLM_TASK, name = "LLM task", executor = TaskExecutor.LLM,
+            key = LLM_TASK, name = "LLM task", executor = TaskExecutor.LLM, category = TemplateCategory.GENERAL,
             description = "Generic LLM work without a repository (ADR 0034): replace the user prompt in the designer with the task; " +
                 "the run input material is what it works on and revision comments come back as feedback (both in the system prompt). " +
                 "Produces the result artefact.",
@@ -310,19 +261,19 @@ object BuiltInLibrary {
             runInputs = listOf(INPUT_MATERIAL),
         )),
         template(now, TaskTemplate.Content(
-            key = AGENT_TASK, name = "Agent task", executor = TaskExecutor.IMPLEMENT,
+            key = AGENT_TASK, name = "Agent task", executor = TaskExecutor.IMPLEMENT, category = TemplateCategory.GENERAL,
             description = "Generic coding-agent work in the project's repository: replace the user prompt in the designer with the task. " +
                 "The issue, the run input material and revision comments are in the system prompt. Claude Code by default (config agent), " +
                 "no push by default: set push to true for a branch and a merge request. In a project without repositories it runs in an empty " +
                 "workspace and its final answer becomes the result artefact.",
             prompt = Prompt(system = AGENT_TASK_SYSTEM, user = AGENT_TASK_USER),
-            skills = baseAgentSkills,
+            rules = baseAgentRules,
             config = IMPLEMENT_CONFIG + mapOf("agent" to "CLAUDE_CODE", "push" to false, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
             produces = listOf("result"), tags = listOf("agent", "generic"),
             runInputs = listOf(INPUT_MATERIAL),
         )),
         template(now, TaskTemplate.Content(
-            key = PREPARE_WORKSPACE, name = "Prepare workspace", executor = TaskExecutor.IMPLEMENT,
+            key = PREPARE_WORKSPACE, name = "Prepare workspace", executor = TaskExecutor.IMPLEMENT, category = TemplateCategory.OPERATIONS,
             description = "Prepares a run workspace of the workflow (choose it in the step) once for the steps that use it: clones its " +
                 "sources (or the step's own repositories) and runs the workspace setup and the step's setupCommand. Starts no agent and " +
                 "never pushes. Later steps of the same workspace reuse the clones and everything the setup left there.",
@@ -338,7 +289,7 @@ object BuiltInLibrary {
     /** Templates of the delivery conventions adopted in ADR 0019. */
     fun sdlcTemplates(now: Instant): List<TaskTemplate> = listOf(
         template(now, TaskTemplate.Content(
-            key = WRITE_USER_STORY, name = "Write user story", extendsKey = BASE_LLM, implements = listOf(REQUIREMENT_WRITER),
+            key = WRITE_USER_STORY, name = "Write user story", extendsKey = BASE_LLM, category = TemplateCategory.SPECIFICATION,
             executor = TaskExecutor.LLM,
             description = "Turns the issue into a user story with falsifiable acceptance criteria, explicit open questions and a confidence score.",
             prompt = Prompt(system = WRITE_US_SYSTEM, user = WRITE_US_USER),
@@ -347,7 +298,7 @@ object BuiltInLibrary {
             consumes = listOf("issue"), produces = listOf(ARTIFACT_USER_STORY, "confidence"), tags = listOf("sdlc", "requirements"),
         )),
         template(now, TaskTemplate.Content(
-            key = WRITE_USE_CASE, name = "Write use case", extendsKey = BASE_LLM,
+            key = WRITE_USE_CASE, name = "Write use case", extendsKey = BASE_LLM, category = TemplateCategory.SPECIFICATION,
             executor = TaskExecutor.LLM,
             description = "Expands the user story into a use case: actors, triggers, main and alternative flows, business rules, postconditions and permissions.",
             prompt = Prompt(system = WRITE_UC_SYSTEM, user = WRITE_UC_USER),
@@ -356,7 +307,7 @@ object BuiltInLibrary {
             consumes = listOf(ARTIFACT_USER_STORY), produces = listOf(ARTIFACT_USE_CASE, "confidence"), tags = listOf("sdlc", "analysis"),
         )),
         template(now, TaskTemplate.Content(
-            key = WRITE_ADR, name = "Write ADR", extendsKey = BASE_LLM,
+            key = WRITE_ADR, name = "Write ADR", extendsKey = BASE_LLM, category = TemplateCategory.PLANNING,
             executor = TaskExecutor.LLM,
             description = "Drafts an Architecture Decision Record with at least two options, a decision, its rationale and honest consequences " +
                 "(status Proposed; number and date stay placeholders for people to fill in).",
@@ -366,7 +317,7 @@ object BuiltInLibrary {
             consumes = listOf("issue"), produces = listOf("adr", "confidence"), tags = listOf("sdlc", "architecture"),
         )),
         template(now, TaskTemplate.Content(
-            key = IMPACT_ANALYSIS, name = "Change request impact analysis", extendsKey = BASE_LLM, implements = listOf(CHANGE_ANALYST),
+            key = IMPACT_ANALYSIS, name = "Change request impact analysis", extendsKey = BASE_LLM, category = TemplateCategory.ANALYSIS,
             executor = TaskExecutor.LLM,
             description = "Analyses a change request: description, business justification, impact on artefacts and components, new stories, effect on the " +
                 "specification, estimate, options and a recommendation (stored as JSON; plan-task-list reads it).",
@@ -376,7 +327,7 @@ object BuiltInLibrary {
             consumes = listOf("issue"), produces = listOf(ARTIFACT_IMPACT_ANALYSIS, "confidence"), tags = listOf("sdlc", "change-request"),
         )),
         template(now, TaskTemplate.Content(
-            key = PLAN_TASK_LIST, name = "Plan task list", extendsKey = BASE_LLM, implements = listOf(TASK_PLANNER),
+            key = PLAN_TASK_LIST, name = "Plan task list", extendsKey = BASE_LLM, category = TemplateCategory.PLANNING,
             executor = TaskExecutor.LLM,
             description = "Breaks the work (plan or approved impact analysis, user story) into an ordered task list (title, description, verification, " +
                 "test_command, completed) that ends with the mandatory \"$FINAL_TASK_TITLE\" task.",
@@ -395,7 +346,7 @@ object BuiltInLibrary {
             consumes = listOf("tasks"), produces = listOf(ARTIFACT_WORK_LOG), tags = listOf("sdlc", "implement"),
         )),
         template(now, TaskTemplate.Content(
-            key = REVIEW_AGAINST_SPEC, name = "Review against specification", extendsKey = BASE_LLM, implements = listOf(REVIEWER),
+            key = REVIEW_AGAINST_SPEC, name = "Review against specification", extendsKey = BASE_LLM, category = TemplateCategory.REVIEW,
             executor = TaskExecutor.LLM,
             description = "Reviews the diff against the user story, specification and task list: a requirement coverage matrix (kept in the review; " +
                 "a MISSING requirement requests changes), scope creep and defects, with a verdict and a score.",
@@ -643,7 +594,7 @@ object BuiltInLibrary {
         what you produce before it is used. The task is the user message: do exactly that, in this repository,
         and finish with a short summary of what you did and found. Change files only when the task asks for
         changes; when something is unknown, say so instead of guessing. Do not commit or push: when this step
-        pushes, the runner commits and pushes your working tree. Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+        pushes, the runner commits and pushes your working tree. Follow the rules given above.
         {{#project.constitution}}
 
         ## Project constitution
@@ -752,7 +703,7 @@ object BuiltInLibrary {
         Phase SPECIFY of Spec Kit: write the feature specification for the issue above with the specify
         command. The specification describes what and why, never how: user scenarios, functional
         requirements, acceptance scenarios and open questions marked `[NEEDS CLARIFICATION: <question>]`.
-        Do not design the solution and do not write code. Apply the skills: $SPEC_WRITING, $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+        Do not design the solution and do not write code. Apply the skill $SPEC_WRITING and follow the rules given above.
 
     """.trimIndent() + "\n" + FEEDBACK_SECTION
 
@@ -764,7 +715,7 @@ object BuiltInLibrary {
         contracts, verification strategy) with the plan command. Spec Kit reads the specification of this
         feature from the repository; do not ask for it to be pasted. Respect the project constitution; when
         it conflicts with the specification, follow the constitution and list the conflict as an open
-        question in the plan. Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+        question in the plan. Follow the rules given above.
         Technical hints from the owner, when given, are in the run input of the system prompt.
 
     """.trimIndent() + "\n" + FEEDBACK_SECTION
@@ -775,7 +726,7 @@ object BuiltInLibrary {
         Phase TASKS of Spec Kit: break the plan of this feature, which Spec Kit reads from the repository,
         into an ordered task list with the tasks command. Each task is small enough to verify on its own,
         names the files it touches and the test that proves it, and marks tasks that can run in parallel.
-        Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+        Follow the rules given above.
 
     """.trimIndent() + "\n" + FEEDBACK_SECTION
 
@@ -791,7 +742,7 @@ object BuiltInLibrary {
            files) and fix what fails. The runner then runs this step's `verifyCommand` when the owner set
            one (the built-in default sets none) and fails the step when it exits non-zero.
         4. Do not commit or push: the runner commits your working tree and pushes the branch.
-        5. Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS.
+        5. Follow the rules given above.
 
     """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
         {{#artifacts.tasks}}
@@ -1268,7 +1219,7 @@ object BuiltInLibrary {
         every MISSING requirement (as extra tasks before the final one), then run the final task again;
         answer the other findings in the work log.
 
-        Apply the skills: $AGENT_GROUND_RULES, $ASK_DONT_GUESS, $DEFINITION_OF_READY_DONE.
+        Apply the skill $DEFINITION_OF_READY_DONE and follow the rules given above.
 
         ## Task list
         {{artifacts.tasks}}
@@ -1362,12 +1313,8 @@ object BuiltInLibrary {
 
     fun skills(now: Instant): List<Skill> = listOf(
         skill(SPEC_WRITING, "Spec writing", SPEC_WRITING_DESCRIPTION, SPEC_WRITING_MD, listOf("spec"), now),
-        skill(KOTLIN_HEXAGONAL, "Kotlin hexagonal architecture", KOTLIN_HEXAGONAL_DESCRIPTION, KOTLIN_HEXAGONAL_MD, listOf("kotlin", "architecture", "example"), now),
         skill(CONVENTIONAL_COMMITS, "Conventional commits", CONVENTIONAL_COMMITS_DESCRIPTION, CONVENTIONAL_COMMITS_MD, listOf("git"), now),
         skill(SECURITY_REVIEW_CHECKLIST, "Security review checklist", SECURITY_REVIEW_DESCRIPTION, SECURITY_REVIEW_MD, listOf("review", "security"), now),
-        skill(ANGULAR_NG_ZORRO, "Angular with NG-ZORRO", ANGULAR_NG_ZORRO_DESCRIPTION, ANGULAR_NG_ZORRO_MD, listOf("angular", "frontend", "example"), now),
-        skill(AGENT_GROUND_RULES, "Agent ground rules", AGENT_GROUND_RULES_DESCRIPTION, AGENT_GROUND_RULES_MD, listOf("sdlc", "base"), now),
-        skill(ASK_DONT_GUESS, "Ask, don't guess", ASK_DONT_GUESS_DESCRIPTION, ASK_DONT_GUESS_MD, listOf("sdlc", "base"), now),
         skill(DEFINITION_OF_READY_DONE, "Definition of Ready / Done", DEFINITION_OF_READY_DONE_DESCRIPTION, DEFINITION_OF_READY_DONE_MD, listOf("sdlc", "quality"), now),
         skill(USER_STORY_FORMAT, "User story format", USER_STORY_FORMAT_DESCRIPTION, USER_STORY_FORMAT_MD, listOf("sdlc", "requirements"), now),
         skill(USE_CASE_FORMAT, "Use case format", USE_CASE_FORMAT_DESCRIPTION, USE_CASE_FORMAT_MD, listOf("sdlc", "analysis"), now),
@@ -1377,6 +1324,31 @@ object BuiltInLibrary {
 
     private fun skill(key: String, name: String, description: String, content: String, tags: List<String>, now: Instant) =
         Skill.create(Skill.Content(key = key, name = name, description = description, content = content, tags = tags), now, builtIn = true, actor = Actor.SYSTEM)
+
+    // ----- rules (ADR 0055) ---------------------------------------------------------------------------
+
+    /**
+     * Rules are always in the agent's context, so they carry no SKILL.md frontmatter. None is automatic: the ground
+     * rules reach every agent through `base-agent` (and `agent-task`); the two stack rules are examples to copy into a
+     * project and mark automatic there.
+     */
+    fun rules(now: Instant): List<Rule> = listOf(
+        rule(AGENT_GROUND_RULES, "Agent ground rules", "Evidence, scope and safety rules of every agent step.", AGENT_GROUND_RULES_MD, listOf("sdlc", "base"), now),
+        rule(ASK_DONT_GUESS, "Ask, don't guess", "What to do when information is missing, ambiguous or contradictory: source hierarchy, open-question markers, editing existing text.", ASK_DONT_GUESS_MD, listOf("sdlc", "base"), now),
+        rule(KOTLIN_HEXAGONAL, "Kotlin hexagonal architecture", "Example for the Back Office stack: core and adapters modules with ArchUnit-enforced layers. Copy it into a project and adapt it.", KOTLIN_HEXAGONAL_MD, listOf("kotlin", "architecture", "example"), now),
+        rule(ANGULAR_NG_ZORRO, "Angular with NG-ZORRO", "Example for the Back Office stack: standalone components, signals and NG-ZORRO. Copy it into a project and adapt it.", ANGULAR_NG_ZORRO_MD, listOf("angular", "frontend", "example"), now),
+    )
+
+    private fun rule(key: String, name: String, description: String, content: String, tags: List<String>, now: Instant) =
+        Rule.create(Rule.Content(key = key, name = name, description = description, content = withoutFrontmatter(content), tags = tags), now, builtIn = true, actor = Actor.SYSTEM)
+
+    /** The markdown after a leading `---` frontmatter block, or [md] unchanged. */
+    fun withoutFrontmatter(md: String): String {
+        val text = md.trimStart()
+        if (!text.startsWith("---\n")) return md
+        val end = text.indexOf("\n---\n", 4)
+        return if (end < 0) md else text.substring(end + 5).trimStart('\n')
+    }
 
     // Descriptions say when to use the skill (agents pick skills by them); no ": " so the SKILL.md frontmatter stays valid YAML.
     const val SPEC_WRITING_DESCRIPTION = "Use when you write or revise a feature specification (the Spec Kit specify phase). " +

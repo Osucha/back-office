@@ -17,7 +17,7 @@ repository read the same source of truth.
 | [11-governance.md](architecture/11-governance.md) | Budgets, delivery insights, workflow metrics (ADR 0037), provenance attestations, MCP server |
 | [12-prompt-injection.md](architecture/12-prompt-injection.md) | Prompt-injection threat model, data blocks, review guards, credential isolation of the coding agent, MCP gate opt-in |
 | [08-identity-and-access.md](architecture/08-identity-and-access.md) | Users, OIDC login, sessions, permission catalogue, roles, grants, project memberships, gate approver rules, tokens, audit log |
-| [07-task-library.md](architecture/07-task-library.md) | Task templates with inheritance, interfaces, Agent Skills, resolution rules, seeded library |
+| [07-task-library.md](architecture/07-task-library.md) | Task templates with inheritance and categories, Agent Skills, rules, resolution rules, seeded library |
 | [06-security.md](architecture/06-security.md) | Authentication, secrets, sandboxing of agents |
 | [guardrails.md](architecture/guardrails.md) | Build guardrail registry (GR-*) with the negative test that proves each rule fails |
 | [conventions.md](architecture/conventions.md) | Coding conventions, hexagonal rules enforced by ArchUnit, module ownership, testing strategy |
@@ -46,7 +46,7 @@ the agent runner. The backend also serves it live at `/v3/api-docs` and Swagger 
 | [configuration.md](guides/configuration.md) | Every environment variable and Helm value |
 | [deploy-helm.md](guides/deploy-helm.md) | Installing on Kubernetes |
 | [designing-a-workflow.md](guides/designing-a-workflow.md) | Building a process on the canvas: nodes, ports, decisions, gates, CI waits, task overrides |
-| [task-library.md](guides/task-library.md) | Creating templates, interfaces and skills; specialising per project |
+| [task-library.md](guides/task-library.md) | Creating templates, skills and rules; specialising per project |
 | [running-a-benchmark.md](guides/running-a-benchmark.md) | Comparing models on real work |
 | [authentication-and-users.md](guides/authentication-and-users.md) | First administrator, inviting users, groups, roles, grants, project members, tokens, sessions, audit log, other OIDC providers |
 | [ci-integration.md](guides/ci-integration.md) | Issuing a CI token, wiring `backoffice-ci.sh` into a project pipeline, entrypoints, signals |

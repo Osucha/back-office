@@ -6,6 +6,10 @@ export interface SegmentedNavItem {
   label: string;
   link: string;
   count?: number | null;
+  /** Optional group id: a change of group draws a divider (Library: Tasks | Workflows | Sources). */
+  group?: string;
+  /** Label shown before the first item of its group (a group of one item needs none). */
+  groupLabel?: string;
 }
 
 /**
@@ -21,7 +25,13 @@ export interface SegmentedNavItem {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nav class="seg" [attr.aria-label]="label()">
-      @for (s of items(); track s.id) {
+      @for (s of items(); track s.id; let i = $index) {
+        @if (i > 0 && s.group !== items()[i - 1].group) {
+          <span class="sep" aria-hidden="true"></span>
+        }
+        @if (s.groupLabel && (i === 0 || s.group !== items()[i - 1].group)) {
+          <span class="group">{{ s.groupLabel }}</span>
+        }
         <a
           [routerLink]="s.link"
           [class.on]="active() === s.id"
@@ -74,6 +84,22 @@ export interface SegmentedNavItem {
       a:focus-visible {
         outline: 2px solid var(--bo-accent);
         outline-offset: 1px;
+      }
+      .sep {
+        align-self: stretch;
+        width: 1px;
+        margin: 3px 4px;
+        background: var(--bo-line);
+      }
+      .group {
+        display: inline-flex;
+        align-items: center;
+        padding: 0 4px 0 8px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: var(--bo-ink-3);
       }
       .count {
         font-family: var(--bo-font-mono);

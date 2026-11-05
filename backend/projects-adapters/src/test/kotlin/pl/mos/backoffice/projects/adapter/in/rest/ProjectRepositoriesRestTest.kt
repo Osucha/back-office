@@ -108,7 +108,7 @@ class ProjectRepositoriesRestTest {
         tasks.register(
             ResolvedTask(
                 "rest-implement", "Implement", TaskExecutor.IMPLEMENT, null, TaskPrompt(null, "x"), emptyList(), emptyMap(), null, null,
-                emptyList(), emptyList(), emptyList(), listOf("rest-implement"), listOf("success", "failure"),
+                emptyList(), emptyList(), null, listOf("rest-implement"), listOf("success", "failure"),
             ),
         )
         val project = create("""{"key":"${key("NRP")}","name":"No repo","defaults":{"modelProfileId":"${catalog.add()}"}}""")

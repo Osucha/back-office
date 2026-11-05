@@ -55,7 +55,7 @@ class ActingUserConnectionTest {
     private fun project(): Project = Fixtures.project().copy(jiraConnections = ProjectJiraConnections(bot.id))
 
     private fun task(executor: TaskExecutor, config: Map<String, Any?>) =
-        ResolvedTask("t", "t", executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), emptyList(), listOf("t"), listOf("success", "failure"))
+        ResolvedTask("t", "t", executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf("t"), listOf("success", "failure"))
 
     private fun context(startedBy: Actor?, state: Map<String, Any?> = emptyMap(), logs: MutableList<String> = mutableListOf()): NodeContext {
         val project = project()

@@ -1051,7 +1051,7 @@ paths:
     get:
       tags: [workflows]
       operationId: getWorkflowPalette
-      description: Control nodes and concrete task templates (grouped by interface) available to the designer for a project.
+      description: Control nodes and concrete task templates (with their category, ADR 0055) available to the designer for a project.
       parameters: [ { name: projectId, in: query, required: true, schema: { type: string, format: uuid } } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowPalette' } } } }
@@ -1487,37 +1487,6 @@ paths:
         '200': { description: Shell script, content: { text/x-shellscript: { schema: { type: string } } } }
 
   # ---------------------------------------------------------------- task library
-  /task-interfaces:
-    get:
-      tags: [task-library]
-      operationId: listTaskInterfaces
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TaskInterface' } } } } }
-    post:
-      tags: [task-library]
-      operationId: createTaskInterface
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TaskInterfaceInput' } } } }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TaskInterface' } } } }
-  /task-interfaces/{key}:
-    parameters: [ { $ref: '#/components/parameters/key' } ]
-    get:
-      tags: [task-library]
-      operationId: getTaskInterface
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TaskInterface' } } } }
-    put:
-      tags: [task-library]
-      operationId: updateTaskInterface
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TaskInterfaceInput' } } } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TaskInterface' } } } }
-    delete:
-      tags: [task-library]
-      operationId: deleteTaskInterface
-      responses:
-        '204': { description: Deleted }
-        '409': { $ref: '#/components/responses/Problem' }
   /task-templates:
     get:
       tags: [task-library]
@@ -1560,7 +1529,7 @@ paths:
     get:
       tags: [task-library]
       operationId: resolveTaskTemplate
-      description: Effective merged task for a project, with lineage and interface check.
+      description: Effective merged task for a project, with lineage, rules and the check of skills and rules.
       parameters:
         - { name: projectId, in: query, schema: { type: string, format: uuid } }
       responses:
@@ -1580,6 +1549,43 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ResolvedTask' } } } }
         '400': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /rules:
+    get:
+      tags: [task-library]
+      operationId: listRules
+      description: 'ADR 0055: global rules plus, with projectId, that project''s own.'
+      parameters:
+        - { name: projectId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Rule' } } } } }
+    post:
+      tags: [task-library]
+      operationId: createRule
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RuleInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Rule' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /rules/{ruleId}:
+    parameters: [ { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    get:
+      tags: [task-library]
+      operationId: getRule
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Rule' } } } }
+    put:
+      tags: [task-library]
+      operationId: updateRule
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RuleInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Rule' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [task-library]
+      operationId: deleteRule
+      description: Refused (409) while a template lists the rule.
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Problem' }
   /skills:
     get:
       tags: [task-library]
@@ -3061,7 +3067,7 @@ components:
         name: { type: string }
         description: { type: string }
         executor: { $ref: '#/components/schemas/TaskExecutor' }
-        interfaces: { type: array, items: { type: string } }
+        category: { $ref: '#/components/schemas/TemplateCategory' }
         ports: { type: array, items: { type: string } }
         projectScoped: { type: boolean }
         configSchema: { type: object, additionalProperties: true, description: JSON Schema for `overrides.config` derived from the executor }
@@ -3081,7 +3087,6 @@ components:
       properties:
         controlNodes: { type: array, items: { $ref: '#/components/schemas/ControlNodeDescriptor' } }
         tasks: { type: array, items: { $ref: '#/components/schemas/PaletteTask' } }
-        interfaces: { type: array, items: { $ref: '#/components/schemas/TaskInterface' } }
         stateFields: { type: array, items: { type: object, properties: { path: { type: string }, description: { type: string } } }, description: for the expression editor }
 
     # ---- runs
@@ -3465,33 +3470,10 @@ components:
       properties:
         type: { type: string, enum: [GLOBAL, PROJECT] }
         projectId: { type: string, format: uuid, nullable: true }
-    Slot:
-      type: object
-      required: [name, kind]
-      properties:
-        name: { type: string }
-        kind: { type: string, enum: [INPUT, STATE, ARTIFACT] }
-        required: { type: boolean, default: true }
-        description: { type: string, nullable: true }
-    TaskInterfaceInput:
-      type: object
-      required: [key, name]
-      properties:
-        key: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
-        name: { type: string }
-        description: { type: string }
-        inputs: { type: array, items: { $ref: '#/components/schemas/Slot' } }
-        outputs: { type: array, items: { $ref: '#/components/schemas/Slot' } }
-        ports: { type: array, items: { type: string }, default: [success, failure] }
-    TaskInterface:
-      allOf:
-        - $ref: '#/components/schemas/TaskInterfaceInput'
-        - type: object
-          properties:
-            id: { type: string, format: uuid }
-            builtIn: { type: boolean }
-            implementedBy: { type: array, items: { type: string }, readOnly: true }
-            updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], readOnly: true, description: who saved the current version (ADR 0017) }
+    TemplateCategory:
+      type: string
+      description: 'ADR 0055: what kind of work a template does; groups the library list and the designer palette. Inherited, child wins.'
+      enum: [ANALYSIS, SPECIFICATION, PLANNING, IMPLEMENTATION, REVIEW, JIRA, OPERATIONS, GENERAL]
     TaskPrompt:
       type: object
       properties:
@@ -3500,20 +3482,29 @@ components:
         mode: { type: string, enum: [APPEND, REPLACE], default: APPEND }
     TaskTemplateInput:
       type: object
-      required: [key, name, scope]
+      required: [name, scope]
       properties:
-        key: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        key:
+          type: string
+          nullable: true
+          pattern: '^[a-z][a-z0-9-]{1,63}$'
+          description: >-
+            ADR 0055: technical identifier that workflow steps and other templates refer to. Omitted on create, it is
+            derived from the name (unique across scopes); omitted on update, it stays. Given on create of a project
+            template together with the same extendsKey, the template customises the global one of that key for the project.
         name: { type: string }
         description: { type: string }
         abstract: { type: boolean, default: false }
         extendsKey: { type: string, nullable: true }
-        implements: { type: array, items: { type: string } }
+        category: { allOf: [ { $ref: '#/components/schemas/TemplateCategory' } ], nullable: true, description: empty means inherited }
         executor: { allOf: [ { $ref: '#/components/schemas/TaskExecutor' } ], nullable: true, description: required on concrete templates unless inherited }
         scope: { $ref: '#/components/schemas/Scope' }
         modelProfileId: { type: string, format: uuid, nullable: true }
         prompt: { $ref: '#/components/schemas/TaskPrompt' }
         skills: { type: array, items: { type: string } }
         removeSkills: { type: array, items: { type: string } }
+        rules: { type: array, items: { type: string }, description: 'ADR 0055: keys of rules this template adds (inherited, unioned)' }
+        removeRules: { type: array, items: { type: string }, description: 'rule keys inherited or automatic that this template drops' }
         config: { type: object, additionalProperties: true }
         outputSchema: { type: string, nullable: true, description: JSON Schema (LLM executor) }
         confidenceField: { type: string, nullable: true }
@@ -3557,17 +3548,21 @@ components:
         confidenceField: { type: string, nullable: true }
         produces: { type: array, items: { type: string } }
         consumes: { type: array, items: { type: string } }
-        interfaces: { type: array, items: { type: string } }
+        category: { allOf: [ { $ref: '#/components/schemas/TemplateCategory' } ], nullable: true }
+        rules:
+          type: array
+          description: 'ADR 0055: the rules the step gets, automatic ones (global, then project) first'
+          items: { type: object, properties: { key: { type: string }, name: { type: string }, automatic: { type: boolean } } }
         lineage: { type: array, items: { type: string } }
         ports: { type: array, items: { type: string } }
         runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0053) }
         abstract: { type: boolean }
-        interfaceCheck: { type: object, properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
+        check: { type: object, description: 'skills and rules that do not exist', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
     SkillInput:
       type: object
-      required: [key, name, content, scope]
+      required: [name, content, scope]
       properties:
-        key: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        key: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{1,63}$', description: 'ADR 0055: derived from the name when omitted on create; kept when omitted on update' }
         name: { type: string }
         description: { type: string }
         content: { type: string, description: 'SKILL.md body (markdown)' }
@@ -3576,6 +3571,31 @@ components:
     Skill:
       allOf:
         - $ref: '#/components/schemas/SkillInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            builtIn: { type: boolean }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], readOnly: true, description: who saved the current version (ADR 0017) }
+    RuleInput:
+      type: object
+      description: >-
+        ADR 0055: a rule is always in the agent's context (a skill is loaded on demand). Model answer steps get it in the
+        system prompt, coding agents at the start of their prompt. An automatic rule applies to every step of its scope
+        (global: every project; project: that project); other rules apply to the templates that list them.
+      required: [name, content, scope]
+      properties:
+        key: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{1,63}$', description: derived from the name when omitted on create; kept when omitted on update }
+        name: { type: string }
+        description: { type: string }
+        content: { type: string, description: markdown }
+        scope: { $ref: '#/components/schemas/Scope' }
+        automatic: { type: boolean, default: false }
+        tags: { type: array, items: { type: string } }
+    Rule:
+      allOf:
+        - $ref: '#/components/schemas/RuleInput'
         - type: object
           properties:
             id: { type: string, format: uuid }

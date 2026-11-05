@@ -101,7 +101,7 @@ class WatcherBuildingBlocksTest {
         val task = ResolvedTask(
             key = "project-digest", name = "Digest", executor = TaskExecutor.PROJECT_DIGEST, modelProfileId = null, prompt = TaskPrompt(null, null),
             skills = emptyList(), config = mapOf("pipelineRefs" to "develop,main"), outputSchema = null, confidenceField = null,
-            produces = emptyList(), consumes = emptyList(), interfaces = emptyList(), lineage = listOf("project-digest"), ports = listOf("success"),
+            produces = emptyList(), consumes = emptyList(), category = null, lineage = listOf("project-digest"), ports = listOf("success"),
         )
         val node = WorkflowNode.Task("digest", "Digest", task = TaskBinding("project-digest"))
         val run = own.nodeStarted(node, now)

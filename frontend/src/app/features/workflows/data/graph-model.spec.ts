@@ -39,12 +39,11 @@ const PALETTE: WorkflowPalette = {
       key: 'code-review',
       name: 'Code review',
       executor: 'LLM',
-      interfaces: ['reviewer'],
+      category: 'REVIEW',
       ports: ['success', 'failure', 'blocked'],
     },
-    { key: 'fetch-issue', name: 'Fetch issue', executor: 'FETCH_ISSUE', interfaces: [], ports: [] },
+    { key: 'fetch-issue', name: 'Fetch issue', executor: 'FETCH_ISSUE', ports: [] },
   ],
-  interfaces: [],
   stateFields: [],
 };
 
@@ -244,7 +243,7 @@ describe('canvas mapping', () => {
     });
     expect(data.templateName).toBe('Code review');
     expect(data.executor).toBe('LLM');
-    expect(data.interfaces).toEqual(['reviewer']);
+    expect(data.category).toBe('REVIEW');
     expect(data.status).toBe('SUCCEEDED');
     expect(data.attempts).toBe(2);
     expect(data.takenPortsList).toEqual(['failure', 'success']);

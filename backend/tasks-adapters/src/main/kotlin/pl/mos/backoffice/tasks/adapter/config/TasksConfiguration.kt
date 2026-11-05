@@ -13,23 +13,23 @@ import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.PermissionCatalogContribution
 import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.adapter.out.persistence.TaskMappers
+import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
-import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
+import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
-import pl.mos.backoffice.tasks.application.port.out.TaskInterfaceRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
+import pl.mos.backoffice.tasks.application.service.RuleService
 import pl.mos.backoffice.tasks.application.service.SeedTaskLibraryService
 import pl.mos.backoffice.tasks.application.service.SkillService
-import pl.mos.backoffice.tasks.application.service.TaskInterfaceService
 import pl.mos.backoffice.tasks.application.service.TaskTemplateService
 import tools.jackson.databind.json.JsonMapper
 
 /**
  * Instantiates the Task Library use cases from their ports. Beans provided to other modules:
- * `ManageTaskInterfaces`, `ManageTaskTemplates`, `ManageSkills`, `SeedTaskLibrary`, the tasks
+ * `ManageTaskTemplates`, `ManageSkills`, `ManageRules`, `SeedTaskLibrary`, the tasks
  * `PermissionCatalogContribution` and, through `TaskCatalogAdapter`, the shared `TaskCatalog` port.
  * Requires `Clock`, a Jackson 3 `JsonMapper`, `AuthorizationGate` and `AuditPort` from the application.
  */
@@ -41,17 +41,12 @@ class TasksConfiguration {
     fun taskMappers(jsonMapper: JsonMapper) = TaskMappers(jsonMapper)
 
     @Bean
-    fun taskLibraryLookup(templates: TaskTemplateRepository, interfaces: TaskInterfaceRepository, skills: SkillRepository) =
-        RepositoryLookup(templates, interfaces, skills)
+    fun taskLibraryLookup(templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository) =
+        RepositoryLookup(templates, skills, rules)
 
     /** The Task Library permissions for the identity context's catalogue (ADR 0017). */
     @Bean
     fun tasksPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { TasksPermissions.definitions }
-
-    @Bean
-    fun manageTaskInterfaces(
-        interfaces: TaskInterfaceRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageTaskInterfaces = TransactionalManageTaskInterfaces(TaskInterfaceService(interfaces, templates, clock, gate, audit))
 
     @Bean
     fun manageTaskTemplates(
@@ -64,8 +59,13 @@ class TasksConfiguration {
     ): ManageSkills = TransactionalManageSkills(SkillService(skills, templates, clock, gate, audit))
 
     @Bean
-    fun seedTaskLibrary(interfaces: TaskInterfaceRepository, templates: TaskTemplateRepository, skills: SkillRepository, clock: Clock): SeedTaskLibrary =
-        SeedTaskLibraryService(interfaces, templates, skills, clock)
+    fun manageRules(
+        rules: RuleRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
+    ): ManageRules = TransactionalManageRules(RuleService(rules, templates, clock, gate, audit))
+
+    @Bean
+    fun seedTaskLibrary(templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository, clock: Clock): SeedTaskLibrary =
+        SeedTaskLibraryService(templates, skills, rules, clock)
 }
 
 /** On startup: create the missing built-in library entries when `backoffice.tasks.seed-builtin` is on. */
@@ -88,8 +88,8 @@ class TasksStartupListener(
         val result = seed.seed()
         if (result.total > 0) {
             log.info(
-                "seeded task library interfaces={} templates={} skills={} upgraded templates={} skills={} interfaces={}",
-                result.interfacesCreated, result.templatesCreated, result.skillsCreated, result.templatesUpgraded, result.skillsUpgraded, result.interfacesUpgraded,
+                "seeded task library templates={} skills={} rules={} upgraded templates={} skills={} rules={}",
+                result.templatesCreated, result.skillsCreated, result.rulesCreated, result.templatesUpgraded, result.skillsUpgraded, result.rulesUpgraded,
             )
         }
     }

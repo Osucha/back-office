@@ -21,7 +21,7 @@ class TemplateValidatorTest {
         extendsKey: String? = null,
         abstract: Boolean = false,
         executor: TaskExecutor? = TaskExecutor.LLM,
-        implements: List<String> = emptyList(),
+        rules: List<String> = emptyList(),
         skills: List<String> = emptyList(),
         outputSchema: String? = null,
         confidenceField: String? = null,
@@ -29,7 +29,7 @@ class TemplateValidatorTest {
         runInputs: List<RunInputField> = emptyList(),
     ) = TaskTemplate.create(
         TaskTemplate.Content(
-            key = key, name = key, extendsKey = extendsKey, abstract = abstract, executor = executor, implements = implements,
+            key = key, name = key, extendsKey = extendsKey, abstract = abstract, executor = executor, rules = rules,
             skills = skills, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope, runInputs = runInputs,
         ),
         lib.now,
@@ -39,9 +39,9 @@ class TemplateValidatorTest {
 
     @Test
     fun `a well formed concrete template passes`() {
-        lib.iface("reviewer")
+        lib.rule("rr")
         lib.skill("ss")
-        validator.validate(candidate(implements = listOf("reviewer"), skills = listOf("ss"), outputSchema = """{"type":"object"}""", confidenceField = "confidence"))
+        validator.validate(candidate(rules = listOf("rr"), skills = listOf("ss"), outputSchema = """{"type":"object"}""", confidenceField = "confidence"))
     }
 
     @Test
@@ -89,25 +89,38 @@ class TemplateValidatorTest {
     }
 
     @Test
-    fun `implemented interfaces and referenced skills must exist`() {
-        lib.iface("known")
+    fun `referenced rules and skills must exist`() {
+        lib.rule("known")
         lib.skill("known")
         lib.skill("mine", scope = Scope.Project(lib.projectId))
 
-        val problems = validator.problems(candidate(implements = listOf("known", "nope"), skills = listOf("known", "nope", "mine")))
+        val problems = validator.problems(candidate(rules = listOf("known", "nope"), skills = listOf("known", "nope", "mine")))
         assertThat(problems.map { it.field to it.message }).containsExactly(
-            "implements" to "interface nope does not exist",
             "skills" to "skill nope does not exist",
             "skills" to "skill mine does not exist",
+            "rules" to "rule nope does not exist",
         )
         assertThat(fields(candidate(skills = listOf("mine"), scope = Scope.Project(lib.projectId)))).isEmpty()
+        lib.rule("my-rule", scope = Scope.Project(lib.projectId))
+        assertThat(fields(candidate(rules = listOf("my-rule")))).describedAs("a project rule is not visible globally").containsExactly("rules")
+        assertThat(fields(candidate(rules = listOf("my-rule"), scope = Scope.Project(lib.projectId)))).isEmpty()
+        assertThat(fields(candidate(rules = emptyList()).copy(removeRules = listOf("never-existed")))).describedAs("removeRules is not checked").isEmpty()
     }
 
     @Test
     fun `validate collects every problem into one exception`() {
-        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", executor = null, confidenceField = "cc", implements = listOf("i"))) }
+        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", executor = null, confidenceField = "cc", rules = listOf("i"))) }
             .isInstanceOf(ValidationException::class.java)
-            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "executor", "confidenceField", "implements") })
+            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "executor", "confidenceField", "rules") })
+    }
+
+    @Test
+    fun `a project template shadowing a global one inherits its executor and schema through it`() {
+        lib.template("review", executor = TaskExecutor.LLM, outputSchema = "{}")
+        val shadow = candidate(key = "review", extendsKey = "review", executor = null, confidenceField = "confidence", scope = Scope.Project(lib.projectId))
+        assertThat(fields(shadow)).isEmpty()
+        assertThat(fields(candidate(key = "solo", extendsKey = "solo", executor = null, scope = Scope.Project(lib.projectId))))
+            .describedAs("no global template to shadow").containsExactly("extendsKey", "executor")
     }
 
     @Test

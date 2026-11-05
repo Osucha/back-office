@@ -14,6 +14,15 @@ enum class TaskExecutor { LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSIT
 /** A reusable prompt fragment / Agent Skill attached to a task (docs/architecture/07-task-library.md). */
 data class SkillSnapshot(val key: String, val name: String, val content: String)
 
+/**
+ * ADR 0055: a rule the task always gets in its context (a skill is loaded on demand). [automatic] rules apply to every
+ * step of their scope without being listed on a template.
+ */
+data class RuleSnapshot(val key: String, val name: String, val content: String, val automatic: Boolean = false)
+
+/** ADR 0055: what kind of work a template does; groups the library and the designer palette. Inherited, child wins. */
+enum class TemplateCategory { ANALYSIS, SPECIFICATION, PLANNING, IMPLEMENTATION, REVIEW, JIRA, OPERATIONS, GENERAL }
+
 data class TaskPrompt(val system: String?, val user: String?)
 
 /** How the run start form shows a [RunInputField]; `ISSUE_KEY` values become the run's issue key (ADR 0053). */
@@ -82,12 +91,12 @@ data class ResolvedTask(
     val outputSchema: String?,
     /** Name of a numeric 0..1 field in the structured output that becomes `state.confidence`. */
     val confidenceField: String?,
-    /** Artefact / state names this task produces (interface outputs are validated against it). */
+    /** Artefact / state names this task produces. */
     val produces: List<String>,
     /** Artefact / state names this task expects to exist before it runs. */
     val consumes: List<String>,
-    /** Keys of the interfaces this task (or an ancestor) implements. */
-    val interfaces: List<String>,
+    /** ADR 0055: the nearest category in the lineage; null when none sets one. */
+    val category: TemplateCategory? = null,
     /** Keys from the concrete template up to the root ancestor. */
     val lineage: List<String>,
     /** Output ports the node exposes in the workflow designer, e.g. `success`, `failure`. */
@@ -96,6 +105,8 @@ data class ResolvedTask(
     val version: Int? = null,
     /** Run start form fields this task asks for, merged over the lineage (ADR 0053). */
     val runInputs: List<RunInputField> = emptyList(),
+    /** ADR 0055: rules always in the task's context; automatic ones (global, then project) first. */
+    val rules: List<RuleSnapshot> = emptyList(),
 )
 
 data class TaskSummary(
@@ -103,7 +114,7 @@ data class TaskSummary(
     val name: String,
     val description: String,
     val executor: TaskExecutor,
-    val interfaces: List<String>,
+    val category: TemplateCategory?,
     val abstract: Boolean,
     val projectId: UUID?,
     val ports: List<String>,

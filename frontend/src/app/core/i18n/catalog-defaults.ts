@@ -41,8 +41,8 @@ export const PERMISSION_DEFAULTS: Readonly<Record<string, string>> = {
   'evaluation.run': 'Create suites and tasks; create, start and cancel benchmarks',
   // tasks
   'library.view': 'Read the global task library',
-  'library.manage': 'Create and edit global templates, interfaces and skills',
-  'library.project.manage': 'Create and edit project-scoped templates and skills',
+  'library.manage': 'Create and edit global templates, skills and rules',
+  'library.project.manage': 'Create and edit project-scoped templates, skills and rules',
   // llm
   'usage.view': 'Read the usage ledger for all projects and benchmarks',
   'project.usage.view': 'Usage and cost of this project',

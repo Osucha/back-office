@@ -134,7 +134,7 @@ class WriteApprovalEngineTest {
     }
 
     private fun task(key: String, executor: TaskExecutor, config: Map<String, Any?>) =
-        ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), emptyList(), listOf(key), listOf("success", "failure"))
+        ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
 
     @Test
     fun `the engine pauses before each Jira write, approve writes exactly the preview, reject writes nothing`() {

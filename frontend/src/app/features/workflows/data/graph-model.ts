@@ -368,7 +368,8 @@ export interface CanvasNodeData {
   /** Template metadata for TASK nodes (from the palette). */
   templateName: string | null;
   executor: string | null;
-  interfaces: string[];
+  /** ADR 0055: the template's category (GENERAL when it has none); null without a template. */
+  category: string | null;
   /** Connection capabilities the template needs (Jira tasks, ADR 0030). */
   requiredCapabilities?: string[];
   /** Run mode: execution status colour. */
@@ -420,7 +421,7 @@ export function buildNodeData(
     hasInput: meta.hasInput,
     templateName: template?.name ?? null,
     executor: template?.executor ?? null,
-    interfaces: template?.interfaces ?? [],
+    category: template ? (template.category ?? 'GENERAL') : null,
     requiredCapabilities: (template?.requiredCapabilities as string[] | undefined) ?? [],
     status,
     takenPortsList: Array.from(new Set(execs.map((e) => e.port).filter((p): p is string => !!p))),

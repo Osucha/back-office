@@ -294,7 +294,7 @@ data class PaletteTaskDto(
     val name: String,
     val description: String,
     val executor: String,
-    val interfaces: List<String>,
+    val category: String?,
     val ports: List<String>,
     val projectScoped: Boolean,
     val configSchema: Map<String, Any?>,
@@ -306,7 +306,6 @@ data class StateFieldDto(val path: String, val description: String)
 data class WorkflowPaletteDto(
     val controlNodes: List<ControlNodeDescriptorDto>,
     val tasks: List<PaletteTaskDto>,
-    val interfaces: List<Any> = emptyList(),
     val stateFields: List<StateFieldDto>,
 )
 data class ExpressionInputDto(@field:NotNull val expression: String? = null)

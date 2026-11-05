@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter
 
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.web.servlet.FilterRegistrationBean
@@ -102,20 +103,20 @@ class FakeModelCatalog : ModelCatalog {
 class FakeTaskCatalog : TaskCatalog {
     val templates = ConcurrentHashMap<String, ResolvedTask>()
 
-    fun llm(key: String, user: String, system: String? = null, outputSchema: String? = null, confidenceField: String? = null, produces: List<String> = emptyList(), consumes: List<String> = emptyList(), interfaces: List<String> = emptyList(), ports: List<String> = listOf("success", "failure")) =
-        register(ResolvedTask(key, key, TaskExecutor.LLM, null, TaskPrompt(system, user), emptyList(), emptyMap(), outputSchema, confidenceField, produces, consumes, interfaces, listOf(key), ports))
+    fun llm(key: String, user: String, system: String? = null, outputSchema: String? = null, confidenceField: String? = null, produces: List<String> = emptyList(), consumes: List<String> = emptyList(), category: TemplateCategory? = null, ports: List<String> = listOf("success", "failure")) =
+        register(ResolvedTask(key, key, TaskExecutor.LLM, null, TaskPrompt(system, user), emptyList(), emptyMap(), outputSchema, confidenceField, produces, consumes, category, listOf(key), ports))
 
     fun register(task: ResolvedTask): ResolvedTask = task.also { templates[it.key] = it }
 
     /** The seeded templates the default workflows refer to, all LLM-backed so tests do not need a runner or Jira. */
     fun seedDefaults() {
         llm("fetch-issue", "fetch {{input.issueKey}}", produces = listOf("issue"))
-        llm("spec-kit-specify", "specify {{input.issueKey}}\n{{feedback}}", produces = listOf("spec"), interfaces = listOf("Specifier"))
-        llm("clarify-spec", "clarify {{artifacts.spec}}", outputSchema = CLARIFY_SCHEMA, confidenceField = "confidence", produces = listOf("confidence", "clarifications"), consumes = listOf("spec"), interfaces = listOf("Clarifier"))
-        llm("spec-kit-plan", "plan {{artifacts.spec}}", produces = listOf("plan"), interfaces = listOf("Planner"))
-        llm("spec-kit-tasks", "tasks {{artifacts.plan}}", produces = listOf("tasks"), interfaces = listOf("TaskPlanner"))
-        llm("implement-opencode", "implement {{artifacts.tasks}}\n{{feedback}}", produces = listOf("diff"), interfaces = listOf("Implementer"))
-        llm("code-review", "review this diff:\n{{artifacts.diff}}", system = "You are a reviewer.", outputSchema = REVIEW_SCHEMA, produces = listOf("review"), consumes = listOf("diff"), interfaces = listOf("Reviewer"))
+        llm("spec-kit-specify", "specify {{input.issueKey}}\n{{feedback}}", produces = listOf("spec"), category = TemplateCategory.SPECIFICATION)
+        llm("clarify-spec", "clarify {{artifacts.spec}}", outputSchema = CLARIFY_SCHEMA, confidenceField = "confidence", produces = listOf("confidence", "clarifications"), consumes = listOf("spec"), category = TemplateCategory.SPECIFICATION)
+        llm("spec-kit-plan", "plan {{artifacts.spec}}", produces = listOf("plan"), category = TemplateCategory.PLANNING)
+        llm("spec-kit-tasks", "tasks {{artifacts.plan}}", produces = listOf("tasks"), category = TemplateCategory.PLANNING)
+        llm("implement-opencode", "implement {{artifacts.tasks}}\n{{feedback}}", produces = listOf("diff"), category = TemplateCategory.IMPLEMENTATION)
+        llm("code-review", "review this diff:\n{{artifacts.diff}}", system = "You are a reviewer.", outputSchema = REVIEW_SCHEMA, produces = listOf("review"), consumes = listOf("diff"), category = TemplateCategory.REVIEW)
         llm("transition-issue", "transition {{issue.key}}")
     }
 
@@ -132,7 +133,7 @@ class FakeTaskCatalog : TaskCatalog {
     }
 
     override fun palette(projectId: UUID?): List<TaskSummary> =
-        templates.values.map { TaskSummary(it.key, it.name, "template ${it.key}", it.executor, it.interfaces, false, null, it.ports) }.sortedBy { it.key }
+        templates.values.map { TaskSummary(it.key, it.name, "template ${it.key}", it.executor, it.category, false, null, it.ports) }.sortedBy { it.key }
 
     companion object {
         const val CLARIFY_SCHEMA = """{"type":"object","properties":{"confidence":{"type":"number"},"questions":{"type":"array","items":{"type":"string"}}},"required":["confidence","questions"]}"""

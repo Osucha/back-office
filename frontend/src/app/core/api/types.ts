@@ -132,10 +132,8 @@ export type CiSignalResult = S['CiSignalResult'];
 export type TaskExecutor = S['TaskExecutor'];
 export type Scope = S['Scope'];
 export type ScopeType = Scope['type'];
-export type Slot = S['Slot'];
-export type SlotKind = Slot['kind'];
-export type TaskInterfaceInput = S['TaskInterfaceInput'];
-export type TaskInterface = S['TaskInterface'];
+/** ADR 0055: what kind of work a template does (groups the library list and the palette). */
+export type TemplateCategory = S['TemplateCategory'];
 export type TaskPrompt = S['TaskPrompt'];
 export type PromptMode = TaskPrompt['mode'];
 export type TaskTemplateInput = S['TaskTemplateInput'];
@@ -145,6 +143,11 @@ export type ResolvedTask = S['ResolvedTask'];
 export type TaskExecutorDescriptor = S['TaskExecutorDescriptor'];
 export type SkillInput = S['SkillInput'];
 export type Skill = S['Skill'];
+/** ADR 0055: a rule is always in the agent's context (a skill is loaded on demand). */
+export type RuleInput = S['RuleInput'];
+export type Rule = S['Rule'];
+/** ADR 0055: a rule as a resolved step gets it. */
+export type ResolvedRule = NonNullable<ResolvedTask['rules']>[number];
 
 // ---- model evaluation
 export type Pricing = S['Pricing'];
@@ -380,7 +383,6 @@ export const TASK_EXECUTORS: TaskExecutor[] = [
   'START_WORKFLOW',
   'PROJECT_DIGEST',
 ];
-export const SLOT_KINDS: SlotKind[] = ['INPUT', 'STATE', 'ARTIFACT'];
 export const TRIGGER_TYPES: TriggerType[] = ['MANUAL', 'JIRA_TRANSITION', 'API', 'CI', 'SCHEDULE'];
 export const PROVIDERS: Provider[] = [
   'ANTHROPIC',
@@ -398,6 +400,17 @@ export const CAPABILITIES: Capability[] = [
   'TOOLS',
   'VISION',
   'CHEAP',
+];
+/** ADR 0055: library template categories in display order. */
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
+  'ANALYSIS',
+  'SPECIFICATION',
+  'PLANNING',
+  'IMPLEMENTATION',
+  'REVIEW',
+  'JIRA',
+  'OPERATIONS',
+  'GENERAL',
 ];
 export const TASK_CATEGORIES: TaskCategory[] = [
   'CODING',

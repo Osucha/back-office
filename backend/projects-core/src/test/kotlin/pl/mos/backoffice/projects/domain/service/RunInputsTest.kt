@@ -39,7 +39,7 @@ class RunInputsTest {
             val extra = (overrides.config["extra"] as? String)?.let { listOf(RunInputField(it, it.uppercase())) }.orEmpty()
             return ResolvedTask(
                 key, key, TaskExecutor.LLM, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(),
-                emptyList(), listOf(key), listOf("success", "failure"), runInputs = declared + extra,
+                null, listOf(key), listOf("success", "failure"), runInputs = declared + extra,
             )
         }
 

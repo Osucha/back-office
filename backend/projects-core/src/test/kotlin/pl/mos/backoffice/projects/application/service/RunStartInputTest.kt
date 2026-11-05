@@ -56,7 +56,7 @@ class RunStartInputTest {
             }
             return ResolvedTask(
                 key, key, TaskExecutor.LLM, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(),
-                emptyList(), listOf(key), listOf("success", "failure"), runInputs = inputs,
+                null, listOf(key), listOf("success", "failure"), runInputs = inputs,
             )
         }
 

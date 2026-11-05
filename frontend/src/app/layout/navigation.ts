@@ -4,6 +4,10 @@ export interface NavChild {
   path: string;
   label: string;
   access?: AccessRule;
+  /** Optional sub-group id: a change of group starts a new block in the rail. */
+  group?: string;
+  /** Heading shown above the first child of its group (a group of one child needs none). */
+  groupLabel?: string;
 }
 
 export interface NavItem {
@@ -78,30 +82,39 @@ export const NAVIGATION: NavItem[] = [
     label: $localize`:@@shell.nav.library:Library`,
     icon: 'book',
     children: [
+      // ADR 0055: three groups - Tasks (templates, skills, rules), Workflows, Sources.
       {
         path: '/library/templates',
         label: $localize`:@@shell.nav.templates:Templates`,
         access: { permission: 'library.view' },
-      },
-      {
-        path: '/library/interfaces',
-        label: $localize`:@@shell.nav.interfaces:Interfaces`,
-        access: { permission: 'library.view' },
+        group: 'tasks',
+        groupLabel: $localize`:@@shell.nav.libraryTasks:Tasks`,
       },
       {
         path: '/library/skills',
         label: $localize`:@@shell.nav.skills:Skills`,
         access: { permission: 'library.view' },
+        group: 'tasks',
+        groupLabel: $localize`:@@shell.nav.libraryTasks:Tasks`,
       },
       {
-        path: '/library/sources',
-        label: $localize`:@@shell.nav.librarySources:Sources`,
+        path: '/library/rules',
+        label: $localize`:@@shell.nav.rules:Rules`,
         access: { permission: 'library.view' },
+        group: 'tasks',
+        groupLabel: $localize`:@@shell.nav.libraryTasks:Tasks`,
       },
       {
         path: '/library/workflows',
         label: $localize`:@@shell.nav.libraryWorkflows:Workflows`,
         access: { permission: 'library.view' },
+        group: 'workflows',
+      },
+      {
+        path: '/library/sources',
+        label: $localize`:@@shell.nav.librarySources:Sources`,
+        access: { permission: 'library.view' },
+        group: 'sources',
       },
     ],
   },
@@ -225,4 +238,18 @@ export function visibleNavigation(
 /** Where a rail item goes: itself, or its first visible child. */
 export function navTarget(item: NavItem): string {
   return item.children?.[0]?.path ?? item.path;
+}
+
+/**
+ * Whether the child at `index` starts a new group in the rail: null when it continues the group
+ * of the previous child, else the group heading (`label` undefined for a group without one).
+ */
+export function childGroupStart(
+  children: readonly NavChild[],
+  index: number,
+): { label?: string } | null {
+  const c = children[index];
+  if (!c?.group) return null;
+  if (index > 0 && children[index - 1].group === c.group) return null;
+  return { label: c.groupLabel };
 }

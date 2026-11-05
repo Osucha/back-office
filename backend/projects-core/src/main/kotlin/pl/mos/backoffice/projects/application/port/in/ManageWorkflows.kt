@@ -18,6 +18,7 @@ import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import java.util.UUID
 
 /** ADR 0054: a task executor and the JSON Schema of its `config` keys. */
@@ -75,7 +76,8 @@ interface ManageWorkflows {
         val name: String,
         val description: String,
         val executor: TaskExecutor,
-        val interfaces: List<String>,
+        /** ADR 0055: groups the designer palette; null when the template's lineage sets none. */
+        val category: TemplateCategory?,
         val ports: List<String>,
         val projectScoped: Boolean,
         val configSchema: Map<String, Any?>,
@@ -87,7 +89,6 @@ interface ManageWorkflows {
         val deprecated: Boolean = false,
     )
 
-    /** `interfaces` is owned by the Task Library context and left empty here. */
     data class Palette(
         val controlNodes: List<ControlNodeDescriptor>,
         val tasks: List<PaletteTask>,

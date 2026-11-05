@@ -401,10 +401,10 @@ export function registerDefaultPaletteProviders(): void {
               map((list) =>
                 list.map<PaletteItem>((t) => ({
                   id: `template:${t.key}`,
-                  title: t.name || t.key,
-                  subtitle: t.key,
+                  title: t.name || t.key || '',
+                  subtitle: t.description || null,
                   icon: 'file-text',
-                  link: `/library/templates?key=${encodeURIComponent(t.key)}`,
+                  link: `/library/templates?key=${encodeURIComponent(t.key ?? '')}`,
                   keywords: [t.key, t.description],
                 })),
               ),

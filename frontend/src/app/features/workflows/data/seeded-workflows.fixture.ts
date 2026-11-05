@@ -317,7 +317,7 @@ export const SEEDED_PALETTE: WorkflowPalette = {
     key,
     name: key,
     ports: ['success', 'failure'],
-    interfaces: ['x'],
+    category: 'GENERAL',
   })),
   controlNodes: [
     { kind: 'START', ports: ['out'] },

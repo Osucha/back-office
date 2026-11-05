@@ -30,7 +30,7 @@ const routes = [
   '/runs',
   '/ci',
   '/library/templates',
-  '/library/interfaces',
+  '/library/rules',
   '/library/skills',
   '/library/workflows',
   '/models',

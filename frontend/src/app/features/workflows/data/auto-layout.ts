@@ -73,9 +73,9 @@ export function estimateNodeSize(
           o.removeSkills?.length ||
           (o.config && Object.keys(o.config).length))
       );
-      // Without the palette assume the interface row (library templates have one): too much room
-      // is harmless, too little makes cards overlap.
-      if (!palette?.tasks.size || tpl?.interfaces?.length || overridden) body += 1.25;
+      // A library template shows its category row; without the palette assume one: too much
+      // room is harmless, too little makes cards overlap.
+      if (!palette?.tasks.size || tpl || overridden) body += 1.25;
       break;
     }
     case 'DECISION': {

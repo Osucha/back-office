@@ -8,7 +8,7 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import type { NodeKind, PaletteTask, WorkflowPalette } from '../../../core/api/types';
 import { executorLabel } from '../../../core/ui/executors';
 import { NODE_KIND_META, type NodeKindMeta } from '../data/graph-model';
-import { paletteTasks } from '../data/palette-tasks';
+import { paletteGroups, paletteTasks } from '../data/palette-tasks';
 import { NODE_DRAG_MIME } from './workflow-canvas.component';
 
 export interface PalettePick {
@@ -17,14 +17,14 @@ export interface PalettePick {
 }
 
 interface TaskGroup {
-  interfaceKey: string;
+  category: string;
   title: string;
   tasks: PaletteTask[];
 }
 
 const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WAIT_FOR_CI', 'NOTE'];
 
-/** Left drawer: control nodes + task templates grouped by interface; drag or click to add. */
+/** Left drawer: control nodes + task templates grouped by category (ADR 0055); drag or click to add. */
 @Component({
   selector: 'app-node-palette',
   imports: [
@@ -96,7 +96,7 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
           </p>
         }
       }
-      @for (g of groups(); track g.interfaceKey) {
+      @for (g of groups(); track g.category) {
         <div class="group">
           <div class="group-title">{{ g.title }}</div>
           <div class="items">
@@ -110,13 +110,12 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
                 (click)="pick.emit({ kind: 'TASK', templateKey: t.key })"
                 (keydown.enter)="pick.emit({ kind: 'TASK', templateKey: t.key })"
                 nz-tooltip
-                [nzTooltipTitle]="t.description || t.key"
+                [nzTooltipTitle]="t.description || t.name || t.key"
                 nzTooltipPlacement="right"
               >
                 <nz-icon nzType="robot" />
                 <span class="text">
                   <span class="label">{{ t.name || t.key }}</span>
-                  <span class="ports mono">{{ t.key }}</span>
                 </span>
                 @if (t.executor) {
                   <span class="exec" [attr.title]="t.executor">{{
@@ -271,29 +270,8 @@ export class NodePaletteComponent {
   });
 
   readonly groups = computed<TaskGroup[]>(() => {
-    const p = this.palette();
     const q = this.query().trim().toLowerCase();
-    const tasks = paletteTasks(p?.tasks ?? [], q, this.deprecatedKeys());
-    const names = new Map((p?.interfaces ?? []).map((i) => [i.key, i.name || i.key]));
-    const groups = new Map<string, TaskGroup>();
-    for (const t of tasks) {
-      const keys = t.interfaces?.length ? t.interfaces : ['-'];
-      for (const k of keys) {
-        if (!groups.has(k))
-          groups.set(k, {
-            interfaceKey: k,
-            title:
-              k === '-'
-                ? $localize`:@@workflows.palette.otherTasks:Other tasks`
-                : (names.get(k) ?? k),
-            tasks: [],
-          });
-        groups.get(k)!.tasks.push(t);
-      }
-    }
-    return Array.from(groups.values()).sort((a, b) =>
-      a.interfaceKey === '-' ? 1 : b.interfaceKey === '-' ? -1 : a.title.localeCompare(b.title),
-    );
+    return paletteGroups(paletteTasks(this.palette()?.tasks ?? [], q, this.deprecatedKeys()));
   });
 
   portsLabel(ports: readonly string[]): string {

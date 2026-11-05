@@ -62,7 +62,7 @@ class StartWorkflowTaskExecutorTest {
     private fun task(config: Map<String, Any?>) = ResolvedTask(
         key = "start-workflow", name = "Start workflow", executor = TaskExecutor.START_WORKFLOW, modelProfileId = null, prompt = TaskPrompt(null, null),
         skills = emptyList(), config = config, outputSchema = null, confidenceField = null, produces = emptyList(), consumes = emptyList(),
-        interfaces = emptyList(), lineage = listOf("start-workflow"), ports = listOf("success", "failure"),
+        category = null, lineage = listOf("start-workflow"), ports = listOf("success", "failure"),
     )
 
     private fun context(comment: String, afterGate: Boolean = true): NodeContext {

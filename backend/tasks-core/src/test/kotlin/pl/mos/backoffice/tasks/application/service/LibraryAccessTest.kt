@@ -10,7 +10,7 @@ import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
-import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces.InterfaceCommand
+import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
@@ -27,7 +27,7 @@ class LibraryAccessTest {
 
     private fun templates(gate: FakeAuthorizationGate) = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, audit)
     private fun skills(gate: FakeAuthorizationGate) = SkillService(lib.skills, lib.templates, lib.clock, gate, audit)
-    private fun interfaces(gate: FakeAuthorizationGate) = TaskInterfaceService(lib.interfaces, lib.templates, lib.clock, gate, audit)
+    private fun rules(gate: FakeAuthorizationGate) = RuleService(lib.rules, lib.templates, lib.clock, gate, audit)
 
     private fun content(key: String, scope: Scope = Scope.Global) = TaskTemplate.Content(key = key, name = key, scope = scope, executor = TaskExecutor.LLM)
 
@@ -96,7 +96,7 @@ class LibraryAccessTest {
         val gate = FakeAuthorizationGate.permitting("library.manage")
         lib.skill("s1")
         val created = templates(gate).create(content("audited").copy(prompt = Prompt(system = "12345")))
-        val updated = templates(gate).update(created.id, created.content.copy(prompt = Prompt(system = "1234567"), skills = listOf("s1"), extendsKey = null, implements = emptyList()))
+        val updated = templates(gate).update(created.id, created.content.copy(prompt = Prompt(system = "1234567"), skills = listOf("s1"), extendsKey = null))
         templates(gate).update(updated.id, updated.content)
 
         assertThat(audit.operations()).containsExactly("TEMPLATE_CREATE", "TEMPLATE_UPDATE")
@@ -107,7 +107,7 @@ class LibraryAccessTest {
         val diff = audit.entries[1].details
         assertThat(diff["systemPromptLength"]).isEqualTo(mapOf("old" to 5, "new" to 7))
         assertThat(diff["skills"]).isEqualTo(mapOf("old" to emptyList<String>(), "new" to listOf("s1")))
-        assertThat(diff).doesNotContainKeys("name", "extendsKey", "implements").containsEntry("version", 2)
+        assertThat(diff).doesNotContainKeys("name", "extendsKey", "category").containsEntry("version", 2)
     }
 
     @Test
@@ -133,28 +133,44 @@ class LibraryAccessTest {
     }
 
     @Test
-    fun `interfaces are global and need library manage to change`() {
-        val curator = FakeAuthorizationGate.permitting("library.manage")
+    fun `rules follow the scope rules of skills and are audited`() {
+        val curator = FakeAuthorizationGate.permitting("library.manage", "library.view")
         val reader = FakeAuthorizationGate.permitting("library.view")
+        val editor = FakeAuthorizationGate.permitting("library.project.manage", projects = setOf(lib.projectId))
+        val member = FakeAuthorizationGate(FakeAuthorizationGate.user(projects = mapOf(lib.projectId to setOf("project.view"))))
 
-        val created = interfaces(curator).create(InterfaceCommand("writer", "Writer", outputs = listOf(Library.artifact("doc"))))
+        val global = rules(curator).create(Rule.Content(key = "g-rule", name = "G", content = "Be brief.", automatic = true))
         assertThat(curator.checked).containsExactly("library.manage")
-        assertThat(created.definition.updatedBy!!.displayName).isEqualTo("Alice Test")
-        assertThat(interfaces(reader).list().map { it.definition.key }).containsExactly("writer")
-        assertThat(interfaces(reader).get("writer").definition.name).isEqualTo("Writer")
+        assertThat(global.updatedBy!!.displayName).isEqualTo("Alice Test")
+        val local = rules(editor).create(Rule.Content(key = "p-rule", name = "P", content = "Use Kotlin.", scope = Scope.Project(lib.projectId)))
+        assertThat(editor.checked).containsExactly("library.project.manage@${lib.projectId}")
+        rules(curator).update(global.id, Rule.Content(key = "g-rule", name = "G2", content = "Be brief.", automatic = false))
+
+        assertThat(rules(reader).list().map { it.key }).containsExactly("g-rule")
+        assertThat(rules(reader).get(global.id).name).isEqualTo("G2")
         assertThat(reader.checked).containsOnly("library.view")
+        assertThat(rules(member).list(lib.projectId).map { it.key }).describedAs("members see project rules only").containsExactly("p-rule")
+        assertThat(rules(member).get(local.id).key).isEqualTo("p-rule")
+        assertThatThrownBy { rules(member).get(global.id) }.isInstanceOf(InsufficientPermissionException::class.java)
 
-        assertThatThrownBy { interfaces(reader).create(InterfaceCommand("x", "X")) }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { interfaces(reader).update("writer", InterfaceCommand("writer", "W")) }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { interfaces(reader).delete("writer") }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { interfaces(FakeAuthorizationGate.permitting("library.project.manage", projects = setOf(lib.projectId))).create(InterfaceCommand("y", "Y")) }
-            .isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { rules(reader).create(Rule.Content(key = "x", name = "X", content = "x")) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { rules(editor).create(Rule.Content(name = "X", content = "x")) }
+            .describedAs("project editors cannot touch the global library").isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { rules(editor).update(local.id, local.let { Rule.Content(it.key, it.name, it.description, it.content) }) }
+            .describedAs("moving to global needs library.manage").isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { rules(editor).delete(global.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { rules(member).delete(local.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { rules(FakeAuthorizationGate.denyAll()).list() }.isInstanceOf(InsufficientPermissionException::class.java)
 
-        interfaces(curator).update("writer", InterfaceCommand("writer", "Writer 2", outputs = listOf(Library.artifact("doc"))))
-        interfaces(curator).delete("writer")
-        assertThat(audit.operations()).containsExactly("INTERFACE_CREATE", "INTERFACE_UPDATE", "INTERFACE_DELETE")
-        assertThat(audit.entries[1].details["name"]).isEqualTo(mapOf("old" to "Writer", "new" to "Writer 2"))
-        assertThat(audit.entries).allSatisfy { assertThat(it.details["key"]).isEqualTo("writer") }
+        rules(editor).delete(local.id)
+        assertThat(audit.operations()).containsExactly("RULE_CREATE", "RULE_CREATE", "RULE_UPDATE", "RULE_DELETE")
+        assertThat(audit.entries[0].entityType).isEqualTo("Rule")
+        assertThat(audit.entries[0].details).containsEntry("key", "g-rule").containsEntry("automatic", true).containsEntry("contentLength", 9)
+        assertThat(audit.entries[2].details["name"]).isEqualTo(mapOf("old" to "G", "new" to "G2"))
+        assertThat(audit.entries[2].details["automatic"]).isEqualTo(mapOf("old" to true, "new" to false))
+        assertThat(audit.entries[2].details).doesNotContainKeys("key", "contentChanged")
+        assertThat(audit.entries[3].projectId).isEqualTo(lib.projectId)
+        assertThat(audit.entries[3].details).containsEntry("key", "p-rule")
     }
 
     @Test

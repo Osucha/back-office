@@ -4,9 +4,12 @@ import {
   type SegmentedNavItem,
 } from '../../../core/ui/relay/segmented-nav.component';
 
-export type LibrarySection = 'templates' | 'interfaces' | 'skills' | 'sources' | 'workflows';
+export type LibrarySection = 'templates' | 'skills' | 'rules' | 'workflows' | 'sources';
 
-/** Relay segmented control shared by the Library pages (with optional item counts). */
+/**
+ * Relay segmented control shared by the Library pages (with optional item counts), in three groups
+ * (ADR 0055): Tasks (templates, skills, rules), Workflows and Sources.
+ */
 @Component({
   selector: 'app-library-nav',
   imports: [SegmentedNavComponent],
@@ -25,36 +28,45 @@ export class LibraryNavComponent {
 
   readonly items = computed<SegmentedNavItem[]>(() => {
     const c = this.counts();
+    const tasks = $localize`:@@library.nav.group.tasks:Tasks`;
     return [
       {
         id: 'templates',
         label: $localize`:@@library.nav.templates:Templates`,
         link: '/library/templates',
         count: c.templates,
-      },
-      {
-        id: 'interfaces',
-        label: $localize`:@@library.nav.interfaces:Interfaces`,
-        link: '/library/interfaces',
-        count: c.interfaces,
+        group: 'tasks',
+        groupLabel: tasks,
       },
       {
         id: 'skills',
         label: $localize`:@@library.nav.skills:Skills`,
         link: '/library/skills',
         count: c.skills,
+        group: 'tasks',
+        groupLabel: tasks,
       },
       {
-        id: 'sources',
-        label: $localize`:@@library.nav.sources:Sources`,
-        link: '/library/sources',
-        count: c.sources,
+        id: 'rules',
+        label: $localize`:@@library.nav.rules:Rules`,
+        link: '/library/rules',
+        count: c.rules,
+        group: 'tasks',
+        groupLabel: tasks,
       },
       {
         id: 'workflows',
         label: $localize`:@@library.nav.workflows:Workflows`,
         link: '/library/workflows',
         count: c.workflows,
+        group: 'workflows',
+      },
+      {
+        id: 'sources',
+        label: $localize`:@@library.nav.sources:Sources`,
+        link: '/library/sources',
+        count: c.sources,
+        group: 'sources',
       },
     ];
   });

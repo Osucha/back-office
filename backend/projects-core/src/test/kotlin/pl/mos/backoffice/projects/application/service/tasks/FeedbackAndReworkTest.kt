@@ -60,7 +60,7 @@ class FeedbackAndReworkTest {
 
     private fun task(key: String = "step", produces: List<String> = listOf("result"), prompt: TaskPrompt = TaskPrompt(null, "x"), schema: String? = null) = ResolvedTask(
         key = key, name = key, executor = TaskExecutor.LLM, modelProfileId = null, prompt = prompt, skills = emptyList(), config = emptyMap(),
-        outputSchema = schema, confidenceField = null, produces = produces, consumes = emptyList(), interfaces = emptyList(), lineage = listOf(key),
+        outputSchema = schema, confidenceField = null, produces = produces, consumes = emptyList(), category = null, lineage = listOf(key),
         ports = listOf("success", "failure"),
     )
 

@@ -24,7 +24,6 @@ import { ProjectsApi } from '../../../core/api/projects.service';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type { Project, Skill, SkillInput } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
-import { SLUG_PATTERN } from '../../../core/forms/patterns';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { MarkdownViewerComponent } from '../../../core/ui/markdown-viewer.component';
@@ -58,7 +57,6 @@ description: When to use this skill and what it enforces.
 `;
 
 const EMPTY: SkillInput = {
-  key: '',
   name: '',
   description: '',
   content: TEMPLATE,
@@ -102,8 +100,8 @@ const EMPTY: SkillInput = {
         help="skills"
         title="Library"
         i18n-title="@@library.skills.header.title"
-        subtitle="Skills are reusable SKILL.md files: appended to LLM prompts and written into runner workspaces."
-        i18n-subtitle="@@library.skills.header.subtitle"
+        subtitle="A skill is knowledge the agent loads when it needs it (a SKILL.md file). A rule, in contrast, is always in its context."
+        i18n-subtitle="@@library.skills.header.intro"
         [menu]="[{ label: text.reload, icon: 'reload', run: reload }]"
       >
         @if (canCreate()) {
@@ -117,8 +115,8 @@ const EMPTY: SkillInput = {
 
       <bo-filter-bar
         #bar
-        placeholder="Search key, name or tag"
-        i18n-placeholder="@@library.skills.filter.placeholder"
+        placeholder="Search name or tag"
+        i18n-placeholder="@@library.skills.filter.searchName"
         label="Filter skills"
         i18n-label="@@library.skills.filter.label"
         [query]="f.values().q ?? ''"
@@ -239,13 +237,12 @@ const EMPTY: SkillInput = {
                 tabindex="0"
                 (click)="edit(s)"
                 (keydown.enter)="edit(s)"
-                [attr.aria-label]="s.name + ', ' + s.key"
+                [attr.aria-label]="s.name"
               >
                 <td>
                   <div class="cell-main">
                     <div class="cell-line">
                       <span class="cell-title">{{ s.name }}</span>
-                      <span class="key">{{ s.key }}</span>
                       @if (s.builtIn) {
                         <span class="chip outline"
                           ><nz-icon nzType="lock" />
@@ -325,7 +322,7 @@ const EMPTY: SkillInput = {
     <bo-side-panel
       [open]="panelOpen()"
       [title]="editing() ? editing()!.name : text.newTitle"
-      [subtitle]="editing() ? '.claude/skills/' + editing()!.key + '/SKILL.md' : text.newSubtitle"
+      [subtitle]="editing() ? (editing()!.description ?? '') : text.newSubtitle"
       [defaultWidth]="720"
       storageKey="backoffice.panelWidth.skill"
       [bodyLabel]="canEditDraft() ? null : text.details"
@@ -352,43 +349,20 @@ const EMPTY: SkillInput = {
         [boReadonly]="!canEditDraft()"
         (submit)="$event.preventDefault()"
       >
-        <div class="grid">
-          <nz-form-item>
-            <nz-form-label nzRequired nzFor="sk-key" i18n="@@library.skills.key">Key</nz-form-label>
-            <nz-form-control
-              [nzValidateStatus]="keyError() ? 'error' : ''"
-              [nzErrorTip]="keyError() ?? ''"
-              nzExtra="Becomes .claude/skills/<key>/SKILL.md"
-              i18n-nzExtra="@@library.skills.key.extra"
-            >
-              <input
-                nz-input
-                id="sk-key"
-                name="key"
-                class="mono"
-                [ngModel]="draft().key"
-                (ngModelChange)="patch({ key: $event })"
-                [readOnly]="!!editing()"
-                placeholder="kotlin-hexagonal"
-                i18n-placeholder="@@library.skills.key.placeholder"
-              />
-            </nz-form-control>
-          </nz-form-item>
-          <nz-form-item>
-            <nz-form-label nzRequired nzFor="sk-name" i18n="@@library.skills.name"
-              >Name</nz-form-label
-            >
-            <nz-form-control>
-              <input
-                nz-input
-                id="sk-name"
-                name="name"
-                [ngModel]="draft().name"
-                (ngModelChange)="patch({ name: $event })"
-              />
-            </nz-form-control>
-          </nz-form-item>
-        </div>
+        <nz-form-item>
+          <nz-form-label nzRequired nzFor="sk-name" i18n="@@library.skills.name"
+            >Name</nz-form-label
+          >
+          <nz-form-control>
+            <input
+              nz-input
+              id="sk-name"
+              name="name"
+              [ngModel]="draft().name"
+              (ngModelChange)="patch({ name: $event })"
+            />
+          </nz-form-control>
+        </nz-form-item>
         <nz-form-item>
           <nz-form-label nzFor="sk-desc" i18n="@@library.skills.description"
             >Description</nz-form-label
@@ -480,6 +454,12 @@ const EMPTY: SkillInput = {
             <div class="preview-box"><app-markdown [source]="previewSource()" /></div>
           </nz-tab>
         </nz-tabs>
+        @if (editing()?.key) {
+          <p class="field-help key-note" data-skill-key>
+            <span i18n="@@library.skills.keyNote">Technical key (MCP, support):</span>
+            <span class="mono">{{ editing()!.key }}</span>
+          </p>
+        }
       </form>
       <div boPanelFooter>
         <bo-action-bar
@@ -512,6 +492,10 @@ const EMPTY: SkillInput = {
         border-radius: var(--bo-radius-card);
         padding: 12px 16px;
         background: var(--bo-surface);
+      }
+      .key-note {
+        margin-top: 12px;
+        color: var(--bo-ink-3);
       }
       [boPanelFooter] {
         display: block;
@@ -598,25 +582,10 @@ export class SkillsPageComponent {
       : [];
   });
 
-  readonly keyError = computed(() => {
-    const k = this.draft().key;
-    if (!k) return $localize`:@@library.skills.required:Required`;
-    if (!SLUG_PATTERN.test(k) || k.length < 2)
-      return $localize`:@@library.skills.keySlug:Slug: lowercase letters, digits, dashes`;
-    if (
-      !this.editing() &&
-      this.items().some((s) => s.key === k && s.scope.type === this.draft().scope.type)
-    )
-      return $localize`:@@library.skills.keyTaken:Key already exists in this scope`;
-    return null;
-  });
   readonly canSave = computed(() => {
     const d = this.draft();
     return (
-      !this.keyError() &&
-      !!d.name.trim() &&
-      !!d.content.trim() &&
-      (d.scope.type !== 'PROJECT' || !!d.scope.projectId)
+      !!d.name.trim() && !!d.content.trim() && (d.scope.type !== 'PROJECT' || !!d.scope.projectId)
     );
   });
   /** Markdown preview without the YAML frontmatter block. */
@@ -647,7 +616,6 @@ export class SkillsPageComponent {
       untracked(() => {
         const d: SkillInput = s
           ? {
-              key: s.key,
               name: s.name,
               description: s.description ?? '',
               content: s.content,
@@ -680,7 +648,7 @@ export class SkillsPageComponent {
   }
 
   idOf(s: Skill): string {
-    return s.id ?? s.key;
+    return s.id ?? s.key ?? '';
   }
 
   canEdit(s: Skill): boolean {
@@ -767,6 +735,7 @@ export class SkillsPageComponent {
     if (!this.canSave()) return;
     this.saving.set(true);
     const existing = this.editing();
+    // ADR 0055: the key is derived from the name on create and kept on update
     const req = existing?.id
       ? this.api.updateSkill(existing.id, this.draft())
       : this.api.createSkill(this.draft());
@@ -777,8 +746,8 @@ export class SkillsPageComponent {
         this.panel.close();
         this.message.success(
           existing
-            ? $localize`:@@library.skills.saved:Skill "${saved.key}:key:" saved`
-            : $localize`:@@library.skills.created:Skill "${saved.key}:key:" created`,
+            ? $localize`:@@library.skills.saved:Skill "${saved.name}:name:" saved`
+            : $localize`:@@library.skills.created:Skill "${saved.name}:name:" created`,
         );
         this.load();
       },
@@ -789,7 +758,7 @@ export class SkillsPageComponent {
   async remove(s: Skill): Promise<void> {
     if (s.builtIn || !s.id) return;
     const ok = await this.confirm.danger(
-      $localize`:@@library.skills.deleteConfirm.title:Delete skill "${s.key}:key:"?`,
+      $localize`:@@library.skills.deleteConfirm.title:Delete skill "${s.name}:name:"?`,
       $localize`:@@library.skills.deleteConfirm.content:Templates that list it stop receiving it on their next run; their other skills stay.`,
       $localize`:@@library.skills.delete:Delete skill`,
     );

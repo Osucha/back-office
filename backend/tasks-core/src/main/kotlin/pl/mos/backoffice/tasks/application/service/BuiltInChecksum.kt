@@ -1,8 +1,7 @@
 package pl.mos.backoffice.tasks.application.service
 
+import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Skill
-import pl.mos.backoffice.tasks.domain.model.Slot
-import pl.mos.backoffice.tasks.domain.model.TaskInterface
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.security.MessageDigest
 
@@ -21,9 +20,9 @@ object BuiltInChecksum {
         canonical(
             mapOf(
                 "name" to t.name, "description" to t.description, "abstract" to t.abstract, "extendsKey" to t.extendsKey,
-                "implements" to t.implements, "executor" to t.executor?.name, "modelProfileId" to t.modelProfileId?.value?.toString(),
+                "category" to t.category?.name, "executor" to t.executor?.name, "modelProfileId" to t.modelProfileId?.value?.toString(),
                 "promptSystem" to t.prompt.system, "promptUser" to t.prompt.user, "promptMode" to t.prompt.mode.name,
-                "skills" to t.skills, "removeSkills" to t.removeSkills, "config" to t.config, "outputSchema" to t.outputSchema,
+                "skills" to t.skills, "removeSkills" to t.removeSkills, "rules" to t.rules, "removeRules" to t.removeRules, "config" to t.config, "outputSchema" to t.outputSchema,
                 "confidenceField" to t.confidenceField, "produces" to t.produces, "consumes" to t.consumes, "tags" to t.tags,
                 "runInputs" to t.runInputs.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "help" to it.help) },
             ),
@@ -32,16 +31,9 @@ object BuiltInChecksum {
 
     fun of(s: Skill): String = sha256(canonical(mapOf("name" to s.name, "description" to s.description, "content" to s.content, "tags" to s.tags)))
 
-    fun of(i: TaskInterface): String = sha256(
-        canonical(
-            mapOf(
-                "name" to i.name, "description" to i.description, "inputs" to i.inputs.map(::slot), "outputs" to i.outputs.map(::slot),
-                "ports" to i.ports,
-            ),
-        ),
+    fun of(r: Rule): String = sha256(
+        canonical(mapOf("name" to r.name, "description" to r.description, "content" to r.content, "automatic" to r.automatic, "tags" to r.tags)),
     )
-
-    private fun slot(s: Slot): Map<String, Any?> = mapOf("name" to s.name, "kind" to s.kind.name, "required" to s.required, "description" to s.description)
 
     /** Deterministic text of a JSON-like value: sorted keys, no null or blank-string map entries, normalised numbers. */
     fun canonical(value: Any?): String = when (value) {

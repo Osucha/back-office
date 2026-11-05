@@ -29,7 +29,7 @@ class RunInputFieldTest {
         val task = ResolvedTask(
             key = "k", name = "K", executor = TaskExecutor.LLM, modelProfileId = null as ModelProfileId?, prompt = TaskPrompt(null, null),
             skills = emptyList(), config = emptyMap(), outputSchema = null, confidenceField = null, produces = emptyList(), consumes = emptyList(),
-            interfaces = emptyList(), lineage = listOf("k"), ports = listOf("success"),
+            category = null, lineage = listOf("k"), ports = listOf("success"),
         )
 
         assertThat(task.runInputs).isEmpty()

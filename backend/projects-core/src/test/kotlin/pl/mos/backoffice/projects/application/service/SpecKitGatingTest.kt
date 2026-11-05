@@ -53,12 +53,12 @@ class SpecKitGatingTest {
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: java.util.UUID?, overrides: TaskOverrides): ResolvedTask {
             val executor = if (key.startsWith("spec-kit") || key == "my-spec") TaskExecutor.SPEC_KIT else TaskExecutor.LLM
-            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), emptyList(), listOf(key), listOf("success", "failure"))
+            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = listOf(
-            TaskSummary("spec-kit-specify", "Spec Kit: specify", "", TaskExecutor.SPEC_KIT, emptyList(), false, null, listOf("success", "failure")),
-            TaskSummary("my-spec", "My spec (extends Spec Kit)", "", TaskExecutor.SPEC_KIT, emptyList(), false, null, listOf("success", "failure")),
-            TaskSummary("llm-task", "LLM task", "", TaskExecutor.LLM, emptyList(), false, null, listOf("success", "failure")),
+            TaskSummary("spec-kit-specify", "Spec Kit: specify", "", TaskExecutor.SPEC_KIT, null, false, null, listOf("success", "failure")),
+            TaskSummary("my-spec", "My spec (extends Spec Kit)", "", TaskExecutor.SPEC_KIT, null, false, null, listOf("success", "failure")),
+            TaskSummary("llm-task", "LLM task", "", TaskExecutor.LLM, null, false, null, listOf("success", "failure")),
         )
     }
 

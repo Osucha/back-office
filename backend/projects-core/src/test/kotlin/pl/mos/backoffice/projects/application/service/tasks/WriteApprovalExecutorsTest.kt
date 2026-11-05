@@ -37,7 +37,7 @@ class WriteApprovalExecutorsTest {
     private val transition = TransitionIssueTaskExecutor(access, audit)
 
     private fun task(executor: TaskExecutor, config: Map<String, Any?>) =
-        ResolvedTask("t", "t", executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), emptyList(), listOf("t"), listOf("success", "failure"))
+        ResolvedTask("t", "t", executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf("t"), listOf("success", "failure"))
 
     private fun context(state: Map<String, Any?> = emptyMap()): NodeContext {
         val node = WorkflowNode.Task("tell", "Tell the issue", task = TaskBinding("t"))

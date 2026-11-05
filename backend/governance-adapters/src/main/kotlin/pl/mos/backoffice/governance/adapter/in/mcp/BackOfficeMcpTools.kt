@@ -239,7 +239,7 @@ class BackOfficeMcpTools(
         val foundTemplates = templates.list(project, includeAbstract = false)
             .filter { matches(it.key, it.name, it.description, it.tags.joinToString(" ")) }
             .take(MAX_LIMIT)
-            .map { linkedMapOf("key" to it.key, "name" to it.name, "description" to it.description, "executor" to it.executor?.name, "implements" to it.implements, "tags" to it.tags, "version" to it.version) }
+            .map { linkedMapOf("key" to it.key, "name" to it.name, "description" to it.description, "executor" to it.executor?.name, "category" to it.category?.name, "tags" to it.tags, "version" to it.version) }
         val foundSkills = skills.list(project)
             .filter { matches(it.key, it.name, it.description, it.tags.joinToString(" ")) }
             .take(MAX_LIMIT)
@@ -327,7 +327,7 @@ class BackOfficeMcpTools(
             "tasks" to palette.tasks.filterNot { it.deprecated }.map {
                 linkedMapOf(
                     "templateKey" to it.key, "name" to it.name, "description" to it.description, "executor" to it.executor.name,
-                    "interfaces" to it.interfaces, "ports" to it.ports, "projectScoped" to it.projectScoped, "configSchema" to it.configSchema,
+                    "category" to it.category?.name, "ports" to it.ports, "projectScoped" to it.projectScoped, "configSchema" to it.configSchema,
                     "requiredCapabilities" to it.requiredCapabilities.map { c -> c.name }, "externalWrite" to it.externalWrite,
                 )
             },

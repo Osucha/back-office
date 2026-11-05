@@ -240,7 +240,7 @@ class CiRestTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.controlNodes.length()").value(6))
             .andExpect(jsonPath("$.controlNodes[?(@.kind == 'WAIT_FOR_CI')].ports[0]").value("success"))
-            .andExpect(jsonPath("$.tasks[?(@.key == 'code-review')].interfaces[0]").value("Reviewer"))
+            .andExpect(jsonPath("$.tasks[?(@.key == 'code-review')].category").value("REVIEW"))
             .andExpect(jsonPath("$.stateFields[?(@.path == 'review.verdict')]").isNotEmpty)
         // ADR 0054: the config schema of every executor, for the library editor
         mvc.perform(get("/api/v1/workflows/task-executors"))

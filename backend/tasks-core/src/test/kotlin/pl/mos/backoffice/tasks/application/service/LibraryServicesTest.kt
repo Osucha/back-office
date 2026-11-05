@@ -10,16 +10,16 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
-import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskInterfaces.InterfaceCommand
 import pl.mos.backoffice.tasks.domain.model.Prompt
+import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.support.Library
-import pl.mos.backoffice.tasks.support.Library.Companion.artifact
 import java.util.UUID
 
 class LibraryServicesTest {
@@ -33,7 +33,7 @@ class LibraryServicesTest {
         projects = setOf(lib.projectId, other),
     )
     private val audit = RecordingAuditPort()
-    private val interfaces = TaskInterfaceService(lib.interfaces, lib.templates, lib.clock, gate, audit)
+    private val rules = RuleService(lib.rules, lib.templates, lib.clock, gate, audit)
     private val templates = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, audit)
     private val skills = SkillService(lib.skills, lib.templates, lib.clock, gate, audit)
     private val catalog = TaskCatalogService(lib.templates, lib.lookup)
@@ -42,25 +42,98 @@ class LibraryServicesTest {
         TaskTemplate.Content(key = key, name = key, scope = scope, extendsKey = extendsKey, executor = executor, abstract = abstract)
 
     @Test
-    fun `interfaces are unique by key, list their implementers and refuse deletion while implemented`() {
-        val created = interfaces.create(InterfaceCommand("reviewer", "Reviewer", inputs = listOf(artifact("diff")), outputs = listOf(artifact("review"))))
-        assertThat(created.implementedBy).isEmpty()
-        assertThatThrownBy { interfaces.create(InterfaceCommand("reviewer", "Again")) }.isInstanceOf(InvalidStateException::class.java)
+    fun `rules are unique per scope, sorted by name, and cannot be deleted or renamed while a template lists them`() {
+        val rule = rules.create(Rule.Content(key = "be-brief", name = "Be brief", content = "Short answers.", automatic = true, tags = listOf("style", "style")))
+        assertThat(rule.automatic).isTrue()
+        assertThat(rule.tags).containsExactly("style")
+        assertThat(rule.builtIn).isFalse()
+        assertThatThrownBy { rules.create(Rule.Content(key = "be-brief", name = "Again", content = "x")) }.isInstanceOf(InvalidStateException::class.java)
+        val mine = rules.create(Rule.Content(key = "be-brief", name = "Also brief", content = "Shorter.", scope = Scope.Project(lib.projectId)))
+        val alpha = rules.create(Rule.Content(key = "zzz", name = "alpha", content = "a"))
 
-        templates.create(content("review").copy(implements = listOf("reviewer"), consumes = listOf("diff"), produces = listOf("review")))
-        assertThat(interfaces.get("reviewer").implementedBy).containsExactly("review")
-        assertThat(interfaces.list().single().implementedBy).containsExactly("review")
+        assertThat(rules.list().map { it.id }).containsExactly(alpha.id, rule.id)
+        assertThat(rules.list(lib.projectId).map { it.id }).describedAs("by name, case-insensitive").containsExactly(alpha.id, mine.id, rule.id)
+        assertThat(rules.get(rule.id).content).isEqualTo("Short answers.")
 
-        assertThatThrownBy { interfaces.delete("reviewer") }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("review")
-        assertThatThrownBy { interfaces.update("reviewer", InterfaceCommand("renamed", "Reviewer")) }.isInstanceOf(InvalidStateException::class.java)
-
-        val updated = interfaces.update("reviewer", InterfaceCommand("reviewer", "Strict reviewer", ports = listOf("success", "failure", "changes")))
-        assertThat(updated.definition.name).isEqualTo("Strict reviewer")
-        assertThat(updated.definition.ports).containsExactly("success", "failure", "changes")
+        templates.create(content("tt").copy(rules = listOf("be-brief")))
+        assertThatThrownBy { rules.delete(rule.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("used by templates")
+        assertThatThrownBy { rules.delete(mine.id) }.describedAs("the reference check is by key, whatever the scope").isInstanceOf(InvalidStateException::class.java)
+        assertThatThrownBy { rules.update(rule.id, Rule.Content(key = "renamed", name = "Be brief", content = "x")) }.isInstanceOf(InvalidStateException::class.java)
+        assertThatThrownBy { rules.update(alpha.id, Rule.Content(key = "be-brief", name = "alpha", content = "a")) }
+            .describedAs("key clash in the same scope").isInstanceOf(InvalidStateException::class.java).hasMessageContaining("already exists")
+        val updated = rules.update(rule.id, Rule.Content(name = "Be very brief", content = "Shortest.", automatic = false))
+        assertThat(updated.key).describedAs("an update without a key keeps it").isEqualTo("be-brief")
+        assertThat(updated.automatic).isFalse()
+        assertThat(updated.createdAt).isEqualTo(rule.createdAt)
 
         templates.delete(templates.list().single().id)
-        interfaces.delete("reviewer")
-        assertThatThrownBy { interfaces.get("reviewer") }.isInstanceOf(NotFoundException::class.java)
+        rules.delete(mine.id)
+        rules.delete(rule.id)
+        assertThatThrownBy { rules.get(rule.id) }.isInstanceOf(NotFoundException::class.java)
+        assertThatThrownBy { rules.delete(rule.id) }.isInstanceOf(NotFoundException::class.java)
+        assertThat(audit.operations()).containsExactly(
+            "RULE_CREATE", "RULE_CREATE", "RULE_CREATE", "TEMPLATE_CREATE", "RULE_UPDATE", "TEMPLATE_DELETE", "RULE_DELETE", "RULE_DELETE",
+        )
+    }
+
+    @Test
+    fun `a template, skill or rule created without a key gets a unique one derived from its name`() {
+        val first = templates.create(TaskTemplate.Content(name = "Analiza zgłoszenia", executor = TaskExecutor.LLM))
+        val second = templates.create(TaskTemplate.Content(name = "Analiza zgłoszenia", executor = TaskExecutor.LLM, scope = Scope.Project(lib.projectId)))
+        val third = templates.create(TaskTemplate.Content(name = "Analiza  Zgłoszenia!", executor = TaskExecutor.LLM))
+        assertThat(first.key).isEqualTo("analiza-zgloszenia")
+        assertThat(second.key).describedAs("unique across scopes, never shadows by accident").isEqualTo("analiza-zgloszenia-2")
+        assertThat(third.key).isEqualTo("analiza-zgloszenia-3")
+        assertThat(templates.create(TaskTemplate.Content(name = "2FA check", executor = TaskExecutor.LLM)).key).isEqualTo("task-2fa-check")
+
+        assertThat(skills.create(Skill.Content(name = "Kotlin style", content = "# k")).key).isEqualTo("kotlin-style")
+        assertThat(skills.create(Skill.Content(name = "Kotlin style", content = "# k")).key).isEqualTo("kotlin-style-2")
+        assertThat(skills.create(Skill.Content(name = "???", content = "# k")).key).isEqualTo("skill")
+        assertThat(rules.create(Rule.Content(name = "Pisz krótko", content = "x")).key).isEqualTo("pisz-krotko")
+        assertThat(rules.create(Rule.Content(name = "Pisz krótko", content = "y")).key).isEqualTo("pisz-krotko-2")
+        assertThat(rules.create(Rule.Content(name = "1st rule", content = "y")).key).isEqualTo("rule-1st-rule")
+    }
+
+    @Test
+    fun `an update without a key keeps it and an explicit key still works`() {
+        val created = templates.create(TaskTemplate.Content(key = "my-step", name = "My step", executor = TaskExecutor.LLM))
+        val renamed = templates.update(created.id, created.content.copy(key = null, name = "Completely different"))
+        assertThat(renamed.key).isEqualTo("my-step")
+        assertThat(renamed.name).isEqualTo("Completely different")
+
+        val skill = skills.create(Skill.Content(key = "explicit-skill", name = "Whatever", content = "# s"))
+        assertThat(skill.key).isEqualTo("explicit-skill")
+        assertThat(skills.update(skill.id, Skill.Content(name = "Other", content = "# s2")).key).isEqualTo("explicit-skill")
+        assertThatThrownBy { skills.create(Skill.Content(key = "Bad Key", name = "x", content = "# x")) }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `a project template with the key of a global one and extending it customises that template for the project`() {
+        templates.create(content("review").copy(prompt = Prompt(system = "global rules"), category = TemplateCategory.REVIEW))
+        val shadow = templates.create(
+            TaskTemplate.Content(key = "review", name = "Our review", extendsKey = "review", scope = Scope.Project(lib.projectId), prompt = Prompt(system = "ours")),
+        )
+        assertThat(shadow.key).isEqualTo("review")
+
+        val resolved = templates.resolve("review", lib.projectId)
+        assertThat(resolved.name).isEqualTo("Our review")
+        assertThat(resolved.prompt.system).isEqualTo("global rules\n\nours")
+        assertThat(resolved.category).describedAs("inherited from the global template").isEqualTo(TemplateCategory.REVIEW)
+        assertThat(templates.resolve("review").name).isEqualTo("review")
+    }
+
+    @Test
+    fun `templates audit category and rules and refuse unknown rules`() {
+        lib.rule("r1")
+        assertThatThrownBy { templates.create(content("with-ghost").copy(rules = listOf("ghost"))) }
+            .isInstanceOf(ValidationException::class.java).hasMessageContaining("rule ghost does not exist")
+        val created = templates.create(content("cat").copy(category = TemplateCategory.ANALYSIS, rules = listOf("r1")))
+        assertThat(audit.entries.last().details).containsEntry("category", "ANALYSIS").containsEntry("rules", listOf("r1"))
+        templates.update(created.id, created.content.copy(category = TemplateCategory.PLANNING, rules = emptyList(), removeRules = listOf("r1")))
+        val diff = audit.entries.last().details
+        assertThat(diff["category"]).isEqualTo(mapOf("old" to "ANALYSIS", "new" to "PLANNING"))
+        assertThat(diff["rules"]).isEqualTo(mapOf("old" to listOf("r1"), "new" to emptyList<String>()))
+        assertThat(diff["removeRules"]).isEqualTo(mapOf("old" to emptyList<String>(), "new" to listOf("r1")))
     }
 
     @Test
@@ -124,15 +197,17 @@ class LibraryServicesTest {
 
     @Test
     fun `resolve previews abstract and broken templates and is 404 for unknown keys`() {
-        lib.iface("reviewer", outputs = listOf(artifact("review")))
+        val gone = lib.rule("gone")
         templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "hello")))
-        templates.create(content("half", extendsKey = "base", executor = null).copy(implements = listOf("reviewer")))
+        templates.create(content("half", extendsKey = "base", executor = null).copy(rules = listOf("gone")))
+        lib.rules.delete(gone.id)
 
         assertThat(templates.resolve("base").abstract).isTrue()
         assertThat(templates.resolve("base").prompt.system).isEqualTo("hello")
         val half = templates.resolve("half")
-        assertThat(half.interfaceCheck.ok).isFalse()
-        assertThat(half.interfaceCheck.problems).containsExactly("interface reviewer: output review is not in produces")
+        assertThat(half.check.ok).isFalse()
+        assertThat(half.check.problems).containsExactly("rule gone does not exist")
+        assertThat(half.executable).isFalse()
         assertThatThrownBy { templates.resolve("nope") }.isInstanceOf(NotFoundException::class.java)
     }
 
@@ -159,7 +234,7 @@ class LibraryServicesTest {
         val mine = skills.create(Skill.Content(key = "ss", name = "Mine", content = "# mine", scope = Scope.Project(lib.projectId)))
 
         assertThat(skills.list().map { it.id }).containsExactly(skill.id)
-        assertThat(skills.list(lib.projectId).map { it.id }).containsExactly(skill.id, mine.id)
+        assertThat(skills.list(lib.projectId).map { it.id }).describedAs("by name").containsExactly(mine.id, skill.id)
 
         templates.create(content("tt").copy(skills = listOf("ss")))
         assertThatThrownBy { skills.delete(skill.id) }.isInstanceOf(InvalidStateException::class.java)
@@ -185,9 +260,8 @@ class LibraryServicesTest {
 
     @Test
     fun `the catalog palette lists concrete templates once per key with the project entry winning`() {
-        lib.iface("reviewer", ports = listOf("success", "failure", "changes"))
         templates.create(content("base", abstract = true))
-        templates.create(content("review", extendsKey = "base", executor = TaskExecutor.LLM).copy(implements = listOf("reviewer"), name = "Global review"))
+        templates.create(content("review", extendsKey = "base", executor = TaskExecutor.LLM).copy(category = TemplateCategory.REVIEW, name = "Global review"))
         templates.create(content("review", scope = Scope.Project(lib.projectId)).copy(name = "Project review"))
         templates.create(content("broken").copy(extendsKey = null))
         lib.templates.save(lib.templates.findByKeyAndScope("broken", Scope.Global)!!.copy(extendsKey = "ghost"))
@@ -195,8 +269,8 @@ class LibraryServicesTest {
         val global = catalog.palette(null)
         assertThat(global.map { it.key }).containsExactly("review")
         assertThat(global.single().name).isEqualTo("Global review")
-        assertThat(global.single().ports).containsExactly("success", "failure", "changes")
-        assertThat(global.single().interfaces).containsExactly("reviewer")
+        assertThat(global.single().ports).containsExactly("success", "failure")
+        assertThat(global.single().category).isEqualTo(TemplateCategory.REVIEW)
 
         val mine = catalog.palette(lib.projectId).single()
         assertThat(mine.name).isEqualTo("Project review")

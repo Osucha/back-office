@@ -171,12 +171,8 @@ export const HELP_TOPICS = {
   costs: t('costs-insights', 'costs', $localize`:@@core.help.topic.costs:Costs`),
   ci: t('integrations-gitlab-ci', 'ci-overview', $localize`:@@core.help.topic.ci:CI executions`),
   templates: t('task-library', 'templates', $localize`:@@core.help.topic.templates:Task templates`),
-  interfaces: t(
-    'task-library',
-    'interfaces',
-    $localize`:@@core.help.topic.interfaces:Task interfaces`,
-  ),
   skills: t('task-library', 'skills', $localize`:@@core.help.topic.skills:Skills`),
+  rules: t('task-library', 'rules', $localize`:@@core.help.topic.rules:Rules`),
   librarySources: t(
     'task-library',
     'sources',
@@ -350,8 +346,8 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
   [/^\/costs$/, 'costs'],
   [/^\/ci(\/[^/]+)?$/, 'ci'],
   [/^\/library(\/templates)?$/, 'templates'],
-  [/^\/library\/interfaces$/, 'interfaces'],
   [/^\/library\/skills$/, 'skills'],
+  [/^\/library\/rules$/, 'rules'],
   [/^\/library\/sources$/, 'librarySources'],
   [/^\/my-work$/, 'myWork'],
   [/^\/library\/workflows$/, 'libraryWorkflows'],

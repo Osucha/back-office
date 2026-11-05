@@ -1,33 +1,46 @@
-# Task Library: templates, interfaces and skills
+# Task Library: templates, skills and rules
 
 ## When to use this guide
 
 You want to change what an agent does or how it is prompted without editing a workflow: add a new kind
-of task, specialise a built-in one for a single project, attach a reusable skill, or understand why the
-resolved prompt an executor receives looks the way it does. The concepts and merge rules are specified in
-`docs/architecture/07-task-library.md` (ADR 0015); this guide walks through the API
-(`/api/v1/task-interfaces`, `/api/v1/task-templates`, `/api/v1/skills`) and the Library UI.
+of task, specialise a built-in one for a single project, attach a reusable skill or a rule every agent must
+follow, or understand why the resolved prompt an executor receives looks the way it does. The concepts and
+merge rules are specified in `docs/architecture/07-task-library.md` (ADR 0015, ADR 0055); this guide walks
+through the API (`/api/v1/task-templates`, `/api/v1/skills`, `/api/v1/rules`) and the Library UI
+(**Library** → **Tasks** → **Templates**, **Skills**, **Rules**; the other groups are **Workflows** and
+**Sources**).
 
 ## 1. Concepts in one table
 
 | Concept | Analogy | You use it to |
 |---|---|---|
-| Task interface | `interface` | promise a contract: which artefacts/state a task consumes, which it produces, which output ports its node exposes |
-| Task template | `class` | define a task: executor, prompts, skills, config, `extends` one parent, `implements` interfaces |
-| Skill | mixin | reuse a markdown instruction block (`SKILL.md` convention) across templates |
+| Task template | `class` | define a task: executor, category, prompts, skills, rules, config, `extends` one parent |
+| Rule | standing order | state a norm the agent must always follow; always in the agent's context |
+| Skill | handbook chapter | give the agent knowledge or a procedure (`SKILL.md` convention) it opens when the task needs it |
 | Resolved task | instance | the merged result an executor receives: template + ancestors + project shadowing + node overrides |
 
-Keys match `^[a-z][a-z0-9-]{1,63}$`. Interfaces are unique by key; templates and skills are unique by
-`(key, scope)` where scope is `GLOBAL` or `PROJECT(projectId)`.
+Until ADR 0055 there were also task interfaces (`/api/v1/task-interfaces`, `implements`). No workflow ever
+referred to one and they only duplicated `consumes`/`produces`, so they were removed; what they gave, a grouping,
+is now the template's `category` (`ANALYSIS`, `SPECIFICATION`, `PLANNING`, `IMPLEMENTATION`, `REVIEW`, `JIRA`,
+`OPERATIONS`, `GENERAL`; inherited, child wins), by which the library list and the designer palette are grouped.
+Every task node has the ports `success` and `failure`.
+
+Keys match `^[a-z][a-z0-9-]{1,63}$` and are optional in the API. Without one, create derives it from the name
+(diacritics dropped, `-` between words, a `task-`/`skill-`/`rule-` prefix when the name starts with a digit,
+`-2`, `-3`, ... when taken: `"Analiza zgłoszenia"` becomes `analiza-zgloszenia`); update keeps the stored key.
+Template keys are unique across scopes, so a template created without a key never shadows anything; skills and
+rules are unique by `(key, scope)` where scope is `GLOBAL` or `PROJECT(projectId)`. Send an explicit key only to
+shadow a global entry in a project (section 3).
 
 The built-in library (seeded on startup, `backoffice.tasks.seed-builtin=true`) contains the abstract
-`base-agent` with its variants `base-llm` (in-process LLM steps) and `base-coding-agent` (runner steps), the Spec Kit phases, `implement-opencode` / `implement-claude-code`, `clarify-spec`,
-`code-review`, `analyse-issue` and the Jira tasks, the interfaces `specifier`, `clarifier`, `planner`,
-`task-planner`, `implementer`, `reviewer`, `analyst`, `requirement-writer`, `change-analyst`, the SDLC
-templates of section 8 and twelve skills. Seeding is idempotent by key:
-edit built-ins freely, an edited entry is never overwritten (a never-edited built-in template, skill or
-interface is replaced by the shipped version when its content checksum differs); delete a non-built-in
-copy and restart to get the shipped version back. Built-in templates cannot be deleted, only shadowed.
+`base-agent` with its variants `base-llm` (in-process LLM steps) and `base-coding-agent` (runner steps), the Spec
+Kit phases, `implement-opencode` / `implement-claude-code`, `clarify-spec`, `code-review`, `analyse-issue`, the
+generic `llm-task` and `agent-task`, `prepare-workspace`, `project-digest`, `start-workflow` and the Jira tasks,
+the SDLC templates of section 8, eight skills and four rules (`agent-ground-rules`, `ask-dont-guess`,
+`kotlin-hexagonal`, `angular-ng-zorro`). Seeding is idempotent by key: edit built-ins freely, an edited entry is
+never overwritten (a never-edited built-in template, skill or rule is replaced by the shipped version when its
+content checksum differs); delete a non-built-in copy and restart to get the shipped version back. Built-in
+templates cannot be deleted, only shadowed.
 
 The Jira tasks:
 
@@ -49,50 +62,28 @@ templates: [designing-a-workflow.md](designing-a-workflow.md#template-variables)
 
 | You want to | GLOBAL (the shared library) | PROJECT (one project's own entries) |
 |---|---|---|
-| see templates, skills, the resolved preview | `library.view` (role `member` has it) | `project.view` or `library.project.manage` on that project |
-| create, edit, delete templates and skills | `library.manage` (role `library-curator`) | `library.project.manage` on that project |
-| create, edit, delete interfaces | `library.manage` (interfaces are always global) | — |
+| see templates, skills, rules, the resolved preview | `library.view` (role `member` has it) | `project.view` or `library.project.manage` on that project |
+| create, edit, delete templates, skills and rules | `library.manage` (role `library-curator`) | `library.project.manage` on that project |
 
-`GET /api/v1/task-templates?projectId=P` returns the global entries when you hold `library.view` plus
-P's entries when you are a member of P; without either you get `403`. Moving an entry between scopes
-needs the write permission of both. Every change is recorded in the audit log (`TEMPLATE_*`,
-`INTERFACE_*`, `SKILL_*`, with a field diff on update) and the response shows `updatedBy`.
+`GET /api/v1/task-templates?projectId=P` (likewise `/skills` and `/rules`) returns the global entries when you
+hold `library.view` plus P's entries when you are a member of P; without either you get `403`. Moving an entry
+between scopes needs the write permission of both. Every change is recorded in the audit log (`TEMPLATE_*`,
+`SKILL_*`, `RULE_CREATE`/`RULE_UPDATE`/`RULE_DELETE`, with a field diff on update) and the response shows
+`updatedBy`.
 
-## 2. Creating an interface
-
-An interface says what a workflow may rely on. Inputs of kind `ARTIFACT` or `STATE` that are `required`
-must appear in the implementing template's `consumes`; every output must appear in `produces`.
-`INPUT` slots describe workflow inputs and are documentation only.
-
-```http
-POST /api/v1/task-interfaces
-{
-  "key": "changelog-writer",
-  "name": "Changelog writer",
-  "description": "Turns a diff into a changelog entry.",
-  "inputs":  [ { "name": "diff", "kind": "ARTIFACT", "required": true } ],
-  "outputs": [ { "name": "changelog", "kind": "ARTIFACT" } ],
-  "ports": ["success", "failure"]
-}
-```
-
-`GET /api/v1/task-interfaces/changelog-writer` returns the definition plus `implementedBy`, the keys of
-the templates that declare it. Deleting an interface that is still implemented answers `409`.
-
-## 3. A template that extends a built-in
+## 2. A template that extends a built-in
 
 Concrete templates need an executor, either their own or inherited from an ancestor. `base-agent` has
 none (it is abstract), so a child of it declares one. `code-review` has `LLM`, so a child of
-`code-review` may leave `executor` empty.
+`code-review` may leave `executor` empty. The same holds for `category`: leave it empty to inherit it.
 
 ```http
 POST /api/v1/task-templates
 {
-  "key": "write-changelog",
   "name": "Write changelog entry",
   "scope": { "type": "GLOBAL" },
-  "extendsKey": "base-agent",
-  "implements": ["changelog-writer"],
+  "extendsKey": "base-llm",
+  "category": "GENERAL",
   "executor": "LLM",
   "prompt": {
     "user": "Write a Keep-a-Changelog entry for this diff:\n\n{{artifacts.diff}}",
@@ -106,29 +97,33 @@ POST /api/v1/task-templates
 }
 ```
 
+The answer carries the derived key, here `write-changelog-entry`; workflows refer to it.
+
 What the validator checks on every save (`400` with all problems listed): key format, parent exists and
 is not the template itself, executor present or inherited, `outputSchema` is well-formed JSON,
-`confidenceField` needs an `outputSchema` somewhere in the chain, `implements` keys and `skills` keys
-exist (skills with project shadowing), no inheritance cycle and at most 8 templates in the chain.
-Updates bump `version`.
+`confidenceField` needs an `outputSchema` somewhere in the chain, `skills` and `rules` keys exist (with project
+shadowing), run input names are unique, no inheritance cycle and at most 8 templates in the chain. Updates bump
+`version`.
 
 Merge rules, root to leaf:
 
 | Field | Rule |
 |---|---|
-| `executor` | nearest defined wins |
+| `executor`, `category` | nearest defined wins |
 | `modelProfileId`, `outputSchema`, `confidenceField` | child wins when set |
 | `prompt.system`, `prompt.user` | per field: child `APPEND` = parent + blank line + child; `REPLACE` = child only; a field the child leaves empty keeps the parent's |
 | `skills` | union in order, minus the child's `removeSkills` |
+| `rules` | union in order, minus the child's `removeRules`; automatic rules come first (section 5) |
 | `config` | deep merge, child keys win, a `null` value deletes the key (so `null`s never reach the executor) |
-| `produces`, `consumes`, `implements`, `tags` | union |
+| `produces`, `consumes`, `tags` | union |
+| `runInputs` | union by name; a child's field replaces the parent's field with the same name |
 
-## 4. A project-scoped override (shadowing)
+## 3. A project-scoped override (shadowing)
 
 A `PROJECT` template with the same key as a `GLOBAL` one replaces it for that project only, including
-when the key is used as a parent by another template. Note that shadowing is replacement, not
-inheritance: to keep the built-in prompt, extend the same parent and repeat what you need, or extend the
-global template under a new key instead.
+when the key is used as a parent by another template. To keep the global template and change only what differs,
+give the project template the global key and the same key as `extendsKey`: it then extends the global one (this
+is what **Customize for project** in the UI does).
 
 ```http
 POST /api/v1/task-templates
@@ -136,75 +131,112 @@ POST /api/v1/task-templates
   "key": "code-review",
   "name": "Code review (SHOP)",
   "scope": { "type": "PROJECT", "projectId": "5d3e...-project-uuid" },
-  "extendsKey": "base-agent",
-  "implements": ["reviewer"],
-  "executor": "LLM",
-  "prompt": { "system": "This is a payment system: treat any change to money handling as MAJOR at least." },
-  "skills": ["security-review-checklist", "kotlin-hexagonal"],
-  "outputSchema": "{ ...same schema as the built-in... }",
-  "consumes": ["diff"],
-  "produces": ["review"]
+  "extendsKey": "code-review",
+  "prompt": { "system": "This is a payment system: treat any change to money handling as MAJOR at least.", "mode": "APPEND" },
+  "rules": ["shop-kotlin-conventions"]
 }
 ```
 
+Without the `extendsKey` the project template is a plain replacement, not an extension: it has to bring its own
+executor, prompts, schema and so on.
+
 `GET /api/v1/task-templates?projectId=<uuid>` lists global templates plus that project's own, both
 entries for a shadowed key (the `scope` field tells them apart). `includeAbstract=false` hides abstract
-ones. The designer palette (`TaskCatalog.palette`) shows one entry per key, the project's own winning.
+ones. The designer palette (`TaskCatalog.palette`) shows one entry per key, the project's own winning, grouped by
+`category`.
 
-Skills shadow the same way: a `PROJECT` skill with the key of a global one is what that project's
-templates receive, without changing any template.
+Skills and rules shadow the same way: a `PROJECT` skill or rule with the key of a global one is what that
+project's templates receive, without changing any template.
 
-## 5. Skills
+## 4. Skills
 
-A skill is a markdown document following the Agent Skills convention: a frontmatter with `name` and
-`description`, then concrete, numbered rules. Keep them short (10 to 30 rules); they are prepended to
-every prompt that lists them.
+A skill is knowledge or a procedure the agent loads when it needs it ("how to write an ADR"): a markdown document
+following the Agent Skills convention, a frontmatter with `name` and `description` ("Use when ...", agents decide
+by it whether to open the skill), then short, concrete, numbered steps. Something the agent must always follow
+belongs in a rule (section 5).
 
 ```http
 POST /api/v1/skills
 {
-  "key": "sql-migrations",
   "name": "SQL migrations",
-  "description": "How Flyway migrations are written in our projects.",
+  "description": "Use when writing or reviewing a Flyway migration.",
   "scope": { "type": "GLOBAL" },
-  "content": "---\nname: sql-migrations\ndescription: How Flyway migrations are written in our projects.\n---\n\n# SQL migrations\n\n1. Append-only: never edit an applied version.\n2. ...",
+  "content": "---\nname: sql-migrations\ndescription: Use when writing or reviewing a Flyway migration.\n---\n\n# SQL migrations\n\n1. Append-only: never edit an applied version.\n2. ...",
   "tags": ["database"]
 }
 ```
 
 How executors deliver skills: `LLM` tasks get them appended to the system prompt in a `<skills>`
-section; `SPEC_KIT` and `IMPLEMENT` tasks get them written to `.claude/skills/<key>/SKILL.md` and
-`.opencode/skills/<key>/SKILL.md` in the runner workspace, which Claude Code and OpenCode load
-natively. A skill referenced by any template cannot be deleted or renamed (`409`).
+section (a single model call cannot open files); `SPEC_KIT` and `IMPLEMENT` tasks get them written to
+`.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md` in the runner workspace, which Claude Code
+and OpenCode load on their own. A runner agent reads only the skills it is told to, so the prompts of the built-in
+runner templates name the skills they use ("Apply the skill ..."); name another skill there when you attach it. A skill
+referenced by any template cannot be deleted, and its key and scope cannot change (`409`); built-in skills cannot
+be deleted.
+
+## 5. Rules
+
+A rule is a norm that is always in the agent's context ("the domain never imports Spring"): plain markdown, no
+frontmatter, short, concrete, checkable sentences.
+
+```http
+POST /api/v1/rules
+{
+  "name": "Shop Kotlin conventions",
+  "description": "Layers and naming of the shop backend.",
+  "scope": { "type": "PROJECT", "projectId": "5d3e...-project-uuid" },
+  "automatic": true,
+  "content": "1. The domain never imports Spring, JPA or Jackson.\n2. ...",
+  "tags": ["kotlin"]
+}
+```
+
+Which rules a step gets, in this order:
+
+1. the **automatic** rules of the global scope (every step of every project), then those of the step's project
+   (every step of that project);
+2. the rules the template and its ancestors list in `rules`, unless already there.
+
+`removeRules` on a template drops inherited and automatic rules for it and the templates based on it. A project
+rule with the key of a global rule replaces it for that project; a non-automatic project copy of a global
+automatic rule switches that rule off in the project. A key in `skills` or in a node's `addSkills` that names a
+rule (as the built-in skills turned rules did, see section 8) counts as that rule, so stored workflows keep working.
+
+How executors deliver rules (`RulesPrompt`, a `<rules>` block): `LLM` tasks get them in the system prompt, before
+the skills; `IMPLEMENT` and `SPEC_KIT` tasks at the start of their prompt, right after the template's system part.
+Nothing is written into the repository, so Claude Code and OpenCode see the same text. Permissions are the same as
+for skills; a rule a template lists cannot be deleted, and its key and scope cannot change (`409`).
 
 ## 6. Reading the resolved preview
 
 `GET /api/v1/task-templates/resolve/{key}?projectId=` returns exactly what the executor will receive,
-plus two fields the executor never sees:
+plus fields the executor never sees (`POST` on the same path with a node's `TaskOverrides` shows what that step
+gets):
 
 ```json
 {
-  "key": "implement-claude-code",
+  "key": "implement-opencode",
   "executor": "IMPLEMENT",
-  "lineage": ["implement-claude-code", "implement-opencode", "base-coding-agent", "base-agent"],
-  "interfaces": ["implementer"],
+  "category": "IMPLEMENTATION",
+  "lineage": ["implement-opencode", "base-coding-agent", "base-agent"],
   "prompt": { "system": "You are an engineering agent ... {{project.constitution}} ...", "user": "Implement the work below ..." },
-  "skills": [ { "key": "agent-ground-rules", "name": "Agent ground rules" }, { "key": "ask-dont-guess", "name": "Ask, don't guess" } ],
-  "config": { "agent": "CLAUDE_CODE", "branchTemplate": "feature/{{issue.key | lower}}", "push": true, "mergeRequest": true, "mergeRequestTitleTemplate": "{{issue.key}}: {{issue.summary}}", "mergeRequestDraft": false },
+  "skills": [],
+  "rules": [ { "key": "agent-ground-rules", "name": "Agent ground rules", "automatic": false }, { "key": "ask-dont-guess", "name": "Ask, don't guess", "automatic": false } ],
+  "config": { "agent": "OPENCODE", "branchTemplate": "feature/{{issue.key | lower}}", "push": true, "mergeRequest": true, "mergeRequestTitleTemplate": "{{issue.key}}: {{issue.summary}}", "mergeRequestDraft": false },
   "produces": ["diff", "mr"],
   "consumes": [],
   "ports": ["success", "failure"],
   "abstract": false,
-  "interfaceCheck": { "ok": true, "problems": [] }
+  "check": { "ok": true, "problems": [] }
 }
 ```
 
 - `lineage` is leaf first; the UI draws it as the inheritance chain.
-- `interfaceCheck.problems` lists every output an implemented interface expects that is missing from
-  `produces`, every required input missing from `consumes`, unknown interfaces and unknown skills.
-  The preview still returns the merged task, but the `TaskCatalog` port refuses to execute it.
+- `rules` lists the automatic rules first (`automatic: true`), then the listed ones.
+- `check.problems` lists every skill and rule the lineage names that does not exist. The preview still returns the
+  merged task, but the `TaskCatalog` port refuses to execute it.
 - `abstract: true` means the same: previewable, not executable.
-- `ports` is `success`, `failure` plus every port of every interface in the lineage.
+- `ports` is always `success`, `failure`.
 - `executor` is empty only when no template in the chain sets one (an abstract root).
 
 The endpoint answers `404` for an unknown key and `400` for a cycle or a missing parent.
@@ -220,22 +252,25 @@ are applied last, after the whole chain:
 | `modelProfileId` | replaces the resolved model |
 | `systemPromptAppend` | appended to the resolved system prompt |
 | `promptReplace`, then `promptAppend` | replace and/or extend the user prompt |
-| `addSkills`, `removeSkills` | adjust the skill list |
+| `addSkills`, `removeSkills` | adjust the skill list (a key naming a rule adds that rule) |
 | `config` | deep-merged with the same null-deletes rule |
 
 The designer validates a node's `templateKey` against the catalog (error when unknown, warning when
-abstract) and takes the node's output ports from the resolved `ports`. Because nodes reference keys,
+abstract); every task node has the ports `success` and `failure`. Because nodes reference keys,
 editing a template changes every workflow using it on its next run; shadow it per project when only
 one project should change.
 
-## 8. SDLC templates and skills (ADR 0019)
+## 8. SDLC templates, skills and rules (ADR 0019)
 
-Every agent inherits two skills through `base-agent`: `agent-ground-rules` (evidence, scope and safety:
-re-read a file before claiming anything about it, paths as evidence, a search hit outside the task is not
-a task, narrowest edit, report contradictions) and `ask-dont-guess` (source hierarchy; one open-question
-marker per context, `[NEEDS CLARIFICATION: ...]` in Spec Kit specs and `[?] question` elsewhere, never an
-invented owner or date; TODO/TBD with a reason; append, do not rewrite; never touch status fields). Remove them on a template with
-`removeSkills` if a task must not see them.
+Every agent inherits two rules through `base-agent` (and `agent-task`): `agent-ground-rules` (evidence, scope and
+safety: re-read a file before claiming anything about it, paths as evidence, a search hit outside the task is not
+a task, narrowest edit, report contradictions) and `ask-dont-guess` (source hierarchy; one open-question marker
+per context, `[NEEDS CLARIFICATION: ...]` in Spec Kit specs and `[?] question` elsewhere, never an invented owner
+or date; TODO/TBD with a reason; append, do not rewrite; never touch status fields). Drop them on a template with
+`removeRules` if a task must not see them. Until ADR 0055 they were skills; `V303__rules_and_categories.sql` moved
+them, together with the example rules `kotlin-hexagonal` and `angular-ng-zorro`, into rules in every scope and
+moved their keys from `skills`/`removeSkills` to `rules`/`removeRules`. The two stack rules describe the Back
+Office code base: copy them into a project rule for your stack and make that one automatic.
 
 | Template | Use it for | Output |
 |---|---|---|
@@ -264,9 +299,11 @@ the `review` artefact.
 | `400` on save with `executor: required on a concrete template` | the parent chain has no executor: set one on the template or mark it `abstract` |
 | `400` with `extendsKey: inheritance cycle ...` | the message prints the chain; break it at the template you are saving |
 | `400` with `outputSchema: not well-formed JSON at offset N` | the schema is checked as raw JSON; escape quotes when sending it as a string |
-| `409` on delete | built-in template, or an interface/skill/template still referenced; the message names the referrers |
+| `400` with `skills: skill X does not exist` or `rules: rule X does not exist` | the key is wrong or names the other kind of entry (for example a former skill that is now a rule): move it between `skills` and `rules` |
+| `409` on delete | built-in template, or a template, skill or rule still referenced; the message names the referrers |
 | resolve shows the global template although a project one exists | the `projectId` query parameter is missing, or the project template's key differs |
-| `interfaceCheck.problems` on a template you did not change | an interface was edited (new output or required input); update `produces` / `consumes` on the implementers listed in its `implementedBy` |
-| a skill edit does not show up in the runner | the run started before the edit; skills are snapshotted at resolution time |
+| `check.problems` on a step you did not change | a skill the step adds with `addSkills` was deleted (only references from templates block a delete) |
+| a rule does not reach a step | the step's template (or an ancestor) drops it with `removeRules`, or the project has a non-automatic copy of a global automatic rule |
+| a skill or rule edit does not show up in the runner | the run started before the edit; skills and rules are snapshotted at resolution time |
 | the built-in library is missing after a fresh deploy | `backoffice.tasks.seed-builtin` is `false`, or the startup log lacks `seeded task library ...` because Flyway `V300__task_library.sql` failed; check the `task_template` table |
 | ArchUnit fails after touching `tasks-core` | the core module may only import `pl.mos.backoffice.tasks.*`, `pl.mos.backoffice.shared.*` and the standard library |

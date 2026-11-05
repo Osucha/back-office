@@ -86,7 +86,7 @@ class MultiRepositoryJobTest {
     private fun task(config: Map<String, Any?>) = ResolvedTask(
         key = "t", name = "T", executor = TaskExecutor.IMPLEMENT, modelProfileId = null, prompt = TaskPrompt(null, "Do {{issue.key}} in {{repos}}"),
         skills = emptyList(), config = config, outputSchema = null, confidenceField = null,
-        produces = emptyList(), consumes = emptyList(), interfaces = emptyList(), lineage = listOf("t"), ports = listOf("success", "failure"),
+        produces = emptyList(), consumes = emptyList(), category = null, lineage = listOf("t"), ports = listOf("success", "failure"),
     )
 
     private val twoRepos = mapOf(

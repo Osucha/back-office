@@ -45,7 +45,7 @@ class TaskCatalogService(
             name = template.name,
             description = template.description,
             executor = executor,
-            interfaces = resolution.interfaces,
+            category = resolution.category,
             abstract = false,
             projectId = template.scope.projectId,
             ports = resolution.ports,

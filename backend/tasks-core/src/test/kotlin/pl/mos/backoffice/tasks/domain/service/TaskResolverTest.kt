@@ -9,12 +9,12 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
+import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.tasks.RuleSnapshot
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.support.Library
-import pl.mos.backoffice.tasks.support.Library.Companion.artifact
-import pl.mos.backoffice.tasks.support.Library.Companion.state
 import java.util.UUID
 
 class TaskResolverTest {
@@ -207,30 +207,109 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `interface check reports missing produces and consumes and unions the ports`() {
-        lib.iface("reviewer", inputs = listOf(artifact("diff"), artifact("spec", required = false), Library.input("mode")), outputs = listOf(artifact("review"), state("review")), ports = listOf("success", "failure", "changes-requested"))
-        lib.iface("notifier", ports = listOf("success", "sent"))
-        lib.template("root", abstract = true, executor = TaskExecutor.LLM, implements = listOf("notifier"))
-        lib.template("good", extendsKey = "root", implements = listOf("reviewer"), consumes = listOf("diff"), produces = listOf("review"), runInputs = listOf(RunInputField("mode", "Mode")))
-        lib.template("bad", extendsKey = "root", implements = listOf("reviewer", "missing"), consumes = listOf("spec"), produces = listOf("summary"))
+    fun `every task has the success and failure ports and the category is inherited, child wins`() {
+        lib.template("root", abstract = true, executor = TaskExecutor.LLM, category = TemplateCategory.ANALYSIS)
+        lib.template("plain", extendsKey = "root")
+        lib.template("special", extendsKey = "root", category = TemplateCategory.REVIEW)
+        lib.template("bare", executor = TaskExecutor.LLM)
 
-        val good = resolver.preview("good", null)!!
-        assertThat(good.interfaceCheck).isEqualTo(InterfaceCheck.OK)
-        assertThat(good.interfaces).containsExactly("notifier", "reviewer")
-        assertThat(good.ports).containsExactly("success", "failure", "sent", "changes-requested")
-        assertThat(resolver.resolve("good", null)!!.ports).isEqualTo(good.ports)
+        val plain = resolver.resolve("plain", null)!!
+        assertThat(plain.category).isEqualTo(TemplateCategory.ANALYSIS)
+        assertThat(plain.ports).containsExactly("success", "failure").isEqualTo(TaskResolver.DEFAULT_PORTS)
+        assertThat(resolver.resolve("special", null)!!.category).isEqualTo(TemplateCategory.REVIEW)
+        assertThat(resolver.preview("root", null)!!.category).isEqualTo(TemplateCategory.ANALYSIS)
+        assertThat(resolver.resolve("bare", null)!!.category).isNull()
+        assertThat(resolver.preview("plain", null)!!.check).isEqualTo(ResolutionCheck.OK)
+    }
 
-        val bad = resolver.preview("bad", null)!!
-        assertThat(bad.interfaceCheck.ok).isFalse()
-        assertThat(bad.interfaceCheck.problems).containsExactly(
-            "interface reviewer: output review is not in produces",
-            "interface reviewer: required input diff is not in consumes",
-            "interface reviewer: required run input mode is not in runInputs",
-            "interface missing does not exist",
+    @Test
+    fun `automatic rules come first, global then project, followed by the rules the lineage lists`() {
+        lib.rule("g-auto", automatic = true, content = "global automatic")
+        lib.rule("p-auto", scope = Scope.Project(lib.projectId), automatic = true, content = "project automatic")
+        lib.rule("listed-root", content = "from root")
+        lib.rule("listed-leaf", content = "from leaf")
+        lib.rule("unused")
+        lib.template("root", abstract = true, executor = TaskExecutor.LLM, rules = listOf("listed-root"))
+        lib.template("leaf", extendsKey = "root", rules = listOf("listed-leaf", "g-auto"))
+
+        val inProject = resolver.resolve("leaf", lib.projectId)!!
+        assertThat(inProject.rules).containsExactly(
+            RuleSnapshot("g-auto", "g-auto", "global automatic", automatic = true),
+            RuleSnapshot("p-auto", "p-auto", "project automatic", automatic = true),
+            RuleSnapshot("listed-root", "listed-root", "from root", automatic = false),
+            RuleSnapshot("listed-leaf", "listed-leaf", "from leaf", automatic = false),
         )
-        assertThatThrownBy { resolver.resolve("bad", null) }
+        assertThat(resolver.resolve("leaf", null)!!.rules.map { it.key })
+            .describedAs("no project: global automatic rules only, a listed automatic rule is not repeated")
+            .containsExactly("g-auto", "listed-root", "listed-leaf")
+        assertThat(resolver.resolve("leaf", UUID.randomUUID())!!.rules.map { it.key }).containsExactly("g-auto", "listed-root", "listed-leaf")
+    }
+
+    @Test
+    fun `a project rule shadows a global automatic one in place, a non-automatic project rule switches it off`() {
+        lib.rule("aa", automatic = true, content = "global aa")
+        lib.rule("bb", automatic = true, content = "global bb")
+        lib.rule("cc", automatic = true, content = "global cc")
+        lib.rule("aa", scope = Scope.Project(lib.projectId), automatic = true, content = "project aa")
+        lib.rule("bb", scope = Scope.Project(lib.projectId), automatic = false, content = "project bb")
+        lib.template("tt", executor = TaskExecutor.LLM)
+
+        val rules = resolver.resolve("tt", lib.projectId)!!.rules
+        assertThat(rules.map { it.key to it.content }).containsExactly("aa" to "project aa", "cc" to "global cc")
+        assertThat(resolver.resolve("tt", null)!!.rules.map { it.content }).containsExactly("global aa", "global bb", "global cc")
+    }
+
+    @Test
+    fun `a listed rule resolves with project shadowing`() {
+        lib.rule("style", content = "global style")
+        lib.rule("style", scope = Scope.Project(lib.projectId), content = "project style")
+        lib.template("tt", executor = TaskExecutor.LLM, rules = listOf("style"))
+
+        assertThat(resolver.resolve("tt", lib.projectId)!!.rules.single().content).isEqualTo("project style")
+        assertThat(resolver.resolve("tt", null)!!.rules.single().content).isEqualTo("global style")
+    }
+
+    @Test
+    fun `removeRules drops inherited and automatic rules and a child may list a removed rule again`() {
+        lib.rule("auto", automatic = true)
+        lib.rule("inherited")
+        lib.rule("other")
+        lib.template("root", abstract = true, executor = TaskExecutor.LLM, rules = listOf("inherited", "other"))
+        lib.template("middle", abstract = true, extendsKey = "root", removeRules = listOf("inherited", "auto"))
+        lib.template("leaf", extendsKey = "middle")
+        lib.template("back", extendsKey = "middle", rules = listOf("auto"))
+
+        assertThat(resolver.resolve("leaf", null)!!.rules.map { it.key }).containsExactly("other")
+        assertThat(resolver.resolve("back", null)!!.rules.map { it.key to it.automatic })
+            .describedAs("listing it again brings the automatic rule back")
+            .containsExactly("auto" to true, "other" to false)
+    }
+
+    @Test
+    fun `a missing rule is a check problem and the task is not executable`() {
+        lib.template("tt", executor = TaskExecutor.LLM, rules = listOf("ghost"))
+
+        val preview = resolver.preview("tt", null)!!
+        assertThat(preview.rules).isEmpty()
+        assertThat(preview.check.ok).isFalse()
+        assertThat(preview.check.problems).containsExactly("rule ghost does not exist")
+        assertThat(preview.executable).isFalse()
+        assertThatThrownBy { resolver.resolve("tt", null) }
             .isInstanceOf(ValidationException::class.java)
-            .hasMessageContaining("output review is not in produces")
+            .hasMessageContaining("rule ghost does not exist")
+    }
+
+    @Test
+    fun `a skill key that names a rule counts as that rule`() {
+        lib.skill("real-skill")
+        lib.rule("was-a-skill", content = "now a rule")
+        lib.rule("both")
+        lib.template("tt", executor = TaskExecutor.LLM, skills = listOf("real-skill", "was-a-skill", "both"), rules = listOf("both"))
+
+        val task = resolver.resolve("tt", null)!!
+        assertThat(task.skills.map { it.key }).containsExactly("real-skill")
+        assertThat(task.rules.map { it.key }).describedAs("listed once even when named in both lists").containsExactly("both", "was-a-skill")
+        assertThat(task.rules.last().content).isEqualTo("now a rule")
     }
 
     @Test
@@ -238,7 +317,8 @@ class TaskResolverTest {
         lib.template("tt", executor = TaskExecutor.LLM, skills = listOf("nope"))
         val preview = resolver.preview("tt", null)!!
         assertThat(preview.skills).isEmpty()
-        assertThat(preview.interfaceCheck.problems).containsExactly("skill nope does not exist")
+        assertThat(preview.check.problems).containsExactly("skill nope does not exist")
+        assertThat(preview.executable).isFalse()
     }
 
     @Test
@@ -273,20 +353,5 @@ class TaskResolverTest {
         lib.template("leaf", extendsKey = "root")
 
         assertThat(resolver.resolve("leaf", null)!!.runInputs).containsExactly(RunInputField("input", "Input material"))
-    }
-
-    @Test
-    fun `a required interface INPUT slot must be declared as a run input, an optional one need not`() {
-        lib.iface("jira-reader", inputs = listOf(Library.input("issueKey"), Library.input("notes", required = false)))
-        lib.template("root", abstract = true, executor = TaskExecutor.FETCH_ISSUE, runInputs = listOf(RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true)))
-        lib.template("declared", extendsKey = "root", implements = listOf("jira-reader"))
-        lib.template("undeclared", executor = TaskExecutor.FETCH_ISSUE, implements = listOf("jira-reader"))
-
-        assertThat(resolver.preview("declared", null)!!.interfaceCheck).isEqualTo(InterfaceCheck.OK)
-        assertThat(resolver.preview("undeclared", null)!!.interfaceCheck.problems)
-            .containsExactly("interface jira-reader: required run input issueKey is not in runInputs")
-        assertThatThrownBy { resolver.resolve("undeclared", null) }
-            .isInstanceOf(ValidationException::class.java)
-            .hasMessageContaining("required run input issueKey is not in runInputs")
     }
 }

@@ -41,7 +41,7 @@ class BuiltInLibraryRunInputsTest {
             assertThat(it.required).isFalse()
         })
         val lib = Library()
-        BuiltInLibrary.interfaces(now).forEach { lib.interfaces.save(it) }
+        BuiltInLibrary.rules(now).forEach { lib.rules.save(it) }
         BuiltInLibrary.skills(now).forEach { lib.skills.save(it) }
         templates.values.forEach { lib.templates.save(it) }
         val plan = TaskResolver(lib.lookup).resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!

@@ -173,7 +173,7 @@ class ConnectionRestTest {
         tasks.register(
             ResolvedTask(
                 "jira-fetch-test", "Fetch issue", TaskExecutor.FETCH_ISSUE, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null,
-                listOf("issue"), emptyList(), emptyList(), listOf("jira-fetch-test"), listOf("success", "failure"),
+                listOf("issue"), emptyList(), null, listOf("jira-fetch-test"), listOf("success", "failure"),
             ),
         )
         val project = createProject(key("RUN"))

@@ -1,6 +1,7 @@
 /**
  * Pure mapping of a `ResolvedTask` into what the template editor preview shows: lineage
- * breadcrumb, effective prompts, skills, interface check and diff against the draft.
+ * breadcrumb, effective prompts, skills, rules (ADR 0055), the check of missing skills and rules
+ * and the diff against the draft.
  */
 import type { ResolvedTask, RunInputField, TaskTemplateInput } from '../../../core/api/types';
 
@@ -11,7 +12,10 @@ export interface ResolvedPreview {
   systemPrompt: string;
   userPrompt: string;
   skills: Array<{ key: string; name: string }>;
-  interfaces: string[];
+  /** ADR 0055: the rules the step gets, automatic ones first. */
+  rules: Array<{ key: string; name: string; automatic: boolean }>;
+  /** ADR 0055: own or inherited category; null when none. */
+  category: string | null;
   ports: string[];
   produces: string[];
   consumes: string[];
@@ -32,15 +36,32 @@ export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview |
     systemPrompt: r.prompt?.system ?? '',
     userPrompt: r.prompt?.user ?? '',
     skills: (r.skills ?? []).map((s) => ({ key: s.key ?? '', name: s.name ?? s.key ?? '' })),
-    interfaces: r.interfaces ?? [],
+    rules: (r.rules ?? []).map((x) => ({
+      key: x.key ?? '',
+      name: x.name || x.key || '',
+      automatic: !!x.automatic,
+    })),
+    category: r.category ?? null,
     ports: r.ports ?? [],
     produces: r.produces ?? [],
     consumes: r.consumes ?? [],
     runInputs: r.runInputs ?? [],
     config: r.config ?? {},
     abstract: !!r.abstract,
-    ok: r.interfaceCheck?.ok !== false,
-    problems: r.interfaceCheck?.problems ?? [],
+    ok: r.check?.ok !== false,
+    problems: r.check?.problems ?? [],
+  };
+}
+
+function delta(
+  listed: readonly string[] | undefined,
+  dropped: readonly string[] | undefined,
+  resolvedKeys: readonly string[],
+): { added: string[]; removed: string[] } {
+  const resolved = new Set(resolvedKeys);
+  return {
+    added: (listed ?? []).filter((k) => !resolved.has(k)),
+    removed: (dropped ?? []).filter((k) => resolved.has(k)),
   };
 }
 
@@ -49,21 +70,43 @@ export function draftSkillDelta(
   draft: TaskTemplateInput,
   preview: ResolvedPreview | null,
 ): { added: string[]; removed: string[] } {
-  const resolved = new Set((preview?.skills ?? []).map((s) => s.key));
-  const added = (draft.skills ?? []).filter((k) => !resolved.has(k));
-  const removed = (draft.removeSkills ?? []).filter((k) => resolved.has(k));
-  return { added, removed };
+  return delta(
+    draft.skills,
+    draft.removeSkills,
+    (preview?.skills ?? []).map((s) => s.key),
+  );
+}
+
+/** ADR 0055: rules that the draft adds or drops compared to the resolved result. */
+export function draftRuleDelta(
+  draft: TaskTemplateInput,
+  preview: ResolvedPreview | null,
+): { added: string[]; removed: string[] } {
+  return delta(
+    draft.rules,
+    draft.removeRules,
+    (preview?.rules ?? []).map((r) => r.key),
+  );
+}
+
+/** ADR 0055: the automatic rules a step of this template gets anyway (read-only in the editor). */
+export function automaticRules(
+  preview: ResolvedPreview | null,
+): Array<{ key: string; name: string }> {
+  return (preview?.rules ?? [])
+    .filter((r) => r.automatic)
+    .map((r) => ({ key: r.key, name: r.name }));
 }
 
 /** Templates that may serve as a parent: anything but the template itself and its descendants. */
-export function parentCandidates<T extends { key: string; extendsKey?: string | null }>(
+export function parentCandidates<T extends { key?: string | null; extendsKey?: string | null }>(
   all: T[],
   selfKey: string | null,
 ): T[] {
   if (!selfKey) return all;
   const children = new Map<string, string[]>();
   for (const t of all) {
-    if (t.extendsKey) {
+    if (t.extendsKey && t.key) {
       if (!children.has(t.extendsKey)) children.set(t.extendsKey, []);
       children.get(t.extendsKey)!.push(t.key);
     }
@@ -79,24 +122,25 @@ export function parentCandidates<T extends { key: string; extendsKey?: string | 
       }
     }
   }
-  return all.filter((t) => !excluded.has(t.key));
+  return all.filter((t) => !excluded.has(t.key ?? ''));
 }
 
 /** Blank template draft. */
 export function emptyTemplate(): TaskTemplateInput {
   return {
-    key: '',
     name: '',
     description: '',
     abstract: false,
     extendsKey: 'base-agent',
-    implements: [],
+    category: null,
     executor: 'LLM',
     scope: { type: 'GLOBAL', projectId: null },
     modelProfileId: null,
     prompt: { system: '', user: '', mode: 'APPEND' },
     skills: [],
     removeSkills: [],
+    rules: [],
+    removeRules: [],
     config: {},
     outputSchema: null,
     confidenceField: null,
@@ -110,12 +154,12 @@ export function emptyTemplate(): TaskTemplateInput {
 /** Strips server-only fields from a template so it can be sent back as input. */
 export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>): TaskTemplateInput {
   return {
-    key: t.key,
+    ...(t.key ? { key: t.key } : {}),
     name: t.name,
     description: t.description ?? '',
     abstract: !!t.abstract,
     extendsKey: t.extendsKey ?? null,
-    implements: t.implements ?? [],
+    category: t.category ?? null,
     executor: t.executor ?? null,
     scope: t.scope ?? { type: 'GLOBAL', projectId: null },
     modelProfileId: t.modelProfileId ?? null,
@@ -126,6 +170,8 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     },
     skills: t.skills ?? [],
     removeSkills: t.removeSkills ?? [],
+    rules: t.rules ?? [],
+    removeRules: t.removeRules ?? [],
     config: t.config ?? {},
     outputSchema: t.outputSchema ?? null,
     confidenceField: t.confidenceField ?? null,
@@ -136,5 +182,33 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     ...(t.sandboxPolicy && Object.keys(t.sandboxPolicy).length
       ? { sandboxPolicy: t.sandboxPolicy }
       : {}),
+  };
+}
+
+/**
+ * ADR 0055: what the editor sends. The key is derived by the server: never sent on update (it
+ * stays) and on create only when given - a project template customising the global one of that key.
+ */
+export function toSavePayload(draft: TaskTemplateInput, update: boolean): TaskTemplateInput {
+  const { key, ...rest } = draft;
+  return !update && key ? { key, ...rest } : rest;
+}
+
+/**
+ * ADR 0055: a new PROJECT template that customises the global template `t` for one project: the
+ * same key and name, extending the global one, everything else inherited.
+ */
+export function customizeForProject(
+  t: Pick<TaskTemplateInput, 'key' | 'name'>,
+  projectId: string | null,
+): TaskTemplateInput {
+  return {
+    ...emptyTemplate(),
+    key: t.key,
+    name: t.name,
+    extendsKey: t.key ?? null,
+    executor: null,
+    prompt: { system: '', user: '', mode: 'APPEND' },
+    scope: { type: 'PROJECT', projectId },
   };
 }

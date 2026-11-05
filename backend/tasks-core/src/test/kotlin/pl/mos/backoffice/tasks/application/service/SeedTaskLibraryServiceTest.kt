@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.support.Library
@@ -13,23 +14,28 @@ import java.util.UUID
 class SeedTaskLibraryServiceTest {
 
     private val lib = Library()
-    private val service = SeedTaskLibraryService(lib.interfaces, lib.templates, lib.skills, lib.clock)
+    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.clock)
     private val alice = Actor(PrincipalKind.USER, UUID.fromString("00000000-0000-0000-0000-0000000000a1"), "Alice")
 
     @Test
     fun `seeds the documented library once and never twice`() {
         val first = service.seed()
-        assertThat(first.interfacesCreated).isEqualTo(9)
+        assertThat(first.rulesCreated).isEqualTo(4)
         assertThat(first.templatesCreated).isEqualTo(26)
-        assertThat(first.skillsCreated).isEqualTo(12)
+        assertThat(first.skillsCreated).isEqualTo(8)
 
         val second = service.seed()
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows).hasSize(26)
-        assertThat(lib.interfaces.findAll().map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.interfaceKeys)
+        assertThat(lib.rules.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.ruleKeys)
         assertThat(lib.templates.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.templateKeys)
         assertThat(lib.skills.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.skillKeys)
         assertThat(lib.templates.rows.values).allSatisfy { assertThat(it.builtIn).isTrue(); assertThat(it.scope).isEqualTo(Scope.Global) }
+        assertThat(lib.rules.rows.values).allSatisfy {
+            assertThat(it.builtIn).isTrue(); assertThat(it.automatic).isFalse(); assertThat(it.updatedBy).isEqualTo(Actor.SYSTEM)
+            assertThat(it.content).describedAs(it.key).doesNotStartWith("---")
+        }
+        assertThat(BuiltInLibrary.skillKeys).doesNotContainAnyElementsOf(BuiltInLibrary.ruleKeys)
     }
 
     @Test
@@ -41,8 +47,9 @@ class SeedTaskLibraryServiceTest {
         val result = service.seed()
 
         assertThat(result.templatesCreated).isEqualTo(25)
-        assertThat(result.skillsCreated).isEqualTo(11)
-        assertThat(result.templatesUpgraded + result.skillsUpgraded).describedAs("entries that are not built-in are never upgraded").isZero()
+        assertThat(result.skillsCreated).isEqualTo(7)
+        assertThat(result.rulesCreated).isEqualTo(4)
+        assertThat(result.templatesUpgraded + result.skillsUpgraded + result.rulesUpgraded).describedAs("entries that are not built-in are never upgraded").isZero()
         assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!.name).isEqualTo("My review")
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.SPEC_WRITING, Scope.Global)!!.content).isEqualTo("# mine")
     }
@@ -55,18 +62,20 @@ class SeedTaskLibraryServiceTest {
         lib.templates.save(oldReview)
         val analyse = lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!
         lib.templates.save(analyse.copy(prompt = Prompt(user = "owner's prompt"), version = 2, updatedBy = alice))
-        val skill = lib.skills.findByKeyAndScope(BuiltInLibrary.ASK_DONT_GUESS, Scope.Global)!!
-        lib.skills.save(skill.copy(content = "---\nname: ask-dont-guess\ndescription: old\n---\n# old", description = "old"))
+        val skill = lib.skills.findByKeyAndScope(BuiltInLibrary.USER_STORY_FORMAT, Scope.Global)!!
+        lib.skills.save(skill.copy(content = "---\nname: user-story-format\ndescription: old\n---\n# old", description = "old"))
         val editedSkill = lib.skills.findByKeyAndScope(BuiltInLibrary.ADR_FORMAT, Scope.Global)!!
         lib.skills.save(editedSkill.copy(content = "# my ADR rules", updatedBy = alice))
-        val iface = lib.interfaces.findByKey(BuiltInLibrary.SPECIFIER)!!
-        lib.interfaces.save(iface.copy(description = "old description", updatedBy = null))
+        val rule = lib.rules.findByKeyAndScope(BuiltInLibrary.ASK_DONT_GUESS, Scope.Global)!!
+        lib.rules.save(rule.copy(content = "# old", description = "old description", automatic = true, updatedBy = null))
+        val editedRule = lib.rules.findByKeyAndScope(BuiltInLibrary.KOTLIN_HEXAGONAL, Scope.Global)!!
+        lib.rules.save(editedRule.copy(content = "# our layers", updatedBy = alice))
 
         val result = service.seed()
 
         assertThat(result.templatesUpgraded).isEqualTo(1)
         assertThat(result.skillsUpgraded).isEqualTo(1)
-        assertThat(result.interfacesUpgraded).isEqualTo(1)
+        assertThat(result.rulesUpgraded).isEqualTo(1)
         val upgraded = lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!
         assertThat(upgraded.id).isEqualTo(review.id)
         assertThat(upgraded.version).isEqualTo(1)
@@ -74,10 +83,15 @@ class SeedTaskLibraryServiceTest {
         assertThat(upgraded.config).describedAs("a removed config key goes away").doesNotContainKey("maxChunkLines")
         assertThat(upgraded.skills).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST)
         assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!.prompt.user).isEqualTo("owner's prompt")
-        assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.ASK_DONT_GUESS, Scope.Global)!!.content).isEqualTo(BuiltInLibrary.ASK_DONT_GUESS_MD)
+        assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.USER_STORY_FORMAT, Scope.Global)!!.content).isEqualTo(BuiltInLibrary.USER_STORY_FORMAT_MD)
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.ADR_FORMAT, Scope.Global)!!.content).isEqualTo("# my ADR rules")
-        assertThat(lib.interfaces.findByKey(BuiltInLibrary.SPECIFIER)!!.description).isEqualTo("Turns an issue into a feature specification.")
-        assertThat(lib.interfaces.findByKey(BuiltInLibrary.SPECIFIER)!!.updatedBy).isEqualTo(Actor.SYSTEM)
+        val upgradedRule = lib.rules.findByKeyAndScope(BuiltInLibrary.ASK_DONT_GUESS, Scope.Global)!!
+        assertThat(upgradedRule.id).isEqualTo(rule.id)
+        assertThat(upgradedRule.content).isEqualTo(BuiltInLibrary.withoutFrontmatter(BuiltInLibrary.ASK_DONT_GUESS_MD))
+        assertThat(upgradedRule.automatic).isFalse()
+        assertThat(upgradedRule.description).isNotEqualTo("old description")
+        assertThat(upgradedRule.updatedBy).isEqualTo(Actor.SYSTEM)
+        assertThat(lib.rules.findByKeyAndScope(BuiltInLibrary.KOTLIN_HEXAGONAL, Scope.Global)!!.content).describedAs("an edited rule is never touched").isEqualTo("# our layers")
         assertThat(service.seed().total).describedAs("an upgraded library is stable").isZero()
     }
 
@@ -101,7 +115,7 @@ class SeedTaskLibraryServiceTest {
         lib.templates.rows.values.forEach { template ->
             assertThat(lib.lookup.validator.problems(template)).describedAs(template.key).isEmpty()
             val preview = lib.lookup.resolver.preview(template.key, null)!!
-            assertThat(preview.interfaceCheck.problems).describedAs(template.key).isEmpty()
+            assertThat(preview.check.problems).describedAs(template.key).isEmpty()
             if (!template.abstract) assertThat(preview.executable).describedAs(template.key).isTrue()
         }
         assertThat(lib.lookup.resolver.preview(BuiltInLibrary.BASE_AGENT, null)!!.abstract).isTrue()
@@ -148,17 +162,18 @@ class SeedTaskLibraryServiceTest {
         assertThat(task.config["mergeRequest"]).isEqualTo(true)
         assertThat(task.config["mergeRequestTitleTemplate"]).isEqualTo("{{issue.key}}: {{issue.summary}}")
         assertThat(task.config["mergeRequestDraft"]).isEqualTo(false)
-        assertThat(task.interfaces).containsExactly(BuiltInLibrary.IMPLEMENTER)
+        assertThat(task.category).isEqualTo(TemplateCategory.IMPLEMENTATION)
         assertThat(task.produces).containsExactly("diff", "mr")
-        assertThat(task.skills.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
+        assertThat(task.skills).isEmpty()
+        assertThat(task.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
         assertThat(task.prompt.system).contains("{{project.constitution}}").contains("Honesty").contains("Do not commit")
         assertThat(task.prompt.user).contains("{{issue.key}}").contains("{{artifacts.review}}").contains("verifyCommand").contains("Do not commit or push")
-            .contains("Apply the skills: ${BuiltInLibrary.AGENT_GROUND_RULES}, ${BuiltInLibrary.ASK_DONT_GUESS}")
+            .contains("Follow the rules given above.")
             .doesNotContain("conventional commits")
     }
 
     @Test
-    fun `LLM templates carry schemas, confidence and the interface contract`() {
+    fun `LLM templates carry schemas, confidence and the review category`() {
         service.seed()
 
         val clarify = lib.lookup.resolver.resolve(BuiltInLibrary.CLARIFY_SPEC, null)!!
@@ -174,7 +189,9 @@ class SeedTaskLibraryServiceTest {
         assertThat(review.consumes).containsExactly("diff")
         assertThat(review.produces).containsExactly("review")
         assertThat(review.outputSchema).contains("BLOCKER").contains("\"verdict\"").contains("\"score\"")
-        assertThat(review.skills.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS, BuiltInLibrary.SECURITY_REVIEW_CHECKLIST)
+        assertThat(review.skills.map { it.key }).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST)
+        assertThat(review.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
+        assertThat(review.category).isEqualTo(TemplateCategory.REVIEW)
         assertThat(review.prompt.system).contains("MINOR").contains("NIT")
         assertThat(review.config).doesNotContainKey("maxChunkLines")
         val user = review.prompt.user!!
@@ -194,7 +211,7 @@ class SeedTaskLibraryServiceTest {
 
         val specify = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_SPECIFY, null)!!.prompt.user!!
         assertThat(specify.lines().first()).isEqualTo("{{issue.key}}: {{issue.summary}}")
-        assertThat(specify).contains("{{issue.acceptanceCriteria}}").contains("Apply the skills: ${BuiltInLibrary.SPEC_WRITING}")
+        assertThat(specify).contains("{{issue.acceptanceCriteria}}").contains("Apply the skill ${BuiltInLibrary.SPEC_WRITING}")
         assertThat(specify.indexOf("{{issue.description}}")).isLessThan(specify.indexOf("Phase SPECIFY"))
         assertThat(specify).doesNotContain("You are an engineering agent")
 
@@ -223,7 +240,7 @@ class SeedTaskLibraryServiceTest {
             assertThat(skill.description).describedAs(skill.key).contains("Use when").doesNotContain(": ")
         }
         listOf(BuiltInLibrary.KOTLIN_HEXAGONAL, BuiltInLibrary.ANGULAR_NG_ZORRO).forEach {
-            assertThat(lib.skills.findByKeyAndScope(it, Scope.Global)!!.description).describedAs(it).startsWith("Example for the Back Office stack")
+            assertThat(lib.rules.findByKeyAndScope(it, Scope.Global)!!.description).describedAs(it).startsWith("Example for the Back Office stack")
         }
         val agent = lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.prompt.system!!
         assertThat(agent).doesNotContain("\n{{issue.key}}: {{issue.summary}}\n\n{{issue.description}}").contains("{{#issue.key}}")
@@ -237,5 +254,35 @@ class SeedTaskLibraryServiceTest {
             assertThat(skill.content.lines().count { it.trim().matches(Regex("^\\d+\\..*")) }).describedAs(skill.key).isBetween(8, 30)
             assertThat(skill.builtIn).isTrue()
         }
+    }
+
+    @Test
+    fun `withoutFrontmatter strips a leading SKILL md block and leaves other text alone`() {
+        assertThat(BuiltInLibrary.withoutFrontmatter("---\nname: x\ndescription: y\n---\n\n# Body\ntext")).isEqualTo("# Body\ntext")
+        assertThat(BuiltInLibrary.withoutFrontmatter("  \n---\nname: x\n---\nbody")).isEqualTo("body")
+        assertThat(BuiltInLibrary.withoutFrontmatter("# No frontmatter\n---\n")).isEqualTo("# No frontmatter\n---\n")
+        assertThat(BuiltInLibrary.withoutFrontmatter("---\nunterminated")).isEqualTo("---\nunterminated")
+        BuiltInLibrary.rules(lib.now).forEach { assertThat(it.content).describedAs(it.key).doesNotContain("description: ").isNotBlank() }
+    }
+
+    @Test
+    fun `every concrete built-in template has a category in its resolved lineage`() {
+        service.seed()
+        lib.templates.rows.values.filterNot { it.abstract }.forEach { template ->
+            assertThat(lib.lookup.resolver.preview(template.key, null)!!.category).describedAs(template.key).isNotNull()
+        }
+        assertThat(lib.lookup.resolver.preview(BuiltInLibrary.BASE_AGENT, null)!!.category).isNull()
+    }
+
+    @Test
+    fun `the rule checksum covers every editable field`() {
+        val rule = BuiltInLibrary.rules(lib.now).first()
+        assertThat(BuiltInChecksum.of(rule)).isEqualTo(BuiltInChecksum.of(rule.copy(updatedBy = alice, updatedAt = lib.now.plusSeconds(5))))
+        listOf(
+            rule.copy(name = "x"), rule.copy(description = "x"), rule.copy(content = "x"), rule.copy(automatic = true), rule.copy(tags = listOf("x")),
+        ).forEach { assertThat(BuiltInChecksum.of(it)).isNotEqualTo(BuiltInChecksum.of(rule)) }
+        val template = BuiltInLibrary.templates(lib.now).first { it.key == BuiltInLibrary.CODE_REVIEW }
+        listOf(template.copy(category = null), template.copy(rules = listOf("x")), template.copy(removeRules = listOf("x")))
+            .forEach { assertThat(BuiltInChecksum.of(it)).isNotEqualTo(BuiltInChecksum.of(template)) }
     }
 }

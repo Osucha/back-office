@@ -9,6 +9,7 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
+import pl.mos.backoffice.tasks.domain.model.Keys
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
 import pl.mos.backoffice.tasks.domain.service.TaskResolution
@@ -16,9 +17,12 @@ import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.util.UUID
 
 /**
- * Template CRUD and resolution. Saving validates the template against the library (parents, interfaces,
- * skills, schema) and, for concrete templates, dry-runs the resolver so cycles and over-deep chains are
- * rejected at write time instead of at run time.
+ * Template CRUD and resolution. Saving validates the template against the library (parents, skills, rules, schema)
+ * and dry-runs the resolver so cycles and over-deep chains are rejected at write time instead of at run time.
+ *
+ * Keys (ADR 0055): a new template without a key gets one derived from its name, unique across all scopes (so it
+ * never shadows anything by accident); an update without a key keeps it. A project template created with a global
+ * template's key and `extendsKey` customises that template for the project.
  *
  * Access (ADR 0017): global templates need `library.view` / `library.manage`; project templates are read by
  * members of the project and changed with `library.project.manage` on it. Every change is audited
@@ -34,10 +38,11 @@ class TaskTemplateService(
 
     override fun create(command: TaskTemplate.Content): TaskTemplate {
         val user = gate.requireWrite(command.scope)
-        if (templates.findByKeyAndScope(command.key, command.scope) != null) {
-            throw InvalidStateException("task template ${command.key} already exists in scope ${command.scope.describe()}")
+        val key = command.key ?: Keys.unique(Keys.fromName(command.name, KEY_PREFIX)) { templates.existsByKey(it) }
+        if (templates.findByKeyAndScope(key, command.scope) != null) {
+            throw InvalidStateException("task template $key already exists in scope ${command.scope.describe()}")
         }
-        val template = TaskTemplate.create(command, clock.now(), actor = user.actor)
+        val template = TaskTemplate.create(command.copy(key = key), clock.now(), actor = user.actor)
         validate(template)
         val saved = templates.save(template)
         audit.record(entry("TEMPLATE_CREATE", saved, snapshot(saved)))
@@ -48,13 +53,14 @@ class TaskTemplateService(
         val user = gate.requireWrite(command.scope)
         val existing = load(id)
         if (existing.scope != command.scope) gate.requireWrite(existing.scope)
-        templates.findByKeyAndScope(command.key, command.scope)?.let { clash ->
-            if (clash.id != id) throw InvalidStateException("task template ${command.key} already exists in scope ${command.scope.describe()}")
+        val key = command.key ?: existing.key
+        templates.findByKeyAndScope(key, command.scope)?.let { clash ->
+            if (clash.id != id) throw InvalidStateException("task template $key already exists in scope ${command.scope.describe()}")
         }
-        if ((command.key != existing.key || command.scope != existing.scope) && templates.existsExtending(existing.key)) {
+        if ((key != existing.key || command.scope != existing.scope) && templates.existsExtending(existing.key)) {
             throw InvalidStateException("task template ${existing.key} is extended by other templates; its key and scope cannot change")
         }
-        val updated = existing.update(command, clock.now(), user.actor)
+        val updated = existing.update(command.copy(key = key), clock.now(), user.actor)
         validate(updated)
         val saved = templates.save(updated)
         val changes = diff(existing, saved)
@@ -73,7 +79,7 @@ class TaskTemplateService(
         return templates.findVisible(access.projectId)
             .filter { access.allows(it.scope) }
             .filter { includeAbstract || !it.abstract }
-            .sortedWith(compareBy({ it.key }, { it.scope.projectId != null }))
+            .sortedWith(compareBy({ it.name.lowercase() }, { it.scope.projectId != null }))
     }
 
     override fun delete(id: TaskTemplateId) {
@@ -113,6 +119,7 @@ class TaskTemplateService(
 
     companion object {
         const val ENTITY_TYPE = "TaskTemplate"
+        private const val KEY_PREFIX = "task"
 
         /** What a `TEMPLATE_CREATE` entry carries: identity and structure, prompt sizes instead of prompt text. */
         fun snapshot(t: TaskTemplate): Map<String, Any?> = mapOf(
@@ -120,9 +127,10 @@ class TaskTemplateService(
             "scope" to t.scope.describe(),
             "abstract" to t.abstract,
             "extendsKey" to t.extendsKey,
-            "implements" to t.implements,
+            "category" to t.category?.name,
             "executor" to t.executor?.name,
             "skills" to t.skills,
+            "rules" to t.rules,
             "systemPromptLength" to (t.prompt.system?.length ?: 0),
             "userPromptLength" to (t.prompt.user?.length ?: 0),
             "runInputs" to runInputSummary(t),
@@ -141,7 +149,7 @@ class TaskTemplateService(
             "scope" to (old.scope.describe() to new.scope.describe()),
             "abstract" to (old.abstract to new.abstract),
             "extendsKey" to (old.extendsKey to new.extendsKey),
-            "implements" to (old.implements to new.implements),
+            "category" to (old.category?.name to new.category?.name),
             "executor" to (old.executor?.name to new.executor?.name),
             "modelProfileId" to (old.modelProfileId?.toString() to new.modelProfileId?.toString()),
             "promptMode" to (old.prompt.mode.name to new.prompt.mode.name),
@@ -151,6 +159,8 @@ class TaskTemplateService(
             "userPromptChanged" to (false to (old.prompt.user != new.prompt.user)),
             "skills" to (old.skills to new.skills),
             "removeSkills" to (old.removeSkills to new.removeSkills),
+            "rules" to (old.rules to new.rules),
+            "removeRules" to (old.removeRules to new.removeRules),
             "configKeys" to (old.config.keys.sorted() to new.config.keys.sorted()),
             "configChanged" to (false to (old.config != new.config)),
             "outputSchemaLength" to ((old.outputSchema?.length ?: 0) to (new.outputSchema?.length ?: 0)),

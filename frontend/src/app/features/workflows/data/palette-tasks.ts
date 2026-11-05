@@ -6,6 +6,7 @@
  */
 import type { PaletteTask } from '../../../core/api/types';
 import { executorLabel } from '../../../core/ui/executors';
+import { categoryLabel, groupByCategory } from '../../../core/ui/template-categories';
 import { isDeprecated } from '../../../core/ui/template-tags';
 
 type MaybeTagged = PaletteTask & { tags?: string[] | null; deprecated?: boolean | null };
@@ -19,7 +20,7 @@ export function deprecatedPaletteTask(
   return deprecatedKeys.has(t.key ?? '') || tagged.deprecated === true || isDeprecated(tagged);
 }
 
-/** The palette entries to offer: not deprecated and matching the query (name, key, interface, executor). */
+/** The palette entries to offer: not deprecated and matching the query (name, key, category, executor). */
 export function paletteTasks(
   tasks: readonly PaletteTask[],
   query: string,
@@ -32,7 +33,18 @@ export function paletteTasks(
       (!q ||
         (t.name ?? '').toLowerCase().includes(q) ||
         (t.key ?? '').toLowerCase().includes(q) ||
-        (t.interfaces ?? []).some((i) => i.toLowerCase().includes(q)) ||
+        categoryLabel(t.category).toLowerCase().includes(q) ||
         (!!t.executor && executorLabel(t.executor).toLowerCase().includes(q))),
   );
+}
+
+/** ADR 0055: palette tasks grouped by category (display order; none counts as General). */
+export function paletteGroups(
+  tasks: readonly PaletteTask[],
+): Array<{ category: string; title: string; tasks: PaletteTask[] }> {
+  return groupByCategory(tasks, (t) => t.category).map((g) => ({
+    category: g.category,
+    title: g.label,
+    tasks: g.items,
+  }));
 }

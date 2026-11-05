@@ -53,7 +53,7 @@ class RunStartJiraTest {
                 "transition-issue" -> TaskExecutor.TRANSITION_ISSUE
                 else -> TaskExecutor.LLM
             }
-            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), emptyList(), listOf(key), listOf("success", "failure"))
+            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = emptyList<pl.mos.backoffice.shared.tasks.TaskSummary>()
     }

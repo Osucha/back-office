@@ -3,22 +3,23 @@ package pl.mos.backoffice.tasks.domain.service
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
+import pl.mos.backoffice.shared.tasks.RuleSnapshot
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.PromptMode
-import pl.mos.backoffice.tasks.domain.model.TaskInterface
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.util.UUID
 
-/** Result of rule 5: every interface in the lineage satisfied, or the list of what is missing. */
-data class InterfaceCheck(val ok: Boolean, val problems: List<String>) {
+/** Result of rule 5: every skill and rule the lineage lists exists, or the list of what is missing. */
+data class ResolutionCheck(val ok: Boolean, val problems: List<String>) {
     companion object {
-        val OK = InterfaceCheck(true, emptyList())
-        fun of(problems: List<String>) = InterfaceCheck(problems.isEmpty(), problems)
+        val OK = ResolutionCheck(true, emptyList())
+        fun of(problems: List<String>) = ResolutionCheck(problems.isEmpty(), problems)
     }
 }
 
@@ -40,27 +41,29 @@ data class TaskResolution(
     val confidenceField: String?,
     val produces: List<String>,
     val consumes: List<String>,
-    val interfaces: List<String>,
+    val category: TemplateCategory?,
     val lineage: List<String>,
     val ports: List<String>,
     val tags: List<String>,
     val abstract: Boolean,
     val projectId: UUID?,
-    val interfaceCheck: InterfaceCheck,
+    val check: ResolutionCheck,
     /** Version of the leaf template. */
     val version: Int? = null,
     /** Run inputs merged root to leaf, child-wins by name (ADR 0053). */
     val runInputs: List<RunInputField> = emptyList(),
+    /** ADR 0055: automatic rules (global, then project) first, then the ones the lineage lists. */
+    val rules: List<RuleSnapshot> = emptyList(),
 ) {
-    /** True when an executor can run this: concrete, has an executor, all interfaces satisfied. */
-    val executable: Boolean get() = !abstract && executor != null && interfaceCheck.ok
+    /** True when an executor can run this: concrete, has an executor, every skill and rule found. */
+    val executable: Boolean get() = !abstract && executor != null && check.ok
 
     /** Throws `ValidationException` unless [executable]. */
     fun toResolvedTask(): ResolvedTask {
         val errors = buildList {
             if (abstract) add(ValidationException.FieldError("abstract", "template $key is abstract and cannot be executed"))
             if (executor == null) add(ValidationException.FieldError("executor", "template $key has no executor in its lineage"))
-            interfaceCheck.problems.forEach { add(ValidationException.FieldError("interfaceCheck", it)) }
+            check.problems.forEach { add(ValidationException.FieldError("check", it)) }
         }
         if (errors.isNotEmpty()) throw ValidationException(errors)
         return ResolvedTask(
@@ -75,11 +78,12 @@ data class TaskResolution(
             confidenceField = confidenceField,
             produces = produces,
             consumes = consumes,
-            interfaces = interfaces,
+            category = category,
             lineage = lineage,
             ports = ports,
             version = version,
             runInputs = runInputs,
+            rules = rules,
         )
     }
 }
@@ -93,8 +97,8 @@ data class TaskResolution(
  *    union minus `removeSkills`; config deep-merged with `null` deleting; list fields unioned; run inputs
  *    unioned by name, child field wins),
  * 4. node overrides,
- * 5. interface check (outputs in `produces`, required inputs in `consumes`, required `INPUT` slots in
- *    `runInputs`) and port union,
+ * 5. skills and rules looked up (ADR 0055: automatic rules of the global scope and the project first, minus
+ *    `removeRules`; a skill key that names a rule, as skills turned rules did, counts as that rule),
  * 6. abstract leaves preview but do not execute.
  */
 class TaskResolver(private val lookup: LibraryLookup) {
@@ -138,30 +142,22 @@ class TaskResolver(private val lookup: LibraryLookup) {
             .applyOverrides(overrides)
 
         val problems = mutableListOf<String>()
-        val ports = TaskInterface.DEFAULT_PORTS.toMutableList()
-        merged.interfaces.forEach { interfaceKey ->
-            val definition = lookup.taskInterface(interfaceKey)
-            if (definition == null) {
-                problems += "interface $interfaceKey does not exist"
-                return@forEach
-            }
-            definition.outputs.map { it.name }.distinct().filter { it !in merged.produces }.forEach {
-                problems += "interface $interfaceKey: output $it is not in produces"
-            }
-            definition.requiredConsumes.filter { it !in merged.consumes }.forEach {
-                problems += "interface $interfaceKey: required input $it is not in consumes"
-            }
-            val declared = merged.runInputs.map { it.name }
-            definition.requiredRunInputs.filter { it !in declared }.forEach {
-                problems += "interface $interfaceKey: required run input $it is not in runInputs"
-            }
-            definition.ports.forEach { if (it !in ports) ports += it }
-        }
+        val listedRules = merged.rules.toMutableList()
         val skills = merged.skills.mapNotNull { skillKey ->
             val skill = lookup.visibleSkill(skillKey, projectId)
-            if (skill == null) problems += "skill $skillKey does not exist"
-            skill?.let { SkillSnapshot(it.key, it.name, it.content) }
+            when {
+                skill != null -> SkillSnapshot(skill.key, skill.name, skill.content)
+                lookup.visibleRule(skillKey, projectId) != null -> { if (skillKey !in listedRules) listedRules += skillKey; null }
+                else -> { problems += "skill $skillKey does not exist"; null }
+            }
         }
+        val automatic = lookup.visibleAutomaticRules(projectId).filter { it.key !in merged.removedRules }
+        val rules = automatic.map { RuleSnapshot(it.key, it.name, it.content, automatic = true) } +
+            listedRules.filter { key -> automatic.none { it.key == key } }.mapNotNull { ruleKey ->
+                val rule = lookup.visibleRule(ruleKey, projectId)
+                if (rule == null) problems += "rule $ruleKey does not exist"
+                rule?.let { RuleSnapshot(it.key, it.name, it.content, automatic = false) }
+            }
 
         return TaskResolution(
             version = leaf.version,
@@ -177,14 +173,15 @@ class TaskResolver(private val lookup: LibraryLookup) {
             confidenceField = merged.confidenceField,
             produces = merged.produces,
             consumes = merged.consumes,
-            interfaces = merged.interfaces,
+            category = merged.category,
             lineage = chain.map { it.key },
-            ports = ports,
+            ports = DEFAULT_PORTS,
             tags = merged.tags,
             abstract = leaf.abstract,
             projectId = projectId,
-            interfaceCheck = InterfaceCheck.of(problems),
+            check = ResolutionCheck.of(problems),
             runInputs = merged.runInputs,
+            rules = rules,
         )
     }
 
@@ -200,9 +197,12 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val confidenceField: String? = null,
         val produces: List<String> = emptyList(),
         val consumes: List<String> = emptyList(),
-        val interfaces: List<String> = emptyList(),
+        val category: TemplateCategory? = null,
         val tags: List<String> = emptyList(),
         val runInputs: List<RunInputField> = emptyList(),
+        val rules: List<String> = emptyList(),
+        /** Every `removeRules` of the lineage: drops automatic rules too. */
+        val removedRules: Set<String> = emptySet(),
     ) {
         fun merge(t: TaskTemplate): Merged = Merged(
             executor = t.executor ?: executor,
@@ -215,9 +215,11 @@ class TaskResolver(private val lookup: LibraryLookup) {
             confidenceField = t.confidenceField ?: confidenceField,
             produces = (produces + t.produces).distinct(),
             consumes = (consumes + t.consumes).distinct(),
-            interfaces = (interfaces + t.implements).distinct(),
+            category = t.category ?: category,
             tags = (tags + t.tags).distinct(),
             runInputs = mergeRunInputs(runInputs, t.runInputs),
+            rules = (rules + t.rules).distinct().filter { it !in t.removeRules },
+            removedRules = (removedRules - t.rules.toSet()) + t.removeRules,
         )
 
         fun applyOverrides(o: TaskOverrides): Merged = copy(
@@ -243,6 +245,9 @@ class TaskResolver(private val lookup: LibraryLookup) {
 
     companion object {
         const val MAX_DEPTH = 8
+
+        /** Output ports of every task node. */
+        val DEFAULT_PORTS: List<String> = listOf("success", "failure")
     }
 }
 

@@ -1,18 +1,24 @@
 # Biblioteka zadań
 
 Biblioteka zadań przechowuje to, co robią agenci i jak są promptowani, niezależnie od workflowów, które
-z niej korzystają: szablony zadań, interfejsy, które spełniają, i umiejętności (skills) wielokrotnego
-użytku. Ten rozdział opisuje trzy strony **Biblioteki** (**Library**) i sposób zmiany zadania tylko dla
-jednego projektu.
+z niej korzystają. **Biblioteka** (**Library**) ma trzy grupy (ADR 0055):
+
+- **Zadania** (**Tasks**): **Szablony**, **Umiejętności** i **Reguły**, opisane w tym rozdziale;
+- **Workflowy** (**Workflows**): workflowy współdzielone między projektami ([Biblioteka workflowów](workflow-library.md));
+- **Źródła** (**Sources**): materiały, które kroki mogą podłączyć ([Źródła](#sources)).
 
 ## Jak to się łączy
 
 | Element | Odpowiednik | Służy do |
 |---|---|---|
-| Interfejs zadania | interfejs | obiecania, jakich wejść zadanie potrzebuje, jakie wyjścia wytwarza i jakie porty ma jego węzeł |
-| Szablon zadania | klasa | zdefiniowania zadania: wykonawca, prompty, umiejętności, konfiguracja; rozszerza jednego rodzica i implementuje interfejsy |
-| Umiejętność | mixin | wielokrotnego użycia bloku instrukcji (pliku `SKILL.md`) w wielu szablonach |
+| Szablon zadania | klasa | zdefiniowania zadania: wykonawca, kategoria, prompty, umiejętności, reguły, konfiguracja; ma jednego rodzica |
+| Reguła | stały rozkaz | zapisania tego, czego agent musi zawsze przestrzegać; jest zawsze w kontekście agenta |
+| Umiejętność | rozdział podręcznika | dania agentowi wiedzy lub procedury, którą otwiera, gdy zadanie jej wymaga (plik `SKILL.md`) |
 | Rozwiązane zadanie | instancja | tego, co ostatecznie otrzymuje agent: szablon scalony z przodkami, nadpisaniami projektu i nadpisaniami węzła |
+
+Kluczy nie wpisujesz: szablon, umiejętność i reguła dostają klucz z nazwy przy tworzeniu (na przykład **Analiza
+zgłoszenia** daje `analiza-zgloszenia`), a klucz zostaje, gdy zmienisz nazwę. Workflowy, MCP i API posługują się
+kluczem; edytory pokazują go drobno w sekcji **Zaawansowane**.
 
 Węzeł zadania w workflowie odwołuje się do szablonu po kluczu i nigdy sam nie przechowuje promptu.
 Edycja szablonu zmienia więc każdy workflow, który go używa, od następnego uruchomienia. Uruchomienia
@@ -22,9 +28,8 @@ w toku zachowują to, co już rozwiązały.
 
 | Chcesz | Biblioteka globalna | Własne wpisy jednego projektu |
 |---|---|---|
-| Przeglądać szablony, interfejsy, umiejętności i podgląd | `library.view` (każdy **Członek**, **Member**) | `project.view` w projekcie |
-| Tworzyć, edytować lub usuwać szablony i umiejętności | `library.manage` (rola **Kurator biblioteki**, **Library curator**) | `library.project.manage` (**Właściciel**, **Maintainer** projektu) |
-| Tworzyć, edytować lub usuwać interfejsy | `library.manage`; interfejsy są zawsze globalne | — |
+| Przeglądać szablony, umiejętności, reguły i podgląd | `library.view` (każdy **Członek**, **Member**) | `project.view` w projekcie |
+| Tworzyć, edytować lub usuwać szablony, umiejętności i reguły | `library.manage` (rola **Kurator biblioteki**, **Library curator**) | `library.project.manage` (**Właściciel**, **Maintainer** projektu) |
 
 Bez odpowiedniego uprawnienia edytory otwierają się w trybie tylko do odczytu. Każda zmiana jest
 zapisywana w dzienniku audytu, a listy pokazują, kto ostatnio zmienił wpis.
@@ -32,11 +37,11 @@ zapisywana w dzienniku audytu, a listy pokazują, kto ostatnio zmienił wpis.
 <a id="templates"></a>
 ## Szablony
 
-**Biblioteka** → **Szablony** (**Templates**, `/library/templates`) wyświetla szablony z kolumnami
-**Rozszerza** (**Extends**), **Implementuje** (**Implements**), **Wykonawca** (**Executor**), **Zakres**
-(**Scope**) i **Zaktualizowano** (**Updated**). Szablony wbudowane są oznaczone; podobnie abstrakcyjne,
-które można rozszerzać, ale nigdy wykonać. Filtruj tekstem, wykonawcą (**Dowolny wykonawca**, **Any
-executor**) oraz przełącznikiem **Szablony globalne** / **Globalne + KEY** (**Global templates** /
+**Biblioteka** → **Zadania** → **Szablony** (**Templates**, `/library/templates`) wyświetla szablony pogrupowane
+według **Kategorii** (**Category**): Analiza, Specyfikacja, Planowanie, Implementacja, Przegląd, Jira, Operacje
+i Ogólne (szablony bez kategorii). Projektant workflowów grupuje paletę tak samo. Szablony wbudowane są oznaczone;
+podobnie abstrakcyjne, które mogą być bazą dla innych, ale nigdy nie są wykonywane. Filtruj tekstem, kategorią,
+wykonawcą oraz przełącznikiem **Szablony globalne** / **Globalne + KEY** (**Global templates** /
 **Global + KEY**), aby uwzględnić własne szablony projektu.
 
 Wykonawca decyduje, kto wykonuje pracę (ADR 0054 nazywa wykonawców według tego, co robią; wartość techniczna jest
@@ -54,9 +59,9 @@ pokazana drobno):
 
 1. Kliknij **Nowy szablon** (**New template**) (wymaga `library.manage` albo `library.project.manage` dla
    szablonu projektu).
-2. **Typ** (**Type**): **Klucz** (**Key**; slug), **Nazwa**, **Opis**, **Na bazie** (**Based on**; jeden
-   rodzic: szablon dziedziczy jego prompty, umiejętności i konfigurację, a zmienia tylko to, co ustawisz),
-   **Wykonawca** (puste oznacza dziedziczony; edytor pokazuje, który i co robi), **Zakres** (**Globalny** lub
+2. **Typ** (**Type**): **Nazwa**, **Opis**, **Na bazie** (**Based on**; jeden rodzic: szablon dziedziczy jego
+   prompty, umiejętności, reguły i konfigurację, a zmienia tylko to, co ustawisz), **Kategoria** (**Category**;
+   puste oznacza dziedziczoną), **Wykonawca** (puste oznacza dziedziczony; edytor pokazuje, który i co robi), **Zakres** (**Globalny** lub
    **Projektowy** z wyborem **Projektu**), **Profil modelu** (**Model profile**).
 3. **Prompt**: wybierz **Dopisz do rodzica** (**Append to parent**) lub **Zastąp rodzica** (**Replace
    parent**), a następnie napisz **Prompt systemowy** (**System prompt**) i **Prompt użytkownika** (**User
@@ -70,16 +75,17 @@ pokazana drobno):
    uruchomionego kroku, zostaje przy nim na kolejne próby i nigdy nie dociera do kroków po nim (wszystkie
    komentarze przebiegu: `{{feedbackHistory}}`). Komentarz **Zatwierdź** trafia do kolejnych promptów jako
    `{{decision.comment}}`.
-4. **Umiejętności** (**Skills**): dodaj umiejętności, a odziedziczone umiejętności do usunięcia wpisz w **Usuń
-   odziedziczone umiejętności** (**Remove inherited skills**).
+4. **Umiejętności i reguły** (**Skills**, **Rules**): dodaj umiejętności i reguły. Reguły automatyczne, które
+   obowiązują i tak, są pokazane tylko do odczytu. W sekcji **Zaawansowane** pola **Usuń odziedziczone umiejętności**
+   (**Remove inherited skills**) i **Pomiń odziedziczone lub automatyczne reguły** (**Drop inherited or automatic
+   rules**) zabierają wpisy temu szablonowi i szablonom na nim opartym.
 5. **Konfiguracja** (**Configuration**): formularz z ustawieniami wykonawcy (dla agenta kodującego: agent,
    polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania, narzędzia agenta, obszar
    roboczy, ...). Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
    (**Raw JSON**) pokazuje te same ustawienia jako JSON, także klucze, których formularz nie zna.
    **Zaawansowane: kontrakty, artefakty, schemat wyjścia, sandbox** (zwinięte; większość szablonów niczego tu nie
    potrzebuje): **Abstrakcyjny** (**Abstract**; tylko baza dla innych szablonów, nigdy samodzielny krok),
-   **Implementuje** (**Implements**; interfejsy sprawdzane przy rozwiązywaniu szablonu), **Produkuje**
-   (**Produces**) i **Konsumuje** (**Consumes**) (nazwy artefaktów, które krok zapisuje i odczytuje; kontrola
+   **Produkuje** (**Produces**) i **Konsumuje** (**Consumes**) (nazwy artefaktów, które krok zapisuje i odczytuje; kontrola
    workflowu ostrzega, gdy krok czyta coś, czego nikt nie zapisuje), **Pole pewności** (**Confidence field**; pole
    odpowiedzi modelu kopiowane do `state.confidence` na potrzeby decyzji takich jak `confidence < 0.7`), **Tagi**
    (**Tags**), **Schemat wyjścia** (**Output schema**; tylko Odpowiedź modelu) i **Sandbox** (krok 7).
@@ -99,12 +105,12 @@ pokazana drobno):
 
 | Pole | Reguła |
 |---|---|
-| Wykonawca | Wygrywa najbliższy w łańcuchu. |
+| Wykonawca, kategoria | Wygrywa najbliższy w łańcuchu. |
 | Profil modelu, schemat wyjścia, pole pewności | Wygrywa wartość potomka, jeśli jest ustawiona. |
 | Prompt systemowy i użytkownika | Dla każdego pola osobno: **Dopisz do rodzica** dodaje tekst potomka po tekście rodzica; **Zastąp rodzica** używa tylko tekstu potomka. Puste pole zachowuje wartość rodzica. |
-| Umiejętności | Suma wzdłuż łańcucha minus usunięte umiejętności. |
+| Umiejętności, reguły | Suma wzdłuż łańcucha minus usunięte. Reguły automatyczne są pierwsze. |
 | Konfiguracja | Scalana klucz po kluczu; wygrywa potomek; `null` usuwa klucz. |
-| Produkuje, konsumuje, implementuje, tagi | Suma. |
+| Produkuje, konsumuje, tagi | Suma. |
 | Dane wejściowe uruchomienia | Suma według nazwy; pole dziecka zastępuje pole rodzica o tej samej nazwie. |
 
 <a id="run-inputs"></a>
@@ -122,18 +128,17 @@ zgłoszenia Jira** ustawia też klucz zgłoszenia uruchomienia.
 
 Prawa strona edytora pokazuje **Podgląd rozwiązanego zadania** (**Resolved preview**): dokładnie to, co
 otrzymuje agent po dziedziczeniu i przesłonięciu przez projekt, dla biblioteki globalnej lub wybranego
-projektu. Pokazuje rodowód, wykonawcę, interfejsy i porty oraz karty **Prompt systemowy**, **Prompt
-użytkownika**, **Umiejętności**, **Konfiguracja** i **Dane wejściowe** (**Run inputs**: scalone pola wraz
-z szablonem, z którego każde jest dziedziczone). Jeśli implementowany interfejs nie jest spełniony,
-**Kontrola interfejsu nie powiodła się** (**Interface check failed**) wymienia braki, a zadanie nie może
-działać, dopóki ich nie usuniesz. Podgląd odzwierciedla zapisaną wersję; niezapisane zmiany są
+projektu. Pokazuje rodowód, wykonawcę i kategorię oraz karty **Prompt systemowy**, **Prompt użytkownika**,
+**Umiejętności**, **Reguły**, **Konfiguracja** i **Dane wejściowe** (**Run inputs**: scalone pola wraz
+z szablonem, z którego każde jest dziedziczone; reguły automatyczne są oznaczone). Jeśli umiejętność lub reguła,
+którą szablon wymienia, nie istnieje, podgląd ją wskazuje, a zadanie nie może działać, dopóki tego nie poprawisz. Podgląd odzwierciedla zapisaną wersję; niezapisane zmiany są
 wymienione jako różnice.
 
 ### Kroki: zmiana zadania dla jednego projektu
 
-1. W wierszu szablonu kliknij **Rozszerz w projekcie** (**Extend in a project**).
-2. Otworzy się nowy szablon z tym samym kluczem, zakresem **Projektowy** i szablonem globalnym jako
-   rodzicem. Wybierz projekt i zmień tylko to, co się różni, na przykład dopisz regułę do promptu
+1. W wierszu szablonu kliknij **Dostosuj dla projektu** (**Customize for project**).
+2. Otworzy się nowy szablon z zakresem **Projektowy** i szablonem globalnym jako rodzicem; zachowuje klucz
+   szablonu globalnego, więc zastępuje go w tym projekcie. Wybierz projekt i zmień tylko to, co się różni, na przykład dopisz regułę do promptu
    systemowego.
 3. Zapisz. Od tej chwili workflowy tego projektu używają szablonu projektowego wszędzie, gdzie występuje
    ten klucz, także jako rodzica innych szablonów. Pozostałe projekty zachowują szablon globalny.
@@ -141,38 +146,56 @@ wymienione jako różnice.
 Szablonów wbudowanych nie można usuwać; zamiast tego rozszerzaj je w projektach. Nie można też usunąć
 szablonu, który rozszerza inny szablon.
 
-<a id="interfaces"></a>
-## Interfejsy
+<a id="rules"></a>
+## Reguły
 
-**Biblioteka** → **Interfejsy** (**Interfaces**, `/library/interfaces`) wyświetla kontrakty z kolumnami
-**Wejścia** (**Inputs**), **Wyjścia** (**Outputs**), **Porty** (**Ports**) i **Implementowany przez**
-(**Implemented by**).
+**Biblioteka** → **Zadania** → **Reguły** (**Rules**, `/library/rules`) wyświetla to, czego agenci muszą zawsze
+przestrzegać: konwencje kodu, rzeczy niedozwolone, sposób raportowania. Reguła różni się od umiejętności jednym:
+**reguła jest zawsze w kontekście agenta, umiejętność agent otwiera, gdy jej potrzebuje.** Normę zapisz w regule
+(„domena nigdy nie importuje Springa”), wiedzę lub procedurę w umiejętności („jak napisać ADR”).
 
-Interfejs ma **Klucz**, **Nazwę**, **Opis**, wejścia i wyjścia (każde z nazwą, rodzajem i, dla wejść,
-oznaczeniem **wymagane**, **required**) oraz **Porty**: porty wyjściowe, które węzeł z tym interfejsem
-pokazuje na kanwie. Szablon implementujący interfejs musi wymienić każde wymagane wejście (artefakt lub
-pole stanu) w **Konsumuje**, każdy wymagany slot **Run input** (po nazwie) w **Danych wejściowych
-uruchomienia** i każde wyjście w **Produkuje**; podgląd rozwiązanego zadania to sprawdza.
+Jak reguła trafia do agenta:
 
-Kliknij **Utwórz interfejs** (**Create interface**), wypełnij pola (**Dodaj wejście**, **Add input**;
-**Dodaj wyjście**, **Add output**) i kliknij **Utwórz interfejs**. Zmiana interfejsów wymaga
-`library.manage`. Nie można usunąć interfejsu, który wciąż implementują szablony; interfejsów
-wbudowanych nie można usuwać w ogóle.
+- Zadania **Odpowiedź modelu** dostają reguły w prompcie systemowym, przed umiejętnościami.
+- Zadania **Agent kodujący** i **Krok Spec Kit** dostają je na początku promptu, zaraz po części systemowej
+  szablonu. Nic nie jest zapisywane w repozytorium.
 
-Gdy dodasz do interfejsu wymagane wejście lub wyjście, szablony wymienione w **Implementowany przez** nie
-przejdą kontroli interfejsu, dopóki nie zaktualizujesz ich pól **Konsumuje** i **Produkuje**.
+Które reguły dostaje krok:
+
+| Reguła | Obowiązuje |
+|---|---|
+| **Stosuj automatycznie w każdym kroku**, globalna | każdy krok każdego projektu |
+| **Stosuj automatycznie w każdym kroku**, projektowa | każdy krok tego projektu |
+| Nieautomatyczna | szablony, które wymieniają ją w **Regułach**, i szablony na nich oparte |
+
+Szablon może pominąć regułę odziedziczoną lub automatyczną przez **Pomiń odziedziczone lub automatyczne reguły**.
+Reguła projektowa o kluczu reguły globalnej zastępuje ją w tym projekcie (tworzy się ją przez **Dostosuj dla
+projektu**); gdy kopia projektowa nie jest automatyczna, globalna reguła automatyczna jest w tym projekcie wyłączona.
+
+### Kroki: tworzenie reguły
+
+1. Kliknij **Utwórz regułę** (**Create rule**).
+2. Wpisz **Nazwę**, **Opis**, **Zakres** (**Globalny** lub **Projektowy**), **Tagi** i, jeśli każdy krok zakresu ma
+   jej przestrzegać, włącz **Stosuj automatycznie w każdym kroku** (**Apply automatically to every step**).
+3. Napisz regułę w markdownie: krótkie, konkretne, sprawdzalne zdania.
+4. Kliknij **Utwórz regułę**.
+
+Reguły, którą wymienia szablon, nie można usunąć. Reguły wbudowane: `agent-ground-rules` i `ask-dont-guess`
+(każdy agent dostaje je przez wbudowany szablon `base-agent`), `kotlin-hexagonal` i `angular-ng-zorro`
+(konwencje kodu samego Back Office: skopiuj je do reguły projektowej dla własnego stosu i ustaw ją jako automatyczną).
 
 <a id="skills"></a>
 ## Umiejętności
 
-**Biblioteka** → **Umiejętności** (**Skills**, `/library/skills`) wyświetla bloki instrukcji
-wielokrotnego użytku z kolumnami **Zakres**, **Tagi**, **Rozmiar** (**Size**) i **Zaktualizowano**.
-Umiejętność stosuje konwencję Agent Skills: nagłówek frontmatter z `name` i `description`, a potem
-krótkie, konkretne, ponumerowane reguły.
+**Biblioteka** → **Zadania** → **Umiejętności** (**Skills**, `/library/skills`) wyświetla wiedzę i procedury,
+które agent otwiera, gdy zadanie ich wymaga, z kolumnami **Zakres**, **Tagi**, **Rozmiar** (**Size**)
+i **Zaktualizowano**. Umiejętność stosuje konwencję Agent Skills: nagłówek frontmatter z `name` i `description`,
+a potem krótkie, konkretne, ponumerowane kroki.
 
 Jak umiejętność trafia do agenta:
 
-- Zadania **LLM** dostają umiejętność dopisaną do promptu systemowego.
+- Zadania **Odpowiedź modelu** dostają umiejętność dopisaną do promptu systemowego (pojedyncze wywołanie modelu nie
+  może otwierać plików).
 - Zadania na runnerze (**Spec Kit**, **Implementacja**) dostają ją zapisaną jako
   `.claude/skills/<key>/SKILL.md` i `.opencode/skills/<key>/SKILL.md`, które Claude Code i OpenCode
   wczytują samodzielnie.
@@ -180,23 +203,19 @@ Jak umiejętność trafia do agenta:
 ### Kroki: tworzenie umiejętności
 
 1. Kliknij **Utwórz umiejętność** (**Create skill**).
-2. Wpisz **Klucz**, **Nazwę**, **Opis**, **Zakres** (**Globalny** lub **Projektowy**) i **Tagi**.
+2. Wpisz **Nazwę**, **Opis**, **Zakres** (**Globalny** lub **Projektowy**) i **Tagi**.
 3. Napisz treść na karcie **SKILL.md**; sprawdź ją na karcie **Podgląd** (**Preview**).
 4. Kliknij **Utwórz umiejętność**.
 
 Umiejętność projektowa o kluczu umiejętności globalnej zastępuje ją dla szablonów tego projektu, bez
-zmiany żadnego szablonu. Umiejętności używanej przez szablon nie można usunąć ani przemianować;
-umiejętności wbudowanych nie można usuwać. Każdy agent dziedziczy umiejętności `agent-ground-rules`
-i `ask-dont-guess` przez wbudowany szablon `base-agent`; jeśli zadanie nie może ich widzieć, usuń je
-w szablonie przez **Usuń odziedziczone umiejętności**.
+zmiany żadnego szablonu. Umiejętności używanej przez szablon nie można usunąć; umiejętności wbudowanych nie
+można usuwać.
 
 **Opis** pisz w formie „Use when ...” („Użyj, gdy ...”): po nim agent decyduje, czy otworzyć umiejętność.
-Reguły, których zadanie musi zawsze przestrzegać, należą do jego promptu, nie tylko do umiejętności.
+To, czego zadanie musi zawsze przestrzegać, należy do [reguły](#rules), nie do umiejętności.
 Agent na runnerze znajduje wszystkie umiejętności w katalogu roboczym, ale czyta tylko te, które mu
-wskazano, dlatego prompty wbudowanych zadań na runnerze kończą się linią „Apply the skills: ...”; gdy
-dołączasz do takiego zadania kolejną umiejętność, dopisz jej klucz do tej linii. `kotlin-hexagonal`
-i `angular-ng-zorro` opisują kod samego Back Office: traktuj je jako przykłady i skopiuj do umiejętności
-projektowej dla własnego stosu.
+wskazano, dlatego prompty wbudowanych zadań na runnerze wymieniają używane umiejętności („Apply the skill ...”); gdy
+dołączasz do takiego zadania kolejną umiejętność, wymień ją też w prompcie.
 
 <a id="sources"></a>
 ## Źródła
@@ -231,7 +250,7 @@ przyjmą, też je dostają.
 Back Office zawiera szablony faz Spec Kit, implementacji z OpenCode lub Claude Code, `clarify-spec`,
 `code-review`, `analyse-issue`, zadań Jiry oraz zadań SDLC, takich jak `impact-analysis`,
 `write-user-story`, `plan-task-list`, `implement-task-list` i `review-against-spec`, wraz z ich
-interfejsami i umiejętnościami. Wpisy wbudowane możesz edytować; Back Office nigdy nie nadpisuje
+umiejętnościami i regułami. Wpisy wbudowane możesz edytować; Back Office nigdy nie nadpisuje
 zmienionego wpisu.
 
 Szablon z tagiem `deprecated` działa dalej w krokach, które go używają, ale projektant, paleta MCP i lista (chyba
@@ -242,7 +261,7 @@ w **Konfiguracji**) oraz `analyse-issue` (użyj `impact-analysis`).
 <a id="built-in-updates"></a>
 ### Aktualizacje biblioteki wbudowanej
 
-Przy każdym starcie Back Office porównuje każdy wbudowany szablon, umiejętność i interfejs z wersją,
+Przy każdym starcie Back Office porównuje każdy wbudowany szablon, umiejętność i regułę z wersją,
 którą dostarcza, pole po polu. Wpis wbudowany, którego nikt nie edytował (nadal zapisany przez system,
 a w przypadku szablonu nadal w wersji 1), jest zastępowany wersją dostarczoną, gdy się różnią; wpis
 zapisany przez człowieka albo kopia z tym samym kluczem, która nie jest wbudowana, zostaje bez zmian. Aby

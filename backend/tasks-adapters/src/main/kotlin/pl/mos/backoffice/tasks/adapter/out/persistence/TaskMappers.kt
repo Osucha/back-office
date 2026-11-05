@@ -7,13 +7,11 @@ import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.tasks.domain.model.Prompt
+import pl.mos.backoffice.tasks.domain.model.Rule
+import pl.mos.backoffice.tasks.domain.model.RuleId
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.SkillId
-import pl.mos.backoffice.tasks.domain.model.Slot
-import pl.mos.backoffice.tasks.domain.model.SlotKind
-import pl.mos.backoffice.tasks.domain.model.TaskInterface
-import pl.mos.backoffice.tasks.domain.model.TaskInterfaceId
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
 import tools.jackson.databind.json.JsonMapper
@@ -21,50 +19,6 @@ import java.util.UUID
 
 /** Domain <-> entity mapping; JSONB payloads go through Jackson 3 as plain lists and maps. */
 class TaskMappers(private val json: JsonMapper) {
-
-    // ----- interfaces ---------------------------------------------------------------------------------
-
-    fun toEntity(i: TaskInterface) = TaskInterfaceEntity(
-        id = i.id.value,
-        key = i.key,
-        name = i.name,
-        description = i.description,
-        inputs = json.writeValueAsString(i.inputs.map(::slotMap)),
-        outputs = json.writeValueAsString(i.outputs.map(::slotMap)),
-        ports = json.writeValueAsString(i.ports),
-        builtIn = i.builtIn,
-        createdAt = i.createdAt,
-        updatedAt = i.updatedAt,
-        updatedByKind = i.updatedBy?.kind?.name,
-        updatedById = i.updatedBy?.userId,
-        updatedByName = i.updatedBy?.displayName,
-    )
-
-    fun toDomain(e: TaskInterfaceEntity) = TaskInterface(
-        id = TaskInterfaceId(e.id),
-        key = e.key,
-        name = e.name,
-        description = e.description,
-        inputs = readList(e.inputs).map(::slot),
-        outputs = readList(e.outputs).map(::slot),
-        ports = readStrings(e.ports),
-        builtIn = e.builtIn,
-        createdAt = e.createdAt,
-        updatedAt = e.updatedAt,
-        updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
-    )
-
-    private fun slotMap(s: Slot) = mapOf("name" to s.name, "kind" to s.kind.name, "required" to s.required, "description" to s.description)
-
-    private fun slot(raw: Any?): Slot {
-        val m = raw as Map<*, *>
-        return Slot(
-            name = m["name"].toString(),
-            kind = SlotKind.valueOf(m["kind"].toString()),
-            required = (m["required"] as? Boolean) ?: true,
-            description = m["description"] as? String,
-        )
-    }
 
     // ----- templates ----------------------------------------------------------------------------------
 
@@ -75,7 +29,7 @@ class TaskMappers(private val json: JsonMapper) {
         description = t.description,
         abstract = t.abstract,
         extendsKey = t.extendsKey,
-        implements = json.writeValueAsString(t.implements),
+        category = t.category,
         executor = t.executor,
         scopeType = scopeType(t.scope),
         projectId = t.scope.projectId,
@@ -85,6 +39,8 @@ class TaskMappers(private val json: JsonMapper) {
         promptMode = t.prompt.mode,
         skills = json.writeValueAsString(t.skills),
         removeSkills = json.writeValueAsString(t.removeSkills),
+        rules = json.writeValueAsString(t.rules),
+        removeRules = json.writeValueAsString(t.removeRules),
         config = json.writeValueAsString(t.config),
         outputSchema = t.outputSchema,
         confidenceField = t.confidenceField,
@@ -108,7 +64,7 @@ class TaskMappers(private val json: JsonMapper) {
         description = e.description,
         abstract = e.abstract,
         extendsKey = e.extendsKey,
-        implements = readStrings(e.implements),
+        category = e.category,
         executor = e.executor,
         scope = Scope.of(e.projectId),
         modelProfileId = e.modelProfileId?.let(::ModelProfileId),
@@ -127,6 +83,8 @@ class TaskMappers(private val json: JsonMapper) {
         createdAt = e.createdAt,
         updatedAt = e.updatedAt,
         updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
+        rules = readStrings(e.rules),
+        removeRules = readStrings(e.removeRules),
     )
 
     private fun runInputMap(f: RunInputField) =
@@ -180,6 +138,41 @@ class TaskMappers(private val json: JsonMapper) {
         description = e.description,
         content = e.content,
         scope = Scope.of(e.projectId),
+        tags = readStrings(e.tags),
+        builtIn = e.builtIn,
+        createdAt = e.createdAt,
+        updatedAt = e.updatedAt,
+        updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
+    )
+
+    // ----- rules (ADR 0055) --------------------------------------------------------------------------
+
+    fun toEntity(r: Rule) = RuleEntity(
+        id = r.id.value,
+        key = r.key,
+        name = r.name,
+        description = r.description,
+        content = r.content,
+        scopeType = scopeType(r.scope),
+        projectId = r.scope.projectId,
+        automatic = r.automatic,
+        tags = json.writeValueAsString(r.tags),
+        builtIn = r.builtIn,
+        createdAt = r.createdAt,
+        updatedAt = r.updatedAt,
+        updatedByKind = r.updatedBy?.kind?.name,
+        updatedById = r.updatedBy?.userId,
+        updatedByName = r.updatedBy?.displayName,
+    )
+
+    fun toDomain(e: RuleEntity) = Rule(
+        id = RuleId(e.id),
+        key = e.key,
+        name = e.name,
+        description = e.description,
+        content = e.content,
+        scope = Scope.of(e.projectId),
+        automatic = e.automatic,
         tags = readStrings(e.tags),
         builtIn = e.builtIn,
         createdAt = e.createdAt,

@@ -11,7 +11,7 @@ import java.util.UUID
  * Structural checks of a template against the rest of the library, run before a template is saved:
  * key format, parent existence and no self-extension, executor present on concrete templates unless an
  * ancestor provides one, `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`,
- * implemented interfaces and referenced skills exist, run input names are unique. All problems are collected into one
+ * referenced skills and rules exist, run input names are unique. All problems are collected into one
  * `ValidationException`.
  */
 class TemplateValidator(private val lookup: LibraryLookup) {
@@ -28,7 +28,8 @@ class TemplateValidator(private val lookup: LibraryLookup) {
         if (!Keys.isValid(template.key)) errors += FieldError("key", "must match ${Keys.PATTERN.pattern}")
 
         val parent = resolveParent(template, projectId, errors)
-        val ancestors = ancestors(parent, projectId, template.key).toList()
+        // a project template shadowing the global one extends a parent with its own key: that parent is no cycle
+        val ancestors = ancestors(parent, projectId, template.key.takeUnless { parent?.key == template.key }).toList()
 
         if (!template.abstract && template.executor == null && ancestors.none { it.executor != null }) {
             errors += FieldError("executor", "required on a concrete template unless inherited from an ancestor")
@@ -41,11 +42,11 @@ class TemplateValidator(private val lookup: LibraryLookup) {
             errors += FieldError("confidenceField", "requires an outputSchema on this template or an ancestor")
         }
 
-        template.implements.forEach { key ->
-            if (lookup.taskInterface(key) == null) errors += FieldError("implements", "interface $key does not exist")
-        }
         template.skills.forEach { key ->
             if (lookup.visibleSkill(key, projectId) == null) errors += FieldError("skills", "skill $key does not exist")
+        }
+        template.rules.forEach { key ->
+            if (lookup.visibleRule(key, projectId) == null) errors += FieldError("rules", "rule $key does not exist")
         }
         // blank names and labels are refused by RunInputField itself
         template.runInputs.groupBy { it.name }.filterValues { it.size > 1 }.keys.forEach { name ->
@@ -84,8 +85,8 @@ class TemplateValidator(private val lookup: LibraryLookup) {
      * Walks up from [start] without throwing: a cycle back to [selfKey] or an unknown parent simply ends
      * the walk (the resolver reports those as errors when the chain is used).
      */
-    private fun ancestors(start: TaskTemplate?, projectId: UUID?, selfKey: String): Sequence<TaskTemplate> = sequence {
-        val seen = mutableSetOf(selfKey)
+    private fun ancestors(start: TaskTemplate?, projectId: UUID?, selfKey: String?): Sequence<TaskTemplate> = sequence {
+        val seen = mutableSetOf<String>().apply { selfKey?.let { add(it) } }
         var current = start
         while (current != null && seen.add(current.key) && seen.size <= TaskResolver.MAX_DEPTH) {
             yield(current)

@@ -1,17 +1,24 @@
 # Task library
 
 The task library holds what agents do and how they are prompted, separately from the workflows that use
-it: task templates, the interfaces they promise, reusable skills and sources. This chapter covers these
-**Library** pages and how to change a task for one project only.
+it. **Library** has three groups (ADR 0055):
+
+- **Tasks**: **Templates**, **Skills** and **Rules**, this chapter;
+- **Workflows**: workflows shared between projects ([Workflow library](workflow-library.md));
+- **Sources**: material steps can attach ([Sources](#sources)).
 
 ## How the pieces fit
 
 | Piece | Think of it as | You use it to |
 |---|---|---|
-| Task interface | an interface | promise which inputs a task needs, which outputs it produces and which ports its node has |
-| Task template | a class | define a task: executor, prompts, skills, config; it extends one parent and implements interfaces |
-| Skill | a mixin | reuse a block of instructions (a `SKILL.md` file) in many templates |
+| Task template | a class | define a task: executor, category, prompts, skills, rules, config; it is based on one parent |
+| Rule | a standing order | state something the agent must always follow; always in the agent's context |
+| Skill | a handbook chapter | give the agent knowledge or a procedure it opens when the task needs it (a `SKILL.md` file) |
 | Resolved task | an instance | what the agent finally receives: the template with its ancestors, project overrides and node overrides merged |
+
+You never type keys: a template, skill or rule gets one from its name when you create it (for example
+**Analiza zgłoszenia** becomes `analiza-zgloszenia`), and it stays when you rename the entry. Workflows, MCP
+and the API use the key; the editors show it small in **Advanced**.
 
 A workflow's task node refers to a template by its key and never holds a prompt itself. Editing a template
 therefore changes every workflow that uses it, from the next run on. Runs already in progress keep what
@@ -21,9 +28,8 @@ they resolved.
 
 | You want to | Global library | One project's own entries |
 |---|---|---|
-| See templates, interfaces, skills and the preview | `library.view` (every **Member**) | `project.view` on the project |
-| Create, edit or delete templates and skills | `library.manage` (role **Library curator**) | `library.project.manage` (project **Owner**, **Maintainer**) |
-| Create, edit or delete interfaces | `library.manage`; interfaces are always global | — |
+| See templates, skills, rules and the preview | `library.view` (every **Member**) | `project.view` on the project |
+| Create, edit or delete templates, skills and rules | `library.manage` (role **Library curator**) | `library.project.manage` (project **Owner**, **Maintainer**) |
 
 Without the right permission the editors open read-only. Every change is recorded in the audit log, and
 the lists show who changed an entry last.
@@ -31,10 +37,11 @@ the lists show who changed an entry last.
 <a id="templates"></a>
 ## Templates
 
-**Library** → **Templates** (`/library/templates`) lists the templates with **Extends**, **Implements**,
-**Executor**, **Scope** and **Updated**. Built-in templates are marked; so are abstract ones, which can be
-extended but never run. Filter by text, by executor (**Any executor**), and with **Global templates** /
-**Global + KEY** to include a project's own templates.
+**Library** → **Tasks** → **Templates** (`/library/templates`) lists the templates grouped by **Category**:
+Analysis, Specification, Planning, Implementation, Review, Jira, Operations and General (templates without a
+category). The workflow designer groups its palette the same way. Built-in templates are marked; so are abstract
+ones, which can be a base for others but never run. Filter by text, category and executor, and with **Global
+templates** / **Global + KEY** to include a project's own templates.
 
 The executor decides who does the work (ADR 0054 names them by what they do; the technical value is shown small):
 
@@ -49,10 +56,10 @@ The executor decides who does the work (ADR 0054 names them by what they do; the
 ### Steps: create a template
 
 1. Click **New template** (needs `library.manage`, or `library.project.manage` for a project template).
-2. **Type**: **Key** (a slug), **Name**, **Description**, **Based on** (one parent: the template inherits its
-   prompts, skills and configuration and changes only what you set), **Executor** (empty means inherited; the
-   editor says which one and what it does), **Scope** (**Global** or **Project** with the **Project**),
-   **Model profile**.
+2. **Type**: **Name**, **Description**, **Based on** (one parent: the template inherits its prompts, skills, rules
+   and configuration and changes only what you set), **Category** (empty means inherited), **Executor** (empty means
+   inherited; the editor says which one and what it does), **Scope** (**Global** or **Project** with the
+   **Project**), **Model profile**.
 3. **Prompt**: choose **Append to parent** or **Replace parent**, then write the **System prompt** and
    the **User prompt**. Template values such as `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
    and `{{project.constitution}}` are filled at run time. A section `{{#artifacts.review}}...{{/artifacts.review}}`
@@ -63,14 +70,15 @@ The executor decides who does the work (ADR 0054 names them by what they do; the
    to the next step that runs, stays with that step for its later attempts, and never reaches the steps
    after it (all comments of the run: `{{feedbackHistory}}`). An **Approve** comment reaches later prompts as
    `{{decision.comment}}`.
-4. **Skills**: add skills, and list inherited skills under **Remove inherited skills**.
+4. **Skills and rules**: add skills and rules. The automatic rules that apply anyway are listed read-only. Under
+   **Advanced**, **Remove inherited skills** and **Drop inherited or automatic rules** take entries away for this
+   template and the ones based on it.
 5. **Configuration**: a form with the settings of the executor (for a coding agent: agent, verify and setup
    command, push, merge request, artefacts to collect, agent tools, workspace, ...). Set only what differs from the
    template it is based on; empty fields are inherited. **Raw JSON** shows the same settings as JSON, also keys the
    form does not know.
    **Advanced: contracts, artefacts, output schema, sandbox** (collapsed; most templates need nothing here):
-   **Abstract** (only a base for other templates, never a step), **Implements** (interfaces checked when the
-   template is resolved), **Produces** and **Consumes** (artefact names the step writes and reads; the workflow
+   **Abstract** (only a base for other templates, never a step), **Produces** and **Consumes** (artefact names the step writes and reads; the workflow
    check warns when a step reads something nobody writes), **Confidence field** (a field of the model answer copied
    to `state.confidence` for decisions such as `confidence < 0.7`), **Tags**, **Output schema** (Model answer only)
    and **Sandbox** (step 7).
@@ -87,12 +95,12 @@ The executor decides who does the work (ADR 0054 names them by what they do; the
 
 | Field | Rule |
 |---|---|
-| Executor | The nearest one in the chain wins. |
+| Executor, category | The nearest one in the chain wins. |
 | Model profile, output schema, confidence field | The child's value wins when set. |
 | System and user prompt | Per field: **Append to parent** adds the child's text after the parent's; **Replace parent** uses only the child's. An empty field keeps the parent's. |
-| Skills | Union along the chain, minus removed skills. |
+| Skills, rules | Union along the chain, minus removed ones. Automatic rules come first. |
 | Config | Merged key by key; the child wins; `null` deletes a key. |
-| Produces, consumes, implements, tags | Union. |
+| Produces, consumes, tags | Union. |
 | Run inputs | Union by name; a child's field replaces the parent's field with the same name. |
 
 <a id="run-inputs"></a>
@@ -109,16 +117,16 @@ run's issue key.
 ### The resolved preview
 
 The right side of the editor shows **Resolved preview**: exactly what an agent receives after inheritance
-and project shadowing, for the global library or for a project you pick. It shows the lineage, executor,
-interfaces and ports, and tabs **System prompt**, **User prompt**, **Skills**, **Config** and **Run inputs**
-(the merged fields, with the template each one is inherited from). If an
-implemented interface is not satisfied, **Interface check failed** lists what is missing, and the task
-cannot run until it is fixed. The preview reflects the saved version; unsaved changes are listed as deltas.
+and project shadowing, for the global library or for a project you pick. It shows the lineage, executor and
+category, and tabs **System prompt**, **User prompt**, **Skills**, **Rules**, **Config** and **Run inputs** (the
+merged fields, with the template each one is inherited from; automatic rules are marked). If a skill or rule the
+template lists does not exist, the preview lists it, and the task cannot run until it is fixed. The preview reflects the saved version; unsaved changes are listed as deltas.
 
 ### Steps: change a task for one project
 
-1. On the template's row, click **Extend in a project**.
-2. A new template opens with the same key, scope **Project**, and the global template as parent. Pick the
+1. On the template's row, click **Customize for project**.
+2. A new template opens with scope **Project** and the global template as parent; it keeps the global template's
+   key, so it replaces the global one in that project. Pick the
    project and change only what differs, for example append a rule to the system prompt.
 3. Save. From now on, that project's workflows use the project template wherever the key appears,
    including as a parent of other templates. Other projects keep the global one.
@@ -126,57 +134,72 @@ cannot run until it is fixed. The preview reflects the saved version; unsaved ch
 Built-in templates cannot be deleted; extend them per project instead. A template another template
 extends cannot be deleted either.
 
-<a id="interfaces"></a>
-## Interfaces
+<a id="rules"></a>
+## Rules
 
-**Library** → **Interfaces** (`/library/interfaces`) lists the contracts with their **Inputs**,
-**Outputs**, **Ports** and **Implemented by**.
+**Library** → **Tasks** → **Rules** (`/library/rules`) lists what agents must always follow: conventions of a
+code base, things that are never allowed, how to report. A rule differs from a skill in one point: **a rule is
+always in the agent's context, a skill is opened by the agent when it needs it.** Put a norm in a rule ("the
+domain never imports Spring"); put knowledge or a procedure in a skill ("how to write an ADR").
 
-An interface has a **Key**, **Name**, **Description**, inputs and outputs (each with a name, a kind and,
-for inputs, **required**) and **Ports**: the output ports a node of this interface shows on the canvas. A
-template that implements the interface must list every required artefact or state input under
-**Consumes**, every required **Run input** slot under **Run inputs** (by name) and every output under
-**Produces**; the resolved preview checks it.
+How a rule reaches the agent:
 
-Click **Create interface**, fill in the fields (**Add input**, **Add output**) and click **Create
-interface**. Changing interfaces needs `library.manage`. An interface that templates still implement
-cannot be deleted; built-in interfaces cannot be deleted at all.
+- **Model answer** tasks get the rules in the system prompt, before the skills.
+- **Coding agent** and **Spec Kit** tasks get them at the start of their prompt, right after the template's
+  system part. Nothing is written into the repository.
 
-When you add a required input or an output to an interface, the templates listed under **Implemented
-by** fail their interface check until you update their **Consumes** and **Produces**.
+Which rules a step gets:
+
+| Rule | Applies to |
+|---|---|
+| **Apply automatically to every step**, global | every step of every project |
+| **Apply automatically to every step**, project | every step of that project |
+| Not automatic | the templates that list it under **Rules**, and the templates based on them |
+
+A template can drop a rule it inherits or an automatic one with **Drop inherited or automatic rules**. A
+project rule with the key of a global rule replaces it for that project (made with **Customize for project**);
+when the project's copy is not automatic, the global automatic rule is off in that project.
+
+### Steps: create a rule
+
+1. Click **Create rule**.
+2. Enter **Name**, **Description**, **Scope** (**Global** or **Project**), **Tags** and, if every step of the
+   scope must follow it, switch on **Apply automatically to every step**.
+3. Write the rule in markdown: short, concrete, checkable sentences.
+4. Click **Create rule**.
+
+A rule a template lists cannot be deleted. Built-in rules: `agent-ground-rules` and `ask-dont-guess` (every
+agent gets them through the built-in `base-agent` template), `kotlin-hexagonal` and `angular-ng-zorro`
+(the conventions of the Back Office code base itself: copy them into a project rule for your stack and make
+that one automatic).
 
 <a id="skills"></a>
 ## Skills
 
-**Library** → **Skills** (`/library/skills`) lists reusable instruction blocks with **Scope**, **Tags**,
-**Size** and **Updated**. A skill follows the Agent Skills convention: a frontmatter with `name` and
-`description`, then short, concrete, numbered rules.
+**Library** → **Tasks** → **Skills** (`/library/skills`) lists knowledge and procedures an agent opens when the
+task needs them, with **Scope**, **Tags**, **Size** and **Updated**. A skill follows the Agent Skills convention: a
+frontmatter with `name` and `description`, then short, concrete, numbered steps.
 
 How a skill reaches the agent:
 
-- **LLM** tasks get the skill appended to the system prompt.
+- **Model answer** tasks get the skill appended to the system prompt (a single model call cannot open files).
 - Runner tasks (**Spec Kit**, **Implement**) get it written as `.claude/skills/<key>/SKILL.md` and
   `.opencode/skills/<key>/SKILL.md`, which Claude Code and OpenCode load on their own.
 
 ### Steps: create a skill
 
 1. Click **Create skill**.
-2. Enter **Key**, **Name**, **Description**, **Scope** (**Global** or **Project**) and **Tags**.
+2. Enter **Name**, **Description**, **Scope** (**Global** or **Project**) and **Tags**.
 3. Write the content in the **SKILL.md** tab; check it in **Preview**.
 4. Click **Create skill**.
 
 A project skill with the key of a global skill replaces it for that project's templates, without changing
-any template. A skill that a template uses cannot be deleted or renamed; built-in skills cannot be
-deleted. Every agent inherits the skills `agent-ground-rules` and `ask-dont-guess` through the built-in
-`base-agent` template; remove them on a template with **Remove inherited skills** if a task must not see
-them.
+any template. A skill that a template uses cannot be deleted; built-in skills cannot be deleted.
 
-Write the **Description** as "Use when ...": agents decide by it whether to open a skill. Rules a task
-must always follow belong in its prompt, not only in a skill. A runner agent finds every skill in its
-workspace but reads only the ones it is told to, so the prompts of the built-in runner tasks end with
-"Apply the skills: ..."; when you attach another skill to such a task, add its key to that line.
-`kotlin-hexagonal` and `angular-ng-zorro` describe the Back Office code base itself: use them as examples
-and copy them into a project skill for your own stack.
+Write the **Description** as "Use when ...": agents decide by it whether to open a skill. What a task must
+always follow belongs in a [rule](#rules), not in a skill. A runner agent finds every skill in its
+workspace but reads only the ones it is told to, so the prompts of the built-in runner tasks
+name the skills they use ("Apply the skill ..."); when you attach another skill to such a task, name it in the prompt too.
 
 <a id="sources"></a>
 ## Sources
@@ -209,7 +232,7 @@ library sources its steps use go with it; projects that adopt it get them too.
 Back Office ships with templates for the Spec Kit phases, implementation with OpenCode or Claude Code,
 `clarify-spec`, `code-review`, `analyse-issue`, the Jira tasks, and SDLC tasks such as `impact-analysis`,
 `write-user-story`, `plan-task-list`, `implement-task-list` and `review-against-spec`, plus their
-interfaces and skills. You can edit built-ins; Back Office never overwrites an edited entry.
+skills and rules. You can edit built-ins; Back Office never overwrites an edited entry.
 
 A template tagged `deprecated` keeps working in the steps that use it, but the designer, the MCP palette and the
 list (unless **Show deprecated**) no longer offer it. Deprecated now (ADR 0054): `implement-claude-code` (use
@@ -219,7 +242,7 @@ list (unless **Show deprecated**) no longer offer it. Deprecated now (ADR 0054):
 <a id="built-in-updates"></a>
 ### Updates of the built-in library
 
-On every start Back Office compares each built-in template, skill and interface with the version it
+On every start Back Office compares each built-in template, skill and rule with the version it
 ships, field by field. A built-in nobody edited (still saved by the system, and for templates still
 version 1) is replaced by the shipped version when they differ; an entry a person saved, or a copy with
 the same key that is not built-in, is left as it is. To get the shipped version of an entry you changed,

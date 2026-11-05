@@ -14,7 +14,7 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { filter, map } from 'rxjs';
 import { HoverPreloadingStrategy } from '../core/routing/hover-preloading';
 import { ProjectsStore, monogram } from '../core/state/projects.store';
-import { navTarget, type NavItem } from './navigation';
+import { childGroupStart, navTarget, type NavItem } from './navigation';
 import { LogoComponent } from '../core/ui/relay/logo.component';
 
 const MAX_TILES = 6;
@@ -140,7 +140,16 @@ const MAX_TILES = 6;
         </a>
         @if (item.children && expanded() && isSection(item)) {
           <ul class="children">
-            @for (c of item.children; track c.path) {
+            @for (c of item.children; track c.path; let ci = $index) {
+              @if (startsGroup(item.children, ci); as heading) {
+                @if (heading.label) {
+                  <li class="child-group" [class.gap]="ci > 0" aria-hidden="true">
+                    {{ heading.label }}
+                  </li>
+                } @else if (ci > 0) {
+                  <li class="child-sep" aria-hidden="true"></li>
+                }
+              }
               <li>
                 <a
                   class="child"
@@ -386,6 +395,22 @@ const MAX_TILES = 6;
         text-decoration: none;
         white-space: nowrap;
       }
+      .child-group {
+        padding: 4px 8px 2px;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--bo-ink-3);
+      }
+      .child-group.gap {
+        margin-top: 6px;
+      }
+      .child-sep {
+        height: 1px;
+        margin: 4px 8px;
+        background: var(--bo-line);
+      }
       .child:hover {
         color: var(--bo-ink);
         background: var(--bo-surface-2);
@@ -445,6 +470,8 @@ export class RailComponent {
 
   mono = monogram;
   target = navTarget;
+
+  readonly startsGroup = childGroupStart;
 
   isSection(item: NavItem): boolean {
     const url = this.url().split(/[?#]/)[0];

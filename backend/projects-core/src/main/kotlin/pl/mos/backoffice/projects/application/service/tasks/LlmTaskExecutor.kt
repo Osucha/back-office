@@ -282,6 +282,7 @@ class LlmTaskExecutor(
             if (constitution.isNotBlank() && !raw.contains("project.constitution")) {
                 append("\n\nPROJECT CONSTITUTION:\n").append(constitution)
             }
+            RulesPrompt.section(task.rules)?.let { append("\n\n").append(it) }
             if (task.skills.isNotEmpty()) {
                 append("\n\n<skills>\n")
                 task.skills.forEach { skill ->

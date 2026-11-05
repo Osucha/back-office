@@ -44,6 +44,9 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
+import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.tasks.RuleSnapshot
+import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
@@ -90,14 +93,14 @@ class PromptInjectionSuiteTest {
         key = "code-review", name = "Code review", executor = TaskExecutor.LLM, modelProfileId = null,
         prompt = TaskPrompt("You are a strict reviewer.", "Issue {{issue.key}}: {{issue.summary}}\n\nDiff to review:\n{{artifacts.diff}}\n\nReturn JSON."),
         skills = emptyList(), config = config, outputSchema = "{}", confidenceField = null,
-        produces = listOf("review"), consumes = listOf("diff"), interfaces = listOf("reviewer"), lineage = listOf("code-review"), ports = listOf("success"),
+        produces = listOf("review"), consumes = listOf("diff"), category = TemplateCategory.REVIEW, lineage = listOf("code-review"), ports = listOf("success"),
     )
 
     private fun clarifyTask() = ResolvedTask(
         key = "clarify-spec", name = "Clarify", executor = TaskExecutor.LLM, modelProfileId = null,
         prompt = TaskPrompt("You check specs.", "Specification to check:\n\n{{artifacts.spec}}\n\nIssue: {{issue.description}}"),
         skills = emptyList(), config = emptyMap(), outputSchema = "{}", confidenceField = "confidence",
-        produces = listOf("confidence", "clarifications"), consumes = listOf("spec"), interfaces = emptyList(), lineage = listOf("clarify-spec"),
+        produces = listOf("confidence", "clarifications"), consumes = listOf("spec"), category = null, lineage = listOf("clarify-spec"),
         ports = listOf("success"),
     )
 
@@ -257,7 +260,7 @@ class PromptInjectionSuiteTest {
             key = "llm-task", name = "LLM task", executor = TaskExecutor.LLM, modelProfileId = null,
             prompt = TaskPrompt("You help.\n{{#runInputText}}\n\n## Run input\n{{runInputText}}\n{{/runInputText}}", "Do the task."),
             skills = emptyList(), config = emptyMap(), outputSchema = null, confidenceField = null, produces = listOf("result"), consumes = emptyList(),
-            interfaces = emptyList(), lineage = listOf("llm-task"), ports = listOf("success"),
+            category = null, lineage = listOf("llm-task"), ports = listOf("success"),
             runInputs = listOf(RunInputField("input", "Input material", RunInputType.MULTILINE)),
         )
 
@@ -298,7 +301,7 @@ class PromptInjectionSuiteTest {
             key = "implement", name = "Implement", executor = TaskExecutor.IMPLEMENT, modelProfileId = null,
             prompt = TaskPrompt(null, "Implement {{issue.key}}: {{issue.summary}}\n\n{{issue.description}}"),
             skills = emptyList(), config = mapOf("branchTemplate" to "{{issue.key}}"), outputSchema = null, confidenceField = null,
-            produces = listOf("diff"), consumes = emptyList(), interfaces = emptyList(), lineage = listOf("implement"), ports = listOf("success", "failure"),
+            produces = listOf("diff"), consumes = emptyList(), category = null, lineage = listOf("implement"), ports = listOf("success", "failure"),
         )
         support.run(context(run, "implement", mapOf(RunStateKeys.ISSUE to issue)), task, pl.mos.backoffice.shared.runner.RunnerMode.IMPLEMENT, null, "x")
 
@@ -310,6 +313,57 @@ class PromptInjectionSuiteTest {
         assertThat(RunnerTaskSupport.refusedBranchReason("refs/heads/main", "main")).isNotNull()
         assertThat(RunnerTaskSupport.refusedBranchReason("HEAD", "main")).isNotNull()
         assertThat(RunnerTaskSupport.refusedBranchReason("feature/shop-1", "main")).isNull()
+    }
+
+    // ------------------------------------------------------------------------------------------ rules (ADR 0055)
+
+    private val rules = listOf(RuleSnapshot("ground", "Ground rules", "Cite evidence.", automatic = true), RuleSnapshot("style", "Style", "Be brief."))
+
+    @Test
+    fun `model answer steps get the rules in the system prompt after the constitution and before the skills`() {
+        gateway.answers += mapOf("result" to "done")
+        val task = ResolvedTask(
+            key = "llm-task", name = "LLM task", executor = TaskExecutor.LLM, modelProfileId = null,
+            prompt = TaskPrompt("You help.", "Do the task."), skills = listOf(SkillSnapshot("sk", "Skill", "# skill body")),
+            config = emptyMap(), outputSchema = null, confidenceField = null, produces = listOf("result"), consumes = emptyList(),
+            category = null, lineage = listOf("llm-task"), ports = listOf("success"), rules = rules,
+        )
+
+        executor.execute(context(Fixtures.runningRun(project), "specify"), task)
+
+        val system = gateway.requests.single().messages.first { it.role == Role.SYSTEM }.content
+        val constitution = system.indexOf("PROJECT CONSTITUTION:")
+        val rulesAt = system.indexOf("<rules>")
+        assertThat(constitution).isNotNegative()
+        assertThat(rulesAt).isGreaterThan(constitution).isLessThan(system.indexOf("<skills>"))
+        assertThat(system).contains(RulesPrompt.section(rules))
+        assertThat(system.indexOf("Cite evidence.")).isLessThan(system.indexOf("Be brief."))
+        assertThat(gateway.requests.single().messages.last().content).doesNotContain("<rules>")
+    }
+
+    @Test
+    fun `a step without rules gets no rules block`() {
+        gateway.answers += approveWithoutFindings
+        executor.execute(context(ciReviewRun("diff --git a/x b/x"), "code-review"), reviewTask())
+        assertThat(gateway.requests.single().messages.first { it.role == Role.SYSTEM }.content).doesNotContain("<rules>")
+    }
+
+    @Test
+    fun `coding agents get the rules right after the template system part and before the task`() {
+        val runner = CapturingRunner()
+        val support = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30))
+        val task = ResolvedTask(
+            key = "implement", name = "Implement", executor = TaskExecutor.IMPLEMENT, modelProfileId = null,
+            prompt = TaskPrompt("You are a careful engineer.", "Implement the change."),
+            skills = emptyList(), config = emptyMap(), outputSchema = null, confidenceField = null,
+            produces = listOf("diff"), consumes = emptyList(), category = TemplateCategory.IMPLEMENTATION, lineage = listOf("implement"),
+            ports = listOf("success", "failure"), rules = rules,
+        )
+        support.run(context(Fixtures.runningRun(project), "implement"), task, pl.mos.backoffice.shared.runner.RunnerMode.IMPLEMENT, null, "x")
+
+        val prompt = runner.specs.single().prompt
+        assertThat(prompt).startsWith("You are a careful engineer.\n\n" + RulesPrompt.section(rules) + "\n\nImplement the change.")
+        assertThat(prompt.trimEnd()).endsWith("mention it in your summary.")
     }
 
     // ------------------------------------------------------------------------------------------ fakes

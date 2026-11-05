@@ -26,8 +26,8 @@ import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type {
   ModelProfile,
   Project,
+  Rule,
   Skill,
-  TaskInterface,
   TaskTemplate,
   TaskTemplateInput,
 } from '../../../core/api/types';
@@ -58,7 +58,18 @@ import {
 } from '../data/library-access';
 import { executorDescription } from '../../../core/ui/executors';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
-import { executorLabel, filterTemplates } from '../data/library-filters';
+import {
+  TEMPLATE_CATEGORIES,
+  categoryLabel,
+  categoryOrder,
+} from '../../../core/ui/template-categories';
+import {
+  effectiveCategory,
+  executorLabel,
+  filterTemplates,
+  nameOfKey,
+} from '../data/library-filters';
+import { customizeForProject } from '../data/resolved-preview';
 
 /**
  * Library: task templates. Filters (search, project templates, executor) live in the URL; `j` / `k`
@@ -90,7 +101,7 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
         help="templates"
         title="Library"
         i18n-title="@@library.templates.header.title"
-        subtitle="Templates are classes: they extend a parent, implement interfaces and are resolved per project."
+        subtitle="Templates are reusable tasks: each builds on a parent, adds skills and rules, and can be customised per project."
         i18n-subtitle="@@library.templates.header.subtitle"
         [menu]="[{ label: text.reload, icon: 'reload', run: reload }]"
       >
@@ -109,7 +120,7 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
 
       <bo-filter-bar
         #bar
-        placeholder="Search key, name, interface or tag"
+        placeholder="Search name, category or tag"
         i18n-placeholder="@@library.templates.filter.placeholder"
         label="Filter templates"
         i18n-label="@@library.templates.filter.label"
@@ -132,6 +143,20 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
         >
           @for (p of projects(); track p.id) {
             <nz-option [nzValue]="p.id" [nzLabel]="globalPlus(p.key)" />
+          }
+        </nz-select>
+        <nz-select
+          [ngModel]="f.values().category"
+          (ngModelChange)="f.set({ category: $event })"
+          nzAllowClear
+          nzPlaceHolder="Any category"
+          i18n-nzPlaceHolder="@@library.templates.filter.anyCategory"
+          style="width: 170px"
+          aria-label="Filter by category"
+          i18n-aria-label="@@library.templates.filter.category"
+        >
+          @for (c of categories; track c.value) {
+            <nz-option [nzValue]="c.value" [nzLabel]="c.label" />
           }
         </nz-select>
         <nz-select
@@ -180,7 +205,7 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
           <bo-empty
             title="No templates yet."
             i18n-title="@@library.templates.empty.title"
-            detail="A template is a reusable task: prompt, executor, skills and the contract it implements."
+            detail="A template is a reusable task: prompt, executor, skills and rules."
             i18n-detail="@@library.templates.empty.detail"
             [actionLabel]="canCreate() ? text.new : null"
             (action)="newTemplate()"
@@ -221,15 +246,6 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
               <th
                 nzShowSort
                 [boSort]="sort"
-                boSortKey="implements"
-                nzWidth="18%"
-                i18n="@@library.templates.col.implements"
-              >
-                Implements
-              </th>
-              <th
-                nzShowSort
-                [boSort]="sort"
                 boSortKey="executor"
                 nzWidth="136px"
                 i18n="@@library.templates.col.executor"
@@ -261,6 +277,13 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
           </thead>
           <tbody>
             @for (tpl of t.data; track tpl.id ?? tpl.key; let i = $index) {
+              @if (i === 0 || categoryOf(tpl) !== categoryOf(t.data[i - 1])) {
+                <tr class="group-row" [attr.data-category-group]="categoryOf(tpl)">
+                  <td colspan="6">
+                    <span class="group-title">{{ categoryName(categoryOf(tpl)) }}</span>
+                  </td>
+                </tr>
+              }
               <tr
                 class="clickable-row"
                 [class.active]="nav.cursor() === i"
@@ -268,13 +291,12 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
                 tabindex="0"
                 (click)="edit(tpl)"
                 (keydown.enter)="edit(tpl)"
-                [attr.aria-label]="tpl.name + ', ' + tpl.key"
+                [attr.aria-label]="tpl.name"
               >
                 <td>
                   <div class="cell-main">
                     <div class="cell-line">
                       <span class="cell-title">{{ tpl.name }}</span>
-                      <span class="key">{{ tpl.key }}</span>
                       @if (tpl.builtIn) {
                         <span class="chip outline"
                           ><nz-icon nzType="lock" />
@@ -314,19 +336,10 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
                 </td>
                 <td>
                   @if (tpl.extendsKey) {
-                    <span class="mono-cell">{{ tpl.extendsKey }}</span>
+                    <span class="ink-2">{{ parentName(tpl) }}</span>
                   } @else {
                     <span class="quiet">-</span>
                   }
-                </td>
-                <td>
-                  <div class="chips">
-                    @for (it of tpl.implements ?? []; track it) {
-                      <span class="chip accent mono">{{ it }}</span>
-                    } @empty {
-                      <span class="quiet">-</span>
-                    }
-                  </div>
                 </td>
                 <td>
                   @if (tpl.executor) {
@@ -373,17 +386,18 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
                     >
                       <nz-icon [nzType]="canEdit(tpl) ? 'edit' : 'eye'" />
                     </button>
-                    @if (canExtend()) {
+                    @if (canCustomize(tpl)) {
                       <button
                         nz-button
                         nzType="text"
                         nzSize="small"
                         type="button"
-                        (click)="shadow(tpl)"
+                        (click)="customize(tpl)"
                         nz-tooltip
-                        nzTooltipTitle="Extend in a project"
-                        i18n-nzTooltipTitle="@@library.templates.extend"
-                        [attr.aria-label]="extendLabel(tpl.name)"
+                        nzTooltipTitle="Customize for project"
+                        i18n-nzTooltipTitle="@@library.templates.customize"
+                        [attr.aria-label]="customizeLabel(tpl.name)"
+                        data-customize
                       >
                         <nz-icon nzType="branches" />
                       </button>
@@ -416,8 +430,9 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
     <app-template-editor-drawer
       [open]="drawerOpen()"
       [template]="editing()"
+      [preset]="preset()"
       [templates]="templates()"
-      [interfaces]="interfaces()"
+      [rules]="rules()"
       [skills]="skills()"
       [profiles]="profiles()"
       [projects]="projects()"
@@ -455,6 +470,18 @@ import { executorLabel, filterTemplates } from '../data/library-filters';
         color: var(--bo-ink-2);
         white-space: nowrap;
       }
+      .group-row td {
+        padding-top: 14px !important;
+        background: transparent !important;
+        border-bottom: 1px solid var(--bo-line);
+      }
+      .group-title {
+        font-size: 11.5px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--bo-ink-3);
+      }
       .chip.deprecated {
         color: var(--bo-blocked-ink);
         box-shadow: inset 0 0 0 1px currentColor;
@@ -484,11 +511,13 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     q: 'string',
     projectId: 'string',
     executor: 'string',
+    /** ADR 0055: a template category (own or inherited). */
+    category: 'string',
     /** ADR 0054: `1` shows deprecated templates (hidden by default). */
     deprecated: 'string',
   });
   readonly templates = signal<TaskTemplate[]>([]);
-  readonly interfaces = signal<TaskInterface[]>([]);
+  readonly rules = signal<Rule[]>([]);
   readonly skills = signal<Skill[]>([]);
   readonly profiles = signal<ModelProfile[]>([]);
   readonly projects = signal<Project[]>([]);
@@ -497,9 +526,13 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   readonly saving = signal(false);
   readonly drawerOpen = signal(false);
   readonly editing = signal<TaskTemplate | null>(null);
+  /** ADR 0055: a prefilled new template ("Customize for project"). */
+  readonly preset = signal<TaskTemplateInput | null>(null);
   readonly savedVersion = signal(0);
   readonly canCreate = computed(() => canCreateInLibrary(this.identity));
   readonly canExtend = computed(() => canCreateProjectItems(this.identity));
+  readonly categories = TEMPLATE_CATEGORIES.map((c) => ({ value: c, label: categoryLabel(c) }));
+  readonly categoryName = categoryLabel;
   readonly scopeProjects = computed(() => editableProjects(this.identity, this.projects()));
   /** Existing templates open read-only without the permission for their scope. */
   readonly drawerReadonly = computed(() => {
@@ -533,20 +566,30 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     filterTemplates(this.templates(), {
       query: this.f.values().q,
       executor: this.f.values().executor,
+      category: this.f.values().category,
       showDeprecated: !!this.f.values().deprecated,
     }),
   );
   readonly sort = tableSort<TaskTemplate>({
     name: (t) => t.name,
-    extends: (t) => t.extendsKey,
-    implements: (t) => (t.implements ?? []).join(', '),
+    extends: (t) => (t.extendsKey ? this.parentName(t) : null),
     executor: (t) => (t.executor ? executorLabel(t.executor) : null),
     // global templates first, then project templates by project key
     scope: (t) =>
       t.scope.type === 'PROJECT' ? `PROJECT ${this.projectKey(t.scope.projectId)}` : 'GLOBAL',
     updated: (t) => t.updatedAt,
   });
-  readonly rows = computed(() => this.sort.apply(this.filtered()));
+  /** ADR 0055: effective category per template (own or inherited). */
+  private readonly categoryMap = computed(() => {
+    const all = this.templates();
+    return new Map(all.map((t) => [t, effectiveCategory(t, all)]));
+  });
+  /** Grouped by category (in display order), the column sort within each group. */
+  readonly rows = computed(() =>
+    [...this.sort.apply(this.filtered())].sort(
+      (a, b) => categoryOrder(this.categoryOf(a)) - categoryOrder(this.categoryOf(b)),
+    ),
+  );
   readonly chips = computed<FilterChip[]>(() => {
     const v = this.f.values();
     const out: FilterChip[] = [];
@@ -554,6 +597,11 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
       out.push({
         id: 'projectId',
         label: $localize`:@@library.templates.chip.project:Project: ${this.projectKey(v.projectId)}:key:`,
+      });
+    if (v.category)
+      out.push({
+        id: 'category',
+        label: $localize`:@@library.templates.chip.category:Category: ${categoryLabel(v.category)}:category:`,
       });
     if (v.executor)
       out.push({
@@ -630,11 +678,30 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   removeChip(id: string): void {
     if (id === 'projectId') this.f.set({ projectId: null });
     else if (id === 'executor') this.f.set({ executor: null });
+    else if (id === 'category') this.f.set({ category: null });
     else if (id === 'deprecated') this.f.set({ deprecated: null });
   }
 
   canEdit(t: TaskTemplate): boolean {
     return canEditScope(this.identity, t.scope);
+  }
+
+  /** ADR 0055: a global template may be customised by those who manage a project's library. */
+  canCustomize(t: TaskTemplate): boolean {
+    return t.scope.type !== 'PROJECT' && !t.abstract && this.canExtend();
+  }
+
+  categoryOf(t: TaskTemplate): string {
+    return this.categoryMap().get(t) ?? effectiveCategory(t, this.templates());
+  }
+
+  /** The parent's name; a project template customising the global one shows that one. */
+  parentName(t: TaskTemplate): string {
+    if (t.extendsKey === t.key) {
+      const global = this.templates().find((x) => x.key === t.key && x.scope.type !== 'PROJECT');
+      return global?.name ?? t.extendsKey ?? '';
+    }
+    return nameOfKey(this.templates(), t.extendsKey);
   }
 
   hasUnsavedChanges(): boolean {
@@ -673,8 +740,8 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
       : $localize`:@@library.templates.viewRow:View ${t.name}:name:`;
   }
 
-  extendLabel(name: string): string {
-    return $localize`:@@library.templates.extendRow:Extend ${name}:name: in a project`;
+  customizeLabel(name: string): string {
+    return $localize`:@@library.templates.customizeRow:Customize ${name}:name: for a project`;
   }
 
   deleteLabel(name: string): string {
@@ -686,12 +753,12 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     this.loading.set(true);
     forkJoin({
       templates: this.api.listTemplates({ projectId, includeAbstract: true }),
-      interfaces: this.api.listInterfaces(),
       skills: this.api.listSkills(projectId),
+      rules: this.api.listRules(projectId),
     }).subscribe({
-      next: ({ templates, interfaces, skills }) => {
+      next: ({ templates, skills, rules }) => {
         this.templates.set(templates);
-        this.interfaces.set(interfaces);
+        this.rules.set(rules);
         this.skills.set(skills);
         this.loading.set(false);
         this.loaded.set(true);
@@ -705,41 +772,35 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
 
   newTemplate(): void {
     this.editing.set(null);
+    this.preset.set(null);
     this.drawerOpen.set(true);
   }
 
   edit(t: TaskTemplate): void {
+    this.preset.set(null);
     this.editing.set(t);
     this.drawerOpen.set(true);
   }
 
-  /** Pre-fills a new PROJECT-scoped template that extends the given one. */
-  shadow(t: TaskTemplate): void {
-    const copy: TaskTemplate = {
-      ...t,
-      id: undefined,
-      builtIn: false,
-      version: undefined,
-      name: $localize`:@@library.templates.shadowName:${t.name}:name: (project)`,
-      extendsKey: t.key,
-      implements: [],
-      skills: [],
-      removeSkills: [],
-      config: {},
-      prompt: { system: '', user: '', mode: 'APPEND' },
-      scope: {
-        type: 'PROJECT',
-        projectId: this.f.values().projectId ?? this.projects()[0]?.id ?? null,
-      },
-    };
-    // A shadowing template keeps the same key; the editor treats it as new (no id).
-    this.editing.set(copy);
+  /**
+   * ADR 0055: opens a new PROJECT template with the global key, extending the global template;
+   * everything else is inherited. The project then sees its version under that key.
+   */
+  customize(t: TaskTemplate): void {
+    const editable = this.scopeProjects();
+    const filtered = this.f.values().projectId;
+    const projectId = editable.some((p) => p.id === filtered)
+      ? (filtered ?? null)
+      : (editable[0]?.id ?? null);
+    this.editing.set(null);
+    this.preset.set(customizeForProject(t, projectId));
     this.drawerOpen.set(true);
   }
 
   closeDrawer(): void {
     this.drawerOpen.set(false);
     this.editing.set(null);
+    this.preset.set(null);
     if (this.key())
       void this.router.navigate([], {
         queryParams: { key: null },
@@ -759,9 +820,10 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
         this.saving.set(false);
         this.message.success(
           existing?.id
-            ? $localize`:@@library.templates.saved:Template "${saved.key}:key:" saved (v${saved.version ?? '?'}:version:)`
-            : $localize`:@@library.templates.created:Template "${saved.key}:key:" created`,
+            ? $localize`:@@library.templates.saved:Template "${saved.name}:name:" saved (v${saved.version ?? '?'}:version:)`
+            : $localize`:@@library.templates.created:Template "${saved.name}:name:" created`,
         );
+        this.preset.set(null);
         this.editing.set(saved);
         this.savedVersion.update((v) => v + 1);
         this.load();
@@ -773,7 +835,7 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   async remove(t: TaskTemplate): Promise<void> {
     if (t.builtIn || !t.id) return;
     const ok = await this.confirm.danger(
-      $localize`:@@library.templates.deleteConfirm.title:Delete template "${t.key}:key:"?`,
+      $localize`:@@library.templates.deleteConfirm.title:Delete template "${t.name}:name:"?`,
       $localize`:@@library.templates.deleteConfirm.content:Workflows that use it fail validation until they pick another template, and templates extending it can no longer be resolved.`,
       $localize`:@@library.templates.delete:Delete template`,
     );

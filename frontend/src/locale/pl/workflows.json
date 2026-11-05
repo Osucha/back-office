@@ -42,7 +42,6 @@
   "workflows.palette.noMatch": "Żaden szablon nie pasuje.",
   "workflows.palette.noTemplates": "Brak szablonów zadań. Dodaj je w Bibliotece.",
   "workflows.palette.projectTemplate": "Szablon projektu",
-  "workflows.palette.otherTasks": "Inne zadania",
   "workflows.palette.ports": "porty: {$ports}",
   "workflows.props.duplicateNode": "Duplikuj węzeł",
   "workflows.props.duplicate": "Duplikuj",
@@ -119,7 +118,6 @@
   "workflows.props.timeout": "Limit czasu (s)",
   "workflows.props.ports": "Porty",
   "workflows.props.noPorts": "Brak portów wyjściowych.",
-  "workflows.props.otherGroup": "Inne",
   "workflows.props.resolveError": "Nie udało się rozwiązać szablonu dla tego projektu.",
   "workflows.props.currentGroup": "Bieżący szablon",
   "workflows.props.stepGets": "Co dostaje ten krok",
@@ -396,5 +394,9 @@
   "workflows.props.runInputs.failed": " Nie udało się wczytać danych wejściowych. ",
   "workflows.props.runInputs.none": " Ten workflow nie prosi o żadne dane przy starcie. ",
   "workflows.props.runInputs.required": "wymagane",
-  "workflows.props.runInputs": "Dane wejściowe uruchomienia"
+  "workflows.props.runInputs": "Dane wejściowe uruchomienia",
+  "workflows.props.stepGets.rules": "Reguły",
+  "workflows.props.stepGets.automatic": "(automatyczna)",
+  "workflows.props.stepGets.noRules": "brak",
+  "workflows.props.stepGets.problems": "Problemy"
 }

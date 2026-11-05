@@ -4,6 +4,7 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.time.Instant
 
@@ -23,9 +24,9 @@ data class Prompt(
 
 /**
  * A task definition ("class"): what an agent does and how it is prompted. Templates form single-parent
- * inheritance chains through [extendsKey], promise contracts through [implements] and are merged by the
- * `TaskResolver` into a `ResolvedTask`. Structural rules that need other templates, interfaces or skills
- * are checked by `TemplateValidator`; this class only guards its own invariants.
+ * inheritance chains through [extendsKey] and are merged by the `TaskResolver` into a `ResolvedTask`. Structural
+ * rules that need other templates, skills or rules are checked by `TemplateValidator`; this class only guards its
+ * own invariants. ADR 0055: [category] groups templates (inherited, child wins); [rules] are always in the context.
  */
 data class TaskTemplate(
     val id: TaskTemplateId,
@@ -34,7 +35,7 @@ data class TaskTemplate(
     val description: String,
     val abstract: Boolean,
     val extendsKey: String?,
-    val implements: List<String>,
+    val category: TemplateCategory?,
     val executor: TaskExecutor?,
     val scope: Scope,
     val modelProfileId: ModelProfileId?,
@@ -55,6 +56,10 @@ data class TaskTemplate(
     val updatedAt: Instant,
     /** Who saved this version (ADR 0017); null for rows written before actor stamps existed. */
     val updatedBy: Actor? = null,
+    /** ADR 0055: keys of rules this template adds; inherited and unioned like skills. */
+    val rules: List<String> = emptyList(),
+    /** Inherited or automatic rule keys this template drops. */
+    val removeRules: List<String> = emptyList(),
 ) {
     init {
         Keys.require(key)
@@ -62,14 +67,17 @@ data class TaskTemplate(
         if (version < 1) throw ValidationException("must be positive", "version")
     }
 
-    /** Field values an owner can edit; identity, scope flags and audit fields are managed by the aggregate. */
+    /**
+     * Field values an owner can edit; identity, scope flags and audit fields are managed by the aggregate. A null [key]
+     * is derived from the name on create and kept on update (ADR 0055).
+     */
     data class Content(
-        val key: String,
+        val key: String? = null,
         val name: String,
         val description: String = "",
         val abstract: Boolean = false,
         val extendsKey: String? = null,
-        val implements: List<String> = emptyList(),
+        val category: TemplateCategory? = null,
         val executor: TaskExecutor? = null,
         val scope: Scope = Scope.Global,
         val modelProfileId: ModelProfileId? = null,
@@ -83,16 +91,19 @@ data class TaskTemplate(
         val consumes: List<String> = emptyList(),
         val tags: List<String> = emptyList(),
         val runInputs: List<RunInputField> = emptyList(),
+        val rules: List<String> = emptyList(),
+        val removeRules: List<String> = emptyList(),
     )
 
     val content: Content
         get() = Content(
-            key, name, description, abstract, extendsKey, implements, executor, scope, modelProfileId, prompt,
-            skills, removeSkills, config, outputSchema, confidenceField, produces, consumes, tags, runInputs,
+            key, name, description, abstract, extendsKey, category, executor, scope, modelProfileId, prompt,
+            skills, removeSkills, config, outputSchema, confidenceField, produces, consumes, tags, runInputs, rules, removeRules,
         )
 
-    /** Replaces the editable content and bumps [version]. */
-    fun update(content: Content, now: Instant, actor: Actor? = null): TaskTemplate = from(content, id, builtIn, version + 1, createdAt, now, actor)
+    /** Replaces the editable content and bumps [version]; a null key keeps the current one. */
+    fun update(content: Content, now: Instant, actor: Actor? = null): TaskTemplate =
+        from(content.copy(key = content.key ?: key), id, builtIn, version + 1, createdAt, now, actor)
 
     companion object {
         fun create(content: Content, now: Instant, builtIn: Boolean = false, actor: Actor? = null): TaskTemplate =
@@ -100,12 +111,12 @@ data class TaskTemplate(
 
         private fun from(c: Content, id: TaskTemplateId, builtIn: Boolean, version: Int, createdAt: Instant, updatedAt: Instant, actor: Actor?) = TaskTemplate(
             id = id,
-            key = c.key,
+            key = c.key ?: throw ValidationException("required", "key"),
             name = c.name,
             description = c.description,
             abstract = c.abstract,
             extendsKey = c.extendsKey?.takeIf { it.isNotBlank() },
-            implements = c.implements.distinct(),
+            category = c.category,
             executor = c.executor,
             scope = c.scope,
             modelProfileId = c.modelProfileId,
@@ -119,6 +130,8 @@ data class TaskTemplate(
             consumes = c.consumes.distinct(),
             tags = c.tags.distinct(),
             runInputs = c.runInputs,
+            rules = c.rules.distinct(),
+            removeRules = c.removeRules.distinct(),
             builtIn = builtIn,
             version = version,
             createdAt = createdAt,

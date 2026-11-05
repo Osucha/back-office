@@ -15,7 +15,7 @@ Otwierasz go z projektu: karta **Workflowy** (**Workflows**) → **Edytuj** (**E
 | Obszar | Co zawiera |
 |---|---|
 | Nagłówek | Klucz projektu i wersję, nazwę workflowu, znacznik stanu (**poprawny**, błędy, ostrzeżenia lub **tylko do odczytu**), przełącznik **Projektant** / **JSON** (**Designer** / **JSON**), **Szablon** (**Template**; tylko nowe workflowy), cofnij i ponów, **Uporządkuj układ** (**Tidy layout**), **Waliduj** (**Validate**) oraz przyciski pokazujące lub ukrywające paletę i właściwości. |
-| Paleta (po lewej) | Węzły **Sterowanie** (**Control**) i **Zadania** (**Tasks**) z biblioteki zadań, pogrupowane według interfejsu, z polem wyszukiwania. Szablon należący do projektu ma ikonę projektu. |
+| Paleta (po lewej) | Węzły **Sterowanie** (**Control**) i **Zadania** (**Tasks**) z biblioteki zadań, pogrupowane według kategorii (Analiza, Specyfikacja, ...), z polem wyszukiwania. Szablon należący do projektu ma ikonę projektu. |
 | Kanwa | Graf. Przyciski powiększenia, **Czytelny widok od START** (**Readable view from START**), **Dopasuj wszystko** (**Fit everything**) i, od ośmiu węzłów, mapa poglądowa (**Pokaż mapę** / **Ukryj mapę**, **Show the overview** / **Hide the overview**). |
 | Właściwości (po prawej) | Zaznaczony węzeł lub krawędź; gdy nic nie jest zaznaczone: **Opis** (**Description**) workflowu, przełącznik **Włączony** (**Enabled**) i **Wyzwalacze** (**Triggers**). |
 | Arkusz **Walidacja** (**Validation**; na dole) | Błędy i ostrzeżenia pogrupowane według węzłów; kliknij pozycję, aby przejść do węzła. |
@@ -96,9 +96,9 @@ niepołączony port `failure`, `fail` lub `timeout`, kończy się niepowodzeniem
 ### Węzły zadań
 
 Wybierz **Szablon** (przestarzałe szablony nie są proponowane; krok, który już go używa, ma znacznik
-**Przestarzały**, **Deprecated**). Pod nim widać rodowód szablonu, wykonawcę, interfejsy i porty oraz **Otwórz
+**Przestarzały**, **Deprecated**). Pod nim widać rodowód szablonu, wykonawcę i kategorię oraz **Otwórz
 w bibliotece** (**Open in library**). **Co dostaje ten krok** (**What this step gets**, zwinięte) pokazuje szablon
-z nadpisaniami tego kroku: profil modelu, prompt systemowy i użytkownika, umiejętności, konfigurację i dane
+z nadpisaniami tego kroku: profil modelu, prompt systemowy i użytkownika, reguły, umiejętności, konfigurację i dane
 wejściowe przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości.
 **Nadpisania** (**Overrides**) zmieniają szablon tylko dla tego węzła:
 

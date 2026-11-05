@@ -31,7 +31,7 @@ class RepositoryStepCheckTest {
             }
             return ResolvedTask(
                 key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null,
-                emptyList(), emptyList(), emptyList(), listOf(key), WorkflowNode.DEFAULT_TASK_PORTS,
+                emptyList(), emptyList(), null, listOf(key), WorkflowNode.DEFAULT_TASK_PORTS,
             )
         }
         override fun palette(projectId: UUID?): List<TaskSummary> = emptyList()

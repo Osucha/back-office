@@ -32,6 +32,7 @@ import { executorDescription, executorLabel } from '../../../core/ui/executors';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
 import { ModelSelectComponent } from '../../../core/ui/model-select.component';
 import { deprecatedHint, deprecatedLabel } from '../../../core/ui/template-tags';
+import { categoryLabel, categoryOrder } from '../../../core/ui/template-categories';
 import { deprecatedPaletteTask } from '../data/palette-tasks';
 import type {
   DecisionBranch,
@@ -291,15 +292,13 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                         >{{ text.deprecated }}</nz-tag
                       >
                     }
-                    @for (i of r.interfaces ?? []; track i) {
-                      <nz-tag nzColor="blue">{{ i }}</nz-tag>
-                    }
+                    <nz-tag nzColor="blue" data-category>{{ categoryLabel(r.category) }}</nz-tag>
                     @for (p of r.ports ?? []; track p) {
                       <nz-tag>{{ p }}</nz-tag>
                     }
                   </div>
-                  @if (r.interfaceCheck && r.interfaceCheck.ok === false) {
-                    @for (p of r.interfaceCheck.problems ?? []; track p) {
+                  @if (r.check && r.check.ok === false) {
+                    @for (p of r.check.problems ?? []; track p) {
                       <div class="danger small">{{ p }}</div>
                     }
                   }
@@ -353,15 +352,38 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                         <dt i18n="@@workflows.props.stepGets.skills">Skills</dt>
                         <dd class="chips">
                           @for (s of v.skills ?? []; track s.key) {
-                            <nz-tag nz-tooltip [nzTooltipTitle]="s.key">{{
-                              s.name || s.key
-                            }}</nz-tag>
+                            <nz-tag>{{ s.name || s.key }}</nz-tag>
                           } @empty {
                             <span class="muted small" i18n="@@workflows.props.stepGets.noSkills"
                               >none</span
                             >
                           }
                         </dd>
+                        <dt i18n="@@workflows.props.stepGets.rules">Rules</dt>
+                        <dd class="chips" data-step-rules>
+                          @for (r of v.rules ?? []; track r.key) {
+                            <nz-tag
+                              [nzColor]="r.automatic ? 'gold' : 'default'"
+                              [attr.data-rule]="r.key"
+                              >{{ r.name || r.key }}
+                              @if (r.automatic) {
+                                <span i18n="@@workflows.props.stepGets.automatic">(automatic)</span>
+                              }
+                            </nz-tag>
+                          } @empty {
+                            <span class="muted small" i18n="@@workflows.props.stepGets.noRules"
+                              >none</span
+                            >
+                          }
+                        </dd>
+                        @if (v.check && v.check.ok === false) {
+                          <dt i18n="@@workflows.props.stepGets.problems">Problems</dt>
+                          <dd>
+                            @for (p of v.check.problems ?? []; track p) {
+                              <div class="danger small">{{ p }}</div>
+                            }
+                          </dd>
+                        }
                         <dt i18n="@@workflows.props.stepGets.config">Configuration</dt>
                         <dd>
                           <app-json-view [value]="v.config ?? {}" maxHeight="240px" />
@@ -585,7 +607,7 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                       [disabled]="readonly()"
                     >
                       @for (s of skills(); track s.key) {
-                        <nz-option [nzValue]="s.key" [nzLabel]="s.name || s.key" />
+                        <nz-option [nzValue]="s.key" [nzLabel]="s.name || s.key || ''" />
                       }
                     </nz-select>
                   </nz-form-control>
@@ -1268,6 +1290,7 @@ export class NodePropertyPanelComponent {
     empty: $localize`:@@workflows.props.stepGets.empty:(empty)`,
   };
   readonly executorLabel = executorLabel;
+  readonly categoryLabel = categoryLabel;
   readonly executorDescription = executorDescription;
 
   readonly KNOWN_ARTIFACTS = [
@@ -1299,23 +1322,24 @@ export class NodePropertyPanelComponent {
   readonly stateFields = computed(() => this.palette()?.stateFields ?? []);
   readonly templateGroups = computed(() => {
     const p = this.palette();
-    const names = new Map((p?.interfaces ?? []).map((i) => [i.key, i.name || i.key]));
+    // ADR 0055: grouped by category, in display order
     const groups = new Map<string, { title: string; tasks: PaletteTask[] }>();
     // ADR 0054: deprecated templates are not offered; the step's own template stays selectable.
     const current = this.node()?.task?.templateKey;
     const hidden = this.deprecatedKeys();
     for (const t of p?.tasks ?? []) {
       if (t.key !== current && deprecatedPaletteTask(t, hidden)) continue;
-      const k = t.interfaces?.[0] ?? '-';
-      const title =
-        k === '-' ? $localize`:@@workflows.props.otherGroup:Other` : (names.get(k) ?? k);
-      if (!groups.has(k)) groups.set(k, { title, tasks: [] });
+      const k = t.category || 'GENERAL';
+      if (!groups.has(k)) groups.set(k, { title: categoryLabel(k), tasks: [] });
       groups.get(k)!.tasks.push(t);
     }
+    const ordered = new Map(
+      [...groups.entries()].sort(([a], [b]) => categoryOrder(a) - categoryOrder(b)),
+    );
     // A template the palette no longer offers (deprecated) still shows as the step's choice.
     if (current && !(p?.tasks ?? []).some((t) => t.key === current)) {
       const r = this.resolved();
-      groups.set('\u0000current', {
+      ordered.set('\u0000current', {
         title: $localize`:@@workflows.props.currentGroup:Current template`,
         tasks: [
           {
@@ -1326,7 +1350,7 @@ export class NodePropertyPanelComponent {
         ],
       });
     }
-    return Array.from(groups.values());
+    return Array.from(ordered.values());
   });
   /** ADR 0054: the step's template carries the `deprecated` tag. */
   readonly templateDeprecated = computed(() => {

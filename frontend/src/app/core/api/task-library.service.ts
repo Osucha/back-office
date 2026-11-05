@@ -4,42 +4,20 @@ import { Observable, catchError, shareReplay, throwError } from 'rxjs';
 import { params, silent, url } from './api-base';
 import type {
   ResolvedTask,
+  Rule,
+  RuleInput,
   Skill,
   SkillInput,
   TaskExecutorDescriptor,
   TaskOverrides,
-  TaskInterface,
-  TaskInterfaceInput,
   TaskTemplate,
   TaskTemplateInput,
 } from './types';
 
-/** Task Library: interfaces (contracts), templates (classes with inheritance) and skills. */
+/** Task Library: templates (classes with inheritance), skills and rules (ADR 0055). */
 @Injectable({ providedIn: 'root' })
 export class TaskLibraryApi {
   private readonly http = inject(HttpClient);
-
-  // ---- interfaces
-
-  listInterfaces(): Observable<TaskInterface[]> {
-    return this.http.get<TaskInterface[]>(url('task-interfaces'));
-  }
-
-  getInterface(key: string): Observable<TaskInterface> {
-    return this.http.get<TaskInterface>(url('task-interfaces', key));
-  }
-
-  createInterface(input: TaskInterfaceInput): Observable<TaskInterface> {
-    return this.http.post<TaskInterface>(url('task-interfaces'), input);
-  }
-
-  updateInterface(key: string, input: TaskInterfaceInput): Observable<TaskInterface> {
-    return this.http.put<TaskInterface>(url('task-interfaces', key), input);
-  }
-
-  deleteInterface(key: string): Observable<void> {
-    return this.http.delete<void>(url('task-interfaces', key));
-  }
 
   // ---- templates
 
@@ -65,7 +43,7 @@ export class TaskLibraryApi {
     return this.http.delete<void>(url('task-templates', templateId));
   }
 
-  /** Effective merged task (lineage, prompts, skills, interface check); 404 handled by the caller. */
+  /** Effective merged task (lineage, prompts, skills, rules, check); 404 handled by the caller. */
   resolveTemplate(key: string, projectId?: string | null): Observable<ResolvedTask> {
     return this.http.get<ResolvedTask>(url('task-templates', 'resolve', key), {
       params: params({ projectId }),
@@ -123,5 +101,29 @@ export class TaskLibraryApi {
 
   deleteSkill(skillId: string): Observable<void> {
     return this.http.delete<void>(url('skills', skillId));
+  }
+
+  // ---- rules (ADR 0055)
+
+  /** Global rules plus, with a project, that project's own. */
+  listRules(projectId?: string | null): Observable<Rule[]> {
+    return this.http.get<Rule[]>(url('rules'), { params: params({ projectId }) });
+  }
+
+  getRule(ruleId: string): Observable<Rule> {
+    return this.http.get<Rule>(url('rules', ruleId));
+  }
+
+  createRule(input: RuleInput): Observable<Rule> {
+    return this.http.post<Rule>(url('rules'), input);
+  }
+
+  updateRule(ruleId: string, input: RuleInput): Observable<Rule> {
+    return this.http.put<Rule>(url('rules', ruleId), input);
+  }
+
+  /** Refused (409) while a template lists the rule. */
+  deleteRule(ruleId: string): Observable<void> {
+    return this.http.delete<void>(url('rules', ruleId));
   }
 }

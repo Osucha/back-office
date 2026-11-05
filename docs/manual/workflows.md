@@ -15,7 +15,7 @@ workflow** in the page header (`/projects/:id/workflows/new`). An existing workf
 | Area | What it holds |
 |---|---|
 | Header | Project key and version, the workflow name, a status chip (**valid**, errors, warnings, or **read-only**), the **Designer** / **JSON** switch, **Template** (new workflows only), undo and redo, **Tidy layout**, **Validate**, and the buttons that show or hide the palette and the properties. |
-| Palette (left) | **Control** nodes and **Tasks** from the task library, grouped by interface, with a search field. A project's own template has a project icon. |
+| Palette (left) | **Control** nodes and **Tasks** from the task library, grouped by category (Analysis, Specification, ...), with a search field. A project's own template has a project icon. |
 | Canvas | The graph. Zoom buttons, **Readable view from START**, **Fit everything**, and from eight nodes an overview map (**Show the overview** / **Hide the overview**). |
 | Properties (right) | The selected node or edge; with nothing selected, the workflow's **Description**, the **Enabled** switch and **Triggers**. |
 | **Validation** sheet (bottom) | Errors and warnings grouped by node; click one to jump to the node. |
@@ -92,9 +92,9 @@ validation warns about other unconnected ports.
 ### Task nodes
 
 Pick the **Template** (deprecated templates are not offered; a step that already uses one shows the tag
-**Deprecated**). Under it you see the template's lineage, executor, interfaces and ports, and **Open in library**.
+**Deprecated**). Under it you see the template's lineage, executor and category, and **Open in library**.
 **What this step gets** (collapsed) shows the template with this step's overrides applied: the model profile,
-the system and user prompt, skills, configuration and run inputs, exactly what the model or coding agent receives
+the system and user prompt, rules, skills, configuration and run inputs, exactly what the model or coding agent receives
 before the run fills in the values. **Overrides** change the template for this node only:
 
 | Override | Effect |
