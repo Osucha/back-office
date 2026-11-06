@@ -372,6 +372,7 @@ services:
     profiles: ["full"]
     build:
       context: ../../backend/runner-controller/egress-proxy
+      secrets: [extra_ca]
     image: ${RUNNER_EGRESS_PROXY_IMAGE:-back-office/egress-proxy:dev}
     container_name: back-office-egress-proxy
     networks:
