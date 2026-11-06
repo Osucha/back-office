@@ -38,11 +38,23 @@ const PALETTE: WorkflowPalette = {
     {
       key: 'code-review',
       name: 'Code review',
-      executor: 'LLM',
+      agent: { key: 'model-answer', name: 'Model answer', harness: null },
       category: 'REVIEW',
       ports: ['success', 'failure', 'blocked'],
     },
-    { key: 'fetch-issue', name: 'Fetch issue', executor: 'FETCH_ISSUE', ports: [] },
+    { key: 'empty-ports', name: 'Empty ports', ports: [] },
+  ],
+  actions: [
+    {
+      type: 'TRANSITION_ISSUE',
+      title: 'Transition issue',
+      description: 'Moves the issue',
+      ports: ['success', 'failure'],
+      configSchema: { type: 'object', properties: { toStatus: { type: 'string' } } },
+      defaults: { toStatus: 'In Review', approval: 'REQUIRED' },
+      requiredCapabilities: ['ISSUE_TRANSITION'],
+      externalWrite: true,
+    },
   ],
   stateFields: [],
 };
@@ -69,7 +81,7 @@ describe('portsFor', () => {
       'failure',
       'blocked',
     ]);
-    expect(portsFor(node('f', 'TASK', { task: { templateKey: 'fetch-issue' } }), palette)).toEqual([
+    expect(portsFor(node('f', 'TASK', { task: { templateKey: 'empty-ports' } }), palette)).toEqual([
       'success',
       'failure',
     ]);
@@ -172,6 +184,48 @@ describe('node mutations', () => {
     expect(createNode('WAIT_FOR_CI', { x: 0, y: 0 }, []).ci?.signal).toBe('tests');
   });
 
+  it('creates an ACTION node with the action defaults and its title (ADR 0056)', () => {
+    const descriptor = PALETTE.actions![0];
+    const a = createNode('ACTION', { x: 0, y: 0 }, ['transition-issue'], null, descriptor);
+    expect(a.kind).toBe('ACTION');
+    expect(a.id).toBe('transition-issue-2');
+    expect(a.name).toBe('Change issue status');
+    expect(a.action).toEqual({
+      type: 'TRANSITION_ISSUE',
+      config: { toStatus: 'In Review', approval: 'REQUIRED' },
+    });
+    // the defaults are copied, not shared
+    a.action!.config!['toStatus'] = 'Done';
+    expect(descriptor.defaults['toStatus']).toBe('In Review');
+    expect(a.task).toBeUndefined();
+  });
+
+  it('ACTION nodes take the action ports, require success and round-trip (ADR 0056)', () => {
+    const palette = indexPalette(PALETTE);
+    const a = node('t', 'ACTION', {
+      action: { type: 'TRANSITION_ISSUE', config: { toStatus: 'Done', jiraConnection: 'c1' } },
+    });
+    expect(portsFor(a, palette)).toEqual(['success', 'failure']);
+    expect(portsFor(node('u', 'ACTION'), null)).toEqual(['success', 'failure']);
+    expect(requiredPortsFor(a, palette)).toEqual(['success']);
+    const def = normalizeDefinition({
+      name: 'x',
+      nodes: [node('start', 'START'), a],
+      edges: [{ id: '', from: 't', fromPort: 'failure', to: 'start' }],
+    });
+    const back = normalizeDefinition(JSON.parse(JSON.stringify(def)));
+    expect(back.nodes[1].action).toEqual({
+      type: 'TRANSITION_ISSUE',
+      config: { toStatus: 'Done', jiraConnection: 'c1' },
+    });
+    // a config change keeps the edges of the action's ports
+    const changed = replaceNode(back, 't', {
+      ...back.nodes[1],
+      action: { type: 'TRANSITION_ISSUE', config: {} },
+    });
+    expect(changed.edges).toHaveLength(1);
+  });
+
   it('renaming a node rewrites its edges and drops edges from removed ports', () => {
     const def = {
       ...EMPTY_DEFINITION,
@@ -242,13 +296,38 @@ describe('canvas mapping', () => {
       issues: { nodes: { review: { errors: 1, warnings: 2 } }, edges: {} },
     });
     expect(data.templateName).toBe('Code review');
-    expect(data.executor).toBe('LLM');
+    expect(data.agent?.key).toBe('model-answer');
     expect(data.category).toBe('REVIEW');
     expect(data.status).toBe('SUCCEEDED');
     expect(data.attempts).toBe(2);
     expect(data.takenPortsList).toEqual(['failure', 'success']);
     expect(data.errorCount).toBe(1);
     expect(data.warningCount).toBe(2);
+  });
+
+  it('names the agent a step chooses itself before the template agent (ADR 0056)', () => {
+    const palette = indexPalette(PALETTE);
+    const own = node('r', 'TASK', {
+      task: { templateKey: 'code-review', overrides: { agentKey: 'claude-code' } },
+    });
+    const agents = [{ key: 'claude-code', name: 'Claude Code', harness: 'CLAUDE_CODE' as const }];
+    expect(buildNodeData(own, { palette, agents }).agent?.harness).toBe('CLAUDE_CODE');
+    expect(buildNodeData(own, { palette }).agent).toEqual({
+      key: 'claude-code',
+      name: 'claude-code',
+    });
+    expect(buildNodeData(node('n', 'NOTE'), { palette }).agent).toBeNull();
+  });
+
+  it('builds ACTION node data with the translated title and the capabilities (ADR 0056)', () => {
+    const data = buildNodeData(
+      node('t', 'ACTION', { action: { type: 'TRANSITION_ISSUE', config: {} } }),
+      { palette: indexPalette(PALETTE) },
+    );
+    expect(data.actionTitle).toBe('Change issue status');
+    expect(data.requiredCapabilities).toEqual(['ISSUE_TRANSITION']);
+    expect(data.agent).toBeNull();
+    expect(data.templateName).toBeNull();
   });
 
   it('marks the current node when it has no execution yet', () => {

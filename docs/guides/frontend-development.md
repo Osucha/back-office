@@ -133,7 +133,7 @@ npm run api:types
 ```
 
 `core/api/types.ts` re-exports the schemas with short names (`Project`, `WorkflowRun`, ...) and a few
-enum arrays used by selectors (`RUN_STATUSES`, `NODE_KINDS`, `TASK_EXECUTORS`, ...). `openapi-typescript`
+enum arrays used by selectors (`RUN_STATUSES`, `NODE_KINDS`, `ACTION_TYPES`, ...). `openapi-typescript`
 treats properties with a `default:` as non-optional, so for example `WorkflowDefinitionInput.enabled`
 and `WorkflowNode.maxVisits` are required; build objects accordingly (`normalizeDefinition()` fills them).
 

@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.ActionStep
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -25,8 +28,6 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import java.util.UUID
 
@@ -57,13 +58,9 @@ class StartWorkflowTaskExecutorTest {
     }
     private val executor = StartWorkflowTaskExecutor({ startRun }, workflows, json)
     private val gate = WorkflowNode.HumanGate("pick", "Pick proposals", gate = GateSpec("Which proposals?", listOf("do", "skip")))
-    private val node = WorkflowNode.Task("start", "Start", task = TaskBinding("start-workflow"))
+    private val node = WorkflowNode.Action("start", "Start", action = ActionBinding(ActionType.START_WORKFLOW))
 
-    private fun task(config: Map<String, Any?>) = ResolvedTask(
-        key = "start-workflow", name = "Start workflow", executor = TaskExecutor.START_WORKFLOW, modelProfileId = null, prompt = TaskPrompt(null, null),
-        skills = emptyList(), config = config, outputSchema = null, confidenceField = null, produces = emptyList(), consumes = emptyList(),
-        category = null, lineage = listOf("start-workflow"), ports = listOf("success", "failure"),
-    )
+    private fun task(config: Map<String, Any?>) = ActionStep(ActionType.START_WORKFLOW, "start", "Start workflow", config)
 
     private fun context(comment: String, afterGate: Boolean = true): NodeContext {
         var run: WorkflowRun = Fixtures.runningRun(project, watcher)

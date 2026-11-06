@@ -1051,19 +1051,20 @@ paths:
     get:
       tags: [workflows]
       operationId: getWorkflowPalette
-      description: Control nodes and concrete task templates (with their category, ADR 0055) available to the designer for a project.
+      description: Control nodes, actions (ADR 0056) and concrete task templates (with their category, ADR 0055) available to the designer for a project.
       parameters: [ { name: projectId, in: query, required: true, schema: { type: string, format: uuid } } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowPalette' } } } }
-  /workflows/task-executors:
+  /workflows/task-config-schemas:
     get:
       tags: [workflows]
-      operationId: listTaskExecutors
+      operationId: getTaskConfigSchemas
       description: >-
-        ADR 0054: every task executor with the JSON Schema of its `config` keys, the same schema the designer uses for
-        a step. The library editor renders a template's configuration from it. Static; any signed-in user.
+        ADR 0056: the JSON Schema of a task step's `config` keys for a model answer agent and for a coding agent, the same
+        schemas the designer uses for a step. The library editor renders a template's configuration from them. Static;
+        any signed-in user.
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TaskExecutorDescriptor' } } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TaskConfigSchemas' } } } }
   /workflows/model-options:
     get:
       tags: [workflows]
@@ -1549,6 +1550,43 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ResolvedTask' } } } }
         '400': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /agents:
+    get:
+      tags: [task-library]
+      operationId: listAgents
+      description: 'ADR 0056: global agents plus, with projectId, that project''s own.'
+      parameters:
+        - { name: projectId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Agent' } } } } }
+    post:
+      tags: [task-library]
+      operationId: createAgent
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AgentInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Agent' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /agents/{agentId}:
+    parameters: [ { name: agentId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    get:
+      tags: [task-library]
+      operationId: getAgent
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Agent' } } } }
+    put:
+      tags: [task-library]
+      operationId: updateAgent
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AgentInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Agent' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [task-library]
+      operationId: deleteAgent
+      description: Refused (409) while a template uses the agent.
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Problem' }
   /rules:
     get:
       tags: [task-library]
@@ -2706,7 +2744,7 @@ components:
     # ---- workflows
     NodeKind:
       type: string
-      enum: [START, END, TASK, DECISION, HUMAN_GATE, WAIT_FOR_CI, NOTE]
+      enum: [START, END, TASK, ACTION, DECISION, HUMAN_GATE, WAIT_FOR_CI, NOTE]
     Point:
       type: object
       required: [x, y]
@@ -2714,6 +2752,7 @@ components:
     TaskOverrides:
       type: object
       properties:
+        agentKey: { type: string, nullable: true, description: 'ADR 0056: the agent that runs this step instead of the template''s' }
         modelProfileId: { type: string, format: uuid, nullable: true }
         systemPromptAppend: { type: string, nullable: true }
         promptAppend: { type: string, nullable: true }
@@ -2745,6 +2784,14 @@ components:
           properties:
             templateKey: { type: string }
             overrides: { $ref: '#/components/schemas/TaskOverrides' }
+        action:
+          type: object
+          nullable: true
+          required: [type]
+          description: 'ADR 0056: an ACTION node, a deterministic integration step (no model)'
+          properties:
+            type: { $ref: '#/components/schemas/ActionType' }
+            config: { type: object, additionalProperties: true, description: 'keys of the action''s configSchema; missing keys take the action''s defaults' }
         decision:
           type: object
           nullable: true
@@ -3066,26 +3113,43 @@ components:
         key: { type: string }
         name: { type: string }
         description: { type: string }
-        executor: { $ref: '#/components/schemas/TaskExecutor' }
+        agent: { $ref: '#/components/schemas/AgentRef' }
         category: { $ref: '#/components/schemas/TemplateCategory' }
         ports: { type: array, items: { type: string } }
         projectScoped: { type: boolean }
-        configSchema: { type: object, additionalProperties: true, description: JSON Schema for `overrides.config` derived from the executor }
+        configSchema: { type: object, additionalProperties: true, description: 'JSON Schema for `overrides.config`, by the template''s agent (model answer or coding agent)' }
         deprecated: { type: boolean, description: 'ADR 0054: kept for the steps that use it; not offered for new steps' }
+    ActionType:
+      type: string
+      description: 'ADR 0056: deterministic integration steps of a workflow (no model)'
+      enum: [FETCH_ISSUE, COMMENT_ISSUE, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST]
+    ActionDescriptor:
+      type: object
+      required: [type, title, description, ports, configSchema, defaults]
+      properties:
+        type: { $ref: '#/components/schemas/ActionType' }
+        title: { type: string }
+        description: { type: string }
+        ports: { type: array, items: { type: string } }
+        configSchema: { type: object, additionalProperties: true, description: JSON Schema of `action.config` }
+        defaults: { type: object, additionalProperties: true, description: config values a new node starts with }
+        produces: { type: array, items: { type: string } }
+        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: run start form fields the action asks for (ADR 0053) }
         requiredCapabilities:
           type: array
           items: { $ref: '#/components/schemas/ConnectionCapability' }
-          description: 'Connection capabilities the task needs (Jira tasks); empty for others. A node pins a connection with `overrides.config.jiraConnection` (connection id).'
+          description: 'Connection capabilities the action needs (Jira actions); empty for others. A node pins a connection with `action.config.jiraConnection` (connection id).'
         externalWrite:
           type: boolean
           description: >
-            The task writes to an external system (a required capability is a write). Approval before write applies
-            (ADR 0033): node config `overrides.config.approval` REQUIRED (default, also when missing) or NOT_REQUIRED, and
-            `overrides.config.approvers` ({projectRoles, users, accountable, forbidSelfApproval}; default owner and maintainer).
+            The action writes to an external system (a required capability is a write). Approval before write applies
+            (ADR 0033): `action.config.approval` REQUIRED (default, also when missing) or NOT_REQUIRED, and
+            `action.config.approvers` ({projectRoles, users, accountable, forbidSelfApproval}; default owner and maintainer).
     WorkflowPalette:
       type: object
       properties:
         controlNodes: { type: array, items: { $ref: '#/components/schemas/ControlNodeDescriptor' } }
+        actions: { type: array, items: { $ref: '#/components/schemas/ActionDescriptor' } }
         tasks: { type: array, items: { $ref: '#/components/schemas/PaletteTask' } }
         stateFields: { type: array, items: { type: object, properties: { path: { type: string }, description: { type: string } } }, description: for the expression editor }
 
@@ -3455,15 +3519,49 @@ components:
         message: { type: string }
 
     # ---- task library
-    TaskExecutorDescriptor:
+    TaskConfigSchemas:
       type: object
-      required: [executor, configSchema]
+      required: [modelAnswer, codingAgent]
       properties:
-        executor: { $ref: '#/components/schemas/TaskExecutor' }
-        configSchema: { type: object, additionalProperties: true, description: JSON Schema of the executor's config keys }
-    TaskExecutor:
+        modelAnswer: { type: object, additionalProperties: true, description: JSON Schema of the config keys of a step a model answer agent runs }
+        codingAgent: { type: object, additionalProperties: true, description: JSON Schema of the config keys of a step a coding agent runs (incl. the Spec Kit phase) }
+    AgentHarness:
       type: string
-      enum: [LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST]
+      description: 'coding agent harness; an agent without one gives a single model answer (ADR 0056)'
+      enum: [OPENCODE, CLAUDE_CODE]
+    AgentRef:
+      type: object
+      required: [key, name]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        harness: { allOf: [ { $ref: '#/components/schemas/AgentHarness' } ], nullable: true, description: empty = model answer }
+        modelProfileId: { type: string, format: uuid, nullable: true }
+    AgentInput:
+      type: object
+      description: >-
+        ADR 0056: who runs a task. Without a harness the step is one model answer (no tools, no repository); with OPENCODE
+        or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the step uses the defaults
+        for its kind (project, starting user, platform).
+      required: [name, scope]
+      properties:
+        key: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{1,63}$', description: derived from the name when omitted on create; kept when omitted on update }
+        name: { type: string }
+        description: { type: string }
+        scope: { $ref: '#/components/schemas/Scope' }
+        harness: { allOf: [ { $ref: '#/components/schemas/AgentHarness' } ], nullable: true }
+        modelProfileId: { type: string, format: uuid, nullable: true }
+        tags: { type: array, items: { type: string } }
+    Agent:
+      allOf:
+        - $ref: '#/components/schemas/AgentInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            builtIn: { type: boolean }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], readOnly: true, description: who saved the current version (ADR 0017) }
     Scope:
       type: object
       required: [type]
@@ -3497,7 +3595,7 @@ components:
         abstract: { type: boolean, default: false }
         extendsKey: { type: string, nullable: true }
         category: { allOf: [ { $ref: '#/components/schemas/TemplateCategory' } ], nullable: true, description: empty means inherited }
-        executor: { allOf: [ { $ref: '#/components/schemas/TaskExecutor' } ], nullable: true, description: required on concrete templates unless inherited }
+        agentKey: { type: string, nullable: true, description: 'ADR 0056: the agent that runs the task by default; inherited, child wins; none anywhere = model-answer' }
         scope: { $ref: '#/components/schemas/Scope' }
         modelProfileId: { type: string, format: uuid, nullable: true }
         prompt: { $ref: '#/components/schemas/TaskPrompt' }
@@ -3506,7 +3604,7 @@ components:
         rules: { type: array, items: { type: string }, description: 'ADR 0055: keys of rules this template adds (inherited, unioned)' }
         removeRules: { type: array, items: { type: string }, description: 'rule keys inherited or automatic that this template drops' }
         config: { type: object, additionalProperties: true }
-        outputSchema: { type: string, nullable: true, description: JSON Schema (LLM executor) }
+        outputSchema: { type: string, nullable: true, description: JSON Schema of a structured answer (model answer agents) }
         confidenceField: { type: string, nullable: true }
         produces: { type: array, items: { type: string } }
         consumes: { type: array, items: { type: string } }
@@ -3539,7 +3637,7 @@ components:
       properties:
         key: { type: string }
         name: { type: string }
-        executor: { $ref: '#/components/schemas/TaskExecutor' }
+        agent: { $ref: '#/components/schemas/AgentRef' }
         modelProfileId: { type: string, format: uuid, nullable: true }
         prompt: { type: object, properties: { system: { type: string, nullable: true }, user: { type: string, nullable: true } } }
         skills: { type: array, items: { type: object, properties: { key: { type: string }, name: { type: string } } } }
@@ -3557,7 +3655,7 @@ components:
         ports: { type: array, items: { type: string } }
         runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0053) }
         abstract: { type: boolean }
-        check: { type: object, description: 'skills and rules that do not exist', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
+        check: { type: object, description: 'skills, rules and agents that do not exist, and an agent that cannot do the work (ADR 0056)', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
     SkillInput:
       type: object
       required: [name, content, scope]

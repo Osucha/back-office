@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -38,7 +40,6 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.usage.PageOf
 import java.time.Duration
@@ -98,12 +99,8 @@ class WatcherBuildingBlocksTest {
             else PipelineReport(PipelineState.SUCCESS, 8, null, "success")
         }
         val executor = ProjectDigestTaskExecutor(runs, connections, pipelines, Clock.fixed(now))
-        val task = ResolvedTask(
-            key = "project-digest", name = "Digest", executor = TaskExecutor.PROJECT_DIGEST, modelProfileId = null, prompt = TaskPrompt(null, null),
-            skills = emptyList(), config = mapOf("pipelineRefs" to "develop,main"), outputSchema = null, confidenceField = null,
-            produces = emptyList(), consumes = emptyList(), category = null, lineage = listOf("project-digest"), ports = listOf("success"),
-        )
-        val node = WorkflowNode.Task("digest", "Digest", task = TaskBinding("project-digest"))
+        val node = WorkflowNode.Action("digest", "Digest", action = ActionBinding(ActionType.PROJECT_DIGEST, mapOf("pipelineRefs" to "develop,main")))
+        val task = pl.mos.backoffice.projects.application.service.nodes.ActionNodeExecutor.stepOf(node)
         val run = own.nodeStarted(node, now)
         val digest = executor.execute(NodeContext(run, project, node, run.nodes.last(), emptyMap()), task).artifacts.single().content
 

@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { TaskTemplate, TaskTemplateInput } from '../../../core/api/types';
+import type { Agent, TaskTemplate, TaskTemplateInput } from '../../../core/api/types';
 import { customizeForProject } from '../data/resolved-preview';
 import { TemplateEditorDrawerComponent } from './template-editor-drawer.component';
 
@@ -11,7 +11,7 @@ const writer: TaskTemplate = {
   name: 'Writer',
   abstract: false,
   extendsKey: 'base-agent',
-  executor: 'LLM',
+  agentKey: 'model-answer',
   scope: { type: 'GLOBAL' },
   builtIn: false,
   version: 1,
@@ -102,33 +102,51 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     ]);
   });
 
-  it('renders the configuration from the schema of the inherited executor (ADR 0054)', async () => {
+  const agents: Agent[] = [
+    { key: 'model-answer', name: 'Model answer', scope: { type: 'GLOBAL' }, harness: null },
+    { key: 'opencode', name: 'OpenCode', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
+    {
+      key: 'p2-coder',
+      name: 'P2 coder',
+      scope: { type: 'PROJECT', projectId: 'p2' },
+      harness: 'CLAUDE_CODE',
+    },
+  ];
+
+  it('renders the configuration from the schema of the inherited agent kind (ADR 0056)', async () => {
     const { fixture, drawer } = create(null);
-    http.expectOne('/api/v1/workflows/task-executors').flush([
-      {
-        executor: 'IMPLEMENT',
-        configSchema: {
-          type: 'object',
-          required: ['agent'],
-          properties: { agent: { type: 'string', enum: ['OPENCODE', 'CLAUDE_CODE'] } },
-        },
+    fixture.componentRef.setInput('agents', agents);
+    http.expectOne('/api/v1/workflows/task-config-schemas').flush({
+      modelAnswer: { type: 'object', properties: { temperature: { type: 'number' } } },
+      codingAgent: {
+        type: 'object',
+        required: ['phase'],
+        properties: { phase: { type: 'string' }, push: { type: 'boolean' } },
       },
-    ]);
+    });
     fixture.componentRef.setInput('templates', [
       baseAgent,
-      { ...writer, key: 'coder', executor: 'IMPLEMENT', extendsKey: 'base-agent' },
+      { ...writer, key: 'coder', agentKey: 'opencode', extendsKey: 'base-agent' },
     ]);
-    drawer.patch({ key: 'my-coder', name: 'My coder', executor: null, extendsKey: 'coder' });
+    drawer.patch({ key: 'my-coder', name: 'My coder', agentKey: null, extendsKey: 'coder' });
     fixture.detectChanges();
 
-    expect(drawer.effectiveExecutor()).toBe('IMPLEMENT');
+    expect(drawer.effectiveAgent()?.key).toBe('opencode');
+    expect(drawer.configSchema()?.properties?.['phase']).toBeTruthy();
     expect(drawer.configSchema()?.required).toBeUndefined();
-    expect(drawer.executorHelp()).toContain('Coding agent');
+    expect(drawer.agentPlaceholder()).toBe('Inherited: OpenCode');
+    expect(drawer.agentHelp()).toContain('a workflow step can choose another agent');
+    expect(drawer.agentHelp()).toContain('sandbox');
     expect(document.querySelector('[data-config-form]')).not.toBeNull();
 
-    drawer.onConfigForm({ agent: 'CLAUDE_CODE', extra: 1 });
-    expect(drawer.draft().config).toEqual({ agent: 'CLAUDE_CODE', extra: 1 });
-    expect(JSON.parse(drawer.configText())).toEqual({ agent: 'CLAUDE_CODE', extra: 1 });
+    // a model answer gets the model answer schema
+    drawer.patch({ agentKey: 'model-answer' });
+    expect(drawer.configSchema()?.properties?.['temperature']).toBeTruthy();
+    drawer.patch({ agentKey: null });
+
+    drawer.onConfigForm({ phase: 'plan', extra: 1 });
+    expect(drawer.draft().config).toEqual({ phase: 'plan', extra: 1 });
+    expect(JSON.parse(drawer.configText())).toEqual({ phase: 'plan', extra: 1 });
 
     drawer.setConfigRaw(true);
     fixture.detectChanges();
@@ -137,6 +155,26 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     expect(drawer.configError()).toBeTruthy();
     drawer.setConfigRaw(false);
     expect(drawer.configRaw()).toBe(true);
+  });
+
+  it('offers the agents of the template scope and sends the chosen agent key (ADR 0056)', () => {
+    const { fixture, drawer } = create(null);
+    fixture.componentRef.setInput('agents', agents);
+    fixture.detectChanges();
+    let payload: TaskTemplateInput | null = null;
+    drawer.saved.subscribe((p) => (payload = p));
+
+    expect(drawer.draft().agentKey).toBeNull();
+    expect(drawer.agentOptions().map((a) => a.key)).toEqual(['model-answer', 'opencode']);
+    drawer.setScope('PROJECT');
+    drawer.patch({ scope: { type: 'PROJECT', projectId: 'p2' } });
+    expect(drawer.agentOptions().map((a) => a.key)).toContain('p2-coder');
+    drawer.patch({ name: 'Brief', agentKey: 'p2-coder' });
+    expect(drawer.effectiveAgent()?.harness).toBe('CLAUDE_CODE');
+    expect(drawer.missingAgentKey()).toBeNull();
+    drawer.submit();
+    expect(payload!.agentKey).toBe('p2-coder');
+    expect('executor' in payload!).toBe(false);
   });
 
   it('never sends a key on update and none on a plain create (ADR 0055)', () => {

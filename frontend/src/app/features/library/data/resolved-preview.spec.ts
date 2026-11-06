@@ -15,7 +15,7 @@ describe('toPreview', () => {
   it('maps a resolved task into the preview model', () => {
     const r: ResolvedTask = {
       key: 'code-review',
-      executor: 'LLM',
+      agent: { key: 'model-answer', name: 'Model answer', harness: null },
       lineage: ['base-agent', 'code-review'],
       prompt: { system: 'sys', user: 'usr' },
       skills: [{ key: 'a', name: 'A' }, { key: 'b' }],
@@ -46,6 +46,7 @@ describe('toPreview', () => {
     ]);
     expect(automaticRules(p)).toEqual([{ key: 'no-secrets', name: 'No secrets' }]);
     expect(p.config).toEqual({ chunk: 2 });
+    expect(p.agent?.key).toBe('model-answer');
   });
 
   it('defaults lineage to the key and ok to true when the check is absent', () => {
@@ -97,7 +98,7 @@ describe('save payload (ADR 0055)', () => {
     expect(d.extendsKey).toBe('code-review');
     expect(d.name).toBe('Code review');
     expect(d.scope).toEqual({ type: 'PROJECT', projectId: 'p1' });
-    expect(d.executor).toBeNull();
+    expect(d.agentKey).toBeNull();
     expect(d.category).toBeNull();
     expect(d.skills).toEqual([]);
     expect(d.rules).toEqual([]);

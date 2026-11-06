@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
@@ -37,7 +38,6 @@ import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
@@ -59,7 +59,7 @@ class FeedbackAndReworkTest {
     private val renderer = TemplateRenderer()
 
     private fun task(key: String = "step", produces: List<String> = listOf("result"), prompt: TaskPrompt = TaskPrompt(null, "x"), schema: String? = null) = ResolvedTask(
-        key = key, name = key, executor = TaskExecutor.LLM, modelProfileId = null, prompt = prompt, skills = emptyList(), config = emptyMap(),
+        key = key, name = key, agent = TestAgents.MODEL_ANSWER, modelProfileId = null, prompt = prompt, skills = emptyList(), config = emptyMap(),
         outputSchema = schema, confidenceField = null, produces = produces, consumes = emptyList(), category = null, lineage = listOf(key),
         ports = listOf("success", "failure"),
     )
@@ -68,7 +68,7 @@ class FeedbackAndReworkTest {
 
     private var nextResult: NodeResult = NodeResult.success(summary = "done")
     private val strategy = object : TaskExecutorStrategy {
-        override val executor = TaskExecutor.LLM
+        override val runKind = pl.mos.backoffice.projects.application.port.out.TaskRunKind.MODEL_ANSWER
         override fun execute(context: NodeContext, task: ResolvedTask): NodeResult = nextResult
         override fun resume(context: NodeContext, task: ResolvedTask, jobId: RunnerJobId): NodeResult = NodeResult.success(summary = "job done")
     }

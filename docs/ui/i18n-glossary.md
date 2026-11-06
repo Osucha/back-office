@@ -34,7 +34,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | Back Office | Back Office | product name, never translated |
 | abstract (template) | abstrakcyjny | "Szablony abstrakcyjne można tylko rozszerzać" |
 | accountable (role) | odpowiedzialny | "Odpowiedzialny: owner" |
-| agent | agent (pl. agenci) | "agent pracuje" |
+| agent | agent (pl. agenci) | "agent pracuje"; library entry (ADR 0056): page "Agenci", "Utwórz agenta", step setting "Agent" |
 | agent job | zadanie agenta (pl. zadania agentów) | runner fleet |
 | alert (budget) | alert | "alert budżetu", "Alert przy (%)" |
 | allowed projects (connection) | dozwolone projekty | field label "Dozwolone projekty" (Jira project keys a connection may touch); not the network allowlist |
@@ -42,6 +42,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | API key set / configured | klucz API ustawiony / klucz API skonfigurowany | "Klucz API ustawiony" in Settings → LLM providers, "Klucz API skonfigurowany" in the model drawer; "brak klucza API" (no API key) |
 | API token (Jira) | token API | connection field "Token API"; "klasyczny token API" (classic API token); "token API z zakresami" (scoped API token, ADR 0035), "Zakresy tokenu", "Identyfikator chmury witryny" (cloud id) |
 | act as (Jira node) | działaj jako | designer "Działaj jako": "Połączenie systemowe projektu", "Wskazane połączenie", "Osoba, która zatwierdza zapis" / "Osoba, która rozpoczyna uruchomienie" (ADR 0035) |
+| action (node kind) | akcja (pl. akcje) | ADR 0056: palette group "Akcje"; Fetch issue / Comment on issue / Transition issue / Start workflow / Project digest = "Pobierz zgłoszenie" / "Skomentuj zgłoszenie" / "Zmień status zgłoszenia" / "Uruchom workflow" / "Podsumowanie projektu" |
 | approval before write (Jira) | zatwierdzenie przed zapisem | ADR 0033; designer section "Zatwierdzenie przed zapisem w Jirze" (Approval before writing to Jira); values **Wymagane** / **Niewymagane** (Required / Not required); "Kto zatwierdza" (Who approves) |
 | approve / approved | zatwierdź / zatwierdzone | gate decision |
 | approver | zatwierdzający | "u zatwierdzającego" (baton) |
@@ -104,7 +105,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | ephemeral storage | pamięć tymczasowa (dysk) | sandbox policy resources |
 | evaluation | ewaluacja | |
 | excess permissions / over-privileged | uprawnienia nadmiarowe / ma więcej uprawnień niż potrzeba | connection test chips: granted / missing / excess = "przyznane" / "brakujące" / "nadmiarowe"; designer warning "ma więcej uprawnień niż potrzeba" |
-| executor | wykonawca | "Dowolny wykonawca"; executor names: Implementacja, Pobierz zgłoszenie, Powiadom, Zmień status zgłoszenia |
+| executor | (removed) | ADR 0056 removed the template executor; use "agent" (who runs a task) or "akcja" (a node without a model) |
 | extends / implements | rozszerza / implementuje | template columns |
 | external write | zapis zewnętrzny | a write outside Back Office (Jira comment, transition); "zapisuje w Jirze" for the palette mark |
 | finding (review) | uwaga (pl. uwagi) | severities: blokujące / poważne / drobne / kosmetyczne (Blocker / Major / Minor / Nit) |
@@ -115,6 +116,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | Git URL | URL repozytorium Git | project form |
 | grant (admin) | nadanie (pl. nadania) | Administration → Nadania |
 | group | grupa | |
+| harness (agent) | harness | ADR 0056: agent field; OpenCode / Claude Code, empty = model answer |
 | hard stop | twarda blokada | budgets; never "twarde zatrzymanie" |
 | heartbeat | sygnał życia | "brak sygnału życia" |
 | holder (baton) | posiadacz (pałeczki) | "Filtruj według posiadacza pałeczki" |
@@ -151,6 +153,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | max output tokens | maks. liczba tokenów wyjściowych | model profile default options |
 | member / members | członek / członkowie | project |
 | merge request | merge request | not translated |
+| model answer | odpowiedź modelu | built-in agent "Odpowiedź modelu" (ADR 0056) |
 | model / model profile | model / profil modelu | |
 | node | węzeł | workflow node |
 | operations | operacje | admin page |

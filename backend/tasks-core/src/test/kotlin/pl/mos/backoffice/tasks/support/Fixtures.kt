@@ -2,9 +2,11 @@ package pl.mos.backoffice.tasks.support
 
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.tasks.application.service.BuiltInLibrary
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
+import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -13,15 +15,23 @@ import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.time.Instant
 import java.util.UUID
 
-/** An in-memory library with helpers to populate it tersely. */
-class Library {
+/** An in-memory library with helpers to populate it tersely; the built-in agents (ADR 0056) unless [builtInAgents] is off. */
+class Library(builtInAgents: Boolean = true) {
     val now: Instant = Instant.parse("2026-09-26T10:00:00Z")
     val clock: Clock = Clock.fixed(now)
     val templates = InMemoryTaskTemplateRepository()
     val skills = InMemorySkillRepository()
     val rules = InMemoryRuleRepository()
-    val lookup = RepositoryLookup(templates, skills, rules)
+    val agents = InMemoryAgentRepository()
+    val lookup = RepositoryLookup(templates, skills, rules, agents)
     val projectId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
+
+    init {
+        if (builtInAgents) BuiltInLibrary.agents(now).forEach { agents.save(it) }
+    }
+
+    fun agent(key: String, harness: AgentHarness? = null, scope: Scope = Scope.Global, name: String = key): Agent =
+        agents.save(Agent.create(Agent.Content(key = key, name = name, scope = scope, harness = harness), now))
 
     fun skill(key: String, scope: Scope = Scope.Global, content: String = "# $key"): Skill =
         skills.save(Skill.create(Skill.Content(key = key, name = key, content = content, scope = scope), now))
@@ -33,7 +43,7 @@ class Library {
         key: String,
         extendsKey: String? = null,
         abstract: Boolean = false,
-        executor: TaskExecutor? = null,
+        agentKey: String? = null,
         scope: Scope = Scope.Global,
         category: TemplateCategory? = null,
         prompt: Prompt = Prompt.EMPTY,
@@ -52,7 +62,7 @@ class Library {
     ): TaskTemplate = templates.save(
         TaskTemplate.create(
             TaskTemplate.Content(
-                key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category, executor = executor,
+                key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category, agentKey = agentKey,
                 scope = scope, prompt = prompt, skills = skills, removeSkills = removeSkills, config = config, outputSchema = outputSchema,
                 confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags, runInputs = runInputs,
                 rules = rules, removeRules = removeRules,

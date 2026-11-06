@@ -28,7 +28,6 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
@@ -86,11 +85,8 @@ class WorkflowServiceTest {
 
     @Test
     fun `viewers read the effective run inputs of a workflow, others are refused before anything is resolved`() {
-        val issue = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true)
-        every { catalog.resolve("fetch-issue", project.id.value, any()) } returns ResolvedTask(
-            "fetch-issue", "Fetch issue", TaskExecutor.FETCH_ISSUE, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null,
-            emptyList(), emptyList(), null, listOf("fetch-issue"), listOf("success", "failure"), runInputs = listOf(issue),
-        )
+        // ADR 0056: the fetch step is an action; its run input comes from the action catalogue, not the task library
+        val issue = pl.mos.backoffice.projects.domain.service.ActionCatalog.ISSUE_KEY_INPUT
         val definition = Fixtures.issueWorkflow(project).also { store[it.id] = it }
 
         assertThat(service(viewer).runInputs(definition.id)).containsExactly(issue)

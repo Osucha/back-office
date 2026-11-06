@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.test.context.TestConfiguration
@@ -34,7 +35,6 @@ import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
@@ -104,7 +104,7 @@ class FakeTaskCatalog : TaskCatalog {
     val templates = ConcurrentHashMap<String, ResolvedTask>()
 
     fun llm(key: String, user: String, system: String? = null, outputSchema: String? = null, confidenceField: String? = null, produces: List<String> = emptyList(), consumes: List<String> = emptyList(), category: TemplateCategory? = null, ports: List<String> = listOf("success", "failure")) =
-        register(ResolvedTask(key, key, TaskExecutor.LLM, null, TaskPrompt(system, user), emptyList(), emptyMap(), outputSchema, confidenceField, produces, consumes, category, listOf(key), ports))
+        register(ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(system, user), emptyList(), emptyMap(), outputSchema, confidenceField, produces, consumes, category, listOf(key), ports))
 
     fun register(task: ResolvedTask): ResolvedTask = task.also { templates[it.key] = it }
 
@@ -133,7 +133,7 @@ class FakeTaskCatalog : TaskCatalog {
     }
 
     override fun palette(projectId: UUID?): List<TaskSummary> =
-        templates.values.map { TaskSummary(it.key, it.name, "template ${it.key}", it.executor, it.category, false, null, it.ports) }.sortedBy { it.key }
+        templates.values.map { TaskSummary(it.key, it.name, "template ${it.key}", it.agent, it.category, false, null, it.ports) }.sortedBy { it.key }
 
     companion object {
         const val CLARIFY_SCHEMA = """{"type":"object","properties":{"confidence":{"type":"number"},"questions":{"type":"array","items":{"type":"string"}}},"required":["confidence","questions"]}"""

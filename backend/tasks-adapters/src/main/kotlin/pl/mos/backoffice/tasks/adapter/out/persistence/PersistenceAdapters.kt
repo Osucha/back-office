@@ -2,9 +2,12 @@ package pl.mos.backoffice.tasks.adapter.out.persistence
 
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
+import pl.mos.backoffice.tasks.domain.model.Agent
+import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.RuleId
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -37,6 +40,8 @@ class TaskTemplatePersistenceAdapter(
     override fun existsExtending(key: String): Boolean = jpa.existsByExtendsKey(key)
     override fun existsUsingSkill(skillKey: String): Boolean = jpa.existsUsingSkill(skillKey)
     override fun existsUsingRule(ruleKey: String): Boolean = jpa.existsUsingRule(ruleKey)
+    override fun existsUsingAgent(agentKey: String, projectId: UUID?): Boolean =
+        if (projectId == null) jpa.existsByAgentKey(agentKey) else jpa.existsUsingAgentVisibleTo(agentKey, projectId)
     override fun delete(id: TaskTemplateId) = jpa.deleteById(id.value)
 }
 
@@ -61,6 +66,29 @@ class SkillPersistenceAdapter(
 
     override fun existsByKey(key: String): Boolean = jpa.existsByKey(key)
     override fun delete(id: SkillId) = jpa.deleteById(id.value)
+}
+
+/** `AgentRepository` on JPA (ADR 0056). */
+@Repository
+@Transactional
+class AgentPersistenceAdapter(
+    private val jpa: AgentJpaRepository,
+    private val mappers: TaskMappers,
+) : AgentRepository {
+    override fun save(agent: Agent): Agent = mappers.toDomain(jpa.save(mappers.toEntity(agent)))
+    override fun findById(id: AgentId): Agent? = jpa.findById(id.value).map(mappers::toDomain).orElse(null)
+
+    override fun findByKeyAndScope(key: String, scope: Scope): Agent? = when (scope) {
+        Scope.Global -> jpa.findByKeyAndScopeTypeAndProjectIdIsNull(key, ScopeType.GLOBAL)
+        is Scope.Project -> jpa.findByKeyAndScopeTypeAndProjectId(key, ScopeType.PROJECT, scope.projectId)
+    }?.let(mappers::toDomain)
+
+    override fun findVisible(projectId: UUID?): List<Agent> =
+        (if (projectId == null) jpa.findAllByScopeType(ScopeType.GLOBAL) else jpa.findAllByScopeTypeOrProjectId(ScopeType.GLOBAL, projectId))
+            .map(mappers::toDomain)
+
+    override fun existsByKey(key: String): Boolean = jpa.existsByKey(key)
+    override fun delete(id: AgentId) = jpa.deleteById(id.value)
 }
 
 /** `RuleRepository` on JPA (ADR 0055). */

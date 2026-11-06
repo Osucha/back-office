@@ -73,6 +73,10 @@ export type ValidationResult = S['ValidationResult'];
 export type ValidationIssue = S['ValidationIssue'];
 export type ControlNodeDescriptor = S['ControlNodeDescriptor'];
 export type PaletteTask = S['PaletteTask'];
+/** ADR 0056: a deterministic integration step of a workflow (no model). */
+export type ActionType = S['ActionType'];
+export type ActionDescriptor = S['ActionDescriptor'];
+export type WorkflowNodeAction = NonNullable<WorkflowNode['action']>;
 export type WorkflowPalette = S['WorkflowPalette'];
 export type StateField = NonNullable<WorkflowPalette['stateFields']>[number];
 export type ExpressionValidation = NonNullable<
@@ -129,7 +133,6 @@ export type CiSignalRequest = S['CiSignalRequest'];
 export type CiSignalResult = S['CiSignalResult'];
 
 // ---- task library
-export type TaskExecutor = S['TaskExecutor'];
 export type Scope = S['Scope'];
 export type ScopeType = Scope['type'];
 /** ADR 0055: what kind of work a template does (groups the library list and the palette). */
@@ -139,8 +142,13 @@ export type PromptMode = TaskPrompt['mode'];
 export type TaskTemplateInput = S['TaskTemplateInput'];
 export type TaskTemplate = S['TaskTemplate'];
 export type ResolvedTask = S['ResolvedTask'];
-/** ADR 0054: a task executor with the JSON Schema of its `config` keys. */
-export type TaskExecutorDescriptor = S['TaskExecutorDescriptor'];
+/** ADR 0056: config JSON Schemas of model answer and coding agent steps. */
+export type TaskConfigSchemas = S['TaskConfigSchemas'];
+/** ADR 0056: who runs a task: a harness (none = model answer) and optionally a model. */
+export type AgentHarness = S['AgentHarness'];
+export type AgentInput = S['AgentInput'];
+export type Agent = S['Agent'];
+export type AgentRef = S['AgentRef'];
 export type SkillInput = S['SkillInput'];
 export type Skill = S['Skill'];
 /** ADR 0055: a rule is always in the agent's context (a skill is loaded on demand). */
@@ -368,17 +376,17 @@ export const NODE_KINDS: NodeKind[] = [
   'START',
   'END',
   'TASK',
+  'ACTION',
   'DECISION',
   'HUMAN_GATE',
   'WAIT_FOR_CI',
   'NOTE',
 ];
-export const TASK_EXECUTORS: TaskExecutor[] = [
-  'LLM',
-  'SPEC_KIT',
-  'IMPLEMENT',
+/** ADR 0056: coding agent harnesses (an agent without one gives a model answer). */
+export const AGENT_HARNESSES: AgentHarness[] = ['OPENCODE', 'CLAUDE_CODE'];
+export const ACTION_TYPES: ActionType[] = [
   'FETCH_ISSUE',
-  'NOTIFY',
+  'COMMENT_ISSUE',
   'TRANSITION_ISSUE',
   'START_WORKFLOW',
   'PROJECT_DIGEST',

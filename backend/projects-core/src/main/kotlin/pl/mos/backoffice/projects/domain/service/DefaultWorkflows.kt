@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.domain.service
 
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.ChecklistItem
 import pl.mos.backoffice.projects.domain.model.CiWaitSpec
 import pl.mos.backoffice.projects.domain.model.DecisionBranch
@@ -40,14 +42,12 @@ object DefaultWorkflows {
     /** The single accountable project role of the seeded gates. */
     const val ACCOUNTABLE_ROLE = "owner"
 
-    const val TEMPLATE_FETCH_ISSUE = "fetch-issue"
     const val TEMPLATE_SPECIFY = "spec-kit-specify"
     const val TEMPLATE_CLARIFY = "clarify-spec"
     const val TEMPLATE_PLAN = "spec-kit-plan"
     const val TEMPLATE_TASKS = "spec-kit-tasks"
     const val TEMPLATE_IMPLEMENT = "implement-opencode"
     const val TEMPLATE_CODE_REVIEW = "code-review"
-    const val TEMPLATE_TRANSITION = "transition-issue"
     const val TEMPLATE_IMPACT_ANALYSIS = "impact-analysis"
     const val TEMPLATE_WRITE_USER_STORY = "write-user-story"
     const val TEMPLATE_PLAN_TASK_LIST = "plan-task-list"
@@ -164,7 +164,7 @@ object DefaultWorkflows {
         version = 1,
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
-            WorkflowNode.Task(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), task = TaskBinding(TEMPLATE_FETCH_ISSUE)),
+            WorkflowNode.Action(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), action = ActionBinding(ActionType.FETCH_ISSUE)),
             WorkflowNode.Task("specify", "Specify", Point(652.0, 40.0), task = TaskBinding(TEMPLATE_SPECIFY)),
             WorkflowNode.Task("clarify", "Clarify spec", Point(988.0, 40.0), task = TaskBinding(TEMPLATE_CLARIFY)),
             WorkflowNode.Decision(
@@ -205,7 +205,7 @@ object DefaultWorkflows {
                     checklist = MERGE_DONE,
                 ),
             ),
-            WorkflowNode.Task("transition", "Move issue to In Review", Point(4348.0, 40.0), task = TaskBinding(TEMPLATE_TRANSITION)),
+            WorkflowNode.Action("transition", "Move issue to In Review", Point(4348.0, 40.0), action = ActionBinding(ActionType.TRANSITION_ISSUE)),
             WorkflowNode.End("done", "Done", Point(4684.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
         ),
         edges = listOf(
@@ -280,7 +280,7 @@ object DefaultWorkflows {
         version = 1,
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
-            WorkflowNode.Task(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), task = TaskBinding(TEMPLATE_FETCH_ISSUE)),
+            WorkflowNode.Action(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), action = ActionBinding(ActionType.FETCH_ISSUE)),
             WorkflowNode.Task(NODE_IMPACT_ANALYSIS, "Impact analysis", Point(652.0, 40.0), task = TaskBinding(TEMPLATE_IMPACT_ANALYSIS)),
             WorkflowNode.HumanGate(
                 NODE_IMPACT_GATE, "Approve impact analysis?", Point(988.0, 40.0),

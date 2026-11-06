@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
@@ -11,7 +12,6 @@ import pl.mos.backoffice.projects.domain.service.DefaultWorkflows
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
@@ -23,11 +23,9 @@ class RepositoryStepCheckTest {
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? {
             val executor = when {
-                key.startsWith("implement") -> TaskExecutor.IMPLEMENT
-                key.startsWith("spec-kit") -> TaskExecutor.SPEC_KIT
-                key == "fetch-issue" -> TaskExecutor.FETCH_ISSUE
-                key == "transition-issue" -> TaskExecutor.TRANSITION_ISSUE
-                else -> TaskExecutor.LLM
+                key.startsWith("implement") -> TestAgents.OPENCODE
+                key.startsWith("spec-kit") -> TestAgents.OPENCODE
+                else -> TestAgents.MODEL_ANSWER
             }
             return ResolvedTask(
                 key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null,

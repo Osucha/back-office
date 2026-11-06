@@ -1,16 +1,17 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.shared.platform.PlatformFeatures
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 
 /**
  * Spec Kit is optional (ADR 0036): a project uses it only when its setting `specKit` is on AND the platform allows it.
- * When it is off, `SPEC_KIT` steps are validator errors, runs refuse to start them, and the designer palette hides
- * the Spec Kit templates (also templates that extend them: the check is on the resolved executor).
+ * When it is off, Spec Kit steps (a coding agent and a config `phase`, ADR 0056) are validator errors, runs refuse to
+ * start them, and the designer palette hides the Spec Kit templates (also templates that extend them: the check is on
+ * the resolved task).
  */
 class SpecKitStepCheck(private val catalog: TaskCatalog, private val features: PlatformFeatures = PlatformFeatures.DEFAULTS) {
 
@@ -28,7 +29,7 @@ class SpecKitStepCheck(private val catalog: TaskCatalog, private val features: P
 
     private fun specKitSteps(project: Project, nodes: List<WorkflowNode>): List<WorkflowNode.Task> =
         nodes.filterIsInstance<WorkflowNode.Task>().filter { it.task.templateKey.isNotBlank() }.filter { node ->
-            runCatching { catalog.resolve(node.task.templateKey, project.id.value, node.task.overrides) }.getOrNull()?.executor == TaskExecutor.SPEC_KIT
+            runCatching { catalog.resolve(node.task.templateKey, project.id.value, node.task.overrides) }.getOrNull()?.let(TaskRunKind::of) == TaskRunKind.SPEC_KIT
         }
 
     private fun message(project: Project): String =

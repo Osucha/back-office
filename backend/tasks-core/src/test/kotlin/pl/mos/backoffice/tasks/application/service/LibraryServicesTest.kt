@@ -8,7 +8,7 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
@@ -38,8 +38,8 @@ class LibraryServicesTest {
     private val skills = SkillService(lib.skills, lib.templates, lib.clock, gate, audit)
     private val catalog = TaskCatalogService(lib.templates, lib.lookup)
 
-    private fun content(key: String, scope: Scope = Scope.Global, extendsKey: String? = null, executor: TaskExecutor? = TaskExecutor.LLM, abstract: Boolean = false) =
-        TaskTemplate.Content(key = key, name = key, scope = scope, extendsKey = extendsKey, executor = executor, abstract = abstract)
+    private fun content(key: String, scope: Scope = Scope.Global, extendsKey: String? = null, agentKey: String? = null, abstract: Boolean = false) =
+        TaskTemplate.Content(key = key, name = key, scope = scope, extendsKey = extendsKey, agentKey = agentKey, abstract = abstract)
 
     @Test
     fun `rules are unique per scope, sorted by name, and cannot be deleted or renamed while a template lists them`() {
@@ -78,13 +78,13 @@ class LibraryServicesTest {
 
     @Test
     fun `a template, skill or rule created without a key gets a unique one derived from its name`() {
-        val first = templates.create(TaskTemplate.Content(name = "Analiza zgłoszenia", executor = TaskExecutor.LLM))
-        val second = templates.create(TaskTemplate.Content(name = "Analiza zgłoszenia", executor = TaskExecutor.LLM, scope = Scope.Project(lib.projectId)))
-        val third = templates.create(TaskTemplate.Content(name = "Analiza  Zgłoszenia!", executor = TaskExecutor.LLM))
+        val first = templates.create(TaskTemplate.Content(name = "Analiza zgłoszenia"))
+        val second = templates.create(TaskTemplate.Content(name = "Analiza zgłoszenia", scope = Scope.Project(lib.projectId)))
+        val third = templates.create(TaskTemplate.Content(name = "Analiza  Zgłoszenia!"))
         assertThat(first.key).isEqualTo("analiza-zgloszenia")
         assertThat(second.key).describedAs("unique across scopes, never shadows by accident").isEqualTo("analiza-zgloszenia-2")
         assertThat(third.key).isEqualTo("analiza-zgloszenia-3")
-        assertThat(templates.create(TaskTemplate.Content(name = "2FA check", executor = TaskExecutor.LLM)).key).isEqualTo("task-2fa-check")
+        assertThat(templates.create(TaskTemplate.Content(name = "2FA check")).key).isEqualTo("task-2fa-check")
 
         assertThat(skills.create(Skill.Content(name = "Kotlin style", content = "# k")).key).isEqualTo("kotlin-style")
         assertThat(skills.create(Skill.Content(name = "Kotlin style", content = "# k")).key).isEqualTo("kotlin-style-2")
@@ -96,7 +96,7 @@ class LibraryServicesTest {
 
     @Test
     fun `an update without a key keeps it and an explicit key still works`() {
-        val created = templates.create(TaskTemplate.Content(key = "my-step", name = "My step", executor = TaskExecutor.LLM))
+        val created = templates.create(TaskTemplate.Content(key = "my-step", name = "My step"))
         val renamed = templates.update(created.id, created.content.copy(key = null, name = "Completely different"))
         assertThat(renamed.key).isEqualTo("my-step")
         assertThat(renamed.name).isEqualTo("Completely different")
@@ -139,13 +139,13 @@ class LibraryServicesTest {
     @Test
     fun `templates validate on save, bump version on update and refuse built-in or extended deletion`() {
         assertThatThrownBy { templates.create(content("child", extendsKey = "ghost")) }.isInstanceOf(ValidationException::class.java)
-        assertThatThrownBy { templates.create(content("bare", executor = null)) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("executor")
+        assertThatThrownBy { templates.create(content("bare", agentKey = "ghost")) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("agent ghost does not exist")
 
-        val base = templates.create(content("base", executor = TaskExecutor.LLM, abstract = true).copy(prompt = Prompt(system = "base")))
+        val base = templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "base")))
         assertThat(base.version).isEqualTo(1)
         assertThatThrownBy { templates.create(content("base")) }.isInstanceOf(InvalidStateException::class.java)
 
-        val child = templates.create(content("child", extendsKey = "base", executor = null))
+        val child = templates.create(content("child", extendsKey = "base"))
         val updated = templates.update(child.id, child.content.copy(name = "Child v2"))
         assertThat(updated.version).isEqualTo(2)
         assertThat(updated.name).isEqualTo("Child v2")
@@ -164,7 +164,7 @@ class LibraryServicesTest {
         val input = RunInputField("input", "Input material", RunInputType.MULTILINE)
         val issue = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true, help = "e.g. ABC-1")
         val base = templates.create(content("base", abstract = true).copy(runInputs = listOf(input)))
-        val child = templates.create(content("child", extendsKey = "base", executor = null).copy(runInputs = listOf(issue)))
+        val child = templates.create(content("child", extendsKey = "base").copy(runInputs = listOf(issue)))
         assertThat(templates.get(base.id).runInputs).containsExactly(input)
         assertThat(audit.entries.last().details["runInputs"]).isEqualTo(listOf("issueKey:ISSUE_KEY:required:Jira issue:help=10"))
 
@@ -199,7 +199,7 @@ class LibraryServicesTest {
     fun `resolve previews abstract and broken templates and is 404 for unknown keys`() {
         val gone = lib.rule("gone")
         templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "hello")))
-        templates.create(content("half", extendsKey = "base", executor = null).copy(rules = listOf("gone")))
+        templates.create(content("half", extendsKey = "base").copy(rules = listOf("gone")))
         lib.rules.delete(gone.id)
 
         assertThat(templates.resolve("base").abstract).isTrue()
@@ -222,7 +222,9 @@ class LibraryServicesTest {
 
         assertThat(step.prompt.system).contains("rules", "be brief")
         assertThat(step.prompt.user).isEqualTo("only analyse")
-        assertThat(step.config).containsEntry("agent", "CLAUDE_CODE").containsEntry("push", true)
+        assertThat(step.config).doesNotContainKey("agent").containsEntry("push", true)
+        assertThat(step.agent.key).describedAs("the legacy step key agent").isEqualTo(AgentSnapshot.CLAUDE_CODE)
+        assertThat(templates.resolve("step").agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(templates.resolve("step").prompt.user).isEqualTo("do the work")
         assertThatThrownBy { templates.resolveStep("nope", null, TaskOverrides.NONE) }.isInstanceOf(NotFoundException::class.java)
     }
@@ -251,8 +253,8 @@ class LibraryServicesTest {
 
     @Test
     fun `a deprecated template stays in the palette flagged, for the steps that use it, and still resolves`() {
-        templates.create(content("old-way", executor = TaskExecutor.LLM).copy(tags = listOf(BuiltInLibrary.DEPRECATED_TAG)))
-        templates.create(content("new-way", executor = TaskExecutor.LLM))
+        templates.create(content("old-way").copy(tags = listOf(BuiltInLibrary.DEPRECATED_TAG)))
+        templates.create(content("new-way"))
 
         assertThat(catalog.palette(null).associate { it.key to it.deprecated }).containsExactlyInAnyOrderEntriesOf(mapOf("old-way" to true, "new-way" to false))
         assertThat(catalog.resolve("old-way", null)).isNotNull()
@@ -261,7 +263,7 @@ class LibraryServicesTest {
     @Test
     fun `the catalog palette lists concrete templates once per key with the project entry winning`() {
         templates.create(content("base", abstract = true))
-        templates.create(content("review", extendsKey = "base", executor = TaskExecutor.LLM).copy(category = TemplateCategory.REVIEW, name = "Global review"))
+        templates.create(content("review", extendsKey = "base").copy(category = TemplateCategory.REVIEW, name = "Global review"))
         templates.create(content("review", scope = Scope.Project(lib.projectId)).copy(name = "Project review"))
         templates.create(content("broken").copy(extendsKey = null))
         lib.templates.save(lib.templates.findByKeyAndScope("broken", Scope.Global)!!.copy(extendsKey = "ghost"))
@@ -271,6 +273,7 @@ class LibraryServicesTest {
         assertThat(global.single().name).isEqualTo("Global review")
         assertThat(global.single().ports).containsExactly("success", "failure")
         assertThat(global.single().category).isEqualTo(TemplateCategory.REVIEW)
+        assertThat(global.single().agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
 
         val mine = catalog.palette(lib.projectId).single()
         assertThat(mine.name).isEqualTo("Project review")

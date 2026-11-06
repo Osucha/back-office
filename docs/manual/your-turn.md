@@ -110,7 +110,7 @@ MCP server (`list_my_turns`, `decide_gate`). See [IDE and MCP](integrations-ide.
 <a id="write-confirmations"></a>
 ## Confirming external writes
 
-Before a workflow step writes to Jira (a comment from **Notify Jira**, a status change from **Transition
+Before a workflow step writes to Jira (a comment from **Comment on issue**, a status change from **Transition
 issue**), the run stops and asks a person to confirm the exact write. Nothing has been written yet when
 you see it. Why: [Approval before writing to Jira](integrations-jira.md#jira-write-approval).
 

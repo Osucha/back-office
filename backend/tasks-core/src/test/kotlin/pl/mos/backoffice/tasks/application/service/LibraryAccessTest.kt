@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.security.PermissionScope
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
@@ -29,7 +28,7 @@ class LibraryAccessTest {
     private fun skills(gate: FakeAuthorizationGate) = SkillService(lib.skills, lib.templates, lib.clock, gate, audit)
     private fun rules(gate: FakeAuthorizationGate) = RuleService(lib.rules, lib.templates, lib.clock, gate, audit)
 
-    private fun content(key: String, scope: Scope = Scope.Global) = TaskTemplate.Content(key = key, name = key, scope = scope, executor = TaskExecutor.LLM)
+    private fun content(key: String, scope: Scope = Scope.Global) = TaskTemplate.Content(key = key, name = key, scope = scope)
 
     @Test
     fun `the permission catalogue declares the three library permissions with their scopes`() {

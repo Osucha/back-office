@@ -2,14 +2,38 @@ package pl.mos.backoffice.shared.tasks
 
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.runner.AgentHarness
 import java.util.UUID
 
 /**
- * How a task is executed. The Projects context has one executor implementation per value; the Task
- * Library context only stores the value. `LLM` is a single structured model call in-process, `SPEC_KIT`
- * and `IMPLEMENT` run in the agent runner, the rest are integrations.
+ * ADR 0056: who runs a task. Without a [harness] the step is a single model answer in-process (no tools, no repository);
+ * with one it is a coding agent session in the runner sandbox. Without a [modelProfileId] the step uses the defaults for
+ * its kind. The Projects context decides how to run a step from the agent and the task's config.
  */
-enum class TaskExecutor { LLM, SPEC_KIT, IMPLEMENT, FETCH_ISSUE, NOTIFY, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST }
+data class AgentSnapshot(
+    val key: String,
+    val name: String,
+    val harness: AgentHarness? = null,
+    val modelProfileId: ModelProfileId? = null,
+) {
+    val modelAnswer: Boolean get() = harness == null
+
+    companion object {
+        const val MODEL_ANSWER = "model-answer"
+        const val OPENCODE = "opencode"
+        const val CLAUDE_CODE = "claude-code"
+
+        /** Used when no template in the lineage and no step names an agent and the library has none under [MODEL_ANSWER]. */
+        val DEFAULT = AgentSnapshot(MODEL_ANSWER, "Model answer")
+
+        /** Built-in agent key of a harness (the former config key `agent`). */
+        fun keyOf(harness: AgentHarness?): String = when (harness) {
+            null -> MODEL_ANSWER
+            AgentHarness.OPENCODE -> OPENCODE
+            AgentHarness.CLAUDE_CODE -> CLAUDE_CODE
+        }
+    }
+}
 
 /** A reusable prompt fragment / Agent Skill attached to a task (docs/architecture/07-task-library.md). */
 data class SkillSnapshot(val key: String, val name: String, val content: String)
@@ -62,6 +86,8 @@ data class RunInputField(
  * inheritance chain has been merged.
  */
 data class TaskOverrides(
+    /** ADR 0056: the agent that runs this step instead of the template's. */
+    val agentKey: String? = null,
     val modelProfileId: ModelProfileId? = null,
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
@@ -82,12 +108,14 @@ data class TaskOverrides(
 data class ResolvedTask(
     val key: String,
     val name: String,
-    val executor: TaskExecutor,
+    /** ADR 0056: the step's agent, else the nearest in the lineage, else the built-in model answer. */
+    val agent: AgentSnapshot,
+    /** ADR 0056: the step's model, else the agent's, else the template lineage's; null = the defaults (ModelResolver). */
     val modelProfileId: ModelProfileId?,
     val prompt: TaskPrompt,
     val skills: List<SkillSnapshot>,
     val config: Map<String, Any?>,
-    /** JSON schema for structured output of `LLM` tasks. */
+    /** JSON schema of a structured answer (model answer agents). */
     val outputSchema: String?,
     /** Name of a numeric 0..1 field in the structured output that becomes `state.confidence`. */
     val confidenceField: String?,
@@ -113,7 +141,7 @@ data class TaskSummary(
     val key: String,
     val name: String,
     val description: String,
-    val executor: TaskExecutor,
+    val agent: AgentSnapshot,
     val category: TemplateCategory?,
     val abstract: Boolean,
     val projectId: UUID?,

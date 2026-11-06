@@ -1,35 +1,27 @@
-import { stepModelUse, stepModelUseKey } from './model-step';
+import type { Agent } from '../../../core/api/types';
+import { effectiveStepAgent, stepModelUse, stepModelUseKey } from './model-step';
 
-const schema = (agentDefault?: string) => ({
-  properties: {
-    agent: { type: 'string', enum: ['OPENCODE', 'CLAUDE_CODE'], default: agentDefault },
-  },
-});
-
-describe('stepModelUse (ADR 0050)', () => {
-  it('maps LLM to one gateway call and steps without a model to null', () => {
-    expect(stepModelUse({ executor: 'LLM' })).toEqual({ stepKind: 'LLM_CALL', harness: null });
-    expect(stepModelUse({ executor: 'FETCH_ISSUE' })).toBeNull();
+describe('stepModelUse (ADR 0050, 0056)', () => {
+  it('maps a model answer agent to one gateway call and no agent to null', () => {
+    expect(stepModelUse({ harness: null })).toEqual({ stepKind: 'LLM_CALL', harness: null });
+    expect(stepModelUse({})).toEqual({ stepKind: 'LLM_CALL', harness: null });
     expect(stepModelUse(null)).toBeNull();
-    expect(stepModelUse({})).toBeNull();
   });
 
-  it('takes the harness of a coding step from the node, the template, the schema default', () => {
-    const implement = { executor: 'IMPLEMENT' as const, configSchema: schema('OPENCODE') };
-    expect(stepModelUse(implement)).toEqual({ stepKind: 'CODING_AGENT', harness: 'OPENCODE' });
-    expect(stepModelUse(implement, null, { agent: 'claude_code' })?.harness).toBe('CLAUDE_CODE');
-    expect(stepModelUse(implement, { agent: 'OPENCODE' }, { agent: 'CLAUDE_CODE' })?.harness).toBe(
-      'OPENCODE',
-    );
+  it('runs a coding agent with the agent harness', () => {
+    expect(stepModelUse({ harness: 'OPENCODE' })).toEqual({
+      stepKind: 'CODING_AGENT',
+      harness: 'OPENCODE',
+    });
+    expect(stepModelUse({ harness: 'CLAUDE_CODE' })?.harness).toBe('CLAUDE_CODE');
+  });
+
+  it('a coding step that only prepares the workspace uses no model', () => {
+    expect(stepModelUse({ harness: 'OPENCODE' }, { prepareOnly: true })).toBeNull();
+    expect(stepModelUse({ harness: 'OPENCODE' }, null, { prepareOnly: 'true' })).toBeNull();
     expect(
-      stepModelUse({ executor: 'SPEC_KIT', configSchema: schema('CLAUDE_CODE') })?.harness,
-    ).toBe('CLAUDE_CODE');
-    expect(stepModelUse({ executor: 'SPEC_KIT' }, { agent: 'other' })?.harness).toBe('OPENCODE');
-  });
-
-  it('a step that only prepares the workspace uses no model', () => {
-    expect(stepModelUse({ executor: 'IMPLEMENT' }, { prepareOnly: true })).toBeNull();
-    expect(stepModelUse({ executor: 'IMPLEMENT' }, null, { prepareOnly: 'true' })).toBeNull();
+      stepModelUse({ harness: 'OPENCODE' }, { prepareOnly: false }, { prepareOnly: true }),
+    ).not.toBeNull();
   });
 
   it('builds a cache key per step kind and harness', () => {
@@ -37,5 +29,34 @@ describe('stepModelUse (ADR 0050)', () => {
     expect(stepModelUseKey({ stepKind: 'CODING_AGENT', harness: 'CLAUDE_CODE' })).toBe(
       'CODING_AGENT:CLAUDE_CODE',
     );
+  });
+});
+
+describe('effectiveStepAgent (ADR 0056)', () => {
+  const agents: Agent[] = [
+    { key: 'claude-code', name: 'Claude Code', scope: { type: 'GLOBAL' }, harness: 'CLAUDE_CODE' },
+    { key: 'coder', name: 'Global coder', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
+    {
+      key: 'coder',
+      name: 'Project coder',
+      scope: { type: 'PROJECT', projectId: 'p1' },
+      harness: 'CLAUDE_CODE',
+    },
+  ];
+  const task = { agent: { key: 'model-answer', name: 'Model answer', harness: null } };
+
+  it('takes the step agent before the template agent', () => {
+    expect(effectiveStepAgent(task, 'claude-code', agents)?.harness).toBe('CLAUDE_CODE');
+    expect(effectiveStepAgent(task, null, agents)?.key).toBe('model-answer');
+    expect(stepModelUse(effectiveStepAgent(task, 'claude-code', agents))?.stepKind).toBe(
+      'CODING_AGENT',
+    );
+    expect(stepModelUse(effectiveStepAgent(task, null, agents))?.stepKind).toBe('LLM_CALL');
+  });
+
+  it('prefers the project agent of a key and is null for an unknown one', () => {
+    expect(effectiveStepAgent(task, 'coder', agents)?.name).toBe('Project coder');
+    expect(effectiveStepAgent(task, 'missing', agents)).toBeNull();
+    expect(effectiveStepAgent(null, null, agents)).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
 import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
+import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.application.service.ModelResolver
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.projects.application.service.TemplateModelBuilder
@@ -37,7 +38,6 @@ import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.prompt.InjectionSignal
 import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 
@@ -73,7 +73,7 @@ class LlmTaskExecutor(
     private val ownLogin: OwnLoginLlm? = null,
 ) : TaskExecutorStrategy {
 
-    override val executor = TaskExecutor.LLM
+    override val runKind = TaskRunKind.MODEL_ANSWER
 
     override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
         val profile = modelResolver.forLlmCall(task, context.project, ActingUser.startedBy(context.run)?.userId)

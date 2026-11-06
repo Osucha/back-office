@@ -217,6 +217,9 @@ function checkNodeKind(n: WorkflowNode, palette: PaletteIndex | null, sink: Issu
     case 'TASK':
       checkTask(n, palette, sink);
       break;
+    case 'ACTION':
+      checkAction(n, palette, sink);
+      break;
     case 'DECISION':
       checkDecision(n, sink);
       break;
@@ -253,6 +256,22 @@ function checkTask(n: WorkflowNode, palette: PaletteIndex | null, sink: IssueSin
         ...at,
         field: 'task.templateKey',
       },
+    );
+}
+
+/** ADR 0056: an ACTION node names an action the palette offers. */
+function checkAction(n: WorkflowNode, palette: PaletteIndex | null, sink: IssueSink): void {
+  const at = { nodeId: n.id };
+  const type = n.action?.type;
+  if (!type)
+    sink.err($localize`:@@workflows.validation.pickAction:Pick an action`, {
+      ...at,
+      field: 'action.type',
+    });
+  else if (palette && palette.actions.size && !palette.actions.has(type))
+    sink.warn(
+      $localize`:@@workflows.validation.actionNotInPalette:Action "${type}:type:" is not offered for this project`,
+      { ...at, field: 'action.type' },
     );
 }
 

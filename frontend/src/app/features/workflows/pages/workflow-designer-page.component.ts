@@ -48,6 +48,8 @@ import type {
   ProjectRepository,
   ProjectWorkspace,
   Skill,
+  Agent,
+  AgentRef,
   ValidationResult,
   WorkflowCanvas,
   WorkflowDefinition,
@@ -380,6 +382,7 @@ const MAX_HISTORY = 50;
                   #canvas
                   [definition]="def()"
                   [palette]="palette()"
+                  [agents]="agentRefs()"
                   [issues]="counts()"
                   [selectedNodeId]="selectedNodeId()"
                   [initialViewport]="initialViewport()"
@@ -499,6 +502,7 @@ const MAX_HISTORY = 50;
                     [modelOptions]="modelOptions()"
                     (modelOptionsNeeded)="loadModelOptions($event)"
                     [skills]="skills()"
+                    [agents]="agents()"
                     [projectId]="resolvedProjectId()"
                     [workflowId]="workflowId() ?? null"
                     [projectRepositories]="projectRepositories()"
@@ -1109,6 +1113,21 @@ export class WorkflowDesignerPageComponent {
   readonly modelOptions = signal<Record<string, ModelOption[] | null>>({});
   private readonly modelOptionsPending = new Set<string>();
   readonly skills = signal<Skill[]>([]);
+  /** ADR 0056: agents a step of this project may choose (global plus the project's). */
+  readonly agents = signal<Agent[]>([]);
+  /** One reference per key (a project agent before the global one of the same key). */
+  readonly agentRefs = computed<AgentRef[]>(() => {
+    const byKey = new Map<string, AgentRef>();
+    for (const a of this.agents())
+      if (!byKey.has(a.key ?? '') || a.scope?.type === 'PROJECT')
+        byKey.set(a.key ?? '', {
+          key: a.key ?? '',
+          name: a.name,
+          harness: a.harness ?? null,
+          modelProfileId: a.modelProfileId ?? null,
+        });
+    return [...byKey.values()];
+  });
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly duplicating = signal(false);
@@ -1463,6 +1482,9 @@ export class WorkflowDesignerPageComponent {
     this.library
       .listSkills(projectId)
       .subscribe({ next: (s) => this.skills.set(s), error: () => undefined });
+    this.library
+      .listAgents(projectId)
+      .subscribe({ next: (a) => this.agents.set(a), error: () => undefined });
     this.library.listTemplates({ projectId }).subscribe({
       next: (list) => this.deprecatedKeys.set(deprecatedKeys(list)),
       error: () => undefined,
@@ -1552,7 +1574,10 @@ export class WorkflowDesignerPageComponent {
   }
 
   onDrop(drop: PaletteDrop): void {
-    this.addNode({ kind: drop.kind, templateKey: drop.templateKey }, drop.position);
+    this.addNode(
+      { kind: drop.kind, templateKey: drop.templateKey, actionType: drop.actionType },
+      drop.position,
+    );
   }
 
   private addNode(pick: PalettePick, position: Point): void {
@@ -1568,7 +1593,10 @@ export class WorkflowDesignerPageComponent {
           key: pick.templateKey,
         })
       : null;
-    const node = createNode(pick.kind, position, this.nodeIds(), task);
+    const action = pick.actionType
+      ? (this.palette()?.actions?.find((a) => a.type === pick.actionType) ?? null)
+      : null;
+    const node = createNode(pick.kind, position, this.nodeIds(), task, action);
     this.commit({ ...d, nodes: [...d.nodes, node] });
     this.select(node.id);
     this.canvas()?.focus();

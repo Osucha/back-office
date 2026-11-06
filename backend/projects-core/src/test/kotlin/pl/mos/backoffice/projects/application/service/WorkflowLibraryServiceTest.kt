@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -37,7 +38,6 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
@@ -63,12 +63,12 @@ class WorkflowLibraryServiceTest {
     private val catalog = mockk<TaskCatalog> {
         every { resolve(any(), any(), any()) } answers {
             val key = firstArg<String>()
-            if (key == "missing") null else ResolvedTask(key, key, TaskExecutor.LLM, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
+            if (key == "missing") null else ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         every { palette(any()) } answers {
             val projectId = firstArg<java.util.UUID?>()
-            listOf(TaskSummary("llm-task", "LLM task", "", TaskExecutor.LLM, null, false, null, listOf("success", "failure"))) +
-                if (projectId == shop.id.value) listOf(TaskSummary("shop-only", "Shop only", "", TaskExecutor.LLM, null, false, projectId, listOf("success", "failure"))) else emptyList()
+            listOf(TaskSummary("llm-task", "LLM task", "", TestAgents.MODEL_ANSWER, null, false, null, listOf("success", "failure"))) +
+                if (projectId == shop.id.value) listOf(TaskSummary("shop-only", "Shop only", "", TestAgents.MODEL_ANSWER, null, false, projectId, listOf("success", "failure"))) else emptyList()
         }
     }
 

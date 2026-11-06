@@ -13,13 +13,16 @@ import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.PermissionCatalogContribution
 import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.adapter.out.persistence.TaskMappers
+import pl.mos.backoffice.tasks.application.port.`in`.ManageAgents
 import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
+import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
+import pl.mos.backoffice.tasks.application.service.AgentService
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
 import pl.mos.backoffice.tasks.application.service.RuleService
 import pl.mos.backoffice.tasks.application.service.SeedTaskLibraryService
@@ -29,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper
 
 /**
  * Instantiates the Task Library use cases from their ports. Beans provided to other modules:
- * `ManageTaskTemplates`, `ManageSkills`, `ManageRules`, `SeedTaskLibrary`, the tasks
+ * `ManageTaskTemplates`, `ManageSkills`, `ManageRules`, `ManageAgents`, `SeedTaskLibrary`, the tasks
  * `PermissionCatalogContribution` and, through `TaskCatalogAdapter`, the shared `TaskCatalog` port.
  * Requires `Clock`, a Jackson 3 `JsonMapper`, `AuthorizationGate` and `AuditPort` from the application.
  */
@@ -41,8 +44,8 @@ class TasksConfiguration {
     fun taskMappers(jsonMapper: JsonMapper) = TaskMappers(jsonMapper)
 
     @Bean
-    fun taskLibraryLookup(templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository) =
-        RepositoryLookup(templates, skills, rules)
+    fun taskLibraryLookup(templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository, agents: AgentRepository) =
+        RepositoryLookup(templates, skills, rules, agents)
 
     /** The Task Library permissions for the identity context's catalogue (ADR 0017). */
     @Bean
@@ -64,8 +67,14 @@ class TasksConfiguration {
     ): ManageRules = TransactionalManageRules(RuleService(rules, templates, clock, gate, audit))
 
     @Bean
-    fun seedTaskLibrary(templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository, clock: Clock): SeedTaskLibrary =
-        SeedTaskLibraryService(templates, skills, rules, clock)
+    fun manageAgents(
+        agents: AgentRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
+    ): ManageAgents = TransactionalManageAgents(AgentService(agents, templates, clock, gate, audit))
+
+    @Bean
+    fun seedTaskLibrary(
+        templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository, agents: AgentRepository, clock: Clock,
+    ): SeedTaskLibrary = SeedTaskLibraryService(templates, skills, rules, agents, clock)
 }
 
 /** On startup: create the missing built-in library entries when `backoffice.tasks.seed-builtin` is on. */
@@ -88,8 +97,9 @@ class TasksStartupListener(
         val result = seed.seed()
         if (result.total > 0) {
             log.info(
-                "seeded task library templates={} skills={} rules={} upgraded templates={} skills={} rules={}",
-                result.templatesCreated, result.skillsCreated, result.rulesCreated, result.templatesUpgraded, result.skillsUpgraded, result.rulesUpgraded,
+                "seeded task library templates={} skills={} rules={} agents={} upgraded templates={} skills={} rules={} agents={} removed templates={}",
+                result.templatesCreated, result.skillsCreated, result.rulesCreated, result.agentsCreated, result.templatesUpgraded,
+                result.skillsUpgraded, result.rulesUpgraded, result.agentsUpgraded, result.templatesRemoved,
             )
         }
     }

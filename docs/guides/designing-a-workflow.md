@@ -24,8 +24,9 @@ A workflow is a directed graph edited on a canvas (`WorkflowDefinition`, see
 | **Version** | every save bumps `version`; runs pin the version they started with (`definitionSnapshot`), so editing never disturbs in-flight work |
 
 `GET /api/v1/workflows/palette?projectId=` returns everything the designer needs: the control nodes
-with a JSON Schema per section, the concrete task templates of the Task Library (grouped by interface,
-with their ports and a config schema per executor) and the state fields usable in expressions.
+with a JSON Schema per section, the actions (`actions`: config schema, defaults, run inputs, ports and required connection capabilities of
+each, ADR 0056), the concrete task templates of the Task Library (grouped by category, with their agent, ports and
+the config schema for that agent) and the state fields usable in expressions.
 
 ## Node kinds and ports
 
@@ -33,7 +34,8 @@ with their ports and a config schema per executor) and the state fields usable i
 |---|---|---|---|
 | `START` | entry; exactly one per workflow | - | `out` |
 | `END` | terminal; its `outcome` becomes the run outcome and the CI gate result | `end: {outcome: SUCCESS \| FAILURE}` | none |
-| `TASK` | runs a Task Library template with node overrides | `task: {templateKey, overrides}` | the template's ports, by default `success`, `failure` |
+| `TASK` | runs a Task Library template with node overrides, by the step's agent | `task: {templateKey, overrides}` | `success`, `failure` |
+| `ACTION` | a fixed operation without a model (ADR 0056) | `action: {type, config}` with `type` `FETCH_ISSUE`, `COMMENT_ISSUE`, `TRANSITION_ISSUE`, `START_WORKFLOW` or `PROJECT_DIGEST` | `success`, `failure` |
 | `DECISION` | routes on boolean expressions over the run state | `decision: {branches: [{id, label, expression}], defaultBranch}` | one port per branch id (+ `defaultBranch` when it is not a branch id) |
 | `HUMAN_GATE` | pauses; an approver picks an option in the inbox | `gate: {question, options, showArtifacts, timeoutSeconds, approvers, checklist}` | one port per option (default `approve`, `revise`, `reject`) + `timeout` |
 | `WAIT_FOR_CI` | pauses until your CI reports a signal for this run | `ci: {signal, timeoutSeconds}` | `success`, `fail`, `timeout` |
@@ -41,7 +43,7 @@ with their ports and a config schema per executor) and the state fields usable i
 
 Rules about ports:
 
-- A **required port** must be connected when the node is reachable: `success` for tasks, every branch
+- A **required port** must be connected when the node is reachable: `success` for tasks and actions, every branch
   for decisions, the first option (`approve`) for gates, `success` for CI waits, `out` for START.
   Validation reports `ports.<name>: port <name> must be connected`.
 - An **unconnected `failure`, `fail` or `timeout` port fails the run** (`FAILED`, outcome `FAILURE`,
@@ -51,26 +53,31 @@ Rules about ports:
 
 ## Tasks and overrides
 
-A `TASK` node names a template key (`fetch-issue`, `spec-kit-specify`, `clarify-spec`, `spec-kit-plan`,
-`spec-kit-tasks`, `implement-opencode`, `implement-claude-code`, `code-review`, `analyse-issue`, `llm-task`,
-`notify-jira`, `transition-issue`, the SDLC templates, or your own). At run time the node is resolved through the Task
+A `TASK` node names a template key (`spec-kit-specify`, `clarify-spec`, `spec-kit-plan`, `spec-kit-tasks`,
+`implement-opencode`, `code-review`, `llm-task`, `agent-task`, the SDLC templates, or your own). At run time the node is resolved through the Task
 Library (`TaskCatalog.resolve`): inheritance is merged, a project-scoped template with the same key
 shadows the global one, and the node's `overrides` are applied last:
 
 | Override | Effect |
 |---|---|
-| `modelProfileId` | model for this node (else the template's, else the project default; review tasks use the project's review default) |
+| `agentKey` | the agent that runs this node instead of the template's (`model-answer`, `opencode`, `claude-code` or a library agent; ADR 0056) |
+| `modelProfileId` | model for this node (else the agent's, else the template's, else the defaults: project, starting user, platform; review tasks use the project's review default) |
 | `systemPromptAppend`, `promptAppend`, `promptReplace` | extend or replace the resolved prompts |
 | `addSkills`, `removeSkills` | skill keys added to / removed from the resolved set |
-| `config` | deep-merged into the template config: `phase`, `agent`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (runner tasks; see [Repositories of a step](#step-repositories)); `issueKeyFrom` (`fetch-issue`); `toStatus`, `failIfMissing` (`transition-issue`); `messageTemplate` (`notify-jira`); `maxInputChars` (LLM tasks) |
+| `config` | deep-merged into the template config: `phase`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (coding agent steps; see [Repositories of a step](#step-repositories)); `maxInputChars` (model answer steps). The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
 
-Executors decide what runs where: `LLM` tasks are one structured model call in Back Office (skills go
-into a `<skills>` section of the system prompt, `outputSchema` asks for JSON, `confidenceField` feeds
-`confidence`, every `produces` name becomes an artefact; a task that produces `review` is assessed by
-the verdict policy and stored as the run review). `SPEC_KIT` and `IMPLEMENT` tasks run in the agent
-runner with the skills written to the workspace; `IMPLEMENT` pushes the branch with merge-request push
-options, returns the diff as artefact `diff` and the MR URL as `mr`. `FETCH_ISSUE`, `NOTIFY` and
-`TRANSITION_ISSUE` call Jira.
+The step's agent decides what runs where (ADR 0056; the agent is the step's `agentKey`, else the template's, else
+`model-answer`): a **model answer** step is one structured model call in Back Office (skills go into a `<skills>`
+section of the system prompt, `outputSchema` asks for JSON, `confidenceField` feeds `confidence`, every `produces`
+name becomes an artefact; a task that produces `review` is assessed by the verdict policy and stored as the run
+review). A **coding agent** step (OpenCode or Claude Code) runs in the agent runner with the skills written to the
+workspace: with the config key `phase` as a Spec Kit job, otherwise as an agent job that pushes the branch with
+merge-request push options per config, returns the diff as artefact `diff` and the MR URL as `mr` (without a push its
+final answer is the `result` artefact). A template that needs a coding agent (`phase`, `push: true`, `prepareOnly`)
+with a model answer, or one with an `outputSchema` with a coding agent, is a problem and the step cannot run. The
+actions `FETCH_ISSUE`, `COMMENT_ISSUE` and `TRANSITION_ISSUE` call Jira; `START_WORKFLOW` and `PROJECT_DIGEST` are
+Back Office operations. A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`,
+`transition-issue`, `start-workflow`, `project-digest`) is read as that action.
 
 Templates are Mustache-like: `{{issue.summary}}`, `{{artifacts.spec}}` (artefact content),
 `{{feedback}}` (the revision comments for this step), `{{project.constitution}}`, `{{mr.url}}`, `{{review.score}}`,
@@ -92,7 +99,7 @@ warning to the run log. Sections `{{#path}}...{{/path}}` keep their text only wh
 | `project.repositories`, `project.repository` | all repositories of the project (`key`, `url`, `defaultBranch`, `purpose`, `description`, `primary`) / the primary one (may be null) |
 | `repos` | this step's repositories: `key`, `url`, `path`, `access`, `purpose`, `baseBranch`, `primary` |
 | `repositoryResults.<key>` | the latest result per repository in this run: `branch`, `commitSha`, `mergeRequestUrl`, `pushed` |
-| `mr.{url,branch,targetBranch}` | the merge request of the run (empty before `IMPLEMENT`) |
+| `mr.{url,branch,targetBranch}` | the merge request of the run (empty before a step pushed and opened one) |
 | `review` | the run review (e.g. `review.score`) |
 | `ci` | the last CI signal (e.g. `ci.message`) |
 | `decision` | the last human decision (e.g. `decision.comment`) |
@@ -112,7 +119,7 @@ evaluated read-only in a sandbox (no method calls, no type references) against `
 | Root | Fields |
 |---|---|
 | `input` | `issueKey`, `parameters['name']`, `ci.provider`, `ci.ref`, `ci.commitSha`, `ci.mergeRequest.{iid, sourceBranch, targetBranch, title}`, `ci.hasMergeRequest` |
-| `issue` | `key`, `summary`, `description`, `type`, `priority`, `status`, `labels`, `components` (after `fetch-issue`) |
+| `issue` | `key`, `summary`, `description`, `type`, `priority`, `status`, `labels`, `components` (after the **Fetch issue** action) |
 | `artifacts['name']` | `{id, name, kind, sizeBytes}` or `null` |
 | `confidence` | last numeric confidence produced by a task, or `null` |
 | `lastOutcome` | `SUCCESS` / `FAILURE` of the previous node |
@@ -204,8 +211,8 @@ Definition of **Done** on gates before merge (ADR 0019).
 ## Repositories of a step
 
 A project has zero or more repositories, each with a `key`, URL, default branch, purpose (`DOCS`, `SOURCE`,
-`OTHER`), optional description and at most one `primary` (ADR 0034). Only runner tasks (`IMPLEMENT`,
-`SPEC_KIT`) use repositories; LLM, Jira, decision, gate and CI-wait nodes need none, so a project without
+`OTHER`), optional description and at most one `primary` (ADR 0034). Only coding agent steps (agent
+jobs and Spec Kit phases) use repositories; model answer, action, decision, gate and CI-wait nodes need none, so a project without
 repositories can run workflows made of them.
 
 A runner task names its repositories in `config.repositories`, each with the least access it needs:
@@ -270,7 +277,7 @@ Replace**; the run parameter `input` is given to the model as data, revision com
 workflows below and the `code-review` entrypoint are added once (skipped when workflows with those names
 already exist).
 
-**Issue to reviewed MR** (`MANUAL`, `API`): `start -> fetch-issue -> specify -> clarify -> confident?`.
+**Issue to reviewed MR** (`MANUAL`, `API`): `start -> fetch-issue` (action `FETCH_ISSUE`) `-> specify -> clarify -> confident?`.
 `clarify` (template `clarify-spec`) returns `{confidence, questions}`; the decision takes `yes`
 (`confidence >= 0.8`) straight to `plan`, otherwise `no` to the `spec-gate` ("Spec ok?"): `approve ->
 plan`, `revise -> specify`, `reject` cancels; its Definition of Ready: acceptance criteria are testable,
@@ -278,7 +285,7 @@ open questions are answered or deferred with an owner, scope is stated. Then `pl
 (`WAIT_FOR_CI` on signal `tests`, 2 h timeout): `success -> code-review`, `fail -> tests-failed`
 (`END FAILURE`). `code-review -> review-ok?` (`review.verdict != 'REQUEST_CHANGES'`): `approved ->
 merge-gate`, `changes -> implement` (rework loop, `implement` and `code-review` allow 3 visits).
-`merge-gate` ("Merge?"): `approve -> transition` (Jira "In Review") `-> done` (`END SUCCESS`),
+`merge-gate` ("Merge?"): `approve -> transition` (action `TRANSITION_ISSUE`, Jira "In Review") `-> done` (`END SUCCESS`),
 `revise -> implement`; it is a four-eyes gate (`forbidSelfApproval`) with the Definition of Done "tests
 green in CI / review findings addressed / spec updated". People are involved at most twice.
 
@@ -289,7 +296,7 @@ green in CI / review findings addressed / spec updated". People are involved at 
 `ADVISORY` mode).
 
 **Change request (delta)** (`MANUAL`, `API`; ADR 0019) for changing an existing system:
-`start -> fetch-issue` (template `fetch-issue`) `-> impact-analysis` (template `impact-analysis`) `-> impact-gate` ("Approve impact analysis?",
+`start -> fetch-issue` (action `FETCH_ISSUE`) `-> impact-analysis` (template `impact-analysis`) `-> impact-gate` ("Approve impact analysis?",
 checklist: affected artefacts listed / estimate given / options compared; `revise -> impact-analysis`)
 `-> user-story` (`write-user-story`) `-> plan-tasks` (`plan-task-list`, planned from the approved impact
 analysis) `-> task-list-gate` ("Approve task list?", shows `user-story` and `tasks`, checklist: every task has verification and test_command / the last task is

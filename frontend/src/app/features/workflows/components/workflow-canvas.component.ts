@@ -32,6 +32,7 @@ import {
 } from 'ngx-vflow';
 import { debounceTime } from 'rxjs';
 import type {
+  AgentRef,
   NodeExecution,
   NodeKind,
   Point,
@@ -71,6 +72,8 @@ const MINIMAP_KEY = 'backoffice.designer.minimap';
 export interface PaletteDrop {
   kind: NodeKind;
   templateKey?: string | null;
+  /** ADR 0056: the action of an ACTION node. */
+  actionType?: string | null;
   position: Point;
 }
 
@@ -384,6 +387,8 @@ export class WorkflowCanvasComponent {
 
   readonly definition = input.required<WorkflowDefinitionInput>();
   readonly palette = input<WorkflowPalette | null>(null);
+  /** ADR 0056: the agents of the project, to name the agent a step chooses itself. */
+  readonly agents = input<readonly AgentRef[]>([]);
   readonly readonly = input(false);
   readonly issues = input<CanvasIssueCounts | null>(null);
   /** Run mode: node executions drive status colours and taken ports. */
@@ -551,8 +556,9 @@ export class WorkflowCanvasComponent {
       const issues = this.issues();
       const readonly = this.readonly();
       const currentNodeId = this.currentNodeId();
+      const agents = this.agents();
       untracked(() =>
-        this.syncNodes(def, paletteIndex, executions, issues, readonly, currentNodeId),
+        this.syncNodes(def, paletteIndex, executions, issues, readonly, currentNodeId, agents),
       );
       untracked(() => this.syncEdges(def, executions, issues));
       untracked(() => this.scheduleMeasure());
@@ -827,9 +833,9 @@ export class WorkflowCanvasComponent {
     const raw = event.dataTransfer?.getData(NODE_DRAG_MIME);
     if (!raw) return;
     event.preventDefault();
-    let payload: { kind: NodeKind; templateKey?: string | null };
+    let payload: { kind: NodeKind; templateKey?: string | null; actionType?: string | null };
     try {
-      payload = JSON.parse(raw) as { kind: NodeKind; templateKey?: string | null };
+      payload = JSON.parse(raw) as typeof payload;
     } catch {
       return;
     }
@@ -837,6 +843,7 @@ export class WorkflowCanvasComponent {
     this.dropped.emit({
       kind: payload.kind,
       templateKey: payload.templateKey ?? null,
+      actionType: payload.actionType ?? null,
       position: { x: point.x - 20, y: point.y - 20 },
     });
     this.host()?.nativeElement.focus();
@@ -930,6 +937,7 @@ export class WorkflowCanvasComponent {
     issues: CanvasIssueCounts | null,
     readonly: boolean,
     currentNodeId: string | null,
+    agents: readonly AgentRef[] = [],
   ): void {
     const connected = new Map<string, Set<string>>();
     for (const e of def.edges) {
@@ -947,6 +955,7 @@ export class WorkflowCanvasComponent {
         issues,
         readonly,
         connectedPorts: connected.get(n.id),
+        agents,
       });
       const existing = this.nodeMap.get(n.id);
       if (existing) {

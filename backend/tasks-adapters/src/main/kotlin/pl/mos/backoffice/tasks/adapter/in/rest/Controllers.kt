@@ -13,9 +13,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import pl.mos.backoffice.tasks.application.port.`in`.ManageAgents
 import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
+import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.RuleId
 import pl.mos.backoffice.tasks.domain.model.SkillId
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
@@ -111,4 +113,30 @@ class RuleController(private val rules: ManageRules) {
     @DeleteMapping("/{ruleId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(@PathVariable ruleId: UUID) = rules.delete(RuleId(ruleId))
+}
+
+/** `/api/v1/agents` (openapi tag `task-library`, ADR 0056). */
+@RestController
+@RequestMapping("/api/v1/agents")
+class AgentController(private val agents: ManageAgents) {
+
+    @GetMapping
+    fun list(@RequestParam(required = false) projectId: UUID?): List<AgentDto> = agents.list(projectId).map(RestMappers::agent)
+
+    @PostMapping
+    fun create(@Valid @RequestBody body: AgentInputDto): ResponseEntity<AgentDto> {
+        val created = agents.create(RestMappers.agentContent(body))
+        return ResponseEntity.created(URI.create("/api/v1/agents/${created.id}")).body(RestMappers.agent(created))
+    }
+
+    @GetMapping("/{agentId}")
+    fun get(@PathVariable agentId: UUID): AgentDto = RestMappers.agent(agents.get(AgentId(agentId)))
+
+    @PutMapping("/{agentId}")
+    fun update(@PathVariable agentId: UUID, @Valid @RequestBody body: AgentInputDto): AgentDto =
+        RestMappers.agent(agents.update(AgentId(agentId), RestMappers.agentContent(body)))
+
+    @DeleteMapping("/{agentId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(@PathVariable agentId: UUID) = agents.delete(AgentId(agentId))
 }

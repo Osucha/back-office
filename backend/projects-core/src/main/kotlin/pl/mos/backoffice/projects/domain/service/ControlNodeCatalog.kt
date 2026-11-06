@@ -1,10 +1,10 @@
 package pl.mos.backoffice.projects.domain.service
 
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.GateSpec
 import pl.mos.backoffice.projects.domain.model.NodeKind
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 
 /** Designer-facing description of a control node kind: title, description, ports and a JSON Schema for its section. */
 data class ControlNodeDescriptor(
@@ -18,7 +18,7 @@ data class ControlNodeDescriptor(
 /** A field of the run state available to decision expressions (`WorkflowStateView`). */
 data class StateField(val path: String, val description: String)
 
-/** Static catalogue of control nodes, executor config schemas and expression state fields for the designer palette. */
+/** Static catalogue of control nodes, step and action config schemas and expression state fields for the designer palette. */
 object ControlNodeCatalog {
 
     fun controlNodes(): List<ControlNodeDescriptor> = listOf(
@@ -94,47 +94,52 @@ object ControlNodeCatalog {
         ),
     )
 
-    /** JSON Schema for `overrides.config` of a task, derived from its executor. */
-    fun configSchema(executor: TaskExecutor): Map<String, Any?> = when (executor) {
-        TaskExecutor.LLM -> schema(
-            mapOf(
-                "maxInputChars" to integer("Truncate rendered prompts beyond this many characters", 200_000),
-            ),
-        )
-        TaskExecutor.SPEC_KIT -> schema(
-            mapOf(
-                "phase" to enum("Spec Kit phase", listOf("SPECIFY", "CLARIFY", "PLAN", "TASKS", "ANALYZE")),
-                "agent" to enum("Coding agent harness", listOf("OPENCODE", "CLAUDE_CODE"), "OPENCODE"),
-                "branchTemplate" to string("Run branch, default feature/{{issue.key | lower}}"),
-                "push" to boolean("Push the branch when done. On: git access PUSH_MR (the runner token may push this branch and open a merge request, never merge). Off: READ (read-only token, nothing is pushed)", true),
-                "setupCommand" to string("Command run before the agent, e.g. npm ci"),
-                "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
-                "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
-                StepRepositories.CONFIG_KEY to repositoriesSetting(),
-            ) + workspaceSettings(prepare = false),
-        )
-        TaskExecutor.IMPLEMENT -> schema(
-            mapOf(
-                "agent" to enum("Coding agent harness", listOf("OPENCODE", "CLAUDE_CODE"), "OPENCODE"),
-                "verifyCommand" to string("Command run after the agent, e.g. ./gradlew test"),
-                "setupCommand" to string("Command run before the agent, e.g. npm ci"),
-                "branchTemplate" to string("Run branch, default feature/{{issue.key | lower}}"),
-                "push" to boolean("Push the branch when done. On: git access PUSH_MR (the runner token may push this branch and open a merge request, never merge). Off: READ (read-only token, nothing is pushed)", true),
-                "mergeRequest" to boolean("Open a merge request with git push options", true),
-                "mergeRequestTitleTemplate" to string("MR title, default {{issue.key}}: {{issue.summary}}"),
-                "mergeRequestDescriptionTemplate" to string("MR description template"),
-                "mergeRequestDraft" to boolean("Open the MR as draft", false),
-                "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
-                "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
-                StepRepositories.CONFIG_KEY to repositoriesSetting(),
-            ) + workspaceSettings(prepare = true),
-        )
-        TaskExecutor.FETCH_ISSUE -> schema(
+    /** ADR 0056: JSON Schema for `overrides.config` of a step a model answer agent runs (the former LLM executor). */
+    fun modelAnswerConfigSchema(): Map<String, Any?> = schema(
+        mapOf(
+            "maxInputChars" to integer("Truncate rendered prompts beyond this many characters", 200_000),
+        ),
+    )
+
+    /** Spec Kit phases a coding agent step can run instead of the agent job (config key `phase`). */
+    val SPEC_KIT_PHASES = listOf("SPECIFY", "CLARIFY", "PLAN", "TASKS", "ANALYZE")
+
+    /**
+     * ADR 0056: JSON Schema for `overrides.config` of a step a coding agent runs: the agent job (former IMPLEMENT) and,
+     * with `phase`, the Spec Kit job. The harness is the agent's, so there is no `agent` key.
+     */
+    fun codingAgentConfigSchema(): Map<String, Any?> = schema(
+        mapOf(
+            "phase" to enum("Spec Kit phase: set it to run that Spec Kit phase instead of the agent job", SPEC_KIT_PHASES),
+            "verifyCommand" to string("Command run after the agent, e.g. ./gradlew test"),
+            "setupCommand" to string("Command run before the agent, e.g. npm ci"),
+            "branchTemplate" to string("Run branch, default feature/{{issue.key | lower}}"),
+            "push" to boolean("Push the branch when done. On: git access PUSH_MR (the runner token may push this branch and open a merge request, never merge). Off: READ (read-only token, nothing is pushed)", true),
+            "mergeRequest" to boolean("Open a merge request with git push options", true),
+            "mergeRequestTitleTemplate" to string("MR title, default {{issue.key}}: {{issue.summary}}"),
+            "mergeRequestDescriptionTemplate" to string("MR description template"),
+            "mergeRequestDraft" to boolean("Open the MR as draft", false),
+            "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
+            "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
+            StepRepositories.CONFIG_KEY to repositoriesSetting(),
+        ) + workspaceSettings(prepare = true),
+    )
+
+    /** ADR 0056: JSON Schema for `action.config` of an action node. */
+    fun actionConfigSchema(type: ActionType): Map<String, Any?> = when (type) {
+        ActionType.FETCH_ISSUE -> schema(
             mapOf("issueKeyFrom" to string("Where to read the issue key: input (default) or a run parameter name", "input")),
         )
-        TaskExecutor.NOTIFY -> schema(mapOf("messageTemplate" to string("Jira comment body (template)"), APPROVAL_FIELD to approvalSetting()), listOf("messageTemplate"))
-        TaskExecutor.TRANSITION_ISSUE -> schema(mapOf("toStatus" to string("Target Jira status name, e.g. In Review"), APPROVAL_FIELD to approvalSetting()), listOf("toStatus"))
-        TaskExecutor.START_WORKFLOW -> schema(
+        ActionType.COMMENT_ISSUE -> schema(mapOf("messageTemplate" to string("Jira comment body (template)"), APPROVAL_FIELD to approvalSetting()), listOf("messageTemplate"))
+        ActionType.TRANSITION_ISSUE -> schema(
+            mapOf(
+                "toStatus" to string("Target Jira status name, e.g. In Review"),
+                "failIfMissing" to boolean("Fail when the issue's workflow offers no transition to that status (off: succeed with a note)", true),
+                APPROVAL_FIELD to approvalSetting(),
+            ),
+            listOf("toStatus"),
+        )
+        ActionType.START_WORKFLOW -> schema(
             mapOf(
                 "workflow" to string("Id or name of the workflow of this project to start"),
                 "parametersFrom" to string("Artefact with the run parameters: a JSON object (one run) or an array of objects (one run per entry)"),
@@ -142,7 +147,7 @@ object ControlNodeCatalog {
             ),
             listOf("workflow", "parametersFrom"),
         )
-        TaskExecutor.PROJECT_DIGEST -> schema(
+        ActionType.PROJECT_DIGEST -> schema(
             mapOf(
                 "maxRuns" to integer("At most this many runs (newest first)"),
                 "pipelineRefs" to string("Comma-separated branches whose latest pipeline is reported, e.g. develop,main (needs a CI_READ token)"),

@@ -3,7 +3,7 @@ package pl.mos.backoffice.tasks.application.service
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.service.JsonSyntax
@@ -13,7 +13,7 @@ import pl.mos.backoffice.tasks.support.Library
 class SdlcSeedTest {
 
     private val lib = Library()
-    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.clock)
+    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock)
 
     @Test
     fun `the keys the change-request workflow uses exist exactly`() {
@@ -33,7 +33,7 @@ class SdlcSeedTest {
     fun `seeding twice creates the SDLC entries once`() {
         val first = service.seed()
         val second = service.seed()
-        assertThat(first.total).isEqualTo(26 + 8 + 4)
+        assertThat(first.total).describedAs("templates, skills, rules; the built-in agents are there already").isEqualTo(21 + 8 + 4)
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcTemplateKeys }).hasSize(BuiltInLibrary.sdlcTemplateKeys.size)
         assertThat(lib.skills.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcSkillKeys }).hasSize(BuiltInLibrary.sdlcSkillKeys.size)
@@ -67,7 +67,7 @@ class SdlcSeedTest {
     fun `write-user-story is an LLM requirement writer with confidence and the story skills`() {
         service.seed()
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_USER_STORY, null)!!
-        assertThat(task.executor).isEqualTo(TaskExecutor.LLM)
+        assertThat(task.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
         assertThat(task.category).isEqualTo(TemplateCategory.SPECIFICATION)
         assertThat(task.lineage).containsExactly(BuiltInLibrary.WRITE_USER_STORY, BuiltInLibrary.BASE_LLM, BuiltInLibrary.BASE_AGENT)
         assertThat(task.skills.map { it.key }).containsExactly(BuiltInLibrary.USER_STORY_FORMAT, BuiltInLibrary.DEFINITION_OF_READY_DONE)
@@ -122,11 +122,11 @@ class SdlcSeedTest {
         service.seed()
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_TASK_LIST, null)!!
         assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_CODING_AGENT, BuiltInLibrary.BASE_AGENT)
-        assertThat(task.executor).isEqualTo(TaskExecutor.IMPLEMENT)
+        assertThat(task.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(task.category).describedAs("inherited from implement-opencode").isEqualTo(TemplateCategory.IMPLEMENTATION)
         assertThat(task.produces).contains("diff", "mr", "work-log")
         assertThat(task.config["collectArtifacts"]).isEqualTo(listOf("work-log.md"))
-        assertThat(task.config["agent"]).isEqualTo("OPENCODE")
+        assertThat(task.config).doesNotContainKey("agent")
         // a STOP fails the step: the verification command checks the RESULT line of the work log
         assertThat(task.config["verifyCommand"]).isEqualTo(BuiltInLibrary.WORK_LOG_VERIFY_COMMAND)
         assertThat(BuiltInLibrary.WORK_LOG_VERIFY_COMMAND).contains("work-log.md").contains(BuiltInLibrary.WORK_LOG_GREEN)

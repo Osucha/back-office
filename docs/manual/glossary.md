@@ -6,8 +6,12 @@ that explains it.
 **Accountable role**: The single project role that answers for a gate's decision (the "A" of RACI). Shown on the turn card and
 in the gate panel. See [Gate settings](workflows.md#gates-config).
 
-**Agent**: An AI model doing a task: a single model call inside Back Office, or a coding agent (OpenCode, Claude
-Code) in an agent job.
+**Action**: A workflow node that runs a fixed operation without a model: Fetch issue, Comment on issue, Transition
+issue, Start workflow or Project digest. See [Action nodes](workflows.md#actions).
+
+**Agent**: Who does a task: a library entry with a harness and optionally a model. Without a harness it gives a single
+model answer inside Back Office (**Model answer**); with OpenCode or Claude Code it is a coding agent session in an
+agent job. A template names its default agent; a step can choose another. See [Agents](task-library.md#agents).
 
 **Agent job**: A coding or Spec Kit task that runs in a sandbox on a runner, with its own job token, limits and logs.
 See [How agent jobs run](agent-execution.md#lifecycle).
@@ -63,14 +67,14 @@ when the agent is sure. See [Decisions](workflows.md#decisions).
 **Entrypoint**: A key that maps `backoffice-ci run <key>` in your pipeline to a workflow, in blocking or advisory mode. See
 [CI: entrypoints and tokens](projects.md#project-ci).
 
-**Executor**: What runs a task template: LLM, Spec Kit, Implement, Fetch issue, Notify or Transition issue. See
-[Templates](task-library.md#templates).
-
 **Gate (human gate)**: A node where the run stops until an approver picks an option: approve, send back for revision, or
 reject. See [Deciding a gate](your-turn.md#gates).
 
 **Hard stop**: A budget setting: at the limit, the model gateway refuses further calls and agent jobs fail. See
 [Budgets](costs-insights.md#budgets).
+
+**Harness**: The program that runs an agent's conversation with its model (tools, context, questions): OpenCode or
+Claude Code. An agent without one gives a model answer. See [Agents](task-library.md#agents).
 
 **Human wait**: The time runs spend waiting at gates; the headline figure of Insights. See [Insights](costs-insights.md#insights).
 
@@ -93,10 +97,14 @@ budget, and expires with the job. See [How agent jobs run](agent-execution.md#cr
 **MCP (Model Context Protocol)**: The protocol your IDE's coding agent uses to call Back Office tools (list turns, read artefacts, start
 workflows, decide gates) with a personal access token. See [IDE and MCP](integrations-ide.md#mcp-tools).
 
+**Model answer**: The built-in agent `model-answer`: one model call inside Back Office, without tools or a
+repository; it can return structured JSON and a confidence. A step whose template and step name no agent runs this
+way. See [Agents](task-library.md#agents).
+
 **Model profile**: A model with its options (temperature, reasoning effort) and prices. Tasks and benchmarks pick profiles.
 See [Model profiles](evaluation.md#models).
 
-**Node**: One block of a workflow: Start, Task, Decision, Human gate, Wait for CI, End or Note. See
+**Node**: One block of a workflow: Start, Task, Action, Decision, Human gate, Wait for CI, End or Note. See
 [Node kinds](workflows.md#nodes).
 
 **PAT (personal access token)**: A token (`bo_pat_…`) that acts as you, with your permissions or fewer, for scripts and your IDE. See
@@ -150,7 +158,8 @@ list it. See [Skills](task-library.md#skills).
 
 **Suite (task suite)**: The set of prompt tasks and coding jobs models are measured on. See [Task suites](evaluation.md#suites).
 
-**Task template**: A reusable task: executor, category, prompts, skills, rules and config; it is based on one parent.
+**Task template**: A reusable description of work: category, prompts, skills, rules, config and the agent that does it
+by default; it is based on one parent.
 See [Templates](task-library.md#templates).
 
 **Trigger**: How a workflow is meant to start: manual, API, CI entrypoint or Jira transition. See

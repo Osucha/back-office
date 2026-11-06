@@ -1,10 +1,10 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 
@@ -12,7 +12,7 @@ import pl.mos.backoffice.shared.tasks.TemplateCategory
 class ModelResolverReviewTest {
 
     private fun task(produces: List<String> = emptyList(), category: TemplateCategory? = null) = ResolvedTask(
-        key = "t", name = "t", executor = TaskExecutor.LLM, modelProfileId = null, prompt = TaskPrompt(null, null), skills = emptyList(),
+        key = "t", name = "t", agent = TestAgents.MODEL_ANSWER, modelProfileId = null, prompt = TaskPrompt(null, null), skills = emptyList(),
         config = emptyMap(), outputSchema = null, confidenceField = null, produces = produces, consumes = emptyList(), category = category,
         lineage = listOf("t"), ports = listOf("success", "failure"),
     )

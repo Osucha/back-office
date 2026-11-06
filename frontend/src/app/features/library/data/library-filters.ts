@@ -1,13 +1,24 @@
 /** Client-side filters and labels of the Library lists (pure; tested in library-filters.spec.ts). */
-import type { Rule, Skill, TaskTemplate } from '../../../core/api/types';
+import type { Agent, Rule, Skill, TaskTemplate } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
 import { fixed } from '../../../core/i18n/numbers';
-import { executorLabel } from '../../../core/ui/executors';
+import { agentKindLabel } from '../../../core/ui/agents';
 import { categoryLabel } from '../../../core/ui/template-categories';
 import { isDeprecated } from '../../../core/ui/template-tags';
+import { DEFAULT_AGENT_KEY, agentByKey, effectiveAgentKey } from './template-config';
 
-/** ADR 0054: the shared executor names (core/ui/executors). */
-export { executorLabel };
+/**
+ * ADR 0056: the agent a template runs with (own or inherited, else `model-answer`) as the list
+ * shows it; null when the agent is not among the loaded ones.
+ */
+export function templateAgent(
+  t: TaskTemplate,
+  all: readonly TaskTemplate[],
+  agents: readonly Agent[],
+) {
+  const key = effectiveAgentKey(t, all, DEFAULT_AGENT_KEY) ?? DEFAULT_AGENT_KEY;
+  return { key, agent: agentByKey(agents, key, t.scope) };
+}
 
 function matches(q: string, ...fields: (string | null | undefined | readonly string[])[]): boolean {
   return fields.some((f) =>
@@ -44,25 +55,29 @@ export function effectiveCategory(
 }
 
 /**
- * Templates matching the search (name, key, description, category, tag, executor label),
- * executor and category (ADR 0055, effective one); deprecated templates (ADR 0054) only with
+ * Templates matching the search (name, key, description, category, tag, agent name and kind),
+ * agent and category (ADR 0055/0056, effective ones); deprecated templates (ADR 0054) only with
  * `showDeprecated`.
  */
 export function filterTemplates(
   list: readonly TaskTemplate[],
   opts: {
     query?: string | null;
-    executor?: string | null;
+    /** ADR 0056: key of the (effective) agent. */
+    agent?: string | null;
     category?: string | null;
     showDeprecated?: boolean | null;
+    /** The loaded agents, for the search by agent name and kind. */
+    agents?: readonly Agent[];
   },
 ): TaskTemplate[] {
   const q = (opts.query ?? '').trim().toLowerCase();
   return list.filter((t) => {
     const category = effectiveCategory(t, list);
+    const { key: agentKey, agent } = templateAgent(t, list, opts.agents ?? []);
     return (
       (opts.showDeprecated || !isDeprecated(t)) &&
-      (!opts.executor || t.executor === opts.executor) &&
+      (!opts.agent || agentKey === opts.agent) &&
       (!opts.category || category === opts.category) &&
       (!q ||
         matches(
@@ -72,10 +87,20 @@ export function filterTemplates(
           t.description,
           categoryLabel(category),
           t.tags ?? [],
-          t.executor ? executorLabel(t.executor) : null,
+          agent?.name,
+          agent ? agentKindLabel(agent.harness) : null,
         ))
     );
   });
+}
+
+/** ADR 0056: agents matching the search (name, key, description, tag, kind). */
+export function filterAgents(list: readonly Agent[], query: string | null | undefined): Agent[] {
+  const q = (query ?? '').trim().toLowerCase();
+  if (!q) return [...list];
+  return list.filter((a) =>
+    matches(q, a.key, a.name, a.description, a.tags ?? [], agentKindLabel(a.harness)),
+  );
 }
 
 /** The display name of a library item referred to by key (falls back to the key). */

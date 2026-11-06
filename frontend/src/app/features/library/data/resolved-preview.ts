@@ -3,11 +3,17 @@
  * breadcrumb, effective prompts, skills, rules (ADR 0055), the check of missing skills and rules
  * and the diff against the draft.
  */
-import type { ResolvedTask, RunInputField, TaskTemplateInput } from '../../../core/api/types';
+import type {
+  AgentRef,
+  ResolvedTask,
+  RunInputField,
+  TaskTemplateInput,
+} from '../../../core/api/types';
 
 export interface ResolvedPreview {
   lineage: string[];
-  executor: string | null;
+  /** ADR 0056: the agent that runs the task (harness null = model answer). */
+  agent: AgentRef | null;
   modelProfileId: string | null;
   systemPrompt: string;
   userPrompt: string;
@@ -31,7 +37,7 @@ export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview |
   if (!r) return null;
   return {
     lineage: r.lineage?.length ? r.lineage : r.key ? [r.key] : [],
-    executor: r.executor ?? null,
+    agent: r.agent ?? null,
     modelProfileId: r.modelProfileId ?? null,
     systemPrompt: r.prompt?.system ?? '',
     userPrompt: r.prompt?.user ?? '',
@@ -133,7 +139,7 @@ export function emptyTemplate(): TaskTemplateInput {
     abstract: false,
     extendsKey: 'base-agent',
     category: null,
-    executor: 'LLM',
+    agentKey: null,
     scope: { type: 'GLOBAL', projectId: null },
     modelProfileId: null,
     prompt: { system: '', user: '', mode: 'APPEND' },
@@ -160,7 +166,7 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     abstract: !!t.abstract,
     extendsKey: t.extendsKey ?? null,
     category: t.category ?? null,
-    executor: t.executor ?? null,
+    agentKey: t.agentKey ?? null,
     scope: t.scope ?? { type: 'GLOBAL', projectId: null },
     modelProfileId: t.modelProfileId ?? null,
     prompt: {
@@ -207,7 +213,7 @@ export function customizeForProject(
     key: t.key,
     name: t.name,
     extendsKey: t.key ?? null,
-    executor: null,
+    agentKey: null,
     prompt: { system: '', user: '', mode: 'APPEND' },
     scope: { type: 'PROJECT', projectId },
   };

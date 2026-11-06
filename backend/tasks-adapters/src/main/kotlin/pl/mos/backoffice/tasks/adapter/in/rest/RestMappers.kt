@@ -4,6 +4,8 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskOverrides
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -34,7 +36,7 @@ object RestMappers {
         abstract = dto.abstract,
         extendsKey = dto.extendsKey,
         category = dto.category,
-        executor = dto.executor,
+        agentKey = dto.agentKey?.takeIf { it.isNotBlank() },
         scope = scope(dto.scope),
         modelProfileId = dto.modelProfileId?.let(::ModelProfileId),
         prompt = Prompt(dto.prompt.system, dto.prompt.user, dto.prompt.mode),
@@ -59,7 +61,7 @@ object RestMappers {
         abstract = t.abstract,
         extendsKey = t.extendsKey,
         category = t.category,
-        executor = t.executor,
+        agentKey = t.agentKey,
         scope = scope(t.scope),
         modelProfileId = t.modelProfileId?.value,
         prompt = TaskPromptDto(t.prompt.system, t.prompt.user, t.prompt.mode),
@@ -82,6 +84,7 @@ object RestMappers {
     )
 
     fun overrides(o: TaskOverridesDto) = TaskOverrides(
+        agentKey = o.agentKey?.takeIf { it.isNotBlank() },
         modelProfileId = o.modelProfileId?.let(::ModelProfileId),
         systemPromptAppend = o.systemPromptAppend,
         promptAppend = o.promptAppend,
@@ -94,7 +97,7 @@ object RestMappers {
     fun resolved(r: TaskResolution) = ResolvedTaskDto(
         key = r.key,
         name = r.name,
-        executor = r.executor,
+        agent = agentRef(r.agent),
         modelProfileId = r.modelProfileId?.value,
         prompt = ResolvedPromptDto(r.prompt.system, r.prompt.user),
         skills = r.skills.map { ResolvedSkillDto(it.key, it.name) },
@@ -110,6 +113,19 @@ object RestMappers {
         runInputs = r.runInputs.map(::runInput),
         abstract = r.abstract,
         check = ResolutionCheckDto(r.check.ok, r.check.problems),
+    )
+
+    fun agentRef(a: AgentSnapshot) = AgentRefDto(a.key, a.name, a.harness, a.modelProfileId?.value)
+
+    fun agentContent(dto: AgentInputDto) = Agent.Content(
+        key = dto.key?.takeIf { it.isNotBlank() }, name = dto.name, description = dto.description, scope = scope(dto.scope),
+        harness = dto.harness, modelProfileId = dto.modelProfileId?.let(::ModelProfileId), tags = dto.tags,
+    )
+
+    fun agent(a: Agent) = AgentDto(
+        id = a.id.value, key = a.key, name = a.name, description = a.description, scope = scope(a.scope), harness = a.harness,
+        modelProfileId = a.modelProfileId?.value, tags = a.tags, builtIn = a.builtIn, createdAt = a.createdAt, updatedAt = a.updatedAt,
+        updatedBy = ActorRefDto.of(a.updatedBy),
     )
 
     fun skillContent(dto: SkillInputDto) = Skill.Content(

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.`in`.rest
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -18,7 +19,6 @@ import pl.mos.backoffice.projects.adapter.FakeTaskCatalog
 import pl.mos.backoffice.projects.adapter.ProjectsTestApplication
 import pl.mos.backoffice.projects.adapter.ProjectsTestBeans
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
@@ -107,7 +107,7 @@ class ProjectRepositoriesRestTest {
     fun `a coding step in a project without repositories is a validation error, an LLM step is fine`() {
         tasks.register(
             ResolvedTask(
-                "rest-implement", "Implement", TaskExecutor.IMPLEMENT, null, TaskPrompt(null, "x"), emptyList(), emptyMap(), null, null,
+                "rest-implement", "Implement", TestAgents.OPENCODE, null, TaskPrompt(null, "x"), emptyList(), emptyMap(), null, null,
                 emptyList(), emptyList(), null, listOf("rest-implement"), listOf("success", "failure"),
             ),
         )

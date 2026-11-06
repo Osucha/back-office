@@ -1,18 +1,24 @@
-import type { TaskExecutorDescriptor, TaskTemplate } from '../../../core/api/types';
-import { effectiveExecutor, templateConfigSchema } from './template-config';
+import type { Agent, TaskConfigSchemas, TaskTemplate } from '../../../core/api/types';
+import {
+  agentByKey,
+  agentRef,
+  agentsForScope,
+  effectiveAgentKey,
+  templateConfigSchema,
+} from './template-config';
 
 const T = (over: Partial<TaskTemplate>): TaskTemplate =>
   ({ key: 'k', name: 'N', abstract: false, scope: { type: 'GLOBAL' }, ...over }) as TaskTemplate;
 
-describe('template config (ADR 0054)', () => {
+describe('template config (ADR 0054, 0056)', () => {
   const templates = [
     T({ key: 'base-agent', abstract: true }),
-    T({ key: 'base-llm', extendsKey: 'base-agent', executor: 'LLM' }),
-    T({ key: 'implement-opencode', extendsKey: 'base-agent', executor: 'IMPLEMENT' }),
+    T({ key: 'base-llm', extendsKey: 'base-agent', agentKey: 'model-answer' }),
+    T({ key: 'implement-opencode', extendsKey: 'base-agent', agentKey: 'opencode' }),
     T({
       key: 'base-llm',
       extendsKey: 'base-agent',
-      executor: 'SPEC_KIT',
+      agentKey: 'claude-code',
       scope: { type: 'PROJECT', projectId: 'p1' },
     }),
     T({ key: 'loop-a', extendsKey: 'loop-b' }),
@@ -20,54 +26,82 @@ describe('template config (ADR 0054)', () => {
   ];
   const global = { type: 'GLOBAL' as const };
 
-  it('prefers the own executor', () => {
+  it('prefers the own agent', () => {
     expect(
-      effectiveExecutor({ executor: 'NOTIFY', extendsKey: 'base-llm', scope: global }, templates),
-    ).toBe('NOTIFY');
+      effectiveAgentKey({ agentKey: 'opencode', extendsKey: 'base-llm', scope: global }, templates),
+    ).toBe('opencode');
   });
 
-  it('inherits the executor of the nearest ancestor', () => {
+  it('inherits the agent of the nearest ancestor', () => {
     expect(
-      effectiveExecutor({ executor: null, extendsKey: 'base-llm', scope: global }, templates),
-    ).toBe('LLM');
+      effectiveAgentKey({ agentKey: null, extendsKey: 'base-llm', scope: global }, templates),
+    ).toBe('model-answer');
     expect(
-      effectiveExecutor(
-        { executor: null, extendsKey: 'base-llm', scope: { type: 'PROJECT', projectId: 'p1' } },
+      effectiveAgentKey(
+        { agentKey: null, extendsKey: 'base-llm', scope: { type: 'PROJECT', projectId: 'p1' } },
         templates,
       ),
-    ).toBe('SPEC_KIT');
+    ).toBe('claude-code');
   });
 
-  it('falls back when nothing up the chain has an executor (also on cycles)', () => {
+  it('falls back when nothing up the chain has an agent (also on cycles)', () => {
     expect(
-      effectiveExecutor({ executor: null, extendsKey: 'base-agent', scope: global }, templates),
+      effectiveAgentKey({ agentKey: null, extendsKey: 'base-agent', scope: global }, templates),
     ).toBeNull();
     expect(
-      effectiveExecutor({ executor: null, extendsKey: 'loop-a', scope: global }, templates, 'LLM'),
-    ).toBe('LLM');
+      effectiveAgentKey(
+        { agentKey: null, extendsKey: 'loop-a', scope: global },
+        templates,
+        'model-answer',
+      ),
+    ).toBe('model-answer');
     expect(
-      effectiveExecutor({ executor: null, extendsKey: 'missing', scope: global }, templates),
+      effectiveAgentKey({ agentKey: null, extendsKey: 'missing', scope: global }, templates),
     ).toBeNull();
   });
 
-  it('picks the schema of the executor without required keys', () => {
-    const descriptors: TaskExecutorDescriptor[] = [
+  it('finds agents by key and scope (project first)', () => {
+    const agents: Agent[] = [
+      { key: 'coder', name: 'Global coder', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
       {
-        executor: 'IMPLEMENT',
-        configSchema: {
-          type: 'object',
-          required: ['agent'],
-          properties: { agent: { type: 'string', enum: ['OPENCODE', 'CLAUDE_CODE'] } },
-        },
+        key: 'coder',
+        name: 'P1 coder',
+        scope: { type: 'PROJECT', projectId: 'p1' },
+        harness: 'CLAUDE_CODE',
       },
-      { executor: 'LLM', configSchema: { type: 'object', properties: {} } },
+      { key: 'p2-only', name: 'P2', scope: { type: 'PROJECT', projectId: 'p2' } },
     ];
-    const schema = templateConfigSchema(descriptors, 'IMPLEMENT');
-    expect(schema?.properties?.['agent']).toBeTruthy();
+    expect(agentByKey(agents, 'coder')?.name).toBe('Global coder');
+    expect(agentByKey(agents, 'coder', { type: 'PROJECT', projectId: 'p1' })?.name).toBe(
+      'P1 coder',
+    );
+    expect(agentByKey(agents, 'p2-only')).toBeNull();
+    expect(agentByKey(agents, null)).toBeNull();
+    expect(agentsForScope(agents, global).map((a) => a.name)).toEqual(['Global coder']);
+    expect(agentsForScope(agents, { type: 'PROJECT', projectId: 'p1' }).map((a) => a.name)).toEqual(
+      ['Global coder', 'P1 coder'],
+    );
+    expect(agentRef(agents[1])).toEqual({
+      key: 'coder',
+      name: 'P1 coder',
+      harness: 'CLAUDE_CODE',
+      modelProfileId: null,
+    });
+  });
+
+  it('picks the schema by the kind of agent without required keys', () => {
+    const schemas: TaskConfigSchemas = {
+      codingAgent: {
+        type: 'object',
+        required: ['phase'],
+        properties: { phase: { type: 'string' } },
+      },
+      modelAnswer: { type: 'object', properties: {} },
+    };
+    const schema = templateConfigSchema(schemas, true);
+    expect(schema?.properties?.['phase']).toBeTruthy();
     expect(schema?.required).toBeUndefined();
-    expect(templateConfigSchema(descriptors, 'LLM')).toBeNull();
-    expect(templateConfigSchema(descriptors, 'NOTIFY')).toBeNull();
-    expect(templateConfigSchema(null, 'IMPLEMENT')).toBeNull();
-    expect(templateConfigSchema(descriptors, null)).toBeNull();
+    expect(templateConfigSchema(schemas, false)).toBeNull();
+    expect(templateConfigSchema(null, true)).toBeNull();
   });
 });

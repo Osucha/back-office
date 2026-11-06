@@ -12,7 +12,7 @@ Identifiers are UUIDs wrapped in typed value classes (`ProjectId`, `WorkflowRunI
 | `LlmRequest` / `LlmResult` / `TokenUsage` | value objects | one chat call and its outcome; `responseSchema` asks for structured output |
 | `UsageRecord`, `UsageContext`, `Pricing` | ledger | cost accounting; `UsageKind = PIPELINE_STEP, CODE_REVIEW, BENCHMARK_ATTEMPT, MODEL_TEST` |
 | `LlmGateway`, `UsageLedger`, `ModelCatalog`, `AgentRunner`, `TaskCatalog`, `Clock`, `EventPublisher` | ports | see 01-overview for who implements what |
-| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `SkillSnapshot`, `TaskExecutor` | value objects | what the Task Library hands to executors |
+| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `AgentSnapshot`, `SkillSnapshot`, `RuleSnapshot`, `TemplateCategory`, `RunInputField` | value objects | what the Task Library hands to the workflow engine; `AgentSnapshot(key, name, harness?, modelProfileId?)` is who runs the step (no harness = model answer, ADR 0056) |
 | `RunnerJobSpec`, `RunnerResult`, `RunnerSkill`, `RunnerMergeRequest` | value objects | runner protocol |
 
 ## Context: Task Library (`tasks-core`)
@@ -21,13 +21,16 @@ See [07-task-library.md](07-task-library.md) for semantics.
 
 | Aggregate | Fields |
 |---|---|
-| `TaskInterface` | `id, key, name, description, inputs: List<Slot(name, kind: INPUT/STATE/ARTIFACT, required, description)>, outputs: List<Slot>, ports: List<String>, builtIn, createdAt, updatedAt` |
-| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, implements: List<String>, executor: TaskExecutor?, scope: Scope(GLOBAL | PROJECT(projectId)), modelProfileId?, prompt: Prompt(system?, user?, mode: APPEND/REPLACE), skills: List<String>, removeSkills: List<String>, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, builtIn, version, timestamps` |
+| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, agentKey?, scope: Scope(GLOBAL | PROJECT(projectId)), modelProfileId?, prompt: Prompt(system?, user?, mode: APPEND/REPLACE), skills, removeSkills, rules, removeRules, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, builtIn, version, timestamps` |
 | `Skill` | `id, key, name, description, content, scope, tags, builtIn, timestamps` |
+| `Rule` | `id, key, name, description, content, scope, automatic, tags, builtIn, timestamps` (ADR 0055) |
+| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, tags, builtIn, timestamps` (ADR 0056) |
 
-Uniqueness: `(key, scope)` for templates and skills; `key` for interfaces. Domain service
-`TaskResolver` produces `ResolvedTask`; `TemplateValidator` checks keys (`^[a-z][a-z0-9-]{1,63}$`),
-parent existence, executor presence on concrete templates, JSON schema syntax.
+Template keys are unique across scopes; skills, rules and agents by `(key, scope)` (ADR 0055). Domain service
+`TaskResolver` produces `ResolvedTask` (with the resolved agent: step, template lineage, else `model-answer`) and
+reports when the agent does not fit the template; `TemplateValidator` checks keys (`^[a-z][a-z0-9-]{1,63}$`),
+parent existence and JSON schema syntax. Task interfaces (ADR 0015) were removed by ADR 0055, the template executor by
+ADR 0056.
 
 ## Context: Projects & Workflows (`projects-core`)
 
@@ -58,14 +61,16 @@ revokedAt?`. The plaintext is returned once on creation and never stored.
 | `canvas: Canvas(zoom, x, y)?` | viewport only; node positions live on nodes |
 
 `WorkflowNode`: `id, kind: NodeKind, name, position: Point(x, y), timeoutSeconds?` plus one of:
-`task: TaskBinding(templateKey, overrides: TaskOverrides)`, `decision: Decision(branches: List<Branch(id,
+`task: TaskBinding(templateKey, overrides: TaskOverrides)` (overrides include `agentKey`, ADR 0056),
+`action` (`type`: FETCH_ISSUE/COMMENT_ISSUE/TRANSITION_ISSUE/START_WORKFLOW/PROJECT_DIGEST, `config`) (node
+kind `ACTION`, ADR 0056; a stored `TASK` node naming a former action template is read as one),
+`decision: Decision(branches: List<Branch(id,
 label, expression)>, defaultBranch?)`, `gate: Gate(question, options, showArtifacts, timeoutSeconds?)`,
 `ci: CiWait(signal, timeoutSeconds?)`, `end: End(outcome: SUCCESS/FAILURE)`, `note: Note(text)`.
 `maxVisits` (default 3) limits loops per node.
 
 Validator (`WorkflowValidator`, domain service): exactly one START; ≥ 1 END; edge endpoints exist;
-ports exist for the node kind (TASK ports come from the resolved template through a `TaskPortsProvider`
-port, defaulting to `success`/`failure` when the catalog is unavailable); every reachable non-END node
+ports exist for the node kind (TASK and ACTION nodes have `success`/`failure`); every reachable non-END node
 has its `success`/branch ports connected; no unreachable nodes (warning); expressions parse
 (`ExpressionEvaluator.validate`); template keys resolve (error when unknown, warning when abstract);
 gate options non-empty; signal names `^[a-z][a-z0-9-]{0,39}$`. Step repositories (ADR 0034, rules in

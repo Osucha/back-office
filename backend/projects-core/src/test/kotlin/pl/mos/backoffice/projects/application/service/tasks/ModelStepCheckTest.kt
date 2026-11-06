@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -24,7 +25,6 @@ import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
@@ -42,9 +42,9 @@ class ModelStepCheckTest {
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? {
             val executor = when {
-                key.startsWith("implement") -> TaskExecutor.IMPLEMENT
-                key == "fetch-issue" -> TaskExecutor.FETCH_ISSUE
-                else -> TaskExecutor.LLM
+                key == "implement-claude-code" -> TestAgents.CLAUDE_CODE
+                key.startsWith("implement") -> TestAgents.OPENCODE
+                else -> TestAgents.MODEL_ANSWER
             }
             return ResolvedTask(
                 key, key, executor, overrides.modelProfileId ?: templateModel.takeIf { key == "with-model" }, TaskPrompt(null, null), emptyList(),
@@ -84,11 +84,11 @@ class ModelStepCheckTest {
     fun `models come from the node, the template, the review default or the project default, steps without a model are left out`() {
         val project = Fixtures.project().copy(defaults = ProjectDefaults(modelProfileId = gpt, reviewModelProfileId = reviewer), personal = true)
         val nodes = listOf(
-            node("fetch", "fetch-issue"),
+            pl.mos.backoffice.projects.domain.model.WorkflowNode.Action("fetch", "fetch", action = pl.mos.backoffice.projects.domain.model.ActionBinding(pl.mos.backoffice.projects.domain.model.ActionType.FETCH_ISSUE)),
             node("ask", "analyse-issue", model = gpt),
             node("tmpl", "with-model"),
             node("review", "code-review"),
-            node("impl", "implement-claude-code", model = opusLogin, config = mapOf("agent" to "CLAUDE_CODE")),
+            node("impl", "implement-claude-code", model = opusLogin),
             node("prep", "implement-opencode", config = mapOf(StepWorkspace.PREPARE_ONLY to true)),
         )
 
@@ -111,7 +111,7 @@ class ModelStepCheckTest {
         val nodes = listOf(
             node("ask", "analyse-issue", model = opusLogin),
             node("none", "analyse-issue"),
-            node("impl", "implement-claude-code", model = opusLogin, config = mapOf("agent" to "CLAUDE_CODE")),
+            node("impl", "implement-claude-code", model = opusLogin),
         )
 
         val blockers = check.runBlockers(project, nodes, user)
@@ -155,7 +155,7 @@ class ModelStepCheckTest {
         }
         val withDefaults = ModelStepCheck(catalog, availability, defaults)
         val project = Fixtures.project().copy(personal = true, defaults = ProjectDefaults())
-        val plan = withDefaults.plan(project, listOf(node("ask", "analyse-issue"), node("impl", "implement-claude-code", config = mapOf("agent" to "CLAUDE_CODE"))), user)
+        val plan = withDefaults.plan(project, listOf(node("ask", "analyse-issue"), node("impl", "implement-claude-code")), user)
             .associateBy { it.nodeId }
         assertThat(plan["ask"]!!.let { it.source to it.profileId }).isEqualTo(ModelStepCheck.Source.PLATFORM_DEFAULT to gpt)
         assertThat(plan["impl"]!!.let { it.source to it.profileId }).isEqualTo(ModelStepCheck.Source.PERSONAL_DEFAULT to personal)

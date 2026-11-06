@@ -1,51 +1,71 @@
-import type { Rule, Skill, TaskTemplate } from '../../../core/api/types';
+import type { Agent, Rule, Skill, TaskTemplate } from '../../../core/api/types';
 import {
   effectiveCategory,
-  executorLabel,
+  filterAgents,
   filterRules,
   filterSkills,
   filterTemplates,
   nameOfKey,
   sizeLabel,
+  templateAgent,
 } from './library-filters';
 
 const T = (over: Partial<TaskTemplate>): TaskTemplate =>
   ({ key: 'k', name: 'N', scope: { type: 'GLOBAL' }, ...over }) as TaskTemplate;
 
 describe('library filters', () => {
-  it('labels executors with the shared plain names', () => {
-    expect(executorLabel('LLM')).toBe('Model answer');
-    expect(executorLabel('FETCH_ISSUE')).toBe('Jira: read issue');
-    expect(executorLabel('SOMETHING_NEW')).toBe('Something new');
-    expect(executorLabel(null)).toBe('inherited');
-  });
+  const agents: Agent[] = [
+    { key: 'model-answer', name: 'Model answer', scope: { type: 'GLOBAL' }, harness: null },
+    { key: 'opencode', name: 'OpenCode', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
+    { key: 'claude-code', name: 'Claude Code', scope: { type: 'GLOBAL' }, harness: 'CLAUDE_CODE' },
+  ];
 
   it('hides deprecated templates unless asked to show them', () => {
     const list = [
-      T({ key: 'implement-claude-code', executor: 'IMPLEMENT', tags: ['deprecated'] }),
-      T({ key: 'implement', executor: 'IMPLEMENT' }),
+      T({ key: 'implement-claude-code', agentKey: 'claude-code', tags: ['deprecated'] }),
+      T({ key: 'implement', agentKey: 'opencode' }),
     ];
     expect(filterTemplates(list, {}).map((t) => t.key)).toEqual(['implement']);
     expect(filterTemplates(list, { showDeprecated: true }).map((t) => t.key)).toEqual([
       'implement-claude-code',
       'implement',
     ]);
-    expect(filterTemplates(list, { query: 'coding agent' }).map((t) => t.key)).toEqual([
+    expect(filterTemplates(list, { query: 'opencode', agents }).map((t) => t.key)).toEqual([
       'implement',
     ]);
   });
 
-  it('filters templates by text and executor', () => {
+  it('filters templates by text and their own or inherited agent (ADR 0056)', () => {
     const list = [
-      T({ key: 'code-review', name: 'Code review', executor: 'LLM', category: 'REVIEW' }),
-      T({ key: 'fetch-issue', name: 'Fetch issue', executor: 'FETCH_ISSUE', tags: ['jira'] }),
+      T({ key: 'code-review', name: 'Code review', category: 'REVIEW' }),
+      T({ key: 'implement', name: 'Implement', agentKey: 'opencode', tags: ['jira'] }),
+      T({ key: 'strict', name: 'Strict implement', extendsKey: 'implement' }),
       T({ key: 'base', name: 'Base agent', description: 'Abstract root' }),
     ];
     expect(filterTemplates(list, { query: 'review' }).map((t) => t.key)).toEqual(['code-review']);
-    expect(filterTemplates(list, { query: 'JIRA' }).map((t) => t.key)).toEqual(['fetch-issue']);
+    expect(filterTemplates(list, { query: 'JIRA' }).map((t) => t.key)).toEqual(['implement']);
     expect(filterTemplates(list, { query: 'root' }).map((t) => t.key)).toEqual(['base']);
-    expect(filterTemplates(list, { executor: 'LLM' }).map((t) => t.key)).toEqual(['code-review']);
-    expect(filterTemplates(list, {}).length).toBe(3);
+    expect(filterTemplates(list, { agent: 'opencode' }).map((t) => t.key)).toEqual([
+      'implement',
+      'strict',
+    ]);
+    expect(filterTemplates(list, { agent: 'model-answer' }).map((t) => t.key)).toEqual([
+      'code-review',
+      'base',
+    ]);
+    expect(filterTemplates(list, {}).length).toBe(4);
+    expect(templateAgent(list[2], list, agents).agent?.name).toBe('OpenCode');
+  });
+
+  it('filters agents by name, tag and kind', () => {
+    const list: Agent[] = [
+      ...agents,
+      { ...agents[1], key: 'cheap', name: 'Cheap', tags: ['budget'] },
+    ];
+    expect(filterAgents(list, 'claude').map((a) => a.key)).toEqual(['claude-code']);
+    expect(filterAgents(list, 'budget').map((a) => a.key)).toEqual(['cheap']);
+    expect(filterAgents(list, 'model answer').map((a) => a.key)).toEqual(['model-answer']);
+    expect(filterAgents(list, '').length).toBe(4);
   });
 
   it('filters templates by their own or inherited category (ADR 0055)', () => {

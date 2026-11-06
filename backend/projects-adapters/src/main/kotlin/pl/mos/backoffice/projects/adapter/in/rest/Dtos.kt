@@ -289,24 +289,40 @@ data class LibraryUpdateRequestDto(val version: Int? = null, val discardLocalCha
 data class ValidationIssueDto(val nodeId: String?, val edgeId: String?, val field: String?, val message: String)
 data class ValidationResultDto(val valid: Boolean, val errors: List<ValidationIssueDto>, val warnings: List<ValidationIssueDto>)
 data class ControlNodeDescriptorDto(val kind: String, val title: String, val description: String, val ports: List<String>, val configSchema: Map<String, Any?>)
+/** `AgentRef` schema (ADR 0056): who runs a step; no harness = model answer. */
+data class AgentRefDto(val key: String, val name: String, val harness: String?, val modelProfileId: UUID?)
+
 data class PaletteTaskDto(
     val key: String,
     val name: String,
     val description: String,
-    val executor: String,
+    val agent: AgentRefDto,
     val category: String?,
     val ports: List<String>,
     val projectScoped: Boolean,
     val configSchema: Map<String, Any?>,
-    val requiredCapabilities: List<String> = emptyList(),
-    val externalWrite: Boolean = false,
     val deprecated: Boolean = false,
+)
+
+/** `ActionDescriptor` schema (ADR 0056). */
+data class ActionDescriptorDto(
+    val type: String,
+    val title: String,
+    val description: String,
+    val ports: List<String>,
+    val configSchema: Map<String, Any?>,
+    val defaults: Map<String, Any?>,
+    val produces: List<String>,
+    val runInputs: List<RunInputFieldDto>,
+    val requiredCapabilities: List<String>,
+    val externalWrite: Boolean,
 )
 data class StateFieldDto(val path: String, val description: String)
 data class WorkflowPaletteDto(
     val controlNodes: List<ControlNodeDescriptorDto>,
     val tasks: List<PaletteTaskDto>,
     val stateFields: List<StateFieldDto>,
+    val actions: List<ActionDescriptorDto> = emptyList(),
 )
 data class ExpressionInputDto(@field:NotNull val expression: String? = null)
 data class ExpressionCheckDto(val valid: Boolean, val message: String?)

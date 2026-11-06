@@ -1,6 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
-import pl.mos.backoffice.projects.application.port.`in`.TaskExecutorDescriptor
+import pl.mos.backoffice.projects.application.port.`in`.TaskConfigSchemas
+import pl.mos.backoffice.projects.application.port.out.TaskRunKind
+import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.ExpressionCheck
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.Palette
@@ -34,7 +36,6 @@ import pl.mos.backoffice.shared.llm.ModelUse
 import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck
-import pl.mos.backoffice.projects.domain.model.ConnectionCapability
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
 import pl.mos.backoffice.projects.domain.service.WorkflowValidator
@@ -51,7 +52,6 @@ import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.projects.domain.service.RunInputs
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 
 /**
@@ -85,7 +85,7 @@ class WorkflowService(
     defaults: ModelDefaults? = null,
 ) : ManageWorkflows {
 
-    private val jiraSteps = jira?.let { JiraStepCheck(taskCatalog, it) }
+    private val jiraSteps = jira?.let { JiraStepCheck(it) }
     private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources, projectWorkspaces)
     private val modelSteps = availability?.let { ModelStepCheck(taskCatalog, it, defaults) }
 
@@ -183,29 +183,33 @@ class WorkflowService(
     override fun palette(projectId: ProjectId): Palette {
         gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         val project = projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
-        // ADR 0036: without Spec Kit the palette hides its templates (and templates extending them: resolved executor)
+        // ADR 0036: without Spec Kit the palette hides its templates (and templates extending them: the resolved task)
         val specKitOn = specKit?.effective(project) ?: true
-        val tasks = runCatching { taskCatalog.palette(projectId.value) }.getOrDefault(emptyList()).filter { specKitOn || it.executor != TaskExecutor.SPEC_KIT }.map { t ->
-            PaletteTask(
-                key = t.key,
-                name = t.name,
-                description = t.description,
-                executor = t.executor,
-                category = t.category,
-                ports = t.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS },
-                projectScoped = t.projectId != null,
-                configSchema = ControlNodeCatalog.configSchema(t.executor),
-                requiredCapabilities = ConnectionCapability.requiredBy(t.executor).sorted(),
-                externalWrite = ConnectionCapability.requiredBy(t.executor).any { it.write },
-                deprecated = t.deprecated,
-            )
-        }
-        return Palette(ControlNodeCatalog.controlNodes(), tasks, ControlNodeCatalog.stateFields())
+        val tasks = runCatching { taskCatalog.palette(projectId.value) }.getOrDefault(emptyList())
+            .filter { specKitOn || !specKitTemplate(it.key, projectId) }
+            .map { t ->
+                PaletteTask(
+                    key = t.key,
+                    name = t.name,
+                    description = t.description,
+                    agent = t.agent,
+                    category = t.category,
+                    ports = t.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS },
+                    projectScoped = t.projectId != null,
+                    configSchema = if (t.agent.modelAnswer) ControlNodeCatalog.modelAnswerConfigSchema() else ControlNodeCatalog.codingAgentConfigSchema(),
+                    deprecated = t.deprecated,
+                )
+            }
+        return Palette(ControlNodeCatalog.controlNodes(), tasks, ControlNodeCatalog.stateFields(), ActionCatalog.all)
     }
 
-    @PublicOperation("static JSON Schemas of the task executors' config keys; reads no project data")
-    override fun taskExecutors(): List<TaskExecutorDescriptor> =
-        TaskExecutor.entries.map { TaskExecutorDescriptor(it, ControlNodeCatalog.configSchema(it)) }
+    /** ADR 0056: the template runs the Spec Kit job (a coding agent and a `phase`). */
+    private fun specKitTemplate(key: String, projectId: ProjectId): Boolean =
+        runCatching { taskCatalog.resolve(key, projectId.value) }.getOrNull()?.let(TaskRunKind::of) == TaskRunKind.SPEC_KIT
+
+    @PublicOperation("static JSON Schemas of the task steps' config keys; reads no project data")
+    override fun taskConfigSchemas(): TaskConfigSchemas =
+        TaskConfigSchemas(ControlNodeCatalog.modelAnswerConfigSchema(), ControlNodeCatalog.codingAgentConfigSchema())
 
     @PublicOperation("syntax check of a SpEL expression; reads no project data")
     override fun validateExpression(expression: String): ExpressionCheck {
@@ -218,7 +222,7 @@ class WorkflowService(
     private fun taskPortsFor(projectId: ProjectId): TaskPortsProvider = TaskPortsProvider { key ->
         try {
             taskCatalog.resolve(key, projectId.value)?.let { task ->
-                val pushes = task.executor in PUSHING_EXECUTORS && task.config["push"]?.toString()?.lowercase() != "false"
+                val pushes = TaskRunKind.of(task).runner && task.config["push"]?.toString()?.lowercase() != "false"
                 TaskTemplateInfo(
                     task.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS }, pushCapable = pushes,
                     runInputs = task.runInputs, issueKeyFrom = task.config["issueKeyFrom"]?.toString(),
@@ -316,8 +320,5 @@ class WorkflowService(
     companion object {
         const val ENTITY = "Workflow"
         const val FIELD_JIRA_CONNECTION = JiraStepCheck.FIELD_JIRA_CONNECTION
-
-        /** Runner-backed executors that push to the repository unless `config.push` is false. */
-        val PUSHING_EXECUTORS = setOf(TaskExecutor.IMPLEMENT, TaskExecutor.SPEC_KIT)
     }
 }

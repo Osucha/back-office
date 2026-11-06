@@ -15,7 +15,7 @@ Otwierasz go z projektu: karta **Workflowy** (**Workflows**) → **Edytuj** (**E
 | Obszar | Co zawiera |
 |---|---|
 | Nagłówek | Klucz projektu i wersję, nazwę workflowu, znacznik stanu (**poprawny**, błędy, ostrzeżenia lub **tylko do odczytu**), przełącznik **Projektant** / **JSON** (**Designer** / **JSON**), **Szablon** (**Template**; tylko nowe workflowy), cofnij i ponów, **Uporządkuj układ** (**Tidy layout**), **Waliduj** (**Validate**) oraz przyciski pokazujące lub ukrywające paletę i właściwości. |
-| Paleta (po lewej) | Węzły **Sterowanie** (**Control**) i **Zadania** (**Tasks**) z biblioteki zadań, pogrupowane według kategorii (Analiza, Specyfikacja, ...), z polem wyszukiwania. Szablon należący do projektu ma ikonę projektu. |
+| Paleta (po lewej) | Węzły **Sterowanie** (**Control**), **Akcje** (**Actions**; operacje Jiry i Back Office bez modelu, zob. [Węzły akcji](#actions)) i **Zadania** (**Tasks**) z biblioteki zadań, pogrupowane według kategorii (Analiza, Specyfikacja, ...), z polem wyszukiwania. Szablon należący do projektu ma ikonę projektu. |
 | Kanwa | Graf. Przyciski powiększenia, **Czytelny widok od START** (**Readable view from START**), **Dopasuj wszystko** (**Fit everything**) i, od ośmiu węzłów, mapa poglądowa (**Pokaż mapę** / **Ukryj mapę**, **Show the overview** / **Hide the overview**). |
 | Właściwości (po prawej) | Zaznaczony węzeł lub krawędź; gdy nic nie jest zaznaczone: **Opis** (**Description**) workflowu, przełącznik **Włączony** (**Enabled**) i **Wyzwalacze** (**Triggers**). |
 | Arkusz **Walidacja** (**Validation**; na dole) | Błędy i ostrzeżenia pogrupowane według węzłów; kliknij pozycję, aby przejść do węzła. |
@@ -76,7 +76,8 @@ workflow startowy **LLM task with review**, zob. [Projekty bez repozytorium](pro
 | Węzeł | Przeznaczenie | Porty wyjściowe |
 |---|---|---|
 | **Start** | Wejście; dokładnie jeden na workflow. | `out` |
-| **Zadanie** (**Task**) | Wykonuje szablon zadania z biblioteki (zob. niżej). | porty szablonu, zwykle `success`, `failure` |
+| **Zadanie** (**Task**) | Wykonuje szablon zadania z biblioteki za pomocą agenta (zob. niżej). | `success`, `failure` |
+| **Akcja** (**Action**) | Wykonuje stałą operację bez modelu: Jira, uruchamianie workflowów, podsumowanie projektu (zob. [Węzły akcji](#actions)). | `success`, `failure` |
 | **Decyzja** (**Decision**) | Kieruje uruchomienie według warunków na stanie uruchomienia (zob. [Decyzje](workflows.md#decisions)). | jeden na gałąź plus domyślny |
 | **Bramka decyzyjna** (**Human gate**) | Zatrzymuje uruchomienie, dopóki zatwierdzający nie wybierze opcji (zob. [Ustawienia bramki](workflows.md#gates-config)). | jeden na opcję (domyślnie `approve`, `revise`, `reject`) plus `timeout` |
 | **Oczekiwanie na CI** (**Wait for CI**) | Zatrzymuje uruchomienie, dopóki Twoje CI nie wyśle sygnału. | `success`, `fail`, `timeout` |
@@ -84,11 +85,11 @@ workflow startowy **LLM task with review**, zob. [Projekty bez repozytorium](pro
 | **Notatka** (**Note**) | Karteczka; nigdy się nie wykonuje, nie można jej połączyć. | brak |
 
 Każdy węzeł ma **Nazwę** (**Name**) i **Id** (slug; niezmienny po zapisie, bo odwołują się do niego
-uruchomienia i logi). Węzły zadania, decyzji, bramki i CI mają też **Maks. liczbę wizyt** (**Max
+uruchomienia i logi). Węzły zadania, akcji, decyzji, bramki i CI mają też **Maks. liczbę wizyt** (**Max
 visits**; ochrona przed pętlą, domyślnie 3) i **Limit czasu (s)** (**Timeout (s)**). Gdy węzeł miałby
 wystartować więcej razy, niż pozwala **Maks. liczba wizyt**, uruchomienie kończy się niepowodzeniem.
 
-**Niepołączone porty.** Wymagany port musi być połączony: `success` zadania, każda gałąź decyzji,
+**Niepołączone porty.** Wymagany port musi być połączony: `success` zadania lub akcji, każda gałąź decyzji,
 pierwsza opcja bramki, `success` oczekiwania na CI, `out` węzła Start. Jeśli uruchomienie wychodzi przez
 niepołączony port `failure`, `fail` lub `timeout`, kończy się niepowodzeniem; przez niepołączony
 `reject` — zostaje anulowane. Walidacja ostrzega o pozostałych niepołączonych portach.
@@ -96,27 +97,55 @@ niepołączony port `failure`, `fail` lub `timeout`, kończy się niepowodzeniem
 ### Węzły zadań
 
 Wybierz **Szablon** (przestarzałe szablony nie są proponowane; krok, który już go używa, ma znacznik
-**Przestarzały**, **Deprecated**). Pod nim widać rodowód szablonu, wykonawcę i kategorię oraz **Otwórz
+**Przestarzały**, **Deprecated**). Pod nim widać rodowód szablonu, agenta i kategorię oraz **Otwórz
 w bibliotece** (**Open in library**). **Co dostaje ten krok** (**What this step gets**, zwinięte) pokazuje szablon
-z nadpisaniami tego kroku: profil modelu, prompt systemowy i użytkownika, reguły, umiejętności, konfigurację i dane
-wejściowe przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości.
+z nadpisaniami tego kroku: agenta, profil modelu, prompt systemowy i użytkownika, reguły, umiejętności, konfigurację
+i dane wejściowe przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości.
 **Nadpisania** (**Overrides**) zmieniają szablon tylko dla tego węzła:
 
 | Nadpisanie | Skutek |
 |---|---|
-| **Profil modelu** (**Model profile**) | Model dla tego węzła zamiast modelu z szablonu lub domyślnego modelu projektu. |
+| **Agent** | Kto wykonuje ten krok zamiast agenta szablonu: **Odpowiedź modelu**, **OpenCode**, **Claude Code** albo agent z Twojej biblioteki ([Agenci](task-library.md#agents)). Puste = agent szablonu. Krok pokazuje problem, gdy agent nie pasuje do szablonu (na przykład faza Spec Kit albo `push` z **Odpowiedzią modelu**). |
+| **Profil modelu** (**Model profile**) | Model dla tego węzła zamiast modelu agenta, szablonu lub ustawień domyślnych. |
 | **Prompt użytkownika** (**User prompt**) | **Dziedziczony** (**Inherited**), **Dopisz** (**Append**; dodawany po prompcie szablonu) lub **Zastąp** (**Replace**). |
 | **Dopisek do promptu systemowego** (**System prompt append**) | Dodawany do promptu systemowego szablonu. |
 | **Dodaj umiejętności** (**Add skills**), **Usuń umiejętności** (**Remove skills**) | Modyfikują listę umiejętności szablonu. |
-| **Konfiguracja** (**Config**) | Ustawienia wykonawcy, takie jak polecenie weryfikacji, nazwa gałęzi czy opcje merge requestu; scalane z konfiguracją szablonu. |
+| **Konfiguracja** (**Config**) | Ustawienia dla agenta kroku, takie jak polecenie weryfikacji, nazwa gałęzi czy opcje merge requestu; scalane z konfiguracją szablonu. |
+
+Agent kodujący był dawniej kluczem konfiguracji `agent` (`CLAUDE_CODE`, `OPENCODE`); ten klucz już nie istnieje.
+Zapisane workflowy działają dalej: `agent` kroku jest odczytywany jako jego **Agent** (**Claude Code**, **OpenCode**),
+a następny zapis utrwala go w tej postaci.
 
 **Szablony Spec Kit** (**Spec Kit: specify**, **plan**, **tasks** i szablony, które je rozszerzają) pojawiają się
 w palecie tylko wtedy, gdy projekt ma włączony [Spec Kit](projects.md#spec-kit); w przeciwnym razie krok Spec Kit
-jest błędem walidacji, a uruchomienia nie startują. **Szablony Jiry** mają sekcję **Połączenie Jira** z ustawieniem
-**Działaj jako**: połączenie systemowe projektu, wskazane połączenie albo osoba, która zatwierdza zapis lub
-rozpoczyna uruchomienie ([Działaj jako](integrations-jira.md#jira-act-as)).
+jest błędem walidacji, a uruchomienia nie startują.
 
-Dwa szablony nie uruchamiają modelu ani agenta (ADR 0052):
+<a id="actions"></a>
+### Węzły akcji
+
+Akcje to stałe operacje, które nigdy nie wywołują modelu (ADR 0056). Paleta wyświetla je we własnej grupie
+**Akcje** (**Actions**); każda ma swoje ustawienia, wartości domyślne, dane wejściowe uruchomienia, o które prosi,
+oraz porty `success` i `failure`.
+
+| Akcja | Robi |
+|---|---|
+| **Pobierz zgłoszenie** (**Fetch issue**) | Wczytuje zgłoszenie Jira przebiegu do artefaktu `issue` i `state.issue`; przy starcie uruchomienia prosi o **Klucz zgłoszenia Jira**. |
+| **Skomentuj zgłoszenie** (**Comment on issue**) | Dodaje komentarz do zgłoszenia po zatwierdzeniu przez człowieka ([Zatwierdzanie przed zapisem zewnętrznym](#write-confirmations)). |
+| **Zmień status zgłoszenia** (**Transition issue**) | Przenosi zgłoszenie do statusu po zatwierdzeniu przez człowieka. |
+| **Uruchom workflow** (**Start workflow**) | Uruchamia inne workflowy projektu (zob. niżej). |
+| **Podsumowanie projektu** (**Project digest**) | Zapisuje artefakt `digest` (zob. niżej). |
+
+Akcje Jiry mają sekcję **Połączenie Jira** z ustawieniem **Działaj jako**: połączenie systemowe projektu, wskazane
+połączenie albo osoba, która zatwierdza zapis lub rozpoczyna uruchomienie
+([Działaj jako](integrations-jira.md#jira-act-as)); paleta pokazuje możliwości, których każda wymaga, i oznacza dwie
+zapisujące w Jirze. Ich ustawienia opisuje rozdział [Akcje Jiry w workflowach](integrations-jira.md#jira-tasks).
+
+Dawniej były to szablony zadań (`fetch-issue`, `notify-jira`, `transition-issue`, `start-workflow`,
+`project-digest`). Zapisane workflowy, które ich używają, działają dalej: taki krok jest odczytywany jako akcja
+z wartościami domyślnymi dawnego szablonu i konfiguracją kroku (prompt **Zastąp** kroku **Notify Jira** staje się
+komentarzem), a następny zapis utrwala akcję.
+
+Dwie akcje to operacje Back Office (ADR 0052):
 
 - **Uruchom workflow** (**Start workflow**) uruchamia inny workflow projektu, jedno uruchomienie na każdy element
   artefaktu JSON (**Parametry z** (**Parameters from**), na przykład `proposals` napisane przez agenta), a pola
@@ -157,9 +186,10 @@ CI), powinien stać przed takim węzłem.
 <a id="step-repositories"></a>
 ## Repozytoria kroku
 
-Kroki programistyczne (szablony **Implement** i **Spec Kit**) uruchamiają agenta, który pracuje
-w repozytoriach Git projektu ([Repozytoria](projects.md#repositories)). Pozostałe kroki (wywołania modelu,
-Jira, bramki, oczekiwanie na CI) nie używają repozytoriów, więc ich właściwości nie mają sekcji repozytoriów.
+Kroki programistyczne (kroki zadań wykonywane przez agenta kodującego, **OpenCode** lub **Claude Code**, także fazy
+Spec Kit) pracują w repozytoriach Git projektu ([Repozytoria](projects.md#repositories)). Pozostałe kroki
+(odpowiedzi modelu, akcje, bramki, oczekiwanie na CI) nie używają repozytoriów, więc ich właściwości nie mają
+sekcji repozytoriów.
 
 Zaznacz krok programistyczny; jego właściwości mają sekcję **Repozytoria** (**Repositories**):
 
@@ -227,9 +257,9 @@ nich korzystać każdy workflow projektu. Kliknij **Dodaj przestrzeń** (wymaga 
 | **Polecenie przygotowania** | Np. `npm ci`. Uruchamiane raz na przebieg, przed pierwszym krokiem przestrzeni; ponownie tylko po zmianie. |
 | **Role agentów** | Np. `implementer`, `reviewer`. Kroki z tą samą rolą kontynuują jedną sesję agenta. Puste = dowolna rola. |
 
-**Wybierz przestrzeń w kroku.** Krok programistyczny (**Implement**, **Spec Kit**) ma sekcję **Przestrzeń robocza**
+**Wybierz przestrzeń w kroku.** Krok programistyczny (wykonywany przez agenta kodującego) ma sekcję **Przestrzeń robocza**
 tylko z wyborem spośród przestrzeni projektu: przestrzeń (albo **Brak: nowy katalog**), **Rola agenta** (albo nowa sesja) i, w krokach
-**Implement**, **Tylko przygotuj przestrzeń** (klonowanie i przygotowanie, bez agenta, bez wypychania). Takim krokiem
+innych niż faza Spec Kit, **Tylko przygotuj przestrzeń** (klonowanie i przygotowanie, bez agenta, bez wypychania). Takim krokiem
 jest wbudowane zadanie **Prepare workspace** (`prepare-workspace`); jest opcjonalne, pierwszy krok przestrzeni też ją
 przygotowuje.
 
@@ -327,9 +357,9 @@ zwykle do zadania, które napisało artefakt.
 <a id="write-confirmations"></a>
 ## Zatwierdzanie przed zapisem zewnętrznym
 
-Węzły zadań, które zapisują coś poza Back Office, proszą człowieka o zatwierdzenie dokładnie tego zapisu,
-zanim do niego dojdzie. Obecnie są to zadania Jiry **Notify Jira** (komentarz) i **Transition issue**
-(zmiana statusu); paleta oznacza je jako zapisujące w Jirze. Zatwierdzenie jest wbudowane w krok, więc nie
+Węzły akcji, które zapisują coś poza Back Office, proszą człowieka o zatwierdzenie dokładnie tego zapisu,
+zanim do niego dojdzie. Obecnie są to akcje Jiry **Skomentuj zgłoszenie** (**Comment on issue**) i **Zmień status
+zgłoszenia** (**Transition issue**); paleta oznacza je jako zapisujące w Jirze. Zatwierdzenie jest wbudowane w krok, więc nie
 dodajesz dla niego bramki.
 
 Zaznacz taki węzeł; jego właściwości mają sekcję **Zatwierdzenie przed zapisem w Jirze** (**Approval

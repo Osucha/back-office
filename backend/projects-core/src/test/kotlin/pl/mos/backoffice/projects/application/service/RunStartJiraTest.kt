@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -30,7 +31,6 @@ import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
@@ -48,16 +48,11 @@ class RunStartJiraTest {
     private val connections = ConnectionFakes.InMemoryConnections()
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: java.util.UUID?, overrides: TaskOverrides): ResolvedTask {
-            val executor = when (key) {
-                "fetch-issue" -> TaskExecutor.FETCH_ISSUE
-                "transition-issue" -> TaskExecutor.TRANSITION_ISSUE
-                else -> TaskExecutor.LLM
-            }
-            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
+            return ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = emptyList<pl.mos.backoffice.shared.tasks.TaskSummary>()
     }
-    private val checks = JiraStepCheck(catalog, JiraConnectionAccess(connections, LegacyConnectionSource.NONE, ConnectionSelector(), ConnectionFakes.FakeTrackers()))
+    private val checks = JiraStepCheck(JiraConnectionAccess(connections, LegacyConnectionSource.NONE, ConnectionSelector(), ConnectionFakes.FakeTrackers()))
     private val audit = RecordingAuditPort()
     private val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_START, projects = setOf(project.id.value))
     private val service = RunService(

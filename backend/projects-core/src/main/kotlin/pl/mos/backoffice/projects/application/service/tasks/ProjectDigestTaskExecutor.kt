@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
@@ -7,7 +8,8 @@ import pl.mos.backoffice.projects.application.port.out.PipelineState
 import pl.mos.backoffice.projects.application.port.out.PipelineStatusPort
 import pl.mos.backoffice.projects.application.port.out.RunFilter
 import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
-import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
+import pl.mos.backoffice.projects.application.port.out.ActionStep
+import pl.mos.backoffice.projects.application.port.out.ActionStrategy
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
 import pl.mos.backoffice.projects.domain.model.ArtifactKind
 import pl.mos.backoffice.projects.domain.model.NodeExecutionStatus
@@ -18,8 +20,6 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.time.Duration
 import java.time.Instant
 
@@ -35,15 +35,15 @@ class ProjectDigestTaskExecutor(
     private val connections: ScmConnectionRepository,
     private val pipelines: PipelineStatusPort,
     private val clock: Clock,
-) : TaskExecutorStrategy {
+) : ActionStrategy {
 
-    override val executor = TaskExecutor.PROJECT_DIGEST
+    override val type = ActionType.PROJECT_DIGEST
 
-    override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
+    override fun execute(context: NodeContext, step: ActionStep): NodeResult {
         val now = clock.now()
         val since = context.run.input.parameters["since"]?.toString()?.let { runCatching { Instant.parse(it) }.getOrNull() }
             ?: now.minus(Duration.ofDays(1))
-        val maxRuns = (task.config["maxRuns"] as? Number)?.toInt()?.coerceIn(1, 200) ?: DEFAULT_MAX_RUNS
+        val maxRuns = (step.config["maxRuns"] as? Number)?.toInt()?.coerceIn(1, 200) ?: DEFAULT_MAX_RUNS
         val recent = runs.find(RunFilter(projectId = context.project.id), ProjectFilter.All, 0, maxRuns * 2).content
             .filter { it.workflowId != context.run.workflowId && (it.createdAt >= since || (it.finishedAt ?: it.createdAt) >= since) }
             .take(maxRuns)
@@ -51,7 +51,7 @@ class ProjectDigestTaskExecutor(
             append("# What happened in ${context.project.name} since $since\n\n")
             append("${recent.size} run(s) of other workflows.\n")
             recent.forEach { append(describe(it, now)) }
-            append(pipelinesSection(context, task))
+            append(pipelinesSection(context, step))
         }
         return NodeResult(
             port = WorkflowNode.PORT_SUCCESS,
@@ -77,8 +77,8 @@ class ProjectDigestTaskExecutor(
             .forEach { append("- Gate ${it.nodeId}: ${excerpt(it.summary)}\n") }
     }
 
-    private fun pipelinesSection(context: NodeContext, task: ResolvedTask): String {
-        val refs = task.config["pipelineRefs"]?.toString()?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+    private fun pipelinesSection(context: NodeContext, step: ActionStep): String {
+        val refs = step.config["pipelineRefs"]?.toString()?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
         val repository = context.project.primaryRepository ?: return ""
         if (refs.isEmpty()) return ""
         val token = ScmConnectionSelector.select(connections.findByProject(context.project.id), repository.key, setOf(ScmCapability.CI_READ))

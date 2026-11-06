@@ -657,6 +657,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/agents': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0056: global agents plus, with projectId, that project's own. */
+    get: operations['listAgents'];
+    put?: never;
+    post: operations['createAgent'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/agents/{agentId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agentId: string;
+      };
+      cookie?: never;
+    };
+    get: operations['getAgent'];
+    put: operations['updateAgent'];
+    post?: never;
+    /** @description Refused (409) while a template uses the agent. */
+    delete: operations['deleteAgent'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/approvals': {
     parameters: {
       query?: never;
@@ -3550,7 +3586,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Control nodes and concrete task templates (with their category, ADR 0055) available to the designer for a project. */
+    /** @description Control nodes, actions (ADR 0056) and concrete task templates (with their category, ADR 0055) available to the designer for a project. */
     get: operations['getWorkflowPalette'];
     put?: never;
     post?: never;
@@ -3560,15 +3596,15 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/workflows/task-executors': {
+  '/workflows/task-config-schemas': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** @description ADR 0054: every task executor with the JSON Schema of its `config` keys, the same schema the designer uses for a step. The library editor renders a template's configuration from it. Static; any signed-in user. */
-    get: operations['listTaskExecutors'];
+    /** @description ADR 0056: the JSON Schema of a task step's `config` keys for a model answer agent and for a coding agent, the same schemas the designer uses for a step. The library editor renders a template's configuration from them. Static; any signed-in user. */
+    get: operations['getTaskConfigSchemas'];
     put?: never;
     post?: never;
     delete?: never;
@@ -3597,6 +3633,33 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ActionDescriptor: {
+      /** @description JSON Schema of `action.config` */
+      configSchema: {
+        [key: string]: unknown;
+      };
+      /** @description config values a new node starts with */
+      defaults: {
+        [key: string]: unknown;
+      };
+      description: string;
+      /** @description The action writes to an external system (a required capability is a write). Approval before write applies (ADR 0033): `action.config.approval` REQUIRED (default, also when missing) or NOT_REQUIRED, and `action.config.approvers` ({projectRoles, users, accountable, forbidSelfApproval}; default owner and maintainer). */
+      externalWrite?: boolean;
+      ports: string[];
+      produces?: string[];
+      /** @description Connection capabilities the action needs (Jira actions); empty for others. A node pins a connection with `action.config.jiraConnection` (connection id). */
+      requiredCapabilities?: components['schemas']['ConnectionCapability'][];
+      /** @description run start form fields the action asks for (ADR 0053) */
+      runInputs?: components['schemas']['RunInputField'][];
+      title: string;
+      type: components['schemas']['ActionType'];
+    };
+    /**
+     * @description ADR 0056: deterministic integration steps of a workflow (no model)
+     * @enum {string}
+     */
+    ActionType:
+      'FETCH_ISSUE' | 'COMMENT_ISSUE' | 'TRANSITION_ISSUE' | 'START_WORKFLOW' | 'PROJECT_DIGEST';
     ActorRef: {
       displayName?: string;
       /** @enum {string} */
@@ -3611,6 +3674,34 @@ export interface components {
       name?: string | null;
       /** @description default the latest */
       version?: number | null;
+    };
+    Agent: components['schemas']['AgentInput'] & {
+      builtIn?: boolean;
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: uuid */
+      id?: string;
+      /** Format: date-time */
+      updatedAt?: string;
+      /** @description who saved the current version (ADR 0017) */
+      readonly updatedBy?: components['schemas']['ActorRef'];
+    };
+    /**
+     * @description coding agent harness; an agent without one gives a single model answer (ADR 0056)
+     * @enum {string}
+     */
+    AgentHarness: 'OPENCODE' | 'CLAUDE_CODE';
+    /** @description ADR 0056: who runs a task. Without a harness the step is one model answer (no tools, no repository); with OPENCODE or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the step uses the defaults for its kind (project, starting user, platform). */
+    AgentInput: {
+      description?: string;
+      harness?: components['schemas']['AgentHarness'] | null;
+      /** @description derived from the name when omitted on create; kept when omitted on update */
+      key?: string | null;
+      /** Format: uuid */
+      modelProfileId?: string | null;
+      name: string;
+      scope: components['schemas']['Scope'];
+      tags?: string[];
     };
     AgentJob: {
       /** @description leases so far; a job is retried after a lost lease */
@@ -3687,6 +3778,14 @@ export interface components {
       | 'TIMED_OUT'
       | 'CANCELLED'
       | 'LOST';
+    AgentRef: {
+      /** @description empty = model answer */
+      harness?: components['schemas']['AgentHarness'] | null;
+      key: string;
+      /** Format: uuid */
+      modelProfileId?: string | null;
+      name: string;
+    };
     /** @description Run-time assignment of an open approval (ADR 0028); replaces the gate's approvers.users for this approval only. */
     ApprovalAssignment: {
       /** Format: date-time */
@@ -5290,7 +5389,8 @@ export interface components {
     /** @enum {string} */
     NodeExecutionStatus: 'RUNNING' | 'WAITING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED';
     /** @enum {string} */
-    NodeKind: 'START' | 'END' | 'TASK' | 'DECISION' | 'HUMAN_GATE' | 'WAIT_FOR_CI' | 'NOTE';
+    NodeKind:
+      'START' | 'END' | 'TASK' | 'ACTION' | 'DECISION' | 'HUMAN_GATE' | 'WAIT_FOR_CI' | 'NOTE';
     OperationsOverview: {
       /** @description count per status */
       agentJobs?: {
@@ -5314,23 +5414,19 @@ export interface components {
       };
     };
     PaletteTask: {
+      agent?: components['schemas']['AgentRef'];
       category?: components['schemas']['TemplateCategory'];
-      /** @description JSON Schema for `overrides.config` derived from the executor */
+      /** @description JSON Schema for `overrides.config`, by the template's agent (model answer or coding agent) */
       configSchema?: {
         [key: string]: unknown;
       };
       /** @description ADR 0054: kept for the steps that use it; not offered for new steps */
       deprecated?: boolean;
       description?: string;
-      executor?: components['schemas']['TaskExecutor'];
-      /** @description The task writes to an external system (a required capability is a write). Approval before write applies (ADR 0033): node config `overrides.config.approval` REQUIRED (default, also when missing) or NOT_REQUIRED, and `overrides.config.approvers` ({projectRoles, users, accountable, forbidSelfApproval}; default owner and maintainer). */
-      externalWrite?: boolean;
       key?: string;
       name?: string;
       ports?: string[];
       projectScoped?: boolean;
-      /** @description Connection capabilities the task needs (Jira tasks); empty for others. A node pins a connection with `overrides.config.jiraConnection` (connection id). */
-      requiredCapabilities?: components['schemas']['ConnectionCapability'][];
     };
     PasswordChangeRequest: {
       /**
@@ -5734,8 +5830,9 @@ export interface components {
     };
     ResolvedTask: {
       abstract?: boolean;
+      agent?: components['schemas']['AgentRef'];
       category?: components['schemas']['TemplateCategory'] | null;
-      /** @description skills and rules that do not exist */
+      /** @description skills, rules and agents that do not exist, and an agent that cannot do the work (ADR 0056) */
       check?: {
         ok?: boolean;
         problems?: string[];
@@ -5745,7 +5842,6 @@ export interface components {
         [key: string]: unknown;
       };
       consumes?: string[];
-      executor?: components['schemas']['TaskExecutor'];
       key?: string;
       lineage?: string[];
       /** Format: uuid */
@@ -6321,25 +6417,20 @@ export interface components {
     };
     /** @enum {string} */
     TaskCategory: 'CODING' | 'ANALYSIS' | 'SPECIFICATION' | 'REVIEW' | 'ARCHITECTURE';
-    /** @enum {string} */
-    TaskExecutor:
-      | 'LLM'
-      | 'SPEC_KIT'
-      | 'IMPLEMENT'
-      | 'FETCH_ISSUE'
-      | 'NOTIFY'
-      | 'TRANSITION_ISSUE'
-      | 'START_WORKFLOW'
-      | 'PROJECT_DIGEST';
-    TaskExecutorDescriptor: {
-      /** @description JSON Schema of the executor's config keys */
-      configSchema: {
+    TaskConfigSchemas: {
+      /** @description JSON Schema of the config keys of a step a coding agent runs (incl. the Spec Kit phase) */
+      codingAgent: {
         [key: string]: unknown;
       };
-      executor: components['schemas']['TaskExecutor'];
+      /** @description JSON Schema of the config keys of a step a model answer agent runs */
+      modelAnswer: {
+        [key: string]: unknown;
+      };
     };
     TaskOverrides: {
       addSkills?: string[];
+      /** @description ADR 0056: the agent that runs this step instead of the template's */
+      agentKey?: string | null;
       config?: {
         [key: string]: unknown;
       };
@@ -6396,6 +6487,8 @@ export interface components {
     TaskTemplateInput: {
       /** @default false */
       abstract: boolean;
+      /** @description ADR 0056: the agent that runs the task by default; inherited, child wins; none anywhere = model-answer */
+      agentKey?: string | null;
       /** @description empty means inherited */
       category?: components['schemas']['TemplateCategory'] | null;
       confidenceField?: string | null;
@@ -6404,15 +6497,13 @@ export interface components {
       };
       consumes?: string[];
       description?: string;
-      /** @description required on concrete templates unless inherited */
-      executor?: components['schemas']['TaskExecutor'] | null;
       extendsKey?: string | null;
       /** @description ADR 0055: technical identifier that workflow steps and other templates refer to. Omitted on create, it is derived from the name (unique across scopes); omitted on update, it stays. Given on create of a project template together with the same extendsKey, the template customises the global one of that key for the project. */
       key?: string | null;
       /** Format: uuid */
       modelProfileId?: string | null;
       name: string;
-      /** @description JSON Schema (LLM executor) */
+      /** @description JSON Schema of a structured answer (model answer agents) */
       outputSchema?: string | null;
       produces?: string[];
       prompt?: components['schemas']['TaskPrompt'];
@@ -6729,6 +6820,14 @@ export interface components {
       totalCost?: components['schemas']['Money'];
     };
     WorkflowNode: {
+      /** @description ADR 0056: an ACTION node, a deterministic integration step (no model) */
+      action?: {
+        /** @description keys of the action's configSchema; missing keys take the action's defaults */
+        config?: {
+          [key: string]: unknown;
+        };
+        type: components['schemas']['ActionType'];
+      } | null;
       ci?: {
         /** @description repository key whose pipeline is watched; omitted = the primary repository */
         repository?: string | null;
@@ -6801,6 +6900,7 @@ export interface components {
       templateKey?: string | null;
     };
     WorkflowPalette: {
+      actions?: components['schemas']['ActionDescriptor'][];
       controlNodes?: components['schemas']['ControlNodeDescriptor'][];
       /** @description for the expression editor */
       stateFields?: {
@@ -8230,6 +8330,123 @@ export interface operations {
           'application/json': components['schemas']['UserDetail'];
         };
       };
+    };
+  };
+  listAgents: {
+    parameters: {
+      query?: {
+        projectId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Agent'][];
+        };
+      };
+    };
+  };
+  createAgent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Agent'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  getAgent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agentId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Agent'];
+        };
+      };
+    };
+  };
+  updateAgent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agentId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentInput'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Agent'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  deleteAgent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agentId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      409: components['responses']['Problem'];
     };
   };
   listApprovals: {
@@ -13462,7 +13679,7 @@ export interface operations {
       };
     };
   };
-  listTaskExecutors: {
+  getTaskConfigSchemas: {
     parameters: {
       query?: never;
       header?: never;
@@ -13477,7 +13694,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['TaskExecutorDescriptor'][];
+          'application/json': components['schemas']['TaskConfigSchemas'];
         };
       };
     };

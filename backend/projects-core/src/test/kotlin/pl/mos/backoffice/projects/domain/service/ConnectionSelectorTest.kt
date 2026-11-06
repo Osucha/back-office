@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.domain.service
 
+import pl.mos.backoffice.projects.domain.model.ActionType
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.ConnectionFakes.ALL
@@ -14,7 +16,6 @@ import pl.mos.backoffice.projects.domain.model.ConnectionId
 import pl.mos.backoffice.projects.domain.model.ConnectionVerification
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.VerificationStatus
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.projects.domain.model.ConnectionCapability
 
 /** ADR 0030: least-privilege selection of the connection a Jira step uses. */
@@ -150,10 +151,10 @@ class ConnectionSelectorTest {
 
     @Test
     fun `task executors declare the capabilities they need`() {
-        assertThat(ConnectionCapability.requiredBy(TaskExecutor.FETCH_ISSUE)).containsExactly(ISSUE_READ)
-        assertThat(ConnectionCapability.requiredBy(TaskExecutor.NOTIFY)).containsExactly(ISSUE_COMMENT)
-        assertThat(ConnectionCapability.requiredBy(TaskExecutor.TRANSITION_ISSUE)).containsExactlyInAnyOrder(ISSUE_TRANSITION, ISSUE_READ)
-        assertThat(ConnectionCapability.requiredBy(TaskExecutor.LLM)).isEmpty()
+        assertThat(ConnectionCapability.requiredBy(ActionType.FETCH_ISSUE)).containsExactly(ISSUE_READ)
+        assertThat(ConnectionCapability.requiredBy(ActionType.COMMENT_ISSUE)).containsExactly(ISSUE_COMMENT)
+        assertThat(ConnectionCapability.requiredBy(ActionType.TRANSITION_ISSUE)).containsExactlyInAnyOrder(ISSUE_TRANSITION, ISSUE_READ)
+        assertThat(ConnectionCapability.requiredBy(ActionType.START_WORKFLOW)).isEmpty()
         assertThat(ConnectionCapability.entries.filter { it.write }).containsExactlyInAnyOrder(ISSUE_COMMENT, ISSUE_TRANSITION)
     }
 }

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.tasks.domain.service
 
+import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
@@ -15,6 +16,7 @@ interface LibraryLookup {
     fun template(key: String, scope: Scope): TaskTemplate?
     fun skill(key: String, scope: Scope): Skill?
     fun rule(key: String, scope: Scope): Rule?
+    fun agent(key: String, scope: Scope): Agent?
 
     /** Automatic rules stored in exactly [scope] (ADR 0055). */
     fun automaticRules(scope: Scope): List<Rule>
@@ -30,6 +32,10 @@ interface LibraryLookup {
     /** Same shadowing rule for rules. */
     fun visibleRule(key: String, projectId: UUID?): Rule? =
         projectId?.let { rule(key, Scope.Project(it)) } ?: rule(key, Scope.Global)
+
+    /** Same shadowing rule for agents (ADR 0056). */
+    fun visibleAgent(key: String, projectId: UUID?): Agent? =
+        projectId?.let { agent(key, Scope.Project(it)) } ?: agent(key, Scope.Global)
 
     /**
      * Automatic rules a project's steps get: global ones, then the project's own; a project rule with the key of a

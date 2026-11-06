@@ -114,23 +114,23 @@ class WorkflowValidator {
      * different labels show only the first label.
      */
     private fun runInputWarnings(nodes: List<WorkflowNode>, taskPorts: TaskPortsProvider): List<ValidationIssue> {
-        val tasks = nodes.filterIsInstance<WorkflowNode.Task>().filter { it.task.templateKey.isNotBlank() }
-            .map { it to taskPorts.lookup(it.task.templateKey) }
-        val declared = tasks.flatMap { (_, info) -> info?.runInputs.orEmpty() }.map { it.name }.toSet()
+        val steps = nodes.mapNotNull { node -> stepInputs(node, taskPorts) }
+        val declared = steps.flatMap { it.runInputs }.map { it.name }.toSet()
         val warnings = mutableListOf<ValidationIssue>()
-        tasks.forEach { (node, info) ->
-            val from = (node.task.overrides.config[ISSUE_KEY_FROM]?.toString() ?: info?.issueKeyFrom)?.trim()
+        steps.forEach { step ->
+            val from = step.issueKeyFrom?.trim()
             if (!from.isNullOrEmpty() && from != ISSUE_KEY_FROM_INPUT && from !in declared) {
                 warnings += ValidationIssue(
-                    nodeId = node.id, field = "task.config.$ISSUE_KEY_FROM",
+                    nodeId = step.node.id, field = "${step.section}.config.$ISSUE_KEY_FROM",
                     message = "this step reads the issue key from the run parameter $from, but no task of this workflow declares it as a run " +
                         "input, so the start form has no field for it; declare it in the task library or use issueKeyFrom input",
                 )
             }
         }
         val firstLabel = mutableMapOf<String, String>()
-        tasks.forEach { (node, info) ->
-            info?.runInputs.orEmpty().forEach { field ->
+        steps.forEach { step ->
+            val node = step.node
+            step.runInputs.forEach { field ->
                 val first = firstLabel.getOrPut(field.name) { field.label }
                 if (first != field.label) {
                     warnings += ValidationIssue(
@@ -142,6 +142,20 @@ class WorkflowValidator {
             }
         }
         return warnings
+    }
+
+    /** What a task or action step declares for the start form, and where it reads the issue key from. */
+    private data class StepInputs(val node: WorkflowNode, val section: String, val runInputs: List<RunInputField>, val issueKeyFrom: String?)
+
+    private fun stepInputs(node: WorkflowNode, taskPorts: TaskPortsProvider): StepInputs? = when (node) {
+        is WorkflowNode.Task -> node.task.templateKey.takeIf { it.isNotBlank() }?.let { key ->
+            val info = taskPorts.lookup(key)
+            StepInputs(node, "task", info?.runInputs.orEmpty(), node.task.overrides.config[ISSUE_KEY_FROM]?.toString() ?: info?.issueKeyFrom)
+        }
+        is WorkflowNode.Action -> StepInputs(
+            node, "action", ActionCatalog.runInputs(node.action), ActionCatalog.effectiveConfig(node.action)[ISSUE_KEY_FROM]?.toString(),
+        )
+        else -> null
     }
 
     /**
@@ -254,7 +268,8 @@ class WorkflowValidator {
                 is WorkflowNode.Decision -> validateDecision(node, expressions, errors)
                 is WorkflowNode.HumanGate -> validateGate(node, errors)
                 is WorkflowNode.WaitForCi -> validateWaitForCi(node, errors)
-                is WorkflowNode.Start, is WorkflowNode.End, is WorkflowNode.Note -> Unit
+                // ADR 0056: the type is known by construction; connections are checked against the project (JiraStepCheck)
+                is WorkflowNode.Start, is WorkflowNode.End, is WorkflowNode.Note, is WorkflowNode.Action -> Unit
             }
         }
     }

@@ -10,7 +10,7 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { CustomNodeComponent, Vflow } from 'ngx-vflow';
 import type { NodeKind } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
-import { executorLabel } from '../../../core/ui/executors';
+import { agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
 import { categoryLabel } from '../../../core/ui/template-categories';
 import { humanize } from '../../../core/ui/status-tag.component';
 import { capabilityLabels, pinnedConnection } from '../../connections/public-api';
@@ -382,15 +382,19 @@ export class EndNodeComponent extends WorkflowNodeBase {}
         } @else {
           <span class="key" i18n="@@workflows.node.noTemplate">no template</span>
         }
-        @if (d.executor) {
-          <span class="exec" [title]="d.executor">{{ executorLabel(d.executor) }}</span>
+        @if (d.agent) {
+          <span
+            class="exec"
+            [class.coding]="!!d.agent.harness"
+            [class.own]="!!d.node.task?.overrides?.agentKey"
+            [title]="agentTitle()"
+            [attr.data-agent]="d.agent.key"
+            >{{ d.agent.name }}</span
+          >
         }
       </div>
-      @if (d.category || hasOverrides() || d.requiredCapabilities?.length) {
+      @if (d.category || hasOverrides()) {
         <div class="ifaces">
-          @if (d.requiredCapabilities?.length) {
-            <span class="jira" [title]="jiraTitle()">Jira</span>
-          }
           @if (d.category) {
             <span class="iface" [attr.data-category]="d.category">{{
               categoryLabel(d.category)
@@ -429,6 +433,13 @@ export class EndNodeComponent extends WorkflowNodeBase {}
         color: var(--bo-ink-2);
         font-weight: 600;
       }
+      .exec.coding {
+        background: var(--bo-accent-soft);
+        color: var(--bo-agent-ink);
+      }
+      .exec.own {
+        outline: 1px solid var(--bo-you-ink);
+      }
       .ifaces {
         display: flex;
         gap: 4px;
@@ -463,21 +474,22 @@ export class EndNodeComponent extends WorkflowNodeBase {}
   ],
 })
 export class TaskNodeComponent extends WorkflowNodeBase {
-  /** ADR 0054: plain executor names ("Coding agent"); the enum value is the title. */
-  readonly executorLabel = executorLabel;
   readonly categoryLabel = categoryLabel;
-  /** "needs: Read issues, Move issues" (+ pinned) for the Jira chip. */
-  readonly jiraTitle = computed(() => {
+  /** ADR 0056: "OpenCode: Coding agent in the runner sandbox ..." (step's own or template's). */
+  readonly agentTitle = computed(() => {
     const d = this.data();
-    const needs = capabilityLabels(d?.requiredCapabilities ?? []);
-    return pinnedConnection(d?.node.task?.overrides?.config)
-      ? $localize`:@@workflows.node.jiraPinned:Jira connection needs: ${needs}:needs: (pinned connection)`
-      : $localize`:@@workflows.node.jiraNeeds:Jira connection needs: ${needs}:needs:`;
+    const a = d?.agent;
+    if (!a) return '';
+    const kind = `${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}`;
+    return d?.node.task?.overrides?.agentKey
+      ? $localize`:@@workflows.node.agentOwn:Agent of this step. ${kind}:kind:`
+      : $localize`:@@workflows.node.agentTemplate:Agent of the template. ${kind}:kind:`;
   });
   readonly hasOverrides = computed(() => {
     const o = this.data()?.node.task?.overrides;
     if (!o) return false;
     return Boolean(
+      o.agentKey ||
       o.modelProfileId ||
       o.promptAppend ||
       o.promptReplace ||
@@ -486,6 +498,106 @@ export class TaskNodeComponent extends WorkflowNodeBase {
       o.removeSkills?.length ||
       (o.config && Object.keys(o.config).length),
     );
+  });
+}
+
+/**
+ * ADR 0056: an ACTION node - a deterministic integration step. Two body rows like a task card:
+ * the action, then the Jira chip (when the action needs a connection) and a config hint.
+ */
+@Component({
+  imports: [NodeShellComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `@if (data(); as d) {
+    <app-node-shell [data]="d" [selected]="selected()" [takenPorts]="taken()">
+      <div class="act">
+        @if (d.actionTitle) {
+          <span class="title" [title]="d.actionTitle">{{ d.actionTitle }}</span>
+        } @else {
+          <span class="title" i18n="@@workflows.node.noAction">no action</span>
+        }
+        <span class="nomodel" i18n="@@workflows.node.noModel">no model</span>
+      </div>
+      <div class="chips">
+        @if (d.requiredCapabilities?.length) {
+          <span class="jira" [title]="jiraTitle()">Jira</span>
+        }
+        @if (hint(); as h) {
+          <span class="hint" [title]="h">{{ h }}</span>
+        }
+      </div>
+    </app-node-shell>
+  }`,
+  styles: [
+    `
+      .act {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        justify-content: space-between;
+        height: 16px;
+      }
+      .title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .nomodel {
+        flex: none;
+        font-size: 10px;
+        line-height: 14px;
+        padding: 0 5px;
+        border-radius: 3px;
+        background: var(--bo-surface-3);
+        color: var(--bo-ink-2);
+        font-weight: 600;
+      }
+      .chips {
+        display: flex;
+        gap: 4px;
+        overflow: hidden;
+        height: 16px;
+        margin-top: 4px;
+      }
+      .jira {
+        flex: none;
+        font-size: 10.5px;
+        line-height: 16px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--bo-ci-soft);
+        color: var(--bo-ci-ink);
+      }
+      .hint {
+        font-family: var(--bo-font-mono);
+        font-size: 10.5px;
+        line-height: 16px;
+        color: var(--bo-ink-3);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    `,
+  ],
+})
+export class ActionNodeComponent extends WorkflowNodeBase {
+  /** "needs: Read issues, Move issues" (+ pinned) for the Jira chip. */
+  readonly jiraTitle = computed(() => {
+    const d = this.data();
+    const needs = capabilityLabels(d?.requiredCapabilities ?? []);
+    return pinnedConnection(d?.node.action?.config)
+      ? $localize`:@@workflows.node.jiraPinned:Jira connection needs: ${needs}:needs: (pinned connection)`
+      : $localize`:@@workflows.node.jiraNeeds:Jira connection needs: ${needs}:needs:`;
+  });
+  /** The first plain config value ("toStatus: In Review"), as a hint of what the action does. */
+  readonly hint = computed(() => {
+    const config = this.data()?.node.action?.config ?? {};
+    for (const [k, v] of Object.entries(config)) {
+      if (k === 'jiraConnection' || k === 'approval') continue;
+      if (typeof v === 'string' && v.trim()) return `${k}: ${v}`;
+      if (typeof v === 'number' || typeof v === 'boolean') return `${k}: ${v}`;
+    }
+    return null;
   });
 }
 
@@ -647,6 +759,7 @@ export const NODE_COMPONENTS: Record<NodeKind, Type<CustomNodeComponent<CanvasNo
   START: StartNodeComponent,
   END: EndNodeComponent,
   TASK: TaskNodeComponent,
+  ACTION: ActionNodeComponent,
   DECISION: DecisionNodeComponent,
   HUMAN_GATE: HumanGateNodeComponent,
   WAIT_FOR_CI: WaitForCiNodeComponent,

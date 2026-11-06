@@ -46,14 +46,14 @@ anything the token allows, unseen and unapproved.
 
 ### What Back Office calls
 
-Back Office never receives webhooks from Jira. Jira is called when a workflow node of one of the three Jira
-task types runs, when the project's intake watcher polls, or when a connection is saved or tested:
+Back Office never receives webhooks from Jira. Jira is called when one of the three Jira action nodes of a
+workflow runs, when the project's intake watcher polls, or when a connection is saved or tested:
 
 | What runs | Jira call | Connection capability it needs | Jira project permissions behind it |
 |---|---|---|---|
-| **Fetch issue** task (executor `FETCH_ISSUE`) | `GET /rest/api/3/issue/{key}` with summary, description, type, priority, status, labels, components and the acceptance-criteria field | **Read issues** (`ISSUE_READ`) | **Browse Projects** |
-| **Notify Jira** task (executor `NOTIFY`) | `POST /rest/api/3/issue/{key}/comment`, after a person confirmed it ([approval](#jira-write-approval)) | **Comment on issues** (`ISSUE_COMMENT`) | **Browse Projects**, **Add Comments** |
-| **Transition issue** task (executor `TRANSITION_ISSUE`) | `GET` then `POST /rest/api/3/issue/{key}/transitions`, after a person confirmed it | **Move issues** (`ISSUE_TRANSITION`) and **Read issues** | **Browse Projects**, **Transition Issues** |
+| **Fetch issue** action (`FETCH_ISSUE`) | `GET /rest/api/3/issue/{key}` with summary, description, type, priority, status, labels, components and the acceptance-criteria field | **Read issues** (`ISSUE_READ`) | **Browse Projects** |
+| **Comment on issue** action (`COMMENT_ISSUE`) | `POST /rest/api/3/issue/{key}/comment`, after a person confirmed it ([approval](#jira-write-approval)) | **Comment on issues** (`ISSUE_COMMENT`) | **Browse Projects**, **Add Comments** |
+| **Transition issue** action (`TRANSITION_ISSUE`) | `GET` then `POST /rest/api/3/issue/{key}/transitions`, after a person confirmed it | **Move issues** (`ISSUE_TRANSITION`) and **Read issues** | **Browse Projects**, **Transition Issues** |
 | **Jira intake watcher** of a project ([watcher](#jira-intake)) | `GET /rest/api/3/search/jql` with the fields status, updated, created and the changelog | **Read issues** (`ISSUE_READ`) | **Browse Projects** |
 | Saving a connection, **Test**, **Test before saving** | `GET /rest/api/3/myself`, `GET /rest/api/3/mypermissions` | none | none (any valid account) |
 
@@ -117,7 +117,7 @@ Back Office helps in three ways:
 - If comments and transitions must come from different accounts, split the writer into two connections
   (**Comment on issues** + **Read issues**, **Move issues** + **Read issues**).
 
-With this set-up the workflow **Fetch issue → … → Notify Jira → Transition issue** uses the reader for the
+With this set-up the workflow **Fetch issue → … → Comment on issue → Transition issue** uses the reader for the
 first step and the writer for the last two, and the designer shows no warning. The writer also gets
 **Read issues** because **Transition issue** reads the issue's transitions first; otherwise a transition
 step would find no connection that covers both capabilities. The [intake watcher](#jira-intake) uses the
@@ -240,7 +240,7 @@ logs.
    | Capability | Lets Back Office | Jira permissions the account needs |
    |---|---|---|
    | **Read issues** (`ISSUE_READ`) | load issues (**Fetch issue**, **Transition issue**) | Browse Projects |
-   | **Comment on issues** (`ISSUE_COMMENT`) | post comments (**Notify Jira**) | Browse Projects, Add Comments |
+   | **Comment on issues** (`ISSUE_COMMENT`) | post comments (**Comment on issue**) | Browse Projects, Add Comments |
    | **Move issues** (`ISSUE_TRANSITION`) | move issues to another status (**Transition issue**) | Browse Projects, Transition Issues |
 
    **Comment on issues** and **Move issues** are write capabilities. Tick only what the account is meant
@@ -404,7 +404,7 @@ every Jira node that uses it shows the "more rights than needed" warning. **Sett
 1. Create the reader and writer Jira accounts and tokens ([steps](#jira-token)).
 2. Add the two connections, as platform connections or per project ([Add a connection](#jira-connections)),
    and **Test** each until neither shows missing permissions.
-3. Open every workflow with Jira tasks in the designer and validate it: each Jira node should show a
+3. Open every workflow with Jira actions in the designer and validate it: each Jira node should show a
    connection other than **Jira (environment variables)** and no error.
 4. Remove `JIRA_API_TOKEN` (and `JIRA_URL`, `JIRA_EMAIL`) from the Secret or `deploy/compose/.env` and
    restart the API and worker (`helm upgrade` rolls them when the chart owns the Secret). Keep
@@ -463,17 +463,18 @@ The result and its time are kept on the connection (except for the legacy one) a
 a step gets.
 
 <a id="jira-tasks"></a>
-## Jira tasks in workflows
+## Jira actions in workflows
 
-The task library ships three Jira templates; drop them on the canvas as task nodes
-([workflows.md](workflows.md#nodes)). The palette shows the capabilities each one needs and marks the two
-that write to Jira.
+The designer palette has three Jira actions in its group **Actions**; drop them on the canvas as action nodes
+([Action nodes](workflows.md#actions)). The palette shows the capabilities each one needs and marks the two
+that write to Jira. They used to be the task templates `fetch-issue`, `notify-jira` and `transition-issue`
+(ADR 0056); workflows that use those keep working and are saved as actions on the next save.
 
-| Template | Configuration | Needs | Behaviour |
+| Action | Configuration | Needs | Behaviour |
 |---|---|---|---|
-| **Fetch issue** (`fetch-issue`) | `issueKeyFrom`: `input` (default) or the name of a run parameter | **Read issues** | Loads the issue, stores it as the `issue` artefact and in `state.issue`; fails when the run has no issue key |
-| **Notify Jira** (`notify-jira`) | `messageTemplate` (required): the comment body, a template over the run state; `approval` (default `REQUIRED`) and `approvers` | **Comment on issues** | Renders the comment, waits for a person to confirm it ([approval](#jira-write-approval)), then posts exactly that text on `state.issue.key`, else the run's issue key |
-| **Transition issue** (`transition-issue`) | `toStatus` (required), for example `In Review`; `approval` (default `REQUIRED`) and `approvers` | **Move issues** + **Read issues** | Waits for a person to confirm the move, then lists the issue's available transitions and executes the first whose **target status name** or **transition name** equals `toStatus` (case-insensitive) |
+| **Fetch issue** (`FETCH_ISSUE`) | `issueKeyFrom`: `input` (default) or the name of a run parameter | **Read issues** | Loads the issue, stores it as the `issue` artefact and in `state.issue`; fails when the run has no issue key |
+| **Comment on issue** (`COMMENT_ISSUE`) | `messageTemplate` (required): the comment body, a template over the run state; `approval` (default `REQUIRED`) and `approvers` | **Comment on issues** | Renders the comment, waits for a person to confirm it ([approval](#jira-write-approval)), then posts exactly that text on `state.issue.key`, else the run's issue key |
+| **Transition issue** (`TRANSITION_ISSUE`) | `toStatus` (required), for example `In Review`; `approval` (default `REQUIRED`) and `approvers` | **Move issues** + **Read issues** | Waits for a person to confirm the move, then lists the issue's available transitions and executes the first whose **target status name** or **transition name** equals `toStatus` (case-insensitive) |
 
 <a id="jira-act-as"></a>
 ### Act as: which connection a step uses
@@ -535,7 +536,7 @@ Notes:
 
 A comment or a status change in Jira cannot be undone from Back Office, and its content can come from model
 output or from issue text that someone outside the team wrote (prompt injection, see
-[How agent jobs run](agent-execution.md#prompt-injection)). Therefore **Notify Jira** and **Transition
+[How agent jobs run](agent-execution.md#prompt-injection)). Therefore **Comment on issue** and **Transition
 issue** ask a person to confirm the exact write before it happens (ADR 0033).
 
 ### How it works
@@ -565,7 +566,7 @@ How to decide one: [Confirming external writes](your-turn.md#write-confirmations
 
 ### The setting on the node
 
-Select a **Notify Jira** or **Transition issue** node in the designer. The section **Approval before
+Select a **Comment on issue** or **Transition issue** node in the designer. The section **Approval before
 writing to Jira** of its properties shows:
 
 | Setting | Meaning |
@@ -770,7 +771,7 @@ The status card of the watcher should now show this connection with **OK**.
 | API or worker does not start: secrets key missing or unknown key id | connections exist but the key is not configured, or a previous key was removed before the re-wrap | restore `BACKOFFICE_SECRETS_KEY` / `BACKOFFICE_SECRETS_PREVIOUS_KEYS` |
 | **Test** shows "Secret unavailable" | the token cannot be decrypted with the configured keys | restore the key, or **Replace token** |
 | **Start run** refused: "workflow X cannot start: ..." | a Jira step has no usable connection (saving the workflow only warned) | add the connection named in the message ([Add a connection](#jira-connections)) |
-| Run waits at **Notify Jira** / **Transition issue** | the write waits for confirmation | decide it in **Your turn** ([Confirming external writes](your-turn.md#write-confirmations)) |
+| Run waits at **Comment on issue** / **Transition issue** | the write waits for confirmation | decide it in **Your turn** ([Confirming external writes](your-turn.md#write-confirmations)) |
 | Step failed: "write rejected by ..., nothing was written" | an approver rejected the write | read the comment, rework the text, run again; connect `failure` if the run should continue |
 | Intake watcher starts nothing | first poll (baseline), no trigger, filter too narrow, or "refused: ..." | see [Jira intake watcher](#jira-intake), status card and messages |
 | Approve is disabled: "you have no personal Jira connection ..." | the step writes as the approver and you have none for this capability and Jira project | add a [personal connection](#jira-personal-connections), or ask the designer to allow the system connection as fallback |

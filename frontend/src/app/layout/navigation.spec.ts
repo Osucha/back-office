@@ -54,11 +54,13 @@ describe('menu built from permissions', () => {
       '/library/templates',
       '/library/skills',
       '/library/rules',
+      '/library/agents',
       '/library/workflows',
       '/library/sources',
     ]);
     expect(children.map((_, i) => childGroupStart(children, i))).toEqual([
       { label: 'Tasks' },
+      null,
       null,
       null,
       { label: undefined },

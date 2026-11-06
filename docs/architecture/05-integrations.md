@@ -140,10 +140,10 @@ Capability → Jira project permission:
 | Capability | Jira permissions | Needed by |
 |---|---|---|
 | `ISSUE_READ` | Browse Projects | `FETCH_ISSUE` (Fetch issue) |
-| `ISSUE_COMMENT` | Browse Projects + Add Comments | `NOTIFY` (Notify Jira) |
+| `ISSUE_COMMENT` | Browse Projects + Add Comments | `COMMENT_ISSUE` (Comment on issue) |
 | `ISSUE_TRANSITION` | Browse Projects + Transition Issues | `TRANSITION_ISSUE` (Transition issue, together with `ISSUE_READ`) |
 
-Executors declare their required capabilities; the task palette exposes them as `requiredCapabilities`.
+Jira actions (ADR 0056: `ACTION` nodes, formerly task executors) declare their required capabilities; the palette exposes them on each action as `requiredCapabilities`.
 
 Scopes of a scoped token per capability (`JiraScopes`; a capability is covered by the classic set or the granular
 set; ADR 0035 lists the recommended extra read scopes):
@@ -229,7 +229,7 @@ are checked against the person starting the run unless they are writes that wait
 not known yet). The validator also warns about an `ACTING_USER` read step without fallback in a workflow with a
 `JIRA_TRANSITION` trigger (watcher runs have no acting person).
 
-At run time the executor logs `INFO Jira connection: <name> (<scope>)`, logs the over-privileged warning
+At run time the action logs `INFO Jira connection: <name> (<scope>)`, logs the over-privileged warning
 as `WARN` ("... extra: ISSUE_COMMENT, ISSUE_TRANSITION - create a connection with only ISSUE_READ"), or
 fails the node on `NONE` with "no Jira connection with capabilities [ISSUE_READ] for project <KEY> (Jira
 project SHOP); add one under Project → Connections or Administration → Connections". The client handed
@@ -368,12 +368,12 @@ Summaries are display-only (escaped by Angular); the run reads the issue through
 
 ### Approval before external writes (ADR 0033)
 
-`NOTIFY` and `TRANSITION_ISSUE` (required capabilities with the `write` flag; palette `externalWrite: true`)
+`COMMENT_ISSUE` and `TRANSITION_ISSUE` (required capabilities with the `write` flag; palette `externalWrite: true`)
 read node configuration `approval` (`REQUIRED` default, missing = `REQUIRED`, `NOT_REQUIRED`; anything else
 is a validator error) and `approvers` (same shape as gate approvers; default project roles owner and
 maintainer with `run.approve`, accountable owner).
 
-- `REQUIRED`: the executor renders the comment (templates + sanitising) or takes `toStatus`, checks that a
+- `REQUIRED`: the action renders the comment (templates + sanitising) or takes `toStatus`, checks that a
   usable connection exists, and returns `NodeResult(pendingWrite = ...)` without writing. The engine
   stores it as `pendingWrite` and pauses at `<nodeId>::confirm` (see 03-pipelines-and-agents.md); an
   approval of kind `WRITE_CONFIRMATION` stores the preview in `approval_request.write_preview` (action,

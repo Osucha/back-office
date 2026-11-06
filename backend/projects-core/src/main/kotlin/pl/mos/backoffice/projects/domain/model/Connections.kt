@@ -2,7 +2,6 @@ package pl.mos.backoffice.projects.domain.model
 
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -72,14 +71,14 @@ enum class ConnectionCapability(val write: Boolean, val jiraPermissions: Set<Jir
             capabilities.flatMapTo(sortedSetOf()) { it.jiraPermissions }
 
         /**
-         * Capabilities a task executor needs from its connection, or an empty set for executors that use none.
+         * Capabilities an action needs from its connection (ADR 0056), or an empty set for actions that use none.
          * Transition lists the issue's transitions before it moves the issue, so it also reads.
          */
-        fun requiredBy(executor: TaskExecutor): Set<ConnectionCapability> = when (executor) {
-            TaskExecutor.FETCH_ISSUE -> setOf(ISSUE_READ)
-            TaskExecutor.NOTIFY -> setOf(ISSUE_COMMENT)
-            TaskExecutor.TRANSITION_ISSUE -> setOf(ISSUE_TRANSITION, ISSUE_READ)
-            TaskExecutor.LLM, TaskExecutor.SPEC_KIT, TaskExecutor.IMPLEMENT, TaskExecutor.START_WORKFLOW, TaskExecutor.PROJECT_DIGEST -> emptySet()
+        fun requiredBy(action: ActionType): Set<ConnectionCapability> = when (action) {
+            ActionType.FETCH_ISSUE -> setOf(ISSUE_READ)
+            ActionType.COMMENT_ISSUE -> setOf(ISSUE_COMMENT)
+            ActionType.TRANSITION_ISSUE -> setOf(ISSUE_TRANSITION, ISSUE_READ)
+            ActionType.START_WORKFLOW, ActionType.PROJECT_DIGEST -> emptySet()
         }
     }
 }

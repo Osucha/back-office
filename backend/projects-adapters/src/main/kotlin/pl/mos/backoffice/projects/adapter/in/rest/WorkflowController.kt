@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
-import pl.mos.backoffice.projects.application.port.`in`.TaskExecutorDescriptor
+import pl.mos.backoffice.projects.application.port.`in`.TaskConfigSchemas
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.TriggerSource
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
@@ -48,9 +48,9 @@ class WorkflowController(
         return mapper.toDto(workflows.validate(ProjectId(projectId), command))
     }
 
-    /** ADR 0054: the config schema of every task executor, for the library editor. */
-    @GetMapping("/task-executors")
-    fun taskExecutors(): List<TaskExecutorDescriptor> = workflows.taskExecutors()
+    /** ADR 0056: the config schemas of model answer and coding agent steps, for the library editor. */
+    @GetMapping("/task-config-schemas")
+    fun taskConfigSchemas(): TaskConfigSchemas = workflows.taskConfigSchemas()
 
     @GetMapping("/palette")
     fun palette(@RequestParam projectId: UUID): WorkflowPaletteDto = mapper.toDto(workflows.palette(ProjectId(projectId)))

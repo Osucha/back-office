@@ -5,8 +5,10 @@ import pl.mos.backoffice.projects.application.port.out.JsonCodec
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
 import pl.mos.backoffice.projects.application.port.out.RunStateKeys
-import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
+import pl.mos.backoffice.projects.application.port.out.ActionStep
+import pl.mos.backoffice.projects.application.port.out.ActionStrategy
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.ArtifactKind
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.domain.model.NodeExecutionStatus
@@ -17,8 +19,6 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.util.UUID
 
 /**
@@ -32,18 +32,18 @@ class StartWorkflowTaskExecutor(
     private val startRun: () -> StartRunOnBehalf,
     private val workflows: WorkflowDefinitionRepository,
     private val json: JsonCodec,
-) : TaskExecutorStrategy {
+) : ActionStrategy {
 
-    override val executor = TaskExecutor.START_WORKFLOW
+    override val type = ActionType.START_WORKFLOW
 
     @Suppress("UNCHECKED_CAST")
-    override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
+    override fun execute(context: NodeContext, step: ActionStep): NodeResult {
         val previous = context.run.nodes.lastOrNull { it.status == NodeExecutionStatus.SUCCEEDED }
         if (previous?.kind != NodeKind.HUMAN_GATE) {
-            throw InvalidStateException("${task.key} starts workflows only right after a human gate: connect it to a gate's option")
+            throw InvalidStateException("${step.name} starts workflows only right after a human gate: connect it to a gate's option")
         }
-        val target = resolveTarget(context, task.config["workflow"]?.toString()?.trim().orEmpty())
-        val from = task.config["parametersFrom"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        val target = resolveTarget(context, step.config["workflow"]?.toString()?.trim().orEmpty())
+        val from = step.config["parametersFrom"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
             ?: throw ValidationException("set parametersFrom to the artefact with the run parameters", "parametersFrom")
         val artifact = context.run.artifactNamed(from) ?: throw InvalidStateException("artefact $from is missing")
         val entries = when (val parsed = runCatching { json.parseObject("{\"value\":" + artifact.content.orEmpty() + "}")["value"] }.getOrNull()) {
@@ -51,7 +51,7 @@ class StartWorkflowTaskExecutor(
             is List<*> -> parsed.map { it as? Map<String, Any?> ?: throw ValidationException("every entry of $from must be a JSON object", "parametersFrom") }
             else -> throw ValidationException("artefact $from must be a JSON object or an array of objects", "parametersFrom")
         }
-        val picked = when (task.config["selection"]?.toString()?.uppercase() ?: "ALL") {
+        val picked = when (step.config["selection"]?.toString()?.uppercase() ?: "ALL") {
             "DECISION" -> select(entries, decisionComment(context))
             else -> entries.withIndex().toList()
         }
@@ -59,7 +59,7 @@ class StartWorkflowTaskExecutor(
         // the person who decided at the gate starts the runs: their permissions and personal model profiles apply
         val decider = (context.state[RunStateKeys.LAST_DECISION] as? Map<String, Any?>)?.get("decidedByUserId")?.toString()
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-            ?: throw InvalidStateException("the gate before ${task.key} was not decided by a user; nobody to start the runs for")
+            ?: throw InvalidStateException("the gate before ${step.name} was not decided by a user; nobody to start the runs for")
         val started = picked.map { (index, entry) ->
             val parameters = entry.filterValues { it is String || it is Number || it is Boolean } +
                 mapOf("startedByRun" to context.run.id.toString(), "proposal" to (index + 1))

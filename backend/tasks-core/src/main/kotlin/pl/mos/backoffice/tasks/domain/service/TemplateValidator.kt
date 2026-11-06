@@ -9,9 +9,9 @@ import java.util.UUID
 
 /**
  * Structural checks of a template against the rest of the library, run before a template is saved:
- * key format, parent existence and no self-extension, executor present on concrete templates unless an
- * ancestor provides one, `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`,
- * referenced skills and rules exist, run input names are unique. All problems are collected into one
+ * key format, parent existence and no self-extension, the agent (ADR 0056) exists when one is named,
+ * `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`, referenced skills and rules exist,
+ * run input names are unique. All problems are collected into one
  * `ValidationException`.
  */
 class TemplateValidator(private val lookup: LibraryLookup) {
@@ -31,8 +31,8 @@ class TemplateValidator(private val lookup: LibraryLookup) {
         // a project template shadowing the global one extends a parent with its own key: that parent is no cycle
         val ancestors = ancestors(parent, projectId, template.key.takeUnless { parent?.key == template.key }).toList()
 
-        if (!template.abstract && template.executor == null && ancestors.none { it.executor != null }) {
-            errors += FieldError("executor", "required on a concrete template unless inherited from an ancestor")
+        template.agentKey?.let { key ->
+            if (lookup.visibleAgent(key, projectId) == null) errors += FieldError("agentKey", "agent $key does not exist")
         }
 
         template.outputSchema?.let { schema ->

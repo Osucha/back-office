@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -38,7 +39,6 @@ import pl.mos.backoffice.shared.platform.PlatformFeatures
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
@@ -52,13 +52,14 @@ class SpecKitGatingTest {
     /** Templates `spec-kit-*` and `my-spec` (a library template extending one) resolve to SPEC_KIT; everything else to LLM. */
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: java.util.UUID?, overrides: TaskOverrides): ResolvedTask {
-            val executor = if (key.startsWith("spec-kit") || key == "my-spec") TaskExecutor.SPEC_KIT else TaskExecutor.LLM
-            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
+            val executor = if (key.startsWith("spec-kit") || key == "my-spec") TestAgents.OPENCODE else TestAgents.MODEL_ANSWER
+            val config = if (executor == TestAgents.OPENCODE) mapOf("phase" to "SPECIFY") + overrides.config else overrides.config
+            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = listOf(
-            TaskSummary("spec-kit-specify", "Spec Kit: specify", "", TaskExecutor.SPEC_KIT, null, false, null, listOf("success", "failure")),
-            TaskSummary("my-spec", "My spec (extends Spec Kit)", "", TaskExecutor.SPEC_KIT, null, false, null, listOf("success", "failure")),
-            TaskSummary("llm-task", "LLM task", "", TaskExecutor.LLM, null, false, null, listOf("success", "failure")),
+            TaskSummary("spec-kit-specify", "Spec Kit: specify", "", TestAgents.OPENCODE, null, false, null, listOf("success", "failure")),
+            TaskSummary("my-spec", "My spec (extends Spec Kit)", "", TestAgents.OPENCODE, null, false, null, listOf("success", "failure")),
+            TaskSummary("llm-task", "LLM task", "", TestAgents.MODEL_ANSWER, null, false, null, listOf("success", "failure")),
         )
     }
 

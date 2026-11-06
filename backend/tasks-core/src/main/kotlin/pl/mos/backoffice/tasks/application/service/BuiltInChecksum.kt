@@ -1,5 +1,6 @@
 package pl.mos.backoffice.tasks.application.service
 
+import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
@@ -20,7 +21,7 @@ object BuiltInChecksum {
         canonical(
             mapOf(
                 "name" to t.name, "description" to t.description, "abstract" to t.abstract, "extendsKey" to t.extendsKey,
-                "category" to t.category?.name, "executor" to t.executor?.name, "modelProfileId" to t.modelProfileId?.value?.toString(),
+                "category" to t.category?.name, "agentKey" to t.agentKey, "modelProfileId" to t.modelProfileId?.value?.toString(),
                 "promptSystem" to t.prompt.system, "promptUser" to t.prompt.user, "promptMode" to t.prompt.mode.name,
                 "skills" to t.skills, "removeSkills" to t.removeSkills, "rules" to t.rules, "removeRules" to t.removeRules, "config" to t.config, "outputSchema" to t.outputSchema,
                 "confidenceField" to t.confidenceField, "produces" to t.produces, "consumes" to t.consumes, "tags" to t.tags,
@@ -33,6 +34,10 @@ object BuiltInChecksum {
 
     fun of(r: Rule): String = sha256(
         canonical(mapOf("name" to r.name, "description" to r.description, "content" to r.content, "automatic" to r.automatic, "tags" to r.tags)),
+    )
+
+    fun of(a: Agent): String = sha256(
+        canonical(mapOf("name" to a.name, "description" to a.description, "harness" to a.harness?.name, "modelProfileId" to a.modelProfileId?.value?.toString(), "tags" to a.tags)),
     )
 
     /** Deterministic text of a JSON-like value: sorted keys, no null or blank-string map entries, normalised numbers. */

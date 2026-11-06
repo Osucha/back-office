@@ -5,7 +5,6 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TemplateCategory
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.time.Instant
 
 /** How a template's prompt combines with its parent's: appended after a blank line, or replacing it. */
@@ -36,7 +35,8 @@ data class TaskTemplate(
     val abstract: Boolean,
     val extendsKey: String?,
     val category: TemplateCategory?,
-    val executor: TaskExecutor?,
+    /** ADR 0056: the agent that runs the task by default; inherited, nearest non-null wins; none anywhere = model-answer. */
+    val agentKey: String?,
     val scope: Scope,
     val modelProfileId: ModelProfileId?,
     val prompt: Prompt,
@@ -78,7 +78,7 @@ data class TaskTemplate(
         val abstract: Boolean = false,
         val extendsKey: String? = null,
         val category: TemplateCategory? = null,
-        val executor: TaskExecutor? = null,
+        val agentKey: String? = null,
         val scope: Scope = Scope.Global,
         val modelProfileId: ModelProfileId? = null,
         val prompt: Prompt = Prompt.EMPTY,
@@ -97,7 +97,7 @@ data class TaskTemplate(
 
     val content: Content
         get() = Content(
-            key, name, description, abstract, extendsKey, category, executor, scope, modelProfileId, prompt,
+            key, name, description, abstract, extendsKey, category, agentKey, scope, modelProfileId, prompt,
             skills, removeSkills, config, outputSchema, confidenceField, produces, consumes, tags, runInputs, rules, removeRules,
         )
 
@@ -117,7 +117,7 @@ data class TaskTemplate(
             abstract = c.abstract,
             extendsKey = c.extendsKey?.takeIf { it.isNotBlank() },
             category = c.category,
-            executor = c.executor,
+            agentKey = c.agentKey?.takeIf { it.isNotBlank() },
             scope = c.scope,
             modelProfileId = c.modelProfileId,
             prompt = c.prompt,

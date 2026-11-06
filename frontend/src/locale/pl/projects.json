@@ -102,7 +102,7 @@
   "projects.form.repositories": "Repozytoria",
   "projects.form.issueTracker": "System zgłoszeń (opcjonalnie)",
   "projects.form.jiraNone": "brak",
-  "projects.form.jiraHint": "Wymagany przez zadania fetch-issue / notify / transition.",
+  "projects.form.jiraHint": "Wymagany przez akcje Jira w workflowach (pobranie, komentarz, zmiana statusu).",
   "projects.form.jiraProjectKey": "Klucz projektu Jira",
   "projects.form.jql": "Filtr JQL",
   "projects.form.jqlHint": "Używany przez monitor zgłoszeń Jira (poniżej); Back Office dodaje projekt Jira i okno czasowe.",

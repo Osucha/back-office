@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.ActionStep
+import pl.mos.backoffice.projects.domain.model.ActionType
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -20,7 +22,6 @@ import pl.mos.backoffice.projects.domain.service.ConnectionSelector
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
@@ -36,8 +37,7 @@ class WriteApprovalExecutorsTest {
     private val notify = NotifyTaskExecutor(access, TemplateRenderer(), TemplateModelBuilder(), audit)
     private val transition = TransitionIssueTaskExecutor(access, audit)
 
-    private fun task(executor: TaskExecutor, config: Map<String, Any?>) =
-        ResolvedTask("t", "t", executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf("t"), listOf("success", "failure"))
+    private fun task(type: ActionType, config: Map<String, Any?>) = ActionStep(type, "t", "t", config)
 
     private fun context(state: Map<String, Any?> = emptyMap()): NodeContext {
         val node = WorkflowNode.Task("tell", "Tell the issue", task = TaskBinding("t"))
@@ -48,7 +48,7 @@ class WriteApprovalExecutorsTest {
     @Test
     fun `a comment is rendered once and waits for confirmation by default, nothing is written yet`() {
         connections.save(ConnectionFakes.connection("commenter", setOf(ConnectionCapability.ISSUE_COMMENT)))
-        val result = notify.execute(context(), task(TaskExecutor.NOTIFY, mapOf("messageTemplate" to "Run {{run.short}} done for {{input.issueKey}}")))
+        val result = notify.execute(context(), task(ActionType.COMMENT_ISSUE, mapOf("messageTemplate" to "Run {{run.short}} done for {{input.issueKey}}")))
 
         val write = result.pendingWrite!!
         assertThat(write.action).isEqualTo(ExternalWriteAction.JIRA_COMMENT)
@@ -65,10 +65,10 @@ class WriteApprovalExecutorsTest {
     fun `after approval exactly the previewed text is written and audited with its digest`() {
         connections.save(ConnectionFakes.connection("commenter", setOf(ConnectionCapability.ISSUE_COMMENT)))
         val config = mapOf<String, Any?>("messageTemplate" to "Hello {{input.issueKey}}")
-        val write = notify.execute(context(), task(TaskExecutor.NOTIFY, config)).pendingWrite!!
+        val write = notify.execute(context(), task(ActionType.COMMENT_ISSUE, config)).pendingWrite!!
 
         val decision = mapOf("option" to "approve", "decidedBy" to "Olivia Owner")
-        val result = notify.commit(context(mapOf(RunStateKeys.DECISION to decision)), task(TaskExecutor.NOTIFY, mapOf("messageTemplate" to "CHANGED {{input.issueKey}}")), write)
+        val result = notify.commit(context(mapOf(RunStateKeys.DECISION to decision)), task(ActionType.COMMENT_ISSUE, mapOf("messageTemplate" to "CHANGED {{input.issueKey}}")), write)
 
         assertThat(result.failed).isFalse()
         assertThat(trackers.comments).containsExactly("SHOP-1" to write.comment!!)
@@ -85,7 +85,7 @@ class WriteApprovalExecutorsTest {
         val run = Fixtures.runningRun(project).nodeStarted(node, Fixtures.now)
         val ctx = NodeContext(run, project, node, run.nodes.last(), emptyMap(), { warnings += it })
 
-        val result = notify.execute(ctx, task(TaskExecutor.NOTIFY, mapOf("messageTemplate" to "fixed text", "approval" to "NOT_REQUIRED")))
+        val result = notify.execute(ctx, task(ActionType.COMMENT_ISSUE, mapOf("messageTemplate" to "fixed text", "approval" to "NOT_REQUIRED")))
 
         assertThat(result.pendingWrite).isNull()
         assertThat(trackers.comments).containsExactly("SHOP-1" to "fixed text")
@@ -97,29 +97,29 @@ class WriteApprovalExecutorsTest {
     fun `a transition is previewed with its target status and moves only after approval`() {
         connections.save(ConnectionFakes.connection("mover", setOf(ConnectionCapability.ISSUE_TRANSITION, ConnectionCapability.ISSUE_READ)))
         val approvers = mapOf("projectRoles" to listOf("owner"), "users" to listOf(UUID(0, 7).toString()), "forbidSelfApproval" to true)
-        val result = transition.execute(context(), task(TaskExecutor.TRANSITION_ISSUE, mapOf("toStatus" to "In Review", "approvers" to approvers)))
+        val result = transition.execute(context(), task(ActionType.TRANSITION_ISSUE, mapOf("toStatus" to "In Review", "approvers" to approvers)))
 
         val write = result.pendingWrite!!
         assertThat(write.describe()).isEqualTo("move SHOP-1 to In Review")
         assertThat(result.writeApprovers).isEqualTo(GateApprovers(listOf("owner"), listOf(UUID(0, 7)), "owner", true))
         assertThat(trackers.calls.filter { it.startsWith("transition") }).isEmpty()
 
-        transition.commit(context(mapOf(RunStateKeys.DECISION to mapOf("option" to "approve", "decidedBy" to "Olivia"))), task(TaskExecutor.TRANSITION_ISSUE, mapOf("toStatus" to "Done")), write)
+        transition.commit(context(mapOf(RunStateKeys.DECISION to mapOf("option" to "approve", "decidedBy" to "Olivia"))), task(ActionType.TRANSITION_ISSUE, mapOf("toStatus" to "Done")), write)
         assertThat(trackers.calls).contains("transition SHOP-1 In Review")
     }
 
     @Test
     fun `no connection fails the step before anybody is asked to approve`() {
         connections.save(ConnectionFakes.connection("reader", READ))
-        assertThatThrownBy { notify.execute(context(), task(TaskExecutor.NOTIFY, mapOf("messageTemplate" to "x"))) }
+        assertThatThrownBy { notify.execute(context(), task(ActionType.COMMENT_ISSUE, mapOf("messageTemplate" to "x"))) }
             .isInstanceOf(IntegrationException::class.java).hasMessageContaining("[ISSUE_COMMENT]")
     }
 
     @Test
     fun `a commit of another kind of write is refused`() {
         connections.save(ConnectionFakes.connection("commenter", setOf(ConnectionCapability.ISSUE_COMMENT)))
-        val write = notify.execute(context(), task(TaskExecutor.NOTIFY, mapOf("messageTemplate" to "x"))).pendingWrite!!
-        assertThat(transition.commit(context(), task(TaskExecutor.TRANSITION_ISSUE, mapOf("toStatus" to "Done")), write).failed).isTrue()
+        val write = notify.execute(context(), task(ActionType.COMMENT_ISSUE, mapOf("messageTemplate" to "x"))).pendingWrite!!
+        assertThat(transition.commit(context(), task(ActionType.TRANSITION_ISSUE, mapOf("toStatus" to "Done")), write).failed).isTrue()
         assertThat(trackers.comments).isEmpty()
     }
 }

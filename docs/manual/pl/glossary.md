@@ -3,8 +3,13 @@
 Pojęcia używane w Back Office i w tym podręczniku, w kolejności alfabetycznej. Każdy wpis prowadzi do
 rozdziału, który je wyjaśnia.
 
-**Agent** (agent): Model AI wykonujący zadanie: pojedyncze wywołanie modelu wewnątrz Back Office albo agent
-programistyczny (OpenCode, Claude Code) w zadaniu agenta.
+**Agent** (agent): Ten, kto wykonuje zadanie: wpis biblioteki z harnessem i opcjonalnie modelem. Bez harnessu daje
+pojedynczą odpowiedź modelu wewnątrz Back Office (**Odpowiedź modelu**); z OpenCode lub Claude Code to sesja agenta
+kodującego w zadaniu agenta. Szablon wskazuje domyślnego agenta, krok może wybrać innego. Zob.
+[Agenci](task-library.md#agents).
+
+**Akcja** (action): Węzeł workflowu, który wykonuje stałą operację bez modelu: Pobierz zgłoszenie, Skomentuj
+zgłoszenie, Zmień status zgłoszenia, Uruchom workflow lub Podsumowanie projektu. Zob. [Węzły akcji](workflows.md#actions).
 
 **Artefakt** (artefact): Dokument wytworzony przez krok, taki jak `spec`, `plan`, `tasks`, `review` lub `diff`. Wyświetlany
 na stronie uruchomienia oraz, jeśli bramka go wymienia, w panelu bramki. Zob. [Strona uruchomienia](runs.md#run-detail).
@@ -23,6 +28,9 @@ Zob. [Budżety](costs-insights.md#budgets).
 
 **Dziennik audytu** (audit log): Zapis każdej zmiany, decyzji, logowania i odmowy dostępu. Zob.
 [Administracja](administration.md#audit).
+
+**Harness** (harness): Program, który prowadzi rozmowę agenta z modelem (narzędzia, kontekst, pytania): OpenCode lub
+Claude Code. Agent bez harnessu daje odpowiedź modelu. Zob. [Agenci](task-library.md#agents).
 
 **Konstytucja** (constitution): Zasady projektu w Markdownie, przekazywane do Spec Kit i dostępne w promptach. Zob.
 [Tworzenie projektu](projects.md#create-project).
@@ -46,6 +54,10 @@ benchmarku. Zob. [Benchmarki](evaluation.md#benchmarks).
 
 **Oczekiwanie na ludzi** (human wait): Czas, przez który uruchomienia czekają w bramkach; główny wskaźnik na stronie
 Wskaźniki. Zob. [Wskaźniki](costs-insights.md#insights).
+
+**Odpowiedź modelu** (model answer): Wbudowany agent `model-answer`: jedno wywołanie modelu wewnątrz Back Office, bez
+narzędzi i repozytorium; może zwrócić ustrukturyzowany JSON i pewność. Tak działa krok, którego szablon ani krok nie
+wskazują agenta. Zob. [Agenci](task-library.md#agents).
 
 **Pałeczka** (baton): Kto w tej chwili trzyma daną pracę: agent, ty, ci, gotowe, zablokowane lub bezczynne. Wyświetlana
 jako znacznik z symbolem i słowem. Zob. [Pałeczka](getting-started.md#baton).
@@ -118,8 +130,8 @@ aby zwolnić uruchomienie czekające na CI. Zob. [Węzły oczekiwania na CI](wor
 **Reguła** (rule): Coś, czego agent musi zawsze przestrzegać; jest zawsze w jego kontekście, a reguły automatyczne
 obowiązują w każdym kroku swojego zakresu. Zob. [Reguły](task-library.md#rules).
 
-**Szablon zadania** (task template): Zadanie wielokrotnego użytku: wykonawca, kategoria, prompty, umiejętności, reguły
-i konfiguracja; ma jednego rodzica. Zob. [Szablony](task-library.md#templates).
+**Szablon zadania** (task template): Opis pracy wielokrotnego użytku: kategoria, prompty, umiejętności, reguły,
+konfiguracja i agent, który domyślnie ją wykonuje; ma jednego rodzica. Zob. [Szablony](task-library.md#templates).
 
 **Ścieżka sztafety** (relay track): Pasek segmentów, po jednym na każdy odwiedzony krok, pokolorowanych według tego, kto
 trzymał dany krok. Zob. [Pałeczka](getting-started.md#baton).
@@ -144,7 +156,7 @@ Role grupują uprawnienia. Zob. [Członkowie i role projektowe](projects.md#memb
 
 **Uruchomienie** (run): Jedno wykonanie workflowu, zwykle dla jednego zgłoszenia. Zob. [Uruchomienia](runs.md#run-list).
 
-**Węzeł** (node): Jeden blok workflowu: Start, Zadanie, Decyzja, Bramka decyzyjna, Oczekiwanie na CI, Koniec lub Notatka.
+**Węzeł** (node): Jeden blok workflowu: Start, Zadanie, Akcja, Decyzja, Bramka decyzyjna, Oczekiwanie na CI, Koniec lub Notatka.
 Zob. [Rodzaje węzłów](workflows.md#nodes).
 
 **Węzeł decyzji** (decision node): Węzeł, który kieruje uruchomienie według warunków na stanie uruchomienia. Zob.
@@ -155,9 +167,6 @@ zapis to nowa wersja. Zob. [Projektowanie workflowów](workflows.md#designer).
 
 **Wykonanie CI** (CI execution): Uruchomienie workflowu wystartowane przez pipeline przez punkt wejścia, z wynikiem
 bramki (zaliczona lub niezaliczona). Zob. [Wykonania CI](runs.md#ci-executions).
-
-**Wykonawca** (executor): To, co wykonuje szablon zadania: LLM, Spec Kit, Implementacja, Pobierz zgłoszenie, Powiadom
-lub Zmień status zgłoszenia. Zob. [Szablony](task-library.md#templates).
 
 **Wyzwalacz** (trigger): Jak workflow ma być uruchamiany: ręcznie, przez API, przez punkt wejścia CI lub przejście
 w Jirze. Zob. [Uruchamianie workflowu](workflows.md#start-run).

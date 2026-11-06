@@ -5,26 +5,28 @@ import pl.mos.backoffice.projects.application.port.out.NodeExecutor
 import pl.mos.backoffice.projects.application.port.out.NodeResult
 import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
+import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.domain.model.NodeKind
-import pl.mos.backoffice.projects.domain.model.PendingWrite
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 
-/** Registry of task executor strategies by `TaskExecutor`. */
+/** Registry of task strategies by [TaskRunKind] (ADR 0056). */
 class TaskExecutors(strategies: List<TaskExecutorStrategy>) {
-    private val byExecutor: Map<TaskExecutor, TaskExecutorStrategy> = strategies.associateBy { it.executor }
+    private val byKind: Map<TaskRunKind, TaskExecutorStrategy> = strategies.associateBy { it.runKind }
 
-    fun forExecutor(executor: TaskExecutor): TaskExecutorStrategy =
-        byExecutor[executor] ?: throw InvalidStateException("no strategy registered for task executor $executor")
+    fun forKind(kind: TaskRunKind): TaskExecutorStrategy =
+        byKind[kind] ?: throw InvalidStateException("no strategy registered for task run kind $kind")
+
+    /** The strategy for how [task] runs: its agent and its config decide (ADR 0056). */
+    fun forTask(task: pl.mos.backoffice.shared.tasks.ResolvedTask): TaskExecutorStrategy = forKind(TaskRunKind.of(task))
 }
 
 /**
  * `TASK`: resolves the template through the Task Library (`TaskCatalog`, node overrides applied) and
- * dispatches on the resolved executor. Missing inputs (`consumes`) are logged, unknown or abstract
+ * dispatches on the resolved agent (ADR 0056: model answer, Spec Kit job or agent job). Missing inputs (`consumes`) are logged, unknown or abstract
  * templates fail the node.
  */
 class TaskNodeExecutor(
@@ -43,33 +45,27 @@ class TaskNodeExecutor(
         task.consumes.filterNot { name -> context.run.artifactNamed(name) != null || context.state[name] != null }.forEach { missing ->
             context.log("input $missing consumed by ${task.key} is not available yet")
         }
-        context.log("running task ${task.key} (${task.executor})")
-        return consumingFeedback(context, strategies.forExecutor(task.executor).execute(context, task))
+        context.log("running task ${task.key} with agent ${task.agent.key} (${TaskRunKind.of(task)})")
+        return consumingFeedback(context, strategies.forTask(task).execute(context, task))
     }
 
     override fun resume(context: NodeContext, jobId: RunnerJobId): NodeResult {
         val node = context.node as? WorkflowNode.Task ?: throw InvalidStateException("node ${context.node.id} is not a TASK node")
         val task = catalog.resolve(node.task.templateKey, context.project.id.value, node.task.overrides)
             ?: return NodeResult.failure("unknown task template ${node.task.templateKey}")
-        return consumingFeedback(context, strategies.forExecutor(task.executor).resume(context, task, jobId))
+        return consumingFeedback(context, strategies.forTask(task).resume(context, task, jobId))
     }
 
-    override fun commit(context: NodeContext, write: PendingWrite): NodeResult {
-        val node = context.node as? WorkflowNode.Task ?: throw InvalidStateException("node ${context.node.id} is not a TASK node")
-        val task = catalog.resolve(node.task.templateKey, context.project.id.value, node.task.overrides)
-            ?: return NodeResult.failure("unknown task template ${node.task.templateKey}")
-        return consumingFeedback(context, strategies.forExecutor(task.executor).commit(context, task, write))
-    }
+}
 
-    /**
-     * A step that completed (not failed, not waiting for a runner job or a write confirmation) consumed the pending
-     * revision feedback: it moves to this node's feedback history ([RunStateKeys.consumeFeedback]), so the next steps
-     * do not receive it as `{{feedback}}`. A failed step keeps it for its retry.
-     */
-    private fun consumingFeedback(context: NodeContext, result: NodeResult): NodeResult {
-        if (result.failed || result.awaitingJob != null || result.pendingWrite != null) return result
-        val updates = RunStateKeys.consumeFeedback(context.state, context.node.id)
-        if (updates.isEmpty()) return result
-        return result.copy(stateUpdates = updates + result.stateUpdates)
-    }
+/**
+ * A step that completed (not failed, not waiting for a runner job or a write confirmation) consumed the pending
+ * revision feedback: it moves to this node's feedback history ([RunStateKeys.consumeFeedback]), so the next steps
+ * do not receive it as `{{feedback}}`. A failed step keeps it for its retry. Task and action steps alike.
+ */
+internal fun consumingFeedback(context: NodeContext, result: NodeResult): NodeResult {
+    if (result.failed || result.awaitingJob != null || result.pendingWrite != null) return result
+    val updates = RunStateKeys.consumeFeedback(context.state, context.node.id)
+    if (updates.isEmpty()) return result
+    return result.copy(stateUpdates = updates + result.stateUpdates)
 }

@@ -39,12 +39,11 @@ class TaskCatalogService(
         } catch (_: ValidationException) {
             null
         } ?: return null
-        val executor = resolution.executor ?: return null
         return TaskSummary(
             key = template.key,
             name = template.name,
             description = template.description,
-            executor = executor,
+            agent = resolution.agent,
             category = resolution.category,
             abstract = false,
             projectId = template.scope.projectId,

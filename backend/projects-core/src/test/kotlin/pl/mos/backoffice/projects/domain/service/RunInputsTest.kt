@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.domain.service
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
@@ -10,7 +11,6 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
@@ -38,7 +38,7 @@ class RunInputsTest {
             val declared = inputs[key] ?: return null
             val extra = (overrides.config["extra"] as? String)?.let { listOf(RunInputField(it, it.uppercase())) }.orEmpty()
             return ResolvedTask(
-                key, key, TaskExecutor.LLM, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(),
+                key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(),
                 null, listOf(key), listOf("success", "failure"), runInputs = declared + extra,
             )
         }

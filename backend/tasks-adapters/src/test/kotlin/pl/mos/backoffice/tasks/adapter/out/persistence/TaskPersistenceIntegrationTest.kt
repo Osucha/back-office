@@ -9,7 +9,10 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.tasks.application.port.out.AgentRepository
+import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.PostgresTestSupport
@@ -31,6 +34,7 @@ import java.util.UUID
 class TaskPersistenceIntegrationTest {
 
     @Autowired lateinit var rules: RuleRepository
+    @Autowired lateinit var agents: AgentRepository
     @Autowired lateinit var templates: TaskTemplateRepository
     @Autowired lateinit var skills: SkillRepository
     @Autowired lateinit var catalog: TaskCatalog
@@ -72,10 +76,10 @@ class TaskPersistenceIntegrationTest {
         val model = ModelProfileId.new()
         val content = TaskTemplate.Content(
             key = "tpl-$suffix", name = "Template", description = "desc", abstract = false, extendsKey = "base-$suffix",
-            category = TemplateCategory.IMPLEMENTATION, executor = TaskExecutor.IMPLEMENT, scope = Scope.Project(projectId), modelProfileId = model,
+            category = TemplateCategory.IMPLEMENTATION, agentKey = "ag-$suffix", scope = Scope.Project(projectId), modelProfileId = model,
             prompt = Prompt("sys", "usr", PromptMode.REPLACE), skills = listOf(skill.key), removeSkills = listOf("other"),
             rules = listOf("rl-$suffix", "rl2-$suffix"), removeRules = listOf("ask-dont-guess"),
-            config = mapOf("agent" to "OPENCODE", "verifyCommand" to null, "push" to true, "mergeRequest" to mapOf("create" to true, "labels" to listOf("ai", 1))),
+            config = mapOf("verifyCommand" to null, "push" to true, "mergeRequest" to mapOf("create" to true, "labels" to listOf("ai", 1))),
             outputSchema = """{"type":"object"}""", confidenceField = "confidence", produces = listOf("diff"), consumes = listOf("tasks"), tags = listOf("x", "y"),
         )
         val actor = Actor(PrincipalKind.USER, UUID.randomUUID(), "Bob Builder")
@@ -106,6 +110,11 @@ class TaskPersistenceIntegrationTest {
         assertThat(templates.existsByKey("none-$suffix")).isFalse()
         assertThat(templates.existsUsingSkill(skill.key)).isTrue()
         assertThat(templates.existsUsingSkill("other")).isFalse()
+        assertThat(loaded.agentKey).isEqualTo("ag-$suffix")
+        assertThat(templates.existsUsingAgent("ag-$suffix", null)).isTrue()
+        assertThat(templates.existsUsingAgent("ag-$suffix", projectId)).isTrue()
+        assertThat(templates.existsUsingAgent("ag-$suffix", UUID.randomUUID())).describedAs("another project's template does not see it").isFalse()
+        assertThat(templates.existsUsingAgent("none-$suffix", null)).isFalse()
 
         val bumped = templates.save(loaded.update(content.copy(name = "v2"), now.plusSeconds(1)))
         assertThat(templates.findById(saved.id)!!.version).isEqualTo(2)
@@ -114,6 +123,27 @@ class TaskPersistenceIntegrationTest {
         templates.delete(saved.id)
         skills.delete(skill.id)
         assertThat(templates.findById(saved.id)).isNull()
+    }
+
+    @Test
+    fun `agent round trips, is looked up per scope and answers the key query, and V304 inserted the built-in agents`() {
+        val model = pl.mos.backoffice.shared.ModelProfileId.new()
+        val global = agents.save(Agent.create(Agent.Content(key = "ag-$suffix", name = "G", description = "d", harness = AgentHarness.CLAUDE_CODE, modelProfileId = model, tags = listOf("a")), now, builtIn = true, actor = Actor.SYSTEM))
+        val mine = agents.save(Agent.create(Agent.Content(key = "ag-$suffix", name = "P", scope = Scope.Project(projectId)), now))
+
+        assertThat(agents.findById(global.id)).isEqualTo(global)
+        assertThat(agents.findByKeyAndScope("ag-$suffix", Scope.Global)).isEqualTo(global)
+        assertThat(agents.findByKeyAndScope("ag-$suffix", Scope.Project(projectId))).isEqualTo(mine)
+        assertThat(agents.findVisible(null)).contains(global).doesNotContain(mine)
+        assertThat(agents.findVisible(projectId)).contains(global, mine)
+        assertThat(agents.existsByKey("ag-$suffix")).isTrue()
+        assertThat(agents.existsByKey("none-$suffix")).isFalse()
+        assertThat(agents.findByKeyAndScope(AgentSnapshot.MODEL_ANSWER, Scope.Global)!!.harness).isNull()
+        assertThat(agents.findByKeyAndScope(AgentSnapshot.CLAUDE_CODE, Scope.Global)!!.harness).isEqualTo(AgentHarness.CLAUDE_CODE)
+        assertThat(agents.findByKeyAndScope(AgentSnapshot.OPENCODE, Scope.Global)!!.builtIn).isTrue()
+
+        listOf(global, mine).forEach { agents.delete(it.id) }
+        assertThat(agents.findById(global.id)).isNull()
     }
 
     @Test
@@ -136,13 +166,13 @@ class TaskPersistenceIntegrationTest {
     fun `the TaskCatalog bean resolves through the database with shadowing and overrides`() {
         val rule = rules.save(Rule.create(Rule.Content(key = "cat-ru-$suffix", name = "R", content = "Rule text"), now))
         val skill = skills.save(Skill.create(Skill.Content(key = "cat-sk-$suffix", name = "S", content = "# s"), now))
-        val base = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-base-$suffix", name = "Base", abstract = true, executor = TaskExecutor.LLM, prompt = Prompt(system = "base"), config = mapOf("a" to 1)), now))
+        val base = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-base-$suffix", name = "Base", abstract = true, prompt = Prompt(system = "base"), config = mapOf("a" to 1)), now))
         val leaf = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-leaf-$suffix", name = "Leaf", extendsKey = base.key, category = TemplateCategory.REVIEW, rules = listOf(rule.key), prompt = Prompt(system = "leaf"), produces = listOf("out"), skills = listOf(skill.key)), now))
-        val shadow = templates.save(TaskTemplate.create(TaskTemplate.Content(key = leaf.key, name = "Mine", extendsKey = base.key, scope = Scope.Project(projectId), prompt = Prompt(system = "mine", mode = PromptMode.REPLACE), executor = TaskExecutor.SPEC_KIT), now))
+        val shadow = templates.save(TaskTemplate.create(TaskTemplate.Content(key = leaf.key, name = "Mine", extendsKey = base.key, scope = Scope.Project(projectId), prompt = Prompt(system = "mine", mode = PromptMode.REPLACE), agentKey = AgentSnapshot.OPENCODE), now))
 
         val global = catalog.resolve(leaf.key, null)!!
         assertThat(global.lineage).containsExactly(leaf.key, base.key)
-        assertThat(global.executor).isEqualTo(TaskExecutor.LLM)
+        assertThat(global.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
         assertThat(global.prompt.system).isEqualTo("base\n\nleaf")
         assertThat(global.skills.map { it.key }).containsExactly(skill.key)
         assertThat(global.ports).containsExactly("success", "failure")
@@ -151,7 +181,7 @@ class TaskPersistenceIntegrationTest {
 
         val mine = catalog.resolve(leaf.key, projectId, TaskOverrides(config = mapOf("a" to null, "b" to 2), promptAppend = "go"))!!
         assertThat(mine.name).isEqualTo("Mine")
-        assertThat(mine.executor).isEqualTo(TaskExecutor.SPEC_KIT)
+        assertThat(mine.agent.harness).describedAs("the built-in agent V304 inserted").isEqualTo(AgentHarness.OPENCODE)
         assertThat(mine.prompt.system).isEqualTo("mine")
         assertThat(mine.prompt.user).isEqualTo("go")
         assertThat(mine.config).isEqualTo(mapOf("b" to 2))
@@ -160,7 +190,7 @@ class TaskPersistenceIntegrationTest {
         assertThat(catalog.palette(null).map { it.key }).contains(leaf.key).doesNotContain(base.key)
         val entry = catalog.palette(projectId).single { it.key == leaf.key }
         assertThat(entry.projectId).isEqualTo(projectId)
-        assertThat(entry.executor).isEqualTo(TaskExecutor.SPEC_KIT)
+        assertThat(entry.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(catalog.palette(null).single { it.key == leaf.key }.category).isEqualTo(TemplateCategory.REVIEW)
 
         listOf(shadow, leaf, base).forEach { templates.delete(it.id) }

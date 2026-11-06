@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -28,7 +29,6 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
@@ -49,13 +49,13 @@ class RunStartInputTest {
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask {
             val inputs = when (key) {
-                DefaultWorkflows.TEMPLATE_FETCH_ISSUE -> listOf(RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true))
+                "fetch-issue" -> listOf(RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true))
                 DefaultWorkflows.TEMPLATE_SPECIFY -> listOf(RunInputField("audience", "Audience", required = true))
                 DefaultWorkflows.TEMPLATE_PLAN -> listOf(RunInputField("techHints", "Technical hints", RunInputType.MULTILINE))
                 else -> emptyList()
             }
             return ResolvedTask(
-                key, key, TaskExecutor.LLM, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(),
+                key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(),
                 null, listOf(key), listOf("success", "failure"), runInputs = inputs,
             )
         }

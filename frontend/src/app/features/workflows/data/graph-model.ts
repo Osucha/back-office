@@ -4,6 +4,8 @@
  * consumed by `WorkflowCanvasComponent` (ngx-vflow).
  */
 import type {
+  ActionDescriptor,
+  AgentRef,
   NodeExecution,
   NodeExecutionStatus,
   NodeKind,
@@ -16,6 +18,7 @@ import type {
 } from '../../../core/api/types';
 
 import { SLUG_PATTERN } from '../../../core/forms/patterns';
+import { actionTitle } from '../../../core/ui/agents';
 
 export const NODE_ID_PATTERN = SLUG_PATTERN;
 export { SLUG_PATTERN };
@@ -61,6 +64,15 @@ export const NODE_KIND_META: Record<NodeKind, NodeKindMeta> = {
     hasInput: true,
     description: $localize`:@@workflows.kind.task.description:Executes a task template from the library with optional overrides.`,
   },
+  ACTION: {
+    kind: 'ACTION',
+    title: $localize`:@@workflows.kind.action:Action`,
+    icon: 'thunderbolt',
+    color: 'var(--bo-ci)',
+    defaultPorts: ['success', 'failure'],
+    hasInput: true,
+    description: $localize`:@@workflows.kind.action.description:A deterministic integration step (Jira, other workflows, project digest); no model.`,
+  },
   DECISION: {
     kind: 'DECISION',
     title: $localize`:@@workflows.kind.decision:Decision`,
@@ -103,6 +115,8 @@ export const NODE_KIND_META: Record<NodeKind, NodeKindMeta> = {
 export interface PaletteIndex {
   tasks: Map<string, PaletteTask>;
   controlPorts: Map<NodeKind, string[]>;
+  /** ADR 0056: actions by type. */
+  actions: Map<string, ActionDescriptor>;
 }
 
 export function indexPalette(palette: WorkflowPalette | null | undefined): PaletteIndex {
@@ -112,7 +126,9 @@ export function indexPalette(palette: WorkflowPalette | null | undefined): Palet
   for (const c of palette?.controlNodes ?? []) {
     if (c.kind && c.ports?.length) controlPorts.set(c.kind, c.ports);
   }
-  return { tasks, controlPorts };
+  const actions = new Map<string, ActionDescriptor>();
+  for (const a of palette?.actions ?? []) if (a.type) actions.set(a.type, a);
+  return { tasks, controlPorts, actions };
 }
 
 /** The port a gate leaves through when its approval expires (always present, like on the server). */
@@ -148,6 +164,11 @@ export function portsFor(node: WorkflowNode, palette?: PaletteIndex | null): str
       const fromPalette = key ? palette?.tasks.get(key)?.ports : undefined;
       return fromPalette?.length ? fromPalette : NODE_KIND_META.TASK.defaultPorts;
     }
+    case 'ACTION': {
+      const type = node.action?.type;
+      const fromPalette = type ? palette?.actions.get(type)?.ports : undefined;
+      return fromPalette?.length ? fromPalette : NODE_KIND_META.ACTION.defaultPorts;
+    }
     case 'DECISION':
       return distinct([
         ...(node.decision?.branches ?? []).map((b) => b.id),
@@ -176,6 +197,7 @@ export function requiredPortsFor(node: WorkflowNode, palette?: PaletteIndex | nu
     case 'START':
       return ports.slice(0, 1);
     case 'TASK':
+    case 'ACTION':
       return ports.includes('success') ? ['success'] : ports.slice(0, 1);
     case 'DECISION':
       return ports;
@@ -236,15 +258,29 @@ export function uniqueNodeId(base: string, existing: Iterable<string>): string {
   return `${slug}-${i}`;
 }
 
-/** A fresh node of the given kind (or task template) with sensible defaults. */
+/** "FETCH_ISSUE" -> "fetch-issue" (the id base of a new action node). */
+function actionSlug(type: string): string {
+  return type.toLowerCase().replace(/_/g, '-');
+}
+
+/**
+ * A fresh node of the given kind (or task template, or action - ADR 0056) with sensible
+ * defaults. A new action node starts with the action's default config and its translated title.
+ */
 export function createNode(
   kind: NodeKind,
   position: Point,
   existingIds: Iterable<string>,
   task?: PaletteTask | null,
+  action?: ActionDescriptor | null,
 ): WorkflowNode {
   const meta = NODE_KIND_META[kind];
-  const base = kind === 'TASK' && task?.key ? task.key : kind;
+  const base =
+    kind === 'TASK' && task?.key
+      ? task.key
+      : kind === 'ACTION' && action?.type
+        ? actionSlug(action.type)
+        : kind;
   const node: WorkflowNode = {
     id: uniqueNodeId(base, existingIds),
     kind,
@@ -255,6 +291,12 @@ export function createNode(
   switch (kind) {
     case 'TASK':
       node.task = { templateKey: task?.key ?? '', overrides: {} };
+      break;
+    case 'ACTION':
+      if (action?.type) {
+        node.action = { type: action.type, config: structuredClone(action.defaults ?? {}) };
+        node.name = actionTitle(action.type, action.title);
+      }
       break;
     case 'DECISION':
       node.decision = {
@@ -317,6 +359,7 @@ export function replaceNode(
   const stillValid = (e: WorkflowEdge) =>
     e.from !== next.id ||
     next.kind === 'TASK' ||
+    next.kind === 'ACTION' ||
     next.kind === 'START' ||
     ports.has(e.fromPort.toLowerCase());
   edges = edges.filter(stillValid);
@@ -367,10 +410,16 @@ export interface CanvasNodeData {
   hasInput: boolean;
   /** Template metadata for TASK nodes (from the palette). */
   templateName: string | null;
-  executor: string | null;
+  /**
+   * ADR 0056: the agent of a TASK node: the step's (`overrides.agentKey`, by key until the agents
+   * are known) else the template's; null for other kinds.
+   */
+  agent: AgentRef | null;
   /** ADR 0055: the template's category (GENERAL when it has none); null without a template. */
   category: string | null;
-  /** Connection capabilities the template needs (Jira tasks, ADR 0030). */
+  /** ADR 0056: the translated title of an ACTION node's action; null for other kinds. */
+  actionTitle?: string | null;
+  /** Connection capabilities the action needs (Jira actions, ADR 0030/0056). */
   requiredCapabilities?: string[];
   /** Run mode: execution status colour. */
   status: NodeVisualStatus;
@@ -403,6 +452,8 @@ export function buildNodeData(
     readonly?: boolean;
     /** Output ports of this node that have an edge (decides whether a gate shows `timeout`). */
     connectedPorts?: ReadonlySet<string>;
+    /** ADR 0056: the agents of the project, to name a step's own agent. */
+    agents?: readonly AgentRef[] | null;
   } = {},
 ): CanvasNodeData {
   const meta = NODE_KIND_META[node.kind];
@@ -410,6 +461,17 @@ export function buildNodeData(
     node.kind === 'TASK' && node.task?.templateKey
       ? opts.palette?.tasks.get(node.task.templateKey)
       : undefined;
+  const action =
+    node.kind === 'ACTION' && node.action?.type
+      ? opts.palette?.actions.get(node.action.type)
+      : undefined;
+  const stepAgentKey = node.kind === 'TASK' ? node.task?.overrides?.agentKey : null;
+  const agent: AgentRef | null = stepAgentKey
+    ? (opts.agents?.find((a) => a.key === stepAgentKey) ?? {
+        key: stepAgentKey,
+        name: stepAgentKey,
+      })
+    : (template?.agent ?? null);
   const execs = (opts.executions ?? []).filter((e) => e.nodeId === node.id);
   const last = execs.length ? execs[execs.length - 1] : undefined;
   let status: NodeVisualStatus = last?.status ?? null;
@@ -420,9 +482,13 @@ export function buildNodeData(
     ports: visiblePortsFor(node, opts.palette, opts.connectedPorts ?? new Set()),
     hasInput: meta.hasInput,
     templateName: template?.name ?? null,
-    executor: template?.executor ?? null,
+    agent,
     category: template ? (template.category ?? 'GENERAL') : null,
-    requiredCapabilities: (template?.requiredCapabilities as string[] | undefined) ?? [],
+    actionTitle:
+      node.kind === 'ACTION' && node.action?.type
+        ? actionTitle(node.action.type, action?.title)
+        : null,
+    requiredCapabilities: (action?.requiredCapabilities as string[] | undefined) ?? [],
     status,
     takenPortsList: Array.from(new Set(execs.map((e) => e.port).filter((p): p is string => !!p))),
     attempts: execs.length,
@@ -503,7 +569,7 @@ export function issueToMergeRequestTemplate(): WorkflowDefinitionInput {
   ): WorkflowNode => ({ id, kind, name, position: { x: 0, y: 0 }, maxVisits: 3, ...extra });
   const nodes: WorkflowNode[] = [
     n('start', 'START', 'Start'),
-    n('fetch-issue', 'TASK', 'Fetch issue', { task: { templateKey: 'fetch-issue' } }), // i18n-ignore
+    n('fetch-issue', 'ACTION', 'Fetch issue', { action: { type: 'FETCH_ISSUE', config: {} } }), // i18n-ignore
     n('specify', 'TASK', 'Specify', { task: { templateKey: 'spec-kit-specify' } }),
     n('clarify', 'TASK', 'Clarify spec', { task: { templateKey: 'clarify-spec' } }), // i18n-ignore
     n('confident', 'DECISION', 'Confident?', {
@@ -558,8 +624,8 @@ export function issueToMergeRequestTemplate(): WorkflowDefinitionInput {
       },
     }),
     // i18n-ignore
-    n('transition', 'TASK', 'Move to In Review', {
-      task: { templateKey: 'transition-issue', overrides: { config: { toStatus: 'In Review' } } }, // i18n-ignore
+    n('transition', 'ACTION', 'Move to In Review', {
+      action: { type: 'TRANSITION_ISSUE', config: { toStatus: 'In Review' } }, // i18n-ignore
     }),
     n('done', 'END', 'End (success)', { end: { outcome: 'SUCCESS' } }), // i18n-ignore
     n('failed', 'END', 'End (failure)', { end: { outcome: 'FAILURE' } }), // i18n-ignore

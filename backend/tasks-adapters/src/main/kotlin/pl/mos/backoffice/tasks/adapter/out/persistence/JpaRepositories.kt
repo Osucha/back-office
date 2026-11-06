@@ -17,6 +17,19 @@ interface TaskTemplateJpaRepository : JpaRepository<TaskTemplateEntity, UUID> {
 
     @Query(value = "select exists(select 1 from task_template t where t.skills @> to_jsonb(cast(:key as text)))", nativeQuery = true)
     fun existsUsingSkill(key: String): Boolean
+
+    fun existsByAgentKey(agentKey: String): Boolean
+
+    @Query(value = "select exists(select 1 from task_template t where t.agent_key = :key and (t.project_id is null or t.project_id = :projectId))", nativeQuery = true)
+    fun existsUsingAgentVisibleTo(key: String, projectId: UUID): Boolean
+}
+
+interface AgentJpaRepository : JpaRepository<AgentEntity, UUID> {
+    fun findByKeyAndScopeTypeAndProjectId(key: String, scopeType: ScopeType, projectId: UUID?): AgentEntity?
+    fun findByKeyAndScopeTypeAndProjectIdIsNull(key: String, scopeType: ScopeType): AgentEntity?
+    fun findAllByScopeType(scopeType: ScopeType): List<AgentEntity>
+    fun findAllByScopeTypeOrProjectId(scopeType: ScopeType, projectId: UUID): List<AgentEntity>
+    fun existsByKey(key: String): Boolean
 }
 
 interface SkillJpaRepository : JpaRepository<SkillEntity, UUID> {

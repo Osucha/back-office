@@ -1,9 +1,9 @@
 # Biblioteka zadań
 
 Biblioteka zadań przechowuje to, co robią agenci i jak są promptowani, niezależnie od workflowów, które
-z niej korzystają. **Biblioteka** (**Library**) ma trzy grupy (ADR 0055):
+z niej korzystają. **Biblioteka** (**Library**) ma trzy grupy (ADR 0055, 0056):
 
-- **Zadania** (**Tasks**): **Szablony**, **Umiejętności** i **Reguły**, opisane w tym rozdziale;
+- **Zadania** (**Tasks**): **Szablony**, **Umiejętności**, **Reguły** i **Agenci**, opisane w tym rozdziale;
 - **Workflowy** (**Workflows**): workflowy współdzielone między projektami ([Biblioteka workflowów](workflow-library.md));
 - **Źródła** (**Sources**): materiały, które kroki mogą podłączyć ([Źródła](#sources)).
 
@@ -11,12 +11,17 @@ z niej korzystają. **Biblioteka** (**Library**) ma trzy grupy (ADR 0055):
 
 | Element | Odpowiednik | Służy do |
 |---|---|---|
-| Szablon zadania | klasa | zdefiniowania zadania: wykonawca, kategoria, prompty, umiejętności, reguły, konfiguracja; ma jednego rodzica |
+| Szablon zadania | klasa | opisania pracy: kategoria, prompty, umiejętności, reguły, konfiguracja, wyniki, dane wejściowe uruchomienia i agent, który domyślnie ją wykonuje; ma jednego rodzica |
 | Reguła | stały rozkaz | zapisania tego, czego agent musi zawsze przestrzegać; jest zawsze w kontekście agenta |
 | Umiejętność | rozdział podręcznika | dania agentowi wiedzy lub procedury, którą otwiera, gdy zadanie jej wymaga (plik `SKILL.md`) |
+| Agent | ten, kto wykonuje pracę | wskazania, kto wykonuje zadanie: pojedyncza odpowiedź modelu albo agent kodujący (OpenCode lub Claude Code) w sandboxie, opcjonalnie z własnym modelem |
 | Rozwiązane zadanie | instancja | tego, co ostatecznie otrzymuje agent: szablon scalony z przodkami, nadpisaniami projektu i nadpisaniami węzła |
 
-Kluczy nie wpisujesz: szablon, umiejętność i reguła dostają klucz z nazwy przy tworzeniu (na przykład **Analiza
+Praca, która nie wymaga modelu (pobranie zgłoszenia Jira, komentarz do niego, zmiana jego statusu, uruchomienie
+workflowów, podsumowanie projektu), nie należy do biblioteki: to węzeł **akcji** w projektancie workflowów
+([Akcje](workflows.md#actions)).
+
+Kluczy nie wpisujesz: szablon, umiejętność, reguła i agent dostają klucz z nazwy przy tworzeniu (na przykład **Analiza
 zgłoszenia** daje `analiza-zgloszenia`), a klucz zostaje, gdy zmienisz nazwę. Workflowy, MCP i API posługują się
 kluczem; edytory pokazują go drobno w sekcji **Zaawansowane**.
 
@@ -28,8 +33,8 @@ w toku zachowują to, co już rozwiązały.
 
 | Chcesz | Biblioteka globalna | Własne wpisy jednego projektu |
 |---|---|---|
-| Przeglądać szablony, umiejętności, reguły i podgląd | `library.view` (każdy **Członek**, **Member**) | `project.view` w projekcie |
-| Tworzyć, edytować lub usuwać szablony, umiejętności i reguły | `library.manage` (rola **Kurator biblioteki**, **Library curator**) | `library.project.manage` (**Właściciel**, **Maintainer** projektu) |
+| Przeglądać szablony, umiejętności, reguły, agentów i podgląd | `library.view` (każdy **Członek**, **Member**) | `project.view` w projekcie |
+| Tworzyć, edytować lub usuwać szablony, umiejętności, reguły i agentów | `library.manage` (rola **Kurator biblioteki**, **Library curator**) | `library.project.manage` (**Właściciel**, **Maintainer** projektu) |
 
 Bez odpowiedniego uprawnienia edytory otwierają się w trybie tylko do odczytu. Każda zmiana jest
 zapisywana w dzienniku audytu, a listy pokazują, kto ostatnio zmienił wpis.
@@ -40,20 +45,15 @@ zapisywana w dzienniku audytu, a listy pokazują, kto ostatnio zmienił wpis.
 **Biblioteka** → **Zadania** → **Szablony** (**Templates**, `/library/templates`) wyświetla szablony pogrupowane
 według **Kategorii** (**Category**): Analiza, Specyfikacja, Planowanie, Implementacja, Przegląd, Jira, Operacje
 i Ogólne (szablony bez kategorii). Projektant workflowów grupuje paletę tak samo. Szablony wbudowane są oznaczone;
-podobnie abstrakcyjne, które mogą być bazą dla innych, ale nigdy nie są wykonywane. Filtruj tekstem, kategorią,
-wykonawcą oraz przełącznikiem **Szablony globalne** / **Globalne + KEY** (**Global templates** /
+podobnie abstrakcyjne, które mogą być bazą dla innych, ale nigdy nie są wykonywane. Filtruj tekstem, kategorią i agentem
+oraz przełącznikiem **Szablony globalne** / **Globalne + KEY** (**Global templates** /
 **Global + KEY**), aby uwzględnić własne szablony projektu.
 
-Wykonawca decyduje, kto wykonuje pracę (ADR 0054 nazywa wykonawców według tego, co robią; wartość techniczna jest
-pokazana drobno):
-
-| Wykonawca | Robi |
-|---|---|
-| **Odpowiedź modelu** (**Model answer**, `LLM`) | Jedno wywołanie modelu wewnątrz Back Office, bez repozytorium; umiejętności trafiają do promptu systemowego; może zwrócić ustrukturyzowany JSON i pewność. |
-| **Agent kodujący** (**Coding agent**, `IMPLEMENT`) | Claude Code lub OpenCode w sandboxie na runnerze, z repozytorium; może wypchnąć gałąź i otworzyć merge request. Służy też do analizy i przygotowania obszaru roboczego. |
-| **Krok Spec Kit** (**Spec Kit step**, `SPEC_KIT`) | Faza Spec Kit (specify, clarify, plan, tasks) wykonywana przez agenta kodującego. |
-| **Jira: pobierz zgłoszenie**, **Jira: komentarz**, **Jira: zmień status** | Wywołania Jiry (zob. [Jira](integrations-jira.md#jira-tasks)). |
-| **Uruchom workflowy** (**Start workflows**), **Podsumowanie projektu** (**Project digest**) | Operacje Back Office bez modelu ([Workflowy](workflows.md)). |
+Szablon opisuje pracę; jego **Agent** mówi, kto domyślnie ją wykonuje (zob. [Agenci](#agents)): **Odpowiedź modelu**
+(**Model answer**; jedno wywołanie modelu wewnątrz Back Office, bez repozytorium; może zwrócić ustrukturyzowany JSON
+i pewność), **OpenCode** albo **Claude Code** (agent kodujący w sandboxie na runnerze, z repozytorium; może wypchnąć
+gałąź i otworzyć merge request; szablon z fazą Spec Kit `phase` wykonuje tę fazę Spec Kit). Krok workflowu może
+wybrać innego agenta.
 
 ### Kroki: tworzenie szablonu
 
@@ -61,7 +61,8 @@ pokazana drobno):
    szablonu projektu).
 2. **Typ** (**Type**): **Nazwa**, **Opis**, **Na bazie** (**Based on**; jeden rodzic: szablon dziedziczy jego
    prompty, umiejętności, reguły i konfigurację, a zmienia tylko to, co ustawisz), **Kategoria** (**Category**;
-   puste oznacza dziedziczoną), **Wykonawca** (puste oznacza dziedziczony; edytor pokazuje, który i co robi), **Zakres** (**Globalny** lub
+   puste oznacza dziedziczoną), **Agent** (puste oznacza dziedziczonego; puste w całym łańcuchu oznacza **Odpowiedź
+   modelu**), **Zakres** (**Globalny** lub
    **Projektowy** z wyborem **Projektu**), **Profil modelu** (**Model profile**).
 3. **Prompt**: wybierz **Dopisz do rodzica** (**Append to parent**) lub **Zastąp rodzica** (**Replace
    parent**), a następnie napisz **Prompt systemowy** (**System prompt**) i **Prompt użytkownika** (**User
@@ -79,9 +80,9 @@ pokazana drobno):
    obowiązują i tak, są pokazane tylko do odczytu. W sekcji **Zaawansowane** pola **Usuń odziedziczone umiejętności**
    (**Remove inherited skills**) i **Pomiń odziedziczone lub automatyczne reguły** (**Drop inherited or automatic
    rules**) zabierają wpisy temu szablonowi i szablonom na nim opartym.
-5. **Konfiguracja** (**Configuration**): formularz z ustawieniami wykonawcy (dla agenta kodującego: agent,
+5. **Konfiguracja** (**Configuration**): formularz z ustawieniami dla agenta szablonu (dla agenta kodującego:
    polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania, narzędzia agenta, obszar
-   roboczy, ...). Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
+   roboczy, faza Spec Kit, ...). Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
    (**Raw JSON**) pokazuje te same ustawienia jako JSON, także klucze, których formularz nie zna.
    **Zaawansowane: kontrakty, artefakty, schemat wyjścia, sandbox** (zwinięte; większość szablonów niczego tu nie
    potrzebuje): **Abstrakcyjny** (**Abstract**; tylko baza dla innych szablonów, nigdy samodzielny krok),
@@ -105,7 +106,7 @@ pokazana drobno):
 
 | Pole | Reguła |
 |---|---|
-| Wykonawca, kategoria | Wygrywa najbliższy w łańcuchu. |
+| Agent, kategoria | Wygrywa najbliższy w łańcuchu. |
 | Profil modelu, schemat wyjścia, pole pewności | Wygrywa wartość potomka, jeśli jest ustawiona. |
 | Prompt systemowy i użytkownika | Dla każdego pola osobno: **Dopisz do rodzica** dodaje tekst potomka po tekście rodzica; **Zastąp rodzica** używa tylko tekstu potomka. Puste pole zachowuje wartość rodzica. |
 | Umiejętności, reguły | Suma wzdłuż łańcucha minus usunięte. Reguły automatyczne są pierwsze. |
@@ -117,7 +118,8 @@ pokazana drobno):
 ### Dane wejściowe uruchomienia
 
 Zadanie deklaruje dane wejściowe, których potrzebuje, na przykład wbudowany `base-agent` deklaruje
-**Materiał wejściowy** (wieloliniowy, opcjonalny), a `fetch-issue` **Klucz zgłoszenia Jira** (wymagany). Każde
+**Materiał wejściowy** (wieloliniowy, opcjonalny), a akcja **Pobierz zgłoszenie** w projektancie prosi o **Klucz
+zgłoszenia Jira** (wymagany). Każde
 zadanie rozszerzające szablon dziedziczy jego pola. Przy starcie uruchomienia formularz pokazuje pola wszystkich
 kroków workflowu: pole jest wymagane, gdy wymaga go którykolwiek krok, a gdy dwa kroki używają tej samej nazwy,
 wygrywa pierwsza etykieta (projektant ostrzega o tym). Wartości trafiają do promptu kroku w sekcji **Run input**,
@@ -128,7 +130,7 @@ zgłoszenia Jira** ustawia też klucz zgłoszenia uruchomienia.
 
 Prawa strona edytora pokazuje **Podgląd rozwiązanego zadania** (**Resolved preview**): dokładnie to, co
 otrzymuje agent po dziedziczeniu i przesłonięciu przez projekt, dla biblioteki globalnej lub wybranego
-projektu. Pokazuje rodowód, wykonawcę i kategorię oraz karty **Prompt systemowy**, **Prompt użytkownika**,
+projektu. Pokazuje rodowód, agenta i kategorię oraz karty **Prompt systemowy**, **Prompt użytkownika**,
 **Umiejętności**, **Reguły**, **Konfiguracja** i **Dane wejściowe** (**Run inputs**: scalone pola wraz
 z szablonem, z którego każde jest dziedziczone; reguły automatyczne są oznaczone). Jeśli umiejętność lub reguła,
 którą szablon wymienia, nie istnieje, podgląd ją wskazuje, a zadanie nie może działać, dopóki tego nie poprawisz. Podgląd odzwierciedla zapisaną wersję; niezapisane zmiany są
@@ -156,9 +158,9 @@ przestrzegać: konwencje kodu, rzeczy niedozwolone, sposób raportowania. Reguł
 
 Jak reguła trafia do agenta:
 
-- Zadania **Odpowiedź modelu** dostają reguły w prompcie systemowym, przed umiejętnościami.
-- Zadania **Agent kodujący** i **Krok Spec Kit** dostają je na początku promptu, zaraz po części systemowej
-  szablonu. Nic nie jest zapisywane w repozytorium.
+- Kroki wykonywane przez **Odpowiedź modelu** dostają reguły w prompcie systemowym, przed umiejętnościami.
+- Kroki wykonywane przez agenta kodującego (**OpenCode**, **Claude Code**, także fazy Spec Kit) dostają je na
+  początku promptu, zaraz po części systemowej szablonu. Nic nie jest zapisywane w repozytorium.
 
 Które reguły dostaje krok:
 
@@ -184,6 +186,54 @@ Reguły, którą wymienia szablon, nie można usunąć. Reguły wbudowane: `agen
 (każdy agent dostaje je przez wbudowany szablon `base-agent`), `kotlin-hexagonal` i `angular-ng-zorro`
 (konwencje kodu samego Back Office: skopiuj je do reguły projektowej dla własnego stosu i ustaw ją jako automatyczną).
 
+<a id="agents"></a>
+## Agenci
+
+**Biblioteka** → **Zadania** → **Agenci** (**Agents**, `/library/agents`) wyświetla tych, którzy mogą wykonywać
+pracę zadań (ADR 0056). Agent to model, **harness**, który prowadzi z nim rozmowę (narzędzia, kontekst, pytania),
+i miejsce, w którym pracuje. Dziś agent ma harness i opcjonalnie model; miejsce pracy pochodzi z kroku (jego obszar
+roboczy, repozytoria, reguły i umiejętności). Kolejne etapy dodadzą środowisko projektu i sesje ciągnące się przez
+kilka kroków.
+
+| Pole | Znaczenie |
+|---|---|
+| **Rodzaj** (**Kind**; harness) | **Odpowiedź modelu**: jedno wywołanie modelu wewnątrz Back Office, bez narzędzi i repozytorium. **OpenCode** lub **Claude Code**: sesja agenta kodującego w sandboxie runnera, z obszarem roboczym kroku. |
+| **Model** | Opcjonalny. Puste oznacza model kroku albo ustawienia domyślne dla jego rodzaju: projektu, potem osoby uruchamiającej, potem platformy. |
+| **Nazwa**, **Opis**, **Zakres**, **Tagi** | Jak w regułach; klucz powstaje z nazwy. |
+
+Agenci wbudowani: **Odpowiedź modelu** (**Model answer**, `model-answer`), **OpenCode** (`opencode`) i **Claude
+Code** (`claude-code`). Agenci mają te same uprawnienia, zakresy i audyt co reguły; **Dostosuj dla projektu** tworzy
+kopię projektową. Agenta, którego używa szablon, nie można usunąć: najpierw wybierz w tych szablonach innego agenta.
+
+**Kto wykonuje krok**: **Agent** wybrany w kroku w projektancie, w przeciwnym razie **Agent** szablonu
+(dziedziczony, wygrywa najbliższy w łańcuchu), w przeciwnym razie **Odpowiedź modelu**.
+
+**Jaki model**: **Profil modelu** kroku, w przeciwnym razie agenta, w przeciwnym razie szablonu, a potem ustawienia
+domyślne (projekt, osoba uruchamiająca, platforma).
+
+**Jak krok działa**, wynika z agenta i szablonu:
+
+| Agent | Szablon | Krok |
+|---|---|---|
+| Odpowiedź modelu | każdy, który nie wymaga agenta kodującego | jedno wywołanie modelu: ustrukturyzowana odpowiedź, pewność i ochrona przed wstrzyknięciem promptu |
+| OpenCode lub Claude Code | z fazą Spec Kit `phase` w konfiguracji | faza Spec Kit |
+| OpenCode lub Claude Code | każdy inny | zadanie agenta: push i merge request zgodnie z konfiguracją; bez pushu jego końcowa odpowiedź staje się artefaktem `result` |
+
+Krok nie może zostać wykonany (projektant i podgląd mówią dlaczego), gdy szablon wymaga agenta kodującego (faza
+Spec Kit `phase`, `push: true`, `prepareOnly`), a dostaje **Odpowiedź modelu**, albo ma **Schemat wyjścia**
+(ustrukturyzowaną odpowiedź), a dostaje agenta kodującego.
+
+### Kroki: tworzenie agenta
+
+1. Kliknij **Utwórz agenta** (**Create agent**).
+2. Wpisz **Nazwę**, **Opis**, **Zakres** (**Globalny** lub **Projektowy**) i **Tagi**.
+3. Wybierz **Rodzaj** (**Odpowiedź modelu**, **OpenCode** lub **Claude Code**) i, jeśli agent ma zawsze używać
+   jednego modelu, **Model**.
+4. Kliknij **Utwórz agenta**.
+
+Aby porównać harnessy lub modele na tym samym zadaniu, utwórz agenta dla każdej kombinacji (na przykład „Claude
+Code z modelem X”) i wybierz go w kroku; szablon pozostaje ten sam.
+
 <a id="skills"></a>
 ## Umiejętności
 
@@ -194,9 +244,9 @@ a potem krótkie, konkretne, ponumerowane kroki.
 
 Jak umiejętność trafia do agenta:
 
-- Zadania **Odpowiedź modelu** dostają umiejętność dopisaną do promptu systemowego (pojedyncze wywołanie modelu nie
-  może otwierać plików).
-- Zadania na runnerze (**Spec Kit**, **Implementacja**) dostają ją zapisaną jako
+- Kroki wykonywane przez **Odpowiedź modelu** dostają umiejętność dopisaną do promptu systemowego (pojedyncze
+  wywołanie modelu nie może otwierać plików).
+- Kroki wykonywane przez agenta kodującego (także fazy Spec Kit) dostają ją zapisaną jako
   `.claude/skills/<key>/SKILL.md` i `.opencode/skills/<key>/SKILL.md`, które Claude Code i OpenCode
   wczytują samodzielnie.
 
@@ -247,16 +297,18 @@ przyjmą, też je dostają.
 
 ## Biblioteka wbudowana
 
-Back Office zawiera szablony faz Spec Kit, implementacji z OpenCode lub Claude Code, `clarify-spec`,
-`code-review`, `analyse-issue`, zadań Jiry oraz zadań SDLC, takich jak `impact-analysis`,
-`write-user-story`, `plan-task-list`, `implement-task-list` i `review-against-spec`, wraz z ich
-umiejętnościami i regułami. Wpisy wbudowane możesz edytować; Back Office nigdy nie nadpisuje
-zmienionego wpisu.
+Back Office zawiera szablony faz Spec Kit, implementacji, `clarify-spec`, `code-review`, `analyse-issue` oraz
+zadań SDLC, takich jak `impact-analysis`, `write-user-story`, `plan-task-list`, `implement-task-list`
+i `review-against-spec`, wraz z ich umiejętnościami i regułami oraz trzema wbudowanymi [agentami](#agents). Wpisy
+wbudowane możesz edytować; Back Office nigdy nie nadpisuje zmienionego wpisu. Dawne szablony **Fetch issue**,
+**Notify Jira**, **Transition issue**, **Start workflow** i **Project digest** nie należą już do biblioteki: są
+[akcjami](workflows.md#actions) w projektancie, a workflowy, które ich używały, działają dalej.
 
 Szablon z tagiem `deprecated` działa dalej w krokach, które go używają, ale projektant, paleta MCP i lista (chyba
 że włączysz **Pokaż przestarzałe**, **Show deprecated**) już go nie proponują. Przestarzałe są teraz (ADR 0054):
-`implement-claude-code` (użyj `implement-opencode`, `implement-task-list` albo `agent-task` z agentem Claude Code
-w **Konfiguracji**) oraz `analyse-issue` (użyj `impact-analysis`).
+`implement-claude-code` (to `implement-opencode` z agentem Claude Code; użyj `implement-opencode`,
+`implement-task-list` albo `agent-task` i wybierz w kroku agenta **Claude Code**) oraz `analyse-issue` (użyj
+`impact-analysis`).
 
 <a id="built-in-updates"></a>
 ### Aktualizacje biblioteki wbudowanej
@@ -271,8 +323,8 @@ instalacji i przenieś to, czego potrzebujesz, albo usuń swoją niewbudowaną k
 ### Jak zbudowane są zadania wbudowane
 
 - Wspólne reguły niosą trzy szablony abstrakcyjne: `base-agent` (rola, konstytucja, uczciwość, zakres,
-  bezpieczeństwo, dwie umiejętności podstawowe), `base-llm` dla zadań LLM w Back Office (bez repozytorium;
-  przy schemacie wyjścia odpowiedź to wyłącznie JSON) i `base-coding-agent` dla zadań na runnerze (praca
+  bezpieczeństwo, dwie reguły podstawowe), `base-llm` dla zadań z odpowiedzią modelu (bez repozytorium;
+  przy schemacie wyjścia odpowiedź to wyłącznie JSON) i `base-coding-agent` dla zadań agenta kodującego (praca
   w repozytorium, cytowanie ścieżek plików, nigdy commit ani push: runner commituje i wypycha po agencie).
 - Zadania **Spec Kit**: prompt fazy specify zaczyna się linią `KLUCZ: podsumowanie`, potem opis zgłoszenia
   i kryteria akceptacji, potem instrukcje. Fazy plan i tasks nie wklejają specyfikacji ani planu, które
@@ -297,8 +349,8 @@ instalacji i przenieś to, czego potrzebujesz, albo usuń swoją niewbudowaną k
   NOT_APPLICABLE); jedno wymaganie MISSING daje werdykt REQUEST_CHANGES.
 - `clarify-spec` zapisuje `clarifications` jako listę markdown (pytanie, dlaczego jest ważne, proponowana
   odpowiedź); `write-user-story` i `write-use-case` zapisują swoje dokumenty jako artefakty `user-story`
-  i `use-case`. `fetch-issue` czyta podsumowanie, opis, kryteria akceptacji i etykiety, bez komentarzy
-  i załączników.
+  i `use-case`. Akcja **Pobierz zgłoszenie** czyta podsumowanie, opis, kryteria akceptacji i etykiety, bez
+  komentarzy i załączników.
 - Otwarte pytania mają jeden znacznik na rodzaj dokumentu: `[NEEDS CLARIFICATION: ...]` w specyfikacji
   Spec Kit, `[?]` wszędzie indziej. Agenci nigdy nie wymyślają właściciela ani terminu, zostawiają
   identyfikatory takie jak `US-<AREA>-<NN>` i numery ADR `NNNN` jako symbole zastępcze i nigdy nie
@@ -317,8 +369,8 @@ Do pracy, którą opisujesz sam w węźle, służą dwa wbudowane szablony: prze
 
 | Szablon | Kto go wykonuje | Do czego |
 |---|---|---|
-| **LLM task** (`llm-task`) | jedno wywołanie modelu, bez repozytorium | podsumowania, szkice, odpowiedzi na podstawie materiału wejściowego przebiegu |
-| **Agent task** (`agent-task`) | agent kodujący na runnerze (domyślnie Claude Code, `agent` w **Konfiguracji**), z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
+| **LLM task** (`llm-task`) | agent **Odpowiedź modelu**: jedno wywołanie modelu, bez repozytorium | podsumowania, szkice, odpowiedzi na podstawie materiału wejściowego przebiegu |
+| **Agent task** (`agent-task`) | agent kodujący na runnerze (domyślnie **Claude Code**; innego wybierzesz w polu **Agent** kroku), z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
 
 Oba wstawiają do promptu systemowego zgłoszenie (gdy przebieg je ma), daną wejściową **Materiał wejściowy** i uwagi
 recenzenta (każde tylko wtedy, gdy istnieje), więc zastąpiony prompt może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian; w projekcie

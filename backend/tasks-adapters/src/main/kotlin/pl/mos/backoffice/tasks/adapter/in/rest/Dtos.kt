@@ -4,10 +4,10 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputType
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import java.time.Instant
@@ -48,7 +48,7 @@ data class TaskTemplateInputDto(
     val abstract: Boolean = false,
     val extendsKey: String? = null,
     val category: TemplateCategory? = null,
-    val executor: TaskExecutor? = null,
+    @field:Pattern(regexp = KEY_PATTERN) val agentKey: String? = null,
     val scope: ScopeDto,
     val modelProfileId: UUID? = null,
     val prompt: TaskPromptDto = TaskPromptDto(),
@@ -73,7 +73,7 @@ data class TaskTemplateDto(
     val abstract: Boolean,
     val extendsKey: String?,
     val category: TemplateCategory?,
-    val executor: TaskExecutor?,
+    val agentKey: String?,
     val scope: ScopeDto,
     val modelProfileId: UUID?,
     val prompt: TaskPromptDto,
@@ -105,6 +105,7 @@ data class ResolutionCheckDto(val ok: Boolean, val problems: List<String>)
 
 /** `TaskOverrides` schema: a workflow step's overrides of its template (ADR 0054, POST resolve). */
 data class TaskOverridesDto(
+    val agentKey: String? = null,
     val modelProfileId: UUID? = null,
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
@@ -114,11 +115,14 @@ data class TaskOverridesDto(
     val config: Map<String, Any?> = emptyMap(),
 )
 
-/** `ResolvedTask` schema: the merged preview, including abstract templates (then `executor` may be null). */
+/** `AgentRef` schema (ADR 0056): who runs a step; no harness = model answer. */
+data class AgentRefDto(val key: String, val name: String, val harness: AgentHarness?, val modelProfileId: UUID?)
+
+/** `ResolvedTask` schema: the merged preview, including abstract templates. */
 data class ResolvedTaskDto(
     val key: String,
     val name: String,
-    val executor: TaskExecutor?,
+    val agent: AgentRefDto,
     val modelProfileId: UUID?,
     val prompt: ResolvedPromptDto,
     val skills: List<ResolvedSkillDto>,
@@ -152,6 +156,32 @@ data class SkillDto(
     val description: String,
     val content: String,
     val scope: ScopeDto,
+    val tags: List<String>,
+    val builtIn: Boolean,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val updatedBy: ActorRefDto? = null,
+)
+
+/** `AgentInput` schema (ADR 0056): [key] omitted on create is derived from the name; omitted on update it stays. */
+data class AgentInputDto(
+    @field:Pattern(regexp = KEY_PATTERN) val key: String? = null,
+    @field:NotBlank val name: String,
+    val description: String = "",
+    val scope: ScopeDto,
+    val harness: AgentHarness? = null,
+    val modelProfileId: UUID? = null,
+    val tags: List<String> = emptyList(),
+)
+
+data class AgentDto(
+    val id: UUID,
+    val key: String,
+    val name: String,
+    val description: String,
+    val scope: ScopeDto,
+    val harness: AgentHarness?,
+    val modelProfileId: UUID?,
     val tags: List<String>,
     val builtIn: Boolean,
     val createdAt: Instant,

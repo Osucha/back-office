@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
@@ -14,7 +15,6 @@ import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import java.util.UUID
 
 /**
@@ -80,17 +80,17 @@ class ModelStepCheck(
     companion object {
         const val FIELD = "task.overrides.modelProfileId"
 
-        fun stepKind(task: ResolvedTask): StepKind? = when (task.executor) {
-            TaskExecutor.LLM -> StepKind.LLM_CALL
-            TaskExecutor.IMPLEMENT, TaskExecutor.SPEC_KIT ->
+        /** ADR 0056: a model answer is an LLM call, a coding agent a coding agent step (a prepare-only step uses no model). */
+        fun stepKind(task: ResolvedTask): StepKind? = when (TaskRunKind.of(task)) {
+            TaskRunKind.MODEL_ANSWER -> StepKind.LLM_CALL
+            TaskRunKind.SPEC_KIT, TaskRunKind.AGENT_JOB ->
                 StepKind.CODING_AGENT.takeUnless { task.config[StepWorkspace.PREPARE_ONLY]?.toString()?.lowercase() == "true" }
-            else -> null
         }
 
-        /** The coding agent of a runner step (`config.agent`, OpenCode by default). */
-        fun harness(task: ResolvedTask): AgentHarness =
-            AgentHarness.entries.firstOrNull { it.name.equals(task.config["agent"]?.toString(), ignoreCase = true) } ?: AgentHarness.OPENCODE
+        /** The coding agent harness of a runner step: the step's agent's (ADR 0056), OpenCode for a model answer. */
+        fun harness(task: ResolvedTask): AgentHarness = task.agent.harness ?: AgentHarness.OPENCODE
 
+        /** ADR 0056: the step's model, else its agent's or its template's (both reported as TEMPLATE), else the project defaults. */
         private fun modelOf(node: WorkflowNode.Task, task: ResolvedTask, project: Project): Pair<ModelProfileId?, Source>? = when {
             node.task.overrides.modelProfileId != null -> node.task.overrides.modelProfileId to Source.NODE
             task.modelProfileId != null -> task.modelProfileId to Source.TEMPLATE

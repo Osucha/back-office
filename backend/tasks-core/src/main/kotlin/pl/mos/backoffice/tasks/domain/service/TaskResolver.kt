@@ -2,11 +2,12 @@ package pl.mos.backoffice.tasks.domain.service
 
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RuleSnapshot
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.SkillSnapshot
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TemplateCategory
@@ -15,7 +16,10 @@ import pl.mos.backoffice.tasks.domain.model.PromptMode
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.util.UUID
 
-/** Result of rule 5: every skill and rule the lineage lists exists, or the list of what is missing. */
+/**
+ * Result of rule 5: every skill, rule and agent the lineage names exists and the agent can do the work (ADR 0056), or
+ * the list of problems.
+ */
 data class ResolutionCheck(val ok: Boolean, val problems: List<String>) {
     companion object {
         val OK = ResolutionCheck(true, emptyList())
@@ -25,14 +29,14 @@ data class ResolutionCheck(val ok: Boolean, val problems: List<String>) {
 
 /**
  * The merged view of a template chain before the "is it executable" decision: what the UI previews and
- * what [toResolvedTask] turns into the executor contract. `executor` is null only for chains without
- * one (an abstract root such as `base-agent`).
+ * what [toResolvedTask] turns into the executor contract. ADR 0056: [agent] is the step's agent, else the nearest in
+ * the lineage, else the built-in model answer.
  */
 data class TaskResolution(
     val key: String,
     val name: String,
     val description: String,
-    val executor: TaskExecutor?,
+    val agent: AgentSnapshot,
     val modelProfileId: ModelProfileId?,
     val prompt: TaskPrompt,
     val skills: List<SkillSnapshot>,
@@ -55,21 +59,20 @@ data class TaskResolution(
     /** ADR 0055: automatic rules (global, then project) first, then the ones the lineage lists. */
     val rules: List<RuleSnapshot> = emptyList(),
 ) {
-    /** True when an executor can run this: concrete, has an executor, every skill and rule found. */
-    val executable: Boolean get() = !abstract && executor != null && check.ok
+    /** True when a step can run this: concrete, every skill, rule and the agent found, the agent fits the work. */
+    val executable: Boolean get() = !abstract && check.ok
 
     /** Throws `ValidationException` unless [executable]. */
     fun toResolvedTask(): ResolvedTask {
         val errors = buildList {
             if (abstract) add(ValidationException.FieldError("abstract", "template $key is abstract and cannot be executed"))
-            if (executor == null) add(ValidationException.FieldError("executor", "template $key has no executor in its lineage"))
             check.problems.forEach { add(ValidationException.FieldError("check", it)) }
         }
         if (errors.isNotEmpty()) throw ValidationException(errors)
         return ResolvedTask(
             key = key,
             name = name,
-            executor = executor!!,
+            agent = agent,
             modelProfileId = modelProfileId,
             prompt = prompt,
             skills = skills,
@@ -93,13 +96,17 @@ data class TaskResolution(
  *
  * 1. project shadowing for the leaf and every ancestor,
  * 2. `extends` chain of at most [MAX_DEPTH] templates, cycles rejected,
- * 3. root-to-leaf merge (executor nearest wins; scalars child-wins; prompts append/replace; skills
+ * 3. root-to-leaf merge (agent nearest wins, ADR 0056; scalars child-wins; prompts append/replace; skills
  *    union minus `removeSkills`; config deep-merged with `null` deleting; list fields unioned; run inputs
  *    unioned by name, child field wins),
- * 4. node overrides,
+ * 4. node overrides (the step's agent and model win; model: step, else agent, else lineage),
  * 5. skills and rules looked up (ADR 0055: automatic rules of the global scope and the project first, minus
  *    `removeRules`; a skill key that names a rule, as skills turned rules did, counts as that rule),
- * 6. abstract leaves preview but do not execute.
+ * 6. the agent looked up and checked against the work (Spec Kit phase, push or prepareOnly need a coding agent,
+ *    an output schema needs a model answer),
+ * 7. abstract leaves preview but do not execute.
+ *
+ * A legacy config key `agent` (`CLAUDE_CODE`, `OPENCODE`) on a template or a step reads as its agent key.
  */
 class TaskResolver(private val lookup: LibraryLookup) {
 
@@ -140,6 +147,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val leaf = chain.first()
         val merged = chain.asReversed().fold(Merged()) { acc, template -> acc.merge(template) }
             .applyOverrides(overrides)
+        val agentKey = merged.agentKey ?: AgentSnapshot.MODEL_ANSWER
 
         val problems = mutableListOf<String>()
         val listedRules = merged.rules.toMutableList()
@@ -158,14 +166,19 @@ class TaskResolver(private val lookup: LibraryLookup) {
                 if (rule == null) problems += "rule $ruleKey does not exist"
                 rule?.let { RuleSnapshot(it.key, it.name, it.content, automatic = false) }
             }
+        val agent = lookup.visibleAgent(agentKey, projectId)?.snapshot ?: when (agentKey) {
+            AgentSnapshot.MODEL_ANSWER -> AgentSnapshot.DEFAULT
+            else -> { problems += "agent $agentKey does not exist"; AgentSnapshot(agentKey, agentKey) }
+        }
+        problems += compatibilityProblems(agent, merged.config, merged.outputSchema)
 
         return TaskResolution(
             version = leaf.version,
             key = leaf.key,
             name = leaf.name,
             description = leaf.description,
-            executor = merged.executor,
-            modelProfileId = merged.modelProfileId,
+            agent = agent,
+            modelProfileId = overrides.modelProfileId ?: agent.modelProfileId ?: merged.modelProfileId,
             prompt = TaskPrompt(merged.system, merged.user),
             skills = skills,
             config = merged.config,
@@ -185,9 +198,18 @@ class TaskResolver(private val lookup: LibraryLookup) {
         )
     }
 
-    /** Accumulator of the root-to-leaf merge. */
+    /** ADR 0056 decision 4: work the agent cannot do. */
+    private fun compatibilityProblems(agent: AgentSnapshot, config: Map<String, Any?>, outputSchema: String?): List<String> = buildList {
+        val needs = codingAgentReason(config)
+        if (agent.modelAnswer && needs != null) add("$needs needs a coding agent; agent ${agent.key} gives a model answer")
+        if (!agent.modelAnswer && !outputSchema.isNullOrBlank()) {
+            add("a structured answer (output schema) needs a model answer agent; agent ${agent.key} is a coding agent")
+        }
+    }
+
+    /** Accumulator of the root-to-leaf merge; [modelProfileId] is the lineage's (the step's comes after the agent's). */
     private data class Merged(
-        val executor: TaskExecutor? = null,
+        val agentKey: String? = null,
         val modelProfileId: ModelProfileId? = null,
         val system: String? = null,
         val user: String? = null,
@@ -205,12 +227,12 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val removedRules: Set<String> = emptySet(),
     ) {
         fun merge(t: TaskTemplate): Merged = Merged(
-            executor = t.executor ?: executor,
+            agentKey = t.agentKey ?: legacyAgentKey(t.config) ?: agentKey,
             modelProfileId = t.modelProfileId ?: modelProfileId,
             system = combine(system, t.prompt.system, t.prompt.mode),
             user = combine(user, t.prompt.user, t.prompt.mode),
             skills = (skills + t.skills).distinct().filter { it !in t.removeSkills },
-            config = ConfigMerge.deepMerge(config, t.config),
+            config = ConfigMerge.deepMerge(config, withoutLegacyAgent(t.config)),
             outputSchema = t.outputSchema ?: outputSchema,
             confidenceField = t.confidenceField ?: confidenceField,
             produces = (produces + t.produces).distinct(),
@@ -223,11 +245,11 @@ class TaskResolver(private val lookup: LibraryLookup) {
         )
 
         fun applyOverrides(o: TaskOverrides): Merged = copy(
-            modelProfileId = o.modelProfileId ?: modelProfileId,
+            agentKey = o.agentKey?.takeIf { it.isNotBlank() } ?: legacyAgentKey(o.config) ?: agentKey,
             system = combine(system, o.systemPromptAppend, PromptMode.APPEND),
             user = combine(combine(user, o.promptReplace, PromptMode.REPLACE), o.promptAppend, PromptMode.APPEND),
             skills = (skills + o.addSkills).distinct().filter { it !in o.removeSkills },
-            config = ConfigMerge.deepMerge(config, o.config),
+            config = ConfigMerge.deepMerge(config, withoutLegacyAgent(o.config)),
         )
 
         /** Union by name: a child field replaces the parent's field of the same name in its place; new fields go last. */
@@ -245,6 +267,30 @@ class TaskResolver(private val lookup: LibraryLookup) {
 
     companion object {
         const val MAX_DEPTH = 8
+
+        /** The former config key that chose the coding agent harness (ADR 0056 reads it as the agent key). */
+        const val LEGACY_AGENT_CONFIG_KEY = "agent"
+
+        /** `CLAUDE_CODE` / `OPENCODE` under the legacy config key `agent` as the built-in agent key; null otherwise. */
+        fun legacyAgentKey(config: Map<String, Any?>): String? {
+            val value = config[LEGACY_AGENT_CONFIG_KEY] as? String ?: return null
+            return AgentHarness.entries.firstOrNull { it.name == value }?.let { AgentSnapshot.keyOf(it) }
+        }
+
+        /** [config] without a legacy `agent` key that names a harness. */
+        fun withoutLegacyAgent(config: Map<String, Any?>): Map<String, Any?> =
+            if (legacyAgentKey(config) != null) config - LEGACY_AGENT_CONFIG_KEY else config
+
+        /**
+         * Why a task's merged [config] needs a coding agent (ADR 0056): a Spec Kit `phase`, `push: true` or
+         * `prepareOnly: true`; null when a model answer can do it.
+         */
+        fun codingAgentReason(config: Map<String, Any?>): String? = when {
+            (config["phase"] as? String)?.isNotBlank() == true -> "a Spec Kit phase"
+            config["push"] == true -> "push"
+            config["prepareOnly"] == true -> "prepareOnly"
+            else -> null
+        }
 
         /** Output ports of every task node. */
         val DEFAULT_PORTS: List<String> = listOf("success", "failure")

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.out.langgraph
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -42,7 +43,6 @@ import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import java.time.Instant
 import java.util.UUID
@@ -86,7 +86,7 @@ class NonBlockingRunnerNodeTest {
     fun `an IMPLEMENT node submits its job, frees the worker and resumes when the continuation delivers the result`() {
         runner.queue = queue
         tasks.register(
-            ResolvedTask("implement-x", "Implement", TaskExecutor.IMPLEMENT, null, TaskPrompt(null, "implement {{input.issueKey}}"), emptyList(), mapOf("mergeRequest" to false),
+            ResolvedTask("implement-x", "Implement", TestAgents.OPENCODE, null, TaskPrompt(null, "implement {{input.issueKey}}"), emptyList(), mapOf("mergeRequest" to false),
                 null, null, listOf("diff"), emptyList(), null, listOf("implement-x"), listOf("success", "failure")),
         )
         val projectKey = key("NBR")

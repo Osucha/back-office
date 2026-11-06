@@ -1,7 +1,6 @@
 package pl.mos.backoffice.projects.application.port.`in`
 
 import pl.mos.backoffice.projects.domain.model.Canvas
-import pl.mos.backoffice.projects.domain.model.ConnectionCapability
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.Trigger
 import pl.mos.backoffice.projects.domain.model.TriggerType
@@ -9,6 +8,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.projects.domain.service.ActionDescriptor
 import pl.mos.backoffice.projects.domain.service.ControlNodeDescriptor
 import pl.mos.backoffice.projects.domain.service.StateField
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
@@ -17,12 +17,12 @@ import pl.mos.backoffice.shared.llm.ModelOption
 import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import java.util.UUID
 
-/** ADR 0054: a task executor and the JSON Schema of its `config` keys. */
-data class TaskExecutorDescriptor(val executor: TaskExecutor, val configSchema: Map<String, Any?>)
+/** ADR 0056: the JSON Schema of a task step's `config` keys for a model answer agent and for a coding agent. */
+data class TaskConfigSchemas(val modelAnswer: Map<String, Any?>, val codingAgent: Map<String, Any?>)
 
 /** Use case: design workflows. `update` bumps the version; `delete` refuses while runs are active. */
 interface ManageWorkflows {
@@ -36,8 +36,8 @@ interface ManageWorkflows {
     fun palette(projectId: ProjectId): Palette
     fun validateExpression(expression: String): ExpressionCheck
 
-    /** ADR 0054: every task executor with the JSON Schema of its config keys (static, any signed-in user). */
-    fun taskExecutors(): List<TaskExecutorDescriptor>
+    /** ADR 0056: the config schemas of model answer and coding agent steps (static, any signed-in user). */
+    fun taskConfigSchemas(): TaskConfigSchemas
 
     /** ADR 0050: the model of every task step of a workflow and whether the caller can use it (`project.view`). */
     fun modelPlan(id: WorkflowDefinitionId): List<StepModelPlan>
@@ -75,16 +75,13 @@ interface ManageWorkflows {
         val key: String,
         val name: String,
         val description: String,
-        val executor: TaskExecutor,
+        /** ADR 0056: who runs the task by default (the template's agent). */
+        val agent: AgentSnapshot,
         /** ADR 0055: groups the designer palette; null when the template's lineage sets none. */
         val category: TemplateCategory?,
         val ports: List<String>,
         val projectScoped: Boolean,
         val configSchema: Map<String, Any?>,
-        /** Connection capabilities a Jira task needs (ADR 0030); empty for other executors. */
-        val requiredCapabilities: List<ConnectionCapability> = emptyList(),
-        /** The task writes to an external system (a required capability has the `write` flag): approval before write applies (ADR 0033). */
-        val externalWrite: Boolean = false,
         /** ADR 0054: kept for the steps that use it; the designer and MCP do not offer it for new steps. */
         val deprecated: Boolean = false,
     )
@@ -93,6 +90,8 @@ interface ManageWorkflows {
         val controlNodes: List<ControlNodeDescriptor>,
         val tasks: List<PaletteTask>,
         val stateFields: List<StateField>,
+        /** ADR 0056: the actions, with their defaults, schemas, run inputs and connection capabilities. */
+        val actions: List<ActionDescriptor> = emptyList(),
     )
 
     data class ExpressionCheck(val valid: Boolean, val message: String?)

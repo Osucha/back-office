@@ -24,6 +24,7 @@ import { ModelProfilesApi } from '../../../core/api/model-profiles.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type {
+  Agent,
   ModelProfile,
   Project,
   Rule,
@@ -56,7 +57,7 @@ import {
   canEditScope,
   editableProjects,
 } from '../data/library-access';
-import { executorDescription } from '../../../core/ui/executors';
+import { agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
 import {
   TEMPLATE_CATEGORIES,
@@ -65,14 +66,14 @@ import {
 } from '../../../core/ui/template-categories';
 import {
   effectiveCategory,
-  executorLabel,
   filterTemplates,
   nameOfKey,
+  templateAgent,
 } from '../data/library-filters';
 import { customizeForProject } from '../data/resolved-preview';
 
 /**
- * Library: task templates. Filters (search, project templates, executor) live in the URL; `j` / `k`
+ * Library: task templates. Filters (search, project templates, category, agent) live in the URL; `j` / `k`
  * / `Enter` open a template in the editor, `?key=` deep-links one.
  */
 @Component({
@@ -160,17 +161,18 @@ import { customizeForProject } from '../data/resolved-preview';
           }
         </nz-select>
         <nz-select
-          [ngModel]="f.values().executor"
-          (ngModelChange)="f.set({ executor: $event })"
+          [ngModel]="f.values().agent"
+          (ngModelChange)="f.set({ agent: $event })"
           nzAllowClear
-          nzPlaceHolder="Any executor"
-          i18n-nzPlaceHolder="@@library.templates.filter.anyExecutor"
+          nzShowSearch
+          nzPlaceHolder="Any agent"
+          i18n-nzPlaceHolder="@@library.templates.filter.anyAgent"
           style="width: 170px"
-          aria-label="Filter by executor"
-          i18n-aria-label="@@library.templates.filter.executor"
+          aria-label="Filter by agent"
+          i18n-aria-label="@@library.templates.filter.agent"
         >
-          @for (e of executors(); track e) {
-            <nz-option [nzValue]="e" [nzLabel]="executorLabel(e)" />
+          @for (a of agentFilterOptions(); track a.key) {
+            <nz-option [nzValue]="a.key" [nzLabel]="a.name" />
           }
         </nz-select>
         <label class="show-deprecated">
@@ -205,7 +207,7 @@ import { customizeForProject } from '../data/resolved-preview';
           <bo-empty
             title="No templates yet."
             i18n-title="@@library.templates.empty.title"
-            detail="A template is a reusable task: prompt, executor, skills and rules."
+            detail="A template is a reusable task: prompt, agent, skills and rules."
             i18n-detail="@@library.templates.empty.detail"
             [actionLabel]="canCreate() ? text.new : null"
             (action)="newTemplate()"
@@ -246,11 +248,11 @@ import { customizeForProject } from '../data/resolved-preview';
               <th
                 nzShowSort
                 [boSort]="sort"
-                boSortKey="executor"
+                boSortKey="agent"
                 nzWidth="136px"
-                i18n="@@library.templates.col.executor"
+                i18n="@@library.templates.col.agent"
               >
-                Executor
+                Agent
               </th>
               <th
                 nzShowSort
@@ -342,16 +344,16 @@ import { customizeForProject } from '../data/resolved-preview';
                   }
                 </td>
                 <td>
-                  @if (tpl.executor) {
+                  @if (agentOf(tpl); as a) {
                     <span
-                      class="chip"
+                      [class.chip]="!!tpl.agentKey"
+                      [class.accent]="!!tpl.agentKey && !!a.harness"
+                      [class.quiet]="!tpl.agentKey"
                       nz-tooltip
-                      [nzTooltipTitle]="executorDescription(tpl.executor)"
-                      [attr.data-executor]="tpl.executor"
-                      >{{ executorLabel(tpl.executor) }}</span
+                      [nzTooltipTitle]="agentTooltip(tpl, a)"
+                      [attr.data-agent]="a.key"
+                      >{{ a.name }}</span
                     >
-                  } @else {
-                    <span class="quiet" i18n="@@library.templates.inherited">inherited</span>
                   }
                 </td>
                 <td>
@@ -435,6 +437,7 @@ import { customizeForProject } from '../data/resolved-preview';
       [rules]="rules()"
       [skills]="skills()"
       [profiles]="profiles()"
+      [agents]="agents()"
       [projects]="projects()"
       [saving]="saving()"
       [savedVersion]="savedVersion()"
@@ -510,7 +513,8 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   readonly f = urlFilters({
     q: 'string',
     projectId: 'string',
-    executor: 'string',
+    /** ADR 0056: an agent key (own or inherited). */
+    agent: 'string',
     /** ADR 0055: a template category (own or inherited). */
     category: 'string',
     /** ADR 0054: `1` shows deprecated templates (hidden by default). */
@@ -520,6 +524,8 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   readonly rules = signal<Rule[]>([]);
   readonly skills = signal<Skill[]>([]);
   readonly profiles = signal<ModelProfile[]>([]);
+  /** ADR 0056: global agents plus those of the filtered project. */
+  readonly agents = signal<Agent[]>([]);
   readonly projects = signal<Project[]>([]);
   readonly loading = signal(false);
   readonly loaded = signal(false);
@@ -540,8 +546,6 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     return t?.id ? !canEditScope(this.identity, t.scope) : !this.canCreate();
   });
 
-  readonly executorLabel = executorLabel;
-  readonly executorDescription = executorDescription;
   readonly isDeprecated = isDeprecated;
   readonly text = {
     deprecated: deprecatedLabel(),
@@ -553,19 +557,28 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     builtInNoDelete: $localize`:@@library.templates.builtInNoDelete:Built-in templates cannot be deleted; extend them per project`,
     delete: $localize`:@@library.templates.delete:Delete template`,
   };
-  readonly executors = computed(() =>
-    Array.from(
-      new Set(
-        this.templates()
-          .map((t) => t.executor)
-          .filter((e): e is NonNullable<typeof e> => !!e),
-      ),
-    ),
-  );
+  /** ADR 0056: the agent per template (own or inherited, else model answer). */
+  private readonly agentMap = computed(() => {
+    const all = this.templates();
+    const agents = this.agents();
+    return new Map(
+      all.map((t) => {
+        const { key, agent } = templateAgent(t, all, agents);
+        return [t, { key, name: agent?.name ?? key, harness: agent?.harness ?? null }] as const;
+      }),
+    );
+  });
+  /** The agents the filter offers: those the listed templates use. */
+  readonly agentFilterOptions = computed(() => {
+    const seen = new Map<string, { key: string; name: string }>();
+    for (const a of this.agentMap().values()) seen.set(a.key, { key: a.key, name: a.name });
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  });
   readonly filtered = computed(() =>
     filterTemplates(this.templates(), {
       query: this.f.values().q,
-      executor: this.f.values().executor,
+      agent: this.f.values().agent,
+      agents: this.agents(),
       category: this.f.values().category,
       showDeprecated: !!this.f.values().deprecated,
     }),
@@ -573,7 +586,7 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   readonly sort = tableSort<TaskTemplate>({
     name: (t) => t.name,
     extends: (t) => (t.extendsKey ? this.parentName(t) : null),
-    executor: (t) => (t.executor ? executorLabel(t.executor) : null),
+    agent: (t) => this.agentOf(t)?.name ?? null,
     // global templates first, then project templates by project key
     scope: (t) =>
       t.scope.type === 'PROJECT' ? `PROJECT ${this.projectKey(t.scope.projectId)}` : 'GLOBAL',
@@ -603,10 +616,10 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
         id: 'category',
         label: $localize`:@@library.templates.chip.category:Category: ${categoryLabel(v.category)}:category:`,
       });
-    if (v.executor)
+    if (v.agent)
       out.push({
-        id: 'executor',
-        label: $localize`:@@library.templates.chip.executor:Executor: ${executorLabel(v.executor)}:executor:`,
+        id: 'agent',
+        label: $localize`:@@library.templates.chip.agent:Agent: ${this.agentName(v.agent)}:agent:`,
       });
     if (v.deprecated)
       out.push({
@@ -675,9 +688,25 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     );
   }
 
+  /** ADR 0056: the agent a template runs with (own or inherited). */
+  agentOf(t: TaskTemplate): { key: string; name: string; harness: string | null } | null {
+    return this.agentMap().get(t) ?? null;
+  }
+
+  agentName(key: string): string {
+    return this.agentFilterOptions().find((a) => a.key === key)?.name ?? key;
+  }
+
+  agentTooltip(t: TaskTemplate, a: { harness: string | null }): string {
+    const kind = `${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}`;
+    return t.agentKey
+      ? kind
+      : $localize`:@@library.templates.agentInherited:Inherited. ${kind}:kind:`;
+  }
+
   removeChip(id: string): void {
     if (id === 'projectId') this.f.set({ projectId: null });
-    else if (id === 'executor') this.f.set({ executor: null });
+    else if (id === 'agent') this.f.set({ agent: null });
     else if (id === 'category') this.f.set({ category: null });
     else if (id === 'deprecated') this.f.set({ deprecated: null });
   }
@@ -755,9 +784,11 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
       templates: this.api.listTemplates({ projectId, includeAbstract: true }),
       skills: this.api.listSkills(projectId),
       rules: this.api.listRules(projectId),
+      agents: this.api.listAgents(projectId),
     }).subscribe({
-      next: ({ templates, skills, rules }) => {
+      next: ({ templates, skills, rules, agents }) => {
         this.templates.set(templates);
+        this.agents.set(agents);
         this.rules.set(rules);
         this.skills.set(skills);
         this.loading.set(false);

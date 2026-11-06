@@ -211,5 +211,7 @@
   "shell.route.llmProviders": "Dostawcy LLM",
   "shell.route.rules": "Reguły",
   "shell.nav.libraryTasks": "Zadania",
-  "shell.nav.rules": "Reguły"
+  "shell.nav.rules": "Reguły",
+  "shell.route.agents": "Agenci",
+  "shell.nav.agents": "Agenci"
 }

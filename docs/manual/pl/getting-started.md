@@ -33,11 +33,12 @@ repozytorium](projects.md#no-repository)).
 | Pojęcie | W jednym zdaniu | Gdzie je widzisz |
 |---|---|---|
 | Projekt | Workflowy, członkowie, tokeny CI, polityka sandboxa i budżet; repozytoria Git są opcjonalne i może ich być kilka. | **Projekty** (**Projects**), `/projects/:id` |
-| Workflow | Graf węzłów (zadania, decyzje, bramki, oczekiwania na CI), po którym przechodzi uruchomienie. | Karta projektu **Workflowy** (**Workflows**), projektant |
+| Workflow | Graf węzłów (zadania, akcje, decyzje, bramki, oczekiwania na CI), po którym przechodzi uruchomienie. | Karta projektu **Workflowy** (**Workflows**), projektant |
 | Uruchomienie | Jedno wykonanie workflowu, zwykle dla jednego zgłoszenia w Jirze. | **Uruchomienia** (**Runs**), `/runs/:id` |
 | Węzeł | Jeden blok workflowu; uruchomienie odwiedza węzły po kolei. | Kanwa projektanta, **Oś czasu** (**Timeline**) uruchomienia |
 | Bramka | Węzeł, w którym uruchomienie zatrzymuje się, dopóki zatwierdzający nie wybierze opcji. | **Twoja kolej**, panel boczny bramki |
-| Szablon zadania | Zadanie wielokrotnego użytku (prompt, wykonawca, umiejętności, konfiguracja), na które wskazuje węzeł zadania. | **Biblioteka** (**Library**) → **Szablony** (**Templates**) |
+| Szablon zadania | Zadanie wielokrotnego użytku (prompt, umiejętności, reguły, konfiguracja, domyślny agent), na które wskazuje węzeł zadania. | **Biblioteka** (**Library**) → **Szablony** (**Templates**) |
+| Agent | Ten, kto wykonuje zadanie: pojedyncza odpowiedź modelu albo agent kodujący (OpenCode, Claude Code), opcjonalnie z własnym modelem. | **Biblioteka** → **Agenci** (**Agents**) |
 | Profil modelu | Model z jego opcjami i cenami, wybierany przez zadania i benchmarki. | **Modele** (**Models**) |
 | Zadanie agenta | Zadanie programistyczne wykonywane w sandboxie na runnerze. | **Oś czasu** uruchomienia; administratorzy widzą **Zadania agentów** (**Agent jobs**) |
 | Budżet | Miesięczny limit wydatków platformy lub projektu. | Karta projektu **Budżet** (**Budget**), **Koszty** (**Costs**) |
@@ -110,4 +111,4 @@ Kroki w kolejności:
 
 Strony aktualizują się na żywo, gdy je oglądasz. Nie ma powiadomień e-mail ani na czacie: to, co wymaga
 Twojej uwagi, pojawia się w **Twoja kolej** i w bursztynowym liczniku. Workflow może dodać komentarz do
-zgłoszenia w Jirze zadaniem `notify-jira` (zob. [Jira](integrations-jira.md#jira-tasks)).
+zgłoszenia w Jirze akcją **Skomentuj zgłoszenie** (zob. [Jira](integrations-jira.md#jira-tasks)).

@@ -119,8 +119,8 @@ z poziomu agenta programistycznego przez serwer MCP (`list_my_turns`, `decide_ga
 <a id="write-confirmations"></a>
 ## Zatwierdzanie zapisów zewnętrznych
 
-Zanim krok workflowu zapisze coś w Jirze (komentarz z **Notify Jira**, zmianę statusu z **Transition
-issue**), uruchomienie zatrzymuje się i prosi człowieka o zatwierdzenie dokładnie tego zapisu. Gdy go
+Zanim krok workflowu zapisze coś w Jirze (komentarz ze **Skomentuj zgłoszenie**, zmianę statusu ze **Zmień
+status zgłoszenia**), uruchomienie zatrzymuje się i prosi człowieka o zatwierdzenie dokładnie tego zapisu. Gdy go
 widzisz, nic jeszcze nie zostało zapisane. Dlaczego: [Zatwierdzenie przed zapisem
 w Jirze](integrations-jira.md#jira-write-approval).
 

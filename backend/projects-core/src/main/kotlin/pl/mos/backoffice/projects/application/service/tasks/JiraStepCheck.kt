@@ -14,11 +14,11 @@ import pl.mos.backoffice.projects.domain.model.WriteApprovalMode
 import pl.mos.backoffice.projects.domain.service.ConnectionSelector
 import pl.mos.backoffice.projects.domain.service.SelectionStatus
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
+import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.tasks.TaskCatalog
 
 /**
- * Checks the Jira steps of a workflow (ADR 0030, ADR 0033), for the designer validation and before a run starts:
+ * Checks the Jira action steps of a workflow (ADR 0030, ADR 0033, ADR 0056), for the designer validation and before a run starts:
  * which connection each step would use, and the write-approval setting of steps that write to Jira.
  *
  * - At save time ([designIssues]) a missing connection is a WARNING (a workflow must save on an installation without
@@ -26,7 +26,7 @@ import pl.mos.backoffice.shared.tasks.TaskCatalog
  *   step and an over-privileged connection are warnings.
  * - When a run starts ([runBlockers]) a step without a usable connection is an error with a link to the guide.
  */
-class JiraStepCheck(private val catalog: TaskCatalog, private val access: JiraConnectionAccess) {
+class JiraStepCheck(private val access: JiraConnectionAccess) {
 
     data class Issues(val errors: List<ValidationIssue>, val warnings: List<ValidationIssue>)
 
@@ -69,7 +69,7 @@ class JiraStepCheck(private val catalog: TaskCatalog, private val access: JiraCo
     }
 
     private data class JiraStep(
-        val node: WorkflowNode.Task,
+        val node: WorkflowNode.Action,
         val required: Set<ConnectionCapability>,
         val config: Map<String, Any?>,
         val choice: pl.mos.backoffice.projects.domain.service.ConnectionChoice?,
@@ -78,21 +78,21 @@ class JiraStepCheck(private val catalog: TaskCatalog, private val access: JiraCo
     )
 
     private fun jiraSteps(project: Project, nodes: List<WorkflowNode>): List<JiraStep> =
-        nodes.filterIsInstance<WorkflowNode.Task>().filter { it.task.templateKey.isNotBlank() }.mapNotNull { node ->
-            val task = runCatching { catalog.resolve(node.task.templateKey, project.id.value, node.task.overrides) }.getOrNull() ?: return@mapNotNull null
-            val required = ConnectionCapability.requiredBy(task.executor)
+        nodes.filterIsInstance<WorkflowNode.Action>().mapNotNull { node ->
+            val required = ConnectionCapability.requiredBy(node.action.type)
             if (required.isEmpty()) return@mapNotNull null
+            val config = ActionCatalog.effectiveConfig(node.action)
             try {
-                val connection = StepConnectionConfig.of(task.config)
+                val connection = StepConnectionConfig.of(config)
                 // ACTING_USER: the shared connection is only the fallback (or none); it is checked when fallbackToSystem is set
                 val choice = if (connection.mode == ConnectionMode.ACTING_USER) {
                     if (connection.fallbackToSystem) access.chooseShared(project, required, StepConnectionConfig()) else null
                 } else {
                     access.chooseShared(project, required, connection)
                 }
-                JiraStep(node, required, task.config, choice, null, connection)
+                JiraStep(node, required, config, choice, null, connection)
             } catch (e: ValidationException) {
-                JiraStep(node, required, task.config, null, e.errors.firstOrNull()?.message ?: e.message ?: "invalid connection setting")
+                JiraStep(node, required, config, null, e.errors.firstOrNull()?.message ?: e.message ?: "invalid connection setting")
             }
         }
 
@@ -158,10 +158,10 @@ class JiraStepCheck(private val catalog: TaskCatalog, private val access: JiraCo
     }
 
     companion object {
-        const val FIELD_JIRA_CONNECTION = "task.config.jiraConnection"
-        const val FIELD_APPROVAL = "task.config.approval"
-        const val FIELD_APPROVERS = "task.config.approvers"
-        const val FIELD_ALLOW_ACTING_USER = "task.config.allowActingUser"
+        const val FIELD_JIRA_CONNECTION = "action.config.jiraConnection"
+        const val FIELD_APPROVAL = "action.config.approval"
+        const val FIELD_APPROVERS = "action.config.approvers"
+        const val FIELD_ALLOW_ACTING_USER = "action.config.allowActingUser"
         const val GUIDE = "integrations-jira#jira-write-approval"
         const val CONNECTIONS_GUIDE = ConnectionSelector.GUIDE
     }

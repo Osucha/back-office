@@ -60,6 +60,10 @@ export function estimateNodeSize(
 ): Size {
   let body = 1;
   switch (node.kind) {
+    case 'ACTION':
+      // ADR 0056: the action row plus the chips row, like a library task card.
+      body += 1.25;
+      break;
     case 'TASK': {
       const tpl = node.task?.templateKey ? palette?.tasks.get(node.task.templateKey) : undefined;
       const o = node.task?.overrides;

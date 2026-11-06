@@ -15,6 +15,7 @@ import pl.mos.backoffice.projects.application.port.out.NodeResult
 import pl.mos.backoffice.projects.application.port.out.RunAdvance
 import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
+import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.application.service.ModelResolver
 import pl.mos.backoffice.projects.application.service.TemplateModelBuilder
 import pl.mos.backoffice.projects.domain.model.ArtifactKind
@@ -46,7 +47,6 @@ import pl.mos.backoffice.shared.runner.RunnerSkill
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.runner.SpecKitPhase
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import java.time.Duration
@@ -224,7 +224,8 @@ class RunnerTaskSupport(
         }
         val spec = RunnerJobSpec(
             mode = mode,
-            agent = config.string("agent")?.uppercase()?.let { a -> AgentHarness.entries.firstOrNull { it.name == a } } ?: AgentHarness.OPENCODE,
+            // ADR 0056: the step's agent chose the harness; a model answer never reaches the runner (TaskRunKind)
+            agent = task.agent.harness ?: AgentHarness.OPENCODE,
             model = profile.ref,
             prompt = prompt,
             repository = repository,
@@ -530,9 +531,9 @@ class RunnerTaskSupport(
     }
 }
 
-/** `SPEC_KIT`: runs a Spec Kit phase (`config.phase`) in a runner job; artefacts `spec`, `plan`, `tasks`, `analysis`. */
+/** Coding agent and `config.phase`: runs a Spec Kit phase in a runner job; artefacts `spec`, `plan`, `tasks`, `analysis`. */
 class SpecKitTaskExecutor(private val support: RunnerTaskSupport) : TaskExecutorStrategy {
-    override val executor = TaskExecutor.SPEC_KIT
+    override val runKind = TaskRunKind.SPEC_KIT
 
     override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
         val phase = phaseOf(task)
@@ -559,9 +560,9 @@ class SpecKitTaskExecutor(private val support: RunnerTaskSupport) : TaskExecutor
     }
 }
 
-/** `IMPLEMENT`: runs the coding agent in a runner job, verifies, commits, pushes and opens the MR with push options. */
+/** The agent job (coding agent without a phase): runs the agent in a runner job, verifies, commits, pushes and opens the MR. */
 class ImplementTaskExecutor(private val support: RunnerTaskSupport) : TaskExecutorStrategy {
-    override val executor = TaskExecutor.IMPLEMENT
+    override val runKind = TaskRunKind.AGENT_JOB
 
     override fun execute(context: NodeContext, task: ResolvedTask): NodeResult = support.run(context, task, RunnerMode.IMPLEMENT, null, PROMPT)
 

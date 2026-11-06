@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import type { ProjectRepository } from '../../../core/api/types';
 import {
   initialExplicitList,
-  isRunnerTask,
+  isRunnerStep,
   ownEditorKeys,
   pickerRows,
   repositoryIssues,
@@ -33,10 +33,10 @@ const repos: ProjectRepository[] = [
 
 describe('step repositories model (ADR 0034)', () => {
   it('knows runner steps and hides the x-editor property from the generic form', () => {
-    expect(isRunnerTask({ executor: 'IMPLEMENT' })).toBe(true);
-    expect(isRunnerTask({ executor: 'SPEC_KIT' })).toBe(true);
-    expect(isRunnerTask({ executor: 'LLM' })).toBe(false);
-    expect(isRunnerTask(null)).toBe(false);
+    expect(isRunnerStep({ harness: 'OPENCODE' })).toBe(true);
+    expect(isRunnerStep({ harness: 'CLAUDE_CODE' })).toBe(true);
+    expect(isRunnerStep({ harness: null })).toBe(false);
+    expect(isRunnerStep(null)).toBe(false);
     expect(
       ownEditorKeys({
         properties: {

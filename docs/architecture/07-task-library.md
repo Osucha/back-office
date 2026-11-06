@@ -8,12 +8,21 @@ how they are prompted, independent of any single workflow (ADR 0015). Projects u
 
 | Concept | Analogy | Content |
 |---|---|---|
-| `TaskTemplate` | class | `key`, `name`, `description`, `abstract`, `extendsKey`, `category`, `executor`, `scope` (`GLOBAL` or `PROJECT(projectId)`), `modelProfileId`, `prompt {system, user, mode APPEND|REPLACE}`, `skills[]`, `removeSkills[]`, `rules[]`, `removeRules[]`, `config{}`, `outputSchema`, `confidenceField`, `produces[]`, `consumes[]`, `tags[]`, `runInputs[]` (fields of the run start form, ADR 0053), `builtIn`, `version` |
+| `TaskTemplate` | class | `key`, `name`, `description`, `abstract`, `extendsKey`, `category`, `agentKey` (ADR 0056), `scope` (`GLOBAL` or `PROJECT(projectId)`), `modelProfileId`, `prompt {system, user, mode APPEND|REPLACE}`, `skills[]`, `removeSkills[]`, `rules[]`, `removeRules[]`, `config{}`, `outputSchema`, `confidenceField`, `produces[]`, `consumes[]`, `tags[]`, `runInputs[]` (fields of the run start form, ADR 0053), `builtIn`, `version` |
 | `TemplateCategory` | grouping | `ANALYSIS`, `SPECIFICATION`, `PLANNING`, `IMPLEMENTATION`, `REVIEW`, `JIRA`, `OPERATIONS`, `GENERAL`; shared kernel; groups the library list, the designer palette and MCP results (ADR 0055) |
 | `RunInputField` | form field | `name` (key in the run parameters), `label`, `type` `TEXT|MULTILINE|ISSUE_KEY`, `required`, `help`; shared kernel, so the Projects context reads it from `ResolvedTask.runInputs` |
 | `Skill` | handbook chapter | `key`, `name`, `description`, `content` (markdown, Agent Skills `SKILL.md` convention), `scope`, `tags`, `builtIn`; knowledge or a procedure the agent opens when the task needs it |
 | `Rule` | standing order | `key`, `name`, `description`, `content` (markdown, no frontmatter), `scope`, `automatic`, `tags`, `builtIn`; a norm that is always in the agent's context (ADR 0055) |
-| `ResolvedTask` | instance | the merged result used by executors |
+| `Agent` | worker | `key`, `name`, `description`, `scope`, `harness` (`OPENCODE`, `CLAUDE_CODE` or none = model answer), `modelProfileId`, `tags`, `builtIn`; who runs a task (ADR 0056); `AgentSnapshot` in the shared kernel carries it to the Projects context |
+| `ResolvedTask` | instance | the merged result the workflow engine runs, with the resolved `agent` |
+
+Until ADR 0056 a template had an **executor** (`LLM`, `SPEC_KIT`, `IMPLEMENT`, `FETCH_ISSUE`, `NOTIFY`,
+`TRANSITION_ISSUE`, `START_WORKFLOW`, `PROJECT_DIGEST`) that mixed what thinks, how it works and whether it is AI work
+at all. It was removed: the template describes the work, the **agent** says who does it, and the five deterministic
+integrations are workflow nodes of kind `ACTION` in the Projects context
+([03-pipelines-and-agents.md](03-pipelines-and-agents.md)), not library entries. `V304` creates the `agent` table,
+sets `agent_key` of templates from their executor and config key `agent`, removes the key `agent` from template
+config, deletes the five built-in action templates and drops `executor`.
 
 Until ADR 0055 the library also had task interfaces (`implements`, inputs, outputs, ports). No workflow ever
 referred to one: they only re-checked `consumes`/`produces`, never added a port and labelled templates in the
@@ -23,7 +32,7 @@ palette. They were removed (V303 drops the `task_interface` table); the grouping
 ### Keys (ADR 0055)
 
 Keys match `^[a-z][a-z0-9-]{1,63}$` and are what workflows, MCP and the API refer to; people do not type them.
-On create a template, skill or rule without a key gets one from its name (`Keys.fromName`: diacritics dropped,
+On create a template, skill, rule or agent without a key gets one from its name (`Keys.fromName`: diacritics dropped,
 everything but letters and digits becomes `-`, a `task-`/`skill-`/`rule-` prefix when the name starts with a digit
 or yields nothing) made unique by `Keys.unique` (`-2`, `-3`, ...). Template keys are unique across scopes, so a new
 template never shadows anything by accident; skills and rules are unique by `(key, scope)`. An update without a key
@@ -37,11 +46,41 @@ A rule applies to the templates that list it in `rules` (inherited and unioned l
 to every step of its scope: a global automatic rule to every step of every project, a project one to every step of
 that project. `removeRules` on a template drops inherited and automatic rules for it and its children. A `PROJECT`
 rule with a global rule's key replaces it for that project; a non-automatic project copy of a global automatic rule
-switches it off for that project. Rules are delivered by `RulesPrompt` as a `<rules>` block: model answer (`LLM`)
-steps get it in the system prompt before the `<skills>` section, coding agent (`IMPLEMENT`) and `SPEC_KIT` steps at
-the start of their prompt right after the template's system part. Nothing is written into the repository, so both
+switches it off for that project. Rules are delivered by `RulesPrompt` as a `<rules>` block: model answer steps get
+it in the system prompt before the `<skills>` section, coding agent steps (agent jobs and Spec Kit phases) at the
+start of their prompt right after the template's system part. Nothing is written into the repository, so both
 agents see the same text. Skills, by contrast, reach runner steps as `.claude/skills/<key>/SKILL.md` and
 `.opencode/skills/<key>/SKILL.md`, which the agent opens on demand.
+
+### Agents (ADR 0056)
+
+An agent is a model, a harness that runs the loop (tools, context, subagents, questions) and an environment
+(directory, repository, rules, skills, permissions). Stage 1 stores the harness and optionally the model; the
+environment still comes from the step (workspace, repositories, rules, skills, sandbox). An agent is a library entry
+in the **Tasks** group, global or project scope, built in or not, with the permissions, audit and project shadowing of
+rules.
+
+- harness empty: **model answer**, one in-process model call without tools or repository (the former `LLM`);
+- `OPENCODE` or `CLAUDE_CODE`: a **coding agent** session in the runner sandbox with the step's workspace.
+
+Built-in agents: `model-answer` (Model answer), `opencode` (OpenCode), `claude-code` (Claude Code).
+
+| Question | Answer |
+|---|---|
+| Who runs a step | the step's agent (`overrides.agentKey`), else the template's `agentKey` (inherited, child wins), else `model-answer` |
+| Which model | the step's model, else the agent's, else the template's, then the defaults (`ModelResolver`: project, starting user, platform) |
+| How it runs | model answer: the in-process model call (structured output, confidence, injection guard); coding agent and a template with the config key `phase`: the Spec Kit job; coding agent otherwise: the agent job (former `IMPLEMENT`), push and merge request per config, without a push the final answer becomes the `result` artefact |
+
+The resolver reports a problem in `check.problems` (the step cannot run) when a template needs a coding agent
+(Spec Kit `phase`, `push: true`, `prepareOnly`) but gets a model answer, or has an `outputSchema` but gets a coding
+agent (stage 2 lifts this). The config key `agent` (`CLAUDE_CODE`/`OPENCODE`) no longer exists; a stored step's
+`config.agent` is read as `overrides.agentKey` (`claude-code`, `opencode`). `GET /workflows/task-config-schemas`
+returns the JSON Schema of the config keys of a model answer step and of a coding agent step (Spec Kit phase
+included); it replaced `/workflows/task-executors`.
+
+Later stages (accepted direction, ADR 0056): sessions a step continues and a project environment rendered into each
+harness's own form (stage 2), templates with typed parameters (stage 3), the agent as the benchmark dimension next to
+the workflow with the cost of an accepted result as the headline metric (stage 4).
 
 ## Resolution rules (`TaskResolver`, pure domain service)
 
@@ -50,7 +89,7 @@ agents see the same text. Skills, by contrast, reach runner steps as `.claude/sk
 2. Walk `extendsKey` up to the root (max depth 8, cycles are a `ValidationException`). Each ancestor is
    resolved with the same project-shadowing rule; a project template that extends its own key extends the global one.
 3. Merge root → leaf:
-   - `executor`, `category`: nearest defined wins;
+   - `agentKey`, `category`: nearest defined wins;
    - `modelProfileId`, `outputSchema`, `confidenceField`: child wins when set;
    - `prompt.system` / `prompt.user`: child `APPEND` = parent + blank line + child; `REPLACE` = child only;
    - `skills`: union in order, minus the child's `removeSkills`;
@@ -59,7 +98,8 @@ agents see the same text. Skills, by contrast, reach runner steps as `.claude/sk
    - `produces`, `consumes`, `tags`: union;
    - `runInputs`: union by `name`; a child field replaces the parent's field of the same name in its place, new
      fields go last (ADR 0053). Node overrides do not change run inputs.
-4. Apply node overrides (`TaskOverrides`): model, prompt append/replace, add/remove skills, config merge.
+4. Apply node overrides (`TaskOverrides`): agent, model, prompt append/replace, add/remove skills, config merge;
+   then resolve the agent (step, template, `model-answer`) and check that it fits the template (see Agents).
 5. Look up skills and rules: every skill key must exist (with project shadowing); a skill key that names a rule
    counts as that rule, so steps whose `addSkills` name a former skill keep working. The rules are the automatic
    ones the project sees (global, then the project's own, with the shadowing above) minus every `removeRules` of the
@@ -67,63 +107,67 @@ agents see the same text. Skills, by contrast, reach runner steps as `.claude/sk
    `check.problems` and makes `resolve` throw. Every task node has the ports `success` and `failure`.
 6. An `abstract` leaf cannot be resolved for execution (it can be previewed).
 
-`GET /task-templates/resolve/{key}?projectId=` returns the merged view with `lineage`, `category`, `rules`
+`GET /task-templates/resolve/{key}?projectId=` returns the merged view with `lineage`, `category`, `agent`, `rules`
 (automatic ones first and marked) and `check`, so the owner can see what an agent will actually receive;
 `POST` on the same path applies a step's overrides (ADR 0054).
 
 ## Seeded content
 
-Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-six in total, the nineteen below plus the
-seven SDLC templates). Every concrete template has a category, set or inherited:
+Agents (three, `GLOBAL`, `builtIn`): `model-answer` (no harness), `opencode` (`OPENCODE`), `claude-code`
+(`CLAUDE_CODE`), none with a model of its own.
 
-| Key | extends | category | executor |
+Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-one in total, the fourteen below plus the
+seven SDLC templates). Every concrete template has a category, set or inherited. "agent" is the template's own
+`agentKey`; empty means inherited, and none anywhere means `model-answer`:
+
+| Key | extends | category | agent |
 |---|---|---|---|
 | `base-agent` (abstract) | — | — | — (short shared system prompt: role, constitution placeholder, honesty, scope and safety rules; rules `agent-ground-rules`, `ask-dont-guess`, inherited by every agent) |
-| `base-llm` (abstract) | `base-agent` | — | — (in-process LLM steps: no repository and no tools; with an output schema the answer is one JSON object, uncertainty goes into its fields) |
-| `base-coding-agent` (abstract) | `base-agent` | — | — (runner steps: work in the repository clone, file paths as evidence, never commit or push (the runner commits), never disable tests, skills are named in the task) |
-| `fetch-issue` | — | `JIRA` | `FETCH_ISSUE` (summary, description, acceptance criteria, labels; no comments or attachments, no config) |
-| `spec-kit-specify` | `base-coding-agent` | `SPECIFICATION` | `SPEC_KIT` (phase SPECIFY; user prompt starts with `KEY: summary`, the issue text and acceptance criteria, then the instructions) |
-| `clarify-spec` | `base-llm` | `SPECIFICATION` | `LLM` (schema with `confidence`, `clarifications` as markdown, `summary`) |
-| `spec-kit-plan` | `base-coding-agent` | `PLANNING` | `SPEC_KIT` (PLAN; the spec is read from the repository, the prompt carries feedback and the optional run parameter `techHints`) |
-| `spec-kit-tasks` | `base-coding-agent` | `PLANNING` | `SPEC_KIT` (TASKS; the plan is read from the repository) |
-| `implement-opencode` | `base-coding-agent` | `IMPLEMENTATION` | `IMPLEMENT` (agent OPENCODE, push, MR push options from `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`; `verifyCommand` from config, none by default; on a rework the prompt carries the latest `review` artefact) |
-| `implement-claude-code` (deprecated) | `implement-opencode` | (inherited) | `IMPLEMENT` (agent CLAUDE_CODE) |
-| `code-review` | `base-llm` | `REVIEW` | `LLM` (findings schema; instructions before the data, the diff last; the issue or, in CI runs, the merge request title and description as context; one call, no chunking) |
-| `analyse-issue` (deprecated) | `base-llm` | `ANALYSIS` | `LLM` (the whole JSON answer is the `analysis` artefact) |
-| `llm-task` | — | `GENERAL` | `LLM` (generic task for any LLM work, ADR 0034: the prompt is written per node with the override "replace prompt", the run parameter `input` reaches the model as a data block, revision feedback is appended; used by the starter workflow **LLM task with review** of projects without a repository) |
-| `agent-task` | — | `GENERAL` | `IMPLEMENT` (generic coding-agent task: the prompt is written per node with "replace prompt"; issue, run parameter `input` and feedback are in the system prompt; agent CLAUDE_CODE, `push` false by default, true for a branch and merge request; `repositoryOptional`: in a project without repositories an empty workspace, the final answer becomes the `result` artefact; rules `agent-ground-rules`, `ask-dont-guess`) |
-| `prepare-workspace` | — | `OPERATIONS` | `IMPLEMENT` (ADR 0044: `prepareOnly`, `workspace` = `main`: clones the step's repositories and sources into the run workspace and runs `setupCommand`; no agent, never pushes) |
-| `project-digest` | — | `OPERATIONS` | `PROJECT_DIGEST` (ADR 0052: what happened in the project since the run parameter `since`; produces `digest`) |
-| `start-workflow` | — | `OPERATIONS` | `START_WORKFLOW` (ADR 0052: one run of another workflow per entry of a JSON artefact; produces `started-runs`) |
-| `notify-jira` | — | `JIRA` | `NOTIFY` (Jira comment; `config.messageTemplate` = `Back Office run {{run.short}} ({{run.workflow}}): {{node.name}}. {{mr.url}}`) |
-| `transition-issue` | — | `JIRA` | `TRANSITION_ISSUE` (`config.toStatus` = `In Review`, `config.failIfMissing` = `false`) |
+| `base-llm` (abstract) | `base-agent` | — | — (model answer steps: no repository and no tools; with an output schema the answer is one JSON object, uncertainty goes into its fields) |
+| `base-coding-agent` (abstract) | `base-agent` | — | `opencode` (coding agent steps: work in the repository clone, file paths as evidence, never commit or push (the runner commits), never disable tests, skills are named in the task) |
+| `spec-kit-specify` | `base-coding-agent` | `SPECIFICATION` | `opencode` (config `phase` SPECIFY; user prompt starts with `KEY: summary`, the issue text and acceptance criteria, then the instructions) |
+| `clarify-spec` | `base-llm` | `SPECIFICATION` | — (schema with `confidence`, `clarifications` as markdown, `summary`) |
+| `spec-kit-plan` | `base-coding-agent` | `PLANNING` | `opencode` (PLAN; the spec is read from the repository, the prompt carries feedback and the optional run parameter `techHints`) |
+| `spec-kit-tasks` | `base-coding-agent` | `PLANNING` | `opencode` (TASKS; the plan is read from the repository) |
+| `implement-opencode` | `base-coding-agent` | `IMPLEMENTATION` | `opencode` (push, MR push options from `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`; `verifyCommand` from config, none by default; on a rework the prompt carries the latest `review` artefact) |
+| `implement-claude-code` (deprecated) | `implement-opencode` | (inherited) | `claude-code` (otherwise `implement-opencode`) |
+| `code-review` | `base-llm` | `REVIEW` | — (findings schema; instructions before the data, the diff last; the issue or, in CI runs, the merge request title and description as context; one call, no chunking) |
+| `analyse-issue` (deprecated) | `base-llm` | `ANALYSIS` | — (the whole JSON answer is the `analysis` artefact) |
+| `llm-task` | — | `GENERAL` | — (model answer; generic task for any LLM work, ADR 0034: the prompt is written per node with the override "replace prompt", the run parameter `input` reaches the model as a data block, revision feedback is appended; used by the starter workflow **LLM task with review** of projects without a repository) |
+| `agent-task` | — | `GENERAL` | `claude-code` (generic coding-agent task: the prompt is written per node with "replace prompt"; issue, run parameter `input` and feedback are in the system prompt; `push` false by default, true for a branch and merge request; `repositoryOptional`: in a project without repositories an empty workspace, the final answer becomes the `result` artefact; rules `agent-ground-rules`, `ask-dont-guess`) |
+| `prepare-workspace` | — | `OPERATIONS` | `opencode` (ADR 0044: `prepareOnly`, `workspace` = `main`: clones the step's repositories and sources into the run workspace and runs `setupCommand`; starts no agent, never pushes) |
 
-`NOTIFY` renders `config.messageTemplate`, else the task's user prompt, else
-`Back Office run {{run.short}} of workflow {{run.workflow}}: {{node.name}}.` over the template model
-(variables: [designing-a-workflow.md](../guides/designing-a-workflow.md#template-variables)).
-`TRANSITION_ISSUE` fails the node when the issue's workflow offers no transition to `toStatus` (e.g. it is
-already there) unless `config.failIfMissing` is `false`: then the node succeeds with a note in the run log.
-The executor treats an absent `failIfMissing` as `true`; the built-in template sets `false`.
+The former built-in templates `fetch-issue`, `notify-jira`, `transition-issue`, `start-workflow` and `project-digest`
+are gone (V304 deletes them; the seed removes them too). Their work is the node kind `ACTION` with `action.type`
+`FETCH_ISSUE`, `COMMENT_ISSUE`, `TRANSITION_ISSUE`, `START_WORKFLOW` or `PROJECT_DIGEST`; their former template
+defaults are the action defaults (for example `messageTemplate` =
+`Back Office run {{run.short}} ({{run.workflow}}): {{node.name}}. {{mr.url}}` for `COMMENT_ISSUE`, `toStatus` =
+`In Review` and `failIfMissing` = `false` for `TRANSITION_ISSUE`). A stored `TASK` node naming one of them is read as
+the `ACTION` node with those defaults, the step's `config` and its `promptReplace` as the comment message.
+`COMMENT_ISSUE` renders `messageTemplate` over the template model (variables:
+[designing-a-workflow.md](../guides/designing-a-workflow.md#template-variables)). `TRANSITION_ISSUE` fails the node
+when the issue's workflow offers no transition to `toStatus` (e.g. it is already there) unless `failIfMissing` is
+`false`: then the node succeeds with a note in the run log; an absent `failIfMissing` counts as `true`.
 
 SDLC templates (ADR 0019, derived from a reference SDLC framework, written in English):
 
-| Key | extends | category | executor | consumes → produces | skills (besides the inherited ground rules) |
+| Key | extends | category | how it runs | consumes → produces | skills (besides the inherited ground rules) |
 |---|---|---|---|---|---|
-| `write-user-story` | `base-llm` | `SPECIFICATION` | `LLM`, schema `user-story`, `openQuestions[]`, `confidence` (confidenceField) | `issue` → `user-story`, `confidence` | `user-story-format`, `definition-of-ready-done` |
-| `write-use-case` | `base-llm` | `SPECIFICATION` | `LLM`, schema `use-case`, `openQuestions[]`, `confidence` | `user-story` → `use-case`, `confidence` | `use-case-format`, `definition-of-ready-done` |
-| `write-adr` | `base-llm` | `PLANNING` | `LLM`, schema `adr`, `options[]`, `decision`, `openQuestions[]`, `confidence` | `issue` (+ `analysis`) → `adr`, `confidence` | `adr-format`, `definition-of-ready-done` |
-| `impact-analysis` | `base-llm` | `ANALYSIS` | `LLM`, CR sections: description, business justification, impact (artefacts, components, new stories, specification), estimate, options, recommendation, `openQuestions[]`, `confidence` | `issue` → `impact-analysis`, `confidence` | `definition-of-ready-done` |
-| `plan-task-list` | `base-llm` | `PLANNING` | `LLM`, schema `tasks[] {title, description, verification, test_command, completed: false}` + `finalTaskTitle` enum `reformat, lint, and test` | `plan`, `issue` (+ `impact-analysis`, `user-story`) → `tasks` | `definition-of-ready-done`, `build-guardrails` |
-| `implement-task-list` | `implement-opencode` | (`IMPLEMENTATION`, inherited) | `IMPLEMENT`; user prompt replaced: tasks in order with TDD, run each `test_command`, stop on the first red verification, no commits by the agent, work log in `work-log.md` (collected as `work-log`, kept out of the commit) ending with `RESULT: GREEN` or `RESULT: STOPPED at <task>`, which `verifyCommand` checks; "Noticed out of scope" list without fixes | `tasks` → `diff`, `mr`, `work-log` | `definition-of-ready-done` |
-| `review-against-spec` | `base-llm` | `REVIEW` | `LLM`, review schema plus `coverage[] {requirement, status MET/PARTIAL/MISSING/NOT_APPLICABLE, evidence}`; the matrix stays in the `review` artefact and a MISSING requirement makes `ReviewVerdictPolicy` return REQUEST_CHANGES | `diff`, `user-story`, `tasks` → `review` | `definition-of-ready-done`, `security-review-checklist` |
+| `write-user-story` | `base-llm` | `SPECIFICATION` | model answer, schema `user-story`, `openQuestions[]`, `confidence` (confidenceField) | `issue` → `user-story`, `confidence` | `user-story-format`, `definition-of-ready-done` |
+| `write-use-case` | `base-llm` | `SPECIFICATION` | model answer, schema `use-case`, `openQuestions[]`, `confidence` | `user-story` → `use-case`, `confidence` | `use-case-format`, `definition-of-ready-done` |
+| `write-adr` | `base-llm` | `PLANNING` | model answer, schema `adr`, `options[]`, `decision`, `openQuestions[]`, `confidence` | `issue` (+ `analysis`) → `adr`, `confidence` | `adr-format`, `definition-of-ready-done` |
+| `impact-analysis` | `base-llm` | `ANALYSIS` | model answer, CR sections: description, business justification, impact (artefacts, components, new stories, specification), estimate, options, recommendation, `openQuestions[]`, `confidence` | `issue` → `impact-analysis`, `confidence` | `definition-of-ready-done` |
+| `plan-task-list` | `base-llm` | `PLANNING` | model answer, schema `tasks[] {title, description, verification, test_command, completed: false}` + `finalTaskTitle` enum `reformat, lint, and test` | `plan`, `issue` (+ `impact-analysis`, `user-story`) → `tasks` | `definition-of-ready-done`, `build-guardrails` |
+| `implement-task-list` | `implement-opencode` | (`IMPLEMENTATION`, inherited) | agent job (`opencode`, inherited); user prompt replaced: tasks in order with TDD, run each `test_command`, stop on the first red verification, no commits by the agent, work log in `work-log.md` (collected as `work-log`, kept out of the commit) ending with `RESULT: GREEN` or `RESULT: STOPPED at <task>`, which `verifyCommand` checks; "Noticed out of scope" list without fixes | `tasks` → `diff`, `mr`, `work-log` | `definition-of-ready-done` |
+| `review-against-spec` | `base-llm` | `REVIEW` | model answer, review schema plus `coverage[] {requirement, status MET/PARTIAL/MISSING/NOT_APPLICABLE, evidence}`; the matrix stays in the `review` artefact and a MISSING requirement makes `ReviewVerdictPolicy` return REQUEST_CHANGES | `diff`, `user-story`, `tasks` → `review` | `definition-of-ready-done`, `security-review-checklist` |
 
-The LLM executor turns a structured field into an artefact only when the field name equals the
+A model answer step turns a structured field into an artefact only when the field name equals the
 `produces` name, so the schemas name their document fields like the artefacts: `write-user-story`,
 `write-use-case` and `write-adr` store the markdown of `user-story`, `use-case` and `adr`, `clarify-spec`
 the markdown `clarifications` and `plan-task-list` the `tasks` array; `analyse-issue` and
 `impact-analysis` store their whole JSON answer on purpose. A seed test checks that every `produces` name
 of every built-in template is a schema field, a collected file (`work-log.md` becomes `work-log`) or an
-output of its executor. The review guard and the review model default recognise review steps by
+output of the way it runs (model answer, Spec Kit phase or agent job). The review guard and the review model default recognise review steps by
 `produces review` or category `REVIEW`.
 
 Skills (eight): `spec-writing`, `conventional-commits`, `security-review-checklist`, and the SDLC skills `definition-of-ready-done` (binary DoR/DoD per user story, use case,
@@ -141,7 +185,7 @@ agent through `base-agent` and `agent-task`; `kotlin-hexagonal` and `angular-ng-
 stack and are examples to copy into a project rule and make automatic there. Rules carry no frontmatter. Until
 ADR 0055 all four were skills; `V303__rules_and_categories.sql` moves them from `skill` to `rule` in every scope,
 moves their keys from templates' `skills`/`removeSkills` to `rules`/`removeRules`, and derives `category` from the
-first implemented interface, else from the executor.
+first implemented interface, else from the executor (removed later by ADR 0056).
 
 Seeding is idempotent by key. A built-in template, skill or rule nobody edited (saved by the system
 or before actor stamps existed, and for templates still version 1) is replaced by the shipped definition
@@ -158,10 +202,10 @@ startup log).
 | list, get, resolve | `library.view` | `project.view` or `library.project.manage` on the project |
 | create, update, delete | `library.manage` | `library.project.manage` on the project |
 
-The same applies to templates, skills and rules. Moving an entry between scopes needs the write permission of
+The same applies to templates, skills, rules and agents. Moving an entry between scopes needs the write permission of
 both. `TaskCatalog` (used by the workflow engine and designer) is a system operation and checks nothing itself.
 Every change is audited: `TEMPLATE_CREATE/UPDATE/DELETE` (update diff covers key, name, scope, `extendsKey`,
-category, executor, skills and `removeSkills`, rules and `removeRules`, prompt lengths and whether the prompt
+category, agent, skills and `removeSkills`, rules and `removeRules`, prompt lengths and whether the prompt
 changed, config keys, schema length, produces/consumes, run inputs), `SKILL_*`, `RULE_CREATE/UPDATE/DELETE`
 (`automatic`, content length); entries carry `updatedBy` (`V301__actor_stamps.sql`). Built-in templates cannot be
 deleted; a template another one extends, a skill or a rule a template lists cannot be deleted, and their key and
@@ -170,15 +214,18 @@ scope cannot change.
 ## API
 
 `/api/v1/task-templates` (+ `/resolve/{key}`, GET for the template, POST with a step's overrides),
-`/api/v1/skills`, `/api/v1/rules` — CRUD per `openapi.yaml`; `key` is optional on create and update. Built-in
+`/api/v1/skills`, `/api/v1/rules`, `/api/v1/agents` (ADR 0056) — CRUD per `openapi.yaml`; `key` is optional on
+create and update. `GET /api/v1/workflows/task-config-schemas` gives the config schema of model answer and coding
+agent steps (it replaced `/workflows/task-executors`). Built-in
 entries can be edited and shadowed per project; built-in templates cannot be deleted.
 
 ## UI
 
-**Library** has three groups (ADR 0055): **Tasks** (Templates, Skills, Rules), **Workflows** (the workflow
+**Library** has three groups (ADR 0055, 0056): **Tasks** (Templates, Skills, Rules, Agents), **Workflows** (the workflow
 library belongs to the Projects context, ADR 0037 and
 [03-pipelines-and-agents.md](03-pipelines-and-agents.md#workflow-library)) and **Sources**. The template list is
 grouped by category; the template editor shows the inheritance chain, the skill and rule pickers (automatic rules
 read-only), an "effective prompt" preview (resolved, with skills and rules) and the problems of the check. The old
-`/library/interfaces` link redirects to the templates. The workflow designer palette lists concrete templates
-grouped by category.
+`/library/interfaces` link redirects to the templates. The template editor has the field **Agent**; the workflow
+designer palette lists concrete templates grouped by category with their agent, and the actions in a group of their
+own; a task step has the setting **Agent** (`overrides.agentKey`).

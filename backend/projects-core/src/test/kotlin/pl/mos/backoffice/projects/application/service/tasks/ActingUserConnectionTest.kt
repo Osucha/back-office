@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.ActionStep
+import pl.mos.backoffice.projects.domain.model.ActionType
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -25,7 +27,6 @@ import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
@@ -54,8 +55,7 @@ class ActingUserConnectionTest {
 
     private fun project(): Project = Fixtures.project().copy(jiraConnections = ProjectJiraConnections(bot.id))
 
-    private fun task(executor: TaskExecutor, config: Map<String, Any?>) =
-        ResolvedTask("t", "t", executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf("t"), listOf("success", "failure"))
+    private fun task(type: ActionType, config: Map<String, Any?>) = ActionStep(type, "t", "t", config)
 
     private fun context(startedBy: Actor?, state: Map<String, Any?> = emptyMap(), logs: MutableList<String> = mutableListOf()): NodeContext {
         val project = project()
@@ -71,7 +71,7 @@ class ActingUserConnectionTest {
         listOf(bot, bobsJira, alicesJira).forEach(connections::save)
         val logs = mutableListOf<String>()
 
-        fetch.execute(context(bob, logs = logs), task(TaskExecutor.FETCH_ISSUE, acting))
+        fetch.execute(context(bob, logs = logs), task(ActionType.FETCH_ISSUE, acting))
 
         assertThat(trackers.opened.last()).isEqualTo(bobsJira)
         assertThat(logs).anyMatch { it.contains("Jira connection: Bob's Jira (personal connection of Bob Other, they started the run)") }
@@ -82,14 +82,14 @@ class ActingUserConnectionTest {
         listOf(bot, bobsJira).forEach(connections::save)
         val watcher = Actor(PrincipalKind.SYSTEM, null, "Jira intake watcher")
 
-        assertThatThrownBy { fetch.execute(context(watcher), task(TaskExecutor.FETCH_ISSUE, acting)) }
+        assertThatThrownBy { fetch.execute(context(watcher), task(ActionType.FETCH_ISSUE, acting)) }
             .isInstanceOf(IntegrationException::class.java).hasMessageContaining("not started by a person")
         val ci = Actor(PrincipalKind.CI_TOKEN, null, "ci:SHOP")
-        assertThatThrownBy { fetch.execute(context(ci), task(TaskExecutor.FETCH_ISSUE, acting)) }.isInstanceOf(IntegrationException::class.java)
+        assertThatThrownBy { fetch.execute(context(ci), task(ActionType.FETCH_ISSUE, acting)) }.isInstanceOf(IntegrationException::class.java)
         assertThat(trackers.opened).doesNotContain(bobsJira)
 
         // fallbackToSystem: the watcher's run reads through the system connection instead
-        fetch.execute(context(watcher), task(TaskExecutor.FETCH_ISSUE, acting + ("fallbackToSystem" to true)))
+        fetch.execute(context(watcher), task(ActionType.FETCH_ISSUE, acting + ("fallbackToSystem" to true)))
         assertThat(trackers.opened.last()).isEqualTo(bot)
     }
 
@@ -127,7 +127,7 @@ class ActingUserConnectionTest {
         listOf(bot, bobsJira, alicesJira).forEach(connections::save)
         val logs = mutableListOf<String>()
         val config = acting + ("messageTemplate" to "Done")
-        val write = notify.execute(context(bob, logs = logs), task(TaskExecutor.NOTIFY, config)).pendingWrite!!
+        val write = notify.execute(context(bob, logs = logs), task(ActionType.COMMENT_ISSUE, config)).pendingWrite!!
 
         assertThat(write.connectionMode).isEqualTo(ConnectionMode.ACTING_USER)
         assertThat(write.personalAllowed).isTrue()
@@ -136,7 +136,7 @@ class ActingUserConnectionTest {
         assertThat(trackers.opened).isEmpty() // nothing opened before the approval
 
         val decision = mapOf("option" to "approve", "decidedBy" to "Alice Test", "decidedByUserId" to alice.userId.toString(), "writeAs" to "PERSONAL")
-        val result = notify.commit(context(bob, mapOf(RunStateKeys.DECISION to decision)), task(TaskExecutor.NOTIFY, config), write)
+        val result = notify.commit(context(bob, mapOf(RunStateKeys.DECISION to decision)), task(ActionType.COMMENT_ISSUE, config), write)
 
         assertThat(result.failed).isFalse()
         assertThat(trackers.opened.single()).isEqualTo(alicesJira) // the approver's, not the starter's
@@ -149,15 +149,15 @@ class ActingUserConnectionTest {
     fun `an approver without a personal connection writes nothing, and the system identity is refused without fallback`() {
         listOf(bot, bobsJira).forEach(connections::save)
         val config = acting + ("messageTemplate" to "Done")
-        val write = notify.execute(context(bob), task(TaskExecutor.NOTIFY, config)).pendingWrite!!
+        val write = notify.execute(context(bob), task(ActionType.COMMENT_ISSUE, config)).pendingWrite!!
 
         val personal = mapOf("option" to "approve", "decidedBy" to "Alice Test", "decidedByUserId" to alice.userId.toString())
-        val failed = notify.commit(context(bob, mapOf(RunStateKeys.DECISION to personal)), task(TaskExecutor.NOTIFY, config), write)
+        val failed = notify.commit(context(bob, mapOf(RunStateKeys.DECISION to personal)), task(ActionType.COMMENT_ISSUE, config), write)
         assertThat(failed.failed).isTrue()
         assertThat(failed.error).contains("nothing was written")
 
         val system = personal + ("writeAs" to "SYSTEM")
-        val refused = notify.commit(context(bob, mapOf(RunStateKeys.DECISION to system)), task(TaskExecutor.NOTIFY, config), write)
+        val refused = notify.commit(context(bob, mapOf(RunStateKeys.DECISION to system)), task(ActionType.COMMENT_ISSUE, config), write)
         assertThat(refused.failed).isTrue()
         assertThat(trackers.comments).isEmpty()
     }
@@ -166,12 +166,12 @@ class ActingUserConnectionTest {
     fun `with fallbackToSystem the approver may write through the system connection`() {
         listOf(bot).forEach(connections::save)
         val config = acting + ("messageTemplate" to "Done") + ("fallbackToSystem" to true)
-        val write = notify.execute(context(bob), task(TaskExecutor.NOTIFY, config)).pendingWrite!!
+        val write = notify.execute(context(bob), task(ActionType.COMMENT_ISSUE, config)).pendingWrite!!
         assertThat(write.systemAllowed).isTrue()
         assertThat(write.connectionName).isEqualTo("bot")
 
         val decision = mapOf("option" to "approve", "decidedBy" to "Alice Test", "decidedByUserId" to alice.userId.toString(), "writeAs" to "SYSTEM")
-        notify.commit(context(bob, mapOf(RunStateKeys.DECISION to decision)), task(TaskExecutor.NOTIFY, config), write)
+        notify.commit(context(bob, mapOf(RunStateKeys.DECISION to decision)), task(ActionType.COMMENT_ISSUE, config), write)
         assertThat(trackers.opened.single()).isEqualTo(bot)
         assertThat(audit.entries.single().details).containsEntry("identity", "SYSTEM")
     }
@@ -179,7 +179,7 @@ class ActingUserConnectionTest {
     @Test
     fun `a write without approval acting as a person uses the starter's connection (their run start is the consent)`() {
         listOf(bot, bobsJira).forEach(connections::save)
-        notify.execute(context(bob), task(TaskExecutor.NOTIFY, acting + ("messageTemplate" to "x") + ("approval" to "NOT_REQUIRED")))
+        notify.execute(context(bob), task(ActionType.COMMENT_ISSUE, acting + ("messageTemplate" to "x") + ("approval" to "NOT_REQUIRED")))
         assertThat(trackers.opened.single()).isEqualTo(bobsJira)
         assertThat(audit.entries.single().details).containsEntry("approval", "NOT_REQUIRED").containsEntry("identity", "PERSONAL")
     }

@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.domain.service
 
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
@@ -91,8 +93,9 @@ class WorkflowValidatorTest {
             assertThat(gate.gate.checklist.map { it.id }).containsExactly("tests-green", "review-findings-addressed", "spec-updated")
         }
         val change = DefaultWorkflows.changeRequest(project.id, Fixtures.now)
+        assertThat(change.nodes.filterIsInstance<WorkflowNode.Action>().map { it.action.type }).containsExactly(ActionType.FETCH_ISSUE)
         assertThat(change.nodes.filterIsInstance<WorkflowNode.Task>().map { it.task.templateKey })
-            .containsExactly("fetch-issue", "impact-analysis", "write-user-story", "plan-task-list", "implement-task-list", "code-review")
+            .containsExactly("impact-analysis", "write-user-story", "plan-task-list", "implement-task-list", "code-review")
         assertThat((change.requireNode("task-list-gate") as WorkflowNode.HumanGate).gate.checklist.map { it.text })
             .containsExactly("Every task has verification and test_command", "The last task is reformat, lint, and test")
     }
@@ -297,21 +300,21 @@ class WorkflowValidatorTest {
         }
     }
 
-    private fun chain(vararg tasks: WorkflowNode.Task): Pair<List<WorkflowNode>, List<WorkflowEdge>> {
+    private fun chain(vararg tasks: WorkflowNode): Pair<List<WorkflowNode>, List<WorkflowEdge>> {
         val ids = listOf("start") + tasks.map { it.id } + "done"
         return (listOf(start()) + tasks + end()) to ids.zipWithNext().map { (a, b) -> edge(a, if (a == "start") "out" else "success", b) }
     }
 
     @Test
     fun `a Jira step reading the issue key from an undeclared run parameter is a warning, not an error`() {
-        val fromOverride = WorkflowNode.Task("fetch", "Fetch", task = TaskBinding("fetch-issue", TaskOverrides(config = mapOf("issueKeyFrom" to "ticket"))))
+        val fromOverride = WorkflowNode.Action("fetch", "Fetch", action = ActionBinding(ActionType.FETCH_ISSUE, mapOf("issueKeyFrom" to "ticket")))
         val (nodes, edges) = chain(fromOverride)
 
         val result = validator.validate("wf", nodes, edges, inputs)
 
         assertThat(result.valid).isTrue()
         assertThat(result.warnings.single { it.nodeId == "fetch" }).satisfies({
-            assertThat(it.field).isEqualTo("task.config.issueKeyFrom")
+            assertThat(it.field).isEqualTo("action.config.issueKeyFrom")
             assertThat(it.message).contains("ticket").contains("no task of this workflow declares")
         })
     }

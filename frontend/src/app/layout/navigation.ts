@@ -82,7 +82,7 @@ export const NAVIGATION: NavItem[] = [
     label: $localize`:@@shell.nav.library:Library`,
     icon: 'book',
     children: [
-      // ADR 0055: three groups - Tasks (templates, skills, rules), Workflows, Sources.
+      // ADR 0055: three groups - Tasks (templates, skills, rules, agents), Workflows, Sources.
       {
         path: '/library/templates',
         label: $localize`:@@shell.nav.templates:Templates`,
@@ -100,6 +100,13 @@ export const NAVIGATION: NavItem[] = [
       {
         path: '/library/rules',
         label: $localize`:@@shell.nav.rules:Rules`,
+        access: { permission: 'library.view' },
+        group: 'tasks',
+        groupLabel: $localize`:@@shell.nav.libraryTasks:Tasks`,
+      },
+      {
+        path: '/library/agents',
+        label: $localize`:@@shell.nav.agents:Agents`,
         access: { permission: 'library.view' },
         group: 'tasks',
         groupLabel: $localize`:@@shell.nav.libraryTasks:Tasks`,

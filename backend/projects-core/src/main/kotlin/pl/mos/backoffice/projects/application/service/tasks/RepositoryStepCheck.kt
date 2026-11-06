@@ -2,6 +2,7 @@ package pl.mos.backoffice.projects.application.service.tasks
 
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
+import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.domain.model.LibrarySource
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
@@ -11,7 +12,6 @@ import pl.mos.backoffice.projects.domain.service.StepWorkspace
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 
 /**
  * Checks the repositories of the steps of a workflow (ADR 0034) for the designer validation ([designIssues]: errors
@@ -59,10 +59,8 @@ class RepositoryStepCheck(
     }
 
     companion object {
-        /** Executors that run in a sandbox with a git workspace. */
-        val RUNNER_EXECUTORS = setOf(TaskExecutor.IMPLEMENT, TaskExecutor.SPEC_KIT)
-
-        fun runnerStep(task: ResolvedTask): Boolean = task.executor in RUNNER_EXECUTORS
+        /** ADR 0056: a coding agent step runs in a sandbox with a git workspace. */
+        fun runnerStep(task: ResolvedTask): Boolean = TaskRunKind.of(task).runner
 
         /** A runner step pushes unless `config.push` is false (ADR 0031); a prepare step never pushes (ADR 0044). */
         fun pushes(task: ResolvedTask): Boolean = runnerStep(task) && task.config["push"]?.toString()?.lowercase() != "false" &&

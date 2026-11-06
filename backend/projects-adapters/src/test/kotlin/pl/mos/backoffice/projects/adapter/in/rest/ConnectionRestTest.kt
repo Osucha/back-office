@@ -31,7 +31,6 @@ import pl.mos.backoffice.projects.adapter.ProjectsTestApplication
 import pl.mos.backoffice.projects.adapter.ProjectsTestBeans
 import pl.mos.backoffice.projects.domain.model.JiraPermission
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
@@ -170,19 +169,13 @@ class ConnectionRestTest {
 
     @Test
     fun `a Jira step uses the least-privileged connection, and the designer reports missing ones`() {
-        tasks.register(
-            ResolvedTask(
-                "jira-fetch-test", "Fetch issue", TaskExecutor.FETCH_ISSUE, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null,
-                listOf("issue"), emptyList(), null, listOf("jira-fetch-test"), listOf("success", "failure"),
-            ),
-        )
         val project = createProject(key("RUN"))
         val pid = project["id"]
         val jiraKey = project["key"].toString()
         val workflow = """
             {"name":"jira fetch","nodes":[
               {"id":"start","kind":"START","name":"Start","position":{"x":0,"y":0}},
-              {"id":"fetch","kind":"TASK","name":"Fetch","position":{"x":1,"y":0},"task":{"templateKey":"jira-fetch-test"}},
+              {"id":"fetch","kind":"ACTION","name":"Fetch","position":{"x":1,"y":0},"action":{"type":"FETCH_ISSUE"}},
               {"id":"done","kind":"END","name":"Done","position":{"x":2,"y":0},"end":{"outcome":"SUCCESS"}}
             ],"edges":[{"id":"e1","from":"start","fromPort":"out","to":"fetch"},{"id":"e2","from":"fetch","fromPort":"success","to":"done"}]}
         """.trimIndent()
@@ -190,7 +183,7 @@ class ConnectionRestTest {
         // without a connection: a warning on the node (the workflow saves), but a run refuses to start (ADR 0030 amendment)
         mvc.perform(post("/api/v1/workflows/validate?projectId=$pid").contentType(MediaType.APPLICATION_JSON).content(workflow))
             .andExpect(status().isOk).andExpect(jsonPath("$.valid").value(true))
-            .andExpect(jsonPath("$.warnings[?(@.nodeId == 'fetch')].field").value(Matchers.hasItem("task.config.jiraConnection")))
+            .andExpect(jsonPath("$.warnings[?(@.nodeId == 'fetch')].field").value(Matchers.hasItem("action.config.jiraConnection")))
         mvc.perform(httpGet("/api/v1/projects/$pid/connections/resolve?capabilities=ISSUE_READ")).andExpect(status().isOk).andExpect(jsonPath("$.status").value("NONE"))
         val early = read(mvc.perform(post("/api/v1/projects/$pid/workflows").contentType(MediaType.APPLICATION_JSON).content(workflow)).andExpect(status().isCreated).andReturn().response.contentAsString)
         mvc.perform(post("/api/v1/workflows/${early["id"]}/runs").contentType(MediaType.APPLICATION_JSON).content("""{"issueKey":"$jiraKey-1"}"""))
@@ -214,7 +207,7 @@ class ConnectionRestTest {
             .andExpect(jsonPath("$.status").value("OK")).andExpect(jsonPath("$.connection.id").value(reader["id"].toString()))
         mvc.perform(httpGet("/api/v1/projects/$pid/connections/usable")).andExpect(status().isOk).andExpect(jsonPath("$.length()").value(Matchers.greaterThanOrEqualTo(2)))
         mvc.perform(httpGet("/api/v1/workflows/palette?projectId=$pid"))
-            .andExpect(jsonPath("$.tasks[?(@.key == 'jira-fetch-test')].requiredCapabilities[0]").value("ISSUE_READ"))
+            .andExpect(jsonPath("$.actions[?(@.type == 'FETCH_ISSUE')].requiredCapabilities[0]").value("ISSUE_READ"))
 
         val created = read(mvc.perform(post("/api/v1/projects/$pid/workflows").contentType(MediaType.APPLICATION_JSON).content(workflow)).andExpect(status().isCreated).andReturn().response.contentAsString)
         jira.stubFor(

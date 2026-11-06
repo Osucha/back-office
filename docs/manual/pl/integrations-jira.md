@@ -48,15 +48,15 @@ agent (prompt injection) mógłby go użyć do wszystkiego, na co pozwala token,
 
 ### Co wywołuje Back Office
 
-Back Office nigdy nie odbiera webhooków z Jiry. Jira jest wywoływana, gdy wykonuje się węzeł workflowu
-jednego z trzech typów zadań Jiry, gdy monitor zgłoszeń projektu odpytuje Jirę albo gdy połączenie jest
+Back Office nigdy nie odbiera webhooków z Jiry. Jira jest wywoływana, gdy wykonuje się jeden z trzech węzłów
+akcji Jiry w workflowie, gdy monitor zgłoszeń projektu odpytuje Jirę albo gdy połączenie jest
 zapisywane lub testowane:
 
 | Co się wykonuje | Wywołanie Jiry | Wymagana możliwość połączenia | Uprawnienia projektu Jira, które za nią stoją |
 |---|---|---|---|
-| Zadanie **Fetch issue** (executor `FETCH_ISSUE`) | `GET /rest/api/3/issue/{key}` z polami summary, description, type, priority, status, labels, components oraz polem kryteriów akceptacji | **Odczyt zgłoszeń** (**Read issues**, `ISSUE_READ`) | **Browse Projects** |
-| Zadanie **Notify Jira** (executor `NOTIFY`) | `POST /rest/api/3/issue/{key}/comment`, po zatwierdzeniu przez człowieka ([zatwierdzenie](#jira-write-approval)) | **Komentowanie zgłoszeń** (**Comment on issues**, `ISSUE_COMMENT`) | **Browse Projects**, **Add Comments** |
-| Zadanie **Transition issue** (executor `TRANSITION_ISSUE`) | `GET`, a następnie `POST /rest/api/3/issue/{key}/transitions`, po zatwierdzeniu przez człowieka | **Przenoszenie zgłoszeń** (**Move issues**, `ISSUE_TRANSITION`) i **Odczyt zgłoszeń** | **Browse Projects**, **Transition Issues** |
+| Akcja **Pobierz zgłoszenie** (**Fetch issue**, `FETCH_ISSUE`) | `GET /rest/api/3/issue/{key}` z polami summary, description, type, priority, status, labels, components oraz polem kryteriów akceptacji | **Odczyt zgłoszeń** (**Read issues**, `ISSUE_READ`) | **Browse Projects** |
+| Akcja **Skomentuj zgłoszenie** (**Comment on issue**, `COMMENT_ISSUE`) | `POST /rest/api/3/issue/{key}/comment`, po zatwierdzeniu przez człowieka ([zatwierdzenie](#jira-write-approval)) | **Komentowanie zgłoszeń** (**Comment on issues**, `ISSUE_COMMENT`) | **Browse Projects**, **Add Comments** |
+| Akcja **Zmień status zgłoszenia** (**Transition issue**, `TRANSITION_ISSUE`) | `GET`, a następnie `POST /rest/api/3/issue/{key}/transitions`, po zatwierdzeniu przez człowieka | **Przenoszenie zgłoszeń** (**Move issues**, `ISSUE_TRANSITION`) i **Odczyt zgłoszeń** | **Browse Projects**, **Transition Issues** |
 | **Monitor zgłoszeń Jira** (**Jira intake watcher**) projektu ([monitor](#jira-intake)) | `GET /rest/api/3/search/jql` z polami status, updated, created i historią zmian (changelog) | **Odczyt zgłoszeń** (`ISSUE_READ`) | **Browse Projects** |
 | Zapis połączenia, **Testuj** (**Test**), **Testuj przed zapisem** (**Test before saving**) | `GET /rest/api/3/myself`, `GET /rest/api/3/mypermissions` | żadna | żadne (wystarczy dowolne ważne konto) |
 
@@ -122,7 +122,7 @@ Back Office pomaga na trzy sposoby:
 - Jeśli komentarze i zmiany statusu mają pochodzić z różnych kont, podziel połączenie do zapisu na dwa
   (**Komentowanie zgłoszeń** + **Odczyt zgłoszeń**, **Przenoszenie zgłoszeń** + **Odczyt zgłoszeń**).
 
-W tej konfiguracji workflow **Fetch issue → … → Notify Jira → Transition issue** używa konta do odczytu
+W tej konfiguracji workflow **Pobierz zgłoszenie → … → Skomentuj zgłoszenie → Zmień status zgłoszenia** używa konta do odczytu
 w pierwszym kroku, a konta do zapisu w dwóch ostatnich, i projektant nie pokazuje ostrzeżeń. Połączenie do
 zapisu ma też **Odczyt zgłoszeń**, bo **Transition issue** najpierw odczytuje dostępne przejścia; bez tego
 krok zmiany statusu nie znalazłby połączenia, które pokrywa obie możliwości. [Monitor zgłoszeń](#jira-intake)
@@ -248,7 +248,7 @@ się w dzienniku audytu, API, interfejsie ani logach.
    | Możliwość | Pozwala Back Office | Uprawnienia Jiry potrzebne kontu |
    |---|---|---|
    | **Odczyt zgłoszeń** (**Read issues**, `ISSUE_READ`) | wczytywać zgłoszenia (**Fetch issue**, **Transition issue**) | Browse Projects |
-   | **Komentowanie zgłoszeń** (**Comment on issues**, `ISSUE_COMMENT`) | dodawać komentarze (**Notify Jira**) | Browse Projects, Add Comments |
+   | **Komentowanie zgłoszeń** (**Comment on issues**, `ISSUE_COMMENT`) | dodawać komentarze (**Skomentuj zgłoszenie**) | Browse Projects, Add Comments |
    | **Przenoszenie zgłoszeń** (**Move issues**, `ISSUE_TRANSITION`) | zmieniać status zgłoszeń (**Transition issue**) | Browse Projects, Transition Issues |
 
    **Komentowanie zgłoszeń** i **Przenoszenie zgłoszeń** to możliwości zapisu. Zaznacz tylko to, do czego
@@ -420,7 +420,7 @@ ostrzeżenie „ma więcej uprawnień niż potrzeba”. **Ustawienia** (**Settin
 1. Utwórz konta Jiry do odczytu i do zapisu oraz ich tokeny ([kroki](#jira-token)).
 2. Dodaj dwa połączenia, jako połączenia platformy albo w projektach ([Dodaj połączenie](#jira-connections)),
    i **Testuj** każde, aż żadne nie pokazuje brakujących uprawnień.
-3. Otwórz w projektancie każdy workflow z zadaniami Jiry i zwaliduj go: każdy węzeł Jiry powinien pokazywać
+3. Otwórz w projektancie każdy workflow z akcjami Jiry i zwaliduj go: każdy węzeł Jiry powinien pokazywać
    połączenie inne niż **Jira (environment variables)** i żadnego błędu.
 4. Usuń `JIRA_API_TOKEN` (oraz `JIRA_URL`, `JIRA_EMAIL`) z Secretu lub `deploy/compose/.env` i zrestartuj
    API i workera (`helm upgrade` robi to sam, gdy Secret należy do chartu). Zostaw
@@ -480,17 +480,18 @@ Wynik i jego czas są zapisywane w połączeniu (poza poświadczeniem ze zmienny
 to, które połączenie dostanie krok.
 
 <a id="jira-tasks"></a>
-## Zadania Jiry w workflowach
+## Akcje Jiry w workflowach
 
-Biblioteka zadań zawiera trzy szablony Jiry; przeciągnij je na kanwę jako węzły zadań
-([workflows.md](workflows.md#nodes)). Paleta pokazuje, jakich możliwości potrzebuje każdy z nich, i oznacza
-dwa, które zapisują w Jirze.
+Paleta projektanta ma w grupie **Akcje** (**Actions**) trzy akcje Jiry; przeciągnij je na kanwę jako węzły akcji
+([Węzły akcji](workflows.md#actions)). Paleta pokazuje, jakich możliwości potrzebuje każda z nich, i oznacza
+dwie, które zapisują w Jirze. Dawniej były to szablony zadań `fetch-issue`, `notify-jira` i `transition-issue`
+(ADR 0056); workflowy, które ich używają, działają dalej, a przy następnym zapisie są zapisywane jako akcje.
 
-| Szablon | Konfiguracja | Potrzebuje | Działanie |
+| Akcja | Konfiguracja | Potrzebuje | Działanie |
 |---|---|---|---|
-| **Fetch issue** (`fetch-issue`) | `issueKeyFrom`: `input` (domyślnie) lub nazwa parametru uruchomienia | **Odczyt zgłoszeń** | Wczytuje zgłoszenie, zapisuje je jako artefakt `issue` i w `state.issue`; kończy się błędem, gdy uruchomienie nie ma klucza zgłoszenia |
-| **Notify Jira** (`notify-jira`) | `messageTemplate` (wymagane): treść komentarza, szablon oparty na stanie uruchomienia; `approval` (domyślnie `REQUIRED`) i `approvers` | **Komentowanie zgłoszeń** | Renderuje komentarz, czeka, aż człowiek go zatwierdzi ([zatwierdzenie](#jira-write-approval)), a potem dodaje dokładnie ten tekst jako komentarz do `state.issue.key`, a w przeciwnym razie do klucza zgłoszenia uruchomienia |
-| **Transition issue** (`transition-issue`) | `toStatus` (wymagane), na przykład `In Review`; `approval` (domyślnie `REQUIRED`) i `approvers` | **Przenoszenie zgłoszeń** + **Odczyt zgłoszeń** | Czeka, aż człowiek zatwierdzi zmianę statusu, a potem pobiera listę dostępnych przejść zgłoszenia i wykonuje pierwsze, którego **nazwa statusu docelowego** lub **nazwa przejścia** jest równa `toStatus` (bez rozróżniania wielkości liter) |
+| **Pobierz zgłoszenie** (**Fetch issue**, `FETCH_ISSUE`) | `issueKeyFrom`: `input` (domyślnie) lub nazwa parametru uruchomienia | **Odczyt zgłoszeń** | Wczytuje zgłoszenie, zapisuje je jako artefakt `issue` i w `state.issue`; kończy się błędem, gdy uruchomienie nie ma klucza zgłoszenia |
+| **Skomentuj zgłoszenie** (**Comment on issue**, `COMMENT_ISSUE`) | `messageTemplate` (wymagane): treść komentarza, szablon oparty na stanie uruchomienia; `approval` (domyślnie `REQUIRED`) i `approvers` | **Komentowanie zgłoszeń** | Renderuje komentarz, czeka, aż człowiek go zatwierdzi ([zatwierdzenie](#jira-write-approval)), a potem dodaje dokładnie ten tekst jako komentarz do `state.issue.key`, a w przeciwnym razie do klucza zgłoszenia uruchomienia |
+| **Zmień status zgłoszenia** (**Transition issue**, `TRANSITION_ISSUE`) | `toStatus` (wymagane), na przykład `In Review`; `approval` (domyślnie `REQUIRED`) i `approvers` | **Przenoszenie zgłoszeń** + **Odczyt zgłoszeń** | Czeka, aż człowiek zatwierdzi zmianę statusu, a potem pobiera listę dostępnych przejść zgłoszenia i wykonuje pierwsze, którego **nazwa statusu docelowego** lub **nazwa przejścia** jest równa `toStatus` (bez rozróżniania wielkości liter) |
 
 <a id="jira-act-as"></a>
 ### Działaj jako: którego połączenia używa krok
@@ -555,8 +556,8 @@ Uwagi:
 
 Komentarza ani zmiany statusu w Jirze nie da się cofnąć z poziomu Back Office, a ich treść może pochodzić
 z wyniku modelu albo z tekstu zgłoszenia napisanego przez kogoś spoza zespołu (prompt injection, zob.
-[Jak działają zadania agentów](agent-execution.md#prompt-injection)). Dlatego **Notify Jira** i **Transition
-issue** proszą człowieka o zatwierdzenie dokładnie tego zapisu, zanim do niego dojdzie (ADR 0033).
+[Jak działają zadania agentów](agent-execution.md#prompt-injection)). Dlatego **Skomentuj zgłoszenie** i **Zmień
+status zgłoszenia** proszą człowieka o zatwierdzenie dokładnie tego zapisu, zanim do niego dojdzie (ADR 0033).
 
 ### Jak to działa
 
@@ -588,7 +589,7 @@ Jak je rozstrzygnąć: [Zatwierdzanie zapisów zewnętrznych](your-turn.md#write
 
 ### Ustawienie na węźle
 
-Zaznacz w projektancie węzeł **Notify Jira** lub **Transition issue**. Sekcja **Zatwierdzenie przed
+Zaznacz w projektancie węzeł **Skomentuj zgłoszenie** lub **Zmień status zgłoszenia**. Sekcja **Zatwierdzenie przed
 zapisem w Jirze** (**Approval before writing to Jira**) jego właściwości pokazuje:
 
 | Ustawienie | Znaczenie |
@@ -799,7 +800,7 @@ Karta stanu monitora powinna teraz pokazywać to połączenie ze stanem **OK**.
 | API lub worker nie startuje: brak klucza sekretów lub nieznany identyfikator klucza | istnieją połączenia, a klucz nie jest skonfigurowany, albo poprzedni klucz usunięto przed ponownym opakowaniem | przywróć `BACKOFFICE_SECRETS_KEY` / `BACKOFFICE_SECRETS_PREVIOUS_KEYS` |
 | **Testuj** pokazuje „Sekret niedostępny” | tokenu nie da się odszyfrować skonfigurowanymi kluczami | przywróć klucz albo **Zastąp token** |
 | **Uruchom** odrzucone: „workflow X cannot start: ...” | krok Jiry nie ma połączenia, którego mógłby użyć (zapis workflowu tylko ostrzegał) | dodaj połączenie wskazane w komunikacie ([Dodaj połączenie](#jira-connections)) |
-| Uruchomienie czeka na **Notify Jira** / **Transition issue** | zapis czeka na zatwierdzenie | rozstrzygnij je w **Twoja kolej** ([Zatwierdzanie zapisów zewnętrznych](your-turn.md#write-confirmations)) |
+| Uruchomienie czeka na **Skomentuj zgłoszenie** / **Zmień status zgłoszenia** | zapis czeka na zatwierdzenie | rozstrzygnij je w **Twoja kolej** ([Zatwierdzanie zapisów zewnętrznych](your-turn.md#write-confirmations)) |
 | Krok zakończony błędem „write rejected by ..., nothing was written” | zatwierdzający odrzucił zapis | przeczytaj komentarz, popraw tekst, uruchom ponownie; połącz `failure`, jeśli uruchomienie ma iść dalej |
 | Monitor zgłoszeń niczego nie uruchamia | pierwsze odpytanie (punkt startowy), brak wyzwalacza, zbyt wąski filtr albo „refused: ...” | zob. [Monitor zgłoszeń Jira](#jira-intake), karta stanu i komunikaty |
 | **Zatwierdź** jest wyłączone: „you have no personal Jira connection ...” | krok zapisuje jako zatwierdzający, a Ty nie masz połączenia dla tej możliwości i projektu Jiry | dodaj [połączenie osobiste](#jira-personal-connections) albo poproś projektanta o opcję zastępczą z połączeniem systemowym |

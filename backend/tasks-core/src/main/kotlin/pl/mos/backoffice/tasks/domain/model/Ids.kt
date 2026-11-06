@@ -29,3 +29,12 @@ value class RuleId(val value: UUID) {
         fun of(value: String) = RuleId(UUID.fromString(value))
     }
 }
+
+@JvmInline
+value class AgentId(val value: UUID) {
+    override fun toString(): String = value.toString()
+    companion object {
+        fun new() = AgentId(UUID.randomUUID())
+        fun of(value: String) = AgentId(UUID.fromString(value))
+    }
+}

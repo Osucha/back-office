@@ -6,6 +6,8 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.tasks.domain.model.Agent
+import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.RuleId
@@ -30,7 +32,7 @@ class TaskMappers(private val json: JsonMapper) {
         abstract = t.abstract,
         extendsKey = t.extendsKey,
         category = t.category,
-        executor = t.executor,
+        agentKey = t.agentKey,
         scopeType = scopeType(t.scope),
         projectId = t.scope.projectId,
         modelProfileId = t.modelProfileId?.value,
@@ -65,7 +67,7 @@ class TaskMappers(private val json: JsonMapper) {
         abstract = e.abstract,
         extendsKey = e.extendsKey,
         category = e.category,
-        executor = e.executor,
+        agentKey = e.agentKey,
         scope = Scope.of(e.projectId),
         modelProfileId = e.modelProfileId?.let(::ModelProfileId),
         prompt = Prompt(e.promptSystem, e.promptUser, e.promptMode),
@@ -173,6 +175,41 @@ class TaskMappers(private val json: JsonMapper) {
         content = e.content,
         scope = Scope.of(e.projectId),
         automatic = e.automatic,
+        tags = readStrings(e.tags),
+        builtIn = e.builtIn,
+        createdAt = e.createdAt,
+        updatedAt = e.updatedAt,
+        updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
+    )
+
+    // ----- agents (ADR 0056) -------------------------------------------------------------------------
+
+    fun toEntity(a: Agent) = AgentEntity(
+        id = a.id.value,
+        key = a.key,
+        name = a.name,
+        description = a.description,
+        scopeType = scopeType(a.scope),
+        projectId = a.scope.projectId,
+        harness = a.harness,
+        modelProfileId = a.modelProfileId?.value,
+        tags = json.writeValueAsString(a.tags),
+        builtIn = a.builtIn,
+        createdAt = a.createdAt,
+        updatedAt = a.updatedAt,
+        updatedByKind = a.updatedBy?.kind?.name,
+        updatedById = a.updatedBy?.userId,
+        updatedByName = a.updatedBy?.displayName,
+    )
+
+    fun toDomain(e: AgentEntity) = Agent(
+        id = AgentId(e.id),
+        key = e.key,
+        name = e.name,
+        description = e.description,
+        scope = Scope.of(e.projectId),
+        harness = e.harness,
+        modelProfileId = e.modelProfileId?.let(::ModelProfileId),
         tags = readStrings(e.tags),
         builtIn = e.builtIn,
         createdAt = e.createdAt,

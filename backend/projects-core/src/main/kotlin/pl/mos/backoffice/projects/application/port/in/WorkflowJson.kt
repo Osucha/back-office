@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.port.`in`
 
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.Canvas
 import pl.mos.backoffice.projects.domain.model.ChecklistItem
 import pl.mos.backoffice.projects.domain.model.CiWaitSpec
@@ -18,6 +20,9 @@ import pl.mos.backoffice.projects.domain.model.TriggerType
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.projects.domain.service.ActionCatalog
+import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.TaskOverrides
@@ -28,11 +33,15 @@ import java.util.UUID
  * canvas). Shared by the REST layer (request/response bodies), the persistence layer (JSONB columns and
  * the run's definition snapshot) and the MCP server (ADR 0049) so all agree on one encoding. Plain data, no
  * framework: it lives next to the use cases that take it.
+ *
+ * ADR 0056 compatibility on read (stored definitions, library versions and run snapshots alike): a TASK node naming a
+ * former action template is read as the ACTION node, and the step config key `agent` as `overrides.agentKey`.
  */
 
 data class PointJson(val x: Double = 0.0, val y: Double = 0.0)
 data class CanvasJson(val zoom: Double = 1.0, val x: Double = 0.0, val y: Double = 0.0)
 data class TaskOverridesJson(
+    val agentKey: String? = null,
     val modelProfileId: UUID? = null,
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
@@ -42,6 +51,8 @@ data class TaskOverridesJson(
     val config: Map<String, Any?> = emptyMap(),
 )
 data class TaskSectionJson(val templateKey: String = "", val overrides: TaskOverridesJson = TaskOverridesJson())
+/** ADR 0056: the `action` section of an ACTION node. */
+data class ActionSectionJson(val type: String = "", val config: Map<String, Any?> = emptyMap())
 data class DecisionBranchJson(val id: String = "", val label: String = "", val expression: String = "")
 data class DecisionSectionJson(val branches: List<DecisionBranchJson> = emptyList(), val defaultBranch: String? = null)
 data class GateApproversJson(
@@ -71,6 +82,7 @@ data class WorkflowNodeJson(
     val timeoutSeconds: Long? = null,
     val maxVisits: Int = WorkflowNode.DEFAULT_MAX_VISITS,
     val task: TaskSectionJson? = null,
+    val action: ActionSectionJson? = null,
     val decision: DecisionSectionJson? = null,
     val gate: GateSectionJson? = null,
     val ci: CiSectionJson? = null,
@@ -111,7 +123,17 @@ object WorkflowJson {
             NodeKind.END -> WorkflowNode.End(id, name, position, n.timeoutSeconds, n.maxVisits, EndSpec(enum<RunOutcome>(n.end?.outcome ?: "SUCCESS", "nodes.$id.end.outcome")))
             NodeKind.TASK -> {
                 val task = n.task ?: throw ValidationException("task section is required for TASK nodes", "nodes.$id.task")
-                WorkflowNode.Task(id, name, position, n.timeoutSeconds, n.maxVisits, TaskBinding(task.templateKey.trim(), toDomain(task.overrides)))
+                val templateKey = task.templateKey.trim()
+                val former = ActionCatalog.FORMER_TEMPLATES[templateKey]
+                if (former != null) {
+                    WorkflowNode.Action(id, name, position, n.timeoutSeconds, n.maxVisits, formerActionTemplate(former, task.overrides))
+                } else {
+                    WorkflowNode.Task(id, name, position, n.timeoutSeconds, n.maxVisits, TaskBinding(templateKey, toDomain(task.overrides)))
+                }
+            }
+            NodeKind.ACTION -> {
+                val action = n.action ?: throw ValidationException("action section is required for ACTION nodes", "nodes.$id.action")
+                WorkflowNode.Action(id, name, position, n.timeoutSeconds, n.maxVisits, ActionBinding(enum<ActionType>(action.type, "nodes.$id.action.type"), action.config))
             }
             NodeKind.DECISION -> {
                 val decision = n.decision ?: throw ValidationException("decision section is required for DECISION nodes", "nodes.$id.decision")
@@ -144,6 +166,7 @@ object WorkflowJson {
     fun toJson(n: WorkflowNode): WorkflowNodeJson = WorkflowNodeJson(
         id = n.id, kind = n.kind.name, name = n.name, position = PointJson(n.position.x, n.position.y), timeoutSeconds = n.timeoutSeconds, maxVisits = n.maxVisits,
         task = (n as? WorkflowNode.Task)?.let { TaskSectionJson(it.task.templateKey, toJson(it.task.overrides)) },
+        action = (n as? WorkflowNode.Action)?.let { ActionSectionJson(it.action.type.name, it.action.config) },
         decision = (n as? WorkflowNode.Decision)?.let { d -> DecisionSectionJson(d.decision.branches.map { DecisionBranchJson(it.id, it.label, it.expression) }, d.decision.defaultBranch) },
         gate = (n as? WorkflowNode.HumanGate)?.let {
             GateSectionJson(it.gate.question, it.gate.options, it.gate.showArtifacts, it.gate.timeoutSeconds, toJson(it.gate.approvers), it.gate.checklist.map(::toJson))
@@ -153,17 +176,42 @@ object WorkflowJson {
         note = (n as? WorkflowNode.Note)?.let { NoteSectionJson(it.note.text) },
     )
 
-    fun toDomain(o: TaskOverridesJson) = TaskOverrides(
-        modelProfileId = o.modelProfileId?.let(::ModelProfileId),
-        systemPromptAppend = o.systemPromptAppend?.takeIf { it.isNotBlank() },
-        promptAppend = o.promptAppend?.takeIf { it.isNotBlank() },
-        promptReplace = o.promptReplace?.takeIf { it.isNotBlank() },
-        addSkills = o.addSkills,
-        removeSkills = o.removeSkills,
-        config = o.config,
-    )
+    /** The step's overrides; a legacy config key `agent` naming a harness becomes [TaskOverrides.agentKey] unless one is set. */
+    fun toDomain(o: TaskOverridesJson): TaskOverrides {
+        val legacy = legacyAgentKey(o.config)
+        return TaskOverrides(
+            agentKey = o.agentKey?.trim()?.takeIf { it.isNotEmpty() } ?: legacy,
+            modelProfileId = o.modelProfileId?.let(::ModelProfileId),
+            systemPromptAppend = o.systemPromptAppend?.takeIf { it.isNotBlank() },
+            promptAppend = o.promptAppend?.takeIf { it.isNotBlank() },
+            promptReplace = o.promptReplace?.takeIf { it.isNotBlank() },
+            addSkills = o.addSkills,
+            removeSkills = o.removeSkills,
+            config = if (legacy != null) o.config - LEGACY_AGENT_KEY else o.config,
+        )
+    }
 
-    fun toJson(o: TaskOverrides) = TaskOverridesJson(o.modelProfileId?.value, o.systemPromptAppend, o.promptAppend, o.promptReplace, o.addSkills, o.removeSkills, o.config)
+    fun toJson(o: TaskOverrides) = TaskOverridesJson(o.agentKey, o.modelProfileId?.value, o.systemPromptAppend, o.promptAppend, o.promptReplace, o.addSkills, o.removeSkills, o.config)
+
+    /** The former config key that chose the coding agent harness of a step. */
+    private const val LEGACY_AGENT_KEY = "agent"
+
+    private fun legacyAgentKey(config: Map<String, Any?>): String? =
+        (config[LEGACY_AGENT_KEY] as? String)?.let { value -> AgentHarness.entries.firstOrNull { it.name == value } }?.let { AgentSnapshot.keyOf(it) }
+
+    /**
+     * ADR 0056: a step of a former action template as its action: the step's config (the template defaults apply at run
+     * time) and, for a comment, the step's `promptReplace` as the message when the config has none.
+     */
+    private fun formerActionTemplate(type: ActionType, overrides: TaskOverridesJson): ActionBinding {
+        val message = overrides.promptReplace?.takeIf { it.isNotBlank() }
+        val config = if (type == ActionType.COMMENT_ISSUE && message != null && overrides.config[ActionCatalog.MESSAGE_TEMPLATE] == null) {
+            overrides.config + (ActionCatalog.MESSAGE_TEMPLATE to message)
+        } else {
+            overrides.config
+        }
+        return ActionBinding(type, config)
+    }
 
     fun toDomain(a: GateApproversJson?): GateApprovers = a?.let {
         GateApprovers(

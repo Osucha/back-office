@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.port.out
 
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.ArtifactKind
 import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.projects.domain.model.MergeRequestSnapshot
@@ -16,7 +17,7 @@ import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.tasks.RunInputField
 
 /** Artefact produced by a node, persisted by the progress recorder. */
 data class NewArtifact(
@@ -118,16 +119,55 @@ interface NodeExecutor {
     fun commit(context: NodeContext, write: PendingWrite): NodeResult = NodeResult.failure("node kind $kind does not make external writes")
 }
 
-/** Strategy executing one `TaskExecutor` (LLM in-process, SPEC_KIT/IMPLEMENT in the runner, Jira tasks). */
+/**
+ * ADR 0056: how a task step runs, following from its agent and its config: a model answer in-process, the Spec Kit job
+ * (coding agent and a `phase`) or the agent job (coding agent otherwise, the former IMPLEMENT).
+ */
+enum class TaskRunKind {
+    MODEL_ANSWER, SPEC_KIT, AGENT_JOB;
+
+    /** The step runs in the runner sandbox with a repository workspace. */
+    val runner: Boolean get() = this != MODEL_ANSWER
+
+    companion object {
+        const val PHASE = "phase"
+
+        fun of(task: ResolvedTask): TaskRunKind = when {
+            task.agent.modelAnswer -> MODEL_ANSWER
+            !task.config[PHASE]?.toString().isNullOrBlank() -> SPEC_KIT
+            else -> AGENT_JOB
+        }
+    }
+}
+
+/** Strategy executing one [TaskRunKind] (model answer in-process, Spec Kit and agent jobs in the runner). */
 interface TaskExecutorStrategy {
-    val executor: TaskExecutor
+    val runKind: TaskRunKind
     fun execute(context: NodeContext, task: ResolvedTask): NodeResult
 
-    /** Maps the result of the runner job [jobId] submitted by [execute] (runner-backed executors only). */
+    /** Maps the result of the runner job [jobId] submitted by [execute] (runner-backed strategies only). */
     fun resume(context: NodeContext, task: ResolvedTask, jobId: RunnerJobId): NodeResult =
-        NodeResult.failure("task executor $executor does not wait for runner jobs")
+        NodeResult.failure("task run kind $runKind does not wait for runner jobs")
+}
 
-    /** Writes exactly the approved [write] prepared by [execute] (write executors only, ADR 0033). */
-    fun commit(context: NodeContext, task: ResolvedTask, write: PendingWrite): NodeResult =
-        NodeResult.failure("task executor $executor does not make external writes")
+/**
+ * ADR 0056: one action step as its strategy sees it: the action, the node and the effective config (the node's config
+ * deep-merged over the action's defaults).
+ */
+data class ActionStep(
+    val type: ActionType,
+    val nodeId: String,
+    val name: String,
+    val config: Map<String, Any?>,
+    val runInputs: List<RunInputField> = emptyList(),
+)
+
+/** Strategy executing one [ActionType] (Jira reads and writes, starting workflows, the project digest). */
+interface ActionStrategy {
+    val type: ActionType
+    fun execute(context: NodeContext, step: ActionStep): NodeResult
+
+    /** Writes exactly the approved [write] prepared by [execute] (write actions only, ADR 0033). */
+    fun commit(context: NodeContext, step: ActionStep, write: PendingWrite): NodeResult =
+        NodeResult.failure("action $type does not make external writes")
 }

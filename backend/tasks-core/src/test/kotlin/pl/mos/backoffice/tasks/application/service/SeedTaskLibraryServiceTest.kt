@@ -4,7 +4,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -13,20 +14,27 @@ import java.util.UUID
 
 class SeedTaskLibraryServiceTest {
 
-    private val lib = Library()
-    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.clock)
+    private val lib = Library(builtInAgents = false)
+    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock)
+    private val opencode = AgentSnapshot(AgentSnapshot.OPENCODE, "OpenCode", AgentHarness.OPENCODE)
     private val alice = Actor(PrincipalKind.USER, UUID.fromString("00000000-0000-0000-0000-0000000000a1"), "Alice")
 
     @Test
     fun `seeds the documented library once and never twice`() {
         val first = service.seed()
         assertThat(first.rulesCreated).isEqualTo(4)
-        assertThat(first.templatesCreated).isEqualTo(26)
+        assertThat(first.templatesCreated).isEqualTo(21)
         assertThat(first.skillsCreated).isEqualTo(8)
+        assertThat(first.agentsCreated).isEqualTo(3)
 
         val second = service.seed()
         assertThat(second.total).isZero()
-        assertThat(lib.templates.rows).hasSize(26)
+        assertThat(lib.templates.rows).hasSize(21)
+        assertThat(lib.agents.rows.values.associate { it.key to it.harness }).containsExactlyInAnyOrderEntriesOf(
+            mapOf(AgentSnapshot.MODEL_ANSWER to null, AgentSnapshot.OPENCODE to AgentHarness.OPENCODE, AgentSnapshot.CLAUDE_CODE to AgentHarness.CLAUDE_CODE),
+        )
+        assertThat(lib.agents.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.agentKeys)
+        assertThat(lib.agents.rows.values).allSatisfy { assertThat(it.builtIn).isTrue(); assertThat(it.updatedBy).isEqualTo(Actor.SYSTEM) }
         assertThat(lib.rules.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.ruleKeys)
         assertThat(lib.templates.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.templateKeys)
         assertThat(lib.skills.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.skillKeys)
@@ -40,13 +48,13 @@ class SeedTaskLibraryServiceTest {
 
     @Test
     fun `entries the owner already has are left untouched, missing ones are restored`() {
-        lib.template(BuiltInLibrary.CODE_REVIEW, executor = TaskExecutor.LLM, name = "My review")
+        lib.template(BuiltInLibrary.CODE_REVIEW, name = "My review")
         lib.skill(BuiltInLibrary.SPEC_WRITING, content = "# mine")
-        lib.template(BuiltInLibrary.CODE_REVIEW, executor = TaskExecutor.LLM, scope = Scope.Project(lib.projectId), name = "Project review")
+        lib.template(BuiltInLibrary.CODE_REVIEW, scope = Scope.Project(lib.projectId), name = "Project review")
 
         val result = service.seed()
 
-        assertThat(result.templatesCreated).isEqualTo(25)
+        assertThat(result.templatesCreated).isEqualTo(20)
         assertThat(result.skillsCreated).isEqualTo(7)
         assertThat(result.rulesCreated).isEqualTo(4)
         assertThat(result.templatesUpgraded + result.skillsUpgraded + result.rulesUpgraded).describedAs("entries that are not built-in are never upgraded").isZero()
@@ -96,6 +104,38 @@ class SeedTaskLibraryServiceTest {
     }
 
     @Test
+    fun `untouched built-in agents are upgraded, edited ones and project copies are left alone`() {
+        service.seed()
+        val answer = lib.agents.findByKeyAndScope(AgentSnapshot.MODEL_ANSWER, Scope.Global)!!
+        lib.agents.save(answer.copy(description = "old", updatedBy = null))
+        val claude = lib.agents.findByKeyAndScope(AgentSnapshot.CLAUDE_CODE, Scope.Global)!!
+        lib.agents.save(claude.copy(name = "Our Claude", updatedBy = alice))
+
+        val result = service.seed()
+
+        assertThat(result.agentsUpgraded).isEqualTo(1)
+        assertThat(lib.agents.findByKeyAndScope(AgentSnapshot.MODEL_ANSWER, Scope.Global)!!.description).isNotEqualTo("old")
+        assertThat(lib.agents.findByKeyAndScope(AgentSnapshot.MODEL_ANSWER, Scope.Global)!!.id).isEqualTo(answer.id)
+        assertThat(lib.agents.findByKeyAndScope(AgentSnapshot.CLAUDE_CODE, Scope.Global)!!.name).isEqualTo("Our Claude")
+        assertThat(service.seed().total).isZero()
+    }
+
+    @Test
+    fun `the former built-in action templates are removed unless another template extends them`() {
+        BuiltInLibrary.formerActionTemplateKeys.forEach { lib.templates.save(lib.template(it).copy(builtIn = true)) }
+        lib.template(BuiltInLibrary.NOTIFY_JIRA, scope = Scope.Project(lib.projectId))
+        lib.template("our-notify", extendsKey = BuiltInLibrary.TRANSITION_ISSUE)
+
+        val result = service.seed()
+
+        assertThat(result.templatesRemoved).isEqualTo(4)
+        assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.FETCH_ISSUE, Scope.Global)).isNull()
+        assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.TRANSITION_ISSUE, Scope.Global)).describedAs("still extended").isNotNull()
+        assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.NOTIFY_JIRA, Scope.Project(lib.projectId))).describedAs("a project copy stays").isNotNull()
+        assertThat(service.seed().templatesRemoved).isZero()
+    }
+
+    @Test
     fun `a stored copy that lost its null config values and has reordered maps does not count as changed`() {
         service.seed()
         lib.templates.rows.values.toList().forEach { t ->
@@ -124,12 +164,12 @@ class SeedTaskLibraryServiceTest {
     }
 
     @Test
-    fun `every produced name of every built-in template is backed by its schema, its collected files or its executor`() {
+    fun `every produced name of every built-in template is backed by its schema, its collected files or its agent`() {
         service.seed()
 
         val problems = lib.templates.rows.values.filterNot { it.abstract }.flatMap { template ->
             val task = lib.lookup.resolver.resolve(template.key, null)!!
-            BuiltInLibrary.producedNameProblems(task.key, task.executor, task.produces, task.outputSchema, task.confidenceField, task.config)
+            BuiltInLibrary.producedNameProblems(task.key, task.agent, task.produces, task.outputSchema, task.confidenceField, task.config)
         }
 
         assertThat(problems).isEmpty()
@@ -139,12 +179,15 @@ class SeedTaskLibraryServiceTest {
     fun `the produces check catches a schema field that does not match the produced name`() {
         val schema = """{ "type": "object", "properties": { "userStory": { "type": "string", "properties": { "x": {} } }, "confidence": { "type": "number" } } }"""
         assertThat(BuiltInLibrary.schemaProperties(schema)).containsExactly("userStory", "confidence")
-        val mismatch = BuiltInLibrary.producedNameProblems("write-user-story", TaskExecutor.LLM, listOf("user-story", "confidence"), schema, "confidence", emptyMap())
+        val mismatch = BuiltInLibrary.producedNameProblems("write-user-story", AgentSnapshot.DEFAULT, listOf("user-story", "confidence"), schema, "confidence", emptyMap())
         assertThat(mismatch).hasSize(1)
         assertThat(mismatch.single()).contains("\"user-story\"")
-        assertThat(BuiltInLibrary.producedNameProblems("implement-task-list", TaskExecutor.IMPLEMENT, listOf("diff", "work-log"), null, null, mapOf("collectArtifacts" to listOf("work-log.md")))).isEmpty()
-        assertThat(BuiltInLibrary.producedNameProblems("x", TaskExecutor.IMPLEMENT, listOf("work-log"), null, null, emptyMap())).hasSize(1)
-        assertThat(BuiltInLibrary.producedNameProblems("x", TaskExecutor.LLM, listOf("a", "b"), null, null, emptyMap())).describedAs("only one name can take the whole answer").hasSize(2)
+        assertThat(BuiltInLibrary.producedNameProblems("implement-task-list", opencode, listOf("diff", "work-log"), null, null, mapOf("collectArtifacts" to listOf("work-log.md")))).isEmpty()
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("work-log"), null, null, emptyMap())).hasSize(1)
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, mapOf("phase" to "PLAN"))).describedAs("a Spec Kit job").isEmpty()
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, emptyMap())).describedAs("an agent job").hasSize(1)
+        assertThat(BuiltInLibrary.producedNameProblems("x", null, listOf("plan"), null, null, emptyMap())).isEmpty()
+        assertThat(BuiltInLibrary.producedNameProblems("x", AgentSnapshot.DEFAULT, listOf("a", "b"), null, null, emptyMap())).describedAs("only one name can take the whole answer").hasSize(2)
     }
 
     @Test
@@ -154,8 +197,8 @@ class SeedTaskLibraryServiceTest {
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, null)!!
 
         assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_CODING_AGENT, BuiltInLibrary.BASE_AGENT)
-        assertThat(task.executor).isEqualTo(TaskExecutor.IMPLEMENT)
-        assertThat(task.config["agent"]).isEqualTo("CLAUDE_CODE")
+        assertThat(task.agent).isEqualTo(AgentSnapshot(AgentSnapshot.CLAUDE_CODE, "Claude Code", AgentHarness.CLAUDE_CODE))
+        assertThat(task.config).doesNotContainKey("agent")
         assertThat(task.config["push"]).isEqualTo(true)
         assertThat(task.config["branchTemplate"]).isEqualTo("feature/{{issue.key | lower}}")
         // the keys RunnerTaskSupport reads (a nested mergeRequest map was never read)
@@ -177,7 +220,7 @@ class SeedTaskLibraryServiceTest {
         service.seed()
 
         val clarify = lib.lookup.resolver.resolve(BuiltInLibrary.CLARIFY_SPEC, null)!!
-        assertThat(clarify.executor).isEqualTo(TaskExecutor.LLM)
+        assertThat(clarify.agent.modelAnswer).isTrue()
         assertThat(clarify.confidenceField).isEqualTo("confidence")
         assertThat(BuiltInLibrary.schemaProperties(clarify.outputSchema)).containsExactlyInAnyOrder("confidence", "clarifications", "summary")
         assertThat(clarify.prompt.user).contains("why it matters").contains("suggested default")
@@ -199,10 +242,11 @@ class SeedTaskLibraryServiceTest {
         assertThat(user).contains("{{input.ci.mergeRequest.title}}").contains("{{#issue.key}}")
         assertThat(user.trimEnd()).endsWith("{{artifacts.diff}}")
 
-        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.NOTIFY_JIRA, null)!!.config).containsKey("messageTemplate")
-        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.TRANSITION_ISSUE, null)!!.config).containsKey("toStatus")
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.config["phase"]).isEqualTo("PLAN")
-        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.FETCH_ISSUE, null)!!.config).describedAs("no config keys nothing reads").isEmpty()
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.PREPARE_WORKSPACE, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.LLM_TASK, null)!!.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
     }
 
     @Test

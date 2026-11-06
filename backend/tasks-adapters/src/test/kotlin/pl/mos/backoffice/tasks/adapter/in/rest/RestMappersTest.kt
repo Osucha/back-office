@@ -7,7 +7,9 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RuleSnapshot
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Rule
@@ -26,7 +28,7 @@ class RestMappersTest {
 
     @Test
     fun `template run inputs go from the request to the domain and back to the response`() {
-        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", executor = TaskExecutor.LLM, scope = ScopeDto(ScopeTypeDto.GLOBAL), runInputs = listOf(issue, input))
+        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", agentKey = "claude-code", scope = ScopeDto(ScopeTypeDto.GLOBAL), runInputs = listOf(issue, input))
 
         val content = RestMappers.templateContent(dto)
         assertThat(content.runInputs).containsExactly(
@@ -36,11 +38,14 @@ class RestMappersTest {
 
         val response = RestMappers.template(TaskTemplate.create(content, now))
         assertThat(response.runInputs).containsExactly(issue, input)
+        assertThat(content.agentKey).isEqualTo("claude-code")
+        assertThat(response.agentKey).isEqualTo("claude-code")
+        assertThat(RestMappers.templateContent(dto.copy(agentKey = " ")).agentKey).describedAs("blank = inherit").isNull()
     }
 
     @Test
     fun `a request without run inputs declares none`() {
-        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", executor = TaskExecutor.LLM, scope = ScopeDto(ScopeTypeDto.GLOBAL))
+        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL))
 
         assertThat(RestMappers.templateContent(dto).runInputs).isEmpty()
     }
@@ -48,7 +53,7 @@ class RestMappersTest {
     @Test
     fun `category, rules and removeRules round trip and a blank key means derive it`() {
         val dto = TaskTemplateInputDto(
-            key = " ", name = "Writer", executor = TaskExecutor.LLM, scope = ScopeDto(ScopeTypeDto.GLOBAL),
+            key = " ", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL),
             category = TemplateCategory.SPECIFICATION, rules = listOf("r1"), removeRules = listOf("r2"),
         )
         val content = RestMappers.templateContent(dto)
@@ -84,7 +89,7 @@ class RestMappersTest {
     @Test
     fun `the resolved view carries the merged run inputs, category, rules and the check`() {
         val resolution = TaskResolution(
-            key = "writer", name = "Writer", description = "", executor = TaskExecutor.LLM, modelProfileId = null,
+            key = "writer", name = "Writer", description = "", agent = AgentSnapshot.DEFAULT, modelProfileId = null,
             prompt = TaskPrompt(null, null), skills = emptyList(), config = emptyMap(), outputSchema = null, confidenceField = null,
             produces = emptyList(), consumes = emptyList(), category = TemplateCategory.REVIEW, lineage = listOf("writer", "base-agent"),
             ports = listOf("success", "failure"), tags = emptyList(), abstract = false, projectId = null, check = ResolutionCheck.of(listOf("rule x does not exist")),
@@ -97,5 +102,28 @@ class RestMappersTest {
         assertThat(dto.category).isEqualTo(TemplateCategory.REVIEW)
         assertThat(dto.rules).containsExactly(ResolvedRuleDto("auto", "Auto", true), ResolvedRuleDto("listed", "Listed", false))
         assertThat(dto.check).isEqualTo(ResolutionCheckDto(false, listOf("rule x does not exist")))
+        assertThat(dto.agent).isEqualTo(AgentRefDto("model-answer", "Model answer", null, null))
+    }
+
+    @Test
+    fun `agents map from the request and back, and a step's agent key and the resolved agent travel`() {
+        val model = UUID.randomUUID()
+        val dto = AgentInputDto(key = " ", name = "Coder", description = "d", scope = ScopeDto(ScopeTypeDto.GLOBAL), harness = AgentHarness.OPENCODE, modelProfileId = model, tags = listOf("t"))
+        val content = RestMappers.agentContent(dto)
+        assertThat(content.key).isNull()
+        assertThat(content.harness).isEqualTo(AgentHarness.OPENCODE)
+        assertThat(content.modelProfileId!!.value).isEqualTo(model)
+
+        val agent = Agent.create(content.copy(key = "coder"), now)
+        val out = RestMappers.agent(agent)
+        assertThat(out.id).isEqualTo(agent.id.value)
+        assertThat(out.key).isEqualTo("coder")
+        assertThat(out.harness).isEqualTo(AgentHarness.OPENCODE)
+        assertThat(out.modelProfileId).isEqualTo(model)
+        assertThat(out.scope).isEqualTo(ScopeDto(ScopeTypeDto.GLOBAL))
+
+        assertThat(RestMappers.agentRef(AgentSnapshot.DEFAULT)).isEqualTo(AgentRefDto("model-answer", "Model answer", null, null))
+        assertThat(RestMappers.overrides(TaskOverridesDto(agentKey = "coder")).agentKey).isEqualTo("coder")
+        assertThat(RestMappers.overrides(TaskOverridesDto(agentKey = "")).agentKey).isNull()
     }
 }

@@ -110,12 +110,12 @@ WorkflowDefinition ──compile──► StateGraph<WorkflowState>
   END(outcome)                ──► terminal node that records the outcome, then END
   HUMAN_GATE, WAIT_FOR_CI     ──► interruptBefore("n"); resume with GraphInput.resume({decision|ci})
   TASK n (runner-backed)      ──► "n::await", interruptBefore; the job's continuation resumes it
-  TASK n (external write)     ──► "n::confirm", interruptBefore; resumed by the write decision
+  ACTION n (external write)   ──► "n::confirm", interruptBefore; resumed by the write decision
   START                       ──► START → first successor
 ```
 
-**Approval before external writes (ADR 0033).** Every TASK node also gets a synthetic node
-`<id>::confirm`, interrupting like `<id>::await`. A Jira write step (`NOTIFY`, `TRANSITION_ISSUE`) with
+**Approval before external writes (ADR 0033).** A node that may write externally also gets a synthetic node
+`<id>::confirm`, interrupting like `<id>::await`. A Jira write action (`COMMENT_ISSUE`, `TRANSITION_ISSUE`) with
 node configuration `approval: REQUIRED` (the default; missing = `REQUIRED`) renders its write once, checks
 that a usable connection exists and returns the write as `pendingWrite` instead of performing it; the
 engine routes to `<id>::confirm`, the run records `waitingOn = WRITE_CONFIRMATION` and an approval of kind
@@ -131,22 +131,40 @@ Checkpoints go to PostgreSQL (`PostgresSaverV2`). Graphs are cached per `(workfl
 Recovery on restart resumes `RUNNING` runs from their checkpoint; runner-backed nodes re-attach to
 Jobs by name (`run-<runId8>-<nodeId>-<attempt>`).
 
-## Task executors
+## How task and action nodes run
 
-The Projects context resolves a `TASK` node through the `TaskCatalog` port into a `ResolvedTask` and
-dispatches on `executor`:
+The Projects context resolves a `TASK` node through the `TaskCatalog` port into a `ResolvedTask`. Since ADR 0056 a
+template has no executor: the step runs according to its resolved **agent** (the step's `overrides.agentKey`, else the
+template's `agentKey`, else `model-answer`) and the template's config. Model: the step's, else the agent's, else the
+template's, then the defaults (`ModelResolver`). The deterministic integrations are `ACTION` nodes (`action.type`,
+`action.config`; palette `actions` with config schema, defaults, run inputs, ports `success`/`failure` and required
+connection capabilities), not tasks.
 
-| Executor | Implementation | Inputs / outputs |
+| Way of running | When | Implementation | Inputs / outputs |
+|---|---|---|---|
+| model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; skills appended to the system prompt in a `<skills>` section; template rendered with `issue`, `artifacts.*`, `feedback`, `project.constitution`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
+| Spec Kit job (former `SPEC_KIT`) | coding agent (OpenCode, Claude Code) and the config key `phase` | runner Job, `mode = SPEC_KIT`, phase from config; skills written to the workspace; artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
+| agent job (former `IMPLEMENT`) | coding agent otherwise | runner Job, `mode = IMPLEMENT`, the agent's harness; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories` | produces `diff`, `mr`; without a push the final answer is the `result` artefact |
+
+The resolver reports a problem (the step cannot run) when a template needs a coding agent (Spec Kit `phase`,
+`push: true`, `prepareOnly`) but gets a model answer, or has an `outputSchema` but gets a coding agent.
+`GET /workflows/task-config-schemas` returns the config schema of model answer and coding agent steps (it replaced
+`/workflows/task-executors`). The former config key `agent` of a stored step is read as `overrides.agentKey`.
+
+| Action (`ACTION` node) | Implementation | Inputs / outputs |
 |---|---|---|
-| `LLM` | one structured call through `LlmGateway`; skills appended to the system prompt in a `<skills>` section; template rendered with `issue`, `artifacts.*`, `feedback`, `project.constitution`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
-| `SPEC_KIT` | runner Job, `mode = SPEC_KIT`, phase from config; skills written to the workspace; artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
-| `IMPLEMENT` | runner Job, `mode = IMPLEMENT`; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories` | produces `diff`, `mr` |
 | `FETCH_ISSUE` | Jira REST | produces `issue` |
-| `NOTIFY` | Jira comment, after a write confirmation unless `approval: NOT_REQUIRED` | — |
+| `COMMENT_ISSUE` (former `NOTIFY`) | Jira comment, after a write confirmation unless `approval: NOT_REQUIRED` | — |
 | `TRANSITION_ISSUE` | Jira transition, after a write confirmation unless `approval: NOT_REQUIRED` | — |
+| `START_WORKFLOW` | starts runs of another workflow per entry of a JSON artefact (ADR 0052) | produces `started-runs` |
+| `PROJECT_DIGEST` | deterministic project digest (ADR 0052) | produces `digest` |
 
-LLM, Jira, decision, gate and CI-wait nodes need no repository; a project without repositories (ADR 0034)
-runs workflows made of these. The built-in `llm-task` template (`LLM`; standalone, it does not extend the engineering-oriented `base-agent`) is the generic
+A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`, `transition-issue`,
+`start-workflow`, `project-digest`) is read as the `ACTION` node with the former template defaults, the step's
+`config` and its `promptReplace` as the comment message; the next save writes the new form.
+
+Model answer, action, decision, gate and CI-wait nodes need no repository; a project without repositories (ADR 0034)
+runs workflows made of these. The built-in `llm-task` template (model answer; standalone, it does not extend the engineering-oriented `base-agent`) is the generic
 step of such workflows: its task (the user prompt) is written per node (override "replace prompt"); its run
 input `input` ("Input material") and the revision feedback (`{{feedback}}`, filled on a second visit) are
 part of the template's system prompt, so replacing the task keeps them.
@@ -171,16 +189,16 @@ declares nothing and shows the list read-only. The values travel as run `paramet
 - **Design time:** `WorkflowValidator` warns when a step reads `issueKeyFrom` from a run parameter no task declares,
   and when two tasks declare the same input with different labels.
 
-The seeded `code-review` template is an `LLM` task with `consumes: [diff]`, `produces: [review]` and a
+The seeded `code-review` template is a model answer task with `consumes: [diff]`, `produces: [review]` and a
 schema for `{summary, findings[], verdict, score}`; the verdict policy (blocker → REQUEST_CHANGES,
-> 2 majors → REQUEST_CHANGES, score ≥ 80 → APPROVE, else COMMENT) is applied by the executor and stored
+> 2 majors → REQUEST_CHANGES, score ≥ 80 → APPROVE, else COMMENT) is applied by Back Office, not the model, and stored
 in `state.review`.
 
 <a id="step-repositories"></a>
 ## Step repositories
 
 A project has zero or more repositories (`key`, `url`, `defaultBranch`, `purpose` DOCS / SOURCE / OTHER,
-`description`, optional `primary`; ADR 0034). A runner step (IMPLEMENT, SPEC_KIT) chooses the repositories its
+`description`, optional `primary`; ADR 0034). A runner step (a coding agent's agent job or Spec Kit job) chooses the repositories its
 job gets with the node or template config:
 
 ```json
@@ -190,7 +208,7 @@ job gets with the node or template config:
 ```
 
 Without `repositories` the step uses the **primary** repository with the access it derives from `push`
-(IMPLEMENT / SPEC_KIT with `push != false` -> `PUSH_MR`, else `READ`), which is what every workflow written
+(a runner step with `push != false` -> `PUSH_MR`, else `READ`), which is what every workflow written
 before ADR 0034 does. A step may read several repositories and push to several; the same job branch
 (`branchTemplate`) is pushed to each `PUSH_MR` repository and each gets its own merge request against its
 default branch.
@@ -241,8 +259,8 @@ review** (`start -> llm-task` (template `llm-task`) `-> review` ("Result ok?", o
 and the `code-review` entrypoint are seeded once (skipped when workflows with those names exist). ADR 0036: the
 SDLC workflows that use Spec Kit (**Issue to reviewed MR**) are seeded only while the project's Spec Kit is on
 (and the platform allows it); after turning it on, `POST /projects/{id}/spec-kit/workflows` ("Add Spec Kit
-workflows") seeds the missing ones. With Spec Kit off, the palette hides `SPEC_KIT` templates, the validator rejects
-`SPEC_KIT` steps, run starts refuse them and runner jobs carry `specKit: false`.
+workflows") seeds the missing ones. With Spec Kit off, the palette hides Spec Kit templates (config `phase`), the validator
+rejects Spec Kit steps, run starts refuse them and runner jobs carry `specKit: false`.
 
 ## Workflow library
 

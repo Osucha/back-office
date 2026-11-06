@@ -1,10 +1,12 @@
 package pl.mos.backoffice.tasks.application.service
 
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import pl.mos.backoffice.tasks.domain.model.Rule
@@ -103,11 +105,18 @@ object BuiltInLibrary {
     val sdlcSkillKeys = listOf(DEFINITION_OF_READY_DONE, USER_STORY_FORMAT, USE_CASE_FORMAT, ADR_FORMAT, BUILD_GUARDRAILS)
 
     val templateKeys = listOf(
-        BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, FETCH_ISSUE, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
-        IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, LLM_TASK,
-        AGENT_TASK,
-        PREPARE_WORKSPACE, PROJECT_DIGEST, START_WORKFLOW,
+        BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
+        IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, LLM_TASK, AGENT_TASK, PREPARE_WORKSPACE,
     ) + sdlcTemplateKeys
+
+    /**
+     * ADR 0056: the former built-in action templates; their steps are read as action nodes and the seed removes the
+     * built-in rows (V304 does the same).
+     */
+    val formerActionTemplateKeys = listOf(FETCH_ISSUE, NOTIFY_JIRA, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST)
+
+    /** ADR 0056: the built-in agents. */
+    val agentKeys = listOf(AgentSnapshot.MODEL_ANSWER, AgentSnapshot.OPENCODE, AgentSnapshot.CLAUDE_CODE)
     val skillKeys = listOf(SPEC_WRITING, CONVENTIONAL_COMMITS, SECURITY_REVIEW_CHECKLIST) + sdlcSkillKeys
 
     /** ADR 0055: built-in skills that were rules in fact (always in context); moved by V303 in existing databases. */
@@ -130,26 +139,22 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = BASE_LLM, name = "Base LLM step", abstract = true, extendsKey = BASE_AGENT,
-            description = "Abstract root of the in-process LLM tasks: no repository and no tools; with an output schema the answer is JSON only.",
+            description = "Abstract root of the tasks a model answer agent runs (ADR 0056): one model call without repository or tools; " +
+                "with an output schema the answer is JSON only.",
             prompt = Prompt(system = BASE_LLM_SYSTEM),
             tags = listOf("base", "llm"),
         )),
         template(now, TaskTemplate.Content(
             key = BASE_CODING_AGENT, name = "Base coding agent", abstract = true, extendsKey = BASE_AGENT,
-            description = "Abstract root of the runner tasks: works in a repository clone, quotes file paths, never commits or pushes (the runner does).",
+            agentKey = AgentSnapshot.OPENCODE,
+            description = "Abstract root of the tasks a coding agent runs in the runner (ADR 0056, OpenCode unless the template or step " +
+                "chooses another agent): works in a repository clone, quotes file paths, never commits or pushes (the runner does).",
             prompt = Prompt(system = BASE_CODING_AGENT_SYSTEM),
             tags = listOf("base", "agent"),
         )),
         template(now, TaskTemplate.Content(
-            key = FETCH_ISSUE, name = "Fetch issue", executor = TaskExecutor.FETCH_ISSUE, category = TemplateCategory.JIRA,
-            description = "Loads the issue that triggered the run from the tracker (summary, description, acceptance criteria, labels; " +
-                "no comments or attachments) and stores it as the issue state.",
-            produces = listOf("issue"), tags = listOf("jira"),
-            runInputs = listOf(ISSUE_KEY_INPUT),
-        )),
-        template(now, TaskTemplate.Content(
             key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.SPECIFICATION,
-            executor = TaskExecutor.SPEC_KIT,
+            agentKey = AgentSnapshot.OPENCODE,
             description = "Runs the Spec Kit SPECIFY phase in the repository and returns the feature specification. " +
                 "The user prompt starts with the subject line and the issue text, which become the feature description.",
             prompt = Prompt(user = SPECIFY_USER),
@@ -159,7 +164,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = CLARIFY_SPEC, name = "Clarify specification", extendsKey = BASE_LLM, category = TemplateCategory.SPECIFICATION,
-            executor = TaskExecutor.LLM,
             description = "Reads the specification as the implementer would and reports confidence plus the questions (markdown) that would block a clean implementation.",
             prompt = Prompt(system = CLARIFY_SYSTEM, user = CLARIFY_USER),
             outputSchema = CLARIFY_SCHEMA, confidenceField = "confidence",
@@ -167,7 +171,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_PLAN, name = "Spec Kit: plan", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.PLANNING,
-            executor = TaskExecutor.SPEC_KIT,
+            agentKey = AgentSnapshot.OPENCODE,
             description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification Spec Kit reads from the repository. " +
                 "Optional run input techHints passes stack hints.",
             prompt = Prompt(user = PLAN_USER),
@@ -182,16 +186,17 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.PLANNING,
-            executor = TaskExecutor.SPEC_KIT,
+            agentKey = AgentSnapshot.OPENCODE,
             description = "Runs the Spec Kit TASKS phase: an ordered, dependency-aware task list from the plan Spec Kit reads from the repository.",
             prompt = Prompt(user = TASKS_USER),
             config = mapOf("phase" to "TASKS"),
             consumes = listOf("plan"), produces = listOf("tasks"), tags = listOf(TAG_SPEC_KIT),
         )),
         template(now, TaskTemplate.Content(
-            key = IMPLEMENT_OPENCODE, name = "Implement with OpenCode", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.IMPLEMENTATION,
-            executor = TaskExecutor.IMPLEMENT,
-            description = "Implements the task list (or the issue) in a runner job with OpenCode; on a rework it gets the latest review findings. " +
+            key = IMPLEMENT_OPENCODE, name = "Implement", extendsKey = BASE_CODING_AGENT, category = TemplateCategory.IMPLEMENTATION,
+            agentKey = AgentSnapshot.OPENCODE,
+            description = "Implements the task list (or the issue) in a runner job with a coding agent (OpenCode unless the step chooses " +
+                "another); on a rework it gets the latest review findings. " +
                 "The runner runs verifyCommand when set (none by default), commits, pushes a feature branch and opens a merge request.",
             prompt = Prompt(user = IMPLEMENT_USER),
             config = IMPLEMENT_CONFIG,
@@ -199,14 +204,13 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_CLAUDE_CODE, name = "Implement with Claude Code", extendsKey = IMPLEMENT_OPENCODE,
-            description = "Deprecated (ADR 0054): use implement-opencode, implement-task-list or agent-task and choose the agent " +
-                "Claude Code in the step's configuration. Same as implement-opencode but drives Claude Code in the runner.",
-            config = mapOf("agent" to "CLAUDE_CODE"),
+            agentKey = AgentSnapshot.CLAUDE_CODE,
+            description = "Deprecated (ADR 0054, 0056): use implement-opencode, implement-task-list or agent-task and choose the agent " +
+                "Claude Code on the step. Same as implement-opencode with the agent Claude Code.",
             tags = listOf("claude-code", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
             key = CODE_REVIEW, name = "Code review", extendsKey = BASE_LLM, category = TemplateCategory.REVIEW,
-            executor = TaskExecutor.LLM,
             description = "Strict review of a diff: findings with severity, a verdict and a 0..100 score. Uses the issue, or in a CI run the merge request " +
                 "title and description, as context. The diff comes last, so a cut at maxInputChars never removes the instructions.",
             prompt = Prompt(system = REVIEW_SYSTEM, user = REVIEW_USER),
@@ -216,7 +220,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = ANALYSE_ISSUE, name = "Analyse issue", extendsKey = BASE_LLM, category = TemplateCategory.ANALYSIS,
-            executor = TaskExecutor.LLM,
             description = "Deprecated (ADR 0054): use impact-analysis. Reads the issue and produces a structured analysis (stored as JSON): " +
                 "scope, affected areas, risks and open questions.",
             prompt = Prompt(system = ANALYSE_SYSTEM, user = ANALYSE_USER),
@@ -224,35 +227,7 @@ object BuiltInLibrary {
             consumes = listOf("issue"), produces = listOf("analysis"), tags = listOf("analysis", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
-            key = NOTIFY_JIRA, name = "Notify Jira", executor = TaskExecutor.NOTIFY, category = TemplateCategory.JIRA,
-            description = "Posts a comment on the issue; the message is a template over the run state.",
-            config = mapOf("messageTemplate" to "Back Office run {{run.short}} ({{run.workflow}}): {{node.name}}. {{mr.url}}"),
-            tags = listOf("jira"),
-            runInputs = listOf(ISSUE_KEY_INPUT),
-        )),
-        template(now, TaskTemplate.Content(
-            key = TRANSITION_ISSUE, name = "Transition issue", executor = TaskExecutor.TRANSITION_ISSUE, category = TemplateCategory.JIRA,
-            description = "Moves the issue to a target status by transition name.",
-            config = mapOf("toStatus" to "In Review", "failIfMissing" to false),
-            tags = listOf("jira"),
-            runInputs = listOf(ISSUE_KEY_INPUT),
-        )),
-        template(now, TaskTemplate.Content(
-            key = PROJECT_DIGEST, name = "Project digest", executor = TaskExecutor.PROJECT_DIGEST, category = TemplateCategory.OPERATIONS,
-            description = "Writes what happened in the project since the run parameter since (ADR 0052): runs of other workflows with " +
-                "outcome, duration and cost, repeated and failed steps, gate decisions, and the latest pipelines of pipelineRefs. Produces digest.",
-            config = mapOf("maxRuns" to 20, "pipelineRefs" to "develop,main"),
-            produces = listOf("digest"), tags = listOf("workflow", "retrospective"),
-        )),
-        template(now, TaskTemplate.Content(
-            key = START_WORKFLOW, name = "Start workflow", executor = TaskExecutor.START_WORKFLOW, category = TemplateCategory.OPERATIONS,
-            description = "Starts another workflow of the project (ADR 0052), right after a human gate: one run per entry of a JSON " +
-                "artefact (for example accepted proposals), with the entry's fields as run parameters. Produces started-runs.",
-            config = mapOf("workflow" to "", "parametersFrom" to "proposals", "selection" to "DECISION"),
-            produces = listOf("started-runs"), tags = listOf("workflow"),
-        )),
-        template(now, TaskTemplate.Content(
-            key = LLM_TASK, name = "LLM task", executor = TaskExecutor.LLM, category = TemplateCategory.GENERAL,
+            key = LLM_TASK, name = "LLM task", category = TemplateCategory.GENERAL,
             description = "Generic LLM work without a repository (ADR 0034): replace the user prompt in the designer with the task; " +
                 "the run input material is what it works on and revision comments come back as feedback (both in the system prompt). " +
                 "Produces the result artefact.",
@@ -261,19 +236,21 @@ object BuiltInLibrary {
             runInputs = listOf(INPUT_MATERIAL),
         )),
         template(now, TaskTemplate.Content(
-            key = AGENT_TASK, name = "Agent task", executor = TaskExecutor.IMPLEMENT, category = TemplateCategory.GENERAL,
+            key = AGENT_TASK, name = "Agent task", category = TemplateCategory.GENERAL,
+            agentKey = AgentSnapshot.CLAUDE_CODE,
             description = "Generic coding-agent work in the project's repository: replace the user prompt in the designer with the task. " +
-                "The issue, the run input material and revision comments are in the system prompt. Claude Code by default (config agent), " +
+                "The issue, the run input material and revision comments are in the system prompt. Claude Code by default (choose another agent on the step), " +
                 "no push by default: set push to true for a branch and a merge request. In a project without repositories it runs in an empty " +
                 "workspace and its final answer becomes the result artefact.",
             prompt = Prompt(system = AGENT_TASK_SYSTEM, user = AGENT_TASK_USER),
             rules = baseAgentRules,
-            config = IMPLEMENT_CONFIG + mapOf("agent" to "CLAUDE_CODE", "push" to false, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
+            config = IMPLEMENT_CONFIG + mapOf("push" to false, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
             produces = listOf("result"), tags = listOf("agent", "generic"),
             runInputs = listOf(INPUT_MATERIAL),
         )),
         template(now, TaskTemplate.Content(
-            key = PREPARE_WORKSPACE, name = "Prepare workspace", executor = TaskExecutor.IMPLEMENT, category = TemplateCategory.OPERATIONS,
+            key = PREPARE_WORKSPACE, name = "Prepare workspace", category = TemplateCategory.OPERATIONS,
+            agentKey = AgentSnapshot.OPENCODE,
             description = "Prepares a run workspace of the workflow (choose it in the step) once for the steps that use it: clones its " +
                 "sources (or the step's own repositories) and runs the workspace setup and the step's setupCommand. Starts no agent and " +
                 "never pushes. Later steps of the same workspace reuse the clones and everything the setup left there.",
@@ -290,7 +267,6 @@ object BuiltInLibrary {
     fun sdlcTemplates(now: Instant): List<TaskTemplate> = listOf(
         template(now, TaskTemplate.Content(
             key = WRITE_USER_STORY, name = "Write user story", extendsKey = BASE_LLM, category = TemplateCategory.SPECIFICATION,
-            executor = TaskExecutor.LLM,
             description = "Turns the issue into a user story with falsifiable acceptance criteria, explicit open questions and a confidence score.",
             prompt = Prompt(system = WRITE_US_SYSTEM, user = WRITE_US_USER),
             skills = listOf(USER_STORY_FORMAT, DEFINITION_OF_READY_DONE),
@@ -299,7 +275,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = WRITE_USE_CASE, name = "Write use case", extendsKey = BASE_LLM, category = TemplateCategory.SPECIFICATION,
-            executor = TaskExecutor.LLM,
             description = "Expands the user story into a use case: actors, triggers, main and alternative flows, business rules, postconditions and permissions.",
             prompt = Prompt(system = WRITE_UC_SYSTEM, user = WRITE_UC_USER),
             skills = listOf(USE_CASE_FORMAT, DEFINITION_OF_READY_DONE),
@@ -308,7 +283,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = WRITE_ADR, name = "Write ADR", extendsKey = BASE_LLM, category = TemplateCategory.PLANNING,
-            executor = TaskExecutor.LLM,
             description = "Drafts an Architecture Decision Record with at least two options, a decision, its rationale and honest consequences " +
                 "(status Proposed; number and date stay placeholders for people to fill in).",
             prompt = Prompt(system = WRITE_ADR_SYSTEM, user = WRITE_ADR_USER),
@@ -318,7 +292,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = IMPACT_ANALYSIS, name = "Change request impact analysis", extendsKey = BASE_LLM, category = TemplateCategory.ANALYSIS,
-            executor = TaskExecutor.LLM,
             description = "Analyses a change request: description, business justification, impact on artefacts and components, new stories, effect on the " +
                 "specification, estimate, options and a recommendation (stored as JSON; plan-task-list reads it).",
             prompt = Prompt(system = IMPACT_SYSTEM, user = IMPACT_USER),
@@ -328,7 +301,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = PLAN_TASK_LIST, name = "Plan task list", extendsKey = BASE_LLM, category = TemplateCategory.PLANNING,
-            executor = TaskExecutor.LLM,
             description = "Breaks the work (plan or approved impact analysis, user story) into an ordered task list (title, description, verification, " +
                 "test_command, completed) that ends with the mandatory \"$FINAL_TASK_TITLE\" task.",
             prompt = Prompt(system = PLAN_TASKS_SYSTEM, user = PLAN_TASKS_USER),
@@ -347,7 +319,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = REVIEW_AGAINST_SPEC, name = "Review against specification", extendsKey = BASE_LLM, category = TemplateCategory.REVIEW,
-            executor = TaskExecutor.LLM,
             description = "Reviews the diff against the user story, specification and task list: a requirement coverage matrix (kept in the review; " +
                 "a MISSING requirement requests changes), scope creep and defects, with a verdict and a score.",
             prompt = Prompt(system = REVIEW_SPEC_SYSTEM, user = REVIEW_SPEC_USER),
@@ -376,7 +347,6 @@ object BuiltInLibrary {
 
     /** Runner config of the implementers; the keys are the ones `RunnerTaskSupport` reads. */
     val IMPLEMENT_CONFIG: Map<String, Any?> = mapOf(
-        "agent" to "OPENCODE",
         "verifyCommand" to null,
         "branchTemplate" to "feature/{{issue.key | lower}}",
         "push" to true,
@@ -393,12 +363,11 @@ object BuiltInLibrary {
      */
     val WHOLE_ANSWER_ARTIFACTS: Map<String, String> = mapOf(ANALYSE_ISSUE to "analysis", IMPACT_ANALYSIS to ARTIFACT_IMPACT_ANALYSIS)
 
-    /** Names the executors produce themselves (runner artefacts and state), whatever the template declares. */
-    private val EXECUTOR_OUTPUTS: Map<TaskExecutor, Set<String>> = mapOf(
-        TaskExecutor.IMPLEMENT to setOf("diff", "mr", "result"),
-        TaskExecutor.SPEC_KIT to setOf("spec", "plan", "tasks", "analysis", "diff", "mr"),
-        TaskExecutor.FETCH_ISSUE to setOf("issue"),
-    )
+    /** Names a coding agent job produces itself (runner artefacts), whatever the template declares. */
+    private val AGENT_JOB_OUTPUTS = setOf("diff", "mr", "result")
+
+    /** Names a Spec Kit job (coding agent with a `phase`) produces itself. */
+    private val SPEC_KIT_OUTPUTS = setOf("spec", "plan", "tasks", "analysis", "diff", "mr")
 
     /** State names an LLM step may produce when its schema has the field (`confidence` through the confidence field). */
     private val LLM_STATE_NAMES = setOf("confidence")
@@ -406,36 +375,35 @@ object BuiltInLibrary {
     /**
      * Why a resolved template's `produces` names would not appear at run time: every name must be a top-level field of
      * the output schema, the confidence field, `review` of a reviewer, a declared whole-answer artefact, an artefact the
-     * runner collects (`collectArtifacts`, named like the file without its extension) or an output of the executor.
+     * runner collects (`collectArtifacts`, named like the file without its extension) or an output of the coding agent job
+     * (ADR 0056: what runs follows from the [agent] and the Spec Kit `phase`).
      * Empty when every name is backed. Used by the seed tests so a renamed field cannot silently drop an artefact.
      */
     fun producedNameProblems(
         key: String,
-        executor: TaskExecutor?,
+        agent: AgentSnapshot?,
         produces: List<String>,
         outputSchema: String?,
         confidenceField: String?,
         config: Map<String, Any?>,
     ): List<String> {
-        if (executor == null) return emptyList()
+        if (agent == null) return emptyList()
         val schemaFields = schemaProperties(outputSchema)
         val collected = collectedNames(config)
-        val executorOutputs = EXECUTOR_OUTPUTS[executor].orEmpty()
+        val specKit = (config["phase"] as? String)?.isNotBlank() == true
+        val jobOutputs = if (specKit) SPEC_KIT_OUTPUTS else AGENT_JOB_OUTPUTS
         val withoutSchema = produces.filterNot { it == "review" || it in LLM_STATE_NAMES }
         return produces.mapNotNull { name ->
-            val backed = when (executor) {
-                TaskExecutor.LLM -> when {
+            val backed = when {
+                agent.modelAnswer -> when {
                     name == "review" -> true
                     name in LLM_STATE_NAMES -> name == confidenceField || name in schemaFields
                     outputSchema.isNullOrBlank() -> withoutSchema.size == 1
                     else -> name in schemaFields || WHOLE_ANSWER_ARTIFACTS[key] == name
                 }
-                TaskExecutor.NOTIFY, TaskExecutor.TRANSITION_ISSUE -> false
-                TaskExecutor.START_WORKFLOW -> name == "started-runs"
-                TaskExecutor.PROJECT_DIGEST -> name == "digest"
-                else -> name in executorOutputs || name in collected
+                else -> name in jobOutputs || name in collected
             }
-            if (backed) null else "$key: produces \"$name\", but neither its output schema, its collectArtifacts nor its executor ($executor) provides it"
+            if (backed) null else "$key: produces \"$name\", but neither its output schema, its collectArtifacts nor its agent (${agent.key}) provides it"
         }
     }
 
@@ -561,7 +529,7 @@ object BuiltInLibrary {
         help = "Text the agent steps should read: a request, notes, a pasted document (optional).",
     )
 
-    /** The run's Jira issue key, read by the Jira steps; mapped to the run's issue key. */
+    /** The run's Jira issue key, read by the Jira actions (ADR 0056: their run input); mapped to the run's issue key. */
     val ISSUE_KEY_INPUT = RunInputField("issueKey", "Jira issue key", RunInputType.ISSUE_KEY, required = true, help = "For example ABC-123.")
 
     // ----- prompts ------------------------------------------------------------------------------------
@@ -1332,6 +1300,19 @@ object BuiltInLibrary {
      * rules reach every agent through `base-agent` (and `agent-task`); the two stack rules are examples to copy into a
      * project and mark automatic there.
      */
+    /** ADR 0056: the built-in agents; no model, so steps use the defaults for their kind. */
+    fun agents(now: Instant): List<Agent> = listOf(
+        agent(now, AgentSnapshot.MODEL_ANSWER, "Model answer", null,
+            "One model call without tools or repository: the answer (structured with an output schema) is the step's result."),
+        agent(now, AgentSnapshot.OPENCODE, "OpenCode", AgentHarness.OPENCODE,
+            "OpenCode coding agent session in the runner sandbox with the step's workspace, rules and skills."),
+        agent(now, AgentSnapshot.CLAUDE_CODE, "Claude Code", AgentHarness.CLAUDE_CODE,
+            "Claude Code coding agent session in the runner sandbox with the step's workspace, rules and skills."),
+    )
+
+    private fun agent(now: Instant, key: String, name: String, harness: AgentHarness?, description: String) =
+        Agent.create(Agent.Content(key = key, name = name, description = description, harness = harness), now, builtIn = true, actor = Actor.SYSTEM)
+
     fun rules(now: Instant): List<Rule> = listOf(
         rule(AGENT_GROUND_RULES, "Agent ground rules", "Evidence, scope and safety rules of every agent step.", AGENT_GROUND_RULES_MD, listOf("sdlc", "base"), now),
         rule(ASK_DONT_GUESS, "Ask, don't guess", "What to do when information is missing, ambiguous or contradictory: source hierarchy, open-question markers, editing existing text.", ASK_DONT_GUESS_MD, listOf("sdlc", "base"), now),

@@ -217,8 +217,19 @@ class RestMapper {
 
     fun toDto(p: ManageWorkflows.Palette): WorkflowPaletteDto = WorkflowPaletteDto(
         controlNodes = p.controlNodes.map { ControlNodeDescriptorDto(it.kind.name, it.title, it.description, it.ports, it.configSchema) },
-        tasks = p.tasks.map { PaletteTaskDto(it.key, it.name, it.description, it.executor.name, it.category?.name, it.ports, it.projectScoped, it.configSchema, it.requiredCapabilities.map { c -> c.name }, it.externalWrite, it.deprecated) },
+        tasks = p.tasks.map {
+            PaletteTaskDto(
+                it.key, it.name, it.description, AgentRefDto(it.agent.key, it.agent.name, it.agent.harness?.name, it.agent.modelProfileId?.value),
+                it.category?.name, it.ports, it.projectScoped, it.configSchema, it.deprecated,
+            )
+        },
         stateFields = p.stateFields.map { StateFieldDto(it.path, it.description) },
+        actions = p.actions.map { a ->
+            ActionDescriptorDto(
+                a.type.name, a.title, a.description, a.ports, a.configSchema, a.defaults, a.produces,
+                a.runInputs.map { RunInputFieldDto.of(it) }, a.requiredCapabilities.sorted().map { it.name }, a.externalWrite,
+            )
+        },
     )
 
     fun toDto(c: ManageWorkflows.ExpressionCheck) = ExpressionCheckDto(c.valid, c.message)

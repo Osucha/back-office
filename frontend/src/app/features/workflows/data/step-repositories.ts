@@ -1,20 +1,18 @@
 /**
  * Repositories of a runner step (ADR 0034): `overrides.config.repositories = [{key, access}]`.
  * Absent = default: the project's primary repository with derived access (push on -> PUSH_MR,
- * otherwise READ). Only runner steps (palette executor IMPLEMENT or SPEC_KIT) use repositories.
+ * otherwise READ). Only runner steps (a coding agent runs them, ADR 0056) use repositories.
  * Library sources (ADR 0043) are entries `{key, access: READ, library: true}` of the same list; the job clones
  * them into /workspace/lib-<key>.
  */
 import type {
+  AgentRef,
   LibrarySource,
-  PaletteTask,
   ProjectRepository,
-  TaskExecutor,
   ValidationIssue,
 } from '../../../core/api/types';
 
 export const STEP_REPOSITORIES_KEY = 'repositories';
-export const RUNNER_EXECUTORS: readonly TaskExecutor[] = ['IMPLEMENT', 'SPEC_KIT'];
 
 export type StepAccess = 'READ' | 'PUSH_MR';
 export interface StepRepository {
@@ -26,8 +24,9 @@ export interface StepRepository {
 
 const isLibrary = (r: StepRepository) => r.library === true;
 
-export function isRunnerTask(task: Pick<PaletteTask, 'executor'> | null | undefined): boolean {
-  return !!task?.executor && RUNNER_EXECUTORS.includes(task.executor);
+/** ADR 0056: a step runs in the runner (with repositories) when a coding agent runs it. */
+export function isRunnerStep(agent: Pick<AgentRef, 'harness'> | null | undefined): boolean {
+  return !!agent?.harness;
 }
 
 /** Config keys of the schema the generic form must not render (`"x-editor": "repositories"` or `"workspace"`). */

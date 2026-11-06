@@ -6,7 +6,10 @@ import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.time.Instant
 import java.util.UUID
 
-enum class NodeKind { START, END, TASK, DECISION, HUMAN_GATE, WAIT_FOR_CI, NOTE }
+enum class NodeKind { START, END, TASK, ACTION, DECISION, HUMAN_GATE, WAIT_FOR_CI, NOTE }
+
+/** ADR 0056: the deterministic integration steps of a workflow (no model); the former action templates. */
+enum class ActionType { FETCH_ISSUE, COMMENT_ISSUE, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST }
 
 enum class RunOutcome { SUCCESS, FAILURE }
 
@@ -36,6 +39,12 @@ data class Canvas(val zoom: Double = 1.0, val x: Double = 0.0, val y: Double = 0
 
 /** A `TASK` node: which Task Library template runs, plus node-level overrides applied last. */
 data class TaskBinding(val templateKey: String, val overrides: TaskOverrides = TaskOverrides.NONE)
+
+/**
+ * An `ACTION` node (ADR 0056): which integration runs and its [config]; keys it does not set take the action's
+ * defaults (`ActionCatalog`) at run time.
+ */
+data class ActionBinding(val type: ActionType, val config: Map<String, Any?> = emptyMap())
 
 data class DecisionBranch(val id: String, val label: String, val expression: String)
 
@@ -154,6 +163,20 @@ sealed class WorkflowNode {
         val task: TaskBinding,
     ) : WorkflowNode() {
         override val kind = NodeKind.TASK
+        override val ports: List<String> get() = DEFAULT_TASK_PORTS
+        override val requiredPorts: List<String> get() = listOf(PORT_SUCCESS)
+    }
+
+    /** ADR 0056: a deterministic integration step (fetch, comment or transition an issue, start a workflow, digest). */
+    data class Action(
+        override val id: String,
+        override val name: String,
+        override val position: Point = Point(0.0, 0.0),
+        override val timeoutSeconds: Long? = null,
+        override val maxVisits: Int = DEFAULT_MAX_VISITS,
+        val action: ActionBinding,
+    ) : WorkflowNode() {
+        override val kind = NodeKind.ACTION
         override val ports: List<String> get() = DEFAULT_TASK_PORTS
         override val requiredPorts: List<String> get() = listOf(PORT_SUCCESS)
     }

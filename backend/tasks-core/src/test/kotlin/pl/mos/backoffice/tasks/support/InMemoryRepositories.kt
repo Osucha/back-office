@@ -1,8 +1,11 @@
 package pl.mos.backoffice.tasks.support
 
+import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
+import pl.mos.backoffice.tasks.domain.model.Agent
+import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.RuleId
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -23,6 +26,8 @@ class InMemoryTaskTemplateRepository : TaskTemplateRepository {
     override fun existsExtending(key: String): Boolean = rows.values.any { it.extendsKey == key }
     override fun existsUsingSkill(skillKey: String): Boolean = rows.values.any { skillKey in it.skills }
     override fun existsUsingRule(ruleKey: String): Boolean = rows.values.any { ruleKey in it.rules }
+    override fun existsUsingAgent(agentKey: String, projectId: UUID?): Boolean =
+        rows.values.any { it.agentKey == agentKey && (projectId == null || it.scope.projectId == null || it.scope.projectId == projectId) }
     override fun delete(id: TaskTemplateId) { rows.remove(id) }
 }
 
@@ -47,4 +52,15 @@ class InMemoryRuleRepository : RuleRepository {
     override fun findAutomatic(scope: Scope): List<Rule> = rows.values.filter { it.automatic && it.scope == scope }
     override fun existsByKey(key: String): Boolean = rows.values.any { it.key == key }
     override fun delete(id: RuleId) { rows.remove(id) }
+}
+
+class InMemoryAgentRepository : AgentRepository {
+    val rows = linkedMapOf<AgentId, Agent>()
+    override fun save(agent: Agent): Agent = agent.also { rows[it.id] = it }
+    override fun findById(id: AgentId): Agent? = rows[id]
+    override fun findByKeyAndScope(key: String, scope: Scope): Agent? = rows.values.firstOrNull { it.key == key && it.scope == scope }
+    override fun findVisible(projectId: UUID?): List<Agent> =
+        rows.values.filter { it.scope == Scope.Global || (projectId != null && it.scope == Scope.Project(projectId)) }
+    override fun existsByKey(key: String): Boolean = rows.values.any { it.key == key }
+    override fun delete(id: AgentId) { rows.remove(id) }
 }

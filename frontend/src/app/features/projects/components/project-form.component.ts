@@ -126,7 +126,7 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
               i18n-nzUnCheckedChildren="@@projects.form.jiraNone"
             />
             <span class="muted" style="margin-left: 8px" i18n="@@projects.form.jiraHint"
-              >Needed by fetch-issue / notify / transition tasks.</span
+              >Needed by the Jira actions of workflows (fetch, comment, transition).</span
             >
             <bo-help-link topic="project.jira" style="margin-left: 4px" />
           </nz-form-control>

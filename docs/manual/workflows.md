@@ -15,7 +15,7 @@ workflow** in the page header (`/projects/:id/workflows/new`). An existing workf
 | Area | What it holds |
 |---|---|
 | Header | Project key and version, the workflow name, a status chip (**valid**, errors, warnings, or **read-only**), the **Designer** / **JSON** switch, **Template** (new workflows only), undo and redo, **Tidy layout**, **Validate**, and the buttons that show or hide the palette and the properties. |
-| Palette (left) | **Control** nodes and **Tasks** from the task library, grouped by category (Analysis, Specification, ...), with a search field. A project's own template has a project icon. |
+| Palette (left) | **Control** nodes, **Actions** (Jira and Back Office operations without a model, see [Action nodes](#actions)) and **Tasks** from the task library, grouped by category (Analysis, Specification, ...), with a search field. A project's own template has a project icon. |
 | Canvas | The graph. Zoom buttons, **Readable view from START**, **Fit everything**, and from eight nodes an overview map (**Show the overview** / **Hide the overview**). |
 | Properties (right) | The selected node or edge; with nothing selected, the workflow's **Description**, the **Enabled** switch and **Triggers**. |
 | **Validation** sheet (bottom) | Errors and warnings grouped by node; click one to jump to the node. |
@@ -73,7 +73,8 @@ workflow **LLM task with review** instead, see [Projects without a repository](p
 | Node | Purpose | Output ports |
 |---|---|---|
 | **Start** | Entry; exactly one per workflow. | `out` |
-| **Task** | Runs a task template from the library (see below). | the template's ports, usually `success`, `failure` |
+| **Task** | Runs a task template from the library with an agent (see below). | `success`, `failure` |
+| **Action** | Runs a fixed operation without a model: Jira, starting workflows, project digest (see [Action nodes](#actions)). | `success`, `failure` |
 | **Decision** | Routes on conditions over the run state (see [Decisions](workflows.md#decisions)). | one per branch, plus the default |
 | **Human gate** | Stops the run until an approver picks an option (see [Gate settings](workflows.md#gates-config)). | one per option (default `approve`, `revise`, `reject`) plus `timeout` |
 | **Wait for CI** | Stops the run until your CI sends a signal. | `success`, `fail`, `timeout` |
@@ -81,10 +82,10 @@ workflow **LLM task with review** instead, see [Projects without a repository](p
 | **Note** | A sticky note; never runs, cannot be connected. | none |
 
 Every node has a **Name** and an **Id** (a slug; fixed once saved, because runs and logs refer to it).
-Task, decision, gate and CI nodes also have **Max visits** (loop guard, default 3) and **Timeout (s)**.
+Task, action, decision, gate and CI nodes also have **Max visits** (loop guard, default 3) and **Timeout (s)**.
 When a node would start more often than **Max visits**, the run fails.
 
-**Unconnected ports.** A required port must be connected: `success` of a task, every decision branch, the
+**Unconnected ports.** A required port must be connected: `success` of a task or action, every decision branch, the
 first gate option, `success` of a CI wait, `out` of Start. If the run leaves through an unconnected
 `failure`, `fail` or `timeout` port, the run fails; through an unconnected `reject`, it is cancelled. The
 validation warns about other unconnected ports.
@@ -92,26 +93,53 @@ validation warns about other unconnected ports.
 ### Task nodes
 
 Pick the **Template** (deprecated templates are not offered; a step that already uses one shows the tag
-**Deprecated**). Under it you see the template's lineage, executor and category, and **Open in library**.
-**What this step gets** (collapsed) shows the template with this step's overrides applied: the model profile,
-the system and user prompt, rules, skills, configuration and run inputs, exactly what the model or coding agent receives
-before the run fills in the values. **Overrides** change the template for this node only:
+**Deprecated**). Under it you see the template's lineage, agent and category, and **Open in library**.
+**What this step gets** (collapsed) shows the template with this step's overrides applied: the agent, the model
+profile, the system and user prompt, rules, skills, configuration and run inputs, exactly what the model or coding
+agent receives before the run fills in the values. **Overrides** change the template for this node only:
 
 | Override | Effect |
 |---|---|
-| **Model profile** | Model for this node instead of the template's or the project default. |
+| **Agent** | Who runs this step instead of the template's agent: **Model answer**, **OpenCode**, **Claude Code** or an agent of your library ([Agents](task-library.md#agents)). Empty = the template's agent. The step shows a problem when the agent does not fit the template (for example a Spec Kit phase or `push` with **Model answer**). |
+| **Model profile** | Model for this node instead of the agent's, the template's or the defaults. |
 | **User prompt** | **Inherited**, **Append** (added after the template prompt) or **Replace**. |
 | **System prompt append** | Added to the template's system prompt. |
 | **Add skills**, **Remove skills** | Adjust the template's skill list. |
-| **Config** | Executor settings such as the verify command, branch name or merge request options; merged over the template's config. |
+| **Config** | Settings for the step's agent such as the verify command, branch name or merge request options; merged over the template's config. |
+
+The coding agent used to be the config key `agent` (`CLAUDE_CODE`, `OPENCODE`); that key no longer exists. Stored
+workflows keep working: a step's `agent` is read as its **Agent** (**Claude Code**, **OpenCode**), and the next save
+writes it that way.
 
 **Spec Kit templates** (**Spec Kit: specify**, **plan**, **tasks** and templates that extend them) appear in the
 palette only when the project has [Spec Kit](projects.md#spec-kit) on; otherwise a Spec Kit step is a validation
-error and runs refuse to start. **Jira templates** have a **Jira connection** section with **Act as**: the
-project's system connection, a specific connection, or the person who approves the write or starts the run
-([Act as](integrations-jira.md#jira-act-as)).
+error and runs refuse to start.
 
-Two templates do not run a model or an agent (ADR 0052):
+<a id="actions"></a>
+### Action nodes
+
+Actions are fixed operations that never call a model (ADR 0056). The palette lists them in their own group
+**Actions**; each has its settings, defaults, the run inputs it asks for and the ports `success` and `failure`.
+
+| Action | Does |
+|---|---|
+| **Fetch issue** | Loads the run's Jira issue into the `issue` artefact and `state.issue`; asks for the **Jira issue key** when a run starts. |
+| **Comment on issue** | Posts a comment on the issue, after a person confirmed it ([Confirmations before external writes](#write-confirmations)). |
+| **Transition issue** | Moves the issue to a status, after a person confirmed it. |
+| **Start workflow** | Starts other workflows of the project (see below). |
+| **Project digest** | Writes the `digest` artefact (see below). |
+
+The Jira actions have a **Jira connection** section with **Act as**: the project's system connection, a specific
+connection, or the person who approves the write or starts the run ([Act as](integrations-jira.md#jira-act-as));
+the palette shows the capabilities each needs and marks the two that write to Jira. Their settings are described
+in [Jira actions in workflows](integrations-jira.md#jira-tasks).
+
+These used to be task templates (`fetch-issue`, `notify-jira`, `transition-issue`, `start-workflow`,
+`project-digest`). Stored workflows that use them keep working: such a step is read as the action with the former
+template's defaults and the step's configuration (a **Replace** prompt of a **Notify Jira** step becomes the
+comment), and the next save writes the action.
+
+Two actions are Back Office operations (ADR 0052):
 
 - **Start workflow** starts another workflow of the project, one run per entry of a JSON artefact (**Parameters
   from**, for example the `proposals` an agent wrote), with the entry's fields as run parameters (`title`, `idea`,
@@ -148,9 +176,9 @@ CI) belongs in front of such a node.
 <a id="step-repositories"></a>
 ## Repositories of a step
 
-Coding steps (**Implement** and **Spec Kit** templates) run an agent that works in Git repositories of the
-project ([Repositories](projects.md#repositories)). All other steps (model calls, Jira, gates, CI waits) use
-no repository, so their properties have no repository section.
+Coding steps (task steps run by a coding agent, **OpenCode** or **Claude Code**, Spec Kit phases included) work in
+Git repositories of the project ([Repositories](projects.md#repositories)). All other steps (model answers, actions,
+gates, CI waits) use no repository, so their properties have no repository section.
 
 Select a coding step; its properties have the section **Repositories**:
 
@@ -215,9 +243,9 @@ use them. **Add workspace** (you need `project.manage`) and set:
 | **Setup command** | For example `npm ci`. Runs once per run, before the first step of the workspace; again only when you change it. |
 | **Agent roles** | For example `implementer`, `reviewer`. Steps with the same role continue one agent session. Empty = any role. |
 
-**Pick the workspace in the step.** A coding step (**Implement**, **Spec Kit**) has the section **Workspace** with
+**Pick the workspace in the step.** A coding step (one a coding agent runs) has the section **Workspace** with
 only the choice among the project's workspaces: the workspace (or **None: a fresh directory**), the **Agent role** (or a new session) and, on
-**Implement** steps, **Only prepare the workspace** (clone and set up, no agent, no push). The built-in task **Prepare
+steps that are not a Spec Kit phase, **Only prepare the workspace** (clone and set up, no agent, no push). The built-in task **Prepare
 workspace** (`prepare-workspace`) is such a step; it is optional, the first step of a workspace prepares it too.
 
 **On the canvas** each workspace is a coloured, dashed region with its name around its steps, so you see at a glance
@@ -308,8 +336,8 @@ confidence is reset and the run follows the `revise` edge, usually to the task t
 <a id="write-confirmations"></a>
 ## Confirmations before external writes
 
-Task nodes that write outside Back Office ask a person to confirm the exact write before it happens. Today
-these are the Jira tasks **Notify Jira** (a comment) and **Transition issue** (a status change); the
+Action nodes that write outside Back Office ask a person to confirm the exact write before it happens. Today
+these are the Jira actions **Comment on issue** and **Transition issue** (a status change); the
 palette marks them as writing to Jira. A confirmation is built into the step, so you do not add a gate for
 it.
 

@@ -28,13 +28,21 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
-import { executorDescription, executorLabel } from '../../../core/ui/executors';
+import {
+  actionDescription,
+  actionTitle,
+  agentKindDescription,
+  agentKindLabel,
+} from '../../../core/ui/agents';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
 import { ModelSelectComponent } from '../../../core/ui/model-select.component';
 import { deprecatedHint, deprecatedLabel } from '../../../core/ui/template-tags';
 import { categoryLabel, categoryOrder } from '../../../core/ui/template-categories';
 import { deprecatedPaletteTask } from '../data/palette-tasks';
 import type {
+  ActionDescriptor,
+  Agent,
+  AgentRef,
   DecisionBranch,
   ModelOption,
   ModelProfile,
@@ -54,7 +62,13 @@ import {
   pinnedConnection,
   withPinnedConnection,
 } from '../../connections/public-api';
-import { NODE_ID_PATTERN, NODE_KIND_META, portsFor, uniqueNodeId } from '../data/graph-model';
+import {
+  NODE_ID_PATTERN,
+  NODE_KIND_META,
+  indexPalette,
+  portsFor,
+  uniqueNodeId,
+} from '../data/graph-model';
 import type { JsonSchema } from '../data/schema-form';
 import type { Issues } from '../data/workflow-validation';
 import { ExpressionEditorComponent } from './expression-editor.component';
@@ -64,14 +78,19 @@ import { WriteApprovalSectionComponent } from './write-approval-section.componen
 import { SECTION_CONFIG_KEYS } from '../data/write-approval';
 import {
   STEP_REPOSITORIES_KEY,
-  isRunnerTask,
+  isRunnerStep,
   ownEditorKeys,
   stepPushes,
 } from '../data/step-repositories';
 import { StepRepositoriesSectionComponent } from './step-repositories-section.component';
 import { StepWorkspaceSectionComponent } from './step-workspace-section.component';
 import { WORKSPACE_CONFIG_KEYS, stepWorkspace } from '../data/workspaces';
-import { type StepModelUse, stepModelUse, stepModelUseKey } from '../data/model-step';
+import {
+  type StepModelUse,
+  effectiveStepAgent,
+  stepModelUse,
+  stepModelUseKey,
+} from '../data/model-step';
 
 type PromptMode = 'none' | 'append' | 'replace';
 
@@ -244,10 +263,7 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                     @for (g of templateGroups(); track g.title) {
                       <nz-option-group [nzLabel]="g.title">
                         @for (t of g.tasks; track t.key) {
-                          <nz-option
-                            [nzValue]="t.key"
-                            [nzLabel]="(t.name || t.key) + ' (' + executorLabel(t.executor) + ')'"
-                          />
+                          <nz-option [nzValue]="t.key" [nzLabel]="templateOptionLabel(t)" />
                         }
                       </nz-option-group>
                     }
@@ -274,13 +290,13 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                     }
                   </div>
                   <div class="chips">
-                    @if (r.executor) {
+                    @if (r.agent) {
                       <nz-tag
                         nzColor="purple"
                         nz-tooltip
-                        [nzTooltipTitle]="executorDescription(r.executor)"
-                        [attr.data-executor]="r.executor"
-                        >{{ executorLabel(r.executor) }}</nz-tag
+                        [nzTooltipTitle]="agentKindDescription(r.agent.harness)"
+                        [attr.data-agent]="r.agent.key"
+                        >{{ r.agent.name }}</nz-tag
                       >
                     }
                     @if (templateDeprecated()) {
@@ -414,22 +430,6 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                 </nz-collapse>
               }
 
-              @if (requiredCapabilities().length) {
-                <nz-divider
-                  nzText="Jira connection"
-                  i18n-nzText="@@workflows.props.jiraConnection"
-                  nzOrientation="left"
-                  nzPlain
-                />
-                <app-node-connection-section
-                  [projectId]="projectId()"
-                  [requiredCapabilities]="requiredCapabilities()"
-                  [config]="n.task?.overrides?.config ?? null"
-                  [readonly]="readonly()"
-                  (configChange)="patchOverrides({ config: $event })"
-                />
-              }
-
               @if (runnerStep()) {
                 <nz-divider
                   nzText="Repositories"
@@ -456,22 +456,8 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                 <app-step-workspace-section
                   [workspaces]="workspaces()"
                   [config]="n.task?.overrides?.config ?? null"
-                  [canPrepare]="paletteTask()?.executor === 'IMPLEMENT'"
+                  [canPrepare]="canPrepare()"
                   [nodeIssues]="allIssues()"
-                  [readonly]="readonly()"
-                  (configChange)="patchOverrides({ config: $event })"
-                />
-              }
-
-              @if (externalWrite()) {
-                <nz-divider
-                  nzText="Approval before writing to Jira"
-                  i18n-nzText="@@workflows.props.writeApproval"
-                  nzOrientation="left"
-                  nzPlain
-                />
-                <app-write-approval-section
-                  [config]="n.task?.overrides?.config ?? null"
                   [readonly]="readonly()"
                   (configChange)="patchOverrides({ config: $event })"
                 />
@@ -483,6 +469,28 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                 nzOrientation="left"
                 nzPlain
               />
+              <nz-form-item>
+                <nz-form-label nzFor="pp-agent" i18n="@@workflows.props.agent">Agent</nz-form-label>
+                <nz-form-control [nzExtra]="agentHelp()">
+                  <nz-select
+                    id="pp-agent"
+                    name="agentKey"
+                    nzAllowClear
+                    nzShowSearch
+                    [nzPlaceHolder]="agentPlaceholder()"
+                    [ngModel]="n.task?.overrides?.agentKey ?? null"
+                    (ngModelChange)="patchOverrides({ agentKey: $event ?? null })"
+                    [disabled]="readonly()"
+                  >
+                    @for (a of agentOptions(); track a.key) {
+                      <nz-option [nzValue]="a.key" [nzLabel]="a.label" />
+                    }
+                    @if (missingAgentKey(); as key) {
+                      <nz-option [nzValue]="key" [nzLabel]="key" nzDisabled />
+                    }
+                  </nz-select>
+                </nz-form-control>
+              </nz-form-item>
               <nz-form-item>
                 <nz-form-label nzFor="pp-model" i18n="@@workflows.props.modelProfile"
                   >Model profile</nz-form-label
@@ -661,6 +669,105 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                       id="pp-cfg-json"
                       class="mono-textarea"
                       name="config"
+                      [ngModel]="configDraft()"
+                      (ngModelChange)="onConfigJson($event)"
+                      [nzAutosize]="{ minRows: 3, maxRows: 14 }"
+                      [readOnly]="readonly()"
+                    ></textarea>
+                    @if (configError()) {
+                      <div class="danger small">{{ configError() }}</div>
+                    }
+                  </nz-form-control>
+                </nz-form-item>
+              }
+            }
+
+            @case ('ACTION') {
+              <nz-divider
+                nzText="Action"
+                i18n-nzText="@@workflows.props.action"
+                nzOrientation="left"
+                nzPlain
+              />
+              @if (actionDescriptor(); as a) {
+                <div class="resolved" data-action-info>
+                  <div class="chips">
+                    <nz-tag nzColor="cyan" [attr.data-action]="a.type">{{
+                      actionLabel(a.type, a.title)
+                    }}</nz-tag>
+                    <nz-tag i18n="@@workflows.props.action.noModel">no model</nz-tag>
+                    @for (p of a.ports; track p) {
+                      <nz-tag>{{ p }}</nz-tag>
+                    }
+                  </div>
+                  <p class="muted small">{{ actionText(a.type, a.description) }}</p>
+                </div>
+              } @else {
+                <p class="muted small" data-action-unknown>
+                  <span i18n="@@workflows.props.action.unknown"
+                    >This action is not offered for this project:</span
+                  >
+                  <span class="mono">{{ n.action?.type ?? '-' }}</span>
+                </p>
+              }
+
+              @if (requiredCapabilities().length) {
+                <nz-divider
+                  nzText="Jira connection"
+                  i18n-nzText="@@workflows.props.jiraConnection"
+                  nzOrientation="left"
+                  nzPlain
+                />
+                <app-node-connection-section
+                  [projectId]="projectId()"
+                  [requiredCapabilities]="requiredCapabilities()"
+                  [config]="n.action?.config ?? null"
+                  [readonly]="readonly()"
+                  (configChange)="patchActionConfig($event)"
+                />
+              }
+
+              @if (externalWrite()) {
+                <nz-divider
+                  nzText="Approval before writing to Jira"
+                  i18n-nzText="@@workflows.props.writeApproval"
+                  nzOrientation="left"
+                  nzPlain
+                />
+                <app-write-approval-section
+                  [config]="n.action?.config ?? null"
+                  [readonly]="readonly()"
+                  (configChange)="patchActionConfig($event)"
+                />
+              }
+
+              <nz-divider
+                nzText="Config"
+                i18n-nzText="@@workflows.props.config"
+                nzOrientation="left"
+                nzPlain
+              />
+              @if (actionConfigSchema(); as schema) {
+                <app-schema-form
+                  [schema]="schema"
+                  [config]="actionFormConfig()"
+                  (configChange)="onActionSchemaConfig($event)"
+                  idPrefix="pp-act"
+                />
+              } @else {
+                <nz-form-item>
+                  <nz-form-label nzFor="pp-act-json" i18n="@@workflows.props.actionConfigJson"
+                    >Action config (JSON)</nz-form-label
+                  >
+                  <nz-form-control
+                    nzExtra="Missing keys take the action's defaults."
+                    i18n-nzExtra="@@workflows.props.actionConfigJson.extra"
+                  >
+                    <textarea
+                      nz-input
+                      id="pp-act-json"
+                      class="mono-textarea"
+                      name="actionConfig"
                       [ngModel]="configDraft()"
                       (ngModelChange)="onConfigJson($event)"
                       [nzAutosize]="{ minRows: 3, maxRows: 14 }"
@@ -1254,6 +1361,8 @@ export class NodePropertyPanelComponent {
    */
   readonly modelOptions = input<Record<string, ModelOption[] | null>>({});
   readonly skills = input<Skill[]>([]);
+  /** ADR 0056: the agents a step of this project may choose (global plus the project's). */
+  readonly agents = input<Agent[]>([]);
   readonly projectId = input<string | null>(null);
   /** ADR 0053: the saved workflow, for the START node's read-only run inputs; null while unsaved. */
   readonly workflowId = input<string | null>(null);
@@ -1289,9 +1398,10 @@ export class NodePropertyPanelComponent {
     deprecatedHint: deprecatedHint(),
     empty: $localize`:@@workflows.props.stepGets.empty:(empty)`,
   };
-  readonly executorLabel = executorLabel;
   readonly categoryLabel = categoryLabel;
-  readonly executorDescription = executorDescription;
+  readonly agentKindDescription = agentKindDescription;
+  readonly actionLabel = actionTitle;
+  readonly actionText = actionDescription;
 
   readonly KNOWN_ARTIFACTS = [
     'spec',
@@ -1313,11 +1423,7 @@ export class NodePropertyPanelComponent {
     if (!n) return [];
     const resolved = this.resolved();
     if (n.kind === 'TASK' && resolved?.ports?.length) return resolved.ports;
-    const index = {
-      tasks: new Map((this.palette()?.tasks ?? []).map((t) => [t.key!, t])),
-      controlPorts: new Map(),
-    };
-    return portsFor(n, index);
+    return portsFor(n, indexPalette(this.palette()));
   });
   readonly stateFields = computed(() => this.palette()?.stateFields ?? []);
   readonly templateGroups = computed(() => {
@@ -1345,7 +1451,7 @@ export class NodePropertyPanelComponent {
           {
             key: current,
             name: r?.key === current ? (r.name ?? current) : current,
-            executor: r?.key === current ? r.executor : undefined,
+            agent: r?.key === current ? r.agent : undefined,
           },
         ],
       });
@@ -1362,29 +1468,85 @@ export class NodePropertyPanelComponent {
   readonly configSchema = computed<JsonSchema | null>(() => {
     const key = this.node()?.task?.templateKey;
     const t = key ? this.palette()?.tasks?.find((x) => x.key === key) : undefined;
-    let schema = t?.configSchema as JsonSchema | undefined;
-    // The Jira connection pin, the write approval and the step repositories have their own
-    // sections; keep them out of the form.
-    const own = [JIRA_CONNECTION_KEY, ...SECTION_CONFIG_KEYS, ...ownEditorKeys(schema)];
-    if (schema?.properties && own.some((k) => k in schema!.properties!)) {
-      const properties = { ...schema.properties };
-      for (const k of own) delete properties[k];
-      schema = { ...schema, properties };
-    }
-    return schema?.properties && Object.keys(schema.properties).length ? schema : null;
+    const schema = t?.configSchema as JsonSchema | undefined;
+    // The step repositories and the workspace have their own sections; keep them out of the form.
+    return withoutKeys(schema, ownEditorKeys(schema));
   });
-  /** Connection capabilities the node's template needs (Jira tasks, ADR 0030). */
-  readonly requiredCapabilities = computed<string[]>(() => {
-    const key = this.node()?.task?.templateKey;
-    const t = key ? this.palette()?.tasks?.find((x) => x.key === key) : undefined;
-    return (t?.requiredCapabilities as string[] | undefined) ?? [];
+
+  // ---------------------------------------------------------------- ADR 0056: actions
+
+  /** The palette descriptor of an ACTION node's action. */
+  readonly actionDescriptor = computed<ActionDescriptor | null>(() => {
+    const n = this.node();
+    const type = n?.kind === 'ACTION' ? n.action?.type : null;
+    return (type ? this.palette()?.actions?.find((a) => a.type === type) : undefined) ?? null;
   });
-  /** The template writes to Jira: approval before write applies (ADR 0033). */
-  readonly externalWrite = computed<boolean>(() => {
-    const key = this.node()?.task?.templateKey;
-    const t = key ? this.palette()?.tasks?.find((x) => x.key === key) : undefined;
-    return t?.externalWrite === true;
+  /** Connection capabilities the node's action needs (Jira actions, ADR 0030). */
+  readonly requiredCapabilities = computed<string[]>(
+    () => (this.actionDescriptor()?.requiredCapabilities as string[] | undefined) ?? [],
+  );
+  /** The action writes to Jira: approval before write applies (ADR 0033). */
+  readonly externalWrite = computed<boolean>(() => this.actionDescriptor()?.externalWrite === true);
+  /** Form of the action's config, without the keys that have their own section. */
+  readonly actionConfigSchema = computed<JsonSchema | null>(() =>
+    withoutKeys(this.actionDescriptor()?.configSchema as JsonSchema | undefined, [
+      JIRA_CONNECTION_KEY,
+      ...SECTION_CONFIG_KEYS,
+    ]),
+  );
+  /** Action config shown in the schema form: without the pin and the write approval. */
+  readonly actionFormConfig = computed<Record<string, unknown>>(() => {
+    const rest = { ...(withPinnedConnection(this.node()?.action?.config ?? {}, null) ?? {}) };
+    for (const k of SECTION_CONFIG_KEYS) delete rest[k];
+    return rest;
   });
+
+  // ---------------------------------------------------------------- ADR 0056: agents
+
+  /** The agent that runs the step: its own (`overrides.agentKey`), else the template's. */
+  readonly effectiveAgent = computed<AgentRef | null>(() =>
+    effectiveStepAgent(
+      this.paletteTask() ?? this.resolved(),
+      this.node()?.task?.overrides?.agentKey,
+      this.agents(),
+    ),
+  );
+  /** The agents a step may choose, "name (kind)". */
+  readonly agentOptions = computed(() =>
+    uniqueAgents(this.agents()).map((a) => ({
+      key: a.key ?? '',
+      label: `${a.name} (${agentKindLabel(a.harness)})`,
+    })),
+  );
+  /** A step agent key that is not among the loaded agents. */
+  readonly missingAgentKey = computed(() => {
+    const key = this.node()?.task?.overrides?.agentKey;
+    return key && !this.agentOptions().some((a) => a.key === key) ? key : null;
+  });
+  /** Placeholder of the step's agent select: the template's agent. */
+  readonly agentPlaceholder = computed(() => {
+    const a = this.paletteTask()?.agent ?? this.resolved()?.agent;
+    return a
+      ? $localize`:@@workflows.props.agent.templateDefault:Template default: ${a.name}:agent:`
+      : $localize`:@@workflows.props.agent.default:Template default`;
+  });
+  readonly agentHelp = computed(() => {
+    const a = this.effectiveAgent();
+    const base = $localize`:@@workflows.props.agent.help:Who runs this step; empty = the template's agent.`;
+    return a ? `${base} ${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}` : base;
+  });
+  /** ADR 0044/0056: a coding agent step that is not a Spec Kit phase may only prepare the workspace. */
+  readonly canPrepare = computed(() => {
+    if (!this.runnerStep()) return false;
+    const node = this.node()?.task?.overrides?.config ?? {};
+    const template = this.resolved()?.config ?? {};
+    return !('phase' in node) && !('phase' in template);
+  });
+
+  templateOptionLabel(t: PaletteTask): string {
+    const name = t.name || t.key || '';
+    return t.agent ? `${name} (${t.agent.name})` : name;
+  }
   /** The palette entry of the node's template. */
   readonly paletteTask = computed<PaletteTask | null>(() => {
     const key = this.node()?.task?.templateKey;
@@ -1394,7 +1556,7 @@ export class NodePropertyPanelComponent {
   readonly modelUse = computed<StepModelUse | null>(
     () =>
       stepModelUse(
-        this.paletteTask(),
+        this.effectiveAgent(),
         this.node()?.task?.overrides?.config,
         this.resolved()?.config,
       ),
@@ -1405,8 +1567,8 @@ export class NodePropertyPanelComponent {
     const use = this.modelUse();
     return use ? this.modelOptions()[stepModelUseKey(use)] : null;
   });
-  /** IMPLEMENT / SPEC_KIT steps run in the runner and use repositories (ADR 0034). */
-  readonly runnerStep = computed(() => isRunnerTask(this.paletteTask()));
+  /** Steps a coding agent runs are runner steps and use repositories (ADR 0034/0056). */
+  readonly runnerStep = computed(() => isRunnerStep(this.effectiveAgent()));
   /** Whether the runner step pushes (node config, template config, schema default). */
   readonly stepPushes = computed(() =>
     stepPushes(
@@ -1416,20 +1578,15 @@ export class NodePropertyPanelComponent {
     ),
   );
   /** Config keys with their own section (kept out of the schema form, kept on schema changes). */
-  private readonly ownSectionKeys = computed<string[]>(() => {
-    const keys: string[] = [];
-    if (this.requiredCapabilities().length) keys.push(...SECTION_CONFIG_KEYS);
-    if (this.runnerStep()) keys.push(STEP_REPOSITORIES_KEY, ...WORKSPACE_CONFIG_KEYS);
-    return keys;
-  });
-  /** Config shown in the schema form: without the pin, the write approval and the repositories. */
+  private readonly ownSectionKeys = computed<string[]>(() =>
+    this.runnerStep() ? [STEP_REPOSITORIES_KEY, ...WORKSPACE_CONFIG_KEYS] : [],
+  );
+  /** Config shown in the schema form: without the repositories and the workspace. */
   readonly formConfig = computed<Record<string, unknown>>(() => {
     const config = this.node()?.task?.overrides?.config ?? {};
     const own = this.ownSectionKeys();
-    if (!this.requiredCapabilities().length && !own.length) return config;
-    const rest = {
-      ...((this.requiredCapabilities().length ? withPinnedConnection(config, null) : config) ?? {}),
-    };
+    if (!own.length) return config;
+    const rest = { ...config };
     for (const k of own) delete rest[k];
     return rest;
   });
@@ -1513,7 +1670,8 @@ export class NodePropertyPanelComponent {
       untracked(() => {
         this.idDraft.set(n?.id ?? '');
         this.idError.set(null);
-        this.configDraft.set(JSON.stringify(n?.task?.overrides?.config ?? {}, null, 2));
+        const config = n?.kind === 'ACTION' ? n.action?.config : n?.task?.overrides?.config;
+        this.configDraft.set(JSON.stringify(config ?? {}, null, 2));
         this.configError.set(null);
         this.promptModeDraft.set('none');
         this.resolve$.next(n?.kind === 'TASK' ? (n.task?.templateKey ?? null) : null);
@@ -1591,16 +1749,30 @@ export class NodePropertyPanelComponent {
     this.patch({ task: { templateKey: n.task?.templateKey ?? '', overrides } });
   }
 
-  /** Schema form changes keep the node's Jira connection pin, write approval and repositories. */
+  /** Schema form changes keep the node's repositories and workspace. */
   onSchemaConfig(config: Record<string, unknown>): void {
     const current = this.node()?.task?.overrides?.config ?? {};
-    const pin = this.requiredCapabilities().length ? pinnedConnection(current) : null;
+    const next: Record<string, unknown> = { ...config };
+    for (const k of this.ownSectionKeys()) if (k in current) next[k] = current[k];
+    this.patchOverrides({ config: Object.keys(next).length ? next : undefined });
+  }
+
+  /** ADR 0056: replaces the config of an ACTION node. */
+  patchActionConfig(config: Record<string, unknown> | null | undefined): void {
+    const n = this.node();
+    if (!n?.action) return;
+    this.patch({ action: { type: n.action.type, config: config ?? {} } });
+  }
+
+  /** Action schema form changes keep the node's Jira connection pin and write approval. */
+  onActionSchemaConfig(config: Record<string, unknown>): void {
+    const current = this.node()?.action?.config ?? {};
+    const pin = pinnedConnection(current);
     const next: Record<string, unknown> = {
       ...((pin ? withPinnedConnection(config, pin) : config) ?? {}),
     };
-    for (const k of [...SECTION_CONFIG_KEYS, ...this.ownSectionKeys()])
-      if (k in current) next[k] = current[k];
-    this.patchOverrides({ config: Object.keys(next).length ? next : undefined });
+    for (const k of SECTION_CONFIG_KEYS) if (k in current) next[k] = current[k];
+    this.patchActionConfig(next);
   }
 
   setPromptMode(mode: PromptMode): void {
@@ -1617,7 +1789,8 @@ export class NodePropertyPanelComponent {
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
         throw new Error($localize`:@@workflows.props.config.notObject:must be an object`);
       this.configError.set(null);
-      this.patchOverrides({ config: Object.keys(parsed).length ? parsed : undefined });
+      if (this.node()?.kind === 'ACTION') this.patchActionConfig(parsed);
+      else this.patchOverrides({ config: Object.keys(parsed).length ? parsed : undefined });
     } catch (e) {
       this.configError.set(
         $localize`:@@workflows.props.config.invalid:Invalid JSON: ${(e as Error).message}:error:`,
@@ -1686,4 +1859,29 @@ export class NodePropertyPanelComponent {
     if (!n) return;
     this.patch({ ci: { signal: n.ci?.signal ?? '', ...n.ci, ...changes } });
   }
+}
+
+/** The schema without the given properties; null when no property is left. */
+function withoutKeys(
+  schema: JsonSchema | null | undefined,
+  keys: readonly string[],
+): JsonSchema | null {
+  if (!schema?.properties) return null;
+  let s = schema;
+  if (keys.some((k) => k in schema.properties!)) {
+    const properties = { ...schema.properties };
+    for (const k of keys) delete properties[k];
+    s = { ...schema, properties };
+  }
+  return Object.keys(s.properties ?? {}).length ? s : null;
+}
+
+/** One agent per key: a project agent replaces the global one of the same key (ADR 0056). */
+function uniqueAgents(agents: readonly Agent[]): Agent[] {
+  const byKey = new Map<string, Agent>();
+  for (const a of agents) {
+    const key = a.key ?? '';
+    if (!byKey.has(key) || a.scope?.type === 'PROJECT') byKey.set(key, a);
+  }
+  return [...byKey.values()];
 }

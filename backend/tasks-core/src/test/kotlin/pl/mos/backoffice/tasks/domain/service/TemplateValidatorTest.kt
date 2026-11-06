@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
-import pl.mos.backoffice.shared.tasks.TaskExecutor
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.support.Library
@@ -20,7 +20,7 @@ class TemplateValidatorTest {
         key: String = "candidate",
         extendsKey: String? = null,
         abstract: Boolean = false,
-        executor: TaskExecutor? = TaskExecutor.LLM,
+        agentKey: String? = null,
         rules: List<String> = emptyList(),
         skills: List<String> = emptyList(),
         outputSchema: String? = null,
@@ -29,7 +29,7 @@ class TemplateValidatorTest {
         runInputs: List<RunInputField> = emptyList(),
     ) = TaskTemplate.create(
         TaskTemplate.Content(
-            key = key, name = key, extendsKey = extendsKey, abstract = abstract, executor = executor, rules = rules,
+            key = key, name = key, extendsKey = extendsKey, abstract = abstract, agentKey = agentKey, rules = rules,
             skills = skills, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope, runInputs = runInputs,
         ),
         lib.now,
@@ -55,28 +55,26 @@ class TemplateValidatorTest {
     fun `parent must exist and cannot be the template itself`() {
         assertThat(fields(candidate(extendsKey = "candidate"))).containsExactly("extendsKey")
         assertThat(validator.problems(candidate(extendsKey = "ghost")).single().message).contains("ghost does not exist")
-        lib.template("parent", abstract = true, executor = TaskExecutor.LLM)
+        lib.template("parent", abstract = true)
         assertThat(fields(candidate(extendsKey = "parent"))).isEmpty()
     }
 
     @Test
     fun `parent lookup honours project shadowing`() {
-        lib.template("parent", abstract = true, executor = TaskExecutor.LLM, scope = Scope.Project(lib.projectId))
+        lib.template("parent", abstract = true, scope = Scope.Project(lib.projectId))
         assertThat(fields(candidate(extendsKey = "parent", scope = Scope.Project(lib.projectId)))).isEmpty()
         assertThat(fields(candidate(extendsKey = "parent"))).containsExactly("extendsKey")
     }
 
     @Test
-    fun `a concrete template needs an executor unless an ancestor has one`() {
-        assertThat(fields(candidate(executor = null))).containsExactly("executor")
-        assertThat(fields(candidate(executor = null, abstract = true))).isEmpty()
+    fun `a template needs no agent, but a named agent must exist where the template is visible`() {
+        assertThat(fields(candidate())).describedAs("no agent anywhere = model answer").isEmpty()
+        assertThat(fields(candidate(agentKey = "opencode"))).isEmpty()
+        assertThat(validator.problems(candidate(agentKey = "ghost")).map { it.field to it.message }).containsExactly("agentKey" to "agent ghost does not exist")
 
-        lib.template("root", abstract = true, executor = TaskExecutor.SPEC_KIT)
-        lib.template("middle", extendsKey = "root", abstract = true)
-        assertThat(fields(candidate(executor = null, extendsKey = "middle"))).isEmpty()
-
-        lib.template("bare", abstract = true)
-        assertThat(fields(candidate(executor = null, extendsKey = "bare"))).containsExactly("executor")
+        lib.agent("mine", AgentHarness.CLAUDE_CODE, scope = Scope.Project(lib.projectId))
+        assertThat(fields(candidate(agentKey = "mine"))).describedAs("a project agent is not visible globally").containsExactly("agentKey")
+        assertThat(fields(candidate(agentKey = "mine", scope = Scope.Project(lib.projectId)))).isEmpty()
     }
 
     @Test
@@ -84,7 +82,7 @@ class TemplateValidatorTest {
         assertThat(validator.problems(candidate(outputSchema = """{"type": }""")).single().message).contains("not well-formed JSON")
         assertThat(fields(candidate(confidenceField = "confidence"))).containsExactly("confidenceField")
 
-        lib.template("root", abstract = true, executor = TaskExecutor.LLM, outputSchema = "{}")
+        lib.template("root", abstract = true, outputSchema = "{}")
         assertThat(fields(candidate(extendsKey = "root", confidenceField = "confidence"))).isEmpty()
     }
 
@@ -109,25 +107,25 @@ class TemplateValidatorTest {
 
     @Test
     fun `validate collects every problem into one exception`() {
-        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", executor = null, confidenceField = "cc", rules = listOf("i"))) }
+        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", agentKey = "nobody", confidenceField = "cc", rules = listOf("i"))) }
             .isInstanceOf(ValidationException::class.java)
-            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "executor", "confidenceField", "rules") })
+            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "agentKey", "confidenceField", "rules") })
     }
 
     @Test
-    fun `a project template shadowing a global one inherits its executor and schema through it`() {
-        lib.template("review", executor = TaskExecutor.LLM, outputSchema = "{}")
-        val shadow = candidate(key = "review", extendsKey = "review", executor = null, confidenceField = "confidence", scope = Scope.Project(lib.projectId))
+    fun `a project template shadowing a global one inherits its schema through it`() {
+        lib.template("review", outputSchema = "{}")
+        val shadow = candidate(key = "review", extendsKey = "review", confidenceField = "confidence", scope = Scope.Project(lib.projectId))
         assertThat(fields(shadow)).isEmpty()
-        assertThat(fields(candidate(key = "solo", extendsKey = "solo", executor = null, scope = Scope.Project(lib.projectId))))
-            .describedAs("no global template to shadow").containsExactly("extendsKey", "executor")
+        assertThat(fields(candidate(key = "solo", extendsKey = "solo", scope = Scope.Project(lib.projectId))))
+            .describedAs("no global template to shadow").containsExactly("extendsKey")
     }
 
     @Test
     fun `a cycle among existing ancestors does not make the validator loop`() {
-        lib.template("aa", extendsKey = "bb", executor = TaskExecutor.LLM)
+        lib.template("aa", extendsKey = "bb")
         lib.template("bb", extendsKey = "aa")
-        assertThat(fields(candidate(extendsKey = "aa", executor = null))).isEmpty()
+        assertThat(fields(candidate(extendsKey = "aa"))).isEmpty()
     }
 
     @Test

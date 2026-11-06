@@ -15,7 +15,6 @@ class BuiltInLibraryRunInputsTest {
     private val now = Instant.parse("2026-10-24T10:00:00Z")
     private val templates = BuiltInLibrary.templates(now).associateBy { it.key }
     private val input = RunInputField("input", "Input material", RunInputType.MULTILINE, required = false, help = templates.getValue(BuiltInLibrary.BASE_AGENT).runInputs.firstOrNull()?.help)
-    private val issueKey = RunInputField("issueKey", "Jira issue key", RunInputType.ISSUE_KEY, required = true, help = templates.getValue(BuiltInLibrary.FETCH_ISSUE).runInputs.firstOrNull()?.help)
 
     private fun declared(key: String) = templates.getValue(key).runInputs
 
@@ -27,10 +26,10 @@ class BuiltInLibraryRunInputsTest {
     }
 
     @Test
-    fun `the Jira steps that read the run's issue key require it`() {
-        listOf(BuiltInLibrary.FETCH_ISSUE, BuiltInLibrary.NOTIFY_JIRA, BuiltInLibrary.TRANSITION_ISSUE).forEach {
-            assertThat(declared(it)).describedAs(it).containsExactly(issueKey)
-        }
+    fun `the Jira steps that read the run's issue key are actions now, not library templates`() {
+        assertThat(templates.keys).doesNotContainAnyElementsOf(BuiltInLibrary.formerActionTemplateKeys)
+        assertThat(templates.values.flatMap { it.runInputs }.map { it.type }).doesNotContain(RunInputType.ISSUE_KEY)
+        assertThat(BuiltInLibrary.ISSUE_KEY_INPUT.required).isTrue()
     }
 
     @Test
@@ -62,7 +61,7 @@ class BuiltInLibraryRunInputsTest {
 
     @Test
     fun `the checksum covers run inputs, so the seed upgrades untouched built-ins`() {
-        val fetch: TaskTemplate = templates.getValue(BuiltInLibrary.FETCH_ISSUE)
+        val fetch: TaskTemplate = templates.getValue(BuiltInLibrary.LLM_TASK)
         val withoutInputs = fetch.update(fetch.content.copy(runInputs = emptyList()), now)
 
         assertThat(BuiltInChecksum.of(withoutInputs)).isNotEqualTo(BuiltInChecksum.of(fetch))

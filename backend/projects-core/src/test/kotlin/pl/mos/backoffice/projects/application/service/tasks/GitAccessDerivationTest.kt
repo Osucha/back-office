@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.shared.testing.TestAgents
 import pl.mos.backoffice.projects.domain.model.ScmCapability
 import pl.mos.backoffice.projects.domain.model.ScmConnectionId
 import pl.mos.backoffice.projects.domain.model.ScmConnection
@@ -36,7 +38,6 @@ import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
@@ -63,27 +64,26 @@ class GitAccessDerivationTest {
         return NodeContext(started, project, node, started.nodes.last(), emptyMap())
     }
 
-    private fun task(executor: TaskExecutor, config: Map<String, Any?>) = ResolvedTask(
-        key = "t", name = "T", executor = executor, modelProfileId = null, prompt = TaskPrompt(null, "Do {{issue.key}}"),
+    private fun task(agent: AgentSnapshot, config: Map<String, Any?>) = ResolvedTask(
+        key = "t", name = "T", agent = agent, modelProfileId = null, prompt = TaskPrompt(null, "Do {{issue.key}}"),
         skills = emptyList(), config = config, outputSchema = null, confidenceField = null,
         produces = emptyList(), consumes = emptyList(), category = null, lineage = listOf("t"), ports = listOf("success", "failure"),
     )
 
     private fun submit(mode: RunnerMode, config: Map<String, Any?>): RunnerJobSpec {
-        val executor = if (mode == RunnerMode.SPEC_KIT) TaskExecutor.SPEC_KIT else TaskExecutor.IMPLEMENT
-        support.run(context(), task(executor, config), mode, null, "x")
+        support.run(context(), task(TestAgents.OPENCODE, config), mode, null, "x")
         return runner.specs.last()
     }
 
     @Test
     fun `ADR 0036 - a project without Spec Kit sends specKit false and no constitution, and refuses Spec Kit steps`() {
         val off = Fixtures.project(specKit = false)
-        support.run(context(off), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        support.run(context(off), task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
         val spec = runner.specs.last()
         assertThat(spec.specKit).isFalse()
         assertThat(spec.constitution).isNull()
 
-        val refused = support.run(context(off), task(TaskExecutor.SPEC_KIT, emptyMap()), RunnerMode.SPEC_KIT, null, "x")
+        val refused = support.run(context(off), task(TestAgents.OPENCODE, emptyMap()), RunnerMode.SPEC_KIT, null, "x")
         assertThat(refused.failed).isTrue()
         assertThat(refused.error).contains("Spec Kit").contains("off for this project")
         assertThat(runner.specs).hasSize(1)
@@ -96,14 +96,14 @@ class GitAccessDerivationTest {
     @Test
     fun `a step that allows it runs in an empty workspace of a project without repositories, others fail`() {
         val noCode = Fixtures.project().copy(repositories = emptyList())
-        support.run(context(noCode), task(TaskExecutor.IMPLEMENT, mapOf("push" to false, "repositoryOptional" to true)), RunnerMode.IMPLEMENT, null, "x")
+        support.run(context(noCode), task(TestAgents.OPENCODE, mapOf("push" to false, "repositoryOptional" to true)), RunnerMode.IMPLEMENT, null, "x")
         val spec = runner.specs.last()
         assertThat(spec.repository).isNull()
         assertThat(spec.repositories).isEmpty()
         assertThat(spec.gitAccess).isEqualTo(GitAccess.NONE)
         assertThat(spec.prompt).doesNotContain("## Repositories")
 
-        val refused = support.run(context(noCode), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        val refused = support.run(context(noCode), task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
         assertThat(refused.failed).isTrue()
         assertThat(runner.specs).hasSize(1)
     }
@@ -131,7 +131,7 @@ class GitAccessDerivationTest {
         }
         val withTokens = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30), scmConnections = tokens)
         fun specOf(config: Map<String, Any?>): RunnerJobSpec {
-            withTokens.run(context(), task(TaskExecutor.IMPLEMENT, config), RunnerMode.IMPLEMENT, null, "x")
+            withTokens.run(context(), task(TestAgents.OPENCODE, config), RunnerMode.IMPLEMENT, null, "x")
             return runner.specs.last()
         }
         val key = project.repositories.single().key
@@ -156,10 +156,10 @@ class GitAccessDerivationTest {
         assertThat(withTool.credentials.map { it.ref }).doesNotContain(apiWriter.id.toString())
 
         tokens.rows = listOf(apiWriter, push)
-        val refused = withTokens.run(context(), task(TaskExecutor.IMPLEMENT, mapOf("agentTools" to listOf("gitlab-read"))), RunnerMode.IMPLEMENT, null, "x")
+        val refused = withTokens.run(context(), task(TestAgents.OPENCODE, mapOf("agentTools" to listOf("gitlab-read"))), RunnerMode.IMPLEMENT, null, "x")
         assertThat(refused.failed).isTrue()
         assertThat(refused.error).contains("read-only token with CI_READ")
-        val unknown = withTokens.run(context(), task(TaskExecutor.IMPLEMENT, mapOf("agentTools" to listOf("root-shell"))), RunnerMode.IMPLEMENT, null, "x")
+        val unknown = withTokens.run(context(), task(TestAgents.OPENCODE, mapOf("agentTools" to listOf("root-shell"))), RunnerMode.IMPLEMENT, null, "x")
         assertThat(unknown.error).contains("unknown agent tool 'root-shell'")
     }
 
@@ -199,12 +199,12 @@ class GitAccessDerivationTest {
         val owner = UUID.randomUUID()
         val person = Actor(PrincipalKind.USER, owner, "Owner")
         val private = Fixtures.project().copy(personal = true)
-        support.run(context(private, person), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        support.run(context(private, person), task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
         assertThat(runner.specs.last().personalRunnerOf).isEqualTo(owner)
         // a team project, or a private one started by the system, uses the shared fleet
-        support.run(context(project, person), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        support.run(context(project, person), task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
         assertThat(runner.specs.last().personalRunnerOf).isNull()
-        support.run(context(private, Actor(PrincipalKind.SYSTEM, null, "system")), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
+        support.run(context(private, Actor(PrincipalKind.SYSTEM, null, "system")), task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x")
         assertThat(runner.specs.last().personalRunnerOf).isNull()
     }
 
@@ -218,13 +218,13 @@ class GitAccessDerivationTest {
         )
         val ctx = context()
         runner.results[jobId] = result(subscription = true)
-        val subscription = support.complete(ctx, task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
+        val subscription = support.complete(ctx, task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
         assertThat(subscription.cost.amount.signum()).isZero()
         // ADR 0042: the API-equivalent cost is kept next to the zero spend
         assertThat(subscription.apiCost!!.amount).isEqualByComparingTo("0.42")
         assertThat(subscription.usage.inputTokens).isEqualTo(100)
         runner.results[jobId] = result(subscription = false)
-        val metered = support.complete(ctx, task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
+        val metered = support.complete(ctx, task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
         assertThat(metered.cost.amount).isEqualByComparingTo("0.42")
     }
 
@@ -237,7 +237,7 @@ class GitAccessDerivationTest {
             artifacts = emptyList(), usage = pl.mos.backoffice.shared.llm.TokenUsage.ZERO, reportedCostUsd = null,
             error = "verifyCommand exited with code 1", finishedAt = now,
         )
-        val failed = support.complete(context(), task(TaskExecutor.IMPLEMENT, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
+        val failed = support.complete(context(), task(TestAgents.OPENCODE, emptyMap()), RunnerMode.IMPLEMENT, null, "x", jobId)
         assertThat(failed.error).startsWith("verifyCommand exited with code 1\n\nThe agent reports:\nI stopped at Task 3")
         assertThat(failed.error).contains("only work-log.md").doesNotContain("long text").endsWith("(full report in the step's result and work log)")
     }

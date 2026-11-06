@@ -6,14 +6,16 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import type { NodeKind, PaletteTask, WorkflowPalette } from '../../../core/api/types';
-import { executorLabel } from '../../../core/ui/executors';
+import { agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
 import { NODE_KIND_META, type NodeKindMeta } from '../data/graph-model';
-import { paletteGroups, paletteTasks } from '../data/palette-tasks';
+import { paletteActions, paletteGroups, paletteTasks } from '../data/palette-tasks';
 import { NODE_DRAG_MIME } from './workflow-canvas.component';
 
 export interface PalettePick {
   kind: NodeKind;
   templateKey?: string | null;
+  /** ADR 0056: the action of an ACTION node. */
+  actionType?: string | null;
 }
 
 interface TaskGroup {
@@ -24,7 +26,10 @@ interface TaskGroup {
 
 const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WAIT_FOR_CI', 'NOTE'];
 
-/** Left drawer: control nodes + task templates grouped by category (ADR 0055); drag or click to add. */
+/**
+ * Left drawer: control nodes, actions (ADR 0056) and task templates grouped by category (ADR 0055);
+ * drag or click to add.
+ */
 @Component({
   selector: 'app-node-palette',
   imports: [
@@ -43,7 +48,7 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
           nz-input
           [ngModel]="query()"
           (ngModelChange)="query.set($event)"
-          placeholder="Search nodes and templates"
+          placeholder="Search nodes, actions and templates"
           i18n-placeholder="@@workflows.palette.search"
           aria-label="Search palette"
           i18n-aria-label="@@workflows.palette.searchLabel"
@@ -81,6 +86,33 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
         }
       </div>
 
+      @if (actions().length) {
+        <h4 i18n="@@workflows.palette.actions">Actions</h4>
+        <div class="items">
+          @for (a of actions(); track a.action.type) {
+            <div
+              class="item action"
+              draggable="true"
+              role="button"
+              tabindex="0"
+              [style.--accent]="actionMeta.color"
+              [attr.data-action]="a.action.type"
+              (dragstart)="dragStart($event, { kind: 'ACTION', actionType: a.action.type })"
+              (click)="pick.emit({ kind: 'ACTION', actionType: a.action.type })"
+              (keydown.enter)="pick.emit({ kind: 'ACTION', actionType: a.action.type })"
+              nz-tooltip
+              [nzTooltipTitle]="a.description"
+              nzTooltipPlacement="right"
+            >
+              <nz-icon [nzType]="actionMeta.icon" />
+              <span class="text">
+                <span class="label">{{ a.title }}</span>
+              </span>
+            </div>
+          }
+        </div>
+      }
+
       <h4>
         <span i18n="@@workflows.palette.tasks">Tasks</span>
         @if (loading()) {
@@ -117,10 +149,13 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
                 <span class="text">
                   <span class="label">{{ t.name || t.key }}</span>
                 </span>
-                @if (t.executor) {
-                  <span class="exec" [attr.title]="t.executor">{{
-                    executorLabel(t.executor)
-                  }}</span>
+                @if (t.agent) {
+                  <span
+                    class="exec"
+                    [class.coding]="!!t.agent.harness"
+                    [attr.title]="agentKindDescription(t.agent.harness)"
+                    >{{ agentKindLabel(t.agent.harness) }}</span
+                  >
                 }
                 @if (t.projectScoped) {
                   <nz-icon
@@ -233,6 +268,10 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
         color: var(--bo-ink-2);
         font-weight: 600;
       }
+      .exec.coding {
+        background: var(--bo-accent-soft, var(--bo-surface-3));
+        color: var(--bo-accent);
+      }
       .scoped {
         color: var(--bo-accent) !important;
       }
@@ -252,7 +291,12 @@ export class NodePaletteComponent {
   readonly pick = output<PalettePick>();
 
   readonly query = signal('');
-  readonly executorLabel = executorLabel;
+  readonly agentKindLabel = agentKindLabel;
+  readonly agentKindDescription = agentKindDescription;
+  readonly actionMeta = NODE_KIND_META.ACTION;
+
+  /** ADR 0056: actions matching the search (translated titles). */
+  readonly actions = computed(() => paletteActions(this.palette()?.actions, this.query()));
 
   readonly controls = computed<NodeKindMeta[]>(() => {
     const q = this.query().trim().toLowerCase();

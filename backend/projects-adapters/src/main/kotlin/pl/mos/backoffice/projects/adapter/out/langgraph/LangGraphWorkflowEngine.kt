@@ -336,7 +336,7 @@ class LangGraphWorkflowEngine(
         progress.waitingForHuman(run.id, node.id, question, node.gate.options, context)
     }
 
-    /** ADR 0033: the TASK [nodeId] prepared an external write; ask for its confirmation with exactly that content. */
+    /** ADR 0033: the TASK or ACTION [nodeId] prepared an external write; ask for its confirmation with exactly that content. */
     private fun openWriteConfirmation(run: WorkflowRun, nodeId: String, state: WorkflowState) {
         val pending = state.map(RunStateKeys.PENDING_WRITE)
         val write = pendingWrite(pending)
@@ -363,7 +363,8 @@ class LangGraphWorkflowEngine(
         val graph = StateGraph(WorkflowState.SCHEMA, AgentStateFactory { WorkflowState(it) })
         val topology = WorkflowGraph(definition)
         val executable = definition.nodes.filter { it.kind != NodeKind.NOTE }
-        val awaiting = executable.filter { it.kind == NodeKind.TASK }
+        // task steps may wait for a runner job, task and action steps (ADR 0056) for a write confirmation
+        val awaiting = executable.filter { it.kind == NodeKind.TASK || it.kind == NodeKind.ACTION }
         val mapping = (executable.map { it.id } + awaiting.map { awaitId(it.id) } + awaiting.map { confirmId(it.id) } + listOf(NODE_FAILED, NODE_CANCELLED))
             .associateWith { it } +
             (GraphDefinition.END to GraphDefinition.END)

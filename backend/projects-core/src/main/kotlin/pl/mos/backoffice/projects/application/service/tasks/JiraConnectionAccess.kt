@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 import pl.mos.backoffice.projects.application.port.out.IssueTracker
 import pl.mos.backoffice.projects.application.port.out.IssueTrackerFactory
@@ -22,7 +23,6 @@ import pl.mos.backoffice.projects.domain.service.ConnectionChoice
 import pl.mos.backoffice.projects.domain.service.ConnectionSelector
 import pl.mos.backoffice.projects.domain.service.SelectionStatus
 import pl.mos.backoffice.shared.IntegrationException
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 
 /** A client of one connection, narrowed to a step ([ScopedIssueTracker]), with that connection. */
 data class OpenedTracker(val connection: Connection, val client: IssueTracker)
@@ -130,52 +130,52 @@ class JiraConnectionAccess(
     }
 
     /**
-     * Opens the client for a step of executor [executor] working on [issueKey]: logs the connection used, warns when
+     * Opens the client for an action step of [action] working on [issueKey]: logs the connection used, warns when
      * it has more rights than needed, and fails (not retryable) when none fits.
      */
     fun open(
         context: NodeContext,
-        executor: TaskExecutor,
+        action: ActionType,
         config: Map<String, Any?>,
         issueKey: String?,
         acting: ActingUser? = ActingUser.startedBy(context.run),
         identity: WriteIdentity? = null,
     ): IssueTracker {
-        val required = ConnectionCapability.requiredBy(executor)
-        val connection = require(context, executor, config, issueKey, acting, identity)
+        val required = ConnectionCapability.requiredBy(action)
+        val connection = require(context, action, config, issueKey, acting, identity)
         return ScopedIssueTracker(trackers.open(connection), connection, required)
     }
 
     /** Like [open], also returning the connection (audit of external writes, ADR 0035). */
     fun openWith(
         context: NodeContext,
-        executor: TaskExecutor,
+        action: ActionType,
         config: Map<String, Any?>,
         issueKey: String?,
         acting: ActingUser?,
         identity: WriteIdentity?,
     ): OpenedTracker {
-        val required = ConnectionCapability.requiredBy(executor)
-        val connection = require(context, executor, config, issueKey, acting, identity)
+        val required = ConnectionCapability.requiredBy(action)
+        val connection = require(context, action, config, issueKey, acting, identity)
         return OpenedTracker(connection, ScopedIssueTracker(trackers.open(connection), connection, required))
     }
 
     /**
-     * The connection a step of [executor] would use for [issueKey], logged (with the over-privileged warning). Fails
+     * The connection a step of [action] would use for [issueKey], logged (with the over-privileged warning). Fails
      * (not retryable) when none fits; a write step calls it before asking for confirmation so that nobody approves a
      * write that cannot happen.
      */
     fun require(
         context: NodeContext,
-        executor: TaskExecutor,
+        action: ActionType,
         config: Map<String, Any?>,
         issueKey: String?,
         acting: ActingUser? = ActingUser.startedBy(context.run),
         identity: WriteIdentity? = null,
     ): Connection {
-        val choice = choice(context, executor, config, issueKey, acting, identity)
+        val choice = choice(context, action, config, issueKey, acting, identity)
         val connection = choice.connection ?: throw IntegrationException("jira", choice.message, retryable = false)
-        val required = ConnectionCapability.requiredBy(executor)
+        val required = ConnectionCapability.requiredBy(action)
         val how = when {
             choice.personal -> if (acting?.via == ActingUser.Via.APPROVAL) "they approved the write" else "they started the run"
             choice.pinned -> "pinned"
@@ -192,13 +192,13 @@ class JiraConnectionAccess(
     /** The choice of a step without failing (null connection = none fits; the message says why). */
     fun choice(
         context: NodeContext,
-        executor: TaskExecutor,
+        action: ActionType,
         config: Map<String, Any?>,
         issueKey: String?,
         acting: ActingUser? = ActingUser.startedBy(context.run),
         identity: WriteIdentity? = null,
     ): ConnectionChoice {
-        val required = ConnectionCapability.requiredBy(executor)
+        val required = ConnectionCapability.requiredBy(action)
         return resolve(context.project, required, StepConnectionConfig.of(config), Connection.jiraProjectOf(issueKey), acting, identity)
     }
 

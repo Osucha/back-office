@@ -34,6 +34,7 @@ object LibraryPortability {
             val mine = byId[node.id]?.takeIf { it.kind == node.kind } ?: return@map node
             when {
                 node is WorkflowNode.Task && mine is WorkflowNode.Task -> node.copy(task = node.task.copy(overrides = node.task.overrides.copy(config = mergeConfig(node.task.overrides.config, mine.task.overrides.config))))
+                node is WorkflowNode.Action && mine is WorkflowNode.Action -> node.copy(action = node.action.copy(config = mergeConfig(node.action.config, mine.action.config)))
                 node is WorkflowNode.HumanGate && mine is WorkflowNode.HumanGate -> node.copy(gate = node.gate.copy(approvers = node.gate.approvers.copy(users = mine.gate.approvers.users)))
                 else -> node
             }
@@ -53,6 +54,7 @@ object LibraryPortability {
 
     private fun strip(node: WorkflowNode): WorkflowNode = when (node) {
         is WorkflowNode.Task -> node.copy(task = node.task.copy(overrides = node.task.overrides.copy(config = portableConfig(node.task.overrides.config))))
+        is WorkflowNode.Action -> node.copy(action = node.action.copy(config = portableConfig(node.action.config)))
         is WorkflowNode.HumanGate -> node.copy(gate = node.gate.copy(approvers = node.gate.approvers.copy(users = emptyList())))
         else -> node
     }
@@ -94,6 +96,7 @@ object LibraryPortability {
         is WorkflowNode.Start -> node.copy(position = ORIGIN)
         is WorkflowNode.End -> node.copy(position = ORIGIN)
         is WorkflowNode.Task -> node.copy(position = ORIGIN)
+        is WorkflowNode.Action -> node.copy(position = ORIGIN)
         is WorkflowNode.Decision -> node.copy(position = ORIGIN)
         is WorkflowNode.HumanGate -> node.copy(position = ORIGIN)
         is WorkflowNode.WaitForCi -> node.copy(position = ORIGIN)

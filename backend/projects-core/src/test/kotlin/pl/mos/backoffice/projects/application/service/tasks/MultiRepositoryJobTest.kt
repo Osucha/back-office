@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.shared.testing.TestAgents
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
@@ -39,7 +40,6 @@ import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
@@ -84,7 +84,7 @@ class MultiRepositoryJobTest {
     }
 
     private fun task(config: Map<String, Any?>) = ResolvedTask(
-        key = "t", name = "T", executor = TaskExecutor.IMPLEMENT, modelProfileId = null, prompt = TaskPrompt(null, "Do {{issue.key}} in {{repos}}"),
+        key = "t", name = "T", agent = TestAgents.OPENCODE, modelProfileId = null, prompt = TaskPrompt(null, "Do {{issue.key}} in {{repos}}"),
         skills = emptyList(), config = config, outputSchema = null, confidenceField = null,
         produces = emptyList(), consumes = emptyList(), category = null, lineage = listOf("t"), ports = listOf("success", "failure"),
     )

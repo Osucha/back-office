@@ -3,18 +3,20 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, shareReplay, throwError } from 'rxjs';
 import { params, silent, url } from './api-base';
 import type {
+  Agent,
+  AgentInput,
   ResolvedTask,
   Rule,
   RuleInput,
   Skill,
   SkillInput,
-  TaskExecutorDescriptor,
+  TaskConfigSchemas,
   TaskOverrides,
   TaskTemplate,
   TaskTemplateInput,
 } from './types';
 
-/** Task Library: templates (classes with inheritance), skills and rules (ADR 0055). */
+/** Task Library: templates (classes with inheritance), skills, rules (ADR 0055) and agents (ADR 0056). */
 @Injectable({ providedIn: 'root' })
 export class TaskLibraryApi {
   private readonly http = inject(HttpClient);
@@ -66,20 +68,47 @@ export class TaskLibraryApi {
     });
   }
 
-  /** ADR 0054: every executor with the JSON Schema of its config (static; loaded once). */
-  taskExecutors(): Observable<TaskExecutorDescriptor[]> {
-    this.executors$ ??= this.http
-      .get<TaskExecutorDescriptor[]>(url('workflows', 'task-executors'), silent())
+  /**
+   * ADR 0056: the JSON Schema of a step's config for a model answer and for a coding agent
+   * (static; loaded once).
+   */
+  taskConfigSchemas(): Observable<TaskConfigSchemas> {
+    this.configSchemas$ ??= this.http
+      .get<TaskConfigSchemas>(url('workflows', 'task-config-schemas'), silent())
       .pipe(
         catchError((e: unknown) => {
-          this.executors$ = undefined;
+          this.configSchemas$ = undefined;
           return throwError(() => e);
         }),
         shareReplay(1),
       );
-    return this.executors$;
+    return this.configSchemas$;
   }
-  private executors$?: Observable<TaskExecutorDescriptor[]>;
+  private configSchemas$?: Observable<TaskConfigSchemas>;
+
+  // ---- agents (ADR 0056)
+
+  /** Global agents plus, with a project, that project's own. */
+  listAgents(projectId?: string | null): Observable<Agent[]> {
+    return this.http.get<Agent[]>(url('agents'), { params: params({ projectId }) });
+  }
+
+  getAgent(agentId: string): Observable<Agent> {
+    return this.http.get<Agent>(url('agents', agentId));
+  }
+
+  createAgent(input: AgentInput): Observable<Agent> {
+    return this.http.post<Agent>(url('agents'), input);
+  }
+
+  updateAgent(agentId: string, input: AgentInput): Observable<Agent> {
+    return this.http.put<Agent>(url('agents', agentId), input);
+  }
+
+  /** Refused (409) while a template uses the agent. */
+  deleteAgent(agentId: string): Observable<void> {
+    return this.http.delete<void>(url('agents', agentId));
+  }
 
   // ---- skills
 

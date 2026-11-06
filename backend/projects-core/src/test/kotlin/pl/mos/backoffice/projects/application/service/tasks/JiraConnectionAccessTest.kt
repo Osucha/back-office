@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.domain.model.ActionType
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -14,7 +15,6 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.ConnectionSelector
 import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 
 /** ADR 0030 at run time: the step gets a client limited to what it declared, and the run log says which connection. */
 class JiraConnectionAccessTest {
@@ -35,7 +35,7 @@ class JiraConnectionAccessTest {
     @Test
     fun `a fetch step through a writer connection reads, warns, and cannot write`() {
         connections.save(ConnectionFakes.connection("writer", WRITE))
-        val tracker = access.open(context(), TaskExecutor.FETCH_ISSUE, emptyMap(), "SHOP-1")
+        val tracker = access.open(context(), ActionType.FETCH_ISSUE, emptyMap(), "SHOP-1")
 
         assertThat(tracker.fetch("SHOP-1").key).isEqualTo("SHOP-1")
         assertThat(infos).anyMatch { it.contains("Jira connection: writer (platform)") }
@@ -48,19 +48,19 @@ class JiraConnectionAccessTest {
     @Test
     fun `the allow-list of the connection is enforced per issue`() {
         connections.save(ConnectionFakes.connection("shop reader", READ, allowed = listOf("SHOP")))
-        val tracker = access.open(context(), TaskExecutor.FETCH_ISSUE, emptyMap(), "SHOP-1")
+        val tracker = access.open(context(), ActionType.FETCH_ISSUE, emptyMap(), "SHOP-1")
 
         assertThat(warnings).isEmpty()
         assertThatThrownBy { tracker.fetch("OPS-7") }.isInstanceOf(IntegrationException::class.java).hasMessageContaining("limited to the Jira projects SHOP")
         // no connection may touch OPS issues at all
-        assertThatThrownBy { access.open(context(), TaskExecutor.FETCH_ISSUE, emptyMap(), "OPS-7") }
+        assertThatThrownBy { access.open(context(), ActionType.FETCH_ISSUE, emptyMap(), "OPS-7") }
             .isInstanceOf(IntegrationException::class.java).hasMessageContaining("no Jira connection").hasMessageContaining("OPS")
     }
 
     @Test
     fun `no connection fails the step with a pointer to the setup guide`() {
         connections.save(ConnectionFakes.connection("reader", READ))
-        assertThatThrownBy { access.open(context(), TaskExecutor.NOTIFY, emptyMap(), "SHOP-1") }
+        assertThatThrownBy { access.open(context(), ActionType.COMMENT_ISSUE, emptyMap(), "SHOP-1") }
             .isInstanceOf(IntegrationException::class.java)
             .hasMessageContaining("[ISSUE_COMMENT]")
             .hasMessageContaining("integrations-jira#jira-connections")
@@ -71,7 +71,7 @@ class JiraConnectionAccessTest {
     fun `a pinned connection is used and an invalid pin is a validation error`() {
         val writer = connections.save(ConnectionFakes.connection("writer", WRITE))
         connections.save(ConnectionFakes.connection("reader", READ))
-        access.open(context(), TaskExecutor.FETCH_ISSUE, mapOf(JiraConnectionAccess.CONFIG_KEY to writer.id.toString()), "SHOP-1")
+        access.open(context(), ActionType.FETCH_ISSUE, mapOf(JiraConnectionAccess.CONFIG_KEY to writer.id.toString()), "SHOP-1")
         assertThat(trackers.opened.single().id).isEqualTo(writer.id)
         assertThat(infos).anyMatch { it.contains("pinned") }
 
@@ -88,7 +88,7 @@ class JiraConnectionAccessTest {
         assertThat(ScopedIssueTracker.restrictJql("status = Open", emptyList())).isEqualTo("status = Open")
 
         connections.save(ConnectionFakes.connection("shop reader", setOf(ConnectionCapability.ISSUE_READ), allowed = listOf("SHOP")))
-        access.open(context(), TaskExecutor.FETCH_ISSUE, emptyMap(), "SHOP-1").search("labels = ai", 10)
+        access.open(context(), ActionType.FETCH_ISSUE, emptyMap(), "SHOP-1").search("labels = ai", 10)
         assertThat(trackers.calls).containsExactly("search project in (SHOP) AND (labels = ai)")
     }
 }

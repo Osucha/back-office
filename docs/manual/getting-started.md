@@ -32,11 +32,12 @@ the result or sends it back (see [Projects without a repository](projects.md#no-
 | Concept | In one sentence | Where you see it |
 |---|---|---|
 | Project | Workflows, members, CI tokens, sandbox policy and budget, with zero or more Git repositories. | **Projects**, `/projects/:id` |
-| Workflow | A graph of nodes (tasks, decisions, gates, CI waits) that a run follows. | Project tab **Workflows**, the designer |
+| Workflow | A graph of nodes (tasks, actions, decisions, gates, CI waits) that a run follows. | Project tab **Workflows**, the designer |
 | Run | One execution of a workflow, usually for one Jira issue. | **Runs**, `/runs/:id` |
 | Node | One block of a workflow; a run visits nodes one at a time. | Designer canvas, run **Timeline** |
 | Gate | A node where the run stops until an approver picks an option. | **Your turn**, the gate side panel |
-| Task template | A reusable task (prompt, executor, skills, config) that a task node points to. | **Library** → **Templates** |
+| Task template | A reusable task (prompt, skills, rules, config, default agent) that a task node points to. | **Library** → **Templates** |
+| Agent | Who does a task: a single model answer, or a coding agent (OpenCode, Claude Code), optionally with its own model. | **Library** → **Agents** |
 | Model profile | A model with its options and prices, picked by tasks and benchmarks. | **Models** |
 | Agent job | A coding task that runs in a sandbox on a runner. | Run **Timeline**; administrators see **Agent jobs** |
 | Budget | A monthly spending limit for the platform or a project. | Project tab **Budget**, **Costs** |
@@ -107,4 +108,4 @@ the close button). The steps, in order:
 
 Pages update live while you look at them. There are no e-mail or chat notifications: what needs you
 appears in **Your turn** and in the amber counter. A workflow can post a comment to the Jira issue with
-the `notify-jira` task (see [Jira](integrations-jira.md#jira-tasks)).
+the **Comment on issue** action (see [Jira](integrations-jira.md#jira-tasks)).

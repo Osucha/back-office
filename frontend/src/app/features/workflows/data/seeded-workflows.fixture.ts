@@ -7,6 +7,7 @@
  * the Kotlin factories (positions included).
  */
 import type {
+  ActionType,
   WorkflowDefinitionInput,
   WorkflowEdge,
   WorkflowNode,
@@ -51,6 +52,15 @@ const task = (id: string, name: string, key: string, p: P): WorkflowNode => ({
   position: at(p),
   maxVisits: 3,
   task: { templateKey: key, overrides },
+});
+/** ADR 0056: Jira steps are ACTION nodes (the former action templates are gone). */
+const action = (id: string, name: string, type: ActionType, p: P): WorkflowNode => ({
+  id,
+  kind: 'ACTION',
+  name,
+  position: at(p),
+  maxVisits: 3,
+  action: { type, config: {} },
 });
 const end = (id: string, name: string, outcome: 'SUCCESS' | 'FAILURE', p: P): WorkflowNode => ({
   id,
@@ -126,7 +136,7 @@ export function seededIssueToReviewedMr(): WorkflowDefinitionInput {
       'Jira issue -> Spec Kit specification -> clarification -> plan -> tasks -> implementation (MR via push options) -> CI tests -> AI review -> merge gate -> issue transition.',
     nodes: [
       start([40, 40]),
-      task('fetch-issue', 'Fetch issue', 'fetch-issue', [316, 40]),
+      action('fetch-issue', 'Fetch issue', 'FETCH_ISSUE', [316, 40]),
       task('specify', 'Specify', 'spec-kit-specify', [652, 40]),
       task('clarify', 'Clarify spec', 'clarify-spec', [988, 40]),
       {
@@ -157,7 +167,7 @@ export function seededIssueToReviewedMr(): WorkflowDefinitionInput {
       task('code-review', 'AI code review', 'code-review', [3340, 40]),
       reviewOk('review-ok', [3676, 40]),
       gate('merge-gate', 'Merge?', merge, ['review', 'diff'], fourEyes, mergeDone, [4012, 40]),
-      task('transition', 'Move issue to In Review', 'transition-issue', [4348, 40]),
+      action('transition', 'Move issue to In Review', 'TRANSITION_ISSUE', [4348, 40]),
       end('done', 'Done', 'SUCCESS', [4684, 40]),
     ],
     edges: edges([
@@ -218,7 +228,7 @@ export function seededChangeRequest(): WorkflowDefinitionInput {
       'Delta change: Jira issue -> impact analysis (approved by the owner) -> user story -> task list with verification per task (approved) -> implementation -> CI tests -> AI review -> merge gate (four-eyes).',
     nodes: [
       start([40, 40]),
-      task('fetch-issue', 'Fetch issue', 'fetch-issue', [316, 40]),
+      action('fetch-issue', 'Fetch issue', 'FETCH_ISSUE', [316, 40]),
       task('impact-analysis', 'Impact analysis', 'impact-analysis', [652, 40]),
       gate(
         'impact-gate',
@@ -294,18 +304,15 @@ const TASK_KEYS = [
   'analyse-issue',
   'clarify-spec',
   'code-review',
-  'fetch-issue',
   'impact-analysis',
   'implement-claude-code',
   'implement-opencode',
   'implement-task-list',
-  'notify-jira',
   'plan-task-list',
   'review-against-spec',
   'spec-kit-plan',
   'spec-kit-specify',
   'spec-kit-tasks',
-  'transition-issue',
   'write-adr',
   'write-use-case',
   'write-user-story',
@@ -318,6 +325,14 @@ export const SEEDED_PALETTE: WorkflowPalette = {
     name: key,
     ports: ['success', 'failure'],
     category: 'GENERAL',
+  })),
+  actions: (['FETCH_ISSUE', 'COMMENT_ISSUE', 'TRANSITION_ISSUE'] as const).map((type) => ({
+    type,
+    title: type,
+    description: type,
+    ports: ['success', 'failure'],
+    configSchema: {},
+    defaults: {},
   })),
   controlNodes: [
     { kind: 'START', ports: ['out'] },

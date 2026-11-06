@@ -51,8 +51,8 @@ Decisions: ADR 0023 (backbone), ADR 0024 (execution plane).
 - Wake-up: inserting a READY item issues `NOTIFY backoffice_work`; workers also poll every 2 s.
 - Workflow runs: `RUN_ADVANCE` executes the LangGraph graph until it interrupts (gate / CI wait / runner
   job pending) or ends; runner results, gate decisions, CI signals and timeouts enqueue `RUN_ADVANCE`
-  with the resume payload. Node executors never block a worker thread on a runner job: the SPEC_KIT /
-  IMPLEMENT executors submit the job and interrupt; the result resumes the run.
+  with the resume payload. Node executors never block a worker thread on a runner job: the Spec Kit and
+  agent job steps (coding agents, ADR 0056) submit the job and interrupt; the result resumes the run.
 
 Implementation notes (platform-runtime, as built):
 

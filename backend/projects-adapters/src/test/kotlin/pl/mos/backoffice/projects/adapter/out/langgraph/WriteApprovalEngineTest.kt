@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.adapter.out.langgraph
 
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.anyUrl
@@ -48,7 +50,6 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.projects.domain.model.ArtifactId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.projects.adapter.ConcurrentRecordingAuditPort
@@ -113,28 +114,24 @@ class WriteApprovalEngineTest {
                 acknowledgeClassicToken = true,
             ),
         )
-        tasks.register(task("notify-done", TaskExecutor.NOTIFY, mapOf("messageTemplate" to "Done in run {{run.short}} for {{input.issueKey}}.")))
-        tasks.register(task("move-to-review", TaskExecutor.TRANSITION_ISSUE, mapOf("toStatus" to "In Review")))
         val workflow = workflows.create(
             project.id,
             ManageWorkflows.WorkflowCommand(
                 name = "tell and move",
                 nodes = listOf(
                     WorkflowNode.Start("start"),
-                    WorkflowNode.Task("tell", "Tell the issue", task = TaskBinding("notify-done")),
-                    WorkflowNode.Task("move", "Move to review", task = TaskBinding("move-to-review")),
+                    WorkflowNode.Action("tell", "Tell the issue", action = ActionBinding(ActionType.COMMENT_ISSUE, mapOf("messageTemplate" to "Done in run {{run.short}} for {{input.issueKey}}."))),
+                    WorkflowNode.Action("move", "Move to review", action = ActionBinding(ActionType.TRANSITION_ISSUE, mapOf("toStatus" to "In Review", "failIfMissing" to true))),
                     WorkflowNode.End("ok", "Done", end = EndSpec(RunOutcome.SUCCESS)),
                     WorkflowNode.End("not-moved", "Not moved", end = EndSpec(RunOutcome.FAILURE)),
                 ),
                 edges = listOf(edge("start", "out", "tell"), edge("tell", "success", "move"), edge("move", "success", "ok"), edge("move", "failure", "not-moved")),
             ),
         )
-        assertThat(workflow.nodes.filterIsInstance<WorkflowNode.Task>().map { it.task.overrides.config }).allMatch { "approval" !in it }
+        assertThat(workflow.nodes.filterIsInstance<WorkflowNode.Action>().map { it.action.config }).allMatch { "approval" !in it }
         return startRun.start(workflow.id, RunInput("$projectKey-42"))
     }
 
-    private fun task(key: String, executor: TaskExecutor, config: Map<String, Any?>) =
-        ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
 
     @Test
     fun `the engine pauses before each Jira write, approve writes exactly the preview, reject writes nothing`() {
@@ -209,14 +206,13 @@ class WriteApprovalEngineTest {
             project.id,
             ManageConnections.ConnectionCommand(ConnectionType.JIRA, "mover", jira.baseUrl(), "mover@acme.com", "t", setOf(ConnectionCapability.ISSUE_TRANSITION, ConnectionCapability.ISSUE_READ), acknowledgeClassicToken = true),
         )
-        tasks.register(task("move-now", TaskExecutor.TRANSITION_ISSUE, mapOf("toStatus" to "In Review")))
         val workflow = workflows.create(
             project.id,
             ManageWorkflows.WorkflowCommand(
                 name = "move now",
                 nodes = listOf(
                     WorkflowNode.Start("start"),
-                    WorkflowNode.Task("move", "Move", task = TaskBinding("move-now", TaskOverrides(config = mapOf("approval" to "NOT_REQUIRED")))),
+                    WorkflowNode.Action("move", "Move", action = ActionBinding(ActionType.TRANSITION_ISSUE, mapOf("toStatus" to "In Review", "approval" to "NOT_REQUIRED"))),
                     WorkflowNode.End("ok", "Done", end = EndSpec(RunOutcome.SUCCESS)),
                 ),
                 edges = listOf(edge("start", "out", "move"), edge("move", "success", "ok")),

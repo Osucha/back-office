@@ -27,24 +27,32 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { Subject, catchError, debounceTime, of, switchMap } from 'rxjs';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
-import {
-  TASK_EXECUTORS,
-  type ModelProfile,
-  type Project,
-  type Rule,
-  type RunInputField,
-  type Skill,
-  type TaskExecutorDescriptor,
-  type TaskTemplate,
-  type TaskTemplateInput,
+import type {
+  Agent,
+  AgentRef,
+  ModelProfile,
+  Project,
+  Rule,
+  RunInputField,
+  Skill,
+  TaskConfigSchemas,
+  TaskTemplate,
+  TaskTemplateInput,
 } from '../../../core/api/types';
 import { TEMPLATE_CATEGORIES, categoryLabel } from '../../../core/ui/template-categories';
 import { effectiveCategory, nameOfKey } from '../data/library-filters';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
-import { executorDescription, executorInfos, executorLabel } from '../../../core/ui/executors';
+import { agentKindDescription, agentKindLabel, isCodingAgent } from '../../../core/ui/agents';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
 import { SchemaFormComponent } from '../../workflows/public-api';
-import { effectiveExecutor, templateConfigSchema } from '../data/template-config';
+import {
+  DEFAULT_AGENT_KEY,
+  agentByKey,
+  agentRef,
+  agentsForScope,
+  effectiveAgentKey,
+  templateConfigSchema,
+} from '../data/template-config';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ActionBarComponent } from '../../../core/ui/relay/action-bar.component';
@@ -244,27 +252,30 @@ function invalidJson(e: unknown): string {
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="tt-exec" i18n="@@library.templateEditor.executor"
-                  >Executor</nz-form-label
+                <nz-form-label nzFor="tt-agent" i18n="@@library.templateEditor.agent"
+                  >Agent</nz-form-label
                 >
-                <nz-form-control [nzExtra]="executorHelp()">
+                <nz-form-control [nzExtra]="agentHelp()">
                   <nz-select
-                    id="tt-exec"
-                    name="executor"
+                    id="tt-agent"
+                    name="agentKey"
                     nzAllowClear
-                    nzPlaceHolder="inherited"
-                    i18n-nzPlaceHolder="@@library.templateEditor.inherited"
-                    [ngModel]="draft().executor ?? null"
-                    (ngModelChange)="patch({ executor: $event ?? null })"
+                    nzShowSearch
+                    [nzPlaceHolder]="agentPlaceholder()"
+                    [ngModel]="draft().agentKey ?? null"
+                    (ngModelChange)="patch({ agentKey: $event ?? null })"
                   >
-                    @for (e of executors; track e.executor) {
-                      <nz-option nzCustomContent [nzValue]="e.executor" [nzLabel]="e.label">
+                    @for (a of agentOptions(); track a.id ?? a.key) {
+                      <nz-option nzCustomContent [nzValue]="a.key" [nzLabel]="a.name">
                         <div class="exec-option">
-                          <span class="exec-label">{{ e.label }}</span>
-                          <span class="exec-enum">{{ e.executor }}</span>
+                          <span class="exec-label">{{ a.name }}</span>
+                          <span class="exec-enum">{{ agentKindLabel(a.harness) }}</span>
                         </div>
-                        <div class="exec-desc">{{ e.description }}</div>
+                        <div class="exec-desc">{{ agentKindDescription(a.harness) }}</div>
                       </nz-option>
+                    }
+                    @if (missingAgentKey(); as key) {
+                      <nz-option [nzValue]="key" [nzLabel]="key" nzDisabled />
                     }
                   </nz-select>
                 </nz-form-control>
@@ -618,7 +629,7 @@ function invalidJson(e: unknown): string {
                   >Config (JSON)</nz-form-label
                 >
                 <nz-form-control
-                  nzExtra="Executor-specific keys (phase, agent, verifyCommand, push, ...). Deep-merged over the parent; null deletes."
+                  nzExtra="Keys of model answer or coding agent steps (phase, verifyCommand, push, ...). Deep-merged over the parent; null deletes."
                   i18n-nzExtra="@@library.templateEditor.config.extra"
                 >
                   <textarea
@@ -797,7 +808,7 @@ function invalidJson(e: unknown): string {
                 </div>
                 <nz-form-item>
                   <nz-form-label nzFor="tt-schema" i18n="@@library.templateEditor.outputSchema"
-                    >Output schema (JSON Schema, LLM executor)</nz-form-label
+                    >Output schema (JSON Schema, model answer)</nz-form-label
                   >
                   <nz-form-control
                     nzExtra="Shape of the model answer when it must be structured JSON; empty for free text."
@@ -888,13 +899,13 @@ function invalidJson(e: unknown): string {
                 }
               </div>
               <div class="chips">
-                @if (pv.executor) {
+                @if (pv.agent) {
                   <nz-tag
                     nzColor="purple"
                     nz-tooltip
-                    [nzTooltipTitle]="executorDescription(pv.executor)"
-                    [attr.data-executor]="pv.executor"
-                    >{{ executorLabel(pv.executor) }}</nz-tag
+                    [nzTooltipTitle]="agentKindDescription(pv.agent.harness)"
+                    [attr.data-agent]="pv.agent.key"
+                    >{{ agentTagLabel(pv.agent) }}</nz-tag
                   >
                 }
                 @if (deprecated()) {
@@ -1306,6 +1317,8 @@ export class TemplateEditorDrawerComponent {
   /** ADR 0055: rules a template may list. */
   readonly rules = input<Rule[]>([]);
   readonly profiles = input<ModelProfile[]>([]);
+  /** ADR 0056: agents a template may name (global plus those of the listed project). */
+  readonly agents = input<Agent[]>([]);
   readonly projects = input<Project[]>([]);
   readonly saving = input(false);
   /** Bumps when the template was saved, to refresh the preview. */
@@ -1320,12 +1333,10 @@ export class TemplateEditorDrawerComponent {
   readonly saved = output<TaskTemplateInput>();
   readonly closed = output<void>();
 
-  /** ADR 0054: executors with plain names and one-sentence descriptions. */
-  readonly executors = executorInfos(TASK_EXECUTORS);
-  readonly executorLabel = executorLabel;
-  readonly executorDescription = executorDescription;
-  /** Executor descriptors with their config schema; null until loaded or when they failed. */
-  readonly descriptors = signal<TaskExecutorDescriptor[] | null>(null);
+  readonly agentKindLabel = agentKindLabel;
+  readonly agentKindDescription = agentKindDescription;
+  /** ADR 0056: config schemas of model answer and coding agent steps; null until loaded. */
+  readonly configSchemas = signal<TaskConfigSchemas | null>(null);
   /** The configuration is edited as raw JSON instead of the form. */
   readonly configRaw = signal(false);
   /** Bumped to re-create the configuration form (another template, back from raw JSON). */
@@ -1375,29 +1386,59 @@ export class TemplateEditorDrawerComponent {
     deprecatedHint: deprecatedHint(),
   };
 
-  /** ADR 0054: the executor the template runs with (own or inherited). */
-  readonly effectiveExecutor = computed(() =>
-    effectiveExecutor(this.draft(), this.templates(), this.preview()?.executor ?? null),
-  );
-  /** Form of the configuration: the effective executor's config schema; null = raw JSON only. */
-  readonly configSchema = computed(() =>
-    templateConfigSchema(this.descriptors(), this.effectiveExecutor()),
-  );
-  /** Help under the executor select: what the chosen or inherited executor does. */
-  readonly executorHelp = computed(() => {
-    const own = this.draft().executor;
-    const ex = this.effectiveExecutor();
-    if (own) return executorDescription(own);
-    if (ex)
-      return $localize`:@@library.templateEditor.executor.inheritedHelp:Inherited: ${executorLabel(ex)}:executor:. ${executorDescription(ex)}:description:`;
-    return $localize`:@@library.templateEditor.executor.extra:Required on concrete templates unless inherited.`;
+  /** ADR 0056: agents the template's scope may name. */
+  readonly agentOptions = computed(() => agentsForScope(this.agents(), this.draft().scope));
+  /** An own agent key that is not among the loaded agents (deleted or of another project). */
+  readonly missingAgentKey = computed(() => {
+    const key = this.draft().agentKey;
+    return key && !this.agentOptions().some((a) => a.key === key) ? key : null;
   });
+  /**
+   * ADR 0056: the agent the template runs with: own, else inherited, else `model-answer`. The
+   * resolved view names it when the loaded agents do not (another project's, not loaded yet).
+   */
+  readonly effectiveAgent = computed<AgentRef | null>(() => {
+    const d = this.draft();
+    const key = effectiveAgentKey(d, this.templates(), null);
+    const resolved = this.preview()?.agent ?? null;
+    // the resolved view is the inherited one while the saved template has no own agent
+    if (!key) return (!this.template()?.agentKey && resolved) || this.defaultAgent();
+    const a = agentByKey(this.agents(), key, d.scope);
+    return a ? agentRef(a) : resolved?.key === key ? resolved : { key, name: key, harness: null };
+  });
+  private readonly defaultAgent = computed<AgentRef>(() => {
+    const a = agentByKey(this.agents(), DEFAULT_AGENT_KEY);
+    return a ? agentRef(a) : { key: DEFAULT_AGENT_KEY, name: agentKindLabel(null), harness: null };
+  });
+  /** Placeholder of the agent select: the inherited agent, or the model answer. */
+  readonly agentPlaceholder = computed(() => {
+    const a = this.effectiveAgent();
+    return a
+      ? $localize`:@@library.templateEditor.agent.inherited:Inherited: ${a.name}:agent:`
+      : agentKindLabel(null);
+  });
+  /** Help under the agent select. */
+  readonly agentHelp = computed(() => {
+    const a = this.effectiveAgent();
+    const base = $localize`:@@library.templateEditor.agent.help:Who runs this task by default; a workflow step can choose another agent.`;
+    return a ? `${base} ${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}` : base;
+  });
+  /** Form of the configuration: the config schema of the effective agent's kind; null = raw JSON only. */
+  readonly configSchema = computed(() =>
+    templateConfigSchema(this.configSchemas(), isCodingAgent(this.effectiveAgent())),
+  );
   readonly configHelpFor = computed(() => {
-    const ex = this.effectiveExecutor();
-    return ex
-      ? $localize`:@@library.templateEditor.config.helpFor:Settings of ${executorLabel(ex)}:executor: steps.`
+    const a = this.effectiveAgent();
+    return a
+      ? $localize`:@@library.templateEditor.config.helpForAgent:Settings of steps run by ${agentKindLabel(a.harness)}:kind:.`
       : null;
   });
+
+  /** "Claude Code · Claude Code" collapses to one name; else "name · kind". */
+  agentTagLabel(a: AgentRef): string {
+    const kind = agentKindLabel(a.harness);
+    return a.name === kind ? kind : `${a.name} · ${kind}`;
+  }
   /** The template carries the `deprecated` tag. */
   readonly deprecated = computed(() => isDeprecated(this.draft()));
 
@@ -1529,11 +1570,11 @@ export class TemplateEditorDrawerComponent {
   });
 
   constructor() {
-    // ADR 0054: static; without it the configuration stays a JSON text area.
+    // ADR 0054/0056: static; without it the configuration stays a JSON text area.
     this.api
-      .taskExecutors()
+      .taskConfigSchemas()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({ next: (d) => this.descriptors.set(d), error: () => undefined });
+      .subscribe({ next: (s) => this.configSchemas.set(s), error: () => undefined });
     effect(() => {
       const t = this.template();
       const open = this.open();

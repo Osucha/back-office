@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
+import pl.mos.backoffice.shared.testing.TestAgents
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -29,7 +32,6 @@ import pl.mos.backoffice.projects.domain.service.WorkflowValidator
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.tasks.TaskExecutor
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
@@ -45,13 +47,7 @@ class WorkflowConnectionValidationTest {
     private val connections = ConnectionFakes.InMemoryConnections()
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: java.util.UUID?, overrides: TaskOverrides): ResolvedTask? {
-            val executor = when (key) {
-                "fetch-issue" -> TaskExecutor.FETCH_ISSUE
-                "notify-jira" -> TaskExecutor.NOTIFY
-                "transition-issue" -> TaskExecutor.TRANSITION_ISSUE
-                else -> TaskExecutor.LLM
-            }
-            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
+            return ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = emptyList<pl.mos.backoffice.shared.tasks.TaskSummary>()
     }
@@ -69,7 +65,7 @@ class WorkflowConnectionValidationTest {
         name = "jira",
         nodes = listOf(
             WorkflowNode.Start("start"),
-            WorkflowNode.Task("fetch", "Fetch", task = TaskBinding("fetch-issue", TaskOverrides(config = mapOf(*config)))),
+            WorkflowNode.Action("fetch", "Fetch", action = ActionBinding(ActionType.FETCH_ISSUE, mapOf(*config))),
             WorkflowNode.HumanGate("gate", "OK?", gate = GateSpec("OK?")),
             WorkflowNode.End("done", "Done", end = EndSpec(RunOutcome.SUCCESS)),
         ),
@@ -84,7 +80,7 @@ class WorkflowConnectionValidationTest {
 
         assertThat(result.valid).isTrue()
         val issue = result.warnings.single { it.nodeId == "fetch" }
-        assertThat(issue.field).isEqualTo("task.config.jiraConnection")
+        assertThat(issue.field).isEqualTo("action.config.jiraConnection")
         assertThat(issue.message).contains("[ISSUE_READ]").contains("jira-connections").contains("runs refuse to start")
         every { workflows.save(any()) } answers { firstArg() }
         assertThat(service.create(project.id, command()).name).isEqualTo("jira")
@@ -103,7 +99,7 @@ class WorkflowConnectionValidationTest {
         name = "notify",
         nodes = listOf(
             WorkflowNode.Start("start"),
-            WorkflowNode.Task("tell", "Tell", task = TaskBinding("notify-jira", TaskOverrides(config = mapOf(*config)))),
+            WorkflowNode.Action("tell", "Tell", action = ActionBinding(ActionType.COMMENT_ISSUE, mapOf(*config))),
             WorkflowNode.HumanGate("gate", "OK?", gate = GateSpec("OK?")),
             WorkflowNode.End("done", "Done", end = EndSpec(RunOutcome.SUCCESS)),
         ),
@@ -119,12 +115,12 @@ class WorkflowConnectionValidationTest {
         val off = service.validate(project.id, notifyCommand("approval" to "NOT_REQUIRED"))
         assertThat(off.valid).isTrue()
         val warning = off.warnings.single { it.nodeId == "tell" }
-        assertThat(warning.field).isEqualTo("task.config.approval")
+        assertThat(warning.field).isEqualTo("action.config.approval")
         assertThat(warning.message).contains("without anybody confirming")
 
-        assertThat(service.validate(project.id, notifyCommand("approval" to "MAYBE")).errors.single().field).isEqualTo("task.config.approval")
+        assertThat(service.validate(project.id, notifyCommand("approval" to "MAYBE")).errors.single().field).isEqualTo("action.config.approval")
         val badRole = service.validate(project.id, notifyCommand("approvers" to mapOf("projectRoles" to listOf("Owner!"))))
-        assertThat(badRole.errors.single().field).isEqualTo("task.config.approvers")
+        assertThat(badRole.errors.single().field).isEqualTo("action.config.approvers")
     }
 
     @Test
@@ -144,6 +140,6 @@ class WorkflowConnectionValidationTest {
         connections.save(ConnectionFakes.connection("reader", READ))
 
         assertThat(service.validate(project.id, command("jiraConnection" to commenter.id.toString())).errors.single().message).contains("lacks the capabilities ISSUE_READ")
-        assertThat(service.validate(project.id, command("jiraConnection" to "nope")).errors.single().field).isEqualTo("task.config.jiraConnection")
+        assertThat(service.validate(project.id, command("jiraConnection" to "nope")).errors.single().field).isEqualTo("action.config.jiraConnection")
     }
 }

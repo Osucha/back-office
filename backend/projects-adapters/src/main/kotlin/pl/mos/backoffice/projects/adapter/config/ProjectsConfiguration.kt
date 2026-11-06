@@ -215,7 +215,7 @@ class ProjectsConfiguration {
         SpecKitStepCheck(taskCatalog, features.getIfAvailable { PlatformFeatures.DEFAULTS })
 
     /** Jira steps of a workflow: connection per step and write-approval settings (ADR 0030, 0033). */
-    @Bean fun jiraStepCheck(taskCatalog: TaskCatalog, jira: JiraConnectionAccess) = JiraStepCheck(taskCatalog, jira)
+    @Bean fun jiraStepCheck(jira: JiraConnectionAccess) = JiraStepCheck(jira)
 
     /** Sources of the runner steps of a workflow: project repositories (ADR 0034) and library sources (ADR 0043). */
     @Bean fun repositoryStepCheck(taskCatalog: TaskCatalog, librarySources: LibrarySourceRepository, projectWorkspaces: ProjectWorkspaceRepository) =
@@ -315,6 +315,12 @@ class ProjectsConfiguration {
     @Bean fun taskExecutors(strategies: List<TaskExecutorStrategy>) = TaskExecutors(strategies)
 
     @Bean fun taskNodeExecutor(catalog: TaskCatalog, strategies: TaskExecutors) = TaskNodeExecutor(catalog, strategies)
+
+    @Bean fun actionStrategies(strategies: List<pl.mos.backoffice.projects.application.port.out.ActionStrategy>) =
+        pl.mos.backoffice.projects.application.service.nodes.ActionStrategies(strategies)
+
+    @Bean fun actionNodeExecutor(strategies: pl.mos.backoffice.projects.application.service.nodes.ActionStrategies) =
+        pl.mos.backoffice.projects.application.service.nodes.ActionNodeExecutor(strategies)
 
     @Bean fun nodeExecutors(executors: List<NodeExecutor>) = NodeExecutors(executors)
 

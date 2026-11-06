@@ -185,6 +185,16 @@ export const routes: Routes = [
           import('./features/library/pages/rules-page.component').then((m) => m.RulesPageComponent),
       },
       {
+        // ADR 0056: agents run tasks (a model answer or a coding agent, optionally with a model).
+        path: 'library/agents',
+        title: $localize`:@@shell.route.agents:Agents`,
+        data: access({ permission: 'library.view' }),
+        loadComponent: () =>
+          import('./features/library/pages/agents-page.component').then(
+            (m) => m.AgentsPageComponent,
+          ),
+      },
+      {
         // Library sources (ADR 0043): git repositories steps of every project attach read-only.
         path: 'library/sources',
         title: $localize`:@@shell.route.librarySources:Library sources`,

@@ -10,8 +10,8 @@ import pl.mos.backoffice.shared.tasks.TaskCatalog
 import java.util.UUID
 
 /**
- * The run start form of a workflow (ADR 0053): library tasks declare run inputs, a workflow asks for the union of
- * the inputs of its task steps. The START node declares nothing of its own.
+ * The run start form of a workflow (ADR 0053): library tasks and actions (ADR 0056) declare run inputs, a workflow asks
+ * for the union of the inputs of its task and action steps. The START node declares nothing of its own.
  */
 object RunInputs {
 
@@ -25,8 +25,13 @@ object RunInputs {
 
     fun effective(nodes: List<WorkflowNode>, projectId: UUID, catalog: TaskCatalog): List<RunInputField> {
         val merged = LinkedHashMap<String, RunInputField>()
-        nodes.filterIsInstance<WorkflowNode.Task>().forEach { node ->
-            ofTask(node, projectId, catalog).forEach { field ->
+        nodes.forEach { node ->
+            val fields = when (node) {
+                is WorkflowNode.Task -> ofTask(node, projectId, catalog)
+                is WorkflowNode.Action -> ActionCatalog.runInputs(node.action)
+                else -> emptyList()
+            }
+            fields.forEach { field ->
                 val first = merged[field.name]
                 merged[field.name] = if (first == null) field else first.copy(required = first.required || field.required)
             }
@@ -75,8 +80,8 @@ object RunInputs {
         return input.copy(issueKey = issueKey)
     }
 
-    private const val ISSUE_KEY_FROM = "issueKeyFrom"
-    private const val ISSUE_KEY_FROM_INPUT = "input"
+    private const val ISSUE_KEY_FROM = ActionCatalog.ISSUE_KEY_FROM
+    private const val ISSUE_KEY_FROM_INPUT = ActionCatalog.ISSUE_KEY_FROM_INPUT
 
     /** A Jira issue key: project key, dash, number (`ABC-123`); upper or lower case. */
     private val ISSUE_KEY = Regex("^[A-Z][A-Z0-9_]{0,19}-[0-9]{1,10}$", RegexOption.IGNORE_CASE)
