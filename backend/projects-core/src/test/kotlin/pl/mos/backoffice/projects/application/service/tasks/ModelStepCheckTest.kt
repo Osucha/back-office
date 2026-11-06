@@ -42,12 +42,13 @@ class ModelStepCheckTest {
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? {
             val executor = when {
+                key == "agent-model" -> TestAgents.MODEL_ANSWER.copy(modelProfileId = gpt)
                 key == "implement-claude-code" -> TestAgents.CLAUDE_CODE
                 key.startsWith("implement") -> TestAgents.OPENCODE
                 else -> TestAgents.MODEL_ANSWER
             }
             return ResolvedTask(
-                key, key, executor, overrides.modelProfileId ?: templateModel.takeIf { key == "with-model" }, TaskPrompt(null, null), emptyList(),
+                key, key, executor, overrides.modelProfileId ?: executor.modelProfileId ?: templateModel.takeIf { key == "with-model" }, TaskPrompt(null, null), emptyList(),
                 overrides.config, null, null, if (key == "code-review") listOf("review") else emptyList(), emptyList(), null, listOf(key),
                 WorkflowNode.DEFAULT_TASK_PORTS,
             )
@@ -168,6 +169,15 @@ class ModelStepCheckTest {
         }, defaults)
         val llm = catalog.resolve("analyse-issue", null, TaskOverrides(modelProfileId = personal))!!
         assertThatThrownBy { resolver.forLlmCall(llm, project, user) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("another user")
+    }
+
+
+    @Test
+    fun `ADR 0057 - a model that comes from the step's agent is reported as AGENT, the step's own still as NODE`() {
+        val project = Fixtures.project()
+        val plan = check.plan(project, listOf(node("ag", "agent-model"), node("own", "agent-model", model = reviewer)), user)
+        assertThat(plan.map { it.nodeId to it.source }).containsExactly("ag" to ModelStepCheck.Source.AGENT, "own" to ModelStepCheck.Source.NODE)
+        assertThat(plan.first().profileId).isEqualTo(gpt)
     }
 
 }

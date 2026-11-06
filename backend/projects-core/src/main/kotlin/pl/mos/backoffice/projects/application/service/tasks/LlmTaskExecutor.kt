@@ -10,12 +10,7 @@ import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.application.service.ModelResolver
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.projects.application.service.TemplateModelBuilder
-import pl.mos.backoffice.projects.domain.model.ArtifactKind
-import pl.mos.backoffice.projects.domain.model.CoverageStatus
-import pl.mos.backoffice.projects.domain.model.Finding
-import pl.mos.backoffice.projects.domain.model.RequirementCoverage
 import pl.mos.backoffice.projects.domain.model.ReviewReport
-import pl.mos.backoffice.projects.domain.model.Severity
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.InjectionGuardMode
 import pl.mos.backoffice.projects.domain.service.PromptInjectionGuard
@@ -42,13 +37,15 @@ import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 
 /**
- * `LLM`: one structured model call in-process (docs/architecture/03-pipelines-and-agents.md). The
- * system prompt gets the constitution and a `<skills>` section; the user prompt is rendered with the
- * template model; `outputSchema` asks for structured output; `confidenceField` feeds `confidence`;
- * every `produces` name that matches a structured field (or the whole answer) becomes an artefact.
+ * Model answer (ADR 0056): one structured model call in-process (docs/architecture/03-pipelines-and-agents.md). ADR 0057:
+ * the system prompt is the agent's environment document ([AgentEnvironment]: platform preamble, agent instructions,
+ * project constitution, rules), then the template's system prompt, then a `<skills>` section; the user prompt is
+ * rendered with the template model; `outputSchema` asks for structured output. What the answer becomes (confidence,
+ * artefacts per produced name, the review) is [StructuredAnswers], shared with coding agents that answer in a schema.
  * Tasks that produce `review` are assessed by [ReviewVerdictPolicy] and stored as the run review; a `coverage`
  * matrix in the answer (`review-against-spec`) is kept in the review artefact and a MISSING requirement requests
- * changes. The `review` artefact is what a rework step reads as `{{artifacts.review}}`.
+ * changes. The `review` artefact is what a rework step reads as `{{artifacts.review}}`. PROMPT jobs (ADR 0050 step 4,
+ * Claude Code login) get the same system prompt.
  *
  * Prompt-injection defences (ADR 0029, docs/architecture/12-prompt-injection.md):
  * - untrusted template values are rendered into data blocks with a per-call random boundary and the system
@@ -65,7 +62,7 @@ class LlmTaskExecutor(
     private val modelResolver: ModelResolver,
     private val renderer: TemplateRenderer,
     private val templateModel: TemplateModelBuilder,
-    private val verdictPolicy: ReviewVerdictPolicy,
+    verdictPolicy: ReviewVerdictPolicy,
     private val json: JsonCodec,
     private val audit: AuditPort = AuditPort.NOOP,
     private val guard: PromptInjectionGuard = PromptInjectionGuard(),
@@ -75,9 +72,12 @@ class LlmTaskExecutor(
 
     override val runKind = TaskRunKind.MODEL_ANSWER
 
+    private val answers = StructuredAnswers(json, verdictPolicy, guard)
+    private val environment = AgentEnvironment(renderer)
+
     override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
         val profile = modelResolver.forLlmCall(task, context.project, ActingUser.startedBy(context.run)?.userId)
-        val model = templateModel.build(context, runInputs = task.runInputs)
+        val model = templateModel.build(context, runInputs = task.runInputs, parameters = task.parameterValues)
         val maxChars = (task.config["maxInputChars"] as? Number)?.toInt() ?: task.config["maxInputChars"]?.toString()?.toIntOrNull() ?: DEFAULT_MAX_INPUT_CHARS
         val blocks = PromptDataBlocks.random()
         val guardMode = InjectionGuardMode.of(task.config["injectionGuard"])
@@ -108,17 +108,13 @@ class LlmTaskExecutor(
 
         val review = if (task.producesReview) reviewOf(context, answer, signals, guardMode, profile.ref, cost) else null
         if (review != null) {
-            artifacts += NewArtifact("review", ArtifactKind.REVIEW, MEDIA_TYPE_MARKDOWN, review.toMarkdown())
+            artifacts += answers.reviewArtifact(review)
             updates[RunStateKeys.REVIEW] = review.toStateMap()
         }
-        artifacts += producedArtifacts(task, result.content, structured, wholeContentUsed = review != null)
-        if (artifacts.isEmpty()) artifacts += wholeAnswer(task.key, result.content, structured)
+        artifacts += answers.producedArtifacts(task, result.content, structured, wholeContentUsed = review != null)
+        if (artifacts.isEmpty()) artifacts += answers.wholeAnswer(task.key, result.content, structured)
 
-        val summary = review?.let {
-            "${it.verdict} (score ${it.score}, ${it.findings.size} findings" +
-                (if (it.missingRequirements > 0) ", ${it.missingRequirements} requirements missing" else "") + ")" +
-                if (it.humanReviewRequired) ", needs human review" else ""
-        }
+        val summary = review?.let(::reviewSummary)
             ?: structured?.get("summary")?.toString()
             ?: result.content.lineSequence().firstOrNull { it.isNotBlank() }?.take(200)
         return NodeResult(
@@ -170,7 +166,7 @@ class LlmTaskExecutor(
         signals: List<InjectionSignal>,
         guardMode: InjectionGuardMode,
     ): Double? {
-        val confidence = task.confidenceField?.let { field -> structured?.get(field)?.let(::toDouble) }
+        val confidence = answers.confidence(task, structured)
         if (confidence == null || signals.isEmpty() || guardMode != InjectionGuardMode.BLOCK) return confidence
         context.log("confidence $confidence ignored: the inputs contain prompt-injection markers, confidence forced to 0 (injectionGuard=BLOCK)")
         return 0.0
@@ -184,43 +180,9 @@ class LlmTaskExecutor(
         guardMode: InjectionGuardMode,
         ref: ModelRef,
         cost: Money,
-    ): ReviewReport {
-        val invalid = answer.invalid
-        val modelFindings = if (invalid.isEmpty()) parseFindings(answer.structured?.get("findings")) else emptyList()
-        val diff = context.run.artifactNamed("diff")?.content
-        guard.findingsOutsideDiff(modelFindings, diff).forEach { context.log("review finding cites ${it.file}, which the diff does not touch: ${it.title}") }
-        val guardFindings = guard.findingsFor(signals, guardMode) + (if (invalid.isEmpty()) emptyList() else listOf(guard.invalidAnswerFinding(invalid)))
-        val findings = verdictPolicy.deduplicate(guardFindings + modelFindings)
-        // review-against-spec: the coverage matrix stays in the report and a MISSING requirement blocks approval
-        val coverage = if (invalid.isEmpty()) parseCoverage(answer.structured?.get("coverage")) else emptyList()
-        val assessment = verdictPolicy.assess(findings, coverage)
-        val summary = when {
-            invalid.isNotEmpty() -> "The AI review answer was invalid; a person must review this change."
-            else -> answer.structured?.get("summary")?.toString()?.takeIf { it.isNotBlank() } ?: answer.result.content.take(2000)
-        }
-        val review = ReviewReport(assessment.verdict, assessment.score, summary, findings, ref, answer.usage, cost, coverage)
-        if (review.missingRequirements > 0) context.log("review: ${review.missingRequirements} agreed requirement(s) MISSING, verdict ${review.verdict}")
-        if (review.humanReviewRequired) {
-            context.log("review needs a human: ${findings.count { it.title.startsWith(ReviewReport.NEEDS_HUMAN_PREFIX) }} guard finding(s), verdict ${review.verdict}")
-        }
-        return review
-    }
-
-    /** One artifact per produced name: its structured field, else (once) the whole answer. */
-    private fun producedArtifacts(task: ResolvedTask, content: String, structured: Map<String, Any?>?, wholeContentUsed: Boolean): List<NewArtifact> {
-        val artifacts = mutableListOf<NewArtifact>()
-        var wholeUsed = wholeContentUsed
-        task.produces.filterNot { it == "review" || it in STATE_NAMES }.forEach { name ->
-            val field = structured?.get(name)
-            if (field != null) {
-                artifacts += NewArtifact(name, ArtifactKind.forName(name, mediaTypeOf(field)), mediaTypeOf(field), contentOf(field))
-            } else if (!wholeUsed) {
-                artifacts += wholeAnswer(name, content, structured)
-                wholeUsed = true
-            }
-        }
-        return artifacts
-    }
+    ): ReviewReport = answers.review(
+        context, answer.structured, answer.result.content, guard.findingsFor(signals, guardMode), answer.invalid, ref, answer.usage, cost,
+    )
 
     /**
      * What the step reads from outside the trust boundary: the artefacts it consumes (the diff parsed as a
@@ -272,17 +234,18 @@ class LlmTaskExecutor(
         ),
     )
 
+    /**
+     * ADR 0057: the environment document (platform preamble, agent instructions, constitution, rules), then the
+     * template's system prompt, then the skills, then the data-block notice.
+     */
     private fun systemPrompt(task: ResolvedTask, context: NodeContext, model: Map<String, Any?>, blocks: PromptDataBlocks): String {
-        val raw = task.prompt.system?.takeIf { it.isNotBlank() } ?: DEFAULT_SYSTEM_PROMPT
-        val rendered = renderer.renderPrompt(raw, model, blocks)
-        rendered.warnings.forEach { context.log("system template: $it") }
+        val env = environment.document(task, context.project, model, blocks)
+        env.warnings.forEach { context.log("agent instructions: $it") }
+        val template = task.prompt.system?.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks) }
+        template?.warnings?.forEach { context.log("system template: $it") }
         return buildString {
-            append(rendered.text)
-            val constitution = context.project.constitution
-            if (constitution.isNotBlank() && !raw.contains("project.constitution")) {
-                append("\n\nPROJECT CONSTITUTION:\n").append(constitution)
-            }
-            RulesPrompt.section(task.rules)?.let { append("\n\n").append(it) }
+            append(env.text)
+            template?.text?.trim()?.takeIf { it.isNotEmpty() }?.let { append("\n\n# This step\n").append(it) }
             if (task.skills.isNotEmpty()) {
                 append("\n\n<skills>\n")
                 task.skills.forEach { skill ->
@@ -291,51 +254,8 @@ class LlmTaskExecutor(
                 }
                 append("</skills>")
             }
-            // last, so no template, constitution or skill text comes after (and weakens) it
+            // last, so no template, environment or skill text comes after (and weakens) it
             append("\n\n").append(blocks.systemNotice())
-        }
-    }
-
-    private fun wholeAnswer(name: String, content: String, structured: Map<String, Any?>?): NewArtifact =
-        if (structured != null) NewArtifact(name, ArtifactKind.forName(name, MEDIA_TYPE_JSON), MEDIA_TYPE_JSON, json.toJson(structured))
-        else NewArtifact(name, ArtifactKind.forName(name), MEDIA_TYPE_MARKDOWN, content)
-
-    private fun mediaTypeOf(value: Any): String = if (value is String) MEDIA_TYPE_MARKDOWN else MEDIA_TYPE_JSON
-
-    private fun contentOf(value: Any): String = if (value is String) value else json.toJson(value)
-
-    private fun toDouble(value: Any): Double? = when (value) {
-        is Number -> value.toDouble()
-        is String -> value.toDoubleOrNull()
-        else -> null
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun parseFindings(raw: Any?): List<Finding> {
-        val list = raw as? List<*> ?: return emptyList()
-        return list.mapNotNull { item ->
-            val m = item as? Map<String, Any?> ?: return@mapNotNull null
-            val severity = m["severity"]?.toString()?.uppercase()?.let { s -> Severity.entries.firstOrNull { it.name == s } } ?: Severity.MINOR
-            val title = m["title"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            Finding(
-                severity = severity,
-                file = m["file"]?.toString() ?: "",
-                line = (m["line"] as? Number)?.toInt() ?: m["line"]?.toString()?.toIntOrNull(),
-                title = title,
-                detail = m["detail"]?.toString() ?: "",
-                suggestion = m["suggestion"]?.toString()?.takeIf { it.isNotBlank() },
-            )
-        }
-    }
-
-    /** The coverage matrix of a review against the specification; rows without a requirement are dropped, unknown statuses read as PARTIAL. */
-    private fun parseCoverage(raw: Any?): List<RequirementCoverage> {
-        val list = raw as? List<*> ?: return emptyList()
-        return list.mapNotNull { item ->
-            val m = item as? Map<*, *> ?: return@mapNotNull null
-            val requirement = m["requirement"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val status = m["status"]?.toString()?.uppercase()?.let { s -> CoverageStatus.entries.firstOrNull { it.name == s } } ?: CoverageStatus.PARTIAL
-            RequirementCoverage(requirement, status, m["evidence"]?.toString().orEmpty())
         }
     }
 
@@ -344,11 +264,14 @@ class LlmTaskExecutor(
         const val MAX_REPAIR_ECHO_CHARS = 20_000
         const val OPERATION_INJECTION = "PROMPT_INJECTION_SUSPECTED"
         const val ENTITY_RUN = "WorkflowRun"
-        private const val MEDIA_TYPE_MARKDOWN = "text/markdown"
-        private const val MEDIA_TYPE_JSON = "application/json"
-        const val DEFAULT_SYSTEM_PROMPT = "You are a meticulous software engineer working for the project {{project.name}}."
         const val DEFAULT_USER_PROMPT = "Task: {{node.name}}\n\n{{#issue.key}}Issue {{issue.key}}: {{issue.summary}}\n\n{{#issue.description}}{{issue.description}}\n\n{{/issue.description}}{{/issue.key}}" +
             "{{#feedback}}Revision feedback:\n{{feedback}}{{/feedback}}"
-        val STATE_NAMES = setOf("confidence", "mr", "issue", "lastOutcome", "ci", "decision")
+        val STATE_NAMES = StructuredAnswers.STATE_NAMES
+
+        /** One line of a review for the step summary. */
+        fun reviewSummary(it: ReviewReport): String =
+            "${it.verdict} (score ${it.score}, ${it.findings.size} findings" +
+                (if (it.missingRequirements > 0) ", ${it.missingRequirements} requirements missing" else "") + ")" +
+                if (it.humanReviewRequired) ", needs human review" else ""
     }
 }

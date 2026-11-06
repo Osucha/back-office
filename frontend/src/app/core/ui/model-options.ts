@@ -80,6 +80,8 @@ export function planSourceLabel(source: StepModelPlan['source']): string {
   switch (source) {
     case 'NODE':
       return $localize`:@@core.modelPlan.source.node:step`;
+    case 'AGENT':
+      return $localize`:@@core.modelPlan.source.agent:agent`;
     case 'TEMPLATE':
       return $localize`:@@core.modelPlan.source.template:template`;
     case 'PROJECT':

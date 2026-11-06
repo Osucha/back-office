@@ -10,8 +10,9 @@ import java.util.UUID
 /**
  * Structural checks of a template against the rest of the library, run before a template is saved:
  * key format, parent existence and no self-extension, the agent (ADR 0056) exists when one is named,
- * `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`, referenced skills and rules exist,
- * run input names are unique. All problems are collected into one
+ * `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`, run input names are unique, parameter
+ * declarations are consistent and preset values name declared parameters with fitting values (ADR 0058). Rules and
+ * skills belong to agents (ADR 0057). All problems are collected into one
  * `ValidationException`.
  */
 class TemplateValidator(private val lookup: LibraryLookup) {
@@ -42,15 +43,32 @@ class TemplateValidator(private val lookup: LibraryLookup) {
             errors += FieldError("confidenceField", "requires an outputSchema on this template or an ancestor")
         }
 
-        template.skills.forEach { key ->
-            if (lookup.visibleSkill(key, projectId) == null) errors += FieldError("skills", "skill $key does not exist")
-        }
-        template.rules.forEach { key ->
-            if (lookup.visibleRule(key, projectId) == null) errors += FieldError("rules", "rule $key does not exist")
-        }
+        errors += parameterProblems(template, ancestors)
         // blank names and labels are refused by RunInputField itself
         template.runInputs.groupBy { it.name }.filterValues { it.size > 1 }.keys.forEach { name ->
             errors += FieldError("runInputs", "run input names must be unique; $name is declared more than once")
+        }
+        return errors
+    }
+
+    /**
+     * ADR 0058: own declarations are consistent and unique by name; every `parameterValues` name is declared by the
+     * template or an ancestor (child wins by name) and its value fits that declaration.
+     */
+    private fun parameterProblems(template: TaskTemplate, ancestors: List<TaskTemplate>): List<FieldError> {
+        val errors = mutableListOf<FieldError>()
+        template.parameters.groupBy { it.name }.filterValues { it.size > 1 }.keys.forEach { name ->
+            errors += FieldError(FIELD_PARAMETERS, "parameter names must be unique; $name is declared more than once")
+        }
+        template.parameters.flatMap { it.problems() }.forEach { errors += FieldError(FIELD_PARAMETERS, it) }
+        // nearest declaration first: the template's own, then its parent's...
+        val declared = (listOf(template) + ancestors).flatMap { it.parameters }.distinctBy { it.name }.associateBy { it.name }
+        template.parameterValues.forEach { (name, value) ->
+            val parameter = declared[name]
+            when {
+                parameter == null -> errors += FieldError(FIELD_PARAMETER_VALUES, "parameter $name is not declared by this template or a template it extends")
+                else -> parameter.valueProblem(value)?.let { errors += FieldError(FIELD_PARAMETER_VALUES, "parameter $name: $it") }
+            }
         }
         return errors
     }
@@ -79,6 +97,8 @@ class TemplateValidator(private val lookup: LibraryLookup) {
 
     private companion object {
         const val FIELD_EXTENDS_KEY = "extendsKey"
+        const val FIELD_PARAMETERS = "parameters"
+        const val FIELD_PARAMETER_VALUES = "parameterValues"
     }
 
     /**

@@ -393,12 +393,17 @@ export class EndNodeComponent extends WorkflowNodeBase {}
           >
         }
       </div>
-      @if (d.category || hasOverrides()) {
+      @if (d.category || hasOverrides() || d.continuesFrom) {
         <div class="ifaces">
           @if (d.category) {
             <span class="iface" [attr.data-category]="d.category">{{
               categoryLabel(d.category)
             }}</span>
+          }
+          @if (d.continuesFrom) {
+            <span class="sess" [title]="sessionTitle()" data-continues
+              >↩ {{ d.continuesFrom }}</span
+            >
           }
           @if (hasOverrides()) {
             <span class="ov" i18n="@@workflows.node.overrides">overrides</span>
@@ -461,6 +466,19 @@ export class EndNodeComponent extends WorkflowNodeBase {}
         background: var(--bo-you-soft);
         color: var(--bo-you-ink);
       }
+      .sess {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 10.5px;
+        line-height: 16px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--bo-surface-3);
+        color: var(--bo-ink-2);
+      }
       .jira {
         flex: none;
         font-size: 10.5px;
@@ -485,6 +503,11 @@ export class TaskNodeComponent extends WorkflowNodeBase {
       ? $localize`:@@workflows.node.agentOwn:Agent of this step. ${kind}:kind:`
       : $localize`:@@workflows.node.agentTemplate:Agent of the template. ${kind}:kind:`;
   });
+  /** ADR 0057: "Continues the agent session of step X". */
+  readonly sessionTitle = computed(() => {
+    const name = this.data()?.continuesFrom ?? '';
+    return $localize`:@@workflows.node.continuesSession:Continues the agent session of step ${name}:step:`;
+  });
   readonly hasOverrides = computed(() => {
     const o = this.data()?.node.task?.overrides;
     if (!o) return false;
@@ -496,6 +519,7 @@ export class TaskNodeComponent extends WorkflowNodeBase {
       o.systemPromptAppend ||
       o.addSkills?.length ||
       o.removeSkills?.length ||
+      (o.parameters && Object.keys(o.parameters).length) ||
       (o.config && Object.keys(o.config).length),
     );
   });

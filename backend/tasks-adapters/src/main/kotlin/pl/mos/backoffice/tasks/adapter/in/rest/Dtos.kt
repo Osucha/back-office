@@ -8,6 +8,8 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.tasks.ParameterSource
+import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import java.time.Instant
@@ -52,10 +54,6 @@ data class TaskTemplateInputDto(
     val scope: ScopeDto,
     val modelProfileId: UUID? = null,
     val prompt: TaskPromptDto = TaskPromptDto(),
-    val skills: List<String> = emptyList(),
-    val removeSkills: List<String> = emptyList(),
-    val rules: List<String> = emptyList(),
-    val removeRules: List<String> = emptyList(),
     val config: Map<String, Any?> = emptyMap(),
     val outputSchema: String? = null,
     val confidenceField: String? = null,
@@ -63,6 +61,8 @@ data class TaskTemplateInputDto(
     val consumes: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     @field:Valid val runInputs: List<RunInputFieldDto> = emptyList(),
+    @field:Valid val parameters: List<TemplateParameterDto> = emptyList(),
+    val parameterValues: Map<String, Any?> = emptyMap(),
 )
 
 data class TaskTemplateDto(
@@ -77,10 +77,6 @@ data class TaskTemplateDto(
     val scope: ScopeDto,
     val modelProfileId: UUID?,
     val prompt: TaskPromptDto,
-    val skills: List<String>,
-    val removeSkills: List<String>,
-    val rules: List<String>,
-    val removeRules: List<String>,
     val config: Map<String, Any?>,
     val outputSchema: String?,
     val confidenceField: String?,
@@ -88,6 +84,8 @@ data class TaskTemplateDto(
     val consumes: List<String>,
     val tags: List<String>,
     val runInputs: List<RunInputFieldDto>,
+    val parameters: List<TemplateParameterDto>,
+    val parameterValues: Map<String, Any?>,
     val builtIn: Boolean,
     val version: Int,
     val createdAt: Instant,
@@ -113,10 +111,18 @@ data class TaskOverridesDto(
     val addSkills: List<String> = emptyList(),
     val removeSkills: List<String> = emptyList(),
     val config: Map<String, Any?> = emptyMap(),
+    val parameters: Map<String, Any?> = emptyMap(),
 )
 
 /** `AgentRef` schema (ADR 0056): who runs a step; no harness = model answer. */
-data class AgentRefDto(val key: String, val name: String, val harness: AgentHarness?, val modelProfileId: UUID?)
+data class AgentRefDto(
+    val key: String,
+    val name: String,
+    val harness: AgentHarness?,
+    val modelProfileId: UUID?,
+    val rules: List<String> = emptyList(),
+    val skills: List<String> = emptyList(),
+)
 
 /** `ResolvedTask` schema: the merged preview, including abstract templates. */
 data class ResolvedTaskDto(
@@ -136,6 +142,7 @@ data class ResolvedTaskDto(
     val lineage: List<String>,
     val ports: List<String>,
     val runInputs: List<RunInputFieldDto>,
+    val parameters: List<ResolvedParameterDto>,
     val abstract: Boolean,
     val check: ResolutionCheckDto,
 )
@@ -171,6 +178,10 @@ data class AgentInputDto(
     val scope: ScopeDto,
     val harness: AgentHarness? = null,
     val modelProfileId: UUID? = null,
+    @field:Size(max = 20_000) val instructions: String = "",
+    val rules: List<String> = emptyList(),
+    val skills: List<String> = emptyList(),
+    @field:Valid @field:Size(max = 10) val mcpServers: List<AgentMcpServerDto> = emptyList(),
     val tags: List<String> = emptyList(),
 )
 
@@ -182,6 +193,10 @@ data class AgentDto(
     val scope: ScopeDto,
     val harness: AgentHarness?,
     val modelProfileId: UUID?,
+    val instructions: String,
+    val rules: List<String>,
+    val skills: List<String>,
+    val mcpServers: List<AgentMcpServerDto>,
     val tags: List<String>,
     val builtIn: Boolean,
     val createdAt: Instant,
@@ -213,4 +228,34 @@ data class RuleDto(
     val createdAt: Instant,
     val updatedAt: Instant,
     val updatedBy: ActorRefDto? = null,
+)
+
+/** `TemplateParameter` schema (ADR 0058); [default] is a string, number or boolean by type. */
+data class TemplateParameterDto(
+    @field:NotBlank @field:Pattern(regexp = "^[A-Za-z][A-Za-z0-9_]{0,63}$") val name: String,
+    @field:NotBlank @field:Size(max = 200) val label: String,
+    val type: TemplateParameterType = TemplateParameterType.TEXT,
+    val required: Boolean = false,
+    val default: Any? = null,
+    val options: List<String> = emptyList(),
+    @field:Size(max = 1000) val help: String? = null,
+)
+
+/** `ResolvedParameter` schema (ADR 0058): the declaration with the value the step uses and where it comes from. */
+data class ResolvedParameterDto(
+    val name: String,
+    val label: String,
+    val type: TemplateParameterType,
+    val required: Boolean,
+    val default: Any?,
+    val options: List<String>,
+    val help: String?,
+    val value: Any?,
+    val source: ParameterSource,
+)
+
+/** `AgentMcpServer` schema (ADR 0057): a remote MCP server, no credentials. */
+data class AgentMcpServerDto(
+    @field:NotBlank @field:Pattern(regexp = "^[a-z][a-z0-9-]{0,39}$") val name: String,
+    @field:NotBlank @field:Size(max = 500) val url: String,
 )

@@ -23,9 +23,11 @@ object BuiltInChecksum {
                 "name" to t.name, "description" to t.description, "abstract" to t.abstract, "extendsKey" to t.extendsKey,
                 "category" to t.category?.name, "agentKey" to t.agentKey, "modelProfileId" to t.modelProfileId?.value?.toString(),
                 "promptSystem" to t.prompt.system, "promptUser" to t.prompt.user, "promptMode" to t.prompt.mode.name,
-                "skills" to t.skills, "removeSkills" to t.removeSkills, "rules" to t.rules, "removeRules" to t.removeRules, "config" to t.config, "outputSchema" to t.outputSchema,
+                "config" to t.config, "outputSchema" to t.outputSchema,
                 "confidenceField" to t.confidenceField, "produces" to t.produces, "consumes" to t.consumes, "tags" to t.tags,
                 "runInputs" to t.runInputs.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "help" to it.help) },
+                "parameters" to t.parameters.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "default" to it.default, "options" to it.options, "help" to it.help) },
+                "parameterValues" to t.parameterValues,
             ),
         ),
     )
@@ -37,7 +39,12 @@ object BuiltInChecksum {
     )
 
     fun of(a: Agent): String = sha256(
-        canonical(mapOf("name" to a.name, "description" to a.description, "harness" to a.harness?.name, "modelProfileId" to a.modelProfileId?.value?.toString(), "tags" to a.tags)),
+        canonical(
+            mapOf(
+                "name" to a.name, "description" to a.description, "harness" to a.harness?.name, "modelProfileId" to a.modelProfileId?.value?.toString(), "tags" to a.tags,
+                "instructions" to a.instructions, "rules" to a.rules, "skills" to a.skills, "mcpServers" to a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) },
+            ),
+        ),
     )
 
     /** Deterministic text of a JSON-like value: sorted keys, no null or blank-string map entries, normalised numbers. */

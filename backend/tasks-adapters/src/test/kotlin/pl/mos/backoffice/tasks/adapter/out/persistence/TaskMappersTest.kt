@@ -68,14 +68,40 @@ class TaskMappersTest {
     }
 
     @Test
-    fun `template category, rules and removeRules survive the entity`() {
+    fun `template category, parameters and parameter values survive the entity`() {
         val template = TaskTemplate.create(
-            TaskTemplate.Content(key = "cat", name = "Cat", category = TemplateCategory.PLANNING, rules = listOf("r1", "r2"), removeRules = listOf("r3")),
+            TaskTemplate.Content(
+                key = "cat", name = "Cat", category = TemplateCategory.PLANNING,
+                parameters = listOf(
+                    pl.mos.backoffice.shared.tasks.TemplateParameter("depth", "Depth", pl.mos.backoffice.shared.tasks.TemplateParameterType.NUMBER, true, 3),
+                    pl.mos.backoffice.shared.tasks.TemplateParameter("tone", "Tone", pl.mos.backoffice.shared.tasks.TemplateParameterType.CHOICE, options = listOf("a", "b"), help = "h"),
+                ),
+                parameterValues = mapOf("tone" to "b"),
+            ),
             Instant.parse("2026-10-24T10:00:00Z"),
         )
         val entity = mappers.toEntity(template)
-        assertThat(entity.rules).isEqualTo("[\"r1\",\"r2\"]")
+        assertThat(entity.parameterValues).isEqualTo("{\"tone\":\"b\"}")
         assertThat(mappers.toDomain(entity)).isEqualTo(template)
+        val broken = TaskTemplateEntity(key = "cat", name = "Cat", parameters = """[{"name":"1bad","label":"x"},{"label":"no name"},"x",{"name":"ok","type":"WHAT"}]""")
+        assertThat(mappers.toDomain(broken).parameters.map { it.name to it.type.name }).describedAs("bad entries are skipped, an unknown type reads as TEXT")
+            .containsExactly("ok" to "TEXT")
+    }
+
+    @Test
+    fun `ADR 0057 - an agent's environment survives the entity and a bad stored MCP server is skipped`() {
+        val agent = pl.mos.backoffice.tasks.domain.model.Agent.create(
+            pl.mos.backoffice.tasks.domain.model.Agent.Content(
+                key = "env", name = "Env", instructions = "Be precise.", rules = listOf("r1"), skills = listOf("s1", "s2"),
+                mcpServers = listOf(pl.mos.backoffice.shared.runner.AgentMcpServer("docs", "https://mcp.example.com")),
+            ),
+            Instant.parse("2026-10-24T10:00:00Z"),
+        )
+        val entity = mappers.toEntity(agent)
+        assertThat(entity.mcpServers).isEqualTo("""[{"name":"docs","url":"https://mcp.example.com"}]""")
+        assertThat(mappers.toDomain(entity)).isEqualTo(agent)
+        val broken = AgentEntity(key = "env", name = "Env", mcpServers = """[{"name":"ok","url":"https://a.example"},{"name":"bad","url":"file:///x"},{"url":"https://b"}]""")
+        assertThat(mappers.toDomain(broken).mcpServers.map { it.name }).containsExactly("ok")
     }
 
     @Test

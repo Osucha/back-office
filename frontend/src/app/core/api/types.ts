@@ -149,6 +149,13 @@ export type AgentHarness = S['AgentHarness'];
 export type AgentInput = S['AgentInput'];
 export type Agent = S['Agent'];
 export type AgentRef = S['AgentRef'];
+/** ADR 0057: a remote MCP server of a coding agent (HTTP(S), no credentials). */
+export type AgentMcpServer = S['AgentMcpServer'];
+/** ADR 0058: a typed parameter of a template, read in prompts as {{params.<name>}}. */
+export type TemplateParameter = S['TemplateParameter'];
+export type TemplateParameterType = TemplateParameter['type'];
+/** ADR 0058: a parameter with the value a step uses and where it comes from. */
+export type ResolvedParameter = S['ResolvedParameter'];
 export type SkillInput = S['SkillInput'];
 export type Skill = S['Skill'];
 /** ADR 0055: a rule is always in the agent's context (a skill is loaded on demand). */

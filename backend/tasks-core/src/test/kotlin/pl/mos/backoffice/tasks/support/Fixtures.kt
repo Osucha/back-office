@@ -4,6 +4,7 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.tasks.application.service.BuiltInLibrary
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
 import pl.mos.backoffice.tasks.domain.model.Agent
@@ -27,11 +28,20 @@ class Library(builtInAgents: Boolean = true) {
     val projectId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
 
     init {
-        if (builtInAgents) BuiltInLibrary.agents(now).forEach { agents.save(it) }
+        // plain built-in agents: their rules and skills are not in this library unless a test adds them
+        if (builtInAgents) BuiltInLibrary.agents(now).forEach { agents.save(it.copy(rules = emptyList(), skills = emptyList())) }
     }
 
-    fun agent(key: String, harness: AgentHarness? = null, scope: Scope = Scope.Global, name: String = key): Agent =
-        agents.save(Agent.create(Agent.Content(key = key, name = name, scope = scope, harness = harness), now))
+    fun agent(
+        key: String,
+        harness: AgentHarness? = null,
+        scope: Scope = Scope.Global,
+        name: String = key,
+        rules: List<String> = emptyList(),
+        skills: List<String> = emptyList(),
+        instructions: String = "",
+    ): Agent =
+        agents.save(Agent.create(Agent.Content(key = key, name = name, scope = scope, harness = harness, rules = rules, skills = skills, instructions = instructions), now))
 
     fun skill(key: String, scope: Scope = Scope.Global, content: String = "# $key"): Skill =
         skills.save(Skill.create(Skill.Content(key = key, name = key, content = content, scope = scope), now))
@@ -47,8 +57,6 @@ class Library(builtInAgents: Boolean = true) {
         scope: Scope = Scope.Global,
         category: TemplateCategory? = null,
         prompt: Prompt = Prompt.EMPTY,
-        skills: List<String> = emptyList(),
-        removeSkills: List<String> = emptyList(),
         config: Map<String, Any?> = emptyMap(),
         outputSchema: String? = null,
         confidenceField: String? = null,
@@ -57,15 +65,15 @@ class Library(builtInAgents: Boolean = true) {
         tags: List<String> = emptyList(),
         name: String = key,
         runInputs: List<RunInputField> = emptyList(),
-        rules: List<String> = emptyList(),
-        removeRules: List<String> = emptyList(),
+        parameters: List<TemplateParameter> = emptyList(),
+        parameterValues: Map<String, Any?> = emptyMap(),
     ): TaskTemplate = templates.save(
         TaskTemplate.create(
             TaskTemplate.Content(
                 key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category, agentKey = agentKey,
-                scope = scope, prompt = prompt, skills = skills, removeSkills = removeSkills, config = config, outputSchema = outputSchema,
+                scope = scope, prompt = prompt, config = config, outputSchema = outputSchema,
                 confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags, runInputs = runInputs,
-                rules = rules, removeRules = removeRules,
+                parameters = parameters, parameterValues = parameterValues,
             ),
             now,
         ),

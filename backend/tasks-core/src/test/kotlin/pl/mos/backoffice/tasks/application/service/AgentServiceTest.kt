@@ -30,7 +30,7 @@ class AgentServiceTest {
     )
     private val audit = RecordingAuditPort()
 
-    private fun agents(gate: FakeAuthorizationGate = curator) = AgentService(lib.agents, lib.templates, lib.clock, gate, audit)
+    private fun agents(gate: FakeAuthorizationGate = curator) = AgentService(lib.agents, lib.templates, lib.clock, gate, audit, lib.lookup)
     private fun templates() = TaskTemplateService(lib.templates, lib.lookup, lib.clock, curator, audit)
 
     @Test
@@ -112,4 +112,37 @@ class AgentServiceTest {
         assertThat(audit.entries.map { it.entityType }.distinct()).containsExactly("Agent")
         assertThat(audit.entries.first().details).containsEntry("key", "global").containsEntry("scope", "GLOBAL")
     }
+
+    @Test
+    fun `ADR 0057 - an agent's rules and skills must be visible in its scope, and the environment is audited`() {
+        lib.rule("ground")
+        lib.skill("fmt")
+        lib.skill("mine", scope = pl.mos.backoffice.tasks.domain.model.Scope.Project(lib.projectId))
+
+        assertThatThrownBy { agents().create(Agent.Content(name = "Bad", rules = listOf("ground", "ghost"), skills = listOf("mine"))) }
+            .isInstanceOf(pl.mos.backoffice.shared.ValidationException::class.java)
+            .satisfies({ e ->
+                assertThat((e as pl.mos.backoffice.shared.ValidationException).errors.map { it.field to it.message }).containsExactly(
+                    "rules[1]" to "rule ghost does not exist in scope GLOBAL",
+                    "skills[0]" to "skill mine does not exist in scope GLOBAL",
+                )
+            })
+
+        val project = pl.mos.backoffice.tasks.domain.model.Scope.Project(lib.projectId)
+        val agent = agents().create(
+            Agent.Content(
+                name = "Env", scope = project, instructions = "Be precise.", rules = listOf("ground"), skills = listOf("mine", "fmt"),
+                mcpServers = listOf(pl.mos.backoffice.shared.runner.AgentMcpServer("docs", "https://mcp.example.com")),
+            ),
+        )
+        assertThat(agent.snapshot.skills).containsExactly("mine", "fmt")
+        assertThat(audit.entries.last().details).containsEntry("rules", listOf("ground")).containsEntry("instructionsLength", 11)
+            .containsEntry("mcpServers", listOf("docs=https://mcp.example.com"))
+
+        agents().update(agent.id, agent.content.copy(instructions = "Be very precise.", skills = listOf("fmt")))
+        val diff = audit.entries.last().details
+        assertThat(diff["skills"]).isEqualTo(mapOf("old" to listOf("mine", "fmt"), "new" to listOf("fmt")))
+        assertThat(diff["instructionsChanged"]).isEqualTo(mapOf("old" to false, "new" to true))
+    }
+
 }

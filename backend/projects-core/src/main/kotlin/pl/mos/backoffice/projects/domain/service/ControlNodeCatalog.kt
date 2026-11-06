@@ -120,6 +120,7 @@ object ControlNodeCatalog {
             "mergeRequestDescriptionTemplate" to string("MR description template"),
             "mergeRequestDraft" to boolean("Open the MR as draft", false),
             "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
+            SessionContinuation.KEY to string("ADR 0057: continue the agent session of an earlier coding agent step (its node id): same run workspace (its workspace, else the implicit workspace run) and session role, same harness. Empty: a new session"),
             "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
             StepRepositories.CONFIG_KEY to repositoriesSetting(),
         ) + workspaceSettings(prepare = true),

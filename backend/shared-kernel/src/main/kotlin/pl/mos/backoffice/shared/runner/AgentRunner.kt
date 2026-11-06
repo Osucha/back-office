@@ -1,6 +1,7 @@
 package pl.mos.backoffice.shared.runner
 
 import pl.mos.backoffice.shared.RunnerJobId
+import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.usage.UsageContext
@@ -235,7 +236,39 @@ data class RunnerJobSpec(
      * named in [credentials] with that capability). Empty = none.
      */
     val agentTools: List<AgentTool> = emptyList(),
+    /**
+     * ADR 0057: the agent's environment document (platform preamble, agent instructions, project constitution, rules).
+     * The runner writes it outside every repository in the harness's own form (OpenCode `AGENTS.md` listed in
+     * `opencode.json`, Claude Code user memory `CLAUDE.md`). Null = none (older specs keep their digests).
+     */
+    val instructions: String? = null,
+    /** ADR 0057: remote MCP servers of the agent (no credentials). Empty = none (omitted from the spec digest). */
+    val mcpServers: List<AgentMcpServer> = emptyList(),
 )
+
+/**
+ * ADR 0057: a remote MCP server an agent may use: [name] (`^[a-z][a-z0-9-]{0,39}$`) and an HTTP(S) [url] of at most
+ * [MAX_URL_LENGTH] characters, no credentials. The sandbox egress policy decides whether it is reachable.
+ */
+data class AgentMcpServer(val name: String, val url: String) {
+    init {
+        if (!NAME_PATTERN.matches(name)) throw ValidationException("MCP server name must match ${NAME_PATTERN.pattern}", "mcpServers.name")
+        if (url.length > MAX_URL_LENGTH) throw ValidationException("MCP server $name: url is longer than $MAX_URL_LENGTH characters", "mcpServers.url")
+        val lower = url.lowercase()
+        val scheme = listOf("http://", "https://").firstOrNull { lower.startsWith(it) }
+        if (scheme == null || url.length <= scheme.length || url.any { it.isWhitespace() }) {
+            throw ValidationException("MCP server $name: url must be an http:// or https:// URL", "mcpServers.url")
+        }
+    }
+
+    companion object {
+        val NAME_PATTERN: Regex = Regex("^[a-z][a-z0-9-]{0,39}$")
+        const val MAX_URL_LENGTH = 500
+
+        /** Most MCP servers one agent may list. */
+        const val MAX_PER_AGENT = 10
+    }
+}
 
 /** ADR 0051 step 4: one agent tool of a job and the repository its token belongs to. */
 data class AgentTool(val name: String, val repository: String) {

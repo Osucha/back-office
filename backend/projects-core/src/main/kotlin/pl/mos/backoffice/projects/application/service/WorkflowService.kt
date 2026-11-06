@@ -198,6 +198,9 @@ class WorkflowService(
                     projectScoped = t.projectId != null,
                     configSchema = if (t.agent.modelAnswer) ControlNodeCatalog.modelAnswerConfigSchema() else ControlNodeCatalog.codingAgentConfigSchema(),
                     deprecated = t.deprecated,
+                    parameters = t.parameters,
+                    parameterValues = t.parameterValues,
+                    needsParameters = t.needsParameters,
                 )
             }
         return Palette(ControlNodeCatalog.controlNodes(), tasks, ControlNodeCatalog.stateFields(), ActionCatalog.all)

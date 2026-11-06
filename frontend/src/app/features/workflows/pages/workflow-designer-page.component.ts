@@ -495,6 +495,7 @@ const MAX_HISTORY = 50;
                   <app-node-property-panel
                     [node]="n"
                     [allIds]="nodeIds()"
+                    [nodes]="def().nodes"
                     [palette]="palette()"
                     [deprecatedKeys]="deprecatedKeys()"
                     [issues]="issuesFor(n.id)"

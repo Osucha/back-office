@@ -17,14 +17,19 @@ import pl.mos.backoffice.shared.tasks.RunInputType
  * primary repository and may be null, as may `defaultBranch` / `repositoryUrl`), `repos` (the repositories of the
  * current step: key, url, path, access, purpose, baseBranch, primary), `repositoryResults` (key -> latest result),
  * `mr`, `review`, `ci` (last signal), `decision`, `input` (incl. `input.ci`), `parameters`, `run.id`, `node`,
- * `branch`, `confidence`, `lastOutcome`, and `runInput` (ADR 0053: the current task's declared run inputs that have a
+ * `branch`, `confidence`, `lastOutcome`, `params` (ADR 0058: the task's parameter values, set by the workflow designer, trusted like the prompt) and `runInput` (ADR 0053: the current task's declared run inputs that have a
  * value, as `{name, label, value}` in declaration order; an `ISSUE_KEY` field falls back to the run's issue key) with
  * `runInputText`, the same list as `Label: value` paragraphs for prompts (sections cannot iterate lists).
  */
 class TemplateModelBuilder {
 
-    fun build(context: NodeContext, stepRepositories: List<StepRepository> = emptyList(), runInputs: List<RunInputField> = emptyList()): Map<String, Any?> =
-        build(context.run, context.project, context.node, context.attempt, context.state, stepRepositories, runInputs)
+    fun build(
+        context: NodeContext,
+        stepRepositories: List<StepRepository> = emptyList(),
+        runInputs: List<RunInputField> = emptyList(),
+        parameters: Map<String, Any?> = emptyMap(),
+    ): Map<String, Any?> =
+        build(context.run, context.project, context.node, context.attempt, context.state, stepRepositories, runInputs, parameters)
 
     @Suppress("UNCHECKED_CAST")
     fun build(
@@ -35,6 +40,8 @@ class TemplateModelBuilder {
         state: Map<String, Any?>,
         stepRepositories: List<StepRepository> = emptyList(),
         runInputs: List<RunInputField> = emptyList(),
+        /** ADR 0058: the resolved parameter values of the step's task, read as `{{params.<name>}}`. */
+        parameters: Map<String, Any?> = emptyMap(),
     ): Map<String, Any?> {
         val primary = project.primaryRepository
         val artifactContents = run.artifacts.sortedBy { it.createdAt }.associate { it.name to it.content }
@@ -70,6 +77,7 @@ class TemplateModelBuilder {
             "decision" to decision,
             "input" to mapOf("issueKey" to run.input.issueKey, "parameters" to run.input.parameters, "ci" to (run.input.ci?.toMap() ?: emptyMap<String, Any?>())),
             "parameters" to run.input.parameters,
+            "params" to parameters,
             "runInput" to declaredInputs,
             "runInputText" to declaredInputs.joinToString("\n\n") { "${it["label"]}: ${it["value"]}" },
             "run" to mapOf("id" to run.id.toString(), "short" to run.id.short, "workflow" to run.workflowName, "trigger" to run.trigger.type.name),

@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.tasks.TemplateParameter
+import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
@@ -21,16 +23,16 @@ class TemplateValidatorTest {
         extendsKey: String? = null,
         abstract: Boolean = false,
         agentKey: String? = null,
-        rules: List<String> = emptyList(),
-        skills: List<String> = emptyList(),
+        parameters: List<TemplateParameter> = emptyList(),
+        parameterValues: Map<String, Any?> = emptyMap(),
         outputSchema: String? = null,
         confidenceField: String? = null,
         scope: Scope = Scope.Global,
         runInputs: List<RunInputField> = emptyList(),
     ) = TaskTemplate.create(
         TaskTemplate.Content(
-            key = key, name = key, extendsKey = extendsKey, abstract = abstract, agentKey = agentKey, rules = rules,
-            skills = skills, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope, runInputs = runInputs,
+            key = key, name = key, extendsKey = extendsKey, abstract = abstract, agentKey = agentKey,
+            parameters = parameters, parameterValues = parameterValues, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope, runInputs = runInputs,
         ),
         lib.now,
     )
@@ -39,9 +41,7 @@ class TemplateValidatorTest {
 
     @Test
     fun `a well formed concrete template passes`() {
-        lib.rule("rr")
-        lib.skill("ss")
-        validator.validate(candidate(rules = listOf("rr"), skills = listOf("ss"), outputSchema = """{"type":"object"}""", confidenceField = "confidence"))
+        validator.validate(candidate(parameters = listOf(TemplateParameter("pp", "P", default = "x")), outputSchema = """{"type":"object"}""", confidenceField = "confidence"))
     }
 
     @Test
@@ -87,29 +87,47 @@ class TemplateValidatorTest {
     }
 
     @Test
-    fun `referenced rules and skills must exist`() {
-        lib.rule("known")
-        lib.skill("known")
-        lib.skill("mine", scope = Scope.Project(lib.projectId))
-
-        val problems = validator.problems(candidate(rules = listOf("known", "nope"), skills = listOf("known", "nope", "mine")))
-        assertThat(problems.map { it.field to it.message }).containsExactly(
-            "skills" to "skill nope does not exist",
-            "skills" to "skill mine does not exist",
-            "rules" to "rule nope does not exist",
+    fun `ADR 0058 - parameter declarations are unique and consistent`() {
+        val problems = validator.problems(
+            candidate(
+                parameters = listOf(
+                    TemplateParameter("aa", "A"),
+                    TemplateParameter("aa", "A again"),
+                    TemplateParameter("pick", "Pick", TemplateParameterType.CHOICE),
+                    TemplateParameter("dup", "Dup", TemplateParameterType.CHOICE, options = listOf("x", "x")),
+                    TemplateParameter("num", "Num", TemplateParameterType.NUMBER, default = "ten"),
+                    TemplateParameter("txt", "Txt", options = listOf("x")),
+                ),
+            ),
         )
-        assertThat(fields(candidate(skills = listOf("mine"), scope = Scope.Project(lib.projectId)))).isEmpty()
-        lib.rule("my-rule", scope = Scope.Project(lib.projectId))
-        assertThat(fields(candidate(rules = listOf("my-rule")))).describedAs("a project rule is not visible globally").containsExactly("rules")
-        assertThat(fields(candidate(rules = listOf("my-rule"), scope = Scope.Project(lib.projectId)))).isEmpty()
-        assertThat(fields(candidate(rules = emptyList()).copy(removeRules = listOf("never-existed")))).describedAs("removeRules is not checked").isEmpty()
+        assertThat(problems.map { it.field to it.message }).containsExactly(
+            "parameters" to "parameter names must be unique; aa is declared more than once",
+            "parameters" to "parameter pick: a CHOICE needs non-blank options",
+            "parameters" to "parameter dup: options must be distinct",
+            "parameters" to "parameter num: default \"ten\" is not a number",
+            "parameters" to "parameter txt: options are only for CHOICE parameters",
+        )
+    }
+
+    @Test
+    fun `ADR 0058 - parameter values name parameters of the lineage and fit their type`() {
+        lib.template("root", abstract = true, parameters = listOf(TemplateParameter("depth", "Depth", TemplateParameterType.NUMBER)))
+
+        assertThat(fields(candidate(extendsKey = "root", parameterValues = mapOf("depth" to 3)))).isEmpty()
+        val problems = validator.problems(candidate(extendsKey = "root", parameterValues = mapOf("depth" to "deep", "ghost" to 1)))
+        assertThat(problems.map { it.field to it.message }).containsExactly(
+            "parameterValues" to "parameter depth: \"deep\" is not a number",
+            "parameterValues" to "parameter ghost is not declared by this template or a template it extends",
+        )
+        assertThat(fields(candidate(parameters = listOf(TemplateParameter("own", "Own", TemplateParameterType.BOOLEAN)), parameterValues = mapOf("own" to true))))
+            .describedAs("its own declaration counts").isEmpty()
     }
 
     @Test
     fun `validate collects every problem into one exception`() {
-        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", agentKey = "nobody", confidenceField = "cc", rules = listOf("i"))) }
+        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", agentKey = "nobody", confidenceField = "cc", parameterValues = mapOf("i" to 1))) }
             .isInstanceOf(ValidationException::class.java)
-            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "agentKey", "confidenceField", "rules") })
+            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "agentKey", "confidenceField", "parameterValues") })
     }
 
     @Test

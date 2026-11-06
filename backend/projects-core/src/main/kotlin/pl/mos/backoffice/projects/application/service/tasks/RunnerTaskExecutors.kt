@@ -22,6 +22,8 @@ import pl.mos.backoffice.projects.domain.model.ArtifactKind
 import pl.mos.backoffice.projects.domain.model.DiffStat
 import pl.mos.backoffice.projects.domain.model.MergeRequestSnapshot
 import pl.mos.backoffice.projects.domain.model.RepositoryResult
+import pl.mos.backoffice.projects.domain.model.ReviewReport
+import pl.mos.backoffice.projects.domain.service.SessionContinuation
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.projects.domain.service.StepRepository
 import pl.mos.backoffice.projects.domain.service.StepWorkspace
@@ -96,7 +98,11 @@ class RunnerTaskSupport(
     private val projectWorkspaces: ProjectWorkspaceRepository? = null,
     /** ADR 0051: tokens of project repositories; null = none (tests), jobs then use the runner pool's tokens. */
     private val scmConnections: ScmConnectionRepository? = null,
+    /** ADR 0057: maps the structured answer of a coding agent with an output schema; null = none (tests). */
+    private val structuredAnswers: StructuredAnswers? = null,
 ) {
+    private val environment = AgentEnvironment(renderer)
+
     private data class Plan(
         val spec: RunnerJobSpec,
         val profile: ModelProfileSnapshot,
@@ -130,19 +136,21 @@ class RunnerTaskSupport(
             return NodeResult.failure(e.message ?: "repositories of the step cannot be resolved", runnerJobId = jobId)
         }
         val result = runner.result(jobId) ?: return NodeResult.failure("runner job $jobId has no result", runnerJobId = jobId)
-        return map(context, mode, plan, jobId, result)
+        return map(context, task, mode, plan, jobId, result)
     }
 
     private fun plan(context: NodeContext, task: ResolvedTask, mode: RunnerMode, phase: SpecKitPhase?, defaultPrompt: String, logWarnings: Boolean): Plan {
         val node = context.node
         val project = context.project
         // ADR 0044: the run workspace and session of the step; a prepare step never pushes
-        val workspaceSetting = StepWorkspace.of(task.config, runnerStep = true, projectWorkspaces?.findByProjectId(project.id).orEmpty())
+        // ADR 0057: continuing (or being continued by) another step's session sets the workspace and the session role
+        val stepConfig = SessionContinuation.apply(node.id, task.config, context.run.definitionSnapshot.nodes)
+        val workspaceSetting = StepWorkspace.of(stepConfig, runnerStep = true, projectWorkspaces?.findByProjectId(project.id).orEmpty())
         if (!workspaceSetting.valid) throw RepositoryPlanException("workspace of step ${node.id}: " + workspaceSetting.errors.joinToString("; "))
         if (logWarnings) workspaceSetting.warnings.forEach { context.warn("workspace: $it") }
-        val push = !workspaceSetting.prepareOnly && task.config.boolean("push", default = true)
+        val push = !workspaceSetting.prepareOnly && stepConfig.boolean("push", default = true)
         // a step of a workspace without repositories of its own works on the workspace's sources
-        val config = StepWorkspace.effectiveConfig(task.config, workspaceSetting.definition, project, push && GitAccess.pushingMode(mode))
+        val config = StepWorkspace.effectiveConfig(stepConfig, workspaceSetting.definition, project, push && GitAccess.pushingMode(mode))
         // ADR 0036: Spec Kit only where the project turned it on and the platform allows it
         val specKit = project.specKit && features.specKitAllowed()
         if (mode == RunnerMode.SPEC_KIT && !specKit) {
@@ -157,8 +165,11 @@ class RunnerTaskSupport(
         if (primary == null && repos.isNotEmpty()) throw RepositoryPlanException("step ${node.id} has no primary repository")
         if (primary == null && !StepRepositories.repositoryOptional(config)) throw RepositoryPlanException("step ${node.id} has no repository")
         val profile = modelResolver.forCodingAgent(task, project, ActingUser.startedBy(context.run)?.userId)
-        val model = templateModel.build(context, repos, task.runInputs)
+        val model = templateModel.build(context, repos, task.runInputs, task.parameterValues)
         val blocks = PromptDataBlocks.random()
+        // ADR 0057: the environment goes to the harness's own files (spec.instructions), not into the prompt
+        val environmentDocument = environment.document(task, project, model, blocks)
+            .also { r -> if (logWarnings) r.warnings.forEach { context.log("agent instructions: $it") } }
         val system = task.prompt.system?.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks).text }
         val user = renderer.renderPrompt(task.prompt.user?.takeIf { it.isNotBlank() } ?: defaultPrompt, model, blocks)
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("template: $it") } }
@@ -169,8 +180,10 @@ class RunnerTaskSupport(
                 setupCommand = workspaceSetting.definition?.setupCommand?.takeIf { it.isNotBlank() },
             )
         }
+        val answerSchema = task.outputSchema?.takeIf { it.isNotBlank() }
         val prompt = listOfNotNull(
-            system, RulesPrompt.section(task.rules), user.text, repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) }, workspace?.let(::workspaceSection), agentNotice(blocks),
+            system, user.text, answerSchema?.let(::answerSection), repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) },
+            workspace?.let(::workspaceSection), agentNotice(blocks),
         ).joinToString("\n\n")
         val fallbackBranch = "run/${context.run.id.short}"
         // the job branch must not be the base branch of any repository it may be pushed to (nor HEAD / a ref path)
@@ -234,7 +247,8 @@ class RunnerTaskSupport(
             setupCommand = config.string("setupCommand"),
             verifyCommand = config.string("verifyCommand"),
             timeout = timeout,
-            collectArtifacts = config.list("collectArtifacts").ifEmpty { DEFAULT_COLLECT },
+            collectArtifacts = config.list("collectArtifacts").ifEmpty { DEFAULT_COLLECT }
+                .let { if (answerSchema != null && STRUCTURED_ANSWER_FILE !in it) it + STRUCTURED_ANSWER_FILE else it },
             skills = task.skills.map { RunnerSkill(it.key, it.name, it.content) },
             collectDiff = true,
             usageContext = UsageContext(
@@ -253,6 +267,8 @@ class RunnerTaskSupport(
             featureDescription = user.text.takeIf { mode == RunnerMode.SPEC_KIT && it.isNotBlank() },
             credentials = credentials.map { it.first } + tools.map { it.second },
             agentTools = tools.map { it.first },
+            instructions = environmentDocument.text.takeIf { it.isNotBlank() },
+            mcpServers = task.agent.mcpServers,
         )
         if (logWarnings) {
             workspace?.let { w ->
@@ -316,6 +332,15 @@ class RunnerTaskSupport(
         }
     }
 
+    /** ADR 0057: how a coding agent with an output schema hands over its answer. */
+    private fun answerSection(schema: String): String = buildString {
+        append("## Answer\n")
+        append("When you are done, write your answer as one JSON object that is valid against the JSON schema below to the file ")
+        append("`$STRUCTURED_ANSWER_FILE` in your working directory (the runner collects it and keeps it out of the commit). ")
+        append("Write only that JSON object to the file: no markdown fences and no text around it.\n\n")
+        append(schema.trim())
+    }
+
     /** ADR 0044: what the agent is told about the shared workspace and its session. */
     private fun workspaceSection(workspace: RunnerWorkspace): String = buildString {
         append("Workspace: this step works in the run's shared workspace \"${workspace.key}\". Files that earlier steps of this run left ")
@@ -328,7 +353,7 @@ class RunnerTaskSupport(
     private fun personalRunnerOf(context: NodeContext): java.util.UUID? =
         if (context.project.personal) ActingUser.startedBy(context.run)?.userId else null
 
-    private fun map(context: NodeContext, mode: RunnerMode, plan: Plan, jobId: RunnerJobId, result: RunnerResult): NodeResult {
+    private fun map(context: NodeContext, task: ResolvedTask, mode: RunnerMode, plan: Plan, jobId: RunnerJobId, result: RunnerResult): NodeResult {
         val node = context.node
         val project = context.project
         // ADR 0042: what the step costs at API prices, whoever pays; the harness figure first, else the profile's pricing
@@ -340,13 +365,20 @@ class RunnerTaskSupport(
         } else {
             apiCost
         }
-        val artifacts = result.artifacts.map { NewArtifact(it.name, ArtifactKind.forName(it.name, it.mediaType), it.mediaType, it.content) }.toMutableList()
+        val artifacts = result.artifacts.filterNot { it.name == STRUCTURED_ANSWER_ARTIFACT }
+            .map { NewArtifact(it.name, ArtifactKind.forName(it.name, it.mediaType), it.mediaType, it.content) }.toMutableList()
         result.verification?.let { artifacts += NewArtifact("verification-${node.id}", ArtifactKind.LOG, "text/plain", "$ ${it.command}\nexit code ${it.exitCode}\n\n${it.outputTail}") }
         result.diff?.takeIf { it.isNotBlank() }?.let { artifacts += NewArtifact("diff", ArtifactKind.DIFF, "text/x-diff", it) }
-        // without a repository the agent's answer is the step's product, like the result of an LLM task
-        if (plan.repositories.isEmpty()) result.summary?.takeIf { it.isNotBlank() }?.let { artifacts += NewArtifact("result", ArtifactKind.MARKDOWN, "text/markdown", it) }
         val verificationFailed = result.verification?.let { it.exitCode != 0 } ?: false
-        val succeeded = result.status == RunnerJobStatus.SUCCEEDED && !verificationFailed
+        val jobSucceeded = result.status == RunnerJobStatus.SUCCEEDED && !verificationFailed
+        // ADR 0057: a coding agent with an output schema answered in structured-answer.json, read like a model answer
+        val answer = if (jobSucceeded) structuredAnswer(context, task, plan, result, artifacts.map { it.name }.toSet()) else null
+        artifacts += answer?.artifacts.orEmpty()
+        // without a repository the agent's answer is the step's product, like the result of an LLM task
+        if (plan.repositories.isEmpty() && artifacts.none { it.name == "result" }) {
+            result.summary?.takeIf { it.isNotBlank() }?.let { artifacts += NewArtifact("result", ArtifactKind.MARKDOWN, "text/markdown", it) }
+        }
+        val succeeded = jobSucceeded && answer?.problem == null
         val repositories = repositoryResults(plan, result, succeeded)
         val primary = repositories.firstOrNull { it.primary }
         val pushedBranch = primary?.branch ?: result.branch ?: plan.branch
@@ -360,8 +392,9 @@ class RunnerTaskSupport(
         } else {
             null
         }
-        val summary = summarise(result, verificationFailed)
+        val summary = answer?.problem ?: answer?.summary ?: summarise(result, verificationFailed)
         val updates = HashMap<String, Any?>()
+        answer?.stateUpdates?.let(updates::putAll)
         updates[RunStateKeys.BRANCH] = pushedBranch
         mr?.let { updates[RunStateKeys.MR] = it.toMap() }
         @Suppress("UNCHECKED_CAST")
@@ -370,16 +403,65 @@ class RunnerTaskSupport(
         return NodeResult(
             port = if (succeeded) WorkflowNode.PORT_SUCCESS else WorkflowNode.PORT_FAILURE,
             summary = summary,
+            confidence = answer?.confidence,
             usage = result.usage,
             cost = cost,
             apiCost = apiCost,
             runnerJobId = jobId,
             artifacts = artifacts,
             mergeRequest = mr,
+            review = answer?.review,
             stateUpdates = updates,
-            error = if (succeeded) null else failureMessage(result, summary),
+            error = when {
+                succeeded -> null
+                answer?.problem != null -> answer.problem
+                else -> failureMessage(result, summary)
+            },
             repositories = repositories,
         )
+    }
+
+    /** What a coding agent's structured answer gave the step; [problem] set = the step fails with it. */
+    private data class AgentAnswer(
+        val artifacts: List<NewArtifact> = emptyList(),
+        val stateUpdates: Map<String, Any?> = emptyMap(),
+        val confidence: Double? = null,
+        val review: ReviewReport? = null,
+        val summary: String? = null,
+        val problem: String? = null,
+    )
+
+    /**
+     * ADR 0057: the answer of a coding agent step with an output schema: the artefact `structured-answer` the runner
+     * collected from `structured-answer.json`, parsed and checked against the schema, then mapped like a model answer
+     * ([StructuredAnswers]). Null when the task has no output schema; a missing or invalid answer is a [AgentAnswer.problem].
+     */
+    private fun structuredAnswer(context: NodeContext, task: ResolvedTask, plan: Plan, result: RunnerResult, produced: Set<String>): AgentAnswer? {
+        val schema = task.outputSchema?.takeIf { it.isNotBlank() } ?: return null
+        val answers = structuredAnswers ?: return AgentAnswer(problem = "structured answers of coding agents are not available here")
+        val raw = result.artifacts.firstOrNull { it.name == STRUCTURED_ANSWER_ARTIFACT }?.content
+            ?: return AgentAnswer(problem = "the agent wrote no $STRUCTURED_ANSWER_FILE: the step asks for one JSON object valid against its output schema")
+        val structured = answers.parse(raw)
+        val problems = answers.problems(task, structured, schema)
+        if (problems.isNotEmpty()) return AgentAnswer(problem = "$STRUCTURED_ANSWER_FILE is not valid: " + problems.joinToString("; "))
+        val confidence = answers.confidence(task, structured)
+        val updates = HashMap<String, Any?>()
+        confidence?.let { updates[RunStateKeys.CONFIDENCE] = it }
+        val artifacts = mutableListOf<NewArtifact>()
+        val apiCost = result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
+        val review = if (task.produces.contains("review")) {
+            answers.review(context, structured, result.summary.orEmpty(), emptyList(), emptyList(), plan.profile.ref, result.usage, apiCost)
+        } else {
+            null
+        }
+        if (review != null) {
+            artifacts += answers.reviewArtifact(review)
+            updates[RunStateKeys.REVIEW] = review.toStateMap()
+        }
+        artifacts += answers.producedArtifacts(task, raw, structured, wholeContentUsed = review != null, skip = produced + RUNNER_OUTPUTS)
+        context.log("structured answer read from $STRUCTURED_ANSWER_FILE" + (confidence?.let { " (confidence $it)" } ?: ""))
+        val summary = review?.let(LlmTaskExecutor::reviewSummary) ?: structured?.get("summary")?.toString()?.take(500)
+        return AgentAnswer(artifacts, updates, confidence, review, summary)
     }
 
     /**
@@ -503,6 +585,13 @@ class RunnerTaskSupport(
         const val MAX_COMMIT_SUBJECT = 100
         const val DEFAULT_MR_DESCRIPTION = "Implements {{issue.key}}.\n\nBack-Office-Run: {{run.id}}"
         val DEFAULT_COLLECT = listOf("specs/**/*.md", "REVIEW.md")
+
+        /** ADR 0057: the file a coding agent with an output schema writes its answer to, and the artefact the runner names it. */
+        const val STRUCTURED_ANSWER_FILE = "structured-answer.json"
+        const val STRUCTURED_ANSWER_ARTIFACT = "structured-answer"
+
+        /** Names the runner job itself produces; a structured answer never replaces them. */
+        private val RUNNER_OUTPUTS = setOf("diff", "mr")
 
         /** `run-<runId8>-<nodeId>-<attempt>` lower-cased and restricted to DNS-1123 label characters. */
         fun jobLabel(runShort: String, nodeId: String, attempt: Int): String =

@@ -38,8 +38,6 @@ class TaskTemplatePersistenceAdapter(
 
     override fun existsByKey(key: String): Boolean = jpa.existsByKey(key)
     override fun existsExtending(key: String): Boolean = jpa.existsByExtendsKey(key)
-    override fun existsUsingSkill(skillKey: String): Boolean = jpa.existsUsingSkill(skillKey)
-    override fun existsUsingRule(ruleKey: String): Boolean = jpa.existsUsingRule(ruleKey)
     override fun existsUsingAgent(agentKey: String, projectId: UUID?): Boolean =
         if (projectId == null) jpa.existsByAgentKey(agentKey) else jpa.existsUsingAgentVisibleTo(agentKey, projectId)
     override fun delete(id: TaskTemplateId) = jpa.deleteById(id.value)
@@ -88,6 +86,8 @@ class AgentPersistenceAdapter(
             .map(mappers::toDomain)
 
     override fun existsByKey(key: String): Boolean = jpa.existsByKey(key)
+    override fun existsUsingSkill(skillKey: String): Boolean = jpa.existsUsingSkill(skillKey)
+    override fun existsUsingRule(ruleKey: String): Boolean = jpa.existsUsingRule(ruleKey)
     override fun delete(id: AgentId) = jpa.deleteById(id.value)
 }
 

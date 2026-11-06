@@ -2,10 +2,9 @@ import type { ResolvedTask, TaskTemplate } from '../../../core/api/types';
 import {
   automaticRules,
   customizeForProject,
-  draftRuleDelta,
-  draftSkillDelta,
   emptyTemplate,
   parentCandidates,
+  presetOf,
   toPreview,
   toSavePayload,
   toTemplateInput,
@@ -47,6 +46,7 @@ describe('toPreview', () => {
     expect(automaticRules(p)).toEqual([{ key: 'no-secrets', name: 'No secrets' }]);
     expect(p.config).toEqual({ chunk: 2 });
     expect(p.agent?.key).toBe('model-answer');
+    expect(p.parameters).toEqual([]);
   });
 
   it('defaults lineage to the key and ok to true when the check is absent', () => {
@@ -57,28 +57,6 @@ describe('toPreview', () => {
     expect(p.category).toBeNull();
     expect(automaticRules(null)).toEqual([]);
     expect(toPreview(null)).toBeNull();
-  });
-});
-
-describe('draftSkillDelta', () => {
-  it('lists skills the draft adds or removes versus the resolved result', () => {
-    const preview = toPreview({ key: 'x', skills: [{ key: 'a' }, { key: 'b' }] });
-    const delta = draftSkillDelta(
-      { ...emptyTemplate(), skills: ['a', 'c'], removeSkills: ['b', 'zzz'] },
-      preview,
-    );
-    expect(delta).toEqual({ added: ['c'], removed: ['b'] });
-  });
-});
-
-describe('draftRuleDelta', () => {
-  it('lists rules the draft adds or drops versus the resolved result', () => {
-    const preview = toPreview({ key: 'x', rules: [{ key: 'auto', automatic: true }] });
-    const delta = draftRuleDelta(
-      { ...emptyTemplate(), rules: ['auto', 'new'], removeRules: ['auto', 'zzz'] },
-      preview,
-    );
-    expect(delta).toEqual({ added: ['new'], removed: ['auto'] });
   });
 });
 
@@ -100,8 +78,8 @@ describe('save payload (ADR 0055)', () => {
     expect(d.scope).toEqual({ type: 'PROJECT', projectId: 'p1' });
     expect(d.agentKey).toBeNull();
     expect(d.category).toBeNull();
-    expect(d.skills).toEqual([]);
-    expect(d.rules).toEqual([]);
+    expect(d.parameters).toEqual([]);
+    expect(d.parameterValues).toEqual({});
     expect(toSavePayload(d, false).key).toBe('code-review');
   });
 });
@@ -137,10 +115,46 @@ describe('toTemplateInput', () => {
     expect('id' in input).toBe(false);
     expect('builtIn' in input).toBe(false);
     expect(input.prompt).toEqual({ system: '', user: 'u', mode: 'REPLACE' });
-    expect(input.skills).toEqual([]);
-    expect(input.rules).toEqual([]);
-    expect(input.removeRules).toEqual([]);
+    expect(input.parameters).toEqual([]);
+    expect(input.parameterValues).toEqual({});
+    expect('skills' in input).toBe(false);
     expect(input.category).toBeNull();
     expect(input.extendsKey).toBeNull();
+  });
+});
+
+describe('presetOf (ADR 0058)', () => {
+  it('extends the template in its category and scope, with an empty name and no own values', () => {
+    const d = presetOf({
+      key: 'llm-task',
+      category: 'ANALYSIS',
+      scope: { type: 'PROJECT', projectId: 'p1' },
+    });
+    expect(d.extendsKey).toBe('llm-task');
+    expect(d.category).toBe('ANALYSIS');
+    expect(d.scope).toEqual({ type: 'PROJECT', projectId: 'p1' });
+    expect(d.name).toBe('');
+    expect(d.parameterValues).toEqual({});
+    expect('key' in d).toBe(false);
+    expect(
+      presetOf({ key: 'x', scope: { type: 'GLOBAL' } }, { type: 'PROJECT', projectId: 'p2' }).scope,
+    ).toEqual({
+      type: 'PROJECT',
+      projectId: 'p2',
+    });
+  });
+
+  it('starts new templates without a parent and keeps parameters on edit', () => {
+    expect(emptyTemplate().extendsKey).toBeNull();
+    const input = toTemplateInput({
+      ...emptyTemplate(),
+      name: 'n',
+      parameters: [{ name: 'task', label: 'Task', type: 'TEXT', required: true }],
+      parameterValues: { tone: 'casual' },
+    } as TaskTemplate & Record<string, unknown>);
+    expect(input.parameters).toEqual([
+      { name: 'task', label: 'Task', type: 'TEXT', required: true },
+    ]);
+    expect(input.parameterValues).toEqual({ tone: 'casual' });
   });
 });

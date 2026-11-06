@@ -49,6 +49,8 @@ data class TaskOverridesJson(
     val addSkills: List<String> = emptyList(),
     val removeSkills: List<String> = emptyList(),
     val config: Map<String, Any?> = emptyMap(),
+    /** ADR 0058: the step's parameter values; absent in workflows stored before it. */
+    val parameters: Map<String, Any?> = emptyMap(),
 )
 data class TaskSectionJson(val templateKey: String = "", val overrides: TaskOverridesJson = TaskOverridesJson())
 /** ADR 0056: the `action` section of an ACTION node. */
@@ -188,10 +190,11 @@ object WorkflowJson {
             addSkills = o.addSkills,
             removeSkills = o.removeSkills,
             config = if (legacy != null) o.config - LEGACY_AGENT_KEY else o.config,
+            parameters = o.parameters,
         )
     }
 
-    fun toJson(o: TaskOverrides) = TaskOverridesJson(o.agentKey, o.modelProfileId?.value, o.systemPromptAppend, o.promptAppend, o.promptReplace, o.addSkills, o.removeSkills, o.config)
+    fun toJson(o: TaskOverrides) = TaskOverridesJson(o.agentKey, o.modelProfileId?.value, o.systemPromptAppend, o.promptAppend, o.promptReplace, o.addSkills, o.removeSkills, o.config, o.parameters)
 
     /** The former config key that chose the coding agent harness of a step. */
     private const val LEGACY_AGENT_KEY = "agent"

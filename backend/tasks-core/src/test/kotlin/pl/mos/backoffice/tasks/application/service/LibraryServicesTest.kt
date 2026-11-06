@@ -33,16 +33,16 @@ class LibraryServicesTest {
         projects = setOf(lib.projectId, other),
     )
     private val audit = RecordingAuditPort()
-    private val rules = RuleService(lib.rules, lib.templates, lib.clock, gate, audit)
+    private val rules = RuleService(lib.rules, lib.agents, lib.clock, gate, audit)
     private val templates = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, audit)
-    private val skills = SkillService(lib.skills, lib.templates, lib.clock, gate, audit)
+    private val skills = SkillService(lib.skills, lib.agents, lib.clock, gate, audit)
     private val catalog = TaskCatalogService(lib.templates, lib.lookup)
 
     private fun content(key: String, scope: Scope = Scope.Global, extendsKey: String? = null, agentKey: String? = null, abstract: Boolean = false) =
         TaskTemplate.Content(key = key, name = key, scope = scope, extendsKey = extendsKey, agentKey = agentKey, abstract = abstract)
 
     @Test
-    fun `rules are unique per scope, sorted by name, and cannot be deleted or renamed while a template lists them`() {
+    fun `rules are unique per scope, sorted by name, and cannot be deleted or renamed while an agent lists them`() {
         val rule = rules.create(Rule.Content(key = "be-brief", name = "Be brief", content = "Short answers.", automatic = true, tags = listOf("style", "style")))
         assertThat(rule.automatic).isTrue()
         assertThat(rule.tags).containsExactly("style")
@@ -55,8 +55,8 @@ class LibraryServicesTest {
         assertThat(rules.list(lib.projectId).map { it.id }).describedAs("by name, case-insensitive").containsExactly(alpha.id, mine.id, rule.id)
         assertThat(rules.get(rule.id).content).isEqualTo("Short answers.")
 
-        templates.create(content("tt").copy(rules = listOf("be-brief")))
-        assertThatThrownBy { rules.delete(rule.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("used by templates")
+        val user = lib.agent("brief-agent", rules = listOf("be-brief"))
+        assertThatThrownBy { rules.delete(rule.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("used by agents")
         assertThatThrownBy { rules.delete(mine.id) }.describedAs("the reference check is by key, whatever the scope").isInstanceOf(InvalidStateException::class.java)
         assertThatThrownBy { rules.update(rule.id, Rule.Content(key = "renamed", name = "Be brief", content = "x")) }.isInstanceOf(InvalidStateException::class.java)
         assertThatThrownBy { rules.update(alpha.id, Rule.Content(key = "be-brief", name = "alpha", content = "a")) }
@@ -66,13 +66,13 @@ class LibraryServicesTest {
         assertThat(updated.automatic).isFalse()
         assertThat(updated.createdAt).isEqualTo(rule.createdAt)
 
-        templates.delete(templates.list().single().id)
+        lib.agents.delete(user.id)
         rules.delete(mine.id)
         rules.delete(rule.id)
         assertThatThrownBy { rules.get(rule.id) }.isInstanceOf(NotFoundException::class.java)
         assertThatThrownBy { rules.delete(rule.id) }.isInstanceOf(NotFoundException::class.java)
         assertThat(audit.operations()).containsExactly(
-            "RULE_CREATE", "RULE_CREATE", "RULE_CREATE", "TEMPLATE_CREATE", "RULE_UPDATE", "TEMPLATE_DELETE", "RULE_DELETE", "RULE_DELETE",
+            "RULE_CREATE", "RULE_CREATE", "RULE_CREATE", "RULE_UPDATE", "RULE_DELETE", "RULE_DELETE",
         )
     }
 
@@ -123,17 +123,17 @@ class LibraryServicesTest {
     }
 
     @Test
-    fun `templates audit category and rules and refuse unknown rules`() {
-        lib.rule("r1")
-        assertThatThrownBy { templates.create(content("with-ghost").copy(rules = listOf("ghost"))) }
-            .isInstanceOf(ValidationException::class.java).hasMessageContaining("rule ghost does not exist")
-        val created = templates.create(content("cat").copy(category = TemplateCategory.ANALYSIS, rules = listOf("r1")))
-        assertThat(audit.entries.last().details).containsEntry("category", "ANALYSIS").containsEntry("rules", listOf("r1"))
-        templates.update(created.id, created.content.copy(category = TemplateCategory.PLANNING, rules = emptyList(), removeRules = listOf("r1")))
+    fun `templates audit category and parameters`() {
+        val created = templates.create(content("cat").copy(category = TemplateCategory.ANALYSIS))
+        assertThat(audit.entries.last().details).containsEntry("category", "ANALYSIS").containsEntry("parameters", emptyList<String>())
+        templates.update(created.id, created.content.copy(category = TemplateCategory.PLANNING, parameterValues = emptyMap(), parameters = listOf(
+            pl.mos.backoffice.shared.tasks.TemplateParameter("p1", "P1", pl.mos.backoffice.shared.tasks.TemplateParameterType.NUMBER, required = true),
+        )))
         val diff = audit.entries.last().details
         assertThat(diff["category"]).isEqualTo(mapOf("old" to "ANALYSIS", "new" to "PLANNING"))
-        assertThat(diff["rules"]).isEqualTo(mapOf("old" to listOf("r1"), "new" to emptyList<String>()))
-        assertThat(diff["removeRules"]).isEqualTo(mapOf("old" to emptyList<String>(), "new" to listOf("r1")))
+        assertThat(diff["parameters"]).isEqualTo(mapOf("old" to emptyList<String>(), "new" to listOf("p1:NUMBER:true")))
+        assertThatThrownBy { templates.create(content("bad").copy(parameterValues = mapOf("ghost" to 1))) }
+            .isInstanceOf(ValidationException::class.java).hasMessageContaining("parameter ghost is not declared")
     }
 
     @Test
@@ -198,15 +198,16 @@ class LibraryServicesTest {
     @Test
     fun `resolve previews abstract and broken templates and is 404 for unknown keys`() {
         val gone = lib.rule("gone")
+        lib.agent("fading", rules = listOf("gone"))
         templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "hello")))
-        templates.create(content("half", extendsKey = "base").copy(rules = listOf("gone")))
+        templates.create(content("half", extendsKey = "base", agentKey = "fading"))
         lib.rules.delete(gone.id)
 
         assertThat(templates.resolve("base").abstract).isTrue()
         assertThat(templates.resolve("base").prompt.system).isEqualTo("hello")
         val half = templates.resolve("half")
         assertThat(half.check.ok).isFalse()
-        assertThat(half.check.problems).containsExactly("rule gone does not exist")
+        assertThat(half.check.problems).containsExactly("rule gone of agent fading does not exist")
         assertThat(half.executable).isFalse()
         assertThatThrownBy { templates.resolve("nope") }.isInstanceOf(NotFoundException::class.java)
     }
@@ -238,14 +239,14 @@ class LibraryServicesTest {
         assertThat(skills.list().map { it.id }).containsExactly(skill.id)
         assertThat(skills.list(lib.projectId).map { it.id }).describedAs("by name").containsExactly(mine.id, skill.id)
 
-        templates.create(content("tt").copy(skills = listOf("ss")))
+        val user = lib.agent("skilled", skills = listOf("ss"))
         assertThatThrownBy { skills.delete(skill.id) }.isInstanceOf(InvalidStateException::class.java)
         assertThatThrownBy { skills.update(skill.id, Skill.Content(key = "renamed", name = "S", content = "# s")) }.isInstanceOf(InvalidStateException::class.java)
         assertThat(skills.update(skill.id, Skill.Content(key = "ss", name = "S2", content = "# s2")).name).isEqualTo("S2")
 
         assertThatThrownBy { skills.delete(mine.id) }.describedAs("the reference check is by key, whatever the scope").isInstanceOf(InvalidStateException::class.java)
 
-        templates.delete(templates.list().single().id)
+        lib.agents.delete(user.id)
         skills.delete(mine.id)
         skills.delete(skill.id)
         assertThatThrownBy { skills.get(mine.id) }.isInstanceOf(NotFoundException::class.java)

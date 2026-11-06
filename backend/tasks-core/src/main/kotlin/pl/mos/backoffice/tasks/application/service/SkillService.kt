@@ -9,21 +9,21 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
-import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
+import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.domain.model.Keys
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.SkillId
 import java.util.UUID
 
 /**
- * Skill CRUD. A new skill without a key gets one derived from its name (ADR 0055); a skill referenced by any template
+ * Skill CRUD. A new skill without a key gets one derived from its name (ADR 0055); a skill an agent lists (ADR 0057)
  * keeps its key and cannot be deleted. Same access rules as
  * templates (global: `library.view` / `library.manage`; project: members read, `library.project.manage`
  * writes); changes are audited as `SKILL_CREATE`, `SKILL_UPDATE`, `SKILL_DELETE`.
  */
 class SkillService(
     private val skills: SkillRepository,
-    private val templates: TaskTemplateRepository,
+    private val agents: AgentRepository,
     private val clock: Clock,
     private val gate: AuthorizationGate,
     private val audit: AuditPort,
@@ -48,8 +48,8 @@ class SkillService(
         skills.findByKeyAndScope(key, command.scope)?.let { clash ->
             if (clash.id != id) throw InvalidStateException("skill $key already exists in scope ${command.scope.describe()}")
         }
-        if ((key != existing.key || command.scope != existing.scope) && templates.existsUsingSkill(existing.key)) {
-            throw InvalidStateException("skill ${existing.key} is used by templates; its key and scope cannot change")
+        if ((key != existing.key || command.scope != existing.scope) && agents.existsUsingSkill(existing.key)) {
+            throw InvalidStateException("skill ${existing.key} is used by agents; its key and scope cannot change")
         }
         val saved = skills.save(existing.update(command.copy(key = key), clock.now(), user.actor))
         val changes = AuditableChanges.changed(
@@ -81,7 +81,7 @@ class SkillService(
     override fun delete(id: SkillId) {
         val existing = load(id)
         gate.requireWrite(existing.scope)
-        if (templates.existsUsingSkill(existing.key)) throw InvalidStateException("skill ${existing.key} is used by templates and cannot be deleted")
+        if (agents.existsUsingSkill(existing.key)) throw InvalidStateException("skill ${existing.key} is used by agents and cannot be deleted")
         skills.delete(id)
         audit.record(entry("SKILL_DELETE", existing, mapOf("key" to existing.key, "scope" to existing.scope.describe())))
     }

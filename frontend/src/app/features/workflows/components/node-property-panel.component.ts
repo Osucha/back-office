@@ -106,6 +106,16 @@ interface StepResolveRequest {
  * (the page owns the definition). Kind-specific sections per NodeKind.
  */
 import { StartRunInputsComponent } from './designer/start-run-inputs.component';
+import { ParameterValuesFormComponent } from '../../../core/ui/parameter-values-form.component';
+import { withParameterValue } from '../../../core/ui/template-parameters';
+import {
+  CONTINUE_SESSION_KEY,
+  type SessionCandidate,
+  continuedStep,
+  sessionCandidates,
+  stepParameterFields,
+  withContinueSession,
+} from '../data/step-session';
 @Component({
   selector: 'app-node-property-panel',
   imports: [
@@ -134,6 +144,7 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
     ModelSelectComponent,
     StartRunInputsComponent,
     JsonViewComponent,
+    ParameterValuesFormComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -333,6 +344,27 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                 }
               }
 
+              @if (parameterFields().length) {
+                <nz-divider
+                  nzText="Parameters"
+                  i18n-nzText="@@workflows.props.parameters"
+                  nzOrientation="left"
+                  nzPlain
+                />
+                <p class="muted small" i18n="@@workflows.props.parameters.help">
+                  Values of the template's parameters for this step. Empty: the template's value or
+                  the default (shown greyed out).
+                </p>
+                <div data-step-parameters>
+                  <app-parameter-values-form
+                    [fields]="parameterFields()"
+                    [readonly]="readonly()"
+                    idPrefix="pp-param"
+                    (valueChange)="setParameter($event.name, $event.value)"
+                  />
+                </div>
+              }
+
               @if (n.task?.templateKey) {
                 <nz-collapse nzGhost class="step-gets">
                   <nz-collapse-panel
@@ -491,6 +523,60 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                   </nz-select>
                 </nz-form-control>
               </nz-form-item>
+              @if (runnerStep()) {
+                <nz-form-item data-agent-session>
+                  <nz-form-label i18n="@@workflows.props.session">Agent session</nz-form-label>
+                  <nz-form-control
+                    [nzValidateStatus]="sessionProblem() ? 'error' : ''"
+                    [nzErrorTip]="sessionProblem() ?? ''"
+                    [nzExtra]="text.sessionHelp"
+                  >
+                    <nz-radio-group
+                      name="sessionMode"
+                      nzSize="small"
+                      [ngModel]="sessionMode()"
+                      (ngModelChange)="setSessionMode($event)"
+                      [disabled]="readonly()"
+                    >
+                      <label nz-radio-button nzValue="new" i18n="@@workflows.props.session.new"
+                        >New session</label
+                      >
+                      <label
+                        nz-radio-button
+                        nzValue="continue"
+                        [nzDisabled]="!sessionCandidates().length && !continuedStepId()"
+                        i18n="@@workflows.props.session.continue"
+                        >Continue the session of step …</label
+                      >
+                    </nz-radio-group>
+                    @if (sessionMode() === 'continue') {
+                      <nz-select
+                        class="session-select"
+                        name="continueSession"
+                        nzShowSearch
+                        nzPlaceHolder="Pick the step"
+                        i18n-nzPlaceHolder="@@workflows.props.session.pick"
+                        [ngModel]="continuedStepId()"
+                        (ngModelChange)="setContinueSession($event)"
+                        [disabled]="readonly()"
+                        aria-label="Step whose session this step continues"
+                        i18n-aria-label="@@workflows.props.session.pickLabel"
+                      >
+                        @for (c of sessionCandidates(); track c.id) {
+                          <nz-option
+                            [nzValue]="c.id"
+                            [nzLabel]="sessionOptionLabel(c)"
+                            [nzDisabled]="!c.sameHarness"
+                          />
+                        }
+                        @if (unknownContinuedStep(); as id) {
+                          <nz-option [nzValue]="id" [nzLabel]="id" nzDisabled />
+                        }
+                      </nz-select>
+                    }
+                  </nz-form-control>
+                </nz-form-item>
+              }
               <nz-form-item>
                 <nz-form-label nzFor="pp-model" i18n="@@workflows.props.modelProfile"
                   >Model profile</nz-form-label
@@ -600,9 +686,12 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
               <div class="grid2">
                 <nz-form-item>
                   <nz-form-label nzFor="pp-add-skills" i18n="@@workflows.props.addSkills"
-                    >Add skills</nz-form-label
+                    >Add skills to the agent's</nz-form-label
                   >
-                  <nz-form-control>
+                  <nz-form-control
+                    nzExtra="For this step only, on top of the skills of its agent."
+                    i18n-nzExtra="@@workflows.props.addSkills.help"
+                  >
                     <nz-select
                       id="pp-add-skills"
                       name="addSkills"
@@ -622,9 +711,12 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
                 </nz-form-item>
                 <nz-form-item>
                   <nz-form-label nzFor="pp-rm-skills" i18n="@@workflows.props.removeSkills"
-                    >Remove skills</nz-form-label
+                    >Drop skills of the agent</nz-form-label
                   >
-                  <nz-form-control>
+                  <nz-form-control
+                    nzExtra="For this step only; the agent keeps them elsewhere."
+                    i18n-nzExtra="@@workflows.props.removeSkills.help"
+                  >
                     <nz-select
                       id="pp-rm-skills"
                       name="removeSkills"
@@ -1350,6 +1442,8 @@ export class NodePropertyPanelComponent {
 
   readonly node = input<WorkflowNode | null>(null);
   readonly allIds = input<string[]>([]);
+  /** ADR 0057: the nodes of the workflow (a coding step may continue the session of another). */
+  readonly nodes = input<readonly WorkflowNode[]>([]);
   readonly palette = input<WorkflowPalette | null>(null);
   /** ADR 0054: keys of deprecated templates (not offered; a step using one is tagged). */
   readonly deprecatedKeys = input<ReadonlySet<string>>(new Set());
@@ -1397,6 +1491,7 @@ export class NodePropertyPanelComponent {
     deprecated: deprecatedLabel(),
     deprecatedHint: deprecatedHint(),
     empty: $localize`:@@workflows.props.stepGets.empty:(empty)`,
+    sessionHelp: $localize`:@@workflows.props.session.help:Continuing runs in the same workspace and conversation as that step; both need the same harness.`,
   };
   readonly categoryLabel = categoryLabel;
   readonly agentKindDescription = agentKindDescription;
@@ -1470,7 +1565,8 @@ export class NodePropertyPanelComponent {
     const t = key ? this.palette()?.tasks?.find((x) => x.key === key) : undefined;
     const schema = t?.configSchema as JsonSchema | undefined;
     // The step repositories and the workspace have their own sections; keep them out of the form.
-    return withoutKeys(schema, ownEditorKeys(schema));
+    // ADR 0057: the agent session has its own control too.
+    return withoutKeys(schema, [...ownEditorKeys(schema), CONTINUE_SESSION_KEY]);
   });
 
   // ---------------------------------------------------------------- ADR 0056: actions
@@ -1535,6 +1631,77 @@ export class NodePropertyPanelComponent {
     const base = $localize`:@@workflows.props.agent.help:Who runs this step; empty = the template's agent.`;
     return a ? `${base} ${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}` : base;
   });
+  // ---------------------------------------------------------------- ADR 0057/0058: session, parameters
+
+  /** The node whose agent session this step continues; null = a new session. */
+  readonly continuedStepId = computed(() => continuedStep(this.node()?.task?.overrides?.config));
+  /** The radio shows "continue" while the user picks the step (before a value is set). */
+  private readonly sessionModeDraft = signal<'new' | 'continue'>('new');
+  readonly sessionMode = computed<'new' | 'continue'>(() =>
+    this.continuedStepId() ? 'continue' : this.sessionModeDraft(),
+  );
+  /** The other coding agent steps of the workflow (a different harness is offered disabled). */
+  readonly sessionCandidates = computed<SessionCandidate[]>(() => {
+    const n = this.node();
+    if (!n) return [];
+    const tasks = this.palette()?.tasks ?? [];
+    return sessionCandidates(this.nodes(), n.id, this.effectiveAgent()?.harness, (other) =>
+      effectiveStepAgent(
+        tasks.find((t) => t.key === other.task?.templateKey),
+        other.task?.overrides?.agentKey,
+        this.agents(),
+      ),
+    );
+  });
+  /** A continued step that is not among the candidates (deleted, renamed, no coding agent). */
+  readonly unknownContinuedStep = computed(() => {
+    const id = this.continuedStepId();
+    return id && !this.sessionCandidates().some((c) => c.id === id) ? id : null;
+  });
+  readonly sessionProblem = computed(() => {
+    const id = this.continuedStepId();
+    if (this.sessionMode() === 'continue' && !id)
+      return $localize`:@@workflows.props.session.pickRequired:Pick the step whose session this step continues`;
+    if (!id) return null;
+    const c = this.sessionCandidates().find((x) => x.id === id);
+    if (!c)
+      return $localize`:@@workflows.props.session.unknown:Step ${id}:id: is not a coding agent step of this workflow`;
+    if (!c.sameHarness)
+      return $localize`:@@workflows.props.session.otherHarness:Step ${c.name}:step: uses another harness (${agentKindLabel(c.harness)}:harness:)`;
+    return null;
+  });
+  /** ADR 0058: the step's parameters with its own values and the inherited ones. */
+  readonly parameterFields = computed(() => {
+    const n = this.node();
+    if (n?.kind !== 'TASK' || !n.task?.templateKey) return [];
+    return stepParameterFields(this.paletteTask(), this.resolved(), n.task.overrides);
+  });
+
+  sessionOptionLabel(c: SessionCandidate): string {
+    return c.sameHarness
+      ? c.name
+      : $localize`:@@workflows.props.session.otherHarnessOption:${c.name}:step: (${agentKindLabel(c.harness)}:harness:, another harness)`;
+  }
+
+  setSessionMode(mode: 'new' | 'continue'): void {
+    this.sessionModeDraft.set(mode);
+    if (mode === 'new') this.setContinueSession(null);
+  }
+
+  /** Writes `overrides.config.continueSession` (removed for a new session). */
+  setContinueSession(nodeId: string | null): void {
+    this.patchOverrides({
+      config: withContinueSession(this.node()?.task?.overrides?.config, nodeId),
+    });
+  }
+
+  /** A step value of a parameter; empty = the template's value or the default. */
+  setParameter(name: string, value: unknown): void {
+    this.patchOverrides({
+      parameters: withParameterValue(this.node()?.task?.overrides?.parameters, name, value),
+    });
+  }
+
   /** ADR 0044/0056: a coding agent step that is not a Spec Kit phase may only prepare the workspace. */
   readonly canPrepare = computed(() => {
     if (!this.runnerStep()) return false;
@@ -1579,7 +1746,9 @@ export class NodePropertyPanelComponent {
   );
   /** Config keys with their own section (kept out of the schema form, kept on schema changes). */
   private readonly ownSectionKeys = computed<string[]>(() =>
-    this.runnerStep() ? [STEP_REPOSITORIES_KEY, ...WORKSPACE_CONFIG_KEYS] : [],
+    this.runnerStep()
+      ? [STEP_REPOSITORIES_KEY, ...WORKSPACE_CONFIG_KEYS, CONTINUE_SESSION_KEY]
+      : [],
   );
   /** Config shown in the schema form: without the repositories and the workspace. */
   readonly formConfig = computed<Record<string, unknown>>(() => {
@@ -1606,9 +1775,15 @@ export class NodePropertyPanelComponent {
   readonly resolved = signal<ResolvedTask | null>(null);
   readonly resolving = signal(false);
   readonly resolveError = signal<string | null>(null);
-  readonly resolvedSkillKeys = computed(() =>
-    (this.resolved()?.skills ?? []).map((s) => s.key).filter((k): k is string => !!k),
-  );
+  /** Skills a step may drop: those of its agent and of the resolved template. */
+  readonly resolvedSkillKeys = computed(() => [
+    ...new Set(
+      [
+        ...(this.effectiveAgent()?.skills ?? []),
+        ...(this.resolved()?.skills ?? []).map((s) => s.key),
+      ].filter((k): k is string => !!k),
+    ),
+  ]);
   private readonly resolve$ = new Subject<string | null>();
 
   /** ADR 0054: "What this step gets" is expanded (kept while other nodes are selected). */
@@ -1674,6 +1849,7 @@ export class NodePropertyPanelComponent {
         this.configDraft.set(JSON.stringify(config ?? {}, null, 2));
         this.configError.set(null);
         this.promptModeDraft.set('none');
+        this.sessionModeDraft.set('new');
         this.resolve$.next(n?.kind === 'TASK' ? (n.task?.templateKey ?? null) : null);
       });
     });

@@ -545,5 +545,18 @@
   "core.action.startWorkflow": "Uruchom workflow",
   "core.action.startWorkflow.description": "Uruchamia przebiegi innych workflowów.",
   "core.action.projectDigest": "Podsumowanie projektu",
-  "core.action.projectDigest.description": "Zbiera podsumowanie ostatniej aktywności w projekcie."
+  "core.action.projectDigest.description": "Zbiera podsumowanie ostatniej aktywności w projekcie.",
+  "core.modelPlan.source.agent": "agent",
+  "core.parameter.value.yes": "Tak",
+  "core.parameter.value.no": "Nie",
+  "core.parameter.required": "Wymagane: brak wartości tutaj, w szablonach i domyślnej",
+  "core.parameter.invalid": "Wartość nie pasuje do typu lub opcji parametru",
+  "core.parameter.noValue": "brak wartości",
+  "core.parameter.default": "Domyślnie: {$value}",
+  "core.parameter.inherited": "Dziedziczone: {$value}",
+  "core.parameter.type.text": "Jedna linia",
+  "core.parameter.type.multiline": "Tekst wieloliniowy",
+  "core.parameter.type.number": "Liczba",
+  "core.parameter.type.boolean": "Tak / nie",
+  "core.parameter.type.choice": "Wybór"
 }

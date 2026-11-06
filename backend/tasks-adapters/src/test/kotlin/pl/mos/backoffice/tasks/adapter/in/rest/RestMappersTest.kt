@@ -12,6 +12,7 @@ import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
@@ -51,10 +52,12 @@ class RestMappersTest {
     }
 
     @Test
-    fun `category, rules and removeRules round trip and a blank key means derive it`() {
+    fun `category, parameters and parameter values round trip and a blank key means derive it`() {
         val dto = TaskTemplateInputDto(
             key = " ", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL),
-            category = TemplateCategory.SPECIFICATION, rules = listOf("r1"), removeRules = listOf("r2"),
+            category = TemplateCategory.SPECIFICATION,
+            parameters = listOf(TemplateParameterDto("tone", "Tone", TemplateParameterType.CHOICE, options = listOf("dry", "warm"), default = "dry", help = " ")),
+            parameterValues = mapOf("tone" to "warm"),
         )
         val content = RestMappers.templateContent(dto)
         assertThat(content.key).isNull()
@@ -62,8 +65,8 @@ class RestMappersTest {
 
         val response = RestMappers.template(TaskTemplate.create(content.copy(key = "writer"), now))
         assertThat(response.category).isEqualTo(TemplateCategory.SPECIFICATION)
-        assertThat(response.rules).containsExactly("r1")
-        assertThat(response.removeRules).containsExactly("r2")
+        assertThat(response.parameters.single()).isEqualTo(TemplateParameterDto("tone", "Tone", TemplateParameterType.CHOICE, false, "dry", listOf("dry", "warm"), null))
+        assertThat(response.parameterValues).isEqualTo(mapOf("tone" to "warm"))
     }
 
     @Test
@@ -126,4 +129,36 @@ class RestMappersTest {
         assertThat(RestMappers.overrides(TaskOverridesDto(agentKey = "coder")).agentKey).isEqualTo("coder")
         assertThat(RestMappers.overrides(TaskOverridesDto(agentKey = "")).agentKey).isNull()
     }
+
+    @Test
+    fun `ADR 0057 - agents map instructions, rules, skills and MCP servers both ways`() {
+        val dto = AgentInputDto(
+            name = "Env", scope = ScopeDto(ScopeTypeDto.GLOBAL), instructions = "Be precise.", rules = listOf("r1"), skills = listOf("s1"),
+            mcpServers = listOf(AgentMcpServerDto("docs", "https://mcp.example.com")),
+        )
+        val content = RestMappers.agentContent(dto)
+        assertThat(content.instructions).isEqualTo("Be precise.")
+        assertThat(content.mcpServers).containsExactly(pl.mos.backoffice.shared.runner.AgentMcpServer("docs", "https://mcp.example.com"))
+        val agent = RestMappers.agent(pl.mos.backoffice.tasks.domain.model.Agent.create(content.copy(key = "env"), now))
+        assertThat(agent.rules).containsExactly("r1")
+        assertThat(agent.skills).containsExactly("s1")
+        assertThat(agent.mcpServers).containsExactly(AgentMcpServerDto("docs", "https://mcp.example.com"))
+        assertThat(RestMappers.agentRef(agent.let { pl.mos.backoffice.shared.tasks.AgentSnapshot("env", "Env", rules = listOf("r1"), skills = listOf("s1")) }).skills).containsExactly("s1")
+        org.assertj.core.api.Assertions.assertThatThrownBy {
+            RestMappers.agentContent(dto.copy(mcpServers = listOf(AgentMcpServerDto("docs", "ftp://x"))))
+        }.isInstanceOf(pl.mos.backoffice.shared.ValidationException::class.java)
+    }
+
+    @Test
+    fun `ADR 0058 - step parameters and resolved parameters map with value and source`() {
+        assertThat(RestMappers.overrides(TaskOverridesDto(parameters = mapOf("task" to "x"))).parameters).isEqualTo(mapOf("task" to "x"))
+        val resolved = RestMappers.resolvedParameter(
+            pl.mos.backoffice.shared.tasks.ResolvedParameter(
+                pl.mos.backoffice.shared.tasks.TemplateParameter("task", "Task", TemplateParameterType.MULTILINE, default = "d"), "d",
+                pl.mos.backoffice.shared.tasks.ParameterSource.DEFAULT,
+            ),
+        )
+        assertThat(resolved).isEqualTo(ResolvedParameterDto("task", "Task", TemplateParameterType.MULTILINE, false, "d", emptyList(), null, "d", pl.mos.backoffice.shared.tasks.ParameterSource.DEFAULT))
+    }
+
 }

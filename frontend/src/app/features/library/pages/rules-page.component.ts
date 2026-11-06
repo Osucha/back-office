@@ -788,7 +788,7 @@ export class RulesPageComponent {
     if (r.builtIn || !r.id) return;
     const ok = await this.confirm.danger(
       $localize`:@@library.rules.deleteConfirm.title:Delete rule "${r.name}:name:"?`,
-      $localize`:@@library.rules.deleteConfirm.content:Refused while a template lists the rule: remove it from those templates first.`,
+      $localize`:@@library.rules.deleteConfirm.content:Refused while an agent lists the rule: remove it from those agents first.`,
       $localize`:@@library.rules.delete:Delete rule`,
     );
     if (!ok) return;

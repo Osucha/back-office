@@ -148,6 +148,14 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
                 <nz-icon nzType="robot" />
                 <span class="text">
                   <span class="label">{{ t.name || t.key }}</span>
+                  @if (t.needsParameters) {
+                    <span
+                      class="needs-params"
+                      data-needs-parameters
+                      i18n="@@workflows.palette.needsParameters"
+                      >needs parameters</span
+                    >
+                  }
                 </span>
                 @if (t.agent) {
                   <span
@@ -267,6 +275,11 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
         background: var(--bo-surface-3);
         color: var(--bo-ink-2);
         font-weight: 600;
+      }
+      .needs-params {
+        display: block;
+        font-size: 10.5px;
+        color: var(--bo-you-ink);
       }
       .exec.coding {
         background: var(--bo-accent-soft, var(--bo-surface-3));

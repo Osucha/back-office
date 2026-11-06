@@ -25,14 +25,25 @@ class SeedTaskLibraryServiceTest {
         assertThat(first.rulesCreated).isEqualTo(4)
         assertThat(first.templatesCreated).isEqualTo(21)
         assertThat(first.skillsCreated).isEqualTo(8)
-        assertThat(first.agentsCreated).isEqualTo(3)
+        assertThat(first.agentsCreated).isEqualTo(5)
 
         val second = service.seed()
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows).hasSize(21)
         assertThat(lib.agents.rows.values.associate { it.key to it.harness }).containsExactlyInAnyOrderEntriesOf(
-            mapOf(AgentSnapshot.MODEL_ANSWER to null, AgentSnapshot.OPENCODE to AgentHarness.OPENCODE, AgentSnapshot.CLAUDE_CODE to AgentHarness.CLAUDE_CODE),
+            mapOf(
+                AgentSnapshot.MODEL_ANSWER to null, BuiltInLibrary.ANALYST to null, BuiltInLibrary.REVIEWER to null,
+                AgentSnapshot.OPENCODE to AgentHarness.OPENCODE, AgentSnapshot.CLAUDE_CODE to AgentHarness.CLAUDE_CODE,
+            ),
         )
+        // ADR 0057 section 6: every built-in agent has the ground rules and the skills of its role
+        assertThat(lib.agents.rows.values).allSatisfy {
+            assertThat(it.rules).describedAs(it.key).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
+            assertThat(it.skills).describedAs(it.key).containsExactlyElementsOf(BuiltInLibrary.agentSkills.getValue(it.key))
+            it.skills.forEach { k -> assertThat(lib.skills.findByKeyAndScope(k, Scope.Global)).describedAs("${it.key} skill $k").isNotNull() }
+        }
+        assertThat(lib.agents.findByKeyAndScope(BuiltInLibrary.ANALYST, Scope.Global)!!.instructions).contains("analyst")
+        assertThat(lib.agents.findByKeyAndScope(BuiltInLibrary.REVIEWER, Scope.Global)!!.instructions).contains("reviewer")
         assertThat(lib.agents.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.agentKeys)
         assertThat(lib.agents.rows.values).allSatisfy { assertThat(it.builtIn).isTrue(); assertThat(it.updatedBy).isEqualTo(Actor.SYSTEM) }
         assertThat(lib.rules.rows.values.map { it.key }).containsExactlyInAnyOrderElementsOf(BuiltInLibrary.ruleKeys)
@@ -66,7 +77,7 @@ class SeedTaskLibraryServiceTest {
     fun `untouched built-ins of an older seed are upgraded completely, edited ones are left alone`() {
         service.seed()
         val review = lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!
-        val oldReview = review.copy(prompt = Prompt(system = "old system", user = "old user"), config = mapOf("maxChunkLines" to 1500), skills = emptyList())
+        val oldReview = review.copy(prompt = Prompt(system = "old system", user = "old user"), config = mapOf("maxChunkLines" to 1500), agentKey = null)
         lib.templates.save(oldReview)
         val analyse = lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!
         lib.templates.save(analyse.copy(prompt = Prompt(user = "owner's prompt"), version = 2, updatedBy = alice))
@@ -87,9 +98,10 @@ class SeedTaskLibraryServiceTest {
         val upgraded = lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!
         assertThat(upgraded.id).isEqualTo(review.id)
         assertThat(upgraded.version).isEqualTo(1)
-        assertThat(upgraded.prompt).isEqualTo(Prompt(BuiltInLibrary.REVIEW_SYSTEM, BuiltInLibrary.REVIEW_USER))
+        assertThat(upgraded.prompt.user).isEqualTo(BuiltInLibrary.REVIEW_USER)
+        assertThat(upgraded.prompt.system).startsWith(BuiltInLibrary.REVIEW_SYSTEM).contains("{{runInputText}}")
         assertThat(upgraded.config).describedAs("a removed config key goes away").doesNotContainKey("maxChunkLines")
-        assertThat(upgraded.skills).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST)
+        assertThat(upgraded.agentKey).isEqualTo(BuiltInLibrary.REVIEWER)
         assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!.prompt.user).isEqualTo("owner's prompt")
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.USER_STORY_FORMAT, Scope.Global)!!.content).isEqualTo(BuiltInLibrary.USER_STORY_FORMAT_MD)
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.ADR_FORMAT, Scope.Global)!!.content).isEqualTo("# my ADR rules")
@@ -188,6 +200,9 @@ class SeedTaskLibraryServiceTest {
         assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, emptyMap())).describedAs("an agent job").hasSize(1)
         assertThat(BuiltInLibrary.producedNameProblems("x", null, listOf("plan"), null, null, emptyMap())).isEmpty()
         assertThat(BuiltInLibrary.producedNameProblems("x", AgentSnapshot.DEFAULT, listOf("a", "b"), null, null, emptyMap())).describedAs("only one name can take the whole answer").hasSize(2)
+        val answerSchema = """{ "type": "object", "properties": { "report": { "type": "string" }, "confidence": { "type": "number" } } }"""
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("report", "confidence"), answerSchema, "confidence", emptyMap()))
+            .describedAs("ADR 0057: a coding agent with an output schema is backed by its fields").isEmpty()
     }
 
     @Test
@@ -196,8 +211,9 @@ class SeedTaskLibraryServiceTest {
 
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, null)!!
 
-        assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_CODING_AGENT, BuiltInLibrary.BASE_AGENT)
-        assertThat(task.agent).isEqualTo(AgentSnapshot(AgentSnapshot.CLAUDE_CODE, "Claude Code", AgentHarness.CLAUDE_CODE))
+        assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_OPENCODE)
+        assertThat(task.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
+        assertThat(task.agent.harness).isEqualTo(AgentHarness.CLAUDE_CODE)
         assertThat(task.config).doesNotContainKey("agent")
         assertThat(task.config["push"]).isEqualTo(true)
         assertThat(task.config["branchTemplate"]).isEqualTo("feature/{{issue.key | lower}}")
@@ -207,11 +223,12 @@ class SeedTaskLibraryServiceTest {
         assertThat(task.config["mergeRequestDraft"]).isEqualTo(false)
         assertThat(task.category).isEqualTo(TemplateCategory.IMPLEMENTATION)
         assertThat(task.produces).containsExactly("diff", "mr")
-        assertThat(task.skills).isEmpty()
+        assertThat(task.skills.map { it.key }).containsExactlyElementsOf(BuiltInLibrary.agentSkills.getValue(AgentSnapshot.CLAUDE_CODE))
         assertThat(task.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
-        assertThat(task.prompt.system).contains("{{project.constitution}}").contains("Honesty").contains("Do not commit")
+        assertThat(task.prompt.system).describedAs("the preamble is the environment's now").doesNotContain("project.constitution").doesNotContain("Honesty")
+            .contains("{{runInputText}}")
         assertThat(task.prompt.user).contains("{{issue.key}}").contains("{{artifacts.review}}").contains("verifyCommand").contains("Do not commit or push")
-            .contains("Follow the rules given above.")
+            .contains("Follow your rules.")
             .doesNotContain("conventional commits")
     }
 
@@ -225,14 +242,16 @@ class SeedTaskLibraryServiceTest {
         assertThat(BuiltInLibrary.schemaProperties(clarify.outputSchema)).containsExactlyInAnyOrder("confidence", "clarifications", "summary")
         assertThat(clarify.prompt.user).contains("why it matters").contains("suggested default")
         assertThat(clarify.produces).containsExactly("confidence", "clarifications")
-        assertThat(clarify.lineage).containsExactly(BuiltInLibrary.CLARIFY_SPEC, BuiltInLibrary.BASE_LLM, BuiltInLibrary.BASE_AGENT)
-        assertThat(clarify.prompt.system).contains("no repository").contains("one JSON object").doesNotContain("Quote file paths")
+        assertThat(clarify.lineage).containsExactly(BuiltInLibrary.CLARIFY_SPEC)
+        assertThat(clarify.agent.key).isEqualTo(BuiltInLibrary.ANALYST)
+        assertThat(clarify.prompt.system).contains("implementer").doesNotContain("no repository")
 
         val review = lib.lookup.resolver.resolve(BuiltInLibrary.CODE_REVIEW, null)!!
         assertThat(review.consumes).containsExactly("diff")
         assertThat(review.produces).containsExactly("review")
         assertThat(review.outputSchema).contains("BLOCKER").contains("\"verdict\"").contains("\"score\"")
-        assertThat(review.skills.map { it.key }).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST)
+        assertThat(review.agent.key).isEqualTo(BuiltInLibrary.REVIEWER)
+        assertThat(review.skills.map { it.key }).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST, BuiltInLibrary.DEFINITION_OF_READY_DONE)
         assertThat(review.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
         assertThat(review.category).isEqualTo(TemplateCategory.REVIEW)
         assertThat(review.prompt.system).contains("MINOR").contains("NIT")
@@ -246,7 +265,14 @@ class SeedTaskLibraryServiceTest {
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.PREPARE_WORKSPACE, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
-        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.LLM_TASK, null)!!.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
+        val llmTask = lib.lookup.resolver.resolve(BuiltInLibrary.LLM_TASK, null)!!
+        assertThat(llmTask.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
+        // ADR 0058: the task is the parameter task, its default the former placeholder
+        assertThat(llmTask.prompt.user).isEqualTo("{{params.task}}")
+        assertThat(llmTask.parameterValues).isEqualTo(mapOf("task" to BuiltInLibrary.LLM_TASK_USER))
+        val agentTask = lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null, pl.mos.backoffice.shared.tasks.TaskOverrides(parameters = mapOf("task" to "Fix it")))!!
+        assertThat(agentTask.parameterValues).isEqualTo(mapOf("task" to "Fix it"))
+        assertThat(lib.lookup.resolver.preview(BuiltInLibrary.AGENT_TASK, null)!!.needsParameters).describedAs("a ready block").isFalse()
     }
 
     @Test
@@ -277,7 +303,8 @@ class SeedTaskLibraryServiceTest {
             BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.AGENT_TASK).forEach { key ->
             val task = lib.lookup.resolver.resolve(key, null)!!
             val prompt = (task.prompt.system ?: "") + "\n" + (task.prompt.user ?: "")
-            task.skills.forEach { assertThat(prompt).describedAs("$key names ${it.key}").contains(it.key) }
+            listOf(BuiltInLibrary.SPEC_WRITING, BuiltInLibrary.DEFINITION_OF_READY_DONE).filter { prompt.contains("skill $it") }
+                .forEach { k -> assertThat(task.skills.map { it.key }).describedAs("$key applies $k, which its agent has").contains(k) }
         }
         lib.skills.rows.values.forEach { skill ->
             // agents choose skills by their description; ": " would break the SKILL.md frontmatter
@@ -326,7 +353,15 @@ class SeedTaskLibraryServiceTest {
             rule.copy(name = "x"), rule.copy(description = "x"), rule.copy(content = "x"), rule.copy(automatic = true), rule.copy(tags = listOf("x")),
         ).forEach { assertThat(BuiltInChecksum.of(it)).isNotEqualTo(BuiltInChecksum.of(rule)) }
         val template = BuiltInLibrary.templates(lib.now).first { it.key == BuiltInLibrary.CODE_REVIEW }
-        listOf(template.copy(category = null), template.copy(rules = listOf("x")), template.copy(removeRules = listOf("x")))
-            .forEach { assertThat(BuiltInChecksum.of(it)).isNotEqualTo(BuiltInChecksum.of(template)) }
+        listOf(
+            template.copy(category = null),
+            template.copy(parameters = listOf(pl.mos.backoffice.shared.tasks.TemplateParameter("x", "X"))),
+            template.copy(parameterValues = mapOf("x" to 1)),
+        ).forEach { assertThat(BuiltInChecksum.of(it)).isNotEqualTo(BuiltInChecksum.of(template)) }
+        val agent = BuiltInLibrary.agents(lib.now).first { it.key == BuiltInLibrary.ANALYST }
+        listOf(
+            agent.copy(instructions = "x"), agent.copy(rules = listOf("x")), agent.copy(skills = listOf("x")),
+            agent.copy(mcpServers = listOf(pl.mos.backoffice.shared.runner.AgentMcpServer("x", "https://x.example"))),
+        ).forEach { assertThat(BuiltInChecksum.of(it)).isNotEqualTo(BuiltInChecksum.of(agent)) }
     }
 }

@@ -12,6 +12,10 @@ import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.RuleSnapshot
+import pl.mos.backoffice.shared.tasks.ParameterSource
+import pl.mos.backoffice.shared.tasks.TemplateParameter
+import pl.mos.backoffice.shared.tasks.TemplateParameterType
+import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -159,13 +163,13 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `a structured answer is a problem for a coding agent`() {
+    fun `ADR 0057 - a coding agent may answer in an output schema`() {
         lib.template("review", outputSchema = "{}")
 
         assertThat(resolver.preview("review", null)!!.check.ok).isTrue()
         val coded = resolver.preview("review", null, TaskOverrides(agentKey = "claude-code"))!!
-        assertThat(coded.check.problems.single()).contains("output schema").contains("needs a model answer agent")
-        assertThat(coded.executable).isFalse()
+        assertThat(coded.check.ok).isTrue()
+        assertThat(coded.executable).isTrue()
     }
 
     @Test
@@ -223,24 +227,29 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `skills are unioned in order minus the child removeSkills and resolved with project shadowing`() {
+    fun `ADR 0057 - skills are the agent's, resolved with project shadowing, plus and minus the step's`() {
         listOf("aa", "bb", "cc").forEach { lib.skill(it) }
         lib.skill("bb", scope = Scope.Project(lib.projectId), content = "# project bb")
-        lib.template("root", abstract = true, skills = listOf("aa", "bb"))
-        lib.template("leaf", extendsKey = "root", skills = listOf("cc", "aa"), removeSkills = listOf("aa"))
+        lib.agent("writer", skills = listOf("aa", "bb"))
+        lib.template("root", abstract = true, agentKey = "writer")
+        lib.template("leaf", extendsKey = "root")
 
         val skills = resolver.resolve("leaf", lib.projectId)!!.skills
+        assertThat(skills.map { it.key }).containsExactly("aa", "bb")
+        assertThat(skills.last().content).isEqualTo("# project bb")
+        assertThat(resolver.resolve("leaf", null)!!.skills.last().content).isEqualTo("# bb")
 
-        assertThat(skills.map { it.key }).containsExactly("bb", "cc")
-        assertThat(skills.first().content).isEqualTo("# project bb")
-        assertThat(resolver.resolve("leaf", null)!!.skills.first().content).isEqualTo("# bb")
+        val step = resolver.resolve("leaf", null, TaskOverrides(addSkills = listOf("cc"), removeSkills = listOf("aa")))!!
+        assertThat(step.skills.map { it.key }).containsExactly("bb", "cc")
+        assertThat(step.agent.skills).describedAs("the agent's own keys, for display").containsExactly("aa", "bb")
     }
 
     @Test
     fun `node overrides are applied after the chain`() {
         listOf("aa", "bb", "xx").forEach { lib.skill(it) }
         val model = ModelProfileId.new()
-        lib.template("task", prompt = Prompt(system = "sys", user = "usr"), skills = listOf("aa", "bb"), config = mapOf("k" to 1, "n" to mapOf("xx" to 1)))
+        lib.agent("skilled", skills = listOf("aa", "bb"))
+        lib.template("task", agentKey = "skilled", prompt = Prompt(system = "sys", user = "usr"), config = mapOf("k" to 1, "n" to mapOf("xx" to 1)))
 
         val overrides = TaskOverrides(
             modelProfileId = model, systemPromptAppend = "more sys", promptReplace = "new usr", promptAppend = "and more",
@@ -318,26 +327,26 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `automatic rules come first, global then project, followed by the rules the lineage lists`() {
+    fun `automatic rules come first, global then project, followed by the agent's rules`() {
         lib.rule("g-auto", automatic = true, content = "global automatic")
         lib.rule("p-auto", scope = Scope.Project(lib.projectId), automatic = true, content = "project automatic")
-        lib.rule("listed-root", content = "from root")
-        lib.rule("listed-leaf", content = "from leaf")
+        lib.rule("listed-one", content = "first")
+        lib.rule("listed-two", content = "second")
         lib.rule("unused")
-        lib.template("root", abstract = true, rules = listOf("listed-root"))
-        lib.template("leaf", extendsKey = "root", rules = listOf("listed-leaf", "g-auto"))
+        lib.agent("ruled", rules = listOf("listed-one", "listed-two", "g-auto"))
+        lib.template("root", abstract = true, agentKey = "ruled")
+        lib.template("leaf", extendsKey = "root")
 
         val inProject = resolver.resolve("leaf", lib.projectId)!!
         assertThat(inProject.rules).containsExactly(
             RuleSnapshot("g-auto", "g-auto", "global automatic", automatic = true),
             RuleSnapshot("p-auto", "p-auto", "project automatic", automatic = true),
-            RuleSnapshot("listed-root", "listed-root", "from root", automatic = false),
-            RuleSnapshot("listed-leaf", "listed-leaf", "from leaf", automatic = false),
+            RuleSnapshot("listed-one", "listed-one", "first", automatic = false),
+            RuleSnapshot("listed-two", "listed-two", "second", automatic = false),
         )
         assertThat(resolver.resolve("leaf", null)!!.rules.map { it.key })
-            .describedAs("no project: global automatic rules only, a listed automatic rule is not repeated")
-            .containsExactly("g-auto", "listed-root", "listed-leaf")
-        assertThat(resolver.resolve("leaf", UUID.randomUUID())!!.rules.map { it.key }).containsExactly("g-auto", "listed-root", "listed-leaf")
+            .describedAs("no project: global automatic rules only, an automatic rule the agent lists is not repeated")
+            .containsExactly("g-auto", "listed-one", "listed-two")
     }
 
     @Test
@@ -358,40 +367,26 @@ class TaskResolverTest {
     fun `a listed rule resolves with project shadowing`() {
         lib.rule("style", content = "global style")
         lib.rule("style", scope = Scope.Project(lib.projectId), content = "project style")
-        lib.template("tt", rules = listOf("style"))
+        lib.agent("styled", rules = listOf("style"))
+        lib.template("tt", agentKey = "styled")
 
         assertThat(resolver.resolve("tt", lib.projectId)!!.rules.single().content).isEqualTo("project style")
         assertThat(resolver.resolve("tt", null)!!.rules.single().content).isEqualTo("global style")
     }
 
     @Test
-    fun `removeRules drops inherited and automatic rules and a child may list a removed rule again`() {
-        lib.rule("auto", automatic = true)
-        lib.rule("inherited")
-        lib.rule("other")
-        lib.template("root", abstract = true, rules = listOf("inherited", "other"))
-        lib.template("middle", abstract = true, extendsKey = "root", removeRules = listOf("inherited", "auto"))
-        lib.template("leaf", extendsKey = "middle")
-        lib.template("back", extendsKey = "middle", rules = listOf("auto"))
-
-        assertThat(resolver.resolve("leaf", null)!!.rules.map { it.key }).containsExactly("other")
-        assertThat(resolver.resolve("back", null)!!.rules.map { it.key to it.automatic })
-            .describedAs("listing it again brings the automatic rule back")
-            .containsExactly("auto" to true, "other" to false)
-    }
-
-    @Test
     fun `a missing rule is a check problem and the task is not executable`() {
-        lib.template("tt", rules = listOf("ghost"))
+        lib.agent("haunted", rules = listOf("ghost"))
+        lib.template("tt", agentKey = "haunted")
 
         val preview = resolver.preview("tt", null)!!
         assertThat(preview.rules).isEmpty()
         assertThat(preview.check.ok).isFalse()
-        assertThat(preview.check.problems).containsExactly("rule ghost does not exist")
+        assertThat(preview.check.problems).containsExactly("rule ghost of agent haunted does not exist")
         assertThat(preview.executable).isFalse()
         assertThatThrownBy { resolver.resolve("tt", null) }
             .isInstanceOf(ValidationException::class.java)
-            .hasMessageContaining("rule ghost does not exist")
+            .hasMessageContaining("rule ghost of agent haunted does not exist")
     }
 
     @Test
@@ -399,7 +394,8 @@ class TaskResolverTest {
         lib.skill("real-skill")
         lib.rule("was-a-skill", content = "now a rule")
         lib.rule("both")
-        lib.template("tt", skills = listOf("real-skill", "was-a-skill", "both"), rules = listOf("both"))
+        lib.agent("compat", skills = listOf("real-skill", "was-a-skill", "both"), rules = listOf("both"))
+        lib.template("tt", agentKey = "compat")
 
         val task = resolver.resolve("tt", null)!!
         assertThat(task.skills.map { it.key }).containsExactly("real-skill")
@@ -409,8 +405,8 @@ class TaskResolverTest {
 
     @Test
     fun `an unknown skill is reported as a problem instead of being silently dropped`() {
-        lib.template("tt", skills = listOf("nope"))
-        val preview = resolver.preview("tt", null)!!
+        lib.template("tt")
+        val preview = resolver.preview("tt", null, TaskOverrides(addSkills = listOf("nope")))!!
         assertThat(preview.skills).isEmpty()
         assertThat(preview.check.problems).containsExactly("skill nope does not exist")
         assertThat(preview.executable).isFalse()
@@ -449,4 +445,105 @@ class TaskResolverTest {
 
         assertThat(resolver.resolve("leaf", null)!!.runInputs).containsExactly(RunInputField("input", "Input material"))
     }
+
+    // ----- ADR 0058: parameters -----------------------------------------------------------------------
+
+    @Test
+    fun `parameters merge root to leaf child wins by name and values come from the step, the nearest template, the default`() {
+        lib.template(
+            "root", abstract = true,
+            parameters = listOf(
+                TemplateParameter("task", "Task", TemplateParameterType.MULTILINE, default = "default task"),
+                TemplateParameter("tone", "Tone", TemplateParameterType.CHOICE, options = listOf("dry", "warm"), default = "dry"),
+                TemplateParameter("depth", "Depth", TemplateParameterType.NUMBER),
+            ),
+            parameterValues = mapOf("depth" to 1),
+        )
+        lib.template(
+            "leaf", extendsKey = "root",
+            parameters = listOf(TemplateParameter("tone", "Voice", TemplateParameterType.CHOICE, options = listOf("dry", "warm", "loud"))),
+            parameterValues = mapOf("depth" to "3"),
+        )
+
+        val preview = resolver.preview("leaf", null, TaskOverrides(parameters = mapOf("tone" to "loud")))!!
+        assertThat(preview.parameters.map { Triple(it.name, it.value, it.source) }).containsExactly(
+            Triple("task", "default task", ParameterSource.DEFAULT),
+            Triple("tone", "loud", ParameterSource.STEP),
+            Triple("depth", "3", ParameterSource.TEMPLATE),
+        )
+        assertThat(preview.parameters[1].definition.label).describedAs("the child's declaration wins in place").isEqualTo("Voice")
+        assertThat(preview.check.ok).isTrue()
+        assertThat(preview.templateParameterValues).isEqualTo(mapOf("depth" to "3"))
+        assertThat(resolver.resolve("leaf", null)!!.parameterValues).isEqualTo(mapOf("task" to "default task", "tone" to null, "depth" to "3"))
+    }
+
+    @Test
+    fun `parameter problems - unknown names, wrong types and required without a value - block the step but not the preview`() {
+        lib.template(
+            "tt",
+            parameters = listOf(
+                TemplateParameter("count", "Count", TemplateParameterType.NUMBER),
+                TemplateParameter("flag", "Flag", TemplateParameterType.BOOLEAN),
+                TemplateParameter("pick", "Pick", TemplateParameterType.CHOICE, options = listOf("a", "b")),
+                TemplateParameter("goal", "Goal", required = true),
+            ),
+            parameterValues = mapOf("ghost" to "x"),
+        )
+
+        val preview = resolver.preview("tt", null, TaskOverrides(parameters = mapOf("count" to "many", "flag" to "maybe", "pick" to "c", "other" to 1)))!!
+        assertThat(preview.check.problems).containsExactlyInAnyOrder(
+            "template tt sets parameter ghost, which no template of the lineage declares",
+            "the step sets parameter other, which template tt does not declare",
+            "parameter count: \"many\" is not a number",
+            "parameter flag: \"maybe\" is not true or false",
+            "parameter pick: \"c\" is not one of a, b",
+            "parameter goal (Goal) needs a value",
+        )
+        assertThat(preview.needsParameters).isTrue()
+        assertThatThrownBy { resolver.resolve("tt", null) }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `numeric strings and booleans fit their types and a blank step value falls back to the template`() {
+        lib.template(
+            "tt",
+            parameters = listOf(
+                TemplateParameter("count", "Count", TemplateParameterType.NUMBER, required = true),
+                TemplateParameter("flag", "Flag", TemplateParameterType.BOOLEAN),
+            ),
+            parameterValues = mapOf("count" to 2),
+        )
+        val task = resolver.resolve("tt", null, TaskOverrides(parameters = mapOf("count" to " ", "flag" to "TRUE")))!!
+        assertThat(task.parameterValues).isEqualTo(mapOf("count" to 2, "flag" to "TRUE"))
+        assertThat(resolver.preview("tt", null)!!.needsParameters).describedAs("the template sets the required one: a ready block").isFalse()
+        assertThat(resolver.resolve("tt", null, TaskOverrides(parameters = mapOf("count" to "4.5")))!!.parameterValues["count"]).isEqualTo("4.5")
+    }
+
+    @Test
+    fun `ADR 0057 - the agent snapshot carries instructions and MCP servers, the model comes from step, agent, template`() {
+        val agentModel = ModelProfileId.new()
+        val templateModel = ModelProfileId.new()
+        lib.agents.save(
+            pl.mos.backoffice.tasks.domain.model.Agent.create(
+                pl.mos.backoffice.tasks.domain.model.Agent.Content(
+                    key = "mcp", name = "With MCP", harness = AgentHarness.CLAUDE_CODE, modelProfileId = agentModel, instructions = "Be brief.",
+                    mcpServers = listOf(AgentMcpServer("docs", "https://mcp.example.com/docs")),
+                ),
+                lib.now,
+            ),
+        )
+        lib.templates.save(
+            pl.mos.backoffice.tasks.domain.model.TaskTemplate.create(
+                pl.mos.backoffice.tasks.domain.model.TaskTemplate.Content(key = "tt", name = "tt", agentKey = "mcp", modelProfileId = templateModel),
+                lib.now,
+            ),
+        )
+        val task = resolver.resolve("tt", null)!!
+        assertThat(task.agent.instructions).isEqualTo("Be brief.")
+        assertThat(task.agent.mcpServers.single().url).isEqualTo("https://mcp.example.com/docs")
+        assertThat(task.modelProfileId).isEqualTo(agentModel)
+        val stepModel = ModelProfileId.new()
+        assertThat(resolver.resolve("tt", null, TaskOverrides(modelProfileId = stepModel))!!.modelProfileId).isEqualTo(stepModel)
+    }
+
 }

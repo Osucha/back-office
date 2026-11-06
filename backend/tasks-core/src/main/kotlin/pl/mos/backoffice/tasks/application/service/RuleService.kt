@@ -9,7 +9,7 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
-import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
+import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.domain.model.Keys
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.RuleId
@@ -17,12 +17,12 @@ import java.util.UUID
 
 /**
  * Rule CRUD (ADR 0055). Same access rules as skills (global: `library.view` / `library.manage`; project: members
- * read, `library.project.manage` writes); a rule a template lists keeps its key and cannot be deleted. Changes are
+ * read, `library.project.manage` writes); a rule an agent lists (ADR 0057) keeps its key and cannot be deleted. Changes are
  * audited as `RULE_CREATE`, `RULE_UPDATE`, `RULE_DELETE`.
  */
 class RuleService(
     private val rules: RuleRepository,
-    private val templates: TaskTemplateRepository,
+    private val agents: AgentRepository,
     private val clock: Clock,
     private val gate: AuthorizationGate,
     private val audit: AuditPort,
@@ -49,8 +49,8 @@ class RuleService(
         rules.findByKeyAndScope(key, command.scope)?.let { clash ->
             if (clash.id != id) throw InvalidStateException("rule $key already exists in scope ${command.scope.describe()}")
         }
-        if ((key != existing.key || command.scope != existing.scope) && templates.existsUsingRule(existing.key)) {
-            throw InvalidStateException("rule ${existing.key} is used by templates; its key and scope cannot change")
+        if ((key != existing.key || command.scope != existing.scope) && agents.existsUsingRule(existing.key)) {
+            throw InvalidStateException("rule ${existing.key} is used by agents; its key and scope cannot change")
         }
         val saved = rules.save(existing.update(command.copy(key = key), clock.now(), user.actor))
         val changes = AuditableChanges.changed(
@@ -83,7 +83,7 @@ class RuleService(
     override fun delete(id: RuleId) {
         val existing = load(id)
         gate.requireWrite(existing.scope)
-        if (templates.existsUsingRule(existing.key)) throw InvalidStateException("rule ${existing.key} is used by templates and cannot be deleted")
+        if (agents.existsUsingRule(existing.key)) throw InvalidStateException("rule ${existing.key} is used by agents and cannot be deleted")
         rules.delete(id)
         audit.record(entry("RULE_DELETE", existing, mapOf("key" to existing.key, "scope" to existing.scope.describe())))
     }

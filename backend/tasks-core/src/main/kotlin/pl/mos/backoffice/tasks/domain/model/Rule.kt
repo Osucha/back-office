@@ -8,7 +8,7 @@ import java.time.Instant
  * ADR 0055: a norm the agent always has in its context, unlike a [Skill], which the agent loads when it needs it.
  * Model answer steps get rules in the system prompt, coding agents at the start of their prompt. A rule applies to the
  * templates that list it in `rules`; an [automatic] rule applies to every step of its scope (global: every project,
- * project: every step of that project) unless a template drops it with `removeRules`. Uniqueness is by `(key, scope)`;
+ * project: every step of that project) (ADR 0057: no template or agent drops it). Uniqueness is by `(key, scope)`;
  * a project rule shadows the global one with the same key.
  */
 data class Rule(

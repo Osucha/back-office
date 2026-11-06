@@ -151,9 +151,22 @@ ARTIFACT_NAME_BY_FILE = {
     "retro.md": "retro",
     "proposals.json": "proposals",
     "answer.md": "answer",
+    # ADR 0057 §5: a coding agent's answer in the step's output schema
+    "structured-answer.json": "structured-answer",
 }
-# Collected for Back Office but not part of the change: kept out of the commit (implement-task-list's work log).
-EPHEMERAL_ARTIFACT_FILES = ("work-log.md",)
+# ADR 0057 §5: written by the agent in its working directory when the step has an output schema
+STRUCTURED_ANSWER_FILE = "structured-answer.json"
+# Collected for Back Office but not part of the change: kept out of the commit (implement-task-list's work log, the
+# structured answer of ADR 0057).
+EPHEMERAL_ARTIFACT_FILES = ("work-log.md", STRUCTURED_ANSWER_FILE)
+# ADR 0057 §2/§3: the agent's environment outside every repository: /workspace/.backoffice-agent/{AGENTS.md,mcp.json}
+AGENT_ENV_DIR = ".backoffice-agent"
+OPENCODE_INSTRUCTIONS_FILE = "AGENTS.md"
+CLAUDE_USER_MEMORY_FILE = "CLAUDE.md"
+CLAUDE_MCP_CONFIG_FILE = "mcp.json"
+ENVIRONMENT_MODES = ("IMPLEMENT", "SPEC_KIT", "EVAL_CODING")
+MCP_SERVER_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+MCP_URL_MAX_LENGTH = 500
 # Hidden acceptance files (ADR 0047) may not be written outside the repository or into .git.
 MAX_ACCEPTANCE_FILES = 50
 
@@ -784,6 +797,14 @@ class WorkspaceSpec:
 
 
 @dataclass
+class McpServer:
+    """ADR 0057 §3: a remote MCP server of the agent (streamable HTTP, no credentials)."""
+
+    name: str
+    url: str
+
+
+@dataclass
 class Skill:
     key: str
     name: str
@@ -841,6 +862,12 @@ class JobSpec:
     system_prompt: Optional[str] = None
     # ADR 0051 step 4: read-only tools of the agent, each with the repository its token belongs to
     agent_tools: List["AgentTool"] = field(default_factory=list)
+    # ADR 0057 §2: the agent's environment document (written in the harness's own form outside every repository)
+    instructions: Optional[str] = None
+    # ADR 0057 §3: remote MCP servers of the agent
+    mcp_servers: List["McpServer"] = field(default_factory=list)
+    # spec entries the runner ignored (logged once the job log exists)
+    warnings: List[str] = field(default_factory=list)
 
     @property
     def local_login(self) -> bool:
@@ -1185,6 +1212,7 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
     llm_credentials = str(raw.get("llmCredentials") or "GATEWAY").upper()
     if llm_credentials not in LLM_CREDENTIALS:
         raise ValueError(f"llmCredentials must be one of {', '.join(LLM_CREDENTIALS)}")
+    mcp_servers, mcp_warnings = parse_mcp_servers(raw.get("mcpServers"))
     return JobSpec(
         mode=mode,
         agent=agent,
@@ -1212,7 +1240,50 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         acceptance=parse_acceptance(raw.get("acceptance")),
         system_prompt=_opt_str(raw, "systemPrompt"),
         agent_tools=parse_agent_tools(raw.get("agentTools")),
+        instructions=parse_instructions(raw.get("instructions")),
+        mcp_servers=mcp_servers,
+        warnings=mcp_warnings,
     )
+
+
+def parse_instructions(raw: Any) -> Optional[str]:
+    """ADR 0057 §2: `spec.instructions`; absent, null or blank = no environment document."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("instructions must be a string")
+    return raw if raw.strip() else None
+
+
+def _mcp_server_problem(entry: Any) -> Optional[str]:
+    if not isinstance(entry, dict):
+        return "not an object"
+    name, url = entry.get("name"), entry.get("url")
+    if not isinstance(name, str) or not MCP_SERVER_NAME_RE.match(name):
+        return f"name {name!r} must match {MCP_SERVER_NAME_RE.pattern}"
+    if not isinstance(url, str) or not re.match(r"^https?://[^\s/]+", url) or len(url) > MCP_URL_MAX_LENGTH or re.search(r"\s", url):
+        return f"url of {name} must be an http(s) URL of at most {MCP_URL_MAX_LENGTH} characters"
+    return None
+
+
+def parse_mcp_servers(raw: Any) -> Tuple[List[McpServer], List[str]]:
+    """ADR 0057 §3: `spec.mcpServers` -> (valid servers, warnings). Like skills and agent tools, an invalid entry is
+    skipped (with a warning for the job log) instead of failing the job; a repeated name keeps the first entry."""
+    if raw is None:
+        return [], []
+    if not isinstance(raw, list):
+        return [], ["mcpServers ignored: not a list"]
+    servers: List[McpServer] = []
+    warnings: List[str] = []
+    for i, entry in enumerate(raw):
+        problem = _mcp_server_problem(entry)
+        if problem is None and any(s.name == entry["name"] for s in servers):
+            problem = f"name {entry['name']} is repeated"
+        if problem is not None:
+            warnings.append(f"mcpServers[{i}] ignored: {problem}")
+            continue
+        servers.append(McpServer(name=entry["name"], url=entry["url"]))
+    return servers, warnings
 
 
 def parse_agent_tools(raw: Any) -> List[AgentTool]:
@@ -1592,10 +1663,12 @@ def claude_rule(pattern: str) -> str:
     return f"Bash({pattern})"
 
 
-def claude_settings(policy: ToolPolicy) -> Dict[str, Any]:
-    """Claude Code settings for `--permission-mode dontAsk`: everything not allowed is denied without asking."""
+def claude_settings(policy: ToolPolicy, mcp_servers: Iterable["McpServer"] = ()) -> Dict[str, Any]:
+    """Claude Code settings for `--permission-mode dontAsk`: everything not allowed is denied without asking. The
+    tools of the agent's MCP servers (ADR 0057) are allowed by server (`mcp__<name>`)."""
     allow = list(CLAUDE_BASE_TOOLS)
     allow += [claude_rule(p) for p in policy.allow] if policy.allow else ["Bash"]
+    allow += [f"mcp__{s.name}" for s in mcp_servers]
     return {
         "permissions": {
             "allow": list(dict.fromkeys(allow)),
@@ -1733,14 +1806,26 @@ def opencode_model_ref(model: ModelRef) -> str:
     return f"{GATEWAY_PROVIDER_ID}/{model.model_id}"
 
 
+def opencode_mcp(servers: Iterable[McpServer]) -> Dict[str, Any]:
+    """ADR 0057 §3: OpenCode `mcp` block (https://opencode.ai/docs/mcp-servers/), remote servers only."""
+    return {s.name: {"type": "remote", "url": s.url, "enabled": True} for s in servers}
+
+
+def claude_mcp_config(servers: Iterable[McpServer]) -> Dict[str, Any]:
+    """ADR 0057 §3: the file passed with Claude Code `--mcp-config` (streamable HTTP servers)."""
+    return {"mcpServers": {s.name: {"type": "http", "url": s.url} for s in servers}}
+
+
 def build_opencode_config(
-    model: ModelRef, gateway: Optional[Gateway], tools: Optional[ToolPolicy] = None, extra_dirs: Iterable[str] = ()
+    model: ModelRef, gateway: Optional[Gateway], tools: Optional[ToolPolicy] = None, extra_dirs: Iterable[str] = (),
+    instructions_file: Optional[Path] = None, mcp_servers: Iterable[McpServer] = (),
 ) -> Dict[str, Any]:
     """opencode.json for a non-interactive run (https://opencode.ai/docs/config/, /docs/providers/).
 
     Every provider points at the LLM gateway with the job token as API key (`{env:BACKOFFICE_JOB_TOKEN}`, so the
     token is not written to disk). Providers other than Anthropic and OpenAI use the gateway's OpenAI-compatible
-    endpoint through `@ai-sdk/openai-compatible` (provider id `backoffice`).
+    endpoint through `@ai-sdk/openai-compatible` (provider id `backoffice`). ADR 0057: the environment document is
+    listed under `instructions` (absolute path), the agent's MCP servers under `mcp`.
     """
     api_key = "{env:%s}" % JOB_TOKEN_ENV
     providers: Dict[str, Any] = {}
@@ -1761,7 +1846,7 @@ def build_opencode_config(
     options = opencode_model_options(model)
     if options:
         providers[provider_id].setdefault("models", {}).setdefault(model.model_id, {})["options"] = options
-    return {
+    config: Dict[str, Any] = {
         "$schema": "https://opencode.ai/config.json",
         "model": opencode_model_ref(model),
         "autoupdate": False,
@@ -1769,6 +1854,12 @@ def build_opencode_config(
         "provider": providers,
         "permission": opencode_permission(tools, extra_dirs),
     }
+    if instructions_file is not None:
+        config["instructions"] = [instructions_file.as_posix()]
+    mcp = opencode_mcp(mcp_servers)
+    if mcp:
+        config["mcp"] = mcp
+    return config
 
 
 @dataclass
@@ -1809,7 +1900,7 @@ def build_opencode_command(model: ModelRef, prompt: str, continue_session: bool 
 
 def build_claude_command(
     model: ModelRef, prompt: str, permission_mode: str, help_text: str = "", settings_file: Optional[Path] = None,
-    extra_dirs: Iterable[str] = (), session: Optional[AgentSession] = None,
+    extra_dirs: Iterable[str] = (), session: Optional[AgentSession] = None, mcp_config: Optional[Path] = None,
 ) -> List[str]:
     cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose", "--model", model.model_id]
     if permission_mode == "bypassPermissions":
@@ -1818,6 +1909,9 @@ def build_claude_command(
         cmd += ["--permission-mode", permission_mode]
     if settings_file is not None:
         cmd += ["--settings", str(settings_file)]
+    if mcp_config is not None and "--mcp-config" in help_text:
+        # ADR 0057 §3: the agent's remote MCP servers
+        cmd += ["--mcp-config", str(mcp_config)]
     if "--add-dir" in help_text:
         # the other repositories of a multi-repository job (the working directory is the primary one)
         for d in extra_dirs:
@@ -3297,7 +3391,7 @@ def _write_policy_files(spec: JobSpec, tools: Optional[ToolPolicy], workspace: P
     """Claude Code settings rendered from the tool policy; returns the file passed with `--settings`."""
     if spec.agent != "CLAUDE_CODE" or tools is None:
         return None
-    settings = claude_settings(tools)
+    settings = claude_settings(tools, spec.mcp_servers)
     settings_file = workspace / ".runner" / "claude-settings.json"
     settings_file.parent.mkdir(parents=True, exist_ok=True)
     settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
@@ -3559,6 +3653,7 @@ def _claude_help(agent_env: Dict[str, str]) -> str:
 
 def _claude_invocation(
     run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, agent_env: Dict[str, str], session: Optional[AgentSession] = None,
+    files: Optional["AgentFiles"] = None,
 ) -> List[str]:
     if spec.local_login:
         if not run.local_login_token:
@@ -3577,22 +3672,106 @@ def _claude_invocation(
         run.log("[agent] WARN this Claude Code has no --add-dir: the other repositories may be outside its allowed directories")
     if session is not None and "--session-id" not in help_text:
         run.log("[agent] WARN this Claude Code cannot keep a named session (no --session-id): a new session starts")
-    return build_claude_command(spec.model, prompt, permission_mode, help_text, settings_file, run.extra_dirs, session)
+    mcp_config = files.mcp_config if files else None
+    if mcp_config is not None and "--mcp-config" not in help_text:
+        run.log("[mcp] WARN this Claude Code has no --mcp-config: the agent's MCP servers are not available")
+    return build_claude_command(spec.model, prompt, permission_mode, help_text, settings_file, run.extra_dirs, session, mcp_config)
 
 
 LineParser = Callable[[str, AgentOutcome], Optional[str]]
 
 
+@dataclass
+class AgentFiles:
+    """ADR 0057: the files of the agent's environment the harness is pointed at (None = not written)."""
+
+    instructions: Optional[Path] = None
+    mcp_config: Optional[Path] = None
+
+
+def _fresh_dir(path: Path) -> Path:
+    """`path` as a real directory: a symlink or file an earlier agent left in its place is removed first."""
+    if path.is_symlink() or (path.exists() and not path.is_dir()):
+        _remove_entry(path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _drop_stale(path: Path, what: str, log: Callable[[str], None]) -> None:
+    if path.is_symlink() or path.exists():
+        _remove_entry(path)
+        log(f"[environment] removed the {what} of an earlier step: {path}")
+
+
+def environment_document_path(spec: JobSpec, workspace: Path, agent_env: Dict[str, str]) -> Optional[Path]:
+    """ADR 0057 §2: OpenCode /workspace/.backoffice-agent/AGENTS.md, Claude Code the user memory
+    $CLAUDE_CONFIG_DIR/CLAUDE.md; both outside every repository. None for other agents."""
+    if spec.agent == "OPENCODE":
+        return workspace / AGENT_ENV_DIR / OPENCODE_INSTRUCTIONS_FILE
+    if spec.agent == "CLAUDE_CODE":
+        return Path(agent_env.get("CLAUDE_CONFIG_DIR") or workspace / ".claude-config") / CLAUDE_USER_MEMORY_FILE
+    return None
+
+
+def write_environment_document(spec: JobSpec, workspace: Path, agent_env: Dict[str, str], log: Callable[[str], None]) -> Optional[Path]:
+    """Write `spec.instructions` where the harness reads it; overwritten on every job, and removed when the job has
+    none (a run workspace persists between steps, ADR 0044, and the next step may run another agent)."""
+    target = environment_document_path(spec, workspace, agent_env)
+    if target is None:
+        return None
+    if not spec.instructions:
+        _drop_stale(target, "environment document", log)
+        return None
+    _fresh_dir(target.parent)
+    _replace_file(target, spec.instructions.encode("utf-8"))
+    log(f"[environment] wrote {target} ({len(spec.instructions)} chars)")
+    return target
+
+
+def write_mcp_config(spec: JobSpec, workspace: Path, log: Callable[[str], None]) -> Optional[Path]:
+    """ADR 0057 §3, Claude Code: /workspace/.backoffice-agent/mcp.json for `--mcp-config` (OpenCode gets its servers in
+    opencode.json). Egress is not touched: the sandbox's egress policy decides whether a server is reachable."""
+    target = workspace / AGENT_ENV_DIR / CLAUDE_MCP_CONFIG_FILE
+    if spec.agent != "CLAUDE_CODE" or not spec.mcp_servers:
+        _drop_stale(target, "MCP config", log)
+        return None
+    _fresh_dir(target.parent)
+    _replace_file(target, json.dumps(claude_mcp_config(spec.mcp_servers), indent=2).encode("utf-8"))
+    log(f"[mcp] wrote {target} ({len(spec.mcp_servers)} server(s))")
+    return target
+
+
+def prepare_agent_files(spec: JobSpec, workspace: Path, agent_env: Dict[str, str], log: Callable[[str], None]) -> AgentFiles:
+    """ADR 0057 §2/§3 for coding agent jobs (IMPLEMENT, SPEC_KIT, EVAL_CODING) that run a harness."""
+    if spec.agent not in SPEC_AGENTS or spec.mode not in ENVIRONMENT_MODES:
+        return AgentFiles()
+    files = AgentFiles(write_environment_document(spec, workspace, agent_env, log), write_mcp_config(spec, workspace, log))
+    for server in spec.mcp_servers:
+        log(f"[mcp] server {server.name}: {server.url} (reachable only when the sandbox egress policy allows its host)")
+    return files
+
+
+def remove_stale_structured_answer(work_dir: Path, log: Callable[[str], None]) -> None:
+    """ADR 0057 §5: a structured answer an earlier step left in the run workspace (it is never committed) must not
+    pass for this step's answer."""
+    target = work_dir / STRUCTURED_ANSWER_FILE
+    if target.is_symlink() or target.is_file():
+        target.unlink()
+        log(f"[agent] removed {STRUCTURED_ANSWER_FILE} of an earlier step")
+
+
 def _agent_invocation(
     run: _Run, spec: JobSpec, repo_dir: Path, prompt: str, agent_env: Dict[str, str], session: Optional[AgentSession] = None,
+    files: Optional[AgentFiles] = None,
 ) -> Tuple[List[str], LineParser, bool]:
     """(command, output line parser, run through the shell) for the spec's agent."""
     if spec.agent == "OPENCODE":
-        config = build_opencode_config(spec.model, spec.gateway, run.tools, run.extra_dirs)
+        config = build_opencode_config(spec.model, spec.gateway, run.tools, run.extra_dirs,
+                                       files.instructions if files else None, spec.mcp_servers)
         (run.workspace / "opencode.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
         return build_opencode_command(spec.model, prompt, bool(session and session.resume)), parse_opencode_line, False
     if spec.agent == "CLAUDE_CODE":
-        return _claude_invocation(run, spec, repo_dir, prompt, agent_env, session), parse_claude_line, False
+        return _claude_invocation(run, spec, repo_dir, prompt, agent_env, session, files), parse_claude_line, False
     # STUB (tests only): the prompt is a shell script run with the agent's environment
     return [prompt], parse_stub_line, True
 
@@ -3651,6 +3830,14 @@ def _execute_prompt(run: _Run, spec: JobSpec) -> None:
         parser, shell = parse_claude_line, False
     else:
         raise ValueError(f"PROMPT jobs run Claude Code, not {spec.agent}")
+    memory = environment_document_path(spec, run.workspace, agent_env)
+    if memory is not None:
+        # the user memory a coding step left in a run workspace is not this answer's environment
+        _drop_stale(memory, "environment document", run.log)
+    if spec.instructions:
+        run.log(f"[environment] PROMPT job: instructions ({len(spec.instructions)} chars) not written; Back Office puts the environment into the system prompt")
+    if spec.mcp_servers:
+        run.log(f"[mcp] PROMPT job: {len(spec.mcp_servers)} MCP server(s) ignored (one answer without tools)")
     timeout = max(60.0, spec.timeout_seconds - (time.monotonic() - run.started))
     run.log(f"[agent] prompt mode: {len(spec.prompt)} chars, system prompt {len(spec.system_prompt or '')} chars (timeout {int(timeout)}s)")
     run.sink.progress("agent answering")
@@ -3686,7 +3873,10 @@ def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
             session.data_dir.mkdir(parents=True, exist_ok=True)
             agent_env["XDG_DATA_HOME"] = str(session.data_dir)
         run.log(f"[agent] session of role {session.role}: {'continuing' if session.resume else 'starting'} {session.session_id} (run workspace)")
-    cmd, parser, shell = _agent_invocation(run, spec, repo_dir, prompt, agent_env, session)
+    files = prepare_agent_files(spec, run.workspace, agent_env, run.log)
+    if STRUCTURED_ANSWER_FILE in (p.strip().lstrip("/") for p in spec.collect_artifacts):
+        remove_stale_structured_answer(repo_dir, run.log)
+    cmd, parser, shell = _agent_invocation(run, spec, repo_dir, prompt, agent_env, session, files)
     elapsed = time.monotonic() - run.started
     agent_timeout = max(60.0, spec.timeout_seconds - elapsed)
     run.log(f"[agent] prompt ({len(prompt)} chars): {prompt.splitlines()[0][:200] if prompt else ''}")
@@ -4171,6 +4361,8 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
         raise ValueError(ctx_error or "no job spec")
     run.verify_command = spec.verify_command
     _log_job_header(run, spec, job_id, ctx.source)
+    for warning in spec.warnings:
+        run.log(f"[spec] WARN {warning}")
     apply_process_limit(run.env, run.log)
     run.workspace.mkdir(parents=True, exist_ok=True)
     _prepare_home(run.workspace, run.env, run.log)

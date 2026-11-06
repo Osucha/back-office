@@ -337,10 +337,10 @@ class ProjectsConfiguration {
     fun runnerTaskSupport(
         runner: AgentRunner, modelResolver: ModelResolver, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, settings: RunnerSettings,
         features: ObjectProvider<PlatformFeatures>, librarySources: LibrarySourceRepository, projectWorkspaces: ProjectWorkspaceRepository,
-        scmConnections: ScmConnectionRepository,
+        scmConnections: ScmConnectionRepository, verdictPolicy: ReviewVerdictPolicy, json: JsonCodec,
     ) = RunnerTaskSupport(
         runner, modelResolver, renderer, templateModel, settings.defaultTimeout, features.getIfAvailable { PlatformFeatures.DEFAULTS }, librarySources,
-        projectWorkspaces, scmConnections,
+        projectWorkspaces, scmConnections, pl.mos.backoffice.projects.application.service.tasks.StructuredAnswers(json, verdictPolicy),
     )
 
     @Bean fun specKitTaskExecutor(support: RunnerTaskSupport) = SpecKitTaskExecutor(support)

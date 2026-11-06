@@ -4,6 +4,8 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.shared.tasks.ParameterSource
+import pl.mos.backoffice.shared.tasks.ResolvedParameter
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RuleSnapshot
 import pl.mos.backoffice.shared.tasks.RunInputField
@@ -11,14 +13,15 @@ import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.PromptMode
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.util.UUID
 
 /**
- * Result of rule 5: every skill, rule and agent the lineage names exists and the agent can do the work (ADR 0056), or
- * the list of problems.
+ * Result of rule 5: every skill, rule and agent the step names exists, the agent can do the work (ADR 0056) and the
+ * parameter values fit (ADR 0058), or the list of problems.
  */
 data class ResolutionCheck(val ok: Boolean, val problems: List<String>) {
     companion object {
@@ -56,11 +59,21 @@ data class TaskResolution(
     val version: Int? = null,
     /** Run inputs merged root to leaf, child-wins by name (ADR 0053). */
     val runInputs: List<RunInputField> = emptyList(),
-    /** ADR 0055: automatic rules (global, then project) first, then the ones the lineage lists. */
+    /** ADR 0055/0057: automatic rules (global, then project) first, then the agent's. */
     val rules: List<RuleSnapshot> = emptyList(),
+    /** ADR 0058: parameter declarations of the lineage with the value the step uses. */
+    val parameters: List<ResolvedParameter> = emptyList(),
 ) {
     /** True when a step can run this: concrete, every skill, rule and the agent found, the agent fits the work. */
     val executable: Boolean get() = !abstract && check.ok
+
+    /** ADR 0058: values the template lineage sets (without the step's). */
+    val templateParameterValues: Map<String, Any?>
+        get() = parameters.filter { it.source == ParameterSource.TEMPLATE }.associate { it.name to it.value }
+
+    /** ADR 0058: not a ready block: a required parameter has no value without the step. */
+    val needsParameters: Boolean
+        get() = parameters.any { it.definition.required && it.source != ParameterSource.TEMPLATE && it.source != ParameterSource.DEFAULT }
 
     /** Throws `ValidationException` unless [executable]. */
     fun toResolvedTask(): ResolvedTask {
@@ -87,6 +100,7 @@ data class TaskResolution(
             version = version,
             runInputs = runInputs,
             rules = rules,
+            parameters = parameters,
         )
     }
 }
@@ -96,15 +110,17 @@ data class TaskResolution(
  *
  * 1. project shadowing for the leaf and every ancestor,
  * 2. `extends` chain of at most [MAX_DEPTH] templates, cycles rejected,
- * 3. root-to-leaf merge (agent nearest wins, ADR 0056; scalars child-wins; prompts append/replace; skills
- *    union minus `removeSkills`; config deep-merged with `null` deleting; list fields unioned; run inputs
- *    unioned by name, child field wins),
+ * 3. root-to-leaf merge (agent nearest wins, ADR 0056; scalars child-wins; prompts append/replace; config deep-merged
+ *    with `null` deleting; list fields unioned; run inputs and parameters unioned by name, child wins; parameter
+ *    values nearest wins),
  * 4. node overrides (the step's agent and model win; model: step, else agent, else lineage),
- * 5. skills and rules looked up (ADR 0055: automatic rules of the global scope and the project first, minus
- *    `removeRules`; a skill key that names a rule, as skills turned rules did, counts as that rule),
- * 6. the agent looked up and checked against the work (Spec Kit phase, push or prepareOnly need a coding agent,
- *    an output schema needs a model answer),
- * 7. abstract leaves preview but do not execute.
+ * 5. ADR 0057: the agent's environment: skills are the agent's plus the step's `addSkills` minus its `removeSkills`;
+ *    rules are the automatic ones (global, then the project's) and then the agent's (ADR 0055: a skill key that names a
+ *    rule, as skills turned rules did, counts as that rule); every one must exist,
+ * 6. the agent looked up and checked against the work (Spec Kit phase, push or prepareOnly need a coding agent),
+ * 7. ADR 0058: parameter values: the step's, else the nearest template's, else the default; unknown names, values of
+ *    the wrong type and required parameters without a value are problems,
+ * 8. abstract leaves preview but do not execute.
  *
  * A legacy config key `agent` (`CLAUDE_CODE`, `OPENCODE`) on a template or a step reads as its agent key.
  */
@@ -150,8 +166,13 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val agentKey = merged.agentKey ?: AgentSnapshot.MODEL_ANSWER
 
         val problems = mutableListOf<String>()
-        val listedRules = merged.rules.toMutableList()
-        val skills = merged.skills.mapNotNull { skillKey ->
+        val agent = lookup.visibleAgent(agentKey, projectId)?.snapshot ?: when (agentKey) {
+            AgentSnapshot.MODEL_ANSWER -> AgentSnapshot.DEFAULT
+            else -> { problems += "agent $agentKey does not exist"; AgentSnapshot(agentKey, agentKey) }
+        }
+        val listedRules = agent.rules.toMutableList()
+        val skillKeys = (agent.skills + overrides.addSkills).distinct().filter { it !in overrides.removeSkills }
+        val skills = skillKeys.mapNotNull { skillKey ->
             val skill = lookup.visibleSkill(skillKey, projectId)
             when {
                 skill != null -> SkillSnapshot(skill.key, skill.name, skill.content)
@@ -159,18 +180,16 @@ class TaskResolver(private val lookup: LibraryLookup) {
                 else -> { problems += "skill $skillKey does not exist"; null }
             }
         }
-        val automatic = lookup.visibleAutomaticRules(projectId).filter { it.key !in merged.removedRules }
+        val automatic = lookup.visibleAutomaticRules(projectId)
         val rules = automatic.map { RuleSnapshot(it.key, it.name, it.content, automatic = true) } +
             listedRules.filter { key -> automatic.none { it.key == key } }.mapNotNull { ruleKey ->
                 val rule = lookup.visibleRule(ruleKey, projectId)
-                if (rule == null) problems += "rule $ruleKey does not exist"
+                if (rule == null) problems += "rule $ruleKey of agent ${agent.key} does not exist"
                 rule?.let { RuleSnapshot(it.key, it.name, it.content, automatic = false) }
             }
-        val agent = lookup.visibleAgent(agentKey, projectId)?.snapshot ?: when (agentKey) {
-            AgentSnapshot.MODEL_ANSWER -> AgentSnapshot.DEFAULT
-            else -> { problems += "agent $agentKey does not exist"; AgentSnapshot(agentKey, agentKey) }
-        }
-        problems += compatibilityProblems(agent, merged.config, merged.outputSchema)
+        problems += compatibilityProblems(agent, merged.config)
+        val parameters = Parameters.resolve(merged.parameters, merged.parameterValues, overrides.parameters, leaf.key)
+        problems += parameters.second
 
         return TaskResolution(
             version = leaf.version,
@@ -195,16 +214,14 @@ class TaskResolver(private val lookup: LibraryLookup) {
             check = ResolutionCheck.of(problems),
             runInputs = merged.runInputs,
             rules = rules,
+            parameters = parameters.first,
         )
     }
 
-    /** ADR 0056 decision 4: work the agent cannot do. */
-    private fun compatibilityProblems(agent: AgentSnapshot, config: Map<String, Any?>, outputSchema: String?): List<String> = buildList {
+    /** ADR 0056 decision 4: work the agent cannot do (ADR 0057 lifted the output schema restriction). */
+    private fun compatibilityProblems(agent: AgentSnapshot, config: Map<String, Any?>): List<String> = buildList {
         val needs = codingAgentReason(config)
         if (agent.modelAnswer && needs != null) add("$needs needs a coding agent; agent ${agent.key} gives a model answer")
-        if (!agent.modelAnswer && !outputSchema.isNullOrBlank()) {
-            add("a structured answer (output schema) needs a model answer agent; agent ${agent.key} is a coding agent")
-        }
     }
 
     /** Accumulator of the root-to-leaf merge; [modelProfileId] is the lineage's (the step's comes after the agent's). */
@@ -213,7 +230,6 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val modelProfileId: ModelProfileId? = null,
         val system: String? = null,
         val user: String? = null,
-        val skills: List<String> = emptyList(),
         val config: Map<String, Any?> = emptyMap(),
         val outputSchema: String? = null,
         val confidenceField: String? = null,
@@ -222,16 +238,15 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val category: TemplateCategory? = null,
         val tags: List<String> = emptyList(),
         val runInputs: List<RunInputField> = emptyList(),
-        val rules: List<String> = emptyList(),
-        /** Every `removeRules` of the lineage: drops automatic rules too. */
-        val removedRules: Set<String> = emptySet(),
+        val parameters: List<TemplateParameter> = emptyList(),
+        /** Parameter values of the lineage: name to (value, template key that set it); the nearest template wins. */
+        val parameterValues: Map<String, Pair<Any?, String>> = emptyMap(),
     ) {
         fun merge(t: TaskTemplate): Merged = Merged(
             agentKey = t.agentKey ?: legacyAgentKey(t.config) ?: agentKey,
             modelProfileId = t.modelProfileId ?: modelProfileId,
             system = combine(system, t.prompt.system, t.prompt.mode),
             user = combine(user, t.prompt.user, t.prompt.mode),
-            skills = (skills + t.skills).distinct().filter { it !in t.removeSkills },
             config = ConfigMerge.deepMerge(config, withoutLegacyAgent(t.config)),
             outputSchema = t.outputSchema ?: outputSchema,
             confidenceField = t.confidenceField ?: confidenceField,
@@ -239,29 +254,64 @@ class TaskResolver(private val lookup: LibraryLookup) {
             consumes = (consumes + t.consumes).distinct(),
             category = t.category ?: category,
             tags = (tags + t.tags).distinct(),
-            runInputs = mergeRunInputs(runInputs, t.runInputs),
-            rules = (rules + t.rules).distinct().filter { it !in t.removeRules },
-            removedRules = (removedRules - t.rules.toSet()) + t.removeRules,
+            runInputs = byName(runInputs, t.runInputs) { it.name },
+            parameters = byName(parameters, t.parameters) { it.name },
+            parameterValues = parameterValues + t.parameterValues.filterValues(Parameters::present).mapValues { (_, v) -> v to t.key },
         )
 
         fun applyOverrides(o: TaskOverrides): Merged = copy(
             agentKey = o.agentKey?.takeIf { it.isNotBlank() } ?: legacyAgentKey(o.config) ?: agentKey,
             system = combine(system, o.systemPromptAppend, PromptMode.APPEND),
             user = combine(combine(user, o.promptReplace, PromptMode.REPLACE), o.promptAppend, PromptMode.APPEND),
-            skills = (skills + o.addSkills).distinct().filter { it !in o.removeSkills },
             config = ConfigMerge.deepMerge(config, withoutLegacyAgent(o.config)),
         )
 
-        /** Union by name: a child field replaces the parent's field of the same name in its place; new fields go last. */
-        private fun mergeRunInputs(parent: List<RunInputField>, child: List<RunInputField>): List<RunInputField> {
-            val byName = child.associateBy { it.name }
-            return parent.map { byName[it.name] ?: it } + child.filter { field -> parent.none { it.name == field.name } }
+        /** Union by name: a child entry replaces the parent's entry of the same name in its place; new entries go last. */
+        private fun <T> byName(parent: List<T>, child: List<T>, name: (T) -> String): List<T> {
+            val byName = child.associateBy(name)
+            return parent.map { byName[name(it)] ?: it } + child.filter { entry -> parent.none { name(it) == name(entry) } }
         }
 
         private fun combine(parent: String?, child: String?, mode: PromptMode): String? = when {
             child == null -> parent
             mode == PromptMode.REPLACE || parent.isNullOrBlank() -> child
             else -> parent.trimEnd() + "\n\n" + child.trimStart()
+        }
+    }
+
+    /** ADR 0058: the value of every declared parameter and the problems of the values. */
+    internal object Parameters {
+        /** A value counts when it is not null and not a blank string (an empty field in the designer is no value). */
+        fun present(value: Any?): Boolean = value != null && !(value is String && value.isBlank())
+
+        fun resolve(
+            declared: List<TemplateParameter>,
+            lineageValues: Map<String, Pair<Any?, String>>,
+            stepValues: Map<String, Any?>,
+            leafKey: String,
+        ): Pair<List<ResolvedParameter>, List<String>> {
+            val problems = mutableListOf<String>()
+            val names = declared.map { it.name }.toSet()
+            lineageValues.filterKeys { it !in names }.forEach { (name, set) ->
+                problems += "template ${set.second} sets parameter $name, which no template of the lineage declares"
+            }
+            stepValues.filter { (name, value) -> name !in names && present(value) }.keys.forEach { name ->
+                problems += "the step sets parameter $name, which template $leafKey does not declare"
+            }
+            val resolved = declared.map { p ->
+                val step = stepValues[p.name]?.takeIf(::present)
+                val template = lineageValues[p.name]?.first
+                val (value, source) = when {
+                    step != null -> step to ParameterSource.STEP
+                    template != null -> template to ParameterSource.TEMPLATE
+                    present(p.default) -> p.default to ParameterSource.DEFAULT
+                    else -> null to ParameterSource.NONE
+                }
+                p.valueProblem(value)?.let { problems += "parameter ${p.name}: $it" }
+                if (p.required && value == null) problems += "parameter ${p.name} (${p.label}) needs a value"
+                ResolvedParameter(p, value, source)
+            }
+            return resolved to problems
         }
     }
 

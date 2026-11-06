@@ -6,6 +6,9 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.tasks.TemplateParameter
+import pl.mos.backoffice.shared.tasks.TemplateParameterType
+import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.Prompt
@@ -39,10 +42,6 @@ class TaskMappers(private val json: JsonMapper) {
         promptSystem = t.prompt.system,
         promptUser = t.prompt.user,
         promptMode = t.prompt.mode,
-        skills = json.writeValueAsString(t.skills),
-        removeSkills = json.writeValueAsString(t.removeSkills),
-        rules = json.writeValueAsString(t.rules),
-        removeRules = json.writeValueAsString(t.removeRules),
         config = json.writeValueAsString(t.config),
         outputSchema = t.outputSchema,
         confidenceField = t.confidenceField,
@@ -50,6 +49,8 @@ class TaskMappers(private val json: JsonMapper) {
         consumes = json.writeValueAsString(t.consumes),
         tags = json.writeValueAsString(t.tags),
         runInputs = json.writeValueAsString(t.runInputs.map(::runInputMap)),
+        parameters = json.writeValueAsString(t.parameters.map(::parameterMap)),
+        parameterValues = json.writeValueAsString(t.parameterValues),
         builtIn = t.builtIn,
         version = t.version,
         createdAt = t.createdAt,
@@ -71,8 +72,6 @@ class TaskMappers(private val json: JsonMapper) {
         scope = Scope.of(e.projectId),
         modelProfileId = e.modelProfileId?.let(::ModelProfileId),
         prompt = Prompt(e.promptSystem, e.promptUser, e.promptMode),
-        skills = readStrings(e.skills),
-        removeSkills = readStrings(e.removeSkills),
         config = readMap(e.config),
         outputSchema = e.outputSchema,
         confidenceField = e.confidenceField,
@@ -85,8 +84,8 @@ class TaskMappers(private val json: JsonMapper) {
         createdAt = e.createdAt,
         updatedAt = e.updatedAt,
         updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
-        rules = readStrings(e.rules),
-        removeRules = readStrings(e.removeRules),
+        parameters = readList(e.parameters).mapNotNull(::parameter),
+        parameterValues = readMap(e.parameterValues),
     )
 
     private fun runInputMap(f: RunInputField) =
@@ -109,6 +108,40 @@ class TaskMappers(private val json: JsonMapper) {
                 required = (m["required"] as? Boolean) ?: false,
                 help = m["help"] as? String,
             )
+        } catch (_: ValidationException) {
+            null
+        }
+    }
+
+    private fun parameterMap(p: TemplateParameter) = mapOf(
+        "name" to p.name, "label" to p.label, "type" to p.type.name, "required" to p.required,
+        "default" to p.default, "options" to p.options, "help" to p.help,
+    )
+
+    /** ADR 0058: one stored parameter, or null for an entry that no longer forms a valid one (like [runInput]). */
+    private fun parameter(raw: Any?): TemplateParameter? {
+        val m = raw as? Map<*, *> ?: return null
+        val name = m["name"] as? String ?: return null
+        return try {
+            TemplateParameter(
+                name = name,
+                label = m["label"] as? String ?: name,
+                type = TemplateParameterType.entries.firstOrNull { it.name == m["type"]?.toString() } ?: TemplateParameterType.TEXT,
+                required = (m["required"] as? Boolean) ?: false,
+                default = m["default"],
+                options = (m["options"] as? List<*>).orEmpty().mapNotNull { it?.toString() },
+                help = m["help"] as? String,
+            )
+        } catch (_: ValidationException) {
+            null
+        }
+    }
+
+    /** ADR 0057: one stored MCP server, or null for an entry the domain refuses now. */
+    private fun mcpServer(raw: Any?): AgentMcpServer? {
+        val m = raw as? Map<*, *> ?: return null
+        return try {
+            AgentMcpServer(m["name"]?.toString() ?: return null, m["url"]?.toString() ?: return null)
         } catch (_: ValidationException) {
             null
         }
@@ -192,6 +225,10 @@ class TaskMappers(private val json: JsonMapper) {
         scopeType = scopeType(a.scope),
         projectId = a.scope.projectId,
         harness = a.harness,
+        instructions = a.instructions,
+        rules = json.writeValueAsString(a.rules),
+        skills = json.writeValueAsString(a.skills),
+        mcpServers = json.writeValueAsString(a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) }),
         modelProfileId = a.modelProfileId?.value,
         tags = json.writeValueAsString(a.tags),
         builtIn = a.builtIn,
@@ -209,6 +246,10 @@ class TaskMappers(private val json: JsonMapper) {
         description = e.description,
         scope = Scope.of(e.projectId),
         harness = e.harness,
+        instructions = e.instructions,
+        rules = readStrings(e.rules),
+        skills = readStrings(e.skills),
+        mcpServers = readList(e.mcpServers).mapNotNull(::mcpServer),
         modelProfileId = e.modelProfileId?.let(::ModelProfileId),
         tags = readStrings(e.tags),
         builtIn = e.builtIn,

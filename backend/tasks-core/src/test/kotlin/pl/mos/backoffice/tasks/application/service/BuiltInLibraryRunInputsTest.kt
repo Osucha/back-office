@@ -33,8 +33,9 @@ class BuiltInLibraryRunInputsTest {
     }
 
     @Test
-    fun `spec-kit-plan declares the technical hints and inherits the input material`() {
-        assertThat(declared(BuiltInLibrary.SPEC_KIT_PLAN).single()).satisfies({
+    fun `spec-kit-plan declares the input material and the technical hints itself (flat built-ins, ADR 0058)`() {
+        assertThat(declared(BuiltInLibrary.SPEC_KIT_PLAN).first()).isEqualTo(input)
+        assertThat(declared(BuiltInLibrary.SPEC_KIT_PLAN).last()).satisfies({
             assertThat(it.name).isEqualTo("techHints")
             assertThat(it.type).isEqualTo(RunInputType.MULTILINE)
             assertThat(it.required).isFalse()
@@ -54,7 +55,7 @@ class BuiltInLibraryRunInputsTest {
                 assertThat(prompt).describedAs(t.key).doesNotContain("{{parameters.").doesNotContain("{{#parameters.")
             }
         }
-        listOf(BuiltInLibrary.BASE_AGENT_SYSTEM, BuiltInLibrary.LLM_TASK_SYSTEM, BuiltInLibrary.AGENT_TASK_SYSTEM).forEach {
+        listOf(BuiltInLibrary.RUN_INPUT_SECTION, BuiltInLibrary.LLM_TASK_SYSTEM, BuiltInLibrary.AGENT_TASK_SYSTEM).forEach {
             assertThat(it).contains("{{#runInputText}}").contains("## Run input").contains("{{runInputText}}")
         }
     }

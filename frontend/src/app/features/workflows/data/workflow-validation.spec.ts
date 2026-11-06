@@ -290,3 +290,38 @@ describe('validateLocally', () => {
     }
   });
 });
+
+describe('validateLocally: parameters and sessions (ADR 0057/0058)', () => {
+  const palette = indexPalette({
+    tasks: [
+      {
+        key: 'llm-task',
+        name: 'LLM task',
+        parameters: [{ name: 'task', label: 'Task', type: 'MULTILINE', required: true }],
+        parameterValues: {},
+      },
+    ],
+  });
+  const task = (id: string, overrides = {}) =>
+    n(id, 'TASK', { task: { templateKey: 'llm-task', overrides } });
+  const messages = (nodes: WorkflowNode[]) =>
+    validateLocally({ name: 'x', nodes, edges: [], enabled: true }, palette)
+      .errors.filter((e) => e.field?.startsWith('task.overrides'))
+      .map((e) => [e.nodeId, e.field]);
+
+  it('asks for a required parameter without a value', () => {
+    expect(messages([task('a')])).toEqual([['a', 'task.overrides.parameters.task']]);
+    expect(messages([task('a', { parameters: { task: 'Do it' } })])).toEqual([]);
+  });
+
+  it('refuses to continue the session of a missing or non-task step', () => {
+    const ok = { parameters: { task: 'x' } };
+    expect(
+      messages([task('a', ok), task('b', { ...ok, config: { continueSession: 'a' } })]),
+    ).toEqual([]);
+    expect(messages([task('b', { ...ok, config: { continueSession: 'gone' } })])).toEqual([
+      ['b', 'task.overrides.config.continueSession'],
+    ]);
+    expect(messages([task('b', { ...ok, config: { continueSession: 'b' } })])).toHaveLength(1);
+  });
+});

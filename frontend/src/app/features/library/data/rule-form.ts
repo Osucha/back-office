@@ -45,7 +45,7 @@ export function automaticHint(
   projectKey: string,
 ): string {
   if (!d.automatic)
-    return $localize`:@@library.rules.automatic.off:Applies only to the templates that list it.`;
+    return $localize`:@@library.rules.automatic.off:Applies only to the agents that list it.`;
   return d.scope.type === 'PROJECT'
     ? $localize`:@@library.rules.automatic.project:Applies to every step of project ${projectKey}:project:, listed or not.`
     : $localize`:@@library.rules.automatic.global:Applies to every step of every project, listed or not.`;

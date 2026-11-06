@@ -2757,9 +2757,16 @@ components:
         systemPromptAppend: { type: string, nullable: true }
         promptAppend: { type: string, nullable: true }
         promptReplace: { type: string, nullable: true }
-        addSkills: { type: array, items: { type: string } }
-        removeSkills: { type: array, items: { type: string } }
-        config: { type: object, additionalProperties: true }
+        addSkills: { type: array, items: { type: string }, description: 'skills this step adds to its agent''s (ADR 0057)' }
+        removeSkills: { type: array, items: { type: string }, description: 'skills of the agent this step drops' }
+        parameters: { type: object, additionalProperties: true, description: 'ADR 0058: values of the template''s parameters for this step (win over template values and defaults)' }
+        config:
+          type: object
+          additionalProperties: true
+          description: >-
+            Template config overrides. ADR 0057: `continueSession: <node id>` on a coding agent step continues the agent
+            session of that earlier step (same run workspace and session role; the implicit workspace `run` when the
+            earlier step names none).
     DecisionBranch:
       type: object
       required: [id, label, expression]
@@ -3119,6 +3126,9 @@ components:
         projectScoped: { type: boolean }
         configSchema: { type: object, additionalProperties: true, description: 'JSON Schema for `overrides.config`, by the template''s agent (model answer or coding agent)' }
         deprecated: { type: boolean, description: 'ADR 0054: kept for the steps that use it; not offered for new steps' }
+        parameters: { type: array, items: { $ref: '#/components/schemas/TemplateParameter' }, description: 'ADR 0058: merged parameter declarations of the lineage' }
+        parameterValues: { type: object, additionalProperties: true, description: 'ADR 0058: values the template lineage sets (step values win)' }
+        needsParameters: { type: boolean, description: 'ADR 0058: a required parameter has no value without the step (not a ready block)' }
     ActionType:
       type: string
       description: 'ADR 0056: deterministic integration steps of a workflow (no model)'
@@ -3537,12 +3547,23 @@ components:
         name: { type: string }
         harness: { allOf: [ { $ref: '#/components/schemas/AgentHarness' } ], nullable: true, description: empty = model answer }
         modelProfileId: { type: string, format: uuid, nullable: true }
+        rules: { type: array, items: { type: string }, description: 'ADR 0057: rule keys of the agent' }
+        skills: { type: array, items: { type: string }, description: 'ADR 0057: skill keys of the agent' }
+    AgentMcpServer:
+      type: object
+      description: 'ADR 0057: a remote MCP server the agent may use (HTTP(S), no credentials); the sandbox egress policy decides whether it is reachable'
+      required: [name, url]
+      properties:
+        name: { type: string, pattern: '^[a-z][a-z0-9-]{0,39}$' }
+        url: { type: string, maxLength: 500, description: 'http:// or https:// URL of the MCP endpoint (streamable HTTP)' }
     AgentInput:
       type: object
       description: >-
-        ADR 0056: who runs a task. Without a harness the step is one model answer (no tools, no repository); with OPENCODE
-        or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the step uses the defaults
-        for its kind (project, starting user, platform).
+        ADR 0056/0057: who works on a task and how. Without a harness the step is one model answer (no tools, no
+        repository); with OPENCODE or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the
+        step uses the defaults for its kind (project, starting user, platform). Instructions, rules, skills and MCP
+        servers are the agent's environment: model answers get them in the system prompt, coding agents in the
+        harness's own files (AGENTS.md / CLAUDE.md user memory, skill directories, MCP config).
       required: [name, scope]
       properties:
         key: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{1,63}$', description: derived from the name when omitted on create; kept when omitted on update }
@@ -3551,6 +3572,10 @@ components:
         scope: { $ref: '#/components/schemas/Scope' }
         harness: { allOf: [ { $ref: '#/components/schemas/AgentHarness' } ], nullable: true }
         modelProfileId: { type: string, format: uuid, nullable: true }
+        instructions: { type: string, description: 'ADR 0057: the agent''s role and way of working (markdown; may use {{project.*}}); added after the platform preamble' }
+        rules: { type: array, items: { type: string }, description: 'ADR 0057: keys of rules always in the agent''s context (after the automatic ones)' }
+        skills: { type: array, items: { type: string }, description: 'ADR 0057: keys of skills the agent loads when it needs them' }
+        mcpServers: { type: array, items: { $ref: '#/components/schemas/AgentMcpServer' } }
         tags: { type: array, items: { type: string } }
     Agent:
       allOf:
@@ -3599,12 +3624,10 @@ components:
         scope: { $ref: '#/components/schemas/Scope' }
         modelProfileId: { type: string, format: uuid, nullable: true }
         prompt: { $ref: '#/components/schemas/TaskPrompt' }
-        skills: { type: array, items: { type: string } }
-        removeSkills: { type: array, items: { type: string } }
-        rules: { type: array, items: { type: string }, description: 'ADR 0055: keys of rules this template adds (inherited, unioned)' }
-        removeRules: { type: array, items: { type: string }, description: 'rule keys inherited or automatic that this template drops' }
+        parameters: { type: array, items: { $ref: '#/components/schemas/TemplateParameter' }, description: 'ADR 0058: parameters the prompt reads as {{params.<name>}}; inherited, child wins by name' }
+        parameterValues: { type: object, additionalProperties: true, description: 'ADR 0058: values for parameters of the lineage (a preset); child wins, the step wins over all' }
         config: { type: object, additionalProperties: true }
-        outputSchema: { type: string, nullable: true, description: JSON Schema of a structured answer (model answer agents) }
+        outputSchema: { type: string, nullable: true, description: 'JSON Schema of a structured answer (model answers answer with it, coding agents write it to structured-answer.json, ADR 0057)' }
         confidenceField: { type: string, nullable: true }
         produces: { type: array, items: { type: string } }
         consumes: { type: array, items: { type: string } }
@@ -3621,6 +3644,25 @@ components:
         type: { type: string, enum: [TEXT, MULTILINE, ISSUE_KEY], description: 'TEXT single line, MULTILINE text area, ISSUE_KEY the run''s issue key' }
         required: { type: boolean }
         help: { type: string, nullable: true, maxLength: 1000 }
+    TemplateParameter:
+      type: object
+      description: 'ADR 0058: a parameter of a template, set when the workflow is designed (run inputs are asked when a run starts)'
+      required: [name, label, type, required]
+      properties:
+        name: { type: string, pattern: '^[A-Za-z][A-Za-z0-9_]{0,63}$', description: 'read in prompts as {{params.<name>}}' }
+        label: { type: string, maxLength: 200 }
+        type: { type: string, enum: [TEXT, MULTILINE, NUMBER, BOOLEAN, CHOICE] }
+        required: { type: boolean }
+        default: { nullable: true, description: 'string, number or boolean by type; null = no default' }
+        options: { type: array, items: { type: string }, description: CHOICE only }
+        help: { type: string, nullable: true, maxLength: 1000 }
+    ResolvedParameter:
+      allOf:
+        - $ref: '#/components/schemas/TemplateParameter'
+        - type: object
+          properties:
+            value: { nullable: true, description: the value the step uses }
+            source: { type: string, enum: [STEP, TEMPLATE, DEFAULT, NONE] }
     TaskTemplate:
       allOf:
         - $ref: '#/components/schemas/TaskTemplateInput'
@@ -3654,8 +3696,9 @@ components:
         lineage: { type: array, items: { type: string } }
         ports: { type: array, items: { type: string } }
         runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0053) }
+        parameters: { type: array, items: { $ref: '#/components/schemas/ResolvedParameter' }, description: 'ADR 0058: parameters with the value the step uses' }
         abstract: { type: boolean }
-        check: { type: object, description: 'skills, rules and agents that do not exist, and an agent that cannot do the work (ADR 0056)', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
+        check: { type: object, description: 'skills, rules, agents and parameter values that are missing or wrong, and an agent that cannot do the work (ADR 0056-0058)', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
     SkillInput:
       type: object
       required: [name, content, scope]
@@ -3679,9 +3722,10 @@ components:
     RuleInput:
       type: object
       description: >-
-        ADR 0055: a rule is always in the agent's context (a skill is loaded on demand). Model answer steps get it in the
-        system prompt, coding agents at the start of their prompt. An automatic rule applies to every step of its scope
-        (global: every project; project: that project); other rules apply to the templates that list them.
+        ADR 0055/0057: a rule is always in the agent's context (a skill is loaded on demand). Model answer steps get it in
+        the system prompt, coding agents in the harness's instruction file (AGENTS.md / CLAUDE.md user memory). An
+        automatic rule applies to every step of its scope (global: every project; project: that project); other rules
+        apply to the agents that list them.
       required: [name, content, scope]
       properties:
         key: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{1,63}$', description: derived from the name when omitted on create; kept when omitted on update }
@@ -4705,7 +4749,7 @@ components:
         nodeName: { type: string }
         stepKind: { $ref: '#/components/schemas/StepKind' }
         harness: { type: string, nullable: true, enum: [OPENCODE, CLAUDE_CODE, null] }
-        source: { type: string, enum: [NODE, TEMPLATE, PROJECT, PROJECT_REVIEW, PERSONAL_DEFAULT, PLATFORM_DEFAULT, NONE], description: 'where the model comes from (ADR 0050 step 2: after the project defaults the starting user''s own default, then the platform default)' }
+        source: { type: string, enum: [NODE, AGENT, TEMPLATE, PROJECT, PROJECT_REVIEW, PERSONAL_DEFAULT, PLATFORM_DEFAULT, NONE], description: 'where the model comes from: the step, its agent (ADR 0057), its template, then the defaults (ADR 0050 step 2: after the project defaults the starting user''s own default, then the platform default)' }
         profileId: { type: string, format: uuid, nullable: true }
         model: { allOf: [ { $ref: '#/components/schemas/ModelOption' } ], nullable: true }
         problem: { type: string, nullable: true, description: 'set = a run of this workflow does not start' }
@@ -5321,6 +5365,21 @@ components:
         collectArtifacts: { type: array, items: { type: string } }
         collectDiff: { type: boolean, default: true }
         skills: { type: array, items: { type: object, required: [key, name, content], properties: { key: { type: string }, name: { type: string }, content: { type: string } } } }
+        instructions:
+          type: string
+          nullable: true
+          description: >-
+            ADR 0057: the agent's environment document (platform preamble, agent instructions, project constitution,
+            rules; markdown). The runner writes it outside every repository in the harness's own form: OpenCode
+            /workspace/.backoffice-agent/AGENTS.md listed under `instructions` of opencode.json, Claude Code the user
+            memory $CLAUDE_CONFIG_DIR/CLAUDE.md. PROMPT jobs get it in `system` instead. Covered by the spec digest when present.
+        mcpServers:
+          type: array
+          nullable: true
+          description: >-
+            ADR 0057: remote MCP servers of the agent (no credentials); Claude Code --mcp-config, OpenCode `mcp` (type
+            remote). The sandbox egress policy decides reachability. Covered by the spec digest when present.
+          items: { $ref: '#/components/schemas/AgentMcpServer' }
         runId: { type: string, format: uuid, nullable: true, description: written as the `Back-Office-Run` git trailer }
         gitAccess: { $ref: '#/components/schemas/GitAccess' }
         specKit:

@@ -3691,16 +3691,23 @@ export interface components {
      * @enum {string}
      */
     AgentHarness: 'OPENCODE' | 'CLAUDE_CODE';
-    /** @description ADR 0056: who runs a task. Without a harness the step is one model answer (no tools, no repository); with OPENCODE or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the step uses the defaults for its kind (project, starting user, platform). */
+    /** @description ADR 0056/0057: who works on a task and how. Without a harness the step is one model answer (no tools, no repository); with OPENCODE or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the step uses the defaults for its kind (project, starting user, platform). Instructions, rules, skills and MCP servers are the agent's environment: model answers get them in the system prompt, coding agents in the harness's own files (AGENTS.md / CLAUDE.md user memory, skill directories, MCP config). */
     AgentInput: {
       description?: string;
       harness?: components['schemas']['AgentHarness'] | null;
+      /** @description ADR 0057: the agent's role and way of working (markdown; may use {{project.*}}); added after the platform preamble */
+      instructions?: string;
       /** @description derived from the name when omitted on create; kept when omitted on update */
       key?: string | null;
+      mcpServers?: components['schemas']['AgentMcpServer'][];
       /** Format: uuid */
       modelProfileId?: string | null;
       name: string;
+      /** @description ADR 0057: keys of rules always in the agent's context (after the automatic ones) */
+      rules?: string[];
       scope: components['schemas']['Scope'];
+      /** @description ADR 0057: keys of skills the agent loads when it needs them */
+      skills?: string[];
       tags?: string[];
     };
     AgentJob: {
@@ -3778,6 +3785,12 @@ export interface components {
       | 'TIMED_OUT'
       | 'CANCELLED'
       | 'LOST';
+    /** @description ADR 0057: a remote MCP server the agent may use (HTTP(S), no credentials); the sandbox egress policy decides whether it is reachable */
+    AgentMcpServer: {
+      name: string;
+      /** @description http:// or https:// URL of the MCP endpoint (streamable HTTP) */
+      url: string;
+    };
     AgentRef: {
       /** @description empty = model answer */
       harness?: components['schemas']['AgentHarness'] | null;
@@ -3785,6 +3798,10 @@ export interface components {
       /** Format: uuid */
       modelProfileId?: string | null;
       name: string;
+      /** @description ADR 0057: rule keys of the agent */
+      rules?: string[];
+      /** @description ADR 0057: skill keys of the agent */
+      skills?: string[];
     };
     /** @description Run-time assignment of an open approval (ADR 0028); replaces the gate's approvers.users for this approval only. */
     ApprovalAssignment: {
@@ -5425,6 +5442,14 @@ export interface components {
       description?: string;
       key?: string;
       name?: string;
+      /** @description ADR 0058: a required parameter has no value without the step (not a ready block) */
+      needsParameters?: boolean;
+      /** @description ADR 0058: merged parameter declarations of the lineage */
+      parameters?: components['schemas']['TemplateParameter'][];
+      /** @description ADR 0058: values the template lineage sets (step values win) */
+      parameterValues?: {
+        [key: string]: unknown;
+      };
       ports?: string[];
       projectScoped?: boolean;
     };
@@ -5828,11 +5853,17 @@ export interface components {
       pushed: boolean;
       url?: string | null;
     };
+    ResolvedParameter: components['schemas']['TemplateParameter'] & {
+      /** @enum {string} */
+      source?: 'STEP' | 'TEMPLATE' | 'DEFAULT' | 'NONE';
+      /** @description the value the step uses */
+      value?: unknown;
+    };
     ResolvedTask: {
       abstract?: boolean;
       agent?: components['schemas']['AgentRef'];
       category?: components['schemas']['TemplateCategory'] | null;
-      /** @description skills, rules and agents that do not exist, and an agent that cannot do the work (ADR 0056) */
+      /** @description skills, rules, agents and parameter values that are missing or wrong, and an agent that cannot do the work (ADR 0056-0058) */
       check?: {
         ok?: boolean;
         problems?: string[];
@@ -5848,6 +5879,8 @@ export interface components {
       modelProfileId?: string | null;
       name?: string;
       outputSchema?: string | null;
+      /** @description ADR 0058: parameters with the value the step uses */
+      parameters?: components['schemas']['ResolvedParameter'][];
       ports?: string[];
       produces?: string[];
       prompt?: {
@@ -5903,7 +5936,7 @@ export interface components {
       /** @description who saved the current version (ADR 0017) */
       readonly updatedBy?: components['schemas']['ActorRef'];
     };
-    /** @description ADR 0055: a rule is always in the agent's context (a skill is loaded on demand). Model answer steps get it in the system prompt, coding agents at the start of their prompt. An automatic rule applies to every step of its scope (global: every project; project: that project); other rules apply to the templates that list them. */
+    /** @description ADR 0055/0057: a rule is always in the agent's context (a skill is loaded on demand). Model answer steps get it in the system prompt, coding agents in the harness's instruction file (AGENTS.md / CLAUDE.md user memory). An automatic rule applies to every step of its scope (global: every project; project: that project); other rules apply to the agents that list them. */
     RuleInput: {
       /** @default false */
       automatic: boolean;
@@ -6001,11 +6034,15 @@ export interface components {
         openaiBaseUrl?: string;
       } | null;
       gitAccess?: components['schemas']['GitAccess'];
+      /** @description ADR 0057: the agent's environment document (platform preamble, agent instructions, project constitution, rules; markdown). The runner writes it outside every repository in the harness's own form: OpenCode /workspace/.backoffice-agent/AGENTS.md listed under `instructions` of opencode.json, Claude Code the user memory $CLAUDE_CONFIG_DIR/CLAUDE.md. PROMPT jobs get it in `system` instead. Covered by the spec digest when present. */
+      instructions?: string | null;
       /**
        * @description ADR 0040, v2 assignments of personal pools: LOCAL_LOGIN = Claude Code uses the owner's own login, delivered by the controller as the bundle file claude-login-token, and reaches api.anthropic.com directly. Omitted = the gateway. Covered by the spec digest when present.
        * @enum {string|null}
        */
       llmCredentials?: 'GATEWAY' | 'LOCAL_LOGIN' | null;
+      /** @description ADR 0057: remote MCP servers of the agent (no credentials); Claude Code --mcp-config, OpenCode `mcp` (type remote). The sandbox egress policy decides reachability. Covered by the spec digest when present. */
+      mcpServers?: components['schemas']['AgentMcpServer'][] | null;
       /**
        * @description PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact
        * @enum {string}
@@ -6402,11 +6439,12 @@ export interface components {
       /** Format: uuid */
       profileId?: string | null;
       /**
-       * @description where the model comes from (ADR 0050 step 2: after the project defaults the starting user's own default, then the platform default)
+       * @description where the model comes from: the step, its agent (ADR 0057), its template, then the defaults (ADR 0050 step 2: after the project defaults the starting user's own default, then the platform default)
        * @enum {string}
        */
       source:
         | 'NODE'
+        | 'AGENT'
         | 'TEMPLATE'
         | 'PROJECT'
         | 'PROJECT_REVIEW'
@@ -6428,16 +6466,23 @@ export interface components {
       };
     };
     TaskOverrides: {
+      /** @description skills this step adds to its agent's (ADR 0057) */
       addSkills?: string[];
       /** @description ADR 0056: the agent that runs this step instead of the template's */
       agentKey?: string | null;
+      /** @description Template config overrides. ADR 0057: `continueSession: <node id>` on a coding agent step continues the agent session of that earlier step (same run workspace and session role; the implicit workspace `run` when the earlier step names none). */
       config?: {
         [key: string]: unknown;
       };
       /** Format: uuid */
       modelProfileId?: string | null;
+      /** @description ADR 0058: values of the template's parameters for this step (win over template values and defaults) */
+      parameters?: {
+        [key: string]: unknown;
+      };
       promptAppend?: string | null;
       promptReplace?: string | null;
+      /** @description skills of the agent this step drops */
       removeSkills?: string[];
       systemPromptAppend?: string | null;
     };
@@ -6503,20 +6548,20 @@ export interface components {
       /** Format: uuid */
       modelProfileId?: string | null;
       name: string;
-      /** @description JSON Schema of a structured answer (model answer agents) */
+      /** @description JSON Schema of a structured answer (model answers answer with it, coding agents write it to structured-answer.json, ADR 0057) */
       outputSchema?: string | null;
+      /** @description ADR 0058: parameters the prompt reads as {{params.<name>}}; inherited, child wins by name */
+      parameters?: components['schemas']['TemplateParameter'][];
+      /** @description ADR 0058: values for parameters of the lineage (a preset); child wins, the step wins over all */
+      parameterValues?: {
+        [key: string]: unknown;
+      };
       produces?: string[];
       prompt?: components['schemas']['TaskPrompt'];
-      /** @description rule keys inherited or automatic that this template drops */
-      removeRules?: string[];
-      removeSkills?: string[];
-      /** @description ADR 0055: keys of rules this template adds (inherited, unioned) */
-      rules?: string[];
       /** @description Run inputs this task asks for when a run starts (ADR 0053); inherited child-wins by name */
       runInputs?: components['schemas']['RunInputField'][];
       sandboxPolicy?: components['schemas']['SandboxPolicy'];
       scope: components['schemas']['Scope'];
-      skills?: string[];
       tags?: string[];
     };
     /**
@@ -6532,6 +6577,20 @@ export interface components {
       | 'JIRA'
       | 'OPERATIONS'
       | 'GENERAL';
+    /** @description ADR 0058: a parameter of a template, set when the workflow is designed (run inputs are asked when a run starts) */
+    TemplateParameter: {
+      /** @description string, number or boolean by type; null = no default */
+      default?: unknown;
+      help?: string | null;
+      label: string;
+      /** @description read in prompts as {{params.<name>}} */
+      name: string;
+      /** @description CHOICE only */
+      options?: string[];
+      required: boolean;
+      /** @enum {string} */
+      type: 'TEXT' | 'MULTILINE' | 'NUMBER' | 'BOOLEAN' | 'CHOICE';
+    };
     TokenUsage: {
       /** Format: int64 */
       cacheReadTokens?: number;

@@ -19,26 +19,46 @@ import { NzDrawerModule } from 'ng-zorro-antd/drawer';
 import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
+import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
-import { Subject, catchError, debounceTime, of, switchMap } from 'rxjs';
+import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type {
   Agent,
   AgentRef,
   ModelProfile,
   Project,
+  ResolvedParameter,
+  ResolvedTask,
   Rule,
   RunInputField,
   Skill,
   TaskConfigSchemas,
   TaskTemplate,
   TaskTemplateInput,
+  TemplateParameter,
 } from '../../../core/api/types';
+import { ParameterValuesFormComponent } from '../../../core/ui/parameter-values-form.component';
+import {
+  PARAMETER_TYPES,
+  addParameter,
+  cleanParameters,
+  fromResolved,
+  moveParameter,
+  parameterFields,
+  parameterProblem,
+  parameterTypeLabel,
+  parameterValueText,
+  patchParameter,
+  removeParameter,
+  withParameterValue,
+} from '../../../core/ui/template-parameters';
+import { instructionsExcerpt } from '../data/agent-form';
 import { TEMPLATE_CATEGORIES, categoryLabel } from '../../../core/ui/template-categories';
 import { effectiveCategory, nameOfKey } from '../data/library-filters';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
@@ -59,10 +79,9 @@ import { ActionBarComponent } from '../../../core/ui/relay/action-bar.component'
 import { SandboxPolicyEditorComponent } from '../../fleet/public-api';
 import {
   automaticRules,
-  draftRuleDelta,
-  draftSkillDelta,
   emptyTemplate,
   parentCandidates,
+  presetOf,
   toPreview,
   toSavePayload,
   toTemplateInput,
@@ -102,6 +121,8 @@ function invalidJson(e: unknown): string {
     NzTooltipModule,
     NzCollapseModule,
     JsonViewComponent,
+    NzInputNumberModule,
+    ParameterValuesFormComponent,
     SandboxPolicyEditorComponent,
     SchemaFormComponent,
   ],
@@ -232,7 +253,7 @@ function invalidJson(e: unknown): string {
                   >Based on</nz-form-label
                 >
                 <nz-form-control
-                  nzExtra="The template this one starts from: it inherits its prompts, skills and configuration and changes only what you set here."
+                  nzExtra="The template this one starts from: it inherits its prompts, parameters and configuration and changes only what you set here."
                   i18n-nzExtra="@@library.templateEditor.extends.extra"
                 >
                   <nz-select
@@ -355,6 +376,60 @@ function invalidJson(e: unknown): string {
                 </nz-form-control>
               </nz-form-item>
             </div>
+            @if (agentEnvironment(); as env) {
+              <div class="agent-env" data-agent-environment>
+                <div class="env-head">
+                  <span i18n="@@library.templateEditor.agentEnv.title"
+                    >Environment of the agent</span
+                  >
+                  <span class="env-name">{{ env.name }}</span>
+                </div>
+                @if (env.instructions) {
+                  <p class="env-instructions" data-agent-instructions>{{ env.instructions }}</p>
+                } @else {
+                  <p class="sec-help" i18n="@@library.templateEditor.agentEnv.noInstructions">
+                    No instructions of its own (the platform preamble only).
+                  </p>
+                }
+                <div class="chips">
+                  <span class="env-label" i18n="@@library.templateEditor.agentEnv.rules"
+                    >Rules:</span
+                  >
+                  @for (r of automatic(); track r.key) {
+                    <nz-tag nzColor="gold" [attr.data-env-rule]="r.key"
+                      >{{ r.name }}
+                      <span i18n="@@library.templateEditor.automaticSuffix"
+                        >(automatic)</span
+                      ></nz-tag
+                    >
+                  }
+                  @for (r of env.rules; track r.key) {
+                    <nz-tag [attr.data-env-rule]="r.key">{{ r.name }}</nz-tag>
+                  }
+                  @if (!env.rules.length && !automatic().length) {
+                    <span class="muted small" i18n="@@library.templateEditor.agentEnv.none"
+                      >none</span
+                    >
+                  }
+                </div>
+                <div class="chips">
+                  <span class="env-label" i18n="@@library.templateEditor.agentEnv.skills"
+                    >Skills:</span
+                  >
+                  @for (s of env.skills; track s.key) {
+                    <nz-tag nzColor="blue" [attr.data-env-skill]="s.key">{{ s.name }}</nz-tag>
+                  } @empty {
+                    <span class="muted small" i18n="@@library.templateEditor.agentEnv.none"
+                      >none</span
+                    >
+                  }
+                </div>
+                <p class="sec-help env-note" i18n="@@library.templateEditor.agentEnv.help">
+                  Instructions, rules and skills belong to the agent: change them on the Agents
+                  page, or pick another agent.
+                </p>
+              </div>
+            }
 
             <h3 class="sec" i18n="@@library.templateEditor.prompt">Prompt</h3>
             <nz-form-item>
@@ -401,7 +476,7 @@ function invalidJson(e: unknown): string {
                 >User prompt</nz-form-label
               >
               <nz-form-control
-                nzExtra="Template variables: issue, artifacts.*, feedback, project.constitution, input.ci.*"
+                nzExtra="Template variables: issue, artifacts.*, feedback, params.*, project.*, input.ci.*"
                 i18n-nzExtra="@@library.templateEditor.userPrompt.extra"
               >
                 <textarea
@@ -416,66 +491,197 @@ function invalidJson(e: unknown): string {
               </nz-form-control>
             </nz-form-item>
 
-            <h3 class="sec" i18n="@@library.templateEditor.skillsAndRules">Skills and rules</h3>
-            <div class="grid">
-              <nz-form-item>
-                <nz-form-label nzFor="tt-skills" i18n="@@library.templateEditor.skills"
-                  >Skills</nz-form-label
+            <h3 class="sec" i18n="@@library.templateEditor.parameters">Parameters</h3>
+            <p class="sec-help" i18n="@@library.templateEditor.parameters.help">
+              Fields a workflow step fills in when it uses this template. Prompts and text settings
+              read them as {{ paramsExample }}. A parameter with the name of an inherited one
+              replaces it.
+            </p>
+            @for (p of draft().parameters ?? []; track $index; let i = $index) {
+              <div class="param-row" [attr.data-parameter]="i">
+                <input
+                  nz-input
+                  class="mono"
+                  [name]="'pa-name-' + i"
+                  [ngModel]="p.name"
+                  (ngModelChange)="patchParameter(i, { name: $event })"
+                  placeholder="name"
+                  i18n-placeholder="@@library.templateEditor.parameters.name"
+                  aria-label="Name"
+                  i18n-aria-label="@@library.templateEditor.parameters.nameLabel"
+                />
+                <input
+                  nz-input
+                  [name]="'pa-label-' + i"
+                  [ngModel]="p.label"
+                  (ngModelChange)="patchParameter(i, { label: $event })"
+                  placeholder="Label shown in the step"
+                  i18n-placeholder="@@library.templateEditor.parameters.label"
+                  aria-label="Label"
+                  i18n-aria-label="@@library.templateEditor.parameters.labelLabel"
+                />
+                <nz-select
+                  [name]="'pa-type-' + i"
+                  [ngModel]="p.type"
+                  (ngModelChange)="patchParameter(i, { type: $event })"
+                  aria-label="Type"
+                  i18n-aria-label="@@library.templateEditor.parameters.typeLabel"
                 >
-                <nz-form-control
-                  nzExtra="Knowledge the agent loads when it needs it."
-                  i18n-nzExtra="@@library.templateEditor.skills.extra"
-                >
+                  @for (t of parameterTypes; track t.value) {
+                    <nz-option [nzValue]="t.value" [nzLabel]="t.label" />
+                  }
+                </nz-select>
+                <label class="ri-required">
+                  <nz-switch
+                    nzSize="small"
+                    [name]="'pa-required-' + i"
+                    [ngModel]="p.required"
+                    (ngModelChange)="patchParameter(i, { required: $event })"
+                  />
+                  <span i18n="@@library.templateEditor.parameters.required">Required</span>
+                </label>
+                @if (p.type === 'CHOICE') {
                   <nz-select
-                    id="tt-skills"
-                    name="skills"
-                    nzMode="multiple"
-                    nzShowSearch
-                    nzPlaceHolder="none"
-                    i18n-nzPlaceHolder="@@library.templateEditor.none"
-                    [ngModel]="draft().skills ?? []"
-                    (ngModelChange)="patch({ skills: $event })"
-                  >
-                    @for (s of skillOptions(); track s.key) {
-                      <nz-option [nzValue]="s.key" [nzLabel]="s.label" />
-                    }
-                  </nz-select>
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label nzFor="tt-rules" i18n="@@library.templateEditor.rules"
-                  >Rules</nz-form-label
-                >
-                <nz-form-control
-                  nzExtra="Always in the agent's context, for every step of this template."
-                  i18n-nzExtra="@@library.templateEditor.rules.extra"
-                >
-                  <nz-select
-                    id="tt-rules"
-                    name="rules"
-                    nzMode="multiple"
-                    nzShowSearch
-                    nzPlaceHolder="none"
-                    i18n-nzPlaceHolder="@@library.templateEditor.none"
-                    [ngModel]="draft().rules ?? []"
-                    (ngModelChange)="patch({ rules: $event })"
-                  >
-                    @for (r of ruleOptions(); track r.key) {
-                      <nz-option [nzValue]="r.key" [nzLabel]="r.label" />
-                    }
-                  </nz-select>
-                </nz-form-control>
-              </nz-form-item>
-            </div>
-            @if (automatic().length) {
-              <p class="sec-help automatic" data-automatic-rules>
-                <span i18n="@@library.templateEditor.automaticRules"
-                  >Applied anyway (automatic rules):</span
-                >
-                @for (r of automatic(); track r.key) {
-                  <nz-tag>{{ r.name }}</nz-tag>
+                    class="pa-wide"
+                    nzMode="tags"
+                    [name]="'pa-options-' + i"
+                    [ngModel]="p.options ?? []"
+                    (ngModelChange)="patchParameter(i, { options: $event })"
+                    nzPlaceHolder="Options (type and press Enter)"
+                    i18n-nzPlaceHolder="@@library.templateEditor.parameters.options"
+                    aria-label="Options"
+                    i18n-aria-label="@@library.templateEditor.parameters.optionsLabel"
+                  ></nz-select>
                 }
+                <span class="pa-default">
+                  @switch (p.type) {
+                    @case ('NUMBER') {
+                      <nz-input-number
+                        class="pa-number"
+                        [name]="'pa-default-' + i"
+                        [ngModel]="p.default ?? null"
+                        (ngModelChange)="patchParameter(i, { default: $event })"
+                        nzPlaceHolder="Default (optional)"
+                        i18n-nzPlaceHolder="@@library.templateEditor.parameters.default"
+                        [nzDisabled]="readonly()"
+                      />
+                    }
+                    @case ('BOOLEAN') {
+                      <nz-select
+                        [name]="'pa-default-' + i"
+                        nzAllowClear
+                        [ngModel]="p.default ?? null"
+                        (ngModelChange)="patchParameter(i, { default: $event ?? null })"
+                        nzPlaceHolder="Default (optional)"
+                        i18n-nzPlaceHolder="@@library.templateEditor.parameters.default"
+                      >
+                        <nz-option [nzValue]="true" [nzLabel]="text.yes" />
+                        <nz-option [nzValue]="false" [nzLabel]="text.no" />
+                      </nz-select>
+                    }
+                    @case ('CHOICE') {
+                      <nz-select
+                        [name]="'pa-default-' + i"
+                        nzAllowClear
+                        [ngModel]="p.default ?? null"
+                        (ngModelChange)="patchParameter(i, { default: $event ?? null })"
+                        nzPlaceHolder="Default (optional)"
+                        i18n-nzPlaceHolder="@@library.templateEditor.parameters.default"
+                      >
+                        @for (o of p.options ?? []; track o) {
+                          <nz-option [nzValue]="o" [nzLabel]="o" />
+                        }
+                      </nz-select>
+                    }
+                    @default {
+                      <input
+                        nz-input
+                        [name]="'pa-default-' + i"
+                        [ngModel]="p.default ?? ''"
+                        (ngModelChange)="patchParameter(i, { default: $event || null })"
+                        placeholder="Default (optional)"
+                        i18n-placeholder="@@library.templateEditor.parameters.default"
+                      />
+                    }
+                  }
+                </span>
+                <input
+                  nz-input
+                  class="pa-help"
+                  [name]="'pa-help-' + i"
+                  [ngModel]="p.help ?? ''"
+                  (ngModelChange)="patchParameter(i, { help: $event || null })"
+                  placeholder="Help text (optional)"
+                  i18n-placeholder="@@library.templateEditor.parameters.helpText"
+                  aria-label="Help text"
+                  i18n-aria-label="@@library.templateEditor.parameters.helpLabel"
+                />
+                @if (!readonly()) {
+                  <span class="ri-actions">
+                    <button
+                      nz-button
+                      nzSize="small"
+                      type="button"
+                      [disabled]="i === 0"
+                      (click)="moveParameter(i, -1)"
+                      aria-label="Move up"
+                      i18n-aria-label="@@library.templateEditor.parameters.up"
+                    >
+                      <nz-icon nzType="arrow-up" />
+                    </button>
+                    <button
+                      nz-button
+                      nzSize="small"
+                      type="button"
+                      [disabled]="i === (draft().parameters ?? []).length - 1"
+                      (click)="moveParameter(i, 1)"
+                      aria-label="Move down"
+                      i18n-aria-label="@@library.templateEditor.parameters.down"
+                    >
+                      <nz-icon nzType="arrow-down" />
+                    </button>
+                    <button
+                      nz-button
+                      nzSize="small"
+                      nzDanger
+                      type="button"
+                      (click)="removeParameter(i)"
+                      aria-label="Remove"
+                      i18n-aria-label="@@library.templateEditor.parameters.remove"
+                    >
+                      <nz-icon nzType="delete" />
+                    </button>
+                  </span>
+                }
+              </div>
+            }
+            @if (!readonly()) {
+              <button
+                nz-button
+                nzType="dashed"
+                type="button"
+                class="ri-add pa-add"
+                (click)="addParameter()"
+                i18n="@@library.templateEditor.parameters.add"
+              >
+                Add parameter
+              </button>
+            }
+
+            @if (inheritedParameterFields().length) {
+              <h3 class="sec" i18n="@@library.templateEditor.parameterValues">Parameter values</h3>
+              <p class="sec-help" i18n="@@library.templateEditor.parameterValues.help">
+                Values for the parameters of the parent templates. Empty: the parent's value or the
+                default; a workflow step may still set its own.
               </p>
+              <div class="param-values" data-parameter-values>
+                <app-parameter-values-form
+                  [fields]="inheritedParameterFields()"
+                  [readonly]="readonly()"
+                  idPrefix="tt-pv"
+                  (valueChange)="setParameterValue($event.name, $event.value)"
+                />
+              </div>
             }
 
             <h3 class="sec" i18n="@@library.templates.runInputs.title">Run inputs</h3>
@@ -650,7 +856,7 @@ function invalidJson(e: unknown): string {
 
             <nz-collapse nzGhost class="advanced">
               <nz-collapse-panel
-                nzHeader="Advanced: inherited skills and rules, artefacts, output schema, sandbox"
+                nzHeader="Advanced: artefacts, output schema, sandbox"
                 i18n-nzHeader="@@library.templateEditor.advanced"
               >
                 <p class="sec-help" i18n="@@library.templateEditor.advanced.help">
@@ -677,47 +883,6 @@ function invalidJson(e: unknown): string {
                         [ngModel]="draft().abstract"
                         (ngModelChange)="patch({ abstract: $event })"
                       />
-                    </nz-form-control>
-                  </nz-form-item>
-                  <nz-form-item>
-                    <nz-form-label nzFor="tt-rm-skills" i18n="@@library.templateEditor.removeSkills"
-                      >Remove inherited skills</nz-form-label
-                    >
-                    <nz-form-control>
-                      <nz-select
-                        id="tt-rm-skills"
-                        name="removeSkills"
-                        nzMode="tags"
-                        nzPlaceHolder="none"
-                        i18n-nzPlaceHolder="@@library.templateEditor.none"
-                        [ngModel]="draft().removeSkills ?? []"
-                        (ngModelChange)="patch({ removeSkills: $event })"
-                      >
-                        @for (s of preview()?.skills ?? []; track s.key) {
-                          <nz-option [nzValue]="s.key" [nzLabel]="s.name || s.key" />
-                        }
-                      </nz-select>
-                    </nz-form-control>
-                  </nz-form-item>
-                  <nz-form-item>
-                    <nz-form-label nzFor="tt-rm-rules" i18n="@@library.templateEditor.removeRules"
-                      >Drop inherited or automatic rules</nz-form-label
-                    >
-                    <nz-form-control>
-                      <nz-select
-                        id="tt-rm-rules"
-                        name="removeRules"
-                        nzMode="multiple"
-                        nzShowSearch
-                        nzPlaceHolder="none"
-                        i18n-nzPlaceHolder="@@library.templateEditor.none"
-                        [ngModel]="draft().removeRules ?? []"
-                        (ngModelChange)="patch({ removeRules: $event })"
-                      >
-                        @for (r of removableRules(); track r.key) {
-                          <nz-option [nzValue]="r.key" [nzLabel]="r.label" />
-                        }
-                      </nz-select>
                     </nz-form-control>
                   </nz-form-item>
                   <nz-form-item>
@@ -808,10 +973,10 @@ function invalidJson(e: unknown): string {
                 </div>
                 <nz-form-item>
                   <nz-form-label nzFor="tt-schema" i18n="@@library.templateEditor.outputSchema"
-                    >Output schema (JSON Schema, model answer)</nz-form-label
+                    >Output schema (JSON Schema)</nz-form-label
                   >
                   <nz-form-control
-                    nzExtra="Shape of the model answer when it must be structured JSON; empty for free text."
+                    nzExtra="Shape of a structured answer; empty for free text. A model answers with it, a coding agent writes it to structured-answer.json."
                     i18n-nzExtra="@@library.templateEditor.outputSchema.extra"
                   >
                     <textarea
@@ -882,8 +1047,8 @@ function invalidJson(e: unknown): string {
               </nz-select>
             </div>
             <p class="muted small" i18n="@@library.templateEditor.preview.help">
-              What an agent receives after inheritance and project shadowing are applied. Reflects
-              the saved version; unsaved edits are listed as deltas.
+              What the agent receives after inheritance and project shadowing are applied, with the
+              skills and rules of the agent. Reflects the saved version.
             </p>
             @if (preview(); as pv) {
               <div
@@ -925,7 +1090,7 @@ function invalidJson(e: unknown): string {
                 <nz-alert
                   nzType="error"
                   nzShowIcon
-                  nzMessage="Some skills or rules do not exist"
+                  nzMessage="The template has problems"
                   i18n-nzMessage="@@library.templateEditor.checkFailed"
                   [nzDescription]="problemsTpl"
                   style="margin-top: 8px"
@@ -937,17 +1102,6 @@ function invalidJson(e: unknown): string {
                     }
                   </ul>
                 </ng-template>
-              }
-              @if (delta().added.length || delta().removed.length) {
-                <p class="muted small" style="margin-top: 8px">
-                  <span i18n="@@library.templateEditor.unsaved">Unsaved:</span>
-                  @for (k of delta().added; track k) {
-                    <nz-tag nzColor="green">+{{ k }}</nz-tag>
-                  }
-                  @for (k of delta().removed; track k) {
-                    <nz-tag nzColor="red">-{{ k }}</nz-tag>
-                  }
-                </p>
               }
               <nz-tabs nzSize="small" style="margin-top: 8px">
                 <nz-tab
@@ -1025,6 +1179,28 @@ function invalidJson(e: unknown): string {
                     }
                   </ul>
                 </nz-tab>
+                <nz-tab nzTitle="Parameters" i18n-nzTitle="@@library.templateEditor.parameters">
+                  @if (!pv.parameters.length) {
+                    <p class="muted small" i18n="@@library.templateEditor.parameters.none">
+                      This template has no parameters.
+                    </p>
+                  }
+                  <ul class="ri-resolved">
+                    @for (p of pv.parameters; track p.name) {
+                      <li [attr.data-resolved-parameter]="p.name">
+                        <span class="mono">{{ p.name }}</span>
+                        <span>{{ p.label }}</span>
+                        <nz-tag>{{ parameterTypeLabel(p.type) }}</nz-tag>
+                        @if (p.required) {
+                          <nz-tag nzColor="red" i18n="@@library.templates.runInputs.requiredTag"
+                            >required</nz-tag
+                          >
+                        }
+                        <span class="muted small">{{ parameterSourceText(p) }}</span>
+                      </li>
+                    }
+                  </ul>
+                </nz-tab>
               </nz-tabs>
             } @else if (previewError()) {
               <nz-alert nzType="warning" nzShowIcon [nzMessage]="previewError()!" />
@@ -1051,6 +1227,19 @@ function invalidJson(e: unknown): string {
         >
           @if (!canSave() && !readonly() && saveBlocker()) {
             <span boActionStatus class="blocker">{{ saveBlocker() }}</span>
+          }
+          @if (canPreset()) {
+            <button
+              nz-button
+              type="button"
+              (click)="requestPreset()"
+              nz-tooltip
+              [nzTooltipTitle]="text.presetHint"
+              data-create-preset
+            >
+              <nz-icon nzType="copy" />
+              <span i18n="@@library.templateEditor.createPreset">Create preset</span>
+            </button>
           }
           <button nz-button type="button" (click)="requestClose()">
             {{ readonly() || !dirty() ? text.close : text.discard }}
@@ -1119,6 +1308,66 @@ function invalidJson(e: unknown): string {
       }
       .ri-add {
         margin-bottom: 16px;
+      }
+      .param-row {
+        display: grid;
+        grid-template-columns: 140px 1fr 150px auto;
+        gap: 6px 8px;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px dashed var(--bo-line);
+      }
+      .param-row .pa-wide {
+        grid-column: 1 / 5;
+      }
+      .param-row .pa-default {
+        grid-column: 1 / 3;
+      }
+      .param-row .pa-default > * {
+        width: 100%;
+      }
+      .param-row .pa-help {
+        grid-column: 3 / 4;
+      }
+      .param-values {
+        margin-bottom: 8px;
+      }
+      .agent-env {
+        margin: 0 0 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--bo-line);
+        border-radius: 6px;
+        background: var(--bo-surface-2);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .env-head {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bo-ink-2);
+      }
+      .env-name {
+        font-weight: 400;
+        color: var(--bo-ink-3);
+      }
+      .env-instructions {
+        margin: 0;
+        font-size: 12px;
+        white-space: pre-wrap;
+        color: var(--bo-ink-2);
+      }
+      .env-label {
+        font-size: 12px;
+        color: var(--bo-ink-3);
+        margin-right: 2px;
+      }
+      .env-note {
+        margin: 0;
       }
       .ri-resolved {
         list-style: none;
@@ -1332,6 +1581,8 @@ export class TemplateEditorDrawerComponent {
 
   readonly saved = output<TaskTemplateInput>();
   readonly closed = output<void>();
+  /** ADR 0058: the user asked for a preset of the open template (the page opens a new drawer). */
+  readonly createPreset = output<TaskTemplateInput>();
 
   readonly agentKindLabel = agentKindLabel;
   readonly agentKindDescription = agentKindDescription;
@@ -1368,6 +1619,9 @@ export class TemplateEditorDrawerComponent {
   readonly previewError = signal<string | null>(null);
   readonly resolving = signal(false);
   private readonly resolve$ = new Subject<{ key: string | null; projectId: string | null }>();
+  /** ADR 0058: the parent resolved (its parameters with the values its lineage sets); null without. */
+  readonly parentResolved = signal<ResolvedTask | null>(null);
+  private readonly parent$ = new Subject<{ key: string | null; projectId: string | null }>();
 
   readonly drawerWidth = 'min(1280px, 96vw)'; // i18n-ignore
   readonly schemaPlaceholder = '{ "type": "object", "properties": { ... } }'; // i18n-ignore
@@ -1384,7 +1638,17 @@ export class TemplateEditorDrawerComponent {
     discard: $localize`:@@library.templateEditor.discard:Discard changes`,
     deprecated: deprecatedLabel(),
     deprecatedHint: deprecatedHint(),
+    yes: $localize`:@@library.templateEditor.parameters.yes:Yes`,
+    no: $localize`:@@library.templateEditor.parameters.no:No`,
+    presetHint: $localize`:@@library.templateEditor.createPreset.hint:A new template that extends this one and only sets its parameter values`,
   };
+  /** ADR 0058: how prompts read a parameter (help of the parameters section). */
+  readonly paramsExample = '{{params.<name>}}'; // i18n-ignore
+  readonly parameterTypeLabel = parameterTypeLabel;
+  readonly parameterTypes = PARAMETER_TYPES.map((t) => ({
+    value: t,
+    label: parameterTypeLabel(t),
+  }));
 
   /** ADR 0056: agents the template's scope may name. */
   readonly agentOptions = computed(() => agentsForScope(this.agents(), this.draft().scope));
@@ -1463,30 +1727,89 @@ export class TemplateEditorDrawerComponent {
       ? $localize`:@@library.templateEditor.category.inheritedValue:inherited: ${categoryLabel(c)}:category:`
       : this.text.inherited;
   });
-  /** Skills and rules by name (the key only when there is no name). */
-  readonly skillOptions = computed(() =>
-    this.skills().map((s) => ({ key: s.key ?? '', label: s.name || s.key || '' })),
-  );
-  readonly ruleOptions = computed(() =>
-    this.rules().map((r) => ({ key: r.key ?? '', label: r.name || r.key || '' })),
-  );
   /** Rules the step gets anyway (automatic, from the resolved preview). */
   readonly automatic = computed(() => automaticRules(this.preview()));
-  /** Rules the template may drop: those of the resolved preview plus every known rule. */
-  readonly removableRules = computed(() => {
-    const seen = new Set<string>();
-    const out: Array<{ key: string; label: string }> = [];
-    for (const r of [
-      ...(this.preview()?.rules ?? []).map((x) => ({ key: x.key, label: x.name })),
-      ...this.ruleOptions(),
-    ]) {
-      if (r.key && !seen.has(r.key)) {
-        seen.add(r.key);
-        out.push(r);
-      }
-    }
-    return out;
+  /**
+   * ADR 0057: the environment of the effective agent, read-only under the agent select: an
+   * instructions excerpt and the agent's rules and skills by name. From the loaded agent, else
+   * from the resolved view's agent reference (keys only).
+   */
+  readonly agentEnvironment = computed(() => {
+    const ref = this.effectiveAgent();
+    if (!ref) return null;
+    const full = agentByKey(this.agents(), ref.key, this.draft().scope);
+    const ruleKeys = full?.rules ?? ref.rules ?? [];
+    const skillKeys = full?.skills ?? ref.skills ?? [];
+    return {
+      name: full?.name ?? ref.name,
+      instructions: instructionsExcerpt(full?.instructions),
+      rules: ruleKeys.map((key) => ({ key, name: nameOfKey(this.rules(), key) })),
+      skills: skillKeys.map((key) => ({ key, name: nameOfKey(this.skills(), key) })),
+    };
   });
+
+  // ---------------------------------------------------------------- ADR 0058: parameters
+
+  /**
+   * Parameters of the parent lineage the draft may set values for (a preset): those of the
+   * resolved parent that the draft does not declare itself (child wins by name).
+   */
+  readonly inheritedParameterFields = computed(() => {
+    const own = new Set((this.draft().parameters ?? []).map((p) => p.name.trim()));
+    const { declared, values } = fromResolved(this.parentResolved()?.parameters);
+    return parameterFields(
+      declared.filter((p) => !own.has(p.name)),
+      values,
+      this.draft().parameterValues,
+    );
+  });
+  private readonly parameterBlocker = computed(() => {
+    const p = parameterProblem(this.draft().parameters);
+    if (!p) return null;
+    switch (p.kind) {
+      case 'blankName':
+        return $localize`:@@library.templateEditor.parameters.blocker.name:Every parameter needs a name`;
+      case 'badName':
+        return $localize`:@@library.templateEditor.parameters.blocker.badName:Parameter name ${p.name}:name: must start with a letter and use only letters, digits and _ (at most 64)`;
+      case 'duplicate':
+        return $localize`:@@library.templateEditor.parameters.blocker.duplicate:Parameter name ${p.name}:name: is used twice`;
+      case 'blankLabel':
+        return $localize`:@@library.templateEditor.parameters.blocker.label:Parameter ${p.name}:name: needs a label`;
+      case 'tooLong':
+        return $localize`:@@library.templateEditor.parameters.blocker.tooLong:Parameter ${p.name}:name: has a label over 200 or a help text over 1000 characters`;
+      case 'noOptions':
+        return $localize`:@@library.templateEditor.parameters.blocker.options:Choice parameter ${p.name}:name: needs options`;
+      case 'badDefault':
+        return $localize`:@@library.templateEditor.parameters.blocker.default:The default of parameter ${p.name}:name: does not fit its type`;
+    }
+  });
+  /** A value of the preset that does not fit its parameter. */
+  private readonly parameterValueBlocker = computed(() => {
+    const bad = this.inheritedParameterFields().find((f) => f.invalid);
+    return bad
+      ? $localize`:@@library.templateEditor.parameterValues.blocker:The value of parameter ${bad.param.name}:name: does not fit its type or options`
+      : null;
+  });
+  /** ADR 0058: a saved template can be the parent of a preset. */
+  readonly canPreset = computed(() => !!this.template()?.id && !!this.template()?.key);
+
+  /** Where the value of a resolved parameter comes from, in words. */
+  parameterSourceText(p: ResolvedParameter): string {
+    const v = parameterValueText(p.value);
+    switch (p.source) {
+      case 'TEMPLATE':
+        return $localize`:@@library.templateEditor.parameters.source.template:value from a template: ${v}:value:`;
+      case 'DEFAULT':
+        return $localize`:@@library.templateEditor.parameters.source.default:default: ${v}:value:`;
+      case 'STEP':
+        return $localize`:@@library.templateEditor.parameters.source.step:value of the step: ${v}:value:`;
+      default:
+        return p.required
+          ? $localize`:@@library.templateEditor.parameters.source.needed:the step must set it`
+          : $localize`:@@library.templateEditor.parameters.source.none:no value`;
+    }
+  }
+
   readonly canSave = computed(() => {
     const d = this.draft();
     return (
@@ -1494,6 +1817,8 @@ export class TemplateEditorDrawerComponent {
       !this.configError() &&
       !this.schemaError() &&
       !this.runInputBlocker() &&
+      !this.parameterBlocker() &&
+      !this.parameterValueBlocker() &&
       (d.scope.type !== 'PROJECT' || !!d.scope.projectId)
     );
   });
@@ -1507,7 +1832,7 @@ export class TemplateEditorDrawerComponent {
       return $localize`:@@library.templateEditor.blocker.schema:Output schema is not valid JSON`;
     if (d.scope.type === 'PROJECT' && !d.scope.projectId)
       return $localize`:@@library.templateEditor.blocker.project:Pick the project`;
-    return this.runInputBlocker();
+    return this.runInputBlocker() ?? this.parameterBlocker() ?? this.parameterValueBlocker();
   });
   readonly parents = computed(() => {
     const self = this.template()?.key ?? null;
@@ -1520,21 +1845,6 @@ export class TemplateEditorDrawerComponent {
         : [];
     const seen = new Set<string>();
     return [...global, ...list].filter((t) => !seen.has(t.key ?? '') && seen.add(t.key ?? ''));
-  });
-  /** Unsaved skills and rules versus the resolved view, by name. */
-  readonly delta = computed(() => {
-    const skills = draftSkillDelta(this.draft(), this.preview());
-    const rules = draftRuleDelta(this.draft(), this.preview());
-    const skillName = (k: string) => nameOfKey(this.skills(), k);
-    const ruleName = (k: string) =>
-      nameOfKey(
-        this.removableRules().map((r) => ({ key: r.key, name: r.label })),
-        k,
-      );
-    return {
-      added: [...skills.added.map(skillName), ...rules.added.map(ruleName)],
-      removed: [...skills.removed.map(skillName), ...rules.removed.map(ruleName)],
-    };
   });
   /** ADR 0053: the resolved run inputs and the template each comes from. */
   readonly previewRunInputs = computed(() => {
@@ -1627,7 +1937,32 @@ export class TemplateEditorDrawerComponent {
         this.preview.set(toPreview(r));
         this.resolving.set(false);
       });
+    // ADR 0058: the parent's parameters (and the values its lineage sets) for the preset values
+    effect(() => {
+      const key = this.parentKey();
+      const projectId = this.parentProjectId();
+      if (this.open()) untracked(() => this.parent$.next({ key, projectId }));
+    });
+    this.parent$
+      .pipe(
+        debounceTime(150),
+        distinctUntilChanged((a, b) => a.key === b.key && a.projectId === b.projectId),
+        switchMap(({ key, projectId }) =>
+          key
+            ? this.api.resolveTemplate(key, projectId).pipe(catchError(() => of(null)))
+            : of(null),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((r) => this.parentResolved.set(r));
   }
+
+  /** The parent the draft extends (a signal of its own, so typing elsewhere does not resolve). */
+  private readonly parentKey = computed(() => this.draft().extendsKey ?? null);
+  private readonly parentProjectId = computed(() => {
+    const s = this.draft().scope;
+    return s.type === 'PROJECT' ? (s.projectId ?? null) : null;
+  });
 
   isEmpty(o: object | null | undefined): boolean {
     return !o || !Object.keys(o).length;
@@ -1739,7 +2074,49 @@ export class TemplateEditorDrawerComponent {
 
   submit(): void {
     if (!this.canSave()) return;
-    this.saved.emit(toSavePayload(this.draft(), !!this.template()?.id));
+    const d = this.draft();
+    this.saved.emit(
+      toSavePayload(
+        {
+          ...d,
+          parameters: cleanParameters(d.parameters),
+          parameterValues: { ...(d.parameterValues ?? {}) },
+        },
+        !!this.template()?.id,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- ADR 0058: parameters
+
+  addParameter(): void {
+    this.patch({ parameters: addParameter(this.draft().parameters) });
+  }
+
+  removeParameter(index: number): void {
+    this.patch({ parameters: removeParameter(this.draft().parameters, index) });
+  }
+
+  moveParameter(index: number, delta: number): void {
+    this.patch({ parameters: moveParameter(this.draft().parameters, index, delta) });
+  }
+
+  patchParameter(index: number, changes: Partial<TemplateParameter>): void {
+    this.patch({ parameters: patchParameter(this.draft().parameters, index, changes) });
+  }
+
+  /** A preset value; empty = the parent's value or the default. */
+  setParameterValue(name: string, value: unknown): void {
+    this.patch({
+      parameterValues: withParameterValue(this.draft().parameterValues, name, value) ?? {},
+    });
+  }
+
+  /** ADR 0058: asks the page to open a new preset of this template. */
+  requestPreset(): void {
+    const t = this.template();
+    if (!t?.key) return;
+    this.createPreset.emit(presetOf(t));
   }
 
   /** A template referred to by key, shown by name. */

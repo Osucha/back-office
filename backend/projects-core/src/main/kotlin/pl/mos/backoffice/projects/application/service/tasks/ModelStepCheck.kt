@@ -31,7 +31,7 @@ class ModelStepCheck(
 ) {
 
     /** Where a step's model comes from. */
-    enum class Source { NODE, TEMPLATE, PROJECT, PROJECT_REVIEW, PERSONAL_DEFAULT, PLATFORM_DEFAULT, NONE }
+    enum class Source { NODE, AGENT, TEMPLATE, PROJECT, PROJECT_REVIEW, PERSONAL_DEFAULT, PLATFORM_DEFAULT, NONE }
 
     data class StepModel(
         val nodeId: String,
@@ -90,9 +90,11 @@ class ModelStepCheck(
         /** The coding agent harness of a runner step: the step's agent's (ADR 0056), OpenCode for a model answer. */
         fun harness(task: ResolvedTask): AgentHarness = task.agent.harness ?: AgentHarness.OPENCODE
 
-        /** ADR 0056: the step's model, else its agent's or its template's (both reported as TEMPLATE), else the project defaults. */
+        /** ADR 0056/0057: the step's model, else its agent's (AGENT), else its template's, else the project defaults. */
         private fun modelOf(node: WorkflowNode.Task, task: ResolvedTask, project: Project): Pair<ModelProfileId?, Source>? = when {
             node.task.overrides.modelProfileId != null -> node.task.overrides.modelProfileId to Source.NODE
+            // the resolver takes the agent's model before the template's (step, agent, template)
+            task.agent.modelProfileId != null -> task.agent.modelProfileId to Source.AGENT
             task.modelProfileId != null -> task.modelProfileId to Source.TEMPLATE
             task.producesReview && project.defaults.reviewModelProfileId != null -> project.defaults.reviewModelProfileId to Source.PROJECT_REVIEW
             project.defaults.modelProfileId != null -> project.defaults.modelProfileId to Source.PROJECT

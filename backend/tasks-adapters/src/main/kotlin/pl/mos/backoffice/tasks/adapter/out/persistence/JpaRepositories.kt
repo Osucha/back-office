@@ -12,12 +12,6 @@ interface TaskTemplateJpaRepository : JpaRepository<TaskTemplateEntity, UUID> {
     fun existsByExtendsKey(extendsKey: String): Boolean
     fun existsByKey(key: String): Boolean
 
-    @Query(value = "select exists(select 1 from task_template t where t.rules @> to_jsonb(cast(:key as text)))", nativeQuery = true)
-    fun existsUsingRule(key: String): Boolean
-
-    @Query(value = "select exists(select 1 from task_template t where t.skills @> to_jsonb(cast(:key as text)))", nativeQuery = true)
-    fun existsUsingSkill(key: String): Boolean
-
     fun existsByAgentKey(agentKey: String): Boolean
 
     @Query(value = "select exists(select 1 from task_template t where t.agent_key = :key and (t.project_id is null or t.project_id = :projectId))", nativeQuery = true)
@@ -30,6 +24,12 @@ interface AgentJpaRepository : JpaRepository<AgentEntity, UUID> {
     fun findAllByScopeType(scopeType: ScopeType): List<AgentEntity>
     fun findAllByScopeTypeOrProjectId(scopeType: ScopeType, projectId: UUID): List<AgentEntity>
     fun existsByKey(key: String): Boolean
+    @Query(value = "select exists(select 1 from agent a where a.rules @> to_jsonb(cast(:key as text)))", nativeQuery = true)
+    fun existsUsingRule(key: String): Boolean
+
+    @Query(value = "select exists(select 1 from agent a where a.skills @> to_jsonb(cast(:key as text)))", nativeQuery = true)
+    fun existsUsingSkill(key: String): Boolean
+
 }
 
 interface SkillJpaRepository : JpaRepository<SkillEntity, UUID> {

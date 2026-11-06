@@ -290,7 +290,25 @@ data class ValidationIssueDto(val nodeId: String?, val edgeId: String?, val fiel
 data class ValidationResultDto(val valid: Boolean, val errors: List<ValidationIssueDto>, val warnings: List<ValidationIssueDto>)
 data class ControlNodeDescriptorDto(val kind: String, val title: String, val description: String, val ports: List<String>, val configSchema: Map<String, Any?>)
 /** `AgentRef` schema (ADR 0056): who runs a step; no harness = model answer. */
-data class AgentRefDto(val key: String, val name: String, val harness: String?, val modelProfileId: UUID?)
+data class AgentRefDto(
+    val key: String,
+    val name: String,
+    val harness: String?,
+    val modelProfileId: UUID?,
+    val rules: List<String> = emptyList(),
+    val skills: List<String> = emptyList(),
+)
+
+/** `TemplateParameter` schema (ADR 0058). */
+data class TemplateParameterDto(
+    val name: String,
+    val label: String,
+    val type: String,
+    val required: Boolean,
+    val default: Any?,
+    val options: List<String>,
+    val help: String?,
+)
 
 data class PaletteTaskDto(
     val key: String,
@@ -302,6 +320,9 @@ data class PaletteTaskDto(
     val projectScoped: Boolean,
     val configSchema: Map<String, Any?>,
     val deprecated: Boolean = false,
+    val parameters: List<TemplateParameterDto> = emptyList(),
+    val parameterValues: Map<String, Any?> = emptyMap(),
+    val needsParameters: Boolean = false,
 )
 
 /** `ActionDescriptor` schema (ADR 0056). */

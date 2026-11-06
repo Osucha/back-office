@@ -12,7 +12,7 @@ import pl.mos.backoffice.tasks.support.Library
 /** The SDLC part of the seed (ADR 0019): keys other contexts rely on, categories, rules, schemas and inheritance. */
 class SdlcSeedTest {
 
-    private val lib = Library()
+    private val lib = Library(builtInAgents = false)
     private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock)
 
     @Test
@@ -33,7 +33,7 @@ class SdlcSeedTest {
     fun `seeding twice creates the SDLC entries once`() {
         val first = service.seed()
         val second = service.seed()
-        assertThat(first.total).describedAs("templates, skills, rules; the built-in agents are there already").isEqualTo(21 + 8 + 4)
+        assertThat(first.total).describedAs("templates, skills, rules and the five agents").isEqualTo(21 + 8 + 4 + 5)
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcTemplateKeys }).hasSize(BuiltInLibrary.sdlcTemplateKeys.size)
         assertThat(lib.skills.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcSkillKeys }).hasSize(BuiltInLibrary.sdlcSkillKeys.size)
@@ -48,16 +48,16 @@ class SdlcSeedTest {
             assertThat(preview.check.problems).describedAs(key).isEmpty()
             assertThat(preview.executable).describedAs(key).isTrue()
             preview.outputSchema?.let { assertThat(JsonSyntax.problem(it)).describedAs("$key schema").isNull() }
-            assertThat(preview.rules.map { it.key }).describedAs("$key inherits the ground rules")
+            assertThat(preview.rules.map { it.key }).describedAs("$key gets the ground rules from its agent")
                 .contains(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
-            assertThat(preview.prompt.system).describedAs(key).contains("{{project.constitution}}")
+            assertThat(preview.prompt.system.orEmpty()).describedAs("ADR 0057: the environment carries the constitution").doesNotContain("project.constitution")
         }
     }
 
     @Test
-    fun `every agent inherits the ground rules from base-agent`() {
+    fun `ADR 0057 - every concrete built-in gets the ground rules from its agent`() {
         service.seed()
-        lib.templates.rows.values.filter { it.extendsKey != null }.forEach {
+        lib.templates.rows.values.filter { !it.abstract }.forEach {
             assertThat(lib.lookup.resolver.preview(it.key, null)!!.rules.map { r -> r.key }).describedAs(it.key)
                 .startsWith(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
         }
@@ -67,10 +67,11 @@ class SdlcSeedTest {
     fun `write-user-story is an LLM requirement writer with confidence and the story skills`() {
         service.seed()
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_USER_STORY, null)!!
-        assertThat(task.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
+        assertThat(task.agent.key).isEqualTo(BuiltInLibrary.ANALYST)
+        assertThat(task.agent.modelAnswer).isTrue()
         assertThat(task.category).isEqualTo(TemplateCategory.SPECIFICATION)
-        assertThat(task.lineage).containsExactly(BuiltInLibrary.WRITE_USER_STORY, BuiltInLibrary.BASE_LLM, BuiltInLibrary.BASE_AGENT)
-        assertThat(task.skills.map { it.key }).containsExactly(BuiltInLibrary.USER_STORY_FORMAT, BuiltInLibrary.DEFINITION_OF_READY_DONE)
+        assertThat(task.lineage).describedAs("flat built-ins, ADR 0058").containsExactly(BuiltInLibrary.WRITE_USER_STORY)
+        assertThat(task.skills.map { it.key }).contains(BuiltInLibrary.USER_STORY_FORMAT, BuiltInLibrary.DEFINITION_OF_READY_DONE)
         assertThat(task.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
         assertThat(task.confidenceField).isEqualTo("confidence")
         // the schema field is named like the produced artefact, so the story is stored as markdown, not as the whole JSON
@@ -121,7 +122,7 @@ class SdlcSeedTest {
     fun `implement-task-list extends the OpenCode implementer and keeps a work log`() {
         service.seed()
         val task = lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_TASK_LIST, null)!!
-        assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.BASE_CODING_AGENT, BuiltInLibrary.BASE_AGENT)
+        assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.IMPLEMENT_OPENCODE)
         assertThat(task.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(task.category).describedAs("inherited from implement-opencode").isEqualTo(TemplateCategory.IMPLEMENTATION)
         assertThat(task.produces).contains("diff", "mr", "work-log")
@@ -133,7 +134,8 @@ class SdlcSeedTest {
         assertThat(task.prompt.user).contains("test_command").contains("STOP").contains("Noticed out of scope").contains(BuiltInLibrary.WORK_LOG_GREEN)
             .contains("{{artifacts.review}}").contains("Do not commit").doesNotContain("Work through the task list in order when")
             .doesNotContain("commit with the task title")
-        assertThat(task.skills.map { it.key }).doesNotContain(BuiltInLibrary.CONVENTIONAL_COMMITS, BuiltInLibrary.BUILD_GUARDRAILS)
+        assertThat(task.skills.map { it.key }).describedAs("the OpenCode agent's").doesNotContain(BuiltInLibrary.CONVENTIONAL_COMMITS)
+            .contains(BuiltInLibrary.DEFINITION_OF_READY_DONE)
     }
 
     @Test
@@ -162,17 +164,22 @@ class SdlcSeedTest {
     }
 
     @Test
-    fun `an untouched built-in base-agent from an older seed receives the ground rules, an edited one does not`() {
-        val old = BuiltInLibrary.templates(lib.now).first { it.key == BuiltInLibrary.BASE_AGENT }.copy(rules = emptyList(), updatedBy = null)
-        lib.templates.save(old)
-        val review = BuiltInLibrary.templates(lib.now).first { it.key == BuiltInLibrary.CODE_REVIEW }
-        lib.templates.save(review.copy(skills = emptyList(), version = 3))
+    fun `ADR 0057 - an untouched built-in agent from an older seed receives its environment, an edited one does not`() {
+        val analyst = BuiltInLibrary.agents(lib.now).first { it.key == BuiltInLibrary.ANALYST }
+        lib.agents.save(analyst.copy(rules = emptyList(), skills = emptyList(), instructions = "", updatedBy = null))
+        val reviewer = BuiltInLibrary.agents(lib.now).first { it.key == BuiltInLibrary.REVIEWER }
+        val alice = pl.mos.backoffice.shared.security.Actor(pl.mos.backoffice.shared.security.PrincipalKind.USER, java.util.UUID.randomUUID(), "Alice")
+        lib.agents.save(reviewer.copy(skills = emptyList(), updatedBy = alice))
 
         val result = service.seed()
 
-        assertThat(result.templatesUpgraded).isEqualTo(1)
-        assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.BASE_AGENT, Scope.Global)!!.rules).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
-        assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!.skills).describedAs("edited copy stays as the owner left it").isEmpty()
+        assertThat(result.agentsUpgraded).isEqualTo(1)
+        val upgraded = lib.agents.findByKeyAndScope(BuiltInLibrary.ANALYST, Scope.Global)!!
+        assertThat(upgraded.rules).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
+        assertThat(upgraded.skills).containsExactlyElementsOf(BuiltInLibrary.agentSkills.getValue(BuiltInLibrary.ANALYST))
+        assertThat(upgraded.instructions).isEqualTo(BuiltInLibrary.ANALYST_INSTRUCTIONS)
+        assertThat(lib.agents.findByKeyAndScope(BuiltInLibrary.REVIEWER, Scope.Global)!!.skills).describedAs("edited copy stays as the owner left it").isEmpty()
         assertThat(service.seed().total).isZero()
     }
+
 }

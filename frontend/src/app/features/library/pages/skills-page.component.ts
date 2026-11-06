@@ -759,7 +759,7 @@ export class SkillsPageComponent {
     if (s.builtIn || !s.id) return;
     const ok = await this.confirm.danger(
       $localize`:@@library.skills.deleteConfirm.title:Delete skill "${s.name}:name:"?`,
-      $localize`:@@library.skills.deleteConfirm.content:Templates that list it stop receiving it on their next run; their other skills stay.`,
+      $localize`:@@library.skills.deleteConfirm.content:Refused while an agent lists the skill: remove it from those agents first.`,
       $localize`:@@library.skills.delete:Delete skill`,
     );
     if (!ok) return;

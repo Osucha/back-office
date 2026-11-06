@@ -1,12 +1,14 @@
 /**
  * Pure mapping of a `ResolvedTask` into what the template editor preview shows: lineage
- * breadcrumb, effective prompts, skills, rules (ADR 0055), the check of missing skills and rules
- * and the diff against the draft.
+ * breadcrumb, effective prompts, the skills and rules of the agent (ADR 0057), the parameters with
+ * their values (ADR 0058) and the check of missing or wrong references.
  */
 import type {
   AgentRef,
+  ResolvedParameter,
   ResolvedTask,
   RunInputField,
+  TaskTemplate,
   TaskTemplateInput,
 } from '../../../core/api/types';
 
@@ -27,6 +29,8 @@ export interface ResolvedPreview {
   consumes: string[];
   /** ADR 0053: the run inputs merged over the lineage. */
   runInputs: RunInputField[];
+  /** ADR 0058: the parameters of the lineage with the value a step gets without its own. */
+  parameters: ResolvedParameter[];
   config: Record<string, unknown>;
   abstract: boolean;
   ok: boolean;
@@ -52,47 +56,12 @@ export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview |
     produces: r.produces ?? [],
     consumes: r.consumes ?? [],
     runInputs: r.runInputs ?? [],
+    parameters: r.parameters ?? [],
     config: r.config ?? {},
     abstract: !!r.abstract,
     ok: r.check?.ok !== false,
     problems: r.check?.problems ?? [],
   };
-}
-
-function delta(
-  listed: readonly string[] | undefined,
-  dropped: readonly string[] | undefined,
-  resolvedKeys: readonly string[],
-): { added: string[]; removed: string[] } {
-  const resolved = new Set(resolvedKeys);
-  return {
-    added: (listed ?? []).filter((k) => !resolved.has(k)),
-    removed: (dropped ?? []).filter((k) => resolved.has(k)),
-  };
-}
-
-/** Skills that the draft adds compared to the resolved result (not yet saved / from a parent). */
-export function draftSkillDelta(
-  draft: TaskTemplateInput,
-  preview: ResolvedPreview | null,
-): { added: string[]; removed: string[] } {
-  return delta(
-    draft.skills,
-    draft.removeSkills,
-    (preview?.skills ?? []).map((s) => s.key),
-  );
-}
-
-/** ADR 0055: rules that the draft adds or drops compared to the resolved result. */
-export function draftRuleDelta(
-  draft: TaskTemplateInput,
-  preview: ResolvedPreview | null,
-): { added: string[]; removed: string[] } {
-  return delta(
-    draft.rules,
-    draft.removeRules,
-    (preview?.rules ?? []).map((r) => r.key),
-  );
 }
 
 /** ADR 0055: the automatic rules a step of this template gets anyway (read-only in the editor). */
@@ -137,16 +106,15 @@ export function emptyTemplate(): TaskTemplateInput {
     name: '',
     description: '',
     abstract: false,
-    extendsKey: 'base-agent',
+    // ADR 0058: built-ins are flat; the deprecated base-* templates are no longer the default parent
+    extendsKey: null,
     category: null,
     agentKey: null,
     scope: { type: 'GLOBAL', projectId: null },
     modelProfileId: null,
     prompt: { system: '', user: '', mode: 'APPEND' },
-    skills: [],
-    removeSkills: [],
-    rules: [],
-    removeRules: [],
+    parameters: [],
+    parameterValues: {},
     config: {},
     outputSchema: null,
     confidenceField: null,
@@ -174,10 +142,8 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
       user: t.prompt?.user ?? '',
       mode: t.prompt?.mode ?? 'APPEND',
     },
-    skills: t.skills ?? [],
-    removeSkills: t.removeSkills ?? [],
-    rules: t.rules ?? [],
-    removeRules: t.removeRules ?? [],
+    parameters: (t.parameters ?? []).map((p) => ({ ...p })),
+    parameterValues: { ...(t.parameterValues ?? {}) },
     config: t.config ?? {},
     outputSchema: t.outputSchema ?? null,
     confidenceField: t.confidenceField ?? null,
@@ -216,5 +182,22 @@ export function customizeForProject(
     agentKey: null,
     prompt: { system: '', user: '', mode: 'APPEND' },
     scope: { type: 'PROJECT', projectId },
+  };
+}
+
+/**
+ * ADR 0058: a new preset of `t`: a template that extends it, in the same category and scope, and
+ * only sets parameter values (the editor asks for them). The name is left to the user.
+ */
+export function presetOf(
+  t: Pick<TaskTemplate, 'key' | 'category' | 'scope'>,
+  scope?: TaskTemplateInput['scope'] | null,
+): TaskTemplateInput {
+  const s = scope ?? t.scope ?? { type: 'GLOBAL', projectId: null };
+  return {
+    ...emptyTemplate(),
+    extendsKey: t.key ?? null,
+    category: t.category ?? null,
+    scope: { type: s.type, projectId: s.type === 'PROJECT' ? (s.projectId ?? null) : null },
   };
 }

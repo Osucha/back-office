@@ -19,6 +19,7 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.tasks.TemplateParameter
 import java.util.UUID
 
 /** ADR 0056: the JSON Schema of a task step's `config` keys for a model answer agent and for a coding agent. */
@@ -84,6 +85,12 @@ interface ManageWorkflows {
         val configSchema: Map<String, Any?>,
         /** ADR 0054: kept for the steps that use it; the designer and MCP do not offer it for new steps. */
         val deprecated: Boolean = false,
+        /** ADR 0058: merged parameter declarations of the lineage. */
+        val parameters: List<TemplateParameter> = emptyList(),
+        /** ADR 0058: values the template lineage sets (step values win). */
+        val parameterValues: Map<String, Any?> = emptyMap(),
+        /** ADR 0058: a required parameter has no value without the step (not a ready block). */
+        val needsParameters: Boolean = false,
     )
 
     data class Palette(

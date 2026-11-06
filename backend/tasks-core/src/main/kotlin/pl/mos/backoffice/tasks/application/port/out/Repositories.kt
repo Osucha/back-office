@@ -22,10 +22,6 @@ interface TaskTemplateRepository {
     fun existsByKey(key: String): Boolean
     /** Some template, in any scope, has `extendsKey == key`. */
     fun existsExtending(key: String): Boolean
-    /** Some template, in any scope, lists [skillKey] in `skills`. */
-    fun existsUsingSkill(skillKey: String): Boolean
-    /** Some template, in any scope, lists [ruleKey] in `rules`. */
-    fun existsUsingRule(ruleKey: String): Boolean
     /**
      * ADR 0056: some template names [agentKey] as its agent where the agent is visible: with [projectId] the project's
      * templates and the global ones, without it every template.
@@ -66,5 +62,9 @@ interface AgentRepository {
     /** Global agents plus the project's own ones. */
     fun findVisible(projectId: UUID?): List<Agent>
     fun existsByKey(key: String): Boolean
+    /** ADR 0057: some agent, in any scope, lists [skillKey] in `skills`. */
+    fun existsUsingSkill(skillKey: String): Boolean
+    /** ADR 0057: some agent, in any scope, lists [ruleKey] in `rules`. */
+    fun existsUsingRule(ruleKey: String): Boolean
     fun delete(id: AgentId)
 }

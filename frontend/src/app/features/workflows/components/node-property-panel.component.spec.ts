@@ -10,6 +10,27 @@ const palette: WorkflowPalette = {
   tasks: [
     { key: 'code-review', name: 'Code review', agent: answer },
     { key: 'analyse-issue', name: 'Analyse issue', agent: answer },
+    {
+      key: 'llm-task',
+      name: 'LLM task',
+      agent: answer,
+      needsParameters: true,
+      parameters: [
+        { name: 'task', label: 'Task', type: 'MULTILINE', required: true },
+        { name: 'tone', label: 'Tone', type: 'TEXT', required: false, default: 'formal' },
+      ],
+      parameterValues: {},
+    },
+    {
+      key: 'implement',
+      name: 'Implement',
+      agent: { key: 'claude-code', name: 'Claude Code', harness: 'CLAUDE_CODE' },
+    },
+    {
+      key: 'implement-oc',
+      name: 'Implement (OpenCode)',
+      agent: { key: 'opencode', name: 'OpenCode', harness: 'OPENCODE' },
+    },
   ],
   actions: [
     {
@@ -109,7 +130,8 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
 
     const other = create(node('code-review')).panel;
     const offered = other.templateGroups().flatMap((g) => g.tasks.map((t) => t.key));
-    expect(offered).toEqual(['code-review']);
+    expect(offered).toContain('code-review');
+    expect(offered).not.toContain('analyse-issue');
   });
 
   it('chooses the agent of a step and derives the step kind from it (ADR 0056)', () => {
@@ -169,6 +191,69 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
 
     panel.onConfigJson('{"message": "raw"}');
     expect(changed!.action?.config).toEqual({ message: 'raw' });
+  });
+
+  it('edits the parameters of a step, showing a required one without a value (ADR 0058)', () => {
+    const { fixture, panel } = create(node('llm-task'));
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+
+    expect(panel.parameterFields().map((f) => [f.param.name, f.missing, f.inherited])).toEqual([
+      ['task', true, null],
+      ['tone', false, 'formal'],
+    ]);
+    expect(document.querySelector('[data-step-parameters]')?.textContent).toContain('Task');
+
+    panel.setParameter('task', 'Summarise the issue');
+    expect(changed!.task?.overrides?.parameters).toEqual({ task: 'Summarise the issue' });
+    fixture.componentRef.setInput('node', changed!);
+    fixture.detectChanges();
+    expect(panel.parameterFields()[0].missing).toBe(false);
+
+    panel.setParameter('task', null);
+    expect('parameters' in (changed!.task?.overrides ?? {})).toBe(false);
+  });
+
+  it('continues the session of another coding agent step of the same harness (ADR 0057)', () => {
+    const nodes: WorkflowNode[] = [
+      { ...node('implement'), id: 'spec', name: 'Write spec' },
+      { ...node('implement-oc'), id: 'oc', name: 'OpenCode step' },
+      { ...node('code-review'), id: 'answer', name: 'Answer' },
+      { ...node('implement', { config: { push: true } }), id: 'impl', name: 'Implement' },
+    ];
+    const { fixture, panel } = create(nodes[3]);
+    fixture.componentRef.setInput('nodes', nodes);
+    fixture.detectChanges();
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+
+    expect(panel.runnerStep()).toBe(true);
+    expect(panel.sessionMode()).toBe('new');
+    expect(panel.sessionCandidates()).toEqual([
+      { id: 'spec', name: 'Write spec', harness: 'CLAUDE_CODE', sameHarness: true },
+      { id: 'oc', name: 'OpenCode step', harness: 'OPENCODE', sameHarness: false },
+    ]);
+    expect(panel.sessionOptionLabel(panel.sessionCandidates()[1])).toContain('another harness');
+    expect(document.querySelector('[data-agent-session]')).not.toBeNull();
+
+    panel.setSessionMode('continue');
+    expect(panel.sessionMode()).toBe('continue');
+    expect(panel.sessionProblem()).toContain('Pick the step');
+    panel.setContinueSession('spec');
+    expect(changed!.task?.overrides?.config).toEqual({ push: true, continueSession: 'spec' });
+    fixture.componentRef.setInput('node', changed!);
+    fixture.detectChanges();
+    expect(panel.continuedStepId()).toBe('spec');
+    expect(panel.sessionProblem()).toBeNull();
+    expect(panel.formConfig()).toEqual({ push: true });
+
+    panel.setContinueSession('oc');
+    fixture.componentRef.setInput('node', changed!);
+    fixture.detectChanges();
+    expect(panel.sessionProblem()).toContain('another harness');
+
+    panel.setSessionMode('new');
+    expect(changed!.task?.overrides?.config).toEqual({ push: true });
   });
 
   it('keeps a template the palette no longer has as the current choice', () => {

@@ -181,12 +181,13 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     const created = create(null).drawer;
     let payload: TaskTemplateInput | null = null;
     created.saved.subscribe((p) => (payload = p));
-    created.patch({ name: 'Brief', category: 'ANALYSIS', rules: ['no-secrets'] });
+    created.patch({ name: 'Brief', category: 'ANALYSIS' });
     expect(created.canSave()).toBe(true);
     created.submit();
     expect('key' in payload!).toBe(false);
     expect(payload!.category).toBe('ANALYSIS');
-    expect(payload!.rules).toEqual(['no-secrets']);
+    expect('rules' in payload!).toBe(false);
+    expect('skills' in payload!).toBe(false);
     expect(document.querySelector('#tt-key')).toBeNull();
   });
 
@@ -218,10 +219,23 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     expect(payload!.scope).toEqual({ type: 'PROJECT', projectId: 'p1' });
   });
 
-  it('shows the automatic rules of the resolved view and names skills and rules', async () => {
+  it('shows the environment of the agent read-only with the automatic rules (ADR 0057)', async () => {
     const { fixture, drawer } = create(writer);
+    fixture.componentRef.setInput('agents', [
+      {
+        key: 'model-answer',
+        name: 'Model answer',
+        scope: { type: 'GLOBAL' },
+        harness: null,
+        instructions: 'You answer briefly and cite the issue.',
+        rules: ['polish'],
+        skills: ['kotlin'],
+      },
+    ]);
     fixture.componentRef.setInput('skills', [{ key: 'kotlin', name: 'Kotlin', content: '' }]);
-    fixture.componentRef.setInput('rules', [{ key: 'polish', automatic: false, content: '' }]);
+    fixture.componentRef.setInput('rules', [
+      { key: 'polish', name: 'Polish', automatic: false, content: '' },
+    ]);
     await new Promise((r) => setTimeout(r, 200));
     http
       .expectOne((r) => r.url === '/api/v1/task-templates/resolve/writer')
@@ -234,13 +248,121 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     fixture.detectChanges();
 
     expect(drawer.automatic()).toEqual([{ key: 'no-secrets', name: 'No secrets' }]);
-    expect(drawer.skillOptions()).toEqual([{ key: 'kotlin', label: 'Kotlin' }]);
-    expect(drawer.ruleOptions()).toEqual([{ key: 'polish', label: 'polish' }]);
+    expect(drawer.agentEnvironment()).toEqual({
+      name: 'Model answer',
+      instructions: 'You answer briefly and cite the issue.',
+      rules: [{ key: 'polish', name: 'Polish' }],
+      skills: [{ key: 'kotlin', name: 'Kotlin' }],
+    });
+    const env = document.querySelector('[data-agent-environment]')?.textContent ?? '';
+    expect(env).toContain('No secrets');
+    expect(env).toContain('Polish');
+    expect(env).toContain('Kotlin');
+    expect(env).toContain('cite the issue');
     expect(drawer.categoryPlaceholder()).toBe('inherited: Review');
     expect(drawer.templateName('base-agent')).toBe('Base agent');
-    expect(document.querySelector('[data-automatic-rules]')?.textContent).toContain('No secrets');
-    drawer.patch({ rules: ['polish'], removeRules: ['no-secrets'] });
-    expect(drawer.delta()).toEqual({ added: ['polish'], removed: ['No secrets'] });
+    expect(document.querySelector('#tt-skills')).toBeNull();
+    expect(document.querySelector('#tt-rules')).toBeNull();
+  });
+
+  it('declares parameters, blocks saving on a wrong one and sends them cleaned (ADR 0058)', () => {
+    const { drawer } = create(null);
+    let payload: TaskTemplateInput | null = null;
+    drawer.saved.subscribe((p) => (payload = p));
+    drawer.patch({ name: 'Ask' });
+
+    drawer.addParameter();
+    expect(drawer.canSave()).toBe(false);
+    expect(drawer.saveBlocker()).toContain('needs a name');
+    drawer.patchParameter(0, { name: 'task', label: 'Task', type: 'MULTILINE', required: true });
+    drawer.addParameter();
+    drawer.patchParameter(1, { name: 'tone', label: 'Tone', type: 'CHOICE' });
+    expect(drawer.saveBlocker()).toContain('needs options');
+    drawer.patchParameter(1, { options: ['formal', 'casual'], default: 'formal' });
+    drawer.moveParameter(1, -1);
+    expect(drawer.canSave()).toBe(true);
+    drawer.submit();
+    expect(payload!.parameters).toEqual([
+      {
+        name: 'tone',
+        label: 'Tone',
+        type: 'CHOICE',
+        required: false,
+        default: 'formal',
+        help: null,
+        options: ['formal', 'casual'],
+      },
+      { name: 'task', label: 'Task', type: 'MULTILINE', required: true, default: null, help: null },
+    ]);
+    drawer.removeParameter(0);
+    expect(drawer.draft().parameters?.map((p) => p.name)).toEqual(['task']);
+  });
+
+  it('fills the values of the parent parameters for a preset and offers presets of saved templates', async () => {
+    const fixture = TestBed.createComponent(TemplateEditorDrawerComponent);
+    fixture.componentRef.setInput('templates', [baseAgent, writer]);
+    fixture.componentRef.setInput('preset', {
+      ...customizeForProject(writer, 'p1'),
+      key: undefined,
+      name: '',
+      extendsKey: 'writer',
+    });
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+    const drawer = fixture.componentInstance;
+    await new Promise((r) => setTimeout(r, 200));
+    http
+      .match((r) => r.url === '/api/v1/task-templates/resolve/writer')
+      .forEach((r) =>
+        r.flush({
+          key: 'writer',
+          parameters: [
+            {
+              name: 'task',
+              label: 'Task',
+              type: 'TEXT',
+              required: true,
+              value: null,
+              source: 'NONE',
+            },
+            {
+              name: 'tone',
+              label: 'Tone',
+              type: 'TEXT',
+              required: false,
+              default: 'formal',
+              value: 'formal',
+              source: 'DEFAULT',
+            },
+          ],
+        }),
+      );
+    fixture.detectChanges();
+
+    expect(drawer.canPreset()).toBe(false);
+    const fields = drawer.inheritedParameterFields();
+    expect(fields.map((f) => [f.param.name, f.missing])).toEqual([
+      ['task', true],
+      ['tone', false],
+    ]);
+    drawer.setParameterValue('task', 'Summarise');
+    expect(drawer.draft().parameterValues).toEqual({ task: 'Summarise' });
+    expect(drawer.inheritedParameterFields()[0].missing).toBe(false);
+    drawer.setParameterValue('task', '');
+    expect(drawer.draft().parameterValues).toEqual({});
+    // an own declaration of the same name hides the inherited one
+    drawer.addParameter();
+    drawer.patchParameter(0, { name: 'tone', label: 'Tone' });
+    expect(drawer.inheritedParameterFields().map((f) => f.param.name)).toEqual(['task']);
+
+    const saved = create(writer).drawer;
+    let preset: TaskTemplateInput | null = null;
+    saved.createPreset.subscribe((p) => (preset = p));
+    expect(saved.canPreset()).toBe(true);
+    saved.requestPreset();
+    expect(preset!.extendsKey).toBe('writer');
+    expect(preset!.name).toBe('');
+    expect(preset!.scope).toEqual({ type: 'GLOBAL', projectId: null });
   });
 
   it('keeps the run input controls disabled in a read-only drawer', async () => {

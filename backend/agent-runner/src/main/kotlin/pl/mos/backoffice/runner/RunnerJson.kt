@@ -20,6 +20,7 @@ import pl.mos.backoffice.runner.domain.JobCompletionReport
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.platform.WorkRequest
 import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.JobMergeRequest
 import pl.mos.backoffice.shared.runner.AgentTool
@@ -216,6 +217,10 @@ data class RunnerJobSpecJson(
     val credentials: List<JobCredentialRefJson>? = null,
     /** ADR 0051 step 4: absent when the agent gets no tools. */
     val agentTools: List<AgentToolJson>? = null,
+    /** ADR 0057: the environment document; absent when there is none (older specs keep their digests). */
+    val instructions: String? = null,
+    /** ADR 0057: remote MCP servers of the agent; absent (never []) when there are none, so digests of other specs stay. */
+    val mcpServers: List<McpServerJson>? = null,
 ) {
     companion object {
         fun of(spec: RunnerJobSpec) = RunnerJobSpecJson(
@@ -244,12 +249,17 @@ data class RunnerJobSpecJson(
             acceptance = spec.acceptance?.let { AcceptanceJson(it.files, it.protectedPaths, it.requireChanges) },
             credentials = spec.credentials.takeIf { it.isNotEmpty() }?.map { JobCredentialRefJson(it.ref, it.repository, it.capability) },
             agentTools = spec.agentTools.takeIf { it.isNotEmpty() }?.map { AgentToolJson(it.name, it.repository) },
+            instructions = spec.instructions?.takeIf { it.isNotBlank() },
+            mcpServers = spec.mcpServers.takeIf { it.isNotEmpty() }?.map { McpServerJson(it.name, it.url) },
         )
     }
 }
 
 /** ADR 0051: `RunnerJobSpec.credentials` (names of project repository tokens, never values). */
 data class JobCredentialRefJson(val ref: String, val repository: String, val capability: String)
+
+/** ADR 0057: `RunnerJobSpec.mcpServers[]` (no credentials). */
+data class McpServerJson(val name: String, val url: String)
 
 /** ADR 0051 step 4: `RunnerJobSpec.agentTools`. */
 data class AgentToolJson(val name: String, val repository: String)
@@ -511,5 +521,7 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         acceptance = acceptance?.let { RunnerAcceptance(it.files, it.protectedPaths, it.requireChanges) },
         credentials = credentials.orEmpty().map { JobCredentialRef(it.ref, it.repository, it.capability) },
         agentTools = agentTools.orEmpty().map { AgentTool(it.name, it.repository) },
+        instructions = instructions,
+        mcpServers = mcpServers.orEmpty().map { AgentMcpServer(it.name, it.url) },
     )
 }

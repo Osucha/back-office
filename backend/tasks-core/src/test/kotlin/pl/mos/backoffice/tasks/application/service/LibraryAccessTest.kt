@@ -25,8 +25,8 @@ class LibraryAccessTest {
     private val stranger: UUID = UUID.fromString("33333333-3333-3333-3333-333333333333")
 
     private fun templates(gate: FakeAuthorizationGate) = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, audit)
-    private fun skills(gate: FakeAuthorizationGate) = SkillService(lib.skills, lib.templates, lib.clock, gate, audit)
-    private fun rules(gate: FakeAuthorizationGate) = RuleService(lib.rules, lib.templates, lib.clock, gate, audit)
+    private fun skills(gate: FakeAuthorizationGate) = SkillService(lib.skills, lib.agents, lib.clock, gate, audit)
+    private fun rules(gate: FakeAuthorizationGate) = RuleService(lib.rules, lib.agents, lib.clock, gate, audit)
 
     private fun content(key: String, scope: Scope = Scope.Global) = TaskTemplate.Content(key = key, name = key, scope = scope)
 
@@ -95,7 +95,7 @@ class LibraryAccessTest {
         val gate = FakeAuthorizationGate.permitting("library.manage")
         lib.skill("s1")
         val created = templates(gate).create(content("audited").copy(prompt = Prompt(system = "12345")))
-        val updated = templates(gate).update(created.id, created.content.copy(prompt = Prompt(system = "1234567"), skills = listOf("s1"), extendsKey = null))
+        val updated = templates(gate).update(created.id, created.content.copy(prompt = Prompt(system = "1234567"), parameters = listOf(pl.mos.backoffice.shared.tasks.TemplateParameter("s1", "S1")), extendsKey = null))
         templates(gate).update(updated.id, updated.content)
 
         assertThat(audit.operations()).containsExactly("TEMPLATE_CREATE", "TEMPLATE_UPDATE")
@@ -105,7 +105,7 @@ class LibraryAccessTest {
         assertThat(create.details).containsEntry("key", "audited").containsEntry("systemPromptLength", 5)
         val diff = audit.entries[1].details
         assertThat(diff["systemPromptLength"]).isEqualTo(mapOf("old" to 5, "new" to 7))
-        assertThat(diff["skills"]).isEqualTo(mapOf("old" to emptyList<String>(), "new" to listOf("s1")))
+        assertThat(diff["parameters"]).isEqualTo(mapOf("old" to emptyList<String>(), "new" to listOf("s1:TEXT:false")))
         assertThat(diff).doesNotContainKeys("name", "extendsKey", "category").containsEntry("version", 2)
     }
 

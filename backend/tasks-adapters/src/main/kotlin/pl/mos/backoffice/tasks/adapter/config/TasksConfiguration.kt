@@ -58,18 +58,18 @@ class TasksConfiguration {
 
     @Bean
     fun manageSkills(
-        skills: SkillRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageSkills = TransactionalManageSkills(SkillService(skills, templates, clock, gate, audit))
+        skills: SkillRepository, agents: AgentRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
+    ): ManageSkills = TransactionalManageSkills(SkillService(skills, agents, clock, gate, audit))
 
     @Bean
     fun manageRules(
-        rules: RuleRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageRules = TransactionalManageRules(RuleService(rules, templates, clock, gate, audit))
+        rules: RuleRepository, agents: AgentRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
+    ): ManageRules = TransactionalManageRules(RuleService(rules, agents, clock, gate, audit))
 
     @Bean
     fun manageAgents(
-        agents: AgentRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageAgents = TransactionalManageAgents(AgentService(agents, templates, clock, gate, audit))
+        agents: AgentRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort, lookup: RepositoryLookup,
+    ): ManageAgents = TransactionalManageAgents(AgentService(agents, templates, clock, gate, audit, lookup))
 
     @Bean
     fun seedTaskLibrary(

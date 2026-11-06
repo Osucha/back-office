@@ -46,7 +46,7 @@ describe('rule form (ADR 0055)', () => {
 
   it('explains where the rule applies', () => {
     expect(automaticHint({ automatic: false, scope: { type: 'GLOBAL' } }, '')).toContain(
-      'templates that list it',
+      'agents that list it',
     );
     expect(automaticHint({ automatic: true, scope: { type: 'GLOBAL' } }, '')).toContain(
       'every project',

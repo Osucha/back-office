@@ -16,6 +16,8 @@ import {
   type CanvasIssueCounts,
 } from './graph-model';
 import { gateRuleProblems } from './gate-rules';
+import { continuedStep, stepParameterFields } from './step-session';
+import { missingParameters } from '../../../core/ui/template-parameters';
 import { MIN_SCHEDULE_MINUTES, validScheduleInterval } from './trigger-model';
 
 export interface Issues {
@@ -128,7 +130,7 @@ export function validateLocally(
   const startCount = checkStartAndEnd(def.nodes, sink);
   for (const n of def.nodes) {
     checkNodeBasics(n, ids, sink);
-    checkNodeKind(n, palette, sink);
+    checkNodeKind(n, palette, sink, def.nodes);
   }
   const connected = checkEdges(def, palette, sink);
   if (startCount === 1) checkPorts(def, palette, ids, connected, sink);
@@ -212,10 +214,17 @@ function checkNodeBasics(n: WorkflowNode, ids: Map<string, number>, sink: IssueS
 }
 
 /** The configuration of the node's kind. */
-function checkNodeKind(n: WorkflowNode, palette: PaletteIndex | null, sink: IssueSink): void {
+function checkNodeKind(
+  n: WorkflowNode,
+  palette: PaletteIndex | null,
+  sink: IssueSink,
+  nodes: readonly WorkflowNode[],
+): void {
   switch (n.kind) {
     case 'TASK':
       checkTask(n, palette, sink);
+      checkStepParameters(n, palette, sink);
+      checkContinueSession(n, nodes, sink);
       break;
     case 'ACTION':
       checkAction(n, palette, sink);
@@ -256,6 +265,36 @@ function checkTask(n: WorkflowNode, palette: PaletteIndex | null, sink: IssueSin
         ...at,
         field: 'task.templateKey',
       },
+    );
+}
+
+/** ADR 0058: every required parameter of the step's template has a value (step, template or default). */
+function checkStepParameters(n: WorkflowNode, palette: PaletteIndex | null, sink: IssueSink): void {
+  const t = n.task?.templateKey ? palette?.tasks.get(n.task.templateKey) : undefined;
+  if (!t?.parameters?.length) return;
+  for (const name of missingParameters(stepParameterFields(t, null, n.task?.overrides)))
+    sink.err(
+      $localize`:@@workflows.validation.parameterMissing:Parameter ${name}:name: needs a value`,
+      {
+        nodeId: n.id,
+        field: `task.overrides.parameters.${name}`,
+      },
+    );
+}
+
+/** ADR 0057: a step continues the session of another TASK node of the workflow. */
+function checkContinueSession(
+  n: WorkflowNode,
+  nodes: readonly WorkflowNode[],
+  sink: IssueSink,
+): void {
+  const id = continuedStep(n.task?.overrides?.config);
+  if (!id) return;
+  const target = nodes.find((x) => x.id === id);
+  if (!target || target.kind !== 'TASK' || target.id === n.id)
+    sink.err(
+      $localize`:@@workflows.validation.continueSessionUnknown:Continues the session of step ${id}:id:, which is not another task step of this workflow`,
+      { nodeId: n.id, field: 'task.overrides.config.continueSession' },
     );
 }
 

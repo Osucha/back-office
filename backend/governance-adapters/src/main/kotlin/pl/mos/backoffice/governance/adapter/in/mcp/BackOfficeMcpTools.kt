@@ -241,11 +241,14 @@ class BackOfficeMcpTools(
             .take(MAX_LIMIT)
             .map {
                 // ADR 0056: the agent that runs the template (inherited, else the model answer); null when the chain is broken
-                val agent = runCatching { templates.resolve(it.key, project).agent }.getOrNull()
+                val resolved = runCatching { templates.resolve(it.key, project) }.getOrNull()
                 linkedMapOf(
                     "key" to it.key, "name" to it.name, "description" to it.description,
-                    "agent" to agent?.let { a -> linkedMapOf("key" to a.key, "name" to a.name, "harness" to a.harness?.name) },
+                    "agent" to resolved?.agent?.let(::agentRef),
                     "category" to it.category?.name, "tags" to it.tags, "version" to it.version,
+                    // ADR 0058: parameters the step sets in overrides.parameters; needsParameters = not a ready block
+                    "parameters" to resolved?.parameters?.map { p -> parameter(p.definition) + ("value" to p.value) + ("source" to p.source.name) }.orEmpty(),
+                    "needsParameters" to (resolved?.needsParameters ?: false),
                 )
             }
         val foundSkills = skills.list(project)
@@ -336,8 +339,9 @@ class BackOfficeMcpTools(
             "tasks" to palette.tasks.filterNot { it.deprecated }.map {
                 linkedMapOf(
                     "templateKey" to it.key, "name" to it.name, "description" to it.description,
-                    "agent" to linkedMapOf("key" to it.agent.key, "name" to it.agent.name, "harness" to it.agent.harness?.name),
+                    "agent" to agentRef(it.agent),
                     "category" to it.category?.name, "ports" to it.ports, "projectScoped" to it.projectScoped, "configSchema" to it.configSchema,
+                    "parameters" to it.parameters.map(::parameter), "parameterValues" to it.parameterValues, "needsParameters" to it.needsParameters,
                 )
             },
             // ADR 0056: deterministic integration steps (no model), ACTION nodes
@@ -674,6 +678,17 @@ class BackOfficeMcpTools(
     private fun instant(value: String?, field: String): Instant? =
         value?.takeIf { it.isNotBlank() }?.let { runCatching { Instant.parse(it.trim()) }.getOrElse { throw ValidationException("must be an ISO-8601 instant", field) } }
 
+
+    /** ADR 0056/0057: who runs a task: harness, rules and skills of the agent. */
+    private fun agentRef(a: pl.mos.backoffice.shared.tasks.AgentSnapshot): Map<String, Any?> =
+        linkedMapOf("key" to a.key, "name" to a.name, "harness" to a.harness?.name, "rules" to a.rules, "skills" to a.skills)
+
+    /** ADR 0058: a template parameter for MCP clients. */
+    private fun parameter(p: pl.mos.backoffice.shared.tasks.TemplateParameter): Map<String, Any?> = linkedMapOf(
+        "name" to p.name, "label" to p.label, "type" to p.type.name, "required" to p.required, "default" to p.default,
+        "options" to p.options, "help" to p.help,
+    )
+
     companion object {
         const val OPERATION_MCP_GATE = "MCP_GATE_DECISION"
         const val ENTITY_APPROVAL = "ApprovalRequest"
@@ -689,7 +704,7 @@ class BackOfficeMcpTools(
         const val DEFINITION_FORMAT = "Shape (as WorkflowDefinitionInput in the Back Office API): {name, description, enabled, " +
             "triggers: [{type: MANUAL|API|CI|JIRA_TRANSITION, status}], nodes: [{id (slug), kind: START|END|TASK|ACTION|DECISION|HUMAN_GATE|WAIT_FOR_CI|NOTE, " +
             "name, position: {x, y}, maxVisits, and the section of its kind: task: {templateKey, overrides: {agentKey, modelProfileId, systemPromptAppend, " +
-            "promptAppend, promptReplace, addSkills, removeSkills, config}}, action: {type: FETCH_ISSUE|COMMENT_ISSUE|TRANSITION_ISSUE|START_WORKFLOW|" +
+            "promptAppend, promptReplace, addSkills, removeSkills, parameters, config}}, action: {type: FETCH_ISSUE|COMMENT_ISSUE|TRANSITION_ISSUE|START_WORKFLOW|" +
             "PROJECT_DIGEST, config}, decision: {branches: [{id, label, expression}], defaultBranch}, " +
             "gate: {question, options (default approve, revise, reject; each option is an output port), showArtifacts, timeoutSeconds, " +
             "approvers: {projectRoles, users, accountable, forbidSelfApproval}, checklist: [{id, text, required}]}, ci: {signal, timeoutSeconds}, " +

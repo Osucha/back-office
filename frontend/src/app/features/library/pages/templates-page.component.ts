@@ -59,6 +59,7 @@ import {
 } from '../data/library-access';
 import { agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
+import { templateNeedsParameters } from '../../../core/ui/template-parameters';
 import {
   TEMPLATE_CATEGORIES,
   categoryLabel,
@@ -102,7 +103,7 @@ import { customizeForProject } from '../data/resolved-preview';
         help="templates"
         title="Library"
         i18n-title="@@library.templates.header.title"
-        subtitle="Templates are reusable tasks: each builds on a parent, adds skills and rules, and can be customised per project."
+        subtitle="A template is what to do: a prompt with parameters, run inputs and an output. The agent decides who works and how; a template can be customised per project."
         i18n-subtitle="@@library.templates.header.subtitle"
         [menu]="[{ label: text.reload, icon: 'reload', run: reload }]"
       >
@@ -207,7 +208,7 @@ import { customizeForProject } from '../data/resolved-preview';
           <bo-empty
             title="No templates yet."
             i18n-title="@@library.templates.empty.title"
-            detail="A template is a reusable task: prompt, agent, skills and rules."
+            detail="A template is a reusable task: a prompt with parameters, run by an agent."
             i18n-detail="@@library.templates.empty.detail"
             [actionLabel]="canCreate() ? text.new : null"
             (action)="newTemplate()"
@@ -324,13 +325,18 @@ import { customizeForProject } from '../data/resolved-preview';
                         tpl.description
                       }}</span>
                     }
-                    @if (tpl.tags?.length || tpl.skills?.length) {
+                    @if (tpl.tags?.length || needsParameters(tpl)) {
                       <span class="meta-line">
                         @for (tag of tpl.tags ?? []; track tag) {
                           <span>#{{ tag }}</span>
                         }
-                        @if (tpl.skills?.length) {
-                          <span>{{ skillsLabel(tpl.skills?.length ?? 0) }}</span>
+                        @if (needsParameters(tpl)) {
+                          <span
+                            class="needs-params"
+                            data-needs-parameters
+                            i18n="@@library.templates.needsParameters"
+                            >needs parameters</span
+                          >
                         }
                       </span>
                     }
@@ -445,6 +451,7 @@ import { customizeForProject } from '../data/resolved-preview';
       [canGlobal]="identity.can('library.manage')"
       [scopeProjects]="scopeProjects()"
       (saved)="save($event)"
+      (createPreset)="openPreset($event)"
       (closed)="closeDrawer()"
     />
   `,
@@ -457,6 +464,9 @@ import { customizeForProject } from '../data/resolved-preview';
         flex-wrap: wrap;
         font-size: 11.5px;
         color: var(--bo-ink-3);
+      }
+      .needs-params {
+        color: var(--bo-you-ink);
       }
       bo-provenance {
         font-size: 11.5px;
@@ -754,13 +764,22 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     });
   }
 
-  skillsLabel(count: number): string {
-    return icu(
-      $localize`:@@library.templates.skills:{count, plural, one {# skill} other {# skills}}`,
-      {
-        count,
-      },
-    );
+  /** ADR 0058: a required parameter has no value without the step (not a ready block). */
+  needsParameters(t: TaskTemplate): boolean {
+    return !t.abstract && templateNeedsParameters(t, this.templates());
+  }
+
+  /** ADR 0058: a new preset of the open template (extends it, same category, values to fill). */
+  openPreset(preset: TaskTemplateInput): void {
+    const editable = this.scopeProjects();
+    // a user who may not create global templates makes the preset in a project of theirs
+    const scope =
+      preset.scope.type === 'GLOBAL' && !this.identity.can('library.manage')
+        ? ({ type: 'PROJECT', projectId: editable[0]?.id ?? null } as const)
+        : preset.scope;
+    this.editing.set(null);
+    this.preset.set({ ...preset, scope });
+    this.drawerOpen.set(true);
   }
 
   rowActionLabel(t: TaskTemplate): string {

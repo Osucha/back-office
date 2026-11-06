@@ -151,7 +151,7 @@ export class TaskLibraryApi {
     return this.http.put<Rule>(url('rules', ruleId), input);
   }
 
-  /** Refused (409) while a template lists the rule. */
+  /** Refused (409) while an agent lists the rule (ADR 0057). */
   deleteRule(ruleId: string): Observable<void> {
     return this.http.delete<void>(url('rules', ruleId));
   }

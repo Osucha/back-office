@@ -3,18 +3,25 @@ package pl.mos.backoffice.shared.tasks
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.runner.AgentMcpServer
 import java.util.UUID
 
 /**
- * ADR 0056: who runs a task. Without a [harness] the step is a single model answer in-process (no tools, no repository);
- * with one it is a coding agent session in the runner sandbox. Without a [modelProfileId] the step uses the defaults for
- * its kind. The Projects context decides how to run a step from the agent and the task's config.
+ * ADR 0056/0057: who works on a task and how. Without a [harness] the step is a single model answer in-process (no tools,
+ * no repository); with one it is a coding agent session in the runner sandbox. Without a [modelProfileId] the step uses
+ * the defaults for its kind. [instructions] (markdown, may use `{{project.*}}`), the rules and skills (resolved into the
+ * task; [rules] and [skills] are the agent's own keys, for display) and [mcpServers] are the agent's environment. The
+ * Projects context decides how to run a step from the agent and the task's config.
  */
 data class AgentSnapshot(
     val key: String,
     val name: String,
     val harness: AgentHarness? = null,
     val modelProfileId: ModelProfileId? = null,
+    val instructions: String = "",
+    val rules: List<String> = emptyList(),
+    val skills: List<String> = emptyList(),
+    val mcpServers: List<AgentMcpServer> = emptyList(),
 ) {
     val modelAnswer: Boolean get() = harness == null
 
@@ -81,6 +88,69 @@ data class RunInputField(
     }
 }
 
+/** ADR 0058: how the designer shows a [TemplateParameter] and which values it accepts. */
+enum class TemplateParameterType { TEXT, MULTILINE, NUMBER, BOOLEAN, CHOICE }
+
+/**
+ * ADR 0058: a parameter of a template, set when the workflow is designed (run inputs are asked when a run starts).
+ * Prompts and text config read it as `{{params.<name>}}`. Declarations are inherited, child wins by name. Structural
+ * rules ([name], [label], [help]) are checked here; [problems] lists the type rules the template validator reports.
+ */
+data class TemplateParameter(
+    val name: String,
+    val label: String,
+    val type: TemplateParameterType = TemplateParameterType.TEXT,
+    val required: Boolean = false,
+    /** String, number or boolean by [type]; null = no default. */
+    val default: Any? = null,
+    /** CHOICE only: the values the parameter accepts. */
+    val options: List<String> = emptyList(),
+    val help: String? = null,
+) {
+    init {
+        if (!NAME_PATTERN.matches(name)) throw ValidationException("parameter name must match ${NAME_PATTERN.pattern}", "parameters.name")
+        if (label.isBlank()) throw ValidationException("parameter $name: label must not be blank", "parameters.label")
+        if (label.length > MAX_LABEL_LENGTH) throw ValidationException("parameter $name: label is longer than $MAX_LABEL_LENGTH characters", "parameters.label")
+        if ((help?.length ?: 0) > MAX_HELP_LENGTH) throw ValidationException("parameter $name: help is longer than $MAX_HELP_LENGTH characters", "parameters.help")
+    }
+
+    /** Why the declaration is inconsistent: CHOICE without (distinct) options, options on another type, a default of the wrong type. */
+    fun problems(): List<String> = buildList {
+        if (type == TemplateParameterType.CHOICE) {
+            if (options.isEmpty() || options.any { it.isBlank() }) add("parameter $name: a CHOICE needs non-blank options")
+            if (options.distinct().size != options.size) add("parameter $name: options must be distinct")
+        } else if (options.isNotEmpty()) {
+            add("parameter $name: options are only for CHOICE parameters")
+        }
+        default?.let { valueProblem(it) }?.let { add("parameter $name: default $it") }
+    }
+
+    /** Why [value] does not fit the type (`"is not a number"`...); null when it does. Null values fit (no value). */
+    fun valueProblem(value: Any?): String? = when {
+        value == null -> null
+        value is Map<*, *> || value is Collection<*> || value is Array<*> -> "must be a single value"
+        type == TemplateParameterType.NUMBER && value !is Number && value.toString().trim().toBigDecimalOrNull() == null -> "\"$value\" is not a number"
+        type == TemplateParameterType.BOOLEAN && value !is Boolean && value.toString().lowercase() !in BOOLEAN_TEXT -> "\"$value\" is not true or false"
+        type == TemplateParameterType.CHOICE && value.toString() !in options -> "\"$value\" is not one of ${options.joinToString()}"
+        else -> null
+    }
+
+    companion object {
+        val NAME_PATTERN: Regex = Regex("^[A-Za-z][A-Za-z0-9_]{0,63}$")
+        const val MAX_LABEL_LENGTH = 200
+        const val MAX_HELP_LENGTH = 1_000
+        private val BOOLEAN_TEXT = setOf("true", "false")
+    }
+}
+
+/** ADR 0058: where the value of a parameter comes from. */
+enum class ParameterSource { STEP, TEMPLATE, DEFAULT, NONE }
+
+/** ADR 0058: a parameter with the value the step uses. */
+data class ResolvedParameter(val definition: TemplateParameter, val value: Any?, val source: ParameterSource) {
+    val name: String get() = definition.name
+}
+
 /**
  * Node-level customisation of a task template inside a workflow. Applied last, after the template's
  * inheritance chain has been merged.
@@ -92,9 +162,13 @@ data class TaskOverrides(
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
     val promptReplace: String? = null,
+    /** ADR 0057: skills this step adds to its agent's. */
     val addSkills: List<String> = emptyList(),
+    /** ADR 0057: skills of the agent this step drops. */
     val removeSkills: List<String> = emptyList(),
     val config: Map<String, Any?> = emptyMap(),
+    /** ADR 0058: values of the template's parameters for this step (win over template values and defaults). */
+    val parameters: Map<String, Any?> = emptyMap(),
 ) {
     companion object {
         val NONE = TaskOverrides()
@@ -133,9 +207,14 @@ data class ResolvedTask(
     val version: Int? = null,
     /** Run start form fields this task asks for, merged over the lineage (ADR 0053). */
     val runInputs: List<RunInputField> = emptyList(),
-    /** ADR 0055: rules always in the task's context; automatic ones (global, then project) first. */
+    /** ADR 0055/0057: rules always in the task's context; automatic ones (global, then project) first, then the agent's. */
     val rules: List<RuleSnapshot> = emptyList(),
-)
+    /** ADR 0058: the merged parameter declarations of the lineage with the value the step uses. */
+    val parameters: List<ResolvedParameter> = emptyList(),
+) {
+    /** ADR 0058: `params` of the template model: parameter name to the value the step uses (null = none). */
+    val parameterValues: Map<String, Any?> get() = parameters.associate { it.name to it.value }
+}
 
 data class TaskSummary(
     val key: String,
@@ -148,6 +227,12 @@ data class TaskSummary(
     val ports: List<String>,
     /** ADR 0054: kept for the steps that use it, not offered for new ones. */
     val deprecated: Boolean = false,
+    /** ADR 0058: merged parameter declarations of the lineage. */
+    val parameters: List<TemplateParameter> = emptyList(),
+    /** ADR 0058: values the template lineage sets (step values win). */
+    val parameterValues: Map<String, Any?> = emptyMap(),
+    /** ADR 0058: a required parameter has no value without the step (not a ready block). */
+    val needsParameters: Boolean = false,
 )
 
 /** Outbound port implemented by the Task Library context; used by the Projects context. */

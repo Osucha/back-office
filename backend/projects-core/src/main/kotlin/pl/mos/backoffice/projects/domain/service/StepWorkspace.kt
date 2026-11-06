@@ -7,7 +7,8 @@ import pl.mos.backoffice.shared.runner.RunnerWorkspace
 
 /**
  * ADR 0044: the run workspace and agent session of a runner step, from its config:
- * `workspace` (key of a workspace of the project; absent = a throwaway workspace), `sessionRole` (continue
+ * `workspace` (key of a workspace of the project, or the implicit `run` of ADR 0057 that needs no definition; absent =
+ * a throwaway workspace), `sessionRole` (continue
  * the coding agent's session of that role in the workspace) and `prepareOnly` (clone and run setup, no agent).
  */
 object StepWorkspace {
@@ -42,7 +43,7 @@ object StepWorkspace {
         val definition = key?.let { k -> workspaces.firstOrNull { it.key == k } }
         if (key != null && !RunnerWorkspace.KEY_PATTERN.matches(key)) {
             errors += "workspace \"$key\": 1-20 lower case letters, digits or hyphens, starting with a letter"
-        } else if (key != null && definition == null) {
+        } else if (key != null && definition == null && key != SessionContinuation.RUN_WORKSPACE) {
             errors += "workspace \"$key\" is not defined in this project; add it in the project tab Workspaces"
         }
         if (role != null && !RunnerWorkspace.KEY_PATTERN.matches(role)) errors += "sessionRole \"$role\": 1-20 lower case letters, digits or hyphens, starting with a letter"

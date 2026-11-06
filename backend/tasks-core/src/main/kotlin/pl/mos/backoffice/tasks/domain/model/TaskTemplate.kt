@@ -5,6 +5,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.tasks.TemplateParameter
 import java.time.Instant
 
 /** How a template's prompt combines with its parent's: appended after a blank line, or replacing it. */
@@ -24,8 +25,10 @@ data class Prompt(
 /**
  * A task definition ("class"): what an agent does and how it is prompted. Templates form single-parent
  * inheritance chains through [extendsKey] and are merged by the `TaskResolver` into a `ResolvedTask`. Structural
- * rules that need other templates, skills or rules are checked by `TemplateValidator`; this class only guards its
- * own invariants. ADR 0055: [category] groups templates (inherited, child wins); [rules] are always in the context.
+ * rules that need other templates or agents are checked by `TemplateValidator`; this class only guards its
+ * own invariants. ADR 0055: [category] groups templates (inherited, child wins). ADR 0057: rules and skills are the
+ * agent's, not the template's. ADR 0058: [parameters] the prompts read as `{{params.<name>}}` (inherited, child wins by
+ * name) and [parameterValues] for parameters of the lineage (a preset).
  */
 data class TaskTemplate(
     val id: TaskTemplateId,
@@ -40,8 +43,6 @@ data class TaskTemplate(
     val scope: Scope,
     val modelProfileId: ModelProfileId?,
     val prompt: Prompt,
-    val skills: List<String>,
-    val removeSkills: List<String>,
     val config: Map<String, Any?>,
     val outputSchema: String?,
     val confidenceField: String?,
@@ -56,10 +57,10 @@ data class TaskTemplate(
     val updatedAt: Instant,
     /** Who saved this version (ADR 0017); null for rows written before actor stamps existed. */
     val updatedBy: Actor? = null,
-    /** ADR 0055: keys of rules this template adds; inherited and unioned like skills. */
-    val rules: List<String> = emptyList(),
-    /** Inherited or automatic rule keys this template drops. */
-    val removeRules: List<String> = emptyList(),
+    /** ADR 0058: parameters this template declares; merged root to leaf, child wins by name. */
+    val parameters: List<TemplateParameter> = emptyList(),
+    /** ADR 0058: values for parameters of the lineage; the nearest template wins, the step wins over all. */
+    val parameterValues: Map<String, Any?> = emptyMap(),
 ) {
     init {
         Keys.require(key)
@@ -82,8 +83,6 @@ data class TaskTemplate(
         val scope: Scope = Scope.Global,
         val modelProfileId: ModelProfileId? = null,
         val prompt: Prompt = Prompt.EMPTY,
-        val skills: List<String> = emptyList(),
-        val removeSkills: List<String> = emptyList(),
         val config: Map<String, Any?> = emptyMap(),
         val outputSchema: String? = null,
         val confidenceField: String? = null,
@@ -91,14 +90,14 @@ data class TaskTemplate(
         val consumes: List<String> = emptyList(),
         val tags: List<String> = emptyList(),
         val runInputs: List<RunInputField> = emptyList(),
-        val rules: List<String> = emptyList(),
-        val removeRules: List<String> = emptyList(),
+        val parameters: List<TemplateParameter> = emptyList(),
+        val parameterValues: Map<String, Any?> = emptyMap(),
     )
 
     val content: Content
         get() = Content(
             key, name, description, abstract, extendsKey, category, agentKey, scope, modelProfileId, prompt,
-            skills, removeSkills, config, outputSchema, confidenceField, produces, consumes, tags, runInputs, rules, removeRules,
+            config, outputSchema, confidenceField, produces, consumes, tags, runInputs, parameters, parameterValues,
         )
 
     /** Replaces the editable content and bumps [version]; a null key keeps the current one. */
@@ -121,8 +120,6 @@ data class TaskTemplate(
             scope = c.scope,
             modelProfileId = c.modelProfileId,
             prompt = c.prompt,
-            skills = c.skills.distinct(),
-            removeSkills = c.removeSkills.distinct(),
             config = c.config,
             outputSchema = c.outputSchema?.takeIf { it.isNotBlank() },
             confidenceField = c.confidenceField?.takeIf { it.isNotBlank() },
@@ -130,13 +127,13 @@ data class TaskTemplate(
             consumes = c.consumes.distinct(),
             tags = c.tags.distinct(),
             runInputs = c.runInputs,
-            rules = c.rules.distinct(),
-            removeRules = c.removeRules.distinct(),
             builtIn = builtIn,
             version = version,
             createdAt = createdAt,
             updatedAt = updatedAt,
             updatedBy = actor,
+            parameters = c.parameters,
+            parameterValues = c.parameterValues,
         )
     }
 }

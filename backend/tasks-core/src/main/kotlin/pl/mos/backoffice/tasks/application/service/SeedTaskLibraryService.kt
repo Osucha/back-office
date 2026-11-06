@@ -61,7 +61,7 @@ class SeedTaskLibraryService(
             when {
                 existing == null -> { agents.save(shipped); agentsCreated++ }
                 untouched(existing) && BuiltInChecksum.of(existing) != BuiltInChecksum.of(shipped) -> {
-                    agents.save(existing.copy(name = shipped.name, description = shipped.description, harness = shipped.harness, modelProfileId = shipped.modelProfileId, tags = shipped.tags, updatedAt = now, updatedBy = Actor.SYSTEM))
+                    agents.save(existing.copy(name = shipped.name, description = shipped.description, harness = shipped.harness, modelProfileId = shipped.modelProfileId, tags = shipped.tags, instructions = shipped.instructions, rules = shipped.rules, skills = shipped.skills, mcpServers = shipped.mcpServers, updatedAt = now, updatedBy = Actor.SYSTEM))
                     agentsUpgraded++
                 }
             }
@@ -85,7 +85,7 @@ class SeedTaskLibraryService(
             when {
                 existing == null -> { templates.save(shipped); templatesCreated++ }
                 untouched(existing) && BuiltInChecksum.of(existing) != BuiltInChecksum.of(shipped) -> {
-                    // the whole shipped content (prompts, skills, rules, config, schema, produces, parent...) replaces the old one
+                    // the whole shipped content (prompts, parameters, config, schema, produces, parent...) replaces the old one
                     templates.save(shipped.copy(id = existing.id, version = existing.version, createdAt = existing.createdAt, updatedAt = now, updatedBy = Actor.SYSTEM))
                     templatesUpgraded++
                 }

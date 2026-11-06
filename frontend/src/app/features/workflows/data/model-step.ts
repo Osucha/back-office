@@ -48,6 +48,8 @@ export function effectiveStepAgent(
         name: a.name,
         harness: a.harness ?? null,
         modelProfileId: a.modelProfileId ?? null,
+        rules: a.rules ?? [],
+        skills: a.skills ?? [],
       }
     : null;
 }

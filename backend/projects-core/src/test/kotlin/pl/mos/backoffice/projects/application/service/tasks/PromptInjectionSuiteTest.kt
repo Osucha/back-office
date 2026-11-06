@@ -320,7 +320,7 @@ class PromptInjectionSuiteTest {
     private val rules = listOf(RuleSnapshot("ground", "Ground rules", "Cite evidence.", automatic = true), RuleSnapshot("style", "Style", "Be brief."))
 
     @Test
-    fun `model answer steps get the rules in the system prompt after the constitution and before the skills`() {
+    fun `ADR 0057 - model answer steps get the environment (preamble, constitution, rules), then the template system, then the skills`() {
         gateway.answers += mapOf("result" to "done")
         val task = ResolvedTask(
             key = "llm-task", name = "LLM task", agent = TestAgents.MODEL_ANSWER, modelProfileId = null,
@@ -332,24 +332,29 @@ class PromptInjectionSuiteTest {
         executor.execute(context(Fixtures.runningRun(project), "specify"), task)
 
         val system = gateway.requests.single().messages.first { it.role == Role.SYSTEM }.content
-        val constitution = system.indexOf("PROJECT CONSTITUTION:")
-        val rulesAt = system.indexOf("<rules>")
-        assertThat(constitution).isNotNegative()
-        assertThat(rulesAt).isGreaterThan(constitution).isLessThan(system.indexOf("<skills>"))
-        assertThat(system).contains(RulesPrompt.section(rules))
+        val preamble = system.indexOf(AgentEnvironment.PLATFORM_PREAMBLE)
+        val constitution = system.indexOf("## Project constitution")
+        val rulesAt = system.indexOf("## Rules")
+        val template = system.indexOf("You help.")
+        assertThat(preamble).isZero()
+        assertThat(system).contains(AgentEnvironment.MODEL_ANSWER_PREAMBLE).doesNotContain(AgentEnvironment.CODING_AGENT_PREAMBLE)
+        assertThat(constitution).isGreaterThan(preamble)
+        assertThat(rulesAt).isGreaterThan(constitution).isLessThan(template)
+        assertThat(template).isLessThan(system.indexOf("<skills>"))
+        assertThat(system).contains(AgentEnvironment.rulesSection(rules))
         assertThat(system.indexOf("Cite evidence.")).isLessThan(system.indexOf("Be brief."))
-        assertThat(gateway.requests.single().messages.last().content).doesNotContain("<rules>")
+        assertThat(gateway.requests.single().messages.last().content).doesNotContain("## Rules")
     }
 
     @Test
     fun `a step without rules gets no rules block`() {
         gateway.answers += approveWithoutFindings
         executor.execute(context(ciReviewRun("diff --git a/x b/x"), "code-review"), reviewTask())
-        assertThat(gateway.requests.single().messages.first { it.role == Role.SYSTEM }.content).doesNotContain("<rules>")
+        assertThat(gateway.requests.single().messages.first { it.role == Role.SYSTEM }.content).doesNotContain("## Rules")
     }
 
     @Test
-    fun `coding agents get the rules right after the template system part and before the task`() {
+    fun `ADR 0057 - coding agents get the rules in the environment document, not in the prompt`() {
         val runner = CapturingRunner()
         val support = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30))
         val task = ResolvedTask(
@@ -361,9 +366,12 @@ class PromptInjectionSuiteTest {
         )
         support.run(context(Fixtures.runningRun(project), "implement"), task, pl.mos.backoffice.shared.runner.RunnerMode.IMPLEMENT, null, "x")
 
-        val prompt = runner.specs.single().prompt
-        assertThat(prompt).startsWith("You are a careful engineer.\n\n" + RulesPrompt.section(rules) + "\n\nImplement the change.")
-        assertThat(prompt.trimEnd()).endsWith("mention it in your summary.")
+        val spec = runner.specs.single()
+        assertThat(spec.prompt).startsWith("You are a careful engineer.\n\nImplement the change.").doesNotContain("Cite evidence.")
+        assertThat(spec.prompt.trimEnd()).endsWith("mention it in your summary.")
+        assertThat(spec.instructions).startsWith(AgentEnvironment.PLATFORM_PREAMBLE).contains(AgentEnvironment.CODING_AGENT_PREAMBLE)
+            .contains(AgentEnvironment.rulesSection(rules)).contains("## Project constitution")
+        assertThat(spec.mcpServers).isEmpty()
     }
 
     // ------------------------------------------------------------------------------------------ fakes

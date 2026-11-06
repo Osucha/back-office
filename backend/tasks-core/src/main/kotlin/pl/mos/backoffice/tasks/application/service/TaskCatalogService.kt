@@ -50,6 +50,9 @@ class TaskCatalogService(
             ports = resolution.ports,
             // ADR 0054: listed (steps that use it read their settings from the palette) but flagged, so no one picks it
             deprecated = BuiltInLibrary.DEPRECATED_TAG in template.tags,
+            parameters = resolution.parameters.map { it.definition },
+            parameterValues = resolution.templateParameterValues,
+            needsParameters = resolution.needsParameters,
         )
     }
 }

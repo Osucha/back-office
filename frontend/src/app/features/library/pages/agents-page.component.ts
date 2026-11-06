@@ -22,7 +22,17 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { ModelProfilesApi } from '../../../core/api/model-profiles.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
-import type { Agent, AgentInput, ModelProfile, Project } from '../../../core/api/types';
+import type {
+  Agent,
+  AgentInput,
+  AgentMcpServer,
+  ModelProfile,
+  Project,
+  Rule,
+  Scope,
+  Skill,
+} from '../../../core/api/types';
+import { icu } from '../../../core/i18n/icu';
 import { IdentityService } from '../../../core/auth/identity.service';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
@@ -45,19 +55,41 @@ import { LibraryNavComponent } from '../components/library-nav.component';
 import {
   AGENT_KINDS,
   type AgentKindValue,
+  addMcpServer,
   agentDraft,
+  agentPayload,
   agentSavable,
   customizeAgentForProject,
   emptyAgent,
   harnessOf,
   kindValue,
+  mcpServerProblem,
+  patchMcpServer,
+  removeMcpServer,
 } from '../data/agent-form';
 import { canCreateInLibrary, canEditScope, editableProjects } from '../data/library-access';
 import { filterAgents } from '../data/library-filters';
 
+/** Rules or skills an item of this scope may list (global plus the scope's project), by name. */
+function visibleOptions(
+  items: readonly { key?: string | null; name?: string | null; scope?: Scope | null }[],
+  scope: Scope,
+): Array<{ key: string; label: string }> {
+  const projectId = scope.type === 'PROJECT' ? scope.projectId : null;
+  const byKey = new Map<string, { key: string; label: string }>();
+  for (const i of items) {
+    const key = i.key ?? '';
+    if (!key) continue;
+    if (i.scope?.type === 'PROJECT' && i.scope.projectId !== projectId) continue;
+    byKey.set(key, { key, label: i.name || key });
+  }
+  return [...byKey.values()];
+}
+
 /**
- * Library: agents (ADR 0056). An agent runs tasks: a harness (none = one model answer; OpenCode or
- * Claude Code = a coding agent in the runner sandbox) and optionally a model. Built-in agents are
+ * Library: agents (ADR 0056/0057). An agent is who works and how: a harness (none = one model
+ * answer; OpenCode or Claude Code = a coding agent in the runner sandbox), optionally a model, and
+ * its environment: instructions, rules, skills, MCP servers (coding agents). Built-in agents are
  * read-only; a project customises one with a project agent of the same key. The editor is a side
  * panel, deep-linkable with `?agent=<id>` (`?agent=new`).
  */
@@ -90,7 +122,7 @@ import { filterAgents } from '../data/library-filters';
       <bo-page-header
         title="Library"
         i18n-title="@@library.agents.header.title"
-        subtitle="An agent runs tasks: one model answer, or a coding agent (OpenCode, Claude Code) in the runner sandbox with the repository, optionally with its own model."
+        subtitle="An agent is who works and how: harness, model, instructions, rules and skills. A task template is what to do; a workflow step joins the two."
         i18n-subtitle="@@library.agents.header.subtitle"
         [menu]="[{ label: text.reload, icon: 'reload', run: reload }]"
       >
@@ -191,6 +223,7 @@ import { filterAgents } from '../data/library-filters';
               >
                 Model
               </th>
+              <th nzWidth="160px" i18n="@@library.agents.col.environment">Environment</th>
               <th
                 nzShowSort
                 [boSort]="sort"
@@ -262,6 +295,9 @@ import { filterAgents } from '../data/library-filters';
                       >Default for the step</span
                     >
                   }
+                </td>
+                <td>
+                  <span class="ink-2" data-environment>{{ environmentLabel(a) }}</span>
                 </td>
                 <td>
                   @if (a.scope.type === 'PROJECT') {
@@ -422,6 +458,131 @@ import { filterAgents } from '../data/library-filters';
             </nz-select>
           </nz-form-control>
         </nz-form-item>
+        <nz-form-item>
+          <nz-form-label nzFor="ag-instructions" i18n="@@library.agents.instructions"
+            >Instructions</nz-form-label
+          >
+          <nz-form-control [nzExtra]="text.instructionsHelp">
+            <textarea
+              nz-input
+              id="ag-instructions"
+              name="instructions"
+              class="mono-textarea"
+              [ngModel]="draft().instructions ?? ''"
+              (ngModelChange)="patch({ instructions: $event })"
+              [nzAutosize]="{ minRows: 4, maxRows: 16 }"
+              placeholder="You are a careful reviewer. Explain every finding with the file and line."
+              i18n-placeholder="@@library.agents.instructions.placeholder"
+            ></textarea>
+          </nz-form-control>
+        </nz-form-item>
+        <div class="grid">
+          <nz-form-item>
+            <nz-form-label nzFor="ag-rules" i18n="@@library.agents.rules">Rules</nz-form-label>
+            <nz-form-control
+              nzExtra="Always in the agent's context, after the automatic rules."
+              i18n-nzExtra="@@library.agents.rules.help"
+            >
+              <nz-select
+                id="ag-rules"
+                name="rules"
+                nzMode="multiple"
+                nzShowSearch
+                nzPlaceHolder="none"
+                i18n-nzPlaceHolder="@@library.agents.none"
+                [ngModel]="draft().rules ?? []"
+                (ngModelChange)="patch({ rules: $event })"
+              >
+                @for (r of ruleOptions(); track r.key) {
+                  <nz-option [nzValue]="r.key" [nzLabel]="r.label" />
+                }
+              </nz-select>
+            </nz-form-control>
+          </nz-form-item>
+          <nz-form-item>
+            <nz-form-label nzFor="ag-skills" i18n="@@library.agents.skills">Skills</nz-form-label>
+            <nz-form-control
+              nzExtra="Knowledge the agent loads when it needs it."
+              i18n-nzExtra="@@library.agents.skills.help"
+            >
+              <nz-select
+                id="ag-skills"
+                name="skills"
+                nzMode="multiple"
+                nzShowSearch
+                nzPlaceHolder="none"
+                i18n-nzPlaceHolder="@@library.agents.none"
+                [ngModel]="draft().skills ?? []"
+                (ngModelChange)="patch({ skills: $event })"
+              >
+                @for (s of skillOptions(); track s.key) {
+                  <nz-option [nzValue]="s.key" [nzLabel]="s.label" />
+                }
+              </nz-select>
+            </nz-form-control>
+          </nz-form-item>
+        </div>
+        <nz-form-item data-mcp-servers>
+          <nz-form-label i18n="@@library.agents.mcp">MCP servers</nz-form-label>
+          <nz-form-control [nzExtra]="draft().harness ? text.mcpHelp : text.mcpModelAnswer">
+            @if (draft().harness) {
+              @for (s of draft().mcpServers ?? []; track $index; let i = $index) {
+                <div class="mcp-row" [attr.data-mcp-row]="i">
+                  <input
+                    nz-input
+                    class="mono"
+                    [name]="'mcp-name-' + i"
+                    [ngModel]="s.name"
+                    (ngModelChange)="patchMcp(i, { name: $event })"
+                    placeholder="docs"
+                    i18n-placeholder="@@library.agents.mcp.namePlaceholder"
+                    aria-label="Name of the MCP server"
+                    i18n-aria-label="@@library.agents.mcp.nameLabel"
+                  />
+                  <input
+                    nz-input
+                    class="mono"
+                    [name]="'mcp-url-' + i"
+                    [ngModel]="s.url"
+                    (ngModelChange)="patchMcp(i, { url: $event })"
+                    placeholder="https://mcp.example.com/mcp"
+                    i18n-placeholder="@@library.agents.mcp.urlPlaceholder"
+                    aria-label="URL of the MCP server"
+                    i18n-aria-label="@@library.agents.mcp.urlLabel"
+                  />
+                  @if (canEditDraft()) {
+                    <button
+                      nz-button
+                      nzSize="small"
+                      nzDanger
+                      type="button"
+                      (click)="removeMcp(i)"
+                      aria-label="Remove MCP server"
+                      i18n-aria-label="@@library.agents.mcp.remove"
+                    >
+                      <nz-icon nzType="delete" />
+                    </button>
+                  }
+                </div>
+              }
+              @if (mcpError(); as err) {
+                <div class="danger small" data-mcp-error>{{ err }}</div>
+              }
+              @if (canEditDraft()) {
+                <button
+                  nz-button
+                  nzType="dashed"
+                  nzSize="small"
+                  type="button"
+                  (click)="addMcp()"
+                  i18n="@@library.agents.mcp.add"
+                >
+                  Add MCP server
+                </button>
+              }
+            }
+          </nz-form-control>
+        </nz-form-item>
         <div class="grid">
           <nz-form-item>
             <nz-form-label i18n="@@library.agents.scope">Scope</nz-form-label>
@@ -536,6 +697,18 @@ import { filterAgents } from '../data/library-filters';
       .builtin-note {
         margin: 0 0 12px;
       }
+      .mcp-row {
+        display: grid;
+        grid-template-columns: 140px minmax(0, 1fr) auto;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .danger.small {
+        font-size: 12px;
+        color: var(--bo-blocked-ink);
+        margin-bottom: 6px;
+      }
       .advanced summary {
         cursor: pointer;
         font-size: 12.5px;
@@ -566,6 +739,9 @@ export class AgentsPageComponent {
   readonly items = signal<Agent[]>([]);
   readonly projects = signal<Project[]>([]);
   readonly profiles = signal<ModelProfile[]>([]);
+  /** ADR 0057: rules and skills of the draft's project (plus the global ones). */
+  readonly rules = signal<Rule[]>([]);
+  readonly skills = signal<Skill[]>([]);
   readonly loading = signal(false);
   readonly loaded = signal(false);
   readonly saving = signal(false);
@@ -587,6 +763,9 @@ export class AgentsPageComponent {
     discard: $localize`:@@library.agents.discard:Discard changes`,
     close: $localize`:@@library.agents.close:Close`,
     modelHelp: $localize`:@@library.agents.model.help:Empty: the step's model or the defaults for its kind (project, starting user, platform).`,
+    instructionsHelp: $localize`:@@library.agents.instructions.help:The agent's role and way of working, in markdown. It may use ${'{{project.*}}'}:example: and comes after the platform preamble (what Back Office is, honesty, safety).`,
+    mcpHelp: $localize`:@@library.agents.mcp.help:Remote MCP servers (HTTP or HTTPS) the agent may use. No credentials: the sandbox network policy decides whether a server is reachable.`,
+    mcpModelAnswer: $localize`:@@library.agents.mcp.modelAnswer:Only coding agents use MCP servers; a model answer has no tools.`,
   };
 
   readonly kinds = AGENT_KINDS.map((h) => ({
@@ -634,6 +813,31 @@ export class AgentsPageComponent {
       JSON.stringify(this.draft()) !== this.initialJson(),
   );
   readonly canSave = computed(() => agentSavable(this.draft()));
+  /** The project whose rules and skills are loaded: the draft's, else the filter's. */
+  private readonly environmentProjectId = computed(() => {
+    const scope = this.draft().scope;
+    return scope.type === 'PROJECT'
+      ? (scope.projectId ?? null)
+      : (this.f.values().projectId ?? null);
+  });
+  /** ADR 0057: rules and skills an agent of the draft's scope may list (global plus its project's). */
+  readonly ruleOptions = computed(() => visibleOptions(this.rules(), this.draft().scope));
+  readonly skillOptions = computed(() => visibleOptions(this.skills(), this.draft().scope));
+  /** ADR 0057: what is wrong with the MCP servers of a coding agent, in words. */
+  readonly mcpError = computed(() => {
+    const d = this.draft();
+    const p = d.harness ? mcpServerProblem(d.mcpServers) : null;
+    if (!p) return null;
+    const n = p.index + 1;
+    switch (p.kind) {
+      case 'badName':
+        return $localize`:@@library.agents.mcp.badName:MCP server ${n}:index:: the name starts with a lowercase letter and uses only lowercase letters, digits and - (at most 40)`;
+      case 'duplicate':
+        return $localize`:@@library.agents.mcp.duplicate:MCP server name ${p.name}:name: is used twice`;
+      case 'badUrl':
+        return $localize`:@@library.agents.mcp.badUrl:MCP server ${p.name}:name: needs an http:// or https:// URL`;
+    }
+  });
   readonly chips = computed<FilterChip[]>(() => {
     const v = this.f.values();
     return v.projectId
@@ -664,6 +868,11 @@ export class AgentsPageComponent {
     effect(() => {
       this.f.values().projectId;
       untracked(() => this.load());
+    });
+    // ADR 0057: the rules and skills an agent may list, for the draft's project (or the filter's)
+    effect(() => {
+      const projectId = this.environmentProjectId();
+      untracked(() => this.loadEnvironment(projectId));
     });
     effect(() => {
       const a = this.editing();
@@ -732,6 +941,44 @@ export class AgentsPageComponent {
 
   deleteLabel(name: string): string {
     return $localize`:@@library.agents.deleteRow:Delete ${name}:name:`;
+  }
+
+  /** ADR 0057: "2 rules · 3 skills" (the list shows the size of the agent's environment). */
+  environmentLabel(a: Agent): string {
+    const rules = icu(
+      $localize`:@@library.agents.rulesCount:{count, plural, one {# rule} other {# rules}}`,
+      {
+        count: a.rules?.length ?? 0,
+      },
+    );
+    const skills = icu(
+      $localize`:@@library.agents.skillsCount:{count, plural, one {# skill} other {# skills}}`,
+      { count: a.skills?.length ?? 0 },
+    );
+    return `${rules} · ${skills}`;
+  }
+
+  private loadEnvironment(projectId: string | null): void {
+    this.api.listRules(projectId).subscribe({
+      next: (r) => this.rules.set(r),
+      error: () => undefined,
+    });
+    this.api.listSkills(projectId).subscribe({
+      next: (s) => this.skills.set(s),
+      error: () => undefined,
+    });
+  }
+
+  addMcp(): void {
+    this.patch({ mcpServers: addMcpServer(this.draft().mcpServers) });
+  }
+
+  patchMcp(index: number, changes: Partial<AgentMcpServer>): void {
+    this.patch({ mcpServers: patchMcpServer(this.draft().mcpServers, index, changes) });
+  }
+
+  removeMcp(index: number): void {
+    this.patch({ mcpServers: removeMcpServer(this.draft().mcpServers, index) });
   }
 
   load(): void {
@@ -812,7 +1059,7 @@ export class AgentsPageComponent {
     this.saving.set(true);
     const existing = this.editing();
     // the key is derived from the name on create (unless customizing) and kept on update
-    const { key, ...rest } = this.draft();
+    const { key, ...rest } = agentPayload(this.draft());
     const req = existing?.id
       ? this.api.updateAgent(existing.id, rest)
       : this.api.createAgent(key ? { key, ...rest } : rest);
