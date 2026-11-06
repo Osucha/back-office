@@ -63,6 +63,8 @@ import { AttemptDetailModalComponent } from '../components/attempt-detail-modal.
 import { AttemptStripComponent } from '../components/attempt-strip.component';
 import { attemptCounts, benchmarkBaton, filterAttemptsByHolder } from '../data/benchmark-view';
 import { scatterOption } from '../data/leaderboard-chart';
+import { candidateCount, candidateKey } from '../data/candidates';
+import { agentKindLabel } from '../../../../core/ui/agents';
 import { categoryLabel } from '../../suites/data/suite-view';
 import { SortHeaderDirective } from '../../../../core/ui/relay/sort-header.directive';
 import { tableSort } from '../../../../core/ui/relay/table-sort';
@@ -186,15 +188,31 @@ const PROVIDERS: Record<string, string> = {
 
         <dl class="facts">
           <div class="wide">
-            <dt i18n="@@evaluation.benchmark.models">Models</dt>
+            <dt i18n="@@evaluation.benchmark.candidates">Candidates</dt>
             <dd class="models">
-              @for (m of b.models ?? []; track m.id) {
+              @for (c of b.candidateRefs ?? []; track candidateKey(c)) {
                 <span class="model"
-                  ><span class="dot" [attr.data-provider]="m.ref.provider" aria-hidden="true"></span
-                  >{{ m.displayName }}</span
+                  ><span
+                    class="dot"
+                    [attr.data-provider]="providerOf(c.modelProfileId)"
+                    aria-hidden="true"
+                  ></span
+                  >{{ c.label }}
+                  <span class="chip" [class.accent]="!!c.harness">{{ kind(c.harness) }}</span></span
                 >
               } @empty {
-                <span class="mono">{{ b.modelProfileIds.length }}</span>
+                @for (m of b.models ?? []; track m.id) {
+                  <span class="model"
+                    ><span
+                      class="dot"
+                      [attr.data-provider]="m.ref.provider"
+                      aria-hidden="true"
+                    ></span
+                    >{{ m.displayName }}</span
+                  >
+                } @empty {
+                  <span class="mono">{{ candidateCount(b) }}</span>
+                }
               }
             </dd>
           </div>
@@ -206,10 +224,12 @@ const PROVIDERS: Record<string, string> = {
             <dt i18n="@@evaluation.benchmark.repetitions">Repetitions</dt>
             <dd class="mono">{{ b.repetitions }}</dd>
           </div>
-          <div>
-            <dt i18n="@@evaluation.benchmark.harness">Harness</dt>
-            <dd>{{ b.codingHarness === 'CLAUDE_CODE' ? 'Claude Code' : 'OpenCode' }}</dd>
-          </div>
+          @if (!b.candidates?.length) {
+            <div>
+              <dt i18n="@@evaluation.benchmark.harness">Harness</dt>
+              <dd>{{ b.codingHarness === 'CLAUDE_CODE' ? 'Claude Code' : 'OpenCode' }}</dd>
+            </div>
+          }
           <div>
             <dt i18n="@@evaluation.benchmark.runner">Coding tasks run on</dt>
             <dd>
@@ -340,8 +360,8 @@ const PROVIDERS: Record<string, string> = {
 
           <nz-tab [nzTitle]="attemptsTab()">
             <bo-filter-bar
-              placeholder="Search tasks or models"
-              i18n-placeholder="@@evaluation.benchmark.attempts.search"
+              placeholder="Search tasks or candidates"
+              i18n-placeholder="@@evaluation.benchmark.attempts.searchCandidates"
               label="Filter attempts"
               i18n-label="@@evaluation.benchmark.attempts.filter"
               [query]="f.values().aq ?? ''"
@@ -445,10 +465,10 @@ const PROVIDERS: Record<string, string> = {
                       nzShowSort
                       [boSort]="attemptSort"
                       boSortKey="model"
-                      nzWidth="180px"
-                      i18n="@@evaluation.benchmark.col.model"
+                      nzWidth="240px"
+                      i18n="@@evaluation.benchmark.col.candidate"
                     >
-                      Model
+                      Candidate
                     </th>
                     <th
                       nzShowSort
@@ -540,7 +560,14 @@ const PROVIDERS: Record<string, string> = {
             <span class="cell-sub">{{ category(a.category) }} · {{ lower(a.difficulty) }}</span>
           </div>
         </td>
-        <td class="ink-2">{{ a.modelDisplayName }}</td>
+        <td class="ink-2">
+          {{ attemptCandidate(a) }}
+          @if (a.candidate) {
+            <span class="chip" [class.accent]="!!a.candidate.harness">{{
+              kind(a.candidate.harness)
+            }}</span>
+          }
+        </td>
         <td nzAlign="right">
           <span class="mono-cell">{{ a.repetition }}</span>
         </td>
@@ -576,8 +603,13 @@ const PROVIDERS: Record<string, string> = {
         <thead>
           <tr>
             <th nzWidth="44px" nzAlign="right">#</th>
-            <th nzShowSort [boSort]="boardSort" boSortKey="model" i18n="@@evaluation.board.model">
-              Model
+            <th
+              nzShowSort
+              [boSort]="boardSort"
+              boSortKey="model"
+              i18n="@@evaluation.board.candidate"
+            >
+              Candidate
             </th>
             <th
               nzShowSort
@@ -624,6 +656,19 @@ const PROVIDERS: Record<string, string> = {
             <th
               nzShowSort
               [boSort]="boardSort"
+              boSortKey="perAccepted"
+              nzWidth="130px"
+              nzAlign="right"
+              nz-tooltip
+              nzTooltipTitle="Total cost / passed attempts: failed attempts are paid by the passed ones"
+              i18n-nzTooltipTitle="@@evaluation.board.costPerAcceptedTooltip"
+              i18n="@@evaluation.board.costPerAccepted"
+            >
+              Cost per accepted result
+            </th>
+            <th
+              nzShowSort
+              [boSort]="boardSort"
               boSortKey="perDollar"
               nzWidth="96px"
               nzAlign="right"
@@ -660,10 +705,22 @@ const PROVIDERS: Record<string, string> = {
             >
               Stability
             </th>
+            @if (showNotApplicable(rows)) {
+              <th
+                nzWidth="110px"
+                nzAlign="right"
+                nz-tooltip
+                nzTooltipTitle="Tasks of the benchmark this candidate cannot do: a coding task for a model answer agent, a prompt task for a coding agent"
+                i18n-nzTooltipTitle="@@evaluation.board.notApplicableTooltip"
+                i18n="@@evaluation.board.notApplicable"
+              >
+                Not applicable
+              </th>
+            }
           </tr>
         </thead>
         <tbody>
-          @for (r of boardSort.apply(sorted(rows)); track r.modelProfileId) {
+          @for (r of boardSort.apply(sorted(rows)); track candidateKey(r.candidate ?? r)) {
             <tr [class.first]="rank(r, rows) === 1">
               <td nzAlign="right">
                 <span class="mono-cell">{{ rank(r, rows) }}</span>
@@ -672,8 +729,13 @@ const PROVIDERS: Record<string, string> = {
                 <div class="cell-main">
                   <span class="model"
                     ><span class="dot" [attr.data-provider]="r.provider" aria-hidden="true"></span
-                    ><span class="cell-title">{{ r.modelDisplayName }}</span></span
-                  >
+                    ><span class="cell-title">{{ r.candidate?.label ?? r.modelDisplayName }}</span>
+                    @if (r.candidate) {
+                      <span class="chip" [class.accent]="!!r.candidate.harness">{{
+                        kind(r.candidate.harness)
+                      }}</span>
+                    }
+                  </span>
                   <span class="cell-sub"
                     >{{ providerName(r.provider) }} · {{ attemptsText(r.attempts) }}</span
                   >
@@ -699,6 +761,13 @@ const PROVIDERS: Record<string, string> = {
               <td nzAlign="right"><bo-cost [value]="r.meanCost" /></td>
               <td nzAlign="right"><bo-cost [value]="r.totalCost" /></td>
               <td nzAlign="right">
+                @if (r.costPerAccepted) {
+                  <strong><bo-cost [value]="r.costPerAccepted" /></strong>
+                } @else {
+                  <span class="mono-cell quiet">-</span>
+                }
+              </td>
+              <td nzAlign="right">
                 <span class="mono-cell">{{
                   r.scorePerDollar !== null && r.scorePerDollar !== undefined
                     ? fixed(r.scorePerDollar, 0)
@@ -715,6 +784,11 @@ const PROVIDERS: Record<string, string> = {
                   r.stability !== null && r.stability !== undefined ? fixed(r.stability, 1) : '-'
                 }}</span>
               </td>
+              @if (showNotApplicable(rows)) {
+                <td nzAlign="right">
+                  <span class="mono-cell">{{ r.notApplicable || '-' }}</span>
+                </td>
+              }
             </tr>
           }
         </tbody>
@@ -952,6 +1026,9 @@ export class BenchmarkDetailPageComponent {
   });
   readonly lower = (v: string | null | undefined) => humanize(v).toLowerCase();
   readonly duration = formatDuration;
+  readonly kind = agentKindLabel;
+  readonly candidateKey = candidateKey;
+  readonly candidateCount = candidateCount;
   readonly providerName = (p: string | null | undefined) => PROVIDERS[p ?? ''] ?? humanize(p);
   readonly attemptBaton = (a: Attempt) => batonOf.attempt(a.status);
   readonly attemptHolders = ATTEMPT_HOLDERS;
@@ -968,11 +1045,11 @@ export class BenchmarkDetailPageComponent {
     const rows = this.sorted(this.leaderboard()?.overall ?? []);
     const top = rows[0];
     const chart = icu(
-      $localize`:@@evaluation.benchmark.chartLabel:Scatter chart of mean score against mean cost per attempt for {count, plural, one {# model} other {# models}}`,
+      $localize`:@@evaluation.benchmark.chartLabelCandidates:Scatter chart of mean score against mean cost per attempt for {count, plural, one {# candidate} other {# candidates}}`,
       { count: rows.length },
     );
     if (!top) return chart + '.';
-    const model = top.modelDisplayName ?? '';
+    const model = top.candidate?.label ?? top.modelDisplayName ?? '';
     const score =
       top.meanScore !== null && top.meanScore !== undefined ? fixed(top.meanScore, 1) : '-';
     return (
@@ -1000,7 +1077,7 @@ export class BenchmarkDetailPageComponent {
     const q = (v.aq ?? '').trim().toLowerCase();
     return filterAttemptsByHolder(this.attempts(), v.aholder).filter(
       (a) =>
-        !q || [a.taskName ?? '', a.modelDisplayName ?? ''].some((x) => x.toLowerCase().includes(q)),
+        !q || [a.taskName ?? '', this.attemptCandidate(a)].some((x) => x.toLowerCase().includes(q)),
     );
   });
   readonly counts = computed(() => attemptCounts(this.attempts()));
@@ -1008,7 +1085,7 @@ export class BenchmarkDetailPageComponent {
   readonly attemptSort = tableSort<Attempt>({
     status: (a) => a.status,
     task: (a) => a.taskName,
-    model: (a) => a.modelDisplayName,
+    model: (a) => this.attemptCandidate(a),
     rep: (a) => a.repetition,
     score: (a) => a.score,
     passed: (a) => a.passed,
@@ -1019,11 +1096,12 @@ export class BenchmarkDetailPageComponent {
   /** Column sorting of the leaderboards (`?board=`); the rank (#) stays the rank by score. */
   readonly boardSort = tableSort<LeaderboardRow>(
     {
-      model: (r) => r.modelDisplayName,
+      model: (r) => r.candidate?.label ?? r.modelDisplayName,
       score: (r) => r.meanScore,
       passRate: (r) => r.passRate,
       meanCost: (r) => r.meanCost?.amount,
       total: (r) => r.totalCost?.amount,
+      perAccepted: (r) => r.costPerAccepted?.amount,
       perDollar: (r) => r.scorePerDollar,
       latency: (r) => r.p50LatencyMs,
       stability: (r) => r.stability,
@@ -1125,7 +1203,7 @@ export class BenchmarkDetailPageComponent {
 
   attemptLabel(a: Attempt): string {
     const task = a.taskName ?? '';
-    const model = a.modelDisplayName ?? '';
+    const model = this.attemptCandidate(a);
     const state = this.attemptBaton(a).label;
     return $localize`:@@evaluation.benchmark.attemptLabel:${task}:task: by ${model}:model:, ${state}:state:`;
   }
@@ -1197,6 +1275,20 @@ export class BenchmarkDetailPageComponent {
 
   sorted(rows: LeaderboardRow[]): LeaderboardRow[] {
     return [...rows].sort((a, b) => (b.meanScore ?? -1) - (a.meanScore ?? -1));
+  }
+
+  /** ADR 0059: "Claude Code · Claude Sonnet"; the model for attempts made before candidates. */
+  attemptCandidate(a: Attempt): string {
+    return a.candidate?.label ?? a.modelDisplayName ?? '';
+  }
+
+  /** The "Not applicable" column only when a candidate of the table skipped tasks. */
+  showNotApplicable(rows: LeaderboardRow[]): boolean {
+    return rows.some((r) => (r.notApplicable ?? 0) > 0);
+  }
+
+  providerOf(modelProfileId: string): string | null {
+    return this.benchmark()?.models?.find((m) => m.id === modelProfileId)?.ref.provider ?? null;
   }
 
   /** Rank by mean score, whatever column the table is sorted by. */

@@ -2,6 +2,7 @@ package pl.mos.backoffice.evaluation.adapter.config
 
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
+import pl.mos.backoffice.shared.tasks.TaskCatalog
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -116,7 +117,8 @@ class EvaluationConfiguration {
         clock: Clock,
         gate: AuthorizationGate,
         audit: AuditPort,
-    ): TransactionalBenchmarks = TransactionalBenchmarks(BenchmarkService(benchmarks, suites, profiles, executor, runner, clock, gate, audit))
+        agents: ObjectProvider<TaskCatalog>,
+    ): TransactionalBenchmarks = TransactionalBenchmarks(BenchmarkService(benchmarks, suites, profiles, executor, runner, clock, gate, audit, agents.getIfAvailable()))
 
     @Bean
     fun executeAttempt(
@@ -127,7 +129,8 @@ class EvaluationConfiguration {
         runner: AgentRunner,
         clock: Clock,
         ownLogin: ObjectProvider<OwnLoginLlm>,
-    ): ExecuteAttempt = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, ownLogin.getIfAvailable())
+        agents: ObjectProvider<TaskCatalog>,
+    ): ExecuteAttempt = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, ownLogin.getIfAvailable(), agents.getIfAvailable())
 
 
     @Bean

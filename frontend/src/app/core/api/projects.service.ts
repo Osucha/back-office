@@ -52,6 +52,20 @@ export class ProjectsApi {
     );
   }
 
+  /** ADR 0059: names of the default workflows (not the Spec Kit ones) the project lacks; empty without a repository. */
+  missingDefaultWorkflows(projectId: string): Observable<string[]> {
+    return this.http.get<string[]>(url('projects', projectId, 'default-workflows'), silent());
+  }
+
+  /** ADR 0059: "Add missing default workflows"; errors are shown by the caller. */
+  addDefaultWorkflows(projectId: string): Observable<WorkflowDefinition[]> {
+    return this.http.post<WorkflowDefinition[]>(
+      url('projects', projectId, 'default-workflows'),
+      {},
+      silent(),
+    );
+  }
+
   // ---- CI entrypoints (entrypoint key -> workflow)
 
   ciEntrypoints(projectId: string): Observable<CiEntrypoint[]> {

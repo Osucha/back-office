@@ -132,6 +132,8 @@ class BenchmarkEntity(
     @Column(name = "updated_by_kind", length = 16) val updatedByKind: String? = null,
     @Column(name = "updated_by_id") val updatedById: UUID? = null,
     @Column(name = "updated_by_name", length = 200) val updatedByName: String? = null,
+    /** ADR 0059: the candidates (agent key, agent name, harness, model profile id); empty for a benchmark of models. */
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false) val candidates: String = "[]",
 )
 
 @Entity
@@ -169,4 +171,8 @@ class BenchmarkAttemptEntity(
     @Column(name = "created_at", nullable = false) val createdAt: Instant = Instant.EPOCH,
     @Column(name = "started_at") val startedAt: Instant? = null,
     @Column(name = "finished_at") val finishedAt: Instant? = null,
+    /** ADR 0059: the candidate's agent; V208 fills it for older attempts. */
+    @Column(name = "agent_key", length = 100) val agentKey: String? = null,
+    @Column(name = "agent_name", length = 200) val agentName: String? = null,
+    @Enumerated(EnumType.STRING) @Column(length = 32) val harness: AgentHarness? = null,
 )

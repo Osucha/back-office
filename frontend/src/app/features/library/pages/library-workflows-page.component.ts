@@ -225,9 +225,12 @@ import { type LibraryRow, filterLibraryWorkflows, libraryRows } from '../data/wo
                 boSortKey="cost"
                 nzWidth="126px"
                 nzAlign="right"
+                nz-tooltip
+                nzTooltipTitle="Cost of every run / successful runs"
+                i18n-nzTooltipTitle="@@library.workflows.col.costTooltip"
                 i18n="@@library.workflows.col.cost"
               >
-                Cost / success
+                Cost per accepted result
               </th>
               <th
                 nzShowSort

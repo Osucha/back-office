@@ -45,6 +45,7 @@ import {
   weeklyLabel,
   weeklyOption,
 } from '../data/insights-view';
+import { InsightsNavComponent } from '../components/insights-nav.component';
 
 /** Sortable columns of the "Agent success by template / model" tables. */
 const successColumns = {
@@ -78,6 +79,7 @@ const successColumns = {
     PageHeaderComponent,
     SkeletonComponent,
     SortHeaderDirective,
+    InsightsNavComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -89,7 +91,9 @@ const successColumns = {
         subtitle="Where the time goes between an issue and a merged change, and what the agents' work cost."
         i18n-subtitle="@@insights.page.subtitle"
         [menu]="menu"
-      />
+      >
+        <app-insights-nav boHeaderBelow active="delivery" />
+      </bo-page-header>
 
       <div
         class="toolbar"

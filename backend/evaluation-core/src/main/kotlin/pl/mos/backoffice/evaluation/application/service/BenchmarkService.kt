@@ -15,7 +15,10 @@ import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.Benchmark
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkProgressCounts
+import pl.mos.backoffice.evaluation.domain.model.BenchmarkCandidate
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
+import pl.mos.backoffice.evaluation.domain.model.CandidateRef
+import pl.mos.backoffice.evaluation.domain.model.LeaderboardCandidate
 import pl.mos.backoffice.evaluation.domain.model.EvalTask
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
 import pl.mos.backoffice.evaluation.domain.model.Leaderboard
@@ -38,6 +41,7 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.ExecutionTarget
 import pl.mos.backoffice.shared.runner.RunnerTarget
+import pl.mos.backoffice.shared.tasks.TaskCatalog
 
 /**
  * Benchmark lifecycle. `start` persists the whole attempt matrix as `PENDING` before queueing anything,
@@ -55,30 +59,38 @@ class BenchmarkService(
     private val clock: Clock,
     private val gate: AuthorizationGate,
     private val audit: AuditPort,
+    /** ADR 0059: the agents of candidates (global agents of the Task Library); null = only benchmarks of models. */
+    private val agents: TaskCatalog? = null,
 ) : ManageBenchmarks, RecoverBenchmarks, EvaluationDashboardQuery {
 
     override fun create(command: BenchmarkCommand): BenchmarkDetails {
         val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
         val suite = suites.findById(command.suiteId) ?: throw NotFoundException("TaskSuite", command.suiteId)
-        val models = resolveModels(command.modelProfileIds)
+        val candidates = resolveCandidates(command)
+        if (candidates.isEmpty() && command.modelProfileIds.isEmpty()) {
+            throw ValidationException("at least one candidate (an agent with a model) or model is required", "candidates")
+        }
+        val modelIds = if (candidates.isEmpty()) command.modelProfileIds else candidates.map { it.modelProfileId }.distinct()
+        val models = resolveModels(modelIds)
         val judge = profiles.findById(command.judgeModelProfileId) ?: throw NotFoundException("ModelProfile", command.judgeModelProfileId)
         val unknownTasks = command.taskIds.filterNot { id -> suite.tasks.any { it.id == id } }
         if (unknownTasks.isNotEmpty()) throw ValidationException("tasks not in suite: ${unknownTasks.joinToString()}", "taskIds")
         val tasks = if (command.taskIds.isEmpty()) suite.tasks else suite.tasks.filter { it.id in command.taskIds.toSet() }
         requireOwnModels(models + judge, user.userId?.value)
-        requireLoginModelRules(models, tasks, command.codingHarness, command.runnerTarget)
+        requireLoginModelRules(codingPairs(candidates, models, command.codingHarness), tasks, command.runnerTarget)
         val benchmark = benchmarks.save(
             Benchmark.create(
                 name = command.name,
                 suiteId = suite.id,
                 taskIds = command.taskIds,
-                modelProfileIds = command.modelProfileIds,
+                modelProfileIds = modelIds,
                 judgeModelProfileId = judge.id,
                 repetitions = command.repetitions,
                 codingHarness = command.codingHarness,
                 now = clock.now(),
                 actor = user.actor,
                 runnerTarget = command.runnerTarget,
+                candidates = candidates,
             ),
         )
         audit.record(
@@ -86,17 +98,18 @@ class BenchmarkService(
                 "BENCHMARK_CREATE", benchmark.id,
                 mapOf(
                     "name" to benchmark.name, "suiteId" to suite.id.toString(), "models" to models.map { it.displayName },
+                    "candidates" to candidates.map { c -> "${c.agentKey}:${c.modelProfileId}" },
                     "judge" to judge.displayName, "repetitions" to benchmark.repetitions, "taskIds" to benchmark.taskIds.map { it.toString() },
                     "runnerTarget" to benchmark.runnerTarget.name,
                 ),
             ),
         )
-        return BenchmarkDetails(benchmark, suite.name, BenchmarkProgressCounts.EMPTY, Money.ZERO, models, judge)
+        return BenchmarkDetails(benchmark, suite.name, BenchmarkProgressCounts.EMPTY, Money.ZERO, models, judge, candidateRefs(benchmark, tasks, models))
     }
 
     override fun start(id: BenchmarkId): BenchmarkDetails {
         val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
-        val benchmark = load(id)
+        val benchmark = refreshCandidates(load(id))
         val suite = suites.findById(benchmark.suiteId) ?: throw NotFoundException("TaskSuite", benchmark.suiteId)
         val models = resolveModels(benchmark.modelProfileIds)
         val disabled = models.filterNot { it.enabled }
@@ -105,16 +118,60 @@ class BenchmarkService(
         if (!judge.enabled) throw InvalidStateException("judge profile ${judge.displayName} is disabled")
         val now = clock.now()
         val attempts = BenchmarkExecutionPlanner.plan(benchmark, suite, models, now)
-        val tasks = if (benchmark.taskIds.isEmpty()) suite.tasks else suite.tasks.filter { it.id in benchmark.taskIds.toSet() }
+        // ADR 0059: a benchmark whose candidates fit none of its tasks would never finish
+        if (attempts.isEmpty()) throw ValidationException("no candidate can do any of the selected tasks (model answer agents do prompt tasks, coding agents coding tasks)", "candidates")
+        val tasks = BenchmarkExecutionPlanner.tasks(benchmark, suite)
         requireOwnModels(models + judge, benchmark.createdBy?.userId)
-        requireLoginModelRules(models, tasks, benchmark.codingHarness, benchmark.runnerTarget)
-        if (attempts.any { it.kind == TaskKind.CODING_JOB }) requireRunnerTarget(benchmark, models.any { it.viaClaudeCodeLogin })
+        requireLoginModelRules(codingPairs(benchmark.candidates, models, benchmark.codingHarness), tasks, benchmark.runnerTarget)
+        if (attempts.any { it.kind == TaskKind.CODING_JOB }) {
+            requireRunnerTarget(benchmark, attempts.any { a -> a.kind == TaskKind.CODING_JOB && models.any { it.id == a.modelProfileId && it.viaClaudeCodeLogin } })
+        }
         if ((models + judge).any { it.viaClaudeCodeLogin }) requirePersonalLogin(benchmark)
         val started = benchmarks.save(benchmark.start(now, user.actor))
         benchmarks.saveAttempts(attempts)
         attempts.forEach { executor.submit(it.id) }
         audit.record(entry("BENCHMARK_START", id, mapOf("name" to benchmark.name, "attempts" to attempts.size)))
         return details(started)
+    }
+
+    /**
+     * ADR 0059: the candidates of [command]: each agent must exist (a global agent of the library), a candidate without a
+     * model takes the agent's own model (the agent must have one), and no agent may come twice with the same model.
+     */
+    private fun resolveCandidates(command: BenchmarkCommand): List<BenchmarkCandidate> {
+        if (command.candidates.isEmpty()) return emptyList()
+        val catalog = agents ?: throw ValidationException("agents are not available on this server; compare models instead", "candidates")
+        val resolved = command.candidates.map { input ->
+            val key = input.agentKey.trim()
+            val agent = catalog.agent(key, null) ?: throw ValidationException("agent $key does not exist", "candidates")
+            val model = input.modelProfileId ?: agent.modelProfileId
+                ?: throw ValidationException("agent ${agent.name} has no model of its own; choose a model for it", "candidates")
+            BenchmarkCandidate(agent.key, model, agent.name, agent.harness)
+        }
+        val duplicates = resolved.groupBy { it.agentKey to it.modelProfileId }.filterValues { it.size > 1 }.keys
+        if (duplicates.isNotEmpty()) {
+            throw ValidationException("the same agent with the same model is listed twice: ${duplicates.joinToString { it.first }}", "candidates")
+        }
+        return resolved
+    }
+
+    /** ADR 0059: fresh agent names and harnesses when the benchmark starts; an agent deleted since creation stops it. */
+    private fun refreshCandidates(benchmark: Benchmark): Benchmark {
+        val catalog = agents
+        if (benchmark.legacy || catalog == null) return benchmark
+        return benchmark.withCandidates(
+            benchmark.candidates.map { c ->
+                val agent = catalog.agent(c.agentKey, null) ?: throw InvalidStateException("agent ${c.agentName} (${c.agentKey}) of this benchmark no longer exists")
+                c.copy(agentName = agent.name, harness = agent.harness)
+            },
+        )
+    }
+
+    /** The models that run coding tasks, with the harness they run in (login model rules). */
+    private fun codingPairs(candidates: List<BenchmarkCandidate>, models: List<ModelProfile>, legacyHarness: AgentHarness): List<Pair<ModelProfile, AgentHarness>> {
+        val byId = models.associateBy { it.id }
+        if (candidates.isEmpty()) return models.map { it to legacyHarness }
+        return candidates.mapNotNull { c -> c.harness?.let { h -> byId[c.modelProfileId]?.let { it to h } } }
     }
 
     override fun executionTargets(): List<ExecutionTarget> {
@@ -136,18 +193,17 @@ class BenchmarkService(
      * jobs to the personal runner with the Claude Code harness.
      */
     private fun requireLoginModelRules(
-        models: List<ModelProfile>,
+        coding: List<Pair<ModelProfile, AgentHarness>>,
         tasks: List<EvalTask>,
-        harness: AgentHarness,
         target: RunnerTarget,
     ) {
-        val login = models.filter { it.viaClaudeCodeLogin }
+        val login = coding.filter { it.first.viaClaudeCodeLogin }
         if (login.isEmpty() || tasks.none { it.kind == TaskKind.CODING_JOB }) return
-        val names = login.joinToString { it.displayName }
+        val names = login.map { it.first.displayName }.distinct().joinToString()
         if (target != RunnerTarget.PERSONAL) {
             throw ValidationException("$names use your own Claude Code login and run coding tasks only on your personal runner; choose it as the execution target", "runnerTarget")
         }
-        if (harness != AgentHarness.CLAUDE_CODE) throw ValidationException("$names need Claude Code as the coding agent", "codingHarness")
+        if (login.any { it.second != AgentHarness.CLAUDE_CODE }) throw ValidationException("$names need Claude Code as the coding agent", "codingHarness")
     }
 
     /** ADR 0050 step 4: login models (candidates or the judge) answer on the creator's personal runner with their login. */
@@ -223,9 +279,40 @@ class BenchmarkService(
 
     override fun leaderboard(id: BenchmarkId): Leaderboard {
         gate.require(EvaluationPermissions.EVALUATION_VIEW)
-        load(id)
-        return LeaderboardCalculator.leaderboard(id, benchmarks.findAttempts(id))
+        val benchmark = load(id)
+        return LeaderboardCalculator.leaderboard(id, benchmarks.findAttempts(id), benchmark.codingHarness, leaderboardCandidates(benchmark))
     }
+
+    /** ADR 0059: per candidate the tasks it can and cannot do (none for a benchmark of models or without its suite). */
+    private fun leaderboardCandidates(benchmark: Benchmark): List<LeaderboardCandidate> {
+        if (benchmark.legacy) return emptyList()
+        val suite = suites.findById(benchmark.suiteId) ?: return emptyList()
+        val tasks = runCatching { BenchmarkExecutionPlanner.tasks(benchmark, suite) }.getOrDefault(emptyList())
+        val notApplicable = BenchmarkExecutionPlanner.notApplicable(benchmark, tasks)
+        return benchmark.candidates.mapNotNull { c ->
+            val model = profiles.findById(c.modelProfileId) ?: return@mapNotNull null
+            val missing = notApplicable[c.agentKey to c.modelProfileId] ?: 0
+            LeaderboardCandidate(candidateRef(c, model.displayName), model.ref.provider, tasks.size - missing, missing)
+        }
+    }
+
+    /**
+     * ADR 0059: the candidates as the UI shows them. A benchmark of models: per model `model-answer` when it has prompt
+     * tasks and the coding harness's agent when it has coding tasks.
+     */
+    private fun candidateRefs(benchmark: Benchmark, tasks: List<EvalTask>?, models: List<ModelProfile>): List<CandidateRef> {
+        val names = models.associate { it.id to it.displayName }
+        if (!benchmark.legacy) return benchmark.candidates.map { candidateRef(it, names[it.modelProfileId] ?: it.modelProfileId.toString()) }
+        val kinds = tasks?.map { it.kind }?.distinct()?.sorted() ?: listOf(TaskKind.PROMPT)
+        return benchmark.modelProfileIds.flatMap { modelId ->
+            kinds.map { kind ->
+                val (key, name, harness) = CandidateRef.legacyAgent(kind, benchmark.codingHarness)
+                CandidateRef(key, name, harness, modelId, names[modelId] ?: modelId.toString())
+            }
+        }
+    }
+
+    private fun candidateRef(c: BenchmarkCandidate, modelName: String) = CandidateRef(c.agentKey, c.agentName, c.harness, c.modelProfileId, modelName)
 
     @SystemOperation("startup recovery of attempts interrupted by a restart; the benchmarks were started by authorised users")
     override fun recover(): Int {
@@ -286,13 +373,17 @@ class BenchmarkService(
 
     private fun details(benchmark: Benchmark): BenchmarkDetails {
         val attempts = benchmarks.findAttempts(benchmark.id)
+        val suite = suites.findById(benchmark.suiteId)
+        val models = benchmark.modelProfileIds.mapNotNull { profiles.findById(it) }
+        val tasks = suite?.let { s -> runCatching { BenchmarkExecutionPlanner.tasks(benchmark, s) }.getOrNull() }
         return BenchmarkDetails(
             benchmark = benchmark,
-            suiteName = suites.findById(benchmark.suiteId)?.name,
+            suiteName = suite?.name,
             progress = BenchmarkProgressCounts.of(attempts),
             totalCost = totalCost(attempts),
-            models = benchmark.modelProfileIds.mapNotNull { profiles.findById(it) },
+            models = models,
             judge = profiles.findById(benchmark.judgeModelProfileId),
+            candidateRefs = candidateRefs(benchmark, tasks, models),
         )
     }
 

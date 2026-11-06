@@ -23,6 +23,7 @@ import pl.mos.backoffice.projects.domain.model.DiffStat
 import pl.mos.backoffice.projects.domain.model.MergeRequestSnapshot
 import pl.mos.backoffice.projects.domain.model.RepositoryResult
 import pl.mos.backoffice.projects.domain.model.ReviewReport
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.service.SessionContinuation
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.projects.domain.service.StepRepository
@@ -418,6 +419,8 @@ class RunnerTaskSupport(
                 else -> failureMessage(result, summary)
             },
             repositories = repositories,
+            // ADR 0059: the agent and the model the job ran with (the plan's profile)
+            agent = StepAgentRecord.of(task.agent, plan.profile),
         )
     }
 

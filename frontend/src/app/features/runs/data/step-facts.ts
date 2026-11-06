@@ -2,7 +2,8 @@
  * The facts table of a run and of one step on the run detail page (label / value rows). Pure
  * functions over the run, its definition snapshot and the node executions.
  */
-import type { NodeExecution, WorkflowRun } from '../../../core/api/types';
+import type { NodeExecution, StepAgentRecord, WorkflowRun } from '../../../core/api/types';
+import { agentKindLabel, agentModelText } from '../../../core/ui/agents';
 import { roleName } from '../../../core/i18n/catalog-labels';
 import { icu } from '../../../core/i18n/icu';
 import { intlLocale } from '../../../core/i18n/locale';
@@ -44,7 +45,7 @@ function nodeFacts(
 ): Fact[] {
   switch (s.kind) {
     case 'TASK':
-      return taskFacts(s.templateKey ?? node?.task?.templateKey ?? '-', node);
+      return taskFacts(s.templateKey ?? node?.task?.templateKey ?? '-', node, s.agent);
     case 'HUMAN_GATE':
       return gateFacts(node, renderedQuestion);
     case 'WAIT_FOR_CI':
@@ -56,10 +57,16 @@ function nodeFacts(
   }
 }
 
-function taskFacts(templateKey: string, node: SnapshotNode | undefined): Fact[] {
+function taskFacts(
+  templateKey: string,
+  node: SnapshotNode | undefined,
+  agent: StepAgentRecord | null | undefined,
+): Fact[] {
   const out: Fact[] = [
     { label: $localize`:@@runs.detail.fact.template:Template`, value: templateKey, mono: true },
   ];
+  if (agent)
+    out.push({ label: $localize`:@@runs.detail.fact.agent:Agent`, value: agentFact(agent) });
   const o = node?.task?.overrides;
   if (o?.modelProfileId)
     out.push({
@@ -83,6 +90,13 @@ function taskFacts(templateKey: string, node: SnapshotNode | undefined): Fact[] 
       value: $localize`:@@runs.detail.fact.promptExtendedValue:extended on the node`,
     });
   return out;
+}
+
+/** ADR 0059: "Implementer · Claude Sonnet (Claude Code)"; the kind is left out when the name says it. */
+export function agentFact(agent: StepAgentRecord): string {
+  const text = agentModelText(agent);
+  const kind = agentKindLabel(agent.harness);
+  return agent.agentName === kind ? text : `${text} (${kind})`;
 }
 
 function gateFacts(node: SnapshotNode | undefined, renderedQuestion: string | null): Fact[] {

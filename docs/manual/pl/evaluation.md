@@ -1,8 +1,8 @@
 # Modele i ewaluacja
 
 Profile modeli to katalog modeli, z którego korzystają zadania i benchmarki, wraz z ich opcjami i cenami.
-Ewaluacja mierzy te modele na pracy takiej jak Twoja, dzięki czemu wybierasz je na podstawie liczb, a nie
-opinii. Ten rozdział opisuje stronę **Modele** (**Models**), zestawy zadań i benchmarki.
+Ewaluacja mierzy te modele, a także agentów, którzy ich używają, na pracy takiej jak Twoja, dzięki czemu
+wybierasz je na podstawie liczb, a nie opinii. Ten rozdział opisuje stronę **Modele** (**Models**), zestawy zadań i benchmarki.
 
 | Chcesz | Uprawnienie | Rola wbudowana |
 |---|---|---|
@@ -60,7 +60,7 @@ wygląda na darmowy; sprawdź ceny, zanim zaufasz **Kosztom** (**Costs**) lub ra
 | Projekt | **Domyślny profil modelu** i **Profil modelu do przeglądów** (zob. [Projekty](projects.md#create-project)) |
 | Szablon zadania | **Profil modelu** (zob. [Biblioteka zadań](task-library.md#templates)) |
 | Węzeł zadania | Nadpisanie **Profil modelu** (zob. [Projektowanie workflowów](workflows.md#nodes)) |
-| Benchmark | modele kandydujące i model oceniający |
+| Benchmark | modele kandydatów (agent z modelem) i model oceniający |
 
 Profil węzła wygrywa z profilem szablonu, a ten z domyślnym profilem projektu.
 
@@ -91,14 +91,14 @@ profile**) wybierz **Osobisty (tylko Ty)** (**Personal (only you)**). Tylko Ty j
 i używasz, w swoich prywatnych projektach i własnych benchmarkach; administratorzy tworzą profile **Platformowe**
 (**Platform**) dla wszystkich. Profile z logowaniem Claude Code są zawsze osobiste.
 
-**Modele domyślne.** Gdy ani krok, ani jego szablon, ani projekt nie wskazuje modelu, Back Office bierze Twój
+**Modele domyślne.** Gdy ani krok, ani jego agent, ani jego szablon, ani projekt nie wskazuje modelu, Back Office bierze Twój
 własny model domyślny dla tego rodzaju kroku (**Kroki LLM** albo **Kroki kodujące**), a potem domyślny model
 platformy ustawiony przez administratora. Ustawisz je na stronie **Modele** (**Models**) w sekcji **Modele
 domyślne** (**Default models**). Model z logowaniem Claude Code może być domyślny dla obu: kroki LLM dostają wtedy
 odpowiedź od Claude Code na Twoim osobistym runnerze.
 
 **Plan modeli** workflowu pokazuje dla każdego kroku model, którego użyłoby uruchomienie, i skąd pochodzi (krok,
-jego szablon, model domyślny projektu albo model przeglądu). Projektant oznacza ostrzeżeniem kroki z modelem,
+jego agent, jego szablon, model domyślny projektu albo model przeglądu). Projektant oznacza ostrzeżeniem kroki z modelem,
 którego nie możesz użyć, a uruchomienie nie wystartuje, dopóki któryś krok nie ma dostępnego modelu; okno
 uruchamiania wypisuje kroki i powód. Narzędzia MCP `get_model_options` i `get_model_plan` dają agentowi w IDE te
 same informacje.
@@ -116,8 +116,8 @@ login)** i **Claude Haiku (my login)**. Taki profil:
 
 - działa jako Claude Code na osobistym runnerze osoby, która tworzy benchmark albo uruchamia workflow, z jej
   logowaniem;
-- wykonuje zadania i kroki programistyczne jako agent (benchmark wymaga wtedy **Mojego osobistego runnera** jako
-  miejsca wykonania i **Claude Code** jako agenta kodującego), a zadania typu prompt, kroki LLM i ocenę modelu
+- wykonuje zadania i kroki programistyczne jako agent (w benchmarku musi być modelem agenta Claude Code, a benchmark
+  wymaga **Mojego osobistego runnera** jako miejsca wykonania), a zadania typu prompt, kroki LLM i ocenę modelu
   oceniającego jako jedną odpowiedź: Back Office wysyła krótkie zadanie na Twój osobisty runner, gdzie Claude Code
   odpowiada bez narzędzi;
 - działa tylko w Twoich prywatnych projektach i własnych benchmarkach;
@@ -191,36 +191,56 @@ programistycznych model oceniający czyta diff względem bazowej referencji, a n
 <a id="benchmarks"></a>
 ## Benchmarki
 
-Benchmark uruchamia zestaw na kilku modelach, oceniany przez jeden, stały model oceniający.
+Benchmark uruchamia zestaw na kilku kandydatach, oceniany przez jeden, stały model oceniający. **Kandydat** to agent
+z modelem, na przykład **Claude Code** z Claude Sonnet, **OpenCode** z tańszym modelem albo Twój własny agent
+**Analyst** z jego instrukcjami i regułami ([Agenci](task-library.md#agents)). Benchmark porównuje więc nie tylko
+modele, ale całych agentów: harness, model i środowisko.
 **Ewaluacja** → **Benchmarki** (**Benchmarks**, `/evaluation/benchmarks`) wyświetla je z informacją, kto
-je trzyma, zestawem, liczbą modeli, postępem prób i kosztem.
+je trzyma, zestawem, **Kandydatami** (**Candidates**), postępem prób i kosztem.
+
+**Który kandydat robi które zadanie.** Zadania z promptem trafiają do agentów odpowiedzi modelu (agentów bez
+harnessu, takich jak **Odpowiedź modelu**, **Analyst** czy **Reviewer**; ich środowiskiem jest prompt systemowy),
+zadania programistyczne do agentów programistycznych (**Claude Code**, **OpenCode** albo Twoich; działają ze swoim
+środowiskiem w zadaniu runnera: instrukcjami, regułami, umiejętnościami i serwerami MCP, jak w kroku workflowu, zob.
+[Środowisko agenta](task-library.md#environment)). Każda inna para, zadanie programistyczne dla agenta odpowiedzi
+modelu albo zadanie z promptem dla agenta programistycznego, nie tworzy próby i jest liczona jako **Nie dotyczy**
+(**Not applicable**). Żeby porównać agentów na obu rodzajach zadań, dodaj po jednym kandydacie każdego rodzaju.
 
 ### Kroki: uruchamianie benchmarku
 
 1. Kliknij **Utwórz benchmark** (**Create benchmark**).
 2. Wpisz **Nazwę** i wybierz **Zestaw zadań** (**Task suite**). Opcjonalnie wybierz **Zadania**
    (**Tasks**); puste oznacza wszystkie zadania.
-3. Wybierz **Modele kandydujące** (**Candidate models**). Nie można wybrać profili, których dostawca nie
-   ma klucza.
+3. W sekcji **Kandydaci** (**Candidates**) wybierz dla każdego kandydata **Agenta** (**Agent**) i **Model**,
+   a **Dodaj kandydata** (**Add candidate**) dodaje następnego. Model jest opcjonalny, gdy agent ma własny model:
+   pole pokazuje wtedy „Model agenta: X” („Agent's model: X”). Agent bez modelu go potrzebuje („Ten agent nie ma
+   własnego modelu: wybierz go.”). Nie można wybrać modeli, których dostawca nie ma klucza; tego samego agenta
+   z tym samym modelem nie można dodać dwa razy. Pod każdym kandydatem formularz podaje, ile wybranych zadań nie
+   dotyczy jego agenta.
 4. Wybierz **Model oceniający** (**Judge model**). Użyj najmocniejszego modelu, na jaki Cię stać, i nigdy
-   żadnego z kandydatów.
+   żadnego z modeli kandydatów.
 5. Ustaw **Powtórzenia** (**Repetitions**; 1–5); dwa lub trzy pozwalają zmierzyć, jak stabilne są wyniki.
-6. Dla zadań programistycznych wybierz **Agenta programistycznego** (**Coding harness**): **OpenCode**
-   (działa z każdym dostawcą) lub **Claude Code** (tylko Anthropic).
-7. Gdy zadania obejmują zadania programistyczne, wybierz, gdzie mają działać, w polu **Zadania kodujące
+6. Gdy zadania obejmują zadania programistyczne, wybierz, gdzie mają działać, w polu **Zadania kodujące
    uruchamiaj na** (**Coding tasks run on**): **Współdzielone runnery** (**Shared runners**, flota platformy)
    albo **Mój osobisty runner** (**My personal runner**, Twój komputer, zob.
    [Osobisty runner](personal-runner.md)). Przy każdej opcji widać, ile runnerów jest online; nieskonfigurowanej
    nie da się wybrać, a gdy żaden nie jest online, próby kodujące czekają na połączenie runnera (najwyżej 24
-   godziny). Zadania promptowe nie potrzebują runnera.
-8. Kliknij **Utwórz i uruchom** (**Create and start**) albo **Zapisz jako szkic** (**Save as draft**),
+   godziny). Zadania promptowe nie potrzebują runnera. [Model z logowaniem Claude Code](#claude-code-login)
+   działa tylko jako model agenta Claude Code i na Twoim osobistym runnerze; formularz mówi, co zmienić.
+7. Kliknij **Utwórz i uruchom** (**Create and start**) albo **Zapisz jako szkic** (**Save as draft**),
    a później **Uruchom benchmark** (**Start benchmark**) na jego stronie. **Utwórz i uruchom** najpierw wysyła
-   jednolinijkowy test do każdego kandydata i modelu oceniającego (**Sprawdź modele**, **Check models**, robi
+   jednolinijkowy test do modelu każdego kandydata i modelu oceniającego (**Sprawdź modele**, **Check models**, robi
    tylko to): modele, które nie odpowiadają, są wypisane z powodem podanym przez dostawcę, na przykład brak
    dostępu do modelu albo wyczerpany limit dzienny. Usuń je albo kliknij **Uruchom mimo to** (**Start anyway**).
 
-Formularz pokazuje, ile prób zaplanuje benchmark (zadania × modele × powtórzenia, każda dodatkowo raz
-oceniana). Każda próba kosztuje tokeny kandydata plus tokeny modelu oceniającego; próby programistyczne na
+Nie ma już wyboru agenta programistycznego dla całego benchmarku: harness przynosi agent kandydata. Benchmarki
+utworzone, zanim kandydatami byli agenci (tylko z modelami, także przez starsze API), działają jak dotąd: każdy
+model jako **Odpowiedź modelu** w zadaniach z promptem i jako agent harnessu benchmarku w zadaniach
+programistycznych, bez środowiska agenta. Ich strony pokazują jeden wiersz na model i agenta, na przykład
+`Model answer · Claude Sonnet` i `OpenCode · Claude Sonnet`.
+
+Formularz pokazuje, ile prób zaplanuje benchmark (zadania × kandydaci × powtórzenia, bez par, których to nie
+dotyczy, każda dodatkowo raz oceniana). Każda próba kosztuje tokeny kandydata plus tokeny modelu oceniającego; próby programistyczne na
 najmocniejszych modelach mogą kosztować po kilka dolarów każda. Formularz ostrzega, gdy model oceniający jest też
 kandydatem (oceniałby własne odpowiedzi) i gdy zadania programistyczne wskazują przykładowe repozytorium, np.
 `gitlab.example.com`, które nie istnieje.
@@ -242,30 +262,39 @@ benchmark je wysyła, żaden runner nie jest online, strona benchmarku o tym inf
 
 ### Odczytywanie wyników
 
-Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**Attempts · N**).
+Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**Attempts · N**); jej nagłówek wymienia
+**Kandydatów** (**Candidates**).
 
 | Kolumna rankingu | Znaczenie |
 |---|---|
+| **Kandydat** (**Candidate**) | Jeden wiersz na kandydata, `agent · model`, na przykład `Claude Code · Claude Sonnet`. |
 | **Wynik** (**Score**) | Średnia ocena z udanych prób. |
 | **Odsetek zaliczonych** (**Pass rate**) | Udział zaliczonych prób (programistyczne: weryfikacja i testy akceptacyjne przechodzą, a ocena wynosi co najmniej 70; prompt: ocena 70 lub więcej). Próby nieudane i przekraczające czas liczą się jako niezaliczone. |
 | **Średni koszt** (**Mean cost**), **Łącznie** (**Total**) | Koszt kandydata na próbę i ogółem. |
+| **Koszt zaakceptowanego wyniku** (**Cost per accepted result**) | **Łącznie** / zaliczone próby: nieudane próby opłacają te zaliczone ([Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted)). Puste bez zaliczonej próby. Według tej liczby porównuj kandydatów. |
 | **Wynik / $** (**Score / $**) | Średni wynik na dolara średniego kosztu. |
 | **Czas p50 / p95** (**Time p50 / p95**) | Czas odpowiedzi samego kandydata (odpowiedź modelu albo zadanie agenta od zlecenia do wyniku), bez modelu oceniającego, kolejki i ponowień, z udanych prób: połowa była szybsza niż p50, 95% szybsze niż p95. Poniżej 20 prób p95 to po prostu najwolniejsza próba; podpowiedź mówi, z ilu prób policzono czasy. |
 | **Stabilność** (**Stability**) | Odchylenie standardowe wyniku między powtórzeniami; im niższe, tym stabilniej. |
+| **Nie dotyczy** (**Not applicable**) | Zadania benchmarku, których ten kandydat nie może wykonać (zadanie programistyczne dla agenta odpowiedzi modelu, zadanie z promptem dla agenta programistycznego); kolumna jest widoczna tylko wtedy, gdy takie są. |
 
-**Wynik a koszt** (**Score vs cost**) pokazuje na wykresie każdy model; model, który inny model bije
+**Wynik a koszt** (**Score vs cost**) pokazuje na wykresie każdego kandydata; kandydat, którego inny bije
 zarówno wynikiem, jak i kosztem, jest zdominowany. Przekroje **Ogółem** (**Overall**), **Wg kategorii**
 (**By category**), **Wg trudności** (**By difficulty**) i **Wg zadania** (**By task**) powtarzają tabelę
-dla każdego wycinka. Na karcie **Próby** filtruj po zadaniu i modelu i otwórz próbę, aby przeczytać
-wynik, kryteria i uzasadnienie modelu oceniającego oraz wynik weryfikacji. Zanim wyciągniesz wnioski, przeczytaj
-najgorszą próbę każdego modelu: niska ocena to często problem z kryteriami oceny.
+dla każdego wycinka. Na karcie **Próby** szukaj zadań lub kandydatów, filtruj po zadaniu i modelu i otwórz próbę,
+aby przeczytać jej agenta i model, wynik, kryteria i uzasadnienie modelu oceniającego oraz wynik weryfikacji. Zanim
+wyciągniesz wnioski, przeczytaj najgorszą próbę każdego kandydata: niska ocena to często problem z kryteriami oceny.
 
 ### Wykorzystanie wyniku
 
-1. Ustaw najtańszy profil, który spełnia Twoje wymagania, jako **Domyślny profil modelu** projektu.
-2. Mocniejszy profil zostaw tylko w tych węzłach zadań, w których benchmark pokazał realną różnicę.
-3. Wybieraj zwycięski profil (model plus poziom rozumowania), a nie tylko model.
-4. Uruchom benchmark ponownie, gdy dostawca wyda nowy model lub zmieni ceny.
+1. Ustaw najtańszego kandydata, który spełnia Twoje wymagania, w węzłach zadań tego rodzaju pracy: jego agenta jako
+   **Agenta** kroku, a jego model jako model kroku (albo agenta) ([Węzły zadań](workflows.md#task-nodes)), albo jego
+   model jako **Domyślny profil modelu** projektu.
+2. Mocniejszego kandydata zostaw tylko w tych węzłach zadań, w których benchmark pokazał realną różnicę.
+3. Wybieraj zwycięski profil (model plus poziom rozumowania) i agenta (instrukcje, reguły, umiejętności), a nie
+   tylko model.
+4. Sprawdź wybór na prawdziwych zgłoszeniach: przepuść je przez zmieniony workflow i przez workflow referencyjny
+   i porównaj w [Agenci: koszt i skuteczność](costs-insights.md#agent-insights).
+5. Uruchom benchmark ponownie, gdy dostawca wyda nowy model lub zmieni ceny albo gdy zmienisz agenta.
 
 Wydatki na benchmarki widać w **Kosztach** w przekroju **Wg benchmarku** (**By benchmark**) (zob.
 [Koszty](costs-insights.md#costs)).

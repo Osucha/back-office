@@ -76,7 +76,8 @@ delivery insights (default the last 30 days, at most 366). Read model `JdbcWorkf
 | Duration | `finished_at − coalesce(started_at, created_at)` of finished, not cancelled runs; p50/p90/total/count |
 | Active time | duration minus the summed durations of the run's `HUMAN_GATE` and `WAIT_FOR_CI` executions (floor 0) |
 | Human wait | per run with at least one finished gate: the summed gate durations |
-| Total cost, cost per run, cost per successful run | ledger cost (`usage_record` by `run_id`) of the runs, ÷ runs, of the successful runs ÷ their number |
+| Total cost, cost per run | ledger cost (`usage_record` by `run_id`) of the runs, ÷ runs |
+| Cost per accepted result (`costPerSuccessfulRun`, ADR 0059) | ledger cost of **every** run in scope ÷ successful runs: failed runs and rework are paid by the accepted results. Formerly "cost per successful run"; the UI shows it with the human wait and the first-pass rate next to it |
 | Cost at API prices: total, per run, per successful run (ADR 0042) | the ledger cost plus what subscriptions paid for (`workflow_run.api_cost_amount - cost_amount`, at least 0), divided the same way; per node `apiCost` of the node executions (their cost when absent) |
 | Tokens | ledger input and output tokens of the runs |
 | Merge requests | runs that recorded a merge-request URL |
@@ -89,6 +90,49 @@ executions, summed execution cost, ports taken; ordered by the node's average po
 with the next older one that has finished runs (better / worse when the success rate moves by 5 points or the
 median duration or cost per success by 10 %) and marks versions with fewer than 5 finished runs. Tested with a
 seeded dataset in `WorkflowInsightsIntegrationTest`.
+
+## Agent insights (`GET /insights/agents`)
+
+ADR 0059. Which agent with which model gets a task step accepted for the least money. `projectId` (optional;
+`project.view` on it), `from`/`to` with the window rules of delivery insights (default the last 30 days, at most 366).
+Use case `AgentInsightsQuery` (`AgentInsightsService`), read model `JdbcAgentInsightsReadModel` (SQL over the `nodes`
+JSONB of `workflow_run`, nothing written), aggregation in the domain (`AgentInsightsCalculator`). Also the MCP tool
+`get_agent_insights`; UI `/insights/agents`.
+
+**Who did a step.** Since ADR 0059 every `TASK` node execution stores `agent` (`StepAgentRecord`: `agentKey`,
+`agentName`, `harness`, `modelProfileId`, `modelLabel`), the agent and model the step resolved to when it ran. Older
+executions have none; they are counted as `unattributed` and left out of the rows.
+
+**Scope:** the `TASK` executions of the runs **created** in `[from, to)` of the visible projects.
+
+| Metric | Definition |
+|---|---|
+| Executions | finished (`SUCCEEDED` or `FAILED`) `TASK` executions with an agent record, retries and revisions included; skipped and open ones never ran an agent to the end |
+| Succeeded, failed | executions with status `SUCCEEDED` / `FAILED` |
+| Accepted | a `SUCCEEDED` execution that is the last finished execution of its node in its run, and the run is successful (`SUCCEEDED` with outcome `SUCCESS`) |
+| First-pass rate | accepted executions with `attempt = 1` ÷ accepted executions |
+| Cost, API cost | summed execution `cost`; `apiCost` (ADR 0042, the cost when absent) |
+| Cost per accepted (step level) | cost of every execution ÷ accepted executions; null without accepted executions |
+| Duration | `finishedAt − startedAt` of the executions; p50/p90/total/count |
+
+Rows: `byAgent`, one per `(agentKey, modelProfileId)` (name, harness and model label of the latest execution) ordered
+by the lowest cost per accepted step (rows without an accepted execution last), and `byTemplate`, the same rows per
+`templateKey` so agents are compared on the same task. `unattributed` counts the finished `TASK` executions without
+an agent record.
+
+### Cost of an accepted result at every level
+
+| Level | Accepted | Cost of an accepted result |
+|---|---|---|
+| Step (`/insights/agents`) | succeeded, last execution of its node in the run, run successful | cost of every execution ÷ accepted |
+| Workflow (`/insights/workflows`, `costPerSuccessfulRun`) | successful run | cost of every run in scope ÷ successful runs |
+| Benchmark (`LeaderboardRow.costPerAccepted`) | passed attempt | candidate's total cost ÷ passed attempts |
+
+Human time is not converted to money (Back Office knows the wait, not the work); the wait is shown next to the cost.
+A merge in GitLab is not tracked; a successful run (gates approved) is the accepted result. The yardstick is the
+default workflow "Reference: one Claude Code session" ([03-pipelines-and-agents.md](03-pipelines-and-agents.md),
+[designing-a-workflow.md](../guides/designing-a-workflow.md)). Tested with a seeded dataset in
+`AgentInsightsIntegrationTest` and in `AgentInsightsCalculatorTest`.
 
 ## Provenance attestations
 
@@ -180,6 +224,7 @@ or failed call is an MCP tool error (`isError: true`), not a transport error. Di
 | `search_task_library` | find templates and skills by text | `ManageTaskTemplates.list`, `ManageSkills.list` | `library.view` |
 | `get_project_context` | constitution, repositories (key, url, purpose, primary), CI entrypoints, workflows, recent runs | `ManageProjects`, `ManageWorkflows`, `RunQueries` | `project.view` |
 | `get_delivery_insights` | the insights of a project (or of all visible projects) | `DeliveryInsightsQuery.get` | `project.view` |
+| `get_agent_insights` | agent insights of a project (or of all visible projects): per agent and model and per template (ADR 0059) | `AgentInsightsQuery.get` | `project.view` |
 | `list_projects` | the projects the caller can see | `ManageProjects.list` | `project.view` |
 | `get_workflow_palette` | control nodes, task templates (ports, config schema) and state fields to build a workflow from | `ManageWorkflows.palette` | `project.view` |
 | `get_workflow` | one workflow with its definition as `WorkflowDefinitionInput` JSON | `ManageWorkflows.get` | `project.view` |

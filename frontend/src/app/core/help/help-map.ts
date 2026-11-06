@@ -342,7 +342,7 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
   [/^\/workflows\/[^/]+\/edit$/, 'designer'],
   [/^\/runs$/, 'runs'],
   [/^\/runs\/[^/]+$/, (q) => (q.get('tab') === 'provenance' ? 'provenance' : 'run')],
-  [/^\/insights$/, 'insights'],
+  [/^\/insights(\/agents)?$/, 'insights'],
   [/^\/costs$/, 'costs'],
   [/^\/ci(\/[^/]+)?$/, 'ci'],
   [/^\/library(\/templates)?$/, 'templates'],

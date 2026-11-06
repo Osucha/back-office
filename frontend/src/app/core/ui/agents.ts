@@ -38,6 +38,21 @@ export function isCodingAgent(agent: { harness?: string | null } | null | undefi
   return !!agent?.harness;
 }
 
+/**
+ * ADR 0059: who did a task step or a benchmark attempt, "Claude Code · Claude Sonnet" (the agent's
+ * name and the model; the name alone without a model, '' without a record).
+ */
+export function agentModelText(
+  a:
+    | { agentName?: string | null; agentKey?: string | null; modelLabel?: string | null }
+    | null
+    | undefined,
+): string {
+  if (!a) return '';
+  const name = a.agentName || a.agentKey || '';
+  return [name, a.modelLabel].filter((x) => !!x).join(' · ');
+}
+
 const actionTexts = (): Record<ActionType, { title: string; description: string }> => ({
   FETCH_ISSUE: {
     title: $localize`:@@core.action.fetchIssue:Fetch issue`,

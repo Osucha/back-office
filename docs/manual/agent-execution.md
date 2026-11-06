@@ -214,4 +214,5 @@ Every detection is in the run log and in the audit log (`PROMPT_INJECTION_SUSPEC
    `injectionGuard` to `FLAG` (report only) or `OFF` (log only) in its review template.
 4. Watch the designer warning "routes only on model output": a decision on `confidence` or `review` that leads
    to an implementation step without a human gate can be steered by an issue author.
-5. Review changes to skills, templates and constitutions like code: they are part of every prompt.
+5. Review changes to agents, rules, skills, templates and constitutions like code: they are part of every prompt or
+   agent environment.

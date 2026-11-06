@@ -11,6 +11,7 @@ import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.RepositoryResult
 import pl.mos.backoffice.projects.domain.model.ReviewReport
 import pl.mos.backoffice.projects.domain.model.RunOutcome
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.Money
@@ -91,6 +92,8 @@ data class NodeResult(
     val writeApprovers: GateApprovers? = null,
     /** Per-repository result of a runner step (ADR 0034), recorded on the node execution. */
     val repositories: List<RepositoryResult> = emptyList(),
+    /** ADR 0059: the agent and model of a TASK step, recorded on the node execution. */
+    val agent: StepAgentRecord? = null,
 ) {
     val failed: Boolean get() = error != null
 

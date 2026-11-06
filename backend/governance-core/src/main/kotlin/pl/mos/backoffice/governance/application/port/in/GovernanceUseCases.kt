@@ -1,5 +1,6 @@
 package pl.mos.backoffice.governance.application.port.`in`
 
+import pl.mos.backoffice.governance.domain.model.AgentInsights
 import pl.mos.backoffice.governance.domain.model.Attestation
 import pl.mos.backoffice.governance.domain.model.DeliveryInsights
 import pl.mos.backoffice.governance.domain.model.WorkflowInsights
@@ -48,4 +49,12 @@ interface WorkflowInsightsQuery {
 
     /** The headline metrics per library workflow with runs in the window (`library.view`). */
     fun libraryHeadlines(from: Instant?, to: Instant?): Map<UUID, WorkflowMetrics>
+}
+
+/**
+ * ADR 0059: agent insights: the task steps of one project (`project.view`) or of every visible project (`projectId`
+ * null), per agent and model and per template.
+ */
+interface AgentInsightsQuery {
+    fun get(projectId: UUID?, from: Instant?, to: Instant?): AgentInsights
 }

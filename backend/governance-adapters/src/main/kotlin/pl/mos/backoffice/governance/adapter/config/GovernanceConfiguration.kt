@@ -15,14 +15,17 @@ import pl.mos.backoffice.governance.adapter.`in`.events.AttestationTrigger
 import pl.mos.backoffice.governance.adapter.`in`.mcp.BackOfficeMcpTools
 import pl.mos.backoffice.governance.adapter.`in`.mcp.McpPersonalTokenFilter
 import pl.mos.backoffice.governance.adapter.out.evidence.JdbcJobEvidenceSource
+import pl.mos.backoffice.governance.adapter.out.insights.JdbcAgentInsightsReadModel
 import pl.mos.backoffice.governance.adapter.out.insights.JdbcDeliveryInsightsReadModel
 import pl.mos.backoffice.governance.adapter.out.insights.JdbcWorkflowInsightsReadModel
 import pl.mos.backoffice.governance.adapter.out.json.JacksonJsonCodec
 import pl.mos.backoffice.governance.adapter.out.persistence.JdbcAttestationRepository
 import pl.mos.backoffice.governance.adapter.out.signing.Ed25519EnvelopeSigner
 import pl.mos.backoffice.governance.adapter.out.signing.SigningProperties
+import pl.mos.backoffice.governance.application.port.`in`.AgentInsightsQuery
 import pl.mos.backoffice.governance.application.port.`in`.DeliveryInsightsQuery
 import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
+import pl.mos.backoffice.governance.application.service.AgentInsightsService
 import pl.mos.backoffice.governance.application.service.AttestationService
 import pl.mos.backoffice.governance.application.service.DeliveryInsightsService
 import pl.mos.backoffice.governance.application.service.WorkflowInsightsService
@@ -99,6 +102,14 @@ class GovernanceConfiguration {
     fun workflowInsightsService(readModel: JdbcWorkflowInsightsReadModel, gate: AuthorizationGate, clock: Clock) = WorkflowInsightsService(readModel, gate, clock)
 
     @Bean
+    fun agentInsightsReadModel(jdbc: JdbcClient) = JdbcAgentInsightsReadModel(jdbc)
+
+    /** Agent insights (ADR 0059); template names from the Task Library when it is present. */
+    @Bean
+    fun agentInsightsService(readModel: JdbcAgentInsightsReadModel, gate: AuthorizationGate, clock: Clock, tasks: ObjectProvider<TaskCatalog>) =
+        AgentInsightsService(readModel, gate, clock, tasks.ifAvailable)
+
+    @Bean
     @ConditionalOnProperty(prefix = "backoffice.provenance", name = ["enabled"], matchIfMissing = true)
     fun attestationTrigger(record: RecordAttestations, gate: AuthorizationGate, jdbc: JdbcClient, transactions: PlatformTransactionManager) =
         AttestationTrigger(record, gate, jdbc, TransactionTemplate(transactions))
@@ -126,7 +137,8 @@ class McpServerConfiguration {
         insights: DeliveryInsightsQuery,
         audit: AuditPort,
         workspaces: ManageProjectWorkspaces,
-    ) = BackOfficeMcpTools(gate, runs, startRun, approvals, decideApproval, projects, workflows, templates, skills, insights, audit, workspaces)
+        agentInsights: AgentInsightsQuery,
+    ) = BackOfficeMcpTools(gate, runs, startRun, approvals, decideApproval, projects, workflows, templates, skills, insights, audit, workspaces, agentInsights)
 
     /** Before Spring Security's chain (order -100) so non-PAT credentials never reach the MCP transport. */
     @Bean

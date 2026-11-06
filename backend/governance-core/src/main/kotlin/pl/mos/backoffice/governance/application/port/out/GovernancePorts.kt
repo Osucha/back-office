@@ -5,6 +5,7 @@ import pl.mos.backoffice.governance.domain.model.DeliveryInsights
 import pl.mos.backoffice.governance.domain.model.WorkflowInsights
 import pl.mos.backoffice.governance.domain.model.WorkflowMetrics
 import pl.mos.backoffice.governance.domain.model.JobEvidence
+import pl.mos.backoffice.governance.domain.model.TaskStepExecution
 import pl.mos.backoffice.governance.domain.model.WorkflowScope
 import pl.mos.backoffice.shared.security.ProjectFilter
 import java.time.Instant
@@ -44,4 +45,9 @@ interface WorkflowInsightsReadModel {
     fun compute(scope: WorkflowScope, projects: ProjectFilter, from: Instant, to: Instant): WorkflowInsights
 
     fun libraryHeadlines(projects: ProjectFilter, from: Instant, to: Instant): Map<UUID, WorkflowMetrics>
+}
+
+/** ADR 0059: the finished and open TASK step executions of the runs created in `[from, to)` of the visible projects. */
+fun interface AgentInsightsReadModel {
+    fun taskSteps(projects: ProjectFilter, from: Instant, to: Instant): List<TaskStepExecution>
 }

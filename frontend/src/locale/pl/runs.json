@@ -154,6 +154,7 @@
   "runs.detail.fact.stepFinished": "Zakończono",
   "runs.detail.fact.runnerJob": "Zadanie runnera",
   "runs.detail.fact.tokens": "Tokeny",
+  "runs.detail.fact.agent": "Agent",
 
   "runs.provenance.explain": " Atestacja to podpisane przez Back Office oświadczenie (Ed25519, koperta DSSE), które wiąże commit i diff wytworzone przez agenta ze sposobem ich wytworzenia: modelem, szablonem i promptami, polityką i obrazem sandboxa, dozwolonymi hostami, tokenami i kosztem, wynikiem weryfikacji oraz tym, kto zatwierdził bramki po drodze. Każdy, kto ma klucze publiczne, może sprawdzić, że nie zostało zmienione; nie dowodzi to jednak, że zmiana jest poprawna. {$START_TAG_BO_HELP_LINK}Jak weryfikować atestacje{$CLOSE_TAG_BO_HELP_LINK}",
   "runs.provenance.loading": "Wczytywanie atestacji",

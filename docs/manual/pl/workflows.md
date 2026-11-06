@@ -55,9 +55,10 @@ wprowadzone w nim obowiązują, gdy tylko JSON da się sparsować (**Kopiuj JSON
 | `Esc` | Wyczyść zaznaczenie |
 | `Ctrl S` | Zapisz |
 
+<a id="default-workflows"></a>
 ### Domyślne workflowy
 
-Każdy nowy projekt z repozytorium dostaje trzy workflowy (projekt bez repozytorium dostaje zamiast nich
+Każdy nowy projekt z repozytorium dostaje te workflowy (projekt bez repozytorium dostaje zamiast nich
 workflow startowy **LLM task with review**, zob. [Projekty bez repozytorium](projects.md#no-repository)):
 
 - **Issue to reviewed MR**: pobiera zgłoszenie, pisze specyfikację, sprawdza ją (bramka pyta Cię tylko
@@ -69,6 +70,20 @@ workflow startowy **LLM task with review**, zob. [Projekty bez repozytorium](pro
   przesłany diff i zalicza albo oblewa zadanie CI.
 - **Change request (delta)**: analiza wpływu, historyjka użytkownika i lista zadań, każdy ważny krok za
   bramką z listą kontrolną, a następnie implementacja, CI, przegląd i bramka scalenia.
+- **Reference: one Claude Code session**: pobiera zgłoszenie, potem jeden krok zadania (szablon **Agent task**,
+  `agent-task`, z agentem **Claude Code**, z wypchnięciem i merge requestem), który czyta repozytorium, implementuje
+  zgłoszenie od początku do końca, uruchamia build i testy i otwiera merge request, a następnie bramka **Merge?** na
+  zasadzie czterech oczu (**revise** odsyła Twój komentarz do kroku). To punkt odniesienia: przepuść te same
+  zgłoszenia przez niego i przez tańsze workflowy i porównaj ich koszt zaakceptowanego wyniku
+  ([Agenci: koszt i skuteczność](costs-insights.md#agent-insights)).
+
+**Issue to reviewed MR** powstaje tylko wtedy, gdy Spec Kit jest włączony ([Spec Kit](projects.md#spec-kit)).
+
+**Projekty utworzone, zanim istniał dany workflow domyślny**, nie dostają go automatycznie. Gdy projektowi
+z repozytorium brakuje workflowów domyślnych, jego karta **Workflowy** (**Workflows**) proponuje **Dodaj brakujące
+workflowy domyślne (N)** (**Add missing default workflows (N)**, `workflow.edit`): dodaje brakujące po nazwie, na
+przykład **Reference: one Claude Code session**, i nigdy nie zastępuje istniejącego workflowu o tej samej nazwie.
+Workflowy Spec Kit dodaje się zamiast tego z karty **Spec Kit** ([Spec Kit](projects.md#spec-kit)).
 
 <a id="nodes"></a>
 ## Rodzaje węzłów
@@ -94,22 +109,35 @@ pierwsza opcja bramki, `success` oczekiwania na CI, `out` węzła Start. Jeśli 
 niepołączony port `failure`, `fail` lub `timeout`, kończy się niepowodzeniem; przez niepołączony
 `reject` — zostaje anulowane. Walidacja ostrzega o pozostałych niepołączonych portach.
 
+<a id="task-nodes"></a>
 ### Węzły zadań
 
+Krok zadania łączy trzy rzeczy: **szablon** (co zrobić), **agenta** (kto pracuje i jak) oraz wartości
+**parametrów** szablonu ([Biblioteka zadań](task-library.md#agents)).
+
 Wybierz **Szablon** (przestarzałe szablony nie są proponowane; krok, który już go używa, ma znacznik
-**Przestarzały**, **Deprecated**). Pod nim widać rodowód szablonu, agenta i kategorię oraz **Otwórz
-w bibliotece** (**Open in library**). **Co dostaje ten krok** (**What this step gets**, zwinięte) pokazuje szablon
-z nadpisaniami tego kroku: agenta, profil modelu, prompt systemowy i użytkownika, reguły, umiejętności, konfigurację
+**Przestarzały**, **Deprecated**; szablony ze znacznikiem **wymaga parametrów**, **needs parameters**, oczekują
+wartości w kroku). Pod nim widać rodowód szablonu, agenta i kategorię oraz **Otwórz w bibliotece** (**Open in
+library**).
+
+**Parametry** (**Parameters**; widoczne, gdy szablon je ma) pokazują [parametry](task-library.md#parameters)
+szablonu jako formularz: pola tekstowe, liczby, przełącznik dla **Tak / nie**, listę dla **Wyboru**. Puste oznacza
+wartość szablonu albo domyślną, pokazaną na szaro. Wymagany parametr bez żadnej wartości to błąd walidacji: workflow
+da się zapisać tylko jako wersję roboczą, a uruchomienie nie wystartuje.
+
+**Co dostaje ten krok** (**What this step gets**, zwinięte) pokazuje szablon z nadpisaniami tego kroku: agenta,
+profil modelu, prompt systemowy i użytkownika, reguły i umiejętności (te agenta, zmienione przez krok), konfigurację
 i dane wejściowe przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości.
 **Nadpisania** (**Overrides**) zmieniają szablon tylko dla tego węzła:
 
 | Nadpisanie | Skutek |
 |---|---|
-| **Agent** | Kto wykonuje ten krok zamiast agenta szablonu: **Odpowiedź modelu**, **OpenCode**, **Claude Code** albo agent z Twojej biblioteki ([Agenci](task-library.md#agents)). Puste = agent szablonu. Krok pokazuje problem, gdy agent nie pasuje do szablonu (na przykład faza Spec Kit albo `push` z **Odpowiedzią modelu**). |
+| **Agent** | Kto wykonuje ten krok zamiast agenta szablonu: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)). Puste = agent szablonu. Z agentem przychodzą jego instrukcje, reguły, umiejętności i serwery MCP. Krok pokazuje problem, gdy agent nie pasuje do szablonu (na przykład faza Spec Kit albo `push` z **Odpowiedzią modelu**). |
+| **Sesja agenta** (**Agent session**) | Tylko agenci kodujący: **Nowa sesja** (**New session**) albo **Kontynuuj sesję kroku …** (**Continue the session of step …**) ([Kontynuacja sesji](#continue-session)). |
 | **Profil modelu** (**Model profile**) | Model dla tego węzła zamiast modelu agenta, szablonu lub ustawień domyślnych. |
 | **Prompt użytkownika** (**User prompt**) | **Dziedziczony** (**Inherited**), **Dopisz** (**Append**; dodawany po prompcie szablonu) lub **Zastąp** (**Replace**). |
 | **Dopisek do promptu systemowego** (**System prompt append**) | Dodawany do promptu systemowego szablonu. |
-| **Dodaj umiejętności** (**Add skills**), **Usuń umiejętności** (**Remove skills**) | Modyfikują listę umiejętności szablonu. |
+| **Dodaj umiejętności do umiejętności agenta** (**Add skills to the agent's**), **Pomiń umiejętności agenta** (**Drop skills of the agent**) | Tylko w tym kroku: umiejętności oprócz umiejętności agenta albo pominięte umiejętności agenta. Gdzie indziej agent je zachowuje. |
 | **Konfiguracja** (**Config**) | Ustawienia dla agenta kroku, takie jak polecenie weryfikacji, nazwa gałęzi czy opcje merge requestu; scalane z konfiguracją szablonu. |
 
 Agent kodujący był dawniej kluczem konfiguracji `agent` (`CLAUDE_CODE`, `OPENCODE`); ten klucz już nie istnieje.
@@ -289,6 +317,27 @@ Walidacja: krok wskazujący przestrzeń, której projekt nie ma, rolę spoza lis
 bez przestrzeni to błąd; rola bez przestrzeni to ostrzeżenie. Usunięcie przestrzeni zamienia korzystające z niej
 workflowy w wersje robocze, dopóki ich kroki nie wybiorą innej. Workflow opublikowany do biblioteki zachowuje klucze
 przestrzeni swoich kroków; projekt, który go przyjmie, potrzebuje przestrzeni o tych kluczach.
+
+<a id="continue-session"></a>
+### Kontynuacja sesji
+
+Czasem następny krok powinien po prostu prowadzić dalej tę samą rozmowę: *implementacja*, potem *popraw to, co
+znalazł przegląd*, a agent pamięta, co zrobił. Krok programistyczny ma w **Nadpisaniach** pole **Sesja agenta**
+(**Agent session**):
+
+- **Nowa sesja** (**New session**, domyślnie): krok zaczyna nową rozmowę.
+- **Kontynuuj sesję kroku …** (**Continue the session of step …**): wybierz wcześniejszy krok programistyczny. Ten
+  krok kontynuuje sesję agenta tamtego kroku (ADR 0057).
+
+Oba kroki działają wtedy w tej samej przestrzeni roboczej przebiegu i pod tą samą rolą sesji, które Back Office
+ustawia sam: przestrzeń wcześniejszego kroku albo niejawna przestrzeń `run`, którą ma każdy projekt bez jej
+definiowania; **Rola agenta** wcześniejszego kroku albo rola wyprowadzona z jego identyfikatora. Agent wznawia
+rozmowę (Claude Code `--resume`, OpenCode `--continue`) i widzi pliki, które zostawił. Jego reguły i instrukcje są
+w środowisku, nie w prompcie, więc nie dostaje ich drugi raz.
+
+Oba kroki potrzebują tego samego harnessu: sesja Claude Code nie może być kontynuowana w OpenCode. Lista wyboru
+wyszarza kroki z innym harnessem. Projektant, a potem jeszcze start uruchomienia, odrzucają krok, którego **Kontynuuj
+sesję kroku …** wskazuje krok, który nie istnieje, nie jest krokiem agenta kodującego albo używa innego harnessu.
 
 <a id="decisions"></a>
 ## Decyzje

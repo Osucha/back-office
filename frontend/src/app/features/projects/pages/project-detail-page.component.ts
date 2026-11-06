@@ -18,7 +18,10 @@ import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalModule } from 'ng-zorro-antd/modal';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTabsModule } from 'ng-zorro-antd/tabs';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { catchError, of } from 'rxjs';
+import { problemMessage } from '../../../core/http/http-error.interceptor';
+import { NotifyService } from '../../../core/ui/notify.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
 import { RunsApi } from '../../../core/api/runs.service';
 import { WorkflowsApi } from '../../../core/api/workflows.service';
@@ -105,6 +108,7 @@ const TABS = [
     NzTableModule,
     NzDropDownModule,
     NzModalModule,
+    NzTooltipModule,
     SpecKitCardComponent,
     RunInputFormComponent,
     RunsTableComponent,
@@ -251,6 +255,22 @@ const TABS = [
           <nz-tab
             [nzTitle]="text.workflowsTab + (workflows().length ? ' ' + workflows().length : '')"
           >
+            @if (can('workflow.edit') && missingDefaults().length) {
+              <div class="add-defaults">
+                <button
+                  nz-button
+                  nzSize="small"
+                  type="button"
+                  nz-tooltip
+                  [nzTooltipTitle]="missingDefaults().join(', ')"
+                  [nzLoading]="addingDefaults()"
+                  (click)="addDefaultWorkflows()"
+                  i18n="@@projects.detail.defaults.add"
+                >
+                  Add missing default workflows ({{ missingDefaults().length }})
+                </button>
+              </div>
+            }
             @if (workflowsLoading()) {
               <bo-skeleton variant="table" [rows]="3" [columns]="5" />
             } @else if (!workflows().length) {
@@ -725,6 +745,11 @@ const TABS = [
   `,
   styles: [
     `
+      .add-defaults {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: var(--bo-space-2);
+      }
       .scm-tokens {
         display: block;
         margin-top: var(--bo-space-4);
@@ -938,6 +963,7 @@ export class ProjectDetailPageComponent {
   private readonly libraryApi = inject(WorkflowLibraryApi);
   private readonly insightsApi = inject(InsightsApi);
   private readonly message = inject(NzMessageService);
+  private readonly notify = inject(NotifyService);
   private readonly confirm = inject(ConfirmService);
   private readonly identity = inject(IdentityService);
   private readonly pendingSaves = inject(PendingSavesService);
@@ -956,6 +982,9 @@ export class ProjectDetailPageComponent {
   readonly workflowsLoading = signal(false);
   /** ADR 0036: the platform allows Spec Kit (the form explains when it does not). */
   readonly specKitAllowed = signal(true);
+  /** ADR 0059: default workflows (not Spec Kit) the project lacks, offered as "Add missing default workflows". */
+  readonly missingDefaults = signal<string[]>([]);
+  readonly addingDefaults = signal(false);
   readonly inFlight = signal<WorkflowRunSummary[]>([]);
   readonly tabIndex = signal(0);
   readonly saving = signal(false);
@@ -1224,7 +1253,7 @@ export class ProjectDetailPageComponent {
     });
   }
 
-  /** Workflows of the project (after load and after "Add Spec Kit workflows"). */
+  /** Workflows of the project (after load and after "Add Spec Kit workflows"), with the missing defaults. */
   reloadWorkflows(): void {
     this.workflowsLoading.set(true);
     this.workflowsApi.listForProject(this.projectId()).subscribe({
@@ -1233,6 +1262,31 @@ export class ProjectDetailPageComponent {
         this.workflowsLoading.set(false);
       },
       error: () => this.workflowsLoading.set(false),
+    });
+    this.projectsApi
+      .missingDefaultWorkflows(this.projectId())
+      .pipe(catchError(() => of([] as string[])))
+      .subscribe((names) => this.missingDefaults.set(names));
+  }
+
+  /** ADR 0059 "Add missing default workflows" (e.g. the reference workflow for older projects). */
+  addDefaultWorkflows(): void {
+    this.addingDefaults.set(true);
+    this.projectsApi.addDefaultWorkflows(this.projectId()).subscribe({
+      next: (added) => {
+        this.addingDefaults.set(false);
+        this.message.success(
+          $localize`:@@projects.detail.defaults.added:Added: ${added.map((w) => w.name).join(', ')}:names:`,
+        );
+        this.reloadWorkflows();
+      },
+      error: (err: unknown) => {
+        this.addingDefaults.set(false);
+        this.notify.error(
+          $localize`:@@projects.detail.defaults.addFailed:Could not add the default workflows`,
+          problemMessage(err),
+        );
+      },
     });
   }
 

@@ -4,10 +4,19 @@ import {
   actionTitle,
   agentKindDescription,
   agentKindLabel,
+  agentModelText,
   isCodingAgent,
 } from './agents';
 
 describe('agent and action labels (ADR 0056)', () => {
+  it('names who did a step: agent and model (ADR 0059)', () => {
+    expect(agentModelText({ agentName: 'Claude Code', modelLabel: 'Claude Sonnet' })).toBe(
+      'Claude Code · Claude Sonnet',
+    );
+    expect(agentModelText({ agentKey: 'reviewer', modelLabel: null })).toBe('reviewer');
+    expect(agentModelText(null)).toBe('');
+  });
+
   it('names agent kinds in plain words', () => {
     expect(agentKindLabel(null)).toBe('Model answer');
     expect(agentKindLabel(undefined)).toBe('Model answer');

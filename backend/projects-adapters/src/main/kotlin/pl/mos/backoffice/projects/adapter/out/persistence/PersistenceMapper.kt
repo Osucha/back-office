@@ -53,6 +53,8 @@ import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunInput
 import pl.mos.backoffice.projects.domain.model.RunOutcome
 import pl.mos.backoffice.projects.domain.model.RunStatus
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.projects.domain.model.RunTrigger
 import pl.mos.backoffice.projects.domain.model.Severity
 import pl.mos.backoffice.projects.domain.model.TriggerSource
@@ -136,6 +138,16 @@ data class NodeExecutionDoc(
     val error: String? = null,
     val artifactIds: List<String> = emptyList(),
     val repositories: List<RepositoryResultDoc> = emptyList(),
+    /** ADR 0059; absent in executions stored before it. */
+    val agent: StepAgentDoc? = null,
+)
+/** ADR 0059: `NodeExecutionDoc.agent`. */
+data class StepAgentDoc(
+    val agentKey: String,
+    val agentName: String,
+    val harness: String? = null,
+    val modelProfileId: String? = null,
+    val modelLabel: String? = null,
 )
 /** ADR 0034: one entry of `NodeExecutionDoc.repositories`. */
 data class RepositoryResultDoc(
@@ -343,6 +355,7 @@ class PersistenceMapper(private val json: JsonMapper) {
                 it.diffStat?.let { d -> DiffStatDoc(d.files, d.insertions, d.deletions) }, it.mergeRequestUrl, it.pushed, it.error,
             )
         },
+        agent = s.agent?.let { StepAgentDoc(it.agentKey, it.agentName, it.harness?.name, it.modelProfileId?.toString(), it.modelLabel) },
     )
 
     fun toDomain(d: NodeExecutionDoc): NodeExecution = NodeExecution(
@@ -356,6 +369,13 @@ class PersistenceMapper(private val json: JsonMapper) {
                 access = GitAccess.entries.firstOrNull { a -> a.name == it.access } ?: GitAccess.READ, primary = it.primary, branch = it.branch,
                 commitSha = it.commitSha, diffStat = it.diffStat?.let { d -> DiffStat(d.files, d.insertions, d.deletions) },
                 mergeRequestUrl = it.mergeRequestUrl, pushed = it.pushed, error = it.error,
+            )
+        },
+        agent = d.agent?.let {
+            StepAgentRecord(
+                agentKey = it.agentKey, agentName = it.agentName,
+                harness = it.harness?.let { h -> AgentHarness.entries.firstOrNull { e -> e.name == h } },
+                modelProfileId = it.modelProfileId?.let { id -> ModelProfileId(UUID.fromString(id)) }, modelLabel = it.modelLabel,
             )
         },
     )

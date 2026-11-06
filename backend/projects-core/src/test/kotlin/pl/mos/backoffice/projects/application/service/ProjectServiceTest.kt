@@ -69,14 +69,16 @@ class ProjectServiceTest {
     private val command = ProjectCommand(key = "SHOP", name = "Shop", repositories = listOf(GitRepository.legacy("https://git.example.com/g/shop.git", null)), specKit = true)
 
     @Test
-    fun `creating a project needs projects create, makes the creator owner, seeds three workflows and is audited`() {
+    fun `creating a project needs projects create, makes the creator owner, seeds the SDLC workflows and is audited`() {
         val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)
         val project = service(gate).create(command)
 
         assertThat(gate.checked).startsWith("projects.create")
         assertThat(project.createdBy).isEqualTo(alice)
         assertThat(provisioned).containsExactly("owner:SHOP:Alice Test")
-        assertThat(seeded.map { it.name }).containsExactly(DefaultWorkflows.ISSUE_TO_REVIEWED_MR, DefaultWorkflows.CI_CODE_REVIEW, DefaultWorkflows.CHANGE_REQUEST)
+        assertThat(seeded.map { it.name }).containsExactly(
+            DefaultWorkflows.ISSUE_TO_REVIEWED_MR, DefaultWorkflows.CI_CODE_REVIEW, DefaultWorkflows.CHANGE_REQUEST, DefaultWorkflows.REFERENCE_CLAUDE_CODE,
+        )
         assertThat(seeded).allMatch { it.updatedBy == alice }
         assertThat(project.ciEntrypoints.single().key).isEqualTo(CiEntrypoint.CODE_REVIEW)
         val entry = audit.entries.single()
@@ -136,6 +138,7 @@ class ProjectServiceTest {
         assertThat(updated.repositories.single().key).isEqualTo("docs")
         assertThat(seeded.map { it.name }).containsExactly(
             DefaultWorkflows.LLM_TASK_WITH_REVIEW, DefaultWorkflows.ISSUE_TO_REVIEWED_MR, DefaultWorkflows.CI_CODE_REVIEW, DefaultWorkflows.CHANGE_REQUEST,
+            DefaultWorkflows.REFERENCE_CLAUDE_CODE,
         )
         assertThat(updated.ciEntrypoints.single().key).isEqualTo(CiEntrypoint.CODE_REVIEW)
         assertThat(audit.entries.map { it.operation }).containsExactly("PROJECT_UPDATE", "PROJECT_SDLC_SEEDED")
@@ -145,7 +148,7 @@ class ProjectServiceTest {
 
         // a second repository does not seed again
         service(manager).update(project.id, command.copy(repositories = listOf(docs, GitRepository("app", "https://git.example.com/g/app.git"))))
-        assertThat(seeded).hasSize(4)
+        assertThat(seeded).hasSize(5)
     }
 
     @Test
@@ -191,6 +194,50 @@ class ProjectServiceTest {
         assertThat(provisioned.last()).isEqualTo("deleted:${project.id}")
         assertThat(audit.operations()).containsExactly("CI_ENTRYPOINTS_UPDATE", "PROJECT_DELETE")
         assertThat(audit.entries.last()).isEqualTo(AuditEntry("PROJECT_DELETE", "Project", project.id.toString(), projectId = project.id.value, details = mapOf("key" to "SHOP", "name" to "Shop")))
+    }
+
+    @Test
+    fun `missing default workflows other than Spec Kit ones are listed with project view and added once with workflow edit`() {
+        // Spec Kit off: "Issue to reviewed MR" is missing too, but it is offered through "Add Spec Kit workflows" only
+        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(specKit = false))
+        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        assertThat(service(viewer).missingDefaultWorkflows(project.id)).isEmpty()
+
+        // a project created before the reference workflow existed
+        seeded.removeIf { it.name == DefaultWorkflows.REFERENCE_CLAUDE_CODE }
+        audit.entries.clear()
+        assertThat(service(viewer).missingDefaultWorkflows(project.id)).containsExactly(DefaultWorkflows.REFERENCE_CLAUDE_CODE)
+        assertThat(viewer.checked).containsOnly("project.view@${project.id.value}")
+        assertThatThrownBy { service(viewer).addDefaultWorkflows(project.id) }
+            .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("workflow.edit") }
+        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).missingDefaultWorkflows(project.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+
+        val editor = FakeAuthorizationGate.permitting(ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
+        val added = service(editor).addDefaultWorkflows(project.id)
+        assertThat(added.map { it.name }).containsExactly(DefaultWorkflows.REFERENCE_CLAUDE_CODE)
+        assertThat(added.single().updatedBy).isEqualTo(alice)
+        assertThat(seeded.map { it.name }).doesNotContain(DefaultWorkflows.ISSUE_TO_REVIEWED_MR)
+        val entry = audit.entries.single()
+        assertThat(entry.operation).isEqualTo("PROJECT_DEFAULT_WORKFLOWS_SEEDED")
+        assertThat(entry.projectId).isEqualTo(project.id.value)
+        assertThat(entry.details["seededWorkflows"]).isEqualTo(listOf(DefaultWorkflows.REFERENCE_CLAUDE_CODE))
+        // no CI entrypoint is registered here
+        assertThat(saved[project.id]!!.ciEntrypoints).isEqualTo(project.ciEntrypoints)
+
+        // idempotent: nothing left, nothing added, nothing audited
+        assertThat(service(editor).addDefaultWorkflows(project.id)).isEmpty()
+        assertThat(service(viewer).missingDefaultWorkflows(project.id)).isEmpty()
+        assertThat(audit.entries).hasSize(1)
+    }
+
+    @Test
+    fun `without a repository no default workflow is missing and adding them is refused`() {
+        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(repositories = emptyList()))
+        val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
+        assertThat(service(gate).missingDefaultWorkflows(project.id)).isEmpty()
+        assertThatThrownBy { service(gate).addDefaultWorkflows(project.id) }
+            .isInstanceOf(pl.mos.backoffice.shared.InvalidStateException::class.java).hasMessageContaining("repository")
+        assertThat(seeded.map { it.name }).containsExactly(DefaultWorkflows.LLM_TASK_WITH_REVIEW)
     }
 
     @Test

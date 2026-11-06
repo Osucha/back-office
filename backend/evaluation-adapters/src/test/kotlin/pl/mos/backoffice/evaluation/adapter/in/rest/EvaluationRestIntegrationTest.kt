@@ -133,6 +133,10 @@ class EvaluationRestIntegrationTest {
             { assertThat(it).extractingPath("$.progress.total").isEqualTo(8) },
             { assertThat(it).extractingPath("$.models.length()").isEqualTo(2) },
             { assertThat(it).extractingPath("$.judge.displayName").isEqualTo("Judge") },
+            // ADR 0059: a benchmark of models (prompt tasks only) shows its derived candidates
+            { assertThat(it).extractingPath("$.candidates.length()").isEqualTo(0) },
+            { assertThat(it).extractingPath("$.candidateRefs[0].label").isEqualTo("Model answer · Strong") },
+            { assertThat(it).extractingPath("$.candidateRefs[0].agentKey").isEqualTo("model-answer") },
         )
         assertThat(mvc.post().uri("/api/v1/benchmarks/$benchmarkId/start")).hasStatus(HttpStatus.CONFLICT)
 
@@ -158,6 +162,10 @@ class EvaluationRestIntegrationTest {
             { assertThat(it).extractingPath("$.byCategory.ANALYSIS.length()").isEqualTo(2) },
             { assertThat(it).extractingPath("$.byDifficulty.EASY[0].modelDisplayName").isEqualTo("Strong") },
             { assertThat(it).extractingPath("$.byTask.length()").isEqualTo(2) },
+            { assertThat(it).extractingPath("$.overall[0].candidate.label").isEqualTo("Model answer · Strong") },
+            { assertThat(it).extractingPath("$.overall[0].notApplicable").isEqualTo(0) },
+            { assertThat(it).extractingPath("$.overall[0].costPerAccepted.amount").asNumber().isNotNull() },
+            { assertThat(it).extractingPath("$.overall[1].costPerAccepted").isNull() },
         )
 
         val attemptId = benchmarks.findAttempts(BenchmarkId(benchmarkId)).first().id
@@ -165,6 +173,7 @@ class EvaluationRestIntegrationTest {
             { assertThat(it).extractingPath("$.output").asString().startsWith("answer from") },
             { assertThat(it).extractingPath("$.judgeRationale").isEqualTo("judged") },
             { assertThat(it).extractingPath("$.judgeCost.amount").asNumber().isEqualTo(0.0015) },
+            { assertThat(it).extractingPath("$.candidate.agentName").isEqualTo("Model answer") },
         )
 
         assertThat(events.filterIsInstance<BenchmarkProgress>().filter { it.benchmarkId.value == benchmarkId }).hasSize(8)

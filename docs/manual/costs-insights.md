@@ -1,8 +1,9 @@
 # Costs, budgets and insights
 
 Every model call and agent job is booked in a usage ledger with its cost, budgets stop spending before it
-surprises you, and insights show where the time goes between an issue and a merged change. This chapter
-covers the **Costs** page, budgets and the **Insights** page.
+surprises you, and insights show where the time goes between an issue and a merged change and which agent gets
+work accepted for the least money. This chapter covers the **Costs** page, budgets, the cost of an accepted result
+and the **Insights** pages.
 
 <a id="costs"></a>
 ## Costs
@@ -48,6 +49,27 @@ differ for steps a subscription paid for, such as Claude Code with your own logi
 estimate. Wherever they differ the UI shows `$0.00 · API $0.05`, and workflow metrics have the card **At API prices per
 successful run**. Use it to compare tasks and workflows whoever pays; budgets and the costs page count only money spent.
 
+<a id="cost-per-accepted"></a>
+### Cost of an accepted result
+
+Back Office exists to find cheaper ways to get work accepted: the same task done by different agents and different
+workflows, measured the same way. The headline number for that is the **cost of an accepted result**: everything
+spent, failures and rework included, divided by what was accepted. A cheap agent that fails half of the time is not
+cheap; this number shows it.
+
+| Level | Accepted means | Cost of an accepted result | Where you see it |
+|---|---|---|---|
+| Task step | an execution that succeeded, is the last execution of its step in its run, and the run ended successfully | the cost of all executions / accepted executions | [Insights → Agents](#agent-insights) |
+| Workflow | a successful run (it reached a success end, its gates approved) | the cost of every run / successful runs | **Cost per accepted result** in the workflow metrics ([Measuring workflows](workflow-library.md#metrics)) and in the library list |
+| Benchmark | a passed attempt | the candidate's total cost / passed attempts | the leaderboard column **Cost per accepted result** ([Benchmarks](evaluation.md#benchmarks)) |
+
+So a step that failed and was retried, or that a gate sent back for a revision, is paid by the execution that was
+finally accepted; a run that failed is paid by the runs that succeeded.
+
+Human time is not converted to money: Back Office knows how long a run waited for people, not how long they worked.
+The workflow metrics show the **Human wait** and the **First-pass rate** next to the cost instead. A merge in GitLab
+is not tracked either: a successful run (its gates approved) is the accepted result.
+
 <a id="budgets"></a>
 ## Budgets
 
@@ -92,7 +114,8 @@ start of each month. How budgets are enforced inside the sandbox is described in
 ## Insights
 
 **Insights** (`/insights`) shows delivery metrics for the projects you can see (`project.view`), from the
-runs created in the selected period.
+runs created in the selected period. The switcher under the title, **Delivery / Agents**, moves between this page
+and [Agents](#agent-insights) (`/insights/agents`).
 
 ### Filtering
 
@@ -128,3 +151,49 @@ The same figures are available to your IDE through the MCP tool `get_delivery_in
 - Metrics start from runs **created** in the period; a long run that started earlier is not counted.
 - Waits are counted when they end; a gate that is still open adds nothing yet.
 - Gate decisions are not split by approver role.
+
+<a id="agent-insights"></a>
+## Agents: cost and effectiveness
+
+**Insights** → **Agents** (`/insights/agents`, also **Compare agents** in the command palette) answers: which agent
+with which model gets a task step accepted for the least money? It reads the task steps of the runs you can see
+(`project.view`) created in the period. Every task step records who did it: the agent (for example **Claude Code**,
+**OpenCode**, **Analyst** or one of your own) and the model it ran with; the run page shows the same
+([The run page](runs.md#run-detail)).
+
+Filters as on the delivery page: **All visible projects** or one project, and the period.
+
+| Section | Content |
+|---|---|
+| **Per agent and model** | One row per agent and model, cheapest accepted result first. |
+| **Per template** | The same rows per task template: the same agents on the same task. Compare within one template; an agent that only ever does easy steps looks cheap in the first table. |
+
+| Column | Meaning |
+|---|---|
+| **Agent**, **Model** | Who did the steps and with which model profile. |
+| **Executions** | Task step executions, retries and revisions included. |
+| **Accepted** | Executions that succeeded, were the last execution of their step in the run, and the run ended successfully. |
+| **First-pass rate** | Accepted executions that were the step's first attempt / accepted executions. |
+| **Cost** | The cost of all executions (with the cost at API prices where a subscription paid, see [Cost at API prices](#api-cost)). |
+| **Cost per accepted result** | **Cost** / **Accepted**: failed attempts and rework are paid by the accepted ones. **No accepted result yet** when nothing was accepted. |
+| **Median time** | Median duration of an execution. |
+
+Task step executions from before agents were recorded have no agent; the page says how many there are ("... have no
+agent record ... and are not counted"). An empty page means no run in the period executed a task step;
+**Show 90 days** widens the period.
+
+The same figures are available to your IDE through the MCP tool `get_agent_insights` (see
+[IDE and MCP](integrations-ide.md#mcp-tools)).
+
+### Steps: compare agents on the same issues
+
+1. Every project with a repository has the workflow **Reference: one Claude Code session**: one Claude Code
+   session implements the issue end to end and opens the merge request, a person reviews it
+   ([The default workflows](workflows.md#default-workflows)). It is the yardstick.
+2. Run the same issues through the reference and through the cheaper workflows, or through the same workflow with
+   cheaper agents and models on its task steps ([Task nodes](workflows.md#task-nodes)).
+3. Compare the steps in **Insights** → **Agents**, **Per template**, and the whole workflows in their metrics:
+   **Cost per accepted result**, **First-pass rate** and **Human wait** side by side
+   ([Measuring workflows](workflow-library.md#metrics)).
+4. Keep the cheaper way where its cost of an accepted result is lower without more human wait; a benchmark measures
+   the same agents on prepared tasks before you try them on real issues ([Benchmarks](evaluation.md#benchmarks)).

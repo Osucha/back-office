@@ -397,7 +397,11 @@ data class NodeExecutionDto(
     val error: String?,
     val artifactIds: List<UUID>,
     val repositories: List<RepositoryResultDto> = emptyList(),
+    /** ADR 0059: who did this TASK step; null for other kinds and older executions. */
+    val agent: StepAgentRecordDto? = null,
 )
+/** ADR 0059: `StepAgentRecord`; [harness] null = model answer. */
+data class StepAgentRecordDto(val agentKey: String, val agentName: String, val harness: String?, val modelProfileId: UUID?, val modelLabel: String?)
 data class MergeRequestDto(val url: String?, val branch: String, val targetBranch: String)
 data class RunFailureDto(val nodeId: String?, val message: String, val retryable: Boolean)
 data class FindingDto(val severity: String, val file: String, val line: Int?, val title: String, val detail: String, val suggestion: String?)

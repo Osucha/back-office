@@ -1,8 +1,8 @@
 # Models and evaluation
 
 Model profiles are the catalogue of models that tasks and benchmarks pick from, with their options and
-prices. Evaluation measures those models on your own kind of work, so you choose them on numbers rather
-than opinions. This chapter covers the **Models** page, task suites and benchmarks.
+prices. Evaluation measures those models, and the agents that use them, on your own kind of work, so you
+choose them on numbers rather than opinions. This chapter covers the **Models** page, task suites and benchmarks.
 
 | You want to | Permission | Built-in role |
 |---|---|---|
@@ -53,7 +53,7 @@ of 0 makes a model look free; check prices before you trust **Costs** or a leade
 | A project | **Default model profile** and **Review model profile** (see [Projects](projects.md#create-project)) |
 | A task template | **Model profile** (see [Task library](task-library.md#templates)) |
 | A task node | **Model profile** override (see [Designing workflows](workflows.md#nodes)) |
-| A benchmark | candidate models and the judge model |
+| A benchmark | the models of the candidates (an agent with a model) and the judge model |
 
 A node's profile wins over the template's, which wins over the project default.
 
@@ -82,13 +82,13 @@ A personal runner that is offline is only a warning: the jobs wait until it conn
 **Personal (only you)**. Only you see, change, test and use them, in your private projects and your own benchmarks;
 administrators create **Platform** profiles for everyone. Claude Code login profiles are always personal.
 
-**Default models.** When neither a step, its template nor the project names a model, Back Office takes your own
+**Default models.** When neither a step, its agent, its template nor the project names a model, Back Office takes your own
 default for that kind of step (**LLM steps** or **Coding steps**), then the platform default set by an
 administrator. Set them on the **Models** page under **Default models**. A Claude Code login model can be the
 default for both: LLM steps then get their answer from Claude Code on your personal runner.
 
 The **model plan** of a workflow shows, for every step, the model a run would use and where it comes from (the
-step, its template, the project default or the review default). The designer marks steps whose model you cannot
+step, its agent, its template, the project default or the review default). The designer marks steps whose model you cannot
 use with a warning, and a run does not start while a step has no usable model; the start dialog lists the steps
 and the reason. The MCP tools `get_model_options` and `get_model_plan` give an IDE agent the same information.
 
@@ -104,8 +104,9 @@ for you. Such a profile:
 
 - runs as Claude Code on the personal runner of whoever creates the benchmark or starts the run, with that
   person's login;
-- answers coding tasks and coding steps as an agent (the benchmark then needs **My personal runner** as the
-  execution target and **Claude Code** as the coding agent), and prompt tasks, LLM steps and the judge's verdict as
+- answers coding tasks and coding steps as an agent (in a benchmark it must be the model of a Claude Code agent,
+  and the benchmark needs **My personal runner** as the execution target), and prompt tasks, LLM steps and the
+  judge's verdict as
   a single answer: Back Office sends a short job to your personal runner, where Claude Code answers without tools;
 - works only in your private projects and your own benchmarks;
 - costs nothing in Back Office (the subscription pays), but uses up the subscription's usage limits, and each
@@ -171,31 +172,50 @@ judge reads the diff against the base ref, not the agent's summary alone.
 <a id="benchmarks"></a>
 ## Benchmarks
 
-A benchmark runs a suite against several models, scored by one fixed judge.
-**Evaluation** → **Benchmarks** (`/evaluation/benchmarks`) lists them with holder, suite, number of
-models, attempt progress and cost.
+A benchmark runs a suite against several candidates, scored by one fixed judge. A **candidate** is an agent
+with a model, for example **Claude Code** with Claude Sonnet, **OpenCode** with a cheaper model, or your own
+**Analyst** agent with its instructions and rules ([Agents](task-library.md#agents)). So a benchmark compares
+not only models but whole agents: harness, model and environment.
+**Evaluation** → **Benchmarks** (`/evaluation/benchmarks`) lists them with holder, suite, **Candidates**,
+attempt progress and cost.
+
+**Which candidate does which task.** Prompt tasks go to model answer agents (agents without a harness, such as
+**Model answer**, **Analyst** or **Reviewer**; their environment is the system prompt), coding tasks go to coding
+agents (**Claude Code**, **OpenCode** or your own; they run with their environment in the job: instructions, rules,
+skills and MCP servers, as in a workflow step, see [The agent's environment](task-library.md#environment)). Any
+other pair, a coding task for a model answer agent or a prompt task for a coding agent, makes no attempt and is
+counted as **Not applicable**. To compare agents on both kinds of tasks, add one candidate of each kind.
 
 ### Steps: run a benchmark
 
 1. Click **Create benchmark**.
 2. Enter **Name** and pick the **Task suite**. Optionally pick **Tasks**; empty runs every task.
-3. Pick the **Candidate models**. Profiles whose provider has no key cannot be picked.
-4. Pick the **Judge model**. Use the strongest model you can afford, and never one of the candidates.
+3. Under **Candidates**, pick an **Agent** and a **Model** for each candidate, and **Add candidate** for the next
+   one. The model is optional when the agent has a model of its own: the field then says "Agent's model: X". An
+   agent without a model needs one ("This agent has no model of its own: pick one."). Models whose provider has
+   no key cannot be picked; the same agent with the same model cannot be added twice. Under each candidate the
+   form says how many of the chosen tasks are not applicable to its agent.
+4. Pick the **Judge model**. Use the strongest model you can afford, and never one of the candidates' models.
 5. Set **Repetitions** (1–5); two or three measure how stable the scores are.
-6. For coding jobs, choose the **Coding harness**: **OpenCode** (works with every provider) or **Claude
-   Code** (Anthropic only).
-7. When the tasks include coding jobs, choose where they run under **Coding tasks run on**: **Shared
+6. When the tasks include coding jobs, choose where they run under **Coding tasks run on**: **Shared
    runners** (the platform's fleet) or **My personal runner** (your computer, see
    [Personal runner](personal-runner.md)). Each option says how many runners are online; one that is not set
    up cannot be chosen, and with none online the coding attempts wait until a runner connects (at most 24
-   hours). Prompt tasks need no runner.
-8. Click **Create and start**, or **Save as draft** and later **Start benchmark** on its page. **Create and
-   start** first sends a one-line test to every candidate and the judge (**Check models** does only that):
+   hours). Prompt tasks need no runner. A [Claude Code login model](#claude-code-login) works only as the model of
+   a Claude Code agent and on your personal runner; the form says what to change.
+7. Click **Create and start**, or **Save as draft** and later **Start benchmark** on its page. **Create and
+   start** first sends a one-line test to every candidate model and the judge (**Check models** does only that):
    models that do not answer are listed with the provider's reason, for example no access to the model or
    a daily quota used up. Remove them, or click **Start anyway**.
 
-The form shows how many attempts the benchmark plans (tasks × models × repetitions, each also judged
-once). Every attempt costs candidate tokens plus judge tokens; coding attempts on frontier models can
+There is no coding harness to choose any more: the agent of a candidate brings its harness. Benchmarks created
+before agents were candidates (with models only, also through the older API) run as before: each model as
+**Model answer** on prompt tasks and as the agent of the benchmark's coding harness on coding tasks, without an
+agent environment. Their pages show one row per model and agent, for example `Model answer · Claude Sonnet` and
+`OpenCode · Claude Sonnet`.
+
+The form shows how many attempts the benchmark plans (tasks × candidates × repetitions, pairs that are not
+applicable left out, each also judged once). Every attempt costs candidate tokens plus judge tokens; coding attempts on frontier models can
 cost several dollars each. The form warns when the judge is also a candidate (it would grade its own answers)
 and when coding tasks point at a sample repository such as `gitlab.example.com` that does not exist.
 
@@ -215,28 +235,36 @@ its page says so.
 
 ### Reading the results
 
-The benchmark page has the tabs **Leaderboard** and **Attempts · N**.
+The benchmark page has the tabs **Leaderboard** and **Attempts · N**; its header lists the **Candidates**.
 
 | Leaderboard column | Meaning |
 |---|---|
+| **Candidate** | One row per candidate, `agent · model`, for example `Claude Code · Claude Sonnet`. |
 | **Score** | Mean judge score over successful attempts. |
 | **Pass rate** | Share of attempts that passed (coding: verification and acceptance checks green and a score of 70 or more; prompt: score of 70 or more). Failed and timed-out attempts count as not passed. |
 | **Mean cost**, **Total** | Candidate cost per attempt and overall. |
+| **Cost per accepted result** | **Total** / passed attempts: the failed attempts are paid by the passed ones ([Cost of an accepted result](costs-insights.md#cost-per-accepted)). Empty without a passed attempt. The number to compare candidates on. |
 | **Score / $** | Mean score per dollar of mean cost. |
 | **Time p50 / p95** | The candidate's own response time (the model's answer, or the agent job from submission to result), without the judge, queueing or retries, over succeeded attempts: half of them were faster than p50, 95% faster than p95. Below 20 attempts p95 is simply the slowest one; the tooltip says how many attempts the times come from. |
 | **Stability** | Standard deviation of the score across repetitions; lower is steadier. |
+| **Not applicable** | Tasks of the benchmark this candidate cannot do (a coding task for a model answer agent, a prompt task for a coding agent); shown only when there are any. |
 
-**Score vs cost** plots every model; a model that another one beats on both score and cost is dominated.
+**Score vs cost** plots every candidate; a candidate that another one beats on both score and cost is dominated.
 The breakdowns **Overall**, **By category**, **By difficulty** and **By task** repeat the table per slice.
-In **Attempts**, filter by task and model and open an attempt to read the output, the judge's criteria
-and reasoning, and the verification output. Read the worst attempt of each model before concluding
-anything: a low score is often a rubric problem.
+In **Attempts**, search tasks or candidates, filter by task and model, and open an attempt to read its agent and
+model, the output, the judge's criteria and reasoning, and the verification output. Read the worst attempt of
+each candidate before concluding anything: a low score is often a rubric problem.
 
 ### Applying the result
 
-1. Set the cheapest profile that clears your bar as the project's **Default model profile**.
-2. Keep a stronger profile only on the task nodes where the benchmark showed a real gap.
-3. Prefer the winning profile (model plus reasoning level), not only the model.
-4. Run the benchmark again when a provider ships a new model or changes prices.
+1. Set the cheapest candidate that clears your bar on the task nodes of that kind of work: its agent as the step's
+   **Agent** and its model as the step's (or the agent's) model ([Task nodes](workflows.md#task-nodes)), or its
+   model as the project's **Default model profile**.
+2. Keep a stronger candidate only on the task nodes where the benchmark showed a real gap.
+3. Prefer the winning profile (model plus reasoning level) and agent (instructions, rules, skills), not only the
+   model.
+4. Check the choice on real issues: run them through the changed workflow and the reference workflow and compare in
+   [Agents: cost and effectiveness](costs-insights.md#agent-insights).
+5. Run the benchmark again when a provider ships a new model or changes prices, or when you change an agent.
 
 Benchmark spend appears in **Costs** under **By benchmark** (see [Costs](costs-insights.md#costs)).

@@ -27,6 +27,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.service.ReviewVerdictPolicy
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.ModelProfileId
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.LlmRequest
@@ -223,5 +224,32 @@ class FeedbackAndReworkTest {
         assertThat(review.missingRequirements).isEqualTo(1)
         assertThat(result.summary).contains("1 requirements missing")
         assertThat(result.artifacts.single { it.name == "review" }.content).contains("### Requirement coverage (1 missing)").contains("AC2: blocks saving without a reason")
+    }
+
+    @Test
+    fun `ADR 0059 a model answer records its agent and the model it called`() {
+        gateway.answer = mapOf("summary" to "ok", "findings" to emptyList<Any>(), "verdict" to "APPROVE", "score" to 90)
+        val result = llm.execute(context("code-review", emptyMap()), task("review-against-spec", produces = listOf("review"), schema = "{}"))
+
+        val agent = result.agent!!
+        assertThat(agent.agentKey).isEqualTo(TestAgents.MODEL_ANSWER.key)
+        assertThat(agent.harness).isNull()
+        assertThat(agent.modelProfileId).isEqualTo(project.defaults.modelProfileId)
+        assertThat(agent.modelLabel).isEqualTo("Test model")
+    }
+
+    @Test
+    fun `ADR 0059 the task node records the agent of a step whose strategy did not, but not of a submitted job`() {
+        nextResult = NodeResult.failure("no model configured")
+        val failed = taskNode.execute(context("code-review", emptyMap()))
+        assertThat(failed.agent).isEqualTo(StepAgentRecord(TestAgents.MODEL_ANSWER.key, TestAgents.MODEL_ANSWER.name))
+
+        val recorded = StepAgentRecord("other", "Other", modelLabel = "M")
+        nextResult = NodeResult.success(summary = "done").copy(agent = recorded)
+        assertThat(taskNode.execute(context("code-review", emptyMap())).agent).isEqualTo(recorded)
+
+        nextResult = NodeResult.awaiting(RunnerJobId(UUID.randomUUID()))
+        assertThat(taskNode.execute(context("code-review", emptyMap())).agent).isNull()
+        assertThat(taskNode.resume(context("code-review", emptyMap()), RunnerJobId(UUID.randomUUID())).agent!!.agentKey).isEqualTo(TestAgents.MODEL_ANSWER.key)
     }
 }

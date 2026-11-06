@@ -2,7 +2,12 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { params, url } from './api-base';
-import type { DeliveryInsights, LibraryWorkflowMetricsRow, WorkflowInsights } from './types';
+import type {
+  AgentInsights,
+  DeliveryInsights,
+  LibraryWorkflowMetricsRow,
+  WorkflowInsights,
+} from './types';
 
 export interface InsightsQuery {
   /** Omit for all visible projects. */
@@ -18,6 +23,13 @@ export class InsightsApi {
 
   delivery(query: InsightsQuery = {}): Observable<DeliveryInsights> {
     return this.http.get<DeliveryInsights>(url('insights', 'delivery'), {
+      params: params({ projectId: query.projectId, from: query.from, to: query.to }),
+    });
+  }
+
+  /** ADR 0059: task steps per agent and model, and per template (cost of an accepted result). */
+  agents(query: InsightsQuery = {}): Observable<AgentInsights> {
+    return this.http.get<AgentInsights>(url('insights', 'agents'), {
       params: params({ projectId: query.projectId, from: query.from, to: query.to }),
     });
   }

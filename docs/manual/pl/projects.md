@@ -41,7 +41,7 @@ Kierownik, który tworzy projekt, zostaje jego **Właścicielem**, dodaje zespó
 | **Domyślny profil modelu** (**Default model profile**) | Używany przez zadania oparte na modelu, które nie wskazują profilu. |
 | **Profil modelu do przeglądów** (**Review model profile**) | Używany przez zadania przeglądu kodu; puste oznacza profil domyślny. |
 | **Spec Kit** | Wyłączony w nowych projektach. Włącz, aby używać kroków Spec Kit (specify, plan, tasks) i konstytucji ([Spec Kit](#spec-kit)). |
-| **Konstytucja Spec Kit (markdown)** (**Spec Kit constitution (markdown)**) | Widoczna, gdy **Spec Kit** jest włączony. Zasady Twojego projektu, zapisywane do `.specify/memory/constitution.md` przed zadaniami Spec Kit i dostępne w promptach jako `{{project.constitution}}`. Zachowywana po wyłączeniu Spec Kit. |
+| **Konstytucja Spec Kit (markdown)** (**Spec Kit constitution (markdown)**) | Widoczna, gdy **Spec Kit** jest włączony. Zasady Twojego projektu, zapisywane do `.specify/memory/constitution.md` przed zadaniami Spec Kit i będące częścią [środowiska](task-library.md#environment), które dostaje każdy krok agenta (prompty mogą je też czytać jako `{{project.constitution}}`). Zachowywana po wyłączeniu Spec Kit. |
 
 3. Kliknij **Utwórz projekt**.
 
@@ -49,10 +49,10 @@ Kierownik, który tworzy projekt, zostaje jego **Właścicielem**, dodaje zespó
 
 Zostajesz **Właścicielem** (**Owner**) projektu. Co jeszcze powstaje, zależy od repozytoriów:
 
-- **Z co najmniej jednym repozytorium**: workflowy **CI code review** i **Change request (delta)**, a gdy
-  **Spec Kit** jest włączony także **Issue to reviewed MR** (zbudowany na Spec Kit), oraz punkt wejścia CI
-  `code-review` (zob. [Projektowanie workflowów](workflows.md#designer)). Możesz je edytować, duplikować lub
-  usuwać.
+- **Z co najmniej jednym repozytorium**: workflowy **CI code review**, **Change request (delta)** i **Reference:
+  one Claude Code session**, a gdy **Spec Kit** jest włączony także **Issue to reviewed MR** (zbudowany na Spec
+  Kit), oraz punkt wejścia CI `code-review` (zob. [Domyślne workflowy](workflows.md#default-workflows)). Możesz je
+  edytować, duplikować lub usuwać.
 - **Bez repozytorium**: jeden workflow startowy, **LLM task with review**, i żadnego punktu wejścia CI
   (zob. [Projekty bez repozytorium](#no-repository)).
 
@@ -110,15 +110,15 @@ Back Office powstał z myślą o wytwarzaniu oprogramowania, ale obsługuje każ
 językowymi: pisanie, analizy, tłumaczenia, przeglądy dokumentów. Utwórz projekt z pustą listą
 **Repozytoria**. Dostanie on workflow startowy **LLM task with review**:
 
-1. **Start** → **Zadanie LLM** (szablon `llm-task`): opisz, co model ma zrobić, w polu **Prompt
-   użytkownika** węzła z opcją **Zastąp** (**Replace**). Dana wejściowa **Materiał wejściowy** (**Input
+1. **Start** → **Zadanie LLM** (szablon `llm-task`): opisz, co model ma zrobić, w parametrze
+   **Task** węzła (w sekcji **Parametry**; puste oznacza zadanie domyślne: podsumuj materiał wejściowy). Dana wejściowa **Materiał wejściowy** (**Input
    material**) trafia do modelu jako materiał (dane, nie polecenia).
 2. → **Result ok?** (bramka): **approve** kończy uruchomienie sukcesem, **revise** odsyła Twój komentarz do
    zadania, **reject** kończy uruchomienie porażką.
 
 Uruchom go przyciskiem **Uruchom** (**Start run**) i wpisz tekst do opracowania w polu **Materiał
 wejściowy** ([Uruchamianie workflowu](workflows.md#start-run)). Kroków programistycznych nie da się użyć,
-dopóki projekt nie ma repozytorium. Gdy dodasz pierwsze repozytorium, trzy workflowy SDLC i punkt wejścia
+dopóki projekt nie ma repozytorium. Gdy dodasz pierwsze repozytorium, workflowy domyślne i punkt wejścia
 `code-review` zostaną dodane jednorazowo (chyba że workflowy o tych nazwach już istnieją).
 
 ## Strona projektu
@@ -132,7 +132,7 @@ Karty, każda dostępna przez `?tab=` w URL:
 
 | Karta | Zawartość | Zmiana wymaga |
 |---|---|---|
-| **Workflowy** (**Workflows**) | Workflowy projektu z wyzwalaczami, stanem i datą ostatniej zmiany; **Uruchom** (**Start run**), **Edytuj** / **Podgląd** (**Edit** / **View**) i menu dodatkowych akcji (**Duplikuj workflow**, **Usuń workflow**). | `workflow.edit` (uruchamianie: `run.start`) |
+| **Workflowy** (**Workflows**) | Workflowy projektu z wyzwalaczami, stanem i datą ostatniej zmiany; **Uruchom** (**Start run**), **Edytuj** / **Podgląd** (**Edit** / **View**) i menu dodatkowych akcji (**Duplikuj workflow**, **Usuń workflow**). Gdy brakuje workflowów domyślnych (projekty utworzone, zanim istniały): **Dodaj brakujące workflowy domyślne (N)** (**Add missing default workflows (N)**, [Domyślne workflowy](workflows.md#default-workflows)). | `workflow.edit` (uruchamianie: `run.start`) |
 | **Źródła** (**Sources**) | Repozytoria projektu i źródła z biblioteki (zob. [Karta Źródła](#sources)). | `project.manage` |
 | **Przestrzenie robocze** (**Workspaces**) | Przestrzenie robocze wspólne dla workflowów projektu: źródła, polecenie przygotowania, role agentów (zob. [Przestrzenie robocze i sesje agentów](workflows.md#workspaces)). | `project.manage` |
 | **Uruchomienia** (**Runs**) | Uruchomienia projektu (zob. [Uruchomienia](runs.md#run-list)). | — |

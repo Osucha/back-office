@@ -41,6 +41,10 @@ import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.RunnerResult
+import pl.mos.backoffice.shared.runner.RunnerSkill
+import pl.mos.backoffice.shared.tasks.AgentEnvironmentSnapshot
+import pl.mos.backoffice.shared.tasks.AgentEnvironmentText
+import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import pl.mos.backoffice.shared.runner.RunnerTarget
@@ -66,6 +70,8 @@ class ExecuteAttemptService(
     private val clock: Clock,
     /** ADR 0050 step 4: answers of Claude Code login models (candidates and judges) on the creator's runner; null = none. */
     private val ownLogin: OwnLoginLlm? = null,
+    /** ADR 0059: the environment of a candidate's agent (instructions, rules, skills, MCP servers); null = models only. */
+    private val agents: TaskCatalog? = null,
 ) : ExecuteAttempt {
 
     @SystemOperation("runs on the benchmark executor's threads after an authorised start; never exposed through a controller")
@@ -92,9 +98,13 @@ class ExecuteAttemptService(
                 kind = UsageKind.BENCHMARK_ATTEMPT, benchmarkId = benchmark.id.value, attemptId = attempt.id.value, actingUserId = benchmark.createdBy?.userId,
             )
 
+            // ADR 0059: a benchmark of candidates gives each attempt its agent's environment; one of models runs as before
+            // (read only when the candidate is asked: not for a judge retry nor for the result of a submitted job)
+            val asksCandidate = attempt.output == null && attempt.runnerJobId == null
+            val environment = if (benchmark.legacy || !asksCandidate) null else environmentOf(attempt)
             when (task.kind) {
-                TaskKind.PROMPT -> runPrompt(attempt, task, candidate, judge, context)
-                TaskKind.CODING_JOB -> runCodingJob(attempt, benchmark, task, candidate, judge, suite.codingScoreWeights, context) { attempt = it }
+                TaskKind.PROMPT -> runPrompt(attempt, task, candidate, judge, context, environment)
+                TaskKind.CODING_JOB -> runCodingJob(attempt, benchmark, task, candidate, judge, suite.codingScoreWeights, context, environment) { attempt = it }
             }
         } catch (e: IntegrationException) {
             // the stored state: JUDGING with the candidate's answer when only the judge failed (ADR 0046)
@@ -116,10 +126,25 @@ class ExecuteAttemptService(
         return afterTerminal(benchmark, saved)
     }
 
-    private fun runPrompt(attempt: Attempt, task: EvalTask, candidate: ModelProfile, judge: ModelProfile, context: UsageContext): Attempt {
+    /** ADR 0059: the environment of the attempt's agent; an agent deleted since the start fails the attempt. */
+    private fun environmentOf(attempt: Attempt): AgentEnvironmentSnapshot {
+        val key = attempt.agentKey ?: throw IllegalStateException("attempt ${attempt.id} has no agent")
+        val catalog = agents ?: throw IllegalStateException("agents are not available on this server")
+        return catalog.agentEnvironment(key, null) ?: throw IllegalStateException("agent ${attempt.agentName ?: key} ($key) no longer exists")
+    }
+
+    private fun runPrompt(
+        attempt: Attempt,
+        task: EvalTask,
+        candidate: ModelProfile,
+        judge: ModelProfile,
+        context: UsageContext,
+        environment: AgentEnvironmentSnapshot? = null,
+    ): Attempt {
         // a retry after the judge failed keeps the answer it already has (ADR 0046): the candidate is not asked twice
         val judging = attempt.output?.let { benchmarks.saveAttempt(attempt.judging(it, null, attempt.usage, attempt.cost)) } ?: run {
-            val candidateResult = gateway.chatAs(candidate.runtime, candidate.ref, LlmRequest.of(JudgePrompts.CANDIDATE_SYSTEM_PROMPT, task.prompt, context), ownLogin)
+            val system = environment?.let(::candidateSystemPrompt) ?: JudgePrompts.CANDIDATE_SYSTEM_PROMPT
+            val candidateResult = gateway.chatAs(candidate.runtime, candidate.ref, LlmRequest.of(system, task.prompt, context), ownLogin)
             benchmarks.saveAttempt(
                 attempt.judging(
                     output = candidateResult.content,
@@ -147,12 +172,14 @@ class ExecuteAttemptService(
         judge: ModelProfile,
         weights: CodingScoreWeights,
         context: UsageContext,
+        environment: AgentEnvironmentSnapshot?,
         onProgress: (Attempt) -> Unit,
     ): Attempt? {
         val repository = task.repository ?: throw IllegalStateException("CODING_JOB task ${task.id} has no repository")
         val spec = RunnerJobSpec(
             mode = RunnerMode.EVAL_CODING,
-            agent = benchmark.codingHarness,
+            // ADR 0059: the candidate's agent chose the harness (a benchmark of models: its coding harness)
+            agent = attempt.harness ?: benchmark.codingHarness,
             model = candidate.ref,
             prompt = task.prompt,
             repository = RunnerRepository(
@@ -173,6 +200,10 @@ class ExecuteAttemptService(
             gitAccess = GitAccess.READ,
             // ADR 0046: the creator's personal runner when the benchmark asks for it, else the shared fleet
             personalRunnerOf = benchmark.createdBy?.userId?.takeIf { benchmark.runnerTarget == RunnerTarget.PERSONAL },
+            // ADR 0059: the agent's environment as in a workflow step (ADR 0057); absent for a benchmark of models
+            instructions = environment?.let { AgentEnvironmentText.compose(modelAnswer = false, it.agent.instructions, null, it.rules) },
+            skills = environment?.skills.orEmpty().map { RunnerSkill(it.key, it.name, it.content) },
+            mcpServers = environment?.agent?.mcpServers.orEmpty(),
         )
         val existing = attempt.runnerJobId
         if (existing == null) {
@@ -224,6 +255,24 @@ class ExecuteAttemptService(
             ownLogin,
         )
         return JudgePrompts.parseVerdict(result.structured, result.content) to judge.pricing.costOf(result.usage)
+    }
+
+    /**
+     * ADR 0059: a model answer candidate's system prompt, like a model answer step's (ADR 0057): the environment
+     * document (platform preamble, the agent's instructions, rules; no project here), then this step (the benchmark's
+     * candidate instructions), then the agent's skills.
+     */
+    private fun candidateSystemPrompt(environment: AgentEnvironmentSnapshot): String = buildString {
+        append(AgentEnvironmentText.compose(modelAnswer = true, environment.agent.instructions, null, environment.rules))
+        append("\n\n# This step\n").append(JudgePrompts.CANDIDATE_SYSTEM_PROMPT)
+        if (environment.skills.isNotEmpty()) {
+            append("\n\n<skills>\n")
+            environment.skills.forEach { skill ->
+                append("<skill key=\"").append(skill.key).append("\" name=\"").append(skill.name).append("\">\n")
+                append(skill.content.trim()).append("\n</skill>\n")
+            }
+            append("</skills>")
+        }
     }
 
     private fun renderCodingOutput(result: RunnerResult): String = buildString {

@@ -139,6 +139,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // ADR 0059: agents and models compared on task steps (cost of an accepted result).
+        path: 'insights/agents',
+        title: $localize`:@@shell.route.agentInsights:Agent insights`,
+        data: access({ projectPermission: 'project.view' }),
+        loadComponent: () =>
+          import('./features/insights/pages/agent-insights-page.component').then(
+            (m) => m.AgentInsightsPageComponent,
+          ),
+      },
+      {
         path: 'ci',
         title: $localize`:@@shell.route.ciExecutions:CI executions`,
         loadComponent: () =>

@@ -15,7 +15,7 @@ import { formatCost } from '../../../core/ui/relay/format';
 import { formatRate, formatWait } from '../../insights/public-api';
 
 export interface MetricCard {
-  id: 'success' | 'firstPass' | 'duration' | 'active' | 'cost' | 'apiCost';
+  id: 'success' | 'firstPass' | 'cost' | 'humanWait' | 'duration' | 'active' | 'apiCost';
   label: string;
   value: string;
   sub: string;
@@ -28,7 +28,7 @@ export function finishedRuns(m: WorkflowMetrics | null | undefined): number {
   return (r?.successful ?? 0) + (r?.failed ?? 0) + (r?.cancelled ?? 0);
 }
 
-/** Effectiveness first (success, first pass), then efficiency (time, active time, cost). */
+/** Effectiveness first (success, first pass), the cost of an accepted result with the human wait (ADR 0059), then time. */
 export function metricCards(m: WorkflowMetrics): MetricCard[] {
   const finished = finishedRuns(m);
   return [
@@ -50,6 +50,23 @@ export function metricCards(m: WorkflowMetrics): MetricCard[] {
       hint: $localize`:@@library.metrics.firstPassHint:Successful runs without a "revise" decision or a retried step, of all finished runs.`,
     },
     {
+      // ADR 0059: the headline number, next to the first-pass rate and the human wait
+      id: 'cost',
+      label: $localize`:@@library.metrics.cost:Cost per accepted result`,
+      value: m.runs?.successful ? formatCost(m.costPerSuccessfulRun) : '-',
+      sub: $localize`:@@library.metrics.costSub:${formatCost(m.totalCost)}:total: in all · ${formatCost(m.costPerRun)}:perRun: per run`,
+      hint: $localize`:@@library.metrics.costHint:Cost of every run / successful runs: failed runs and rework are paid by the accepted results.`,
+    },
+    {
+      id: 'humanWait',
+      label: $localize`:@@library.metrics.humanWait:Human wait`,
+      value: formatWait(m.humanWait?.p50Seconds),
+      sub: m.humanWait?.count
+        ? `p90 ${formatWait(m.humanWait.p90Seconds)}`
+        : $localize`:@@library.metrics.noGates:no gates decided`,
+      hint: $localize`:@@library.metrics.humanWaitHint:Median time a run waits for people at its gates. Not converted to money: Back Office knows how long people kept a run waiting, not how long they worked.`,
+    },
+    {
       id: 'duration',
       label: $localize`:@@library.metrics.duration:Median time to finish`,
       value: formatWait(m.duration?.p50Seconds),
@@ -60,17 +77,8 @@ export function metricCards(m: WorkflowMetrics): MetricCard[] {
       id: 'active',
       label: $localize`:@@library.metrics.active:Median active time`,
       value: formatWait(m.activeTime?.p50Seconds),
-      sub: m.humanWait?.count
-        ? $localize`:@@library.metrics.humanWaitSub:human wait p50 ${formatWait(m.humanWait.p50Seconds)}:wait:`
-        : $localize`:@@library.metrics.noGates:no gates decided`,
+      sub: m.activeTime?.count ? `p90 ${formatWait(m.activeTime.p90Seconds)}` : noData(),
       hint: $localize`:@@library.metrics.activeHint:Time to finish minus the time spent waiting for people (gates) and CI: what the agents and steps take.`,
-    },
-    {
-      id: 'cost',
-      label: $localize`:@@library.metrics.cost:Cost per successful run`,
-      value: m.runs?.successful ? formatCost(m.costPerSuccessfulRun) : '-',
-      sub: $localize`:@@library.metrics.costSub:${formatCost(m.totalCost)}:total: in all · ${formatCost(m.costPerRun)}:perRun: per run`,
-      hint: $localize`:@@library.metrics.costHint:Ledger cost of the successful runs divided by their number.`,
     },
     {
       id: 'apiCost',

@@ -54,6 +54,7 @@ describe('help map', () => {
       ['/runs?holder=agent', 'runs'],
       ['/runs/r1', 'run'],
       ['/insights', 'insights'],
+      ['/insights/agents', 'insights'],
       ['/costs', 'costs'],
       ['/ci', 'ci'],
       ['/ci/e1', 'ci'],

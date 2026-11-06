@@ -4,6 +4,7 @@ import pl.mos.backoffice.evaluation.application.port.`in`.ManageBenchmarks
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageModelProfiles
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageTaskSuites
 import pl.mos.backoffice.evaluation.domain.model.Attempt
+import pl.mos.backoffice.evaluation.domain.model.CandidateRef
 import pl.mos.backoffice.evaluation.domain.model.CodingScoreWeights
 import pl.mos.backoffice.evaluation.domain.model.EvalTask
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
@@ -18,6 +19,7 @@ import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.llm.ModelOptions
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.TokenUsage
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.usage.Pricing
 import java.time.Duration
@@ -127,7 +129,11 @@ object RestMappers {
         codingHarness = d.codingHarness,
         taskIds = d.taskIds.map { EvalTaskId(it) },
         runnerTarget = d.runnerTarget,
+        candidates = d.candidates.map { ManageBenchmarks.CandidateInput(it.agentKey, it.modelProfileId?.let(::ModelProfileId)) },
     )
+
+    /** ADR 0059: a candidate as the API shows it. */
+    fun candidateRef(c: CandidateRef) = BenchmarkCandidateRefDto(c.agentKey, c.agentName, c.harness, c.modelProfileId.value, c.label)
 
     fun benchmarkSummary(d: ManageBenchmarks.BenchmarkDetails) = BenchmarkSummaryDto(
         id = d.benchmark.id.value,
@@ -147,6 +153,7 @@ object RestMappers {
         finishedAt = d.benchmark.finishedAt,
         createdBy = actor(d.benchmark.createdBy),
         runnerTarget = d.benchmark.runnerTarget,
+        candidates = d.benchmark.candidates.map { BenchmarkCandidateDto(it.agentKey, it.modelProfileId.value) },
     )
 
     fun benchmark(d: ManageBenchmarks.BenchmarkDetails, configured: (ModelProfile) -> Boolean): BenchmarkDto {
@@ -157,32 +164,36 @@ object RestMappers {
             status = s.status, progress = s.progress, totalCost = s.totalCost, createdAt = s.createdAt, startedAt = s.startedAt, finishedAt = s.finishedAt,
             createdBy = s.createdBy,
             runnerTarget = s.runnerTarget,
-            models =d.models.map { profile(it, configured(it)) },
+            candidates = s.candidates,
+            models = d.models.map { profile(it, configured(it)) },
+            candidateRefs = d.candidateRefs.map(::candidateRef),
             judge = d.judge?.let { profile(it, configured(it)) },
         )
     }
 
-    fun attempt(a: Attempt) = AttemptDto(
+    /** [codingHarness]: the benchmark's, for attempts stored before ADR 0059 without an agent. */
+    fun attempt(a: Attempt, codingHarness: AgentHarness = AgentHarness.OPENCODE) = AttemptDto(
         id = a.id.value, taskId = a.taskId.value, taskName = a.taskName, category = a.category, difficulty = a.difficulty,
         modelProfileId = a.modelProfileId.value, modelDisplayName = a.modelDisplayName, repetition = a.repetition, status = a.status, kind = a.kind,
         score = a.score, passed = a.passed, usage = usage(a.usage), cost = money(a.cost), durationMs = a.durationMs,
-        startedAt = a.startedAt, finishedAt = a.finishedAt,
+        startedAt = a.startedAt, finishedAt = a.finishedAt, candidate = candidateRef(a.candidate(codingHarness)),
     )
 
-    fun attemptDetail(a: Attempt) = AttemptDetailDto(
+    fun attemptDetail(a: Attempt, codingHarness: AgentHarness = AgentHarness.OPENCODE) = AttemptDetailDto(
         id = a.id.value, taskId = a.taskId.value, taskName = a.taskName, category = a.category, difficulty = a.difficulty,
         modelProfileId = a.modelProfileId.value, modelDisplayName = a.modelDisplayName, repetition = a.repetition, status = a.status,
         score = a.score, passed = a.passed, usage = usage(a.usage), cost = money(a.cost), judgeCost = money(a.judgeCost), durationMs = a.durationMs,
         startedAt = a.startedAt, finishedAt = a.finishedAt, output = a.output, judgeRationale = a.judgeRationale,
         judgeCriteria = a.judgeCriteria.map { JudgeCriterionDto(it.name, it.score, it.comment) },
         verification = a.verification?.let { VerificationDto(it.command, it.exitCode, it.outputTail) },
-        runnerJobId = a.runnerJobId?.value, error = a.error,
+        runnerJobId = a.runnerJobId?.value, error = a.error, candidate = candidateRef(a.candidate(codingHarness)),
     )
 
     fun row(r: LeaderboardRow) = LeaderboardRowDto(
         modelProfileId = r.modelProfileId.value, modelDisplayName = r.modelDisplayName, provider = r.provider, attempts = r.attempts,
         meanScore = r.meanScore, passRate = r.passRate, meanCost = money(r.meanCost), totalCost = money(r.totalCost),
         scorePerDollar = r.scorePerDollar, p50LatencyMs = r.p50LatencyMs, p95LatencyMs = r.p95LatencyMs, latencySamples = r.latencySamples, stability = r.stability,
+        candidate = candidateRef(r.candidate), notApplicable = r.notApplicable, costPerAccepted = r.costPerAccepted?.let(::money),
     )
 
     fun leaderboard(l: Leaderboard) = LeaderboardDto(

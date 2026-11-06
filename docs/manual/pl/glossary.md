@@ -3,10 +3,11 @@
 Pojęcia używane w Back Office i w tym podręczniku, w kolejności alfabetycznej. Każdy wpis prowadzi do
 rozdziału, który je wyjaśnia.
 
-**Agent** (agent): Ten, kto wykonuje zadanie: wpis biblioteki z harnessem i opcjonalnie modelem. Bez harnessu daje
-pojedynczą odpowiedź modelu wewnątrz Back Office (**Odpowiedź modelu**); z OpenCode lub Claude Code to sesja agenta
-kodującego w zadaniu agenta. Szablon wskazuje domyślnego agenta, krok może wybrać innego. Zob.
-[Agenci](task-library.md#agents).
+**Agent** (agent): Ten, kto pracuje, i to, jak pracuje: wpis biblioteki z harnessem, opcjonalnie modelem,
+instrukcjami, regułami, umiejętnościami i serwerami MCP. Bez harnessu daje pojedynczą odpowiedź modelu wewnątrz
+Back Office (**Odpowiedź modelu**); z OpenCode lub Claude Code to sesja agenta kodującego w zadaniu agenta. Szablon
+wskazuje domyślnego agenta, krok może wybrać innego, na przykład żeby porównać dwóch agentów na tym samym zadaniu.
+Zob. [Agenci](task-library.md#agents).
 
 **Akcja** (action): Węzeł workflowu, który wykonuje stałą operację bez modelu: Pobierz zgłoszenie, Skomentuj
 zgłoszenie, Zmień status zgłoszenia, Uruchom workflow lub Podsumowanie projektu. Zob. [Węzły akcji](workflows.md#actions).
@@ -17,8 +18,8 @@ na stronie uruchomienia oraz, jeśli bramka go wymienia, w panelu bramki. Zob. [
 **Atestacja** (attestation): Podpisane oświadczenie, które wiąże commit i diff ze sposobem ich powstania (model, prompty,
 sandbox, koszt, zatwierdzenia). Zob. [Pochodzenie](runs.md#provenance).
 
-**Benchmark** (benchmark): Uruchomienie zestawu zadań na kilku modelach kandydujących, oceniane przez jeden, stały model
-oceniający. Zob. [Benchmarki](evaluation.md#benchmarks).
+**Benchmark** (benchmark): Uruchomienie zestawu zadań na kilku kandydatach (agentach z modelami), oceniane przez jeden,
+stały model oceniający. Zob. [Benchmarki](evaluation.md#benchmarks).
 
 **Bramka, bramka decyzyjna** (gate, human gate): Węzeł, w którym uruchomienie zatrzymuje się, dopóki zatwierdzający nie
 wybierze opcji: zatwierdź, odeślij do poprawy albo odrzuć. Zob. [Rozstrzyganie bramki](your-turn.md#gates).
@@ -32,8 +33,16 @@ Zob. [Budżety](costs-insights.md#budgets).
 **Harness** (harness): Program, który prowadzi rozmowę agenta z modelem (narzędzia, kontekst, pytania): OpenCode lub
 Claude Code. Agent bez harnessu daje odpowiedź modelu. Zob. [Agenci](task-library.md#agents).
 
-**Konstytucja** (constitution): Zasady projektu w Markdownie, przekazywane do Spec Kit i dostępne w promptach. Zob.
-[Tworzenie projektu](projects.md#create-project).
+**Kandydat** (candidate): To, co porównuje benchmark: agent z modelem (własnym modelem agenta, gdy żaden nie jest
+wybrany), pokazywany jako `agent · model`. Zadania z promptem trafiają do agentów odpowiedzi modelu, zadania
+programistyczne do agentów programistycznych. Zob. [Benchmarki](evaluation.md#benchmarks).
+
+**Konstytucja** (constitution): Zasady projektu w Markdownie, przekazywane do Spec Kit i będące częścią środowiska
+każdego agenta. Zob. [Tworzenie projektu](projects.md#create-project).
+
+**Koszt zaakceptowanego wyniku** (cost per accepted result): Wszystko, co wydano, łącznie z porażkami i poprawkami,
+podzielone przez zaakceptowane wyniki; najważniejsza liczba przy porównywaniu agentów, workflowów i kandydatów
+benchmarku. Zob. [Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted).
 
 **Krawędź** (edge): Połączenie od portu wyjściowego jednego węzła do innego węzła.
 
@@ -47,7 +56,8 @@ nieskończonymi pętlami. Zob. [Rodzaje węzłów](workflows.md#nodes).
 
 **MCP (Model Context Protocol)**: Protokół, którym agent programistyczny w Twoim IDE wywołuje narzędzia Back Office
 (wyświetlanie elementów kolejki, odczyt artefaktów, uruchamianie workflowów, rozstrzyganie bramek) przy użyciu
-osobistego tokenu dostępu. Zob. [IDE i MCP](integrations-ide.md#mcp-tools).
+osobistego tokenu dostępu. Zob. [IDE i MCP](integrations-ide.md#mcp-tools). Agent z biblioteki może też wymieniać
+zdalne serwery MCP, z których korzysta w sandboxie; zob. [Serwery MCP agenta](task-library.md#agent-mcp).
 
 **Model oceniający, ocena** (judge): Model, który ocenia próby benchmarku według kryteriów oceny. Stały w ramach
 benchmarku. Zob. [Benchmarki](evaluation.md#benchmarks).
@@ -61,6 +71,11 @@ wskazują agenta. Zob. [Agenci](task-library.md#agents).
 
 **Pałeczka** (baton): Kto w tej chwili trzyma daną pracę: agent, ty, ci, gotowe, zablokowane lub bezczynne. Wyświetlana
 jako znacznik z symbolem i słowem. Zob. [Pałeczka](getting-started.md#baton).
+
+**Parametr, parametr szablonu** (parameter, template parameter): Typowane pole szablonu (jedna linia, tekst
+wieloliniowy, liczba, tak / nie, wybór), które wypełnia krok workflowu; prompty czytają je jako `{{params.<nazwa>}}`.
+Wymagany parametr bez wartości blokuje krok; takie szablony mają znacznik **wymaga parametrów**. Zob.
+[Parametry](task-library.md#parameters).
 
 **PAT, osobisty token dostępu** (personal access token): Token (`bo_pat_…`), który działa w Twoim imieniu, z Twoimi lub
 węższymi uprawnieniami, dla skryptów i IDE. Zob. [Osobiste tokeny dostępu](account.md#tokens).
@@ -76,14 +91,17 @@ z których każda może tylko zawężać. Zob. [Polityka sandboxa](projects.md#s
 **Poziom izolacji** (isolation level): Jak silnie sandbox oddziela agenta od maszyny: Deweloperska, Standardowa (gVisor) lub
 Wysoka (mikromaszyna wirtualna Kata). Zob. [Jak działają zadania agentów](agent-execution.md#isolation-levels).
 
+**Preset** (preset): Szablon, który rozszerza inny i ustawia tylko wartości jego parametrów; tworzy się go przyciskiem
+**Utwórz preset**. Zob. [Parametry](task-library.md#parameters).
+
 **Profil modelu** (model profile): Model z jego opcjami (temperatura, poziom rozumowania) i cenami. Zadania i benchmarki
 wybierają profile. Zob. [Profile modeli](evaluation.md#models).
 
 **Projekt** (project): Workflowy, członkowie, tokeny CI, polityka sandboxa i budżet; repozytoria Git są opcjonalne
 i może ich być kilka. Zob. [Projekty](projects.md#create-project).
 
-**Próba** (attempt): Jeden model kandydujący pracujący nad jednym zadaniem benchmarku (raz na powtórzenie), oceniany
-przez model oceniający. Zob. [Benchmarki](evaluation.md#benchmarks).
+**Próba** (attempt): Jeden kandydat (agent z modelem) pracujący nad jednym zadaniem benchmarku (raz na powtórzenie),
+oceniany przez model oceniający. Zob. [Benchmarki](evaluation.md#benchmarks).
 
 **Przesłanianie** (shadowing): Szablon lub umiejętność projektu o tym samym kluczu co globalny zastępuje go w tym
 projekcie. Zob. [Szablony](task-library.md#templates).
@@ -124,14 +142,23 @@ i wykonuje każde w sandboxie. Zob. [Flota runnerów](runner-fleet.md#pools).
 **Sandbox** (sandbox): Izolowany kontener lub mikromaszyna wirtualna, w której działa zadanie agenta, z ograniczonymi
 zasobami, siecią i narzędziami. Zob. [Jak działają zadania agentów](agent-execution.md#lifecycle).
 
+**Sesja agenta** (agent session): Rozmowa agenta kodującego. Krok zaczyna nową albo kontynuuje sesję wcześniejszego
+kroku (ta sama przestrzeń robocza, ten sam harness). Zob. [Kontynuacja sesji](workflows.md#continue-session).
+
 **Sygnał CI** (CI signal): Komunikat, który pipeline wysyła poleceniem `backoffice-ci signal <name> --status success|fail`,
 aby zwolnić uruchomienie czekające na CI. Zob. [Węzły oczekiwania na CI](workflows.md#nodes).
 
 **Reguła** (rule): Coś, czego agent musi zawsze przestrzegać; jest zawsze w jego kontekście, a reguły automatyczne
 obowiązują w każdym kroku swojego zakresu. Zob. [Reguły](task-library.md#rules).
 
-**Szablon zadania** (task template): Opis pracy wielokrotnego użytku: kategoria, prompty, umiejętności, reguły,
-konfiguracja i agent, który domyślnie ją wykonuje; ma jednego rodzica. Zob. [Szablony](task-library.md#templates).
+**Szablon zadania** (task template): Opis tego, co zrobić, wielokrotnego użytku: kategoria, prompty z parametrami,
+konfiguracja, wyniki i agent, który domyślnie wykonuje pracę; może mieć jednego rodzica. Reguły i umiejętności należą
+do agenta. Zob. [Szablony](task-library.md#templates).
+
+**Środowisko agenta** (environment of the agent): Dokument, który każdy krok dostaje przed swoim zadaniem:
+preambuła platformy, instrukcje agenta, konstytucja projektu i reguły. Odpowiedź modelu dostaje go w prompcie
+systemowym, OpenCode jako `AGENTS.md`, a Claude Code jako swój `CLAUDE.md` użytkownika, oba poza repozytorium. Zob.
+[Środowisko agenta](task-library.md#environment).
 
 **Ścieżka sztafety** (relay track): Pasek segmentów, po jednym na każdy odwiedzony krok, pokolorowanych według tego, kto
 trzymał dany krok. Zob. [Pałeczka](getting-started.md#baton).
@@ -149,7 +176,7 @@ a zadania agentów kończą się błędem. Zob. [Budżety](costs-insights.md#bud
 przegląd CI, budżet. Zbierane w kolejce **Twoja kolej**. Zob. [Twoja kolej](your-turn.md#inbox).
 
 **Umiejętność** (skill): Wiedza lub procedura (`SKILL.md`), którą agent otwiera, gdy zadanie jej wymaga; dostają ją
-szablony, które ją wymieniają. Zob. [Umiejętności](task-library.md#skills).
+agenci, którzy ją wymieniają. Zob. [Umiejętności](task-library.md#skills).
 
 **Uprawnienie** (permission): Prawo, takie jak `run.approve` lub `library.manage`, na poziomie platformy lub projektu.
 Role grupują uprawnienia. Zob. [Członkowie i role projektowe](projects.md#members).
@@ -165,11 +192,19 @@ Zob. [Rodzaje węzłów](workflows.md#nodes).
 **Workflow** (workflow): Proces dostarczania projektu w postaci grafu węzłów, po którym przechodzą uruchomienia. Każdy
 zapis to nowa wersja. Zob. [Projektowanie workflowów](workflows.md#designer).
 
+**Workflow referencyjny** (reference workflow): Workflow domyślny **Reference: one Claude Code session**: jedna sesja
+Claude Code implementuje zgłoszenie od początku do końca i otwiera merge request, człowiek go przegląda. Punkt
+odniesienia, z którym porównuje się tańsze workflowy i agentów. Zob. [Domyślne workflowy](workflows.md#default-workflows).
+
 **Wykonanie CI** (CI execution): Uruchomienie workflowu wystartowane przez pipeline przez punkt wejścia, z wynikiem
 bramki (zaliczona lub niezaliczona). Zob. [Wykonania CI](runs.md#ci-executions).
 
 **Wyzwalacz** (trigger): Jak workflow ma być uruchamiany: ręcznie, przez API, przez punkt wejścia CI lub przejście
 w Jirze. Zob. [Uruchamianie workflowu](workflows.md#start-run).
+
+**Zaakceptowany wynik** (accepted result): Praca, która liczy się jako wykonana. Wykonanie kroku zadania, które się
+udało, jest ostatnim wykonaniem swojego kroku w uruchomieniu, a uruchomienie zakończyło się sukcesem; udane
+uruchomienie; zaliczona próba benchmarku. Zob. [Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted).
 
 **Zadanie agenta** (agent job): Zadanie programistyczne lub Spec Kit wykonywane w sandboxie na runnerze, z własnym tokenem
 zadania, limitami i logami. Zob. [Jak działają zadania agentów](agent-execution.md#lifecycle).

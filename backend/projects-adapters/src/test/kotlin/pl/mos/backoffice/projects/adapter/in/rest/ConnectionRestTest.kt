@@ -282,6 +282,35 @@ class ConnectionRestTest {
         mvc.perform(httpGet("/api/v1/projects/$pid/spec-kit")).andExpect(jsonPath("$.missingWorkflows.length()").value(0))
     }
 
+    @Test
+    fun `missing default workflows are listed and added once, never the Spec Kit ones, and need a repository`() {
+        val project = createProject(key("DEF"))
+        val pid = project["id"]
+        mvc.perform(httpGet("/api/v1/projects/$pid/default-workflows")).andExpect(status().isOk).andExpect(jsonPath("$.length()").value(0))
+
+        // a project created before the reference workflow existed: remove it
+        val list = json.readValue(mvc.perform(httpGet("/api/v1/projects/$pid/workflows")).andExpect(status().isOk).andReturn().response.contentAsString, List::class.java)
+        val reference = list.map { it as Map<*, *> }.single { it["name"] == "Reference: one Claude Code session" }
+        mvc.perform(delete("/api/v1/workflows/${reference["id"]}")).andExpect(status().isNoContent)
+
+        mvc.perform(httpGet("/api/v1/projects/$pid/default-workflows").asMember(pid, "project.view")).andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0]").value("Reference: one Claude Code session"))
+        mvc.perform(post("/api/v1/projects/$pid/default-workflows").asMember(pid, "project.view")).andExpect(status().isForbidden)
+        mvc.perform(post("/api/v1/projects/$pid/default-workflows")).andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].name").value("Reference: one Claude Code session"))
+        assertThat(audit.entries.last { it.entityId == pid.toString() && it.operation == "PROJECT_DEFAULT_WORKFLOWS_SEEDED" }.details["seededWorkflows"])
+            .isEqualTo(listOf("Reference: one Claude Code session"))
+        mvc.perform(post("/api/v1/projects/$pid/default-workflows")).andExpect(status().isOk).andExpect(jsonPath("$.length()").value(0))
+        mvc.perform(httpGet("/api/v1/projects/$pid/default-workflows")).andExpect(jsonPath("$.length()").value(0))
+
+        val bare = read(
+            mvc.perform(post("/api/v1/projects").contentType(MediaType.APPLICATION_JSON).content("""{"key":"${key("NOR")}","name":"No repository"}"""))
+                .andExpect(status().isCreated).andReturn().response.contentAsString,
+        )
+        mvc.perform(httpGet("/api/v1/projects/${bare["id"]}/default-workflows")).andExpect(status().isOk).andExpect(jsonPath("$.length()").value(0))
+        mvc.perform(post("/api/v1/projects/${bare["id"]}/default-workflows")).andExpect(status().isConflict)
+    }
+
     private fun awaitStatus(runId: String, expected: String) {
         val deadline = System.currentTimeMillis() + 30_000
         var last: Any? = null

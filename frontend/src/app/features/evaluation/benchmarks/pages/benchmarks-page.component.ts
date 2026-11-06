@@ -25,8 +25,10 @@ import { NzTableModule } from 'ng-zorro-antd/table';
 import { debounceTime } from 'rxjs';
 import { BenchmarksApi } from '../../../../core/api/benchmarks.service';
 import { ModelProfilesApi } from '../../../../core/api/model-profiles.service';
+import { TaskLibraryApi } from '../../../../core/api/task-library.service';
 import { TaskSuitesApi } from '../../../../core/api/task-suites.service';
 import type {
+  Agent,
   BenchmarkInput,
   BenchmarkSummary,
   EvalTask,
@@ -59,12 +61,25 @@ import { SortHeaderDirective } from '../../../../core/ui/relay/sort-header.direc
 import { tableSort } from '../../../../core/ui/relay/table-sort';
 import { RELAY_TABLE_STYLES } from '../../../../core/ui/relay/table-styles';
 import { humanize } from '../../../../core/ui/status-tag.component';
+import { agentKindLabel } from '../../../../core/ui/agents';
 import { icu } from '../../../../core/i18n/icu';
 
 import { EvaluationNavComponent } from '../../components/evaluation-nav.component';
 import { AttemptStripComponent } from '../components/attempt-strip.component';
 import { BENCHMARK_HOLDERS, benchmarkBaton, benchmarkHolder } from '../data/benchmark-view';
 import { categoryLabel } from '../../suites/data/suite-view';
+import {
+  type CandidateDraft,
+  type ResolvedCandidate,
+  applicability,
+  attemptCount,
+  candidateCount,
+  candidateProblems,
+  candidatesValid,
+  emptyCandidate,
+  resolveCandidates,
+  toCandidates,
+} from '../data/candidates';
 import {
   applyLoginRules,
   blocksSave,
@@ -73,6 +88,7 @@ import {
   loginIssues,
   loginModels,
   type LoginIssue,
+  type LoginRuleForm,
 } from '../data/login-rules';
 
 /**
@@ -231,12 +247,12 @@ import {
               <th
                 nzShowSort
                 [boSort]="sort"
-                boSortKey="models"
-                nzWidth="86px"
+                boSortKey="candidates"
+                nzWidth="106px"
                 nzAlign="right"
-                i18n="@@evaluation.benchmarks.col.models"
+                i18n="@@evaluation.benchmarks.col.candidates"
               >
-                Models
+                Candidates
               </th>
               <th
                 nzShowSort
@@ -287,13 +303,16 @@ import {
                       >{{ b.name }}</a
                     >
                     <span class="cell-sub"
-                      >{{ repetitions(b.repetitions) }} · {{ harness(b.codingHarness) }}</span
-                    >
+                      >{{ repetitions(b.repetitions) }}
+                      @if (!b.candidates?.length) {
+                        · {{ harness(b.codingHarness) }}
+                      }
+                    </span>
                   </div>
                 </td>
                 <td class="ink-2">{{ b.suiteName }}</td>
                 <td nzAlign="right">
-                  <span class="mono-cell">{{ b.modelProfileIds.length }}</span>
+                  <span class="mono-cell">{{ candidateCount(b) }}</span>
                 </td>
                 <td><app-attempt-strip [progress]="b.progress" [status]="b.status" /></td>
                 <td nzAlign="right"><bo-cost [value]="b.totalCost" /></td>
@@ -389,34 +408,76 @@ import {
             </nz-select>
           </nz-form-control>
         </nz-form-item>
-        <nz-form-item>
-          <nz-form-label nzRequired nzFor="b-models" i18n="@@evaluation.benchmarks.form.models"
-            >Candidate models</nz-form-label
-          >
-          <nz-form-control
-            nzExtra="Profiles whose provider has no API key cannot be picked."
-            i18n-nzExtra="@@evaluation.benchmarks.form.modelsHint"
-          >
-            <nz-select
-              id="b-models"
-              name="modelProfileIds"
-              [(ngModel)]="form.modelProfileIds"
-              (ngModelChange)="checks.set(null)"
-              nzMode="multiple"
-              nzShowSearch
-              nzPlaceHolder="Pick at least one"
-              i18n-nzPlaceHolder="@@evaluation.benchmarks.form.pickOne"
-            >
-              @for (p of profiles(); track p.id) {
-                <nz-option
-                  [nzValue]="p.id"
-                  [nzLabel]="candidateLabel(p)"
-                  [nzDisabled]="p.providerConfigured === false"
-                />
+        <fieldset class="candidates">
+          <legend class="cand-legend">
+            <span class="req" aria-hidden="true">*</span>
+            <ng-container i18n="@@evaluation.benchmarks.form.candidates">Candidates</ng-container>
+          </legend>
+          <p class="cand-hint" i18n="@@evaluation.benchmarks.form.candidatesHint">
+            A candidate is an agent with a model (the agent's own model when none is picked). Prompt
+            tasks go to model answer agents, coding tasks to coding agents; other pairs are not
+            applicable and make no attempt. Models whose provider has no API key cannot be picked.
+          </p>
+          @for (c of form.candidates; track $index; let i = $index) {
+            <div class="cand-row" role="group" [attr.aria-label]="candidateRowLabel(i)">
+              <nz-select
+                class="cand-agent"
+                [name]="'agent' + i"
+                [(ngModel)]="c.agentKey"
+                (ngModelChange)="checks.set(null)"
+                nzShowSearch
+                nzPlaceHolder="Agent"
+                i18n-nzPlaceHolder="@@evaluation.benchmarks.form.agent"
+                aria-label="Agent"
+                i18n-aria-label="@@evaluation.benchmarks.form.agent"
+              >
+                @for (a of agents(); track a.key) {
+                  <nz-option [nzValue]="a.key" [nzLabel]="agentOption(a)" />
+                }
+              </nz-select>
+              <nz-select
+                class="cand-model"
+                [name]="'model' + i"
+                [(ngModel)]="c.modelProfileId"
+                (ngModelChange)="checks.set(null)"
+                nzShowSearch
+                nzAllowClear
+                [nzPlaceHolder]="modelPlaceholder(c)"
+                aria-label="Model"
+                i18n-aria-label="@@evaluation.benchmarks.form.model"
+              >
+                @for (p of profiles(); track p.id) {
+                  <nz-option
+                    [nzValue]="p.id"
+                    [nzLabel]="candidateLabel(p)"
+                    [nzDisabled]="p.providerConfigured === false"
+                  />
+                }
+              </nz-select>
+              <button
+                nz-button
+                nzType="text"
+                type="button"
+                class="cand-remove"
+                [disabled]="form.candidates.length < 2"
+                (click)="removeCandidate(i)"
+                aria-label="Remove candidate"
+                i18n-aria-label="@@evaluation.benchmarks.form.removeCandidate"
+              >
+                <nz-icon nzType="delete" />
+              </button>
+              @if (candidateNote(i); as note) {
+                <span class="cand-note" [class.bad]="note.bad">{{ note.text }}</span>
               }
-            </nz-select>
-          </nz-form-control>
-        </nz-form-item>
+            </div>
+          }
+          <button nz-button nzType="dashed" type="button" (click)="addCandidate()">
+            <nz-icon nzType="plus" />
+            <ng-container i18n="@@evaluation.benchmarks.form.addCandidate"
+              >Add candidate</ng-container
+            >
+          </button>
+        </fieldset>
         <nz-form-item>
           <nz-form-label nzRequired nzFor="b-judge" i18n="@@evaluation.benchmarks.form.judge"
             >Judge model</nz-form-label
@@ -462,25 +523,6 @@ import {
                 style="width: 100%"
             /></nz-form-control>
           </nz-form-item>
-          <nz-form-item>
-            <nz-form-label i18n="@@evaluation.benchmarks.form.harness"
-              >Coding harness</nz-form-label
-            >
-            <nz-form-control
-              nzExtra="OpenCode works with every provider; Claude Code with Anthropic only."
-              i18n-nzExtra="@@evaluation.benchmarks.form.harnessHint"
-            >
-              <nz-radio-group
-                name="codingHarness"
-                [(ngModel)]="form.codingHarness"
-                aria-label="Coding harness"
-                i18n-aria-label="@@evaluation.benchmarks.form.harness"
-              >
-                <label nz-radio-button nzValue="OPENCODE">OpenCode</label>
-                <label nz-radio-button nzValue="CLAUDE_CODE">Claude Code</label>
-              </nz-radio-group>
-            </nz-form-control>
-          </nz-form-item>
         </div>
         @if (codingSelected()) {
           <nz-form-item>
@@ -522,8 +564,8 @@ import {
             @if (loginFixable()) {
               <button nz-button nzSize="small" type="button" (click)="applyLogin()">
                 <nz-icon nzType="check" />
-                <ng-container i18n="@@evaluation.benchmarks.form.login.applyRunner"
-                  >Use my personal runner and Claude Code</ng-container
+                <ng-container i18n="@@evaluation.benchmarks.form.login.applyPersonal"
+                  >Use my personal runner</ng-container
                 >
               </button>
             }
@@ -605,6 +647,43 @@ import {
         grid-template-columns: 1fr 1fr;
         gap: 0 16px;
       }
+      .candidates {
+        margin: 0 0 24px;
+        padding: 0;
+        border: 0;
+        min-width: 0;
+      }
+      .cand-legend {
+        margin: 0 0 4px;
+        padding: 0;
+        border: 0;
+        font-size: 14px;
+        color: var(--bo-ink);
+      }
+      .cand-legend .req {
+        margin-right: 4px;
+        color: var(--bo-blocked-ink);
+      }
+      .cand-hint {
+        margin: 0 0 8px;
+        font-size: 12.5px;
+        color: var(--bo-ink-3);
+      }
+      .cand-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+        gap: 4px 8px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .cand-note {
+        grid-column: 1 / -1;
+        font-size: 12px;
+        color: var(--bo-ink-3);
+      }
+      .cand-note.bad {
+        color: var(--bo-blocked-ink);
+      }
       .matrix {
         margin: 4px 0 0;
         padding: 10px 12px;
@@ -672,6 +751,7 @@ export class BenchmarksPageComponent {
   private readonly api = inject(BenchmarksApi);
   private readonly suitesApi = inject(TaskSuitesApi);
   private readonly profilesApi = inject(ModelProfilesApi);
+  private readonly library = inject(TaskLibraryApi);
   private readonly events = inject(EventStreamService);
   private readonly message = inject(NzMessageService);
   private readonly router = inject(Router);
@@ -692,6 +772,8 @@ export class BenchmarksPageComponent {
   readonly saving = signal<'draft' | 'start' | null>(null);
   readonly suites = signal<TaskSuiteSummary[]>([]);
   readonly profiles = signal<ModelProfile[]>([]);
+  /** ADR 0059: the global agents a candidate can be. */
+  readonly agents = signal<Agent[]>([]);
   readonly suiteTasks = signal<EvalTask[]>([]);
   /** ADR 0046: the shared fleet and the caller's personal runner, with their online runners. */
   readonly targets = signal<ExecutionTarget[]>([]);
@@ -704,6 +786,7 @@ export class BenchmarksPageComponent {
   readonly baton = (b: BenchmarkSummary) => benchmarkBaton(b.status);
   readonly label = (v: string | null | undefined) => humanize(v).toLowerCase();
   readonly category = (v: string | null | undefined) => categoryLabel(v).toLowerCase();
+  readonly candidateCount = candidateCount;
   readonly text = {
     reload: $localize`:@@evaluation.benchmarks.reload:Reload benchmarks`,
     create: $localize`:@@evaluation.benchmarks.createAction:Create benchmark`,
@@ -726,7 +809,7 @@ export class BenchmarksPageComponent {
     holder: (b) => b.status,
     name: (b) => b.name,
     suite: (b) => b.suiteName,
-    models: (b) => b.modelProfileIds.length,
+    candidates: (b) => candidateCount(b),
     attempts: (b) => (b.progress?.total ? (b.progress.done ?? 0) / b.progress.total : null),
     cost: (b) => b.totalCost?.amount,
     created: (b) => b.createdAt,
@@ -747,10 +830,10 @@ export class BenchmarksPageComponent {
     name: string;
     suiteId: string | null;
     taskIds: string[];
-    modelProfileIds: string[];
+    /** ADR 0059: agents with models. */
+    candidates: CandidateDraft[];
     judgeModelProfileId: string | null;
     repetitions: number;
-    codingHarness: 'OPENCODE' | 'CLAUDE_CODE';
     runnerTarget: RunnerTarget;
   } = this.emptyForm();
 
@@ -771,8 +854,21 @@ export class BenchmarksPageComponent {
     return this.form.taskIds.length || this.suiteTasks().length;
   }
 
+  /** The tasks the benchmark runs: the picked ones, or every task of the suite. */
+  private runTasks(): EvalTask[] {
+    const picked = this.form.taskIds;
+    return picked.length
+      ? this.suiteTasks().filter((t) => picked.includes(t.id!))
+      : this.suiteTasks();
+  }
+
+  /** ADR 0059: the candidates with their agent's harness and the model they run with. */
+  resolved(): ResolvedCandidate[] {
+    return resolveCandidates(this.form.candidates, this.agents());
+  }
+
   matrixSize(): number {
-    return this.taskCount() * this.form.modelProfileIds.length * (this.form.repetitions || 1);
+    return attemptCount(this.resolved(), this.runTasks(), this.form.repetitions);
   }
 
   matrixText(): string {
@@ -780,15 +876,80 @@ export class BenchmarksPageComponent {
       $localize`:@@evaluation.benchmarks.form.matrixTasks:{count, plural, one {# task} other {# tasks}}`,
       { count: this.taskCount() },
     );
-    const models = icu(
-      $localize`:@@evaluation.benchmarks.form.matrixModels:{count, plural, one {# model} other {# models}}`,
-      { count: this.form.modelProfileIds.length },
+    const candidates = icu(
+      $localize`:@@evaluation.benchmarks.form.matrixCandidates:{count, plural, one {# candidate} other {# candidates}}`,
+      { count: this.resolved().length },
     );
     const reps = this.form.repetitions || 1;
     return icu(
-      $localize`:@@evaluation.benchmarks.form.matrix:{count, plural, one {# attempt} other {# attempts}} will run (${tasks}:tasks: × ${models}:models: × ${reps}:repetitions:), each also judged once.`,
+      $localize`:@@evaluation.benchmarks.form.candidateMatrix:{count, plural, one {# attempt} other {# attempts}} will run (${tasks}:tasks: × ${candidates}:candidates: × ${reps}:repetitions:, pairs that are not applicable left out), each also judged once.`,
       { count: this.matrixSize() },
     );
+  }
+
+  addCandidate(): void {
+    this.form.candidates = [...this.form.candidates, emptyCandidate()];
+    this.checks.set(null);
+  }
+
+  removeCandidate(index: number): void {
+    this.form.candidates = this.form.candidates.filter((_, i) => i !== index);
+    this.checks.set(null);
+  }
+
+  candidateRowLabel(index: number): string {
+    const n = index + 1;
+    return $localize`:@@evaluation.benchmarks.form.candidateRow:Candidate ${n}:number:`;
+  }
+
+  agentOption(a: Agent): string {
+    const kind = agentKindLabel(a.harness);
+    return a.name === kind ? a.name : `${a.name} (${kind})`;
+  }
+
+  /** The model select says what an empty choice means: the agent's own model, or that one is needed. */
+  modelPlaceholder(c: CandidateDraft): string {
+    const own = this.agents().find((a) => a.key === c.agentKey)?.modelProfileId;
+    if (!own) return $localize`:@@evaluation.benchmarks.form.pickModel:Pick a model`;
+    const model = this.profiles().find((p) => p.id === own)?.displayName ?? own;
+    return $localize`:@@evaluation.benchmarks.form.agentModel:Agent's model: ${model}:model:`;
+  }
+
+  /** Under a row: what is missing, or which tasks of the benchmark the candidate cannot do. */
+  candidateNote(index: number): { text: string; bad: boolean } | null {
+    const c = this.form.candidates[index];
+    const problem = candidateProblems(this.form.candidates, this.agents())[index];
+    if (problem === 'model')
+      return {
+        text: $localize`:@@evaluation.benchmarks.form.candidateNeedsModel:This agent has no model of its own: pick one.`,
+        bad: true,
+      };
+    if (problem === 'duplicate')
+      return {
+        text: $localize`:@@evaluation.benchmarks.form.candidateDuplicate:The same agent with the same model is already a candidate.`,
+        bad: true,
+      };
+    if (problem === 'agent' || !this.form.suiteId) return null;
+    const harness = this.agents().find((a) => a.key === c.agentKey)?.harness ?? null;
+    const { applicable, notApplicable } = applicability(harness, this.runTasks());
+    if (!notApplicable) return null;
+    return {
+      text: icu(
+        $localize`:@@evaluation.benchmarks.form.candidateNotApplicable:{count, plural, one {# task is} other {# tasks are}} not applicable to this agent; it does {applicable}.`,
+        { count: notApplicable, applicable },
+      ),
+      bad: !applicable,
+    };
+  }
+
+  /** The form as the Claude Code login rules see it. */
+  private loginForm(): LoginRuleForm {
+    return {
+      taskIds: this.form.taskIds,
+      candidates: this.resolved(),
+      judgeModelProfileId: this.form.judgeModelProfileId,
+      runnerTarget: this.form.runnerTarget,
+    };
   }
 
   /** Whether the selected tasks (all of the suite when none is picked) include agent coding jobs. */
@@ -809,10 +970,8 @@ export class BenchmarksPageComponent {
    */
   warnings(): string[] {
     const out: string[] = [];
-    if (
-      this.form.judgeModelProfileId &&
-      this.form.modelProfileIds.includes(this.form.judgeModelProfileId)
-    ) {
+    const judge = this.form.judgeModelProfileId;
+    if (judge && this.resolved().some((c) => c.modelProfileId === judge)) {
       out.push(
         $localize`:@@evaluation.benchmarks.form.judgeIsCandidate:The judge is also a candidate: it would grade its own answers. Pick a judge that is not compared.`,
       );
@@ -844,7 +1003,7 @@ export class BenchmarksPageComponent {
 
   /** ADR 0048 / ADR 0050: what the Claude Code login models (candidates, judge) still need (empty without one). */
   loginProblems(): LoginIssue[] {
-    return loginIssues(this.form, this.profiles(), this.suiteTasks(), this.targets());
+    return loginIssues(this.loginForm(), this.profiles(), this.suiteTasks(), this.targets());
   }
 
   loginBlocksSave(): boolean {
@@ -856,7 +1015,7 @@ export class BenchmarksPageComponent {
   }
 
   loginTitle(): string {
-    const names = loginModels(this.form, this.profiles())
+    const names = loginModels(this.loginForm(), this.profiles())
       .map((p) => p.displayName)
       .join(', ');
     return $localize`:@@evaluation.benchmarks.form.login.title:Claude Code with your own login (${names}:names:) needs, before the benchmark can start:`;
@@ -867,15 +1026,19 @@ export class BenchmarksPageComponent {
       case 'target':
         return $localize`:@@evaluation.benchmarks.form.login.target:Coding tasks must run on your personal runner.`;
       case 'harness':
-        return $localize`:@@evaluation.benchmarks.form.login.harness:The coding harness must be Claude Code.`;
+        return $localize`:@@evaluation.benchmarks.form.login.agentHarness:A Claude Code login model works only in a Claude Code agent: pick a Claude Code agent for it.`;
       case 'localLogin':
         return $localize`:@@evaluation.benchmarks.form.login.localLogin:Your personal runner must use your Claude Code login: set it up under My account (personal runner with Claude Code login). A draft can be saved before that.`;
     }
   }
 
-  /** One click: personal runner and Claude Code harness for the coding tasks; the selection stays. */
+  /** One click: the personal runner for the coding tasks; the selection stays. */
   applyLogin(): void {
-    this.form = applyLoginRules(this.form, this.profiles(), this.suiteTasks());
+    this.form.runnerTarget = applyLoginRules(
+      this.loginForm(),
+      this.profiles(),
+      this.suiteTasks(),
+    ).runnerTarget;
     this.checks.set(null);
   }
 
@@ -920,7 +1083,7 @@ export class BenchmarksPageComponent {
   runChecks(then?: (allOk: boolean) => void): void {
     const ids = [
       ...new Set(
-        [...this.form.modelProfileIds, this.form.judgeModelProfileId].filter(
+        [...this.resolved().map((c) => c.modelProfileId), this.form.judgeModelProfileId].filter(
           (x): x is string => !!x,
         ),
       ),
@@ -963,6 +1126,10 @@ export class BenchmarksPageComponent {
     this.load();
     this.suitesApi.list().subscribe((s) => this.suites.set(s));
     this.profilesApi.list(true).subscribe((p) => this.profiles.set(p));
+    this.library.listAgents().subscribe({
+      next: (a) => this.agents.set(a),
+      error: () => this.agents.set([]),
+    });
     this.events
       .of('BenchmarkProgress', 'BenchmarkFinished')
       .pipe(debounceTime(2000), takeUntilDestroyed(this.destroyRef))
@@ -1067,7 +1234,7 @@ export class BenchmarksPageComponent {
     return (
       !!this.form.name.trim() &&
       !!this.form.suiteId &&
-      this.form.modelProfileIds.length > 0 &&
+      candidatesValid(this.form.candidates, this.agents()) &&
       !!this.form.judgeModelProfileId
     );
   }
@@ -1075,7 +1242,7 @@ export class BenchmarksPageComponent {
   createBenchmark(start = false, skipChecks = false): void {
     if (!this.isValid()) {
       this.message.warning(
-        $localize`:@@evaluation.benchmarks.form.required:Name, suite, at least one model and a judge are required`,
+        $localize`:@@evaluation.benchmarks.form.requiredCandidates:Name, suite, at least one complete candidate and a judge are required`,
       );
       return;
     }
@@ -1100,10 +1267,11 @@ export class BenchmarksPageComponent {
     const input: BenchmarkInput = {
       name: this.form.name.trim(),
       suiteId: this.form.suiteId!,
-      modelProfileIds: this.form.modelProfileIds,
+      candidates: toCandidates(this.form.candidates),
       judgeModelProfileId: this.form.judgeModelProfileId!,
       repetitions: this.form.repetitions,
-      codingHarness: this.form.codingHarness,
+      // legacy field, ignored with candidates (ADR 0059); the generated type requires it
+      codingHarness: 'OPENCODE',
       taskIds: this.form.taskIds,
       runnerTarget: this.form.runnerTarget,
     };
@@ -1146,10 +1314,9 @@ export class BenchmarksPageComponent {
       name: '',
       suiteId: null as string | null,
       taskIds: [] as string[],
-      modelProfileIds: [] as string[],
+      candidates: [emptyCandidate()] as CandidateDraft[],
       judgeModelProfileId: null as string | null,
       repetitions: 1,
-      codingHarness: 'OPENCODE' as 'OPENCODE' | 'CLAUDE_CODE',
       runnerTarget: 'SHARED' as RunnerTarget,
     };
   }

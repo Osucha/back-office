@@ -6,7 +6,15 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
 import pl.mos.backoffice.shared.InvalidStateException
+import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
+import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
+import pl.mos.backoffice.shared.llm.ModelRef
+import pl.mos.backoffice.shared.llm.Provider
+import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.shared.usage.Pricing
+import java.math.BigDecimal
 
 class WorkflowRunTest {
 
@@ -50,6 +58,21 @@ class WorkflowRunTest {
         run = run.nodeFinished("specify", "success", now, cost = Money.ZERO, apiCost = Money.usd(1.0))
         assertThat(run.cost).isEqualTo(Money.usd(0.75))
         assertThat(run.apiCost).isEqualTo(Money.usd(1.75))
+    }
+
+    @Test
+    fun `ADR 0059 finished and failed task executions keep who did them, other kinds and older executions have none`() {
+        val profile = ModelProfileSnapshot(ModelProfileId.new(), "Sonnet", ModelRef(Provider.ANTHROPIC, "claude-sonnet"), Pricing(BigDecimal.ONE, BigDecimal.ONE), true)
+        val record = StepAgentRecord.of(AgentSnapshot("claude-code", "Claude Code", AgentHarness.CLAUDE_CODE), profile)
+        assertThat(record).isEqualTo(StepAgentRecord("claude-code", "Claude Code", AgentHarness.CLAUDE_CODE, profile.id, "Sonnet"))
+        assertThat(StepAgentRecord.of(AgentSnapshot.DEFAULT, null)).isEqualTo(StepAgentRecord("model-answer", "Model answer"))
+
+        var run = running().nodeStarted(fetch, now).nodeFinished("fetch-issue", "success", now)
+        assertThat(run.nodes.single().agent).isNull()
+        run = run.nodeStarted(specify, now).nodeFailed("specify", "boom", now, agent = record)
+        assertThat(run.nodes.last().agent).isEqualTo(record)
+        run = run.nodeStarted(specify, now).nodeFinished("specify", "success", now, agent = record)
+        assertThat(run.nodes.map { it.agent }).containsExactly(null, record, record)
     }
 
     @Test

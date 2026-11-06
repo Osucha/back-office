@@ -34,7 +34,8 @@ Code: `shared-kernel` `pl.mos.backoffice.shared.prompt` (`UntrustedText`, `Promp
 | Repository content (code, comments, README, fixtures, `.claude/`, `.git/config`, hooks) | the coding agent, the runner's git commands |
 | Artefacts of earlier coding agent / model answer steps | the next step's prompt, gate questions, MCP |
 | Benchmark task attempt outputs | the judge model |
-| Skills, templates, constitutions (curators, project managers) | system prompts (semi-trusted: authenticated, audited, reviewed by people) |
+| Agents (instructions, rules, skills, MCP servers), templates, constitutions (curators, project managers) | the environment document and system prompts (semi-trusted: authenticated, audited, reviewed by people) |
+| Remote MCP servers an agent lists (ADR 0057) | tool results inside the coding agent session; reachable only through the sandbox egress policy, no credentials |
 | Everything Back Office returns through MCP | the user's IDE agent, which holds the user's token |
 
 Trusted: the platform's own text (system notices, task templates as shipped), human gate decisions and
@@ -92,12 +93,19 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 
 - `TemplateRenderer.renderPrompt(template, model, blocks)`: values under the untrusted roots `issue`,
   `artifacts`, `mr`, `review`, `ci`, `input`, `parameters`, `branch`, `lastError` become data blocks; trusted roots
-  (`project`, `node`, `run`, `feedback`, `decision`, `confidence`, `lastOutcome`) are inserted sanitised. Rendering is
-  one pass: inserted values are never scanned for placeholders again.
+  (`project`, `node`, `run`, `feedback`, `decision`, `confidence`, `lastOutcome`, and `params`, the template parameter
+  values set in the designer, ADR 0058) are inserted sanitised. Rendering is one pass: inserted values are never
+  scanned for placeholders again.
+- `AgentEnvironment` (ADR 0057): the environment document (platform preamble, the agent's instructions rendered
+  through `renderPrompt`, constitution, rules) is trusted text written by curators and project managers. A model
+  answer gets it at the start of its system prompt; a coding agent gets it as `AGENTS.md` / user `CLAUDE.md` written
+  outside every repository, so repository content cannot replace it (the repository's own `AGENTS.md` / `CLAUDE.md`
+  are still read by the harness as project memory and are data like the rest of the repository).
 - `LlmTaskExecutor` (every step the agent **model answer** runs, including the code review): user and system prompt
-  through `renderPrompt`, the notice is appended last to the system prompt (after constitution, rules and skills).
+  through `renderPrompt`, the notice is appended last to the system prompt (after the environment document, the
+  template's system prompt and the skills).
 - `RunnerTaskSupport` (every step a coding agent runs: Spec Kit phases and agent jobs, OpenCode or Claude Code, ADR
-  0056): the job prompt is rendered the same way and ends with the
+  0056): the job prompt (the task only; the rules are in the environment document) is rendered the same way and ends with the
   agent notice (repository content is data too; never reveal credentials, change git remotes/config/hooks,
   push, or edit CI configuration unless asked). The notice is last because the runner derives the commit
   subject from the first line (it strips data-block tags).
@@ -201,8 +209,9 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
   `existingSecret` / `hostSecrets` (push-level fallbacks) or with `allowPushCredentialForRead: true` hand push
   rights to more jobs than necessary; the controller warns at start. The runner's READ guard (`pushurl`,
   refused push) is defence in depth, the read-only token is the control.
-- Skills, templates and constitutions are trusted text in system prompts; a malicious curator can weaken the
-  prompts (not the deterministic guards). Changes are audited.
+- Agents, rules, skills, templates and constitutions are trusted text in the environment and system prompts; a
+  malicious curator can weaken the prompts (not the deterministic guards) or point an agent at an MCP server the
+  egress policy allows. Changes are audited.
 - An IDE agent with an opted-in token and a client that auto-approves destructive tools can still be steered.
 - Older runner images or controllers without the init container keep the token files readable (logged as WARN
   and visible in `RunnerResult.security`).
@@ -221,7 +230,8 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 5. Set job budgets (`maxCostUsd`, `maxTokens`) on the platform policy; keep the request cap.
 6. Create personal access tokens for IDEs without "Allow gate decisions via MCP" unless the user decides gates
    in the IDE on purpose, and keep the client's confirmation for destructive tools on.
-7. Review new or changed skills, templates and constitutions like code (the audit log shows who changed them).
+7. Review new or changed agents, rules, skills, templates and constitutions like code (the audit log shows who
+   changed them).
 8. Watch `PROMPT_INJECTION_SUSPECTED` and `MCP_GATE_DECISION` in the audit log.
 
 ## Tests (the injection suite)

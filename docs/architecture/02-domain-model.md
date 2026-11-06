@@ -12,7 +12,7 @@ Identifiers are UUIDs wrapped in typed value classes (`ProjectId`, `WorkflowRunI
 | `LlmRequest` / `LlmResult` / `TokenUsage` | value objects | one chat call and its outcome; `responseSchema` asks for structured output |
 | `UsageRecord`, `UsageContext`, `Pricing` | ledger | cost accounting; `UsageKind = PIPELINE_STEP, CODE_REVIEW, BENCHMARK_ATTEMPT, MODEL_TEST` |
 | `LlmGateway`, `UsageLedger`, `ModelCatalog`, `AgentRunner`, `TaskCatalog`, `Clock`, `EventPublisher` | ports | see 01-overview for who implements what |
-| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `AgentSnapshot`, `SkillSnapshot`, `RuleSnapshot`, `TemplateCategory`, `RunInputField` | value objects | what the Task Library hands to the workflow engine; `AgentSnapshot(key, name, harness?, modelProfileId?)` is who runs the step (no harness = model answer, ADR 0056) |
+| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `AgentSnapshot`, `SkillSnapshot`, `RuleSnapshot`, `TemplateCategory`, `RunInputField` | value objects | what the Task Library hands to the workflow engine; `AgentSnapshot(key, name, harness?, modelProfileId?, instructions, rules, skills, mcpServers)` is who runs the step and how (no harness = model answer, ADR 0056, 0057); `TemplateParameter`, `ResolvedParameter(definition, value, source)` (ADR 0058) |
 | `RunnerJobSpec`, `RunnerResult`, `RunnerSkill`, `RunnerMergeRequest` | value objects | runner protocol |
 
 ## Context: Task Library (`tasks-core`)
@@ -21,15 +21,16 @@ See [07-task-library.md](07-task-library.md) for semantics.
 
 | Aggregate | Fields |
 |---|---|
-| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, agentKey?, scope: Scope(GLOBAL | PROJECT(projectId)), modelProfileId?, prompt: Prompt(system?, user?, mode: APPEND/REPLACE), skills, removeSkills, rules, removeRules, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, builtIn, version, timestamps` |
+| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, agentKey?, scope: Scope(GLOBAL | PROJECT(projectId)), modelProfileId?, prompt: Prompt(system?, user?, mode: APPEND/REPLACE), parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058) |
 | `Skill` | `id, key, name, description, content, scope, tags, builtIn, timestamps` |
 | `Rule` | `id, key, name, description, content, scope, automatic, tags, builtIn, timestamps` (ADR 0055) |
-| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, tags, builtIn, timestamps` (ADR 0056) |
+| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, mcpServers: List<AgentMcpServer(name, url)>, tags, builtIn, timestamps` (ADR 0056, 0057) |
 
 Template keys are unique across scopes; skills, rules and agents by `(key, scope)` (ADR 0055). Domain service
-`TaskResolver` produces `ResolvedTask` (with the resolved agent: step, template lineage, else `model-answer`) and
-reports when the agent does not fit the template; `TemplateValidator` checks keys (`^[a-z][a-z0-9-]{1,63}$`),
-parent existence and JSON schema syntax. Task interfaces (ADR 0015) were removed by ADR 0055, the template executor by
+`TaskResolver` produces `ResolvedTask` (with the resolved agent: step, template lineage, else `model-answer`; the
+agent's rules and skills adjusted by the step; the parameters with value and source) and reports when the agent does
+not fit the template or a required parameter has no value; `TemplateValidator` checks keys
+(`^[a-z][a-z0-9-]{1,63}$`), parent existence, JSON schema syntax and parameter declarations and values. Task interfaces (ADR 0015) were removed by ADR 0055, the template executor by
 ADR 0056.
 
 ## Context: Projects & Workflows (`projects-core`)
@@ -41,7 +42,7 @@ ADR 0056.
 | `id`, `key`, `name`, `description` | | key `^[A-Z][A-Z0-9_]{1,15}$` |
 | `repositories` | `List<GitRepository(key, url, defaultBranch = main, purpose: DOCS/SOURCE/OTHER, description?, primary)>` | zero or more (ADR 0034); keys `^[a-z][a-z0-9-]{0,30}$` unique in the project (also the workspace directory), at most one `primary` (the default of runner steps that name no repository; optional). Used by the runner only (git, no SCM API). Persistence port `ProjectRepository`; Flyway `V109` turned the former single repository into `main` (SOURCE, primary) and keeps `repo_url` / `repo_default_branch` as a mirror of the primary for one release. `primaryRepository()` returns the primary or null |
 | `issueTracker` | `IssueTrackerBinding(jiraProjectKey, jql?)` | optional |
-| `constitution` | markdown | Spec Kit constitution, injected into `base-agent` prompts |
+| `constitution` | markdown | Spec Kit constitution; part of every step's agent environment (ADR 0057) and readable as `{{project.constitution}}` |
 | `defaults` | `ProjectDefaults(modelProfileId?, reviewModelProfileId?)` | |
 | `ciEntrypoints` | `List<CiEntrypoint(key, workflowId, mode: BLOCKING/ADVISORY, description, uploadDiff, repository?)>` | keys unique; `repository` = optional repository key: only CI jobs of that repository may start the entrypoint |
 | `createdAt, updatedAt` | | |
@@ -61,7 +62,8 @@ revokedAt?`. The plaintext is returned once on creation and never stored.
 | `canvas: Canvas(zoom, x, y)?` | viewport only; node positions live on nodes |
 
 `WorkflowNode`: `id, kind: NodeKind, name, position: Point(x, y), timeoutSeconds?` plus one of:
-`task: TaskBinding(templateKey, overrides: TaskOverrides)` (overrides include `agentKey`, ADR 0056),
+`task: TaskBinding(templateKey, overrides: TaskOverrides)` (overrides include `agentKey`, ADR 0056, `parameters`,
+ADR 0058, and config `continueSession`, ADR 0057),
 `action` (`type`: FETCH_ISSUE/COMMENT_ISSUE/TRANSITION_ISSUE/START_WORKFLOW/PROJECT_DIGEST, `config`) (node
 kind `ACTION`, ADR 0056; a stored `TASK` node naming a former action template is read as one),
 `decision: Decision(branches: List<Branch(id,
@@ -123,7 +125,7 @@ Table `library_source` (V116).
 | `status: PENDING → RUNNING ⇄ WAITING → SUCCEEDED / FAILED / CANCELLED` | |
 | `outcome: SUCCESS / FAILURE?` | from the END node reached (FAILURE on unhandled failure) |
 | `waitingOn: WaitingOn(kind: HUMAN_GATE/WAIT_FOR_CI, nodeId, approvalId?, signal?)?` | |
-| `nodes: List<NodeExecution>` | `id, nodeId, nodeName, kind, attempt, status (RUNNING/WAITING/SUCCEEDED/FAILED/SKIPPED), port (taken output port), startedAt, finishedAt, summary, confidence, runnerJobId, usage, cost, error, artifactIds, repositories: List<RepositoryResult>` |
+| `nodes: List<NodeExecution>` | `id, nodeId, nodeName, kind, templateKey?, agent: StepAgentRecord?, attempt, status (RUNNING/WAITING/SUCCEEDED/FAILED/SKIPPED), port (taken output port), startedAt, finishedAt, summary, confidence, runnerJobId, usage, cost, error, artifactIds, repositories: List<RepositoryResult>`; `agent` (ADR 0059) = who did a `TASK` step: `agentKey, agentName, harness?, modelProfileId?, modelLabel?`, null for other kinds and for executions before ADR 0059 |
 | `artifacts: List<Artifact>` | `id, nodeId, name, kind (SPEC/PLAN/TASKS/ANALYSIS/DIFF/REVIEW/LOG/JSON/MARKDOWN), mediaType, content, createdAt` |
 | `mergeRequest: MergeRequestSnapshot(url, branch, targetBranch)?`, `review: ReviewReport?` | `mergeRequest` = the primary repository's merge request, else the first one pushed |
 | `repositories: List<RepositoryResult>` | latest result per repository over all runner steps (ADR 0034): `key, url, purpose, access, primary, branch?, commitSha?, diffStat?, mergeRequestUrl?, pushed, error?` |
@@ -168,8 +170,12 @@ them out on `GET /api/v1/events`.
 
 ## Context: Model Evaluation
 
-Unchanged from the first iteration: `ModelProfile`, `TaskSuite` / `EvalTask`, `Benchmark` / `Attempt`,
-leaderboard read model (see [04-model-evaluation.md](04-model-evaluation.md)).
+`ModelProfile`, `TaskSuite` / `EvalTask`, `Benchmark` / `Attempt`, leaderboard read model (see
+[04-model-evaluation.md](04-model-evaluation.md)). Since ADR 0059 a `Benchmark` holds `candidates:
+List<BenchmarkCandidate>` (agent key, name, harness, model profile; empty = a benchmark of models, `legacy`), each
+`Attempt` the agent it ran as (`agentKey`, `agentName`, `harness`), and a leaderboard row is one candidate
+(`CandidateRef`) with `notApplicable` and `costPerAccepted`. Agents are read through the shared-kernel `TaskCatalog`
+port.
 
 ## State machines
 

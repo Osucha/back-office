@@ -283,6 +283,7 @@ class RestMapper {
         port = s.port, startedAt = s.startedAt, finishedAt = s.finishedAt, summary = s.summary, confidence = s.confidence, runnerJobId = s.runnerJobId?.value,
         usage = usage(s.usage), cost = money(s.cost), apiCost = money(s.apiCost), error = s.error, artifactIds = s.artifactIds.map { it.value },
         repositories = s.repositories.map(::toDto),
+        agent = s.agent?.let { StepAgentRecordDto(it.agentKey, it.agentName, it.harness?.name, it.modelProfileId?.value, it.modelLabel) },
     )
 
     fun toDto(r: ReviewReport) = ReviewReportDto(r.verdict.name, r.score, r.summary, r.findings.map(::toDto), r.modelRef?.let(::modelRef), usage(r.usage), money(r.cost))

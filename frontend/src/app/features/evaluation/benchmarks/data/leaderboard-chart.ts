@@ -35,7 +35,11 @@ export function leaderboardToScatter(
     .filter((r) => r.meanScore !== null && r.meanScore !== undefined)
     .map((r) => ({
       value: [r.meanCost?.amount ?? 0, r.meanScore!] as [number, number],
-      name: r.modelDisplayName ?? r.modelProfileId ?? $localize`:@@evaluation.chart.model:model`,
+      name:
+        r.candidate?.label ??
+        r.modelDisplayName ??
+        r.modelProfileId ??
+        $localize`:@@evaluation.chart.model:model`,
       modelProfileId: r.modelProfileId ?? '',
       provider: r.provider ?? '',
       passRate: r.passRate ?? null,

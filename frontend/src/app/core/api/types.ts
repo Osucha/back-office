@@ -90,6 +90,8 @@ export type RunStatus = S['RunStatus'];
 export type RunOutcome = S['RunOutcome'];
 export type NodeExecutionStatus = S['NodeExecutionStatus'];
 export type NodeExecution = S['NodeExecution'];
+/** ADR 0059: the agent and model a task step ran with. */
+export type StepAgentRecord = S['StepAgentRecord'];
 export type CiContext = S['CiContext'];
 export type WorkflowRunSummary = S['WorkflowRunSummary'];
 export type WaitingOn = NonNullable<WorkflowRunSummary['waitingOn']>;
@@ -200,6 +202,9 @@ export type BenchmarkInput = S['BenchmarkInput'];
 export type BenchmarkStatus = S['BenchmarkStatus'];
 export type BenchmarkSummary = S['BenchmarkSummary'];
 export type Benchmark = S['Benchmark'];
+/** ADR 0059: an agent with a model compared in a benchmark (input / resolved). */
+export type BenchmarkCandidate = S['BenchmarkCandidate'];
+export type BenchmarkCandidateRef = S['BenchmarkCandidateRef'];
 export type ExecutionTarget = S['ExecutionTarget'];
 export type RunnerTarget = S['RunnerTarget'];
 export type PreflightResult = NonNullable<
@@ -348,6 +353,10 @@ export type WorkflowInsights = S['WorkflowInsights'];
 export type WorkflowVersionMetrics = NonNullable<WorkflowInsights['byVersion']>[number];
 export type WorkflowProjectMetrics = NonNullable<WorkflowInsights['byProject']>[number];
 export type LibraryWorkflowMetricsRow = S['LibraryWorkflowMetricsRow'];
+/** ADR 0059: task steps per agent and model, and per template. */
+export type AgentInsights = S['AgentInsights'];
+export type AgentMetrics = S['AgentMetrics'];
+export type TemplateAgentMetrics = S['TemplateAgentMetrics'];
 export type AttestationSummary = S['AttestationSummary'];
 export type DsseEnvelope = S['DsseEnvelope'];
 export type AttestationVerification = NonNullable<

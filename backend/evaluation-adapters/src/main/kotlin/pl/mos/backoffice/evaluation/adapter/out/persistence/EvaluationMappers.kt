@@ -4,6 +4,7 @@ import pl.mos.backoffice.evaluation.domain.model.Attempt
 import pl.mos.backoffice.evaluation.domain.model.AttemptId
 import pl.mos.backoffice.evaluation.domain.model.AttemptVerification
 import pl.mos.backoffice.evaluation.domain.model.Benchmark
+import pl.mos.backoffice.evaluation.domain.model.BenchmarkCandidate
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
 import pl.mos.backoffice.evaluation.domain.model.Capability
 import pl.mos.backoffice.evaluation.domain.model.CodingScoreWeights
@@ -21,6 +22,7 @@ import pl.mos.backoffice.shared.llm.ModelOptions
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Reasoning
 import pl.mos.backoffice.shared.llm.TokenUsage
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.usage.Pricing
@@ -191,6 +193,9 @@ class EvaluationMappers(private val json: JsonMapper) {
         updatedByKind = b.updatedBy?.kind?.name,
         updatedById = b.updatedBy?.userId,
         updatedByName = b.updatedBy?.displayName,
+        candidates = json.writeValueAsString(
+            b.candidates.map { mapOf("agentKey" to it.agentKey, "agentName" to it.agentName, "harness" to it.harness?.name, "modelProfileId" to it.modelProfileId.toString()) },
+        ),
     )
 
     fun toDomain(e: BenchmarkEntity) = Benchmark(
@@ -209,6 +214,17 @@ class EvaluationMappers(private val json: JsonMapper) {
         finishedAt = e.finishedAt,
         createdBy = actorOf(e.createdByKind, e.createdById, e.createdByName),
         updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
+        candidates = readList(e.candidates).mapNotNull { item ->
+            val c = item as? Map<*, *> ?: return@mapNotNull null
+            val key = c["agentKey"]?.toString() ?: return@mapNotNull null
+            val model = c["modelProfileId"]?.toString() ?: return@mapNotNull null
+            BenchmarkCandidate(
+                agentKey = key,
+                modelProfileId = ModelProfileId(UUID.fromString(model)),
+                agentName = c["agentName"]?.toString() ?: key,
+                harness = c["harness"]?.toString()?.let { h -> AgentHarness.entries.firstOrNull { it.name == h } },
+            )
+        },
     )
 
     fun toEntity(a: Attempt) = BenchmarkAttemptEntity(
@@ -244,6 +260,9 @@ class EvaluationMappers(private val json: JsonMapper) {
         createdAt = a.createdAt,
         startedAt = a.startedAt,
         finishedAt = a.finishedAt,
+        agentKey = a.agentKey,
+        agentName = a.agentName,
+        harness = a.harness,
     )
 
     fun toDomain(e: BenchmarkAttemptEntity) = Attempt(
@@ -279,6 +298,9 @@ class EvaluationMappers(private val json: JsonMapper) {
         createdAt = e.createdAt,
         startedAt = e.startedAt,
         finishedAt = e.finishedAt,
+        agentKey = e.agentKey,
+        agentName = e.agentName,
+        harness = e.harness,
     )
 
     /** `*_by_*` columns back to an [Actor]; rows from before V201 have none. Unknown kinds read as SYSTEM. */

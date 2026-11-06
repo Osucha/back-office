@@ -39,7 +39,7 @@ The manager who creates a project becomes its **Owner**, adds the team with proj
 | **Default model profile** | Used by model-backed tasks that name no profile. |
 | **Review model profile** | Used by code-review tasks; empty means the default profile. |
 | **Spec Kit** | Off for new projects. Turn it on to use the Spec Kit steps (specify, plan, tasks) and the constitution ([Spec Kit](#spec-kit)). |
-| **Spec Kit constitution (markdown)** | Shown while **Spec Kit** is on. Your project's principles, written to `.specify/memory/constitution.md` before Spec Kit jobs run, and available to prompts as `{{project.constitution}}`. Kept when Spec Kit is turned off. |
+| **Spec Kit constitution (markdown)** | Shown while **Spec Kit** is on. Your project's principles, written to `.specify/memory/constitution.md` before Spec Kit jobs run and part of the [environment](task-library.md#environment) every agent step gets (prompts can also read it as `{{project.constitution}}`). Kept when Spec Kit is turned off. |
 
 3. Click **Create project**.
 
@@ -47,9 +47,10 @@ The manager who creates a project becomes its **Owner**, adds the team with proj
 
 You become the project's **Owner**. What else is created depends on the repositories:
 
-- **With at least one repository**: the workflows **CI code review** and **Change request (delta)**, plus
-  **Issue to reviewed MR** when **Spec Kit** is on (it is built on Spec Kit), and the CI entrypoint
-  `code-review` (see [Designing workflows](workflows.md#designer)). You can edit, duplicate or delete them.
+- **With at least one repository**: the workflows **CI code review**, **Change request (delta)** and
+  **Reference: one Claude Code session**, plus **Issue to reviewed MR** when **Spec Kit** is on (it is built on
+  Spec Kit), and the CI entrypoint `code-review` (see [The default workflows](workflows.md#default-workflows)). You
+  can edit, duplicate or delete them.
 - **Without a repository**: one starter workflow, **LLM task with review**, and no CI entrypoint (see
   [Projects without a repository](#no-repository)).
 
@@ -105,15 +106,15 @@ Back Office is built for software delivery but serves any work done with languag
 analysis, translation, reviews of documents. Create the project with an empty **Repositories** list. It
 gets the starter workflow **LLM task with review**:
 
-1. **Start** → **LLM task** (template `llm-task`): write what the model should do in the node's **User
-   prompt** with **Replace**. The run input **Input material** is given to the model as material (data,
+1. **Start** → **LLM task** (template `llm-task`): write what the model should do in the node's parameter
+   **Task** (under **Parameters**; empty means the default: summarise the input material). The run input **Input material** is given to the model as material (data,
    not instructions).
 2. → **Result ok?** (a gate): **approve** finishes the run with success, **revise** sends your comment back to
    the task, **reject** finishes the run with failure.
 
 Start it with **Start run** and write the text to work on into **Input material**
 ([Starting a run](workflows.md#start-run)). Coding steps cannot be used until the project has a repository.
-When you add the first repository, the three SDLC workflows and the `code-review` entrypoint are added once
+When you add the first repository, the default workflows and the `code-review` entrypoint are added once
 (not if workflows with those names already exist).
 
 ## The project page
@@ -126,7 +127,7 @@ The tabs, each reachable with `?tab=` in the URL:
 
 | Tab | Content | Changing it needs |
 |---|---|---|
-| **Workflows** | The project's workflows with triggers, state, last change; **Start run**, **Edit** / **View**, and the more-actions menu (**Duplicate workflow**, **Delete workflow**). | `workflow.edit` (start: `run.start`) |
+| **Workflows** | The project's workflows with triggers, state, last change; **Start run**, **Edit** / **View**, and the more-actions menu (**Duplicate workflow**, **Delete workflow**). When default workflows are missing (projects created before they existed): **Add missing default workflows (N)** ([The default workflows](workflows.md#default-workflows)). | `workflow.edit` (start: `run.start`) |
 | **Sources** | The project's repositories and the library sources (see [The Sources tab](#sources)). | `project.manage` |
 | **Workspaces** | Run workspaces shared by the project's workflows: sources, setup command, agent roles (see [Workspaces and agent sessions](workflows.md#workspaces)). | `project.manage` |
 | **Runs** | The project's runs (see [Runs](runs.md#run-list)). | — |

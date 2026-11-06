@@ -198,6 +198,32 @@ class ProjectService(
         return seeded
     }
 
+    override fun missingDefaultWorkflows(id: ProjectId): List<String> {
+        gate.require(ProjectsPermissions.PROJECT_VIEW, id.value)
+        val project = load(id)
+        if (project.repositories.isEmpty()) return emptyList()
+        return missingDefaults(project, clock.now()).map { it.name }
+    }
+
+    override fun addDefaultWorkflows(id: ProjectId): List<WorkflowDefinition> {
+        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, id.value).actor
+        val project = load(id)
+        if (project.repositories.isEmpty()) throw InvalidStateException("the default workflows need a repository; add one to the project first")
+        val seeded = missingDefaults(project, clock.now()).map { workflows.save(it.copy(updatedBy = actor)) }
+        if (seeded.isNotEmpty()) {
+            audit.record(
+                AuditEntry("PROJECT_DEFAULT_WORKFLOWS_SEEDED", ENTITY, id.toString(), projectId = id.value, details = mapOf("seededWorkflows" to seeded.map { it.name })),
+            )
+        }
+        return seeded
+    }
+
+    /** ADR 0059: the non-Spec Kit default workflows the project lacks by name (the Spec Kit ones go through [addSpecKitWorkflows]). */
+    private fun missingDefaults(project: Project, now: java.time.Instant): List<WorkflowDefinition> {
+        val existing = workflows.findByProjectId(project.id).map { it.name }.toSet()
+        return DefaultWorkflows.all(project.id, now).filter { !DefaultWorkflows.usesSpecKit(it) && it.name !in existing }
+    }
+
     private fun specKitOn(project: Project): Boolean = project.specKit && features.specKitAllowed()
 
     private fun specKitStatusOf(project: Project): ManageProjects.SpecKitStatus {

@@ -536,7 +536,9 @@ class LangGraphWorkflowEngine(
         if (result.failed) {
             val error = result.error ?: "node failed"
             val port = result.port ?: WorkflowNode.PORT_FAILURE
-            if (!node.interrupting) progress.nodeFailed(runId, node.id, error, port, result.usage, result.cost, result.runnerJobId, result.repositories, result.apiCost)
+            if (!node.interrupting) {
+                progress.nodeFailed(runId, node.id, error, port, result.usage, result.cost, result.runnerJobId, result.repositories, result.apiCost, result.agent)
+            }
             progress.appendLog(runId, node.id, LogLevel.ERROR, error, run.projectId)
             updates.putAll(result.stateUpdates)
             updates[RunStateKeys.LAST_OUTCOME] = RunStateKeys.OUTCOME_FAILURE
@@ -552,7 +554,7 @@ class LangGraphWorkflowEngine(
                 RecordRunProgress.NodeCompletion(
                     port = result.port, summary = result.summary, confidence = result.confidence, usage = result.usage, cost = result.cost,
                     apiCost = result.apiCost, runnerJobId = result.runnerJobId, artifacts = result.artifacts, mergeRequest = result.mergeRequest, review = result.review,
-                    repositories = result.repositories,
+                    repositories = result.repositories, agent = result.agent,
                 ),
             )
             val artifactIndex = HashMap<String, Any?>(state.map(RunStateKeys.ARTIFACTS) ?: emptyMap())

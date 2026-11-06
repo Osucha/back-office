@@ -18,7 +18,7 @@ i najważniejszymi liczbami z wybranego okresu (7, 30 lub 90 dni albo bieżący 
 | Sukces | uruchomienia zakończone końcem typu sukces, spośród zakończonych |
 | Za pierwszym razem | udane uruchomienia bez decyzji „do poprawy” i bez ponowionego kroku, spośród zakończonych |
 | Mediana czasu | połowa zakończonych uruchomień trwała krócej, łącznie z oczekiwaniem |
-| Koszt / sukces | koszt udanych uruchomień z rejestru kosztów podzielony przez ich liczbę |
+| Koszt zaakceptowanego wyniku | koszt wszystkich uruchomień z okresu według rejestru kosztów podzielony przez udane uruchomienia: nieudane uruchomienia i poprawki opłacają zaakceptowane wyniki ([Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted)) |
 
 Kliknij wiersz, żeby otworzyć workflow. Zakładka **Skuteczność** pokazuje liczby szczegółowo, **Graf**
 pokazuje dowolną wersję na kanwie tylko do odczytu, **Wersje** mówią, co zmieniło się w każdej wersji i skąd
@@ -83,8 +83,13 @@ także po zmianie kopii lub biblioteki. Zakładka **Skuteczność** workflowu bi
 - **Skuteczność**: odsetek sukcesów (udane spośród zakończonych; nieudane i anulowane obniżają wynik),
   odsetek „za pierwszym razem” (udane bez poprawek i ponowień) oraz pętle poprawek na uruchomienie.
 - **Wydajność**: mediana i p90 czasu do zakończenia (z oczekiwaniem), mediana **czasu aktywnego** (czas do
-  zakończenia minus oczekiwanie na ludzi przy bramkach i na CI: tyle zajmują agenci i kroki), oczekiwanie na
-  ludzi, koszt na uruchomienie i na udane uruchomienie, tokeny.
+  zakończenia minus oczekiwanie na ludzi przy bramkach i na CI: tyle zajmują agenci i kroki), tokeny i koszt.
+- **Koszt zaakceptowanego wyniku** (**Cost per accepted result**): koszt wszystkich uruchomień / udane
+  uruchomienia, pod nim suma i koszt na uruchomienie ([Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted)).
+  Obok **Oczekiwanie na ludzi** (**Human wait**; mediana czasu, przez jaki uruchomienie czeka na ludzi przy
+  bramkach; nie jest przeliczane na pieniądze, bo Back Office wie, jak długo ludzie kazali czekać uruchomieniu,
+  a nie jak długo pracowali) i **Za pierwszym razem** (**First-pass rate**): tańszy workflow jest lepszy tylko
+  wtedy, gdy nie płaci za niższą cenę dłuższym oczekiwaniem na ludzi albo większą liczbą poprawek.
 - **Według wersji**, od najnowszej, każda porównana z poprzednią wersją, która ma zakończone uruchomienia: zielona
   strzałka to poprawa (sukcesy wyżej o co najmniej 5 punktów, czas lub koszt niżej o co najmniej 10 %),
   czerwona to pogorszenie. Wersje z mniej niż 5 zakończonymi uruchomieniami mają znak `*`: poczekaj na więcej uruchomień,

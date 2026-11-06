@@ -395,6 +395,13 @@ two-repository vector).
   READ repositories are not committed in a workspace. Sessions: Claude Code `--session-id` / `--resume` with
   `uuid5(workspace, role)` in `CLAUDE_CONFIG_DIR=/workspace/.claude-config`; OpenCode `XDG_DATA_HOME=/workspace/.bo/opencode/<role>`
   and `--continue`. `prepareOnly`: clone + setupCommand + `.git` restore, no agent, no commit.
+- Continued sessions (ADR 0057): step config `continueSession: <node id>` reuses the earlier step's workspace (or the
+  implicit workspace `run`, which needs no `ProjectWorkspace` definition) and session role (or one derived from its
+  node id); `SessionContinuation` sets both on the two steps, and the check before a run refuses a missing step, a
+  step that is not a coding agent step or another harness. The agent's environment document lives outside the
+  repositories (`/workspace/.backoffice-agent/AGENTS.md` for OpenCode, `$CLAUDE_CONFIG_DIR/CLAUDE.md` for Claude
+  Code), is rewritten on every job and removed when a job has none, so a continued session always sees the current
+  agent's environment.
 
 ## Runner protocol v2 (summary; contract in `docs/api/openapi.yaml`, tag `runner-v2`)
 

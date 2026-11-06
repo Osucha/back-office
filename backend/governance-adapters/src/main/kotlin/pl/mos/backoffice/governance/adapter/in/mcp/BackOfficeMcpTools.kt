@@ -2,7 +2,9 @@ package pl.mos.backoffice.governance.adapter.`in`.mcp
 
 import org.springframework.ai.mcp.annotation.McpTool
 import org.springframework.ai.mcp.annotation.McpToolParam
+import pl.mos.backoffice.governance.adapter.`in`.rest.AgentInsightsDto
 import pl.mos.backoffice.governance.adapter.`in`.rest.DeliveryInsightsDto
+import pl.mos.backoffice.governance.application.port.`in`.AgentInsightsQuery
 import pl.mos.backoffice.governance.application.port.`in`.DeliveryInsightsQuery
 import pl.mos.backoffice.projects.application.port.`in`.ApprovalQueries
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
@@ -32,6 +34,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
 import pl.mos.backoffice.shared.NotFoundException
+import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
@@ -68,6 +71,7 @@ import java.util.UUID
  * | `search_task_library` | ManageTaskTemplates.list, ManageSkills.list | `library.view` |
  * | `get_project_context` | ManageProjects, ManageWorkflows, RunQueries | `project.view` |
  * | `get_delivery_insights` | DeliveryInsightsQuery.get | `project.view` |
+ * | `get_agent_insights` | AgentInsightsQuery.get (ADR 0059) | `project.view` |
  * | `list_projects` | ManageProjects.list | `project.view` |
  * | `get_workflow_palette` | ManageWorkflows.palette | `project.view` |
  * | `get_workflow` | ManageWorkflows.get | `project.view` |
@@ -108,6 +112,8 @@ class BackOfficeMcpTools(
     private val audit: AuditPort = AuditPort.NOOP,
     /** ADR 0044 run workspaces; null = the workspace tools answer that they are not available. */
     private val workspaces: ManageProjectWorkspaces? = null,
+    /** ADR 0059 agent insights; null = the tool answers that they are not available. */
+    private val agentInsights: AgentInsightsQuery? = null,
 ) {
 
     @McpTool(
@@ -297,6 +303,24 @@ class BackOfficeMcpTools(
         caller()
         val id = if (projectKey.isNullOrBlank() && projectId.isNullOrBlank()) null else project(projectKey, projectId).id.value
         return DeliveryInsightsDto.of(insights.get(id, instant(from, "from"), instant(to, "to")))
+    }
+
+    @McpTool(
+        name = "get_agent_insights",
+        description = "Agent insights (ADR 0059): the task steps of one project or of all visible projects per agent and model and per template: " +
+            "executions, accepted results, first-pass rate, cost and the cost of an accepted result (lowest first).",
+        annotations = McpTool.McpAnnotations(title = "Get agent insights", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
+    )
+    fun getAgentInsights(
+        @McpToolParam(description = "Project key; omit for all visible projects", required = false) projectKey: String?,
+        @McpToolParam(description = "Project id (UUID); alternative to projectKey", required = false) projectId: String?,
+        @McpToolParam(description = "Window start, ISO-8601 instant (default: 30 days before `to`)", required = false) from: String?,
+        @McpToolParam(description = "Window end, ISO-8601 instant (default: now)", required = false) to: String?,
+    ): AgentInsightsDto {
+        caller()
+        val query = agentInsights ?: throw InvalidStateException("agent insights are not available on this server")
+        val id = if (projectKey.isNullOrBlank() && projectId.isNullOrBlank()) null else project(projectKey, projectId).id.value
+        return AgentInsightsDto.of(query.get(id, instant(from, "from"), instant(to, "to")))
     }
 
     @McpTool(

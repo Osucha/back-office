@@ -9,6 +9,7 @@ import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import java.time.Instant
 import pl.mos.backoffice.shared.runner.RunnerTarget
 
@@ -59,9 +60,60 @@ data class BenchmarkProgressCounts(val total: Int, val done: Int, val failed: In
 }
 
 /**
- * Aggregate root: one comparison of models on a suite. Attempts are persisted separately (they are
- * large and updated concurrently) and refer to the benchmark by id; the aggregate holds the plan and
- * the status machine `DRAFT -> RUNNING -> COMPLETED | FAILED | CANCELLED`.
+ * ADR 0059: an agent with a model compared in a benchmark. The model is resolved when the benchmark is created (the
+ * agent's own model when none was chosen); [agentName] and [harness] are a snapshot of the agent (refreshed at start).
+ * A model answer agent ([harness] null) does prompt tasks, a coding agent coding tasks.
+ */
+data class BenchmarkCandidate(
+    val agentKey: String,
+    val modelProfileId: ModelProfileId,
+    val agentName: String = agentKey,
+    val harness: AgentHarness? = null,
+) {
+    /** The agent can do a task of [kind]: model answers do prompt tasks, coding agents coding tasks. */
+    fun applicable(kind: TaskKind): Boolean = CandidateRef.applicable(harness, kind)
+}
+
+/**
+ * ADR 0059: an agent with a model as attempts and the leaderboard show it; [label] is "<agent> · <model>".
+ */
+data class CandidateRef(
+    val agentKey: String,
+    val agentName: String,
+    val harness: AgentHarness?,
+    val modelProfileId: ModelProfileId,
+    val modelDisplayName: String,
+) {
+    val label: String get() = "$agentName · $modelDisplayName"
+
+    /** The grouping key of the leaderboard: agent and model. */
+    val key: Pair<String, ModelProfileId> get() = agentKey to modelProfileId
+
+    companion object {
+        /** Model answers ([harness] null) do prompt tasks, coding agents coding tasks; other pairs are not applicable. */
+        fun applicable(harness: AgentHarness?, kind: TaskKind): Boolean = (harness == null) == (kind == TaskKind.PROMPT)
+
+        /** Built-in names of the agents a benchmark without candidates uses (ADR 0057 decision 6). */
+        const val MODEL_ANSWER_NAME = "Model answer"
+        const val OPENCODE_NAME = "OpenCode"
+        const val CLAUDE_CODE_NAME = "Claude Code"
+
+        /**
+         * A benchmark created with models only (before ADR 0059): prompt tasks are done by `model-answer`, coding tasks by
+         * the agent of the benchmark's coding harness. Returns the agent's key, name and harness.
+         */
+        fun legacyAgent(kind: TaskKind, codingHarness: AgentHarness): Triple<String, String, AgentHarness?> = when {
+            kind == TaskKind.PROMPT -> Triple(AgentSnapshot.MODEL_ANSWER, MODEL_ANSWER_NAME, null)
+            codingHarness == AgentHarness.CLAUDE_CODE -> Triple(AgentSnapshot.CLAUDE_CODE, CLAUDE_CODE_NAME, AgentHarness.CLAUDE_CODE)
+            else -> Triple(AgentSnapshot.OPENCODE, OPENCODE_NAME, AgentHarness.OPENCODE)
+        }
+    }
+}
+
+/**
+ * Aggregate root: one comparison of candidates (ADR 0059: agents with models; before it, models) on a suite. Attempts
+ * are persisted separately (they are large and updated concurrently) and refer to the benchmark by id; the aggregate
+ * holds the plan and the status machine `DRAFT -> RUNNING -> COMPLETED | FAILED | CANCELLED`.
  */
 data class Benchmark(
     val id: BenchmarkId,
@@ -83,15 +135,30 @@ data class Benchmark(
     val createdBy: Actor? = null,
     /** Who changed its lifecycle last (start, cancel); null until then. */
     val updatedBy: Actor? = null,
+    /**
+     * ADR 0059: the agents with models compared; [modelProfileIds] are then their distinct models. Empty = a benchmark
+     * of models only ([legacy]): each model as `model-answer` for prompt tasks and as the agent of [codingHarness] for
+     * coding tasks.
+     */
+    val candidates: List<BenchmarkCandidate> = emptyList(),
 ) {
     init {
         val errors = mutableListOf<ValidationException.FieldError>()
         if (name.isBlank()) errors += ValidationException.FieldError("name", "must not be blank")
-        if (modelProfileIds.isEmpty()) errors += ValidationException.FieldError("modelProfileIds", "at least one model is required")
-        if (modelProfileIds.toSet().size != modelProfileIds.size) errors += ValidationException.FieldError("modelProfileIds", "must not contain duplicates")
+        if (modelProfileIds.isEmpty()) errors += ValidationException.FieldError("modelProfileIds", "at least one candidate or model is required")
+        if (candidates.isEmpty() && modelProfileIds.toSet().size != modelProfileIds.size) errors += ValidationException.FieldError("modelProfileIds", "must not contain duplicates")
+        if (candidates.map { it.agentKey to it.modelProfileId }.toSet().size != candidates.size) {
+            errors += ValidationException.FieldError("candidates", "must not contain the same agent with the same model twice")
+        }
         if (repetitions !in 1..MAX_REPETITIONS) errors += ValidationException.FieldError("repetitions", "must be within 1..$MAX_REPETITIONS")
         if (errors.isNotEmpty()) throw ValidationException(errors)
     }
+
+    /** ADR 0059: created with models only (no candidates); runs as before ADR 0059. */
+    val legacy: Boolean get() = candidates.isEmpty()
+
+    /** ADR 0059: the same candidates with fresh agent snapshots (name, harness), taken when the benchmark starts. */
+    fun withCandidates(refreshed: List<BenchmarkCandidate>): Benchmark = copy(candidates = refreshed)
 
     fun start(now: Instant, actor: Actor? = null): Benchmark {
         if (status != BenchmarkStatus.DRAFT) throw InvalidStateException("benchmark $id cannot be started from $status")
@@ -128,12 +195,15 @@ data class Benchmark(
             id: BenchmarkId = BenchmarkId.new(),
             actor: Actor? = null,
             runnerTarget: RunnerTarget = RunnerTarget.SHARED,
+            candidates: List<BenchmarkCandidate> = emptyList(),
         ): Benchmark = Benchmark(
             id = id,
             name = name,
             suiteId = suiteId,
             taskIds = taskIds,
-            modelProfileIds = modelProfileIds,
+            // ADR 0059: with candidates the models are theirs (a model-only benchmark lists its models)
+            modelProfileIds = if (candidates.isEmpty()) modelProfileIds else candidates.map { it.modelProfileId }.distinct(),
+            candidates = candidates,
             judgeModelProfileId = judgeModelProfileId,
             repetitions = repetitions,
             codingHarness = codingHarness,
@@ -180,7 +250,21 @@ data class Attempt(
     val createdAt: Instant,
     val startedAt: Instant? = null,
     val finishedAt: Instant? = null,
+    /** ADR 0059: the candidate's agent (key, name, harness; no harness = model answer); null on attempts before it. */
+    val agentKey: String? = null,
+    val agentName: String? = null,
+    val harness: AgentHarness? = null,
 ) {
+    /**
+     * ADR 0059: the agent and model of this attempt. An attempt without an agent (stored before ADR 0059) had the agent
+     * of a benchmark without candidates ([CandidateRef.legacyAgent] with the benchmark's [codingHarness]).
+     */
+    fun candidate(codingHarness: AgentHarness = AgentHarness.OPENCODE): CandidateRef {
+        if (agentKey != null) return CandidateRef(agentKey, agentName ?: agentKey, harness, modelProfileId, modelDisplayName)
+        val (key, name, legacyHarness) = CandidateRef.legacyAgent(kind, codingHarness)
+        return CandidateRef(key, name, legacyHarness, modelProfileId, modelDisplayName)
+    }
+
     fun start(now: Instant): Attempt = copy(status = AttemptStatus.RUNNING, startedAt = now, error = null)
 
     fun withRunnerJob(jobId: RunnerJobId): Attempt = copy(runnerJobId = jobId)

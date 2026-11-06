@@ -3,8 +3,10 @@
 ## When to use this guide
 
 You want a number, not an opinion, for questions like "is Sonnet good enough for spec writing in my
-projects?" or "which model should implement tickets in this Kotlin codebase, and what does a ticket
-cost?". This guide walks through the Model Evaluation context end to end: catalogue entries, task
+projects?", "which agent and model should implement tickets in this Kotlin codebase, and what does an
+accepted ticket cost?" or "does my Analyst agent with its rules beat a plain model answer?". A benchmark
+compares **candidates**: an agent of the task library (harness, instructions, rules, skills, MCP servers)
+with a model (ADR 0059). This guide walks through the Model Evaluation context end to end: catalogue entries, task
 suites, tasks of both kinds, starting a benchmark, reading the leaderboard and applying the result to
 pipeline steps. Concepts are described in
 [04-model-evaluation.md](../architecture/04-model-evaluation.md); the API is in
@@ -96,7 +98,9 @@ so the breakdowns mean something.
 ### PROMPT task (analysis, specification, review, architecture)
 
 The candidate gets `instructions` (+ `context`) as one chat call; the judge grades the answer with the
-`rubric` and optional `referenceAnswer`.
+`rubric` and optional `referenceAnswer`. Prompt tasks are done by model answer agents (agents without a harness:
+`model-answer`, `analyst`, `reviewer` or your own); the agent's environment (instructions, rules, skills) is the
+system prompt of that call.
 
 ```json
 POST /api/v1/task-suites/{suiteId}/tasks
@@ -125,8 +129,9 @@ What makes a rubric work:
 
 ### CODING_JOB task
 
-The task runs in the agent runner (OpenCode harness by default, Claude Code optional per benchmark)
-against a real repository. The runner clones `repository.url` at `baseRef`, runs `setupCommand`, lets
+The task runs in the agent runner with the harness of the candidate's coding agent (`opencode`, `claude-code`
+or your own coding agent), with the agent's environment in the job as in a workflow step (ADR 0057), against a
+real repository. The runner clones `repository.url` at `baseRef`, runs `setupCommand`, lets
 the agent work on branch `eval/<attempt>` (never pushed), then runs `verifyCommand`. `passed` is
 `exit code == 0`; the judge scores the summary, diff statistics and verification output against the rubric.
 
@@ -163,25 +168,42 @@ available (`backoffice.runner.mode=DISABLED`).
 ```json
 POST /api/v1/benchmarks
 {
-  "name": "Spec writers, September",
+  "name": "Spec writers and implementers, September",
   "suiteId": "…",
-  "modelProfileIds": ["<sonnet-5>", "<haiku-4-5>", "<gpt-5>"],
+  "candidates": [
+    { "agentKey": "model-answer", "modelProfileId": "<haiku-4-5>" },
+    { "agentKey": "analyst",      "modelProfileId": "<sonnet-5>" },
+    { "agentKey": "opencode",     "modelProfileId": "<gpt-5>" },
+    { "agentKey": "claude-code" }
+  ],
   "judgeModelProfileId": "<fable-5-1>",
   "repetitions": 3,
-  "codingHarness": "OPENCODE",
   "taskIds": []
 }
 POST /api/v1/benchmarks/{id}/start   -> 202, status RUNNING
 ```
 
+**Candidates (ADR 0059).** Each candidate is `{agentKey, modelProfileId?}`; without `modelProfileId` the agent's
+own model is used (an agent without one is refused). Prompt tasks go to model answer agents, coding tasks to coding
+agents; any other pair (a coding task for `analyst`, a prompt task for `claude-code`) creates no attempt and is
+counted in the candidate's `notApplicable`. To compare on both kinds of tasks, add a candidate of each kind. The same
+agent with the same model may appear once. `GET /benchmarks/{id}` returns the resolved `candidateRefs`
+(`agentKey`, `agentName`, `harness`, `modelProfileId`, `label` = `"<agent> · <model>"`). A Claude Code login model
+(ADR 0048) works only as the model of a Claude Code agent and with `runnerTarget` on your personal runner.
+
+**Benchmarks of models (before ADR 0059).** `modelProfileIds` with `codingHarness` and no `candidates` is still
+accepted and means what it meant before: each model as `model-answer` on prompt tasks and as the agent of the coding
+harness (`opencode` / `claude-code`) on coding tasks, without an agent environment. Stored benchmarks run that way and
+their leaderboards show one row per model and agent. One of `candidates` and `modelProfileIds` is required.
+
 Rules of thumb:
 
 - The judge is fixed per benchmark so scores are comparable across candidates. Use the strongest model
-  you can afford as judge and never a model that is also a candidate.
+  you can afford as judge and never a model that is also a candidate's model.
 - `repetitions` 2-3 gives you the `stability` metric (standard deviation across repetitions). Non-zero
   stability on `PROMPT` tasks is normal; large values mean the task or rubric is underspecified.
 - `taskIds` empty runs the whole suite; a subset is useful to iterate on one rubric cheaply.
-- Attempts are planned up front (tasks x models x repetitions) and persisted as `PENDING`, then executed
+- Attempts are planned up front (tasks x applicable candidates x repetitions) and persisted as `PENDING`, then executed
   with at most `backoffice.evaluation.concurrency-per-provider` (default 2) attempts in flight per
   provider. A restart re-queues what was in flight; coding jobs re-attach to their runner Job.
 - Progress arrives on the SSE stream as `BenchmarkProgress` (`total`, `done`, `failed`) and the
@@ -195,22 +217,27 @@ Rules of thumb:
 GET /api/v1/benchmarks/{id}/leaderboard
 ```
 
+One row per candidate (`candidate`: agent and model, `label` `"<agent> · <model>"`).
+
 | Field | Meaning |
 |---|---|
+| `candidate` | the agent and model of the row (ADR 0059) |
 | `meanScore` | mean judge score over succeeded attempts |
 | `passRate` | share of attempts with `passed = true` (coding: tests green; prompt: score >= 70); failed and timed-out attempts count as not passed |
 | `meanCost`, `totalCost` | candidate cost per attempt / overall (judge cost is on the attempt detail as `judgeCost` and in the benchmark total) |
+| `costPerAccepted` | `totalCost / passed attempts`: the cost of an accepted result, failed attempts paid by the passed ones; null without a passed attempt (ADR 0059) |
+| `notApplicable` | tasks of the benchmark the candidate cannot do (a coding task for a model answer agent and the reverse) |
 | `scorePerDollar` | `meanScore / meanCost`, the efficiency number |
 | `p50LatencyMs`, `p95LatencyMs` | wall clock per attempt, including runner time for coding tasks |
 | `stability` | standard deviation of score across repetitions, averaged over tasks; null without repetitions |
 
 `byCategory`, `byDifficulty` and `byTask` repeat the rows for each slice. The UI plots score against
-cost so the Pareto frontier is visible; the same reading works from the JSON: a model that is not on
+cost so the Pareto frontier is visible; the same reading works from the JSON: a candidate that is not on
 the frontier is dominated by another one that is both better and cheaper.
 
 Drill into surprises with `GET /benchmarks/{id}/attempts?modelProfileId=…` and
-`GET /benchmarks/{id}/attempts/{attemptId}` (full output, judge criteria and rationale, verification
-output, runner job id, error). Read the judge rationale for the worst attempt of each model before
+`GET /benchmarks/{id}/attempts/{attemptId}` (`candidate`, full output, judge criteria and rationale, verification
+output, runner job id, error). Read the judge rationale for the worst attempt of each candidate before
 concluding anything; a low score is as often a rubric problem as a model problem.
 
 ## 6. Apply the result to pipeline steps
@@ -225,14 +252,18 @@ outcome of a benchmark:
    `CODING`), not everywhere.
 3. Prefer the profile (model plus reasoning level) that won, not just the model; `HIGH` reasoning on a
    mid-tier model often beats `LOW` on a premium one per dollar.
-4. Re-run the same benchmark when a provider ships a new model or changes prices; benchmarks are cheap
-   compared with a week of wrong defaults.
+4. Re-run the same benchmark when a provider ships a new model or changes prices, or when you change an
+   agent's instructions, rules or skills; benchmarks are cheap compared with a week of wrong defaults.
+5. Put the winning candidate on the task steps (the step's **Agent** and **Model profile** overrides) and check it
+   on real issues against the reference workflow "Reference: one Claude Code session": the cost of an accepted
+   result per step is in `GET /api/v1/insights/agents`, per workflow in the workflow metrics
+   ([designing-a-workflow.md](designing-a-workflow.md#comparing-workflows-and-agents-on-the-same-issues)).
 
 ## 7. Cost caveats
 
 - Every attempt costs candidate tokens plus judge tokens; judge cost is typically 20-40 % of the total
   for prompt tasks because the judge reads the task, the rubric and the output. Budget:
-  `tasks x models x repetitions x (candidate + judge)`.
+  `tasks x applicable candidates x repetitions x (candidate + judge)`.
 - Coding attempts are expensive: an agent loop reads a lot of the repository. Expect 0.5-5 USD per
   attempt on frontier models and cap `timeoutSeconds`. Claude Code reports its own cost, which the
   ledger books as `cost`; the price-list computation is kept as `estimatedCost` for comparison.

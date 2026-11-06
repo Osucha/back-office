@@ -1,10 +1,14 @@
 package pl.mos.backoffice.projects.domain.model
 
 import pl.mos.backoffice.shared.InvalidStateException
+import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.RunnerJobId
+import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.TokenUsage
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import java.time.Instant
 
 enum class RunStatus {
@@ -86,6 +90,24 @@ data class Artifact(
     }
 }
 
+/**
+ * ADR 0059: who did a TASK step: the agent (key, name, harness; no harness = model answer) and the model profile it ran
+ * with ([modelLabel] is the profile's display name). Null on executions of other kinds and on those before ADR 0059.
+ */
+data class StepAgentRecord(
+    val agentKey: String,
+    val agentName: String,
+    val harness: AgentHarness? = null,
+    val modelProfileId: ModelProfileId? = null,
+    val modelLabel: String? = null,
+) {
+    companion object {
+        /** [agent] running with [profile]; null profile = the model is not known (the step failed before choosing it). */
+        fun of(agent: AgentSnapshot, profile: ModelProfileSnapshot?): StepAgentRecord =
+            StepAgentRecord(agent.key, agent.name, agent.harness, profile?.id, profile?.displayName)
+    }
+}
+
 /** One attempt of one node; `port` is the output port the run left through. */
 data class NodeExecution(
     val id: NodeExecutionId,
@@ -109,6 +131,8 @@ data class NodeExecution(
     val artifactIds: List<ArtifactId> = emptyList(),
     /** What a runner step did per repository (ADR 0034); empty for steps without repositories. */
     val repositories: List<RepositoryResult> = emptyList(),
+    /** ADR 0059: the agent and model of a TASK step; null for other kinds and older executions. */
+    val agent: StepAgentRecord? = null,
 ) {
     val open: Boolean get() = status.open
 }
@@ -205,9 +229,11 @@ data class WorkflowRun(
         artifactIds: List<ArtifactId> = emptyList(),
         repositories: List<RepositoryResult> = emptyList(),
         apiCost: Money? = null,
+        agent: StepAgentRecord? = null,
     ): WorkflowRun = finishNode(nodeId) {
         it.copy(
             repositories = repositories.ifEmpty { it.repositories },
+            agent = agent ?: it.agent,
             status = NodeExecutionStatus.SUCCEEDED,
             port = port,
             finishedAt = now,
@@ -231,9 +257,11 @@ data class WorkflowRun(
         runnerJobId: RunnerJobId? = null,
         repositories: List<RepositoryResult> = emptyList(),
         apiCost: Money? = null,
+        agent: StepAgentRecord? = null,
     ): WorkflowRun = finishNode(nodeId) {
         it.copy(
             repositories = repositories.ifEmpty { it.repositories },
+            agent = agent ?: it.agent,
             apiCost = apiCost ?: cost,
             status = NodeExecutionStatus.FAILED,
             port = port,

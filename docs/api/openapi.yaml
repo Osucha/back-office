@@ -603,6 +603,21 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowInsights' } } } }
         '400': { $ref: '#/components/responses/Problem' }
+  /insights/agents:
+    get:
+      tags: [insights]
+      operationId: getAgentInsights
+      description: >
+        ADR 0059: the task steps of the runs the caller may view (`project.view`), created in `[from, to)` (default the
+        last 30 days, at most 366 days), per agent and model and per template: executions, accepted results, first-pass
+        rate, cost and the cost of an accepted result.
+      parameters:
+        - { name: projectId, in: query, schema: { type: string, format: uuid }, description: 'omit for all visible projects' }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AgentInsights' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
   /insights/library-workflows:
     get:
       tags: [insights]
@@ -949,6 +964,24 @@ paths:
       description: >
         ADR 0036 "Add Spec Kit workflows" (`workflow.edit`): seeds the Spec Kit workflows the project lacks. Needs Spec
         Kit on for the project and the platform and at least one repository (409 otherwise). Audited `PROJECT_SPEC_KIT_SEEDED`.
+      responses:
+        '200': { description: The workflows that were added, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/WorkflowDefinition' } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/default-workflows:
+    parameters: [ { $ref: '#/components/parameters/projectId' } ]
+    get:
+      tags: [projects]
+      operationId: getMissingDefaultWorkflows
+      description: 'ADR 0059 (`project.view`): names of the default workflows (other than the Spec Kit ones, see /spec-kit) the project lacks; empty without a repository.'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { type: string } } } } }
+    post:
+      tags: [projects]
+      operationId: addDefaultWorkflows
+      description: >
+        ADR 0059 "Add missing default workflows" (`workflow.edit`): seeds the default workflows (other than the Spec Kit
+        ones) the project lacks, by name, e.g. "Reference: one Claude Code session". Needs a repository (409 otherwise).
+        Audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`.
       responses:
         '200': { description: The workflows that were added, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/WorkflowDefinition' } } } } }
         '409': { $ref: '#/components/responses/Problem' }
@@ -3189,6 +3222,7 @@ components:
         nodeName: { type: string }
         kind: { $ref: '#/components/schemas/NodeKind' }
         templateKey: { type: string, nullable: true }
+        agent: { allOf: [ { $ref: '#/components/schemas/StepAgentRecord' } ], nullable: true, description: 'ADR 0059: who did this TASK step; null for other kinds and executions before ADR 0059' }
         attempt: { type: integer }
         status: { $ref: '#/components/schemas/NodeExecutionStatus' }
         port: { type: string, nullable: true, description: output port taken }
@@ -3206,6 +3240,16 @@ components:
           type: array
           items: { $ref: '#/components/schemas/RepositoryResult' }
           description: 'per-repository result of a runner step (ADR 0034); empty for steps without repositories'
+    StepAgentRecord:
+      type: object
+      description: 'ADR 0059: the agent and model a task step ran with'
+      required: [agentKey, agentName]
+      properties:
+        agentKey: { type: string }
+        agentName: { type: string }
+        harness: { allOf: [ { $ref: '#/components/schemas/AgentHarness' } ], nullable: true, description: empty = model answer }
+        modelProfileId: { type: string, format: uuid, nullable: true }
+        modelLabel: { type: string, nullable: true }
     RepositoryResult:
       type: object
       description: 'What a runner step did in one repository (ADR 0034). Built from RunnerResult.repositories, or from the legacy single-repository fields of older runners.'
@@ -4500,7 +4544,7 @@ components:
         humanWait: { $ref: '#/components/schemas/DistributionStat' }
         totalCost: { $ref: '#/components/schemas/Money' }
         costPerRun: { $ref: '#/components/schemas/Money' }
-        costPerSuccessfulRun: { $ref: '#/components/schemas/Money' }
+        costPerSuccessfulRun: { allOf: [ { $ref: '#/components/schemas/Money' } ], description: 'ADR 0059: the cost of an accepted result: the cost of every run in scope / successful runs' }
         totalApiCost: { allOf: [ { $ref: '#/components/schemas/Money' } ], description: 'ADR 0042: totalCost plus what subscriptions paid for, at API list prices' }
         apiCostPerRun: { $ref: '#/components/schemas/Money' }
         apiCostPerSuccessfulRun: { $ref: '#/components/schemas/Money' }
@@ -4539,6 +4583,44 @@ components:
       properties:
         libraryWorkflowId: { type: string, format: uuid }
         metrics: { $ref: '#/components/schemas/WorkflowMetrics' }
+    AgentMetrics:
+      type: object
+      description: >-
+        ADR 0059: task steps done by one agent with one model. Accepted = a succeeded execution that is the last one of
+        its node in a run that ended successfully; costPerAccepted = cost of every execution / accepted executions.
+      required: [agentKey, agentName, executions, succeeded, failed, accepted, cost, apiCost]
+      properties:
+        agentKey: { type: string }
+        agentName: { type: string }
+        harness: { allOf: [ { $ref: '#/components/schemas/AgentHarness' } ], nullable: true }
+        modelProfileId: { type: string, format: uuid, nullable: true }
+        modelLabel: { type: string, nullable: true }
+        executions: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        accepted: { type: integer }
+        firstPassRate: { type: number, nullable: true, description: 'accepted executions with attempt 1 / accepted executions' }
+        cost: { $ref: '#/components/schemas/Money' }
+        apiCost: { $ref: '#/components/schemas/Money' }
+        costPerAccepted: { allOf: [ { $ref: '#/components/schemas/Money' } ], nullable: true, description: null without accepted executions }
+        duration: { $ref: '#/components/schemas/DistributionStat' }
+    TemplateAgentMetrics:
+      type: object
+      description: 'ADR 0059: the agents compared on one template'
+      required: [templateKey, rows]
+      properties:
+        templateKey: { type: string }
+        templateName: { type: string, nullable: true }
+        rows: { type: array, items: { $ref: '#/components/schemas/AgentMetrics' } }
+    AgentInsights:
+      type: object
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        projectId: { type: string, format: uuid, nullable: true }
+        byAgent: { type: array, items: { $ref: '#/components/schemas/AgentMetrics' }, description: 'lowest cost per accepted step first' }
+        byTemplate: { type: array, items: { $ref: '#/components/schemas/TemplateAgentMetrics' } }
+        unattributed: { type: integer, description: 'task step executions without an agent record (before ADR 0059)' }
     AttestationSummary:
       type: object
       properties:
@@ -4694,16 +4776,38 @@ components:
         - type: object
           properties:
             tasks: { type: array, items: { $ref: '#/components/schemas/EvalTask' } }
+    BenchmarkCandidate:
+      type: object
+      description: 'ADR 0059: an agent with a model; without a model the agent''s own model (the agent must have one then)'
+      required: [agentKey]
+      properties:
+        agentKey: { type: string }
+        modelProfileId: { type: string, format: uuid, nullable: true }
+    BenchmarkCandidateRef:
+      type: object
+      required: [agentKey, agentName, modelProfileId, label]
+      properties:
+        agentKey: { type: string }
+        agentName: { type: string }
+        harness: { allOf: [ { $ref: '#/components/schemas/AgentHarness' } ], nullable: true }
+        modelProfileId: { type: string, format: uuid }
+        label: { type: string, description: '"<agent> · <model>"' }
     BenchmarkInput:
       type: object
-      required: [name, suiteId, modelProfileIds, judgeModelProfileId]
+      required: [name, suiteId, judgeModelProfileId]
+      description: >-
+        ADR 0059: `candidates` (agents with models) are compared; prompt tasks go to model answer agents, coding tasks to
+        coding agents, other pairs are not applicable. Without candidates, `modelProfileIds` with `codingHarness` mean
+        each model as `model-answer` for prompt tasks and as the agent of the coding harness for coding tasks (as
+        before ADR 0059). One of the two is required.
       properties:
         name: { type: string }
         suiteId: { type: string, format: uuid }
-        modelProfileIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        candidates: { type: array, items: { $ref: '#/components/schemas/BenchmarkCandidate' } }
+        modelProfileIds: { type: array, items: { type: string, format: uuid }, description: 'legacy: models without agents (see description)' }
         judgeModelProfileId: { type: string, format: uuid }
         repetitions: { type: integer, minimum: 1, maximum: 5, default: 1 }
-        codingHarness: { type: string, enum: [OPENCODE, CLAUDE_CODE], default: OPENCODE }
+        codingHarness: { type: string, enum: [OPENCODE, CLAUDE_CODE], default: OPENCODE, description: 'legacy, with modelProfileIds only' }
         taskIds: { type: array, items: { type: string, format: uuid } }
         runnerTarget: { $ref: '#/components/schemas/RunnerTarget' }
     RunnerTarget:
@@ -4787,6 +4891,7 @@ components:
         - type: object
           properties:
             models: { type: array, items: { $ref: '#/components/schemas/ModelProfile' } }
+            candidateRefs: { type: array, items: { $ref: '#/components/schemas/BenchmarkCandidateRef' }, description: 'ADR 0059: the candidates resolved (legacy benchmarks: derived from the models)' }
             judge: { $ref: '#/components/schemas/ModelProfile' }
     AttemptStatus:
       type: string
@@ -4801,6 +4906,7 @@ components:
         difficulty: { $ref: '#/components/schemas/Difficulty' }
         modelProfileId: { type: string, format: uuid }
         modelDisplayName: { type: string }
+        candidate: { allOf: [ { $ref: '#/components/schemas/BenchmarkCandidateRef' } ], nullable: true, description: 'ADR 0059: the agent and model of this attempt' }
         repetition: { type: integer }
         status: { $ref: '#/components/schemas/AttemptStatus' }
         kind: { type: string, enum: [PROMPT, CODING_JOB] }
@@ -4824,15 +4930,19 @@ components:
             error: { type: string, nullable: true }
     LeaderboardRow:
       type: object
+      description: 'ADR 0059: one row per candidate (agent and model)'
       properties:
+        candidate: { $ref: '#/components/schemas/BenchmarkCandidateRef' }
         modelProfileId: { type: string, format: uuid }
         modelDisplayName: { type: string }
         provider: { $ref: '#/components/schemas/Provider' }
         attempts: { type: integer }
+        notApplicable: { type: integer, description: 'tasks of the benchmark this candidate cannot do (a coding task for a model answer agent and the reverse)' }
         meanScore: { type: number, nullable: true }
         passRate: { type: number, nullable: true }
         meanCost: { $ref: '#/components/schemas/Money' }
         totalCost: { $ref: '#/components/schemas/Money' }
+        costPerAccepted: { allOf: [ { $ref: '#/components/schemas/Money' } ], nullable: true, description: 'ADR 0059: total cost / passed attempts; null without a passed attempt' }
         scorePerDollar: { type: number, nullable: true }
         p50LatencyMs: { type: integer, format: int64, nullable: true, description: 'ADR 0046: median of the candidate''s own time (model answer or agent job) in succeeded attempts' }
         p95LatencyMs: { type: integer, format: int64, nullable: true }

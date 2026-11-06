@@ -41,6 +41,7 @@ import { EventStreamService } from '../../../core/events/event-stream.service';
 import { InboxService } from '../../../core/state/inbox.service';
 import { ProjectsStore } from '../../../core/state/projects.store';
 import { RunDetailsStore } from '../../../core/state/run-details.store';
+import { agentModelText } from '../../../core/ui/agents';
 import { ArtifactViewerComponent } from '../../../core/ui/artifact-viewer.component';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
@@ -393,7 +394,7 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
                             </span>
                             <bo-provenance
                               [who]="kindTitle(s)"
-                              [detail]="s.templateKey ?? null"
+                              [detail]="stepDetail(s)"
                               [durationMs]="stepDuration(s)"
                               [cost]="s.cost?.amount || s.apiCost?.amount ? s.cost : null"
                               [apiCost]="s.apiCost"
@@ -425,7 +426,7 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
                   </header>
                   <bo-provenance
                     [who]="kindTitle(s)"
-                    [detail]="s.templateKey ?? null"
+                    [detail]="stepDetail(s)"
                     [at]="s.startedAt"
                     [durationMs]="stepDuration(s)"
                     [cost]="s.cost"
@@ -1332,6 +1333,12 @@ export class RunDetailPageComponent {
           ? this.gateDecidable()
           : undefined,
     });
+
+  /** The template of a task step and, since ADR 0059, who did it: "implement · Claude Code · Claude Sonnet". */
+  stepDetail(s: NodeExecution): string | null {
+    const parts = [s.templateKey, agentModelText(s.agent)].filter((x) => !!x);
+    return parts.length ? parts.join(' · ') : null;
+  }
 
   kindTitle(s: NodeExecution): string {
     return s.kind ? NODE_KIND_META[s.kind].title : $localize`:@@runs.detail.step:Step`;

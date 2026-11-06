@@ -7,10 +7,12 @@ import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
 import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.domain.model.NodeKind
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 
 /** Registry of task strategies by [TaskRunKind] (ADR 0056). */
@@ -46,16 +48,22 @@ class TaskNodeExecutor(
             context.log("input $missing consumed by ${task.key} is not available yet")
         }
         context.log("running task ${task.key} with agent ${task.agent.key} (${TaskRunKind.of(task)})")
-        return consumingFeedback(context, strategies.forTask(task).execute(context, task))
+        return consumingFeedback(context, attributed(task, strategies.forTask(task).execute(context, task)))
     }
 
     override fun resume(context: NodeContext, jobId: RunnerJobId): NodeResult {
         val node = context.node as? WorkflowNode.Task ?: throw InvalidStateException("node ${context.node.id} is not a TASK node")
         val task = catalog.resolve(node.task.templateKey, context.project.id.value, node.task.overrides)
             ?: return NodeResult.failure("unknown task template ${node.task.templateKey}")
-        return consumingFeedback(context, strategies.forTask(task).resume(context, task, jobId))
+        return consumingFeedback(context, attributed(task, strategies.forTask(task).resume(context, task, jobId)))
     }
 
+    /**
+     * ADR 0059: every finished task step records its agent. The strategy reports the model it used; a result without a
+     * record (a step that failed before choosing its model) gets the agent alone. A submitted job is not finished yet.
+     */
+    private fun attributed(task: ResolvedTask, result: NodeResult): NodeResult =
+        if (result.agent != null || result.awaitingJob != null) result else result.copy(agent = StepAgentRecord.of(task.agent, null))
 }
 
 /**

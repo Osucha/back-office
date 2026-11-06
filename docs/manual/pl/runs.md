@@ -58,6 +58,11 @@ segment, aby zaznaczyć dany krok.
 | **Wejście** (**Input**) | Wejście uruchomienia: klucz zgłoszenia, parametry (wartości danych wejściowych z formularza startu i ewentualne dodatkowe parametry) i, dla uruchomień z CI, kontekst CI. |
 | **Pochodzenie** (**Provenance**) | Podpisane atestacje uruchomienia (zob. [Pochodzenie](runs.md#provenance)). |
 
+- **Kto wykonał krok zadania.** Każdy krok zadania zapisuje agenta i model, z którym działał. Oś czasu pokazuje je
+  pod krokiem jako *szablon · agent · model*, na przykład `implement-opencode · Claude Code · Claude Sonnet`, a fakty
+  kroku mają wiersz **Agent** (z rodzajem agenta, gdy jego nazwa go nie mówi). Kroki wykonane, zanim zaczęto
+  zapisywać agentów, pokazują tylko szablon. Te zapisy zasilają
+  [Agenci: koszt i skuteczność](costs-insights.md#agent-insights).
 - **Artefakty** to dokumenty wytworzone przez kroki: `spec`, `plan`, `tasks`, `review`, `diff` i inne.
   Wybierz artefakt, aby go przeczytać; **Kopiuj** (**Copy**) kopiuje treść.
 - **Logi** pokazują **Ten krok** (**This step**) lub **Wszystkie kroki** (**All steps**). Włącz

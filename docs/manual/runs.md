@@ -53,6 +53,11 @@ relay track with labels, durations and costs; click a segment to select that ste
 | **Input** | The run input: issue key, parameters (the values of the start form's run inputs and any extra parameters) and, for CI-started runs, the CI context. |
 | **Provenance** | The signed attestations of the run (see [Provenance](runs.md#provenance)). |
 
+- **Who did a task step.** Every task step records the agent and the model it ran with. The timeline shows them
+  under the step as *template · agent · model*, for example `implement-opencode · Claude Code · Claude Sonnet`, and
+  the step's facts have the row **Agent** (with the agent's kind when its name does not say it). Steps that ran
+  before agents were recorded show only the template. These records feed
+  [Agents: cost and effectiveness](costs-insights.md#agent-insights).
 - **Artefacts** are the documents the steps produced: `spec`, `plan`, `tasks`, `review`, `diff` and
   others. Select one to read it; **Copy** copies the content.
 - **Logs** shows **This step** or **All steps**. Turn on **Follow** to stay at the newest line; a live

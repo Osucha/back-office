@@ -2,9 +2,9 @@
 
 ## Goal
 
-Answer, with numbers from the owner's own kind of work: *which model should run which step, and what
-does it cost?* Public benchmarks do not cover "write a spec for my kind of ticket" or "implement a
-Kotlin feature in my hexagonal codebase with my test suite".
+Answer, with numbers from the owner's own kind of work: *which agent with which model should run which
+step, and what does an accepted result cost?* Public benchmarks do not cover "write a spec for my kind of
+ticket" or "implement a Kotlin feature in my hexagonal codebase with my test suite".
 
 ## Building blocks
 
@@ -12,9 +12,33 @@ Kotlin feature in my hexagonal codebase with my test suite".
 |---|---|
 | `ModelProfile` | Catalogue entry: provider, model id, default options (reasoning effort, max tokens), pricing |
 | `TaskSuite` / `EvalTask` | The work to be evaluated, grouped; each task has a category and difficulty |
-| `Benchmark` | Suite × models × repetitions, with a judge model |
-| `Attempt` | One execution of one task by one model, with output, score, tokens, cost, latency |
-| Leaderboard | Read model aggregating attempts |
+| `Benchmark` | Suite × candidates × repetitions, with a judge model (ADR 0059; before it: suite × models) |
+| Candidate (`BenchmarkCandidate` / `CandidateRef`) | An agent of the task library with a model profile (the agent's own model when none is given), ADR 0059 |
+| `Attempt` | One execution of one task by one candidate (agent key, name, harness and model), with output, score, tokens, cost, latency |
+| Leaderboard | Read model aggregating attempts, one row per candidate |
+
+## Candidates (ADR 0059)
+
+A benchmark compares **candidates**: an agent (harness, model, instructions, rules, skills, MCP servers, ADR 0056/0057)
+with a model profile. `BenchmarkInput.candidates` holds `{agentKey, modelProfileId?}`; without a model the agent's own
+model is used (an agent without one is refused). The evaluation context reads agents through the `TaskCatalog` port of
+the shared kernel (`agentEnvironment`); it never imports the task library. Stored in `benchmark.candidates` (JSONB,
+`V208__benchmark_candidates.sql`); attempts store `agent_key`, `agent_name`, `harness`.
+
+| Task kind | Agent kind | Runs as |
+|---|---|---|
+| `PROMPT` | model answer (no harness: `model-answer`, `analyst`, `reviewer`, own agents without harness) | one chat call; the agent's environment is the system prompt |
+| `CODING_JOB` | coding agent (`OPENCODE` or `CLAUDE_CODE` harness) | an agent job with the agent's environment in the job, as in a workflow step (ADR 0057) |
+| any other pair | | no attempt; counted per candidate as `notApplicable` |
+
+`BenchmarkExecutionPlanner` builds the matrix tasks × applicable candidates × repetitions. The environment is read when
+the candidate is asked (not for a judge retry or a submitted job); an agent deleted after the start fails the attempt.
+
+**Benchmarks of models (legacy).** A benchmark created with `modelProfileIds` only (the API before ADR 0059 and every
+stored benchmark; `Benchmark.legacy`) runs as before: each model as `model-answer` on prompt tasks and as the agent of
+`codingHarness` (`opencode` or `claude-code`) on coding tasks, every pair applicable, no agent environment. V208 fills
+the agent of the existing attempts the same way; `Benchmark.candidateRefs` are derived from the models, so such a
+leaderboard has one row per model and agent.
 
 ## Task kinds
 
@@ -34,8 +58,9 @@ per benchmark so scores are comparable across candidates.
 
 ### `CODING_JOB` tasks
 
-Executed in the agent runner (`mode = EVAL_CODING`) with the provider-agnostic OpenCode harness so
-every model gets the same tools and loop. The runner clones `repository.url` at `baseRef`, runs
+Executed in the agent runner (`mode = EVAL_CODING`) with the harness of the candidate's agent (legacy
+benchmarks: the benchmark's `codingHarness`, OpenCode by default, so every model gets the same tools and
+loop). The runner clones `repository.url` at `baseRef`, runs
 `setupCommand`, gives the agent the instructions, then runs `verifyCommand` (tests). Result:
 
 - `passed` = verification exit code 0
@@ -43,8 +68,8 @@ every model gets the same tools and loop. The runner clones `repository.url` at 
   combined as `0.6 * passed*100 + 0.4 * judgeScore` by default (configurable per suite)
 - usage/cost from the harness event stream
 
-Anthropic-only comparisons may use Claude Code as the harness for a "best-case" measurement; the
-harness is recorded on the attempt so it is never mixed up in the leaderboard.
+The harness is part of the candidate and recorded on the attempt, so Claude Code and OpenCode runs of
+the same model are separate leaderboard rows and never mixed up.
 
 ## Execution
 
@@ -72,12 +97,16 @@ as OpenTelemetry attributes so Langfuse shows them per trace when enabled.
 | `meanScore` | mean judge score over successful attempts |
 | `passRate` | share of attempts with `passed = true` (coding) or `score ≥ 70` (prompt) |
 | `meanCost` | mean cost per attempt |
+| `costPerAccepted` | ADR 0059: `totalCost / passed attempts` (failed attempts are paid by the passed ones); null without a passed attempt |
+| `notApplicable` | ADR 0059: tasks of the benchmark the candidate cannot do (a coding task for a model answer agent and the reverse) |
 | `scorePerDollar` | `meanScore / meanCost` |
 | `p50Latency`, `p95Latency` | wall-clock per attempt |
 | `stability` | standard deviation of score across repetitions |
 
-Breakdowns: by category, by difficulty, per task. The UI shows a table and a score-vs-cost scatter
-plot so the Pareto frontier is visible.
+Rows are per candidate (`LeaderboardRow.candidate`, label `agent · model`). Breakdowns: by category, by
+difficulty, per task. The UI shows a table and a score-vs-cost scatter plot so the Pareto frontier is
+visible. The same cost of an accepted result is measured on production runs, per step and per workflow
+([11-governance.md](11-governance.md#agent-insights-get-insightsagents)).
 
 ## Seed content
 

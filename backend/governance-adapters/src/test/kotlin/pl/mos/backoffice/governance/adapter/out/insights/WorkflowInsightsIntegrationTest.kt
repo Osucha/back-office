@@ -121,9 +121,9 @@ class WorkflowInsightsIntegrationTest {
 
         assertThat(t.totalCost.amount).isEqualByComparingTo(BigDecimal("5.00"))
         assertThat(t.costPerRun.amount).isEqualByComparingTo(BigDecimal("1.25"))
-        assertThat(t.costPerSuccessfulRun.amount).isEqualByComparingTo(BigDecimal("2.25"))
+        assertThat(t.costPerSuccessfulRun.amount).isEqualByComparingTo(BigDecimal("2.50")) // ADR 0059: all runs 5.00 / 2 successful
         assertThat(t.totalApiCost.amount).isEqualByComparingTo(BigDecimal("5.80"))
-        assertThat(t.apiCostPerSuccessfulRun.amount).isEqualByComparingTo(BigDecimal("2.65"))
+        assertThat(t.apiCostPerSuccessfulRun.amount).isEqualByComparingTo(BigDecimal("2.90"))
         assertThat(t.inputTokens).isEqualTo(3000)
         assertThat(t.outputTokens).isEqualTo(300)
 

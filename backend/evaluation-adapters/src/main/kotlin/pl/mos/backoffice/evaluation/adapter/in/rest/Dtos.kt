@@ -171,15 +171,23 @@ data class TaskSuiteDto(
     val tasks: List<EvalTaskDto>,
 )
 
+/** ADR 0059: an agent with a model; without a model the agent's own. */
+data class BenchmarkCandidateDto(val agentKey: String, val modelProfileId: UUID? = null)
+
+/** ADR 0059: a resolved candidate; [label] is "<agent> · <model>", [harness] null = model answer. */
+data class BenchmarkCandidateRefDto(val agentKey: String, val agentName: String, val harness: AgentHarness?, val modelProfileId: UUID, val label: String)
+
 data class BenchmarkInputDto(
     val name: String,
     val suiteId: UUID,
-    val modelProfileIds: List<UUID>,
+    /** ADR 0059: legacy, models without agents (used when [candidates] is empty). */
+    val modelProfileIds: List<UUID> = emptyList(),
     val judgeModelProfileId: UUID,
     val repetitions: Int = 1,
     val codingHarness: AgentHarness = AgentHarness.OPENCODE,
     val taskIds: List<UUID> = emptyList(),
     val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
+    val candidates: List<BenchmarkCandidateDto> = emptyList(),
 )
 
 data class ExecutionTargetDto(
@@ -212,6 +220,7 @@ data class BenchmarkSummaryDto(
     val finishedAt: Instant?,
     val createdBy: ActorRefDto? = null,
     val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
+    val candidates: List<BenchmarkCandidateDto> = emptyList(),
 )
 
 data class BenchmarkDto(
@@ -232,7 +241,9 @@ data class BenchmarkDto(
     val finishedAt: Instant?,
     val createdBy: ActorRefDto? = null,
     val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
+    val candidates: List<BenchmarkCandidateDto> = emptyList(),
     val models: List<ModelProfileDto>,
+    val candidateRefs: List<BenchmarkCandidateRefDto> = emptyList(),
     val judge: ModelProfileDto?,
 )
 
@@ -254,6 +265,8 @@ data class AttemptDto(
     val durationMs: Long?,
     val startedAt: Instant?,
     val finishedAt: Instant?,
+    /** ADR 0059: the agent and model of this attempt. */
+    val candidate: BenchmarkCandidateRefDto? = null,
 )
 
 data class JudgeCriterionDto(val name: String, val score: Double, val comment: String?)
@@ -284,6 +297,8 @@ data class AttemptDetailDto(
     val verification: VerificationDto?,
     val runnerJobId: UUID?,
     val error: String?,
+    /** ADR 0059: the agent and model of this attempt. */
+    val candidate: BenchmarkCandidateRefDto? = null,
 )
 
 data class LeaderboardRowDto(
@@ -300,6 +315,12 @@ data class LeaderboardRowDto(
     val p95LatencyMs: Long?,
     val latencySamples: Int,
     val stability: Double?,
+    /** ADR 0059: the agent and model of the row. */
+    val candidate: BenchmarkCandidateRefDto? = null,
+    /** ADR 0059: tasks of the benchmark this candidate cannot do. */
+    val notApplicable: Int = 0,
+    /** ADR 0059: total cost / passed attempts; null without a passed attempt. */
+    val costPerAccepted: MoneyDto? = null,
 )
 
 data class TaskLeaderboardDto(val taskId: UUID, val taskName: String, val rows: List<LeaderboardRowDto>)

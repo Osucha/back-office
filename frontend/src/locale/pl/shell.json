@@ -213,5 +213,9 @@
   "shell.nav.libraryTasks": "Zadania",
   "shell.nav.rules": "Reguły",
   "shell.route.agents": "Agenci",
-  "shell.nav.agents": "Agenci"
+  "shell.nav.agents": "Agenci",
+  "shell.route.agentInsights": "Wskaźniki agentów",
+  "shell.palette.openAgentInsights.title": "Porównaj agentów",
+  "shell.palette.openAgentInsights.subtitle": "Koszt zaakceptowanego wyniku według agenta i modelu",
+  "shell.palette.openAgentInsights.keywords": "wskaźniki agentów, koszt zaakceptowanego wyniku, za pierwszym razem, modele"
 }

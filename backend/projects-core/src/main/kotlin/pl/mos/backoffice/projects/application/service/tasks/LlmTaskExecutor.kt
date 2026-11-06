@@ -11,6 +11,7 @@ import pl.mos.backoffice.projects.application.service.ModelResolver
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.projects.application.service.TemplateModelBuilder
 import pl.mos.backoffice.projects.domain.model.ReviewReport
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.InjectionGuardMode
 import pl.mos.backoffice.projects.domain.service.PromptInjectionGuard
@@ -126,6 +127,7 @@ class LlmTaskExecutor(
             artifacts = artifacts,
             review = review,
             stateUpdates = updates,
+            agent = StepAgentRecord.of(task.agent, profile),
         )
     }
 

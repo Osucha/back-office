@@ -78,6 +78,16 @@ class ProjectController(
     fun addSpecKitWorkflows(@PathVariable projectId: UUID): List<WorkflowDefinitionDto> =
         projects.addSpecKitWorkflows(ProjectId(projectId)).map { mapper.toDto(it) }
 
+    // ---- default workflows added later (ADR 0059)
+
+    @GetMapping("/{projectId}/default-workflows")
+    fun missingDefaultWorkflows(@PathVariable projectId: UUID): List<String> = projects.missingDefaultWorkflows(ProjectId(projectId))
+
+    /** "Add missing default workflows": seeds the non-Spec Kit default workflows the project lacks. */
+    @PostMapping("/{projectId}/default-workflows")
+    fun addDefaultWorkflows(@PathVariable projectId: UUID): List<WorkflowDefinitionDto> =
+        projects.addDefaultWorkflows(ProjectId(projectId)).map { mapper.toDto(it) }
+
     // ---- CI entrypoints and snippet
 
     @GetMapping("/{projectId}/ci-entrypoints")

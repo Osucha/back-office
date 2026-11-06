@@ -53,9 +53,10 @@ The **JSON** view shows the full definition; edits there apply as soon as the JS
 | `Esc` | Clear the selection |
 | `Ctrl S` | Save |
 
+<a id="default-workflows"></a>
 ### The default workflows
 
-Every new project with a repository gets three workflows (a project without a repository gets the starter
+Every new project with a repository gets these workflows (a project without a repository gets the starter
 workflow **LLM task with review** instead, see [Projects without a repository](projects.md#no-repository)):
 
 - **Issue to reviewed MR**: fetch the issue, write a spec, check it (a gate asks you only when the
@@ -66,6 +67,19 @@ workflow **LLM task with review** instead, see [Projects without a repository](p
   uploaded diff and passes or fails the CI job.
 - **Change request (delta)**: impact analysis, user story and task list, each important step behind a
   gate with a checklist, then implementation, CI, review and a merge gate.
+- **Reference: one Claude Code session**: fetch the issue, then one task step (template **Agent task**, `agent-task`, with the
+  agent **Claude Code**, push and merge request on) that reads the repository, implements the issue end to end,
+  runs the build and the tests and opens the merge request, then a four-eyes **Merge?** gate (**revise** sends your
+  comment back to the step). It is the yardstick: run the same issues through it and through the cheaper workflows
+  and compare their cost of an accepted result ([Agents: cost and effectiveness](costs-insights.md#agent-insights)).
+
+**Issue to reviewed MR** is created only when Spec Kit is on ([Spec Kit](projects.md#spec-kit)).
+
+**Projects created before a default workflow existed** do not get it automatically. When a project with a
+repository lacks default workflows, its **Workflows** tab offers **Add missing default workflows (N)**
+(`workflow.edit`): it adds the missing ones by name, for example **Reference: one Claude Code session**, and never
+replaces an existing workflow with the same name. The Spec Kit workflows are added from the **Spec Kit** card
+instead ([Spec Kit](projects.md#spec-kit)).
 
 <a id="nodes"></a>
 ## Node kinds
@@ -90,21 +104,34 @@ first gate option, `success` of a CI wait, `out` of Start. If the run leaves thr
 `failure`, `fail` or `timeout` port, the run fails; through an unconnected `reject`, it is cancelled. The
 validation warns about other unconnected ports.
 
+<a id="task-nodes"></a>
 ### Task nodes
 
+A task step joins three things: a **template** (what to do), an **agent** (who works and how) and the values of the
+template's **parameters** ([Task library](task-library.md#agents)).
+
 Pick the **Template** (deprecated templates are not offered; a step that already uses one shows the tag
-**Deprecated**). Under it you see the template's lineage, agent and category, and **Open in library**.
+**Deprecated**; templates tagged **needs parameters** expect values in the step). Under it you see the template's
+lineage, agent and category, and **Open in library**.
+
+**Parameters** (shown when the template has any) lists the template's [parameters](task-library.md#parameters)
+as a form: text fields, numbers, a switch for **Yes / no**, a list for **Choice**. Empty means the template's value
+or the default, shown greyed out. A required parameter without any value is a validation error: the workflow can
+be saved only as a draft and the run does not start.
+
 **What this step gets** (collapsed) shows the template with this step's overrides applied: the agent, the model
-profile, the system and user prompt, rules, skills, configuration and run inputs, exactly what the model or coding
-agent receives before the run fills in the values. **Overrides** change the template for this node only:
+profile, the system and user prompt, rules and skills (those of the agent, adjusted by the step), configuration and
+run inputs, exactly what the model or coding agent receives before the run fills in the values. **Overrides**
+change the template for this node only:
 
 | Override | Effect |
 |---|---|
-| **Agent** | Who runs this step instead of the template's agent: **Model answer**, **OpenCode**, **Claude Code** or an agent of your library ([Agents](task-library.md#agents)). Empty = the template's agent. The step shows a problem when the agent does not fit the template (for example a Spec Kit phase or `push` with **Model answer**). |
+| **Agent** | Who runs this step instead of the template's agent: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)). Empty = the template's agent. With the agent come its instructions, rules, skills and MCP servers. The step shows a problem when the agent does not fit the template (for example a Spec Kit phase or `push` with **Model answer**). |
+| **Agent session** | Coding agents only: **New session** or **Continue the session of step …** ([Continuing a session](#continue-session)). |
 | **Model profile** | Model for this node instead of the agent's, the template's or the defaults. |
 | **User prompt** | **Inherited**, **Append** (added after the template prompt) or **Replace**. |
 | **System prompt append** | Added to the template's system prompt. |
-| **Add skills**, **Remove skills** | Adjust the template's skill list. |
+| **Add skills to the agent's**, **Drop skills of the agent** | For this step only: skills on top of the agent's, or agent skills left out. The agent keeps them elsewhere. |
 | **Config** | Settings for the step's agent such as the verify command, branch name or merge request options; merged over the template's config. |
 
 The coding agent used to be the config key `agent` (`CLAUDE_CODE`, `OPENCODE`); that key no longer exists. Stored
@@ -273,6 +300,26 @@ Validation: a step that names a workspace the project does not have, a role the 
 prepare** without a workspace is an error; a role without a workspace is a warning. Deleting a workspace turns the
 workflows that use it into drafts until their steps pick another one. A workflow published to the library keeps the
 workspace keys of its steps; the adopting project needs workspaces with those keys.
+
+<a id="continue-session"></a>
+### Continuing a session
+
+Sometimes the next step should simply carry on the same conversation: *implement*, then *fix what the review
+found*, with the agent remembering what it did. A coding step has **Agent session** under **Overrides**:
+
+- **New session** (default): the step starts a fresh conversation.
+- **Continue the session of step …**: pick an earlier coding step. This step continues that step's agent
+  session (ADR 0057).
+
+Both steps then run in the same run workspace and under the same session role, which Back Office sets for you:
+the earlier step's workspace, or the implicit workspace `run` that every project has without defining it; the
+earlier step's **Agent role**, or one derived from its id. The agent resumes its conversation (Claude Code
+`--resume`, OpenCode `--continue`) and sees the files it left. Its rules and instructions are in its environment,
+not in the prompt, so it does not get them a second time.
+
+Both steps need the same harness: a Claude Code session cannot continue in OpenCode. The picker greys out steps of
+another harness. The designer, and again the run start, refuse a step whose **Continue the session of step …**
+names a step that does not exist, is not a coding agent step or uses a different harness.
 
 <a id="decisions"></a>
 ## Decisions

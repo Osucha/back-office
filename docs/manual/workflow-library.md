@@ -18,7 +18,7 @@ and the headline figures of the chosen period (7, 30 or 90 days, or this quarter
 | Success | runs that reached a success end, of the finished runs |
 | First pass | successful runs without a "revise" decision or a retried step, of the finished runs |
 | Median time | half of the finished runs took less than this, waits included |
-| Cost / success | ledger cost of the successful runs divided by their number |
+| Cost per accepted result | ledger cost of every run in the period divided by the successful runs: failed runs and rework are paid by the accepted results ([Cost of an accepted result](costs-insights.md#cost-per-accepted)) |
 
 Click a row to open the workflow. The **Performance** tab shows the figures in detail, the **Graph** tab
 shows any version on a read-only canvas, **Versions** lists what changed in each version and where it was
@@ -83,8 +83,12 @@ the copy or the library changes. The **Performance** tab of a library workflow s
 - **Effectiveness**: success rate (successful of finished runs; failed and cancelled runs count against
   it), first-pass rate (successful without a revision or a retried step) and rework loops per run.
 - **Efficiency**: median and p90 time to finish (waits included), median **active time** (time to finish
-  minus waiting for people at gates and for CI: what the agents and steps take), human wait, cost per run
-  and per successful run, tokens.
+  minus waiting for people at gates and for CI: what the agents and steps take), tokens, and the cost.
+- **Cost per accepted result**: the cost of every run / successful runs, with the total and the cost per run
+  under it ([Cost of an accepted result](costs-insights.md#cost-per-accepted)). Next to it **Human wait** (the
+  median time a run waits for people at its gates; not converted to money, because Back Office knows how long
+  people kept a run waiting, not how long they worked) and the **First-pass rate**: a cheaper workflow is better
+  only when it does not buy its price with more human wait or more rework.
 - **By version**, newest first, each compared with the previous version that has finished runs: a green
   arrow is better (success rate up by 5 points or more, time or cost down by 10 % or more), a red one worse.
   Versions with fewer than 5 finished runs are marked with `*`: wait for more runs before drawing

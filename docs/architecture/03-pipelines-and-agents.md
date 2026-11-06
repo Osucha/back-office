@@ -136,18 +136,36 @@ Jobs by name (`run-<runId8>-<nodeId>-<attempt>`).
 The Projects context resolves a `TASK` node through the `TaskCatalog` port into a `ResolvedTask`. Since ADR 0056 a
 template has no executor: the step runs according to its resolved **agent** (the step's `overrides.agentKey`, else the
 template's `agentKey`, else `model-answer`) and the template's config. Model: the step's, else the agent's, else the
-template's, then the defaults (`ModelResolver`). The deterministic integrations are `ACTION` nodes (`action.type`,
+template's, then the defaults (`ModelResolver`; the model plan reports the source `AGENT` for the agent's model).
+Since ADR 0057 every task step gets one **environment document** rendered by `AgentEnvironment`: the platform preamble
+for its kind of agent, the agent's instructions, the project constitution, then the rules (automatic, then the
+agent's); see [07-task-library.md](07-task-library.md#agents-adr-0056-0057). The task prompt carries the task only. The deterministic integrations are `ACTION` nodes (`action.type`,
 `action.config`; palette `actions` with config schema, defaults, run inputs, ports `success`/`failure` and required
 connection capabilities), not tasks.
 
 | Way of running | When | Implementation | Inputs / outputs |
 |---|---|---|---|
-| model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; skills appended to the system prompt in a `<skills>` section; template rendered with `issue`, `artifacts.*`, `feedback`, `project.constitution`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
-| Spec Kit job (former `SPEC_KIT`) | coding agent (OpenCode, Claude Code) and the config key `phase` | runner Job, `mode = SPEC_KIT`, phase from config; skills written to the workspace; artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
-| agent job (former `IMPLEMENT`) | coding agent otherwise | runner Job, `mode = IMPLEMENT`, the agent's harness; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories` | produces `diff`, `mr`; without a push the final answer is the `result` artefact |
+| model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; system prompt = environment document, then the template's system prompt, then the skills in a `<skills>` section (PROMPT jobs of ADR 0050 get the same as `systemPrompt`); template rendered with `issue`, `artifacts.*`, `feedback`, `params.*`, `project.*`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
+| Spec Kit job (former `SPEC_KIT`) | coding agent (OpenCode, Claude Code) and the config key `phase` | runner Job, `mode = SPEC_KIT`, phase from config; environment document in `spec.instructions`, the agent's MCP servers in `spec.mcpServers`; skills written to the workspace; artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
+| agent job (former `IMPLEMENT`) | coding agent otherwise | runner Job, `mode = IMPLEMENT`, the agent's harness; `spec.instructions`, `spec.mcpServers` as above; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff`, `mr`; without a push the final answer is the `result` artefact |
 
 The resolver reports a problem (the step cannot run) when a template needs a coding agent (Spec Kit `phase`,
-`push: true`, `prepareOnly`) but gets a model answer, or has an `outputSchema` but gets a coding agent.
+`push: true`, `prepareOnly`) but gets a model answer, or when a required template parameter (ADR 0058) has no value.
+
+**Structured answers of coding agents (ADR 0057).** A coding agent step with an `outputSchema` is told in its prompt
+to write its answer as one JSON object to `structured-answer.json` in its working directory. The runner collects it
+as the artefact `structured-answer`, keeps it out of the commit and removes a stale one before the agent starts;
+`StructuredAnswers` parses it and applies the same schema check, confidence field and produced artefacts as a model
+answer. A missing or invalid answer fails the step with the reasons.
+
+**Continuing a session (ADR 0057).** Config `continueSession: <node id>` on a coding agent step continues the agent
+session of that earlier step. `SessionContinuation` gives both steps the same run workspace (the earlier step's
+`workspace`, else the implicit workspace `run`, which every project has without defining it) and the same session
+role (the earlier step's `sessionRole`, else one derived from its node id); the ADR 0044 mechanics do the rest
+(Claude Code `--resume`, OpenCode `--continue`). The designer validation and the check before a run
+(`RepositoryStepCheck`) refuse a reference to a step that does not exist, is not a coding agent step or uses another
+harness (a Claude Code session cannot continue in OpenCode). Because the rules live in the environment document and
+not in the prompt, a continued session does not receive them again.
 `GET /workflows/task-config-schemas` returns the config schema of model answer and coding agent steps (it replaced
 `/workflows/task-executors`). The former config key `agent` of a stored step is read as `overrides.agentKey`.
 
@@ -164,10 +182,11 @@ A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jir
 `config` and its `promptReplace` as the comment message; the next save writes the new form.
 
 Model answer, action, decision, gate and CI-wait nodes need no repository; a project without repositories (ADR 0034)
-runs workflows made of these. The built-in `llm-task` template (model answer; standalone, it does not extend the engineering-oriented `base-agent`) is the generic
-step of such workflows: its task (the user prompt) is written per node (override "replace prompt"); its run
-input `input` ("Input material") and the revision feedback (`{{feedback}}`, filled on a second visit) are
-part of the template's system prompt, so replacing the task keeps them.
+runs workflows made of these. The built-in `llm-task` template (agent `model-answer`) is the generic step of such
+workflows: its task is the template parameter `task` set per node (ADR 0058; the user prompt is `{{params.task}}`,
+and a stored `promptReplace` still wins); its run input `input` ("Input material") and the revision feedback
+(`{{feedback}}`, filled on a second visit) are part of the template's system prompt, so changing the task keeps
+them.
 
 ### Run inputs
 
@@ -184,7 +203,7 @@ declares nothing and shows the list read-only. The values travel as run `paramet
   The personal intake, the Jira intake watcher, CI and the MCP `start_workflow` tool are not checked.
 - **Prompts:** the template model has `runInput` (the current task's declared inputs that have a value, as
   `{name, label, value}`) and `runInputText` (the same as `Label: value` paragraphs). Both are untrusted roots, so
-  prompts get them as data blocks. `base-agent`, `llm-task` and `agent-task` render a "Run input" section from
+  prompts get them as data blocks. The built-in templates that ask for `input` (including `llm-task`, `agent-task` and the deprecated `base-agent`) render a "Run input" section from
   `runInputText`. `{{parameters.*}}` keeps working for custom templates.
 - **Design time:** `WorkflowValidator` warns when a step reads `issueKeyFrom` from a run parameter no task declares,
   and when two tasks declare the same input with different labels.
@@ -252,15 +271,31 @@ templates written for one repository keep working.
 (this step's repositories: key, url, path, access, purpose, baseBranch, primary) and `repositoryResults`
 (key -> latest result: branch, commitSha, mergeRequestUrl, pushed).
 
-**Seeding.** A project created with at least one repository gets the three SDLC workflows and the
-`code-review` CI entrypoint. A project created without a repository gets the starter workflow **LLM task with
+**Seeding.** A project created with at least one repository gets the SDLC workflows (`DefaultWorkflows.all`: Issue
+to reviewed MR, CI code review, Change request (delta) and, since ADR 0059, **Reference: one Claude Code session**) and
+the `code-review` CI entrypoint. A project created without a repository gets the starter workflow **LLM task with
 review** (`start -> llm-task` (template `llm-task`) `-> review` ("Result ok?", owner accountable): `approve -> done` (End SUCCESS),
 `revise -> llm-task`, `reject -> rejected` (End FAILURE)) and no CI entrypoint. When it later gets its first repository, the SDLC workflows
 and the `code-review` entrypoint are seeded once (skipped when workflows with those names exist). ADR 0036: the
 SDLC workflows that use Spec Kit (**Issue to reviewed MR**) are seeded only while the project's Spec Kit is on
 (and the platform allows it); after turning it on, `POST /projects/{id}/spec-kit/workflows` ("Add Spec Kit
-workflows") seeds the missing ones. With Spec Kit off, the palette hides Spec Kit templates (config `phase`), the validator
-rejects Spec Kit steps, run starts refuse them and runner jobs carry `specKit: false`.
+workflows") seeds the missing ones. With Spec Kit off, the palette hides Spec Kit templates (config `phase`), the
+validator rejects Spec Kit steps, run starts refuse them and runner jobs carry `specKit: false`. ADR 0059: `GET` /projects/{id}/default-workflows` lists the names of the
+default workflows other than the Spec Kit ones that a project with a repository lacks, and `POST` on the same path
+("Add missing default workflows", `workflow.edit`, audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`, 409 without a
+repository) seeds them by name; existing workflows with the same name are never replaced. That is how projects created
+before the reference workflow get it.
+
+**Reference workflow (ADR 0059).** "Reference: one Claude Code session" is the yardstick for the cost of an accepted
+result: `start -> fetch-issue` (action `FETCH_ISSUE`) `-> implement` (template `agent-task`, agent `claude-code`,
+config `push: true`, `mergeRequest: true`, parameter `task`: read the repository, implement the issue end to end, add
+tests, run the build and the tests, summarise) `-> merge-gate` ("Merge?", four-eyes, owner accountable, Definition of
+Done; `revise -> implement`, `reject -> rejected`) `-> done`. Run the same issues through it and through cheaper
+workflows or agents and compare in agent and workflow insights ([11-governance.md](11-governance.md)).
+
+**Who did a step (ADR 0059).** When a `TASK` step runs, its node execution records the agent and model it resolved
+to (`NodeExecution.agent`, `StepAgentRecord`: agent key, name, harness, model profile id and label); the run page
+shows "template · agent · model" and agent insights aggregate it.
 
 ## Workflow library
 
@@ -285,6 +320,8 @@ Unchanged from the first iteration except for these additions, all optional:
 | Field | Meaning |
 |---|---|
 | `spec.skills[]` | `{key, name, content}` written to `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md` before the agent starts |
+| `spec.instructions` | ADR 0057: the environment document; OpenCode `/workspace/.backoffice-agent/AGENTS.md` listed under `instructions` of `opencode.json`, Claude Code the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md`; outside every repository, covered by the spec digest |
+| `spec.mcpServers[]` | ADR 0057: `{name, url}` remote MCP servers of the agent; OpenCode `mcp` entries of type `remote`, Claude Code `--mcp-config`; invalid entries are skipped with a warning |
 | `spec.repository.mergeRequest` | `{create, title, description, targetBranch, draft}` → `git push -o merge_request.create -o merge_request.target=<t> -o merge_request.title=<title> [-o merge_request.draft]`; the runner reads the MR URL GitLab prints on push and returns it as `result.mergeRequestUrl` |
 | `spec.collectDiff` | when true the runner returns `git diff <baseRef>...HEAD` (≤ 2 MB) as `result.diff` |
 | `spec.repositories[]` | ADR 0034: one `JobRepository` per repository of the step, each cloned into `/workspace/<path>` with its own `access`, `pushBranch` and `mergeRequest`; the result carries `result.repositories[]`; see [Step repositories](#step-repositories) |

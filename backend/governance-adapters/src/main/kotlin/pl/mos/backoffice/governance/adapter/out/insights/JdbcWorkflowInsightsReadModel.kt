@@ -80,9 +80,7 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
                ${distribution("CASE WHEN secs IS NOT NULL THEN greatest(secs - wait_secs, 0) END", "a")},
                ${distribution("CASE WHEN gates > 0 THEN human_secs END", "h")},
                coalesce(sum(cost), 0) AS cost,
-               coalesce(sum(cost) FILTER (WHERE successful), 0) AS success_cost,
                coalesce(sum(api_cost), 0) AS api_cost,
-               coalesce(sum(api_cost) FILTER (WHERE successful), 0) AS success_api_cost,
                coalesce(sum(input_tokens), 0) AS input_tokens,
                coalesce(sum(output_tokens), 0) AS output_tokens,
                count(*) FILTER (WHERE has_mr) AS merge_requests
@@ -102,13 +100,14 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
             humanWait = distribution(rs, "h"),
             totalCost = money(cost),
             costPerRun = perUnit(cost, counts.total),
-            costPerSuccessfulRun = perUnit(rs.getBigDecimal("success_cost"), counts.successful),
+            // ADR 0059: the cost of an accepted result: every run in scope (failures and rework included) / successful runs
+            costPerSuccessfulRun = perUnit(cost, counts.successful),
             inputTokens = rs.getLong("input_tokens"),
             outputTokens = rs.getLong("output_tokens"),
             mergeRequests = rs.getInt("merge_requests"),
             totalApiCost = money(rs.getBigDecimal("api_cost")),
             apiCostPerRun = perUnit(rs.getBigDecimal("api_cost"), counts.total),
-            apiCostPerSuccessfulRun = perUnit(rs.getBigDecimal("success_api_cost"), counts.successful),
+            apiCostPerSuccessfulRun = perUnit(rs.getBigDecimal("api_cost"), counts.successful),
         )
         (rs.getString("grp") ?: "") to (metrics to rs.getString("project_key"))
     }.filter { it.first.isNotEmpty() }.toMap()

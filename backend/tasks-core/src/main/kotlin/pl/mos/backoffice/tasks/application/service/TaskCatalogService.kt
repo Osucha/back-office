@@ -2,6 +2,8 @@ package pl.mos.backoffice.tasks.application.service
 
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.tasks.AgentEnvironmentSnapshot
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
@@ -32,6 +34,16 @@ class TaskCatalogService(
         .map { candidates -> candidates.firstOrNull { it.scope.projectId != null } ?: candidates.first() }
         .sortedBy { it.key }
         .mapNotNull { summary(it, projectId) }
+
+    @SystemOperation("TaskCatalog port for the Evaluation context (ADR 0059): benchmark candidates; the benchmark use case authorises the caller")
+    override fun agent(key: String, projectId: UUID?): AgentSnapshot? = lookup.visibleAgent(key, projectId)?.snapshot
+
+    @SystemOperation("TaskCatalog port for the Evaluation context (ADR 0059): a candidate's environment; the attempt runs as the system after an authorised start")
+    override fun agentEnvironment(key: String, projectId: UUID?): AgentEnvironmentSnapshot? {
+        val resolved = lookup.resolver.environment(key, projectId)
+        if (!resolved.found) return null
+        return AgentEnvironmentSnapshot(resolved.agent, resolved.rules, resolved.skills)
+    }
 
     private fun summary(template: TaskTemplate, projectId: UUID?): TaskSummary? {
         val resolution = try {

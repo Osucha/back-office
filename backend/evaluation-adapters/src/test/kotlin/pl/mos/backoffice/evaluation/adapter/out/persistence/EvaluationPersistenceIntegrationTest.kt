@@ -14,6 +14,7 @@ import pl.mos.backoffice.evaluation.domain.model.AttemptId
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.AttemptVerification
 import pl.mos.backoffice.evaluation.domain.model.Benchmark
+import pl.mos.backoffice.evaluation.domain.model.BenchmarkCandidate
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.Capability
 import pl.mos.backoffice.evaluation.domain.model.CodingScoreWeights
@@ -156,6 +157,36 @@ class EvaluationPersistenceIntegrationTest {
         benchmarks.delete(benchmark.id)
         assertThat(benchmarks.findById(benchmark.id)).isNull()
         assertThat(benchmarks.findAttempt(succeeded.id)).isNull()
+    }
+
+    @Test
+    fun `ADR 0059 candidates of a benchmark and the agent of an attempt round trip`() {
+        val judge = profiles.save(profile("Judge 59", "claude-fable-5-1"))
+        val model = profiles.save(profile("Candidate 59", "claude-haiku-4-5"))
+        val task = EvalTask(EvalTaskId.new(), "t", TaskCategory.REVIEW, Difficulty.MEDIUM, TaskKind.PROMPT, "i", null, "r")
+        val suite = suites.save(TaskSuite.create("S59", tasks = listOf(task), now = now))
+        val candidates = listOf(
+            BenchmarkCandidate("analyst", model.id, "Analyst", null),
+            BenchmarkCandidate("claude-code", model.id, "Claude Code", AgentHarness.CLAUDE_CODE),
+        )
+        val benchmark = benchmarks.save(
+            Benchmark.create("B59", suite.id, emptyList(), emptyList(), judge.id, 1, AgentHarness.OPENCODE, now, actor = actor, candidates = candidates),
+        )
+        val loaded = benchmarks.findById(benchmark.id)!!
+        assertThat(loaded.candidates).isEqualTo(candidates)
+        assertThat(loaded.modelProfileIds).containsExactly(model.id)
+        assertThat(benchmarks.existsReferencingModel(model.id)).isTrue()
+
+        val attempt = Attempt(
+            id = AttemptId.new(), benchmarkId = benchmark.id, taskId = task.id, taskName = task.name, category = task.category,
+            difficulty = task.difficulty, kind = task.kind, modelProfileId = model.id, modelDisplayName = model.displayName,
+            provider = Provider.ANTHROPIC, repetition = 1, createdAt = now, agentKey = "claude-code", agentName = "Claude Code", harness = AgentHarness.CLAUDE_CODE,
+        )
+        benchmarks.saveAttempt(attempt)
+        val stored = benchmarks.findAttempt(attempt.id)!!
+        assertThat(listOf(stored.agentKey, stored.agentName, stored.harness)).containsExactly("claude-code", "Claude Code", AgentHarness.CLAUDE_CODE)
+        assertThat(stored.candidate().label).isEqualTo("Claude Code · Candidate 59")
+        benchmarks.delete(benchmark.id)
     }
 
     @Test

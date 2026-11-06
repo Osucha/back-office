@@ -19,6 +19,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.time.Instant
 
 /**
@@ -35,6 +36,9 @@ object DefaultWorkflows {
     const val ISSUE_TO_REVIEWED_MR = "Issue to reviewed MR"
     const val CI_CODE_REVIEW = "CI code review"
     const val CHANGE_REQUEST = "Change request (delta)"
+
+    /** ADR 0059: the yardstick: one Claude Code session implements the issue end to end, a person reviews the MR. */
+    const val REFERENCE_CLAUDE_CODE = "Reference: one Claude Code session"
 
     /** Starter of a project without repositories (ADR 0034): one LLM task reviewed by a person. */
     const val LLM_TASK_WITH_REVIEW = "LLM task with review"
@@ -53,6 +57,15 @@ object DefaultWorkflows {
     const val TEMPLATE_PLAN_TASK_LIST = "plan-task-list"
     const val TEMPLATE_IMPLEMENT_TASK_LIST = "implement-task-list"
     const val TEMPLATE_LLM_TASK = "llm-task"
+    const val TEMPLATE_AGENT_TASK = "agent-task"
+
+    /** ADR 0059: the agent of the reference workflow's single step. */
+    const val AGENT_CLAUDE_CODE = "claude-code"
+
+    /** ADR 0059: the task of the reference workflow's step (parameter `task` of `agent-task`; the issue is in its system prompt). */
+    const val REFERENCE_TASK = "Implement the issue above end to end. Read the repository first: its structure, conventions, build and tests. " +
+        "Then implement the change the issue asks for, add or update the tests that prove it and run the build and the tests until they pass. " +
+        "Finish with a summary: what you changed (files), how you verified it, the assumptions you made and what is left open."
 
     // Node ids shared by the seeded workflows (node ids are workflow-local; the same name keeps runs comparable).
     private const val NODE_FETCH_ISSUE = "fetch-issue"
@@ -100,7 +113,7 @@ object DefaultWorkflows {
 
     /** The SDLC workflows of a project with at least one repository. */
     fun all(projectId: ProjectId, now: Instant): List<WorkflowDefinition> =
-        listOf(issueToReviewedMr(projectId, now), ciCodeReview(projectId, now), changeRequest(projectId, now))
+        listOf(issueToReviewedMr(projectId, now), ciCodeReview(projectId, now), changeRequest(projectId, now), referenceClaudeCode(projectId, now))
 
     /** The Spec Kit templates of the seeded workflows (ADR 0036). */
     val SPEC_KIT_TEMPLATES = setOf(TEMPLATE_SPECIFY, TEMPLATE_PLAN, TEMPLATE_TASKS)
@@ -228,6 +241,59 @@ object DefaultWorkflows {
             WorkflowEdge("e17", NODE_MERGE_GATE, GateSpec.APPROVE, "transition"),
             WorkflowEdge("e18", NODE_MERGE_GATE, GateSpec.REVISE, "implement", "revise"),
             WorkflowEdge("e19", "transition", WorkflowNode.PORT_SUCCESS, "done"),
+        ),
+        triggers = listOf(Trigger(TriggerType.MANUAL), Trigger(TriggerType.API)),
+        enabled = true,
+        createdAt = now,
+        updatedAt = now,
+    )
+
+    /**
+     * ADR 0059 §5, the yardstick: fetch the issue -> one Claude Code session (`agent-task` with the agent `claude-code`)
+     * implements it end to end, pushes and opens the merge request -> a person reviews it (four-eyes, revise sends the
+     * comment back to the same step). Run the same issues through it and through the cheaper workflows and compare the
+     * cost of an accepted result (agent insights).
+     */
+    fun referenceClaudeCode(projectId: ProjectId, now: Instant): WorkflowDefinition = WorkflowDefinition(
+        id = WorkflowDefinitionId.new(),
+        projectId = projectId,
+        name = REFERENCE_CLAUDE_CODE,
+        description = "Yardstick (ADR 0059): Jira issue -> one Claude Code session implements it end to end and opens the merge request -> review by a person. " +
+            "Compare its cost of an accepted result with the cheaper workflows on the same issues.",
+        version = 1,
+        nodes = listOf(
+            WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
+            WorkflowNode.Action(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), action = ActionBinding(ActionType.FETCH_ISSUE)),
+            WorkflowNode.Task(
+                "implement", "Claude Code: implement the issue", Point(652.0, 40.0), maxVisits = 3,
+                task = TaskBinding(
+                    TEMPLATE_AGENT_TASK,
+                    TaskOverrides(
+                        agentKey = AGENT_CLAUDE_CODE,
+                        config = mapOf("push" to true, "mergeRequest" to true),
+                        parameters = mapOf("task" to REFERENCE_TASK),
+                    ),
+                ),
+            ),
+            WorkflowNode.HumanGate(
+                NODE_MERGE_GATE, "Merge?", Point(988.0, 40.0),
+                gate = GateSpec(
+                    question = "Claude Code implemented {{issue.key}}. Merge request: {{mr.url}}. Merge, ask for a revision (your comment goes back to the session) or reject?",
+                    showArtifacts = listOf("result", "diff"),
+                    approvers = MERGE_APPROVERS,
+                    checklist = MERGE_DONE,
+                ),
+            ),
+            WorkflowNode.End("done", "Done", Point(1324.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
+            WorkflowNode.End("rejected", "Rejected", Point(1324.0, 244.0), end = EndSpec(RunOutcome.FAILURE)),
+        ),
+        edges = listOf(
+            WorkflowEdge("e1", "start", WorkflowNode.PORT_OUT, NODE_FETCH_ISSUE),
+            WorkflowEdge("e2", NODE_FETCH_ISSUE, WorkflowNode.PORT_SUCCESS, "implement"),
+            WorkflowEdge("e3", "implement", WorkflowNode.PORT_SUCCESS, NODE_MERGE_GATE),
+            WorkflowEdge("e4", NODE_MERGE_GATE, GateSpec.APPROVE, "done"),
+            WorkflowEdge("e5", NODE_MERGE_GATE, GateSpec.REVISE, "implement", "revise"),
+            WorkflowEdge("e6", NODE_MERGE_GATE, GateSpec.REJECT, "rejected"),
         ),
         triggers = listOf(Trigger(TriggerType.MANUAL), Trigger(TriggerType.API)),
         enabled = true,

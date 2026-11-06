@@ -33,9 +33,13 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 |---|---|---|
 | Back Office | Back Office | product name, never translated |
 | abstract (template) | abstrakcyjny | "Szablony abstrakcyjne można tylko rozszerzać" |
+| accepted (result) | zaakceptowane / zaakceptowany wynik | ADR 0059 agent insights column "Zaakceptowane" (Accepted); "Brak zaakceptowanego wyniku" (No accepted result yet); see cost per accepted result |
 | accountable (role) | odpowiedzialny | "Odpowiedzialny: owner" |
-| agent | agent (pl. agenci) | "agent pracuje"; library entry (ADR 0056): page "Agenci", "Utwórz agenta", step setting "Agent" |
+| Add missing default workflows (N) | Dodaj brakujące workflowy domyślne (N) | ADR 0059 button in the project's workflows list; "workflowy domyślne" = default workflows |
+| agent | agent (pl. agenci) | "agent pracuje"; library entry (ADR 0056, 0057): page "Agenci", "Utwórz agenta", "Zapisz agenta", step setting "Agent"; page subtitle „Agent to ten, kto pracuje, i to, jak pracuje: harness, model, instrukcje, reguły i umiejętności. Szablon zadania mówi, co zrobić; krok workflow łączy jedno z drugim.” Built-in agent names (Analyst, Reviewer) are data and stay English |
+| agent insights | wskaźniki agentów | ADR 0059 route title "Wskaźniki agentów"; page title "Agenci: koszt i skuteczność" (Agents: cost and effectiveness); Insights switcher "Dostarczanie / Agenci" (Delivery / Agents); sections "Według agenta i modelu" (Per agent and model), "Według szablonu" (Per template); palette "Porównaj agentów" (Compare agents) |
 | agent job | zadanie agenta (pl. zadania agentów) | runner fleet |
+| agent session | sesja agenta | ADR 0057 step setting "Sesja agenta": "Nowa sesja" (New session) / "Kontynuuj sesję kroku …" (Continue the session of step …), "Wybierz krok" (Pick the step) |
 | alert (budget) | alert | "alert budżetu", "Alert przy (%)" |
 | allowed projects (connection) | dozwolone projekty | field label "Dozwolone projekty" (Jira project keys a connection may touch); not the network allowlist |
 | allowlist (network) | lista dozwolonych hostów | "Dozwolone hosty" |
@@ -64,6 +68,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | budget | budżet | "Budżet projektu", "budżet przekroczony" |
 | built in | wbudowany | library items, roles |
 | cancel (action) / cancelled | anuluj / anulowane | |
+| candidate (benchmark) | kandydat (pl. kandydaci) | ADR 0059: an agent with a model; "Kandydaci" (Candidates), "Dodaj kandydata" (Add candidate), "Usuń kandydata", "Kandydat {n}", leaderboard column "Kandydat"; "Model agenta: {model}" (Agent's model: …); not "model kandydujący" any more |
 | canvas | kanwa | "Odtworzenie na kanwie" (canvas replay) |
 | capabilities (model) | możliwości | catalogue tags: Programowanie, Rozumowanie, Długi kontekst, Narzędzia, Obraz, Tani |
 | capability (connection) | możliwość (pl. możliwości) | ADR 0030: Read issues / Comment on issues / Move issues = "Odczyt zgłoszeń" / "Komentowanie zgłoszeń" / "Przenoszenie zgłoszeń"; "możliwości zapisu" (write capabilities); "Wymagane możliwości" (required capabilities) |
@@ -75,7 +80,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | CI entrypoint | punkt wejścia CI | |
 | CI snippet | fragment GitLab CI | project CI tab |
 | CI token | token CI | |
-| coding harness | agent programistyczny | OpenCode / Claude Code |
+| coding harness | agent programistyczny | OpenCode / Claude Code; the benchmark form no longer has it (ADR 0059: the candidate's agent brings its harness) |
 | coding job (evaluation task kind) | zadanie programistyczne | vs "prompt" |
 | command palette | paleta poleceń | |
 | Connection expiring (notification type) | Wygasające połączenie | desktop notification type (ADR 0030 amendment); the Your turn card says "Token Jiry wkrótce wygaśnie" / "Token Jiry wygasł" |
@@ -84,11 +89,13 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | personal connection | połączenie osobiste | My account → Connections (ADR 0035); "przez połączenie osobiste" (via personal connection) |
 | copy (button) | kopiuj | button label; "Skopiuj token teraz" stays as an instruction in sentences |
 | cost | koszt | |
+| cost per accepted result | koszt zaakceptowanego wyniku | ADR 0059 headline metric: agent insights, workflow metrics and library list (replaced "Koszt / sukces" and "Koszt udanego uruchomienia" there), benchmark leaderboard; the delivery insights card "Koszt udanego uruchomienia" (Cost per successful run) is a different figure and stays |
 | cost per day | koszt dzienny | Costs chart |
 | create | utwórz | |
 | dashboard / Home | strona główna | the Home page |
 | decide / decision | rozstrzygnij / decyzja | "Potrzebna decyzja", "bramka rozstrzygnięta" |
 | delete | usuń | |
+| delivery (insights) | dostarczanie | Insights switcher "Dostarczanie / Agenci" (Delivery / Agents) |
 | density (comfortable / compact) | gęstość (wygodna / kompaktowa) | preference values "Wygodna" / "Kompaktowa" |
 | designer (workflow) | projektant workflowów | |
 | discard (unsaved edits) | porzuć zmiany | not "odrzuć" (= reject a gate) |
@@ -102,12 +109,15 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | egress | ruch wychodzący | sandbox |
 | egress denied | zablokowany ruch wychodzący | agent job panel |
 | entrypoint | punkt wejścia | |
+| environment (of the agent) | środowisko agenta | ADR 0057: template editor section "Środowisko agenta" (Environment of the agent), agents list column "Środowisko" (Environment); see also platform preamble |
 | ephemeral storage | pamięć tymczasowa (dysk) | sandbox policy resources |
 | evaluation | ewaluacja | |
 | excess permissions / over-privileged | uprawnienia nadmiarowe / ma więcej uprawnień niż potrzeba | connection test chips: granted / missing / excess = "przyznane" / "brakujące" / "nadmiarowe"; designer warning "ma więcej uprawnień niż potrzeba" |
+| execution (of a step) | wykonanie (pl. wykonania) | agent insights column "Wykonania" (Executions); "# wykonanie / wykonania / wykonań" |
 | executor | (removed) | ADR 0056 removed the template executor; use "agent" (who runs a task) or "akcja" (a node without a model) |
 | extends / implements | rozszerza / implementuje | template columns |
 | external write | zapis zewnętrzny | a write outside Back Office (Jira comment, transition); "zapisuje w Jirze" for the palette mark |
+| first pass / first-pass rate | za pierwszym razem | workflow metrics, library list and agent insights column "Za pierwszym razem" |
 | finding (review) | uwaga (pl. uwagi) | severities: blokujące / poważne / drobne / kosmetyczne (Blocker / Major / Minor / Nit) |
 | fleet (runner fleet) | flota runnerów | |
 | forbid self-approval | zabroń samozatwierdzania | gate option (manual) |
@@ -127,6 +137,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | in flight | w toku | Home section |
 | inbox | skrzynka | the page itself is "Twoja kolej" |
 | insights | wskaźniki | |
+| instructions (agent) | instrukcje | ADR 0057 agent field "Instrukcje" (Instructions): the agent's role and way of working |
 | integration | integracja | |
 | interface (task) | interfejs (zadania) | |
 | invite / invited | zaproś / zaproszony | |
@@ -137,6 +148,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | Jira intake watcher | monitor zgłoszeń Jira | ADR 0033; section title "Monitor zgłoszeń Jira"; fields "Włączony", "Interwał odpytywania (minuty)", "Workflow do uruchomienia"; poll = "odpytanie" |
 | job | zadanie | runner job |
 | judge / judging / judge model | ocena / ocenianie / model oceniający | evaluation; "Ocena" for the judge tab and the suite weight, "Model oceniający" for the model; never "sędzia" |
+| kind (agent) | rodzaj | agent field and list column "Rodzaj" (Kind) = the harness: "Odpowiedź modelu", "OpenCode", "Claude Code" |
 | landed (today) | zakończone (dziś) | "Zakończone dziś" |
 | last used | ostatnie użycie | token lists (personal and CI) |
 | lead time | czas realizacji | |
@@ -151,17 +163,20 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | live updates | aktualizacje na żywo | |
 | manual | podręcznik | in-app help |
 | max output tokens | maks. liczba tokenów wyjściowych | model profile default options |
+| MCP server (of an agent) | serwer MCP (pl. serwery MCP) | ADR 0057 agent field "Serwery MCP" (MCP servers), "Dodaj serwer MCP", "Usuń serwer MCP" |
 | member / members | członek / członkowie | project |
 | merge request | merge request | not translated |
 | model answer | odpowiedź modelu | built-in agent "Odpowiedź modelu" (ADR 0056) |
 | model / model profile | model / profil modelu | |
 | node | węzeł | workflow node |
+| not applicable (benchmark) | nie dotyczy | ADR 0059 leaderboard column "Nie dotyczy": tasks a candidate's agent cannot do |
 | operations | operacje | admin page |
 | override(s) | nadpisanie (pl. nadpisania) | task node overrides |
 | owner / maintainer / developer / approver / viewer | właściciel / maintainer / deweloper / zatwierdzający / obserwator | built-in project roles; UI names "Właściciel", "Maintainer", "Deweloper", "Zatwierdzający", "Obserwator" (`roleName()`, `core/i18n/catalog-labels.ts`); keys (`owner`, …) stay in code font |
 | platform administrator / member / evaluator / library curator / auditor | administrator platformy / członek / ewaluator / kurator biblioteki / audytor | built-in platform roles; UI names "Administrator platformy", "Członek", "Ewaluator", "Kurator biblioteki", "Audytor" |
 | project manager | kierownik projektów (pl. kierownicy projektów) | built-in platform role `project-manager` (ADR 0028): "Kierownik projektów", "Projekty tworzą kierownicy projektów" |
 | palette (designer) | paleta | not the command palette |
+| parameter (template) / parameter values | parametr (pl. parametry) / wartości parametrów | ADR 0058: "Parametry", "Wartości parametrów", "Dodaj parametr", "Wymagany"; badge "wymaga parametrów" (needs parameters, lower case like a tag); types "Jedna linia" (Single line), "Tekst wieloliniowy" (Multi-line text), "Liczba" (Number), "Tak / nie" (Yes / no), "Wybór" (Choice); not "parametry uruchomienia" (run parameters, a different thing) |
 | Pareto frontier | front Pareto | |
 | pass rate | odsetek zaliczonych | |
 | pending | oczekuje | |
@@ -169,6 +184,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | personal access token (PAT) | osobisty token dostępu (PAT) | |
 | pin (connection on a node) | przypnij / przypięte | designer: "Przypnij", "Przypięte połączenie" |
 | pipeline | pipeline (pl. pipeline'y) | CI pipeline |
+| platform preamble | preambuła platformy | ADR 0057: the fixed first part of the agent's environment; "tylko preambuła platformy" |
 | platform settings | ustawienia platformy | |
 | policy (sandbox) | polityka (sandboxa) | |
 | Poll now (intake watcher) | Sprawdź teraz | button; schedules an immediate poll |
@@ -177,6 +193,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | port | port | node port |
 | preferences | preferencje | |
 | prefix (token) | prefiks | |
+| preset (template) | preset | ADR 0058: a template that only sets parameter values; button "Utwórz preset" (Create preset) |
 | project | projekt | |
 | prompt | prompt | |
 | provenance | pochodzenie | run tab "Pochodzenie" |
@@ -187,6 +204,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | recovery codes | kody odzyskiwania | MFA; "Utwórz nowe kody odzyskiwania" (Create new recovery codes) |
 | registration token | token rejestracyjny | runner fleet |
 | reject / rejected | odrzuć / odrzucone | |
+| reference workflow | workflow referencyjny | ADR 0059; the workflow name "Reference: one Claude Code session" is data and stays English, like the other default workflow names |
 | relay (runs column) | sztafeta | runs table; the strip itself is "ścieżka sztafety" |
 | relay track | ścieżka sztafety | the strip of segments |
 | repetition | powtórzenie | benchmarks |
@@ -200,6 +218,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | rework loop | pętla poprawek | insights |
 | role | rola | |
 | rubric | kryteria oceny | |
+| rule (library) | reguła (pl. reguły) | ADR 0055/0057: library page "Reguły", "Utwórz regułę", "Stosuj automatycznie w każdym kroku"; agent field "Reguły" |
 | run / start run (verb) | uruchom | "Uruchom…" in the palette, "Rozpocznij uruchomienie" in dialogs |
 | run (noun) | uruchomienie (pl. uruchomienia) | "Uruchomienia" page |
 | run success rate | skuteczność uruchomień | insights |
@@ -217,7 +236,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | sign in / sign out | zaloguj się / wyloguj | page title "Logowanie" |
 | signal (CI) | sygnał | "Wyślij sygnał ręcznie" |
 | sign-in method: local / identity provider / both | lokalne / dostawca tożsamości / lokalne i {provider} | "Lokalne i Keycloak"; never "Oba" |
-| skill | umiejętność (pl. umiejętności) | Agent Skills |
+| skill | umiejętność (pl. umiejętności) | Agent Skills; agent field "Umiejętności"; step overrides "Dodaj umiejętności do umiejętności agenta" (Add skills to the agent's) / "Pomiń umiejętności agenta" (Drop skills of the agent) |
 | spec gate | bramka specyfikacji | |
 | spend / usage | wydatki / użycie | |
 | spent in (month) | wydano w miesiącu | "Wydano w miesiącu: październik 2026" on budget cards |

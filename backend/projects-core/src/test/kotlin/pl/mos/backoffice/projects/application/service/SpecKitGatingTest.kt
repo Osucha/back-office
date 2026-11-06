@@ -139,14 +139,14 @@ class SpecKitGatingTest {
 
         val created = service().create(command)
         assertThat(created.specKit).isFalse()
-        assertThat(saved.map { it.name }).containsExactly(DefaultWorkflows.CI_CODE_REVIEW, DefaultWorkflows.CHANGE_REQUEST)
+        assertThat(saved.map { it.name }).containsExactly(DefaultWorkflows.CI_CODE_REVIEW, DefaultWorkflows.CHANGE_REQUEST, DefaultWorkflows.REFERENCE_CLAUDE_CODE)
         assertThat(service().specKitStatus(created.id).missingWorkflows).containsExactly(DefaultWorkflows.ISSUE_TO_REVIEWED_MR)
         assertThatThrownBy { service().addSpecKitWorkflows(created.id) }.isInstanceOf(InvalidStateException::class.java)
 
         // turning Spec Kit on later does not seed by itself; "Add Spec Kit workflows" does, once
         val turnedOn = service().update(created.id, command.copy(specKit = true))
         assertThat(turnedOn.specKit).isTrue()
-        assertThat(saved).hasSize(2)
+        assertThat(saved).hasSize(3)
         assertThat(service().addSpecKitWorkflows(created.id).map { it.name }).containsExactly(DefaultWorkflows.ISSUE_TO_REVIEWED_MR)
         assertThat(service().addSpecKitWorkflows(created.id)).isEmpty()
         assertThat(service().specKitStatus(created.id).missingWorkflows).isEmpty()

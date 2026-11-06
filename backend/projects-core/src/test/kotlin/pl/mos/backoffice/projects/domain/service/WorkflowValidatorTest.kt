@@ -38,7 +38,9 @@ class WorkflowValidatorTest {
     fun `the seeded workflows are valid`() {
         val project = Fixtures.project()
         val seeded = DefaultWorkflows.all(project.id, Fixtures.now)
-        assertThat(seeded.map { it.name }).containsExactly(DefaultWorkflows.ISSUE_TO_REVIEWED_MR, DefaultWorkflows.CI_CODE_REVIEW, DefaultWorkflows.CHANGE_REQUEST)
+        assertThat(seeded.map { it.name }).containsExactly(
+            DefaultWorkflows.ISSUE_TO_REVIEWED_MR, DefaultWorkflows.CI_CODE_REVIEW, DefaultWorkflows.CHANGE_REQUEST, DefaultWorkflows.REFERENCE_CLAUDE_CODE,
+        )
         seeded.forEach { wf ->
             val result = validator.validate(wf.name, wf.nodes, wf.edges, triggers = wf.triggers)
             assertThat(errorsOf(result)).describedAs(wf.name).isEmpty()
@@ -68,6 +70,26 @@ class WorkflowValidatorTest {
     }
 
     @Test
+    fun `ADR 0059 the reference workflow is one Claude Code session that pushes and opens the MR, reviewed by a person`() {
+        val project = Fixtures.project()
+        val reference = DefaultWorkflows.referenceClaudeCode(project.id, Fixtures.now)
+        assertThat(reference.name).isEqualTo("Reference: one Claude Code session")
+        assertThat(reference.nodes.map { it.kind }).containsExactly(
+            NodeKind.START, NodeKind.ACTION, NodeKind.TASK, NodeKind.HUMAN_GATE, NodeKind.END, NodeKind.END,
+        )
+        val step = reference.nodes.filterIsInstance<WorkflowNode.Task>().single()
+        assertThat(step.task.templateKey).isEqualTo("agent-task")
+        assertThat(step.task.overrides.agentKey).isEqualTo("claude-code")
+        assertThat(step.task.overrides.config).containsEntry("push", true).containsEntry("mergeRequest", true)
+        assertThat(step.task.overrides.parameters["task"].toString()).contains("end to end").contains("tests")
+        val gate = reference.nodes.filterIsInstance<WorkflowNode.HumanGate>().single()
+        assertThat(gate.gate.approvers.forbidSelfApproval).isTrue()
+        assertThat(reference.edges.filter { it.from == gate.id }.map { it.fromPort to it.to })
+            .containsExactlyInAnyOrder("approve" to "done", "revise" to step.id, "reject" to "rejected")
+        assertThat(DefaultWorkflows.usesSpecKit(reference)).isFalse()
+    }
+
+    @Test
     fun `a workflow without a human gate is flagged unless CI triggers it`() {
         val nodes = listOf(start(), task("a"), end())
         val edges = listOf(edge("start", "out", "a"), edge("a", "success", "done"))
@@ -87,7 +109,7 @@ class WorkflowValidatorTest {
             assertThat(gate.gate.checklist).isNotEmpty
         }
         val merges = gates.filter { it.second.id == "merge-gate" }
-        assertThat(merges.map { it.first }).containsExactlyInAnyOrder(DefaultWorkflows.ISSUE_TO_REVIEWED_MR, DefaultWorkflows.CHANGE_REQUEST)
+        assertThat(merges.map { it.first }).containsExactlyInAnyOrder(DefaultWorkflows.ISSUE_TO_REVIEWED_MR, DefaultWorkflows.CHANGE_REQUEST, DefaultWorkflows.REFERENCE_CLAUDE_CODE)
         merges.forEach { (_, gate) ->
             assertThat(gate.gate.approvers.forbidSelfApproval).isTrue()
             assertThat(gate.gate.checklist.map { it.id }).containsExactly("tests-green", "review-findings-addressed", "spec-updated")

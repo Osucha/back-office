@@ -157,6 +157,7 @@ Odrzucone wywołanie wraca jako błąd narzędzia, a nie błąd transportu.
 | `search_task_library` | Wyszukuje szablony zadań i umiejętności (skills) po tekście | `library.view` |
 | `get_project_context` | Konstytucja, repozytorium, punkty wejścia CI, workflowy i ostatnie uruchomienia | `project.view` |
 | `get_delivery_insights` | Wskaźniki dostarczania jednego projektu lub wszystkich widocznych projektów | `project.view` |
+| `get_agent_insights` | Wskaźniki agentów jednego projektu lub wszystkich widocznych projektów: według agenta i modelu oraz według szablonu wykonania, zaakceptowane wyniki, odsetek „za pierwszym razem”, koszt i koszt zaakceptowanego wyniku, od najtańszego ([costs-insights.md](costs-insights.md#agent-insights)) | `project.view` |
 | `list_projects` | Projekty, które widzisz | `project.view` |
 | `get_workflow_palette` | Z czego można zbudować workflow: węzły sterujące, szablony zadań z portami i ustawieniami, pola stanu uruchomienia | `project.view` |
 | `get_workflow` | Jeden workflow z pełną definicją (węzły, krawędzie, wyzwalacze) | `project.view` |

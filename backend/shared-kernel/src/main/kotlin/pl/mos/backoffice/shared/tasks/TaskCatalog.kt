@@ -235,7 +235,17 @@ data class TaskSummary(
     val needsParameters: Boolean = false,
 )
 
-/** Outbound port implemented by the Task Library context; used by the Projects context. */
+/**
+ * ADR 0059: an agent with its environment resolved as a step without overrides gets it: the rules (automatic ones
+ * first, then the agent's) and the skills. Benchmarks give it to their candidates.
+ */
+data class AgentEnvironmentSnapshot(
+    val agent: AgentSnapshot,
+    val rules: List<RuleSnapshot> = emptyList(),
+    val skills: List<SkillSnapshot> = emptyList(),
+)
+
+/** Outbound port implemented by the Task Library context; used by the Projects and Evaluation contexts. */
 interface TaskCatalog {
     /**
      * Resolves a template key for a project (project-scoped templates shadow global ones) and applies
@@ -246,4 +256,13 @@ interface TaskCatalog {
 
     /** Concrete (non-abstract) templates visible to a project, for the designer palette. */
     fun palette(projectId: UUID?): List<TaskSummary>
+
+    /** ADR 0059: the agent [key] a project sees (null = global agents only, as benchmarks use them); null when unknown. */
+    fun agent(key: String, projectId: UUID?): AgentSnapshot? = null
+
+    /**
+     * ADR 0059: the agent [key] with its resolved environment (rules and skills; missing ones are left out); null when the
+     * agent is unknown.
+     */
+    fun agentEnvironment(key: String, projectId: UUID?): AgentEnvironmentSnapshot? = null
 }

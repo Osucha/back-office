@@ -1,7 +1,7 @@
 # Task library
 
-The task library holds what agents do and how they are prompted, separately from the workflows that use
-it. **Library** has three groups (ADR 0055, 0056):
+The task library holds what agents do and how they work, separately from the workflows that use it.
+**Library** has three groups (ADR 0055, 0056):
 
 - **Tasks**: **Templates**, **Skills**, **Rules** and **Agents**, this chapter;
 - **Workflows**: workflows shared between projects ([Workflow library](workflow-library.md));
@@ -11,11 +11,16 @@ it. **Library** has three groups (ADR 0055, 0056):
 
 | Piece | Think of it as | You use it to |
 |---|---|---|
-| Task template | a class | describe the work: category, prompts, skills, rules, config, outputs, run inputs and the agent that does it by default; it is based on one parent |
+| Task template | the assignment: **what** to do | describe the work: category, prompts with [parameters](#parameters), config, outputs, run inputs and the agent that does it by default; it may be based on one parent |
+| Agent | the worker: **who** works and **how** | name a way of working: the harness (**Model answer**, **OpenCode** or **Claude Code**), optionally a model, **Instructions**, **Rules**, **Skills** and **MCP servers** ([Agents](#agents)) |
 | Rule | a standing order | state something the agent must always follow; always in the agent's context |
 | Skill | a handbook chapter | give the agent knowledge or a procedure it opens when the task needs it (a `SKILL.md` file) |
-| Agent | the one who does the work | decide who runs a task: a single model answer, or a coding agent (OpenCode or Claude Code) in a sandbox, optionally with its own model |
-| Resolved task | an instance | what the agent finally receives: the template with its ancestors, project overrides and node overrides merged |
+| Workflow step | the job on the board | join the two: a template, an agent and the values of the template's parameters ([Task nodes](workflows.md#task-nodes)) |
+| Resolved task | an instance | what the agent finally receives: the template with its ancestors, project overrides and the step's overrides merged, in the environment of its agent |
+
+The template changes when the work changes; the agent changes when you look for a cheaper or better way to work.
+Keeping them apart lets you run the same task with different agents and compare them
+([Evaluation](evaluation.md)) without touching the task (ADR 0057).
 
 Work that needs no model (fetching or commenting on a Jira issue, changing its status, starting workflows, the
 project digest) is not in the library: it is an **action** node in the workflow designer
@@ -48,21 +53,28 @@ category). The workflow designer groups its palette the same way. Built-in templ
 ones, which can be a base for others but never run. Filter by text, category and agent, and with **Global
 templates** / **Global + KEY** to include a project's own templates.
 
-A template describes the work; its **Agent** says who does it by default (see [Agents](#agents)): **Model answer**
-(one model call inside Back Office, no repository; can return structured JSON and a confidence), **OpenCode** or
-**Claude Code** (a coding agent in a sandbox on a runner, with the repository; may push a branch and open a merge
-request; a template with a Spec Kit `phase` runs that Spec Kit phase). A workflow step can choose another agent.
+A template describes the work; its **Agent** says who does it by default (see [Agents](#agents)): an agent with the
+harness **Model answer** (one model call inside Back Office, no repository; can return structured JSON and a
+confidence), **OpenCode** or **Claude Code** (a coding agent in a sandbox on a runner, with the repository; may push a
+branch and open a merge request; a template with a Spec Kit `phase` runs that Spec Kit phase). A workflow step can
+choose another agent. A template holds no rules and no skills: they belong to the agent.
+
+A template whose required [parameters](#parameters) have no value yet carries the tag **needs parameters**: it is a
+prompt to complete in the workflow step. The others are ready blocks.
 
 ### Steps: create a template
 
 1. Click **New template** (needs `library.manage`, or `library.project.manage` for a project template).
-2. **Type**: **Name**, **Description**, **Based on** (one parent: the template inherits its prompts, skills, rules
-   and configuration and changes only what you set), **Category** (empty means inherited), **Agent** (empty means
-   inherited; empty all along the chain means **Model answer**), **Scope** (**Global** or **Project** with the
-   **Project**), **Model profile**.
+2. **Type**: **Name**, **Description**, **Based on** (optional, one parent: the template inherits its prompts,
+   parameters and configuration and changes only what you set), **Category** (empty means inherited), **Agent**
+   (empty means inherited; empty all along the chain means **Model answer**), **Scope** (**Global** or **Project**
+   with the **Project**), **Model profile**. Below the agent, **Environment of the agent** shows read-only what the
+   chosen agent brings: its instructions, its rules (automatic ones marked) and its skills. To change them, edit the
+   agent on the **Agents** page or pick another agent.
 3. **Prompt**: choose **Append to parent** or **Replace parent**, then write the **System prompt** and
    the **User prompt**. Template values such as `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
-   and `{{project.constitution}}` are filled at run time. A section `{{#artifacts.review}}...{{/artifacts.review}}`
+   and `{{params.<name>}}` (a [parameter](#parameters)) are filled at run time. The project constitution and the
+   rules are not placed by the template: every step gets them in its agent's environment. A section `{{#artifacts.review}}...{{/artifacts.review}}`
    keeps its text only when the value is there (`{{^path}}...{{/path}}` only when it is not), so a prompt
    shows no empty "Issue" or "Feedback" heading in a run without an issue or on a first attempt.
    `{{feedback}}` holds only the revision comments given for this step: the comment of a gate option that
@@ -70,18 +82,20 @@ request; a template with a Spec Kit `phase` runs that Spec Kit phase). A workflo
    to the next step that runs, stays with that step for its later attempts, and never reaches the steps
    after it (all comments of the run: `{{feedbackHistory}}`). An **Approve** comment reaches later prompts as
    `{{decision.comment}}`.
-4. **Skills and rules**: add skills and rules. The automatic rules that apply anyway are listed read-only. Under
-   **Advanced**, **Remove inherited skills** and **Drop inherited or automatic rules** take entries away for this
-   template and the ones based on it.
+4. **Parameters**: the fields a workflow step fills in when it uses this template (see [Parameters](#parameters)).
+   **Add parameter**, then set the name, the label shown in the step, the type, **Required**, an optional default
+   and help text. A template based on another one also shows **Parameter values**: values for the parameters of
+   its parents.
 5. **Configuration**: a form with the settings for the template's agent (for a coding agent: verify and setup
    command, push, merge request, artefacts to collect, agent tools, workspace, Spec Kit phase, ...). Set only what differs from the
    template it is based on; empty fields are inherited. **Raw JSON** shows the same settings as JSON, also keys the
    form does not know.
    **Advanced: contracts, artefacts, output schema, sandbox** (collapsed; most templates need nothing here):
    **Abstract** (only a base for other templates, never a step), **Produces** and **Consumes** (artefact names the step writes and reads; the workflow
-   check warns when a step reads something nobody writes), **Confidence field** (a field of the model answer copied
-   to `state.confidence` for decisions such as `confidence < 0.7`), **Tags**, **Output schema** (Model answer only)
-   and **Sandbox** (step 7).
+   check warns when a step reads something nobody writes), **Confidence field** (a field of the answer copied
+   to `state.confidence` for decisions such as `confidence < 0.7`), **Tags**, **Output schema** (the shape of a
+   structured answer: a model answers with it, a coding agent writes it to `structured-answer.json`, see
+   [Agents](#agents)) and **Sandbox** (step 7).
 6. **Run inputs**: the fields this task asks for when a run starts (see [Run inputs](#run-inputs)). **Add run
    input**, then set **Name**, **Label**, the type (**Single line**, **Multi-line text** or **Jira issue key**),
    **Required** and an optional help text; move fields with the arrows or remove them. A name starts with a letter
@@ -98,15 +112,50 @@ request; a template with a Spec Kit `phase` runs that Spec Kit phase). A workflo
 | Agent, category | The nearest one in the chain wins. |
 | Model profile, output schema, confidence field | The child's value wins when set. |
 | System and user prompt | Per field: **Append to parent** adds the child's text after the parent's; **Replace parent** uses only the child's. An empty field keeps the parent's. |
-| Skills, rules | Union along the chain, minus removed ones. Automatic rules come first. |
+| Parameters | Union by name; a child's parameter replaces the parent's parameter with the same name. |
+| Parameter values | The nearest template that sets a value wins. |
 | Config | Merged key by key; the child wins; `null` deletes a key. |
 | Produces, consumes, tags | Union. |
 | Run inputs | Union by name; a child's field replaces the parent's field with the same name. |
 
+Rules and skills are not inherited from templates: the step gets those of its agent.
+
+<a id="parameters"></a>
+### Parameters
+
+Sometimes a template is a ready block ("write a user story"), sometimes a prompt with room for configuration
+("summarise the material for this audience"). Parameters are that room (ADR 0058): typed fields the workflow
+designer fills in per step, read by the prompts and by text settings as `{{params.<name>}}`.
+
+| Type | Value in the step |
+|---|---|
+| **Single line** | a short text |
+| **Multi-line text** | a longer text, for example a whole task description |
+| **Number** | a number |
+| **Yes / no** | a switch |
+| **Choice** | one of the options you list (the parameter needs at least one) |
+
+A parameter has a name (starts with a letter; letters, digits and `_`, at most 64), a label (at most 200
+characters), a type, **Required**, an optional default and an optional help text (at most 1 000 characters).
+
+**Where the value comes from.** The step's value, else the value of the nearest template in the chain (a preset,
+below), else the parameter's default. A required parameter without any of them blocks the step: the workflow
+check names it and the run does not start; the preview still works. Templates whose required parameters have no
+value carry the tag **needs parameters** in the list and in the designer palette. The **Parameters** tab of the
+preview shows each parameter with its value and where the value comes from (the step, a template, the default, or
+"the step must set it").
+
+**Create preset.** In the editor of a saved template, **Create preset** (at the bottom) opens a new template that
+is based on this one and only sets **Parameter values**. Save it under a name of its own, for example "Summary for
+the steering committee", and it appears in the palette as a ready block next to its parent.
+
+Parameters are not run inputs: a parameter is fixed when the workflow is designed, a [run input](#run-inputs) is
+asked from whoever starts the run.
+
 <a id="run-inputs"></a>
 ### Run inputs
 
-A task declares the run inputs it needs, for example the built-in `base-agent` declares **Input material**
+A task declares the run inputs it needs, for example most built-in templates declare **Input material**
 (multi-line, optional); the **Fetch issue** action in the designer asks for the **Jira issue key** (required). Every
 task that extends a template inherits its fields. When a run starts, the start form shows the fields of all steps of the workflow: a field
 is required when any step requires it, and when two steps use the same name the first label wins (the
@@ -118,16 +167,19 @@ run's issue key.
 
 The right side of the editor shows **Resolved preview**: exactly what an agent receives after inheritance
 and project shadowing, for the global library or for a project you pick. It shows the lineage, agent and
-category, and tabs **System prompt**, **User prompt**, **Skills**, **Rules**, **Config** and **Run inputs** (the
-merged fields, with the template each one is inherited from; automatic rules are marked). If a skill or rule the
-template lists does not exist, the preview lists it, and the task cannot run until it is fixed. The preview reflects the saved version; unsaved changes are listed as deltas.
+category, and tabs **System prompt** and **User prompt** (the template's own; the
+agent's environment is shown in the editor under **Environment of the agent**), **Skills** and **Rules** (those of the agent; automatic rules are
+marked), **Config**, **Run inputs** (the merged fields, with the template each one is inherited from) and
+**Parameters**. If a skill or rule the agent lists does not exist, or a required parameter has no value, the preview
+lists it, and the task cannot run until it is fixed. The preview reflects the saved version; unsaved changes are listed as deltas.
 
 ### Steps: change a task for one project
 
 1. On the template's row, click **Customize for project**.
 2. A new template opens with scope **Project** and the global template as parent; it keeps the global template's
    key, so it replaces the global one in that project. Pick the
-   project and change only what differs, for example append a rule to the system prompt.
+   project and change only what differs, for example append a paragraph to the user prompt or choose the
+   project's own agent.
 3. Save. From now on, that project's workflows use the project template wherever the key appears,
    including as a parent of other templates. Other projects keep the global one.
 
@@ -142,11 +194,10 @@ code base, things that are never allowed, how to report. A rule differs from a s
 always in the agent's context, a skill is opened by the agent when it needs it.** Put a norm in a rule ("the
 domain never imports Spring"); put knowledge or a procedure in a skill ("how to write an ADR").
 
-How a rule reaches the agent:
-
-- Steps run by **Model answer** get the rules in the system prompt, before the skills.
-- Steps run by a coding agent (**OpenCode**, **Claude Code**, Spec Kit phases included) get them at the start of
-  their prompt, right after the template's system part. Nothing is written into the repository.
+How a rule reaches the agent: as part of the [environment of the agent](#environment), the document every step
+gets before its task. A model answer finds it in its system prompt; OpenCode and Claude Code read it as their
+standing instructions, outside the repository. The task prompt does not repeat the rules, so a step that
+[continues a session](workflows.md#continue-session) does not get them twice.
 
 Which rules a step gets:
 
@@ -154,11 +205,12 @@ Which rules a step gets:
 |---|---|
 | **Apply automatically to every step**, global | every step of every project |
 | **Apply automatically to every step**, project | every step of that project |
-| Not automatic | the templates that list it under **Rules**, and the templates based on them |
+| Not automatic | the steps run by an agent that lists it under **Rules** |
 
-A template can drop a rule it inherits or an automatic one with **Drop inherited or automatic rules**. A
-project rule with the key of a global rule replaces it for that project (made with **Customize for project**);
-when the project's copy is not automatic, the global automatic rule is off in that project.
+Automatic rules come first (global, then project), then the agent's. An automatic rule applies to every step of
+its scope; no template or agent can drop it. A project rule with the key of a global rule replaces it for that
+project (made with **Customize for project**); when the project's copy is not automatic, the global automatic rule
+is off in that project.
 
 ### Steps: create a rule
 
@@ -168,29 +220,50 @@ when the project's copy is not automatic, the global automatic rule is off in th
 3. Write the rule in markdown: short, concrete, checkable sentences.
 4. Click **Create rule**.
 
-A rule a template lists cannot be deleted. Built-in rules: `agent-ground-rules` and `ask-dont-guess` (every
-agent gets them through the built-in `base-agent` template), `kotlin-hexagonal` and `angular-ng-zorro`
+A rule an agent lists cannot be deleted: remove it from those agents first. Built-in rules: `agent-ground-rules`
+and `ask-dont-guess` (every built-in agent lists them), `kotlin-hexagonal` and `angular-ng-zorro`
 (the conventions of the Back Office code base itself: copy them into a project rule for your stack and make
 that one automatic).
 
 <a id="agents"></a>
 ## Agents
 
-**Library** → **Tasks** → **Agents** (`/library/agents`) lists who can do the work of a task (ADR 0056). An agent
-is a model, a **harness** that runs the conversation with it (tools, context, questions) and the place it works in.
-Today an agent has a harness and optionally a model; the place it works in comes from the step (its workspace,
-repositories, rules and skills). Later stages will add a project environment and sessions that continue across
-steps.
+**Library** → **Tasks** → **Agents** (`/library/agents`) lists who can do the work of a task (ADR 0056, 0057). The
+page says it in one line: "An agent is who works and how: harness, model, instructions, rules and skills. A task
+template is what to do; a workflow step joins the two."
+
+**Why create agents.** An agent gives a way of working a name: "careful reviewer on a strong model", "cheap
+implementer with our stack rules", "analyst who writes in our formats". Choose it on any step, whatever the
+template. Because the agent is complete (harness, model, instructions, rules, skills, MCP servers), you can run
+the same task with two agents and compare cost and quality on equal terms ([Evaluation](evaluation.md)); the
+template stays the same.
 
 | Field | Meaning |
 |---|---|
 | **Kind** (the harness) | **Model answer**: one model call inside Back Office without tools or a repository. **OpenCode** or **Claude Code**: a coding agent session in the runner sandbox with the step's workspace. |
 | **Model** | Optional. Empty means the step's model or the defaults for its kind: the project's, then the starting user's, then the platform's. |
+| **Instructions** | The agent's role and way of working, in markdown, for example "You are a careful reviewer. Explain every finding with a file and a line." It may use `{{project.*}}` values and comes after the platform preamble. |
+| **Rules** | [Rules](#rules) the agent always follows, after the automatic ones. |
+| **Skills** | [Skills](#skills) the agent opens when it needs them. |
+| **MCP servers** | Remote MCP servers (a name and an `http://` or `https://` URL) the agent may use. Coding agents only: a model answer has no tools. See [MCP servers of an agent](#agent-mcp). |
 | **Name**, **Description**, **Scope**, **Tags** | As for rules; the key is derived from the name. |
 
-Built-in agents: **Model answer** (`model-answer`), **OpenCode** (`opencode`) and **Claude Code** (`claude-code`).
-Agents have the same permissions, scopes and audit as rules; **Customize for project** makes a project copy. An
-agent a template uses cannot be deleted: choose another agent in those templates first.
+The list shows each agent's **Kind**, **Model** and **Environment** (how many rules and skills it has).
+
+Built-in agents (none has a model of its own; all list the rules `agent-ground-rules` and `ask-dont-guess`):
+
+| Agent | Kind | Skills | Used by |
+|---|---|---|---|
+| **Model answer** (`model-answer`) | Model answer | none | `llm-task`; any step that names no agent |
+| **Analyst** (`analyst`) | Model answer | `user-story-format`, `use-case-format`, `adr-format`, `definition-of-ready-done`, `build-guardrails` | the analysis, specification and planning templates (`write-user-story`, `write-use-case`, `write-adr`, `impact-analysis`, `plan-task-list`, `clarify-spec`) |
+| **Reviewer** (`reviewer`) | Model answer | `security-review-checklist`, `definition-of-ready-done` | `code-review`, `review-against-spec` |
+| **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | Spec Kit phases, `implement-opencode`, `implement-task-list`, `prepare-workspace` |
+| **Claude Code** (`claude-code`) | Claude Code | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task` |
+
+**Analyst** and **Reviewer** come with short instructions for their role. Built-in agents cannot be changed;
+**Customize for project** makes a project copy you can change (for example another model or the project's stack
+rules). Agents have the same permissions, scopes and audit as rules. An agent a template uses cannot be deleted:
+choose another agent in those templates first.
 
 **Who runs a step**: the **Agent** chosen on the step in the designer, else the template's **Agent** (inherited,
 the nearest in the chain wins), else **Model answer**.
@@ -207,19 +280,63 @@ starting user, platform).
 | OpenCode or Claude Code | any other | an agent job: pushes and opens a merge request per configuration; without a push its final answer becomes the `result` artefact |
 
 The step cannot run, and the designer and the preview say why, when a template needs a coding agent (a Spec Kit
-`phase`, `push: true`, `prepareOnly`) but gets **Model answer**, or has an **Output schema** (a structured answer)
-but gets a coding agent.
+`phase`, `push: true`, `prepareOnly`) but gets **Model answer**.
+
+**Coding agents answering in a schema.** A template with an **Output schema** works with a coding agent too. The
+agent is told to write its answer as one JSON object to `structured-answer.json` in its working directory. The
+runner collects the file (artefact `structured-answer`) and keeps it out of the commit; Back Office checks it
+against the schema like a model answer, copies the confidence field and stores the fields named in **Produces**
+as artefacts. A missing or invalid file fails the step with the reasons.
+
+<a id="environment"></a>
+### The environment of the agent
+
+Before its task, every step gets one document that describes where and how it works, in this order:
+
+1. the **platform preamble**, fixed by Back Office for the kind of agent: what Back Office is, honesty, scope,
+   safety; for a model answer "no repository, no tools, only JSON when there is a schema"; for a coding agent
+   "the runner commits and pushes, never weaken a test, quote file paths, where your skills are";
+2. the agent's **Instructions**;
+3. the project's constitution, when the project has one;
+4. the rules: the automatic ones (global, then project), then the agent's.
+
+Each harness gets it in its own form:
+
+| Agent | Where the environment goes | Skills |
+|---|---|---|
+| Model answer | the system prompt: the environment, then the template's system prompt, then the skills | appended to the system prompt |
+| OpenCode | `/workspace/.backoffice-agent/AGENTS.md`, listed under `instructions` of the generated `opencode.json` | `.opencode/skills/<key>/SKILL.md` |
+| Claude Code | the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md` | `.claude/skills/<key>/SKILL.md` |
+
+The environment is written outside every repository. The repository's own `AGENTS.md` and `CLAUDE.md` stay
+untouched, and the harness reads them as usual, so your project's own agent instructions keep working next to
+Back Office's. The skill folders are excluded from git, so nothing ends up in a commit.
+
+<a id="agent-mcp"></a>
+### MCP servers of an agent
+
+A coding agent may list remote MCP servers: a name (lower case letters, digits and `-`, at most 40) and an
+`http://` or `https://` URL. The runner configures them for the harness (Claude Code `--mcp-config`, OpenCode
+`mcp` entries of type `remote`). Credentials are not supported yet: list only servers that need none. Whether a
+server is reachable is the sandbox's call: its egress policy ([Sandbox policy](projects.md#sandbox-policy)) must
+allow the host, otherwise the proxy refuses the connection and the agent sees the server as unavailable.
 
 ### Steps: create an agent
 
 1. Click **Create agent**.
-2. Enter **Name**, **Description**, **Scope** (**Global** or **Project**) and **Tags**.
+2. Enter **Name** and **Description**.
 3. Pick the **Kind** (**Model answer**, **OpenCode** or **Claude Code**) and, if the agent should always use one
    model, the **Model**.
-4. Click **Create agent**.
+4. Write the **Instructions**: the role and the way of working, short and concrete.
+5. Choose **Rules** and **Skills**; for a coding agent optionally add **MCP servers** (**Add MCP server**).
+6. Set **Scope** (**Global** or **Project**) and **Tags**.
+7. Click **Create agent**.
 
-To compare harnesses or models on the same task, make an agent for each combination (for example "Claude Code
-with model X") and choose it on the step; the template stays the same.
+To compare harnesses, models or ways of working on the same task, make an agent for each variant (for example
+"Claude Code with model X" and "OpenCode with model Y", same rules and skills) and choose it on the step. Measure
+the variants as candidates of a [benchmark](evaluation.md#benchmarks) and on real runs in
+[Agents: cost and effectiveness](costs-insights.md#agent-insights): every task step records the agent and model it
+ran with.
 
 <a id="skills"></a>
 ## Skills
@@ -228,11 +345,15 @@ with model X") and choose it on the step; the template stays the same.
 task needs them, with **Scope**, **Tags**, **Size** and **Updated**. A skill follows the Agent Skills convention: a
 frontmatter with `name` and `description`, then short, concrete, numbered steps.
 
+A step gets the skills of its agent (**Skills** on the agent). In the designer a step may still add skills for
+itself (**Add skills to the agent's**) or drop some (**Drop skills of the agent**); the agent keeps them elsewhere.
+
 How a skill reaches the agent:
 
 - Steps run by **Model answer** get the skill appended to the system prompt (a single model call cannot open files).
 - Steps run by a coding agent (Spec Kit phases included) get it written as `.claude/skills/<key>/SKILL.md` and
-  `.opencode/skills/<key>/SKILL.md`, which Claude Code and OpenCode load on their own.
+  `.opencode/skills/<key>/SKILL.md`, which Claude Code and OpenCode load on their own; the platform preamble tells
+  the agent where they are.
 
 ### Steps: create a skill
 
@@ -241,13 +362,13 @@ How a skill reaches the agent:
 3. Write the content in the **SKILL.md** tab; check it in **Preview**.
 4. Click **Create skill**.
 
-A project skill with the key of a global skill replaces it for that project's templates, without changing
-any template. A skill that a template uses cannot be deleted; built-in skills cannot be deleted.
+A project skill with the key of a global skill replaces it for that project's agents, without changing
+any agent. A skill that an agent lists cannot be deleted: remove it from those agents first; built-in skills
+cannot be deleted.
 
 Write the **Description** as "Use when ...": agents decide by it whether to open a skill. What a task must
-always follow belongs in a [rule](#rules), not in a skill. A runner agent finds every skill in its
-workspace but reads only the ones it is told to, so the prompts of the built-in runner tasks
-name the skills they use ("Apply the skill ..."); when you attach another skill to such a task, name it in the prompt too.
+always follow belongs in a [rule](#rules), not in a skill. Some built-in prompts also name the skill the task
+relies on ("Apply the skill ..."); do the same in your own templates when one skill matters for the task.
 
 <a id="sources"></a>
 ## Sources
@@ -279,20 +400,23 @@ library sources its steps use go with it; projects that adopt it get them too.
 
 Back Office ships with templates for the Spec Kit phases, implementation, `clarify-spec`, `code-review`,
 `analyse-issue`, and SDLC tasks such as `impact-analysis`, `write-user-story`, `plan-task-list`,
-`implement-task-list` and `review-against-spec`, plus their skills and rules and the three built-in
-[agents](#agents). You can edit built-ins; Back Office never overwrites an edited entry. The former templates
+`implement-task-list` and `review-against-spec`, the generic `llm-task` and `agent-task`, plus skills, rules and
+the five built-in [agents](#agents). You can edit built-in templates, skills and rules; Back Office never overwrites an edited entry. The former templates
 **Fetch issue**, **Notify Jira**, **Transition issue**, **Start workflow** and **Project digest** are no longer in
 the library: they are [actions](workflows.md#actions) in the designer, and workflows that used them keep working.
 
 A template tagged `deprecated` keeps working in the steps that use it, but the designer, the MCP palette and the
 list (unless **Show deprecated**) no longer offer it. Deprecated now (ADR 0054): `implement-claude-code` (it is
 `implement-opencode` with the agent Claude Code; use `implement-opencode`, `implement-task-list` or `agent-task`
-and choose the agent **Claude Code** on the step) and `analyse-issue` (use `impact-analysis`).
+and choose the agent **Claude Code** on the step), `analyse-issue` (use `impact-analysis`) and, since ADR 0058, the
+abstract `base-agent`, `base-llm` and `base-coding-agent`: their text is the platform preamble of the
+[environment](#environment) now, the built-in templates no longer extend them, and they stay only for your own
+templates that do.
 
 <a id="built-in-updates"></a>
 ### Updates of the built-in library
 
-On every start Back Office compares each built-in template, skill and rule with the version it
+On every start Back Office compares each built-in template, skill, rule and agent with the version it
 ships, field by field. A built-in nobody edited (still saved by the system, and for templates still
 version 1) is replaced by the shipped version when they differ; an entry a person saved, or a copy with
 the same key that is not built-in, is left as it is. To get the shipped version of an entry you changed,
@@ -301,10 +425,10 @@ non-built-in copy and restart.
 
 ### How the built-in tasks are put together
 
-- Three abstract templates carry the shared rules: `base-agent` (role, constitution, honesty, scope,
-  safety, the two ground rules), `base-llm` for the model answer tasks (no repository; with an
-  output schema the answer is JSON only) and `base-coding-agent` for the coding agent tasks (work in the
-  repository, quote file paths, never commit or push: the runner commits and pushes after the agent).
+- The built-in templates are flat (ADR 0058): they say what to do and name their agent; only
+  `implement-task-list` (and the deprecated `implement-claude-code`) extend `implement-opencode`. How to work
+  (honesty, scope, safety, the ground rules, "the runner commits and pushes after the agent", the format skills)
+  comes from the agent and its [environment](#environment).
 - **Spec Kit** tasks: the specify prompt starts with the line `KEY: summary`, then the issue description
   and acceptance criteria, then the instructions. Plan and tasks do not paste the specification or the plan,
   which Spec Kit reads from the repository; they pass the step's feedback and, for the plan, the optional
@@ -340,8 +464,11 @@ created earlier keep the workflows they stored; change them in the designer if y
 <a id="generic-tasks"></a>
 ### Tasks with any prompt
 
-Two built-in templates exist for work you describe yourself in the node: drop the block on the canvas, open
-**Overrides** → **Replace** and write the task there (it replaces the template's user prompt).
+Two built-in templates exist for work you describe yourself in the node: drop the block on the canvas and write
+the task into its parameter **Task** (multi-line) under **Parameters** in the step panel. Without a value the
+step runs the default task (for **LLM task**: summarise the input material; for **Agent task**: describe the
+repository). Steps that replaced the prompt with **Overrides** → **Replace** before parameters existed keep
+working; the replaced prompt wins.
 
 | Template | What runs it | Good for |
 |---|---|---|
@@ -349,7 +476,7 @@ Two built-in templates exist for work you describe yourself in the node: drop th
 | **Agent task** (`agent-task`) | a coding agent on a runner (**Claude Code** by default; choose another **Agent** on the step), with a clone of the project's repository | analysing code, reviewing, answering questions about the repository; with `push: true` in **Config** also changes on a branch with a merge request |
 
 Both put the issue (when the run has one), the run input **Input material** and the reviewer's feedback into the
-system prompt (each only when it is there), so the replaced prompt can be just the task. The **Agent task** does not push by default; in a
+system prompt (each only when it is there), so the **Task** can be just the task. The **Agent task** does not push by default; in a
 project without repositories it runs in an empty workspace and its final answer becomes the `result` artefact. The
 **LLM task** runs on the Back Office server and needs a configured model provider (an API key); the **Agent task**
 runs on a runner, so on your [personal runner](personal-runner.md) it can use your own Claude login instead.

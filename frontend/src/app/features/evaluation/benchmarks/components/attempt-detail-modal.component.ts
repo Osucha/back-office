@@ -286,7 +286,7 @@ export class AttemptDetailModalComponent {
     if (!a) return null;
     const repetition = a.repetition ?? '-';
     return [
-      a.modelDisplayName,
+      a.candidate?.label ?? a.modelDisplayName,
       $localize`:@@evaluation.attempt.repetition:repetition ${repetition}:repetition:`,
       categoryLabel(a.category),
       humanize(a.difficulty).toLowerCase(),

@@ -40,6 +40,20 @@ interface ManageProjects {
      */
     fun addSpecKitWorkflows(id: ProjectId): List<pl.mos.backoffice.projects.domain.model.WorkflowDefinition>
 
+    /**
+     * ADR 0059: names of the default workflows other than the Spec Kit ones that the project lacks (by name), e.g.
+     * "Reference: one Claude Code session" for projects created before it existed (`project.view`). Empty without a
+     * repository.
+     */
+    fun missingDefaultWorkflows(id: ProjectId): List<String>
+
+    /**
+     * ADR 0059 "Add missing default workflows": seeds the default workflows other than the Spec Kit ones that the project
+     * lacks; needs `workflow.edit` and at least one repository. Registers no CI entrypoint. Audited
+     * `PROJECT_DEFAULT_WORKFLOWS_SEEDED` when anything was added.
+     */
+    fun addDefaultWorkflows(id: ProjectId): List<pl.mos.backoffice.projects.domain.model.WorkflowDefinition>
+
     data class SpecKitStatus(val enabled: Boolean, val allowedByPlatform: Boolean, val missingWorkflows: List<String>) {
         val effective: Boolean get() = enabled && allowedByPlatform
     }

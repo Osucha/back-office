@@ -1304,6 +1304,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/insights/agents': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0059: the task steps of the runs the caller may view (`project.view`), created in `[from, to)` (default the last 30 days, at most 366 days), per agent and model and per template: executions, accepted results, first-pass rate, cost and the cost of an accepted result. */
+    get: operations['getAgentInsights'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/insights/delivery': {
     parameters: {
       query?: never;
@@ -2426,6 +2443,26 @@ export interface paths {
     get: operations['listUsableConnections'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/projects/{projectId}/default-workflows': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    /** @description ADR 0059 (`project.view`): names of the default workflows (other than the Spec Kit ones, see /spec-kit) the project lacks; empty without a repository. */
+    get: operations['getMissingDefaultWorkflows'];
+    put?: never;
+    /** @description ADR 0059 "Add missing default workflows" (`workflow.edit`): seeds the default workflows (other than the Spec Kit ones) the project lacks, by name, e.g. "Reference: one Claude Code session". Needs a repository (409 otherwise). Audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`. */
+    post: operations['addDefaultWorkflows'];
     delete?: never;
     options?: never;
     head?: never;
@@ -3710,6 +3747,19 @@ export interface components {
       skills?: string[];
       tags?: string[];
     };
+    AgentInsights: {
+      /** @description lowest cost per accepted step first */
+      byAgent?: components['schemas']['AgentMetrics'][];
+      byTemplate?: components['schemas']['TemplateAgentMetrics'][];
+      /** Format: date-time */
+      from?: string;
+      /** Format: uuid */
+      projectId?: string | null;
+      /** Format: date-time */
+      to?: string;
+      /** @description task step executions without an agent record (before ADR 0059) */
+      unattributed?: number;
+    };
     AgentJob: {
       /** @description leases so far; a job is retried after a lost lease */
       attempts?: number;
@@ -3790,6 +3840,26 @@ export interface components {
       name: string;
       /** @description http:// or https:// URL of the MCP endpoint (streamable HTTP) */
       url: string;
+    };
+    /** @description ADR 0059: task steps done by one agent with one model. Accepted = a succeeded execution that is the last one of its node in a run that ended successfully; costPerAccepted = cost of every execution / accepted executions. */
+    AgentMetrics: {
+      accepted: number;
+      agentKey: string;
+      agentName: string;
+      apiCost: components['schemas']['Money'];
+      cost: components['schemas']['Money'];
+      /** @description null without accepted executions */
+      costPerAccepted?: components['schemas']['Money'] | null;
+      duration?: components['schemas']['DistributionStat'];
+      executions: number;
+      failed: number;
+      /** @description accepted executions with attempt 1 / accepted executions */
+      firstPassRate?: number | null;
+      harness?: components['schemas']['AgentHarness'] | null;
+      modelLabel?: string | null;
+      /** Format: uuid */
+      modelProfileId?: string | null;
+      succeeded: number;
     };
     AgentRef: {
       /** @description empty = model answer */
@@ -3897,6 +3967,8 @@ export interface components {
       userId: string;
     };
     Attempt: {
+      /** @description ADR 0059: the agent and model of this attempt */
+      candidate?: components['schemas']['BenchmarkCandidateRef'] | null;
       category?: components['schemas']['TaskCategory'];
       cost?: components['schemas']['Money'];
       difficulty?: components['schemas']['Difficulty'];
@@ -4007,18 +4079,39 @@ export interface components {
      */
     AuthMode: 'LOCAL' | 'OIDC' | 'BOTH';
     Benchmark: components['schemas']['BenchmarkSummary'] & {
+      /** @description ADR 0059: the candidates resolved (legacy benchmarks: derived from the models) */
+      candidateRefs?: components['schemas']['BenchmarkCandidateRef'][];
       judge?: components['schemas']['ModelProfile'];
       models?: components['schemas']['ModelProfile'][];
     };
+    /** @description ADR 0059: an agent with a model; without a model the agent's own model (the agent must have one then) */
+    BenchmarkCandidate: {
+      agentKey: string;
+      /** Format: uuid */
+      modelProfileId?: string | null;
+    };
+    BenchmarkCandidateRef: {
+      agentKey: string;
+      agentName: string;
+      harness?: components['schemas']['AgentHarness'] | null;
+      /** @description "<agent> · <model>" */
+      label: string;
+      /** Format: uuid */
+      modelProfileId: string;
+    };
+    /** @description ADR 0059: `candidates` (agents with models) are compared; prompt tasks go to model answer agents, coding tasks to coding agents, other pairs are not applicable. Without candidates, `modelProfileIds` with `codingHarness` mean each model as `model-answer` for prompt tasks and as the agent of the coding harness for coding tasks (as before ADR 0059). One of the two is required. */
     BenchmarkInput: {
+      candidates?: components['schemas']['BenchmarkCandidate'][];
       /**
+       * @description legacy, with modelProfileIds only
        * @default OPENCODE
        * @enum {string}
        */
       codingHarness: 'OPENCODE' | 'CLAUDE_CODE';
       /** Format: uuid */
       judgeModelProfileId: string;
-      modelProfileIds: string[];
+      /** @description legacy: models without agents (see description) */
+      modelProfileIds?: string[];
       name: string;
       /** @default 1 */
       repetitions: number;
@@ -4976,8 +5069,12 @@ export interface components {
       }[];
       overall?: components['schemas']['LeaderboardRow'][];
     };
+    /** @description ADR 0059: one row per candidate (agent and model) */
     LeaderboardRow: {
       attempts?: number;
+      candidate?: components['schemas']['BenchmarkCandidateRef'];
+      /** @description ADR 0059: total cost / passed attempts; null without a passed attempt */
+      costPerAccepted?: components['schemas']['Money'] | null;
       /** @description succeeded attempts the latencies are computed from */
       latencySamples?: number;
       meanCost?: components['schemas']['Money'];
@@ -4985,6 +5082,8 @@ export interface components {
       modelDisplayName?: string;
       /** Format: uuid */
       modelProfileId?: string;
+      /** @description tasks of the benchmark this candidate cannot do (a coding task for a model answer agent and the reverse) */
+      notApplicable?: number;
       /**
        * Format: int64
        * @description ADR 0046: median of the candidate's own time (model answer or agent job) in succeeded attempts
@@ -5376,6 +5475,8 @@ export interface components {
       recoveryCodesRemaining?: number;
     };
     NodeExecution: {
+      /** @description ADR 0059: who did this TASK step; null for other kinds and executions before ADR 0059 */
+      agent?: components['schemas']['StepAgentRecord'] | null;
       /** @description ADR 0042: the step at API list prices; equals cost unless a subscription paid for it (Claude Code with its owner login on a personal runner) */
       apiCost?: components['schemas']['Money'];
       artifactIds?: string[];
@@ -6422,6 +6523,16 @@ export interface components {
         [key: string]: unknown;
       };
     };
+    /** @description ADR 0059: the agent and model a task step ran with */
+    StepAgentRecord: {
+      agentKey: string;
+      agentName: string;
+      /** @description empty = model answer */
+      harness?: components['schemas']['AgentHarness'] | null;
+      modelLabel?: string | null;
+      /** Format: uuid */
+      modelProfileId?: string | null;
+    };
     /**
      * @description ADR 0050: LLM_CALL = one call through the gateway (LLM tasks, judges); CODING_AGENT = a runner job
      * @enum {string}
@@ -6563,6 +6674,12 @@ export interface components {
       sandboxPolicy?: components['schemas']['SandboxPolicy'];
       scope: components['schemas']['Scope'];
       tags?: string[];
+    };
+    /** @description ADR 0059: the agents compared on one template */
+    TemplateAgentMetrics: {
+      rows: components['schemas']['AgentMetrics'][];
+      templateKey: string;
+      templateName?: string | null;
     };
     /**
      * @description ADR 0055: what kind of work a template does; groups the library list and the designer palette. Inherited, child wins.
@@ -6849,6 +6966,7 @@ export interface components {
       apiCostPerRun?: components['schemas']['Money'];
       apiCostPerSuccessfulRun?: components['schemas']['Money'];
       costPerRun?: components['schemas']['Money'];
+      /** @description ADR 0059: the cost of an accepted result: the cost of every run in scope / successful runs */
       costPerSuccessfulRun?: components['schemas']['Money'];
       duration?: components['schemas']['DistributionStat'];
       /** @description successful without a revise decision or a retried step / finished */
@@ -9399,6 +9517,32 @@ export interface operations {
       };
     };
   };
+  getAgentInsights: {
+    parameters: {
+      query?: {
+        from?: string;
+        /** @description omit for all visible projects */
+        projectId?: string;
+        to?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AgentInsights'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
   getDeliveryInsights: {
     parameters: {
       query?: {
@@ -11541,6 +11685,51 @@ export interface operations {
           'application/json': components['schemas']['Connection'][];
         };
       };
+    };
+  };
+  getMissingDefaultWorkflows: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': string[];
+        };
+      };
+    };
+  };
+  addDefaultWorkflows: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components['parameters']['projectId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The workflows that were added */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['WorkflowDefinition'][];
+        };
+      };
+      409: components['responses']['Problem'];
     };
   };
   getProjectJiraConnections: {

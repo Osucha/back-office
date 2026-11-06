@@ -227,4 +227,5 @@ Każde wykrycie trafia do logu uruchomienia i do dziennika audytu (`PROMPT_INJEC
 4. Zwracaj uwagę na ostrzeżenie projektanta „routes only on model output”: decyzja oparta na `confidence` lub
    `review`, która prowadzi do kroku implementacji bez bramki człowieka, może zostać sterowana przez autora
    zgłoszenia.
-5. Przeglądaj zmiany umiejętności (skills), szablonów i konstytucji jak kod: są częścią każdego promptu.
+5. Przeglądaj zmiany agentów, reguł, umiejętności (skills), szablonów i konstytucji jak kod: są częścią każdego
+   promptu albo środowiska agenta.

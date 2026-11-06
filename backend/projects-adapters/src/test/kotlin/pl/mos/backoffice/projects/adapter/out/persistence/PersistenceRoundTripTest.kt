@@ -48,6 +48,8 @@ import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunInput
 import pl.mos.backoffice.projects.domain.model.RunOutcome
 import pl.mos.backoffice.projects.domain.model.RunStatus
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.projects.domain.model.RunTrigger
 import pl.mos.backoffice.projects.domain.model.Severity
 import pl.mos.backoffice.projects.domain.model.TriggerSource
@@ -125,7 +127,7 @@ class PersistenceRoundTripTest {
         assertThat((issueToMr.requireNode("ci-tests") as WorkflowNode.WaitForCi).ci.timeoutSeconds).isEqualTo(7200)
         assertThat((issueToMr.requireNode("spec-gate") as WorkflowNode.HumanGate).gate.showArtifacts).containsExactly("spec", "clarifications")
         assertThat(issueToMr.requireNode("implement").maxVisits).isEqualTo(3)
-        assertThat(workflows.countByProjectId(project.id)).isEqualTo(3)
+        assertThat(workflows.countByProjectId(project.id)).isEqualTo(4)
         assertThat(loadedProject.createdBy).isEqualTo(alice)
         assertThat(issueToMr.updatedBy).isEqualTo(alice)
         val mergeGate = (issueToMr.requireNode("merge-gate") as WorkflowNode.HumanGate).gate
@@ -169,7 +171,8 @@ class PersistenceRoundTripTest {
         run = run.withMergeRequest(MergeRequestSnapshot("https://gl/mr/7", "feature/rt2-1", "main"))
         run = run.withReview(ReviewReport(Verdict.COMMENT, 70, "meh", listOf(Finding(Severity.MAJOR, "a.kt", 3, "NPE", "null deref", "check null")), ModelRef(Provider.ANTHROPIC, "claude-opus-5"), TokenUsage(500, 50), Money.usd(0.01)))
         run = run.copy(lastSignal = CiSignal("tests", CiSignalStatus.FAIL, "3 failed", ci, now))
-        run = run.nodeStarted(definition.requireNode("specify"), now).nodeFailed("specify", "runner exploded", now, port = "failure")
+        val agent = StepAgentRecord("claude-code", "Claude Code", AgentHarness.CLAUDE_CODE, ModelProfileId.new(), "Sonnet") // ADR 0059
+        run = run.nodeStarted(definition.requireNode("specify"), now).nodeFailed("specify", "runner exploded", now, port = "failure", agent = agent)
         run = run.failed(RunFailure("specify", "runner exploded", true), now)
         runs.save(run)
 
@@ -179,6 +182,7 @@ class PersistenceRoundTripTest {
         assertThat(loaded.trigger).isEqualTo(run.trigger)
         assertThat(loaded.input).isEqualTo(run.input)
         assertThat(loaded.nodes).isEqualTo(run.nodes)
+        assertThat(loaded.nodes.map { it.agent }).containsExactly(null, null, agent)
         assertThat(loaded.artifacts.single().content).isEqualTo("# Spec\n\nBig text")
         assertThat(loaded.mergeRequest).isEqualTo(run.mergeRequest)
         assertThat(loaded.review).isEqualTo(run.review)

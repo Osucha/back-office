@@ -14,6 +14,7 @@ import pl.mos.backoffice.projects.domain.model.ReviewReport
 import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunOutcome
 import pl.mos.backoffice.projects.domain.model.RunStatus
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.shared.Money
@@ -37,6 +38,8 @@ interface RecordRunProgress {
         runnerJobId: RunnerJobId? = null,
         repositories: List<RepositoryResult> = emptyList(),
         apiCost: Money? = null,
+        /** ADR 0059: who did the TASK step. */
+        agent: StepAgentRecord? = null,
     ): WorkflowRun
     fun nodeSkipped(runId: WorkflowRunId, nodeId: String, reason: String): WorkflowRun
     fun waitingForHuman(runId: WorkflowRunId, nodeId: String, question: String, options: List<String>, context: ApprovalContext): ApprovalRequest
@@ -66,5 +69,7 @@ interface RecordRunProgress {
         val review: ReviewReport? = null,
         /** Per-repository result of a runner step (ADR 0034). */
         val repositories: List<RepositoryResult> = emptyList(),
+        /** ADR 0059: who did the TASK step. */
+        val agent: StepAgentRecord? = null,
     )
 }

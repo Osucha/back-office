@@ -5,11 +5,14 @@ import org.assertj.core.api.Assertions.within
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
+import pl.mos.backoffice.evaluation.domain.model.CandidateRef
+import pl.mos.backoffice.evaluation.domain.model.LeaderboardCandidate
 import pl.mos.backoffice.evaluation.domain.model.Difficulty
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
 import pl.mos.backoffice.evaluation.support.Fixtures
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.llm.Provider
+import pl.mos.backoffice.shared.runner.AgentHarness
 
 class LeaderboardCalculatorTest {
 
@@ -95,5 +98,35 @@ class LeaderboardCalculatorTest {
         assertThat(LeaderboardCalculator.percentile(sorted, 0.95)).isEqualTo(1000L)
         assertThat(LeaderboardCalculator.percentile(listOf(42L), 0.95)).isEqualTo(42L)
         assertThat(LeaderboardCalculator.percentile(emptyList(), 0.5)).isNull()
+    }
+
+    @Test
+    fun `ADR 0059 one row per agent and model with the cost of an accepted result and the not applicable tasks`() {
+        val coding = Fixtures.codingTask("implement")
+        val attempts = listOf(
+            Fixtures.attempt(benchmarkId, analysis, a, passed = true, cost = Money.usd("0.10")),
+            Fixtures.attempt(benchmarkId, analysis, a, repetition = 2, passed = false, cost = Money.usd("0.30")),
+            Fixtures.attempt(benchmarkId, coding, a, passed = false, cost = Money.usd("1.00")),
+            Fixtures.attempt(benchmarkId, analysis, a, cost = Money.usd("0.05")).copy(agentKey = "analyst", agentName = "Analyst"),
+        )
+        val idle = CandidateRef("reviewer", "Reviewer", AgentHarness.CLAUDE_CODE, b.id, "B")
+        val candidates = listOf(
+            LeaderboardCandidate(CandidateRef("analyst", "Analyst", null, a.id, "A"), Provider.ANTHROPIC, applicable = 1, notApplicable = 1),
+            LeaderboardCandidate(idle, Provider.OPENAI, applicable = 0, notApplicable = 2),
+        )
+
+        val board = LeaderboardCalculator.leaderboard(benchmarkId, attempts, AgentHarness.CLAUDE_CODE, candidates)
+
+        assertThat(board.overall.map { it.candidate.label }).containsExactly("Analyst · A", "Claude Code · A", "Model answer · A", "Reviewer · B")
+        val answer = board.overall.single { it.candidate.agentKey == "model-answer" }
+        assertThat(answer.attempts).isEqualTo(2)
+        assertThat(answer.costPerAccepted).describedAs("0.40 for one passed attempt").isEqualTo(Money.usd("0.40"))
+        assertThat(board.overall.single { it.candidate.agentKey == "claude-code" }.costPerAccepted).isNull()
+        assertThat(board.overall.single { it.candidate.agentKey == "analyst" }.notApplicable).isEqualTo(1)
+        val empty = board.overall.last()
+        assertThat(empty.attempts).isZero()
+        assertThat(empty.notApplicable).isEqualTo(2)
+        assertThat(empty.provider).isEqualTo(Provider.OPENAI)
+        assertThat(board.byTask.first { it.taskName == "analysis" }.rows).hasSize(2)
     }
 }

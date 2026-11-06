@@ -149,6 +149,21 @@ class CodingAgentEnvironmentTest {
     }
 
     @Test
+    fun `ADR 0059 the finished job records the agent and the model of the plan, failed jobs too`() {
+        val mapped = complete(task(schema = SCHEMA, produces = listOf("report", "confidence")), listOf(answer(GOOD)))
+        val agent = mapped.agent!!
+        assertThat(agent.agentKey).isEqualTo(TestAgents.CLAUDE_CODE.key)
+        assertThat(agent.agentName).isEqualTo(TestAgents.CLAUDE_CODE.name)
+        assertThat(agent.harness).isEqualTo(TestAgents.CLAUDE_CODE.harness)
+        assertThat(agent.modelProfileId).isEqualTo(project.defaults.modelProfileId)
+        assertThat(agent.modelLabel).isEqualTo("Test model")
+
+        val failed = complete(task(), emptyList(), RunnerJobStatus.FAILED)
+        assertThat(failed.error).isNotNull()
+        assertThat(failed.agent!!.modelLabel).isEqualTo("Test model")
+    }
+
+    @Test
     fun `a review answer of a coding agent becomes the run review with the verdict from the policy`() {
         val mapped = complete(task(schema = REVIEW_SCHEMA, produces = listOf("review")), listOf(answer(REVIEW)))
 

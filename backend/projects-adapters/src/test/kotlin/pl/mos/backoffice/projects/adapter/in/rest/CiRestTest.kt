@@ -47,7 +47,7 @@ class CiRestTest {
         val response = mvc.perform(post("/api/v1/projects").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.key").value(key))
-            .andExpect(jsonPath("$.stats.workflows").value(3))
+            .andExpect(jsonPath("$.stats.workflows").value(4))
             .andExpect(jsonPath("$.createdBy.displayName").value("Olivia Owner"))
             .andExpect(jsonPath("$.createdBy.kind").value("USER"))
             .andExpect(jsonPath("$.ciEntrypoints[0].key").value("code-review"))

@@ -1,5 +1,5 @@
 import type { NodeExecution, WorkflowRun } from '../../../core/api/types';
-import { absolute, stepFacts } from './step-facts';
+import { absolute, agentFact, stepFacts } from './step-facts';
 
 const snapshot = {
   nodes: [
@@ -85,6 +85,22 @@ describe('stepFacts', () => {
     expect(labels(stepFacts(r, r.nodes![1]))).toEqual(
       expect.objectContaining({ 'Branch big': 'size > 3', Otherwise: 'small' }),
     );
+  });
+
+  it('names the agent and model of a task step (ADR 0059)', () => {
+    const agent = {
+      agentKey: 'implementer',
+      agentName: 'Implementer',
+      harness: 'CLAUDE_CODE' as const,
+      modelLabel: 'Claude Sonnet',
+    };
+    const r = run([{ nodeId: 'impl', kind: 'TASK', agent }]);
+    const facts = stepFacts(r, r.nodes![0]);
+    expect(facts.map((f) => f.label).slice(0, 2)).toEqual(['Template', 'Agent']);
+    expect(labels(facts)['Agent']).toBe('Implementer · Claude Sonnet (Claude Code)');
+    expect(agentFact({ ...agent, agentName: 'Claude Code' })).toBe('Claude Code · Claude Sonnet');
+    const older = run([{ nodeId: 'impl', kind: 'TASK' }]);
+    expect(labels(stepFacts(older, older.nodes![0]))['Agent']).toBeUndefined();
   });
 
   it('keeps unparseable times as they are', () => {

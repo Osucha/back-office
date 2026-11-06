@@ -140,9 +140,12 @@ import {
                   [boSort]="versionSort"
                   boSortKey="cost"
                   nzAlign="right"
+                  nz-tooltip
+                  nzTooltipTitle="Cost of every run / successful runs"
+                  i18n-nzTooltipTitle="@@library.metrics.col.costPerAcceptedTooltip"
                   i18n="@@library.metrics.col.costPerSuccess"
                 >
-                  Cost / success
+                  Cost per accepted result
                 </th>
               </tr>
             </thead>
@@ -243,9 +246,12 @@ import {
                     [boSort]="projectSort"
                     boSortKey="cost"
                     nzAlign="right"
+                    nz-tooltip
+                    nzTooltipTitle="Cost of every run / successful runs"
+                    i18n-nzTooltipTitle="@@library.metrics.col.costPerAcceptedTooltip"
                     i18n="@@library.metrics.col.costPerSuccess"
                   >
-                    Cost / success
+                    Cost per accepted result
                   </th>
                 </tr>
               </thead>
@@ -400,7 +406,7 @@ import {
       }
       .cards {
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 12px;
       }
       @media (max-width: 1200px) {

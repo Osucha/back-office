@@ -31,6 +31,7 @@ import pl.mos.backoffice.projects.domain.model.RepositoryResult
 import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunOutcome
 import pl.mos.backoffice.projects.domain.model.RunStatus
+import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
@@ -98,6 +99,7 @@ class RunProgressService(
             artifactIds = created.map { it.id },
             repositories = completion.repositories,
             apiCost = completion.apiCost,
+            agent = completion.agent,
         )
         val saved = runs.save(run)
         events.publish(NodeCompleted(runId, saved.projectId, nodeId, completion.port, completion.summary, completion.confidence, completion.cost.amount.toPlainString(), now))
@@ -115,11 +117,12 @@ class RunProgressService(
         runnerJobId: RunnerJobId?,
         repositories: List<RepositoryResult>,
         apiCost: Money?,
+        agent: StepAgentRecord?,
     ): WorkflowRun =
         synchronized(lock) {
             val run = load(runId)
             val now = clock.now()
-            val saved = runs.save(run.nodeFailed(nodeId, error, now, port, usage, cost, runnerJobId, repositories, apiCost))
+            val saved = runs.save(run.nodeFailed(nodeId, error, now, port, usage, cost, runnerJobId, repositories, apiCost, agent))
             events.publish(NodeFailed(runId, saved.projectId, nodeId, error, now))
             saved
         }

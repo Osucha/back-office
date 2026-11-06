@@ -62,19 +62,23 @@ describe('workflow metrics', () => {
     expect(cards.map((c) => c.id)).toEqual([
       'success',
       'firstPass',
+      'cost',
+      'humanWait',
       'duration',
       'active',
-      'cost',
       'apiCost',
     ]);
     expect(cards[0].value).toBe('80%');
     expect(cards[0].sub).toContain('4');
-    expect(cards[2].value).toBe('1.0h');
-    expect(cards[4].value).toBe('$2.00');
+    expect(cards[2].value).toBe('$2.00');
+    expect(cards[2].label).toBe('Cost per accepted result');
+    expect(cards[3].value).toBe('15m');
+    expect(cards[3].sub).toBe('p90 20m');
+    expect(cards[4].value).toBe('1.0h');
   });
 
   it('shows no cost per success without successful runs', () => {
-    expect(metricCards(M({ successful: 0, failed: 2 }))[4].value).toBe('-');
+    expect(metricCards(M({ successful: 0, failed: 2 }))[2].value).toBe('-');
   });
 
   it('compares each version with the next older one that has finished runs', () => {

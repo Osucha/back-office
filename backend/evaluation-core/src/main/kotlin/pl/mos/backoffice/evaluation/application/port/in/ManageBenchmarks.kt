@@ -8,6 +8,7 @@ import pl.mos.backoffice.evaluation.domain.model.Benchmark
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkProgressCounts
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
+import pl.mos.backoffice.evaluation.domain.model.CandidateRef
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
 import pl.mos.backoffice.evaluation.domain.model.Leaderboard
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
@@ -38,18 +39,31 @@ interface ManageBenchmarks {
     /** ADR 0046: where the caller's benchmarks can run coding jobs now (shared fleet, own personal runner). */
     fun executionTargets(): List<ExecutionTarget>
 
+    /**
+     * ADR 0059: [candidates] (agents with models) are compared; without them [modelProfileIds] with [codingHarness] mean
+     * each model as `model-answer` for prompt tasks and as the agent of the coding harness for coding tasks. One of the
+     * two is required; with candidates the models list is ignored.
+     */
     data class BenchmarkCommand(
         val name: String,
         val suiteId: TaskSuiteId,
-        val modelProfileIds: List<ModelProfileId>,
+        val modelProfileIds: List<ModelProfileId> = emptyList(),
         val judgeModelProfileId: ModelProfileId,
         val repetitions: Int = 1,
         val codingHarness: AgentHarness = AgentHarness.OPENCODE,
         val taskIds: List<EvalTaskId> = emptyList(),
         val runnerTarget: RunnerTarget = RunnerTarget.SHARED,
+        val candidates: List<CandidateInput> = emptyList(),
     )
 
-    /** Benchmark plus what the UI needs next to it. `models`/`judge` are null when a profile was deleted. */
+    /** ADR 0059: a candidate as asked for: an agent (global) and a model; without a model the agent's own. */
+    data class CandidateInput(val agentKey: String, val modelProfileId: ModelProfileId? = null)
+
+    /**
+     * Benchmark plus what the UI needs next to it. `models`/`judge` are null when a profile was deleted. ADR 0059:
+     * [candidateRefs] are the candidates resolved (a benchmark without candidates: derived from its models and the kinds
+     * of its tasks).
+     */
     data class BenchmarkDetails(
         val benchmark: Benchmark,
         val suiteName: String?,
@@ -57,6 +71,7 @@ interface ManageBenchmarks {
         val totalCost: Money,
         val models: List<ModelProfile>,
         val judge: ModelProfile?,
+        val candidateRefs: List<CandidateRef> = emptyList(),
     )
 }
 

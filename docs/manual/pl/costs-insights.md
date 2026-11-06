@@ -2,8 +2,8 @@
 
 Każde wywołanie modelu i zadanie agenta jest księgowane w rejestrze zużycia wraz z kosztem, budżety
 zatrzymują wydatki, zanim Cię zaskoczą, a wskaźniki pokazują, gdzie upływa czas między zgłoszeniem
-a scaloną zmianą. Ten rozdział opisuje stronę **Koszty** (**Costs**), budżety i stronę **Wskaźniki**
-(**Insights**).
+a scaloną zmianą oraz który agent najtaniej doprowadza pracę do akceptacji. Ten rozdział opisuje stronę **Koszty**
+(**Costs**), budżety, koszt zaakceptowanego wyniku i strony **Wskaźniki** (**Insights**).
 
 <a id="costs"></a>
 ## Koszty
@@ -48,6 +48,28 @@ opłaconych przez subskrypcję, np. Claude Code z Twoim własnym logowaniem na [
 wtedy koszt to 0, a koszt w cenach API to szacunek Claude Code. Tam, gdzie się różnią, UI pokazuje `$0.00 · API $0.05`,
 a metryki workflowów mają kartę **W cenach API na udany przebieg**. Służy do porównywania zadań i workflowów niezależnie
 od tego, kto płaci; budżety i strona kosztów liczą tylko wydane pieniądze.
+
+<a id="cost-per-accepted"></a>
+### Koszt zaakceptowanego wyniku
+
+Back Office istnieje po to, żeby znajdować tańsze sposoby na zaakceptowaną pracę: to samo zadanie wykonane przez
+różnych agentów i różne workflowy, mierzone w ten sam sposób. Najważniejszą liczbą jest tu **koszt zaakceptowanego
+wyniku**: wszystko, co wydano, łącznie z porażkami i poprawkami, podzielone przez to, co zaakceptowano. Tani agent,
+który w połowie przypadków zawodzi, nie jest tani; ta liczba to pokazuje.
+
+| Poziom | Zaakceptowane oznacza | Koszt zaakceptowanego wyniku | Gdzie go widać |
+|---|---|---|---|
+| Krok zadania | wykonanie, które się udało, jest ostatnim wykonaniem swojego kroku w uruchomieniu, a uruchomienie zakończyło się sukcesem | koszt wszystkich wykonań / zaakceptowane wykonania | [Wskaźniki → Agenci](#agent-insights) |
+| Workflow | udane uruchomienie (dotarło do udanego końca, jego bramki zostały zatwierdzone) | koszt wszystkich uruchomień / udane uruchomienia | **Koszt zaakceptowanego wyniku** (**Cost per accepted result**) w metrykach workflowu ([Mierzenie workflowów](workflow-library.md#metrics)) i na liście biblioteki |
+| Benchmark | zaliczona próba | łączny koszt kandydata / zaliczone próby | kolumna rankingu **Koszt zaakceptowanego wyniku** (**Cost per accepted result**, [Benchmarki](evaluation.md#benchmarks)) |
+
+Krok, który zawiódł i został ponowiony albo który bramka odesłała do poprawy, opłaca więc wykonanie, które ostatecznie
+zaakceptowano; nieudane uruchomienie opłacają uruchomienia udane.
+
+Czas ludzi nie jest przeliczany na pieniądze: Back Office wie, jak długo uruchomienie czekało na ludzi, a nie jak
+długo pracowali. Zamiast tego metryki workflowu pokazują obok kosztu **Oczekiwanie na ludzi** (**Human wait**)
+i **Za pierwszym razem** (**First-pass rate**). Scalenie w GitLabie też nie jest śledzone: zaakceptowanym wynikiem
+jest udane uruchomienie (z zatwierdzonymi bramkami).
 
 <a id="budgets"></a>
 ## Budżety
@@ -96,7 +118,9 @@ budżetów wewnątrz sandboxa opisuje [Jak działają zadania agentów](agent-ex
 ## Wskaźniki
 
 **Wskaźniki** (`/insights`) pokazują metryki dostarczania dla projektów, które możesz oglądać
-(`project.view`), na podstawie uruchomień utworzonych w wybranym okresie.
+(`project.view`), na podstawie uruchomień utworzonych w wybranym okresie. Przełącznik pod tytułem,
+**Dostarczanie / Agenci** (**Delivery / Agents**), przechodzi między tą stroną a stroną [Agenci](#agent-insights)
+(`/insights/agents`).
 
 ### Filtrowanie
 
@@ -133,3 +157,51 @@ MCP `get_delivery_insights` (zob. [IDE i MCP](integrations-ide.md#mcp-tools)).
   wcześniej, nie jest liczone.
 - Oczekiwania są liczone w chwili zakończenia; bramka, która wciąż jest otwarta, jeszcze nic nie dodaje.
 - Decyzje w bramkach nie są rozbijane według roli zatwierdzającego.
+
+<a id="agent-insights"></a>
+## Agenci: koszt i skuteczność
+
+**Wskaźniki** → **Agenci** (**Insights** → **Agents**, `/insights/agents`, w palecie poleceń także **Porównaj
+agentów**, **Compare agents**) odpowiada na pytanie: który agent z jakim modelem najtaniej doprowadza krok zadania do
+akceptacji? Strona czyta kroki zadań z uruchomień, które możesz oglądać (`project.view`), utworzonych w okresie.
+Każdy krok zadania zapisuje, kto go wykonał: agenta (na przykład **Claude Code**, **OpenCode**, **Analyst** albo
+jednego z Twoich) i model, z którym działał; strona uruchomienia pokazuje to samo
+([Strona uruchomienia](runs.md#run-detail)).
+
+Filtry jak na stronie dostarczania: **Wszystkie widoczne projekty** albo jeden projekt oraz okres.
+
+| Sekcja | Zawartość |
+|---|---|
+| **Według agenta i modelu** (**Per agent and model**) | Jeden wiersz na agenta i model, od najtańszego zaakceptowanego wyniku. |
+| **Według szablonu** (**Per template**) | Te same wiersze dla każdego szablonu zadania: ci sami agenci przy tym samym zadaniu. Porównuj w obrębie jednego szablonu; agent, który robi tylko łatwe kroki, wygląda w pierwszej tabeli na taniego. |
+
+| Kolumna | Znaczenie |
+|---|---|
+| **Agent**, **Model** | Kto wykonał kroki i z jakim profilem modelu. |
+| **Wykonania** (**Executions**) | Wykonania kroków zadań, łącznie z ponowieniami i poprawkami. |
+| **Zaakceptowane** (**Accepted**) | Wykonania, które się udały, były ostatnim wykonaniem swojego kroku w uruchomieniu, a uruchomienie zakończyło się sukcesem. |
+| **Za pierwszym razem** (**First-pass rate**) | Zaakceptowane wykonania, które były pierwszą próbą kroku / zaakceptowane wykonania. |
+| **Koszt** (**Cost**) | Koszt wszystkich wykonań (z kosztem w cenach API tam, gdzie płaciła subskrypcja, zob. [Koszt w cenach API](#api-cost)). |
+| **Koszt zaakceptowanego wyniku** (**Cost per accepted result**) | **Koszt** / **Zaakceptowane**: nieudane próby i poprawki opłacają zaakceptowane. **Brak zaakceptowanego wyniku** (**No accepted result yet**), gdy nic nie zaakceptowano. |
+| **Mediana czasu** (**Median time**) | Mediana czasu trwania wykonania. |
+
+Wykonania kroków zadań sprzed zapisywania agentów nie mają agenta; strona podaje, ile ich jest („... nie mają
+zapisanego agenta ... i nie są liczone”). Pusta strona oznacza, że żadne uruchomienie w tym okresie nie wykonało
+kroku zadania; **Pokaż 90 dni** (**Show 90 days**) poszerza okres.
+
+Te same liczby są dostępne w IDE przez narzędzie MCP `get_agent_insights` (zob.
+[IDE i MCP](integrations-ide.md#mcp-tools)).
+
+### Kroki: porównanie agentów na tych samych zgłoszeniach
+
+1. Każdy projekt z repozytorium ma workflow **Reference: one Claude Code session**: jedna sesja Claude Code
+   implementuje zgłoszenie od początku do końca i otwiera merge request, człowiek go przegląda
+   ([Domyślne workflowy](workflows.md#default-workflows)). To punkt odniesienia.
+2. Przepuść te same zgłoszenia przez workflow referencyjny i przez tańsze workflowy albo przez ten sam workflow
+   z tańszymi agentami i modelami w krokach zadań ([Węzły zadań](workflows.md#task-nodes)).
+3. Porównaj kroki w **Wskaźniki** → **Agenci**, **Według szablonu**, a całe workflowy w ich metrykach: **Koszt
+   zaakceptowanego wyniku**, **Za pierwszym razem** i **Oczekiwanie na ludzi** obok siebie
+   ([Mierzenie workflowów](workflow-library.md#metrics)).
+4. Zostaw tańszy sposób tam, gdzie jego koszt zaakceptowanego wyniku jest niższy bez dłuższego oczekiwania na ludzi;
+   benchmark mierzy tych samych agentów na przygotowanych zadaniach, zanim wypróbujesz ich na prawdziwych
+   zgłoszeniach ([Benchmarki](evaluation.md#benchmarks)).

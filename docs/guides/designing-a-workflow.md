@@ -56,25 +56,31 @@ Rules about ports:
 A `TASK` node names a template key (`spec-kit-specify`, `clarify-spec`, `spec-kit-plan`, `spec-kit-tasks`,
 `implement-opencode`, `code-review`, `llm-task`, `agent-task`, the SDLC templates, or your own). At run time the node is resolved through the Task
 Library (`TaskCatalog.resolve`): inheritance is merged, a project-scoped template with the same key
-shadows the global one, and the node's `overrides` are applied last:
+shadows the global one, and the node's `overrides` are applied last. A step is a template (what to do), an agent (who
+works and how) and the values of the template's parameters (ADR 0057, 0058):
 
 | Override | Effect |
 |---|---|
-| `agentKey` | the agent that runs this node instead of the template's (`model-answer`, `opencode`, `claude-code` or a library agent; ADR 0056) |
+| `agentKey` | the agent that runs this node instead of the template's (`model-answer`, `analyst`, `reviewer`, `opencode`, `claude-code` or a library agent; ADR 0056). With it come its instructions, rules, skills and MCP servers |
+| `parameters` | values of the template's parameters (`{{params.<name>}}`) for this node; empty = the nearest template's value, else the default; a required parameter without a value is a validation error (ADR 0058) |
 | `modelProfileId` | model for this node (else the agent's, else the template's, else the defaults: project, starting user, platform; review tasks use the project's review default) |
-| `systemPromptAppend`, `promptAppend`, `promptReplace` | extend or replace the resolved prompts |
-| `addSkills`, `removeSkills` | skill keys added to / removed from the resolved set |
-| `config` | deep-merged into the template config: `phase`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (coding agent steps; see [Repositories of a step](#step-repositories)); `maxInputChars` (model answer steps). The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
+| `systemPromptAppend`, `promptAppend`, `promptReplace` | extend or replace the resolved prompts (`promptReplace` wins over a parameterised prompt) |
+| `addSkills`, `removeSkills` | skill keys added to / removed from the agent's skills for this node only |
+| `config` | deep-merged into the template config: `phase`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (coding agent steps; see [Repositories of a step](#step-repositories)), `workspace`, `sessionRole`, `continueSession` ([Agent sessions](#agent-sessions)); `maxInputChars` (model answer steps). The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
 
 The step's agent decides what runs where (ADR 0056; the agent is the step's `agentKey`, else the template's, else
-`model-answer`): a **model answer** step is one structured model call in Back Office (skills go into a `<skills>`
-section of the system prompt, `outputSchema` asks for JSON, `confidenceField` feeds `confidence`, every `produces`
-name becomes an artefact; a task that produces `review` is assessed by the verdict policy and stored as the run
-review). A **coding agent** step (OpenCode or Claude Code) runs in the agent runner with the skills written to the
-workspace: with the config key `phase` as a Spec Kit job, otherwise as an agent job that pushes the branch with
+`model-answer`) and brings the step's environment (ADR 0057): the platform preamble, the agent's instructions, the
+project constitution and the rules. A **model answer** step is one structured model call in Back Office (the
+environment opens the system prompt, skills go into a `<skills>` section after the template's system prompt,
+`outputSchema` asks for JSON, `confidenceField` feeds `confidence`, every `produces` name becomes an artefact; a task
+that produces `review` is assessed by the verdict policy and stored as the run review). A **coding agent** step
+(OpenCode or Claude Code) runs in the agent runner with the environment written outside the repository (OpenCode
+`AGENTS.md`, Claude Code user `CLAUDE.md`), the skills written to the workspace and the agent's MCP servers
+configured: with the config key `phase` as a Spec Kit job, otherwise as an agent job that pushes the branch with
 merge-request push options per config, returns the diff as artefact `diff` and the MR URL as `mr` (without a push its
-final answer is the `result` artefact). A template that needs a coding agent (`phase`, `push: true`, `prepareOnly`)
-with a model answer, or one with an `outputSchema` with a coding agent, is a problem and the step cannot run. The
+final answer is the `result` artefact). With an `outputSchema` a coding agent writes its structured answer to
+`structured-answer.json`, which is validated like a model answer. A template that needs a coding agent (`phase`,
+`push: true`, `prepareOnly`) with a model answer is a problem and the step cannot run. The
 actions `FETCH_ISSUE`, `COMMENT_ISSUE` and `TRANSITION_ISSUE` call Jira; `START_WORKFLOW` and `PROJECT_DIGEST` are
 Back Office operations. A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`,
 `transition-issue`, `start-workflow`, `project-digest`) is read as that action.
@@ -82,9 +88,19 @@ Back Office operations. A stored `TASK` node naming a former action template (`f
 Templates are Mustache-like: `{{issue.summary}}`, `{{artifacts.spec}}` (artefact content),
 `{{feedback}}` (the revision comments for this step), `{{project.constitution}}`, `{{mr.url}}`, `{{review.score}}`,
 `{{input.ci.mergeRequest.targetBranch}}`, `{{ci.message}}`, `{{decision.comment}}`, `{{run.short}}`,
-`{{node.attempt}}`; filters `| lower`, `| upper`, `| trim`. Missing values render empty and add a
-warning to the run log. Sections `{{#path}}...{{/path}}` keep their text only when the value is present
+`{{node.attempt}}`, `{{params.audience}}`; filters `| lower`, `| upper`, `| trim`. Missing values render empty and
+add a warning to the run log. Sections `{{#path}}...{{/path}}` keep their text only when the value is present
 (not empty), `{{^path}}...{{/path}}` only when it is absent.
+
+<a id="agent-sessions"></a>**Agent sessions.** A coding agent step normally starts a new session. Config
+`continueSession: <node id>` (designer: **Agent session** → **Continue the session of step …**) continues the session
+of an earlier coding agent step (ADR 0057): both steps run in the same run workspace (the earlier step's `workspace`,
+or the implicit workspace `run`, which every project has without a definition) under the same session role (the
+earlier step's `sessionRole`, or one derived from its node id); Back Office sets both on the earlier step too. Claude
+Code resumes with `--resume`, OpenCode with `--continue`. The designer and the check before a run refuse a reference
+to a missing step, to a step that is not a coding agent step, or to a step with another harness (a Claude Code
+session cannot continue in OpenCode). Typical use: *implement* → *fix the review findings* with `continueSession:
+implement`, so the agent keeps its context without re-reading the repository.
 
 <a id="template-variables"></a>Template variables (`TemplateModelBuilder`, the same model for prompts, `messageTemplate`,
 `branchTemplate` and merge-request titles):
@@ -105,6 +121,7 @@ warning to the run log. Sections `{{#path}}...{{/path}}` keep their text only wh
 | `decision` | the last human decision (e.g. `decision.comment`) |
 | `input` | `input.issueKey`, `input.parameters`, `input.ci` (CI trigger: `input.ci.mergeRequest.targetBranch`, ...) |
 | `parameters` | the run parameters (same as `input.parameters`) |
+| `params.<name>` | the step's template parameter values (ADR 0058; set in the designer, trusted like the prompt) |
 | `run.{id,short,workflow,trigger}` | run id, its short form, workflow name, trigger type |
 | `branch` | the working branch (state, else the MR branch) |
 | `node.{id,name,attempt}` | the current node and attempt number |
@@ -270,10 +287,11 @@ duplicated or deleted), together with the CI entrypoint `code-review`; the creat
 `updatedBy`. Every seeded gate names `owner` as the accountable role.
 
 A project created **without a repository** gets instead one starter workflow, **LLM task with review**
-(`MANUAL`, `API`): `start -> llm-task` (template `llm-task`; write the prompt in the node with **User prompt →
-Replace**; the run parameter `input` is given to the model as data, revision comments as `{{feedback}}`)
+(`MANUAL`, `API`): `start -> llm-task` (template `llm-task`; write the task into the node's parameter **Task**,
+`overrides.parameters.task`; the run parameter `input` is given to the model as data, revision comments as
+`{{feedback}}`)
 `-> review` ("Result ok?"): `approve -> done` (`END SUCCESS`), `revise -> llm-task`, `reject -> rejected`
-(`END FAILURE`). No CI entrypoint is created. When the project gets its first repository, the three
+(`END FAILURE`). No CI entrypoint is created. When the project gets its first repository, the
 workflows below and the `code-review` entrypoint are added once (skipped when workflows with those names
 already exist).
 
@@ -306,6 +324,31 @@ red verification) `-> ci-tests` (`WAIT_FOR_CI tests`: `fail -> tests-failed`) `-
 owner accountable, Definition of Done as above) `-> done`. `reject` on any gate cancels the run. Projects
 created before the `fetch-issue` step was added keep their stored workflow; add the step in the designer.
 
+**Reference: one Claude Code session** (`MANUAL`, `API`; ADR 0059), the yardstick: `start -> fetch-issue` (action
+`FETCH_ISSUE`) `-> implement` ("Claude Code: implement the issue": template `agent-task` with the agent `claude-code`,
+config `push: true` and `mergeRequest: true`, parameter **Task**: read the repository, implement the issue end to end,
+add or update the tests, run the build and the tests until they pass, summarise what changed, how it was verified and
+what is left open) `-> merge-gate` ("Merge?", four-eyes, owner accountable, Definition of Done as above): `approve ->
+done` (`END SUCCESS`), `revise -> implement` (your comment goes back to the step, at most 3 visits), `reject ->
+rejected` (`END FAILURE`). One agent session does everything a cheaper workflow splits into steps; the cheaper
+workflow is better only when its cost of an accepted result is lower without more human wait or rework.
+
+Projects created before a default workflow existed get it with **Add missing default workflows (N)** in the
+project's workflows list (`POST /api/v1/projects/{projectId}/default-workflows`, `workflow.edit`; the Spec Kit
+workflows come from `POST .../spec-kit/workflows`). Existing workflows with the same name are never replaced.
+
+### Comparing workflows and agents on the same issues
+
+1. Start the same issues (`start_workflow` over MCP, `POST /api/v1/workflows/{id}/runs`, or the start dialog) through
+   **Reference: one Claude Code session** and through the workflow you want to make cheaper, or through copies of one
+   workflow that differ only in the **Agent** and **Model profile** of their task steps.
+2. Compare the whole workflows in their metrics (chart icon in the project's **Workflows** tab): **Cost per accepted
+   result** (the cost of every run / successful runs), **First-pass rate** and **Human wait**.
+3. Compare the steps in **Insights** → **Agents** (`GET /api/v1/insights/agents`, MCP `get_agent_insights`),
+   **Per template**: the cost of an accepted step per agent and model on the same template.
+4. Keep the cheaper variant only where it holds up on enough runs (the workflow metrics mark versions with fewer than
+   5 finished runs). Definitions: [11-governance.md](../architecture/11-governance.md#agent-insights-get-insightsagents).
+
 ## Example: workflow JSON
 
 The body accepted by `POST /api/v1/projects/{projectId}/workflows` and `PUT /api/v1/workflows/{id}`
@@ -318,7 +361,7 @@ The body accepted by `POST /api/v1/projects/{projectId}/workflows` and `PUT /api
   "nodes": [
     { "id": "start", "kind": "START", "name": "Start", "position": { "x": 0, "y": 200 } },
     { "id": "code-review", "kind": "TASK", "name": "AI code review", "position": { "x": 200, "y": 200 }, "maxVisits": 3,
-      "task": { "templateKey": "code-review", "overrides": { "addSkills": ["security-review-checklist"], "config": {} } } },
+      "task": { "templateKey": "code-review", "overrides": { "config": {} } } },
     { "id": "verdict", "kind": "DECISION", "name": "Review ok?", "position": { "x": 400, "y": 200 },
       "decision": { "branches": [ { "id": "approved", "label": "no changes requested", "expression": "review.verdict != 'REQUEST_CHANGES'" } ],
                     "defaultBranch": "changes" } },
@@ -372,3 +415,5 @@ and warnings as `{nodeId, edgeId, field, message}`. Start a run with
 | Nothing happens after approval | `docs/runbooks/stuck-pipeline-run.md` |
 | Validation or run start reports an unknown repository key or a missing primary repository | the project's repositories changed; pick keys from the list or mark a repository primary ([Repositories of a step](#step-repositories)) |
 | Runner tasks fail immediately | `docs/runbooks/runner-job-failed.md` and `GET /api/v1/settings/integrations` (runner mode) |
+| `Parameter x needs a value` | a required template parameter has no value on the step, in the template chain or as a default: set it under **Parameters** or use a preset ([task-library.md](task-library.md#2-a-template-with-parameters)) |
+| `Continues the session of step x, which is not another task step of this workflow` or a harness mismatch | **Agent session** names a missing step or a step of another harness ([Agent sessions](#agent-sessions)) |

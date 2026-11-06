@@ -140,6 +140,16 @@ function actionItems(deps: ActionDeps): PaletteItem[] {
         $localize`:@@shell.palette.openInsights.keywords:delivery, metrics, lead time`,
       ),
     }),
+    ...when(identity.canInProject('project.view'), {
+      id: 'action:open-agent-insights',
+      title: $localize`:@@shell.palette.openAgentInsights.title:Compare agents`,
+      subtitle: $localize`:@@shell.palette.openAgentInsights.subtitle:Cost per accepted result per agent and model`,
+      icon: 'line-chart',
+      link: '/insights/agents',
+      keywords: keywords(
+        $localize`:@@shell.palette.openAgentInsights.keywords:agent insights, cost per accepted result, first-pass rate, models`,
+      ),
+    }),
     ...when(identity.canInProject('project.manage'), {
       id: 'action:set-budget',
       title: $localize`:@@shell.palette.setBudget.title:Set project budget…`,

@@ -165,28 +165,11 @@ class TaskResolver(private val lookup: LibraryLookup) {
             .applyOverrides(overrides)
         val agentKey = merged.agentKey ?: AgentSnapshot.MODEL_ANSWER
 
-        val problems = mutableListOf<String>()
-        val agent = lookup.visibleAgent(agentKey, projectId)?.snapshot ?: when (agentKey) {
-            AgentSnapshot.MODEL_ANSWER -> AgentSnapshot.DEFAULT
-            else -> { problems += "agent $agentKey does not exist"; AgentSnapshot(agentKey, agentKey) }
-        }
-        val listedRules = agent.rules.toMutableList()
-        val skillKeys = (agent.skills + overrides.addSkills).distinct().filter { it !in overrides.removeSkills }
-        val skills = skillKeys.mapNotNull { skillKey ->
-            val skill = lookup.visibleSkill(skillKey, projectId)
-            when {
-                skill != null -> SkillSnapshot(skill.key, skill.name, skill.content)
-                lookup.visibleRule(skillKey, projectId) != null -> { if (skillKey !in listedRules) listedRules += skillKey; null }
-                else -> { problems += "skill $skillKey does not exist"; null }
-            }
-        }
-        val automatic = lookup.visibleAutomaticRules(projectId)
-        val rules = automatic.map { RuleSnapshot(it.key, it.name, it.content, automatic = true) } +
-            listedRules.filter { key -> automatic.none { it.key == key } }.mapNotNull { ruleKey ->
-                val rule = lookup.visibleRule(ruleKey, projectId)
-                if (rule == null) problems += "rule $ruleKey of agent ${agent.key} does not exist"
-                rule?.let { RuleSnapshot(it.key, it.name, it.content, automatic = false) }
-            }
+        val environment = environment(agentKey, projectId, overrides.addSkills, overrides.removeSkills)
+        val agent = environment.agent
+        val skills = environment.skills
+        val rules = environment.rules
+        val problems = environment.problems.toMutableList()
         problems += compatibilityProblems(agent, merged.config)
         val parameters = Parameters.resolve(merged.parameters, merged.parameterValues, overrides.parameters, leaf.key)
         problems += parameters.second
@@ -217,6 +200,54 @@ class TaskResolver(private val lookup: LibraryLookup) {
             parameters = parameters.first,
         )
     }
+
+    /**
+     * Rule 5 (ADR 0057): the environment of agent [agentKey] for [projectId]: its skills plus [addSkills] minus
+     * [removeSkills] (a skill key that names a rule counts as that rule), the automatic rules (global, then the project's)
+     * and then the agent's. An unknown agent (other than the built-in model answer) and missing skills or rules are
+     * [AgentEnvironmentResolution.problems]; [AgentEnvironmentResolution.found] says whether the agent exists.
+     * ADR 0059: benchmarks use it for their candidates.
+     */
+    fun environment(
+        agentKey: String,
+        projectId: UUID?,
+        addSkills: List<String> = emptyList(),
+        removeSkills: List<String> = emptyList(),
+    ): AgentEnvironmentResolution {
+        val problems = mutableListOf<String>()
+        val stored = lookup.visibleAgent(agentKey, projectId)?.snapshot
+        val agent = stored ?: when (agentKey) {
+            AgentSnapshot.MODEL_ANSWER -> AgentSnapshot.DEFAULT
+            else -> { problems += "agent $agentKey does not exist"; AgentSnapshot(agentKey, agentKey) }
+        }
+        val listedRules = agent.rules.toMutableList()
+        val skillKeys = (agent.skills + addSkills).distinct().filter { it !in removeSkills }
+        val skills = skillKeys.mapNotNull { skillKey ->
+            val skill = lookup.visibleSkill(skillKey, projectId)
+            when {
+                skill != null -> SkillSnapshot(skill.key, skill.name, skill.content)
+                lookup.visibleRule(skillKey, projectId) != null -> { if (skillKey !in listedRules) listedRules += skillKey; null }
+                else -> { problems += "skill $skillKey does not exist"; null }
+            }
+        }
+        val automatic = lookup.visibleAutomaticRules(projectId)
+        val rules = automatic.map { RuleSnapshot(it.key, it.name, it.content, automatic = true) } +
+            listedRules.filter { key -> automatic.none { it.key == key } }.mapNotNull { ruleKey ->
+                val rule = lookup.visibleRule(ruleKey, projectId)
+                if (rule == null) problems += "rule $ruleKey of agent ${agent.key} does not exist"
+                rule?.let { RuleSnapshot(it.key, it.name, it.content, automatic = false) }
+            }
+        return AgentEnvironmentResolution(agent, skills, rules, problems, found = stored != null || agentKey == AgentSnapshot.MODEL_ANSWER)
+    }
+
+    /** What [environment] resolved; [problems] are resolution problems of a step that uses the agent. */
+    data class AgentEnvironmentResolution(
+        val agent: AgentSnapshot,
+        val skills: List<SkillSnapshot>,
+        val rules: List<RuleSnapshot>,
+        val problems: List<String>,
+        val found: Boolean,
+    )
 
     /** ADR 0056 decision 4: work the agent cannot do (ADR 0057 lifted the output schema restriction). */
     private fun compatibilityProblems(agent: AgentSnapshot, config: Map<String, Any?>): List<String> = buildList {
