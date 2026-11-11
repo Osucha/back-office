@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.port.out
 
+import pl.mos.backoffice.projects.domain.model.AgentQuestion
 import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.ArtifactKind
 import pl.mos.backoffice.projects.domain.model.GateApprovers
@@ -92,6 +93,15 @@ data class NodeResult(
     val writeApprovers: GateApprovers? = null,
     /** Per-repository result of a runner step (ADR 0034), recorded on the node execution. */
     val repositories: List<RepositoryResult> = emptyList(),
+    /**
+     * ADR 0060: the agent stopped with questions to the owner (allowed for the step, rounds left): the engine pauses at
+     * `<nodeId>::questions`, opens an AGENT_QUESTIONS approval and runs the step again with the answers. [questionRound]
+     * is the 1-based round.
+     */
+    val questions: List<AgentQuestion>? = null,
+    val questionRound: Int? = null,
+    /** ADR 0060: the step's `maxQuestionRounds`, shown with the questions. */
+    val maxQuestionRounds: Int? = null,
     /** ADR 0059: the agent and model of a TASK step, recorded on the node execution. */
     val agent: StepAgentRecord? = null,
 ) {

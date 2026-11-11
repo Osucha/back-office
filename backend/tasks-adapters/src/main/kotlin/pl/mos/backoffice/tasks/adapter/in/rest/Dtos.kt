@@ -4,6 +4,7 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
+import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
@@ -63,6 +64,7 @@ data class TaskTemplateInputDto(
     @field:Valid val runInputs: List<RunInputFieldDto> = emptyList(),
     @field:Valid val parameters: List<TemplateParameterDto> = emptyList(),
     val parameterValues: Map<String, Any?> = emptyMap(),
+    val requiresSkills: List<String> = emptyList(),
 )
 
 data class TaskTemplateDto(
@@ -86,6 +88,7 @@ data class TaskTemplateDto(
     val runInputs: List<RunInputFieldDto>,
     val parameters: List<TemplateParameterDto>,
     val parameterValues: Map<String, Any?>,
+    val requiresSkills: List<String> = emptyList(),
     val builtIn: Boolean,
     val version: Int,
     val createdAt: Instant,
@@ -99,7 +102,7 @@ data class ResolvedSkillDto(val key: String, val name: String)
 
 data class ResolvedRuleDto(val key: String, val name: String, val automatic: Boolean)
 
-data class ResolutionCheckDto(val ok: Boolean, val problems: List<String>)
+data class ResolutionCheckDto(val ok: Boolean, val problems: List<String>, val warnings: List<String> = emptyList())
 
 /** `TaskOverrides` schema: a workflow step's overrides of its template (ADR 0054, POST resolve). */
 data class TaskOverridesDto(
@@ -108,8 +111,6 @@ data class TaskOverridesDto(
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
     val promptReplace: String? = null,
-    val addSkills: List<String> = emptyList(),
-    val removeSkills: List<String> = emptyList(),
     val config: Map<String, Any?> = emptyMap(),
     val parameters: Map<String, Any?> = emptyMap(),
 )
@@ -182,6 +183,7 @@ data class AgentInputDto(
     val rules: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
     @field:Valid @field:Size(max = 10) val mcpServers: List<AgentMcpServerDto> = emptyList(),
+    val access: AgentAccessDto? = null,
     val tags: List<String> = emptyList(),
 )
 
@@ -197,6 +199,7 @@ data class AgentDto(
     val rules: List<String>,
     val skills: List<String>,
     val mcpServers: List<AgentMcpServerDto>,
+    val access: AgentAccessDto = AgentAccessDto(),
     val tags: List<String>,
     val builtIn: Boolean,
     val createdAt: Instant,
@@ -258,4 +261,10 @@ data class ResolvedParameterDto(
 data class AgentMcpServerDto(
     @field:NotBlank @field:Pattern(regexp = "^[a-z][a-z0-9-]{0,39}$") val name: String,
     @field:NotBlank @field:Size(max = 500) val url: String,
+)
+
+/** `AgentAccess` schema (ADR 0060): FULL (default), READ_ONLY, or PATHS with globs the agent may change. */
+data class AgentAccessDto(
+    val mode: AgentAccessMode = AgentAccessMode.FULL,
+    @field:Size(max = 50) val paths: List<String> = emptyList(),
 )

@@ -2,6 +2,7 @@ import { ACTION_TYPES } from '../api/types';
 import {
   actionDescription,
   actionTitle,
+  agentAccessText,
   agentKindDescription,
   agentKindLabel,
   agentModelText,
@@ -28,6 +29,15 @@ describe('agent and action labels (ADR 0056)', () => {
   it('describes a model answer and a coding agent in one line', () => {
     expect(agentKindDescription(null)).toContain('no tools or repository');
     expect(agentKindDescription('OPENCODE')).toContain('sandbox');
+  });
+
+  it('names the access of a coding agent (ADR 0060)', () => {
+    expect(agentAccessText(undefined)).toBe('Full');
+    expect(agentAccessText({ mode: 'READ_ONLY' })).toBe('Read only');
+    expect(agentAccessText({ mode: 'PATHS', paths: ['docs/**', 'README.md'] })).toBe(
+      'Only docs/**, README.md',
+    );
+    expect(agentAccessText({ mode: 'PATHS', paths: [] })).toBe('Only these paths');
   });
 
   it('tells a coding agent by its harness', () => {

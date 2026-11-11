@@ -127,6 +127,28 @@ class WorkflowLibraryRestTest {
         )
     }
 
+    @Test
+    fun `ADR 0060 - the setup command is saved with the workflow, published and copied on adopt`() {
+        tasks.llm("llm-task", "{{input}}")
+        val (_, shopWorkflow) = project()
+        val (blog, _) = project()
+        val definition = body(send(get("/api/v1/workflows/$shopWorkflow"))).toMutableMap().apply { this["setupCommand"] = "npm ci" }
+        send(put("/api/v1/workflows/$shopWorkflow"), json.writeValueAsString(definition)).andExpect(status().isOk).andExpect(jsonPath("$.setupCommand").value("npm ci"))
+        send(get("/api/v1/workflows/$shopWorkflow")).andExpect(jsonPath("$.setupCommand").value("npm ci"))
+        val libKey = "setup-" + UUID.randomUUID().toString().take(6)
+        val id = body(send(post("/api/v1/workflows/$shopWorkflow/publish").asLibrarian(), """{"key":"$libKey"}""").andExpect(status().isCreated))["id"]
+        send(post("/api/v1/projects/$blog/workflows/from-library").asLibrarian(), """{"libraryWorkflowId":"$id"}""")
+            .andExpect(status().isCreated).andExpect(jsonPath("$.setupCommand").value("npm ci"))
+
+        // a changed setup command alone is a new library version
+        definition["setupCommand"] = "npm ci && npm run build"
+        send(put("/api/v1/workflows/$shopWorkflow"), json.writeValueAsString(definition)).andExpect(status().isOk)
+        send(post("/api/v1/workflows/$shopWorkflow/publish").asLibrarian(), """{"libraryWorkflowId":"$id"}""")
+            .andExpect(status().isCreated).andExpect(jsonPath("$.latestVersion").value(2))
+        definition.remove("setupCommand")
+        send(put("/api/v1/workflows/$shopWorkflow"), json.writeValueAsString(definition)).andExpect(status().isOk).andExpect(jsonPath("$.setupCommand").doesNotExist())
+    }
+
     /** The node with " (v2)" appended to its name: a graph change that makes a new library version. */
     private fun renamed(node: Map<*, *>): Map<*, *> =
         if (node["kind"] == "TASK") node.toMutableMap().apply { this["name"] = "${node["name"]} (v2)" } else node

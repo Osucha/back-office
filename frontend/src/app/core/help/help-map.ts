@@ -149,10 +149,10 @@ export const HELP_TOPICS = {
     $localize`:@@core.help.topic.designer.writeConfirmations:Confirmations before external writes`,
   ),
   designer: t('workflows', 'designer', $localize`:@@core.help.topic.designer:Workflow designer`),
-  workspaces: t(
+  runDirectory: t(
     'workflows',
-    'workspaces',
-    $localize`:@@core.help.topic.workspaces:Workspaces and agent sessions`,
+    'run-directory',
+    $localize`:@@core.help.topic.runDirectory:Run directory and agent sessions`,
   ),
   'step.repositories': t(
     'workflows',
@@ -173,6 +173,7 @@ export const HELP_TOPICS = {
   templates: t('task-library', 'templates', $localize`:@@core.help.topic.templates:Task templates`),
   skills: t('task-library', 'skills', $localize`:@@core.help.topic.skills:Skills`),
   rules: t('task-library', 'rules', $localize`:@@core.help.topic.rules:Rules`),
+  agents: t('task-library', 'agents', $localize`:@@core.help.topic.agents:Agents`),
   librarySources: t(
     'task-library',
     'sources',
@@ -322,7 +323,7 @@ export function helpTopic(key: HelpKey): HelpTopic {
 const PROJECT_TABS: Record<string, HelpKey> = {
   workflows: 'project.workflows',
   sources: 'projectSources',
-  workspaces: 'workspaces',
+  agents: 'agents',
   runs: 'project.runs',
   ci: 'project.ci',
   members: 'project.members',
@@ -348,6 +349,7 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
   [/^\/library(\/templates)?$/, 'templates'],
   [/^\/library\/skills$/, 'skills'],
   [/^\/library\/rules$/, 'rules'],
+  [/^\/library\/agents$/, 'agents'],
   [/^\/library\/sources$/, 'librarySources'],
   [/^\/my-work$/, 'myWork'],
   [/^\/library\/workflows$/, 'libraryWorkflows'],

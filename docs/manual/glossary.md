@@ -18,11 +18,23 @@ servers. Without a harness it gives a single model answer inside Back Office (**
 Claude Code it is a coding agent session in an agent job. A template names its default agent; a step can choose
 another, for example to compare two agents on the same task. See [Agents](task-library.md#agents).
 
+**Access (of an agent)**: What a coding agent may change in the repositories of its steps: **Full**, **Read only** or
+**Only these paths**. The runner reverts other changes after the agent finished. See
+[Access of an agent](task-library.md#agent-access).
+
+**Agent home**: The folder of one agent in the run directory, outside every repository (`/workspace/.agents/<agent
+key>/`): its environment, skills, MCP configuration and sessions. See
+[The environment of the agent](task-library.md#environment).
+
 **Agent job**: A coding or Spec Kit task that runs in a sandbox on a runner, with its own job token, limits and logs.
 See [How agent jobs run](agent-execution.md#lifecycle).
 
-**Agent session**: The conversation of a coding agent. A step starts a new one or continues the session of an
-earlier step (same workspace, same harness). See [Continuing a session](workflows.md#continue-session).
+**Agent questions**: Questions an agent stops a step with when it cannot do it well without your answers; the run
+waits until you answer or cancel the step. See [Answering an agent's questions](your-turn.md#agent-questions).
+
+**Agent session**: The conversation of a coding agent. By default a step keeps its own session (its repeats
+continue it); it can also start a new one each time or continue the session of an earlier step of the same agent.
+See [Agent sessions](workflows.md#continue-session).
 
 **Approver**: A person allowed to decide a gate: `run.approve` in the project plus the gate's own rule. Also the name of
 a project role. See [Deciding a gate](your-turn.md#gates).
@@ -172,6 +184,9 @@ overrides. See [Templates](task-library.md#templates).
 
 **Run**: One execution of a workflow, usually for one issue. See [Runs](runs.md#run-list).
 
+**Run directory**: The one directory of a run in which its coding steps work one after another, seeing what the
+earlier steps left; removed when the run ends. See [The run directory](workflows.md#run-directory).
+
 **Runner**: A runner-controller in your cluster that leases agent jobs from Back Office and runs each in a sandbox.
 See [Runner fleet](runner-fleet.md#pools).
 
@@ -181,7 +196,7 @@ See [Runner fleet](runner-fleet.md#pools).
 **Sandbox policy**: The limits of a sandbox, set in layers (platform, pool, project, template, node), each only narrowing.
 See [Sandbox policy](projects.md#sandbox-policy).
 
-**Shadowing**: A project template or skill with the same key as a global one replaces it for that project. See
+**Shadowing**: A project template, skill, rule or agent with the same key as a global one replaces it for that project. See
 [Templates](task-library.md#templates).
 
 **Rule**: Something an agent must always follow, always in its context; automatic rules apply to every step of

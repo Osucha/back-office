@@ -3,7 +3,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { Agent, WorkflowNode, WorkflowPalette } from '../../../core/api/types';
+import { By } from '@angular/platform-browser';
 import { NodePropertyPanelComponent } from './node-property-panel.component';
+import { StepAgentSectionComponent } from './step-agent-section.component';
 
 const answer = { key: 'model-answer', name: 'Model answer', harness: null };
 const palette: WorkflowPalette = {
@@ -154,7 +156,6 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     fixture.detectChanges();
     expect(panel.modelUse()).toEqual({ stepKind: 'CODING_AGENT', harness: 'CLAUDE_CODE' });
     expect(panel.runnerStep()).toBe(true);
-    expect(panel.canPrepare()).toBe(true);
 
     panel.patchOverrides({ agentKey: null });
     expect('agentKey' in (changed!.task?.overrides ?? {})).toBe(false);
@@ -214,7 +215,7 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     expect('parameters' in (changed!.task?.overrides ?? {})).toBe(false);
   });
 
-  it('continues the session of another coding agent step of the same harness (ADR 0057)', () => {
+  it('sets the directory, the session of the same agent and the questions of a coding step (ADR 0060)', () => {
     const nodes: WorkflowNode[] = [
       { ...node('implement'), id: 'spec', name: 'Write spec' },
       { ...node('implement-oc'), id: 'oc', name: 'OpenCode step' },
@@ -226,34 +227,74 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     fixture.detectChanges();
     let changed: WorkflowNode | null = null;
     panel.nodeChange.subscribe((n) => (changed = n));
+    const section = () =>
+      fixture.debugElement.query(By.directive(StepAgentSectionComponent))
+        .componentInstance as StepAgentSectionComponent;
+    const apply = () => {
+      fixture.componentRef.setInput('node', changed!);
+      fixture.detectChanges();
+    };
 
     expect(panel.runnerStep()).toBe(true);
-    expect(panel.sessionMode()).toBe('new');
+    expect(section().directory()).toBe('RUN');
+    expect(section().sessionMode()).toBe('OWN');
     expect(panel.sessionCandidates()).toEqual([
-      { id: 'spec', name: 'Write spec', harness: 'CLAUDE_CODE', sameHarness: true },
-      { id: 'oc', name: 'OpenCode step', harness: 'OPENCODE', sameHarness: false },
+      { id: 'spec', name: 'Write spec', agent: 'Claude Code', blocked: null },
+      { id: 'oc', name: 'OpenCode step', agent: 'OpenCode', blocked: 'OTHER_AGENT' },
     ]);
-    expect(panel.sessionOptionLabel(panel.sessionCandidates()[1])).toContain('another harness');
+    expect(section().optionLabel(panel.sessionCandidates()[1])).toContain('another agent');
     expect(document.querySelector('[data-agent-session]')).not.toBeNull();
+    expect(document.querySelector('[data-step-directory]')).not.toBeNull();
 
-    panel.setSessionMode('continue');
-    expect(panel.sessionMode()).toBe('continue');
-    expect(panel.sessionProblem()).toContain('Pick the step');
-    panel.setContinueSession('spec');
-    expect(changed!.task?.overrides?.config).toEqual({ push: true, continueSession: 'spec' });
-    fixture.componentRef.setInput('node', changed!);
-    fixture.detectChanges();
-    expect(panel.continuedStepId()).toBe('spec');
-    expect(panel.sessionProblem()).toBeNull();
+    section().setSessionMode('CONTINUE');
+    expect(section().sessionMode()).toBe('CONTINUE');
+    expect(section().sessionProblem()).toContain('Pick the step');
+    section().setContinue('spec');
+    expect(changed!.task?.overrides?.config).toEqual({
+      push: true,
+      session: 'CONTINUE',
+      continueSession: 'spec',
+    });
+    apply();
+    expect(section().continued()).toBe('spec');
+    expect(section().sessionProblem()).toBeNull();
     expect(panel.formConfig()).toEqual({ push: true });
 
-    panel.setContinueSession('oc');
-    fixture.componentRef.setInput('node', changed!);
-    fixture.detectChanges();
-    expect(panel.sessionProblem()).toContain('another harness');
+    section().setContinue('oc');
+    apply();
+    expect(section().sessionProblem()).toContain('another agent');
 
-    panel.setSessionMode('new');
-    expect(changed!.task?.overrides?.config).toEqual({ push: true });
+    section().setSessionMode('NEW');
+    expect(changed!.task?.overrides?.config).toEqual({ push: true, session: 'NEW' });
+    apply();
+
+    // a separate directory drops the session settings
+    section().setDirectory('SEPARATE');
+    expect(changed!.task?.overrides?.config).toEqual({ push: true, directory: 'SEPARATE' });
+    apply();
+    expect(section().sessionProblem()).toBeNull();
+
+    section().setQuestions({ allow: false });
+    expect(changed!.task?.overrides?.config).toEqual({
+      push: true,
+      directory: 'SEPARATE',
+      allowQuestions: false,
+    });
+    apply();
+    expect(panel.formConfig()).toEqual({ push: true });
+  });
+
+  it('offers only the questions to a model answer step (ADR 0060)', () => {
+    const { fixture, panel } = create(node('code-review'));
+    expect(panel.runnerStep()).toBe(false);
+    expect(document.querySelector('[data-step-questions]')).not.toBeNull();
+    expect(document.querySelector('[data-step-directory]')).toBeNull();
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+    const section = fixture.debugElement.query(By.directive(StepAgentSectionComponent))
+      .componentInstance as StepAgentSectionComponent;
+    section.setRounds(3);
+    expect(changed!.task?.overrides?.config).toEqual({ maxQuestionRounds: 3 });
   });
 
   it('keeps a template the palette no longer has as the current choice', () => {

@@ -120,19 +120,25 @@ or the default, shown greyed out. A required parameter without any value is a va
 be saved only as a draft and the run does not start.
 
 **What this step gets** (collapsed) shows the template with this step's overrides applied: the agent, the model
-profile, the system and user prompt, rules and skills (those of the agent, adjusted by the step), configuration and
-run inputs, exactly what the model or coding agent receives before the run fills in the values. **Overrides**
-change the template for this node only:
+profile, the system and user prompt, rules and skills (those of the agent), configuration and run inputs, exactly
+what the model or coding agent receives before the run fills in the values. **Warnings** there do not stop the step,
+for example a skill the template requires (**Required skills**) that the step's agent does not have.
+**Overrides** change the template for this node only:
 
 | Override | Effect |
 |---|---|
-| **Agent** | Who runs this step instead of the template's agent: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)). Empty = the template's agent. With the agent come its instructions, rules, skills and MCP servers. The step shows a problem when the agent does not fit the template (for example a Spec Kit phase or `push` with **Model answer**). |
-| **Agent session** | Coding agents only: **New session** or **Continue the session of step …** ([Continuing a session](#continue-session)). |
+| **Agent** | Who runs this step instead of the template's agent: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)). Empty = the template's agent. With the agent come its instructions, rules, skills, MCP servers and access. The step shows a problem when the agent does not fit the template (for example a Spec Kit phase or `push` with **Model answer**, or an agent with access **Read only** on a step that pushes). |
+| **Directory** | Coding agents only: **Run directory (shared)** (default) or **Separate directory** ([The run directory](#run-directory)). |
+| **Agent session** | Coding agents only: **Own (repeats continue)** (default), **New each time** or **Continue the session of step …** ([Agent sessions](#continue-session)). |
+| **Agent may ask questions**, **Question rounds** | On by default, 2 rounds: the agent may stop with questions and the run waits for your answers ([Agents asking questions](#agent-questions)). |
 | **Model profile** | Model for this node instead of the agent's, the template's or the defaults. |
 | **User prompt** | **Inherited**, **Append** (added after the template prompt) or **Replace**. |
 | **System prompt append** | Added to the template's system prompt. |
-| **Add skills to the agent's**, **Drop skills of the agent** | For this step only: skills on top of the agent's, or agent skills left out. The agent keeps them elsewhere. |
 | **Config** | Settings for the step's agent such as the verify command, branch name or merge request options; merged over the template's config. |
+
+A step no longer adds or drops skills of its agent (ADR 0060): the agent's environment is set once, on the agent.
+Steps saved with such a change run with the agent's skills; when a step needs other skills, choose or create an
+agent that has them.
 
 The coding agent used to be the config key `agent` (`CLAUDE_CODE`, `OPENCODE`); that key no longer exists. Stored
 workflows keep working: a step's `agent` is read as its **Agent** (**Claude Code**, **OpenCode**), and the next save
@@ -224,8 +230,9 @@ merge request** ones ([Git access for agents](integrations-git.md#git-least-priv
 branch and never force-push. A person (or your Git server's approval rules) merges. When a step pushes to
 several repositories, the same branch name is used in each and each gets its own merge request.
 
-**Workspace.** Each repository is cloned into its own folder named after its key: `/workspace/service`,
-`/workspace/docs`, ... The agent starts in the step's main repository (the project's primary one if the step
+**Folders.** Each repository is cloned into its own folder named after its key: `/workspace/service`,
+`/workspace/docs`, ... (in the [run directory](#run-directory), or in the step's own directory when it works in a
+**Separate directory**). The agent starts in the step's main repository (the project's primary one if the step
 uses it, otherwise the first in the list) and is told which repositories exist, where they are, their purpose,
 base branch and whether it may change them.
 
@@ -252,74 +259,93 @@ Errors block saving. A run whose steps have such errors (for example a repositor
 after the workflow was saved) does not start; the message names the step. In the **JSON** view the setting is
 `config.repositories: [{"key": "docs", "access": "READ"}]`.
 
-<a id="workspaces"></a>
-## Workspaces and agent sessions
+<a id="run-directory"></a><a id="workspaces"></a>
+## The run directory and agent sessions
 
-Every coding step normally starts from nothing: a fresh `/workspace`, fresh clones, a new agent session. A **run
-workspace** lets several steps of one run work in the same directory, and an **agent role** lets an agent continue its
-own conversation instead of re-reading everything (ADR 0044).
+Every run has one **run directory** (ADR 0060). The coding steps of the run work in it one after another: each step
+sees what the earlier steps left there, uncommitted work included, and the agents keep their sessions there. You do
+not define or name anything: *implement* → *verify* → back to *implement* simply continue each other's work.
 
-**Define workspaces in the project.** The project tab **Workspaces** lists them; every workflow of the project can
-use them. **Add workspace** (you need `project.manage`) and set:
+**Setup command.** In the workflow properties (click the empty canvas) **Setup command**, for example `npm ci`, runs
+once in the run directory before the first coding step, and again only when you change it. Empty = no setup. A step's
+own `setupCommand` in **Config** still runs before that step.
 
-| Field | Meaning |
+**Directory of a step.** A coding step (one a coding agent runs) has **Directory** under **Overrides**:
+
+| Choice | Meaning |
 |---|---|
-| **Name** | Shown on the canvas around the workspace's steps. |
-| **Key** | Lower case letters, digits, hyphens (up to 20), for example `main`. Steps pick the workspace by it; it cannot change later. |
-| **Sources cloned into it** | Project repositories and [library sources](task-library.md#sources). Steps of the workspace that name no repositories of their own work on these: the project's primary repository among them gets the access the step's **push** gives it, the others are read only. A step's own **Repositories** list replaces them for that step. |
-| **Setup command** | For example `npm ci`. Runs once per run, before the first step of the workspace; again only when you change it. |
-| **Agent roles** | For example `implementer`, `reviewer`. Steps with the same role continue one agent session. Empty = any role. |
+| **Run directory (shared)** (default) | The step works in the run directory. Its repositories are cloned there once; later steps reuse the clones and everything left in them. |
+| **Separate directory** | A fresh copy of only this step's repositories, thrown away after the step. Use it for isolation: an agent that must not see the rest of the run's work (or, with **Repositories** set to other repositories, not the code at all). Such a step always starts a new agent session. |
 
-**Pick the workspace in the step.** A coding step (one a coding agent runs) has the section **Workspace** with
-only the choice among the project's workspaces: the workspace (or **None: a fresh directory**), the **Agent role** (or a new session) and, on
-steps that are not a Spec Kit phase, **Only prepare the workspace** (clone and set up, no agent, no push). The built-in task **Prepare
-workspace** (`prepare-workspace`) is such a step; it is optional, the first step of a workspace prepares it too.
+**Agents taking turns.** For example *implement* (push on) → *verify* (push off) → a decision → back to *implement*.
+Each agent continues its own session and sees what the other left: the reviewer reads the implementer's uncommitted
+changes, the implementer finds the reviewer's notes. A step without push leaves its changes uncommitted for the next
+step; a pushing step commits everything in its repositories and pushes the run branch.
 
-**On the canvas** each workspace is a coloured, dashed region with its name around its steps, so you see at a glance
-which steps share a directory. The region spans from the first to the last of its steps. The workflow properties (click
-the empty canvas) list the project's workspaces with the number of steps of this workflow in each.
+**What happens on the runner.** The run directory lives on the runner that ran the first coding step, as a Docker
+volume or a Kubernetes volume claim; the run's coding steps run there, one after the other. Before each step the
+runner checks every reused repository and rewrites its git configuration, so nothing a previous agent planted in
+`.git` runs.
 
-**Agents taking turns.** For example *implement* (role `implementer`, push on) → *verify* (role `reviewer`, push
-off) → a decision → back to *implement*. Each agent continues its own session and sees what the other left in the
-workspace: the reviewer reads the implementer's uncommitted changes, the implementer finds the reviewer's notes. A
-step with read access leaves its changes uncommitted for the next step; a pushing step commits everything in the
-repository and pushes the run branch.
+**When the run ends** (succeeded, failed or cancelled) the run directory is removed; after a failed run it is kept
+for 24 hours so **Retry** continues in it. A run directory used after that starts empty (the pushed run branch is
+still there).
 
-**What happens on the runner.** The workspace lives on the runner that ran its first step, as a Docker volume or a
-Kubernetes volume claim. Steps of the workspace run there, one after the other, also when branches of the workflow
-run in parallel. Before each step the runner checks every reused repository and rewrites its git configuration, so
-nothing a previous agent planted in `.git` runs.
+**Mind the trust.** All steps of a run can read and change everything in the run directory, including the other
+agents' homes and session history. For an independent check use a step with **Separate directory**.
 
-**When the run ends** the workspace is deleted; after a failed run it is kept for 24 hours so **Retry** continues in
-it. A workspace used after that starts empty (the pushed run branch is still there).
+**Where an agent's own files live.** Each agent of a run has a **home** in the run directory, outside every
+repository: its environment document, its skills, its MCP configuration and its sessions
+([The environment of the agent](task-library.md#environment)). Nothing of an agent is written into a repository, so
+two agents in one run directory never see each other's skills or memory. The repository's own `AGENTS.md` and
+`CLAUDE.md` are the project's rules for every agent.
 
-**Mind the trust.** All steps and roles of a run can read and change everything in their workspace, including the
-other roles' session history. For an independent check use a step without the workspace.
-
-Validation: a step that names a workspace the project does not have, a role the workspace does not list, or **Only
-prepare** without a workspace is an error; a role without a workspace is a warning. Deleting a workspace turns the
-workflows that use it into drafts until their steps pick another one. A workflow published to the library keeps the
-workspace keys of its steps; the adopting project needs workspaces with those keys.
+**Former run workspaces.** Until ADR 0060 a project defined run workspaces (the project tab **Workspaces**), steps
+picked one and the canvas drew a region around them. They are gone, and existing workflows were migrated: a
+workspace's setup command became the **Setup command** of the workflows whose steps used it, and its sources became
+the **Repositories** of those steps that had none of their own. A stored step's workspace is ignored (every step
+works in the run directory); steps that shared an agent role keep sharing their session. The built-in task **Prepare
+workspace** (`prepare-workspace`, deprecated) clones the step's repositories into the run directory and runs the
+setup without an agent; it is not needed, the first coding step prepares the run directory too.
 
 <a id="continue-session"></a>
-### Continuing a session
+### Agent sessions
 
-Sometimes the next step should simply carry on the same conversation: *implement*, then *fix what the review
-found*, with the agent remembering what it did. A coding step has **Agent session** under **Overrides**:
+A coding step has **Agent session** under **Overrides**:
 
-- **New session** (default): the step starts a fresh conversation.
-- **Continue the session of step …**: pick an earlier coding step. This step continues that step's agent
-  session (ADR 0057).
+- **Own (repeats continue)** (default): the first execution of the step starts a session; when the step runs again
+  in the same run (rework after a review, a gate's **Revise**, answers to its questions), the agent continues its own
+  conversation and remembers what it did.
+- **New each time**: every execution starts a fresh conversation.
+- **Continue the session of step …**: pick an earlier coding step. This step continues that step's agent session,
+  for example *implement*, then *fix what the review found*, with the agent keeping its context without re-reading
+  the repository (ADR 0057).
 
-Both steps then run in the same run workspace and under the same session role, which Back Office sets for you:
-the earlier step's workspace, or the implicit workspace `run` that every project has without defining it; the
-earlier step's **Agent role**, or one derived from its id. The agent resumes its conversation (Claude Code
-`--resume`, OpenCode `--continue`) and sees the files it left. Its rules and instructions are in its environment,
-not in the prompt, so it does not get them a second time.
+A continued session needs the **same agent**: the session is kept in the agent's home. The picker greys out steps of
+another agent and steps with **Separate directory**. The agent resumes its conversation (Claude Code `--resume`,
+OpenCode `--continue`) and sees the files it left. Its rules and instructions are in its environment, not in the
+prompt, so it does not get them a second time. The designer, and again the run start, refuse a step whose **Continue
+the session of step …** names a step that does not exist or is not a coding agent step; in the **JSON** view the
+settings are `config.session` (`OWN`, `NEW`, `CONTINUE`) with `config.continueSession: <node id>`, and
+`config.directory` (`RUN`, `SEPARATE`).
 
-Both steps need the same harness: a Claude Code session cannot continue in OpenCode. The picker greys out steps of
-another harness. The designer, and again the run start, refuse a step whose **Continue the session of step …**
-names a step that does not exist, is not a coding agent step or uses a different harness.
+<a id="agent-questions"></a>
+### Agents asking questions
+
+When an agent cannot do a step well without your answers, it stops with questions instead of guessing (ADR 0060).
+A coding agent writes them to `agent-questions.json` in its working directory (collected, never committed); a model
+answer replies with `{"agentQuestions": [...]}` instead of its answer. Every agent is told how to ask.
+
+The run then waits: the step shows **waiting for your answers**, and **Your turn** gets the card **The agent asks**
+with the questions (each with the agent's reason, **Why:**) and the round, for example **Round 1 of 2**
+([Answering an agent's questions](your-turn.md#agent-questions)). **Answer and continue** runs the step again: your
+answers are added to its prompt (section "Answers of the owner") and a coding agent continues its own session.
+**Cancel the step** fails the step, and the run follows its `failure` path.
+
+| Setting (under **Overrides**) | Meaning |
+|---|---|
+| **Agent may ask questions** | On by default. Off: the agent is told it cannot ask and must record open questions in its output instead. Runs started by CI keep it on and wait like at a gate. |
+| **Question rounds** | Default 2 (1-10): how often the step may stop with questions. An agent that asks again after the last round fails the step; its questions are written to the step log. |
 
 <a id="decisions"></a>
 ## Decisions

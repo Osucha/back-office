@@ -25,10 +25,13 @@ import pl.mos.backoffice.shared.tasks.RuleSnapshot
  */
 class AgentEnvironment(private val renderer: TemplateRenderer) {
 
-    /** The document of [task] in [project]; [model] is the step's template model, [blocks] the step's data blocks. */
-    fun document(task: ResolvedTask, project: Project, model: Map<String, Any?>, blocks: PromptDataBlocks): RenderedTemplate {
+    /**
+     * The document of [task] in [project]; [model] is the step's template model, [blocks] the step's data blocks.
+     * [questions] (ADR 0060): the step lets the agent ask the owner now, so the preamble tells it how.
+     */
+    fun document(task: ResolvedTask, project: Project, model: Map<String, Any?>, blocks: PromptDataBlocks, questions: Boolean = false): RenderedTemplate {
         val instructions = task.agent.instructions.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks) }
-        val text = AgentEnvironmentText.compose(task.agent.modelAnswer, instructions?.text, project.constitution, task.rules)
+        val text = AgentEnvironmentText.compose(task.agent.modelAnswer, instructions?.text, project.constitution, task.rules, questions)
         return RenderedTemplate(text, instructions?.warnings.orEmpty())
     }
 
@@ -38,7 +41,7 @@ class AgentEnvironment(private val renderer: TemplateRenderer) {
         val MODEL_ANSWER_PREAMBLE: String get() = AgentEnvironmentText.MODEL_ANSWER_PREAMBLE
         val CODING_AGENT_PREAMBLE: String get() = AgentEnvironmentText.CODING_AGENT_PREAMBLE
 
-        fun preamble(modelAnswer: Boolean): String = AgentEnvironmentText.preamble(modelAnswer)
+        fun preamble(modelAnswer: Boolean, questions: Boolean = false): String = AgentEnvironmentText.preamble(modelAnswer, questions)
 
         fun rulesSection(rules: List<RuleSnapshot>): String? = AgentEnvironmentText.rulesSection(rules)
     }

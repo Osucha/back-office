@@ -157,6 +157,7 @@ class RestMapper {
         triggers = dto.triggers.map(WorkflowJson::toDomain).ifEmpty { listOf(pl.mos.backoffice.projects.domain.model.Trigger(pl.mos.backoffice.projects.domain.model.TriggerType.MANUAL)) },
         enabled = dto.enabled,
         canvas = WorkflowJson.toDomain(dto.canvas),
+        setupCommand = dto.setupCommand?.takeIf { it.isNotBlank() },
     )
 
     /**
@@ -174,6 +175,7 @@ class RestMapper {
             )
         },
         draft = d.draft,
+        setupCommand = d.setupCommand,
     )
 
     // ---- workflow library (ADR 0037)
@@ -328,6 +330,9 @@ class RestMapper {
                 it.connectionMode.name, it.personalAllowed, it.systemAllowed, it.defaultIdentity.name,
             )
         },
+        questions = a.questions.takeIf { it.isNotEmpty() }?.map { AgentQuestionDto(it.question, it.why) },
+        questionRound = a.questionRound,
+        maxQuestionRounds = a.maxQuestionRounds,
     )
 
     fun toDto(c: AssignApproval.AssigneeCandidate) = AssigneeCandidateDto(c.userId, c.displayName, c.projectRoles.sorted(), c.assigned)

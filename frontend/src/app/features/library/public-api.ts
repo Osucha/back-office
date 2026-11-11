@@ -3,3 +3,6 @@ export { AdoptWorkflowDialogComponent } from './components/adopt-workflow-dialog
 export { PublishWorkflowDialogComponent } from './components/publish-workflow-dialog.component';
 export { WorkflowMetricsPanelComponent } from './components/workflow-metrics-panel.component';
 export { updateAvailable } from './data/workflow-metrics';
+export { AgentEditorPanelComponent } from './components/agent-editor-panel.component';
+export { customizeAgentForProject } from './data/agent-form';
+export { canEditScope } from './data/library-access';

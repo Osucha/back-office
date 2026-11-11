@@ -42,6 +42,7 @@ import { InboxService } from '../../../core/state/inbox.service';
 import { ProjectsStore } from '../../../core/state/projects.store';
 import { RunDetailsStore } from '../../../core/state/run-details.store';
 import { agentModelText } from '../../../core/ui/agents';
+import { isAgentQuestions, questionRoundText } from '../../../core/ui/agent-questions';
 import { ArtifactViewerComponent } from '../../../core/ui/artifact-viewer.component';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
@@ -177,7 +178,55 @@ const ACTIVE = new Set(['PENDING', 'RUNNING', 'WAITING']);
         </bo-page-header>
 
         @if (r.waitingOn; as w) {
-          @if (w.kind === 'WRITE_CONFIRMATION') {
+          @if (questionsWaiting()) {
+            <section class="banner" data-holder="you" role="status" data-questions>
+              <bo-glyph holder="you" [size]="18" />
+              <div class="banner-text">
+                @if (gateMine()) {
+                  <strong i18n="@@runs.detail.questions.waitingForYou"
+                    >The agent has questions: waiting for your answers</strong
+                  >
+                } @else {
+                  <strong i18n="@@runs.detail.questions.waitingForApprover"
+                    >The agent has questions: waiting for answers</strong
+                  >
+                }
+                <span
+                  >{{ questionsAtText(w.nodeId ?? '') }}
+                  @if (questionsRound(); as round) {
+                    · {{ round }}
+                  }
+                </span>
+                @if (gateAssignedText(); as who) {
+                  <span class="assigned">{{ who }}</span>
+                }
+              </div>
+              @if (waitingApproval()?.canAssign) {
+                <button
+                  nz-button
+                  type="button"
+                  (click)="assigning.set(waitingApproval())"
+                  i18n="@@runs.detail.questions.assign"
+                >
+                  Assign…
+                </button>
+              }
+              @if (w.approvalId) {
+                <button
+                  nz-button
+                  [nzType]="gateMine() ? 'primary' : 'default'"
+                  type="button"
+                  (click)="openGate(w.approvalId)"
+                >
+                  @if (gateMine()) {
+                    <span i18n="@@runs.detail.questions.answer">Answer the questions</span>
+                  } @else {
+                    <span i18n="@@runs.detail.questions.view">View the questions</span>
+                  }
+                </button>
+              }
+            </section>
+          } @else if (w.kind === 'WRITE_CONFIRMATION') {
             <section class="banner" data-holder="you" role="status">
               <bo-glyph holder="you" [size]="18" />
               <div class="banner-text">
@@ -1096,13 +1145,38 @@ export class RunDetailPageComponent {
   });
   /** The approval being assigned (the Assign dialog is open while set). */
   readonly assigning = signal<ApprovalRequest | null>(null);
+  /** ADR 0060: the run waits for answers to an agent's questions. */
+  readonly questionsWaiting = computed(() => {
+    const w = this.run()?.waitingOn;
+    if (!w) return false;
+    const a = this.waitingApproval();
+    return w.kind === 'AGENT_QUESTIONS' || (a?.id === w.approvalId && isAgentQuestions(a));
+  });
+  readonly questionsRound = computed(() =>
+    this.questionsWaiting()
+      ? questionRoundText(
+          this.waitingApproval()?.questionRound,
+          this.waitingApproval()?.maxQuestionRounds,
+        )
+      : null,
+  );
   readonly baton = computed(() => {
     const r = this.run();
     if (!r) return { holder: 'idle' as const, label: '' };
-    const gate = r.waitingOn?.kind === 'HUMAN_GATE' || r.waitingOn?.kind === 'WRITE_CONFIRMATION';
+    const questions = this.questionsWaiting();
+    const gate =
+      questions || r.waitingOn?.kind === 'HUMAN_GATE' || r.waitingOn?.kind === 'WRITE_CONFIRMATION';
     const node = r.nodes?.find((n) => n.nodeId === r.currentNodeId)?.nodeName ?? null;
-    return batonOf.run(r, { canDecide: gate ? this.gateDecidable() : undefined, nodeName: node });
+    return batonOf.run(r, {
+      canDecide: gate ? this.gateDecidable() : undefined,
+      nodeName: node,
+      questions,
+    });
   });
+
+  questionsAtText(nodeId: string): string {
+    return $localize`:@@runs.detail.questions.at:at ${nodeId}:node:. The step runs again with your answers; cancelling fails it.`;
+  }
   readonly durationMs = computed(() => {
     const r = this.run();
     return r?.startedAt ? durationBetween(r.startedAt, r.finishedAt) : null;
@@ -1325,14 +1399,17 @@ export class RunDetailPageComponent {
     });
   }
 
-  nodeBaton = (s: NodeExecution) =>
-    batonOf.node(s, {
+  nodeBaton = (s: NodeExecution) => {
+    const waitingHere = s.nodeId === this.run()?.waitingOn?.nodeId;
+    return batonOf.node(s, {
       canDecide:
-        (s.kind === 'HUMAN_GATE' || s.status === 'WAITING') &&
-        s.nodeId === this.run()?.waitingOn?.nodeId
+        (s.kind === 'HUMAN_GATE' || s.status === 'WAITING') && waitingHere
           ? this.gateDecidable()
           : undefined,
+      // ADR 0060: "waiting for your answers" on the step that asked
+      questions: s.status === 'WAITING' && waitingHere && this.questionsWaiting(),
     });
+  };
 
   /** The template of a task step and, since ADR 0059, who did it: "implement · Claude Code · Claude Sonnet". */
   stepDetail(s: NodeExecution): string | null {

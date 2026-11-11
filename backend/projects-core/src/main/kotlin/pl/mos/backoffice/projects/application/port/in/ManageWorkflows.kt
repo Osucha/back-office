@@ -70,6 +70,8 @@ interface ManageWorkflows {
         val triggers: List<Trigger> = listOf(Trigger(TriggerType.MANUAL)),
         val enabled: Boolean = true,
         val canvas: Canvas? = null,
+        /** ADR 0060: runs once per run directory before the first coding step; null = none. */
+        val setupCommand: String? = null,
     )
 
     data class PaletteTask(

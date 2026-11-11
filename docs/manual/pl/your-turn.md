@@ -41,6 +41,7 @@ bramki.
 |---|---|---|
 | Bramka | Otwarta bramka, którą możesz rozstrzygnąć. | **Przejrzyj bramkę** (**Review gate**) (`a`) |
 | Zatwierdzenie zapisu | Krok chce zapisać coś w Jirze, a Ty możesz to zatwierdzić, na przykład „Agent chce skomentować SHOP-42” ([Zatwierdzanie zapisów zewnętrznych](#write-confirmations)). | Otwórz je, potem **Zatwierdź** lub **Odrzuć** |
+| Pytania agenta | Agent zatrzymał krok z pytaniami, na które możesz odpowiedzieć: „Agent ma pytania” ([Odpowiadanie na pytania agenta](#agent-questions)). | **Odpowiedz na pytania** (**Answer the questions**) |
 | Wygasający token Jiry | Połączenie, którym zarządzasz, ma token wygasający w ciągu 14 dni lub już wygasły: „Token Jiry połączenia <nazwa> wygasa za 5 dni” / „… wygasł”. | Otwórz połączenie, **Zastąp token** (**Replace token**) |
 | Nieudane uruchomienie | Uruchomienie, które nie powiodło się w ciągu ostatnich 7 dni, a które sam uruchomiłeś lub możesz ponowić (`run.start`). | **Otwórz uruchomienie** (**Open run**) |
 | Nieudany przegląd CI | Wykonanie CI jednego z Twoich projektów, które nie powiodło się lub którego bramka przeglądu nie przeszła, w ciągu ostatnich 3 dni. Błąd CI widoczny już jako nieudane uruchomienie nie jest pokazywany drugi raz. | **Otwórz przegląd** (**Open review**) |
@@ -170,6 +171,31 @@ projektu w przypadku połączeń projektu), dostają też kartę, gdy token wyga
 połączenia <nazwa> wygasa za 5 dni”) lub już wygasł („Token Jiry połączenia <nazwa> wygasł”). Otwórz połączenie i użyj **Zastąp token**
 (**Replace token**); karta zniknie, gdy nowa data wygaśnięcia będzie odległa o więcej niż 14 dni. Kroki:
 [Wygaśnięcie i rotacja tokenu](integrations-jira.md#jira-token-expiry).
+
+<a id="agent-questions"></a>
+## Odpowiadanie na pytania agenta
+
+Gdy agent nie wykona dobrze kroku bez Twoich odpowiedzi, zatrzymuje się z pytaniami zamiast zgadywać, a przebieg
+czeka: krok pokazuje **czeka na Twoje odpowiedzi** (**waiting for your answers**; ADR 0060; jak krok na to pozwala:
+[Agent zadaje pytania](workflows.md#agent-questions)). Karta **Agent ma pytania** (**The agent has questions**)
+pojawia się w **Twoja kolej → Czeka na Ciebie** (**Your turn → Needs you**) i jako powiadomienie na pulpicie, jeśli
+włączono powiadomienia *Twoja kolej*.
+
+Jej panel, **Agent pyta** (**The agent asks**), wypisuje pytania po kolei, każde z powodem agenta (**Dlaczego:**,
+**Why:**) i polem na Twoją odpowiedź, oraz rundę, na przykład **Runda 1 z 2** (**Round 1 of 2**).
+
+1. Otwórz kartę (albo **Odpowiedz na pytania**, **Answer the questions**, na stronie uruchomienia).
+2. Odpowiedz na to, na co umiesz; potrzebna jest co najmniej jedna odpowiedź.
+3. Kliknij **Odpowiedz i kontynuuj** (**Answer and continue**): krok wykona się ponownie z Twoimi odpowiedziami
+   dodanymi do jego promptu (sekcja „Answers of the owner”); agent kodujący kontynuuje własną sesję, więc pamięta, co
+   już zrobił. Albo kliknij **Anuluj krok** (**Cancel the step**): krok kończy się niepowodzeniem, a przebieg idzie
+   ścieżką `failure` kroku; bez niej uruchomienie kończy się niepowodzeniem.
+
+**Kto może odpowiedzieć**: osoby z `run.approve` w projekcie, jak przy bramce z regułą domyślną (rola odpowiedzialna
+**Właściciel**); czekające pytania można przekazać komuś innemu przyciskiem **Przypisz…** (**Assign…**,
+[Przypisywanie kroku](#assign-steps)). Odpowiedź trafia do dziennika audytu. Krok może zapytać ponownie w kolejnej
+rundzie; po ostatniej rundzie (**Rundy pytań** w kroku, domyślnie 2) agent, który nadal pyta, kończy krok
+niepowodzeniem.
 
 <a id="assign-steps"></a>
 ## Przypisywanie kroku

@@ -185,6 +185,8 @@ data class WorkflowDefinitionInputDto(
     val triggers: List<TriggerJson> = listOf(TriggerJson()),
     val enabled: Boolean = true,
     val canvas: CanvasJson? = null,
+    /** ADR 0060: runs once per run directory before the first coding step. */
+    val setupCommand: String? = null,
 )
 data class WorkflowDefinitionDto(
     val id: UUID,
@@ -203,6 +205,8 @@ data class WorkflowDefinitionDto(
     val library: LibraryLinkDto? = null,
     /** Saved with validation errors: no runs start from it until it is saved without errors. */
     val draft: Boolean = false,
+    /** ADR 0060: runs once per run directory before the first coding step. */
+    val setupCommand: String? = null,
 )
 data class LibraryLinkDto(
     val libraryWorkflowId: UUID,
@@ -513,11 +517,18 @@ data class ApprovalRequestDto(
     val assignment: ApprovalAssignmentDto? = null,
     /** Whether the caller may assign this open approval (`run.assign`). */
     val canAssign: Boolean = false,
-    /** `GATE` or `WRITE_CONFIRMATION` (ADR 0033). */
+    /** `GATE`, `WRITE_CONFIRMATION` (ADR 0033) or `AGENT_QUESTIONS` (ADR 0060). */
     val kind: String = "GATE",
     /** The exact external write of a write confirmation; performed as shown after approval. */
     val write: WritePreviewDto? = null,
+    /** ADR 0060, AGENT_QUESTIONS only: what the agent asks, in order. */
+    val questions: List<AgentQuestionDto>? = null,
+    /** ADR 0060, AGENT_QUESTIONS only: 1-based round of the step. */
+    val questionRound: Int? = null,
+    /** ADR 0060, AGENT_QUESTIONS only: the step's limit of rounds. */
+    val maxQuestionRounds: Int? = null,
 )
+data class AgentQuestionDto(val question: String, val why: String? = null)
 data class WritePreviewDto(
     val action: String,
     val issueKey: String,

@@ -166,6 +166,7 @@ class TaskTemplateService(
             "consumes" to (old.consumes to new.consumes),
             "tags" to (old.tags to new.tags),
             "runInputs" to (runInputSummary(old) to runInputSummary(new)),
+            "requiresSkills" to (old.requiresSkills to new.requiresSkills),
         )
     }
 }

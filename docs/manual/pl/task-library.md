@@ -74,7 +74,9 @@ Szablon, którego wymagane [parametry](#parameters) nie mają jeszcze wartości,
    **Projektowy** z wyborem **Projektu**), **Profil modelu** (**Model profile**). Pod agentem sekcja **Środowisko
    agenta** (**Environment of the agent**) pokazuje tylko do odczytu, co wnosi wybrany agent: jego instrukcje,
    reguły (automatyczne są oznaczone) i umiejętności. Aby je zmienić, edytuj agenta na stronie **Agenci** albo
-   wybierz innego agenta.
+   wybierz innego agenta. **Wymagane umiejętności** (**Required skills**): umiejętności, których wymaga praca
+   (dziedziczone i sumowane wzdłuż łańcucha). Krok, którego agent którejś nie ma, dostaje ostrzeżenie w sekcji
+   **Ostrzeżenia** (**Warnings**; i tak się wykona); szablon nie daje tej umiejętności agentowi.
 3. **Prompt**: wybierz **Dopisz do rodzica** (**Append to parent**) lub **Zastąp rodzica** (**Replace
    parent**), a następnie napisz **Prompt systemowy** (**System prompt**) i **Prompt użytkownika** (**User
    prompt**). Wartości szablonowe, takie jak `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
@@ -93,8 +95,8 @@ Szablon, którego wymagane [parametry](#parameters) nie mają jeszcze wartości,
    pokazywaną w kroku, typ, **Wymagany**, opcjonalną wartość domyślną i tekst pomocy. Szablon oparty na innym
    pokazuje też **Wartości parametrów** (**Parameter values**): wartości parametrów jego rodziców.
 5. **Konfiguracja** (**Configuration**): formularz z ustawieniami dla agenta szablonu (dla agenta kodującego:
-   polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania, narzędzia agenta, obszar
-   roboczy, faza Spec Kit, ...). Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
+   polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania, narzędzia agenta, faza
+   Spec Kit, ...). Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
    (**Raw JSON**) pokazuje te same ustawienia jako JSON, także klucze, których formularz nie zna.
    **Zaawansowane: kontrakty, artefakty, schemat wyjścia, sandbox** (zwinięte; większość szablonów niczego tu nie
    potrzebuje): **Abstrakcyjny** (**Abstract**; tylko baza dla innych szablonów, nigdy samodzielny krok),
@@ -252,16 +254,21 @@ szablon pozostaje ten sam.
 
 | Pole | Znaczenie |
 |---|---|
-| **Rodzaj** (**Kind**; harness) | **Odpowiedź modelu**: jedno wywołanie modelu wewnątrz Back Office, bez narzędzi i repozytorium. **OpenCode** lub **Claude Code**: sesja agenta kodującego w sandboxie runnera, z obszarem roboczym kroku. |
+| **Rodzaj** (**Kind**; harness) | **Odpowiedź modelu**: jedno wywołanie modelu wewnątrz Back Office, bez narzędzi i repozytorium. **OpenCode** lub **Claude Code**: sesja agenta kodującego w sandboxie runnera, w [katalogu przebiegu](workflows.md#run-directory). |
 | **Model** | Opcjonalny. Puste oznacza model kroku albo ustawienia domyślne dla jego rodzaju: projektu, potem osoby uruchamiającej, potem platformy. |
 | **Instrukcje** (**Instructions**) | Rola agenta i sposób pracy, w markdownie, na przykład „Jesteś uważnym recenzentem. Każde znalezisko wyjaśniaj z plikiem i linią.” Mogą używać wartości `{{project.*}}` i trafiają po preambule platformy. |
 | **Reguły** (**Rules**) | [Reguły](#rules), których agent zawsze przestrzega, po regułach automatycznych. |
 | **Umiejętności** (**Skills**) | [Umiejętności](#skills), które agent otwiera, gdy ich potrzebuje. |
 | **Serwery MCP** (**MCP servers**) | Zdalne serwery MCP (nazwa i adres `http://` lub `https://`), z których agent może korzystać. Tylko agenci kodujący: odpowiedź modelu nie ma narzędzi. Zob. [Serwery MCP agenta](#agent-mcp). |
+| **Dostęp** (**Access**) | Tylko agenci kodujący: co agent może zmieniać w repozytoriach swoich kroków: **Pełny** (**Full**, domyślnie), **Tylko odczyt** (**Read only**) albo **Tylko te ścieżki** (**Only these paths**). Zob. [Dostęp agenta](#agent-access). |
 | **Nazwa**, **Opis**, **Zakres**, **Tagi** | Jak w regułach; klucz powstaje z nazwy. |
 
-Lista pokazuje dla każdego agenta **Rodzaj**, **Model** i **Środowisko** (**Environment**: ile ma reguł
-i umiejętności).
+Lista pokazuje dla każdego agenta **Rodzaj**, **Model**, **Dostęp** (**Access**) i **Środowisko** (**Environment**:
+ile ma reguł i umiejętności). Własnych agentów projektu i globalnych, z których może korzystać, pokazuje też karta
+projektu **Agenci** ([Agenci projektu](projects.md#project-agents)).
+
+Środowisko ustawia się raz, na agencie (ADR 0060): krok wybiera agenta, ale nie dodaje ani nie pomija jego
+umiejętności. Na wariant utwórz innego agenta (albo kopię projektową).
 
 Agenci wbudowani (żaden nie ma własnego modelu; każdy wymienia reguły `agent-ground-rules` i `ask-dont-guess`):
 
@@ -309,22 +316,29 @@ Przed swoim zadaniem każdy krok dostaje jeden dokument opisujący, gdzie i jak 
 1. **preambuła platformy**, ustalona przez Back Office dla rodzaju agenta: czym jest Back Office, uczciwość, zakres,
    bezpieczeństwo; dla odpowiedzi modelu „bez repozytorium, bez narzędzi, przy schemacie tylko JSON”; dla agenta
    kodującego „runner commituje i wypycha, nigdy nie osłabiaj testu, cytuj ścieżki plików, gdzie są Twoje
-   umiejętności”;
+   umiejętności”; gdy krok pozwala agentowi pytać ([Agent zadaje pytania](workflows.md#agent-questions)), także jak
+   pytać;
 2. **Instrukcje** agenta;
 3. konstytucja projektu, jeśli projekt ją ma;
 4. reguły: automatyczne (globalne, potem projektowe), potem reguły agenta.
 
-Każdy harness dostaje go w swojej postaci:
+Odpowiedź modelu dostaje go na początku promptu systemowego, potem prompt systemowy szablonu, potem swoje
+umiejętności (dopisane, bo pojedyncze wywołanie modelu nie może otwierać plików).
 
-| Agent | Gdzie trafia środowisko | Umiejętności |
+<a id="agent-home"></a>Agent kodujący dostaje własny **dom** (agent home) w [katalogu przebiegu](workflows.md#run-directory),
+poza każdym repozytorium: `/workspace/.agents/<klucz agenta>/`. Tam jest wszystko, co należy do agenta (ADR 0060):
+
+| Agent | Dom to | Zawiera |
 |---|---|---|
-| Odpowiedź modelu | prompt systemowy: środowisko, potem prompt systemowy szablonu, potem umiejętności | dopisane do promptu systemowego |
-| OpenCode | `/workspace/.backoffice-agent/AGENTS.md`, wymieniony w `instructions` generowanego `opencode.json` | `.opencode/skills/<key>/SKILL.md` |
-| Claude Code | pamięć użytkownika `$CLAUDE_CONFIG_DIR/CLAUDE.md` | `.claude/skills/<key>/SKILL.md` |
+| Claude Code | jego katalog konfiguracji (`CLAUDE_CONFIG_DIR`) | `CLAUDE.md` (środowisko, jako pamięć użytkownika Claude Code), `skills/<key>/SKILL.md`, `mcp.json` (jego serwery MCP), `settings.json` (reguły narzędzi, tylko przy polityce narzędzi albo ograniczonym dostępie) i własne pliki sesji Claude Code |
+| OpenCode | jego katalog konfiguracji (`OPENCODE_CONFIG_DIR`) | `opencode.json` (wymienia `AGENTS.md` w `instructions`, do tego serwery MCP i uprawnienia edycji), `AGENTS.md` (środowisko), `skills/<key>/SKILL.md` i sesje w `data/<sesja>` |
 
-Środowisko jest zapisywane poza każdym repozytorium. Własne pliki `AGENTS.md` i `CLAUDE.md` repozytorium zostają
-nietknięte, a harness czyta je jak zwykle, więc instrukcje dla agentów zapisane w Twoim projekcie działają obok
-instrukcji Back Office. Katalogi umiejętności są wyłączone z gita, więc nic nie trafia do commita.
+Nic z agenta nie jest już zapisywane w repozytorium, więc nic nie trafia do commita, a dwaj agenci pracujący
+w jednym katalogu przebiegu nigdy nie widzą swoich umiejętności ani pamięci. Umiejętności są zapisywane od nowa przy
+każdym zadaniu, więc agent zawsze pracuje ze swoim aktualnym środowiskiem. Własne pliki `AGENTS.md` i `CLAUDE.md`
+repozytorium zostają nietknięte: harness czyta je jak zwykle i są regułami projektu dla każdego agenta, obok
+środowiska Back Office. OpenCode czyta też własne umiejętności repozytorium (`.opencode/skills`, `.claude/skills`):
+to umiejętności projektu, dostępne dla każdego agenta OpenCode.
 
 <a id="agent-mcp"></a>
 ### Serwery MCP agenta
@@ -336,15 +350,45 @@ potrzebują. O tym, czy serwer jest osiągalny, decyduje sandbox: jego polityka 
 sandboxa](projects.md#sandbox-policy)) musi dopuszczać host, inaczej proxy odrzuca połączenie, a agent widzi serwer
 jako niedostępny.
 
+<a id="agent-access"></a>
+### Dostęp agenta
+
+**Dostęp** (**Access**) mówi, co agent kodujący może zmieniać w repozytoriach swoich kroków (ADR 0060):
+
+| Dostęp | Agent może zmieniać |
+|---|---|
+| **Pełny** (**Full**, domyślnie) | wszystko |
+| **Tylko odczyt** (**Read only**) | nic |
+| **Tylko te ścieżki** (**Only these paths**) | tylko pliki pasujące do podanych wzorców ścieżek, względem katalogu głównego repozytorium, na przykład `docs/**` (`**` dowolne katalogi, `*` w obrębie jednej nazwy; zwykła ścieżka, np. `docs`, obejmuje wszystko pod nią) |
+
+Jest egzekwowany dwa razy:
+
+1. **Własne reguły narzędzi harnessu**: Claude Code nie dostaje narzędzi edycji dla innych plików, a uprawnienie
+   edycji OpenCode ich zabrania, więc agent wcześnie dowiaduje się, że nie może.
+2. **Runner, gdy agent skończy**: tuż przed startem agenta zapisuje stan każdego repozytorium kroku, a potem cofa
+   każdą zmianę spoza dostępu (dodane pliki usuwa, zmienione lub usunięte przywraca), cokolwiek agent zrobił, także
+   poleceniami powłoki. Log kroku wypisuje każdą cofniętą ścieżkę, a jego podsumowanie kończy się wierszem
+   `[Back Office runner] reverted N change(s) outside the agent's access (...)`. Dopiero potem wykonują się polecenie
+   weryfikacji, commit i push. Pliki ignorowane przez gita nie są objęte (i tak nigdy nie trafiają do commita);
+   artefakty kroku są zbierane przed cofnięciem.
+
+Agent z dostępem **Tylko odczyt** w kroku, który wypycha, to problem: krok nie wykona się, dopóki nie zmienisz agenta
+albo nie wyłączysz pushu. To, czy krok commituje i wypycha, pozostaje ustawieniem kroku; dostęp tylko zawęża, co
+agent może zmieniać. Dostęp niczego nie ukrywa: agent, który w ogóle nie może widzieć kodu, potrzebuje kroku
+z **Osobnym katalogiem** (**Separate directory**) i tylko tymi repozytoriami, które może widzieć ([Katalog
+przebiegu](workflows.md#run-directory)). Odpowiedź modelu nie ma repozytorium, więc dostęp jej nie dotyczy.
+
 ### Kroki: tworzenie agenta
 
-1. Kliknij **Utwórz agenta** (**Create agent**).
+1. Kliknij **Utwórz agenta** (**Create agent**; w bibliotece albo, dla agenta projektu, na karcie projektu
+   **Agenci**).
 2. Wpisz **Nazwę** i **Opis**.
 3. Wybierz **Rodzaj** (**Odpowiedź modelu**, **OpenCode** lub **Claude Code**) i, jeśli agent ma zawsze używać
    jednego modelu, **Model**.
 4. Napisz **Instrukcje**: rolę i sposób pracy, krótko i konkretnie.
 5. Wybierz **Reguły** i **Umiejętności**; dla agenta kodującego opcjonalnie dodaj **Serwery MCP** (**Dodaj serwer
-   MCP**, **Add MCP server**).
+   MCP**, **Add MCP server**) i ustaw **Dostęp** (dla **Tylko te ścieżki** podaj ścieżki, które agent może zmieniać,
+   na przykład `docs/**`).
 6. Ustaw **Zakres** (**Globalny** lub **Projekt**) i **Tagi**.
 7. Kliknij **Utwórz agenta**.
 
@@ -362,17 +406,17 @@ które agent otwiera, gdy zadanie ich wymaga, z kolumnami **Zakres**, **Tagi**, 
 i **Zaktualizowano**. Umiejętność stosuje konwencję Agent Skills: nagłówek frontmatter z `name` i `description`,
 a potem krótkie, konkretne, ponumerowane kroki.
 
-Krok dostaje umiejętności swojego agenta (**Umiejętności** agenta). W projektancie krok może jeszcze dodać
-umiejętności tylko dla siebie (**Dodaj umiejętności do umiejętności agenta**, **Add skills to the agent's**) albo
-niektóre pominąć (**Pomiń umiejętności agenta**, **Drop skills of the agent**); gdzie indziej agent je zachowuje.
+Krok dostaje umiejętności swojego agenta (**Umiejętności** agenta), ani więcej, ani mniej: krok nie może dodawać
+ani pomijać umiejętności (ADR 0060). Szablon może wymienić umiejętności, których wymaga jego praca (**Wymagane
+umiejętności**, **Required skills**); krok, którego agent którejś nie ma, dostaje ostrzeżenie.
 
 Jak umiejętność trafia do agenta:
 
 - Kroki wykonywane przez **Odpowiedź modelu** dostają umiejętność dopisaną do promptu systemowego (pojedyncze
   wywołanie modelu nie może otwierać plików).
-- Kroki wykonywane przez agenta kodującego (także fazy Spec Kit) dostają ją zapisaną jako
-  `.claude/skills/<key>/SKILL.md` i `.opencode/skills/<key>/SKILL.md`, które Claude Code i OpenCode
-  wczytują samodzielnie; preambuła platformy mówi agentowi, gdzie są.
+- Kroki wykonywane przez agenta kodującego (także fazy Spec Kit) dostają ją zapisaną w domu agenta jako
+  `skills/<key>/SKILL.md` ([Środowisko agenta](#environment)), nigdy w repozytorium; Claude Code i OpenCode
+  wczytują ją samodzielnie, a preambuła platformy mówi agentowi, gdzie są jego umiejętności.
 
 ### Kroki: tworzenie umiejętności
 

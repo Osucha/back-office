@@ -85,7 +85,9 @@ class LlmTaskExecutor(
 
         val user = renderer.renderPrompt(task.prompt.user?.takeIf { it.isNotBlank() } ?: DEFAULT_USER_PROMPT, model, blocks, maxChars)
         user.warnings.forEach { context.log("template: $it") }
-        val userText = truncated(context, user.text, maxChars)
+        // ADR 0060: after the owner answered the agent's questions, the answers close the prompt
+        val ownerAnswers = StepQuestions.answersSection(context, renderer, model, blocks)
+        val userText = truncated(context, listOfNotNull(user.text, ownerAnswers).joinToString("\n\n"), maxChars)
         val signals = guard.scan(untrustedInputs(context, task, model))
         reportSignals(context, task, signals, guardMode)
 
@@ -101,6 +103,14 @@ class LlmTaskExecutor(
         val structured = answer.structured
         val usage = answer.usage
         val cost = profile.pricing.costOf(usage)
+
+        // ADR 0060: an answer that is only {"agentQuestions": [...]} asks the owner instead of answering
+        if (StepQuestions.allowed(task)) {
+            StepQuestions.fromModelAnswer(result.content, structured, json)?.let { questions ->
+                context.log("the agent asks ${questions.size} question(s) instead of answering")
+                return NodeResult(port = null, usage = usage, cost = cost, questions = questions, agent = StepAgentRecord.of(task.agent, profile))
+            }
+        }
 
         val confidence = guardedConfidence(context, task, structured, signals, guardMode)
         val artifacts = mutableListOf<NewArtifact>()
@@ -148,6 +158,8 @@ class LlmTaskExecutor(
         val structured = structuredOf(result, task)
         val initial = Answer(result, structured, result.usage, emptyList())
         if (!task.producesReview) return initial
+        // ADR 0060: questions are no invalid review: no repair turn
+        if (StepQuestions.allowed(task) && StepQuestions.fromModelAnswer(result.content, structured, json) != null) return initial
         val problems = guard.validateReviewAnswer(structured)
         if (problems.isEmpty()) return initial
         context.log("review answer invalid (${problems.joinToString("; ")}); asking the model once to repair it")
@@ -241,7 +253,7 @@ class LlmTaskExecutor(
      * template's system prompt, then the skills, then the data-block notice.
      */
     private fun systemPrompt(task: ResolvedTask, context: NodeContext, model: Map<String, Any?>, blocks: PromptDataBlocks): String {
-        val env = environment.document(task, context.project, model, blocks)
+        val env = environment.document(task, context.project, model, blocks, questions = StepQuestions.open(task, context))
         env.warnings.forEach { context.log("agent instructions: $it") }
         val template = task.prompt.system?.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks) }
         template?.warnings?.forEach { context.log("system template: $it") }

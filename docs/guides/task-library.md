@@ -210,11 +210,13 @@ POST /api/v1/skills
 }
 ```
 
-A step gets the skills of its agent; `overrides.addSkills` / `removeSkills` adjust them for that step only. How
-skills reach the agent: model answer steps get them appended to the system prompt in a `<skills>` section (a single
-model call cannot open files); coding agent steps (Spec Kit phases and agent jobs) get them written to
-`.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md` in the runner workspace (git-excluded), which
-Claude Code and OpenCode load on their own; the platform preamble tells the agent where they are. A skill an agent
+A step gets the skills of its agent, nothing else: since ADR 0060 a step no longer adds or removes skills
+(`overrides.addSkills` / `removeSkills` of stored workflows are ignored). A template may list the skills its work needs
+in `requiresSkills` (inherited, unioned); a step whose agent lacks one gets a `check.warnings` entry, not a problem.
+How skills reach the agent: model answer steps get them appended to the system prompt in a `<skills>` section (a
+single model call cannot open files); coding agent steps (Spec Kit phases and agent jobs) get them written to
+`skills/<key>/SKILL.md` in the agent's home `/workspace/.agents/<agent key>/` (never into a repository), which Claude
+Code and OpenCode load on their own; the platform preamble tells the agent where they are. A skill an agent
 lists cannot be deleted, and its key and scope cannot change (`409`); built-in skills cannot be deleted.
 
 ## 5. Rules
@@ -242,8 +244,8 @@ Which rules a step gets, in this order:
 
 An automatic rule applies to every step of its scope; the former template-level `removeRules` is gone. A project
 rule with the key of a global rule replaces it for that project; a non-automatic project copy of a global
-automatic rule switches that rule off in the project. A key in a node's `addSkills` that names a rule (as the
-built-in skills turned rules did, see section 9) counts as that rule, so stored workflows keep working.
+automatic rule switches that rule off in the project. A key in an agent's `skills` that names a rule (as the
+built-in skills turned rules did, see section 9) counts as that rule.
 
 How rules reach the agent: as part of the environment document (section 6), never in the task prompt, so a
 continued session does not receive them twice. Permissions are the same as for skills; a rule an agent lists cannot
@@ -254,7 +256,7 @@ be deleted, and its key and scope cannot change (`409`).
 An agent is who works and how (ADR 0056, 0057): a **harness**, optionally a **model**, and the agent's environment:
 **instructions**, **rules**, **skills** and **MCP servers**. Without a harness the step is a **model answer**, one
 in-process model call without tools or repository; with `OPENCODE` or `CLAUDE_CODE` it is a **coding agent** session
-in the runner sandbox with the step's workspace. Without a model the step uses the defaults for its kind (project,
+in the runner sandbox, in the run directory (ADR 0060). Without a model the step uses the defaults for its kind (project,
 starting user, platform).
 
 ```http
@@ -268,6 +270,7 @@ POST /api/v1/agents
   "rules": ["agent-ground-rules", "ask-dont-guess", "shop-kotlin-conventions"],
   "skills": ["security-review-checklist", "definition-of-ready-done"],
   "mcpServers": [],
+  "access": { "mode": "FULL" },
   "tags": ["review"]
 }
 ```
@@ -298,10 +301,22 @@ Built-in agents (no model of their own; all list `agent-ground-rules` and `ask-d
 with a schema; for coding agents the runner commits and pushes, never weaken a test, quote file paths, where the
 skills are), the agent's `instructions` (rendered like a prompt, `{{project.*}}` allowed), the project constitution,
 then the rules. A model answer gets it as the start of its system prompt (then the template's system prompt, then the
-skills). For coding agents it travels as `RunnerJobSpec.instructions` and the runner writes it outside every
-repository: OpenCode `/workspace/.backoffice-agent/AGENTS.md`, listed under `instructions` of the generated
-`opencode.json`; Claude Code the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md`. The repository's own `AGENTS.md` /
-`CLAUDE.md` stay untouched and are read by the harness as project memory.
+skills). For coding agents it travels as `RunnerJobSpec.instructions` and the runner writes it into the agent's
+**home** `/workspace/.agents/<agent key>/` (`RunnerJobSpec.agentHome`, ADR 0060), outside every repository: Claude
+Code `CLAUDE.md` with the home as `CLAUDE_CONFIG_DIR` (with `skills/`, `mcp.json`, `settings.json` and its sessions);
+OpenCode `AGENTS.md`, listed under `instructions` of the home's `opencode.json` with the home as
+`OPENCODE_CONFIG_DIR` (with `skills/` and its sessions under `data/<session role>`). Nothing of an agent is written into
+a repository, so agents of one run directory never see each other's skills or memory. The repository's own
+`AGENTS.md` / `CLAUDE.md` stay untouched and are read by the harness as the project's rules for every agent; OpenCode
+also reads the repository's `.opencode/skills` and `.claude/skills` as project skills.
+
+**Access** (`access`, ADR 0060, coding agents only): `{"mode": "FULL"}` (default), `{"mode": "READ_ONLY"}` or
+`{"mode": "PATHS", "paths": ["docs/**"]}` (globs relative to a repository root, at most 50, no leading `/`, no `..`).
+The harness's tool rules keep the agent from editing elsewhere, and the runner reverts every change outside the access
+after the agent finished (shell included), lists it in the step log and ends the summary with `[Back Office runner]
+reverted N change(s) outside the agent's access (...)`; ignored files are not covered. A `READ_ONLY` agent on a step
+that pushes is a problem. Access narrows what the agent may change, not what it sees: use a step with
+`directory: SEPARATE` and only the right repositories to hide code.
 
 **MCP servers.** `mcpServers` lists remote servers (`name` `^[a-z][a-z0-9-]{0,39}$`, `url` `http://` or `https://`,
 no credentials). The runner configures them for coding agents (OpenCode `mcp` entries of `type: remote`, Claude Code
@@ -314,9 +329,10 @@ told to write one JSON object to `structured-answer.json` in its working directo
 artefact `structured-answer` and keeps it out of the commit; Back Office validates it like a model answer (schema
 check, confidence field, produced artefacts). A missing or invalid file fails the step.
 
-**Continuing a session.** Config `continueSession: <node id>` on a coding agent step continues the agent session of
-that earlier step: same run workspace (the earlier step's `workspace`, or the implicit workspace `run`), same session
-role, same harness required; see [designing-a-workflow.md](designing-a-workflow.md#agent-sessions).
+**Sessions.** A coding agent step keeps its own session by default (`session: OWN`, its repeats continue it); `NEW`
+starts fresh every time; `CONTINUE` with `continueSession: <node id>` shares the session of an earlier step of the
+**same agent** (the session lives in the agent's home); see
+[designing-a-workflow.md](designing-a-workflow.md#agent-sessions).
 
 Deleting an agent a template names is refused (`409`); choose another agent in those templates first. The config key
 `agent` (`CLAUDE_CODE`/`OPENCODE`) no longer exists: choose the agent instead. A stored step's `config.agent` is
@@ -352,19 +368,20 @@ gets):
   "consumes": [],
   "ports": ["success", "failure"],
   "abstract": false,
-  "check": { "ok": true, "problems": [] }
+  "check": { "ok": true, "problems": [], "warnings": [] }
 }
 ```
 
 - `lineage` is leaf first; the UI draws it as the inheritance chain.
-- `rules` and `skills` are the agent's (after the step's `addSkills` / `removeSkills`); `rules` lists the automatic
-  rules first (`automatic: true`).
+- `rules` and `skills` are the agent's; `rules` lists the automatic rules first (`automatic: true`).
 - `parameters` gives each parameter with the value the step uses and its `source` (`STEP`, `TEMPLATE`, `DEFAULT`,
   `NONE`).
 - `prompt.system` is the template's; the environment document is added by the Projects context at run time.
 - `check.problems` lists every skill and rule the agent names that does not exist, an agent that does not fit the
   template and a required parameter without a value (section 6). The preview still returns the merged task, but the
   `TaskCatalog` port refuses to execute it.
+- `check.warnings` (ADR 0060) lists what does not block, for example a skill of the template's `requiresSkills` the
+  agent lacks.
 - `abstract: true` means the same: previewable, not executable.
 - `ports` is always `success`, `failure`.
 - `agent` is always set: `model-answer` when neither the step nor any template in the chain names one.
@@ -384,8 +401,7 @@ are applied last, after the whole chain:
 | `modelProfileId` | replaces the resolved model |
 | `systemPromptAppend` | appended to the resolved system prompt |
 | `promptReplace`, then `promptAppend` | replace and/or extend the user prompt (`promptReplace` still wins over a parameterised prompt) |
-| `addSkills`, `removeSkills` | adjust the agent's skills for this step (a key naming a rule adds that rule) |
-| `config` | deep-merged with the same null-deletes rule; `continueSession` continues the session of another step (section 6) |
+| `config` | deep-merged with the same null-deletes rule; `directory`, `session` and `continueSession` choose the directory and session, `allowQuestions` / `maxQuestionRounds` the agent questions (section 6, ADR 0060) |
 
 The designer validates a node's `templateKey` against the catalog (error when unknown, warning when
 abstract), required parameters and `continueSession`; every task node has the ports `success` and `failure`.
@@ -442,9 +458,10 @@ prompt carries the `review` artefact.
 | `400` with `skills[i]: skill X does not exist in scope ...` or `rules[i]: rule X does not exist in scope ...` on an agent | the key is wrong, the entry is in another project's scope, or names the other kind of entry (for example a former skill that is now a rule): move it between `skills` and `rules` |
 | `409` on delete | built-in template, a template another one extends, an agent a template names, or a skill or rule an agent lists; the message names the referrers |
 | resolve shows the global template although a project one exists | the `projectId` query parameter is missing, or the project template's key differs |
-| `check.problems` on a step you did not change | a skill the step adds with `addSkills` was deleted (only references from agents block a delete) |
+| `check.warnings` on a step | the template's `requiresSkills` names a skill the step's agent lacks: add it to the agent or choose another agent (the step still runs) |
+| `check.problems`: `may only read (access READ_ONLY) but the step pushes` | set `push: false` on the step or choose another agent |
 | a rule does not reach a step | the step's agent does not list it and it is not automatic, or the project has a non-automatic copy of a global automatic rule |
-| a step continuing a session is refused | the named step does not exist, is not a coding agent step or uses another harness |
+| a step continuing a session is refused | the named step does not exist, is not a coding agent step, works in a separate directory or uses another agent |
 | an agent's MCP server is not available in the job | the sandbox egress policy does not allow its host (the run log shows the proxy refusal), the URL is not `http(s)`, or the installed Claude Code has no `--mcp-config` (`[mcp] WARN` in the runner log) |
 | a skill or rule edit does not show up in the runner | the run started before the edit; skills and rules are snapshotted at resolution time |
 | the built-in library is missing after a fresh deploy | `backoffice.tasks.seed-builtin` is `false`, or the startup log lacks `seeded task library ...` because Flyway `V300__task_library.sql` failed; check the `task_template` table |

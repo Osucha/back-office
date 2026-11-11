@@ -60,14 +60,11 @@ export type Trigger = S['Trigger'];
 export type TriggerType = Trigger['type'];
 export type WorkflowDefinitionInput = S['WorkflowDefinitionInput'];
 export type WorkflowCanvas = NonNullable<WorkflowDefinitionInput['canvas']>;
-export type ProjectWorkspace = S['ProjectWorkspace'];
 export type LlmProvider = S['LlmProvider'];
 export type LlmProviderInput = S['LlmProviderInput'];
 export type ProviderModels = S['ProviderModels'];
 export type ProviderModelInfo = S['ProviderModelInfo'];
 export type ProviderCatalogSection = S['ProviderCatalogSection'];
-export type ProjectWorkspaceInput = S['ProjectWorkspaceInput'];
-export type WorkspaceSource = NonNullable<ProjectWorkspaceInput['sources']>[number];
 export type WorkflowDefinition = S['WorkflowDefinition'];
 export type ValidationResult = S['ValidationResult'];
 export type ValidationIssue = S['ValidationIssue'];
@@ -105,6 +102,7 @@ export type LogLine = S['LogLine'];
 
 // ---- approvals
 export type ApprovalRequest = S['ApprovalRequest'];
+export type AgentQuestion = NonNullable<ApprovalRequest['questions']>[number];
 /** The exact external write of a write confirmation (ADR 0033). */
 export type WritePreview = S['WritePreview'];
 /** ADR 0035: who the caller could approve a Jira write as. */
@@ -150,6 +148,8 @@ export type TaskConfigSchemas = S['TaskConfigSchemas'];
 export type AgentHarness = S['AgentHarness'];
 export type AgentInput = S['AgentInput'];
 export type Agent = S['Agent'];
+export type AgentAccess = S['AgentAccess'];
+export type AgentAccessMode = AgentAccess['mode'];
 export type AgentRef = S['AgentRef'];
 /** ADR 0057: a remote MCP server of a coding agent (HTTP(S), no credentials). */
 export type AgentMcpServer = S['AgentMcpServer'];

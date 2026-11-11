@@ -517,8 +517,6 @@ export class TaskNodeComponent extends WorkflowNodeBase {
       o.promptAppend ||
       o.promptReplace ||
       o.systemPromptAppend ||
-      o.addSkills?.length ||
-      o.removeSkills?.length ||
       (o.parameters && Object.keys(o.parameters).length) ||
       (o.config && Object.keys(o.config).length),
     );

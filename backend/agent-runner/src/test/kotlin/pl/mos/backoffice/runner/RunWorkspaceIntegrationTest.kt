@@ -50,7 +50,8 @@ class RunWorkspaceIntegrationTest {
     private lateinit var poolId: String
     private lateinit var selector: Map<String, String>
     private val runId: UUID = UUID.randomUUID()
-    private val workspaceName = RunnerWorkspace.nameFor(runId, "main")
+    // ADR 0060: the run directory of a run (key run) is the workspace the protocol leases and releases
+    private val workspaceName = RunnerWorkspace.nameFor(runId, RunnerWorkspace.RUN_KEY)
 
     @BeforeEach
     fun pool() {
@@ -68,7 +69,7 @@ class RunWorkspaceIntegrationTest {
         usageContext = UsageContext(UsageKind.PIPELINE_STEP, projectId = UUID.randomUUID(), runId = runId, stepId = step),
         jobLabel = "job-${UUID.randomUUID()}",
         policy = SandboxPolicy(poolSelector = selector),
-        workspace = if (workspace) RunnerWorkspace("main", workspaceName, sessionRole = step) else null,
+        workspace = if (workspace) RunnerWorkspace(RunnerWorkspace.RUN_KEY, workspaceName, sessionRole = step) else null,
     )
 
     private fun submit(step: String) = runner.submit(spec(step), WorkRequest(WorkKinds.RUN_ADVANCE, mapOf("runId" to runId.toString()), dedupeKey = "RUN_ADVANCE:$runId:$step"))

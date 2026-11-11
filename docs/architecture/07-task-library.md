@@ -57,19 +57,29 @@ not receive the rules twice. Skills, by contrast, reach runner steps as `.claude
 
 | | **Agent: who and how** | **Task template: what** |
 |---|---|---|
-| Holds | harness, model (optional), instructions, rules, skills, MCP servers | prompt with parameters, run inputs, output schema, produces/consumes, config, category |
+| Holds | harness, model (optional), instructions, rules, skills, MCP servers, access (ADR 0060) | prompt with parameters, run inputs, output schema, produces/consumes, config, category, required skills (ADR 0060) |
 | Goes to | the session's environment | the session's prompt |
 | Changes when | you look for a cheaper or better way to work | the work changes |
 
-A **step** is a template, an agent (the step's, else the template's, else `model-answer`) and parameter values; it
-may still add or remove skills for itself (`overrides.addSkills` / `removeSkills`). The split follows CrewAI
+A **step** is a template, an agent (the step's, else the template's, else `model-answer`) and parameter values. The
+agent's environment is set once, on the agent (ADR 0060): a step no longer adds or removes skills (the former
+`overrides.addSkills` / `removeSkills` are ignored when stored steps are read). A template may declare
+`requiresSkills`; a step whose agent lacks one gets a warning in `check.warnings`, not a problem. The split follows CrewAI
 (`Agent` + `Task`), Claude Code subagents and OpenCode agents, and it is what evaluation needs: the agent is the
 variable compared on the same task, so it must be a named, complete unit (ADR 0057, 0059). An agent is a library
 entry in the **Tasks** group, global or project scope, built in or not, with the permissions, audit and project
 shadowing of rules.
 
 - harness empty: **model answer**, one in-process model call without tools or repository (the former `LLM`);
-- `OPENCODE` or `CLAUDE_CODE`: a **coding agent** session in the runner sandbox with the step's workspace.
+- `OPENCODE` or `CLAUDE_CODE`: a **coding agent** session in the runner sandbox, in the run's run directory (or a
+  separate one, ADR 0060).
+
+**Access** (ADR 0060, coding agents): `FULL` (default), `READ_ONLY`, or `PATHS` with globs relative to a repository
+root (at most 50, no leading `/`, no `..`). Enforced twice: by the harness's tool rules (Claude Code without editing
+tools for other paths, OpenCode `permission.edit`), and by the runner, which snapshots the step's repositories before
+the agent and reverts every change outside the access afterwards, whatever the agent did (`result.access.reverted`,
+log and summary). A `READ_ONLY` agent on a step that pushes is a resolution problem. Access narrows what an agent may
+change, not what it sees: hiding code is the step's `directory: SEPARATE` and repositories.
 
 Built-in agents (no model of their own; all list `agent-ground-rules` and `ask-dont-guess`):
 
@@ -88,8 +98,9 @@ names.
 
 1. the platform preamble for the kind of agent (fixed in code; platform facts, not norms): what Back Office is,
    honesty, scope, safety; for model answers "no repository, no tools, JSON only with a schema"; for coding agents
-   "the runner commits and pushes, never weaken a test, quote file paths, your skills are in `.claude/skills/` and
-   `.opencode/skills/`";
+   "the runner commits and pushes, never weaken a test, quote file paths, where your skills are" (the agent's home);
+   when the step allows questions (ADR 0060), how to ask (`agentQuestions` / `agent-questions.json`), otherwise that
+   the agent cannot ask and records open questions in its output;
 2. the agent's instructions, rendered with the step's template model (`{{project.*}}`; untrusted values become data
    blocks) under "Your role";
 3. the project constitution, when the project has one (templates no longer place it);
@@ -98,16 +109,24 @@ names.
 | Agent | Where the document goes | Skills |
 |---|---|---|
 | model answer | system prompt = document + template system prompt + `<skills>`; PROMPT jobs (ADR 0050) get it as `systemPrompt` | in the system prompt |
-| OpenCode | runner writes `/workspace/.backoffice-agent/AGENTS.md` and lists it under `instructions` of the generated `opencode.json` | `.opencode/skills/<key>/SKILL.md` |
-| Claude Code | runner writes the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md` (default `/workspace/.claude-config`) | `.claude/skills/<key>/SKILL.md` |
+| OpenCode | runner writes `<home>/AGENTS.md` and lists it under `instructions` of the home's `opencode.json` (`OPENCODE_CONFIG_DIR` = the home) | `<home>/skills/<key>/SKILL.md` |
+| Claude Code | runner writes the user memory `<home>/CLAUDE.md` (`CLAUDE_CONFIG_DIR` = the home) | `<home>/skills/<key>/SKILL.md` |
 
-Both files are outside every repository, rewritten on every job and removed when a job has none (run workspaces
-persist between steps). The repository's own `AGENTS.md` / `CLAUDE.md` stay untouched and are read by the harness as
-project memory. `RunnerJobSpec.instructions` carries the document and is covered by the spec digest.
+**The agent home** (ADR 0060): `<home>` = `/workspace/.agents/<agent key>/` in the run directory, outside every
+repository (`RunnerJobSpec.agentHome`). It holds everything of the agent: the environment document, the skills
+(rewritten on every job), the MCP configuration (Claude Code `mcp.json`, OpenCode `mcp` in `opencode.json`), the
+tool rules (Claude Code `settings.json`, OpenCode `permission`) and the sessions (Claude Code's own session files;
+OpenCode's data directory `data/<session role>`). Agents in one run directory never see each other's skills or
+memory, and nothing of an agent lands in a commit. The repository's own `AGENTS.md` / `CLAUDE.md` stay untouched and
+are read by the harness as the project's rules for every agent; OpenCode also reads the repository's
+`.opencode/skills` and `.claude/skills` (project skills). `RunnerJobSpec.instructions` carries the document and is
+covered by the spec digest. A spec without `agentHome` (older Back Office) uses the ADR 0057 locations
+(`/workspace/.backoffice-agent/`, `$CLAUDE_CONFIG_DIR`, skills in the repository's git-excluded `.claude/skills` and
+`.opencode/skills`).
 
 **MCP servers** (`mcpServers`, `{name, url}`, name `^[a-z][a-z0-9-]{0,39}$`, `http(s)` only, no credentials): the
 runner configures them for coding agents (OpenCode `mcp.<name> = {type: remote, url}`; Claude Code
-`/workspace/.backoffice-agent/mcp.json` passed with `--mcp-config`, plus `mcp__<name>` in `permissions.allow` under a
+`<home>/mcp.json` passed with `--mcp-config`, plus `mcp__<name>` in `permissions.allow` under a
 tool policy). Reachability is the sandbox egress policy's call (runner controller, ADR 0024): a host it does not
 allow is refused by the proxy. Credentials for MCP servers need sealed delivery like repository tokens (ADR 0051) and
 get their own record.
@@ -153,17 +172,18 @@ are fixed at design time, run inputs (ADR 0053) are asked at run start; they sta
    - `prompt.system` / `prompt.user`: child `APPEND` = parent + blank line + child; `REPLACE` = child only;
    - `parameters`: union by `name`, child wins; `parameterValues`: nearest template that sets a value wins;
    - `config`: deep merge, child keys win, `null` deletes;
-   - `produces`, `consumes`, `tags`: union;
+   - `produces`, `consumes`, `tags`, `requiresSkills` (ADR 0060): union;
    - `runInputs`: union by `name`; a child field replaces the parent's field of the same name in its place, new
      fields go last (ADR 0053). Node overrides do not change run inputs.
-4. Apply node overrides (`TaskOverrides`): agent, model, prompt append/replace, parameter values, add/remove skills,
-   config merge; then resolve the agent (step, template, `model-answer`) and check that it fits the template (see
-   Agents) and that every required parameter has a value.
-5. Look up skills and rules from the agent: the agent's skills plus the step's `addSkills` minus its `removeSkills`
-   must exist (with project shadowing); a skill key that names a rule counts as that rule, so steps whose `addSkills`
-   name a former skill keep working. The rules are the automatic ones the project sees (global, then the project's
+4. Apply node overrides (`TaskOverrides`): agent, model, prompt append/replace, parameter values, config merge (no
+   skill changes since ADR 0060); then resolve the agent (step, template, `model-answer`) and check that it fits the
+   template (see Agents; a `READ_ONLY` coding agent on a step that pushes is a problem) and that every required
+   parameter has a value.
+5. Look up skills and rules from the agent: the agent's skills must exist (with project shadowing); a skill key that
+   names a rule counts as that rule. The rules are the automatic ones the project sees (global, then the project's
    own, with the shadowing above), followed by the agent's rules that are not automatic anyway. A missing skill or
-   rule is reported in `check.problems` and makes `resolve` throw. Every task node has the ports `success` and
+   rule is reported in `check.problems` and makes `resolve` throw. A skill of the lineage's `requiresSkills` the
+   agent lacks is a `check.warnings` entry (ADR 0060) and does not block. Every task node has the ports `success` and
    `failure`.
 6. An `abstract` leaf cannot be resolved for execution (it can be previewed).
 
@@ -203,8 +223,8 @@ the agent. Every concrete template has a category. "agent" is the template's own
 | `code-review` | — | `REVIEW` | `reviewer` (findings schema; instructions before the data, the diff last; the issue or, in CI runs, the merge request title and description as context; one call, no chunking) |
 | `analyse-issue` (deprecated) | — | `ANALYSIS` | `analyst` (the whole JSON answer is the `analysis` artefact) |
 | `llm-task` | — | `GENERAL` | `model-answer` (generic task for any LLM work, ADR 0034: the task is the parameter `task` (`MULTILINE`, default "summarise the input material in at most five bullet points and list open questions"), the user prompt is `{{params.task}}`; the run input `input` reaches the model as a data block, revision feedback is appended; used by the starter workflow **LLM task with review** of projects without a repository) |
-| `agent-task` | — | `GENERAL` | `claude-code` (generic coding-agent task: the task is the parameter `task` (default "describe the repository"); issue, run input `input` and feedback are in the system prompt; `push` false by default, true for a branch and merge request; `repositoryOptional`: in a project without repositories an empty workspace, the final answer becomes the `result` artefact) |
-| `prepare-workspace` | — | `OPERATIONS` | `opencode` (ADR 0044: `prepareOnly`, `workspace` = `main`: clones the step's repositories and sources into the run workspace and runs `setupCommand`; starts no agent, never pushes) |
+| `agent-task` | — | `GENERAL` | `claude-code` (generic coding-agent task: the task is the parameter `task` (default "describe the repository"); issue, run input `input` and feedback are in the system prompt; `push` false by default, true for a branch and merge request; `repositoryOptional`: in a project without repositories an empty directory, the final answer becomes the `result` artefact) |
+| `prepare-workspace` | — | `OPERATIONS` | `opencode` (ADR 0044, deprecated by ADR 0060: `prepareOnly`: clones the step's repositories into the run directory and runs the setup; starts no agent, never pushes; not needed, the first coding step prepares the run directory) |
 
 Steps that replaced the prompt of `llm-task` or `agent-task` (`promptReplace`) keep working: the replaced prompt
 wins over `{{params.task}}`.

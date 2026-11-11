@@ -57,11 +57,19 @@ Back Office (api)                runner-controller (pool P)              sandbox
 Zadania i ich stany są widoczne w **Administracja** (**Administration**) → **Flota runnerów**
 (**Runner fleet**) → **Zadania agentów** (**Agent jobs**) ([runner-fleet.md](runner-fleet.md#agent-jobs)).
 
-**Przestrzenie robocze uruchomień (ADR 0044).** Krok, który wskazuje [przestrzeń roboczą](workflows.md#workspaces),
-dostaje trwały `/workspace` zamiast jednorazowego: wolumen Dockera albo PersistentVolumeClaim runnera, który wykonał
-pierwszy krok tej przestrzeni. Back Office wydaje zadania tej przestrzeni tylko temu runnerowi i po jednym naraz;
-runner używa ponownie swoich wcześniejszych klonów po zapisaniu od nowa ich `.git/config`. Każdy runner-controller co
-minutę zgłasza swoje przestrzenie i usuwa te, które Back Office zwolnił.
+**Katalog przebiegu (ADR 0044, 0060).** Kroki kodujące przebiegu współdzielą jeden trwały `/workspace`,
+[katalog przebiegu](workflows.md#run-directory): wolumen Dockera albo PersistentVolumeClaim runnera, który wykonał
+pierwszy krok kodujący przebiegu. Back Office wydaje zadania przebiegu tylko temu runnerowi i po jednym naraz; runner
+używa ponownie swoich wcześniejszych klonów po zapisaniu od nowa ich `.git/config`. Każdy agent trzyma swoje
+środowisko, umiejętności, konfigurację MCP i sesje we własnym domu `/workspace/.agents/<klucz agenta>/`, poza każdym
+repozytorium. Krok z **Osobnym katalogiem** (**Separate directory**) dostaje zamiast tego jednorazowy `/workspace`.
+Każdy runner-controller co minutę zgłasza swoje katalogi przebiegów i usuwa te, które Back Office zwolnił (gdy
+przebieg się kończy; 24 godziny po niepowodzeniu).
+
+**Dostęp agenta.** Gdy agent kroku ma ograniczony [dostęp](task-library.md#agent-access) (**Tylko odczyt**, **Tylko
+te ścieżki**), runner tuż przed startem agenta zapisuje stan repozytoriów, a gdy agent skończy, cofa każdą zmianę
+spoza dostępu, zanim wykona weryfikację, commit i push; cofnięte ścieżki są w logu zadania i w podsumowaniu kroku
+(`[Back Office runner] reverted N change(s) ...`).
 
 <a id="isolation-levels"></a>
 ## Poziomy izolacji

@@ -126,19 +126,26 @@ wartość szablonu albo domyślną, pokazaną na szaro. Wymagany parametr bez ż
 da się zapisać tylko jako wersję roboczą, a uruchomienie nie wystartuje.
 
 **Co dostaje ten krok** (**What this step gets**, zwinięte) pokazuje szablon z nadpisaniami tego kroku: agenta,
-profil modelu, prompt systemowy i użytkownika, reguły i umiejętności (te agenta, zmienione przez krok), konfigurację
-i dane wejściowe przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości.
+profil modelu, prompt systemowy i użytkownika, reguły i umiejętności (te agenta), konfigurację i dane wejściowe
+przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości. **Ostrzeżenia**
+(**Warnings**) w tym miejscu nie zatrzymują kroku, na przykład umiejętność wymagana przez szablon (**Wymagane
+umiejętności**, **Required skills**), której agent kroku nie ma.
 **Nadpisania** (**Overrides**) zmieniają szablon tylko dla tego węzła:
 
 | Nadpisanie | Skutek |
 |---|---|
-| **Agent** | Kto wykonuje ten krok zamiast agenta szablonu: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)). Puste = agent szablonu. Z agentem przychodzą jego instrukcje, reguły, umiejętności i serwery MCP. Krok pokazuje problem, gdy agent nie pasuje do szablonu (na przykład faza Spec Kit albo `push` z **Odpowiedzią modelu**). |
-| **Sesja agenta** (**Agent session**) | Tylko agenci kodujący: **Nowa sesja** (**New session**) albo **Kontynuuj sesję kroku …** (**Continue the session of step …**) ([Kontynuacja sesji](#continue-session)). |
+| **Agent** | Kto wykonuje ten krok zamiast agenta szablonu: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)). Puste = agent szablonu. Z agentem przychodzą jego instrukcje, reguły, umiejętności, serwery MCP i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (na przykład faza Spec Kit albo `push` z **Odpowiedzią modelu** albo agent z dostępem **Tylko odczyt** w kroku, który wypycha). |
+| **Katalog** (**Directory**) | Tylko agenci kodujący: **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) albo **Osobny katalog** (**Separate directory**) ([Katalog przebiegu](#run-directory)). |
+| **Sesja agenta** (**Agent session**) | Tylko agenci kodujący: **Własna (powtórzenia kontynuują)** (**Own (repeats continue)**, domyślnie), **Nowa za każdym razem** (**New each time**) albo **Kontynuuj sesję kroku …** (**Continue the session of step …**) ([Sesje agenta](#continue-session)). |
+| **Agent może zadawać pytania** (**Agent may ask questions**), **Rundy pytań** (**Question rounds**) | Domyślnie włączone, 2 rundy: agent może zatrzymać się z pytaniami, a przebieg czeka na Twoje odpowiedzi ([Agent zadaje pytania](#agent-questions)). |
 | **Profil modelu** (**Model profile**) | Model dla tego węzła zamiast modelu agenta, szablonu lub ustawień domyślnych. |
 | **Prompt użytkownika** (**User prompt**) | **Dziedziczony** (**Inherited**), **Dopisz** (**Append**; dodawany po prompcie szablonu) lub **Zastąp** (**Replace**). |
 | **Dopisek do promptu systemowego** (**System prompt append**) | Dodawany do promptu systemowego szablonu. |
-| **Dodaj umiejętności do umiejętności agenta** (**Add skills to the agent's**), **Pomiń umiejętności agenta** (**Drop skills of the agent**) | Tylko w tym kroku: umiejętności oprócz umiejętności agenta albo pominięte umiejętności agenta. Gdzie indziej agent je zachowuje. |
 | **Konfiguracja** (**Config**) | Ustawienia dla agenta kroku, takie jak polecenie weryfikacji, nazwa gałęzi czy opcje merge requestu; scalane z konfiguracją szablonu. |
+
+Krok nie dodaje już ani nie pomija umiejętności swojego agenta (ADR 0060): środowisko agenta ustawia się raz, na
+agencie. Kroki zapisane z taką zmianą działają z umiejętnościami agenta; gdy krok potrzebuje innych umiejętności,
+wybierz albo utwórz agenta, który je ma.
 
 Agent kodujący był dawniej kluczem konfiguracji `agent` (`CLAUDE_CODE`, `OPENCODE`); ten klucz już nie istnieje.
 Zapisane workflowy działają dalej: `agent` kroku jest odczytywany jako jego **Agent** (**Claude Code**, **OpenCode**),
@@ -238,8 +245,9 @@ wypychają do gałęzi domyślnej i nigdy nie wypychają z wymuszeniem (force pu
 zatwierdzania Twojego serwera Git). Gdy krok wypycha do kilku repozytoriów, w każdym używa tej samej nazwy
 gałęzi i każde dostaje własny merge request.
 
-**Przestrzeń robocza.** Każde repozytorium jest klonowane do osobnego katalogu nazwanego jego kluczem:
-`/workspace/service`, `/workspace/docs`, … Agent zaczyna w głównym repozytorium kroku (w głównym
+**Katalogi.** Każde repozytorium jest klonowane do osobnego katalogu nazwanego jego kluczem:
+`/workspace/service`, `/workspace/docs`, … (w [katalogu przebiegu](#run-directory) albo we własnym katalogu kroku,
+gdy pracuje on w **Osobnym katalogu**). Agent zaczyna w głównym repozytorium kroku (w głównym
 repozytorium projektu, jeśli krok go używa, w przeciwnym razie w pierwszym z listy) i dostaje informację,
 jakie repozytoria istnieją, gdzie są, jakie mają przeznaczenie i gałąź bazową oraz czy może je zmieniać.
 
@@ -267,77 +275,98 @@ Błędy blokują zapis. Uruchomienie, którego kroki mają takie błędy (na prz
 z projektu po zapisaniu workflowu), nie wystartuje; komunikat wskazuje krok. W widoku **JSON** ustawienie to
 `config.repositories: [{"key": "docs", "access": "READ"}]`.
 
-<a id="workspaces"></a>
-## Przestrzenie robocze i sesje agentów
+<a id="run-directory"></a><a id="workspaces"></a>
+## Katalog przebiegu i sesje agentów
 
-Każdy krok programistyczny zaczyna zwykle od zera: nowy `/workspace`, nowe klony, nowa sesja agenta.
-**Przestrzeń robocza przebiegu** pozwala kilku krokom jednego uruchomienia pracować w tym samym katalogu, a **rola
-agenta** pozwala agentowi kontynuować własną rozmowę zamiast czytać wszystko od nowa (ADR 0044).
+Każdy przebieg ma jeden **katalog przebiegu** (ADR 0060). Kroki kodujące przebiegu pracują w nim jeden po drugim:
+każdy krok widzi, co zostawiły wcześniejsze kroki, także niezacommitowaną pracę, a agenci trzymają tam swoje sesje.
+Niczego nie definiujesz ani nie nazywasz: *implementacja* → *weryfikacja* → z powrotem do *implementacji* po prostu
+kontynuują nawzajem swoją pracę.
 
-**Zdefiniuj przestrzenie w projekcie.** Karta projektu **Przestrzenie robocze** (**Workspaces**) je wyświetla; może z
-nich korzystać każdy workflow projektu. Kliknij **Dodaj przestrzeń** (wymaga `project.manage`) i ustaw:
+**Polecenie przygotowania.** We właściwościach workflowu (kliknij puste płótno) **Polecenie przygotowania**
+(**Setup command**), na przykład `npm ci`, wykonuje się raz w katalogu przebiegu przed pierwszym krokiem kodującym,
+a ponownie tylko po zmianie. Puste = bez przygotowania. Własne `setupCommand` kroku w **Konfiguracji** nadal wykonuje
+się przed tym krokiem.
 
-| Pole | Znaczenie |
+**Katalog kroku.** Krok kodujący (wykonywany przez agenta kodującego) ma w **Nadpisaniach** pole **Katalog**
+(**Directory**):
+
+| Wybór | Znaczenie |
 |---|---|
-| **Nazwa** | Widoczna na płótnie wokół kroków przestrzeni. |
-| **Klucz** | Małe litery, cyfry, myślniki (do 20), np. `main`. Kroki wybierają przestrzeń po kluczu; nie można go później zmienić. |
-| **Źródła klonowane do przestrzeni** | Repozytoria projektu i [źródła z biblioteki](task-library.md#sources). Kroki przestrzeni bez własnych repozytoriów pracują na nich: główne repozytorium projektu wśród nich dostaje dostęp wynikający z ustawienia **push** kroku, pozostałe są tylko do odczytu. Własna lista **Repozytoria** kroku zastępuje je dla tego kroku. |
-| **Polecenie przygotowania** | Np. `npm ci`. Uruchamiane raz na przebieg, przed pierwszym krokiem przestrzeni; ponownie tylko po zmianie. |
-| **Role agentów** | Np. `implementer`, `reviewer`. Kroki z tą samą rolą kontynuują jedną sesję agenta. Puste = dowolna rola. |
+| **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) | Krok pracuje w katalogu przebiegu. Jego repozytoria są tam klonowane raz; późniejsze kroki używają tych klonów i wszystkiego, co w nich zostało. |
+| **Osobny katalog** (**Separate directory**) | Świeża kopia tylko repozytoriów tego kroku, usuwana po kroku. Do izolacji: agent, który nie może widzieć reszty pracy przebiegu (albo, z innymi **Repozytoriami**, w ogóle kodu). Taki krok zawsze zaczyna nową sesję agenta. |
 
-**Wybierz przestrzeń w kroku.** Krok programistyczny (wykonywany przez agenta kodującego) ma sekcję **Przestrzeń robocza**
-tylko z wyborem spośród przestrzeni projektu: przestrzeń (albo **Brak: nowy katalog**), **Rola agenta** (albo nowa sesja) i, w krokach
-innych niż faza Spec Kit, **Tylko przygotuj przestrzeń** (klonowanie i przygotowanie, bez agenta, bez wypychania). Takim krokiem
-jest wbudowane zadanie **Prepare workspace** (`prepare-workspace`); jest opcjonalne, pierwszy krok przestrzeni też ją
-przygotowuje.
+**Agenci na zmianę.** Na przykład *implementacja* (push włączony) → *weryfikacja* (push wyłączony) → decyzja →
+z powrotem do *implementacji*. Każdy agent kontynuuje własną sesję i widzi, co zostawił drugi: weryfikujący czyta
+niezacommitowane zmiany implementującego, implementujący znajduje notatki weryfikującego. Krok bez pushu zostawia
+swoje zmiany niezacommitowane dla następnego kroku; krok wypychający commituje wszystko w swoich repozytoriach
+i wypycha gałąź uruchomienia.
 
-**Na płótnie** każda przestrzeń to kolorowy, przerywany obszar z nazwą wokół jej kroków, więc od razu widać, które
-kroki współdzielą katalog. Obszar sięga od pierwszego do ostatniego z jej kroków. Właściwości workflowu (kliknij puste
-płótno) wyświetlają przestrzenie projektu z liczbą kroków tego workflowu w każdej.
+**Co dzieje się na runnerze.** Katalog przebiegu żyje na runnerze, który wykonał pierwszy krok kodujący, jako
+wolumen Dockera albo żądanie wolumenu (PVC) w Kubernetes; kroki kodujące przebiegu wykonują się tam jeden po drugim.
+Przed każdym krokiem runner sprawdza każde ponownie użyte repozytorium i zapisuje jego konfigurację gita od nowa, więc
+nic, co poprzedni agent podłożył w `.git`, się nie uruchomi.
 
-**Agenci na zmianę.** Na przykład *implementacja* (rola `implementer`, push włączony) → *weryfikacja* (rola
-`reviewer`, push wyłączony) → decyzja → z powrotem do *implementacji*. Każdy agent kontynuuje własną sesję i widzi,
-co drugi zostawił w przestrzeni: weryfikujący czyta niezacommitowane zmiany implementującego, implementujący znajduje
-notatki weryfikującego. Krok z dostępem do odczytu zostawia swoje zmiany niezacommitowane dla następnego kroku; krok
-wypychający commituje wszystko w repozytorium i wypycha gałąź uruchomienia.
+**Po zakończeniu uruchomienia** (udanym, nieudanym lub anulowanym) katalog przebiegu jest usuwany; po nieudanym
+uruchomieniu zostaje na 24 godziny, żeby **Ponów** (**Retry**) kontynuował w nim. Katalog przebiegu użyty później
+zaczyna pusty (wypchnięta gałąź uruchomienia zostaje).
 
-**Co dzieje się na runnerze.** Przestrzeń żyje na runnerze, który wykonał jej pierwszy krok, jako wolumen Dockera albo
-żądanie wolumenu (PVC) w Kubernetes. Kroki tej przestrzeni wykonują się tam jeden po drugim, także gdy gałęzie
-workflowu biegną równolegle. Przed każdym krokiem runner sprawdza każde ponownie użyte repozytorium i zapisuje jego
-konfigurację gita od nowa, więc nic, co poprzedni agent podłożył w `.git`, się nie uruchomi.
+**Uwaga na zaufanie.** Wszystkie kroki przebiegu mogą czytać i zmieniać wszystko w katalogu przebiegu, także domy
+i historię sesji innych agentów. Do niezależnej weryfikacji użyj kroku z **Osobnym katalogiem**.
 
-**Po zakończeniu uruchomienia** przestrzeń jest usuwana; po nieudanym uruchomieniu zostaje na 24 godziny, żeby
-**Ponów** (**Retry**) kontynuował w niej. Przestrzeń użyta później zaczyna pusta (wypchnięta gałąź uruchomienia
-zostaje).
+**Gdzie są pliki agenta.** Każdy agent przebiegu ma w katalogu przebiegu swój **dom** (agent home), poza każdym
+repozytorium: dokument środowiska, umiejętności, konfigurację MCP i sesje ([Środowisko agenta](task-library.md#environment)).
+Nic z agenta nie jest zapisywane w repozytorium, więc dwaj agenci w jednym katalogu przebiegu nigdy nie widzą swoich
+umiejętności ani pamięci. Własne `AGENTS.md` i `CLAUDE.md` repozytorium to reguły projektu dla każdego agenta.
 
-**Uwaga na zaufanie.** Wszystkie kroki i role uruchomienia mogą czytać i zmieniać wszystko w swojej przestrzeni, także
-historię sesji innych ról. Do niezależnej weryfikacji użyj kroku bez przestrzeni.
-
-Walidacja: krok wskazujący przestrzeń, której projekt nie ma, rolę spoza listy przestrzeni albo **Tylko przygotuj**
-bez przestrzeni to błąd; rola bez przestrzeni to ostrzeżenie. Usunięcie przestrzeni zamienia korzystające z niej
-workflowy w wersje robocze, dopóki ich kroki nie wybiorą innej. Workflow opublikowany do biblioteki zachowuje klucze
-przestrzeni swoich kroków; projekt, który go przyjmie, potrzebuje przestrzeni o tych kluczach.
+**Dawne przestrzenie robocze.** Do ADR 0060 projekt definiował przestrzenie robocze uruchomień (karta projektu
+**Przestrzenie robocze**, **Workspaces**), kroki wybierały jedną z nich, a płótno rysowało wokół nich obszar. Już ich
+nie ma, a istniejące workflowy zostały przeniesione: polecenie przygotowania przestrzeni stało się **Poleceniem
+przygotowania** workflowów, których kroki z niej korzystały, a jej źródła stały się **Repozytoriami** tych kroków,
+które nie miały własnych. Zapisana przestrzeń kroku jest pomijana (każdy krok pracuje w katalogu przebiegu); kroki,
+które współdzieliły rolę agenta, nadal współdzielą sesję. Wbudowane zadanie **Prepare workspace**
+(`prepare-workspace`, przestarzałe) klonuje repozytoria kroku do katalogu przebiegu i wykonuje przygotowanie bez
+agenta; nie jest potrzebne, pierwszy krok kodujący też przygotowuje katalog przebiegu.
 
 <a id="continue-session"></a>
-### Kontynuacja sesji
+### Sesje agenta
 
-Czasem następny krok powinien po prostu prowadzić dalej tę samą rozmowę: *implementacja*, potem *popraw to, co
-znalazł przegląd*, a agent pamięta, co zrobił. Krok programistyczny ma w **Nadpisaniach** pole **Sesja agenta**
-(**Agent session**):
+Krok kodujący ma w **Nadpisaniach** pole **Sesja agenta** (**Agent session**):
 
-- **Nowa sesja** (**New session**, domyślnie): krok zaczyna nową rozmowę.
-- **Kontynuuj sesję kroku …** (**Continue the session of step …**): wybierz wcześniejszy krok programistyczny. Ten
-  krok kontynuuje sesję agenta tamtego kroku (ADR 0057).
+- **Własna (powtórzenia kontynuują)** (**Own (repeats continue)**, domyślnie): pierwsze wykonanie kroku zaczyna
+  sesję; gdy krok wykonuje się ponownie w tym samym przebiegu (poprawki po przeglądzie, **Popraw** (**Revise**) na
+  bramce, odpowiedzi na jego pytania), agent kontynuuje własną rozmowę i pamięta, co zrobił.
+- **Nowa za każdym razem** (**New each time**): każde wykonanie zaczyna nową rozmowę.
+- **Kontynuuj sesję kroku …** (**Continue the session of step …**): wybierz wcześniejszy krok kodujący. Ten krok
+  kontynuuje sesję agenta tamtego kroku, na przykład *implementacja*, potem *popraw to, co znalazł przegląd*, a agent
+  zachowuje kontekst bez ponownego czytania repozytorium (ADR 0057).
 
-Oba kroki działają wtedy w tej samej przestrzeni roboczej przebiegu i pod tą samą rolą sesji, które Back Office
-ustawia sam: przestrzeń wcześniejszego kroku albo niejawna przestrzeń `run`, którą ma każdy projekt bez jej
-definiowania; **Rola agenta** wcześniejszego kroku albo rola wyprowadzona z jego identyfikatora. Agent wznawia
-rozmowę (Claude Code `--resume`, OpenCode `--continue`) i widzi pliki, które zostawił. Jego reguły i instrukcje są
-w środowisku, nie w prompcie, więc nie dostaje ich drugi raz.
+Kontynuowana sesja wymaga **tego samego agenta**: sesja jest przechowywana w domu agenta. Lista wyboru wyszarza kroki
+innego agenta i kroki z **Osobnym katalogiem**. Agent wznawia rozmowę (Claude Code `--resume`, OpenCode `--continue`)
+i widzi pliki, które zostawił. Jego reguły i instrukcje są w środowisku, nie w prompcie, więc nie dostaje ich drugi
+raz. Projektant, a potem jeszcze start uruchomienia, odrzucają krok, którego **Kontynuuj sesję kroku …** wskazuje
+krok, który nie istnieje albo nie jest krokiem agenta kodującego; w widoku **JSON** ustawienia to `config.session`
+(`OWN`, `NEW`, `CONTINUE`) z `config.continueSession: <id węzła>` oraz `config.directory` (`RUN`, `SEPARATE`).
 
-Oba kroki potrzebują tego samego harnessu: sesja Claude Code nie może być kontynuowana w OpenCode. Lista wyboru
-wyszarza kroki z innym harnessem. Projektant, a potem jeszcze start uruchomienia, odrzucają krok, którego **Kontynuuj
-sesję kroku …** wskazuje krok, który nie istnieje, nie jest krokiem agenta kodującego albo używa innego harnessu.
+<a id="agent-questions"></a>
+### Agent zadaje pytania
+
+Gdy agent nie wykona dobrze kroku bez Twoich odpowiedzi, zatrzymuje się z pytaniami zamiast zgadywać (ADR 0060).
+Agent kodujący zapisuje je w pliku `agent-questions.json` w swoim katalogu roboczym (zbierany, nigdy nie trafia do
+commita); odpowiedź modelu odpowiada `{"agentQuestions": [...]}` zamiast swojej odpowiedzi. Każdy agent dostaje
+instrukcję, jak pytać.
+
+Przebieg wtedy czeka: krok pokazuje **czeka na Twoje odpowiedzi** (**waiting for your answers**), a na stronie
+**Twoja kolej** (**Your turn**) pojawia się karta **Agent pyta** (**The agent asks**) z pytaniami (każde z powodem agenta, **Dlaczego:**)
+i rundą, na przykład **Runda 1 z 2** (**Round 1 of 2**) ([Odpowiadanie na pytania agenta](your-turn.md#agent-questions)).
+**Odpowiedz i kontynuuj** (**Answer and continue**) wykonuje krok ponownie: Twoje odpowiedzi trafiają do jego promptu
+(sekcja „Answers of the owner”), a agent kodujący kontynuuje własną sesję. **Anuluj krok** (**Cancel the step**)
+kończy krok niepowodzeniem i przebieg idzie jego ścieżką `failure`.
+
+| Ustawienie (w **Nadpisaniach**) | Znaczenie |
+|---|---|
+| **Agent może zadawać pytania** (**Agent may ask questions**) | Domyślnie włączone. Wyłączone: agent dostaje informację, że nie może pytać, i ma zapisać otwarte pytania w swoim wyniku. Uruchomienia wystartowane przez CI zostawiają je włączone i czekają jak na bramce. |
+| **Rundy pytań** (**Question rounds**) | Domyślnie 2 (1-10): ile razy krok może zatrzymać się z pytaniami. Agent, który pyta znowu po ostatniej rundzie, kończy krok niepowodzeniem; jego pytania trafiają do logu kroku. |
 
 <a id="decisions"></a>
 ## Decyzje

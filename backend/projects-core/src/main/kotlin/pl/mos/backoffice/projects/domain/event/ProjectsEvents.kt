@@ -76,7 +76,7 @@ data class RunWaitingForHuman(
     val approvalId: ApprovalRequestId,
     val question: String,
     override val occurredAt: Instant,
-    /** `GATE` or `WRITE_CONFIRMATION` (ADR 0033). */
+    /** `GATE`, `WRITE_CONFIRMATION` (ADR 0033) or `AGENT_QUESTIONS` (ADR 0060). */
     val kind: String = "GATE",
 ) : ProjectsEvent() {
     override val type = "RunWaitingForHuman"

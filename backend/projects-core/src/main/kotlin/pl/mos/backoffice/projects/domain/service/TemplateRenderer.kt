@@ -128,7 +128,7 @@ class TemplateRenderer {
          * (including the declared run inputs `runInput` / `runInputText`, ADR 0053), model verdicts and errors. Everything else (`project`, `node`, `run`, `feedback`, `decision`,
          * `confidence`, `lastOutcome`) is written by people with project permissions or by the platform.
          */
-        val UNTRUSTED_ROOTS = setOf("issue", "artifacts", "mr", "review", "ci", "input", "parameters", "runInput", "runInputText", "branch", "lastError")
+        val UNTRUSTED_ROOTS = setOf("issue", "artifacts", "mr", "review", "ci", "input", "parameters", "runInput", "runInputText", "branch", "lastError", "answers")
 
         fun isUntrusted(path: String): Boolean = path.substringBefore('.').trim() in UNTRUSTED_ROOTS
 

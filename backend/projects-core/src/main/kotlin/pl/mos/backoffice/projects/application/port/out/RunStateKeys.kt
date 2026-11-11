@@ -48,6 +48,20 @@ object RunStateKeys {
     const val PENDING_JOB = "pendingJob"
     /** `{nodeId, action, issueKey, comment, toStatus, ...}` of the external write a TASK node waits to have confirmed (ADR 0033). */
     const val PENDING_WRITE = "pendingWrite"
+    /** ADR 0060: `{nodeId, questions: [{question, why}], round}` of the agent questions a TASK node waits to have answered. */
+    const val PENDING_QUESTIONS = "pendingQuestions"
+    /** ADR 0060: map node id -> rounds of questions answered in the node's current visit. */
+    const val QUESTION_ROUNDS = "questionRounds"
+    /** ADR 0060: map node id -> `{{answers}}` of the step: every answered round (questions and the owner's answers). */
+    const val ANSWERS = "answers"
+    /** ADR 0060: map node id -> `{inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cost, apiCost}` spent on asking. */
+    const val QUESTION_COSTS = "questionCosts"
+
+    /** ADR 0060: the rounds of questions answered for [nodeId] in its current visit. */
+    fun questionRounds(state: Map<String, Any?>, nodeId: String): Int = ((state[QUESTION_ROUNDS] as? Map<*, *>)?.get(nodeId) as? Number)?.toInt() ?: 0
+
+    /** ADR 0060: the `{{answers}}` of [nodeId]; null before the owner answered a question of it. */
+    fun answersOf(state: Map<String, Any?>, nodeId: String): String? = (state[ANSWERS] as? Map<*, *>)?.get(nodeId)?.toString()?.takeIf { it.isNotBlank() }
 
     const val OUTCOME_SUCCESS = "SUCCESS"
     const val OUTCOME_FAILURE = "FAILURE"

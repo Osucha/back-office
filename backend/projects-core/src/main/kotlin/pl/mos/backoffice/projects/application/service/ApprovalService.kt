@@ -84,7 +84,12 @@ class ApprovalService(
         val write = approval.write
         audit.record(
             AuditEntry(
-                if (write != null) WRITE_OPERATION else OPERATION, ENTITY, approvalId.toString(), projectId = approval.projectId.value,
+                when {
+                    write != null -> WRITE_OPERATION
+                    approval.isAgentQuestions -> QUESTIONS_OPERATION
+                    else -> OPERATION
+                },
+                ENTITY, approvalId.toString(), projectId = approval.projectId.value,
                 details = mapOf(
                     "runId" to run.id.toString(), "nodeId" to approval.nodeId, "option" to decision.option,
                     "checkedItems" to decision.checkedItems, "commentLength" to (decision.comment?.length ?: 0),
@@ -96,6 +101,8 @@ class ApprovalService(
                             "writeAs" to decision.writeAs?.name,
                         )
                     } ?: emptyMap()
+                    ) + (
+                    approval.questionRound?.let { mapOf("questionRound" to it, "questions" to approval.questions.size) } ?: emptyMap()
                     ),
             ),
         )
@@ -178,6 +185,8 @@ class ApprovalService(
 
         /** A write confirmation was approved or rejected (ADR 0033); details carry the SHA-256 of the previewed write. */
         const val WRITE_OPERATION = "RUN_WRITE_DECIDED"
+        /** ADR 0060: the owner answered (or cancelled at) an agent's questions. */
+        const val QUESTIONS_OPERATION = "RUN_AGENT_QUESTIONS_ANSWERED"
         const val ENTITY = "ApprovalRequest"
     }
 }

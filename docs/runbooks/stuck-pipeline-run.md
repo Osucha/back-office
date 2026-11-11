@@ -13,7 +13,9 @@ runs the compiled graph on a virtual thread; every node reports to `RecordRunPro
 `NodeCompleted`, `NodeFailed` events, `workflow_run.nodes` JSON with the `port` taken) and LangGraph
 writes a checkpoint to the `lg4jcheckpoint` table after each node. Before a `HUMAN_GATE` the graph
 stops, the engine creates an `approval_request` row and the run becomes `WAITING` with
-`waiting_kind = HUMAN_GATE`; `DecideApproval` resumes it. Before a `WAIT_FOR_CI` the graph stops and
+`waiting_kind = HUMAN_GATE`; `DecideApproval` resumes it. A step whose agent stopped with questions (ADR 0060)
+waits the same way with `waiting_kind = AGENT_QUESTIONS` and an `approval_request` of kind `AGENT_QUESTIONS`
+(options `answer` / `cancel`); it shows in **Your turn** as "The agent has questions". Before a `WAIT_FOR_CI` the graph stops and
 the run becomes `WAITING` with `waiting_kind = WAIT_FOR_CI` and `waiting_signal = <name>`;
 `POST /api/v1/ci/signals` (from `backoffice-ci signal`) or `POST /api/v1/runs/{id}/signals` resumes it.
 A scheduled sweep (`WaitTimeoutSweep`, every minute) resumes waits whose `timeoutSeconds` elapsed

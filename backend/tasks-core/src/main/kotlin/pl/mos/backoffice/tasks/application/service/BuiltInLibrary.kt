@@ -282,9 +282,9 @@ object BuiltInLibrary {
         template(now, TaskTemplate.Content(
             key = PREPARE_WORKSPACE, name = "Prepare workspace", category = TemplateCategory.OPERATIONS,
             agentKey = AgentSnapshot.OPENCODE,
-            description = "Prepares a run workspace of the workflow (choose it in the step) once for the steps that use it: clones its " +
-                "sources (or the step's own repositories) and runs the workspace setup and the step's setupCommand. Starts no agent and " +
-                "never pushes. Later steps of the same workspace reuse the clones and everything the setup left there.",
+            description = "Rarely needed (ADR 0060): the run directory is prepared automatically before the first coding step (the " +
+                "workflow's setup command). This step clones its repositories into the run directory and runs the workflow setup and " +
+                "the step's setupCommand at a chosen point. Starts no agent and never pushes.",
             prompt = Prompt(user = PREPARE_WORKSPACE_USER),
             config = mapOf(
                 "prepareOnly" to true, "push" to false, "mergeRequest" to false,

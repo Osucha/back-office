@@ -39,6 +39,7 @@ checklist. A gate is never approved from Home; `a` only opens the gate panel.
 |---|---|---|
 | Gate | An open gate you are allowed to decide. | **Review gate** (`a`) |
 | Write confirmation | A step wants to write to Jira and you may confirm it, for example "Agent wants to comment on SHOP-42" ([Confirming external writes](#write-confirmations)). | Open it, then **Approve** or **Reject** |
+| Agent questions | An agent stopped a step with questions you may answer: "The agent has questions" ([Answering an agent's questions](#agent-questions)). | **Answer the questions** |
 | Jira token expiring | A connection you can manage has a token that expires within 14 days or has expired: "The Jira token of <name> expires in 5 days" / "... has expired". | Open the connection, **Replace token** |
 | Failed run | A run that failed in the last 7 days, which you started or may retry (`run.start`). | **Open run** |
 | Failed CI review | A CI execution of one of your projects that failed or whose review gate failed, in the last 3 days. A CI failure that already shows as a failed run is not listed twice. | **Open review** |
@@ -157,6 +158,28 @@ project connections) also get a card when its token expires within 14 days ("The
 expires in 5 days") or has expired ("The Jira token of <name> has expired"). Open the connection and use **Replace token**; the card disappears once
 the new expiry date is more than 14 days away. Steps: [Token expiry and
 rotation](integrations-jira.md#jira-token-expiry).
+
+<a id="agent-questions"></a>
+## Answering an agent's questions
+
+When an agent cannot do a step well without your answers, it stops with questions instead of guessing, and the run
+waits: the step shows **waiting for your answers** (ADR 0060; how a step allows it:
+[Agents asking questions](workflows.md#agent-questions)). The card **The agent has questions** appears in **Your
+turn → Needs you**, and as a desktop notification if you turned on *Your turn* notifications.
+
+Its panel, **The agent asks**, lists the questions in order, each with the agent's reason (**Why:**) and a box for
+your answer, and the round, for example **Round 1 of 2**.
+
+1. Open the card (or **Answer the questions** on the run page).
+2. Answer what you can; at least one answer is needed.
+3. Click **Answer and continue**: the step runs again with your answers added to its prompt (section "Answers of
+   the owner"); a coding agent continues its own session, so it remembers what it already did. Or click **Cancel
+   the step**: the step fails and the run follows the step's `failure` path; without one, the run fails.
+
+**Who may answer**: people with `run.approve` in the project, like a gate with the default rule (accountable role
+**Owner**); a waiting question can be handed to someone else with **Assign…** ([Assigning a step](#assign-steps)). The
+answer is recorded in the audit log. The step may ask again in a later round; after its last round (**Question
+rounds** on the step, default 2) an agent that still asks fails the step.
 
 <a id="assign-steps"></a>
 ## Assigning a step

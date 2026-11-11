@@ -5,6 +5,8 @@ import { provideRouter } from '@angular/router';
 import type { Agent } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
 import { meFixture } from '../../../core/auth/testing';
+import { By } from '@angular/platform-browser';
+import { AgentEditorPanelComponent } from '../components/agent-editor-panel.component';
 import { AgentsPageComponent } from './agents-page.component';
 
 const agents: Agent[] = [
@@ -27,6 +29,7 @@ const agents: Agent[] = [
     rules: ['agent-ground-rules', 'ask-dont-guess'],
     skills: ['spec-writing'],
     tags: ['budget'],
+    access: { mode: 'PATHS', paths: ['docs/**'] },
     builtIn: false,
   },
 ];
@@ -58,7 +61,9 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
       );
     http.expectOne((r) => r.url === '/api/v1/agents').flush(agents);
     fixture.detectChanges();
-    return { fixture, page: fixture.componentInstance };
+    const ed = fixture.debugElement.query(By.directive(AgentEditorPanelComponent))
+      .componentInstance as AgentEditorPanelComponent;
+    return { fixture, page: fixture.componentInstance, ed };
   }
 
   it('lists agents with their kind and model, built-ins read-only', () => {
@@ -76,10 +81,28 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
       fixture.nativeElement.querySelectorAll('[data-environment]') as NodeListOf<HTMLElement>,
     ).map((e) => e.textContent?.trim());
     expect(env).toEqual(['0 rules · 0 skills', '2 rules · 1 skill']);
+    const access = Array.from(
+      fixture.nativeElement.querySelectorAll('td [data-access]') as NodeListOf<HTMLElement>,
+    ).map((e) => e.textContent?.trim());
+    expect(access).toEqual(['Only docs/**']);
+  });
+
+  it('limits what a coding agent may change (ADR 0060)', () => {
+    const { ed } = create();
+    ed.patch({ name: 'Doc writer' });
+    ed.setKind('CLAUDE_CODE');
+    ed.setAccess('PATHS');
+    expect(ed.accessError()).toBe(true);
+    expect(ed.canSave()).toBe(false);
+    ed.setAccessPaths(['docs/**']);
+    expect(ed.canSave()).toBe(true);
+    ed.save();
+    const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
+    expect(req.request.body.access).toEqual({ mode: 'PATHS', paths: ['docs/**'] });
   });
 
   it('edits the environment: rules and skills of the scope, MCP servers only for coding agents (ADR 0057)', () => {
-    const { fixture, page } = create();
+    const { fixture, page, ed } = create();
     http
       .match((r) => r.url === '/api/v1/rules')
       .forEach((r) =>
@@ -105,22 +128,22 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
       );
     page.create();
     fixture.detectChanges();
-    expect(page.ruleOptions()).toEqual([{ key: 'ask-dont-guess', label: 'Ask, do not guess' }]);
-    expect(page.skillOptions()).toEqual([{ key: 'kotlin', label: 'Kotlin' }]);
+    expect(ed.ruleOptions()).toEqual([{ key: 'ask-dont-guess', label: 'Ask, do not guess' }]);
+    expect(ed.skillOptions()).toEqual([{ key: 'kotlin', label: 'Kotlin' }]);
 
-    page.patch({ name: 'Coder', instructions: 'Write tests first.', rules: ['ask-dont-guess'] });
-    page.setKind('OPENCODE');
-    page.addMcp();
-    page.patchMcp(0, { name: 'Docs', url: 'https://mcp.example.com' });
-    expect(page.mcpError()).toContain('lowercase');
-    expect(page.canSave()).toBe(false);
-    page.patchMcp(0, { name: 'docs', url: 'ftp://x' });
-    expect(page.mcpError()).toContain('http');
-    page.patchMcp(0, { url: 'https://mcp.example.com/mcp' });
-    expect(page.mcpError()).toBeNull();
-    expect(page.canSave()).toBe(true);
+    ed.patch({ name: 'Coder', instructions: 'Write tests first.', rules: ['ask-dont-guess'] });
+    ed.setKind('OPENCODE');
+    ed.addMcp();
+    ed.patchMcp(0, { name: 'Docs', url: 'https://mcp.example.com' });
+    expect(ed.mcpError()).toContain('lowercase');
+    expect(ed.canSave()).toBe(false);
+    ed.patchMcp(0, { name: 'docs', url: 'ftp://x' });
+    expect(ed.mcpError()).toContain('http');
+    ed.patchMcp(0, { url: 'https://mcp.example.com/mcp' });
+    expect(ed.mcpError()).toBeNull();
+    expect(ed.canSave()).toBe(true);
 
-    page.save();
+    ed.save();
     const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
     expect(req.request.body.instructions).toBe('Write tests first.');
     expect(req.request.body.rules).toEqual(['ask-dont-guess']);
@@ -132,23 +155,23 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
   });
 
   it('sends no MCP servers for a model answer agent', () => {
-    const { page } = create();
+    const { page, ed } = create();
     page.create();
-    page.patch({ name: 'Answer', mcpServers: [{ name: 'Bad', url: 'x' }] });
-    expect(page.mcpError()).toBeNull();
-    expect(page.canSave()).toBe(true);
-    page.save();
+    ed.patch({ name: 'Answer', mcpServers: [{ name: 'Bad', url: 'x' }] });
+    expect(ed.mcpError()).toBeNull();
+    expect(ed.canSave()).toBe(true);
+    ed.save();
     const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
     expect(req.request.body.mcpServers).toEqual([]);
   });
 
   it('creates an agent without a key, with the chosen kind', () => {
-    const { page } = create();
-    page.patch({ name: 'Reviewer' });
-    page.setKind('CLAUDE_CODE');
-    expect(page.kind()).toBe('CLAUDE_CODE');
-    expect(page.canSave()).toBe(true);
-    page.save();
+    const { page, ed } = create();
+    ed.patch({ name: 'Reviewer' });
+    ed.setKind('CLAUDE_CODE');
+    expect(ed.kind()).toBe('CLAUDE_CODE');
+    expect(ed.canSave()).toBe(true);
+    ed.save();
     const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
     expect(req.request.body).toEqual({
       name: 'Reviewer',
@@ -164,7 +187,7 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
     });
     req.flush({ ...req.request.body, id: 'a2', key: 'reviewer' });
     http.match((r) => r.url === '/api/v1/agents').forEach((r) => r.flush(agents));
-    page.setKind('MODEL_ANSWER');
-    expect(page.draft().harness).toBeNull();
+    ed.setKind('MODEL_ANSWER');
+    expect(ed.draft().harness).toBeNull();
   });
 });

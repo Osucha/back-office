@@ -35,6 +35,8 @@ export interface ResolvedPreview {
   abstract: boolean;
   ok: boolean;
   problems: string[];
+  /** ADR 0060: what does not block, e.g. a required skill the agent lacks. */
+  warnings: string[];
 }
 
 export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview | null {
@@ -61,6 +63,7 @@ export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview |
     abstract: !!r.abstract,
     ok: r.check?.ok !== false,
     problems: r.check?.problems ?? [],
+    warnings: r.check?.warnings ?? [],
   };
 }
 
@@ -115,6 +118,7 @@ export function emptyTemplate(): TaskTemplateInput {
     prompt: { system: '', user: '', mode: 'APPEND' },
     parameters: [],
     parameterValues: {},
+    requiresSkills: [],
     config: {},
     outputSchema: null,
     confidenceField: null,
@@ -144,6 +148,7 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     },
     parameters: (t.parameters ?? []).map((p) => ({ ...p })),
     parameterValues: { ...(t.parameterValues ?? {}) },
+    requiresSkills: [...(t.requiresSkills ?? [])],
     config: t.config ?? {},
     outputSchema: t.outputSchema ?? null,
     confidenceField: t.confidenceField ?? null,

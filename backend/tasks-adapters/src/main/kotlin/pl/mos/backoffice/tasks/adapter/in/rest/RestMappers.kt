@@ -5,6 +5,8 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.ResolvedParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameter
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
@@ -59,6 +61,7 @@ object RestMappers {
         runInputs = dto.runInputs.map(::runInput),
         parameters = dto.parameters.map(::parameter),
         parameterValues = dto.parameterValues,
+        requiresSkills = dto.requiresSkills,
     )
 
     fun template(t: TaskTemplate) = TaskTemplateDto(
@@ -82,6 +85,7 @@ object RestMappers {
         runInputs = t.runInputs.map(::runInput),
         parameters = t.parameters.map(::parameter),
         parameterValues = t.parameterValues,
+        requiresSkills = t.requiresSkills,
         builtIn = t.builtIn,
         version = t.version,
         createdAt = t.createdAt,
@@ -95,8 +99,6 @@ object RestMappers {
         systemPromptAppend = o.systemPromptAppend,
         promptAppend = o.promptAppend,
         promptReplace = o.promptReplace,
-        addSkills = o.addSkills,
-        removeSkills = o.removeSkills,
         config = o.config,
         parameters = o.parameters,
     )
@@ -120,7 +122,7 @@ object RestMappers {
         runInputs = r.runInputs.map(::runInput),
         parameters = r.parameters.map(::resolvedParameter),
         abstract = r.abstract,
-        check = ResolutionCheckDto(r.check.ok, r.check.problems),
+        check = ResolutionCheckDto(r.check.ok, r.check.problems, r.check.warnings),
     )
 
     fun agentRef(a: AgentSnapshot) = AgentRefDto(a.key, a.name, a.harness, a.modelProfileId?.value, a.rules, a.skills)
@@ -129,12 +131,14 @@ object RestMappers {
         key = dto.key?.takeIf { it.isNotBlank() }, name = dto.name, description = dto.description, scope = scope(dto.scope),
         harness = dto.harness, modelProfileId = dto.modelProfileId?.let(::ModelProfileId), tags = dto.tags,
         instructions = dto.instructions, rules = dto.rules, skills = dto.skills, mcpServers = dto.mcpServers.map { AgentMcpServer(it.name, it.url) },
+        access = dto.access?.let { AgentAccess(it.mode, if (it.mode == AgentAccessMode.PATHS) it.paths.map(String::trim) else emptyList()) } ?: AgentAccess.FULL,
     )
 
     fun agent(a: Agent) = AgentDto(
         id = a.id.value, key = a.key, name = a.name, description = a.description, scope = scope(a.scope), harness = a.harness,
         modelProfileId = a.modelProfileId?.value, instructions = a.instructions, rules = a.rules, skills = a.skills,
         mcpServers = a.mcpServers.map { AgentMcpServerDto(it.name, it.url) },
+        access = AgentAccessDto(a.access.mode, a.access.paths),
         tags = a.tags, builtIn = a.builtIn, createdAt = a.createdAt, updatedAt = a.updatedAt,
         updatedBy = ActorRefDto.of(a.updatedBy),
     )

@@ -86,6 +86,8 @@ class WorkflowDefinitionEntity(
     @Column(name = "library_modified", nullable = false) var libraryModified: Boolean = false,
     /** V113: saved with validation errors (no runs, no publishing). */
     @Column(nullable = false) var draft: Boolean = false,
+    /** V121 (ADR 0060): runs once per run directory before the first coding step. */
+    @Column(name = "setup_command") var setupCommand: String? = null,
 )
 
 /** V111 (ADR 0037): a library workflow; its versions are [LibraryWorkflowVersionEntity] rows. */
@@ -123,6 +125,8 @@ class LibraryWorkflowVersionEntity(
     @Column(name = "source_project_key") var sourceProjectKey: String? = null,
     @Column(name = "source_workflow_id") var sourceWorkflowId: UUID? = null,
     @Column(name = "source_workflow_version") var sourceWorkflowVersion: Int? = null,
+    /** V121 (ADR 0060): the workflow's setup command. */
+    @Column(name = "setup_command") var setupCommand: String? = null,
 )
 
 @Entity
@@ -207,10 +211,14 @@ class ApprovalRequestEntity(
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "started_by", columnDefinition = "jsonb") var startedBy: String? = null,
     /** Run-time assignment (ADR 0028, V106): `{userIds, assignedBy, assignedAt, comment}`; null = the gate's own rule. */
     @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb") var assignment: String? = null,
-    /** `GATE` or `WRITE_CONFIRMATION` (ADR 0033, V108). */
+    /** `GATE`, `WRITE_CONFIRMATION` (ADR 0033, V108) or `AGENT_QUESTIONS` (ADR 0060, V121). */
     @Column(nullable = false) var kind: String = "GATE",
     /** The exact external write of a write confirmation (ADR 0033, V108): `{action, issueKey, comment, toStatus, connectionId, connectionName}`. */
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "write_preview", columnDefinition = "jsonb") var writePreview: String? = null,
+    /** ADR 0060 (V121): the questions of an AGENT_QUESTIONS approval, `[{question, why}]`, and its round. */
+    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb") var questions: String? = null,
+    @Column(name = "question_round") var questionRound: Int? = null,
+    @Column(name = "max_question_rounds") var maxQuestionRounds: Int? = null,
 )
 
 @Entity

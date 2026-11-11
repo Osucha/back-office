@@ -57,7 +57,11 @@ relay track with labels, durations and costs; click a segment to select that ste
   under the step as *template · agent · model*, for example `implement-opencode · Claude Code · Claude Sonnet`, and
   the step's facts have the row **Agent** (with the agent's kind when its name does not say it). Steps that ran
   before agents were recorded show only the template. These records feed
-  [Agents: cost and effectiveness](costs-insights.md#agent-insights).
+  [Agents: cost and effectiveness](costs-insights.md#agent-insights). A step that worked outside the
+  [run directory](workflows.md#run-directory) has the row **Directory**: *separate*.
+- **Agent questions.** A step whose agent stopped with questions shows **waiting for your answers**; the run page
+  says so with **Answer the questions** (or **View the questions** when someone else answers). See
+  [Answering an agent's questions](your-turn.md#agent-questions).
 - **Artefacts** are the documents the steps produced: `spec`, `plan`, `tasks`, `review`, `diff` and
   others. Select one to read it; **Copy** copies the content.
 - **Logs** shows **This step** or **All steps**. Turn on **Follow** to stay at the newest line; a live

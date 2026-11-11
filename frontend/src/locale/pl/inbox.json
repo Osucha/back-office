@@ -117,5 +117,11 @@
   "inbox.write.identity.personalHint": "Jira pokaże komentarz lub przeniesienie jako Twoje. Dziennik audytu zapisze „przez połączenie osobiste”.",
   "inbox.write.identity.add": "Dodaj połączenie osobiste",
   "inbox.write.identity.none": "Ani Twoje połączenie osobiste, ani połączenie systemowe nie może wykonać tego zapisu",
-  "inbox.write.identity.pick": "Wybierz, kto zapisuje"
+  "inbox.write.identity.pick": "Wybierz, kto zapisuje",
+  "inbox.questions.title": "Agent pyta",
+  "inbox.questions.intro": " Agent zatrzymał się, bo bez Twoich odpowiedzi nie wykona dobrze tego kroku. Odpowiedzi trafią do jego promptu, a krok wykona się ponownie. ",
+  "inbox.questions.why": "Dlaczego:",
+  "inbox.questions.answer": "Odpowiedz i kontynuuj",
+  "inbox.questions.cancel": "Anuluj krok",
+  "inbox.questions.answerFirst": "Najpierw odpowiedz na co najmniej jedno pytanie"
 }

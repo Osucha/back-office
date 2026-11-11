@@ -52,7 +52,6 @@ import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.projects.domain.service.RunInputs
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 
 /**
  * Implements [ManageWorkflows]: validated create/update (version bump), duplicate, delete guarded by
@@ -77,8 +76,6 @@ class WorkflowService(
     private val library: LibraryWorkflowRepository? = null,
     /** ADR 0043: library sources steps may attach; null = none (tests). */
     librarySources: LibrarySourceRepository? = null,
-    /** ADR 0044: run workspaces of projects steps may pick; null = none (tests). */
-    projectWorkspaces: ProjectWorkspaceRepository? = null,
     /** ADR 0050: which models the caller may use; null = models are not checked (tests). */
     private val availability: ModelAvailability? = null,
     /** ADR 0050 step 2: the default models after the project defaults; null = none. */
@@ -86,7 +83,7 @@ class WorkflowService(
 ) : ManageWorkflows {
 
     private val jiraSteps = jira?.let { JiraStepCheck(it) }
-    private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources, projectWorkspaces)
+    private val repositorySteps = RepositoryStepCheck(taskCatalog, librarySources)
     private val modelSteps = availability?.let { ModelStepCheck(taskCatalog, it, defaults) }
 
     override fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition {
@@ -107,6 +104,7 @@ class WorkflowService(
                 triggers = command.triggers,
                 enabled = command.enabled,
                 canvas = command.canvas,
+                setupCommand = command.setupCommand?.takeIf { it.isNotBlank() },
                 createdAt = now,
                 updatedAt = now,
                 updatedBy = actor,
@@ -123,7 +121,7 @@ class WorkflowService(
         val existing = load(id)
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value).actor
         val draft = !check(existing.projectId, command).valid
-        val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor)
+        val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.setupCommand)
             .copy(draft = draft)
         val saved = workflows.save(next.withLibrary(refreshedLink(next)))
         audit.record(
@@ -134,6 +132,7 @@ class WorkflowService(
                     "enabled" to (existing.enabled to saved.enabled),
                     "version" to (existing.version to saved.version),
                     "nodes" to (existing.nodes.size to saved.nodes.size),
+                    "setupCommand" to (existing.setupCommand to saved.setupCommand),
                     "draft" to (existing.draft to saved.draft),
                 ),
             ),

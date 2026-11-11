@@ -1,30 +1,27 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
-import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.domain.model.LibrarySource
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.projects.domain.service.SessionContinuation
+import pl.mos.backoffice.projects.domain.service.RunDirectory
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.projects.domain.service.StepRepositoryPlan
-import pl.mos.backoffice.projects.domain.service.StepWorkspace
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 
 /**
- * Checks the repositories of the steps of a workflow (ADR 0034) for the designer validation ([designIssues]: errors
- * and warnings on `task.config.repositories`) and before a run starts ([runBlockers]: the project may have lost a
- * repository after the workflow was saved). The rules are [StepRepositories]; this class resolves the tasks.
+ * Checks the repositories, the directory and the session of the steps of a workflow (ADR 0034, 0060) for the designer
+ * validation ([designIssues]: errors and warnings on `task.config.*`) and before a run starts ([runBlockers]: the
+ * project may have lost a repository after the workflow was saved). The rules are [StepRepositories] and
+ * [RunDirectory]; this class resolves the tasks.
  */
 class RepositoryStepCheck(
     private val catalog: TaskCatalog,
     /** Library sources steps may attach (ADR 0043); null = none (tests). */
     private val librarySources: LibrarySourceRepository? = null,
-    /** Run workspaces of projects (ADR 0044); null = none (tests). */
-    private val projectWorkspaces: ProjectWorkspaceRepository? = null,
 ) {
 
     data class Issues(val errors: List<ValidationIssue>, val warnings: List<ValidationIssue>)
@@ -33,26 +30,27 @@ class RepositoryStepCheck(
         val errors = mutableListOf<ValidationIssue>()
         val warnings = mutableListOf<ValidationIssue>()
         val resolved = resolveAll(project, nodes)
-        steps(project, nodes, resolved).forEach { (node, plan, workspace) ->
+        steps(project, nodes, resolved).forEach { (node, plan, directory, questions) ->
             plan.errors.forEach { errors += ValidationIssue(nodeId = node.id, field = StepRepositories.FIELD, message = it) }
             plan.warnings.forEach { warnings += ValidationIssue(nodeId = node.id, field = StepRepositories.FIELD, message = it) }
-            workspace.errors.forEach { errors += ValidationIssue(nodeId = node.id, field = StepWorkspace.FIELD, message = it) }
-            workspace.warnings.forEach { warnings += ValidationIssue(nodeId = node.id, field = StepWorkspace.FIELD, message = it) }
+            directory.errors.forEach { errors += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_DIRECTORY, message = it) }
+            directory.warnings.forEach { warnings += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_DIRECTORY, message = it) }
+            questions.forEach { errors += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_QUESTIONS, message = it) }
         }
         continuationProblems(nodes, resolved).forEach { (node, problem) ->
-            errors += ValidationIssue(nodeId = node.id, field = SessionContinuation.FIELD, message = problem)
+            errors += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_CONTINUE, message = problem)
         }
         return Issues(errors, warnings)
     }
 
     fun runBlockers(project: Project, nodes: List<WorkflowNode>): List<String> {
         val resolved = resolveAll(project, nodes)
-        return steps(project, nodes, resolved).flatMap { (node, plan, workspace) ->
-            (plan.errors + workspace.errors).map { "step \"${node.name}\" (${node.id}): $it" }
+        return steps(project, nodes, resolved).flatMap { (node, plan, directory, questions) ->
+            (plan.errors + directory.errors + questions).map { "step \"${node.name}\" (${node.id}): $it" }
         } + continuationProblems(nodes, resolved).map { (node, problem) -> "step \"${node.name}\" (${node.id}): $problem" }
     }
 
-    private data class Step(val node: WorkflowNode.Task, val plan: StepRepositoryPlan, val workspace: StepWorkspace.Setting)
+    private data class Step(val node: WorkflowNode.Task, val plan: StepRepositoryPlan, val directory: RunDirectory.Setting, val questions: List<String>)
 
     /** The resolved task of every task step that resolves (by node id). */
     private fun resolveAll(project: Project, nodes: List<WorkflowNode>): Map<String, ResolvedTask> =
@@ -60,48 +58,49 @@ class RepositoryStepCheck(
             runCatching { catalog.resolve(node.task.templateKey, project.id.value, node.task.overrides) }.getOrNull()?.let { node.id to it }
         }.toMap()
 
-    private fun steps(project: Project, nodes: List<WorkflowNode>, resolved: Map<String, ResolvedTask>): List<Step> {
-        val workspaces = projectWorkspaces?.findByProjectId(project.id).orEmpty()
-        return nodes.filterIsInstance<WorkflowNode.Task>().mapNotNull { node ->
+    private fun steps(project: Project, nodes: List<WorkflowNode>, resolved: Map<String, ResolvedTask>): List<Step> =
+        nodes.filterIsInstance<WorkflowNode.Task>().mapNotNull { node ->
             val task = resolved[node.id] ?: return@mapNotNull null
-            // ADR 0057: continuing (or being continued by) another step's session sets workspace and session role
-            val config = if (runnerStep(task)) SessionContinuation.apply(node.id, task.config, nodes) else task.config
-            val workspace = StepWorkspace.of(config, runnerStep(task), workspaces)
-            // ADR 0044: a step of a workspace without repositories of its own works on the workspace's sources
-            val effective = task.copy(config = StepWorkspace.effectiveConfig(config, workspace.definition, project, pushes(task)))
-            Step(node, plan(project, effective, librarySources.resolver()), workspace)
+            Step(node, plan(project, task, librarySources.resolver()), RunDirectory.of(task.config, runnerStep(task)), RunDirectory.questions(task.config).errors)
         }
-    }
 
     /**
-     * ADR 0057: problems of `continueSession` that block a run: a model answer step has no session, a step cannot
-     * continue itself, the named step must exist, be a coding agent step that starts an agent and use the same harness,
-     * and the continuations must not form a cycle.
+     * ADR 0057/0060: problems of a session continuation that block a run: a model answer step has no session, a step
+     * cannot continue itself, the named step must exist, be a coding agent step that starts an agent session in the run
+     * directory (not NEW, not SEPARATE, not a prepare step) and run the same agent (its home holds the session), and the
+     * continuations must not form a cycle.
      */
     private fun continuationProblems(nodes: List<WorkflowNode>, resolved: Map<String, ResolvedTask>): List<Pair<WorkflowNode.Task, String>> {
         val tasks = nodes.filterIsInstance<WorkflowNode.Task>()
         val byId = nodes.associateBy { it.id }
         return tasks.mapNotNull { node ->
-            val target = SessionContinuation.target(node.task.overrides.config) ?: return@mapNotNull null
             val task = resolved[node.id] ?: return@mapNotNull null
+            if (!runnerStep(task)) {
+                val asked = task.config[RunDirectory.CONTINUE_SESSION]?.toString()?.isNotBlank() == true
+                return@mapNotNull if (asked) node to "a model answer has no agent session to continue; remove continueSession" else null
+            }
+            val setting = RunDirectory.of(task.config, runnerStep = true)
+            val target = setting.continueFrom ?: return@mapNotNull null
             val earlier = resolved[target]
+            val earlierSetting = earlier?.let { RunDirectory.of(it.config, runnerStep(it)) }
             val problem = when {
-                !runnerStep(task) -> "a model answer has no agent session to continue; remove continueSession"
                 target == node.id -> "a step cannot continue its own session"
                 byId[target] == null -> "continueSession names step $target, which does not exist"
                 earlier == null || !runnerStep(earlier) -> "continueSession names step $target, which is not a coding agent step"
-                earlier.config[StepWorkspace.PREPARE_ONLY]?.toString()?.lowercase() == "true" -> "continueSession names step $target, a prepare step that starts no agent session"
-                ModelStepCheck.harness(earlier) != ModelStepCheck.harness(task) ->
-                    "step $target uses ${ModelStepCheck.harness(earlier)} and this step ${ModelStepCheck.harness(task)}: a session cannot continue in another harness"
-                cyclic(node.id, tasks) -> "continueSession forms a cycle"
+                earlierSetting?.prepareOnly == true -> "continueSession names step $target, a prepare step that starts no agent session"
+                earlierSetting?.runDirectory == false -> "continueSession names step $target, which works in a SEPARATE directory: its session is thrown away"
+                earlierSetting?.session == RunDirectory.Session.NEW -> "continueSession names step $target, which starts a new session every time (session NEW)"
+                earlier.agent.key != task.agent.key ->
+                    "step $target runs agent ${earlier.agent.key} and this step ${task.agent.key}: a session continues only with the same agent (its home holds the session)"
+                cyclic(node.id, tasks, resolved) -> "continueSession forms a cycle"
                 else -> null
             }
             problem?.let { node to it }
         }
     }
 
-    private fun cyclic(start: String, tasks: List<WorkflowNode.Task>): Boolean {
-        val targets = tasks.associate { it.id to SessionContinuation.target(it.task.overrides.config) }
+    private fun cyclic(start: String, tasks: List<WorkflowNode.Task>, resolved: Map<String, ResolvedTask>): Boolean {
+        val targets = tasks.associate { node -> node.id to resolved[node.id]?.let { RunDirectory.of(it.config, runnerStep(it)).continueFrom } }
         val seen = mutableSetOf(start)
         var current = targets[start]
         while (current != null) {
@@ -117,7 +116,7 @@ class RepositoryStepCheck(
 
         /** A runner step pushes unless `config.push` is false (ADR 0031); a prepare step never pushes (ADR 0044). */
         fun pushes(task: ResolvedTask): Boolean = runnerStep(task) && task.config["push"]?.toString()?.lowercase() != "false" &&
-            task.config[StepWorkspace.PREPARE_ONLY]?.toString()?.lowercase() != "true"
+            task.config[RunDirectory.PREPARE_ONLY]?.toString()?.lowercase() != "true"
 
         fun plan(project: Project, task: ResolvedTask, library: (String) -> LibrarySource? = { null }): StepRepositoryPlan =
             StepRepositories.plan(project, task.config, runnerStep(task), pushes(task), library)

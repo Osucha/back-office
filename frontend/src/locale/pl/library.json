@@ -643,5 +643,16 @@
   "library.metrics.col.costPerAcceptedTooltip": "Koszt wszystkich uruchomień / udane uruchomienia",
   "library.workflows.col.costTooltip": "Koszt wszystkich uruchomień / udane uruchomienia",
   "library.metrics.humanWait": "Oczekiwanie na ludzi",
-  "library.metrics.humanWaitHint": "Mediana czasu, przez jaki uruchomienie czeka na ludzi przy bramkach. Nie jest przeliczane na pieniądze: Back Office wie, jak długo ludzie kazali czekać uruchomieniu, a nie jak długo pracowali."
+  "library.metrics.humanWaitHint": "Mediana czasu, przez jaki uruchomienie czeka na ludzi przy bramkach. Nie jest przeliczane na pieniądze: Back Office wie, jak długo ludzie kazali czekać uruchomieniu, a nie jak długo pracowali.",
+  "library.agents.access": "Dostęp",
+  "library.agents.access.pathsPlaceholder": "docs/**",
+  "library.agents.access.pathsLabel": "Ścieżki, które agent może zmieniać",
+  "library.agents.access.help": "Co agent może zmieniać w repozytoriach swoich kroków. Gdy agent skończy, Back Office cofa każdą inną zmianę i wypisuje ją w logu kroku.",
+  "library.agents.access.pathsRequired": "Podaj co najmniej jedną ścieżkę, np. docs/**",
+  "library.agents.shadowNote": "Ta kopia projektu zastępuje w krokach tego projektu globalnego agenta o tym samym kluczu.",
+  "library.templateEditor.requiresSkills": "Wymagane umiejętności",
+  "library.templateEditor.requiresSkills.help": "Umiejętności, których wymaga praca. Krok, którego agent którejś nie ma, dostaje ostrzeżenie (i tak się wykona).",
+  "library.templateEditor.requiresSkills.none": "brak",
+  "library.templateEditor.checkWarnings": "Ostrzeżenia",
+  "library.agents.col.access": "Dostęp"
 }

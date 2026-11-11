@@ -37,6 +37,8 @@ data class LibraryWorkflowVersion(
     val publishedAt: Instant,
     val publishedBy: Actor?,
     val source: LibraryWorkflowSource,
+    /** ADR 0060: the workflow's setup command, copied on publish and adopt. */
+    val setupCommand: String? = null,
 ) {
     /** Nodes that do work or route (notes excluded). */
     val nodeCount: Int get() = nodes.count { it.kind != NodeKind.NOTE }

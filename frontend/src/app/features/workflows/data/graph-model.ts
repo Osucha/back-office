@@ -771,6 +771,7 @@ export function normalizeDefinition(
     edges: (raw.edges ?? []).map((e) => ({ ...e, id: e.id || edgeId(e.from, e.fromPort, e.to) })),
     triggers: raw.triggers ?? [],
     enabled: raw.enabled ?? true,
+    ...(raw.setupCommand ? { setupCommand: raw.setupCommand } : {}),
     canvas: raw.canvas ?? null,
   };
 }

@@ -74,10 +74,11 @@ function taskFacts(
       value: o.modelProfileId,
       mono: true,
     });
-  if (o?.addSkills?.length)
+  // ADR 0060: a step outside the run directory
+  if (String(o?.config?.['directory'] ?? '').toUpperCase() === 'SEPARATE')
     out.push({
-      label: $localize`:@@runs.detail.fact.extraSkills:Extra skills`,
-      value: o.addSkills.join(', '),
+      label: $localize`:@@runs.detail.fact.directory:Directory`,
+      value: $localize`:@@runs.detail.fact.directorySeparate:separate`,
     });
   if (o?.promptReplace)
     out.push({

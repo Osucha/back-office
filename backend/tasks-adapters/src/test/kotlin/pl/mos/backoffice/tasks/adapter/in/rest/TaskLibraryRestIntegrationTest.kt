@@ -208,7 +208,7 @@ class TaskLibraryRestIntegrationTest {
 
     @Test
     fun `resolve with a step's overrides returns what the step gets`() {
-        val overrides = """{"agentKey":"opencode","promptReplace":"Only analyse, change nothing.","config":{"push":false},"addSkills":[]}"""
+        val overrides = """{"agentKey":"opencode","promptReplace":"Only analyse, change nothing.","config":{"push":false},"addSkills":["ignored"]}"""
         assertThat(
             mvc.post().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.AGENT_TASK}").contentType(MediaType.APPLICATION_JSON).content(overrides),
         ).hasStatusOk().bodyJson().satisfies(
@@ -292,6 +292,49 @@ class TaskLibraryRestIntegrationTest {
         assertThat(mvc.delete().uri("/api/v1/task-templates/${idOf(shadow.response.contentAsString)}")).hasStatus(HttpStatus.NO_CONTENT)
         assertThat(mvc.delete().uri("/api/v1/agents/${idOf(agent.response.contentAsString)}")).hasStatus(HttpStatus.NO_CONTENT)
         assertThat(mvc.delete().uri("/api/v1/skills/$skillId")).hasStatus(HttpStatus.NO_CONTENT)
+    }
+
+    @Test
+    fun `ADR 0060 - agent access, a project copy of a global agent, required skills as warnings, read-only on a pushing step`() {
+        val projectId = UUID.randomUUID()
+        val project = """{"type":"PROJECT","projectId":"$projectId"}"""
+        val skill = "needed-$suffix"
+        assertThat(post("/api/v1/skills", """{"key":"$skill","name":"Needed","content":"# needed","scope":{"type":"GLOBAL"}}""")).hasStatus(HttpStatus.CREATED)
+
+        // a global agent with PATHS access; invalid access is a 400
+        val docs = post("/api/v1/agents", """{"key":"docs-$suffix","name":"Docs","scope":{"type":"GLOBAL"},"harness":"CLAUDE_CODE","access":{"mode":"PATHS","paths":["docs/**"]}}""").exchange()
+        assertThat(docs).hasStatus(HttpStatus.CREATED).bodyJson().satisfies(
+            { assertThat(it).extractingPath("$.access.mode").isEqualTo("PATHS") },
+            { assertThat(it).extractingPath("$.access.paths[0]").isEqualTo("docs/**") },
+        )
+        assertThat(post("/api/v1/agents", """{"name":"Bad","scope":{"type":"GLOBAL"},"access":{"mode":"PATHS","paths":["../x"]}}""")).hasStatus(HttpStatus.BAD_REQUEST)
+        assertThat(post("/api/v1/agents", """{"name":"Empty","scope":{"type":"GLOBAL"},"access":{"mode":"PATHS"}}""")).hasStatus(HttpStatus.BAD_REQUEST)
+        assertThat(mvc.get().uri("/api/v1/agents/${idOf(docs.response.contentAsString)}")).hasStatusOk().bodyJson().extractingPath("$.access.mode").isEqualTo("PATHS")
+
+        // import into a project: the same key in project scope, read only there; the project sees both
+        val copy = post("/api/v1/agents", """{"key":"docs-$suffix","name":"Docs (project)","scope":$project,"harness":"CLAUDE_CODE","access":{"mode":"READ_ONLY"}}""").exchange()
+        assertThat(copy).hasStatus(HttpStatus.CREATED).bodyJson().extractingPath("$.access.mode").isEqualTo("READ_ONLY")
+        assertThat(mvc.get().uri("/api/v1/agents").param("projectId", projectId.toString())).hasStatusOk().bodyJson()
+            .extractingPath("$[?(@.key == 'docs-$suffix')].scope.type").asArray().containsExactlyInAnyOrder("GLOBAL", "PROJECT")
+        val plain = post("/api/v1/agents", """{"name":"Plain $suffix","scope":{"type":"GLOBAL"}}""").exchange()
+        assertThat(plain).bodyJson().extractingPath("$.access.mode").isEqualTo("FULL")
+
+        // a template that requires a skill the agent lacks: a warning, still executable
+        val needs = post("/api/v1/task-templates", templateBody("needs-$suffix", extra = ""","agentKey":"docs-$suffix","requiresSkills":["$skill"],"config":{"push":false}""")).exchange()
+        assertThat(needs).hasStatus(HttpStatus.CREATED).bodyJson().extractingPath("$.requiresSkills[0]").isEqualTo(skill)
+        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/needs-$suffix")).hasStatusOk().bodyJson().satisfies(
+            { assertThat(it).extractingPath("$.check.ok").isEqualTo(true) },
+            { assertThat(it).extractingPath("$.check.warnings[0]").asString().contains("lacks skill $skill") },
+        )
+        assertThat(post("/api/v1/task-templates", templateBody("unknown-skill-$suffix", extra = ""","requiresSkills":["nope-$suffix"]"""))).hasStatus(HttpStatus.BAD_REQUEST)
+
+        // the project's read-only copy on a step that pushes is a problem
+        assertThat(
+            post("/api/v1/task-templates/resolve/needs-$suffix?projectId=$projectId", """{"config":{"push":true}}"""),
+        ).hasStatusOk().bodyJson().satisfies(
+            { assertThat(it).extractingPath("$.check.ok").isEqualTo(false) },
+            { assertThat(it).extractingPath("$.check.problems[0]").asString().contains("READ_ONLY") },
+        )
     }
 
     @Test

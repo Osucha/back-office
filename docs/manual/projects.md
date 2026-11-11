@@ -129,7 +129,7 @@ The tabs, each reachable with `?tab=` in the URL:
 |---|---|---|
 | **Workflows** | The project's workflows with triggers, state, last change; **Start run**, **Edit** / **View**, and the more-actions menu (**Duplicate workflow**, **Delete workflow**). When default workflows are missing (projects created before they existed): **Add missing default workflows (N)** ([The default workflows](workflows.md#default-workflows)). | `workflow.edit` (start: `run.start`) |
 | **Sources** | The project's repositories and the library sources (see [The Sources tab](#sources)). | `project.manage` |
-| **Workspaces** | Run workspaces shared by the project's workflows: sources, setup command, agent roles (see [Workspaces and agent sessions](workflows.md#workspaces)). | `project.manage` |
+| **Agents** | The agents the project's steps can use: the global ones and the project's own; **Create agent**, **Import from library** (see [Agents of the project](#project-agents)). | `library.project.manage` |
 | **Runs** | The project's runs (see [Runs](runs.md#run-list)). | — |
 | **CI** | Entrypoints, CI tokens, a GitLab CI snippet and the CI executions. | `project.manage`, `project.ci.manage` |
 | **Members** | Users and groups with their project roles. | `project.members.manage` |
@@ -137,6 +137,23 @@ The tabs, each reachable with `?tab=` in the URL:
 | **Sandbox** | The project's sandbox policy and what a job gets today. | `project.manage` |
 | **Budget** | The project's monthly budget. | `project.manage` |
 | **Settings** | The project form above (without the repositories, which are on **Sources**), the [Spec Kit](#spec-kit) switch and constitution, the [Jira intake watcher](integrations-jira.md#jira-intake), the **Spec Kit** card (**Add Spec Kit workflows**), and **Delete this project**. | `project.manage` |
+
+<a id="project-agents"></a>
+## Agents of the project
+
+The tab **Agents** shows who can work on the steps of this project (ADR 0060): the global agents of the library and
+the project's own agents, with **Scope** (**This project** or **Global**), **Kind**, **Model**, **Access** and
+**Environment** (how many rules and skills). A project agent with the key of a global agent shows "replaces the
+global agent", and that global agent shows "replaced in this project". What an agent is and its fields:
+[Agents](task-library.md#agents).
+
+With `library.project.manage` in the project:
+
+- **Create agent** opens the agent form with the scope set to this project.
+- **Import from library** picks a global agent and creates a project copy with the **same key**, then opens it for
+  editing (for example another model, the project's rules, a narrower **Access**). The copy replaces the global agent
+  in the steps of this project, without changing any workflow; other projects keep using the global one. This is the
+  same as **Customize for project** in the library.
 
 <a id="members"></a>
 ## Members and project roles

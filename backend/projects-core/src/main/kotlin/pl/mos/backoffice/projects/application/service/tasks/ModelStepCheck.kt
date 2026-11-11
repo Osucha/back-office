@@ -4,7 +4,7 @@ import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.projects.domain.service.StepWorkspace
+import pl.mos.backoffice.projects.domain.service.RunDirectory
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.llm.ModelAvailability
@@ -84,7 +84,7 @@ class ModelStepCheck(
         fun stepKind(task: ResolvedTask): StepKind? = when (TaskRunKind.of(task)) {
             TaskRunKind.MODEL_ANSWER -> StepKind.LLM_CALL
             TaskRunKind.SPEC_KIT, TaskRunKind.AGENT_JOB ->
-                StepKind.CODING_AGENT.takeUnless { task.config[StepWorkspace.PREPARE_ONLY]?.toString()?.lowercase() == "true" }
+                StepKind.CODING_AGENT.takeUnless { task.config[RunDirectory.PREPARE_ONLY]?.toString()?.lowercase() == "true" }
         }
 
         /** The coding agent harness of a runner step: the step's agent's (ADR 0056), OpenCode for a model answer. */

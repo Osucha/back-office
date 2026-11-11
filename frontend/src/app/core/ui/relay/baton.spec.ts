@@ -78,6 +78,28 @@ describe('baton mapping', () => {
     expect(holderOfKind('NOTE')).toBe('idle');
   });
 
+  it('says when an agent step waits for your answers (ADR 0060)', () => {
+    const run = { status: 'WAITING', waitingOn: { nodeId: 'spec' } } as const;
+    expect(
+      batonOf.run({ status: 'WAITING', waitingOn: { kind: 'AGENT_QUESTIONS', nodeId: 'spec' } }),
+    ).toMatchObject({ holder: 'you', label: 'waiting for your answers' });
+    expect(batonOf.run(run, { questions: true })).toMatchObject({
+      holder: 'you',
+      label: 'waiting for your answers',
+    });
+    expect(batonOf.node({ status: 'WAITING', kind: 'TASK' }, { questions: true })).toMatchObject({
+      holder: 'you',
+      label: 'waiting for your answers',
+    });
+    expect(
+      batonOf.node({ status: 'WAITING', kind: 'TASK' }, { questions: true, canDecide: false })
+        .label,
+    ).toBe('with approver');
+    expect(batonOf.approval({ status: 'OPEN', kind: 'AGENT_QUESTIONS' }).label).toBe(
+      'waiting for your answers',
+    );
+  });
+
   it('shows a waiting gate the same way for the run and its node', () => {
     const run = { status: 'WAITING', waitingOn: { kind: 'HUMAN_GATE', nodeId: 'g' } } as const;
     const gate = { status: 'WAITING', kind: 'HUMAN_GATE' } as const;

@@ -5,6 +5,7 @@
  * agent output, failure messages or secrets are ever included, only names and keys.
  */
 import type { ApprovalRequest, WorkflowRunSummary } from '../api/types';
+import { agentQuestions, isAgentQuestions, questionsCountText } from '../ui/agent-questions';
 import type { NotifyKind } from './notification-prefs';
 import { cleanText, joinClean } from './sanitize';
 import type { SoundKind } from './sounds';
@@ -51,6 +52,27 @@ export function gateContent(a: ApprovalRequest, assignedToMe: boolean): Notifica
   const subject = a.issueKey || a.workflowName;
   const question =
     cleanText(a.question, 100) || $localize`:@@core.notify.decisionNeeded:Decision needed`;
+  if (isAgentQuestions(a)) {
+    // ADR 0060: the questions are agent output: only their number, never their text
+    return {
+      kind: 'turn',
+      title: title(
+        key
+          ? $localize`:@@core.notify.questionsTitle:The agent has questions · ${key}:project:`
+          : $localize`:@@core.notify.questionsTitleNoProject:The agent has questions`,
+      ),
+      body: joinClean(
+        [
+          subject,
+          questionsCountText(agentQuestions(a).length),
+          assignedToMe ? $localize`:@@core.notify.assignedToYou:assigned to you` : null,
+        ],
+        BODY_MAX,
+      ),
+      tag: `bo-gate-${seg(a.id)}`,
+      link: `/inbox/${seg(a.id)}`,
+    };
+  }
   if (a.kind === 'WRITE_CONFIRMATION') {
     return {
       kind: 'turn',

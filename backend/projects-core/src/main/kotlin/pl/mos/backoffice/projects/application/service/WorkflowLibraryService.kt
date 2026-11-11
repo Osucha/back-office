@@ -118,6 +118,7 @@ class WorkflowLibraryService(
             publishedAt = now,
             publishedBy = actor,
             source = LibraryWorkflowSource(project.id, project.key, source.id, source.version),
+            setupCommand = source.setupCommand,
         )
         val target = command.libraryWorkflowId?.let(::load)
         val saved = if (target == null) {
@@ -138,7 +139,7 @@ class WorkflowLibraryService(
             )
         } else {
             val latest = target.latest
-            if (LibraryPortability.sameGraph(source.nodes, source.edges, latest.nodes, latest.edges)) {
+            if (LibraryPortability.sameGraph(source.nodes, source.edges, latest.nodes, latest.edges) && source.setupCommand == latest.setupCommand) {
                 throw ValidationException("the workflow does not differ from version ${latest.version} of ${target.key}", "workflow")
             }
             val published = target.publish(draft, now, actor)
@@ -177,6 +178,7 @@ class WorkflowLibraryService(
             triggers = chosen.triggers,
             enabled = true,
             canvas = chosen.canvas,
+            setupCommand = chosen.setupCommand,
         )
         workflowService.requireValidFor(projectId, command)
         val now = clock.now()
@@ -192,6 +194,7 @@ class WorkflowLibraryService(
                 triggers = command.triggers,
                 enabled = command.enabled,
                 canvas = command.canvas,
+                setupCommand = command.setupCommand,
                 createdAt = now,
                 updatedAt = now,
                 updatedBy = actor,
@@ -220,10 +223,11 @@ class WorkflowLibraryService(
         }
         if (!modified && target.version == link.version) return existing
         val nodes = LibraryPortability.withLocalSettings(target.nodes, existing.nodes)
-        val command = WorkflowCommand(existing.name, existing.description, nodes, target.edges, existing.triggers, existing.enabled, existing.canvas)
+        // ADR 0060: the library version's setup command wins; a version without one keeps the project's
+        val command = WorkflowCommand(existing.name, existing.description, nodes, target.edges, existing.triggers, existing.enabled, existing.canvas, target.setupCommand ?: existing.setupCommand)
         workflowService.requireValidFor(existing.projectId, command)
         val saved = workflows.save(
-            existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor)
+            existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.setupCommand)
                 .withLibrary(link.copy(version = target.version, modified = false)),
         )
         audit.record(

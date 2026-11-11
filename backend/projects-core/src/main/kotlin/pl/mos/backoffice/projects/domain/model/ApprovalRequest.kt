@@ -9,10 +9,53 @@ import java.util.UUID
 enum class ApprovalStatus { OPEN, DECIDED, EXPIRED }
 
 /**
- * What an approval asks: a `HUMAN_GATE` decision ([GATE]) or the confirmation of an external write a step prepared
- * ([WRITE_CONFIRMATION], ADR 0033: options approve / reject, the exact write in [ApprovalRequest.write]).
+ * What an approval asks: a `HUMAN_GATE` decision ([GATE]), the confirmation of an external write a step prepared
+ * ([WRITE_CONFIRMATION], ADR 0033: options approve / reject, the exact write in [ApprovalRequest.write]) or the answers
+ * to an agent's questions ([AGENT_QUESTIONS], ADR 0060: options answer / cancel, the questions in
+ * [ApprovalRequest.questions]).
  */
-enum class ApprovalKind { GATE, WRITE_CONFIRMATION }
+enum class ApprovalKind { GATE, WRITE_CONFIRMATION, AGENT_QUESTIONS }
+
+/**
+ * ADR 0060: one question an agent asked the owner instead of guessing: the [question] and [why] it matters. Agent
+ * output: the caller sanitises and bounds it ([AgentQuestions.of]).
+ */
+data class AgentQuestion(val question: String, val why: String? = null) {
+    fun toStateMap(): Map<String, Any?> = mapOf("question" to question, "why" to why)
+
+    companion object {
+        fun fromStateMap(map: Map<*, *>): AgentQuestion? =
+            map["question"]?.toString()?.takeIf { it.isNotBlank() }?.let { AgentQuestion(it, map["why"]?.toString()?.takeIf { w -> w.isNotBlank() }) }
+    }
+}
+
+/** ADR 0060: the options of an AGENT_QUESTIONS approval and how the answers reach the step again. */
+object AgentQuestions {
+    const val ANSWER = "answer"
+    const val CANCEL = "cancel"
+    val OPTIONS = listOf(ANSWER, CANCEL)
+
+    /** Most questions kept of one round; longer lists are cut. */
+    const val MAX_QUESTIONS = 10
+
+    /** Most characters of one question or reason. */
+    const val MAX_CHARS = 2_000
+
+    /** The questions of one round as the inbox shows them. */
+    fun question(round: Int, count: Int): String = "The agent asks ${if (count == 1) "a question" else "$count questions"} (round $round)"
+
+    /** `{{answers}}` of a step: every answered round, questions and the owner's answers, oldest first. */
+    fun answersText(previous: String?, round: Int, questions: List<AgentQuestion>, answers: String): String = buildString {
+        previous?.takeIf { it.isNotBlank() }?.let { append(it.trimEnd()).append("\n\n") }
+        append("Round ").append(round).append(": your questions\n")
+        questions.forEachIndexed { i, q ->
+            append(i + 1).append(". ").append(q.question.trim())
+            q.why?.takeIf { it.isNotBlank() }?.let { append(" (why: ").append(it.trim()).append(')') }
+            append('\n')
+        }
+        append("The owner's answers:\n").append(answers.trim())
+    }
+}
 
 data class EditedArtifact(val artifactId: ArtifactId, val content: String)
 
@@ -97,15 +140,26 @@ data class ApprovalRequest(
     val kind: ApprovalKind = ApprovalKind.GATE,
     /** The exact write awaiting confirmation (only for [ApprovalKind.WRITE_CONFIRMATION]); never re-rendered. */
     val write: PendingWrite? = null,
+    /** ADR 0060: what the agent asks, in order (only for [ApprovalKind.AGENT_QUESTIONS]). */
+    val questions: List<AgentQuestion> = emptyList(),
+    /** ADR 0060: 1-based round of questions of the step (only for [ApprovalKind.AGENT_QUESTIONS]). */
+    val questionRound: Int? = null,
+    /** ADR 0060: the step's limit of rounds (only for [ApprovalKind.AGENT_QUESTIONS]). */
+    val maxQuestionRounds: Int? = null,
 ) {
     init {
         if (options.isEmpty()) throw ValidationException("approval options must not be empty", "options")
         if ((kind == ApprovalKind.WRITE_CONFIRMATION) != (write != null)) {
             throw ValidationException("a write confirmation carries its write, a gate does not", "write")
         }
+        if ((kind == ApprovalKind.AGENT_QUESTIONS) != questions.isNotEmpty()) {
+            throw ValidationException("agent questions carry the questions, other approvals do not", "questions")
+        }
     }
 
     val isWriteConfirmation: Boolean get() = kind == ApprovalKind.WRITE_CONFIRMATION
+
+    val isAgentQuestions: Boolean get() = kind == ApprovalKind.AGENT_QUESTIONS
 
     /** The named users who may decide: the run-time assignment, else the gate's `approvers.users` (empty = no named users). */
     val assignees: List<UUID> get() = assignment?.userIds ?: approvers.users
@@ -133,6 +187,12 @@ data class ApprovalRequest(
         if (isWriteConfirmation && decision.editedArtifacts.isNotEmpty()) {
             // the approved write is exactly the previewed one: nothing can be edited on the way
             throw ValidationException("a write confirmation cannot edit artefacts", "editedArtifacts")
+        }
+        if (isAgentQuestions) {
+            if (decision.editedArtifacts.isNotEmpty()) throw ValidationException("answers to agent questions cannot edit artefacts", "editedArtifacts")
+            if (decision.option.equals(AgentQuestions.ANSWER, ignoreCase = true) && decision.comment.isNullOrBlank()) {
+                throw ValidationException("write the answers to the agent's questions in the comment", "comment")
+            }
         }
         val known = checklist.map { it.id }.toSet()
         val unknown = decision.checkedItems.filterNot { it in known }

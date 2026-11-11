@@ -2,6 +2,7 @@ package pl.mos.backoffice.shared.tasks
 
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentMcpServer
 import java.util.UUID
@@ -22,6 +23,8 @@ data class AgentSnapshot(
     val rules: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
     val mcpServers: List<AgentMcpServer> = emptyList(),
+    /** ADR 0060: what the agent may change (coding agents; irrelevant for a model answer). */
+    val access: AgentAccess = AgentAccess.FULL,
 ) {
     val modelAnswer: Boolean get() = harness == null
 
@@ -162,10 +165,6 @@ data class TaskOverrides(
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
     val promptReplace: String? = null,
-    /** ADR 0057: skills this step adds to its agent's. */
-    val addSkills: List<String> = emptyList(),
-    /** ADR 0057: skills of the agent this step drops. */
-    val removeSkills: List<String> = emptyList(),
     val config: Map<String, Any?> = emptyMap(),
     /** ADR 0058: values of the template's parameters for this step (win over template values and defaults). */
     val parameters: Map<String, Any?> = emptyMap(),

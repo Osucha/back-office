@@ -53,11 +53,18 @@ Back Office (api)                runner-controller (pool P)              sandbox
 Jobs and their states are visible in **Administration** → **Runner fleet** → **Agent jobs**
 ([runner-fleet.md](runner-fleet.md#agent-jobs)).
 
-**Run workspaces (ADR 0044).** A step that names a [workspace](workflows.md#workspaces) gets a persistent
-`/workspace` instead of a throwaway one: a Docker volume or a PersistentVolumeClaim of the runner that ran the
-workspace's first step. Back Office leases the workspace's jobs only to that runner and one at a time; the runner
-reuses its earlier clones after rewriting their `.git/config`. Each runner-controller reports its workspaces every
-minute and deletes the ones Back Office released.
+**The run directory (ADR 0044, 0060).** The coding steps of a run share one persistent `/workspace`, the
+[run directory](workflows.md#run-directory): a Docker volume or a PersistentVolumeClaim of the runner that ran the
+run's first coding step. Back Office leases the run's jobs only to that runner and one at a time; the runner reuses
+its earlier clones after rewriting their `.git/config`. Each agent keeps its environment, skills, MCP configuration
+and sessions in its own home `/workspace/.agents/<agent key>/`, outside every repository. A step with **Separate
+directory** gets a throwaway `/workspace` instead. Each runner-controller reports its run directories every minute
+and deletes the ones Back Office released (when the run ends; 24 hours after a failure).
+
+**Access of the agent.** When the step's agent has a restricted [access](task-library.md#agent-access) (**Read
+only**, **Only these paths**), the runner snapshots the repositories right before the agent starts and, after it
+finished, reverts every change outside the access before verifying, committing and pushing; the reverted paths are
+in the job log and the step summary (`[Back Office runner] reverted N change(s) ...`).
 
 <a id="isolation-levels"></a>
 ## Isolation levels

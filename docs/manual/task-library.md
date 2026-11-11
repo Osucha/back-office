@@ -70,7 +70,9 @@ prompt to complete in the workflow step. The others are ready blocks.
    (empty means inherited; empty all along the chain means **Model answer**), **Scope** (**Global** or **Project**
    with the **Project**), **Model profile**. Below the agent, **Environment of the agent** shows read-only what the
    chosen agent brings: its instructions, its rules (automatic ones marked) and its skills. To change them, edit the
-   agent on the **Agents** page or pick another agent.
+   agent on the **Agents** page or pick another agent. **Required skills**: skills the work needs (inherited and
+   added up along the chain). A step whose agent lacks one gets a warning in **Warnings** (it still runs); the
+   template does not give the skill to the agent.
 3. **Prompt**: choose **Append to parent** or **Replace parent**, then write the **System prompt** and
    the **User prompt**. Template values such as `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
    and `{{params.<name>}}` (a [parameter](#parameters)) are filled at run time. The project constitution and the
@@ -87,7 +89,7 @@ prompt to complete in the workflow step. The others are ready blocks.
    and help text. A template based on another one also shows **Parameter values**: values for the parameters of
    its parents.
 5. **Configuration**: a form with the settings for the template's agent (for a coding agent: verify and setup
-   command, push, merge request, artefacts to collect, agent tools, workspace, Spec Kit phase, ...). Set only what differs from the
+   command, push, merge request, artefacts to collect, agent tools, Spec Kit phase, ...). Set only what differs from the
    template it is based on; empty fields are inherited. **Raw JSON** shows the same settings as JSON, also keys the
    form does not know.
    **Advanced: contracts, artefacts, output schema, sandbox** (collapsed; most templates need nothing here):
@@ -240,15 +242,21 @@ template stays the same.
 
 | Field | Meaning |
 |---|---|
-| **Kind** (the harness) | **Model answer**: one model call inside Back Office without tools or a repository. **OpenCode** or **Claude Code**: a coding agent session in the runner sandbox with the step's workspace. |
+| **Kind** (the harness) | **Model answer**: one model call inside Back Office without tools or a repository. **OpenCode** or **Claude Code**: a coding agent session in the runner sandbox, in the [run directory](workflows.md#run-directory). |
 | **Model** | Optional. Empty means the step's model or the defaults for its kind: the project's, then the starting user's, then the platform's. |
 | **Instructions** | The agent's role and way of working, in markdown, for example "You are a careful reviewer. Explain every finding with a file and a line." It may use `{{project.*}}` values and comes after the platform preamble. |
 | **Rules** | [Rules](#rules) the agent always follows, after the automatic ones. |
 | **Skills** | [Skills](#skills) the agent opens when it needs them. |
 | **MCP servers** | Remote MCP servers (a name and an `http://` or `https://` URL) the agent may use. Coding agents only: a model answer has no tools. See [MCP servers of an agent](#agent-mcp). |
+| **Access** | Coding agents only: what the agent may change in the repositories of its steps: **Full** (default), **Read only** or **Only these paths**. See [Access of an agent](#agent-access). |
 | **Name**, **Description**, **Scope**, **Tags** | As for rules; the key is derived from the name. |
 
-The list shows each agent's **Kind**, **Model** and **Environment** (how many rules and skills it has).
+The list shows each agent's **Kind**, **Model**, **Access** and **Environment** (how many rules and skills it has).
+A project's own agents and the global ones it can use are also on the project tab **Agents**
+([Agents of the project](projects.md#project-agents)).
+
+The environment is set once, on the agent (ADR 0060): a step chooses an agent but does not add or drop its skills.
+For a variant, make another agent (or a project copy).
 
 Built-in agents (none has a model of its own; all list the rules `agent-ground-rules` and `ask-dont-guess`):
 
@@ -295,22 +303,29 @@ Before its task, every step gets one document that describes where and how it wo
 
 1. the **platform preamble**, fixed by Back Office for the kind of agent: what Back Office is, honesty, scope,
    safety; for a model answer "no repository, no tools, only JSON when there is a schema"; for a coding agent
-   "the runner commits and pushes, never weaken a test, quote file paths, where your skills are";
+   "the runner commits and pushes, never weaken a test, quote file paths, where your skills are"; when the step
+   lets the agent ask ([Agents asking questions](workflows.md#agent-questions)), also how to ask;
 2. the agent's **Instructions**;
 3. the project's constitution, when the project has one;
 4. the rules: the automatic ones (global, then project), then the agent's.
 
-Each harness gets it in its own form:
+A model answer gets it at the start of its system prompt, then the template's system prompt, then its skills
+(appended, because a single model call cannot open files).
 
-| Agent | Where the environment goes | Skills |
+<a id="agent-home"></a>A coding agent gets a **home** of its own in the [run directory](workflows.md#run-directory),
+outside every repository: `/workspace/.agents/<agent key>/`. Everything of the agent lives there (ADR 0060):
+
+| Agent | The home is | It holds |
 |---|---|---|
-| Model answer | the system prompt: the environment, then the template's system prompt, then the skills | appended to the system prompt |
-| OpenCode | `/workspace/.backoffice-agent/AGENTS.md`, listed under `instructions` of the generated `opencode.json` | `.opencode/skills/<key>/SKILL.md` |
-| Claude Code | the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md` | `.claude/skills/<key>/SKILL.md` |
+| Claude Code | its configuration directory (`CLAUDE_CONFIG_DIR`) | `CLAUDE.md` (the environment, as Claude Code's user memory), `skills/<key>/SKILL.md`, `mcp.json` (its MCP servers), `settings.json` (tool rules, only with a tool policy or a restricted access) and Claude Code's own session files |
+| OpenCode | its configuration directory (`OPENCODE_CONFIG_DIR`) | `opencode.json` (lists `AGENTS.md` under `instructions`, plus its MCP servers and edit permissions), `AGENTS.md` (the environment), `skills/<key>/SKILL.md`, and its sessions under `data/<session>` |
 
-The environment is written outside every repository. The repository's own `AGENTS.md` and `CLAUDE.md` stay
-untouched, and the harness reads them as usual, so your project's own agent instructions keep working next to
-Back Office's. The skill folders are excluded from git, so nothing ends up in a commit.
+Nothing of an agent is written into a repository any more, so nothing ends up in a commit, and two agents working
+in one run directory never see each other's skills or memory. The skills are written again on every job, so an
+agent always works with its current environment. The repository's own `AGENTS.md` and `CLAUDE.md` stay untouched:
+the harness reads them as usual, and they are the project's rules for every agent, next to Back Office's
+environment. OpenCode also reads the repository's own skills (`.opencode/skills`, `.claude/skills`): they are project
+skills, available to every OpenCode agent.
 
 <a id="agent-mcp"></a>
 ### MCP servers of an agent
@@ -321,14 +336,43 @@ A coding agent may list remote MCP servers: a name (lower case letters, digits a
 server is reachable is the sandbox's call: its egress policy ([Sandbox policy](projects.md#sandbox-policy)) must
 allow the host, otherwise the proxy refuses the connection and the agent sees the server as unavailable.
 
+<a id="agent-access"></a>
+### Access of an agent
+
+**Access** says what a coding agent may change in the repositories of its steps (ADR 0060):
+
+| Access | The agent may change |
+|---|---|
+| **Full** (default) | anything |
+| **Read only** | nothing |
+| **Only these paths** | only files matching the path globs you list, relative to a repository root, for example `docs/**` (`**` any directories, `*` within one name; a plain path such as `docs` covers everything below it) |
+
+It is enforced twice:
+
+1. **The harness's own tool rules**: Claude Code does not get its editing tools for other files, OpenCode's edit
+   permission denies them, so the agent learns early that it may not.
+2. **The runner, after the agent finished**: it snapshots every repository of the step right before the agent
+   starts, and afterwards reverts every change outside the access (added files removed, changed or deleted files
+   restored), whatever the agent did, shell commands included. The step's log lists each reverted path, and its
+   summary ends with `[Back Office runner] reverted N change(s) outside the agent's access (...)`. Only then are the
+   verify command, the commit and the push run. Files ignored by git are not covered (they are never committed
+   either); artefacts the step collects are collected before the revert.
+
+A **Read only** agent on a step that pushes is a problem: the step cannot run until you change the agent or turn the
+push off. Whether a step commits and pushes stays a setting of the step; access only narrows what the agent may
+change. Access does not hide anything: an agent that must not see the code at all needs a step with **Separate
+directory** and only the repositories it may see ([The run directory](workflows.md#run-directory)). A model answer
+has no repository, so access does not apply to it.
+
 ### Steps: create an agent
 
-1. Click **Create agent**.
+1. Click **Create agent** (in the library, or on the project tab **Agents** for a project agent).
 2. Enter **Name** and **Description**.
 3. Pick the **Kind** (**Model answer**, **OpenCode** or **Claude Code**) and, if the agent should always use one
    model, the **Model**.
 4. Write the **Instructions**: the role and the way of working, short and concrete.
-5. Choose **Rules** and **Skills**; for a coding agent optionally add **MCP servers** (**Add MCP server**).
+5. Choose **Rules** and **Skills**; for a coding agent optionally add **MCP servers** (**Add MCP server**) and set
+   **Access** (for **Only these paths**, list the paths that the agent may change, for example `docs/**`).
 6. Set **Scope** (**Global** or **Project**) and **Tags**.
 7. Click **Create agent**.
 
@@ -345,15 +389,16 @@ ran with.
 task needs them, with **Scope**, **Tags**, **Size** and **Updated**. A skill follows the Agent Skills convention: a
 frontmatter with `name` and `description`, then short, concrete, numbered steps.
 
-A step gets the skills of its agent (**Skills** on the agent). In the designer a step may still add skills for
-itself (**Add skills to the agent's**) or drop some (**Drop skills of the agent**); the agent keeps them elsewhere.
+A step gets the skills of its agent (**Skills** on the agent), nothing more and nothing less: a step cannot add or
+drop skills (ADR 0060). A template can name the skills its work needs (**Required skills**); a step whose agent lacks
+one gets a warning.
 
 How a skill reaches the agent:
 
 - Steps run by **Model answer** get the skill appended to the system prompt (a single model call cannot open files).
-- Steps run by a coding agent (Spec Kit phases included) get it written as `.claude/skills/<key>/SKILL.md` and
-  `.opencode/skills/<key>/SKILL.md`, which Claude Code and OpenCode load on their own; the platform preamble tells
-  the agent where they are.
+- Steps run by a coding agent (Spec Kit phases included) get it written into the agent's home as
+  `skills/<key>/SKILL.md` ([The environment of the agent](#environment)), never into a repository; Claude Code and
+  OpenCode load it on their own, and the platform preamble tells the agent where its skills are.
 
 ### Steps: create a skill
 
@@ -477,7 +522,7 @@ working; the replaced prompt wins.
 
 Both put the issue (when the run has one), the run input **Input material** and the reviewer's feedback into the
 system prompt (each only when it is there), so the **Task** can be just the task. The **Agent task** does not push by default; in a
-project without repositories it runs in an empty workspace and its final answer becomes the `result` artefact. The
+project without repositories it runs in an empty directory and its final answer becomes the `result` artefact. The
 **LLM task** runs on the Back Office server and needs a configured model provider (an API key); the **Agent task**
 runs on a runner, so on your [personal runner](personal-runner.md) it can use your own Claude login instead.
 

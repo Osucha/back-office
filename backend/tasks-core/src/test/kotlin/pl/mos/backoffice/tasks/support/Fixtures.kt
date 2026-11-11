@@ -2,6 +2,7 @@ package pl.mos.backoffice.tasks.support
 
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.TemplateParameter
@@ -40,8 +41,9 @@ class Library(builtInAgents: Boolean = true) {
         rules: List<String> = emptyList(),
         skills: List<String> = emptyList(),
         instructions: String = "",
+        access: AgentAccess = AgentAccess.FULL,
     ): Agent =
-        agents.save(Agent.create(Agent.Content(key = key, name = name, scope = scope, harness = harness, rules = rules, skills = skills, instructions = instructions), now))
+        agents.save(Agent.create(Agent.Content(key = key, name = name, scope = scope, harness = harness, rules = rules, skills = skills, instructions = instructions, access = access), now))
 
     fun skill(key: String, scope: Scope = Scope.Global, content: String = "# $key"): Skill =
         skills.save(Skill.create(Skill.Content(key = key, name = key, content = content, scope = scope), now))
@@ -67,13 +69,14 @@ class Library(builtInAgents: Boolean = true) {
         runInputs: List<RunInputField> = emptyList(),
         parameters: List<TemplateParameter> = emptyList(),
         parameterValues: Map<String, Any?> = emptyMap(),
+        requiresSkills: List<String> = emptyList(),
     ): TaskTemplate = templates.save(
         TaskTemplate.create(
             TaskTemplate.Content(
                 key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category, agentKey = agentKey,
                 scope = scope, prompt = prompt, config = config, outputSchema = outputSchema,
                 confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags, runInputs = runInputs,
-                parameters = parameters, parameterValues = parameterValues,
+                parameters = parameters, parameterValues = parameterValues, requiresSkills = requiresSkills,
             ),
             now,
         ),

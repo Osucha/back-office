@@ -28,6 +28,8 @@ object BuiltInChecksum {
                 "runInputs" to t.runInputs.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "help" to it.help) },
                 "parameters" to t.parameters.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "default" to it.default, "options" to it.options, "help" to it.help) },
                 "parameterValues" to t.parameterValues,
+                // ADR 0060: only when set, so the checksums of templates without it stay
+                "requiresSkills" to t.requiresSkills.takeIf { it.isNotEmpty() },
             ),
         ),
     )
@@ -43,6 +45,8 @@ object BuiltInChecksum {
             mapOf(
                 "name" to a.name, "description" to a.description, "harness" to a.harness?.name, "modelProfileId" to a.modelProfileId?.value?.toString(), "tags" to a.tags,
                 "instructions" to a.instructions, "rules" to a.rules, "skills" to a.skills, "mcpServers" to a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) },
+                // ADR 0060: only when not FULL, so the checksums of other agents stay
+                "access" to a.access.takeUnless { it.full }?.let { mapOf("mode" to it.mode.name, "paths" to it.paths) },
             ),
         ),
     )

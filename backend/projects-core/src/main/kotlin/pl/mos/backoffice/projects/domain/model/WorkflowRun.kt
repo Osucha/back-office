@@ -54,9 +54,10 @@ data class RunInput(
 
 /**
  * Why a run waits: a human gate, a CI signal, or the confirmation of an external write prepared by a TASK node
- * (ADR 0033; the node stays open and continues with the write or the `failure` port).
+ * (ADR 0033; the node stays open and continues with the write or the `failure` port), or the answers to an agent's
+ * questions (ADR 0060; the node stays open and runs again with the answers, or fails on cancel).
  */
-enum class WaitKind { HUMAN_GATE, WAIT_FOR_CI, WRITE_CONFIRMATION }
+enum class WaitKind { HUMAN_GATE, WAIT_FOR_CI, WRITE_CONFIRMATION, AGENT_QUESTIONS }
 
 /** Why a `WAITING` run is paused: an open approval (gate or write confirmation) or an expected CI signal. */
 data class WaitingOn(
@@ -296,6 +297,15 @@ data class WorkflowRun(
         return pause(node, now, WaitingOn(WaitKind.WRITE_CONFIRMATION, node.id, approvalId = approvalId))
     }
 
+    /**
+     * ADR 0060: pauses the RUNNING TASK [node] until the owner answers its agent's questions. Like a write confirmation,
+     * the node execution stays open: the answered step runs again (or fails on cancel).
+     */
+    fun waitingForAgentQuestions(node: WorkflowNode, approvalId: ApprovalRequestId, now: Instant): WorkflowRun {
+        if (runningNode()?.nodeId != node.id) throw InvalidStateException("run $id is not running node ${node.id}, cannot wait for answers to its questions")
+        return pause(node, now, WaitingOn(WaitKind.AGENT_QUESTIONS, node.id, approvalId = approvalId))
+    }
+
     /** Pauses the run before [node] until CI reports [signal]. */
     fun waitingForCi(node: WorkflowNode, signal: String, now: Instant): WorkflowRun =
         pause(node, now, WaitingOn(WaitKind.WAIT_FOR_CI, node.id, signal = signal))
@@ -326,7 +336,7 @@ data class WorkflowRun(
         requireStatus(RunStatus.WAITING)
         return when (waitingOn?.kind) {
             WaitKind.HUMAN_GATE -> resume(now, decision.option.lowercase(), decision.describe())
-            WaitKind.WRITE_CONFIRMATION -> copy(
+            WaitKind.WRITE_CONFIRMATION, WaitKind.AGENT_QUESTIONS -> copy(
                 status = RunStatus.RUNNING,
                 waitingOn = null,
                 nodes = nodes.map { if (it.status == NodeExecutionStatus.WAITING) it.copy(status = NodeExecutionStatus.RUNNING) else it },

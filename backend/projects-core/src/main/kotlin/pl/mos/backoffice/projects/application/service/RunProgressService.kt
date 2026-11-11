@@ -19,6 +19,8 @@ import pl.mos.backoffice.projects.domain.event.WorkflowRunFinished
 import pl.mos.backoffice.projects.domain.model.ApprovalContext
 import pl.mos.backoffice.projects.domain.model.ApprovalKind
 import pl.mos.backoffice.projects.domain.model.PendingWrite
+import pl.mos.backoffice.projects.domain.model.AgentQuestion
+import pl.mos.backoffice.projects.domain.model.AgentQuestions
 import pl.mos.backoffice.projects.domain.model.WriteApprovalConfig
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.ApprovalRequestId
@@ -196,6 +198,46 @@ class RunProgressService(
         approvals.save(approval)
         runs.save(waiting)
         events.publish(RunWaitingForHuman(runId, run.projectId, nodeId, approval.id, approval.question, now, ApprovalKind.WRITE_CONFIRMATION.name))
+        approval
+    }
+
+    @SystemOperation(ENGINE)
+    override fun waitingForAgentQuestions(
+        runId: WorkflowRunId,
+        nodeId: String,
+        questions: List<AgentQuestion>,
+        round: Int,
+        approvers: GateApprovers,
+        context: ApprovalContext,
+        maxRounds: Int?,
+    ): ApprovalRequest = synchronized(lock) {
+        val run = load(runId)
+        approvals.findOpenByRunId(runId)?.let { return it }
+        val node = run.definitionSnapshot.requireNode(nodeId)
+        val now = clock.now()
+        val approval = ApprovalRequest(
+            id = ApprovalRequestId.new(),
+            runId = runId,
+            nodeId = nodeId,
+            projectId = run.projectId,
+            projectKey = run.projectKey,
+            workflowName = run.workflowName,
+            issueKey = run.issueKey,
+            question = AgentQuestions.question(round, questions.size),
+            options = AgentQuestions.OPTIONS,
+            context = context,
+            createdAt = now,
+            approvers = approvers,
+            startedBy = run.startedBy,
+            kind = ApprovalKind.AGENT_QUESTIONS,
+            questions = questions,
+            questionRound = round,
+            maxQuestionRounds = maxRounds,
+        )
+        val waiting = run.waitingForAgentQuestions(node, approval.id, now)
+        approvals.save(approval)
+        runs.save(waiting)
+        events.publish(RunWaitingForHuman(runId, run.projectId, nodeId, approval.id, approval.question, now, ApprovalKind.AGENT_QUESTIONS.name))
         approval
     }
 

@@ -7,6 +7,7 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
@@ -227,7 +228,7 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `ADR 0057 - skills are the agent's, resolved with project shadowing, plus and minus the step's`() {
+    fun `ADR 0057 - skills are the agent's, resolved with project shadowing`() {
         listOf("aa", "bb", "cc").forEach { lib.skill(it) }
         lib.skill("bb", scope = Scope.Project(lib.projectId), content = "# project bb")
         lib.agent("writer", skills = listOf("aa", "bb"))
@@ -238,10 +239,34 @@ class TaskResolverTest {
         assertThat(skills.map { it.key }).containsExactly("aa", "bb")
         assertThat(skills.last().content).isEqualTo("# project bb")
         assertThat(resolver.resolve("leaf", null)!!.skills.last().content).isEqualTo("# bb")
+        assertThat(resolver.resolve("leaf", null)!!.agent.skills).describedAs("the agent's own keys, for display").containsExactly("aa", "bb")
+    }
 
-        val step = resolver.resolve("leaf", null, TaskOverrides(addSkills = listOf("cc"), removeSkills = listOf("aa")))!!
-        assertThat(step.skills.map { it.key }).containsExactly("bb", "cc")
-        assertThat(step.agent.skills).describedAs("the agent's own keys, for display").containsExactly("aa", "bb")
+    @Test
+    fun `ADR 0060 - required skills of the lineage the agent lacks are warnings, not problems`() {
+        listOf("aa", "bb", "cc").forEach { lib.skill(it) }
+        lib.agent("writer", skills = listOf("aa"))
+        lib.template("root", abstract = true, agentKey = "writer", requiresSkills = listOf("aa", "bb"))
+        lib.template("leaf", extendsKey = "root", requiresSkills = listOf("cc", "bb"))
+
+        val preview = resolver.preview("leaf", null)!!
+        assertThat(preview.check.ok).isTrue()
+        assertThat(preview.executable).isTrue()
+        assertThat(preview.check.warnings).hasSize(2)
+        assertThat(preview.check.warnings[0]).contains("agent writer lacks skill bb")
+        assertThat(preview.check.warnings[1]).contains("lacks skill cc")
+    }
+
+    @Test
+    fun `ADR 0060 - a read-only coding agent on a step that pushes is a problem`() {
+        lib.agent("reader", harness = AgentHarness.CLAUDE_CODE, access = AgentAccess.READ_ONLY)
+        lib.template("look", agentKey = "reader")
+        lib.template("look-only", agentKey = "reader", config = mapOf("push" to false))
+
+        assertThat(resolver.preview("look", null)!!.check.problems.single()).contains("may only read (access READ_ONLY) but the step pushes")
+        assertThat(resolver.preview("look-only", null)!!.check.ok).isTrue()
+        assertThat(resolver.preview("look", null, TaskOverrides(config = mapOf("prepareOnly" to true)))!!.check.ok).isTrue()
+        assertThat(resolver.resolve("look-only", null)!!.agent.access).isEqualTo(AgentAccess.READ_ONLY)
     }
 
     @Test
@@ -253,14 +278,14 @@ class TaskResolverTest {
 
         val overrides = TaskOverrides(
             modelProfileId = model, systemPromptAppend = "more sys", promptReplace = "new usr", promptAppend = "and more",
-            addSkills = listOf("xx"), removeSkills = listOf("aa"), config = mapOf("k" to 2, "n" to mapOf("y" to 2)),
+            config = mapOf("k" to 2, "n" to mapOf("y" to 2)),
         )
         val task = resolver.resolve("task", null, overrides)!!
 
         assertThat(task.modelProfileId).isEqualTo(model)
         assertThat(task.prompt.system).isEqualTo("sys\n\nmore sys")
         assertThat(task.prompt.user).isEqualTo("new usr\n\nand more")
-        assertThat(task.skills.map { it.key }).containsExactly("bb", "xx")
+        assertThat(task.skills.map { it.key }).containsExactly("aa", "bb")
         assertThat(task.config).isEqualTo(mapOf("k" to 2, "n" to mapOf("xx" to 1, "y" to 2)))
     }
 
@@ -405,8 +430,9 @@ class TaskResolverTest {
 
     @Test
     fun `an unknown skill is reported as a problem instead of being silently dropped`() {
-        lib.template("tt")
-        val preview = resolver.preview("tt", null, TaskOverrides(addSkills = listOf("nope")))!!
+        lib.agent("needy", skills = listOf("nope"))
+        lib.template("tt", agentKey = "needy")
+        val preview = resolver.preview("tt", null)!!
         assertThat(preview.skills).isEmpty()
         assertThat(preview.check.problems).containsExactly("skill nope does not exist")
         assertThat(preview.executable).isFalse()

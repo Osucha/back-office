@@ -49,9 +49,7 @@ import type {
   PaletteTask,
   LibrarySource,
   ProjectRepository,
-  ProjectWorkspace,
   ResolvedTask,
-  Skill,
   TaskOverrides,
   WorkflowNode,
   WorkflowPalette,
@@ -83,8 +81,7 @@ import {
   stepPushes,
 } from '../data/step-repositories';
 import { StepRepositoriesSectionComponent } from './step-repositories-section.component';
-import { StepWorkspaceSectionComponent } from './step-workspace-section.component';
-import { WORKSPACE_CONFIG_KEYS, stepWorkspace } from '../data/workspaces';
+import { StepAgentSectionComponent } from './step-agent-section.component';
 import {
   type StepModelUse,
   effectiveStepAgent,
@@ -109,12 +106,11 @@ import { StartRunInputsComponent } from './designer/start-run-inputs.component';
 import { ParameterValuesFormComponent } from '../../../core/ui/parameter-values-form.component';
 import { withParameterValue } from '../../../core/ui/template-parameters';
 import {
-  CONTINUE_SESSION_KEY,
+  CODING_STEP_KEYS,
+  QUESTION_KEYS,
   type SessionCandidate,
-  continuedStep,
   sessionCandidates,
   stepParameterFields,
-  withContinueSession,
 } from '../data/step-session';
 @Component({
   selector: 'app-node-property-panel',
@@ -140,7 +136,7 @@ import {
     NodeConnectionSectionComponent,
     WriteApprovalSectionComponent,
     StepRepositoriesSectionComponent,
-    StepWorkspaceSectionComponent,
+    StepAgentSectionComponent,
     ModelSelectComponent,
     StartRunInputsComponent,
     JsonViewComponent,
@@ -329,6 +325,9 @@ import {
                       <div class="danger small">{{ p }}</div>
                     }
                   }
+                  @for (w of r.check?.warnings ?? []; track w) {
+                    <div class="warn small" data-check-warning>{{ w }}</div>
+                  }
                   <a
                     class="small"
                     [routerLink]="['/library/templates']"
@@ -432,6 +431,14 @@ import {
                             }
                           </dd>
                         }
+                        @if (v.check?.warnings?.length) {
+                          <dt i18n="@@workflows.props.stepGets.warnings">Warnings</dt>
+                          <dd>
+                            @for (w of v.check?.warnings ?? []; track w) {
+                              <div class="warn small" data-step-warning>{{ w }}</div>
+                            }
+                          </dd>
+                        }
                         <dt i18n="@@workflows.props.stepGets.config">Configuration</dt>
                         <dd>
                           <app-json-view [value]="v.config ?? {}" maxHeight="240px" />
@@ -472,23 +479,8 @@ import {
                 <app-step-repositories-section
                   [repositories]="projectRepositories()"
                   [librarySources]="librarySources()"
-                  [workspaceSources]="stepWorkspaceSources()"
                   [config]="n.task?.overrides?.config ?? null"
                   [pushes]="stepPushes()"
-                  [nodeIssues]="allIssues()"
-                  [readonly]="readonly()"
-                  (configChange)="patchOverrides({ config: $event })"
-                />
-                <nz-divider
-                  nzText="Workspace"
-                  i18n-nzText="@@workflows.props.workspace"
-                  nzOrientation="left"
-                  nzPlain
-                />
-                <app-step-workspace-section
-                  [workspaces]="workspaces()"
-                  [config]="n.task?.overrides?.config ?? null"
-                  [canPrepare]="canPrepare()"
                   [nodeIssues]="allIssues()"
                   [readonly]="readonly()"
                   (configChange)="patchOverrides({ config: $event })"
@@ -523,59 +515,15 @@ import {
                   </nz-select>
                 </nz-form-control>
               </nz-form-item>
-              @if (runnerStep()) {
-                <nz-form-item data-agent-session>
-                  <nz-form-label i18n="@@workflows.props.session">Agent session</nz-form-label>
-                  <nz-form-control
-                    [nzValidateStatus]="sessionProblem() ? 'error' : ''"
-                    [nzErrorTip]="sessionProblem() ?? ''"
-                    [nzExtra]="text.sessionHelp"
-                  >
-                    <nz-radio-group
-                      name="sessionMode"
-                      nzSize="small"
-                      [ngModel]="sessionMode()"
-                      (ngModelChange)="setSessionMode($event)"
-                      [disabled]="readonly()"
-                    >
-                      <label nz-radio-button nzValue="new" i18n="@@workflows.props.session.new"
-                        >New session</label
-                      >
-                      <label
-                        nz-radio-button
-                        nzValue="continue"
-                        [nzDisabled]="!sessionCandidates().length && !continuedStepId()"
-                        i18n="@@workflows.props.session.continue"
-                        >Continue the session of step …</label
-                      >
-                    </nz-radio-group>
-                    @if (sessionMode() === 'continue') {
-                      <nz-select
-                        class="session-select"
-                        name="continueSession"
-                        nzShowSearch
-                        nzPlaceHolder="Pick the step"
-                        i18n-nzPlaceHolder="@@workflows.props.session.pick"
-                        [ngModel]="continuedStepId()"
-                        (ngModelChange)="setContinueSession($event)"
-                        [disabled]="readonly()"
-                        aria-label="Step whose session this step continues"
-                        i18n-aria-label="@@workflows.props.session.pickLabel"
-                      >
-                        @for (c of sessionCandidates(); track c.id) {
-                          <nz-option
-                            [nzValue]="c.id"
-                            [nzLabel]="sessionOptionLabel(c)"
-                            [nzDisabled]="!c.sameHarness"
-                          />
-                        }
-                        @if (unknownContinuedStep(); as id) {
-                          <nz-option [nzValue]="id" [nzLabel]="id" nzDisabled />
-                        }
-                      </nz-select>
-                    }
-                  </nz-form-control>
-                </nz-form-item>
+              @if (effectiveAgent()) {
+                <app-step-agent-section
+                  [nodeId]="n.id"
+                  [config]="n.task?.overrides?.config ?? null"
+                  [coding]="runnerStep()"
+                  [candidates]="sessionCandidates()"
+                  [readonly]="readonly()"
+                  (configChange)="patchOverrides({ config: $event })"
+                />
               }
               <nz-form-item>
                 <nz-form-label nzFor="pp-model" i18n="@@workflows.props.modelProfile"
@@ -683,57 +631,6 @@ import {
                   ></textarea>
                 </nz-form-control>
               </nz-form-item>
-              <div class="grid2">
-                <nz-form-item>
-                  <nz-form-label nzFor="pp-add-skills" i18n="@@workflows.props.addSkills"
-                    >Add skills to the agent's</nz-form-label
-                  >
-                  <nz-form-control
-                    nzExtra="For this step only, on top of the skills of its agent."
-                    i18n-nzExtra="@@workflows.props.addSkills.help"
-                  >
-                    <nz-select
-                      id="pp-add-skills"
-                      name="addSkills"
-                      nzMode="multiple"
-                      nzShowSearch
-                      nzPlaceHolder="none"
-                      i18n-nzPlaceHolder="@@workflows.props.none"
-                      [ngModel]="n.task?.overrides?.addSkills ?? []"
-                      (ngModelChange)="patchOverrides({ addSkills: $event })"
-                      [disabled]="readonly()"
-                    >
-                      @for (s of skills(); track s.key) {
-                        <nz-option [nzValue]="s.key" [nzLabel]="s.name || s.key || ''" />
-                      }
-                    </nz-select>
-                  </nz-form-control>
-                </nz-form-item>
-                <nz-form-item>
-                  <nz-form-label nzFor="pp-rm-skills" i18n="@@workflows.props.removeSkills"
-                    >Drop skills of the agent</nz-form-label
-                  >
-                  <nz-form-control
-                    nzExtra="For this step only; the agent keeps them elsewhere."
-                    i18n-nzExtra="@@workflows.props.removeSkills.help"
-                  >
-                    <nz-select
-                      id="pp-rm-skills"
-                      name="removeSkills"
-                      nzMode="tags"
-                      nzPlaceHolder="none"
-                      i18n-nzPlaceHolder="@@workflows.props.none"
-                      [ngModel]="n.task?.overrides?.removeSkills ?? []"
-                      (ngModelChange)="patchOverrides({ removeSkills: $event })"
-                      [disabled]="readonly()"
-                    >
-                      @for (s of resolvedSkillKeys(); track s) {
-                        <nz-option [nzValue]="s" [nzLabel]="s" />
-                      }
-                    </nz-select>
-                  </nz-form-control>
-                </nz-form-item>
-              </div>
               <nz-divider
                 nzText="Config"
                 i18n-nzText="@@workflows.props.config"
@@ -1425,6 +1322,9 @@ import {
         max-height: 240px;
         overflow: auto;
       }
+      .warn {
+        color: var(--bo-you-ink);
+      }
       .run-input {
         display: flex;
         flex-wrap: wrap;
@@ -1454,7 +1354,6 @@ export class NodePropertyPanelComponent {
    * null = could not be loaded (the plain profile list is shown instead).
    */
   readonly modelOptions = input<Record<string, ModelOption[] | null>>({});
-  readonly skills = input<Skill[]>([]);
   /** ADR 0056: the agents a step of this project may choose (global plus the project's). */
   readonly agents = input<Agent[]>([]);
   readonly projectId = input<string | null>(null);
@@ -1464,15 +1363,6 @@ export class NodePropertyPanelComponent {
   readonly projectRepositories = input<readonly ProjectRepository[]>([]);
   /** Sources of the library (ADR 0043) a runner step may attach. */
   readonly librarySources = input<readonly LibrarySource[]>([]);
-  /** Run workspaces of the project (ADR 0044) a coding step may pick. */
-  readonly workspaces = input<readonly ProjectWorkspace[]>([]);
-  /** Sources of the node's workspace, shown as the default of its repositories; null without a workspace. */
-  readonly stepWorkspaceSources = computed<string[] | null>(() => {
-    const key = stepWorkspace(this.node()?.task?.overrides?.config).workspace;
-    const ws = key ? this.workspaces().find((w) => w.key === key) : undefined;
-    const keys = (ws?.sources ?? []).map((s) => (s.library ? `lib-${s.key}` : s.key));
-    return keys.length ? keys : null;
-  });
   /** Ids of nodes that exist in the saved version (renaming them is not allowed). */
   readonly idLocked = input(false);
   readonly readonly = input(false);
@@ -1491,7 +1381,6 @@ export class NodePropertyPanelComponent {
     deprecated: deprecatedLabel(),
     deprecatedHint: deprecatedHint(),
     empty: $localize`:@@workflows.props.stepGets.empty:(empty)`,
-    sessionHelp: $localize`:@@workflows.props.session.help:Continuing runs in the same workspace and conversation as that step; both need the same harness.`,
   };
   readonly categoryLabel = categoryLabel;
   readonly agentKindDescription = agentKindDescription;
@@ -1564,9 +1453,9 @@ export class NodePropertyPanelComponent {
     const key = this.node()?.task?.templateKey;
     const t = key ? this.palette()?.tasks?.find((x) => x.key === key) : undefined;
     const schema = t?.configSchema as JsonSchema | undefined;
-    // The step repositories and the workspace have their own sections; keep them out of the form.
-    // ADR 0057: the agent session has its own control too.
-    return withoutKeys(schema, [...ownEditorKeys(schema), CONTINUE_SESSION_KEY]);
+    // The step repositories have their own section; keep them out of the form.
+    // ADR 0060: the directory, the session and the questions have their own controls too.
+    return withoutKeys(schema, [...ownEditorKeys(schema), ...CODING_STEP_KEYS, ...QUESTION_KEYS]);
   });
 
   // ---------------------------------------------------------------- ADR 0056: actions
@@ -1633,42 +1522,18 @@ export class NodePropertyPanelComponent {
   });
   // ---------------------------------------------------------------- ADR 0057/0058: session, parameters
 
-  /** The node whose agent session this step continues; null = a new session. */
-  readonly continuedStepId = computed(() => continuedStep(this.node()?.task?.overrides?.config));
-  /** The radio shows "continue" while the user picks the step (before a value is set). */
-  private readonly sessionModeDraft = signal<'new' | 'continue'>('new');
-  readonly sessionMode = computed<'new' | 'continue'>(() =>
-    this.continuedStepId() ? 'continue' : this.sessionModeDraft(),
-  );
-  /** The other coding agent steps of the workflow (a different harness is offered disabled). */
+  /** ADR 0060: the other coding agent steps of the workflow (another agent or a separate directory: disabled). */
   readonly sessionCandidates = computed<SessionCandidate[]>(() => {
     const n = this.node();
     if (!n) return [];
     const tasks = this.palette()?.tasks ?? [];
-    return sessionCandidates(this.nodes(), n.id, this.effectiveAgent()?.harness, (other) =>
+    return sessionCandidates(this.nodes(), n.id, this.effectiveAgent()?.key, (other) =>
       effectiveStepAgent(
         tasks.find((t) => t.key === other.task?.templateKey),
         other.task?.overrides?.agentKey,
         this.agents(),
       ),
     );
-  });
-  /** A continued step that is not among the candidates (deleted, renamed, no coding agent). */
-  readonly unknownContinuedStep = computed(() => {
-    const id = this.continuedStepId();
-    return id && !this.sessionCandidates().some((c) => c.id === id) ? id : null;
-  });
-  readonly sessionProblem = computed(() => {
-    const id = this.continuedStepId();
-    if (this.sessionMode() === 'continue' && !id)
-      return $localize`:@@workflows.props.session.pickRequired:Pick the step whose session this step continues`;
-    if (!id) return null;
-    const c = this.sessionCandidates().find((x) => x.id === id);
-    if (!c)
-      return $localize`:@@workflows.props.session.unknown:Step ${id}:id: is not a coding agent step of this workflow`;
-    if (!c.sameHarness)
-      return $localize`:@@workflows.props.session.otherHarness:Step ${c.name}:step: uses another harness (${agentKindLabel(c.harness)}:harness:)`;
-    return null;
   });
   /** ADR 0058: the step's parameters with its own values and the inherited ones. */
   readonly parameterFields = computed(() => {
@@ -1677,38 +1542,12 @@ export class NodePropertyPanelComponent {
     return stepParameterFields(this.paletteTask(), this.resolved(), n.task.overrides);
   });
 
-  sessionOptionLabel(c: SessionCandidate): string {
-    return c.sameHarness
-      ? c.name
-      : $localize`:@@workflows.props.session.otherHarnessOption:${c.name}:step: (${agentKindLabel(c.harness)}:harness:, another harness)`;
-  }
-
-  setSessionMode(mode: 'new' | 'continue'): void {
-    this.sessionModeDraft.set(mode);
-    if (mode === 'new') this.setContinueSession(null);
-  }
-
-  /** Writes `overrides.config.continueSession` (removed for a new session). */
-  setContinueSession(nodeId: string | null): void {
-    this.patchOverrides({
-      config: withContinueSession(this.node()?.task?.overrides?.config, nodeId),
-    });
-  }
-
   /** A step value of a parameter; empty = the template's value or the default. */
   setParameter(name: string, value: unknown): void {
     this.patchOverrides({
       parameters: withParameterValue(this.node()?.task?.overrides?.parameters, name, value),
     });
   }
-
-  /** ADR 0044/0056: a coding agent step that is not a Spec Kit phase may only prepare the workspace. */
-  readonly canPrepare = computed(() => {
-    if (!this.runnerStep()) return false;
-    const node = this.node()?.task?.overrides?.config ?? {};
-    const template = this.resolved()?.config ?? {};
-    return !('phase' in node) && !('phase' in template);
-  });
 
   templateOptionLabel(t: PaletteTask): string {
     const name = t.name || t.key || '';
@@ -1747,10 +1586,12 @@ export class NodePropertyPanelComponent {
   /** Config keys with their own section (kept out of the schema form, kept on schema changes). */
   private readonly ownSectionKeys = computed<string[]>(() =>
     this.runnerStep()
-      ? [STEP_REPOSITORIES_KEY, ...WORKSPACE_CONFIG_KEYS, CONTINUE_SESSION_KEY]
-      : [],
+      ? [STEP_REPOSITORIES_KEY, ...CODING_STEP_KEYS, ...QUESTION_KEYS]
+      : this.effectiveAgent()
+        ? [...QUESTION_KEYS]
+        : [],
   );
-  /** Config shown in the schema form: without the repositories and the workspace. */
+  /** Config shown in the schema form: without the keys of the own sections. */
   readonly formConfig = computed<Record<string, unknown>>(() => {
     const config = this.node()?.task?.overrides?.config ?? {};
     const own = this.ownSectionKeys();
@@ -1775,15 +1616,6 @@ export class NodePropertyPanelComponent {
   readonly resolved = signal<ResolvedTask | null>(null);
   readonly resolving = signal(false);
   readonly resolveError = signal<string | null>(null);
-  /** Skills a step may drop: those of its agent and of the resolved template. */
-  readonly resolvedSkillKeys = computed(() => [
-    ...new Set(
-      [
-        ...(this.effectiveAgent()?.skills ?? []),
-        ...(this.resolved()?.skills ?? []).map((s) => s.key),
-      ].filter((k): k is string => !!k),
-    ),
-  ]);
   private readonly resolve$ = new Subject<string | null>();
 
   /** ADR 0054: "What this step gets" is expanded (kept while other nodes are selected). */
@@ -1849,7 +1681,6 @@ export class NodePropertyPanelComponent {
         this.configDraft.set(JSON.stringify(config ?? {}, null, 2));
         this.configError.set(null);
         this.promptModeDraft.set('none');
-        this.sessionModeDraft.set('new');
         this.resolve$.next(n?.kind === 'TASK' ? (n.task?.templateKey ?? null) : null);
       });
     });
@@ -1925,7 +1756,7 @@ export class NodePropertyPanelComponent {
     this.patch({ task: { templateKey: n.task?.templateKey ?? '', overrides } });
   }
 
-  /** Schema form changes keep the node's repositories and workspace. */
+  /** Schema form changes keep the keys of the own sections (repositories, directory, session, questions). */
   onSchemaConfig(config: Record<string, unknown>): void {
     const current = this.node()?.task?.overrides?.config ?? {};
     const next: Record<string, unknown> = { ...config };

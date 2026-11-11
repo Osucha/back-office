@@ -153,12 +153,36 @@ ARTIFACT_NAME_BY_FILE = {
     "answer.md": "answer",
     # ADR 0057 §5: a coding agent's answer in the step's output schema
     "structured-answer.json": "structured-answer",
+    # ADR 0060 §6: the questions of an agent that cannot do the step well without the owner's answers
+    "agent-questions.json": "agent-questions",
 }
 # ADR 0057 §5: written by the agent in its working directory when the step has an output schema
 STRUCTURED_ANSWER_FILE = "structured-answer.json"
+# ADR 0060 §6: {"questions": [{"question", "why"?}]} written by the agent in its working directory
+AGENT_QUESTIONS_FILE = "agent-questions.json"
 # Collected for Back Office but not part of the change: kept out of the commit (implement-task-list's work log, the
-# structured answer of ADR 0057).
-EPHEMERAL_ARTIFACT_FILES = ("work-log.md", STRUCTURED_ANSWER_FILE)
+# structured answer of ADR 0057, the questions of ADR 0060).
+EPHEMERAL_ARTIFACT_FILES = ("work-log.md", STRUCTURED_ANSWER_FILE, AGENT_QUESTIONS_FILE)
+# Answers of this step written by the agent: one an earlier step left in the run directory must not count (removed
+# before the agent starts when the step collects it).
+STEP_ANSWER_FILES = (STRUCTURED_ANSWER_FILE, AGENT_QUESTIONS_FILE)
+# ADR 0060 §3: the homes of a run's agents, outside every repository: /workspace/.agents/<agent key>/
+AGENT_HOMES_DIR = ".agents"
+AGENT_HOME_RE = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
+HOME_SKILLS_DIR = "skills"
+OPENCODE_CONFIG_FILE = "opencode.json"
+CLAUDE_SETTINGS_FILE = "settings.json"
+# OpenCode keeps its sessions in $XDG_DATA_HOME/opencode: one data directory per session role in the home
+HOME_DATA_DIR = "data"
+# ADR 0060 §5: what an agent may change
+ACCESS_FULL = "FULL"
+ACCESS_READ_ONLY = "READ_ONLY"
+ACCESS_PATHS = "PATHS"
+ACCESS_MODES = (ACCESS_FULL, ACCESS_READ_ONLY, ACCESS_PATHS)
+# Claude Code tools that change files (denied for READ_ONLY, limited to the globs for PATHS)
+CLAUDE_EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+# revert rounds: a reverted .gitignore can uncover files it hid, so the changes are computed again
+ACCESS_MAX_ROUNDS = 3
 # ADR 0057 §2/§3: the agent's environment outside every repository: /workspace/.backoffice-agent/{AGENTS.md,mcp.json}
 AGENT_ENV_DIR = ".backoffice-agent"
 OPENCODE_INSTRUCTIONS_FILE = "AGENTS.md"
@@ -812,6 +836,27 @@ class Skill:
 
 
 @dataclass
+class AgentAccess:
+    """ADR 0060 §5, `spec.access`: FULL (default), READ_ONLY, or PATHS with globs relative to a repository root that
+    the agent may change (`**` any number of directories, `*` / `?` within one name, a plain path also covers what is
+    below it, a trailing `/` means everything below)."""
+
+    mode: str = ACCESS_FULL
+    paths: List[str] = field(default_factory=list)
+
+    @property
+    def restricted(self) -> bool:
+        return self.mode != ACCESS_FULL
+
+    def allows(self, rel_path: str) -> bool:
+        if self.mode == ACCESS_FULL:
+            return True
+        if self.mode == ACCESS_READ_ONLY:
+            return False
+        return any(path_glob_matches(p, rel_path) for p in self.paths)
+
+
+@dataclass
 class Gateway:
     """`RunnerJobSpec.gateway`: Back Office LLM gateway endpoints (ADR 0024). The job token is the API key."""
 
@@ -866,6 +911,11 @@ class JobSpec:
     instructions: Optional[str] = None
     # ADR 0057 §3: remote MCP servers of the agent
     mcp_servers: List["McpServer"] = field(default_factory=list)
+    # ADR 0060 §3: the agent key whose home /workspace/.agents/<key>/ holds the agent's environment and sessions;
+    # None (older Back Office) = the ADR 0057 locations
+    agent_home: Optional[str] = None
+    # ADR 0060 §5: what the agent may change in the repositories of the job
+    access: AgentAccess = field(default_factory=AgentAccess)
     # spec entries the runner ignored (logged once the job log exists)
     warnings: List[str] = field(default_factory=list)
 
@@ -1242,8 +1292,97 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         agent_tools=parse_agent_tools(raw.get("agentTools")),
         instructions=parse_instructions(raw.get("instructions")),
         mcp_servers=mcp_servers,
+        agent_home=parse_agent_home(raw.get("agentHome")),
+        access=parse_access(raw.get("access")),
         warnings=mcp_warnings,
     )
+
+
+def parse_agent_home(raw: Any) -> Optional[str]:
+    """ADR 0060 §3: `spec.agentHome`, a directory name under /workspace/.agents (validated: it becomes a path)."""
+    if raw is None or raw == "":
+        return None
+    if not isinstance(raw, str) or not AGENT_HOME_RE.match(raw):
+        raise ValueError(f"agentHome {raw!r} must match {AGENT_HOME_RE.pattern}")
+    return raw
+
+
+def _access_glob(raw: Any) -> Optional[str]:
+    """A PATHS glob relative to the repository root: `\\` -> `/`, leading `./` and `/` dropped, `dir/` -> `dir/**`."""
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    text = text.lstrip("/")
+    if text.endswith("/"):
+        text += "**"
+    return text or None
+
+
+def parse_access(raw: Any) -> AgentAccess:
+    """ADR 0060 §5: `spec.access`; absent or null = FULL. An unknown mode fails the job (never silently FULL)."""
+    if raw is None:
+        return AgentAccess()
+    if not isinstance(raw, dict):
+        raise ValueError("access must be an object")
+    mode = str(raw.get("mode") or ACCESS_FULL).upper()
+    if mode not in ACCESS_MODES:
+        raise ValueError(f"access.mode must be one of {', '.join(ACCESS_MODES)}")
+    paths_raw = raw.get("paths")
+    if paths_raw is not None and not isinstance(paths_raw, list):
+        raise ValueError("access.paths must be a list")
+    paths = [g for g in (_access_glob(p) for p in paths_raw or []) if g] if mode == ACCESS_PATHS else []
+    return AgentAccess(mode, list(dict.fromkeys(paths)))
+
+
+def _glob_class(pattern: str, start: int) -> Tuple[Optional[str], int]:
+    """`[...]` at `start` as a regex class (never matching `/`), and the index after it; (None, start) when unclosed."""
+    end = pattern.find("]", start + 2 if pattern[start + 1:start + 2] in ("!", "^") else start + 1)
+    if end < 0:
+        return None, start
+    body = pattern[start + 1:end]
+    negate = body[:1] in ("!", "^")
+    body = body[1:] if negate else body
+    body = body.replace("\\", "\\\\")
+    return ("[^/" + body + "]") if negate else ("(?!/)[" + body + "]"), end + 1
+
+
+def path_glob_regex(pattern: str) -> "re.Pattern[str]":
+    """Regex of a repository-relative glob: `**/` = zero or more directories, `**` = anything, `*` = within one name,
+    `?` = one character of a name, `[...]` a class."""
+    out: List[str] = []
+    i = 0
+    while i < len(pattern):
+        c = pattern[i]
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif c == "*":
+            out.append("[^/]*")
+            i += 1
+        elif c == "?":
+            out.append("[^/]")
+            i += 1
+        elif c == "[":
+            cls, nxt = _glob_class(pattern, i)
+            out.append(cls if cls is not None else re.escape(c))
+            i = nxt if cls is not None else i + 1
+        else:
+            out.append(re.escape(c))
+            i += 1
+    return re.compile("".join(out) + r"\Z", re.DOTALL)
+
+
+def path_glob_matches(pattern: str, rel_path: str) -> bool:
+    """`rel_path` (repository-relative, `/`-separated) matches the glob; a glob without wildcards also covers what is
+    below it (`docs` = `docs` and `docs/**`)."""
+    if not any(ch in pattern for ch in "*?["):
+        return rel_path == pattern or rel_path.startswith(pattern.rstrip("/") + "/")
+    return path_glob_regex(pattern).match(rel_path) is not None
 
 
 def parse_instructions(raw: Any) -> Optional[str]:
@@ -1627,15 +1766,46 @@ def _external_directory_rule(extra_dirs: Iterable[str]) -> Any:
     return rule
 
 
-def opencode_permission(policy: Optional[ToolPolicy], extra_dirs: Iterable[str] = ()) -> Dict[str, Any]:
+def _repo_glob_targets(access: "AgentAccess", work_dir: Optional[Path], repo_dirs: Iterable[Path]) -> List[str]:
+    """Each PATHS glob as the harness may see a path: relative to the working directory (the primary repository) and
+    absolute below every repository of the job."""
+    targets: List[str] = []
+    for glob in access.paths:
+        if work_dir is not None:
+            targets.append(glob)
+        for d in repo_dirs:
+            targets.append(Path(d).as_posix().rstrip("/") + "/" + glob)
+    return list(dict.fromkeys(targets))
+
+
+def opencode_edit_rule(access: Optional["AgentAccess"], work_dir: Optional[Path] = None, repo_dirs: Iterable[Path] = ()) -> Any:
+    """ADR 0060 §5: OpenCode `permission.edit` (edit, write and patch tools): READ_ONLY deny, PATHS deny except the
+    globs (last matching rule wins). OpenCode matches the path relative to its worktree (the working repository), so
+    another repository's globs are `../<repo>/<glob>` (verified with OpenCode 1.18.32; absolute patterns never
+    match). Guidance only: the runner reverts other changes after the agent."""
+    if access is None or not access.restricted:
+        return "allow"
+    if access.mode == ACCESS_READ_ONLY or not access.paths:
+        return "deny"
+    rule: Dict[str, str] = {"*": "deny"}
+    for glob in access.paths:
+        rule[glob] = "allow"
+        for d in repo_dirs:
+            rel = Path(os.path.relpath(Path(d), work_dir)).as_posix() if work_dir is not None else Path(d).as_posix()
+            if rel != ".":
+                rule[rel.rstrip("/") + "/" + glob] = "allow"
+    return rule
+
+
+def opencode_permission(policy: Optional[ToolPolicy], extra_dirs: Iterable[str] = (), edit: Any = "allow") -> Dict[str, Any]:
     """OpenCode `permission` block (https://opencode.ai/docs/permissions/, last matching rule wins).
 
     With an allowlist, unmatched shell commands are denied; deny (and ask) patterns come last so they win.
     `extra_dirs` (the other repositories of a multi-repository job) stay reachable when external directories are
-    otherwise denied.
+    otherwise denied. `edit` is the agent's access rule (ADR 0060, [opencode_edit_rule]).
     """
     if policy is None:
-        return {"*": "allow", "edit": "allow", "bash": "allow", "webfetch": "allow", "external_directory": "allow", "doom_loop": "allow"}
+        return {"*": "allow", "edit": edit, "bash": "allow", "webfetch": "allow", "external_directory": "allow", "doom_loop": "allow"}
     bash: Dict[str, str] = {"*": "deny" if policy.allow else "allow"}
     for pattern in policy.allow:
         bash[pattern] = "allow"
@@ -1644,7 +1814,7 @@ def opencode_permission(policy: Optional[ToolPolicy], extra_dirs: Iterable[str] 
     return {
         "*": "allow",
         "read": "allow",
-        "edit": "allow",
+        "edit": edit,
         "glob": "allow",
         "grep": "allow",
         "bash": bash,
@@ -1663,16 +1833,42 @@ def claude_rule(pattern: str) -> str:
     return f"Bash({pattern})"
 
 
-def claude_settings(policy: ToolPolicy, mcp_servers: Iterable["McpServer"] = ()) -> Dict[str, Any]:
+def claude_path_rule(target: str) -> str:
+    """Claude Code permission path: an absolute path as `//abs/...`, a relative one relative to the working directory."""
+    return "/" + target if target.startswith("/") else target
+
+
+def claude_access_rules(
+    access: Optional["AgentAccess"], work_dir: Optional[Path] = None, repo_dirs: Iterable[Path] = (),
+) -> Tuple[List[str], List[str]]:
+    """ADR 0060 §5: (allow rules, deny rules) of the agent's access. READ_ONLY denies the editing tools; PATHS allows
+    them only on the globs (under dontAsk anything not allowed is denied). Guidance only: the runner reverts."""
+    if access is None or not access.restricted:
+        return [], []
+    if access.mode == ACCESS_READ_ONLY or not access.paths:
+        return [], list(CLAUDE_EDIT_TOOLS)
+    allow = [f"{tool}({claude_path_rule(t)})" for t in _repo_glob_targets(access, work_dir, repo_dirs) for tool in ("Edit", "Write", "MultiEdit")]
+    return allow, []
+
+
+def claude_settings(
+    policy: ToolPolicy, mcp_servers: Iterable["McpServer"] = (), access: Optional["AgentAccess"] = None,
+    work_dir: Optional[Path] = None, repo_dirs: Iterable[Path] = (),
+) -> Dict[str, Any]:
     """Claude Code settings for `--permission-mode dontAsk`: everything not allowed is denied without asking. The
-    tools of the agent's MCP servers (ADR 0057) are allowed by server (`mcp__<name>`)."""
-    allow = list(CLAUDE_BASE_TOOLS)
+    tools of the agent's MCP servers (ADR 0057) are allowed by server (`mcp__<name>`); a restricted access (ADR 0060)
+    takes the editing tools out of the allowed ones."""
+    access_allow, access_deny = claude_access_rules(access, work_dir, repo_dirs)
+    restricted = access is not None and access.restricted
+    allow = [t for t in CLAUDE_BASE_TOOLS if not (restricted and t in CLAUDE_EDIT_TOOLS)]
+    allow += access_allow
     allow += [claude_rule(p) for p in policy.allow] if policy.allow else ["Bash"]
     allow += [f"mcp__{s.name}" for s in mcp_servers]
+    deny = [claude_rule(p) for p in policy.effective_deny] + access_deny
     return {
         "permissions": {
             "allow": list(dict.fromkeys(allow)),
-            "deny": list(dict.fromkeys(claude_rule(p) for p in policy.effective_deny)),
+            "deny": list(dict.fromkeys(deny)),
             "defaultMode": "dontAsk",
         },
         "env": {"DISABLE_AUTOUPDATER": "1", "DISABLE_TELEMETRY": "1"},
@@ -1818,7 +2014,7 @@ def claude_mcp_config(servers: Iterable[McpServer]) -> Dict[str, Any]:
 
 def build_opencode_config(
     model: ModelRef, gateway: Optional[Gateway], tools: Optional[ToolPolicy] = None, extra_dirs: Iterable[str] = (),
-    instructions_file: Optional[Path] = None, mcp_servers: Iterable[McpServer] = (),
+    instructions_file: Optional[Path] = None, mcp_servers: Iterable[McpServer] = (), edit: Any = "allow",
 ) -> Dict[str, Any]:
     """opencode.json for a non-interactive run (https://opencode.ai/docs/config/, /docs/providers/).
 
@@ -1852,7 +2048,7 @@ def build_opencode_config(
         "autoupdate": False,
         "share": "disabled",
         "provider": providers,
-        "permission": opencode_permission(tools, extra_dirs),
+        "permission": opencode_permission(tools, extra_dirs, edit),
     }
     if instructions_file is not None:
         config["instructions"] = [instructions_file.as_posix()]
@@ -1885,10 +2081,24 @@ def agent_session(spec: JobSpec, workspace: Path, agent_env: Dict[str, str]) -> 
         return None
     sid = session_id_for(ws.name, ws.session_role)
     if spec.agent == "CLAUDE_CODE":
+        # ADR 0060 §2/§3: with an agent home CLAUDE_CONFIG_DIR is the home, so the agent's sessions live there
         config_dir = Path(agent_env.get("CLAUDE_CONFIG_DIR") or workspace / ".claude-config")
         return AgentSession(ws.session_role, sid, any(config_dir.glob(f"projects/*/{sid}.jsonl")))
-    data_dir = workspace / WORKSPACE_STATE_DIR / "opencode" / ws.session_role
+    home = agent_home_path(spec, workspace)
+    if home is not None:
+        # ADR 0060: OpenCode's data directory (XDG_DATA_HOME) per session role inside the agent's home
+        data_dir = home / HOME_DATA_DIR / ws.session_role
+    else:
+        data_dir = workspace / WORKSPACE_STATE_DIR / "opencode" / ws.session_role
     return AgentSession(ws.session_role, sid, data_dir.is_dir() and any(data_dir.iterdir()), data_dir)
+
+
+def agent_home_path(spec: JobSpec, workspace: Path) -> Optional[Path]:
+    """ADR 0060 §3: /workspace/.agents/<agentHome>/, or None (no agentHome: the ADR 0057 locations; a PROMPT job is one
+    answer without an environment on disk)."""
+    if not spec.agent_home or spec.mode == "PROMPT":
+        return None
+    return workspace / AGENT_HOMES_DIR / spec.agent_home
 
 
 def build_opencode_command(model: ModelRef, prompt: str, continue_session: bool = False) -> List[str]:
@@ -1942,11 +2152,19 @@ def agent_environment(
     apply_proxy_env(env, proxy_url)
     if agent_token:
         env[JOB_TOKEN_ENV] = agent_token
+    home = agent_home_path(spec, workspace)
     if spec.agent == "OPENCODE":
-        env["OPENCODE_CONFIG"] = str(workspace / "opencode.json")
+        # ADR 0060 §3: with a home, opencode.json, AGENTS.md and skills/ are in it (OPENCODE_CONFIG_DIR: its config
+        # also wins over a repository's opencode.json, and its skills/ is read like the global one)
+        env["OPENCODE_CONFIG"] = str((home or workspace) / OPENCODE_CONFIG_FILE)
+        if home is not None:
+            env["OPENCODE_CONFIG_DIR"] = str(home)
         env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "1")
         env.setdefault("OPENCODE_DISABLE_MODELS_FETCH", "1")
     elif spec.agent == "CLAUDE_CODE":
+        if home is not None:
+            # ADR 0060 §3: the home is the agent's Claude Code configuration (CLAUDE.md, skills/, sessions)
+            env["CLAUDE_CONFIG_DIR"] = str(home)
         env.setdefault("CLAUDE_CONFIG_DIR", str(workspace / ".claude-config"))
         env.setdefault("DISABLE_AUTOUPDATER", "1")
         env.setdefault("DISABLE_TELEMETRY", "1")
@@ -2756,6 +2974,51 @@ class Git:
             self.log("[git] removed .git/info/grafts (planted by untrusted code)")
         return changed
 
+    # ---- ADR 0060 §5: snapshots of the work tree for the agent's access ----------------------------------------
+
+    def _run_bytes(self, args: List[str], env: Optional[Dict[str, str]] = None, stdin: Optional[bytes] = None) -> bytes:
+        cp = subprocess.run(  # noqa: S603
+            self._cmd(args), cwd=str(self.repo_dir), env=env or self.env, input=stdin, capture_output=True,
+        )
+        if cp.returncode != 0:
+            raise RuntimeError(f"git {' '.join(a for a in args[:4] if not a.startswith('core.'))} failed ({cp.returncode}):"
+                               f" {cp.stderr.decode('utf-8', errors='replace').strip()[-2000:]}")
+        return cp.stdout
+
+    def snapshot_tree(self) -> str:
+        """Tree id of the whole work tree (tracked, changed and untracked files, without ignored ones) as it is now,
+        written with a temporary index: the repository's own index, HEAD and refs are not touched. The user's
+        default excludes file (~/.config/git/ignore, writable by the agent) is not read."""
+        with tempfile.TemporaryDirectory(prefix="bo-snapshot-") as tmp:
+            no_excludes = Path(tmp) / "no-excludes"
+            no_excludes.write_bytes(b"")
+            env = dict(self.env)
+            env["GIT_INDEX_FILE"] = str(Path(tmp) / "index")
+            self._run_bytes(["-c", f"core.excludesFile={no_excludes.as_posix()}", "add", "--all", "--", "."], env)
+            return self._run_bytes(["write-tree"], env).decode("ascii").strip()
+
+    def changed_paths(self, before: str, after: str) -> List[Tuple[str, str]]:
+        """(status A | M | D | T, repository-relative path) of every file that differs between two trees."""
+        out = self._run_bytes(["diff-tree", "-r", "-z", "--no-renames", "--no-ext-diff", "--name-status", before, after])
+        parts = out.decode("utf-8", errors="surrogateescape").split("\0")
+        changes: List[Tuple[str, str]] = []
+        for i in range(0, len(parts) - 1, 2):
+            if parts[i]:
+                changes.append((parts[i][:1], parts[i + 1]))
+        return changes
+
+    def restore_from_tree(self, tree: str, paths: List[str]) -> None:
+        """Work-tree files at `paths` back to their content and mode in `tree` (the index is not touched)."""
+        if not paths:
+            return
+        env = dict(self.env)
+        env["GIT_LITERAL_PATHSPECS"] = "1"
+        with tempfile.TemporaryDirectory(prefix="bo-restore-") as tmp:
+            spec_file = Path(tmp) / "paths"
+            spec_file.write_bytes(b"\0".join(p.encode("utf-8", errors="surrogateescape") for p in paths) + b"\0")
+            self._run_bytes(["restore", f"--source={tree}", "--worktree", "--no-overlay",
+                             f"--pathspec-from-file={spec_file.as_posix()}", "--pathspec-file-nul"], env)
+
 
 def trusted_git_config(url: str) -> str:
     """The `.git/config` a reused clone gets (ADR 0044): nothing an agent could have planted survives."""
@@ -3337,6 +3600,15 @@ class LogFile:
         except OSError:
             return b""
 
+    def close(self) -> None:
+        """Release the file (later writes are dropped): an open handle keeps the file locked on Windows."""
+        fh, self._fh = self._fh, None
+        if fh is not None:
+            try:
+                fh.close()
+            except OSError:
+                pass
+
 
 # --------------------------------------------------------------------------------------------
 # STUB agent (tests only, RUNNER_ENABLE_STUB_AGENT=1)
@@ -3387,11 +3659,39 @@ def _tool_version(cmd: List[str], env: Dict[str, str]) -> str:
         return f"unavailable ({e.__class__.__name__})"
 
 
-def _write_policy_files(spec: JobSpec, tools: Optional[ToolPolicy], workspace: Path, repo_dir: Path, log: Callable[[str], None]) -> Optional[Path]:
-    """Claude Code settings rendered from the tool policy; returns the file passed with `--settings`."""
-    if spec.agent != "CLAUDE_CODE" or tools is None:
+def claude_effective_policy(spec: JobSpec, tools: Optional[ToolPolicy]) -> Optional[ToolPolicy]:
+    """The tool policy Claude Code runs under: the job's, or (ADR 0060) an open one when only the agent's access
+    restricts it (settings are then needed to take the editing tools away)."""
+    if tools is not None:
+        return tools
+    return ToolPolicy() if spec.access.restricted else None
+
+
+def _write_policy_files(
+    spec: JobSpec, tools: Optional[ToolPolicy], workspace: Path, repo_dir: Path, log: Callable[[str], None],
+    home: Optional[Path] = None, repo_dirs: Iterable[Path] = (),
+) -> Optional[Path]:
+    """Claude Code settings rendered from the tool policy and the agent's access; returns the file passed with
+    `--settings`. With an agent home (ADR 0060) the file is <home>/settings.json (the user settings of its
+    CLAUDE_CONFIG_DIR) and nothing is written into the repository."""
+    if spec.agent != "CLAUDE_CODE":
         return None
-    settings = claude_settings(tools, spec.mcp_servers)
+    policy = claude_effective_policy(spec, tools)
+    home_settings = home / CLAUDE_SETTINGS_FILE if home is not None else None
+    if policy is None:
+        if home_settings is not None:
+            _drop_stale(home_settings, "Claude Code settings", log)
+        return None
+    settings = claude_settings(policy, spec.mcp_servers, spec.access, repo_dir, repo_dirs)
+    if tools is None:
+        # no tool policy: everything stays allowed except what the access takes away
+        settings["permissions"]["allow"] += ["WebFetch", "WebSearch", "Skill"]
+    if spec.access.restricted:
+        log(f"[access] Claude Code rules: allow {[a for a in settings['permissions']['allow'] if a.split('(')[0] in CLAUDE_EDIT_TOOLS]}"
+            f" deny {[d for d in settings['permissions']['deny'] if d in CLAUDE_EDIT_TOOLS]}")
+    if home_settings is not None:
+        _replace_file(home_settings, json.dumps(settings, indent=2).encode("utf-8"))
+        return home_settings
     settings_file = workspace / ".runner" / "claude-settings.json"
     settings_file.parent.mkdir(parents=True, exist_ok=True)
     settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
@@ -3451,9 +3751,143 @@ class _Run:
     # ADR 0052: hosts the egress proxy lets this job reach (from the resolved policy), for the prompt's sandbox section
     egress_hosts: List[str] = field(default_factory=list)
     subscription: bool = False
+    # ADR 0060 §5: the repositories whose changes the agent's access limits, their snapshots, and what was reverted
+    access_repos: List["AccessRepo"] = field(default_factory=list)
+    access_report: Optional[Dict[str, Any]] = None
+    artifacts_collected: bool = False
+    # ADR 0060 §6: questions the agent stopped with (verification, commit and push are skipped)
+    questions: int = 0
 
     def log(self, message: str) -> None:
         self.sink.log(message)
+
+
+# --------------------------------------------------------------------------------------------
+# Agent access (ADR 0060 §5): snapshot before the agent, revert what it may not change after it
+# --------------------------------------------------------------------------------------------
+
+
+@dataclass
+class AccessRepo:
+    """One repository of the job under the agent's access: its `Git`, the tree id of the work tree before the agent
+    and `.git/info/exclude` at that time (an agent could hide new files by adding patterns to it)."""
+
+    key: Optional[str]
+    git: Git
+    tree: Optional[str] = None
+    exclude: Optional[bytes] = None
+
+    @property
+    def label(self) -> str:
+        return self.key or "repository"
+
+
+ACCESS_CHANGE_NAMES = {"A": "added", "M": "modified", "D": "deleted", "T": "type changed"}
+
+
+def access_repo_dirs(run: Any) -> List[Path]:
+    return [r.git.repo_dir for r in getattr(run, "access_repos", None) or []]
+
+
+def snapshot_access(repos: List[AccessRepo], access: AgentAccess, log: Callable[[str], None]) -> None:
+    """Tree of every repository's work tree before the agent starts (temporary index, the real one untouched). A
+    repository that cannot be snapshotted fails the job: its changes could not be held to the access."""
+    for r in repos:
+        try:
+            r.tree = r.git.snapshot_tree()
+        except (RuntimeError, OSError) as e:
+            raise RuntimeError(f"access {access.mode}: cannot snapshot {r.label} before the agent: {e}") from e
+        r.exclude = _read_regular_file(r.git.repo_dir / ".git" / "info" / "exclude")
+        log(f"[access] {r.label}: work tree before the agent = tree {r.tree} (access {access.mode}"
+            + (f", may change {', '.join(access.paths) or 'nothing'}" if access.mode == ACCESS_PATHS else "") + ")")
+
+
+def _restore_exclude(r: AccessRepo, log: Callable[[str], None]) -> None:
+    target = r.git.repo_dir / ".git" / "info" / "exclude"
+    current = _read_regular_file(target)
+    if current == r.exclude and not target.is_symlink():
+        return
+    if r.exclude is None:
+        _remove_entry(target)
+    else:
+        _replace_file(target, r.exclude)
+    log(f"[access] {r.label}: restored .git/info/exclude (the agent changed it)")
+
+
+def _remove_added(root: Path, rel: str) -> None:
+    """Remove a file (or nested repository) the agent added, never through a symlinked parent; then the
+    directories it leaves empty."""
+    target = root / rel
+    parent = target.parent
+    probe = parent
+    while probe != root:
+        if probe.is_symlink():
+            return  # the symlink itself is an added entry and is removed on its own
+        probe = probe.parent
+    if target.is_symlink() or target.exists():
+        _remove_entry(target)
+    while parent != root and parent.is_dir() and not parent.is_symlink() and not any(parent.iterdir()):
+        parent.rmdir()
+        parent = parent.parent
+
+
+def revert_changes(r: AccessRepo, changes: List[Tuple[str, str]], log: Callable[[str], None]) -> None:
+    """Added paths are removed (deepest first), modified / deleted / retyped ones get their content and mode from
+    the snapshot."""
+    assert r.tree is not None
+    root = r.git.repo_dir
+    for _, rel in sorted((c for c in changes if c[0] == "A"), key=lambda c: c[1].count("/"), reverse=True):
+        _remove_added(root, rel)
+    r.git.restore_from_tree(r.tree, [rel for status, rel in changes if status != "A"])
+    for status, rel in changes:
+        log(f"[access] reverted {r.label}:{rel} ({ACCESS_CHANGE_NAMES.get(status, status)}; outside the agent's access)")
+
+
+def _disallowed_changes(r: AccessRepo, access: AgentAccess) -> List[Tuple[str, str]]:
+    assert r.tree is not None
+    after = r.git.snapshot_tree()
+    if after == r.tree:
+        return []
+    return [(s, p) for s, p in r.git.changed_paths(r.tree, after) if not access.allows(p)]
+
+
+def enforce_access(repos: List[AccessRepo], access: AgentAccess, log: Callable[[str], None]) -> List[Dict[str, Any]]:
+    """After the agent (and after `.git` was restored, so no planted filter driver shapes the snapshot): every
+    change outside the access is reverted to the snapshot, whatever the agent used (shell included). A reverted
+    `.gitignore` can uncover files it hid, so the changes are computed again (ACCESS_MAX_ROUNDS). Raises when a
+    change cannot be reverted: the job must not commit it. Returns the reverted paths for the result."""
+    reverted: List[Dict[str, Any]] = []
+    for r in repos:
+        if r.tree is None:
+            continue
+        _restore_exclude(r, log)
+        seen: Dict[str, Dict[str, Any]] = {}
+        for _ in range(ACCESS_MAX_ROUNDS):
+            bad = _disallowed_changes(r, access)
+            if not bad:
+                break
+            revert_changes(r, bad, log)
+            for status, rel in bad:
+                seen.setdefault(rel, {"repository": r.key, "path": rel, "change": ACCESS_CHANGE_NAMES.get(status, status)})
+        else:
+            left = _disallowed_changes(r, access)
+            if left:
+                raise RuntimeError(f"access {access.mode}: {len(left)} change(s) in {r.label} could not be reverted:"
+                                   f" {', '.join(p for _, p in left[:10])}")
+        if not seen:
+            log(f"[access] {r.label}: no change outside the agent's access")
+        reverted += list(seen.values())
+    return reverted
+
+
+def access_summary_line(report: Dict[str, Any]) -> Optional[str]:
+    reverted = report.get("reverted") or []
+    if not reverted:
+        return None
+    names = ", ".join((f"{e['repository']}:" if e.get("repository") else "") + e["path"] for e in reverted[:20])
+    more = f" and {len(reverted) - 20} more" if len(reverted) > 20 else ""
+    return (f"[Back Office runner] reverted {len(reverted)} change(s) outside the agent's access ({report['mode']}):"
+            f" {names}{more}")
 
 
 def _try_load_job_context(env: Dict[str, str]) -> Tuple[Optional[JobContext], Optional[str]]:
@@ -3665,8 +4099,10 @@ def _claude_invocation(
         require_gateway(spec.gateway, "anthropic")
     if spec.model.provider != "ANTHROPIC":
         run.log(f"[agent] WARN Claude Code with provider {spec.model.provider}: the gateway's Anthropic endpoint must serve this model id")
-    settings_file = _write_policy_files(spec, run.tools, run.workspace, repo_dir, run.log)
-    permission_mode = run.env.get("RUNNER_CLAUDE_PERMISSION_MODE") or ("dontAsk" if run.tools is not None else "bypassPermissions")
+    settings_file = _write_policy_files(spec, run.tools, run.workspace, repo_dir, run.log, files.home if files else None,
+                                        access_repo_dirs(run))
+    restricted = run.tools is not None or spec.access.restricted
+    permission_mode = run.env.get("RUNNER_CLAUDE_PERMISSION_MODE") or ("dontAsk" if restricted else "bypassPermissions")
     help_text = _claude_help(agent_env)
     if run.extra_dirs and "--add-dir" not in help_text:
         run.log("[agent] WARN this Claude Code has no --add-dir: the other repositories may be outside its allowed directories")
@@ -3687,6 +4123,8 @@ class AgentFiles:
 
     instructions: Optional[Path] = None
     mcp_config: Optional[Path] = None
+    # ADR 0060 §3: the agent's home (None without `agentHome`)
+    home: Optional[Path] = None
 
 
 def _fresh_dir(path: Path) -> Path:
@@ -3707,7 +4145,7 @@ def environment_document_path(spec: JobSpec, workspace: Path, agent_env: Dict[st
     """ADR 0057 §2: OpenCode /workspace/.backoffice-agent/AGENTS.md, Claude Code the user memory
     $CLAUDE_CONFIG_DIR/CLAUDE.md; both outside every repository. None for other agents."""
     if spec.agent == "OPENCODE":
-        return workspace / AGENT_ENV_DIR / OPENCODE_INSTRUCTIONS_FILE
+        return (agent_home_path(spec, workspace) or workspace / AGENT_ENV_DIR) / OPENCODE_INSTRUCTIONS_FILE
     if spec.agent == "CLAUDE_CODE":
         return Path(agent_env.get("CLAUDE_CONFIG_DIR") or workspace / ".claude-config") / CLAUDE_USER_MEMORY_FILE
     return None
@@ -3731,7 +4169,7 @@ def write_environment_document(spec: JobSpec, workspace: Path, agent_env: Dict[s
 def write_mcp_config(spec: JobSpec, workspace: Path, log: Callable[[str], None]) -> Optional[Path]:
     """ADR 0057 §3, Claude Code: /workspace/.backoffice-agent/mcp.json for `--mcp-config` (OpenCode gets its servers in
     opencode.json). Egress is not touched: the sandbox's egress policy decides whether a server is reachable."""
-    target = workspace / AGENT_ENV_DIR / CLAUDE_MCP_CONFIG_FILE
+    target = (agent_home_path(spec, workspace) or workspace / AGENT_ENV_DIR) / CLAUDE_MCP_CONFIG_FILE
     if spec.agent != "CLAUDE_CODE" or not spec.mcp_servers:
         _drop_stale(target, "MCP config", log)
         return None
@@ -3741,23 +4179,89 @@ def write_mcp_config(spec: JobSpec, workspace: Path, log: Callable[[str], None])
     return target
 
 
+def prepare_agent_home(spec: JobSpec, workspace: Path, log: Callable[[str], None]) -> Optional[Path]:
+    """ADR 0060 §3: create /workspace/.agents/<agentHome>/ as real directories (a symlink or file an agent left in
+    their place is removed, so nothing is written through it). The home persists in the run directory: the
+    agent's sessions stay there for its next step."""
+    home = agent_home_path(spec, workspace)
+    if home is None:
+        return None
+    _fresh_dir(home.parent)
+    existed = home.is_dir() and not home.is_symlink()
+    _fresh_dir(home)
+    log(f"[environment] agent home {home} ({'kept from an earlier step' if existed else 'created'})")
+    return home
+
+
+def write_home_skills(home: Path, skills: List[Skill], log: Callable[[str], None]) -> List[Path]:
+    """ADR 0060 §3: `spec.skills` as <home>/skills/<key>/SKILL.md (Claude Code: $CLAUDE_CONFIG_DIR/skills, OpenCode:
+    $OPENCODE_CONFIG_DIR/skills), written anew on every job so a skill the agent lost is gone. Nothing goes into a
+    repository."""
+    base = home / HOME_SKILLS_DIR
+    if base.is_symlink() or base.exists():
+        _remove_entry(base)
+    written: List[Path] = []
+    if not skills:
+        return written
+    for skill in skills:
+        target = _fresh_dir(base / skill_dir_name(skill.key)) / "SKILL.md"
+        _replace_file(target, skill_markdown(skill).encode("utf-8"))
+        written.append(target)
+    log(f"[skills] wrote {len(skills)} skill(s) to {base}: {', '.join(skill_dir_name(s.key) for s in skills)}")
+    return written
+
+
 def prepare_agent_files(spec: JobSpec, workspace: Path, agent_env: Dict[str, str], log: Callable[[str], None]) -> AgentFiles:
-    """ADR 0057 §2/§3 for coding agent jobs (IMPLEMENT, SPEC_KIT, EVAL_CODING) that run a harness."""
+    """ADR 0057 §2/§3 for coding agent jobs (IMPLEMENT, SPEC_KIT, EVAL_CODING) that run a harness; ADR 0060 §3: with
+    `agentHome` everything (environment document, skills, MCP configuration) goes to the agent's home."""
+    home = prepare_agent_home(spec, workspace, log)
+    if home is not None:
+        write_home_skills(home, spec.skills, log)
     if spec.agent not in SPEC_AGENTS or spec.mode not in ENVIRONMENT_MODES:
-        return AgentFiles()
-    files = AgentFiles(write_environment_document(spec, workspace, agent_env, log), write_mcp_config(spec, workspace, log))
+        return AgentFiles(home=home)
+    files = AgentFiles(write_environment_document(spec, workspace, agent_env, log), write_mcp_config(spec, workspace, log), home)
     for server in spec.mcp_servers:
         log(f"[mcp] server {server.name}: {server.url} (reachable only when the sandbox egress policy allows its host)")
     return files
 
 
-def remove_stale_structured_answer(work_dir: Path, log: Callable[[str], None]) -> None:
-    """ADR 0057 §5: a structured answer an earlier step left in the run workspace (it is never committed) must not
-    pass for this step's answer."""
-    target = work_dir / STRUCTURED_ANSWER_FILE
+def remove_stale_answer_file(work_dir: Path, name: str, log: Callable[[str], None]) -> None:
+    """An answer file an earlier step left in the run directory (it is never committed) must not pass for this
+    step's answer (ADR 0057 §5 structured answer, ADR 0060 §6 questions)."""
+    target = work_dir / name
     if target.is_symlink() or target.is_file():
         target.unlink()
-        log(f"[agent] removed {STRUCTURED_ANSWER_FILE} of an earlier step")
+        log(f"[agent] removed {name} of an earlier step")
+
+
+def remove_stale_structured_answer(work_dir: Path, log: Callable[[str], None]) -> None:
+    remove_stale_answer_file(work_dir, STRUCTURED_ANSWER_FILE, log)
+
+
+def count_agent_questions(work_dir: Path, collect_artifacts: Iterable[str], log: Callable[[str], None]) -> int:
+    """ADR 0060 §6: the number of questions in `agent-questions.json` the step collects (`{"questions": [{"question",
+    "why"?}]}`); 0 when the step does not collect it, the file is missing or holds no question."""
+    if AGENT_QUESTIONS_FILE not in {p.strip().lstrip("/") for p in collect_artifacts}:
+        return 0
+    data = _read_regular_file(work_dir / AGENT_QUESTIONS_FILE)
+    if data is None:
+        return 0
+    try:
+        questions = json.loads(data.decode("utf-8")).get("questions")
+    except (ValueError, AttributeError) as e:
+        log(f"[agent] WARN {AGENT_QUESTIONS_FILE} is not a JSON object: {e}")
+        return 0
+    if not isinstance(questions, list):
+        return 0
+    return sum(1 for q in questions if isinstance(q, dict) and isinstance(q.get("question"), str) and q["question"].strip())
+
+
+def remove_stale_answers(work_dir: Path, collect_artifacts: Iterable[str], log: Callable[[str], None]) -> None:
+    """The answer files (STEP_ANSWER_FILES) this step collects, removed before the agent starts."""
+    collected = {p.strip().lstrip("/") for p in collect_artifacts}
+    for name in STEP_ANSWER_FILES:
+        if name in collected:
+            remove_stale_answer_file(work_dir, name, log)
 
 
 def _agent_invocation(
@@ -3766,9 +4270,14 @@ def _agent_invocation(
 ) -> Tuple[List[str], LineParser, bool]:
     """(command, output line parser, run through the shell) for the spec's agent."""
     if spec.agent == "OPENCODE":
+        edit = opencode_edit_rule(spec.access, repo_dir, access_repo_dirs(run))
         config = build_opencode_config(spec.model, spec.gateway, run.tools, run.extra_dirs,
-                                       files.instructions if files else None, spec.mcp_servers)
-        (run.workspace / "opencode.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+                                       files.instructions if files else None, spec.mcp_servers, edit)
+        if spec.access.restricted:
+            run.log(f"[access] OpenCode permission.edit: {json.dumps(edit)}")
+        home = files.home if files else None
+        # ADR 0060: with a home its opencode.json (OPENCODE_CONFIG, inside OPENCODE_CONFIG_DIR); else the workspace's
+        _replace_file((home or run.workspace) / OPENCODE_CONFIG_FILE, json.dumps(config, indent=2).encode("utf-8"))
         return build_opencode_command(spec.model, prompt, bool(session and session.resume)), parse_opencode_line, False
     if spec.agent == "CLAUDE_CODE":
         return _claude_invocation(run, spec, repo_dir, prompt, agent_env, session, files), parse_claude_line, False
@@ -3874,9 +4383,14 @@ def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
             agent_env["XDG_DATA_HOME"] = str(session.data_dir)
         run.log(f"[agent] session of role {session.role}: {'continuing' if session.resume else 'starting'} {session.session_id} (run workspace)")
     files = prepare_agent_files(spec, run.workspace, agent_env, run.log)
-    if STRUCTURED_ANSWER_FILE in (p.strip().lstrip("/") for p in spec.collect_artifacts):
-        remove_stale_structured_answer(repo_dir, run.log)
+    remove_stale_answers(repo_dir, spec.collect_artifacts, run.log)
     cmd, parser, shell = _agent_invocation(run, spec, repo_dir, prompt, agent_env, session, files)
+    if spec.access.restricted:
+        # ADR 0060 §5: the last thing before the agent starts (everything the runner wrote is part of the snapshot)
+        if run.access_repos:
+            snapshot_access(run.access_repos, spec.access, run.log)
+        else:
+            run.log(f"[access] {spec.access.mode}: no repository in this job, nothing to hold to the access")
     elapsed = time.monotonic() - run.started
     agent_timeout = max(60.0, spec.timeout_seconds - elapsed)
     run.log(f"[agent] prompt ({len(prompt)} chars): {prompt.splitlines()[0][:200] if prompt else ''}")
@@ -3897,6 +4411,35 @@ def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     for d in outcome.denials:
         run.log(f"[policy] denied {d.get('tool')}: {d.get('input')}")
     _kill_strays(run)
+
+
+def _note_questions(run: _Run, spec: JobSpec, work_dir: Path) -> bool:
+    """ADR 0060 §6, right after the agent (before any revert can remove the file): an agent that stopped with
+    questions gets no verification, commit, push or merge request; the work tree stays as it left it so its session
+    continues after the owner answers. Returns True in that case."""
+    if run.timed_out:
+        return False
+    run.questions = count_agent_questions(work_dir, spec.collect_artifacts, run.log)
+    if run.questions:
+        run.log(f"[agent] stopped with {run.questions} question(s) ({AGENT_QUESTIONS_FILE}): verification, commit and push skipped")
+    return run.questions > 0
+
+
+def _hold_to_access(run: _Run, spec: JobSpec, work_dir: Path, restore_git: Callable[[], None]) -> None:
+    """ADR 0060 §5, after the agent and before verification and commit: the step's artefacts are collected first
+    (what the agent wrote is reported even when it is reverted), `.git` is restored (untrusted code ran), then every
+    change outside the access is reverted and reported."""
+    access = spec.access
+    if not access.restricted:
+        return
+    run.access_report = {"mode": access.mode, "paths": list(access.paths), "reverted": []}
+    if not any(r.tree for r in run.access_repos):
+        return
+    if spec.collect_artifacts:
+        _collect_run_artifacts(run, spec, work_dir)
+        run.artifacts_collected = True
+    restore_git()
+    run.access_report["reverted"] = enforce_access(run.access_repos, access, run.log)
 
 
 def _run_verify(run: _Run, spec: JobSpec, repo_dir: Path, git: Optional["Git"] = None) -> None:
@@ -4113,6 +4656,17 @@ def _repo_log(run: _Run, state: _RepoState) -> Callable[[str], None]:
     return lambda m: run.log(m.replace("[git]", state.tag, 1) if m.startswith("[git]") else f"{state.tag} {m}")
 
 
+def _write_repo_skills(run: _Run, spec: JobSpec, work_dir: Path) -> None:
+    """ADR 0015 skills in the working repository (git-excluded), only for an older Back Office: with an agent home
+    (ADR 0060) the skills go to the home when the agent starts and nothing is written into a repository."""
+    if not spec.skills:
+        return
+    if agent_home_path(spec, run.workspace) is not None:
+        run.log(f"[skills] {len(spec.skills)} skill(s) go to the agent home, not into the repository")
+        return
+    write_skills(work_dir, spec.skills, run.log)
+
+
 def _validate_repo_push_targets(spec: JobSpec) -> None:
     """Every PUSH_MR repository's branch is checked before anything is cloned (Git.push checks again)."""
     for repo in spec.repositories:
@@ -4222,8 +4776,10 @@ def _prepare_repositories(run: _Run, spec: JobSpec) -> List[_RepoState]:
 def _restore_repositories(run: _Run, states: List[_RepoState]) -> None:
     """Git integrity of every repository after untrusted code ran; a repository whose `.git` was replaced is
     neither committed nor pushed (its error is reported, the others continue)."""
-    restored = False
+    restored = run.security.get("gitConfigRestored") is True  # called again after verifyCommand (ADR 0060 access)
     for state in states:
+        if not state.integrity_ok:
+            continue
         try:
             restored = state.git.restore_after_agent() or restored  # type: ignore[union-attr]
         except (RuntimeError, OSError) as e:
@@ -4319,21 +4875,46 @@ def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
     run.extra_dirs = [str(s.directory) for s in states if s is not primary]
     if not states:
         run.log(f"[runner] no repositories in spec; working directory {work_dir}")
-    if spec.skills:
-        write_skills(work_dir, spec.skills, run.log)
+    _write_repo_skills(run, spec, work_dir)
     _run_workspace_setup(run, spec, work_dir)
     _run_setup(run, spec, work_dir)
     if spec.workspace is not None and spec.workspace.prepare_only:
         _finish_prepare_only(run, spec, states)
         return
     _prepare_spec_kit(run, spec, work_dir)
+    run.access_repos = [AccessRepo(s.repo.key, s.git) for s in states if s.git is not None]
     _run_agent(run, spec, work_dir)
+
+    def restore_git() -> None:
+        _restore_repositories(run, states)
+        broken = {s.repo.key for s in states if not s.integrity_ok}
+        for r in run.access_repos:
+            if r.key in broken:
+                r.tree = None  # neither committed nor pushed (its error is reported)
+
+    asked = _note_questions(run, spec, work_dir)
+    _hold_to_access(run, spec, work_dir, restore_git)
+    if asked:
+        _finish_with_questions(run, spec, work_dir, states)
+        return
     _run_verify(run, spec, work_dir)
     _restore_repositories(run, states)
-    if spec.collect_artifacts:
+    if spec.collect_artifacts and not run.artifacts_collected:
         _collect_run_artifacts(run, spec, work_dir)
     for state in states:
         _finish_repository(run, spec, state)
+    _report_repositories(run, states)
+
+
+def _finish_with_questions(run: _Run, spec: JobSpec, work_dir: Path, states: List[_RepoState]) -> None:
+    """ADR 0060 §6 (multi-repository / run directory): `.git` restored, artefacts collected, nothing committed,
+    pushed or verified; each repository reports its HEAD."""
+    _restore_repositories(run, states)
+    if spec.collect_artifacts and not run.artifacts_collected:
+        _collect_run_artifacts(run, spec, work_dir)
+    for state in states:
+        if state.git is not None and state.integrity_ok:
+            state.result["commitSha"] = state.git.head()
     _report_repositories(run, states)
 
 
@@ -4381,16 +4962,29 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
 
     repo_dir = run.workspace / "repo"
     git = _prepare_repository(run, spec, repo_dir, git_token)
-    if spec.skills:
-        write_skills(repo_dir, spec.skills, run.log)
+    _write_repo_skills(run, spec, repo_dir)
     _run_setup(run, spec, repo_dir)
     _prepare_spec_kit(run, spec, repo_dir)
+    run.access_repos = [AccessRepo(None, git)] if git is not None else []
     _run_agent(run, spec, repo_dir)
+
+    def restore_git() -> None:
+        if git is not None:
+            run.security["gitConfigRestored"] = git.restore_after_agent() or run.security.get("gitConfigRestored") is True
+
+    asked = _note_questions(run, spec, repo_dir)
+    _hold_to_access(run, spec, repo_dir, restore_git)
+    if asked:
+        restore_git()
+        if spec.collect_artifacts and not run.artifacts_collected:
+            _collect_run_artifacts(run, spec, repo_dir)
+        run.commit_sha = git.head() if git is not None else None
+        return
     _run_verify(run, spec, repo_dir, git)
     # git integrity: nothing the agent planted in .git runs during commit/diff/push
     if git is not None:
-        run.security["gitConfigRestored"] = git.restore_after_agent()
-    if spec.collect_artifacts:
+        run.security["gitConfigRestored"] = git.restore_after_agent() or run.security.get("gitConfigRestored") is True
+    if spec.collect_artifacts and not run.artifacts_collected:
         _collect_run_artifacts(run, spec, repo_dir)
     if git is not None and spec.repository is not None:
         _commit_and_push(run, spec, spec.repository, git)
@@ -4432,6 +5026,15 @@ def _finalize_result(run: _Run, log_file: LogFile) -> Dict[str, Any]:
     if run.subscription:
         # ADR 0040: costUsd stays Claude Code's estimate; Back Office does not count it as spend
         result["usage"]["billing"] = BILLING_SUBSCRIPTION
+    if run.questions:
+        line = f"[Back Office runner] the agent asked {run.questions} question(s); verification, commit and push skipped"
+        result["summary"] = f"{result['summary']}\n\n{line}" if result.get("summary") else line
+    if run.access_report is not None:
+        # ADR 0060 §5: the agent's access and the changes outside it that were reverted (also a line of the summary)
+        result["access"] = run.access_report
+        line = access_summary_line(run.access_report)
+        if line:
+            result["summary"] = f"{result['summary']}\n\n{line}" if result.get("summary") else line
     _redact_result(result, run.redact)
     if run.repo_results is not None:
         # multi-repository jobs; the top-level branch/commit/diff/MR fields above are the primary repository's
@@ -4538,6 +5141,7 @@ def main() -> int:
     result = _finalize_result(run, log_file)
     _write_result_file(result_file, result, log)
     sink.close()
+    log_file.close()
     return _deliver_result(client, result)
 
 

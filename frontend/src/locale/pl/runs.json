@@ -22,7 +22,6 @@
   "runs.list.crumb": "Uruchomienia",
   "runs.list.shortcut.search": "Szukaj uruchomień",
   "runs.list.shortcut.group": "Uruchomienia",
-
   "runs.table.guide": "Jak działają uruchomienia",
   "runs.table.holder": "Kto trzyma",
   "runs.table.run": "Uruchomienie",
@@ -36,7 +35,6 @@
   "runs.table.rowRun": "Uruchomienie {$id}",
   "runs.table.total": "{count, plural, one {# uruchomienie} few {# uruchomienia} many {# uruchomień} other {# uruchomienia}}",
   "runs.table.hidden": "{count, plural, one {# ukryte przez filtry} few {# ukryte przez filtry} many {# ukrytych przez filtry} other {# ukrytego przez filtry}}",
-
   "runs.detail.loading": "Wczytywanie uruchomienia",
   "runs.detail.title": "Uruchomienie {$id}",
   "runs.detail.crumb.runs": "Uruchomienia",
@@ -133,7 +131,6 @@
   "runs.detail.fact.finished": "Zakończono",
   "runs.detail.fact.template": "Szablon",
   "runs.detail.fact.modelOverride": "Nadpisanie modelu",
-  "runs.detail.fact.extraSkills": "Dodatkowe umiejętności",
   "runs.detail.fact.prompt": "Prompt",
   "runs.detail.fact.promptReplaced": "zastąpiony w węźle",
   "runs.detail.fact.promptExtended": "Prompt",
@@ -155,7 +152,6 @@
   "runs.detail.fact.runnerJob": "Zadanie runnera",
   "runs.detail.fact.tokens": "Tokeny",
   "runs.detail.fact.agent": "Agent",
-
   "runs.provenance.explain": " Atestacja to podpisane przez Back Office oświadczenie (Ed25519, koperta DSSE), które wiąże commit i diff wytworzone przez agenta ze sposobem ich wytworzenia: modelem, szablonem i promptami, polityką i obrazem sandboxa, dozwolonymi hostami, tokenami i kosztem, wynikiem weryfikacji oraz tym, kto zatwierdził bramki po drodze. Każdy, kto ma klucze publiczne, może sprawdzić, że nie zostało zmienione; nie dowodzi to jednak, że zmiana jest poprawna. {$START_TAG_BO_HELP_LINK}Jak weryfikować atestacje{$CLOSE_TAG_BO_HELP_LINK}",
   "runs.provenance.loading": "Wczytywanie atestacji",
   "runs.provenance.list": "Atestacje",
@@ -198,14 +194,12 @@
   "runs.provenance.fact.exitFailed": "kod wyjścia {$code} (niezaliczona)",
   "runs.provenance.fact.egressLog": "Log ruchu wychodzącego",
   "runs.provenance.fact.time": "Czas",
-
   "runs.detail.write.waitingForYou": "Czeka, aż zatwierdzisz zapis w Jirze",
   "runs.detail.write.waitingForApprover": "Czeka na zatwierdzenie zapisu w Jirze",
   "runs.detail.write.at": "w węźle {$START_TAG_SPAN}{$INTERPOLATION}{$CLOSE_TAG_SPAN}. Nic nie trafi do Jiry, dopóki zapis nie zostanie zatwierdzony.",
   "runs.detail.write.assign": " Przypisz… ",
   "runs.detail.write.review": "Przejrzyj zapis",
   "runs.detail.write.view": "Pokaż zapis",
-
   "runs.repos.title": "Repozytoria",
   "runs.repos.primary": "główne",
   "runs.repos.mergeRequest": "Merge request",
@@ -214,5 +208,13 @@
   "runs.repos.state.pushed": "wypchnięte",
   "runs.repos.state.notPushed": "niewypchnięte",
   "runs.repos.state.failed": "błąd",
-  "runs.repos.state.readOnly": "tylko odczyt"
+  "runs.repos.state.readOnly": "tylko odczyt",
+  "runs.detail.fact.directory": "Katalog",
+  "runs.detail.fact.directorySeparate": "osobny",
+  "runs.detail.questions.waitingForYou": "Agent ma pytania: czeka na Twoje odpowiedzi",
+  "runs.detail.questions.waitingForApprover": "Agent ma pytania: czeka na odpowiedzi",
+  "runs.detail.questions.assign": " Przypisz… ",
+  "runs.detail.questions.answer": "Odpowiedz na pytania",
+  "runs.detail.questions.view": "Zobacz pytania",
+  "runs.detail.questions.at": "w {$node}. Krok wykona się ponownie z Twoimi odpowiedziami; anulowanie kończy go niepowodzeniem."
 }

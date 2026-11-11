@@ -21,14 +21,14 @@ See [07-task-library.md](07-task-library.md) for semantics.
 
 | Aggregate | Fields |
 |---|---|
-| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, agentKey?, scope: Scope(GLOBAL | PROJECT(projectId)), modelProfileId?, prompt: Prompt(system?, user?, mode: APPEND/REPLACE), parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058) |
+| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, agentKey?, scope: Scope(GLOBAL | PROJECT(projectId)), modelProfileId?, prompt: Prompt(system?, user?, mode: APPEND/REPLACE), parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, requiresSkills, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058; `requiresSkills` ADR 0060: a step whose agent lacks one gets a warning) |
 | `Skill` | `id, key, name, description, content, scope, tags, builtIn, timestamps` |
 | `Rule` | `id, key, name, description, content, scope, automatic, tags, builtIn, timestamps` (ADR 0055) |
-| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, mcpServers: List<AgentMcpServer(name, url)>, tags, builtIn, timestamps` (ADR 0056, 0057) |
+| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, mcpServers: List<AgentMcpServer(name, url)>, access: AgentAccess(mode FULL/READ_ONLY/PATHS, paths), tags, builtIn, timestamps` (ADR 0056, 0057; access ADR 0060) |
 
 Template keys are unique across scopes; skills, rules and agents by `(key, scope)` (ADR 0055). Domain service
 `TaskResolver` produces `ResolvedTask` (with the resolved agent: step, template lineage, else `model-answer`; the
-agent's rules and skills adjusted by the step; the parameters with value and source) and reports when the agent does
+agent's rules and skills; the parameters with value and source; warnings such as required skills the agent lacks, ADR 0060) and reports when the agent does
 not fit the template or a required parameter has no value; `TemplateValidator` checks keys
 (`^[a-z][a-z0-9-]{1,63}$`), parent existence, JSON schema syntax and parameter declarations and values. Task interfaces (ADR 0015) were removed by ADR 0055, the template executor by
 ADR 0056.
@@ -59,11 +59,12 @@ revokedAt?`. The plaintext is returned once on creation and never stored.
 | `id, projectId, name, description, version, enabled, triggers: List<Trigger(MANUAL/JIRA_TRANSITION(status)/API/CI)>` | |
 | `nodes: List<WorkflowNode>` | ids unique, slug `^[a-z][a-z0-9-]{0,39}$` |
 | `edges: List<WorkflowEdge(id, from, fromPort, to, label?)>` | `(from, fromPort)` unique |
+| `setupCommand?` | ADR 0060: runs once per run directory before the first coding step (again when it changes) |
 | `canvas: Canvas(zoom, x, y)?` | viewport only; node positions live on nodes |
 
 `WorkflowNode`: `id, kind: NodeKind, name, position: Point(x, y), timeoutSeconds?` plus one of:
 `task: TaskBinding(templateKey, overrides: TaskOverrides)` (overrides include `agentKey`, ADR 0056, `parameters`,
-ADR 0058, and config `continueSession`, ADR 0057),
+ADR 0058, and the coding agent config `directory` RUN/SEPARATE, `session` OWN/NEW/CONTINUE with `continueSession`, `allowQuestions`, `maxQuestionRounds`, ADR 0057, 0060; no skill changes since ADR 0060),
 `action` (`type`: FETCH_ISSUE/COMMENT_ISSUE/TRANSITION_ISSUE/START_WORKFLOW/PROJECT_DIGEST, `config`) (node
 kind `ACTION`, ADR 0056; a stored `TASK` node naming a former action template is read as one),
 `decision: Decision(branches: List<Branch(id,
@@ -124,7 +125,7 @@ Table `library_source` (V116).
 | `input: RunInput(issueKey?, parameters, ci: CiContext?)` | |
 | `status: PENDING → RUNNING ⇄ WAITING → SUCCEEDED / FAILED / CANCELLED` | |
 | `outcome: SUCCESS / FAILURE?` | from the END node reached (FAILURE on unhandled failure) |
-| `waitingOn: WaitingOn(kind: HUMAN_GATE/WAIT_FOR_CI, nodeId, approvalId?, signal?)?` | |
+| `waitingOn: WaitingOn(kind: HUMAN_GATE/WAIT_FOR_CI/WRITE_CONFIRMATION/AGENT_QUESTIONS, nodeId, approvalId?, signal?)?` | `AGENT_QUESTIONS`: a step's agent stopped with questions (ADR 0060) |
 | `nodes: List<NodeExecution>` | `id, nodeId, nodeName, kind, templateKey?, agent: StepAgentRecord?, attempt, status (RUNNING/WAITING/SUCCEEDED/FAILED/SKIPPED), port (taken output port), startedAt, finishedAt, summary, confidence, runnerJobId, usage, cost, error, artifactIds, repositories: List<RepositoryResult>`; `agent` (ADR 0059) = who did a `TASK` step: `agentKey, agentName, harness?, modelProfileId?, modelLabel?`, null for other kinds and for executions before ADR 0059 |
 | `artifacts: List<Artifact>` | `id, nodeId, name, kind (SPEC/PLAN/TASKS/ANALYSIS/DIFF/REVIEW/LOG/JSON/MARKDOWN), mediaType, content, createdAt` |
 | `mergeRequest: MergeRequestSnapshot(url, branch, targetBranch)?`, `review: ReviewReport?` | `mergeRequest` = the primary repository's merge request, else the first one pushed |
@@ -138,7 +139,10 @@ cost roll-up; `maxVisits` enforced per node.
 
 `id, runId, nodeId, projectId, projectKey, workflowName, issueKey, question, options, context (summary,
 confidence, artifactIds, mergeRequestUrl), status (OPEN/DECIDED/EXPIRED), decision: Decision(option,
-comment, editedArtifacts, decidedAt)?, createdAt`.
+comment, editedArtifacts, decidedAt)?, createdAt, kind (GATE/WRITE_CONFIRMATION/AGENT_QUESTIONS)`. ADR 0060: an
+`AGENT_QUESTIONS` request carries `questions: List<AgentQuestion(question, why?)>` (at most 10), `questionRound` and
+`maxQuestionRounds`; its options are `answer` (the comment holds the answers; the step runs again) and `cancel` (the
+step fails).
 
 ### CiExecution (aggregate root)
 

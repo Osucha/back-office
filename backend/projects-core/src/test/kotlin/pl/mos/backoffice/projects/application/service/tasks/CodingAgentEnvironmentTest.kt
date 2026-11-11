@@ -13,7 +13,8 @@ import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.TaskBinding
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.ReviewVerdictPolicy
-import pl.mos.backoffice.projects.domain.service.SessionContinuation
+import pl.mos.backoffice.projects.domain.service.RunDirectory
+import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.RunnerJobId
@@ -23,6 +24,10 @@ import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.platform.WorkRequest
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentAccessMode
+import pl.mos.backoffice.shared.runner.RevertedChange
+import pl.mos.backoffice.shared.runner.RunnerAccessReport
 import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.RunnerArtifact
@@ -68,6 +73,7 @@ class CodingAgentEnvironmentTest {
         REVIEW_SCHEMA to mapOf("type" to "object", "required" to listOf("summary", "findings", "verdict", "score")),
         GOOD to mapOf("report" to "# Report", "confidence" to 0.8, "summary" to "all fine"),
         MISSING_FIELD to mapOf("summary" to "no report"),
+        QUESTIONS to mapOf("questions" to listOf(mapOf("question" to "Which module?", "why" to "two candidates"), "Keep the tests?")),
         REVIEW to mapOf(
             "summary" to "looks good", "verdict" to "APPROVE", "score" to 95,
             "findings" to listOf(mapOf("severity" to "MINOR", "file" to "a.kt", "title" to "Name", "detail" to "rename")),
@@ -80,15 +86,20 @@ class CodingAgentEnvironmentTest {
     private val runner = ScriptedRunner()
     private val support = RunnerTaskSupport(
         runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30),
-        structuredAnswers = StructuredAnswers(json, ReviewVerdictPolicy()),
+        structuredAnswers = StructuredAnswers(json, ReviewVerdictPolicy()), json = json,
     )
 
-    private fun context(nodes: List<WorkflowNode>? = null, nodeId: String = "implement", p: Project = project): NodeContext {
+    private fun context(
+        nodes: List<WorkflowNode>? = null,
+        nodeId: String = "implement",
+        p: Project = project,
+        state: Map<String, Any?> = emptyMap(),
+    ): NodeContext {
         val definition = Fixtures.issueWorkflow(p).let { d -> nodes?.let { d.copy(nodes = d.nodes + it) } ?: d }
         val run = Fixtures.runningRun(p, definition)
         val node = run.definitionSnapshot.requireNode(nodeId)
         val started = run.nodeStarted(node, now)
-        return NodeContext(started, p, node, started.nodes.last(), mapOf(RunStateKeys.ISSUE to mapOf("key" to "SHOP-1", "summary" to "Pay")))
+        return NodeContext(started, p, node, started.nodes.last(), mapOf(RunStateKeys.ISSUE to mapOf("key" to "SHOP-1", "summary" to "Pay")) + state)
     }
 
     private fun task(
@@ -120,7 +131,7 @@ class CodingAgentEnvironmentTest {
     fun `the environment document and the MCP servers go to the spec, the rules stay out of the prompt`() {
         val spec = submit(task())
 
-        assertThat(spec.instructions).startsWith(AgentEnvironment.PLATFORM_PREAMBLE).contains("You are the implementer of Shop.")
+        assertThat(spec.instructions).startsWith("# Working in Back Office").contains("Questions to the owner").contains("You are the implementer of Shop.")
             .contains("## Project constitution").contains("Keep it simple.").contains("Cite evidence.")
         assertThat(spec.prompt).doesNotContain("Cite evidence.").doesNotContain("Keep it simple.").startsWith("Do SHOP-1.")
         assertThat(spec.mcpServers).containsExactly(AgentMcpServer("docs", "https://mcp.example.com"))
@@ -201,19 +212,85 @@ class CodingAgentEnvironmentTest {
     }
 
     @Test
-    fun `continueSession puts the step into the earlier step's workspace and role, and the earlier step gets them too`() {
-        val nodes = listOf(WorkflowNode.Task("fix", "Fix", task = TaskBinding("agent-task", TaskOverrides(config = mapOf(SessionContinuation.KEY to "implement")))))
+    fun `ADR 0060 - continueSession shares the earlier step's session in the run directory`() {
+        val nodes = listOf(
+            WorkflowNode.Task("fix", "Fix", task = TaskBinding("agent-task", TaskOverrides(config = mapOf(RunDirectory.CONTINUE_SESSION to "implement")))),
+            WorkflowNode.Task("polish", "Polish", task = TaskBinding("agent-task", TaskOverrides(config = mapOf(RunDirectory.CONTINUE_SESSION to "fix")))),
+        )
 
-        val fix = submit(task(config = mapOf("push" to false, SessionContinuation.KEY to "implement")), context(nodes, "fix"))
-        assertThat(fix.workspace!!.key).isEqualTo(SessionContinuation.RUN_WORKSPACE)
-        assertThat(fix.workspace!!.sessionRole).isEqualTo("implement")
+        val fix = submit(task(config = mapOf("push" to false, RunDirectory.CONTINUE_SESSION to "implement")), context(nodes, "fix"))
+        assertThat(fix.workspace!!.key).isEqualTo(RunnerWorkspace.RUN_KEY)
+        assertThat(fix.workspace!!.sessionRole).isEqualTo("s-implement")
+        val polish = submit(task(config = mapOf("push" to false, RunDirectory.CONTINUE_SESSION to "fix")), context(nodes, "polish"))
+        assertThat(polish.workspace!!.sessionRole).describedAs("a chain shares the first step's session").isEqualTo("s-implement")
 
         val implement = submit(task(), context(nodes, "implement"))
-        assertThat(implement.workspace!!.key).isEqualTo(SessionContinuation.RUN_WORKSPACE)
-        assertThat(implement.workspace!!.sessionRole).isEqualTo("implement")
-        assertThat(implement.workspace!!.name).describedAs("one workspace per run").endsWith("-run")
+        assertThat(implement.workspace!!.sessionRole).isEqualTo("s-implement")
+        assertThat(implement.workspace!!.name).describedAs("one run directory per run").endsWith("-run")
+        assertThat(implement.agentHome).isEqualTo(TestAgents.CLAUDE_CODE.key)
 
-        assertThat(submit(task(), context()).workspace).describedAs("no continuation: a throwaway workspace").isNull()
+        assertThat(submit(task(config = mapOf("push" to false, RunDirectory.SESSION to "NEW")), context()).workspace!!.sessionRole).isNull()
+    }
+
+    @Test
+    fun `ADR 0060 - a coding agent's agent-questions json pauses the step with its questions`() {
+        val spec = submit(task())
+        assertThat(spec.collectArtifacts).contains("agent-questions.json")
+        assertThat(spec.agentHome).isEqualTo(TestAgents.CLAUDE_CODE.key)
+
+        val asked = complete(task(), listOf(RunnerArtifact("agent-questions", "agent-questions.json", "application/json", QUESTIONS)))
+        assertThat(asked.questions!!.map { it.question to it.why }).containsExactly("Which module?" to "two candidates", "Keep the tests?" to null)
+        assertThat(asked.port).isNull()
+        assertThat(asked.failed).isFalse()
+        assertThat(asked.usage).isEqualTo(TokenUsage(10, 5))
+        assertThat(asked.artifacts).isEmpty()
+
+        val unreadable = complete(task(), listOf(RunnerArtifact("agent-questions", "agent-questions.json", "application/json", "{nope")))
+        assertThat(unreadable.questions).isNull()
+        assertThat(unreadable.artifacts.map { it.name }).doesNotContain("agent-questions")
+    }
+
+    @Test
+    fun `ADR 0060 - without allowQuestions nothing is collected, asked or offered`() {
+        val closed = task(config = mapOf("push" to false, RunDirectory.ALLOW_QUESTIONS to false))
+        val spec = submit(closed)
+        assertThat(spec.collectArtifacts).doesNotContain("agent-questions.json")
+        assertThat(spec.instructions).contains("You cannot ask the owner").doesNotContain("Questions to the owner")
+        val ignored = complete(closed, listOf(RunnerArtifact("agent-questions", "agent-questions.json", "application/json", QUESTIONS)))
+        assertThat(ignored.questions).isNull()
+        assertThat(ignored.port).isEqualTo(WorkflowNode.PORT_SUCCESS)
+    }
+
+    @Test
+    fun `ADR 0060 - the owner's answers end the prompt and the job gets a new label, the access goes to the spec`() {
+        val state = mapOf(RunStateKeys.ANSWERS to mapOf("implement" to "Round 1: your questions\n1. Which module?\nThe owner's answers:\nbilling"), RunStateKeys.QUESTION_ROUNDS to mapOf("implement" to 1))
+        val readOnly = task().let { it.copy(agent = it.agent.copy(access = AgentAccess.READ_ONLY)) }
+        val spec = submit(readOnly, context(state = state))
+        assertThat(spec.prompt).contains("## Answers of the owner").contains("billing")
+        assertThat(spec.prompt.indexOf("## Answers of the owner")).isGreaterThan(spec.prompt.indexOf("Do SHOP-1."))
+        assertThat(spec.jobLabel).endsWith("-q1")
+        assertThat(spec.access).isEqualTo(AgentAccess.READ_ONLY)
+        assertThat(RunnerTaskSupport.jobLabel("abcd1234", "x".repeat(80), 1, 2)).hasSize(63).endsWith("-q2")
+        assertThat(RunnerTaskSupport.jobLabel("abcd1234", "implement", 1)).isEqualTo("run-abcd1234-implement-1")
+    }
+
+    @Test
+    fun `ADR 0060 - changes the runner reverted outside the agent's access are a step warning`() {
+        val warnings = mutableListOf<String>()
+        val ctx = context().copy(warnSink = { warnings += it })
+        runner.result = result(emptyList(), RunnerJobStatus.SUCCEEDED).copy(
+            access = RunnerAccessReport(
+                AgentAccessMode.PATHS, listOf("docs/**"),
+                listOf(RevertedChange("main", "src/App.kt", "modified"), RevertedChange(null, "notes.txt", "added")),
+            ),
+        )
+        support.complete(ctx, task(), RunnerMode.IMPLEMENT, null, "x", RunnerJobId(UUID.randomUUID()))
+        assertThat(warnings).containsExactly("reverted 2 change(s) outside the agent's access: main:src/App.kt (modified), notes.txt (added)")
+
+        warnings.clear()
+        runner.result = result(emptyList(), RunnerJobStatus.SUCCEEDED).copy(access = RunnerAccessReport(AgentAccessMode.READ_ONLY))
+        support.complete(ctx, task(), RunnerMode.IMPLEMENT, null, "x", RunnerJobId(UUID.randomUUID()))
+        assertThat(warnings).isEmpty()
     }
 
     private fun answer(content: String) = RunnerArtifact(RunnerTaskSupport.STRUCTURED_ANSWER_ARTIFACT, RunnerTaskSupport.STRUCTURED_ANSWER_FILE, "application/json", content)
@@ -244,6 +321,7 @@ class CodingAgentEnvironmentTest {
         const val GOOD = "good-answer"
         const val MISSING_FIELD = "missing-field"
         const val REVIEW = "review-answer"
+        const val QUESTIONS = "questions-file"
         val SCHEMA = """{"type":"object","required":["report","confidence"],"properties":{"report":{"type":"string"},"confidence":{"type":"number"},"summary":{"type":"string"}}}"""
         val REVIEW_SCHEMA = """{"type":"object","required":["summary","findings","verdict","score"],"properties":{"summary":{"type":"string"},"findings":{"type":"array"},"verdict":{"type":"string"},"score":{"type":"integer"}}}"""
     }

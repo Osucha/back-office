@@ -349,7 +349,7 @@ description, draft}, primary, purpose?}]` and the levels above apply **per repos
 
 Workspace: `/workspace/<path>` per repository (cloned and checked out at `baseBranch` exactly like the single
 repository). The agent, `setupCommand`,
-`verifyCommand`, Spec Kit (`.specify`; only when the spec does not say `specKit: false`, ADR 0036), skills and `collectArtifacts` run in the **primary** repository; with an
+`verifyCommand`, Spec Kit (`.specify`; only when the spec does not say `specKit: false`, ADR 0036) and `collectArtifacts` run in the **primary** repository (skills: in the agent home, ADR 0060); with an
 empty list in `/workspace`. The agent may reach the other repositories (OpenCode `external_directory` allows exactly
 their paths, Claude Code gets `--add-dir`), and its prompt ends with a short `## Repositories` section (key, path,
 access, `purpose`). READ / NONE clones get `remote.origin.pushurl = disabled://read-only-job`; PUSH_MR clones check
@@ -369,39 +369,67 @@ single-repository spec and runs exactly as before (`/workspace/repo`, `spec.gitA
 `result.repositories`). The digest algorithm is unchanged (`docs/api/fixtures/spec-digest-vectors.json` has a
 two-repository vector).
 
-## Run workspaces and agent sessions (ADR 0044)
+<a id="run-workspaces-and-agent-sessions-adr-0044"></a>
+## Run directory, agent home and sessions (ADR 0044, 0060)
 
-- `ProjectWorkspace` (`project_workspace`, V118: key, name, description, sources, setupCommand, roles;
-  `ManageProjectWorkspaces`, `/api/v1/projects/{id}/workspaces`) declares them for all workflows of a project; step
-  config `workspace` / `sessionRole` / `prepareOnly` picks one (`StepWorkspace`, validated with the step repositories; `effectiveConfig` turns the
-  workspace sources into the step's repositories when it names none). It becomes `RunnerJobSpec.workspace {name, key,
-  sessionRole, prepareOnly, setupCommand}`; `name = bo-ws-<run id hex>-<key>`. The designer draws a region per
-  workspace around its steps (`workspaceRegions`).
+ADR 0060 replaced the named run workspaces of ADR 0044 (project workspaces, their API and tab, the canvas regions,
+the step keys `workspace` / `sessionRole`) with one **run directory** per run; the runner mechanics below are the ADR
+0044 ones with the single workspace key `run`.
+
+- Projects context: `RunDirectory` reads a coding step's config `directory` (`RUN` default, `SEPARATE`), `session`
+  (`OWN` default, `NEW`, `CONTINUE` with `continueSession`) and `prepareOnly`. A `RUN` step gets
+  `RunnerJobSpec.workspace {name, key = run, sessionRole, prepareOnly, setupCommand}` with `name = bo-ws-<run id
+  hex>-run` and `setupCommand` = `WorkflowDefinition.setupCommand`; a `SEPARATE` step gets no `workspace` (a throwaway
+  `/workspace`, no session). The session role is the step's own (`OWN`, derived from its node id, or its legacy
+  `sessionRole`), the continued step's (`CONTINUE`), or none (`NEW`, `SEPARATE`, prepare steps). The engine runs one
+  node at a time, so the run directory has one writer at a time.
 - Control plane: `runner_workspace` (V54: pool, runner, active job, release time) and `agent_job.workspace_name`.
   `JobLifecycle.routeJob` binds the workspace and prefers its pool; `lockQueued(pool, runner)` skips jobs whose
   workspace is busy or on another runner; the lease claims it with one conditional `UPDATE` (`active_job_id`), and
-  `finish` / `requeue` free it. `RunProgressService.finished` calls `AgentRunner.releaseWorkspaces` (now; 24 h after
-  a failure). `POST /runner/v2/workspaces/sync` (`WorkspaceSync.decide`) tells a controller what to delete.
-  A workspace whose runner is revoked (for example the same computer connected again as a new runner) is not lost:
-  a runner of the same pool that reports holding its volume adopts it, and until then any runner of the pool may
-  lease its jobs (`lockQueued` and `claim` treat a revoked holder as free). Only a volume held by a live runner
-  elsewhere, or by a runner of another pool, is deleted.
+  `finish` / `requeue` free it. `RunProgressService.finished` calls `AgentRunner.releaseWorkspaces` when the run ends
+  (now; 24 h after a failure, so **Retry** continues in it). `POST /runner/v2/workspaces/sync` (`WorkspaceSync.decide`)
+  tells a controller what to delete. A workspace whose runner is revoked (for example the same computer connected
+  again as a new runner) is not lost: a runner of the same pool that reports holding its volume adopts it, and until
+  then any runner of the pool may lease its jobs (`lockQueued` and `claim` treat a revoked holder as free). Only a
+  volume held by a live runner elsewhere, or by a runner of another pool, is deleted.
 - runner-controller: DOCKER mounts a named volume (`docker volume create`, labels managed-by / pool /
   `backoffice.io/workspace`); K8S_JOB and AGENT_SANDBOX a ReadWriteOnce PVC sized by `ephemeralStorage`
   (`workspace-storage-class`), never a warm pod. A sync every `workspace-sync-seconds` (60) deletes released volumes
   not used by a running sandbox.
 - runner: a clone is reused when `/workspace/.bo/repos/<path>.json` names the same URL: `.git` checked, hooks and
   grafts removed, `.git/config` rewritten (`trusted_git_config`), fetch, access of the job; the working tree stays.
-  READ repositories are not committed in a workspace. Sessions: Claude Code `--session-id` / `--resume` with
-  `uuid5(workspace, role)` in `CLAUDE_CONFIG_DIR=/workspace/.claude-config`; OpenCode `XDG_DATA_HOME=/workspace/.bo/opencode/<role>`
-  and `--continue`. `prepareOnly`: clone + setupCommand + `.git` restore, no agent, no commit.
-- Continued sessions (ADR 0057): step config `continueSession: <node id>` reuses the earlier step's workspace (or the
-  implicit workspace `run`, which needs no `ProjectWorkspace` definition) and session role (or one derived from its
-  node id); `SessionContinuation` sets both on the two steps, and the check before a run refuses a missing step, a
-  step that is not a coding agent step or another harness. The agent's environment document lives outside the
-  repositories (`/workspace/.backoffice-agent/AGENTS.md` for OpenCode, `$CLAUDE_CONFIG_DIR/CLAUDE.md` for Claude
-  Code), is rewritten on every job and removed when a job has none, so a continued session always sees the current
-  agent's environment.
+  READ repositories are not committed in a workspace. `prepareOnly`: clone + setupCommand + `.git` restore, no agent,
+  no commit.
+- **Agent home** (`RunnerJobSpec.agentHome` = the agent key): `/workspace/.agents/<key>/`, outside every repository,
+  recreated as a real directory when a symlink or file was left in its place; files are written fresh, never through
+  a symlink; `skills/` is rewritten on every job. Claude Code: `CLAUDE_CONFIG_DIR` = the home (`CLAUDE.md` = the
+  environment document as user memory, `skills/`, `mcp.json` for `--mcp-config`, `settings.json` for `--settings`
+  only with a tool policy or a restricted access, and Claude Code's session files); sessions `--session-id` /
+  `--resume` with `uuid5(workspace, role)`. OpenCode: `OPENCODE_CONFIG_DIR` = the home and `OPENCODE_CONFIG` =
+  `<home>/opencode.json` (`instructions: [<home>/AGENTS.md]`, `mcp`, `permission`), `skills/`,
+  `XDG_DATA_HOME=<home>/data/<session role>`; sessions `--continue`. Nothing of an agent is written into a
+  repository, so agents of one run directory never see each other's skills or memory; the repository's own
+  `AGENTS.md` / `CLAUDE.md` remain the project's rules (OpenCode also reads the repository's `.opencode/skills` and
+  `.claude/skills`). A spec without `agentHome` (older Back Office) uses the ADR 0057 locations
+  (`/workspace/.backoffice-agent/`, `CLAUDE_CONFIG_DIR=/workspace/.claude-config`,
+  `XDG_DATA_HOME=/workspace/.bo/opencode/<role>`, skills in the repository's git-excluded `.claude/skills` /
+  `.opencode/skills`).
+- Continued sessions (ADR 0057, 0060): `session: CONTINUE` with `continueSession: <node id>` runs under the earlier
+  step's session role; the check before a run refuses a missing step, a step that is not a coding agent step, a
+  `SEPARATE` step and a step of another agent (the session lives in the agent's home).
+- **Access** (`RunnerJobSpec.access {mode READ_ONLY | PATHS, paths}`, absent = FULL; covered by the spec digest): the
+  runner snapshots every repository of the job right before the agent (`GIT_INDEX_FILE=<temp> git add --all && git
+  write-tree`, without touching index, HEAD or refs); after the agent (also after a timeout) it collects the
+  artefacts, restores `.git`, snapshots again and reverts each change outside the access (added: removed;
+  modified / deleted / type changed: restored from the first snapshot), repeating up to 3 rounds; a change that
+  cannot be reverted fails the job. Ignored files are not part of the snapshot. Each reverted path is logged and
+  reported in `result.access.reverted[]`, and the summary ends with `[Back Office runner] reverted N change(s)
+  outside the agent's access (<mode>): ...`. Verify, commit and push run on the reverted tree. The harness rules
+  (Claude Code `--permission-mode dontAsk` without editing tools outside the paths, OpenCode `permission.edit`) are
+  guidance; the revert is the guarantee. Details: runner README, "Agent home, access and questions".
+- **Questions** (ADR 0060): `agent-questions.json` in the working directory is collected as the artefact
+  `agent-questions` when the step allows questions; like `structured-answer.json` it is never committed and a stale
+  one is removed before the agent starts.
 
 ## Runner protocol v2 (summary; contract in `docs/api/openapi.yaml`, tag `runner-v2`)
 
@@ -528,7 +556,8 @@ deletes those it does not run and reports them `LOST` / `controller-restarted`.
 
 ## Agent configuration inside the sandbox
 
-- OpenCode: generated `opencode.json` with `provider.anthropic.options.baseURL = <anthropicBaseUrl>/v1`,
+- OpenCode: generated `opencode.json` (with an agent home `<home>/opencode.json`, ADR 0060; `permission.edit` from a
+  restricted access) with `provider.anthropic.options.baseURL = <anthropicBaseUrl>/v1`,
   `provider.openai.options.baseURL = <openaiBaseUrl>` (with `/v1`); other providers (Google, Mistral, Ollama,
   OpenAI-compatible) use provider `backoffice` (`@ai-sdk/openai-compatible`) on the gateway's OpenAI
   endpoint; `apiKey = "{env:BACKOFFICE_JOB_TOKEN}"` (the token is not written to disk); `permission` from the
@@ -537,8 +566,10 @@ deletes those it does not run and reports them `LOST` / `controller-restarted`.
   `question` denied.
 - Claude Code: `ANTHROPIC_BASE_URL=<anthropicBaseUrl without /v1>`, `ANTHROPIC_AUTH_TOKEN=<job token>`,
   settings rendered from the tool policy (`permissions.allow` = file tools + `Bash(<pattern>)` or `Bash`
-  without allowlist, `permissions.deny` = deny + ask as `Bash(<pattern>)`, `defaultMode: dontAsk`) passed with
-  `--settings` and written to `.claude/settings.local.json` (git-excluded); `--permission-mode dontAsk`. A
+  without allowlist, `permissions.deny` = deny + ask as `Bash(<pattern>)`, `defaultMode: dontAsk`; plus the editing
+  rules of a restricted access, ADR 0060) passed with `--settings`: with an agent home written to
+  `<home>/settings.json` and nothing into the repository, without one (older Back Office) also to
+  `.claude/settings.local.json` (git-excluded); `--permission-mode dontAsk`. A
   repository's own `.claude/settings.json` allow rules still add to this (logged as a warning): the tool policy
   is defence in depth, the boundary is the sandbox.
 - Ask means deny in unattended jobs: reported as a PROGRESS event and in `RunnerResult.policy.askTreatedAsDeny`;

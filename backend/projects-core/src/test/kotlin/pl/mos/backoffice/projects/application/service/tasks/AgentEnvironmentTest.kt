@@ -50,7 +50,7 @@ class AgentEnvironmentTest {
     fun `a coding agent gets its preamble and a project without constitution and rules gets neither section`() {
         val text = environment.document(task(TestAgents.OPENCODE), project.copy(constitution = " "), model, PromptDataBlocks.random()).text
         assertThat(text).isEqualTo(AgentEnvironment.PLATFORM_PREAMBLE + "\n\n" + AgentEnvironment.CODING_AGENT_PREAMBLE)
-        assertThat(text).contains(".claude/skills/").contains(".opencode/skills/")
+        assertThat(text).contains("agent home").doesNotContain(".claude/skills/")
         assertThat(AgentEnvironment.rulesSection(emptyList())).isNull()
     }
 }

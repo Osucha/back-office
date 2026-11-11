@@ -61,6 +61,8 @@ data class TaskTemplate(
     val parameters: List<TemplateParameter> = emptyList(),
     /** ADR 0058: values for parameters of the lineage; the nearest template wins, the step wins over all. */
     val parameterValues: Map<String, Any?> = emptyMap(),
+    /** ADR 0060: skills the work needs; a step whose agent lacks one gets a warning (inherited, unioned). */
+    val requiresSkills: List<String> = emptyList(),
 ) {
     init {
         Keys.require(key)
@@ -92,12 +94,13 @@ data class TaskTemplate(
         val runInputs: List<RunInputField> = emptyList(),
         val parameters: List<TemplateParameter> = emptyList(),
         val parameterValues: Map<String, Any?> = emptyMap(),
+        val requiresSkills: List<String> = emptyList(),
     )
 
     val content: Content
         get() = Content(
             key, name, description, abstract, extendsKey, category, agentKey, scope, modelProfileId, prompt,
-            config, outputSchema, confidenceField, produces, consumes, tags, runInputs, parameters, parameterValues,
+            config, outputSchema, confidenceField, produces, consumes, tags, runInputs, parameters, parameterValues, requiresSkills,
         )
 
     /** Replaces the editable content and bumps [version]; a null key keeps the current one. */
@@ -134,6 +137,7 @@ data class TaskTemplate(
             updatedBy = actor,
             parameters = c.parameters,
             parameterValues = c.parameterValues,
+            requiresSkills = c.requiresSkills.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
         )
     }
 }

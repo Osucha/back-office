@@ -32,7 +32,7 @@ volume, or a memory volume the controller fills in a warm sandbox):
 
 | File | Content |
 |---|---|
-| `spec.json` | `RunnerJobSpec` (`mode`, `agent`, `model`, `repository` incl. `mergeRequest`, `specKitPhase`, `prompt`, `constitution`, `setupCommand`, `verifyCommand`, `timeoutSeconds`, `collectArtifacts`, `collectDiff`, `skills`, `runId`, `gateway`, `specKit`) |
+| `spec.json` | `RunnerJobSpec` (`mode`, `agent`, `model`, `repository` incl. `mergeRequest`, `specKitPhase`, `prompt`, `constitution`, `setupCommand`, `verifyCommand`, `timeoutSeconds`, `collectArtifacts`, `collectDiff`, `skills`, `runId`, `gateway`, `specKit`, ADR 0060 `agentHome` and `access`) |
 | `policy.json` | resolved `SandboxPolicy` (the runner uses `tools.allow/deny/ask`) |
 | `job-id`, `job-token` | job UUID and the per-job token (`bo_job_`); read into memory and deleted, exchanged for the agent's gateway-only token |
 | `proxy-url` | egress proxy, e.g. `http://<jobId>:<secret>@bo-egress-pool.ns.svc:4750` |
@@ -63,7 +63,7 @@ Steps performed by `entrypoint.py`:
 
 1. Read the bundle (or the fallback environment); set `HTTPS_PROXY`/`HTTP_PROXY`/`https_proxy`/`http_proxy`/`ALL_PROXY` to `proxy-url` and drop `NO_PROXY`; apply `RLIMIT_NPROC`; start the log batcher (POST `{apiBaseUrl}/api/v1/internal/runner/jobs/{id}/events` through the proxy, every 2 s or 50 lines, `Authorization: Bearer <job token>`). Logging failures never abort the job. The callback base is `spec.gateway.apiBaseUrl` (a trailing `/api/v1` is accepted).
 2. Clone `repository.url` at `baseRef` into `/workspace/repo`. The git token (read once from `RUNNER_GIT_TOKEN_FILE` into memory) reaches only clone/fetch/ls-remote/push through an inline credential helper (see "Prompt-injection hardening"), so it is never written to `.git/config`, a file, logs or the agent environment. Create the run branch (or re-attach to it when it already exists on the remote). Configure `user.name`/`user.email`, then snapshot `.git/config` and pin the base commit.
-3. Write `skills[]` (`{key, name, content}`, Task Library ADR 0015) to `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md`, adding a `name`/`description` frontmatter when the content has none. The directories are listed in `.git/info/exclude` so they never land in the commit.
+3. Without `agentHome` (older Back Office): write `skills[]` (`{key, name, content}`, Task Library ADR 0015) to `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md`, adding a `name`/`description` frontmatter when the content has none. The directories are listed in `.git/info/exclude` so they never land in the commit. With `agentHome` (ADR 0060) the skills go to the agent home instead (see "Agent home, access and questions"); nothing is written into a repository.
 4. Run `setupCommand` (shell) when given.
 5. `specKit: false` (ADR 0036: the project does not use Spec Kit): no Spec Kit work at all (no `specify init`, no constitution, no `/speckit.implement`), and a `SPEC_KIT` job is refused. Otherwise (`true`, or absent in older specs): for `SPEC_KIT` (or when a constitution is provided, or an `IMPLEMENT` job on a `specs/**/tasks.md`): `specify init --here --force --script sh --integration <claude|opencode> --non-interactive` when `.specify/` is missing (the flags are chosen from `specify init --help`, older Spec Kit versions get `--ai`/`--no-git`), then write the constitution to `.specify/memory/constitution.md`. Failures are logged and the job continues.
 6. Build the prompt: `SPEC_KIT` -> `/speckit.<phase> <prompt>` (Claude Code uses the `/speckit-<phase>` skill form when Spec Kit installed skills), `IMPLEMENT` -> `/speckit.implement` + prompt when `specs/**/tasks.md` exists and `specKit` is not false, else the prompt; `EVAL_CODING` -> the prompt.
@@ -79,7 +79,7 @@ Steps performed by `entrypoint.py`:
 11. `git -c push.pushOption= push <repository.url> HEAD:refs/heads/<branch>` when `repository.push` is true and `spec.gitAccess` is `PUSH_MR` (ADR 0031: `READ` / `NONE` jobs never push, their clone gets `remote.origin.pushurl = disabled://read-only-job`, `NONE` uses no token; a spec without `gitAccess` is derived as Back Office does: IMPLEMENT/SPEC_KIT with `push` -> PUSH_MR, else READ). Push options are whitelisted (`merge_request.create`, `.target`, `.title`, `.description`, `.draft`; never `merge_when_pipeline_succeeds`, `auto_merge`, `remove_source_branch`, `ci.skip`) (explicit URL and refspec, never `origin`, never forced; the base branch and the MR target are refused). With `repository.mergeRequest` (`{title, description, targetBranch, draft}`) the push carries GitLab push options `-o merge_request.create -o merge_request.target=<t> -o merge_request.title=<title> [-o merge_request.description=<d>] [-o merge_request.draft]` (title/description collapsed to one line, capped at 255/1000 chars); the MR URL GitLab prints (`remote:   https://.../-/merge_requests/N`) is returned as `mergeRequestUrl`. Hosts that ignore push options just receive the branch. The platform never calls an SCM API.
 12. Uploads: `POST {api}/api/v1/runner/v2/jobs/{id}/uploads` (`{name, contentType, sizeBytes, sha256}`, job token) returns a presigned `PUT` target; the runner uploads full versions of capped artefacts, the full diff when over 2 MB, and always the complete runner log (`runner.log`, `digests.logSha256`). Each upload is referenced as an artefact with media type `application/vnd.backoffice.blob-ref+json` and content `{blobKey, sha256, sizeBytes, mediaType}`. Upload failures are logged, never fatal.
     Multi-repository specs: see "Multi-repository jobs" below.
-13. POST `RunnerResult` (plus `digests`, `policy` and `security`) to `/api/v1/internal/runner/jobs/{id}/result` (`SUCCEEDED` when the agent exited 0 and verification passed, `TIMED_OUT` on timeout, `FAILED` otherwise) with up to 12 retries. Exit code `0` when the result was delivered (even for `FAILED`), `3` when it could not be delivered.
+13. POST `RunnerResult` (plus `digests`, `policy`, `security` and, for a restricted agent access, `access`) to `/api/v1/internal/runner/jobs/{id}/result` (`SUCCEEDED` when the agent exited 0 and verification passed, `TIMED_OUT` on timeout, `FAILED` otherwise) with up to 12 retries. Exit code `0` when the result was delivered (even for `FAILED`), `3` when it could not be delivered.
 
 ## Multi-repository jobs
 
@@ -115,6 +115,68 @@ with several repositories, or none (docs/architecture/10-agent-execution.md, "Mu
   failed (the error names it).
 
 Specs without `repositories` run exactly as before (`/workspace/repo`, `gitAccess`, `RUNNER_GIT_TOKEN_FILE`).
+
+## Agent home, access and questions (ADR 0060)
+
+The run directory is the ADR 0044 run workspace with key `run` (`spec.workspace`, unchanged on the wire); a
+`SEPARATE` step has no `workspace` (a throwaway directory, no session).
+
+**Agent home** (`spec.agentHome`, `^[a-z][a-z0-9-]{1,63}$`; absent = the ADR 0057 locations above). Everything of
+the agent lives in `/workspace/.agents/<agentHome>/`, outside every repository; the directories are recreated as real
+directories when a symlink or file was left in their place, files are written fresh (never through a symlink), and
+`skills/` is rewritten on every job. PROMPT jobs have no home.
+
+| Harness | Environment | Layout of the home |
+|---|---|---|
+| Claude Code | `CLAUDE_CONFIG_DIR=<home>` | `CLAUDE.md` (environment document = user memory), `skills/<key>/SKILL.md`, `mcp.json` (`--mcp-config`), `settings.json` (`--settings`, only with a tool policy or a restricted access), and Claude Code's own `projects/<cwd>/<session id>.jsonl` (sessions: `--session-id` / `--resume`), `sessions/`, `backups/`, `.claude.json` |
+| OpenCode | `OPENCODE_CONFIG=<home>/opencode.json`, `OPENCODE_CONFIG_DIR=<home>`, `XDG_DATA_HOME=<home>/data/<session role>` (with a session role) | `opencode.json` (`instructions: [<home>/AGENTS.md]`, `mcp`, `permission`), `AGENTS.md`, `skills/<key>/SKILL.md`, `data/<role>/opencode/opencode.db` (sessions: `--continue`), OpenCode's own `.gitignore` |
+
+Verified in the runner image (OpenCode 1.18.32, Claude Code 2.1.283) against a fake model endpoint: the request
+carries the home's `CLAUDE.md` / `AGENTS.md` and lists its skills; Claude Code writes the session under
+`<home>/projects/` and `--resume` sends the earlier turn; OpenCode keeps `opencode.db` under the data directory and
+`--continue` sends the earlier turn. `OPENCODE_CONFIG_DIR`'s `opencode.json` wins over a repository's
+`opencode.json` (`OPENCODE_CONFIG` alone does not); OpenCode does not load `AGENTS.md` from it on its own (only via
+`instructions`, so it is not read twice). OpenCode still reads `~/.claude/skills`, `~/.agents/skills` and the
+repository's `.opencode/skills` / `.claude/skills` (project skills stay project skills).
+
+**Access** (`spec.access {mode FULL|READ_ONLY|PATHS, paths[]}`, absent = FULL). PATHS globs are relative to each
+repository root: `**/` any directories, `**` anything, `*` / `?` within one name, `[...]` a class, a plain path also
+covers what is below it, `dir/` = `dir/**`.
+
+1. Right before the agent starts, every repository of the job is snapshotted without touching its index, HEAD or
+   refs: `GIT_INDEX_FILE=<temp> git -c core.excludesFile=<empty> add --all && git write-tree` (logged as
+   `[access] <key>: work tree before the agent = tree <id>`); `.git/info/exclude` is remembered. A repository that
+   cannot be snapshotted fails the job before the agent runs.
+2. After the agent (also after a timeout): the step's `collectArtifacts` are collected first (what the agent wrote
+   is reported even when it is reverted), `.git` is restored (no planted filter driver can shape the snapshot),
+   `.git/info/exclude` is put back, then the same snapshot is taken again and `git diff-tree --name-status
+   --no-renames <T0> <T1>` lists the changes. Each path the access does not allow is reverted: added -> removed
+   (with directories it leaves empty), modified / deleted / type changed -> `git restore --source=<T0> --worktree`.
+   This repeats (up to 3 rounds) because a reverted `.gitignore` can uncover files it hid; a change that cannot be
+   reverted fails the job. Ignored files are not part of the snapshot (they are never committed either). Then
+   `verifyCommand`, commit and push run on the reverted work tree.
+3. Each reverted path is logged (`[access] reverted <key>:<path> (<change>; outside the agent's access)`) and
+   reported: `result.access = {mode, paths, reverted: [{repository, path, change: added|modified|deleted|type
+   changed}]}` (`repository` null for a legacy single-repository spec) and a last summary line
+   `[Back Office runner] reverted N change(s) outside the agent's access (<mode>): <key>:<path>, ...`.
+   `result.access` is present whenever the access is not FULL.
+4. Harness rules (guidance, the revert is the guarantee; verified in the image with a fake model issuing write
+   calls): Claude Code runs with `--permission-mode dontAsk` and settings whose `permissions.allow` lacks
+   `Edit`/`Write`/`MultiEdit`/`NotebookEdit`; READ_ONLY also denies them (the write tools are then not even offered),
+   PATHS allows `Edit|Write|MultiEdit(<glob>)` (relative to the working directory) and `Edit|Write|MultiEdit(//<repo
+   dir>/<glob>)` for every repository; without a tool policy everything else stays allowed (`Bash`, `WebFetch`,
+   `WebSearch`, `Skill`). OpenCode: `permission.edit` = `deny` (READ_ONLY) or `{"*": "deny", "<glob>": "allow",
+   "../<other repo>/<glob>": "allow"}` (OpenCode matches paths relative to the working repository; absolute patterns
+   never match).
+
+**Questions**: `agent-questions.json` in the working directory (`{"questions": [{"question", "why"?}]}`) is the
+artefact `agent-questions` when Back Office lists it in `collectArtifacts`; like `structured-answer.json` it is never
+committed and a stale one from an earlier step is removed before the agent starts. When it holds at least one
+question (an entry with a non-empty `question`; read right after the agent, before any revert), the agent stopped
+with questions: `verifyCommand`, commit, push and the merge request are skipped and the work tree stays as the agent
+left it (the session continues after the owner answers); access enforcement still runs, artefacts are collected,
+the status is `SUCCEEDED` (unless the agent failed) and the summary ends with `[Back Office runner] the agent asked N
+question(s); verification, commit and push skipped`.
 
 ## Prompt-injection hardening
 

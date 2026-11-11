@@ -5,7 +5,7 @@
  * come from the backend in English; the UI translates them by type and falls back to the backend
  * text for a type it does not know yet.
  */
-import type { ActionType, AgentHarness } from '../api/types';
+import type { ActionType, AgentAccess, AgentAccessMode, AgentHarness } from '../api/types';
 
 /** The kind of an agent: its harness, or `null` for a model answer. */
 export type AgentKind = AgentHarness | null;
@@ -31,6 +31,29 @@ export function agentKindDescription(harness: string | null | undefined): string
   return harness
     ? $localize`:@@core.agent.kind.coding.description:Coding agent in the runner sandbox with the repository.`
     : $localize`:@@core.agent.kind.modelAnswer.description:One model answer, no tools or repository.`;
+}
+
+/** ADR 0060: "Full", "Read only", "Only these paths". */
+export function agentAccessModeLabel(mode: AgentAccessMode | null | undefined): string {
+  switch (mode) {
+    case 'READ_ONLY':
+      return $localize`:@@core.agent.access.readOnly:Read only`;
+    case 'PATHS':
+      return $localize`:@@core.agent.access.paths:Only these paths`;
+    default:
+      return $localize`:@@core.agent.access.full:Full`;
+  }
+}
+
+/** ADR 0060: what a coding agent may change, short: "Full", "Read only", "Only docs/**, README.md". */
+export function agentAccessText(access: AgentAccess | null | undefined): string {
+  if (access?.mode === 'PATHS') {
+    const paths = (access.paths ?? []).filter((x) => !!x.trim()).join(', ');
+    return paths
+      ? $localize`:@@core.agent.access.pathsList:Only ${paths}:paths:`
+      : agentAccessModeLabel('PATHS');
+  }
+  return agentAccessModeLabel(access?.mode);
 }
 
 /** Whether an agent (or agent reference) is a coding agent: it has a harness. */

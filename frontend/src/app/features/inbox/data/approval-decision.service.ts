@@ -42,7 +42,13 @@ export function optionStyle(option: string): {
   icon: string;
 } {
   const upper = option.toUpperCase();
-  if (upper === 'APPROVE' || upper === 'MERGE' || upper === 'ACCEPT' || upper === 'YES') {
+  if (
+    upper === 'APPROVE' ||
+    upper === 'MERGE' ||
+    upper === 'ACCEPT' ||
+    upper === 'YES' ||
+    upper === 'ANSWER'
+  ) {
     return { type: 'primary', danger: false, icon: 'check' };
   }
   if (upper === 'REJECT' || upper === 'CANCEL' || upper === 'NO' || upper === 'ABORT') {

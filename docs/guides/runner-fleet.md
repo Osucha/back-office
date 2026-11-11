@@ -62,9 +62,10 @@ the queue.
 Autoscaling: `GET /api/v1/runner/v2/pools/{poolId}/queue` (runner token) returns `{queued, running}` for a
 KEDA metrics-api scaler.
 
-### Run workspaces (ADR 0044)
+### Run directories (ADR 0044, 0060)
 
-Steps that name a run workspace keep `/workspace` between the steps of one run. On Docker (also personal runners)
+The coding steps of a run share its run directory: `/workspace` is kept between the steps of one run (a step with
+`directory: SEPARATE` gets a throwaway one). On Docker (also personal runners)
 that is a named volume `bo-ws-...`; on Kubernetes a ReadWriteOnce PVC in the sandbox namespace (chart value
 `workspaces.storageClass`, empty = the cluster default; the controller needs `create` / `delete` on
 persistentvolumeclaims, which the chart grants). The controller reports its workspaces every minute and deletes the

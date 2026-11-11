@@ -62,7 +62,11 @@ segment, aby zaznaczyć dany krok.
   pod krokiem jako *szablon · agent · model*, na przykład `implement-opencode · Claude Code · Claude Sonnet`, a fakty
   kroku mają wiersz **Agent** (z rodzajem agenta, gdy jego nazwa go nie mówi). Kroki wykonane, zanim zaczęto
   zapisywać agentów, pokazują tylko szablon. Te zapisy zasilają
-  [Agenci: koszt i skuteczność](costs-insights.md#agent-insights).
+  [Agenci: koszt i skuteczność](costs-insights.md#agent-insights). Krok, który pracował poza
+  [katalogiem przebiegu](workflows.md#run-directory), ma wiersz **Katalog** (**Directory**): *osobny*.
+- **Pytania agenta.** Krok, którego agent zatrzymał się z pytaniami, pokazuje **czeka na Twoje odpowiedzi**; strona
+  uruchomienia mówi o tym i daje **Odpowiedz na pytania** (**Answer the questions**) albo **Zobacz pytania** (**View the
+  questions**), gdy odpowiada ktoś inny. Zob. [Odpowiadanie na pytania agenta](your-turn.md#agent-questions).
 - **Artefakty** to dokumenty wytworzone przez kroki: `spec`, `plan`, `tasks`, `review`, `diff` i inne.
   Wybierz artefakt, aby go przeczytać; **Kopiuj** (**Copy**) kopiuje treść.
 - **Logi** pokazują **Ten krok** (**This step**) lub **Wszystkie kroki** (**All steps**). Włącz

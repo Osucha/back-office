@@ -2,6 +2,7 @@ package pl.mos.backoffice.tasks.domain.service
 
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.ParameterSource
@@ -23,10 +24,12 @@ import java.util.UUID
  * Result of rule 5: every skill, rule and agent the step names exists, the agent can do the work (ADR 0056) and the
  * parameter values fit (ADR 0058), or the list of problems.
  */
-data class ResolutionCheck(val ok: Boolean, val problems: List<String>) {
+data class ResolutionCheck(val ok: Boolean, val problems: List<String>, val warnings: List<String> = emptyList()) {
     companion object {
         val OK = ResolutionCheck(true, emptyList())
-        fun of(problems: List<String>) = ResolutionCheck(problems.isEmpty(), problems)
+
+        /** [warnings] (ADR 0060: required skills the agent lacks) never block. */
+        fun of(problems: List<String>, warnings: List<String> = emptyList()) = ResolutionCheck(problems.isEmpty(), problems, warnings)
     }
 }
 
@@ -114,7 +117,7 @@ data class TaskResolution(
  *    with `null` deleting; list fields unioned; run inputs and parameters unioned by name, child wins; parameter
  *    values nearest wins),
  * 4. node overrides (the step's agent and model win; model: step, else agent, else lineage),
- * 5. ADR 0057: the agent's environment: skills are the agent's plus the step's `addSkills` minus its `removeSkills`;
+ * 5. ADR 0057: the agent's environment: the agent's skills (ADR 0060: no step adds or removes any);
  *    rules are the automatic ones (global, then the project's) and then the agent's (ADR 0055: a skill key that names a
  *    rule, as skills turned rules did, counts as that rule); every one must exist,
  * 6. the agent looked up and checked against the work (Spec Kit phase, push or prepareOnly need a coding agent),
@@ -165,7 +168,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             .applyOverrides(overrides)
         val agentKey = merged.agentKey ?: AgentSnapshot.MODEL_ANSWER
 
-        val environment = environment(agentKey, projectId, overrides.addSkills, overrides.removeSkills)
+        val environment = environment(agentKey, projectId)
         val agent = environment.agent
         val skills = environment.skills
         val rules = environment.rules
@@ -173,6 +176,13 @@ class TaskResolver(private val lookup: LibraryLookup) {
         problems += compatibilityProblems(agent, merged.config)
         val parameters = Parameters.resolve(merged.parameters, merged.parameterValues, overrides.parameters, leaf.key)
         problems += parameters.second
+        // ADR 0060: the agent's environment is set once; a step whose agent lacks a skill the work needs is warned
+        val warnings = if (environment.found) {
+            merged.requiresSkills.filter { key -> skills.none { it.key == key } }
+                .map { "agent ${agent.key} lacks skill $it, which template ${leaf.key} requires: add it to the agent or choose another agent" }
+        } else {
+            emptyList()
+        }
 
         return TaskResolution(
             version = leaf.version,
@@ -194,7 +204,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             tags = merged.tags,
             abstract = leaf.abstract,
             projectId = projectId,
-            check = ResolutionCheck.of(problems),
+            check = ResolutionCheck.of(problems, warnings),
             runInputs = merged.runInputs,
             rules = rules,
             parameters = parameters.first,
@@ -202,18 +212,13 @@ class TaskResolver(private val lookup: LibraryLookup) {
     }
 
     /**
-     * Rule 5 (ADR 0057): the environment of agent [agentKey] for [projectId]: its skills plus [addSkills] minus
-     * [removeSkills] (a skill key that names a rule counts as that rule), the automatic rules (global, then the project's)
-     * and then the agent's. An unknown agent (other than the built-in model answer) and missing skills or rules are
-     * [AgentEnvironmentResolution.problems]; [AgentEnvironmentResolution.found] says whether the agent exists.
-     * ADR 0059: benchmarks use it for their candidates.
+     * Rule 5 (ADR 0057): the environment of agent [agentKey] for [projectId]: its skills (a skill key that names a rule
+     * counts as that rule), the automatic rules (global, then the project's) and then the agent's. An unknown agent (other
+     * than the built-in model answer) and missing skills or rules are [AgentEnvironmentResolution.problems];
+     * [AgentEnvironmentResolution.found] says whether the agent exists. ADR 0059: benchmarks use it for their candidates.
+     * ADR 0060: steps no longer add or remove skills (the environment is set once, on the agent).
      */
-    fun environment(
-        agentKey: String,
-        projectId: UUID?,
-        addSkills: List<String> = emptyList(),
-        removeSkills: List<String> = emptyList(),
-    ): AgentEnvironmentResolution {
+    fun environment(agentKey: String, projectId: UUID?): AgentEnvironmentResolution {
         val problems = mutableListOf<String>()
         val stored = lookup.visibleAgent(agentKey, projectId)?.snapshot
         val agent = stored ?: when (agentKey) {
@@ -221,8 +226,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             else -> { problems += "agent $agentKey does not exist"; AgentSnapshot(agentKey, agentKey) }
         }
         val listedRules = agent.rules.toMutableList()
-        val skillKeys = (agent.skills + addSkills).distinct().filter { it !in removeSkills }
-        val skills = skillKeys.mapNotNull { skillKey ->
+        val skills = agent.skills.distinct().mapNotNull { skillKey ->
             val skill = lookup.visibleSkill(skillKey, projectId)
             when {
                 skill != null -> SkillSnapshot(skill.key, skill.name, skill.content)
@@ -249,10 +253,16 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val found: Boolean,
     )
 
-    /** ADR 0056 decision 4: work the agent cannot do (ADR 0057 lifted the output schema restriction). */
+    /**
+     * ADR 0056 decision 4: work the agent cannot do (ADR 0057 lifted the output schema restriction). ADR 0060: a
+     * read-only coding agent on a step that pushes (a coding step pushes unless `push: false` or `prepareOnly`).
+     */
     private fun compatibilityProblems(agent: AgentSnapshot, config: Map<String, Any?>): List<String> = buildList {
         val needs = codingAgentReason(config)
         if (agent.modelAnswer && needs != null) add("$needs needs a coding agent; agent ${agent.key} gives a model answer")
+        if (!agent.modelAnswer && agent.access.mode == AgentAccessMode.READ_ONLY && codingStepPushes(config)) {
+            add("agent ${agent.key} may only read (access READ_ONLY) but the step pushes: set push to false or choose another agent")
+        }
     }
 
     /** Accumulator of the root-to-leaf merge; [modelProfileId] is the lineage's (the step's comes after the agent's). */
@@ -272,6 +282,8 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val parameters: List<TemplateParameter> = emptyList(),
         /** Parameter values of the lineage: name to (value, template key that set it); the nearest template wins. */
         val parameterValues: Map<String, Pair<Any?, String>> = emptyMap(),
+        /** ADR 0060: skills the lineage requires, unioned. */
+        val requiresSkills: List<String> = emptyList(),
     ) {
         fun merge(t: TaskTemplate): Merged = Merged(
             agentKey = t.agentKey ?: legacyAgentKey(t.config) ?: agentKey,
@@ -288,6 +300,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             runInputs = byName(runInputs, t.runInputs) { it.name },
             parameters = byName(parameters, t.parameters) { it.name },
             parameterValues = parameterValues + t.parameterValues.filterValues(Parameters::present).mapValues { (_, v) -> v to t.key },
+            requiresSkills = (requiresSkills + t.requiresSkills).distinct(),
         )
 
         fun applyOverrides(o: TaskOverrides): Merged = copy(
@@ -372,6 +385,10 @@ class TaskResolver(private val lookup: LibraryLookup) {
             config["prepareOnly"] == true -> "prepareOnly"
             else -> null
         }
+
+        /** ADR 0031/0044: a coding step pushes unless `push` is false or it only prepares the run directory. */
+        fun codingStepPushes(config: Map<String, Any?>): Boolean =
+            config["push"]?.toString()?.lowercase() != "false" && config["prepareOnly"]?.toString()?.lowercase() != "true"
 
         /** Output ports of every task node. */
         val DEFAULT_PORTS: List<String> = listOf("success", "failure")

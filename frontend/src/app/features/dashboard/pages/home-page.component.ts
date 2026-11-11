@@ -499,7 +499,9 @@ export class HomePageComponent {
     };
     for (const run of this.flight()) {
       const gate =
-        run.waitingOn?.kind === 'HUMAN_GATE' || run.waitingOn?.kind === 'WRITE_CONFIRMATION';
+        run.waitingOn?.kind === 'HUMAN_GATE' ||
+        run.waitingOn?.kind === 'WRITE_CONFIRMATION' ||
+        run.waitingOn?.kind === 'AGENT_QUESTIONS';
       if (gate && run.waitingOn?.approvalId && mine.has(run.waitingOn.approvalId)) continue;
       const baton = batonOf.run(run, gate ? { canDecide: false } : {});
       const id: FlightGroup['id'] =

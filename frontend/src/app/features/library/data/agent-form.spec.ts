@@ -1,6 +1,10 @@
 import type { Agent } from '../../../core/api/types';
 import {
+  ACCESS_MODES,
   AGENT_KINDS,
+  accessMode,
+  accessPaths,
+  accessProblem,
   addMcpServer,
   agentDraft,
   agentPayload,
@@ -14,6 +18,8 @@ import {
   mcpServerProblem,
   patchMcpServer,
   removeMcpServer,
+  withAccessMode,
+  withAccessPaths,
 } from './agent-form';
 
 describe('agent form (ADR 0056/0057)', () => {
@@ -126,6 +132,29 @@ describe('agent form (ADR 0056/0057)', () => {
     expect(
       agentPayload({ ...emptyAgent(), harness: null, mcpServers: servers }).mcpServers,
     ).toEqual([]);
+  });
+
+  it('edits the access of a coding agent and sends it only for coding agents (ADR 0060)', () => {
+    const coder = { ...emptyAgent(), name: 'Doc writer', harness: 'OPENCODE' as const };
+    expect(accessMode(coder)).toBe('FULL');
+    const paths = withAccessMode(coder, 'PATHS');
+    expect(accessProblem(paths)).toBe(true);
+    expect(agentSavable(paths)).toBe(false);
+    const docs = withAccessPaths(paths, [' docs/** ', '', 'docs/**', 'README.md']);
+    expect(accessPaths(docs)).toEqual(['docs/**', 'README.md']);
+    expect(agentSavable(docs)).toBe(true);
+    expect(agentPayload(docs).access).toEqual({ mode: 'PATHS', paths: ['docs/**', 'README.md'] });
+    // switching mode keeps the paths for a switch back, but sends none
+    const readOnly = withAccessMode(docs, 'READ_ONLY');
+    expect(readOnly.access?.paths).toHaveLength(4);
+    expect(agentPayload(readOnly).access).toEqual({ mode: 'READ_ONLY' });
+    expect(agentPayload({ ...docs, harness: null }).access).toBeUndefined();
+    expect(agentPayload(coder).access).toBeUndefined();
+    expect(agentDraft({ ...saved, access: { mode: 'READ_ONLY' } }).access).toEqual({
+      mode: 'READ_ONLY',
+      paths: [],
+    });
+    expect(ACCESS_MODES).toEqual(['FULL', 'READ_ONLY', 'PATHS']);
   });
 
   it('edits the MCP server rows', () => {

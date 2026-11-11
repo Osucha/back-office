@@ -71,10 +71,6 @@ import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
-import pl.mos.backoffice.projects.domain.model.ProjectWorkspaceId
-import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
-import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 import pl.mos.backoffice.projects.domain.model.CiExecutionStatus
 import pl.mos.backoffice.projects.application.port.`in`.CiExecutionQueries
 import pl.mos.backoffice.shared.usage.SortSpec
@@ -90,7 +86,6 @@ class PersistenceRoundTripTest {
     @Autowired lateinit var approvals: ApprovalRequestRepository
     @Autowired lateinit var executions: CiExecutionRepository
     @Autowired lateinit var logs: RunLogRepository
-    @Autowired lateinit var workspaces: ProjectWorkspaceRepository
 
     private val now = Instant.now().truncatedTo(ChronoUnit.MICROS)
 
@@ -138,25 +133,6 @@ class PersistenceRoundTripTest {
         assertThat(tokens.findByHash("hash-1")).isEqualTo(token)
         assertThat(tokens.save(token.revoke(now)).revokedAt).isEqualTo(now)
         assertThat(tokens.findByProjectId(project.id).single().revoked).isTrue()
-    }
-
-    @Test
-    fun `project workspaces round-trip, unique per project and gone with the project (ADR 0044)`() {
-        val project = project("RTW")
-        val main = ProjectWorkspace(
-            ProjectWorkspaceId.new(), project.id, "main", "Main workspace", "shared clones",
-            listOf(WorkspaceSource("main"), WorkspaceSource("standards", library = true)), "npm ci", listOf("implementer", "reviewer"), now, now, alice,
-        )
-        workspaces.save(main)
-        workspaces.save(ProjectWorkspace(ProjectWorkspaceId.new(), project.id, "docs", createdAt = now, updatedAt = now))
-        assertThat(workspaces.findById(main.id)).isEqualTo(main)
-        assertThat(workspaces.findByProjectId(project.id).map { it.key }).containsExactly("docs", "main")
-        workspaces.save(main.copy(name = "Renamed", roles = emptyList()))
-        assertThat(workspaces.findById(main.id)!!.name).isEqualTo("Renamed")
-        workspaces.delete(main.id)
-        assertThat(workspaces.findByProjectId(project.id).map { it.key }).containsExactly("docs")
-        projects.delete(project.id)
-        assertThat(workspaces.findByProjectId(project.id)).isEmpty()
     }
 
     @Test

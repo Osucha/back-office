@@ -66,6 +66,8 @@ export function optionState(
  */
 export function quickDecisionOptions(approval: ApprovalRequest): string[] {
   if (approval.canDecide === false || (approval.status && approval.status !== 'OPEN')) return [];
+  // ADR 0060: agent questions need answers (the panel), never a one-click decision
+  if (approval.kind === 'AGENT_QUESTIONS') return [];
   const hasRequired = (approval.checklist ?? []).some(isRequired);
   return (approval.options ?? []).filter(
     (o) => !needsComment(o) && !(isApproveOption(o) && hasRequired),

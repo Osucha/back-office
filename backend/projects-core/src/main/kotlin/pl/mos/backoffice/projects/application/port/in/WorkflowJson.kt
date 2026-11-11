@@ -36,6 +36,9 @@ import java.util.UUID
  *
  * ADR 0056 compatibility on read (stored definitions, library versions and run snapshots alike): a TASK node naming a
  * former action template is read as the ACTION node, and the step config key `agent` as `overrides.agentKey`.
+ * ADR 0060 compatibility on read: the step config key `workspace` (ADR 0044 run workspaces) is dropped, every coding step
+ * works in the run directory; `addSkills` / `removeSkills` are ignored. A legacy `sessionRole` stays in the config and is
+ * read when the run plans the step (RunDirectory): steps sharing it keep sharing their session.
  */
 
 data class PointJson(val x: Double = 0.0, val y: Double = 0.0)
@@ -46,8 +49,10 @@ data class TaskOverridesJson(
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
     val promptReplace: String? = null,
-    val addSkills: List<String> = emptyList(),
-    val removeSkills: List<String> = emptyList(),
+    /** ADR 0060: removed (the environment is the agent's); read and ignored, never written. */
+    val addSkills: List<String>? = null,
+    /** ADR 0060: removed; read and ignored, never written. */
+    val removeSkills: List<String>? = null,
     val config: Map<String, Any?> = emptyMap(),
     /** ADR 0058: the step's parameter values; absent in workflows stored before it. */
     val parameters: Map<String, Any?> = emptyMap(),
@@ -104,6 +109,8 @@ data class WorkflowDocumentJson(
     val triggers: List<TriggerJson> = listOf(TriggerJson()),
     val enabled: Boolean = true,
     val canvas: CanvasJson? = null,
+    /** ADR 0060: runs once per run directory before the first coding step. */
+    val setupCommand: String? = null,
 )
 
 /** Conversions between the JSON shape and the sealed domain model. Kind/section mismatches are validation errors. */
@@ -187,17 +194,20 @@ object WorkflowJson {
             systemPromptAppend = o.systemPromptAppend?.takeIf { it.isNotBlank() },
             promptAppend = o.promptAppend?.takeIf { it.isNotBlank() },
             promptReplace = o.promptReplace?.takeIf { it.isNotBlank() },
-            addSkills = o.addSkills,
-            removeSkills = o.removeSkills,
-            config = if (legacy != null) o.config - LEGACY_AGENT_KEY else o.config,
+            config = (if (legacy != null) o.config - LEGACY_AGENT_KEY else o.config) - LEGACY_WORKSPACE_KEY,
             parameters = o.parameters,
         )
     }
 
-    fun toJson(o: TaskOverrides) = TaskOverridesJson(o.agentKey, o.modelProfileId?.value, o.systemPromptAppend, o.promptAppend, o.promptReplace, o.addSkills, o.removeSkills, o.config, o.parameters)
+    fun toJson(o: TaskOverrides) = TaskOverridesJson(
+        o.agentKey, o.modelProfileId?.value, o.systemPromptAppend, o.promptAppend, o.promptReplace, config = o.config, parameters = o.parameters,
+    )
 
     /** The former config key that chose the coding agent harness of a step. */
     private const val LEGACY_AGENT_KEY = "agent"
+
+    /** ADR 0044 run workspace of a step; ADR 0060: dropped, the run directory replaces it. */
+    const val LEGACY_WORKSPACE_KEY = "workspace"
 
     private fun legacyAgentKey(config: Map<String, Any?>): String? =
         (config[LEGACY_AGENT_KEY] as? String)?.let { value -> AgentHarness.entries.firstOrNull { it.name == value } }?.let { AgentSnapshot.keyOf(it) }
@@ -247,6 +257,7 @@ object WorkflowJson {
         triggers = d.triggers.map { toDomain(it) }.ifEmpty { listOf(Trigger(TriggerType.MANUAL)) },
         enabled = d.enabled,
         canvas = toDomain(d.canvas),
+        setupCommand = d.setupCommand?.takeIf { it.isNotBlank() },
     )
 
     fun toDocument(d: WorkflowDefinition) = WorkflowDocumentJson(
@@ -257,6 +268,7 @@ object WorkflowJson {
         triggers = d.triggers.map { toJson(it) },
         enabled = d.enabled,
         canvas = toJson(d.canvas),
+        setupCommand = d.setupCommand,
     )
 
     private fun defaultName(kind: NodeKind) = when (kind) {

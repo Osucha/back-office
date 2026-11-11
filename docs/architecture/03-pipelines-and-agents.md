@@ -146,7 +146,7 @@ connection capabilities), not tasks.
 | Way of running | When | Implementation | Inputs / outputs |
 |---|---|---|---|
 | model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; system prompt = environment document, then the template's system prompt, then the skills in a `<skills>` section (PROMPT jobs of ADR 0050 get the same as `systemPrompt`); template rendered with `issue`, `artifacts.*`, `feedback`, `params.*`, `project.*`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
-| Spec Kit job (former `SPEC_KIT`) | coding agent (OpenCode, Claude Code) and the config key `phase` | runner Job, `mode = SPEC_KIT`, phase from config; environment document in `spec.instructions`, the agent's MCP servers in `spec.mcpServers`; skills written to the workspace; artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
+| Spec Kit job (former `SPEC_KIT`) | coding agent (OpenCode, Claude Code) and the config key `phase` | runner Job, `mode = SPEC_KIT`, phase from config; environment document in `spec.instructions`, the agent's MCP servers in `spec.mcpServers`; skills written to the agent's home (ADR 0060); artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
 | agent job (former `IMPLEMENT`) | coding agent otherwise | runner Job, `mode = IMPLEMENT`, the agent's harness; `spec.instructions`, `spec.mcpServers` as above; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff`, `mr`; without a push the final answer is the `result` artefact |
 
 The resolver reports a problem (the step cannot run) when a template needs a coding agent (Spec Kit `phase`,
@@ -158,14 +158,45 @@ as the artefact `structured-answer`, keeps it out of the commit and removes a st
 `StructuredAnswers` parses it and applies the same schema check, confidence field and produced artefacts as a model
 answer. A missing or invalid answer fails the step with the reasons.
 
-**Continuing a session (ADR 0057).** Config `continueSession: <node id>` on a coding agent step continues the agent
-session of that earlier step. `SessionContinuation` gives both steps the same run workspace (the earlier step's
-`workspace`, else the implicit workspace `run`, which every project has without defining it) and the same session
-role (the earlier step's `sessionRole`, else one derived from its node id); the ADR 0044 mechanics do the rest
-(Claude Code `--resume`, OpenCode `--continue`). The designer validation and the check before a run
-(`RepositoryStepCheck`) refuse a reference to a step that does not exist, is not a coding agent step or uses another
-harness (a Claude Code session cannot continue in OpenCode). Because the rules live in the environment document and
-not in the prompt, a continued session does not receive them again.
+**Run directory and sessions (ADR 0060, replacing the run workspaces of ADR 0044).** Every run has one run directory:
+the coding steps whose config `directory` is `RUN` (default) work in it one after another (the runner workspace
+with key `run`, ADR 0044 leasing and volumes unchanged); `SEPARATE` gives a step a throwaway directory with only its
+repositories and no session. `WorkflowDefinition.setupCommand` runs once per run directory before the first coding
+step (again when it changes). `RunDirectory` reads the step config: `session` `OWN` (default; the step's own session
+role, so repeated executions such as rework loops or answered questions continue it), `NEW` (no session role) or
+`CONTINUE` with `continueSession: <node id>` (the session role of that step, ADR 0057). The designer validation and
+the check before a run (`RepositoryStepCheck`) refuse a reference to a step that does not exist or is not a coding
+agent step, a step of another agent (the session lives in the agent's home) and a `SEPARATE` target. Claude Code
+resumes with `--resume`, OpenCode with `--continue`. Because the rules live in the environment document and not in
+the prompt, a continued session does not receive them again. Compatibility: the stored step key `workspace` is
+dropped when workflows are read; `sessionRole` without `session` is the step's own session role, so steps that
+shared one keep sharing their session; `prepareOnly` steps (`prepare-workspace`, deprecated) prepare the run
+directory. Migration `V121__run_directory_and_agent_questions.sql` moved a project workspace's `setupCommand` to the
+workflows whose steps named it and its sources to the `repositories` of those steps that had none, then dropped
+`project_workspace`.
+
+**Agent home and access (ADR 0060).** Every coding job names its agent's home (`RunnerJobSpec.agentHome` = the agent
+key): `/workspace/.agents/<key>/` holds the environment document, skills, MCP configuration and sessions (Claude Code
+`CLAUDE_CONFIG_DIR`; OpenCode `OPENCODE_CONFIG_DIR` and the data directory per session role). Nothing of an agent is
+written into a repository. `Agent.access` (`FULL` default, `READ_ONLY`, `PATHS` with globs) travels as
+`RunnerJobSpec.access` when not `FULL`; the runner applies it as harness tool rules and reverts changes outside it
+after the agent (runner README, "Agent home, access and questions"). A `READ_ONLY` agent on a pushing step is a
+resolution problem. The environment is set once, on the agent: `TaskOverrides.addSkills` / `removeSkills` are gone
+(stored steps are read without them); a template's `requiresSkills` (inherited, unioned) the agent lacks becomes a
+`check.warnings` entry, not a problem.
+
+**Agent questions (ADR 0060).** When the step allows it (config `allowQuestions`, default true; `maxQuestionRounds`,
+default 2), the platform preamble tells the agent how to ask. A model answer that replies with only
+`{"agentQuestions": [...]}`, or a coding agent that writes `agent-questions.json` (`{"questions": [{"question",
+"why"?}]}`, collected as the artefact `agent-questions`, never committed) does not finish the step: `StepQuestions`
+turns the result into questions, and the engine routes to the node's `<id>::questions` node (`interruptBefore`, like
+`<id>::confirm`), which opens an `ApprovalRequest` of kind `AGENT_QUESTIONS` (options `answer`, `cancel`; questions,
+round and limit on the approval; run `waitingOn.kind = AGENT_QUESTIONS`). `answer` runs the step again in the same
+execution with the comment as `{{answers}}` (section "Answers of the owner" appended to the prompt; a coding agent
+continues its own session); `cancel` fails the step. Over the limit the questions are written to the step log and the
+step fails ("the agent asked more than N rounds of questions"). What asking cost is added to the step's final result.
+Decisions are audited as `RUN_AGENT_QUESTIONS_ANSWERED`.
+
 `GET /workflows/task-config-schemas` returns the config schema of model answer and coding agent steps (it replaced
 `/workflows/task-executors`). The former config key `agent` of a stored step is read as `overrides.agentKey`.
 
@@ -319,8 +350,11 @@ Unchanged from the first iteration except for these additions, all optional:
 
 | Field | Meaning |
 |---|---|
-| `spec.skills[]` | `{key, name, content}` written to `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md` before the agent starts |
-| `spec.instructions` | ADR 0057: the environment document; OpenCode `/workspace/.backoffice-agent/AGENTS.md` listed under `instructions` of `opencode.json`, Claude Code the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md`; outside every repository, covered by the spec digest |
+| `spec.skills[]` | `{key, name, content}` written to `<agent home>/skills/<key>/SKILL.md` before the agent starts (ADR 0060); without `agentHome` (older Back Office) to `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md` |
+| `spec.instructions` | ADR 0057: the environment document; with `agentHome` the home's `CLAUDE.md` (Claude Code user memory, `CLAUDE_CONFIG_DIR` = the home) or `AGENTS.md` listed under `instructions` of the home's `opencode.json` (OpenCode); without it OpenCode `/workspace/.backoffice-agent/AGENTS.md` and Claude Code `$CLAUDE_CONFIG_DIR/CLAUDE.md`; outside every repository, covered by the spec digest |
+| `spec.agentHome` | ADR 0060: the agent key; everything of the agent (environment, skills, MCP configuration, sessions) lives in `/workspace/.agents/<agentHome>/`, nothing in a repository; covered by the spec digest |
+| `spec.access` | ADR 0060: `{mode, paths}` with mode `READ_ONLY` or `PATHS` (absent = FULL); harness tool rules plus the runner's revert after the agent; the result's `access.reverted[]` lists what was undone; covered by the spec digest |
+| `spec.workspace` | ADR 0044: `{name, key, sessionRole, prepareOnly, setupCommand}`; since ADR 0060 the key is always `run` (the run directory); absent for a `SEPARATE` step |
 | `spec.mcpServers[]` | ADR 0057: `{name, url}` remote MCP servers of the agent; OpenCode `mcp` entries of type `remote`, Claude Code `--mcp-config`; invalid entries are skipped with a warning |
 | `spec.repository.mergeRequest` | `{create, title, description, targetBranch, draft}` → `git push -o merge_request.create -o merge_request.target=<t> -o merge_request.title=<title> [-o merge_request.draft]`; the runner reads the MR URL GitLab prints on push and returns it as `result.mergeRequestUrl` |
 | `spec.collectDiff` | when true the runner returns `git diff <baseRef>...HEAD` (≤ 2 MB) as `result.diff` |

@@ -42,8 +42,6 @@ tags:
     description: Personal work (ADR 0038), personal Jira intake rules and the run proposals they create
   - name: workflow-library
     description: Versioned workflows published from projects and adopted by other projects as linked copies (ADR 0037)
-  - name: project-workspaces
-    description: Run workspaces of a project shared by its workflows (sources, setup, agent roles; ADR 0044)
   - name: library-sources
     description: Sources of the library (git repositories of standards, templates, reference material) that steps of every project attach read-only (ADR 0043)
   - name: llm-providers
@@ -1155,40 +1153,6 @@ paths:
         '404': { $ref: '#/components/responses/Problem' }
 
   # ---------------------------------------------------------------- workflow library (ADR 0037)
-  /projects/{projectId}/workspaces:
-    parameters: [ { name: projectId, in: path, required: true, schema: { type: string, format: uuid } } ]
-    get:
-      tags: [project-workspaces]
-      operationId: listProjectWorkspaces
-      description: 'Run workspaces of the project (project.view; ADR 0044).'
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ProjectWorkspace' } } } } }
-    post:
-      tags: [project-workspaces]
-      operationId: createProjectWorkspace
-      description: 'Adds a run workspace (project.manage). Sources must be repositories of the project or library sources.'
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspaceInput' } } } }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspace' } } } }
-        '400': { $ref: '#/components/responses/Problem' }
-  /projects/{projectId}/workspaces/{workspaceId}:
-    parameters:
-      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
-      - { name: workspaceId, in: path, required: true, schema: { type: string, format: uuid } }
-    put:
-      tags: [project-workspaces]
-      operationId: updateProjectWorkspace
-      description: 'Changes a workspace (project.manage); the key cannot change because workflow steps refer to it.'
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspaceInput' } } } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectWorkspace' } } } }
-        '400': { $ref: '#/components/responses/Problem' }
-    delete:
-      tags: [project-workspaces]
-      operationId: deleteProjectWorkspace
-      description: 'Removes a workspace (project.manage). Steps that still name it fail validation and are kept as drafts.'
-      responses:
-        '204': { description: Deleted }
   /library/sources:
     get:
       tags: [library-sources]
@@ -2790,16 +2754,16 @@ components:
         systemPromptAppend: { type: string, nullable: true }
         promptAppend: { type: string, nullable: true }
         promptReplace: { type: string, nullable: true }
-        addSkills: { type: array, items: { type: string }, description: 'skills this step adds to its agent''s (ADR 0057)' }
-        removeSkills: { type: array, items: { type: string }, description: 'skills of the agent this step drops' }
         parameters: { type: object, additionalProperties: true, description: 'ADR 0058: values of the template''s parameters for this step (win over template values and defaults)' }
         config:
           type: object
           additionalProperties: true
           description: >-
-            Template config overrides. ADR 0057: `continueSession: <node id>` on a coding agent step continues the agent
-            session of that earlier step (same run workspace and session role; the implicit workspace `run` when the
-            earlier step names none).
+            Template config overrides. ADR 0060 keys of coding agent steps: `directory` RUN (default, the run
+            directory) or SEPARATE (a fresh directory with only the step's repositories); `session` OWN (default,
+            repeated executions continue the step's own session), NEW, or CONTINUE with `continueSession: <node id>`
+            (share the session of an earlier step of the same agent). All agent steps: `allowQuestions` (default
+            true) and `maxQuestionRounds` (default 2). `workspace` and `sessionRole` of ADR 0044 are read compatibly.
     DecisionBranch:
       type: object
       required: [id, label, expression]
@@ -2898,40 +2862,8 @@ components:
         edges: { type: array, items: { $ref: '#/components/schemas/WorkflowEdge' } }
         triggers: { type: array, items: { $ref: '#/components/schemas/Trigger' } }
         enabled: { type: boolean, default: true }
+        setupCommand: { type: string, nullable: true, description: 'ADR 0060: runs once per run directory before the first coding step (again when it changes)' }
         canvas: { type: object, nullable: true, properties: { zoom: { type: number }, x: { type: number }, y: { type: number } } }
-    ProjectWorkspaceInput:
-      type: object
-      description: >-
-        ADR 0044: a run workspace of a project, used by any of its workflows. Coding steps pick it by key
-        (config.workspace) and share /workspace within one run; steps without repositories of their own work on its
-        sources (the project's primary among them gets the step's push access, the others READ); setupCommand runs once
-        per workspace; roles are the agent session roles its steps may continue (any when empty). The key cannot change.
-      required: [key]
-      properties:
-        key: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' }
-        name: { type: string, description: 'shown on the canvas; default the key' }
-        description: { type: string }
-        sources:
-          type: array
-          items:
-            type: object
-            required: [key]
-            properties:
-              key: { type: string, description: 'project repository key, or library source key when library is true' }
-              library: { type: boolean, default: false }
-        setupCommand: { type: string, nullable: true }
-        roles: { type: array, items: { type: string, pattern: '^[a-z][a-z0-9-]{0,19}$' } }
-    ProjectWorkspace:
-      allOf:
-        - $ref: '#/components/schemas/ProjectWorkspaceInput'
-        - type: object
-          required: [id, projectId, name, sources, roles, createdAt, updatedAt]
-          properties:
-            id: { type: string, format: uuid }
-            projectId: { type: string, format: uuid }
-            createdAt: { type: string, format: date-time }
-            updatedAt: { type: string, format: date-time }
-            updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], nullable: true }
     WorkflowDefinition:
       allOf:
         - $ref: '#/components/schemas/WorkflowDefinitionInput'
@@ -3314,7 +3246,7 @@ components:
           type: object
           nullable: true
           properties:
-            kind: { type: string, enum: [HUMAN_GATE, WAIT_FOR_CI, WRITE_CONFIRMATION], description: 'WRITE_CONFIRMATION = a TASK node waits for a person to confirm its external write (ADR 0033)' }
+            kind: { type: string, enum: [HUMAN_GATE, WAIT_FOR_CI, WRITE_CONFIRMATION, AGENT_QUESTIONS], description: 'WRITE_CONFIRMATION = a TASK node waits for a person to confirm its external write (ADR 0033); AGENT_QUESTIONS = an agent step waits for answers to its questions (ADR 0060)' }
             nodeId: { type: string }
             approvalId: { type: string, format: uuid, nullable: true }
             signal: { type: string, nullable: true }
@@ -3417,8 +3349,18 @@ components:
         canAssign: { type: boolean, readOnly: true, description: 'whether the caller may assign this open approval (run.assign)' }
         kind:
           type: string
-          enum: [GATE, WRITE_CONFIRMATION]
-          description: 'GATE = a HUMAN_GATE node; WRITE_CONFIRMATION = a step waits to make the external write in `write` (ADR 0033)'
+          enum: [GATE, WRITE_CONFIRMATION, AGENT_QUESTIONS]
+          description: >-
+            GATE = a HUMAN_GATE node; WRITE_CONFIRMATION = a step waits to make the external write in `write` (ADR 0033);
+            AGENT_QUESTIONS = an agent step stopped with `questions` (ADR 0060): option `answer` with the answers in
+            the comment re-runs the step with them, `cancel` fails it
+        questions:
+          type: array
+          readOnly: true
+          description: 'AGENT_QUESTIONS only: what the agent asks, in order'
+          items: { type: object, required: [question], properties: { question: { type: string }, why: { type: string, nullable: true } } }
+        questionRound: { type: integer, nullable: true, readOnly: true, description: 'AGENT_QUESTIONS only: 1-based round of this step' }
+        maxQuestionRounds: { type: integer, nullable: true, readOnly: true, description: 'AGENT_QUESTIONS only: the step''s limit of question rounds' }
         write: { allOf: [ { $ref: '#/components/schemas/WritePreview' } ], nullable: true, readOnly: true }
     WritePreview:
       type: object
@@ -3600,6 +3542,16 @@ components:
       properties:
         name: { type: string, pattern: '^[a-z][a-z0-9-]{0,39}$' }
         url: { type: string, maxLength: 500, description: 'http:// or https:// URL of the MCP endpoint (streamable HTTP)' }
+    AgentAccess:
+      type: object
+      description: >-
+        ADR 0060: what a coding agent may change. FULL (default) anything; READ_ONLY nothing; PATHS only files matching
+        `paths` (globs relative to a repository root, e.g. docs/**). Enforced by the harness's tool rules and by the
+        runner, which reverts other changes after the agent finished and reports them.
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [FULL, READ_ONLY, PATHS], default: FULL }
+        paths: { type: array, items: { type: string }, description: PATHS only }
     AgentInput:
       type: object
       description: >-
@@ -3620,6 +3572,7 @@ components:
         rules: { type: array, items: { type: string }, description: 'ADR 0057: keys of rules always in the agent''s context (after the automatic ones)' }
         skills: { type: array, items: { type: string }, description: 'ADR 0057: keys of skills the agent loads when it needs them' }
         mcpServers: { type: array, items: { $ref: '#/components/schemas/AgentMcpServer' } }
+        access: { $ref: '#/components/schemas/AgentAccess' }
         tags: { type: array, items: { type: string } }
     Agent:
       allOf:
@@ -3670,6 +3623,7 @@ components:
         prompt: { $ref: '#/components/schemas/TaskPrompt' }
         parameters: { type: array, items: { $ref: '#/components/schemas/TemplateParameter' }, description: 'ADR 0058: parameters the prompt reads as {{params.<name>}}; inherited, child wins by name' }
         parameterValues: { type: object, additionalProperties: true, description: 'ADR 0058: values for parameters of the lineage (a preset); child wins, the step wins over all' }
+        requiresSkills: { type: array, items: { type: string }, description: 'ADR 0060: skills the work needs; a step whose agent lacks one gets a warning (inherited, unioned)' }
         config: { type: object, additionalProperties: true }
         outputSchema: { type: string, nullable: true, description: 'JSON Schema of a structured answer (model answers answer with it, coding agents write it to structured-answer.json, ADR 0057)' }
         confidenceField: { type: string, nullable: true }
@@ -3742,7 +3696,7 @@ components:
         runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0053) }
         parameters: { type: array, items: { $ref: '#/components/schemas/ResolvedParameter' }, description: 'ADR 0058: parameters with the value the step uses' }
         abstract: { type: boolean }
-        check: { type: object, description: 'skills, rules, agents and parameter values that are missing or wrong, and an agent that cannot do the work (ADR 0056-0058)', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } } } }
+        check: { type: object, description: 'skills, rules, agents and parameter values that are missing or wrong, and an agent that cannot do the work (ADR 0056-0058); warnings do not block (ADR 0060: required skills the agent lacks)', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } }, warnings: { type: array, items: { type: string } } } }
     SkillInput:
       type: object
       required: [name, content, scope]
@@ -5390,6 +5344,21 @@ components:
           properties:
             diffSha256: { type: string }
             logSha256: { type: string }
+        access:
+          type: object
+          nullable: true
+          description: 'ADR 0060: present when the job''s access was not FULL; changes outside it the runner reverted after the agent finished'
+          properties:
+            mode: { type: string, enum: [READ_ONLY, PATHS] }
+            paths: { type: array, items: { type: string } }
+            reverted:
+              type: array
+              items:
+                type: object
+                properties:
+                  repository: { type: string, nullable: true, description: 'repository key; null for the legacy single repository' }
+                  path: { type: string }
+                  change: { type: string, enum: [added, modified, deleted, type changed] }
         policy:
           type: object
           nullable: true
@@ -5490,6 +5459,19 @@ components:
             ADR 0057: remote MCP servers of the agent (no credentials); Claude Code --mcp-config, OpenCode `mcp` (type
             remote). The sandbox egress policy decides reachability. Covered by the spec digest when present.
           items: { $ref: '#/components/schemas/AgentMcpServer' }
+        agentHome:
+          type: string
+          nullable: true
+          pattern: '^[a-z][a-z0-9-]{1,63}$'
+          description: >-
+            ADR 0060: the agent key whose home /workspace/.agents/<agentHome>/ holds the environment document, skills, MCP
+            configuration and sessions of the agent (Claude Code CLAUDE_CONFIG_DIR; OpenCode config and data
+            directories); nothing is written into a repository. Absent (older Back Office): the ADR 0057 locations.
+            Covered by the spec digest when present.
+        access:
+          allOf: [ { $ref: '#/components/schemas/AgentAccess' } ]
+          nullable: true
+          description: 'ADR 0060: absent = FULL. Covered by the spec digest when present.'
         runId: { type: string, format: uuid, nullable: true, description: written as the `Back-Office-Run` git trailer }
         gitAccess: { $ref: '#/components/schemas/GitAccess' }
         specKit:

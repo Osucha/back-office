@@ -431,6 +431,33 @@ function invalidJson(e: unknown): string {
               </div>
             }
 
+            <nz-form-item data-requires-skills>
+              <nz-form-label
+                nzFor="tt-requires-skills"
+                i18n="@@library.templateEditor.requiresSkills"
+                >Required skills</nz-form-label
+              >
+              <nz-form-control
+                nzExtra="Skills the work needs. A step whose agent lacks one gets a warning (it still runs)."
+                i18n-nzExtra="@@library.templateEditor.requiresSkills.help"
+              >
+                <nz-select
+                  id="tt-requires-skills"
+                  name="requiresSkills"
+                  nzMode="multiple"
+                  nzShowSearch
+                  nzPlaceHolder="none"
+                  i18n-nzPlaceHolder="@@library.templateEditor.requiresSkills.none"
+                  [ngModel]="draft().requiresSkills ?? []"
+                  (ngModelChange)="patch({ requiresSkills: $event })"
+                >
+                  @for (s of requiredSkillOptions(); track s.key) {
+                    <nz-option [nzValue]="s.key" [nzLabel]="s.label" />
+                  }
+                </nz-select>
+              </nz-form-control>
+            </nz-form-item>
+
             <h3 class="sec" i18n="@@library.templateEditor.prompt">Prompt</h3>
             <nz-form-item>
               <nz-form-control>
@@ -1103,6 +1130,24 @@ function invalidJson(e: unknown): string {
                   </ul>
                 </ng-template>
               }
+              @if (pv.warnings.length) {
+                <nz-alert
+                  nzType="warning"
+                  nzShowIcon
+                  nzMessage="Warnings"
+                  i18n-nzMessage="@@library.templateEditor.checkWarnings"
+                  [nzDescription]="warningsTpl"
+                  style="margin-top: 8px"
+                  data-check-warnings
+                />
+                <ng-template #warningsTpl>
+                  <ul class="problems">
+                    @for (w of pv.warnings; track w) {
+                      <li>{{ w }}</li>
+                    }
+                  </ul>
+                </ng-template>
+              }
               <nz-tabs nzSize="small" style="margin-top: 8px">
                 <nz-tab
                   nzTitle="System prompt"
@@ -1726,6 +1771,15 @@ export class TemplateEditorDrawerComponent {
     return c
       ? $localize`:@@library.templateEditor.category.inheritedValue:inherited: ${categoryLabel(c)}:category:`
       : this.text.inherited;
+  });
+  /** ADR 0060: skills a template may require (by name; a key no longer in the library stays selectable). */
+  readonly requiredSkillOptions = computed(() => {
+    const byKey = new Map<string, { key: string; label: string }>();
+    for (const s of this.skills())
+      if (s.key) byKey.set(s.key, { key: s.key, label: s.name || s.key });
+    for (const k of this.draft().requiresSkills ?? [])
+      if (!byKey.has(k)) byKey.set(k, { key: k, label: k });
+    return [...byKey.values()];
   });
   /** Rules the step gets anyway (automatic, from the resolved preview). */
   readonly automatic = computed(() => automaticRules(this.preview()));

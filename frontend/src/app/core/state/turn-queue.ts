@@ -12,6 +12,7 @@ import type {
   Connection,
   WorkflowRunSummary,
 } from '../api/types';
+import { agentQuestions, isAgentQuestions, questionsCountText } from '../ui/agent-questions';
 import { batonOf } from '../ui/relay/baton';
 import { icu } from '../i18n/icu';
 import { formatCost } from '../ui/relay/format';
@@ -69,22 +70,34 @@ export function gateTurn(a: ApprovalRequest, userId?: string | null): TurnItem {
     .filter(Boolean)
     .join(' · ');
   const write = a.kind === 'WRITE_CONFIRMATION';
+  const questions = isAgentQuestions(a);
   return {
     id: `gate:${a.id}`,
     kind: 'gate',
     urgency: 0,
-    title: a.question || $localize`:@@core.turn.decisionNeeded:Decision needed`,
+    title: questions
+      ? $localize`:@@core.turn.questionsTitle:The agent has questions`
+      : a.question || $localize`:@@core.turn.decisionNeeded:Decision needed`,
     where: [a.projectKey, a.issueKey || a.workflowName, a.nodeId].filter((x): x is string => !!x),
-    why: write
-      ? [$localize`:@@core.turn.writeWhy:Nothing is written to Jira until you approve`, why]
+    why: questions
+      ? [
+          $localize`:@@core.turn.questionsWhy:The step waits for your answers: ${questionsCountText(agentQuestions(a).length)}:count:`,
+          why,
+        ]
           .filter(Boolean)
           .join(' · ')
-      : why,
+      : write
+        ? [$localize`:@@core.turn.writeWhy:Nothing is written to Jira until you approve`, why]
+            .filter(Boolean)
+            .join(' · ')
+        : why,
     since: a.createdAt ?? null,
     baton: batonOf.approval(a),
-    primary: write
-      ? { label: $localize`:@@core.turn.reviewWrite:Review the write`, keys: 'a' }
-      : { label: $localize`:@@core.turn.reviewGate:Review gate`, keys: 'a' },
+    primary: questions
+      ? { label: $localize`:@@core.turn.answerQuestions:Answer the questions`, keys: 'a' }
+      : write
+        ? { label: $localize`:@@core.turn.reviewWrite:Review the write`, keys: 'a' }
+        : { label: $localize`:@@core.turn.reviewGate:Review gate`, keys: 'a' },
     link: ['/inbox', a.id],
     approval: a,
   };

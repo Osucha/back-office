@@ -1,5 +1,5 @@
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { ApprovalRequest } from '../../../core/api/types';
@@ -87,6 +87,46 @@ describe('ApprovalDetailDrawerComponent checklist gating', () => {
     await settle(fixture);
     expect(document.querySelector('button.assign-btn')).toBeNull();
     expect(document.body.textContent).toContain('Approver');
+  });
+
+  it('shows the agent questions and sends the answers as one numbered comment (ADR 0060)', async () => {
+    const fixture = TestBed.createComponent(ApprovalDetailDrawerComponent);
+    fixture.componentRef.setInput('approval', {
+      ...approval,
+      kind: 'AGENT_QUESTIONS',
+      question: 'The agent has questions',
+      options: ['answer', 'cancel'],
+      checklist: [],
+      questionRound: 1,
+      maxQuestionRounds: 2,
+      questions: [
+        { question: 'Which database?', why: 'Two are configured' },
+        { question: 'Keep the old API?' },
+      ],
+    });
+    fixture.detectChanges();
+    await settle(fixture);
+    const c = fixture.componentInstance;
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('Which database?');
+    expect(text).toContain('Two are configured');
+    expect(text).toContain('Round 1 of 2');
+    expect(document.querySelectorAll('[data-answer]')).toHaveLength(2);
+    expect(document.querySelector('textarea.comment')).toBeNull();
+    expect(c.labelFor({ kind: 'AGENT_QUESTIONS' }, 'answer')).toBe('Answer and continue');
+    expect(c.labelFor({ kind: 'AGENT_QUESTIONS' }, 'cancel')).toBe('Cancel the step');
+    expect(c.state('answer')).toEqual({
+      enabled: false,
+      reason: 'Answer at least one question first',
+    });
+    expect(c.state('cancel').enabled).toBe(true);
+
+    c.setAnswer(0, 'Postgres');
+    expect(c.state('answer').enabled).toBe(true);
+    const http = TestBed.inject(HttpTestingController);
+    c.submit('answer');
+    const req = http.expectOne((r) => r.method === 'POST' && r.url.includes('/approvals/a1'));
+    expect(req.request.body).toEqual({ option: 'answer', comment: '1. Postgres\n2. -' });
   });
 
   it('shows the reason instead of buttons when the caller cannot decide', async () => {

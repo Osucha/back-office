@@ -73,8 +73,6 @@ export function estimateNodeSize(
           o.promptAppend ||
           o.promptReplace ||
           o.systemPromptAppend ||
-          o.addSkills?.length ||
-          o.removeSkills?.length ||
           (o.config && Object.keys(o.config).length))
       );
       // A library template shows its category row; without the palette assume one: too much

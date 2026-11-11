@@ -3,7 +3,16 @@
  * who works and how: a harness (none = one model answer), optionally a model (none = the defaults
  * for the step), instructions, rules, skills and - for coding agents - remote MCP servers.
  */
-import type { Agent, AgentHarness, AgentInput, AgentMcpServer } from '../../../core/api/types';
+import type {
+  Agent,
+  AgentAccessMode,
+  AgentHarness,
+  AgentInput,
+  AgentMcpServer,
+} from '../../../core/api/types';
+
+/** ADR 0060: the access modes the editor offers, in display order. */
+export const ACCESS_MODES: readonly AgentAccessMode[] = ['FULL', 'READ_ONLY', 'PATHS'];
 
 /** The kinds the editor offers, in display order (`null` = model answer). */
 export const AGENT_KINDS: ReadonlyArray<AgentHarness | null> = [null, 'OPENCODE', 'CLAUDE_CODE'];
@@ -52,8 +61,34 @@ export function agentDraft(a: Agent): AgentInput {
     rules: [...(a.rules ?? [])],
     skills: [...(a.skills ?? [])],
     mcpServers: (a.mcpServers ?? []).map((s) => ({ name: s.name, url: s.url })),
+    ...(a.access ? { access: { mode: a.access.mode, paths: [...(a.access.paths ?? [])] } } : {}),
     tags: [...(a.tags ?? [])],
   };
+}
+
+/** ADR 0060: the access mode of a draft (FULL when not set). */
+export function accessMode(d: Pick<AgentInput, 'access'>): AgentAccessMode {
+  return d.access?.mode ?? 'FULL';
+}
+
+/** ADR 0060: the draft with another access mode; the paths are kept while editing. */
+export function withAccessMode(d: AgentInput, mode: AgentAccessMode): AgentInput {
+  return { ...d, access: { mode, paths: [...(d.access?.paths ?? [])] } };
+}
+
+/** ADR 0060: the draft with the path globs of a PATHS access. */
+export function withAccessPaths(d: AgentInput, paths: readonly string[]): AgentInput {
+  return { ...d, access: { mode: accessMode(d), paths: [...paths] } };
+}
+
+/** ADR 0060: the path globs that count (trimmed, not empty, once). */
+export function accessPaths(d: Pick<AgentInput, 'access'>): string[] {
+  return [...new Set((d.access?.paths ?? []).map((p) => p.trim()).filter((p) => !!p))];
+}
+
+/** ADR 0060: a coding agent limited to paths names at least one. */
+export function accessProblem(d: Pick<AgentInput, 'harness' | 'access'>): boolean {
+  return !!d.harness && accessMode(d) === 'PATHS' && !accessPaths(d).length;
 }
 
 /** What is wrong with the MCP servers of a draft; null when nothing. */
@@ -94,7 +129,8 @@ export function agentSavable(d: AgentInput): boolean {
   return (
     !!d.name.trim() &&
     (d.scope.type !== 'PROJECT' || !!d.scope.projectId) &&
-    (!d.harness || !mcpServerProblem(d.mcpServers))
+    (!d.harness || !mcpServerProblem(d.mcpServers)) &&
+    !accessProblem(d)
   );
 }
 
@@ -103,11 +139,17 @@ export function agentSavable(d: AgentInput): boolean {
  * servers kept from an earlier coding kind would only confuse).
  */
 export function agentPayload(d: AgentInput): AgentInput {
+  const { access, ...rest } = d;
+  const mode = accessMode(d);
   return {
-    ...d,
+    ...rest,
     mcpServers: d.harness
       ? (d.mcpServers ?? []).map((s) => ({ name: s.name.trim(), url: s.url.trim() }))
       : [],
+    // ADR 0060: only coding agents change files; the paths only with PATHS
+    ...(d.harness && access
+      ? { access: mode === 'PATHS' ? { mode, paths: accessPaths(d) } : { mode } }
+      : {}),
   };
 }
 

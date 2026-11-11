@@ -14,6 +14,7 @@ import pl.mos.backoffice.projects.domain.model.ProjectJiraConnections
 import pl.mos.backoffice.projects.domain.model.ApprovalContext
 import pl.mos.backoffice.projects.domain.model.ApprovalKind
 import pl.mos.backoffice.projects.domain.model.PendingWrite
+import pl.mos.backoffice.projects.domain.model.AgentQuestion
 import pl.mos.backoffice.projects.domain.model.ApprovalAssignment
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.ApprovalRequestId
@@ -112,6 +113,8 @@ data class DefinitionDoc(
     val updatedBy: ActorDoc? = null,
     /** ADR 0037: absent in snapshots of runs started before the workflow library existed. */
     val library: LibraryLinkDoc? = null,
+    /** ADR 0060: the run directory's setup command; absent in older snapshots. */
+    val setupCommand: String? = null,
 )
 data class LibraryLinkDoc(val libraryWorkflowId: String, val key: String, val version: Int, val modified: Boolean = false)
 data class RunInputDoc(val issueKey: String? = null, val parameters: Map<String, Any?> = emptyMap(), val ci: Map<String, Any?>? = null)
@@ -279,7 +282,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         canvas = WorkflowJson.toJson(d.canvas)?.let { write(it) }, enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt,
         updatedBy = writeActor(d.updatedBy),
         libraryWorkflowId = d.library?.libraryWorkflowId?.value, libraryKey = d.library?.key, libraryVersion = d.library?.version,
-        libraryModified = d.library?.modified ?: false, draft = d.draft,
+        libraryModified = d.library?.modified ?: false, draft = d.draft, setupCommand = d.setupCommand,
     )
 
     fun toDomain(e: WorkflowDefinitionEntity): WorkflowDefinition = WorkflowDefinition(
@@ -287,7 +290,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = json.readValue(e.nodes, nodeList).map(WorkflowJson::toDomain), edges = json.readValue(e.edges, edgeList).map(WorkflowJson::toDomain),
         triggers = json.readValue(e.triggers, triggerList).map(WorkflowJson::toDomain), canvas = e.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
         enabled = e.enabled, createdAt = e.createdAt, updatedAt = e.updatedAt, updatedBy = readActor(e.updatedBy), library = libraryLink(e),
-        draft = e.draft,
+        draft = e.draft, setupCommand = e.setupCommand,
     )
 
     /** The library link of a definition row; a row without id, key or version has none. */
@@ -300,6 +303,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         d.id.toString(), d.projectId.toString(), d.name, d.description, d.version, d.nodes.map(WorkflowJson::toJson), d.edges.map(WorkflowJson::toJson),
         d.triggers.map(WorkflowJson::toJson), WorkflowJson.toJson(d.canvas), d.enabled, d.createdAt, d.updatedAt, d.updatedBy?.let(::toDoc),
         d.library?.let { LibraryLinkDoc(it.libraryWorkflowId.toString(), it.key, it.version, it.modified) },
+        d.setupCommand,
     )
 
     fun toDomain(d: DefinitionDoc): WorkflowDefinition = WorkflowDefinition(
@@ -307,6 +311,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = d.nodes.map(WorkflowJson::toDomain), edges = d.edges.map(WorkflowJson::toDomain), triggers = d.triggers.map(WorkflowJson::toDomain),
         canvas = WorkflowJson.toDomain(d.canvas), enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt, updatedBy = d.updatedBy?.let(::toDomain),
         library = d.library?.let { LibraryLink(LibraryWorkflowId.of(it.libraryWorkflowId), it.key, it.version, it.modified) },
+        setupCommand = d.setupCommand,
     )
 
     // ---- LibraryWorkflow (ADR 0037)
@@ -321,7 +326,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = write(v.nodes.map(WorkflowJson::toJson)), edges = write(v.edges.map(WorkflowJson::toJson)), triggers = write(v.triggers.map(WorkflowJson::toJson)),
         canvas = WorkflowJson.toJson(v.canvas)?.let { write(it) }, publishedAt = v.publishedAt, publishedBy = writeActor(v.publishedBy),
         sourceProjectId = v.source.projectId?.value, sourceProjectKey = v.source.projectKey, sourceWorkflowId = v.source.workflowId?.value,
-        sourceWorkflowVersion = v.source.workflowVersion,
+        sourceWorkflowVersion = v.source.workflowVersion, setupCommand = v.setupCommand,
     )
 
     fun toDomain(e: LibraryWorkflowEntity, versions: List<LibraryWorkflowVersionEntity>): LibraryWorkflow = LibraryWorkflow(
@@ -336,6 +341,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         triggers = json.readValue(v.triggers, triggerList).map(WorkflowJson::toDomain), canvas = v.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
         publishedAt = v.publishedAt, publishedBy = readActor(v.publishedBy),
         source = LibraryWorkflowSource(v.sourceProjectId?.let(::ProjectId), v.sourceProjectKey, v.sourceWorkflowId?.let(::WorkflowDefinitionId), v.sourceWorkflowVersion),
+        setupCommand = v.setupCommand,
     )
 
     // ---- WorkflowRun
@@ -460,6 +466,9 @@ class PersistenceMapper(private val json: JsonMapper) {
         assignment = a.assignment?.let { write(ApprovalAssignmentDoc(it.userIds.map(UUID::toString), it.assignedBy?.let(::toDoc), it.assignedAt, it.comment)) },
         kind = a.kind.name,
         writePreview = a.write?.let { write(it.toStateMap()) },
+        questions = a.questions.takeIf { it.isNotEmpty() }?.let { q -> write(q.map { it.toStateMap() }) },
+        questionRound = a.questionRound,
+        maxQuestionRounds = a.maxQuestionRounds,
     )
 
     fun toDomain(e: ApprovalRequestEntity): ApprovalRequest {
@@ -482,6 +491,9 @@ class PersistenceMapper(private val json: JsonMapper) {
             },
             kind = ApprovalKind.valueOf(e.kind),
             write = e.writePreview?.let { PendingWrite.fromStateMap(json.readValue(it, anyMap)) },
+            questions = e.questions?.let { json.readValue(it, List::class.java) }.orEmpty().mapNotNull { (it as? Map<*, *>)?.let(AgentQuestion::fromStateMap) },
+            questionRound = e.questionRound,
+            maxQuestionRounds = e.maxQuestionRounds,
         )
     }
 

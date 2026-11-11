@@ -123,8 +123,6 @@ import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
 import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.shared.platform.WorkQueue
-import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
-import pl.mos.backoffice.projects.application.service.ProjectWorkspaceService
 import pl.mos.backoffice.shared.security.SecretVault
 import pl.mos.backoffice.shared.security.SealedValue
 import pl.mos.backoffice.projects.domain.model.SealedSecret
@@ -184,9 +182,9 @@ class ProjectsConfiguration {
         workflows: WorkflowDefinitionRepository, projects: ProjectRepository, runs: WorkflowRunRepository, validator: WorkflowValidator,
         taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
         jira: JiraConnectionAccess, specKit: SpecKitStepCheck, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
-        projectWorkspaces: ProjectWorkspaceRepository, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
+        availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
     ) = WorkflowService(
-        workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources, projectWorkspaces,
+        workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources,
         availability.getIfAvailable(), defaults.getIfAvailable(),
     )
 
@@ -194,13 +192,6 @@ class ProjectsConfiguration {
     @Bean
     fun librarySourceService(sources: LibrarySourceRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock) =
         LibrarySourceService(sources, gate, audit, clock)
-
-    /** Run workspaces of projects (ADR 0044). */
-    @Bean
-    fun projectWorkspaceService(
-        workspaces: ProjectWorkspaceRepository, projects: ProjectRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-        librarySources: LibrarySourceRepository,
-    ) = ProjectWorkspaceService(workspaces, projects, gate, audit, clock, librarySources)
 
     /** Workflow library (ADR 0037): publish, adopt, update and detach linked copies. */
     @Bean
@@ -218,8 +209,8 @@ class ProjectsConfiguration {
     @Bean fun jiraStepCheck(jira: JiraConnectionAccess) = JiraStepCheck(jira)
 
     /** Sources of the runner steps of a workflow: project repositories (ADR 0034) and library sources (ADR 0043). */
-    @Bean fun repositoryStepCheck(taskCatalog: TaskCatalog, librarySources: LibrarySourceRepository, projectWorkspaces: ProjectWorkspaceRepository) =
-        RepositoryStepCheck(taskCatalog, librarySources, projectWorkspaces)
+    @Bean fun repositoryStepCheck(taskCatalog: TaskCatalog, librarySources: LibrarySourceRepository) =
+        RepositoryStepCheck(taskCatalog, librarySources)
 
     @Bean
     fun runService(
@@ -336,11 +327,11 @@ class ProjectsConfiguration {
     @Bean
     fun runnerTaskSupport(
         runner: AgentRunner, modelResolver: ModelResolver, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, settings: RunnerSettings,
-        features: ObjectProvider<PlatformFeatures>, librarySources: LibrarySourceRepository, projectWorkspaces: ProjectWorkspaceRepository,
+        features: ObjectProvider<PlatformFeatures>, librarySources: LibrarySourceRepository,
         scmConnections: ScmConnectionRepository, verdictPolicy: ReviewVerdictPolicy, json: JsonCodec,
     ) = RunnerTaskSupport(
         runner, modelResolver, renderer, templateModel, settings.defaultTimeout, features.getIfAvailable { PlatformFeatures.DEFAULTS }, librarySources,
-        projectWorkspaces, scmConnections, pl.mos.backoffice.projects.application.service.tasks.StructuredAnswers(json, verdictPolicy),
+        scmConnections, pl.mos.backoffice.projects.application.service.tasks.StructuredAnswers(json, verdictPolicy), json,
     )
 
     @Bean fun specKitTaskExecutor(support: RunnerTaskSupport) = SpecKitTaskExecutor(support)

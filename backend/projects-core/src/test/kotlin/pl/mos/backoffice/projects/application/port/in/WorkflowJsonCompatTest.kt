@@ -82,4 +82,24 @@ class WorkflowJsonCompatTest {
         assertThat(unknown.task.overrides.agentKey).isNull()
         assertThat(unknown.task.overrides.config).containsEntry("agent", "AIDER")
     }
+
+    @Test
+    fun `ADR 0060 - a step's workspace is dropped, sessionRole kept for planning, addSkills and removeSkills ignored`() {
+        val stored = TaskOverridesJson(
+            addSkills = listOf("extra"), removeSkills = listOf("old"),
+            config = mapOf("workspace" to "bo", "sessionRole" to "implementer", "prepareOnly" to true, "push" to false),
+        )
+        val step = WorkflowJson.toDomain(taskNode("agent-task", stored)) as WorkflowNode.Task
+        assertThat(step.task.overrides.config).isEqualTo(mapOf("sessionRole" to "implementer", "prepareOnly" to true, "push" to false))
+        val written = WorkflowJson.toJson(step).task!!.overrides
+        assertThat(written.addSkills).describedAs("never written again").isNull()
+        assertThat(written.removeSkills).isNull()
+    }
+
+    @Test
+    fun `ADR 0060 - the setup command travels with the workflow document`() {
+        val command = WorkflowJson.toCommand(WorkflowDocumentJson(name = "w", setupCommand = "  "))
+        assertThat(command.setupCommand).describedAs("blank = none").isNull()
+        assertThat(WorkflowJson.toCommand(WorkflowDocumentJson(name = "w", setupCommand = "npm ci")).setupCommand).isEqualTo("npm ci")
+    }
 }

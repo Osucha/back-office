@@ -6,6 +6,7 @@ import pl.mos.backoffice.projects.application.port.out.NodeResult
 import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
 import pl.mos.backoffice.projects.application.port.out.TaskRunKind
+import pl.mos.backoffice.projects.application.service.tasks.StepQuestions
 import pl.mos.backoffice.projects.domain.model.NodeKind
 import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
@@ -48,14 +49,14 @@ class TaskNodeExecutor(
             context.log("input $missing consumed by ${task.key} is not available yet")
         }
         context.log("running task ${task.key} with agent ${task.agent.key} (${TaskRunKind.of(task)})")
-        return consumingFeedback(context, attributed(task, strategies.forTask(task).execute(context, task)))
+        return consumingFeedback(context, StepQuestions.limited(context, task, attributed(task, strategies.forTask(task).execute(context, task))))
     }
 
     override fun resume(context: NodeContext, jobId: RunnerJobId): NodeResult {
         val node = context.node as? WorkflowNode.Task ?: throw InvalidStateException("node ${context.node.id} is not a TASK node")
         val task = catalog.resolve(node.task.templateKey, context.project.id.value, node.task.overrides)
             ?: return NodeResult.failure("unknown task template ${node.task.templateKey}")
-        return consumingFeedback(context, attributed(task, strategies.forTask(task).resume(context, task, jobId)))
+        return consumingFeedback(context, StepQuestions.limited(context, task, attributed(task, strategies.forTask(task).resume(context, task, jobId))))
     }
 
     /**
@@ -72,7 +73,7 @@ class TaskNodeExecutor(
  * do not receive it as `{{feedback}}`. A failed step keeps it for its retry. Task and action steps alike.
  */
 internal fun consumingFeedback(context: NodeContext, result: NodeResult): NodeResult {
-    if (result.failed || result.awaitingJob != null || result.pendingWrite != null) return result
+    if (result.failed || result.awaitingJob != null || result.pendingWrite != null || result.questions != null) return result
     val updates = RunStateKeys.consumeFeedback(context.state, context.node.id)
     if (updates.isEmpty()) return result
     return result.copy(stateUpdates = updates + result.stateUpdates)

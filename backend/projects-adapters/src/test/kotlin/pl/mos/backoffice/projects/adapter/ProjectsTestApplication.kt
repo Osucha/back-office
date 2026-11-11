@@ -127,7 +127,6 @@ class FakeTaskCatalog : TaskCatalog {
         return base.copy(
             modelProfileId = overrides.modelProfileId ?: base.modelProfileId,
             prompt = TaskPrompt(system, user),
-            skills = (base.skills + overrides.addSkills.map { SkillSnapshot(it, it, "# $it") }).filterNot { it.key in overrides.removeSkills },
             config = base.config + overrides.config,
         )
     }

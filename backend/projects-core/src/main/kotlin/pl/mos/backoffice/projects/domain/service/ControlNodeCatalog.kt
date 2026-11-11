@@ -4,7 +4,6 @@ import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.GateSpec
 import pl.mos.backoffice.projects.domain.model.NodeKind
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.shared.runner.RunnerWorkspace
 
 /** Designer-facing description of a control node kind: title, description, ports and a JSON Schema for its section. */
 data class ControlNodeDescriptor(
@@ -98,7 +97,7 @@ object ControlNodeCatalog {
     fun modelAnswerConfigSchema(): Map<String, Any?> = schema(
         mapOf(
             "maxInputChars" to integer("Truncate rendered prompts beyond this many characters", 200_000),
-        ),
+        ) + questionSettings(),
     )
 
     /** Spec Kit phases a coding agent step can run instead of the agent job (config key `phase`). */
@@ -120,10 +119,9 @@ object ControlNodeCatalog {
             "mergeRequestDescriptionTemplate" to string("MR description template"),
             "mergeRequestDraft" to boolean("Open the MR as draft", false),
             "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
-            SessionContinuation.KEY to string("ADR 0057: continue the agent session of an earlier coding agent step (its node id): same run workspace (its workspace, else the implicit workspace run) and session role, same harness. Empty: a new session"),
             "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
             StepRepositories.CONFIG_KEY to repositoriesSetting(),
-        ) + workspaceSettings(prepare = true),
+        ) + directorySettings() + questionSettings(),
     )
 
     /** ADR 0056: JSON Schema for `action.config` of an action node. */
@@ -159,22 +157,31 @@ object ControlNodeCatalog {
     private const val APPROVAL_FIELD = "approval"
 
     /**
-     * ADR 0044: run workspace, session role and (IMPLEMENT) prepare-only of a runner step. `x-editor: workspace` tells the
-     * designer to render its workspace section (a choice among the workflow's workspaces) instead of generic fields.
+     * ADR 0060: the directory and the agent session of a coding step, and prepare-only. `x-editor: directory` tells the
+     * designer to render its directory section instead of generic fields.
      */
-    private fun workspaceSettings(prepare: Boolean): Map<String, Any?> = listOfNotNull(
-        StepWorkspace.WORKSPACE to string(
-            "Run workspace of the workflow (Workspaces): steps of one run that name the same workspace share /workspace; empty = a fresh workspace",
-            pattern = RunnerWorkspace.KEY_PATTERN.pattern,
-        ) + WORKSPACE_EDITOR,
-        StepWorkspace.SESSION_ROLE to string(
-            "Agent session role in the workspace (e.g. implementer, reviewer): steps with the same role continue one agent session; empty = a new session",
-            pattern = RunnerWorkspace.KEY_PATTERN.pattern,
-        ) + WORKSPACE_EDITOR,
-        if (prepare) StepWorkspace.PREPARE_ONLY to (boolean("Only prepare the workspace: clone and run its setup, no agent, no push", false) + WORKSPACE_EDITOR) else null,
-    ).toMap()
+    private fun directorySettings(): Map<String, Any?> = mapOf(
+        RunDirectory.DIRECTORY to enum(
+            "RUN: the run directory the coding steps of a run share (what earlier steps left, uncommitted work included). " +
+                "SEPARATE: a fresh directory with only this step's repositories, thrown away after the step (no session continuation)",
+            RunDirectory.Directory.entries.map { it.name }, RunDirectory.Directory.RUN.name,
+        ) + DIRECTORY_EDITOR,
+        RunDirectory.SESSION to enum(
+            "OWN: repeated executions of this step (rework loops) continue its own agent session. NEW: every execution starts fresh. " +
+                "CONTINUE: share the session of the step in continueSession (same agent)",
+            RunDirectory.Session.entries.map { it.name }, RunDirectory.Session.OWN.name,
+        ) + DIRECTORY_EDITOR,
+        RunDirectory.CONTINUE_SESSION to (string("Node id of the earlier coding step whose agent session this step continues (session CONTINUE; same agent)") + DIRECTORY_EDITOR),
+        RunDirectory.PREPARE_ONLY to (boolean("Only prepare the run directory: clone and run its setup, no agent, no push", false) + DIRECTORY_EDITOR),
+    )
 
-    private val WORKSPACE_EDITOR = mapOf("x-editor" to "workspace")
+    private val DIRECTORY_EDITOR = mapOf("x-editor" to "directory")
+
+    /** ADR 0060: whether the agent may stop with questions to the owner, and how many rounds per step. */
+    private fun questionSettings(): Map<String, Any?> = mapOf(
+        RunDirectory.ALLOW_QUESTIONS to boolean("The agent may stop with questions to the owner instead of guessing; the run waits for the answers", true),
+        RunDirectory.MAX_QUESTION_ROUNDS to integer("Most rounds of questions per execution of the step; after that the agent must finish with what it has", RunDirectory.DEFAULT_MAX_QUESTION_ROUNDS),
+    )
 
     /**
      * ADR 0034: the repositories of a runner step. `x-editor: repositories` tells the designer to render its repository

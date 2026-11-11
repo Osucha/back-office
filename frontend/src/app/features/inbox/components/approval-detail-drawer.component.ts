@@ -35,6 +35,13 @@ import { RoleNamePipe } from '../../../core/i18n/catalog-labels.pipes';
 import { HelpLinkComponent } from '../../../core/help/help-link.component';
 import { icu } from '../../../core/i18n/icu';
 import { actorName } from '../../../core/ui/actor.component';
+import {
+  ANSWER_OPTION,
+  agentQuestions,
+  combineAnswers,
+  isAgentQuestions,
+  questionRoundText,
+} from '../../../core/ui/agent-questions';
 import { ArtifactViewerComponent } from '../../../core/ui/artifact-viewer.component';
 import { timeAgo } from '../../../core/ui/pipes/time-ago.pipe';
 import { batonOf } from '../../../core/ui/relay/baton';
@@ -201,6 +208,40 @@ interface EditableArtifact {
                 ><span i18n="@@inbox.write.help">About confirmations</span></bo-help-link
               >
             </p>
+          </section>
+        } @else if (isQuestions(a)) {
+          <section class="block questions" aria-labelledby="gate-questions" data-agent-questions>
+            <h3 id="gate-questions">
+              <span i18n="@@inbox.questions.title">The agent asks</span>
+              @if (roundText(); as round) {
+                <span class="count" data-round>{{ round }}</span>
+              }
+            </h3>
+            <p class="muted small" i18n="@@inbox.questions.intro">
+              The agent stopped because it cannot do this step well without your answers. Your
+              answers are added to its prompt and the step runs again.
+            </p>
+            <ol class="q-list">
+              @for (q of questions(); track $index; let i = $index) {
+                <li>
+                  <label class="q-text" [attr.for]="'gate-answer-' + i">{{ q.question }}</label>
+                  @if (q.why) {
+                    <p class="q-why"><span i18n="@@inbox.questions.why">Why:</span> {{ q.why }}</p>
+                  }
+                  @if (canEdit()) {
+                    <textarea
+                      nz-input
+                      class="answer"
+                      [id]="'gate-answer-' + i"
+                      [ngModel]="answers()[i]"
+                      (ngModelChange)="setAnswer(i, $event)"
+                      [nzAutosize]="{ minRows: 2, maxRows: 8 }"
+                      [attr.data-answer]="i"
+                    ></textarea>
+                  }
+                </li>
+              }
+            </ol>
           </section>
         } @else if (a.context?.summary) {
           <section class="block">
@@ -468,16 +509,18 @@ interface EditableArtifact {
               {{ a.cannotDecideReason || defaultCannotDecide }}
             </div>
           } @else {
-            <textarea
-              nz-input
-              class="comment"
-              [placeholder]="commentPlaceholder()"
-              [ngModel]="comment()"
-              (ngModelChange)="comment.set($event)"
-              [nzAutosize]="{ minRows: 2, maxRows: 5 }"
-              aria-label="Decision comment"
-              i18n-aria-label="@@inbox.gate.commentLabel"
-            ></textarea>
+            @if (!isQuestions(a)) {
+              <textarea
+                nz-input
+                class="comment"
+                [placeholder]="commentPlaceholder()"
+                [ngModel]="comment()"
+                (ngModelChange)="comment.set($event)"
+                [nzAutosize]="{ minRows: 2, maxRows: 5 }"
+                aria-label="Decision comment"
+                i18n-aria-label="@@inbox.gate.commentLabel"
+              ></textarea>
+            }
             <div class="decide">
               @for (option of options(); track option) {
                 <button
@@ -564,6 +607,27 @@ interface EditableArtifact {
       }
       .block {
         margin-bottom: 20px;
+      }
+      .q-list {
+        margin: 0;
+        padding-left: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .q-text {
+        display: block;
+        font-weight: 500;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .q-why {
+        margin: 2px 0 6px;
+        font-size: 12px;
+        color: var(--bo-ink-3);
+      }
+      .answer {
+        margin-top: 4px;
       }
       h3 {
         font-size: 13px;
@@ -776,6 +840,12 @@ export class ApprovalDetailDrawerComponent {
     () => this.artifacts().filter((a) => a.content !== a.original).length,
   );
   readonly comment = signal('');
+  /** ADR 0060: one answer per question of an AGENT_QUESTIONS approval. */
+  readonly answers = signal<string[]>([]);
+  readonly questions = computed(() => agentQuestions(this.approval()));
+  readonly roundText = computed(() =>
+    questionRoundText(this.approval()?.questionRound, this.approval()?.maxQuestionRounds),
+  );
   /** Ticked checklist item ids (the recorded ones for a decided gate). */
   readonly checked = signal<ReadonlySet<string>>(new Set());
   readonly defaultCannotDecide = DEFAULT_CANNOT_DECIDE;
@@ -849,6 +919,7 @@ export class ApprovalDetailDrawerComponent {
       const a = this.approval();
       untracked(() => {
         this.comment.set('');
+        this.answers.set(agentQuestions(a).map(() => ''));
         this.checked.set(new Set(a?.decision?.checkedItems ?? []));
         this.submitting.set(null);
         if (a) this.loadArtifacts(a);
@@ -891,8 +962,24 @@ export class ApprovalDetailDrawerComponent {
   style = optionStyle;
   label = optionLabel;
 
-  /** Write confirmations (ADR 0033) say what the button does to Jira. */
+  readonly isQuestions = isAgentQuestions;
+
+  setAnswer(index: number, value: string): void {
+    this.answers.update((list) => list.map((x, i) => (i === index ? value : x)));
+  }
+
+  /** Write confirmations (ADR 0033) say what the button does to Jira; agent questions (ADR 0060) too. */
   labelFor(a: { kind?: string | null }, option: string): string {
+    if (a.kind === 'AGENT_QUESTIONS') {
+      switch (option.toLowerCase()) {
+        case 'answer':
+          return $localize`:@@inbox.questions.answer:Answer and continue`;
+        case 'cancel':
+          return $localize`:@@inbox.questions.cancel:Cancel the step`;
+        default:
+          return optionLabel(option);
+      }
+    }
     if (a.kind !== 'WRITE_CONFIRMATION') return optionLabel(option);
     switch (option.toUpperCase()) {
       case 'APPROVE':
@@ -911,6 +998,15 @@ export class ApprovalDetailDrawerComponent {
   state(option: string): OptionState {
     const a = this.approval();
     if (!a) return { enabled: false, reason: null };
+    if (isAgentQuestions(a)) {
+      const base = optionState(a, option, this.checked(), combineAnswers(this.answers()));
+      if (base.enabled && option.toLowerCase() === ANSWER_OPTION && !combineAnswers(this.answers()))
+        return {
+          enabled: false,
+          reason: $localize`:@@inbox.questions.answerFirst:Answer at least one question first`,
+        };
+      return base;
+    }
     const base = optionState(a, option, this.checked(), this.comment());
     if (base.enabled && a.kind === 'WRITE_CONFIRMATION' && isApproveOption(option)) {
       const blocked = approveBlocker(this.writeOptions(), this.writeAs());
@@ -999,7 +1095,8 @@ export class ApprovalDetailDrawerComponent {
       .map((x) => ({ artifactId: x.summary.id!, content: x.content }));
     const decision: Decision = {
       option,
-      comment: this.comment().trim() || null,
+      comment:
+        (isAgentQuestions(a) ? combineAnswers(this.answers()) : this.comment().trim()) || null,
       ...(a.checklist?.length ? { checkedItems: [...this.checked()] } : {}),
       ...(edited.length ? { editedArtifacts: edited } : {}),
       ...(a.kind === 'WRITE_CONFIRMATION' && isApproveOption(option) && this.writeAs()

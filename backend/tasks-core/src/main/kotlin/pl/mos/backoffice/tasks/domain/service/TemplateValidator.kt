@@ -43,6 +43,11 @@ class TemplateValidator(private val lookup: LibraryLookup) {
             errors += FieldError("confidenceField", "requires an outputSchema on this template or an ancestor")
         }
 
+        // ADR 0060: a required skill must exist where the template is visible
+        template.requiresSkills.forEachIndexed { i, key ->
+            if (lookup.visibleSkill(key, projectId) == null) errors += FieldError("requiresSkills[$i]", "skill $key does not exist")
+        }
+
         errors += parameterProblems(template, ancestors)
         // blank names and labels are refused by RunInputField itself
         template.runInputs.groupBy { it.name }.filterValues { it.size > 1 }.keys.forEach { name ->

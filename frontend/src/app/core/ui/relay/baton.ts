@@ -63,7 +63,13 @@ type RunLike = Pick<WorkflowRunSummary, 'status' | 'waitingOn' | 'currentNodeId'
  * `canDecide` tells whether the signed-in user is an approver of the open gate: when false the
  * gate is someone else's turn and is shown as idle ("with approver") instead of the loud amber.
  */
-function run(r: RunLike, opts: { canDecide?: boolean; nodeName?: string | null } = {}): Baton {
+/** ADR 0060: the label of a turn that waits for answers to an agent's questions. */
+const answersLabel = () => $localize`:@@core.baton.waitingForAnswers:waiting for your answers`;
+
+function run(
+  r: RunLike,
+  opts: { canDecide?: boolean; nodeName?: string | null; questions?: boolean } = {},
+): Baton {
   const node = opts.nodeName ?? r.currentNodeId ?? null;
   switch (r.status) {
     case 'RUNNING':
@@ -96,7 +102,10 @@ function run(r: RunLike, opts: { canDecide?: boolean; nodeName?: string | null }
         };
       return {
         holder: 'you',
-        label: $localize`:@@core.baton.yourTurn:your turn`,
+        label:
+          opts.questions || r.waitingOn?.kind === 'AGENT_QUESTIONS'
+            ? answersLabel()
+            : $localize`:@@core.baton.yourTurn:your turn`,
         detail: r.waitingOn?.nodeId ?? node,
       };
     case 'SUCCEEDED':
@@ -173,7 +182,7 @@ export function holderOfKind(kind: NodeKind | null | undefined): BatonHolder {
  */
 function node(
   n: Pick<NodeExecution, 'status' | 'kind' | 'port'>,
-  opts: { canDecide?: boolean } = {},
+  opts: { canDecide?: boolean; questions?: boolean } = {},
 ): Baton {
   switch (n.status) {
     case 'RUNNING':
@@ -183,9 +192,12 @@ function node(
         n.status === 'WAITING' && n.kind === 'TASK' ? 'you' : holderOfKind(n.kind);
       if (holder === 'you' && opts.canDecide === false)
         return { holder: 'idle', label: $localize`:@@core.baton.withApprover:with approver` };
+      // ADR 0060: an agent step waiting for answers to its questions
       const label =
         holder === 'you'
-          ? $localize`:@@core.baton.yourTurn:your turn`
+          ? opts.questions
+            ? answersLabel()
+            : $localize`:@@core.baton.yourTurn:your turn`
           : holder === 'ci'
             ? $localize`:@@core.baton.waitingForCI:waiting for CI`
             : $localize`:@@core.baton.agentWorking:agent working`;
@@ -210,14 +222,22 @@ const REVISE = new Set(['REVISE', 'RETRY', 'REDO']);
  * expired -> idle.
  */
 function approval(
-  a: Pick<ApprovalRequest, 'status' | 'canDecide' | 'decision' | 'approvers'>,
+  a: Pick<ApprovalRequest, 'status' | 'canDecide' | 'decision' | 'approvers'> &
+    Partial<Pick<ApprovalRequest, 'kind'>>,
 ): Baton {
   const roleKey = a.approvers?.accountable ?? a.approvers?.projectRoles?.[0];
   const role = roleKey ? roleName(roleKey) : $localize`:@@core.baton.approver:approver`;
   if (a.status === 'OPEN' || !a.status) {
     return a.canDecide === false
       ? { holder: 'idle', label: $localize`:@@core.baton.withApprover:with approver`, detail: role }
-      : { holder: 'you', label: $localize`:@@core.baton.yourTurn:your turn`, detail: role };
+      : {
+          holder: 'you',
+          label:
+            a.kind === 'AGENT_QUESTIONS'
+              ? answersLabel()
+              : $localize`:@@core.baton.yourTurn:your turn`,
+          detail: role,
+        };
   }
   if (a.status === 'EXPIRED')
     return { holder: 'idle', label: $localize`:@@core.baton.expired:expired` };

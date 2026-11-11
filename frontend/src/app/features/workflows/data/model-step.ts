@@ -2,7 +2,7 @@
  * The kind of model use of a task step (ADR 0050/0056), as the server derives it: the step's agent
  * decides. An agent without a harness gives a model answer (one gateway call, `LLM_CALL`); an agent
  * with a harness (OpenCode, Claude Code) runs a coding agent (`CODING_AGENT`) unless the step only
- * prepares the workspace. The step's agent is its own (`overrides.agentKey`), else the template's.
+ * prepares the run directory. The step's agent is its own (`overrides.agentKey`), else the template's.
  */
 import type {
   Agent,
@@ -11,7 +11,7 @@ import type {
   PaletteTask,
   StepKind,
 } from '../../../core/api/types';
-import { PREPARE_ONLY_KEY } from './workspaces';
+import { PREPARE_ONLY_KEY } from './step-session';
 
 export interface StepModelUse {
   stepKind: StepKind;
@@ -56,7 +56,7 @@ export function effectiveStepAgent(
 
 /**
  * The model use of a step run by `agent`: null without an agent and for a coding agent step that
- * only prepares the workspace (`prepareOnly`, node config before template config).
+ * only prepares the run directory (`prepareOnly`, node config before template config).
  */
 export function stepModelUse(
   agent: Pick<AgentRef, 'harness'> | null | undefined,

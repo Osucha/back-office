@@ -33,6 +33,8 @@ Code: `shared-kernel` `pl.mos.backoffice.shared.prompt` (`UntrustedText`, `Promp
 | Merge-request diff, title and description, CI variables (`backoffice-ci.sh`) | the CI review, run input / parameters |
 | Repository content (code, comments, README, fixtures, `.claude/`, `.git/config`, hooks) | the coding agent, the runner's git commands |
 | Artefacts of earlier coding agent / model answer steps | the next step's prompt, gate questions, MCP |
+| Questions an agent asks (ADR 0060: `agent-questions.json`, `{"agentQuestions": [...]}`) | the approval panel and notifications (sanitised, at most 10 questions of 2 000 characters), the step's next prompt next to the owner's answers |
+| Other agents' homes in the run directory (ADR 0060: environment, skills, sessions under `/workspace/.agents/`) | every coding step of the run can read and change them; use `directory: SEPARATE` for an independent step |
 | Benchmark task attempt outputs | the judge model |
 | Agents (instructions, rules, skills, MCP servers), templates, constitutions (curators, project managers) | the environment document and system prompts (semi-trusted: authenticated, audited, reviewed by people) |
 | Remote MCP servers an agent lists (ADR 0057) | tool results inside the coding agent session; reachable only through the sandbox egress policy, no credentials |
@@ -99,7 +101,8 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 - `AgentEnvironment` (ADR 0057): the environment document (platform preamble, the agent's instructions rendered
   through `renderPrompt`, constitution, rules) is trusted text written by curators and project managers. A model
   answer gets it at the start of its system prompt; a coding agent gets it as `AGENTS.md` / user `CLAUDE.md` written
-  outside every repository, so repository content cannot replace it (the repository's own `AGENTS.md` / `CLAUDE.md`
+  into its agent home outside every repository (ADR 0060: `/workspace/.agents/<agent key>/`, rewritten on every job,
+  never through a symlink), so repository content cannot replace it (the repository's own `AGENTS.md` / `CLAUDE.md`
   are still read by the harness as project memory and are data like the rest of the repository).
 - `LlmTaskExecutor` (every step the agent **model answer** runs, including the code review): user and system prompt
   through `renderPrompt`, the notice is appended last to the system prompt (after the environment document, the

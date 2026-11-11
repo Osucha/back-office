@@ -332,7 +332,8 @@ class PromptInjectionSuiteTest {
         executor.execute(context(Fixtures.runningRun(project), "specify"), task)
 
         val system = gateway.requests.single().messages.first { it.role == Role.SYSTEM }.content
-        val preamble = system.indexOf(AgentEnvironment.PLATFORM_PREAMBLE)
+        // ADR 0060: questions are allowed by default, so the preamble is the one that invites them
+        val preamble = system.indexOf(pl.mos.backoffice.shared.tasks.AgentEnvironmentText.PLATFORM_PREAMBLE_QUESTIONS)
         val constitution = system.indexOf("## Project constitution")
         val rulesAt = system.indexOf("## Rules")
         val template = system.indexOf("You help.")
@@ -369,7 +370,7 @@ class PromptInjectionSuiteTest {
         val spec = runner.specs.single()
         assertThat(spec.prompt).startsWith("You are a careful engineer.\n\nImplement the change.").doesNotContain("Cite evidence.")
         assertThat(spec.prompt.trimEnd()).endsWith("mention it in your summary.")
-        assertThat(spec.instructions).startsWith(AgentEnvironment.PLATFORM_PREAMBLE).contains(AgentEnvironment.CODING_AGENT_PREAMBLE)
+        assertThat(spec.instructions).startsWith(pl.mos.backoffice.shared.tasks.AgentEnvironmentText.PLATFORM_PREAMBLE_QUESTIONS).contains(AgentEnvironment.CODING_AGENT_PREAMBLE)
             .contains(AgentEnvironment.rulesSection(rules)).contains("## Project constitution")
         assertThat(spec.mcpServers).isEmpty()
     }

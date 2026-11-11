@@ -14,7 +14,7 @@ import type {
   WorkflowPalette,
 } from '../../../core/api/types';
 
-const overrides = { addSkills: [], removeSkills: [], config: {} };
+const overrides = { config: {} };
 const spec = [
   { id: 'acceptance-criteria', text: 'Acceptance criteria are testable', required: true },
   {

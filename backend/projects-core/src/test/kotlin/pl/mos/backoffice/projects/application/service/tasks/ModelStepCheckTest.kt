@@ -9,7 +9,7 @@ import pl.mos.backoffice.projects.application.service.ModelResolver
 import pl.mos.backoffice.projects.domain.model.ProjectDefaults
 import pl.mos.backoffice.projects.domain.model.TaskBinding
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.projects.domain.service.StepWorkspace
+import pl.mos.backoffice.projects.domain.service.RunDirectory
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.llm.ModelAvailability
@@ -90,7 +90,7 @@ class ModelStepCheckTest {
             node("tmpl", "with-model"),
             node("review", "code-review"),
             node("impl", "implement-claude-code", model = opusLogin),
-            node("prep", "implement-opencode", config = mapOf(StepWorkspace.PREPARE_ONLY to true)),
+            node("prep", "implement-opencode", config = mapOf(RunDirectory.PREPARE_ONLY to true)),
         )
 
         val plan = check.plan(project, nodes, user).associateBy { it.nodeId }

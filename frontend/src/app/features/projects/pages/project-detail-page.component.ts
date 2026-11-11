@@ -77,12 +77,12 @@ import { ProjectFormComponent } from '../components/project-form.component';
 import { JiraIntakePanelComponent } from '../components/jira-intake-panel.component';
 import { ProjectMembersPanelComponent } from '../components/project-members-panel.component';
 import { ProjectSourcesPanelComponent } from '../components/project-sources-panel.component';
-import { ProjectWorkspacesPanelComponent } from '../components/project-workspaces-panel.component';
+import { ProjectAgentsPanelComponent } from '../components/project-agents-panel.component';
 
 const TABS = [
   'workflows',
   'sources',
-  'workspaces',
+  'agents',
   'runs',
   'ci',
   'members',
@@ -94,7 +94,7 @@ const TABS = [
 
 /**
  * Project: header (monogram, repository, provenance, your roles, what is in flight), then
- * Workflows, Sources, Workspaces, Runs, CI, Members, Connections, Sandbox, Budget and Settings tabs (`?tab=`). `?start=<workflowId>` opens the start
+ * Workflows, Sources, Agents, Runs, CI, Members, Connections, Sandbox, Budget and Settings tabs (`?tab=`). `?start=<workflowId>` opens the start
  * dialog (the command palette's "Start run…").
  */
 @Component({
@@ -116,7 +116,7 @@ const TABS = [
     ProjectFormComponent,
     ProjectMembersPanelComponent,
     ProjectSourcesPanelComponent,
-    ProjectWorkspacesPanelComponent,
+    ProjectAgentsPanelComponent,
     ProjectBudgetPanelComponent,
     ProjectConnectionsPanelComponent,
     ScmConnectionsPanelComponent,
@@ -518,13 +518,9 @@ const TABS = [
               }
             </ng-template>
           </nz-tab>
-          <nz-tab nzTitle="Workspaces" i18n-nzTitle="@@projects.detail.tab.workspaces">
+          <nz-tab nzTitle="Agents" i18n-nzTitle="@@projects.detail.tab.agents">
             <ng-template nz-tab>
-              <app-project-workspaces-panel
-                [projectId]="p.id"
-                [repositories]="repositories()"
-                [canManage]="can('project.manage')"
-              />
+              <app-project-agents-panel [projectId]="p.id" [project]="p" />
             </ng-template>
           </nz-tab>
           <nz-tab nzTitle="Runs" i18n-nzTitle="@@projects.detail.tab.runs">
@@ -972,7 +968,7 @@ export class ProjectDetailPageComponent {
   readonly router = inject(Router);
 
   readonly projectId = input.required<string>();
-  /** Optional `?tab=` query param (workflows | sources | workspaces | runs | ci | members | connections | sandbox | budget | settings). */
+  /** Optional `?tab=` query param (workflows | sources | agents | runs | ci | members | connections | sandbox | budget | settings). */
   readonly tab = input<string | undefined>();
   /** Optional `?start=<workflowId>`: open the start dialog. */
   readonly start = input<string | undefined>();

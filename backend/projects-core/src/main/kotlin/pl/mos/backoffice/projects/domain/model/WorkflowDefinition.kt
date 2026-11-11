@@ -282,6 +282,8 @@ data class WorkflowDefinition(
      * cannot be published to the library until a save without errors.
      */
     val draft: Boolean = false,
+    /** ADR 0060: runs once per run directory before the first coding step (again when it changes); null = none. */
+    val setupCommand: String? = null,
 ) {
     init {
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
@@ -310,6 +312,8 @@ data class WorkflowDefinition(
         canvas: Canvas?,
         now: Instant,
         actor: Actor? = null,
+        /** ADR 0060: the setup command of the new version (default: unchanged). */
+        setupCommand: String? = this.setupCommand,
     ): WorkflowDefinition = copy(
         name = name,
         description = description,
@@ -318,6 +322,7 @@ data class WorkflowDefinition(
         triggers = triggers,
         enabled = enabled,
         canvas = canvas,
+        setupCommand = setupCommand?.takeIf { it.isNotBlank() },
         version = version + 1,
         updatedAt = now,
         updatedBy = actor ?: updatedBy,

@@ -8,7 +8,7 @@ import pl.mos.backoffice.projects.domain.model.ScmConnectionSelector
 import pl.mos.backoffice.shared.runner.AgentTool
 import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
-import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
+import pl.mos.backoffice.projects.application.port.out.JsonCodec
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
@@ -24,10 +24,9 @@ import pl.mos.backoffice.projects.domain.model.MergeRequestSnapshot
 import pl.mos.backoffice.projects.domain.model.RepositoryResult
 import pl.mos.backoffice.projects.domain.model.ReviewReport
 import pl.mos.backoffice.projects.domain.model.StepAgentRecord
-import pl.mos.backoffice.projects.domain.service.SessionContinuation
+import pl.mos.backoffice.projects.domain.service.RunDirectory
 import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.projects.domain.service.StepRepository
-import pl.mos.backoffice.projects.domain.service.StepWorkspace
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.Money
@@ -49,6 +48,7 @@ import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerSkill
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.runner.SpecKitPhase
+import pl.mos.backoffice.shared.tasks.AgentEnvironmentText
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
@@ -80,6 +80,11 @@ fun specKitOff(projectOn: Boolean): String =
  * mirrors the primary entry for older runners and `gitAccess` is the highest access. The result is mapped per
  * repository ([RepositoryResult]); results of older runners (no `repositories`) describe the primary entry.
  *
+ * Run directory (ADR 0060): a `RUN` step (default) works in the run directory shared by the coding steps of the run
+ * (runner workspace `run`, the workflow's setup command, the session role from `session`), a `SEPARATE` step in a
+ * throwaway directory. The spec names the agent's home (`agentHome`) and its access when not FULL; a step that allows
+ * questions collects `agent-questions.json`, whose questions pause the run ([StepQuestions]).
+ *
  * Prompt injection (ADR 0029): the agent prompt ends with [agentNotice] and every untrusted value (issue,
  * artefacts, CI data...) is a data block with a random boundary ([TemplateRenderer.renderPrompt]). The branch
  * is never the project default branch (nor `HEAD` / a `refs/` path): an issue key or a template cannot make
@@ -95,12 +100,12 @@ class RunnerTaskSupport(
     private val features: PlatformFeatures = PlatformFeatures.DEFAULTS,
     /** ADR 0043: library sources steps may attach read-only; null = none (tests). */
     private val librarySources: LibrarySourceRepository? = null,
-    /** ADR 0044: run workspaces of projects; null = none (tests). */
-    private val projectWorkspaces: ProjectWorkspaceRepository? = null,
     /** ADR 0051: tokens of project repositories; null = none (tests), jobs then use the runner pool's tokens. */
     private val scmConnections: ScmConnectionRepository? = null,
     /** ADR 0057: maps the structured answer of a coding agent with an output schema; null = none (tests). */
     private val structuredAnswers: StructuredAnswers? = null,
+    /** ADR 0060: reads `agent-questions.json`; null = questions of coding agents are not read (tests). */
+    private val json: JsonCodec? = null,
 ) {
     private val environment = AgentEnvironment(renderer)
 
@@ -143,15 +148,15 @@ class RunnerTaskSupport(
     private fun plan(context: NodeContext, task: ResolvedTask, mode: RunnerMode, phase: SpecKitPhase?, defaultPrompt: String, logWarnings: Boolean): Plan {
         val node = context.node
         val project = context.project
-        // ADR 0044: the run workspace and session of the step; a prepare step never pushes
-        // ADR 0057: continuing (or being continued by) another step's session sets the workspace and the session role
-        val stepConfig = SessionContinuation.apply(node.id, task.config, context.run.definitionSnapshot.nodes)
-        val workspaceSetting = StepWorkspace.of(stepConfig, runnerStep = true, projectWorkspaces?.findByProjectId(project.id).orEmpty())
-        if (!workspaceSetting.valid) throw RepositoryPlanException("workspace of step ${node.id}: " + workspaceSetting.errors.joinToString("; "))
-        if (logWarnings) workspaceSetting.warnings.forEach { context.warn("workspace: $it") }
-        val push = !workspaceSetting.prepareOnly && stepConfig.boolean("push", default = true)
-        // a step of a workspace without repositories of its own works on the workspace's sources
-        val config = StepWorkspace.effectiveConfig(stepConfig, workspaceSetting.definition, project, push && GitAccess.pushingMode(mode))
+        // ADR 0060: the run directory (or a separate one) and the agent session of the step; a prepare step never pushes
+        val config = task.config
+        val directory = RunDirectory.of(config, runnerStep = true)
+        if (!directory.valid) throw RepositoryPlanException("directory of step ${node.id}: " + directory.errors.joinToString("; "))
+        if (logWarnings) directory.warnings.forEach { context.warn("directory: $it") }
+        val push = !directory.prepareOnly && config.boolean("push", default = true)
+        // ADR 0060: questions to the owner: allowed for the step, and still open (rounds left) for the preamble
+        val questionsAllowed = StepQuestions.allowed(task) && !directory.prepareOnly
+        val questionsOpen = questionsAllowed && StepQuestions.open(task, context)
         // ADR 0036: Spec Kit only where the project turned it on and the platform allows it
         val specKit = project.specKit && features.specKitAllowed()
         if (mode == RunnerMode.SPEC_KIT && !specKit) {
@@ -169,21 +174,26 @@ class RunnerTaskSupport(
         val model = templateModel.build(context, repos, task.runInputs, task.parameterValues)
         val blocks = PromptDataBlocks.random()
         // ADR 0057: the environment goes to the harness's own files (spec.instructions), not into the prompt
-        val environmentDocument = environment.document(task, project, model, blocks)
+        val environmentDocument = environment.document(task, project, model, blocks, questions = questionsOpen)
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("agent instructions: $it") } }
         val system = task.prompt.system?.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks).text }
         val user = renderer.renderPrompt(task.prompt.user?.takeIf { it.isNotBlank() } ?: defaultPrompt, model, blocks)
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("template: $it") } }
         // the notice comes last: the runner derives the commit message (and Spec Kit the feature name) from the first line
-        val workspace = workspaceSetting.key?.let { key ->
+        // ADR 0060: every RUN step of the run shares the run directory, set up once with the workflow's setup command
+        val workspace = if (directory.runDirectory) {
             RunnerWorkspace(
-                key, RunnerWorkspace.nameFor(context.run.id.value, key), workspaceSetting.sessionRole, workspaceSetting.prepareOnly,
-                setupCommand = workspaceSetting.definition?.setupCommand?.takeIf { it.isNotBlank() },
+                RunnerWorkspace.RUN_KEY, RunnerWorkspace.nameFor(context.run.id.value, RunnerWorkspace.RUN_KEY),
+                RunDirectory.sessionRole(node.id, config, context.run.definitionSnapshot.nodes), directory.prepareOnly,
+                setupCommand = context.run.definitionSnapshot.setupCommand?.takeIf { it.isNotBlank() },
             )
+        } else {
+            null
         }
         val answerSchema = task.outputSchema?.takeIf { it.isNotBlank() }
+        val answers = StepQuestions.answersSection(context, renderer, model, blocks)
         val prompt = listOfNotNull(
-            system, user.text, answerSchema?.let(::answerSection), repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) },
+            system, user.text, answers, answerSchema?.let(::answerSection), repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) },
             workspace?.let(::workspaceSection), agentNotice(blocks),
         ).joinToString("\n\n")
         val fallbackBranch = "run/${context.run.id.short}"
@@ -249,14 +259,16 @@ class RunnerTaskSupport(
             verifyCommand = config.string("verifyCommand"),
             timeout = timeout,
             collectArtifacts = config.list("collectArtifacts").ifEmpty { DEFAULT_COLLECT }
-                .let { if (answerSchema != null && STRUCTURED_ANSWER_FILE !in it) it + STRUCTURED_ANSWER_FILE else it },
+                .let { if (answerSchema != null && STRUCTURED_ANSWER_FILE !in it) it + STRUCTURED_ANSWER_FILE else it }
+                .let { if (questionsAllowed && AgentEnvironmentText.QUESTIONS_FILE !in it) it + AgentEnvironmentText.QUESTIONS_FILE else it },
             skills = task.skills.map { RunnerSkill(it.key, it.name, it.content) },
             collectDiff = true,
             usageContext = UsageContext(
                 UsageKind.PIPELINE_STEP, projectId = project.id.value, runId = context.run.id.value, stepId = node.id,
                 actingUserId = ActingUser.startedBy(context.run)?.userId,
             ),
-            jobLabel = jobLabel(context.run.id.short, node.id, context.attempt),
+            // ADR 0060: a step that runs again with the owner's answers is a new job (labels are idempotent)
+            jobLabel = jobLabel(context.run.id.short, node.id, context.attempt, RunStateKeys.questionRounds(context.state, node.id)),
             repositories = jobRepositories,
             gitAccess = GitAccess.highest(jobRepositories.map { it.access }),
             specKit = specKit,
@@ -270,15 +282,21 @@ class RunnerTaskSupport(
             agentTools = tools.map { it.first },
             instructions = environmentDocument.text.takeIf { it.isNotBlank() },
             mcpServers = task.agent.mcpServers,
+            // ADR 0060: the agent's home in the run directory, and what it may change when not everything
+            agentHome = task.agent.key,
+            access = task.agent.access.takeUnless { it.full },
         )
         if (logWarnings) {
-            workspace?.let { w ->
+            if (workspace != null) {
                 context.log(
-                    "workspace ${w.key} of this run (${w.name})" +
-                        (if (w.prepareOnly) ": prepare only, no agent" else "") +
-                        (w.sessionRole?.let { "; agent session of role $it continues" } ?: ""),
+                    "run directory of this run (${workspace.name})" +
+                        (if (workspace.prepareOnly) ": prepare only, no agent" else "") +
+                        (workspace.sessionRole?.let { "; agent session $it continues" } ?: "; a new agent session"),
                 )
+            } else {
+                context.log("separate directory: only this step's repositories, thrown away after the step, a new agent session")
             }
+            spec.access?.let { a -> context.log("agent ${task.agent.key} may change ${if (a.paths.isEmpty()) "nothing (read only)" else "only " + a.paths.joinToString()}; the runner reverts other changes") }
             jobRepositories.forEach { r -> context.log("repository ${r.key} (/workspace/${r.path}${if (r.primary) ", primary" else ""}): git access ${r.access}, ${describe(r.access)}") }
             tools.forEach { (tool, ref) ->
                 context.log("agent tool ${tool.name} for repository ${tool.repository}: read-only project token ${ref.ref} (CI_READ), delivered sealed to the runner")
@@ -342,12 +360,12 @@ class RunnerTaskSupport(
         append(schema.trim())
     }
 
-    /** ADR 0044: what the agent is told about the shared workspace and its session. */
+    /** ADR 0044/0060: what the agent is told about the run directory and its session. */
     private fun workspaceSection(workspace: RunnerWorkspace): String = buildString {
-        append("Workspace: this step works in the run's shared workspace \"${workspace.key}\". Files that earlier steps of this run left ")
+        append("Run directory: this step works in the run's shared directory. Files that earlier steps of this run left ")
         append("there are kept, including uncommitted work, and later steps (other agents) continue from what you leave: keep it tidy ")
         append("and say in your final answer what you changed and what is left.")
-        workspace.sessionRole?.let { append(" You act as the \"$it\" of this run; if you worked in this workspace before, you continue that session.") }
+        if (workspace.sessionRole != null) append(" If you worked on this run before, you continue that session.")
     }
 
     /** ADR 0040: steps of a private project started by its owner go to the owner's personal runner, when they have one. */
@@ -357,6 +375,10 @@ class RunnerTaskSupport(
     private fun map(context: NodeContext, task: ResolvedTask, mode: RunnerMode, plan: Plan, jobId: RunnerJobId, result: RunnerResult): NodeResult {
         val node = context.node
         val project = context.project
+        // ADR 0060: the runner reverted what the agent changed outside its access
+        result.access?.reverted?.takeIf { it.isNotEmpty() }?.let { reverted ->
+            context.warn("reverted ${reverted.size} change(s) outside the agent's access: " + reverted.joinToString { it.describe() })
+        }
         // ADR 0042: what the step costs at API prices, whoever pays; the harness figure first, else the profile's pricing
         val apiCost = result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
         val cost = if (result.subscription) {
@@ -366,7 +388,15 @@ class RunnerTaskSupport(
         } else {
             apiCost
         }
-        val artifacts = result.artifacts.filterNot { it.name == STRUCTURED_ANSWER_ARTIFACT }
+        // ADR 0060: an agent that stopped with questions waits for the owner's answers (the file is never an artefact)
+        questionsOf(context, task, result)?.let { questions ->
+            context.log("the agent asks ${questions.size} question(s) and waits for the owner's answers")
+            return NodeResult(
+                port = null, usage = result.usage, cost = cost, apiCost = apiCost, runnerJobId = jobId, questions = questions,
+                agent = StepAgentRecord.of(task.agent, plan.profile),
+            )
+        }
+        val artifacts = result.artifacts.filterNot { it.name == STRUCTURED_ANSWER_ARTIFACT || it.name == AgentEnvironmentText.QUESTIONS_ARTIFACT }
             .map { NewArtifact(it.name, ArtifactKind.forName(it.name, it.mediaType), it.mediaType, it.content) }.toMutableList()
         result.verification?.let { artifacts += NewArtifact("verification-${node.id}", ArtifactKind.LOG, "text/plain", "$ ${it.command}\nexit code ${it.exitCode}\n\n${it.outputTail}") }
         result.diff?.takeIf { it.isNotBlank() }?.let { artifacts += NewArtifact("diff", ArtifactKind.DIFF, "text/x-diff", it) }
@@ -422,6 +452,14 @@ class RunnerTaskSupport(
             // ADR 0059: the agent and the model the job ran with (the plan's profile)
             agent = StepAgentRecord.of(task.agent, plan.profile),
         )
+    }
+
+    /** ADR 0060: the questions of a finished job that allowed them (artefact `agent-questions`); null when it asked none. */
+    private fun questionsOf(context: NodeContext, task: ResolvedTask, result: RunnerResult): List<pl.mos.backoffice.projects.domain.model.AgentQuestion>? {
+        if (result.status != RunnerJobStatus.SUCCEEDED || !StepQuestions.allowed(task)) return null
+        val raw = result.artifacts.firstOrNull { it.name == AgentEnvironmentText.QUESTIONS_ARTIFACT }?.content?.takeIf { it.isNotBlank() } ?: return null
+        val codec = json ?: return null
+        return StepQuestions.fromFile(raw, codec).also { if (it == null) context.log("${AgentEnvironmentText.QUESTIONS_FILE} holds no questions; ignored") }
     }
 
     /** What a coding agent's structured answer gave the step; [problem] set = the step fails with it. */
@@ -596,9 +634,17 @@ class RunnerTaskSupport(
         /** Names the runner job itself produces; a structured answer never replaces them. */
         private val RUNNER_OUTPUTS = setOf("diff", "mr")
 
-        /** `run-<runId8>-<nodeId>-<attempt>` lower-cased and restricted to DNS-1123 label characters. */
-        fun jobLabel(runShort: String, nodeId: String, attempt: Int): String =
-            "run-$runShort-$nodeId-$attempt".lowercase().replace(Regex("[^a-z0-9-]"), "-").trim('-').take(63).trimEnd('-')
+        /**
+         * `run-<runId8>-<nodeId>-<attempt>` lower-cased and restricted to DNS-1123 label characters; ADR 0060: `-q<round>`
+         * when the step runs again after [questionRound] answered rounds (kept even when the rest is cut to 63 characters).
+         */
+        fun jobLabel(runShort: String, nodeId: String, attempt: Int, questionRound: Int = 0): String {
+            val suffix = if (questionRound > 0) "-q$questionRound" else ""
+            val base = "run-$runShort-$nodeId-$attempt".lowercase().replace(Regex("[^a-z0-9-]"), "-").trim('-')
+            return base.take(MAX_LABEL - suffix.length).trimEnd('-') + suffix
+        }
+
+        private const val MAX_LABEL = 63
 
         fun sanitiseBranch(branch: String): String =
             UntrustedText.sanitize(branch, MAX_BRANCH_CHARS).trim().replace(Regex("[\\s~^:?*\\[\\]\\\\]+"), "-").replace(Regex("/{2,}"), "/")

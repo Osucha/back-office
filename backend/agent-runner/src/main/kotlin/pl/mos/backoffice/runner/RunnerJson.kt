@@ -19,7 +19,11 @@ import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.JobCompletionReport
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.platform.WorkRequest
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.runner.RevertedChange
+import pl.mos.backoffice.shared.runner.RunnerAccessReport
 import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.JobMergeRequest
@@ -221,6 +225,10 @@ data class RunnerJobSpecJson(
     val instructions: String? = null,
     /** ADR 0057: remote MCP servers of the agent; absent (never []) when there are none, so digests of other specs stay. */
     val mcpServers: List<McpServerJson>? = null,
+    /** ADR 0060: the agent's home under /workspace/.agents; absent for jobs without an agent (older specs keep their digests). */
+    val agentHome: String? = null,
+    /** ADR 0060: what the agent may change; absent = FULL (never sent for FULL, so digests of other specs stay). */
+    val access: AgentAccessJson? = null,
 ) {
     companion object {
         fun of(spec: RunnerJobSpec) = RunnerJobSpecJson(
@@ -251,12 +259,35 @@ data class RunnerJobSpecJson(
             agentTools = spec.agentTools.takeIf { it.isNotEmpty() }?.map { AgentToolJson(it.name, it.repository) },
             instructions = spec.instructions?.takeIf { it.isNotBlank() },
             mcpServers = spec.mcpServers.takeIf { it.isNotEmpty() }?.map { McpServerJson(it.name, it.url) },
+            agentHome = spec.agentHome?.takeIf { it.isNotBlank() },
+            access = spec.access?.takeUnless { it.full }?.let { AgentAccessJson(it.mode.name, it.paths.takeIf { p -> p.isNotEmpty() }) },
         )
     }
 }
 
 /** ADR 0051: `RunnerJobSpec.credentials` (names of project repository tokens, never values). */
 data class JobCredentialRefJson(val ref: String, val repository: String, val capability: String)
+
+/** ADR 0060: `RunnerResult.access.reverted[]`. */
+data class RevertedChangeJson(val repository: String? = null, val path: String = "", val change: String = "modified")
+
+/** ADR 0060: `RunnerResult.access`: what the runner enforced and reverted. */
+data class ResultAccessJson(val mode: String = "READ_ONLY", val paths: List<String>? = null, val reverted: List<RevertedChangeJson>? = null) {
+    fun toReport() = RunnerAccessReport(
+        AgentAccessMode.entries.firstOrNull { it.name == mode.uppercase() } ?: AgentAccessMode.READ_ONLY,
+        paths.orEmpty(),
+        reverted.orEmpty().filter { it.path.isNotBlank() }.map { RevertedChange(it.repository?.takeIf { r -> r.isNotBlank() }, it.path, it.change) },
+    )
+}
+
+/** ADR 0060: `RunnerJobSpec.access`; `paths` only for PATHS (never an empty list). */
+data class AgentAccessJson(val mode: String, val paths: List<String>? = null) {
+    /** Unknown modes read as READ_ONLY: never more than was signed. */
+    fun toAccess(): AgentAccess {
+        val m = AgentAccessMode.entries.firstOrNull { it.name == mode } ?: return AgentAccess.READ_ONLY
+        return runCatching { AgentAccess(m, if (m == AgentAccessMode.PATHS) paths.orEmpty() else emptyList()) }.getOrElse { AgentAccess.READ_ONLY }
+    }
+}
 
 /** ADR 0057: `RunnerJobSpec.mcpServers[]` (no credentials). */
 data class McpServerJson(val name: String, val url: String)
@@ -333,6 +364,8 @@ data class RunnerResultJson(
     val finishedAt: Instant? = null,
     /** ADR 0034: per-repository results; null from older runners (the top-level fields then describe the single repository). */
     val repositories: List<RepoResultJson>? = null,
+    /** ADR 0060: present when the agent's access was not FULL. */
+    val access: ResultAccessJson? = null,
 ) {
     fun toRunnerResult(finishedAt: Instant): RunnerResult = RunnerResult(
         status = RunnerJobStatus.entries.firstOrNull { it.name == status.uppercase() } ?: RunnerJobStatus.FAILED,
@@ -350,6 +383,7 @@ data class RunnerResultJson(
         finishedAt = this.finishedAt ?: finishedAt,
         repositories = repositories.orEmpty().map { it.toRepoResult() },
         subscription = usage.billing.equals(BILLING_SUBSCRIPTION, ignoreCase = true),
+        access = access?.toReport(),
     )
 
     companion object {
@@ -370,6 +404,9 @@ data class RunnerResultJson(
             error = result.error,
             finishedAt = result.finishedAt,
             repositories = result.repositories.takeIf { it.isNotEmpty() }?.map { RepoResultJson.of(it) },
+            access = result.access?.let { a ->
+                ResultAccessJson(a.mode.name, a.paths, a.reverted.map { RevertedChangeJson(it.repository, it.path, it.change) })
+            },
         )
 
         const val BILLING_SUBSCRIPTION = "SUBSCRIPTION"
@@ -523,5 +560,7 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         agentTools = agentTools.orEmpty().map { AgentTool(it.name, it.repository) },
         instructions = instructions,
         mcpServers = mcpServers.orEmpty().map { AgentMcpServer(it.name, it.url) },
+        agentHome = agentHome,
+        access = access?.toAccess(),
     )
 }

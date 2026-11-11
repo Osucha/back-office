@@ -38,7 +38,7 @@ class WaitTimeoutService(
     fun expire(run: WorkflowRun): Boolean {
         val waiting = run.waitingOn ?: return false
         // a write confirmation (ADR 0033) waits for a person; the node's timeoutSeconds limits its execution, not the wait
-        if (waiting.kind == WaitKind.WRITE_CONFIRMATION) return false
+        if (waiting.kind == WaitKind.WRITE_CONFIRMATION || waiting.kind == WaitKind.AGENT_QUESTIONS) return false
         val node = run.definitionSnapshot.node(waiting.nodeId) ?: return false
         val timeout = node.waitTimeoutSeconds?.takeIf { it > 0 } ?: return false
         val since = run.nodes.lastOrNull { it.nodeId == waiting.nodeId && it.status == NodeExecutionStatus.WAITING }?.startedAt ?: return false
@@ -54,7 +54,7 @@ class WaitTimeoutService(
                 val saved = runs.save(run.resumedByTimeout(now))
                 engine.resumeWithSignal(saved, null)
             }
-            WaitKind.WRITE_CONFIRMATION -> return false
+            WaitKind.WRITE_CONFIRMATION, WaitKind.AGENT_QUESTIONS -> return false
         }
         return true
     }

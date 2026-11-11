@@ -61,12 +61,11 @@ works and how) and the values of the template's parameters (ADR 0057, 0058):
 
 | Override | Effect |
 |---|---|
-| `agentKey` | the agent that runs this node instead of the template's (`model-answer`, `analyst`, `reviewer`, `opencode`, `claude-code` or a library agent; ADR 0056). With it come its instructions, rules, skills and MCP servers |
+| `agentKey` | the agent that runs this node instead of the template's (`model-answer`, `analyst`, `reviewer`, `opencode`, `claude-code` or a library agent; ADR 0056). With it come its instructions, rules, skills, MCP servers and access (ADR 0060) |
 | `parameters` | values of the template's parameters (`{{params.<name>}}`) for this node; empty = the nearest template's value, else the default; a required parameter without a value is a validation error (ADR 0058) |
 | `modelProfileId` | model for this node (else the agent's, else the template's, else the defaults: project, starting user, platform; review tasks use the project's review default) |
 | `systemPromptAppend`, `promptAppend`, `promptReplace` | extend or replace the resolved prompts (`promptReplace` wins over a parameterised prompt) |
-| `addSkills`, `removeSkills` | skill keys added to / removed from the agent's skills for this node only |
-| `config` | deep-merged into the template config: `phase`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (coding agent steps; see [Repositories of a step](#step-repositories)), `workspace`, `sessionRole`, `continueSession` ([Agent sessions](#agent-sessions)); `maxInputChars` (model answer steps). The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
+| `config` | deep-merged into the template config: `phase`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (coding agent steps; see [Repositories of a step](#step-repositories)), `directory`, `session`, `continueSession` ([Run directory and agent sessions](#agent-sessions)); `allowQuestions`, `maxQuestionRounds` (agent steps, [Agent questions](#agent-questions)); `maxInputChars` (model answer steps). Since ADR 0060 a node no longer adds or removes skills (`addSkills` / `removeSkills` of stored workflows are ignored) and `workspace` / `sessionRole` are only read compatibly. The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
 
 The step's agent decides what runs where (ADR 0056; the agent is the step's `agentKey`, else the template's, else
 `model-answer`) and brings the step's environment (ADR 0057): the platform preamble, the agent's instructions, the
@@ -75,7 +74,8 @@ environment opens the system prompt, skills go into a `<skills>` section after t
 `outputSchema` asks for JSON, `confidenceField` feeds `confidence`, every `produces` name becomes an artefact; a task
 that produces `review` is assessed by the verdict policy and stored as the run review). A **coding agent** step
 (OpenCode or Claude Code) runs in the agent runner with the environment written outside the repository (OpenCode
-`AGENTS.md`, Claude Code user `CLAUDE.md`), the skills written to the workspace and the agent's MCP servers
+`AGENTS.md`, Claude Code user `CLAUDE.md`, both in the agent's home `/workspace/.agents/<agent key>/`, ADR 0060), the skills
+written to the same home (never into a repository) and the agent's MCP servers
 configured: with the config key `phase` as a Spec Kit job, otherwise as an agent job that pushes the branch with
 merge-request push options per config, returns the diff as artefact `diff` and the MR URL as `mr` (without a push its
 final answer is the `result` artefact). With an `outputSchema` a coding agent writes its structured answer to
@@ -92,15 +92,31 @@ Templates are Mustache-like: `{{issue.summary}}`, `{{artifacts.spec}}` (artefact
 add a warning to the run log. Sections `{{#path}}...{{/path}}` keep their text only when the value is present
 (not empty), `{{^path}}...{{/path}}` only when it is absent.
 
-<a id="agent-sessions"></a>**Agent sessions.** A coding agent step normally starts a new session. Config
-`continueSession: <node id>` (designer: **Agent session** → **Continue the session of step …**) continues the session
-of an earlier coding agent step (ADR 0057): both steps run in the same run workspace (the earlier step's `workspace`,
-or the implicit workspace `run`, which every project has without a definition) under the same session role (the
-earlier step's `sessionRole`, or one derived from its node id); Back Office sets both on the earlier step too. Claude
-Code resumes with `--resume`, OpenCode with `--continue`. The designer and the check before a run refuse a reference
-to a missing step, to a step that is not a coding agent step, or to a step with another harness (a Claude Code
-session cannot continue in OpenCode). Typical use: *implement* → *fix the review findings* with `continueSession:
-implement`, so the agent keeps its context without re-reading the repository.
+<a id="agent-sessions"></a><a id="run-directory"></a>**Run directory and agent sessions (ADR 0060).** Every run has one run
+directory: coding steps with config `directory: RUN` (default) work in it one after another and see what earlier
+steps left, uncommitted work included; `directory: SEPARATE` gives a step a fresh directory with only its own
+repositories, thrown away after the step (isolation; no session continuation). The workflow's `setupCommand`
+(`WorkflowDefinitionInput.setupCommand`, designer: workflow properties → **Setup command**) runs once per run
+directory before the first coding step, again when it changes. Config `session`: `OWN` (default; repeated executions
+of the step, such as rework loops or answered questions, continue its own session), `NEW` (every execution starts
+fresh) or `CONTINUE` with `continueSession: <node id>` (designer: **Agent session** → **Continue the session of step
+…**; share the session of an earlier coding agent step, ADR 0057). A continued session needs the same agent, because
+the session lives in the agent's home (`/workspace/.agents/<agent key>/`); Claude Code resumes with `--resume`,
+OpenCode with `--continue`. The designer and the check before a run refuse a reference to a missing step, to a step
+that is not a coding agent step, to a `SEPARATE` step or to a step of another agent. Typical use: *implement* → *fix
+the review findings* with `session: CONTINUE`, `continueSession: implement`, so the agent keeps its context without
+re-reading the repository. Stored workflows: `workspace` is ignored, `sessionRole` without `session` is the step's own
+session (steps that shared one keep sharing it), and the setup command and sources of the former project workspaces
+were moved to the workflows and steps by migration V121.
+
+<a id="agent-questions"></a>**Agent questions (ADR 0060).** An agent that cannot do its step well without the owner's
+answers stops with questions: a coding agent writes `agent-questions.json` (`{"questions": [{"question", "why"?}]}`)
+in its working directory, a model answer replies with only `{"agentQuestions": [...]}`. The run waits on an approval of
+kind `AGENT_QUESTIONS` (**The agent asks** in **Your turn**); `answer` runs the step again with the answers appended to
+its prompt (`{{answers}}`, section "Answers of the owner"; a coding agent continues its own session), `cancel` fails
+the step. Config `allowQuestions` (default `true`; `false` tells the agent it cannot ask) and `maxQuestionRounds`
+(default 2): an agent that asks after the last round fails the step, its questions go to the step log. CI-triggered
+runs keep questions on and wait like at a gate.
 
 <a id="template-variables"></a>Template variables (`TemplateModelBuilder`, the same model for prompts, `messageTemplate`,
 `branchTemplate` and merge-request titles):
@@ -111,6 +127,7 @@ implement`, so the agent keeps its context without re-reading the repository.
 | `artifacts.<name>` | content of the run's artefact with that name (latest wins) |
 | `feedback` / `feedbackList` | the revision comments for this step, joined by a blank line / as a list: a gate's `revise` comment goes to the next task step that completes and stays with that step for its later attempts; later steps do not get it |
 | `feedbackHistory` | every revision comment of the run, joined by a blank line |
+| `answers` | ADR 0060: the owner's answers to this step's agent questions; appended to the prompt automatically under "Answers of the owner" after an answer, empty before |
 | `project.{key,name,constitution,defaultBranch,repositoryUrl}` | the project; `defaultBranch` / `repositoryUrl` are the primary repository's (empty when there is none, kept for compatibility) |
 | `project.repositories`, `project.repository` | all repositories of the project (`key`, `url`, `defaultBranch`, `purpose`, `description`, `primary`) / the primary one (may be null) |
 | `repos` | this step's repositories: `key`, `url`, `path`, `access`, `purpose`, `baseBranch`, `primary` |
@@ -245,7 +262,7 @@ A runner task names its repositories in `config.repositories`, each with the lea
   default), `READ` otherwise. Workflows written for single-repository projects therefore work unchanged.
 - `READ` = clone and fetch only, never pushed. `PUSH_MR` = push the job branch and open a merge request
   against that repository's default branch with whitelisted push options; never merge (ADR 0031).
-- Workspace: every repository is cloned into `/workspace/<key>`; the agent starts in the job's primary
+- Folders: every repository is cloned into `/workspace/<key>` (the run directory, or the step's own directory with `directory: SEPARATE`); the agent starts in the job's primary
   repository (the project primary if the step uses it, else the step's first repository). The prompt lists
   the repositories with key, path, access, purpose and base branch.
 - The same job branch (`branchTemplate`) is pushed to every `PUSH_MR` repository; a branch that equals the
@@ -416,4 +433,5 @@ and warnings as `{nodeId, edgeId, field, message}`. Start a run with
 | Validation or run start reports an unknown repository key or a missing primary repository | the project's repositories changed; pick keys from the list or mark a repository primary ([Repositories of a step](#step-repositories)) |
 | Runner tasks fail immediately | `docs/runbooks/runner-job-failed.md` and `GET /api/v1/settings/integrations` (runner mode) |
 | `Parameter x needs a value` | a required template parameter has no value on the step, in the template chain or as a default: set it under **Parameters** or use a preset ([task-library.md](task-library.md#2-a-template-with-parameters)) |
-| `Continues the session of step x, which is not another task step of this workflow` or a harness mismatch | **Agent session** names a missing step or a step of another harness ([Agent sessions](#agent-sessions)) |
+| `Continues the session of step x, which is not another task step of this workflow`, another agent or a separate directory | **Agent session** names a missing step, a step of another agent or a step with **Separate directory** ([Run directory and agent sessions](#agent-sessions)) |
+| a step fails with `the agent asked more than N rounds of questions` | the agent kept asking after `maxQuestionRounds`; answer more completely, raise **Question rounds** or clarify the prompt ([Agent questions](#agent-questions)) |

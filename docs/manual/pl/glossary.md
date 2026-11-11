@@ -27,6 +27,13 @@ wybierze opcji: zatwierdź, odeślij do poprawy albo odrzuć. Zob. [Rozstrzygani
 **Budżet** (budget): Miesięczny limit wydatków platformy lub projektu, z progiem alertu i opcjonalną twardą blokadą.
 Zob. [Budżety](costs-insights.md#budgets).
 
+**Dom agenta** (agent home): Katalog jednego agenta w katalogu przebiegu, poza każdym repozytorium
+(`/workspace/.agents/<klucz agenta>/`): jego środowisko, umiejętności, konfiguracja MCP i sesje. Zob.
+[Środowisko agenta](task-library.md#environment).
+
+**Dostęp, dostęp agenta** (access): Co agent kodujący może zmieniać w repozytoriach swoich kroków: **Pełny**, **Tylko
+odczyt** albo **Tylko te ścieżki**. Runner cofa inne zmiany, gdy agent skończy. Zob. [Dostęp agenta](task-library.md#agent-access).
+
 **Dziennik audytu** (audit log): Zapis każdej zmiany, decyzji, logowania i odmowy dostępu. Zob.
 [Administracja](administration.md#audit).
 
@@ -36,6 +43,10 @@ Claude Code. Agent bez harnessu daje odpowiedź modelu. Zob. [Agenci](task-libra
 **Kandydat** (candidate): To, co porównuje benchmark: agent z modelem (własnym modelem agenta, gdy żaden nie jest
 wybrany), pokazywany jako `agent · model`. Zadania z promptem trafiają do agentów odpowiedzi modelu, zadania
 programistyczne do agentów programistycznych. Zob. [Benchmarki](evaluation.md#benchmarks).
+
+**Katalog przebiegu** (run directory): Jeden katalog przebiegu, w którym jego kroki kodujące pracują jeden po
+drugim i widzą, co zostawiły wcześniejsze kroki; usuwany po zakończeniu przebiegu. Zob. [Katalog
+przebiegu](workflows.md#run-directory).
 
 **Konstytucja** (constitution): Zasady projektu w Markdownie, przekazywane do Spec Kit i będące częścią środowiska
 każdego agenta. Zob. [Tworzenie projektu](projects.md#create-project).
@@ -103,7 +114,7 @@ i może ich być kilka. Zob. [Projekty](projects.md#create-project).
 **Próba** (attempt): Jeden kandydat (agent z modelem) pracujący nad jednym zadaniem benchmarku (raz na powtórzenie),
 oceniany przez model oceniający. Zob. [Benchmarki](evaluation.md#benchmarks).
 
-**Przesłanianie** (shadowing): Szablon lub umiejętność projektu o tym samym kluczu co globalny zastępuje go w tym
+**Przesłanianie** (shadowing): Szablon, umiejętność, reguła lub agent projektu o tym samym kluczu co globalny zastępuje go w tym
 projekcie. Zob. [Szablony](task-library.md#templates).
 
 **Pula, pula runnerów** (pool, runner pool): Grupa runnerów wykonujących ten sam rodzaj zadań, z pułapem sandboxa. Zob.
@@ -114,6 +125,10 @@ projekcie. Zob. [Szablony](task-library.md#templates).
 
 **Punkt wejścia** (entrypoint): Klucz, który przypisuje `backoffice-ci run <key>` w pipeline'ie do workflowu, w trybie
 blokującym lub doradczym. Zob. [CI: punkty wejścia i tokeny](projects.md#project-ci).
+
+**Pytania agenta** (agent questions): Pytania, z którymi agent zatrzymuje krok, gdy bez Twoich odpowiedzi nie wykona
+go dobrze; przebieg czeka, aż odpowiesz albo anulujesz krok. Zob. [Odpowiadanie na pytania
+agenta](your-turn.md#agent-questions).
 
 **Rejestr, rejestr zużycia** (ledger, usage ledger): Zapis każdego wywołania modelu i zadania agenta z tokenami
 i kosztem. Zob. [Koszty](costs-insights.md#costs).
@@ -142,8 +157,9 @@ i wykonuje każde w sandboxie. Zob. [Flota runnerów](runner-fleet.md#pools).
 **Sandbox** (sandbox): Izolowany kontener lub mikromaszyna wirtualna, w której działa zadanie agenta, z ograniczonymi
 zasobami, siecią i narzędziami. Zob. [Jak działają zadania agentów](agent-execution.md#lifecycle).
 
-**Sesja agenta** (agent session): Rozmowa agenta kodującego. Krok zaczyna nową albo kontynuuje sesję wcześniejszego
-kroku (ta sama przestrzeń robocza, ten sam harness). Zob. [Kontynuacja sesji](workflows.md#continue-session).
+**Sesja agenta** (agent session): Rozmowa agenta kodującego. Domyślnie krok ma własną sesję (jego powtórzenia ją
+kontynuują); może też za każdym razem zaczynać nową albo kontynuować sesję wcześniejszego kroku tego samego agenta.
+Zob. [Sesje agenta](workflows.md#continue-session).
 
 **Sygnał CI** (CI signal): Komunikat, który pipeline wysyła poleceniem `backoffice-ci signal <name> --status success|fail`,
 aby zwolnić uruchomienie czekające na CI. Zob. [Węzły oczekiwania na CI](workflows.md#nodes).

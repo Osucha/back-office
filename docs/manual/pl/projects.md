@@ -134,7 +134,7 @@ Karty, każda dostępna przez `?tab=` w URL:
 |---|---|---|
 | **Workflowy** (**Workflows**) | Workflowy projektu z wyzwalaczami, stanem i datą ostatniej zmiany; **Uruchom** (**Start run**), **Edytuj** / **Podgląd** (**Edit** / **View**) i menu dodatkowych akcji (**Duplikuj workflow**, **Usuń workflow**). Gdy brakuje workflowów domyślnych (projekty utworzone, zanim istniały): **Dodaj brakujące workflowy domyślne (N)** (**Add missing default workflows (N)**, [Domyślne workflowy](workflows.md#default-workflows)). | `workflow.edit` (uruchamianie: `run.start`) |
 | **Źródła** (**Sources**) | Repozytoria projektu i źródła z biblioteki (zob. [Karta Źródła](#sources)). | `project.manage` |
-| **Przestrzenie robocze** (**Workspaces**) | Przestrzenie robocze wspólne dla workflowów projektu: źródła, polecenie przygotowania, role agentów (zob. [Przestrzenie robocze i sesje agentów](workflows.md#workspaces)). | `project.manage` |
+| **Agenci** (**Agents**) | Agenci, których mogą używać kroki projektu: globalni i własni agenci projektu; **Utwórz agenta** (**Create agent**), **Importuj z biblioteki** (**Import from library**) (zob. [Agenci projektu](#project-agents)). | `library.project.manage` |
 | **Uruchomienia** (**Runs**) | Uruchomienia projektu (zob. [Uruchomienia](runs.md#run-list)). | — |
 | **CI** | Punkty wejścia, tokeny CI, fragment konfiguracji GitLab CI i wykonania CI. | `project.manage`, `project.ci.manage` |
 | **Członkowie** (**Members**) | Użytkownicy i grupy z ich rolami projektowymi. | `project.members.manage` |
@@ -142,6 +142,23 @@ Karty, każda dostępna przez `?tab=` w URL:
 | **Sandbox** | Polityka sandboxa projektu i to, co dziś dostaje zadanie. | `project.manage` |
 | **Budżet** (**Budget**) | Miesięczny budżet projektu. | `project.manage` |
 | **Ustawienia** (**Settings**) | Formularz projektu opisany wyżej (bez repozytoriów, które są na karcie **Źródła**), przełącznik i konstytucja [Spec Kit](#spec-kit), [monitor zgłoszeń Jira](integrations-jira.md#jira-intake), karta **Spec Kit** (**Dodaj workflowy Spec Kit**) i **Usuń ten projekt**. | `project.manage` |
+
+<a id="project-agents"></a>
+## Agenci projektu
+
+Karta **Agenci** (**Agents**) pokazuje, kto może pracować nad krokami tego projektu (ADR 0060): globalnych agentów
+biblioteki i własnych agentów projektu, z kolumnami **Zakres** (**Scope**: **Ten projekt** albo **Globalny**),
+**Rodzaj** (**Kind**), **Model**, **Dostęp** (**Access**) i **Środowisko** (**Environment**: ile reguł
+i umiejętności). Agent projektu z kluczem globalnego agenta ma dopisek „zastępuje globalnego agenta”, a ten globalny
+agent „zastąpiony w tym projekcie”. Czym jest agent i jakie ma pola: [Agenci](task-library.md#agents).
+
+Z uprawnieniem `library.project.manage` w projekcie:
+
+- **Utwórz agenta** (**Create agent**) otwiera formularz agenta z zakresem ustawionym na ten projekt.
+- **Importuj z biblioteki** (**Import from library**) wybiera globalnego agenta i tworzy jego kopię projektową
+  z **tym samym kluczem**, a potem otwiera ją do edycji (na przykład inny model, reguły projektu, węższy **Dostęp**).
+  Kopia zastępuje globalnego agenta w krokach tego projektu bez zmiany żadnego workflowu; inne projekty nadal używają
+  globalnego. To samo robi **Dostosuj dla projektu** w bibliotece.
 
 <a id="members"></a>
 ## Członkowie i role projektowe

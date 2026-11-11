@@ -16,7 +16,7 @@ describe('stepModelUse (ADR 0050, 0056)', () => {
     expect(stepModelUse({ harness: 'CLAUDE_CODE' })?.harness).toBe('CLAUDE_CODE');
   });
 
-  it('a coding step that only prepares the workspace uses no model', () => {
+  it('a coding step that only prepares the run directory uses no model', () => {
     expect(stepModelUse({ harness: 'OPENCODE' }, { prepareOnly: true })).toBeNull();
     expect(stepModelUse({ harness: 'OPENCODE' }, null, { prepareOnly: 'true' })).toBeNull();
     expect(

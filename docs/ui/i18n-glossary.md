@@ -34,12 +34,15 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | Back Office | Back Office | product name, never translated |
 | abstract (template) | abstrakcyjny | "Szablony abstrakcyjne można tylko rozszerzać" |
 | accepted (result) | zaakceptowane / zaakceptowany wynik | ADR 0059 agent insights column "Zaakceptowane" (Accepted); "Brak zaakceptowanego wyniku" (No accepted result yet); see cost per accepted result |
+| access (agent) | dostęp | ADR 0060 agent field and column "Dostęp" (Access): "Pełny" (Full) / "Tylko odczyt" (Read only) / "Tylko te ścieżki" (Only these paths), list chip "Tylko {paths}"; "Ścieżki, które agent może zmieniać" (Paths the agent may change); runner log line `[Back Office runner] reverted N change(s) ...` stays English |
 | accountable (role) | odpowiedzialny | "Odpowiedzialny: owner" |
 | Add missing default workflows (N) | Dodaj brakujące workflowy domyślne (N) | ADR 0059 button in the project's workflows list; "workflowy domyślne" = default workflows |
 | agent | agent (pl. agenci) | "agent pracuje"; library entry (ADR 0056, 0057): page "Agenci", "Utwórz agenta", "Zapisz agenta", step setting "Agent"; page subtitle „Agent to ten, kto pracuje, i to, jak pracuje: harness, model, instrukcje, reguły i umiejętności. Szablon zadania mówi, co zrobić; krok workflow łączy jedno z drugim.” Built-in agent names (Analyst, Reviewer) are data and stay English |
+| agent home | dom agenta | ADR 0060; manual only: the folder `/workspace/.agents/<agent key>/` of an agent in the run directory; on first use "dom agenta (agent home)" |
 | agent insights | wskaźniki agentów | ADR 0059 route title "Wskaźniki agentów"; page title "Agenci: koszt i skuteczność" (Agents: cost and effectiveness); Insights switcher "Dostarczanie / Agenci" (Delivery / Agents); sections "Według agenta i modelu" (Per agent and model), "Według szablonu" (Per template); palette "Porównaj agentów" (Compare agents) |
 | agent job | zadanie agenta (pl. zadania agentów) | runner fleet |
-| agent session | sesja agenta | ADR 0057 step setting "Sesja agenta": "Nowa sesja" (New session) / "Kontynuuj sesję kroku …" (Continue the session of step …), "Wybierz krok" (Pick the step) |
+| agent questions | pytania agenta | ADR 0060: step settings "Agent może zadawać pytania" (Agent may ask questions), "Rundy pytań" (Question rounds); inbox panel "Agent pyta" (The agent asks), "Dlaczego:" (Why:), buttons "Odpowiedz i kontynuuj" (Answer and continue) / "Anuluj krok" (Cancel the step), "Runda 1 z 2" (Round 1 of 2); turn card and notification "Agent ma pytania" (The agent has questions), "Odpowiedz na pytania" (Answer the questions), "Zobacz pytania" (View the questions); baton "czeka na Twoje odpowiedzi" (waiting for your answers); the prompt section "Answers of the owner" stays English |
+| agent session | sesja agenta | ADR 0057/0060 step setting "Sesja agenta": "Własna (powtórzenia kontynuują)" (Own (repeats continue)) / "Nowa za każdym razem" (New each time) / "Kontynuuj sesję kroku …" (Continue the session of step …), "Wybierz krok" (Pick the step); "Nowa sesja" (New session) is gone |
 | alert (budget) | alert | "alert budżetu", "Alert przy (%)" |
 | allowed projects (connection) | dozwolone projekty | field label "Dozwolone projekty" (Jira project keys a connection may touch); not the network allowlist |
 | allowlist (network) | lista dozwolonych hostów | "Dozwolone hosty" |
@@ -98,6 +101,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | delivery (insights) | dostarczanie | Insights switcher "Dostarczanie / Agenci" (Delivery / Agents) |
 | density (comfortable / compact) | gęstość (wygodna / kompaktowa) | preference values "Wygodna" / "Kompaktowa" |
 | designer (workflow) | projektant workflowów | |
+| directory (step) | katalog | ADR 0060 step setting "Katalog" (Directory): "Katalog przebiegu (wspólny)" (Run directory (shared)) / "Osobny katalog" (Separate directory); run fact "Katalog: osobny" |
 | discard (unsaved edits) | porzuć zmiany | not "odrzuć" (= reject a gate) |
 | display name | wyświetlana nazwa | users and model profiles |
 | done | gotowe | baton holder |
@@ -134,6 +138,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | human gate (node kind) | bramka decyzyjna | node kind and status label; a gate in prose is "bramka" |
 | human wait / CI wait | oczekiwanie na ludzi / oczekiwanie na CI | insights |
 | idle | bezczynne | baton legend |
+| import from library (agent) | importuj z biblioteki | ADR 0060 project tab "Agenci" (Agents): "Utwórz agenta" (Create agent), "Importuj z biblioteki" (Import from library); "Ten projekt" / "Globalny" (This project / Global), "zastępuje globalnego agenta" / "zastąpiony w tym projekcie" |
 | in flight | w toku | Home section |
 | inbox | skrzynka | the page itself is "Twoja kolej" |
 | insights | wskaźniki | |
@@ -211,6 +216,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | replace token | zastąp token | connection secret rotation: "Zastąp token" |
 | replica | replika | operations |
 | repository | repozytorium | |
+| required skills (template) | wymagane umiejętności | ADR 0060 template field "Wymagane umiejętności"; a missing one is shown under "Ostrzeżenia" (Warnings) |
 | resolve / resolved preview | rozwiąż / podgląd rozwiązanego zadania | |
 | retry | ponów | "Ponów" button, "próba" for an attempt |
 | review (CI, gate) | przegląd | "Przejrzyj bramkę", "Otwórz przegląd" |
@@ -221,6 +227,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | rule (library) | reguła (pl. reguły) | ADR 0055/0057: library page "Reguły", "Utwórz regułę", "Stosuj automatycznie w każdym kroku"; agent field "Reguły" |
 | run / start run (verb) | uruchom | "Uruchom…" in the palette, "Rozpocznij uruchomienie" in dialogs |
 | run (noun) | uruchomienie (pl. uruchomienia) | "Uruchomienia" page |
+| run directory | katalog przebiegu | ADR 0060; replaces "przestrzeń robocza" (run workspace, ADR 0044, removed with the project tab "Przestrzenie robocze"); help topic "Katalog przebiegu i sesje agentów" |
 | run success rate | skuteczność uruchomień | insights |
 | runner | runner (pl. runnery, gen. runnerów) | |
 | sample project key (connection check) | przykładowy klucz projektu | "Przykładowy klucz projektu do sprawdzenia"; "Testuj w projekcie Jira" |
@@ -232,11 +239,12 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | send back for revision | odeślij do poprawy | gate decision |
 | session | sesja | |
 | settings | ustawienia | |
+| setup command | polecenie przygotowania | workflow setting "Polecenie przygotowania" (Setup command), ADR 0060 |
 | shadow (project template) | przesłonić | "przesłania szablon globalny" |
 | sign in / sign out | zaloguj się / wyloguj | page title "Logowanie" |
 | signal (CI) | sygnał | "Wyślij sygnał ręcznie" |
 | sign-in method: local / identity provider / both | lokalne / dostawca tożsamości / lokalne i {provider} | "Lokalne i Keycloak"; never "Oba" |
-| skill | umiejętność (pl. umiejętności) | Agent Skills; agent field "Umiejętności"; step overrides "Dodaj umiejętności do umiejętności agenta" (Add skills to the agent's) / "Pomiń umiejętności agenta" (Drop skills of the agent) |
+| skill | umiejętność (pl. umiejętności) | Agent Skills; agent field "Umiejętności"; the step overrides "Dodaj umiejętności do umiejętności agenta" / "Pomiń umiejętności agenta" were removed in ADR 0060 |
 | spec gate | bramka specyfikacji | |
 | spend / usage | wydatki / użycie | |
 | spent in (month) | wydano w miesiącu | "Wydano w miesiącu: październik 2026" on budget cards |
@@ -261,6 +269,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | verdict (review) | werdykt | approve / comment / request changes: zatwierdzenie / komentarz / prośba o zmiany |
 | verify | zweryfikuj | attestation, MFA code; not "weryfikuj". A connection check is "Testuj" / "sprawdzenie" (see test) |
 | wait for CI (node kind) | oczekiwanie na CI | node kind and status label; the baton / status chip "waiting for CI" = "czeka na CI" |
+| warnings (resolution check) | ostrzeżenia | "Ostrzeżenia" (Warnings) in the template preview and "What this step gets"; they do not block (ADR 0060) |
 | warm pool (size) | rozgrzane sandboxy (liczba rozgrzanych sandboxów) | |
 | work item / dead items | element pracy / martwe elementy | operations |
 | workflow | workflow (pl. workflowy, gen. pl. workflowów) | |

@@ -8,6 +8,8 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.AgentId
@@ -51,6 +53,7 @@ class TaskMappers(private val json: JsonMapper) {
         runInputs = json.writeValueAsString(t.runInputs.map(::runInputMap)),
         parameters = json.writeValueAsString(t.parameters.map(::parameterMap)),
         parameterValues = json.writeValueAsString(t.parameterValues),
+        requiresSkills = json.writeValueAsString(t.requiresSkills),
         builtIn = t.builtIn,
         version = t.version,
         createdAt = t.createdAt,
@@ -86,6 +89,7 @@ class TaskMappers(private val json: JsonMapper) {
         updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
         parameters = readList(e.parameters).mapNotNull(::parameter),
         parameterValues = readMap(e.parameterValues),
+        requiresSkills = readStrings(e.requiresSkills),
     )
 
     private fun runInputMap(f: RunInputField) =
@@ -229,6 +233,7 @@ class TaskMappers(private val json: JsonMapper) {
         rules = json.writeValueAsString(a.rules),
         skills = json.writeValueAsString(a.skills),
         mcpServers = json.writeValueAsString(a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) }),
+        access = json.writeValueAsString(mapOf("mode" to a.access.mode.name, "paths" to a.access.paths)),
         modelProfileId = a.modelProfileId?.value,
         tags = json.writeValueAsString(a.tags),
         builtIn = a.builtIn,
@@ -250,6 +255,7 @@ class TaskMappers(private val json: JsonMapper) {
         rules = readStrings(e.rules),
         skills = readStrings(e.skills),
         mcpServers = readList(e.mcpServers).mapNotNull(::mcpServer),
+        access = access(e.access),
         modelProfileId = e.modelProfileId?.let(::ModelProfileId),
         tags = readStrings(e.tags),
         builtIn = e.builtIn,
@@ -257,6 +263,17 @@ class TaskMappers(private val json: JsonMapper) {
         updatedAt = e.updatedAt,
         updatedBy = actorOf(e.updatedByKind, e.updatedById, e.updatedByName),
     )
+
+    /**
+     * ADR 0060: the stored access of an agent; anything unreadable (unknown mode, PATHS without valid paths) reads as
+     * READ_ONLY, never as more than was stored.
+     */
+    private fun access(text: String): AgentAccess {
+        val map = runCatching { readMap(text) }.getOrNull() ?: return AgentAccess.FULL
+        val mode = AgentAccessMode.entries.firstOrNull { it.name == map["mode"]?.toString() } ?: return AgentAccess.READ_ONLY
+        val paths = (map["paths"] as? List<*>)?.mapNotNull { it?.toString() }.orEmpty()
+        return runCatching { AgentAccess(mode, if (mode == AgentAccessMode.PATHS) paths else emptyList()) }.getOrElse { AgentAccess.READ_ONLY }
+    }
 
     // ----- helpers ------------------------------------------------------------------------------------
 

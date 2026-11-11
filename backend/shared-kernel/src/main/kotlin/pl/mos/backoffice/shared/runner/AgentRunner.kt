@@ -40,10 +40,10 @@ data class ExecutionTarget(
 enum class SpecKitPhase { SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT }
 
 /**
- * ADR 0044: the persistent workspace of a run a job works in. Every job of the run that names the same [key] gets the
+ * ADR 0044/0060: the persistent run directory a job works in. Every job of the run that names the same [key] gets the
  * same directory at `/workspace` ([name]: a Docker volume or a PVC of the runner that holds it); repositories cloned
- * there by an earlier job are reused. [sessionRole] continues the coding agent's session of that role (one per role
- * and workspace); [prepareOnly] clones and runs `setupCommand` without an agent.
+ * there by an earlier job are reused. ADR 0060: the only key is [RUN_KEY]. [sessionRole] continues the coding agent's
+ * session of that role (kept in the agent's home); [prepareOnly] clones and runs `setupCommand` without an agent.
  */
 data class RunnerWorkspace(
     val key: String,
@@ -58,6 +58,9 @@ data class RunnerWorkspace(
         val KEY_PATTERN = Regex("^[a-z][a-z0-9-]{0,19}$")
 
         const val NAME_PREFIX = "bo-ws-"
+
+        /** ADR 0060: the key of the run directory every RUN step of a run shares. */
+        const val RUN_KEY = "run"
 
         /** `bo-ws-<run id without dashes>-<key>`: at most 59 characters. */
         fun nameFor(runId: UUID, key: String): String = NAME_PREFIX + runId.toString().replace("-", "") + "-" + key
@@ -159,8 +162,51 @@ data class RunnerRepository(
     val mergeRequest: RunnerMergeRequest? = null,
 )
 
-/** Agent Skill written into the workspace (`.claude/skills/<key>/SKILL.md`, `.opencode/skills/<key>/SKILL.md`). */
+/**
+ * Agent Skill of the job's agent. ADR 0060: written into the agent's home (`/workspace/.agents/<agentHome>/skills/<key>/`)
+ * when the spec names one, never into a repository; older specs: `.claude/skills/<key>/SKILL.md`, `.opencode/skills/...`.
+ */
 data class RunnerSkill(val key: String, val name: String, val content: String)
+
+/** ADR 0060: what a coding agent may change. */
+enum class AgentAccessMode { FULL, READ_ONLY, PATHS }
+
+/**
+ * ADR 0060: what a coding agent may change: [AgentAccessMode.FULL] anything, [AgentAccessMode.READ_ONLY] nothing,
+ * [AgentAccessMode.PATHS] only files matching [paths] (globs relative to a repository root, e.g. `docs/` and everything below it as a double-star glob). Enforced by
+ * the harness's tool rules and by the runner, which reverts other changes after the agent finished.
+ */
+data class AgentAccess(val mode: AgentAccessMode = AgentAccessMode.FULL, val paths: List<String> = emptyList()) {
+    init {
+        problems().firstOrNull()?.let { throw ValidationException(it, "access.paths") }
+    }
+
+    val full: Boolean get() = mode == AgentAccessMode.FULL
+
+    /** Why the access is inconsistent; empty when it is fine. */
+    private fun problems(): List<String> = buildList {
+        if (mode == AgentAccessMode.PATHS) {
+            if (paths.isEmpty() || paths.any { it.isBlank() }) add("access PATHS needs at least one non-blank path glob")
+            paths.filter { it.isNotBlank() }.forEach { p ->
+                when {
+                    p.startsWith("/") || p.startsWith("\\") -> add("path $p must be relative to the repository root (no leading /)")
+                    p.split('/', '\\').any { it == ".." } -> add("path $p must not contain ..")
+                    p.length > MAX_PATH_LENGTH -> add("path $p is longer than $MAX_PATH_LENGTH characters")
+                }
+            }
+            if (paths.size > MAX_PATHS) add("at most $MAX_PATHS paths")
+        } else if (paths.isNotEmpty()) {
+            add("paths are only for access PATHS")
+        }
+    }
+
+    companion object {
+        val FULL = AgentAccess()
+        val READ_ONLY = AgentAccess(AgentAccessMode.READ_ONLY)
+        const val MAX_PATHS = 50
+        const val MAX_PATH_LENGTH = 300
+    }
+}
 
 /**
  * What one runner container is asked to do. Serialised to JSON (see openapi.yaml `RunnerJobSpec`) and
@@ -244,6 +290,13 @@ data class RunnerJobSpec(
     val instructions: String? = null,
     /** ADR 0057: remote MCP servers of the agent (no credentials). Empty = none (omitted from the spec digest). */
     val mcpServers: List<AgentMcpServer> = emptyList(),
+    /**
+     * ADR 0060: the agent key whose home `/workspace/.agents/<agentHome>/` holds the environment document, skills, MCP
+     * configuration and sessions. Null = the ADR 0057 locations (omitted from the spec digest).
+     */
+    val agentHome: String? = null,
+    /** ADR 0060: what the agent may change; null = FULL (omitted from the spec digest). */
+    val access: AgentAccess? = null,
 )
 
 /**
@@ -332,9 +385,19 @@ data class RunnerResult(
      * gateway. Nothing was billed through Back Office; [reportedCostUsd] is only the harness's estimate.
      */
     val subscription: Boolean = false,
+    /** ADR 0060: what the runner enforced when the agent's access was not FULL; null otherwise (and from older runners). */
+    val access: RunnerAccessReport? = null,
 ) {
     val succeeded: Boolean get() = status == RunnerJobStatus.SUCCEEDED
 }
+
+/** ADR 0060: one change outside the agent's access the runner reverted; [repository] = the repository key, null for the job root. */
+data class RevertedChange(val repository: String?, val path: String, val change: String) {
+    fun describe(): String = (repository?.let { "$it:" } ?: "") + path + " ($change)"
+}
+
+/** ADR 0060: `RunnerResult.access`: the access the runner enforced and the changes it reverted. */
+data class RunnerAccessReport(val mode: AgentAccessMode, val paths: List<String> = emptyList(), val reverted: List<RevertedChange> = emptyList())
 
 data class RunnerLogLine(val at: Instant, val message: String, val progress: Boolean = false)
 

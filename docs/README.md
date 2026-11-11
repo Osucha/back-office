@@ -9,15 +9,15 @@ repository read the same source of truth.
 |---|---|
 | [01-overview.md](architecture/01-overview.md) | System context, containers, hexagonal layering, module map, technology stack |
 | [02-domain-model.md](architecture/02-domain-model.md) | Bounded contexts, aggregates, value objects, domain events, state machines |
-| [03-pipelines-and-agents.md](architecture/03-pipelines-and-agents.md) | Workflow graph (nodes, ports, decisions), CI gates, compilation to LangGraph4j, how task and action nodes run (agents, the agent's environment, continued sessions, structured answers of coding agents; ADR 0056, 0057), step repositories (multi-repository projects, ADR 0034), workflow library (ADR 0037), agent runner protocol, Spec Kit |
+| [03-pipelines-and-agents.md](architecture/03-pipelines-and-agents.md) | Workflow graph (nodes, ports, decisions), CI gates, compilation to LangGraph4j, how task and action nodes run (agents, the agent's environment, the run directory and agent sessions, agent questions, structured answers of coding agents; ADR 0056, 0057, 0060), step repositories (multi-repository projects, ADR 0034), workflow library (ADR 0037), agent runner protocol, Spec Kit |
 | [04-model-evaluation.md](architecture/04-model-evaluation.md) | Model catalogue, task suites, benchmark candidates (agents with models, ADR 0059), benchmark execution, scoring, cost accounting, cost of an accepted result |
 | [05-integrations.md](architecture/05-integrations.md) | CI client script and tokens, merge requests via push options, Jira least-privilege connections (encrypted secrets, capability selection, verification, expiry reminders), Jira intake watcher, personal intake rules (ADR 0038), approval before external writes, LLM providers, Langfuse/OpenTelemetry |
 | [09-scale-and-operations.md](architecture/09-scale-and-operations.md) | Roles, PostgreSQL work queue and events, shared limits, object storage, observability, SLOs, capacity, upgrades |
-| [10-agent-execution.md](architecture/10-agent-execution.md) | Threat model, runner fleet protocol v2, Agent Sandbox backends, sandbox policy, egress proxy, credential brokering, multi-repository workspace |
+| [10-agent-execution.md](architecture/10-agent-execution.md) | Threat model, runner fleet protocol v2, Agent Sandbox backends, sandbox policy, egress proxy, credential brokering, multi-repository workspace, run directory, agent home and access enforcement (ADR 0060) |
 | [11-governance.md](architecture/11-governance.md) | Budgets, delivery insights, workflow metrics (ADR 0037), agent insights and the cost of an accepted result (ADR 0059), provenance attestations, MCP server |
 | [12-prompt-injection.md](architecture/12-prompt-injection.md) | Prompt-injection threat model, data blocks, review guards, credential isolation of the coding agent, MCP gate opt-in |
 | [08-identity-and-access.md](architecture/08-identity-and-access.md) | Users, OIDC login, sessions, permission catalogue, roles, grants, project memberships, gate approver rules, tokens, audit log |
-| [07-task-library.md](architecture/07-task-library.md) | Task templates (what) with inheritance, categories and parameters (ADR 0058), Agent Skills, rules, agents (who and how: harness, model, instructions, rules, skills, MCP servers; the environment document; ADR 0056, 0057), resolution rules, seeded library |
+| [07-task-library.md](architecture/07-task-library.md) | Task templates (what) with inheritance, categories and parameters (ADR 0058), Agent Skills, rules, agents (who and how: harness, model, instructions, rules, skills, MCP servers, access; the environment document and the agent home; ADR 0056, 0057, 0060), resolution rules, seeded library |
 | [06-security.md](architecture/06-security.md) | Authentication, secrets, sandboxing of agents |
 | [guardrails.md](architecture/guardrails.md) | Build guardrail registry (GR-*) with the negative test that proves each rule fails |
 | [conventions.md](architecture/conventions.md) | Coding conventions, hexagonal rules enforced by ArchUnit, module ownership, testing strategy |
@@ -45,8 +45,8 @@ the agent runner. The backend also serves it live at `/v3/api-docs` and Swagger 
 | [local-development.md](guides/local-development.md) | Running everything on a laptop |
 | [configuration.md](guides/configuration.md) | Every environment variable and Helm value |
 | [deploy-helm.md](guides/deploy-helm.md) | Installing on Kubernetes |
-| [designing-a-workflow.md](guides/designing-a-workflow.md) | Building a process on the canvas: nodes, ports, decisions, gates, CI waits, task overrides; the default workflows and comparing workflows and agents against the reference workflow |
-| [task-library.md](guides/task-library.md) | Creating templates (with parameters and presets), agents (instructions, rules, skills, MCP servers), skills and rules; specialising per project |
+| [designing-a-workflow.md](guides/designing-a-workflow.md) | Building a process on the canvas: nodes, ports, decisions, gates, CI waits, task overrides, the run directory, agent sessions and agent questions; the default workflows and comparing workflows and agents against the reference workflow |
+| [task-library.md](guides/task-library.md) | Creating templates (with parameters and presets), agents (instructions, rules, skills, MCP servers, access), skills and rules; specialising per project |
 | [running-a-benchmark.md](guides/running-a-benchmark.md) | Comparing agents and models (candidates) on real work |
 | [authentication-and-users.md](guides/authentication-and-users.md) | First administrator, inviting users, groups, roles, grants, project members, tokens, sessions, audit log, other OIDC providers |
 | [ci-integration.md](guides/ci-integration.md) | Issuing a CI token, wiring `backoffice-ci.sh` into a project pipeline, entrypoints, signals |

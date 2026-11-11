@@ -2739,47 +2739,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/projects/{projectId}/workspaces': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: string;
-      };
-      cookie?: never;
-    };
-    /** @description Run workspaces of the project (project.view; ADR 0044). */
-    get: operations['listProjectWorkspaces'];
-    put?: never;
-    /** @description Adds a run workspace (project.manage). Sources must be repositories of the project or library sources. */
-    post: operations['createProjectWorkspace'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/projects/{projectId}/workspaces/{workspaceId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: string;
-        workspaceId: string;
-      };
-      cookie?: never;
-    };
-    get?: never;
-    /** @description Changes a workspace (project.manage); the key cannot change because workflow steps refer to it. */
-    put: operations['updateProjectWorkspace'];
-    post?: never;
-    /** @description Removes a workspace (project.manage). Steps that still name it fail validation and are kept as drafts. */
-    delete: operations['deleteProjectWorkspace'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   '/rules': {
     parameters: {
       query?: never;
@@ -3723,6 +3682,16 @@ export interface components {
       /** @description who saved the current version (ADR 0017) */
       readonly updatedBy?: components['schemas']['ActorRef'];
     };
+    /** @description ADR 0060: what a coding agent may change. FULL (default) anything; READ_ONLY nothing; PATHS only files matching `paths` (globs relative to a repository root, e.g. docs/**). Enforced by the harness's tool rules and by the runner, which reverts other changes after the agent finished and reports them. */
+    AgentAccess: {
+      /**
+       * @default FULL
+       * @enum {string}
+       */
+      mode: 'FULL' | 'READ_ONLY' | 'PATHS';
+      /** @description PATHS only */
+      paths?: string[];
+    };
     /**
      * @description coding agent harness; an agent without one gives a single model answer (ADR 0056)
      * @enum {string}
@@ -3730,6 +3699,7 @@ export interface components {
     AgentHarness: 'OPENCODE' | 'CLAUDE_CODE';
     /** @description ADR 0056/0057: who works on a task and how. Without a harness the step is one model answer (no tools, no repository); with OPENCODE or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the step uses the defaults for its kind (project, starting user, platform). Instructions, rules, skills and MCP servers are the agent's environment: model answers get them in the system prompt, coding agents in the harness's own files (AGENTS.md / CLAUDE.md user memory, skill directories, MCP config). */
     AgentInput: {
+      access?: components['schemas']['AgentAccess'];
       description?: string;
       harness?: components['schemas']['AgentHarness'] | null;
       /** @description ADR 0057: the agent's role and way of working (markdown; may use {{project.*}}); added after the platform preamble */
@@ -3905,10 +3875,12 @@ export interface components {
       id?: string;
       issueKey?: string | null;
       /**
-       * @description GATE = a HUMAN_GATE node; WRITE_CONFIRMATION = a step waits to make the external write in `write` (ADR 0033)
+       * @description GATE = a HUMAN_GATE node; WRITE_CONFIRMATION = a step waits to make the external write in `write` (ADR 0033); AGENT_QUESTIONS = an agent step stopped with `questions` (ADR 0060): option `answer` with the answers in the comment re-runs the step with them, `cancel` fails it
        * @enum {string}
        */
-      kind?: 'GATE' | 'WRITE_CONFIRMATION';
+      kind?: 'GATE' | 'WRITE_CONFIRMATION' | 'AGENT_QUESTIONS';
+      /** @description AGENT_QUESTIONS only: the step's limit of question rounds */
+      readonly maxQuestionRounds?: number | null;
       nodeId?: string;
       /**
        * @example [
@@ -3922,6 +3894,13 @@ export interface components {
       projectId?: string;
       projectKey?: string;
       question?: string;
+      /** @description AGENT_QUESTIONS only: 1-based round of this step */
+      readonly questionRound?: number | null;
+      /** @description AGENT_QUESTIONS only: what the agent asks, in order */
+      readonly questions?: {
+        question: string;
+        why?: string | null;
+      }[];
       /** Format: uuid */
       runId?: string;
       startedBy?: components['schemas']['ActorRef'];
@@ -5852,32 +5831,6 @@ export interface components {
       /** @description git URL the runner clones (and, for PUSH_MR steps, pushes to) */
       url: string;
     };
-    ProjectWorkspace: components['schemas']['ProjectWorkspaceInput'] & {
-      /** Format: date-time */
-      createdAt: string;
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      projectId: string;
-      /** Format: date-time */
-      updatedAt: string;
-      updatedBy?: components['schemas']['ActorRef'] | null;
-    };
-    /** @description ADR 0044: a run workspace of a project, used by any of its workflows. Coding steps pick it by key (config.workspace) and share /workspace within one run; steps without repositories of their own work on its sources (the project's primary among them gets the step's push access, the others READ); setupCommand runs once per workspace; roles are the agent session roles its steps may continue (any when empty). The key cannot change. */
-    ProjectWorkspaceInput: {
-      description?: string;
-      key: string;
-      /** @description shown on the canvas; default the key */
-      name?: string;
-      roles?: string[];
-      setupCommand?: string | null;
-      sources?: {
-        /** @description project repository key, or library source key when library is true */
-        key: string;
-        /** @default false */
-        library: boolean;
-      }[];
-    };
     /** @enum {string} */
     Provider: 'ANTHROPIC' | 'OPENAI' | 'GOOGLE' | 'MISTRAL' | 'OLLAMA' | 'OPENAI_COMPATIBLE';
     ProviderCatalogSection: {
@@ -5964,10 +5917,11 @@ export interface components {
       abstract?: boolean;
       agent?: components['schemas']['AgentRef'];
       category?: components['schemas']['TemplateCategory'] | null;
-      /** @description skills, rules, agents and parameter values that are missing or wrong, and an agent that cannot do the work (ADR 0056-0058) */
+      /** @description skills, rules, agents and parameter values that are missing or wrong, and an agent that cannot do the work (ADR 0056-0058); warnings do not block (ADR 0060: required skills the agent lacks) */
       check?: {
         ok?: boolean;
         problems?: string[];
+        warnings?: string[];
       };
       confidenceField?: string | null;
       config?: {
@@ -6104,8 +6058,12 @@ export interface components {
     };
     /** @description Delivered to the sandbox as `spec.json` of the job bundle (/var/run/backoffice/job, ADR 0024); legacy: base64 JSON in `RUNNER_SPEC`. */
     RunnerJobSpec: {
+      /** @description ADR 0060: absent = FULL. Covered by the spec digest when present. */
+      access?: components['schemas']['AgentAccess'] | null;
       /** @enum {string} */
       agent: 'OPENCODE' | 'CLAUDE_CODE';
+      /** @description ADR 0060: the agent key whose home /workspace/.agents/<agentHome>/ holds the environment document, skills, MCP configuration and sessions of the agent (Claude Code CLAUDE_CONFIG_DIR; OpenCode config and data directories); nothing is written into a repository. Absent (older Back Office): the ADR 0057 locations. Covered by the spec digest when present. */
+      agentHome?: string | null;
       /** @description ADR 0051 step 4: read-only tools of the agent. gitlab-read = glab (GITLAB_TOKEN, GITLAB_HOST) with the CI_READ token of the repository, named in credentials and delivered as the bundle file tool-token-<repository>; the runner hands only this token to the agent and redacts it everywhere. Covered by the spec digest when present. */
       agentTools?:
         | {
@@ -6252,6 +6210,19 @@ export interface components {
       version: string;
     };
     RunnerResult: {
+      /** @description ADR 0060: present when the job's access was not FULL; changes outside it the runner reverted after the agent finished */
+      access?: {
+        /** @enum {string} */
+        mode?: 'READ_ONLY' | 'PATHS';
+        paths?: string[];
+        reverted?: {
+          /** @enum {string} */
+          change?: 'added' | 'modified' | 'deleted' | 'type changed';
+          path?: string;
+          /** @description repository key; null for the legacy single repository */
+          repository?: string | null;
+        }[];
+      } | null;
       artifacts?: {
         content: string;
         mediaType: string;
@@ -6577,11 +6548,9 @@ export interface components {
       };
     };
     TaskOverrides: {
-      /** @description skills this step adds to its agent's (ADR 0057) */
-      addSkills?: string[];
       /** @description ADR 0056: the agent that runs this step instead of the template's */
       agentKey?: string | null;
-      /** @description Template config overrides. ADR 0057: `continueSession: <node id>` on a coding agent step continues the agent session of that earlier step (same run workspace and session role; the implicit workspace `run` when the earlier step names none). */
+      /** @description Template config overrides. ADR 0060 keys of coding agent steps: `directory` RUN (default, the run directory) or SEPARATE (a fresh directory with only the step's repositories); `session` OWN (default, repeated executions continue the step's own session), NEW, or CONTINUE with `continueSession: <node id>` (share the session of an earlier step of the same agent). All agent steps: `allowQuestions` (default true) and `maxQuestionRounds` (default 2). `workspace` and `sessionRole` of ADR 0044 are read compatibly. */
       config?: {
         [key: string]: unknown;
       };
@@ -6593,8 +6562,6 @@ export interface components {
       };
       promptAppend?: string | null;
       promptReplace?: string | null;
-      /** @description skills of the agent this step drops */
-      removeSkills?: string[];
       systemPromptAppend?: string | null;
     };
     TaskPrompt: {
@@ -6669,6 +6636,8 @@ export interface components {
       };
       produces?: string[];
       prompt?: components['schemas']['TaskPrompt'];
+      /** @description ADR 0060: skills the work needs; a step whose agent lacks one gets a warning (inherited, unioned) */
+      requiresSkills?: string[];
       /** @description Run inputs this task asks for when a run starts (ADR 0053); inherited child-wins by name */
       runInputs?: components['schemas']['RunInputField'][];
       sandboxPolicy?: components['schemas']['SandboxPolicy'];
@@ -6919,6 +6888,8 @@ export interface components {
       enabled: boolean;
       name: string;
       nodes: components['schemas']['WorkflowNode'][];
+      /** @description ADR 0060: runs once per run directory before the first coding step (again when it changes) */
+      setupCommand?: string | null;
       triggers?: components['schemas']['Trigger'][];
     };
     WorkflowEdge: {
@@ -7144,10 +7115,10 @@ export interface components {
         /** Format: uuid */
         approvalId?: string | null;
         /**
-         * @description WRITE_CONFIRMATION = a TASK node waits for a person to confirm its external write (ADR 0033)
+         * @description WRITE_CONFIRMATION = a TASK node waits for a person to confirm its external write (ADR 0033); AGENT_QUESTIONS = an agent step waits for answers to its questions (ADR 0060)
          * @enum {string}
          */
-        kind?: 'HUMAN_GATE' | 'WAIT_FOR_CI' | 'WRITE_CONFIRMATION';
+        kind?: 'HUMAN_GATE' | 'WAIT_FOR_CI' | 'WRITE_CONFIRMATION' | 'AGENT_QUESTIONS';
         nodeId?: string;
         signal?: string | null;
       } | null;
@@ -12271,104 +12242,6 @@ export interface operations {
         };
       };
       400: components['responses']['Problem'];
-    };
-  };
-  listProjectWorkspaces: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ProjectWorkspace'][];
-        };
-      };
-    };
-  };
-  createProjectWorkspace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProjectWorkspaceInput'];
-      };
-    };
-    responses: {
-      /** @description Created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ProjectWorkspace'];
-        };
-      };
-      400: components['responses']['Problem'];
-    };
-  };
-  updateProjectWorkspace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: string;
-        workspaceId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProjectWorkspaceInput'];
-      };
-    };
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ProjectWorkspace'];
-        };
-      };
-      400: components['responses']['Problem'];
-    };
-  };
-  deleteProjectWorkspace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: string;
-        workspaceId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Deleted */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
     };
   };
   listRules: {

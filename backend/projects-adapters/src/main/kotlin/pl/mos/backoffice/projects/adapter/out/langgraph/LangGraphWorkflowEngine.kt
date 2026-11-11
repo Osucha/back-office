@@ -26,6 +26,8 @@ import pl.mos.backoffice.projects.application.port.out.WorkflowEngine
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
 import pl.mos.backoffice.projects.application.service.TemplateModelBuilder
 import pl.mos.backoffice.projects.application.service.nodes.NodeExecutors
+import pl.mos.backoffice.projects.domain.model.AgentQuestion
+import pl.mos.backoffice.projects.domain.model.AgentQuestions
 import pl.mos.backoffice.projects.domain.model.ApprovalContext
 import pl.mos.backoffice.projects.domain.model.CiSignal
 import pl.mos.backoffice.projects.domain.model.Decision
@@ -45,6 +47,8 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.projects.domain.service.WorkflowGraph
 import pl.mos.backoffice.shared.DomainException
+import pl.mos.backoffice.shared.Money
+import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.platform.ClusterSignals
@@ -75,6 +79,10 @@ import java.util.concurrent.ConcurrentHashMap
  * `<id>::confirm` node, `interruptBefore` too (ADR 0033): a step that prepared an external write needing approval routes
  * there, the engine opens a write confirmation with the exact write, and the approve / reject decision resumes it; the
  * confirm node performs exactly the previewed write (no re-rendering) or fails the step through its `failure` port.
+ * ADR 0060: per TASK node a `<id>::questions` node, `interruptBefore` too: a step whose agent stopped with questions routes
+ * there, the engine opens an AGENT_QUESTIONS approval, and `answer` runs the step again in the same execution with the
+ * answers (`{{answers}}`; a coding agent continues its session), `cancel` fails it. What asking cost is added to the
+ * step's final result.
  * `HUMAN_GATE` and `WAIT_FOR_CI` nodes are `interruptBefore` and resume with `{decision|ci}`. Every invocation runs inside
  * `gate.asSystem("workflow engine")` (ADR 0017). Loops are bounded by `maxVisits`. Cancellation interrupts
  * the worker thread holding the run on whichever replica ([ClusterSignals] topic `workflow-run-cancel`).
@@ -211,7 +219,7 @@ class LangGraphWorkflowEngine(
             kind == RunAdvance.RETRY && attempt <= 1 -> GraphInput.args(retryUpdate(run, resume, snapshot.state()))
             next.isNullOrBlank() || next == GraphDefinition.END -> null
             isAwait(next) -> if (runnerResultReady(run.id, snapshot.state())) GraphInput.resume() else null
-            isConfirm(next) -> if (kind == RunAdvance.RESUME_DECISION && resume[RunAdvance.DECISION] != null) {
+            isConfirm(next) || isQuestions(next) -> if (kind == RunAdvance.RESUME_DECISION && resume[RunAdvance.DECISION] != null) {
                 GraphInput.resume(WorkflowState.normaliseUpdates(mapOf(RunStateKeys.DECISION to resume[RunAdvance.DECISION])))
             } else {
                 null
@@ -254,6 +262,10 @@ class LangGraphWorkflowEngine(
             }
             if (isConfirm(next)) {
                 openWriteConfirmation(current, next.removeSuffix(CONFIRM_SUFFIX), state)
+                return
+            }
+            if (isQuestions(next)) {
+                openAgentQuestions(current, next.removeSuffix(QUESTIONS_SUFFIX), state)
                 return
             }
             when (val node = current.definitionSnapshot.node(next)) {
@@ -350,6 +362,25 @@ class LangGraphWorkflowEngine(
         progress.waitingForWriteConfirmation(run.id, nodeId, write, approvers, context)
     }
 
+    /**
+     * ADR 0060: the agent of TASK [nodeId] stopped with questions; ask the owner (the approvers of the run's gates: anyone
+     * with `run.approve`, the owner role accountable).
+     */
+    private fun openAgentQuestions(run: WorkflowRun, nodeId: String, state: WorkflowState) {
+        val pending = state.map(RunStateKeys.PENDING_QUESTIONS)
+        val questions = pendingQuestions(pending)
+        val round = (pending?.get("round") as? Number)?.toInt() ?: 1
+        if (pending?.get("nodeId") != nodeId || questions.isEmpty()) {
+            progress.finished(run.id, RunStatus.FAILED, RunOutcome.FAILURE, RunFailure(nodeId, "node $nodeId waits for answers without questions", retryable = true))
+            return
+        }
+        val context = ApprovalContext(summary = AgentQuestions.question(round, questions.size), mergeRequestUrl = run.mergeRequest?.url)
+        progress.waitingForAgentQuestions(run.id, nodeId, questions, round, QUESTION_APPROVERS, context, (pending["maxRounds"] as? Number)?.toInt())
+    }
+
+    private fun pendingQuestions(pending: Map<String, Any?>?): List<AgentQuestion> =
+        (pending?.get("questions") as? List<*>)?.mapNotNull { (it as? Map<*, *>)?.let(AgentQuestion::fromStateMap) }.orEmpty()
+
     @Suppress("UNCHECKED_CAST")
     private fun pendingWrite(pending: Map<String, Any?>?): PendingWrite? =
         (pending?.get("write") as? Map<String, Any?>)?.let { runCatching { PendingWrite.fromStateMap(it) }.getOrNull() }
@@ -365,7 +396,11 @@ class LangGraphWorkflowEngine(
         val executable = definition.nodes.filter { it.kind != NodeKind.NOTE }
         // task steps may wait for a runner job, task and action steps (ADR 0056) for a write confirmation
         val awaiting = executable.filter { it.kind == NodeKind.TASK || it.kind == NodeKind.ACTION }
-        val mapping = (executable.map { it.id } + awaiting.map { awaitId(it.id) } + awaiting.map { confirmId(it.id) } + listOf(NODE_FAILED, NODE_CANCELLED))
+        val asking = executable.filter { it.kind == NodeKind.TASK }
+        val mapping = (
+            executable.map { it.id } + awaiting.map { awaitId(it.id) } + awaiting.map { confirmId(it.id) } + asking.map { questionsId(it.id) } +
+                listOf(NODE_FAILED, NODE_CANCELLED)
+            )
             .associateWith { it } +
             (GraphDefinition.END to GraphDefinition.END)
         val startId = definition.startNode()?.id ?: error("workflow ${definition.name} has no START node")
@@ -384,6 +419,10 @@ class LangGraphWorkflowEngine(
             graph.addNode(confirmId(node.id), node { state -> confirmBody(node, topology, state) })
             graph.addConditionalEdges(confirmId(node.id), edge { state -> route(node, topology, state) }, mapping)
         }
+        asking.forEach { node ->
+            graph.addNode(questionsId(node.id), node { state -> questionsBody(node, topology, state) })
+            graph.addConditionalEdges(questionsId(node.id), edge { state -> route(node, topology, state) }, mapping)
+        }
         graph.addNode(NODE_FAILED, node { mapOf(RunStateKeys.RUN_OUTCOME to RunStateKeys.RUN_FAILED) })
         graph.addNode(NODE_CANCELLED, node { mapOf(RunStateKeys.RUN_OUTCOME to RunStateKeys.RUN_CANCELLED) })
         graph.addEdge(NODE_FAILED, GraphDefinition.END)
@@ -396,7 +435,9 @@ class LangGraphWorkflowEngine(
 
         val config = CompileConfig.builder()
             .checkpointSaver(checkpointSaver)
-            .interruptsBefore(executable.filter { it.interrupting }.map { it.id } + awaiting.map { awaitId(it.id) } + awaiting.map { confirmId(it.id) })
+            .interruptsBefore(
+                executable.filter { it.interrupting }.map { it.id } + awaiting.map { awaitId(it.id) } + awaiting.map { confirmId(it.id) } + asking.map { questionsId(it.id) },
+            )
             .releaseThread(false)
             .recursionLimit(RECURSION_LIMIT)
             .build()
@@ -415,6 +456,7 @@ class LangGraphWorkflowEngine(
         if (port == NODE_FAILED || port == NODE_CANCELLED) return port
         if (port == PORT_AWAIT) return awaitId(node.id)
         if (port == PORT_CONFIRM) return confirmId(node.id)
+        if (port == PORT_QUESTIONS) return questionsId(node.id)
         return when (val route = topology.route(node.id, port)) {
             is WorkflowGraph.Route.Next -> route.nodeId
             is WorkflowGraph.Route.Fail -> NODE_FAILED
@@ -435,6 +477,12 @@ class LangGraphWorkflowEngine(
         }
         val loopCounts = HashMap<String, Any?>(state.map(RunStateKeys.LOOP_COUNTS) ?: emptyMap())
         loopCounts[node.id] = state.visits(node.id) + 1
+        // ADR 0060: a new visit of a step gets its rounds of questions again (the answers stay)
+        val fresh = if (node.kind == NodeKind.TASK && RunStateKeys.questionRounds(state.data(), node.id) > 0) {
+            mapOf(RunStateKeys.QUESTION_ROUNDS to (HashMap<String, Any?>(state.map(RunStateKeys.QUESTION_ROUNDS) ?: emptyMap()) - node.id))
+        } else {
+            emptyMap()
+        }
 
         val run = if (node.interrupting) {
             runs.findById(runId) ?: throw NotFoundException("Run", runId)
@@ -446,21 +494,30 @@ class LangGraphWorkflowEngine(
                 return failUpdates(node, e.message ?: "cannot start node") + (RunStateKeys.LOOP_COUNTS to loopCounts)
             }
         }
-        val result = runExecutor(run, node, state) { context -> executors.forKind(node.kind).execute(context) }
+        val result = runExecutor(run, node, state, fresh) { context -> executors.forKind(node.kind).execute(context) }
+        interim(node, state, run, result)?.let { return it + fresh + (RunStateKeys.LOOP_COUNTS to loopCounts) }
+        return applyResult(node, topology, state, run, result) + fresh + (RunStateKeys.LOOP_COUNTS to loopCounts)
+    }
+
+    /**
+     * The state updates of a result that does not finish the node yet: a submitted runner job (route to `::await`), an
+     * external write to confirm (`::confirm`, ADR 0033) or agent questions to answer (`::questions`, ADR 0060); null for a
+     * result that finishes it.
+     */
+    private fun interim(node: WorkflowNode, state: WorkflowState, run: WorkflowRun, result: NodeResult): Map<String, Any?>? {
+        if (result.failed) return null
         val awaitingJob = result.awaitingJob
-        if (awaitingJob != null && !result.failed) {
-            progress.appendLog(runId, node.id, LogLevel.INFO, "waiting for runner job $awaitingJob", run.projectId)
+        if (awaitingJob != null) {
+            progress.appendLog(run.id, node.id, LogLevel.INFO, "waiting for runner job $awaitingJob", run.projectId)
             return mapOf(
-                RunStateKeys.LOOP_COUNTS to loopCounts,
                 RunStateKeys.PENDING_JOB to mapOf("nodeId" to node.id, "jobId" to awaitingJob.toString()),
                 RunStateKeys.LAST_PORT to PORT_AWAIT,
             )
         }
         val write = result.pendingWrite
-        if (write != null && !result.failed) {
-            progress.appendLog(runId, node.id, LogLevel.INFO, "waiting for confirmation: ${write.describe()}", run.projectId)
+        if (write != null) {
+            progress.appendLog(run.id, node.id, LogLevel.INFO, "waiting for confirmation: ${write.describe()}", run.projectId)
             return mapOf(
-                RunStateKeys.LOOP_COUNTS to loopCounts,
                 RunStateKeys.PENDING_WRITE to mapOf(
                     "nodeId" to node.id, "write" to write.toStateMap(),
                     "approvers" to approversToState(result.writeApprovers ?: WriteApprovalConfig.DEFAULT_APPROVERS),
@@ -468,7 +525,53 @@ class LangGraphWorkflowEngine(
                 RunStateKeys.LAST_PORT to PORT_CONFIRM,
             )
         }
-        return applyResult(node, topology, state, run, result) + (RunStateKeys.LOOP_COUNTS to loopCounts)
+        val questions = result.questions?.takeIf { it.isNotEmpty() && node.kind == NodeKind.TASK } ?: return null
+        val round = result.questionRound ?: (RunStateKeys.questionRounds(state.data(), node.id) + 1)
+        progress.appendLog(run.id, node.id, LogLevel.INFO, "waiting for the owner's answers to ${questions.size} question(s) of the agent (round $round)", run.projectId)
+        return mapOf(
+            RunStateKeys.PENDING_QUESTIONS to mapOf(
+                "nodeId" to node.id, "questions" to questions.map { it.toStateMap() }, "round" to round, "maxRounds" to result.maxQuestionRounds,
+            ),
+            RunStateKeys.QUESTION_COSTS to withQuestionCost(state, node.id, result),
+            RunStateKeys.LAST_PORT to PORT_QUESTIONS,
+        )
+    }
+
+    /**
+     * `<id>::questions` (ADR 0060): the owner decided on the agent's questions of [node]. `answer` adds the round to the
+     * step's `{{answers}}` and runs the step again in the same execution (a new runner job; a coding agent continues its
+     * session); anything else fails the step through its `failure` port.
+     */
+    private fun questionsBody(node: WorkflowNode, topology: WorkflowGraph, state: WorkflowState): Map<String, Any?> {
+        val runId = WorkflowRunId.of(state.string(RunStateKeys.RUN_ID) ?: error("state has no runId"))
+        val run = runs.findById(runId) ?: throw NotFoundException("Run", runId)
+        val pending = state.map(RunStateKeys.PENDING_QUESTIONS)
+        val decision = state.map(RunStateKeys.DECISION)
+        val questions = pendingQuestions(pending)
+        val round = (pending?.get("round") as? Number)?.toInt() ?: 1
+        val by = decision?.get("decidedBy")?.toString() ?: "unknown"
+        val cleared = mapOf(RunStateKeys.PENDING_QUESTIONS to null, RunStateKeys.DECISION to null, RunStateKeys.LAST_DECISION to decision)
+        val failure = when {
+            pending?.get("nodeId") != node.id || questions.isEmpty() -> "node ${node.id} resumed without questions of its agent"
+            decision == null -> "node ${node.id} resumed without the answers to its agent's questions"
+            !decision["option"]?.toString().equals(AgentQuestions.ANSWER, ignoreCase = true) -> {
+                val comment = decision["comment"]?.toString()?.takeIf { it.isNotBlank() }?.let { " - $it" } ?: ""
+                "$by cancelled the step at the agent's questions (round $round)$comment"
+            }
+            else -> null
+        }
+        if (failure != null) return applyResult(node, topology, state, run, NodeResult.failure(failure)) + cleared
+        val answers = decision!!["comment"]?.toString().orEmpty()
+        progress.appendLog(runId, node.id, LogLevel.INFO, "$by answered the agent's questions (round $round); the step runs again with the answers", run.projectId)
+        val answered = mapOf(
+            RunStateKeys.ANSWERS to (HashMap<String, Any?>(state.map(RunStateKeys.ANSWERS) ?: emptyMap()) +
+                (node.id to AgentQuestions.answersText(RunStateKeys.answersOf(state.data(), node.id), round, questions, answers))),
+            RunStateKeys.QUESTION_ROUNDS to (HashMap<String, Any?>(state.map(RunStateKeys.QUESTION_ROUNDS) ?: emptyMap()) + (node.id to round)),
+        )
+        val result = runExecutor(run, node, state, answered + cleared) { context -> executors.forKind(node.kind).execute(context) }
+        val next = WorkflowState(HashMap(state.data()).apply { putAll(WorkflowState.normaliseUpdates(answered + cleared)) })
+        interim(node, next, run, result)?.let { return answered + cleared + it }
+        return applyResult(node, topology, next, run, result) + answered + cleared
     }
 
     /**
@@ -510,14 +613,24 @@ class LangGraphWorkflowEngine(
         } else {
             runExecutor(run, node, state) { context -> executors.forKind(node.kind).resume(context, pending.second) }
         }
+        // ADR 0060: the job's agent asked questions
+        interim(node, state, run, result)?.let { return it + (RunStateKeys.PENDING_JOB to null) }
         return applyResult(node, topology, state, run, result) + (RunStateKeys.PENDING_JOB to null)
     }
 
-    private fun runExecutor(run: WorkflowRun, node: WorkflowNode, state: WorkflowState, call: (NodeContext) -> NodeResult): NodeResult {
+    /** [extra]: state updates of this body the executor sees already (e.g. the owner's answers, ADR 0060). */
+    private fun runExecutor(
+        run: WorkflowRun,
+        node: WorkflowNode,
+        state: WorkflowState,
+        extra: Map<String, Any?> = emptyMap(),
+        call: (NodeContext) -> NodeResult,
+    ): NodeResult {
         val project = projects.findById(run.projectId) ?: throw NotFoundException("Project", run.projectId)
         val execution = run.nodes.lastOrNull { it.nodeId == node.id } ?: run.nodes.last()
         val warn: (String) -> Unit = { message -> progress.appendLog(run.id, node.id, LogLevel.WARN, message, run.projectId) }
-        val context = NodeContext(run, project, node, execution, state.data(), warn) { message ->
+        val data = if (extra.isEmpty()) state.data() else HashMap(state.data()).apply { putAll(WorkflowState.normaliseUpdates(extra)) }
+        val context = NodeContext(run, project, node, execution, data, warn) { message ->
             progress.appendLog(run.id, node.id, LogLevel.INFO, message, run.projectId)
         }
         return try {
@@ -530,9 +643,13 @@ class LangGraphWorkflowEngine(
         }
     }
 
-    private fun applyResult(node: WorkflowNode, topology: WorkflowGraph, state: WorkflowState, run: WorkflowRun, result: NodeResult): Map<String, Any?> {
+    private fun applyResult(node: WorkflowNode, topology: WorkflowGraph, state: WorkflowState, run: WorkflowRun, outcome: NodeResult): Map<String, Any?> {
         val runId = run.id
         val updates = HashMap<String, Any?>()
+        // ADR 0060: what asking the owner cost is part of the step's cost
+        val asked = state.map(RunStateKeys.QUESTION_COSTS)?.get(node.id) as? Map<*, *>
+        val result = asked?.let { withAskingCost(outcome, it) } ?: outcome
+        if (asked != null) updates[RunStateKeys.QUESTION_COSTS] = HashMap<String, Any?>(state.map(RunStateKeys.QUESTION_COSTS) ?: emptyMap()) - node.id
         if (result.failed) {
             val error = result.error ?: "node failed"
             val port = result.port ?: WorkflowNode.PORT_FAILURE
@@ -582,6 +699,26 @@ class LangGraphWorkflowEngine(
         return updates
     }
 
+    /** ADR 0060: the cost of asking so far plus [result]'s, kept until the step finishes. */
+    private fun withQuestionCost(state: WorkflowState, nodeId: String, result: NodeResult): Map<String, Any?> {
+        val all = HashMap<String, Any?>(state.map(RunStateKeys.QUESTION_COSTS) ?: emptyMap())
+        val before = all[nodeId] as? Map<*, *>
+        val summed = withAskingCost(result, before ?: emptyMap<String, Any?>())
+        all[nodeId] = mapOf(
+            "inputTokens" to summed.usage.inputTokens, "outputTokens" to summed.usage.outputTokens,
+            "cacheReadTokens" to summed.usage.cacheReadTokens, "cacheWriteTokens" to summed.usage.cacheWriteTokens,
+            "cost" to summed.cost.amount.toPlainString(), "apiCost" to (summed.apiCost ?: summed.cost).amount.toPlainString(),
+        )
+        return all
+    }
+
+    private fun withAskingCost(result: NodeResult, asked: Map<*, *>): NodeResult {
+        fun long(key: String) = (asked[key] as? Number)?.toLong() ?: asked[key]?.toString()?.toLongOrNull() ?: 0L
+        fun money(key: String) = asked[key]?.toString()?.toBigDecimalOrNull()?.let { Money(it) } ?: Money.ZERO
+        val usage = TokenUsage(long("inputTokens"), long("outputTokens"), long("cacheReadTokens"), long("cacheWriteTokens"))
+        return result.copy(usage = result.usage + usage, cost = result.cost + money("cost"), apiCost = (result.apiCost ?: result.cost) + money("apiCost"))
+    }
+
     private fun failUpdates(node: WorkflowNode, error: String): Map<String, Any?> = mapOf(
         RunStateKeys.LAST_OUTCOME to RunStateKeys.OUTCOME_FAILURE,
         RunStateKeys.LAST_ERROR to error,
@@ -599,6 +736,16 @@ class LangGraphWorkflowEngine(
         const val PORT_CONFIRM = "sys:confirm"
         /** Internal port: the node submitted a runner job and routes to its await node. */
         const val PORT_AWAIT = "sys:await"
+        /** ADR 0060: internal port: the step's agent asked questions; routes to its questions node. */
+        const val PORT_QUESTIONS = "sys:questions"
+        const val QUESTIONS_SUFFIX = "::questions"
+
+        /** ADR 0060: who answers an agent's questions: like the run's gates, anyone with `run.approve`, the owner accountable. */
+        val QUESTION_APPROVERS = GateApprovers(accountable = pl.mos.backoffice.projects.domain.service.DefaultWorkflows.ACCOUNTABLE_ROLE)
+
+        fun questionsId(nodeId: String): String = nodeId + QUESTIONS_SUFFIX
+
+        fun isQuestions(graphNodeId: String?): Boolean = graphNodeId?.endsWith(QUESTIONS_SUFFIX) == true
         private const val POLL_MILLIS = 50L
 
         fun awaitId(nodeId: String): String = nodeId + AWAIT_SUFFIX

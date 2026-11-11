@@ -9,7 +9,11 @@ const snapshot = {
       kind: 'TASK',
       task: {
         templateKey: 'implement',
-        overrides: { modelProfileId: 'fast', addSkills: ['a', 'b'], promptAppend: 'more' },
+        overrides: {
+          modelProfileId: 'fast',
+          config: { directory: 'SEPARATE' },
+          promptAppend: 'more',
+        },
       },
     },
     { id: 'review', name: 'Review', kind: 'HUMAN_GATE', gate: { options: ['APPROVE', 'REJECT'] } },
@@ -46,7 +50,7 @@ describe('stepFacts', () => {
     expect(facts.map((f) => f.label)).toEqual([
       'Template',
       'Model override',
-      'Extra skills',
+      'Directory',
       'Prompt',
       'Reached from',
       'Left through',
@@ -56,7 +60,7 @@ describe('stepFacts', () => {
     ]);
     const v = labels(facts);
     expect(v['Template']).toBe('implement');
-    expect(v['Extra skills']).toBe('a, b');
+    expect(v['Directory']).toBe('separate');
     expect(v['Prompt']).toBe('extended on the node');
     expect(v['Reached from']).toBe('Start → next');
     expect(v['Left through']).toBe('SUCCESS → Review');

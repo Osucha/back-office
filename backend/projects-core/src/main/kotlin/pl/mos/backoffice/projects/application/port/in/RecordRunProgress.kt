@@ -2,6 +2,7 @@ package pl.mos.backoffice.projects.application.port.`in`
 
 import pl.mos.backoffice.projects.application.port.out.LogLevel
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
+import pl.mos.backoffice.projects.domain.model.AgentQuestion
 import pl.mos.backoffice.projects.domain.model.ApprovalContext
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.Artifact
@@ -50,6 +51,15 @@ interface RecordRunProgress {
      * confirmation (options approve / reject) decided by [approvers]. Idempotent per open approval.
      */
     fun waitingForWriteConfirmation(runId: WorkflowRunId, nodeId: String, write: PendingWrite, approvers: GateApprovers, context: ApprovalContext): ApprovalRequest
+
+    /**
+     * ADR 0060: the running TASK [nodeId] stopped with its agent's [questions] (round [round]) and waits for the owner's
+     * answers: opens an AGENT_QUESTIONS approval (options answer / cancel) decided by [approvers]. Idempotent per open approval.
+     */
+    fun waitingForAgentQuestions(
+        runId: WorkflowRunId, nodeId: String, questions: List<AgentQuestion>, round: Int, approvers: GateApprovers, context: ApprovalContext,
+        maxRounds: Int? = null,
+    ): ApprovalRequest
     fun finished(runId: WorkflowRunId, status: RunStatus, outcome: RunOutcome? = null, failure: RunFailure? = null): WorkflowRun
     fun addArtifact(runId: WorkflowRunId, nodeId: String, artifact: NewArtifact): Artifact
     /** [projectId] (when the caller knows it) saves a lookup of the run for the event. */

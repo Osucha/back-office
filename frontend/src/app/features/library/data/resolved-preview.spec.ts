@@ -27,7 +27,11 @@ describe('toPreview', () => {
       produces: ['review'],
       consumes: ['diff'],
       config: { chunk: 2 },
-      check: { ok: false, problems: ['unknown skill zzz'] },
+      check: {
+        ok: false,
+        problems: ['unknown skill zzz'],
+        warnings: ['agent coder lacks skill kotlin'],
+      },
     };
     const p = toPreview(r)!;
     expect(p.lineage).toEqual(['base-agent', 'code-review']);
@@ -38,6 +42,7 @@ describe('toPreview', () => {
     ]);
     expect(p.ok).toBe(false);
     expect(p.problems).toEqual(['unknown skill zzz']);
+    expect(p.warnings).toEqual(['agent coder lacks skill kotlin']);
     expect(p.category).toBe('REVIEW');
     expect(p.rules).toEqual([
       { key: 'no-secrets', name: 'No secrets', automatic: true },
@@ -117,6 +122,7 @@ describe('toTemplateInput', () => {
     expect(input.prompt).toEqual({ system: '', user: 'u', mode: 'REPLACE' });
     expect(input.parameters).toEqual([]);
     expect(input.parameterValues).toEqual({});
+    expect(input.requiresSkills).toEqual([]);
     expect('skills' in input).toBe(false);
     expect(input.category).toBeNull();
     expect(input.extendsKey).toBeNull();

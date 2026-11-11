@@ -204,6 +204,9 @@ class ExecuteAttemptService(
             instructions = environment?.let { AgentEnvironmentText.compose(modelAnswer = false, it.agent.instructions, null, it.rules) },
             skills = environment?.skills.orEmpty().map { RunnerSkill(it.key, it.name, it.content) },
             mcpServers = environment?.agent?.mcpServers.orEmpty(),
+            // ADR 0060: the candidate's home and access as in a workflow step; a benchmark of models has no agent
+            agentHome = environment?.agent?.key,
+            access = environment?.agent?.access?.takeUnless { it.full },
         )
         val existing = attempt.runnerJobId
         if (existing == null) {

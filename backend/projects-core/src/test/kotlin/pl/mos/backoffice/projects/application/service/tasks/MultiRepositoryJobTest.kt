@@ -13,13 +13,9 @@ import pl.mos.backoffice.projects.domain.model.GitRepository
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.RepositoryPurpose
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.projects.application.port.out.ProjectWorkspaceRepository
 import pl.mos.backoffice.projects.domain.model.ProjectId
-import pl.mos.backoffice.projects.domain.model.ProjectWorkspace
-import pl.mos.backoffice.projects.domain.model.ProjectWorkspaceId
-import pl.mos.backoffice.projects.domain.model.WorkspaceSource
 import pl.mos.backoffice.projects.domain.service.StepRepositories
-import pl.mos.backoffice.projects.domain.service.StepWorkspace
+import pl.mos.backoffice.projects.domain.service.RunDirectory
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.RunnerJobId
@@ -61,23 +57,10 @@ class MultiRepositoryJobTest {
     }
     private val runner = ScriptedRunner()
 
-    /** ADR 0044: the workspaces of the test project. */
-    private val workspaces = listOf(
-        Fixtures.workspace(project.id, "main", roles = listOf("implementer", "reviewer")),
-        Fixtures.workspace(project.id, "shared", sources = listOf(WorkspaceSource("docs"), WorkspaceSource("app")), setupCommand = "npm ci"),
-    )
-    private val workspaceStore = object : ProjectWorkspaceRepository {
-        override fun findByProjectId(projectId: ProjectId) = workspaces.filter { it.projectId == projectId }
-        override fun findById(id: ProjectWorkspaceId) = workspaces.firstOrNull { it.id == id }
-        override fun save(workspace: ProjectWorkspace) = workspace
-        override fun delete(id: ProjectWorkspaceId) = Unit
-    }
-    private val support = RunnerTaskSupport(
-        runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30), projectWorkspaces = workspaceStore,
-    )
+    private val support = RunnerTaskSupport(runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30))
 
-    private fun context(p: Project = project, state: Map<String, Any?> = emptyMap()): NodeContext {
-        val run = Fixtures.runningRun(p)
+    private fun context(p: Project = project, state: Map<String, Any?> = emptyMap(), setupCommand: String? = null): NodeContext {
+        val run = Fixtures.runningRun(p, Fixtures.issueWorkflow(p).copy(setupCommand = setupCommand))
         val node = run.definitionSnapshot.requireNode("implement")
         val started = run.nodeStarted(node, now)
         return NodeContext(started, p, node, started.nodes.last(), state)
@@ -155,54 +138,50 @@ class MultiRepositoryJobTest {
     }
 
     @Test
-    fun `a step in a run workspace names it, its session role and tells the agent (ADR 0044)`() {
-        val ctx = context()
-        support.run(ctx, task(mapOf(StepWorkspace.WORKSPACE to "main", StepWorkspace.SESSION_ROLE to "reviewer")), RunnerMode.IMPLEMENT, null, "x")
+    fun `a step works in the run directory by default, with its own session and the workflow's setup command (ADR 0060)`() {
+        val ctx = context(setupCommand = "npm ci")
+        support.run(ctx, task(emptyMap()), RunnerMode.IMPLEMENT, null, "x")
         val spec = runner.specs.last()
-        assertThat(spec.workspace).isEqualTo(RunnerWorkspace("main", RunnerWorkspace.nameFor(ctx.run.id.value, "main"), "reviewer", false))
-        assertThat(spec.prompt).contains("shared workspace \"main\"").contains("\"reviewer\"")
+        assertThat(spec.workspace).isEqualTo(
+            RunnerWorkspace(RunnerWorkspace.RUN_KEY, RunnerWorkspace.nameFor(ctx.run.id.value, RunnerWorkspace.RUN_KEY), "s-implement", false, "npm ci"),
+        )
+        assertThat(spec.prompt).contains("Run directory: this step works in the run's shared directory")
         assertThat(spec.repositories.single().access).isEqualTo(GitAccess.PUSH_MR)
+        assertThat(spec.agentHome).isEqualTo(TestAgents.OPENCODE.key)
+        assertThat(spec.access).describedAs("FULL is not sent").isNull()
+    }
+
+    @Test
+    fun `session NEW keeps the run directory without a session, SEPARATE gets a throwaway directory (ADR 0060)`() {
+        assertThat(submit(mapOf(RunDirectory.SESSION to "NEW")).workspace!!.let { it.key to it.sessionRole }).isEqualTo(RunnerWorkspace.RUN_KEY to null)
+        val separate = submit(mapOf(RunDirectory.DIRECTORY to "SEPARATE", RunDirectory.SESSION to "OWN"))
+        assertThat(separate.workspace).isNull()
+        assertThat(separate.prompt).doesNotContain("Run directory")
+    }
+
+    @Test
+    fun `a legacy sessionRole is the step's own session role (ADR 0044 compatibility)`() {
+        assertThat(submit(mapOf(RunDirectory.LEGACY_SESSION_ROLE to "reviewer")).workspace!!.sessionRole).isEqualTo("reviewer")
+        assertThat(submit(mapOf(RunDirectory.LEGACY_SESSION_ROLE to "Not Valid")).workspace!!.sessionRole).isEqualTo("s-implement")
     }
 
     @Test
     fun `a prepare step never pushes and opens no merge request`() {
-        val spec = submit(mapOf(StepWorkspace.WORKSPACE to "main", StepWorkspace.PREPARE_ONLY to true, "push" to true))
+        val spec = submit(mapOf(RunDirectory.PREPARE_ONLY to true, "push" to true))
         assertThat(spec.workspace!!.prepareOnly).isTrue()
         assertThat(spec.workspace!!.sessionRole).isNull()
         assertThat(spec.gitAccess).isEqualTo(GitAccess.READ)
         assertThat(spec.repositories.all { it.mergeRequest == null && it.pushBranch == null }).isTrue()
+        assertThat(spec.collectArtifacts).describedAs("a prepare step asks nothing").doesNotContain("agent-questions.json")
     }
 
     @Test
-    fun `a step of a workspace without repositories of its own works on the workspace sources`() {
-        val spec = submit(mapOf(StepWorkspace.WORKSPACE to "shared"))
-        assertThat(spec.repositories.map { listOf(it.key, it.access, it.primary) }).containsExactly(
-            listOf("docs", GitAccess.READ, false),
-            listOf("app", GitAccess.PUSH_MR, true),
-        )
-        assertThat(spec.workspace!!.setupCommand).isEqualTo("npm ci")
-        // a step's own repositories win
-        val own = submit(mapOf(StepWorkspace.WORKSPACE to "shared", StepRepositories.CONFIG_KEY to listOf(mapOf("key" to "lib", "access" to "READ"))))
-        assertThat(own.repositories.map { it.key }).containsExactly("lib")
-    }
-
-    @Test
-    fun `a workspace the workflow does not declare, or a role it does not allow, fails the step`() {
+    fun `an invalid directory setting fails the step before any job is submitted`() {
         val before = runner.specs.size
-        assertThat(support.run(context(), task(mapOf(StepWorkspace.WORKSPACE to "other")), RunnerMode.IMPLEMENT, null, "x").error).contains("not defined")
-        assertThat(
-            support.run(context(), task(mapOf(StepWorkspace.WORKSPACE to "main", StepWorkspace.SESSION_ROLE to "tester")), RunnerMode.IMPLEMENT, null, "x").error,
-        ).contains("not a role")
+        assertThat(support.run(context(), task(mapOf(RunDirectory.DIRECTORY to "ELSEWHERE")), RunnerMode.IMPLEMENT, null, "x").error).contains("directory")
+        assertThat(support.run(context(), task(mapOf(RunDirectory.DIRECTORY to "SEPARATE", RunDirectory.PREPARE_ONLY to true)), RunnerMode.IMPLEMENT, null, "x").error)
+            .contains("prepare step")
         assertThat(runner.specs).hasSize(before)
-    }
-
-    @Test
-    fun `an invalid workspace fails the step before any job is submitted`() {
-        val before = runner.specs.size
-        val result = support.run(context(), task(mapOf(StepWorkspace.WORKSPACE to "Main Space")), RunnerMode.IMPLEMENT, null, "x")
-        assertThat(result.error).contains("workspace")
-        assertThat(runner.specs).hasSize(before)
-        assertThat(submit(emptyMap()).workspace).isNull()
     }
 
     @Test

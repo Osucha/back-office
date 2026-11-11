@@ -60,6 +60,8 @@ class TemplateModelBuilder {
             "feedback" to feedback.joinToString("\n\n"),
             "feedbackList" to feedback,
             "feedbackHistory" to history.joinToString("\n\n"),
+            // ADR 0060: the agent's questions of this step and the owner's answers (agent output: untrusted)
+            "answers" to RunStateKeys.answersOf(state, node.id).orEmpty(),
             "project" to mapOf(
                 "key" to project.key,
                 "name" to project.name,
