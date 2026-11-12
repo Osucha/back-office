@@ -118,12 +118,12 @@ class AgentServiceTest {
         val agent = agents().create(
             Agent.Content(
                 name = "Env", scope = project, instructions = "Be precise.", rules = listOf("ground"), skills = listOf("mine", "fmt"),
-                mcpServers = listOf(pl.mos.backoffice.shared.runner.AgentMcpServer("docs", "https://mcp.example.com")),
+                connectors = listOf("docs", "gitlab-read"),
             ),
         )
         assertThat(agent.snapshot.skills).containsExactly("mine", "fmt")
         assertThat(audit.entries.last().details).containsEntry("rules", listOf("ground")).containsEntry("instructionsLength", 11)
-            .containsEntry("mcpServers", listOf("docs=https://mcp.example.com"))
+            .containsEntry("connectors", listOf("docs", "gitlab-read"))
 
         agents().update(agent.id, agent.content.copy(instructions = "Be very precise.", skills = listOf("fmt")))
         val diff = audit.entries.last().details

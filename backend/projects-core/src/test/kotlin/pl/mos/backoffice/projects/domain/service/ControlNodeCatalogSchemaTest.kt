@@ -10,7 +10,7 @@ class ControlNodeCatalogSchemaTest {
     fun `the coding agent config schema has no git, repository, setup or phase keys`() {
         @Suppress("UNCHECKED_CAST")
         val properties = ControlNodeCatalog.codingAgentConfigSchema()["properties"] as Map<String, Any?>
-        assertThat(properties.keys).contains("verifyCommand", "agentTools", "allowQuestions", "maxQuestionRounds", "codingAgent")
+        assertThat(properties.keys).contains("verifyCommand", "allowQuestions", "maxQuestionRounds", "codingAgent").doesNotContain("agentTools")
         assertThat(properties.keys).doesNotContain(
             "push", "branchTemplate", "mergeRequest", "mergeRequestTitleTemplate", "mergeRequestDescriptionTemplate", "mergeRequestDraft",
             "commitSubjectTemplate", "repositories", "setupCommand", "phase", "collectArtifacts",

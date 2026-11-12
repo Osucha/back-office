@@ -61,7 +61,7 @@ class SeedTaskLibraryService(
             when {
                 existing == null -> { agents.save(shipped); agentsCreated++ }
                 untouched(existing) && BuiltInChecksum.of(existing) != BuiltInChecksum.of(shipped) -> {
-                    agents.save(existing.copy(name = shipped.name, description = shipped.description, harness = shipped.harness, modelProfileId = shipped.modelProfileId, tags = shipped.tags, instructions = shipped.instructions, rules = shipped.rules, skills = shipped.skills, mcpServers = shipped.mcpServers, access = shipped.access, session = shipped.session, updatedAt = now, updatedBy = Actor.SYSTEM))
+                    agents.save(existing.copy(name = shipped.name, description = shipped.description, harness = shipped.harness, modelProfileId = shipped.modelProfileId, tags = shipped.tags, instructions = shipped.instructions, rules = shipped.rules, skills = shipped.skills, connectors = shipped.connectors, access = shipped.access, session = shipped.session, updatedAt = now, updatedBy = Actor.SYSTEM))
                     agentsUpgraded++
                 }
             }

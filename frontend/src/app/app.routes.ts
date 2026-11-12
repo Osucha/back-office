@@ -205,6 +205,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // ADR 0064: connectors are the tools agents use (MCP servers with credentials); platform ones here.
+        path: 'library/connectors',
+        title: $localize`:@@shell.route.connectors:Connectors`,
+        data: access({ permission: 'library.view' }),
+        loadComponent: () =>
+          import('./features/library/pages/connectors-page.component').then(
+            (m) => m.ConnectorsPageComponent,
+          ),
+      },
+      {
         // Library sources (ADR 0043): git repositories steps of every project attach read-only.
         path: 'library/sources',
         title: $localize`:@@shell.route.librarySources:Library sources`,

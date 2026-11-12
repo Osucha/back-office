@@ -52,7 +52,7 @@ import { filterAgents } from '../data/library-filters';
 /**
  * Library: agents (ADR 0056/0057). An agent is who works and how: a harness (none = one model
  * answer; OpenCode or Claude Code = a coding agent in the runner sandbox), optionally a model, and
- * its environment: instructions, rules, skills, MCP servers (coding agents). Built-in agents are
+ * its environment: instructions, rules, skills, connectors (coding agents, ADR 0064). Built-in agents are
  * read-only; a project customises one with a project agent of the same key. The editor is a side
  * panel, deep-linkable with `?agent=<id>` (`?agent=new`).
  */
@@ -504,7 +504,13 @@ export class AgentsPageComponent {
       $localize`:@@library.agents.skillsCount:{count, plural, one {# skill} other {# skills}}`,
       { count: a.skills?.length ?? 0 },
     );
-    return `${rules} · ${skills}`;
+    if (!a.harness) return `${rules} · ${skills}`;
+    // ADR 0064: only coding agents use connectors
+    const connectors = icu(
+      $localize`:@@library.agents.connectorsCount:{count, plural, one {# connector} other {# connectors}}`,
+      { count: a.connectors?.length ?? 0 },
+    );
+    return `${rules} · ${skills} · ${connectors}`;
   }
 
   load(): void {

@@ -30,7 +30,8 @@ import pl.mos.backoffice.shared.runner.AgentDirectory
 import pl.mos.backoffice.shared.runner.AgentSession
 import pl.mos.backoffice.shared.runner.RevertedChange
 import pl.mos.backoffice.shared.runner.RunnerAccessReport
-import pl.mos.backoffice.shared.runner.AgentMcpServer
+import pl.mos.backoffice.shared.runner.ConnectorKind
+import pl.mos.backoffice.shared.runner.RunnerConnector
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.RunnerArtifact
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
@@ -90,6 +91,7 @@ class CodingAgentEnvironmentTest {
     private val support = RunnerTaskSupport(
         runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30),
         structuredAnswers = StructuredAnswers(json, ReviewVerdictPolicy()), json = json,
+        connectorRepository = pl.mos.backoffice.projects.ConnectorFakes.InMemoryConnectors(pl.mos.backoffice.projects.ConnectorFakes.mcp("docs", url = "https://mcp.example.com")),
     )
 
     private fun context(
@@ -113,7 +115,7 @@ class CodingAgentEnvironmentTest {
         user: String = "Do {{issue.key}}.",
     ) = ResolvedTask(
         key = "t", name = "T",
-        agent = TestAgents.CLAUDE_CODE.copy(instructions = "You are the implementer of {{project.name}}.", mcpServers = listOf(AgentMcpServer("docs", "https://mcp.example.com"))),
+        agent = TestAgents.CLAUDE_CODE.copy(instructions = "You are the implementer of {{project.name}}.", connectors = listOf("docs")),
         modelProfileId = null, instructions = (user), skills = emptyList(), config = config, outputSchema = schema,
         confidenceField = "confidence".takeIf { schema != null && "confidence" in produces }, produces = produces, consumes = emptyList(), category = null,
         lineage = listOf("t"), ports = listOf("success", "failure"), rules = listOf(RuleSnapshot("ground", "Ground", "Cite evidence.")),
@@ -131,13 +133,14 @@ class CodingAgentEnvironmentTest {
     }
 
     @Test
-    fun `the environment document and the MCP servers go to the spec, the rules stay out of the prompt`() {
+    fun `the environment document and the connectors go to the spec, the rules stay out of the prompt`() {
         val spec = submit(task())
 
         assertThat(spec.instructions).startsWith("# Working in Back Office").contains("Questions to the owner").contains("You are the implementer of Shop.")
             .contains("## Project constitution").contains("Keep it simple.").contains("Cite evidence.")
         assertThat(spec.prompt).doesNotContain("Cite evidence.").doesNotContain("Keep it simple.").startsWith("Do SHOP-1.")
-        assertThat(spec.mcpServers).containsExactly(AgentMcpServer("docs", "https://mcp.example.com"))
+        assertThat(spec.connectors).containsExactly(RunnerConnector("docs", ConnectorKind.MCP_HTTP, "https://mcp.example.com", pl.mos.backoffice.shared.runner.ConnectorAuth.NONE))
+        assertThat(spec.credentials).describedAs("auth NONE has no secret").isEmpty()
         assertThat(spec.collectArtifacts).doesNotContain(RunnerTaskSupport.STRUCTURED_ANSWER_FILE)
     }
 

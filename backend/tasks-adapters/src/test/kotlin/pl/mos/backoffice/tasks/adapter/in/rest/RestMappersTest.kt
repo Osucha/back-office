@@ -135,21 +135,21 @@ class RestMappersTest {
     }
 
     @Test
-    fun `ADR 0057 - agents map instructions, rules, skills and MCP servers both ways`() {
+    fun `ADR 0057 - agents map instructions, rules, skills and connectors both ways`() {
         val dto = AgentInputDto(
             name = "Env", scope = ScopeDto(ScopeTypeDto.GLOBAL), instructions = "Be precise.", rules = listOf("r1"), skills = listOf("s1"),
-            mcpServers = listOf(AgentMcpServerDto("docs", "https://mcp.example.com")),
+            connectors = listOf("docs", "gitlab-read"),
         )
         val content = RestMappers.agentContent(dto)
         assertThat(content.instructions).isEqualTo("Be precise.")
-        assertThat(content.mcpServers).containsExactly(pl.mos.backoffice.shared.runner.AgentMcpServer("docs", "https://mcp.example.com"))
+        assertThat(content.connectors).containsExactly("docs", "gitlab-read")
         val agent = RestMappers.agent(pl.mos.backoffice.tasks.domain.model.Agent.create(content.copy(key = "env"), now))
         assertThat(agent.rules).containsExactly("r1")
         assertThat(agent.skills).containsExactly("s1")
-        assertThat(agent.mcpServers).containsExactly(AgentMcpServerDto("docs", "https://mcp.example.com"))
+        assertThat(agent.connectors).containsExactly("docs", "gitlab-read")
         assertThat(RestMappers.agentRef(agent.let { pl.mos.backoffice.shared.tasks.AgentSnapshot("env", "Env", rules = listOf("r1"), skills = listOf("s1")) }).skills).containsExactly("s1")
         org.assertj.core.api.Assertions.assertThatThrownBy {
-            RestMappers.agentContent(dto.copy(mcpServers = listOf(AgentMcpServerDto("docs", "ftp://x"))))
+            pl.mos.backoffice.tasks.domain.model.Agent.create(RestMappers.agentContent(dto.copy(connectors = listOf("Not A Key"))).copy(key = "env"), now)
         }.isInstanceOf(pl.mos.backoffice.shared.ValidationException::class.java)
     }
 

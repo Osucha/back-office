@@ -303,7 +303,13 @@ export class ProjectAgentsPanelComponent {
       $localize`:@@projects.agents.skillsCount:{count, plural, one {# skill} other {# skills}}`,
       { count: a.skills?.length ?? 0 },
     );
-    return `${rules} · ${skills}`;
+    if (!a.harness) return `${rules} · ${skills}`;
+    // ADR 0064: only coding agents use connectors
+    const connectors = icu(
+      $localize`:@@projects.agents.connectorsCount:{count, plural, one {# connector} other {# connectors}}`,
+      { count: a.connectors?.length ?? 0 },
+    );
+    return `${rules} · ${skills} · ${connectors}`;
   }
 
   create(): void {

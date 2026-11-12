@@ -1,7 +1,7 @@
 /**
  * ADR 0056/0057: the agent editor as pure functions (tested in agent-form.spec.ts). An agent is
  * who works and how: a harness (none = one model answer), optionally a model (none = the defaults
- * for the step), instructions, rules, skills and - for coding agents - remote MCP servers, access
+ * for the step), instructions, rules, skills and - for coding agents - connectors (ADR 0064), access
  * (what it may change, which directory) and the session (ADR 0062).
  */
 import type {
@@ -11,9 +11,9 @@ import type {
   AgentDirectory,
   AgentHarness,
   AgentInput,
-  AgentMcpServer,
   AgentSession,
 } from '../../../core/api/types';
+import { badConnectorKey, cleanConnectorKeys } from './connector-form';
 
 /** ADR 0060: the access modes the editor offers, in display order. */
 export const ACCESS_MODES: readonly AgentAccessMode[] = ['FULL', 'READ_ONLY', 'PATHS'];
@@ -24,11 +24,6 @@ export const AGENT_DIRECTORIES: readonly AgentDirectory[] = ['RUN', 'SEPARATE'];
 
 /** The kinds the editor offers, in display order (`null` = model answer). */
 export const AGENT_KINDS: ReadonlyArray<AgentHarness | null> = [null, 'OPENCODE', 'CLAUDE_CODE'];
-
-/** ADR 0057: the name of an MCP server (as the contract's `AgentMcpServer.name`). */
-export const MCP_NAME_PATTERN = /^[a-z][a-z0-9-]{0,39}$/;
-/** ADR 0057: longest MCP server URL. */
-export const MCP_URL_MAX = 500;
 
 /** The radio value of a kind (a radio group cannot hold `null` reliably). */
 export type AgentKindValue = 'MODEL_ANSWER' | AgentHarness;
@@ -52,7 +47,7 @@ export function emptyAgent(): AgentInput {
     instructions: '',
     rules: [],
     skills: [],
-    mcpServers: [],
+    connectors: [],
     session: 'PER_STEP',
     tags: [],
   };
@@ -69,7 +64,7 @@ export function agentDraft(a: Agent): AgentInput {
     instructions: a.instructions ?? '',
     rules: [...(a.rules ?? [])],
     skills: [...(a.skills ?? [])],
-    mcpServers: (a.mcpServers ?? []).map((s) => ({ name: s.name, url: s.url })),
+    connectors: [...(a.connectors ?? [])],
     ...(a.access
       ? {
           access: {
@@ -137,52 +132,19 @@ export function accessProblem(d: Pick<AgentInput, 'harness' | 'access'>): boolea
   return !!d.harness && accessMode(d) === 'PATHS' && !accessPaths(d).length;
 }
 
-/** What is wrong with the MCP servers of a draft; null when nothing. */
-export type McpServerProblem =
-  | { kind: 'badName'; index: number; name: string }
-  | { kind: 'duplicate'; index: number; name: string }
-  | { kind: 'badUrl'; index: number; name: string };
-
-/** Whether a text is an http(s) URL (no credentials checked: the field help says not to put any). */
-export function isHttpUrl(value: string): boolean {
-  const v = value.trim();
-  if (!v || v.length > MCP_URL_MAX || !/^https?:\/\//i.test(v)) return false;
-  try {
-    const u = new URL(v);
-    return (u.protocol === 'http:' || u.protocol === 'https:') && !!u.hostname;
-  } catch {
-    return false;
-  }
-}
-
-/** ADR 0057: the first problem of the MCP server list (name pattern, unique names, http(s) URL). */
-export function mcpServerProblem(
-  servers: readonly AgentMcpServer[] | null | undefined,
-): McpServerProblem | null {
-  const seen = new Set<string>();
-  for (const [index, s] of (servers ?? []).entries()) {
-    const name = s.name.trim();
-    if (!MCP_NAME_PATTERN.test(name)) return { kind: 'badName', index, name };
-    if (seen.has(name)) return { kind: 'duplicate', index, name };
-    seen.add(name);
-    if (!isHttpUrl(s.url)) return { kind: 'badUrl', index, name };
-  }
-  return null;
-}
-
-/** Whether the draft may be saved: a name, the project of a project agent, valid MCP servers. */
+/** Whether the draft may be saved: a name, the project of a project agent, valid connector keys. */
 export function agentSavable(d: AgentInput): boolean {
   return (
     !!d.name.trim() &&
     (d.scope.type !== 'PROJECT' || !!d.scope.projectId) &&
-    (!d.harness || !mcpServerProblem(d.mcpServers)) &&
+    (!d.harness || !badConnectorKey(d.connectors)) &&
     !accessProblem(d)
   );
 }
 
 /**
- * What the editor sends: trimmed MCP servers, and none for a model answer (it has no tools, so
- * servers kept from an earlier coding kind would only confuse). Access and session only matter
+ * What the editor sends: the connector keys trimmed and once, and none for a model answer (it has no
+ * tools, so connectors kept from an earlier coding kind would only confuse; ADR 0064). Access and session only matter
  * for coding agents; a model answer gets the defaults.
  */
 export function agentPayload(d: AgentInput): AgentInput {
@@ -191,9 +153,7 @@ export function agentPayload(d: AgentInput): AgentInput {
   const directory = accessDirectory(d);
   return {
     ...rest,
-    mcpServers: d.harness
-      ? (d.mcpServers ?? []).map((s) => ({ name: s.name.trim(), url: s.url.trim() }))
-      : [],
+    connectors: d.harness ? cleanConnectorKeys(d.connectors) : [],
     // ADR 0062: the conversation of a coding agent; a model answer has none to continue
     session: d.harness ? agentSession(d) : 'PER_STEP',
     // ADR 0060: only coding agents change files; the paths only with PATHS
@@ -204,26 +164,6 @@ export function agentPayload(d: AgentInput): AgentInput {
         }
       : {}),
   };
-}
-
-/** A new MCP server row. */
-export function addMcpServer(servers: readonly AgentMcpServer[] | undefined): AgentMcpServer[] {
-  return [...(servers ?? []), { name: '', url: '' }];
-}
-
-export function patchMcpServer(
-  servers: readonly AgentMcpServer[] | undefined,
-  index: number,
-  changes: Partial<AgentMcpServer>,
-): AgentMcpServer[] {
-  return (servers ?? []).map((s, i) => (i === index ? { ...s, ...changes } : s));
-}
-
-export function removeMcpServer(
-  servers: readonly AgentMcpServer[] | undefined,
-  index: number,
-): AgentMcpServer[] {
-  return (servers ?? []).filter((_, i) => i !== index);
 }
 
 /**

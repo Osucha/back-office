@@ -4,8 +4,8 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
-import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.runner.AgentSession
+import pl.mos.backoffice.shared.runner.ConnectorKeys
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import java.time.Instant
@@ -13,7 +13,8 @@ import java.time.Instant
 /**
  * ADR 0056/0057: who works on a task and how: a [harness], optionally a model, and the agent's environment:
  * [instructions] (its role and way of working, markdown, may use `{{project.*}}`), [rules] (always in context, after the
- * automatic ones), [skills] (loaded on demand) and [mcpServers] (remote, no credentials). Without a harness the step is
+ * automatic ones), [skills] (loaded on demand) and [connectors] (ADR 0064: keys of connectors, looked up in the run's
+ * project, then the platform when a step runs; coding agents only). Without a harness the step is
  * one model answer (no tools, no repository); with `OPENCODE` or `CLAUDE_CODE` it is a coding agent session in the runner
  * sandbox. Without a [modelProfileId] the step uses the defaults for its kind. Uniqueness is by `(key, scope)`; a project
  * agent shadows the global one with the same key. That every rule and skill exists is checked by the service on save.
@@ -36,7 +37,8 @@ data class Agent(
     val instructions: String = "",
     val rules: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
-    val mcpServers: List<AgentMcpServer> = emptyList(),
+    /** ADR 0064: connector keys (the connectors live in the projects context; unknown keys are skipped at a step). */
+    val connectors: List<String> = emptyList(),
     /** ADR 0060: what the agent may change (coding agents). */
     val access: AgentAccess = AgentAccess.FULL,
     /** ADR 0062: which executions of the agent continue one conversation (coding agents). */
@@ -46,14 +48,14 @@ data class Agent(
         Keys.require(key)
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
         if (instructions.length > MAX_INSTRUCTIONS_LENGTH) throw ValidationException("is longer than $MAX_INSTRUCTIONS_LENGTH characters", "instructions")
-        if (mcpServers.size > AgentMcpServer.MAX_PER_AGENT) throw ValidationException("at most ${AgentMcpServer.MAX_PER_AGENT} MCP servers per agent", "mcpServers")
-        mcpServers.groupBy { it.name }.filterValues { it.size > 1 }.keys.firstOrNull()?.let {
-            throw ValidationException("MCP server names must be unique; $it is listed more than once", "mcpServers.name")
+        if (connectors.size > ConnectorKeys.MAX_PER_AGENT) throw ValidationException("at most ${ConnectorKeys.MAX_PER_AGENT} connectors per agent", "connectors")
+        connectors.firstOrNull { !ConnectorKeys.PATTERN.matches(it) }?.let {
+            throw ValidationException("connector key $it must match ${ConnectorKeys.PATTERN.pattern}", "connectors")
         }
     }
 
     /** What a resolved task carries. */
-    val snapshot: AgentSnapshot get() = AgentSnapshot(key, name, harness, modelProfileId, instructions, rules, skills, mcpServers, access, session)
+    val snapshot: AgentSnapshot get() = AgentSnapshot(key, name, harness, modelProfileId, instructions, rules, skills, connectors, access, session)
 
     /** Editable fields; a null [key] is derived from the name on create and kept on update. */
     data class Content(
@@ -67,18 +69,18 @@ data class Agent(
         val instructions: String = "",
         val rules: List<String> = emptyList(),
         val skills: List<String> = emptyList(),
-        val mcpServers: List<AgentMcpServer> = emptyList(),
+        val connectors: List<String> = emptyList(),
         val access: AgentAccess = AgentAccess.FULL,
         val session: AgentSession = AgentSession.PER_STEP,
     )
 
     val content: Content
-        get() = Content(key, name, description, scope, harness, modelProfileId, tags, instructions, rules, skills, mcpServers, access, session)
+        get() = Content(key, name, description, scope, harness, modelProfileId, tags, instructions, rules, skills, connectors, access, session)
 
     fun update(c: Content, now: Instant, actor: Actor? = null): Agent = copy(
         key = c.key ?: key, name = c.name, description = c.description, scope = c.scope, harness = c.harness,
         modelProfileId = c.modelProfileId, tags = c.tags.distinct(), instructions = c.instructions, rules = c.rules.distinct(),
-        skills = c.skills.distinct(), mcpServers = c.mcpServers, access = c.access, session = c.session, updatedAt = now, updatedBy = actor,
+        skills = c.skills.distinct(), connectors = c.connectors.map(String::trim).distinct(), access = c.access, session = c.session, updatedAt = now, updatedBy = actor,
     )
 
     companion object {
@@ -101,7 +103,7 @@ data class Agent(
             instructions = c.instructions,
             rules = c.rules.distinct(),
             skills = c.skills.distinct(),
-            mcpServers = c.mcpServers,
+            connectors = c.connectors.map(String::trim).distinct(),
             access = c.access,
             session = c.session,
         )

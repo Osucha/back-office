@@ -386,7 +386,7 @@ class PromptInjectionSuiteTest {
         assertThat(spec.prompt.trimEnd()).endsWith("mention it in your summary.")
         assertThat(spec.instructions).startsWith(pl.mos.backoffice.shared.tasks.AgentEnvironmentText.PLATFORM_PREAMBLE_QUESTIONS).contains(AgentEnvironment.CODING_AGENT_PREAMBLE)
             .contains(AgentEnvironment.rulesSection(rules)).contains("## Project constitution")
-        assertThat(spec.mcpServers).isEmpty()
+        assertThat(spec.connectors).isEmpty()
     }
 
     // ------------------------------------------------------------------------------------------ fakes

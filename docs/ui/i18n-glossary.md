@@ -60,13 +60,14 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | assign (a step) / assigned to / assignee | przypisz / przypisane do / osoba przypisana | run-time assignment of a waiting gate (ADR 0028): "Przypisz…", "Przypisane do: Ann", "Przypisane do Ciebie przez …"; "Kto rozstrzyga ten krok" (Who decides this step) |
 | attempt | próba | "próba 2" |
 | attestation | atestacja | provenance |
-| audit finding (agents in this workflow) | uwaga (pl. uwagi) | ADR 0061 finding kinds: "Brakująca umiejętność" (Missing skill), "Wymaga agenta kodującego" (Needs a coding agent), "Agent tylko do odczytu w kroku z push" (Read-only agent on a pushing step), "Nieznana reguła" (Unknown rule), "Nieznana umiejętność" (Unknown skill), "Nieznany agent" (Unknown agent), "Dwie umiejętności o tej samej nazwie" (Two skills with the same name); load error "Nie udało się sprawdzić agentów tego workflowu."; the server's message under the title stays English |
+| audit finding (agents in this workflow) | uwaga (pl. uwagi) | ADR 0061 finding kinds: "Brakująca umiejętność" (Missing skill), "Wymaga agenta kodującego" (Needs a coding agent), "Agent tylko do odczytu w kroku z push" (Read-only agent on a pushing step), "Nieznana reguła" (Unknown rule), "Nieznana umiejętność" (Unknown skill), "Nieznany agent" (Unknown agent), "Nieznany konektor" (Unknown connector, ADR 0064), "Dwie umiejętności o tej samej nazwie" (Two skills with the same name); load error "Nie udało się sprawdzić agentów tego workflowu."; the server's message under the title stays English |
 | audit log | dziennik audytu | |
+| authentication (connector) | uwierzytelnianie | ADR 0064 connector field "Uwierzytelnianie" (Authentication): "Brak" (None), "Token typu Bearer" (Bearer token), "Własny nagłówek" (Custom header) |
 | automatic (connection pick) | automatycznie | designer picker "Automatycznie (zasada najmniejszych uprawnień)" = no pinned connection |
 | baton | pałeczka | only where the UI says baton; the holder = "posiadacz pałeczki" |
 | back-off (polling) | wstrzymanie (ponowienie po przerwie) | intake watcher after Jira errors: the poll interval doubles up to 1 h; "Błędy i wstrzymanie" |
 | baseline (intake watcher) | punkt startowy | the first poll only sets the starting point; the backlog never starts runs |
-| bearer token | token typu Bearer | CI tokens |
+| bearer token | token typu Bearer | CI tokens; connector authentication option "Token typu Bearer" (Bearer token, ADR 0064) |
 | benchmark | benchmark (pl. benchmarki) | |
 | blocked (holder) | zablokowane | legend; as a chip use "błąd" / "odrzucone" |
 | blocking / advisory (CI mode) | blokujący / doradczy | |
@@ -95,6 +96,8 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | commit subject | temat commita | ADR 0063 field of **Dostarcz zmiany** "Temat commita" (Commit subject), help "Pierwszy wiersz opisu commita (szablon)…"; "commit" stays, verb "zatwierdza (commit)" in descriptions |
 | Connection expiring (notification type) | Wygasające połączenie | desktop notification type (ADR 0030 amendment); the Your turn card says "Token Jiry wkrótce wygaśnie" / "Token Jiry wygasł" |
 | connection / Connections | połączenie (pl. połączenia) / Połączenia | credential registry (ADR 0030): page and tab "Połączenia", "Dodaj połączenie", "Połączenie Jira" (designer section), "połączenie platformy" / "połączenie projektu"; "Testuj połączenie" in Settings stays |
+| connector / Connectors | konektor (pl. konektory) / Konektory | ADR 0064: a tool agents use (an MCP server with credentials, or GitLab read-only). Library page and project tab "Konektory", nav "Konektory", "Dodaj konektor", "Nowy konektor", "Usuń konektor", agent field "Konektory", columns "Konektor", "Rodzaj", "Punkt końcowy" (Endpoint), "Ostatni test" (Last test), "Zmieniono"; chip "platforma" (platform), "zastąpiony przez konektor projektu" (replaced by the project's), "nietestowany" (not tested); kinds "Serwer MCP (HTTP)", "GitLab (tylko odczyt)" (GitLab (read-only)); plural ICU `one {# konektor} few {# konektory} many {# konektorów} other {# konektora}`; "Konektor platformy: zmieniają go administratorzy w bibliotece."; "Nieznany konektor" (audit). Not "łącznik", not "połączenie" (connections are the Jira credentials) |
+| connector key | klucz (konektora) | "Klucz" (Key), placeholder "z nazwy" (from the name); option for a key not defined here "{key} (nie zdefiniowano tutaj)" |
 | constitution | konstytucja | ADR 0063: the project owner's rules for every agent (no longer Spec Kit's); project form "Konstytucja (markdown)" (Constitution (markdown)), hint "Zasady właściciela projektu. Każdy agent projektu dostaje je jako część swojego środowiska." |
 | personal connection | połączenie osobiste | My account → Connections (ADR 0035); "przez połączenie osobiste" (via personal connection) |
 | copy (button) | kopiuj | button label; "Skopiuj token teraz" stays as an instruction in sentences |
@@ -121,6 +124,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | effective policy | efektywna polityka | agent job panel; "Efektywna dla tego projektu" (Effective for this project) on the project Sandbox tab |
 | egress | ruch wychodzący | sandbox |
 | egress denied | zablokowany ruch wychodzący | agent job panel |
+| endpoint (connector) | punkt końcowy | ADR 0064 connector column "Punkt końcowy" (Endpoint); "punkt końcowy MCP" |
 | entrypoint | punkt wejścia | |
 | environment (of the agent) | środowisko agenta | ADR 0057: agents list column "Środowisko" (Environment), manual section "Środowisko agenta"; the template editor section of that name was removed by ADR 0061 (templates have no agent); see also platform preamble |
 | ephemeral storage | pamięć tymczasowa (dysk) | sandbox policy resources |
@@ -140,6 +144,8 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | grant (admin) | nadanie (pl. nadania) | Administration → Nadania |
 | group | grupa | |
 | harness (agent) | harness | ADR 0056: agent field; OpenCode / Claude Code, empty = model answer |
+| header name / custom header | nazwa nagłówka / własny nagłówek | ADR 0064 connector fields "Nazwa nagłówka" (Header name), auth option "Własny nagłówek" (Custom header) |
+| host to allow | host do dopuszczenia | ADR 0064 connector editor "Host do dopuszczenia:" (Host to allow:): the host the sandbox network policy must allow; "dozwolone hosty" (allowed hosts) |
 | hard stop | twarda blokada | budgets; never "twarde zatrzymanie" |
 | heartbeat | sygnał życia | "brak sygnału życia" |
 | help ("?" next to a label) | pomoc | ADR 0061: field descriptions sit behind a "?" tooltip; its accessible name "Pomoc" (Help) |
@@ -166,6 +172,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | judge / judging / judge model | ocena / ocenianie / model oceniający | evaluation; "Ocena" for the judge tab and the suite weight, "Model oceniający" for the model; never "sędzia" |
 | kind (agent) | rodzaj | agent field and list column "Rodzaj" (Kind) = the harness: "Odpowiedź modelu", "OpenCode", "Claude Code" |
 | landed (today) | zakończone (dziś) | "Zakończone dziś" |
+| last test (connector) | ostatni test | ADR 0064 column and editor label "Ostatni test" (Last test); results "ok" / "błąd" (failed), "Narzędzia:" (Tools:), "Jeszcze nie testowano. Zapisz konektor, a potem go przetestuj." |
 | last used | ostatnie użycie | token lists (personal and CI) |
 | lead time | czas realizacji | |
 | leaderboard | ranking | |
@@ -179,7 +186,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | live updates | aktualizacje na żywo | |
 | manual | podręcznik | in-app help |
 | max output tokens | maks. liczba tokenów wyjściowych | model profile default options |
-| MCP server (of an agent) | serwer MCP (pl. serwery MCP) | ADR 0057 agent field "Serwery MCP" (MCP servers), "Dodaj serwer MCP", "Usuń serwer MCP" |
+| MCP server | serwer MCP (pl. serwery MCP) | connector kind "Serwer MCP (HTTP)" (MCP server (HTTP), ADR 0064); "Punkt końcowy MCP" (MCP endpoint). The ADR 0057 agent field "Serwery MCP" is gone: agents list "Konektory"; see connector |
 | member / members | członek / członkowie | project |
 | merge request | merge request | not translated; gen. "merge requestu" ("Tytuł merge requestu", "Opis merge requestu"); "Otwórz merge request" (Open a merge request); card abbreviation "MR", "bez MR" (no MR) |
 | model answer | odpowiedź modelu | built-in agent "Odpowiedź modelu" (ADR 0056) |
@@ -206,6 +213,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | platform preamble | preambuła platformy | ADR 0057: the fixed first part of the agent's environment; "tylko preambuła platformy" |
 | platform settings | ustawienia platformy | |
 | policy (sandbox) | polityka (sandboxa) | |
+| primary repository | główne repozytorium | "Główne repozytorium" (Primary repository), e.g. the default of a GitLab (read-only) connector's "Repozytorium" |
 | Poll now (intake watcher) | Sprawdź teraz | button; schedules an immediate poll |
 | pool | pula (runnerów) | |
 | pool selector | selektor puli | |
@@ -250,7 +258,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | save / save changes | zapisz / zapisz zmiany | "Wszystkie zmiany zapisane", "Niezapisane zmiany" |
 | scope | zakres | library item scope; Atlassian token scopes ("zakresy tokenu", "zakresy szczegółowe" = granular scopes) |
 | system connection (project) | połączenie systemowe | Project → Connections "Połączenie systemowe", "Kolejne połączenia dla kroków tego projektu" (ADR 0035) |
-| secret | sekret | |
+| secret | sekret | ADR 0064 connector field "Sekret" (Secret, write-only): placeholder "zapisany — zostaw puste, by zachować" (stored - leave empty to keep), checkbox "Usuń sekret" (Remove secret) |
 | send back for revision | odeślij do poprawy | gate decision |
 | session | sesja | |
 | settings | ustawienia | |
@@ -277,7 +285,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | timeline | oś czasu | run tab |
 | token (LLM usage) | token (pl. tokeny) | "tokeny: wej. 12k · wyj. 1,5k" |
 | token expiry date / expiring soon / expired | data wygaśnięcia tokenu / wkrótce wygaśnie / wygasł | connections |
-| tool (agent tool) | narzędzie | "Dozwolone narzędzia", "Narzędzia wymagające zgody" |
+| tool (agent tool) | narzędzie | "Dozwolone narzędzia", "Narzędzia wymagające zgody"; tools of an agent are its connectors (ADR 0064): the step setting "Narzędzia agenta" (Agent tools) is gone |
 | trigger | wyzwalacz | workflow triggers |
 | two-factor authentication (MFA) | uwierzytelnianie dwuskładnikowe (MFA) | |
 | user | użytkownik | |

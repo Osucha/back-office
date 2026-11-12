@@ -9,7 +9,7 @@ oraz uwagi, takie jak **Brakująca umiejętność** czy **Nieznany agent**; nie 
 [Agenci w tym workflowie](workflows.md#agent-audit).
 
 **Agent** (agent): Ten, kto pracuje, i to, jak pracuje: wpis biblioteki z harnessem, opcjonalnie modelem,
-instrukcjami, regułami, umiejętnościami i serwerami MCP. Bez harnessu daje pojedynczą odpowiedź modelu wewnątrz
+instrukcjami, regułami, umiejętnościami i konektorami. Bez harnessu daje pojedynczą odpowiedź modelu wewnątrz
 Back Office (**Odpowiedź modelu**); z OpenCode lub Claude Code to sesja agenta kodującego w zadaniu agenta. Agenta
 wybiera krok workflowu (szablony go nie wskazują), więc można porównać dwóch agentów na tym samym zadaniu.
 Zob. [Agenci](task-library.md#agents).
@@ -57,6 +57,11 @@ programistyczne do agentów programistycznych. Zob. [Benchmarki](evaluation.md#b
 drugim i widzą, co zostawiły wcześniejsze kroki; usuwany po zakończeniu przebiegu. Zob. [Katalog
 przebiegu](workflows.md#run-directory).
 
+**Konektor** (connector): Narzędzie, z którego agenci kodujący korzystają w pracy: serwer MCP z danymi
+uwierzytelniającymi albo GitLab tylko do odczytu (`glab` z tokenem projektu tylko do odczytu). Konektory platformy
+(**Biblioteka** → **Konektory**) służą każdemu projektowi; własny konektor projektu zastępuje konektor platformy
+o tym samym kluczu. Agenci wskazują konektory, których używają, kluczem. Zob. [Konektory](task-library.md#connectors).
+
 **Konstytucja** (constitution): Zasady właściciela projektu w Markdownie, będące częścią środowiska
 każdego agenta; gdy źródła są sprzeczne, wygrywa z każdym innym. Zob. [Tworzenie projektu](projects.md#create-project)
 i [Gdy źródła są sprzeczne](task-library.md#precedence).
@@ -77,8 +82,8 @@ nieskończonymi pętlami. Zob. [Rodzaje węzłów](workflows.md#nodes).
 
 **MCP (Model Context Protocol)**: Protokół, którym agent programistyczny w Twoim IDE wywołuje narzędzia Back Office
 (wyświetlanie elementów kolejki, odczyt artefaktów, uruchamianie workflowów, rozstrzyganie bramek) przy użyciu
-osobistego tokenu dostępu. Zob. [IDE i MCP](integrations-ide.md#mcp-tools). Agent z biblioteki może też wymieniać
-zdalne serwery MCP, z których korzysta w sandboxie; zob. [Serwery MCP agenta](task-library.md#agent-mcp).
+osobistego tokenu dostępu. Zob. [IDE i MCP](integrations-ide.md#mcp-tools). Agenci z biblioteki też korzystają
+z serwerów MCP jako narzędzi, jako [konektorów](task-library.md#connectors).
 
 **Model oceniający, ocena** (judge): Model, który ocenia próby benchmarku według kryteriów oceny. Stały w ramach
 benchmarku. Zob. [Benchmarki](evaluation.md#benchmarks).

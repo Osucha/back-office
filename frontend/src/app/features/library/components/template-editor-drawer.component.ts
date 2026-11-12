@@ -639,7 +639,7 @@ function invalidJson(e: unknown): string {
             } @else {
               <nz-form-item>
                 <nz-form-label
-                  nzTooltipTitle="Keys of model answer or coding agent steps (codingAgent, verifyCommand, agentTools, ...). Deep-merged over the parent; null deletes."
+                  nzTooltipTitle="Keys of model answer or coding agent steps (codingAgent, verifyCommand, allowQuestions, ...). Deep-merged over the parent; null deletes."
                   i18n-nzTooltipTitle="@@library.templateEditor.config.extra"
                   nzFor="tt-config"
                   i18n="@@library.templateEditor.config"

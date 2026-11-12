@@ -5,6 +5,7 @@ import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.support.StaticListableBeanFactory
+import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectorSecrets
 import pl.mos.backoffice.projects.application.port.`in`.RewrapScmConnectionSecrets
 import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.mock.env.MockEnvironment
@@ -46,6 +47,7 @@ class ConnectionSecretsStartupTest {
 
     private var rewraps = 0
     private var scmRewraps = 0
+    private var connectorRewraps = 0
 
     private fun startup(properties: SecretsProperties, rows: List<Connection>, roles: String = "api,worker") = ConnectionSecretsStartup(
         AesGcmSecretCipher(properties), properties, Rows(rows), RewrapConnectionSecrets { rewraps++; 0 },
@@ -53,6 +55,7 @@ class ConnectionSecretsStartupTest {
             .withProperty("backoffice.platform.api-enabled", ("api" in roles).toString())
             .withProperty("backoffice.platform.worker-enabled", ("worker" in roles).toString()),
         StaticListableBeanFactory(mapOf("scm" to RewrapScmConnectionSecrets { scmRewraps++; 0 })).getBeanProvider(RewrapScmConnectionSecrets::class.java),
+        StaticListableBeanFactory(mapOf("connectors" to RewrapConnectorSecrets { connectorRewraps++; 0 })).getBeanProvider(RewrapConnectorSecrets::class.java),
     )
 
     @Test
@@ -78,6 +81,7 @@ class ConnectionSecretsStartupTest {
             .doesNotThrowAnyException()
         assertThat(rewraps).isEqualTo(1)
         assertThat(scmRewraps).isEqualTo(1)
+        assertThat(connectorRewraps).describedAs("ADR 0064: connector secrets too").isEqualTo(1)
         assertThatCode { startup(SecretsProperties(key = k2, keyId = "k2", allowUnreadable = true), listOf(stored("k1"))).run(DefaultApplicationArguments()) }
             .doesNotThrowAnyException()
     }

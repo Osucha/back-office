@@ -8,7 +8,10 @@ import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentHarness
-import pl.mos.backoffice.shared.runner.AgentMcpServer
+import pl.mos.backoffice.shared.runner.ConnectorAuth
+import pl.mos.backoffice.shared.runner.ConnectorKind
+import pl.mos.backoffice.shared.runner.JobCredentialRef
+import pl.mos.backoffice.shared.runner.RunnerConnector
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.usage.UsageContext
@@ -17,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
 /**
- * ADR 0057: `RunnerJobSpec.instructions` (the environment document) and `mcpServers` are covered by the spec digest when
+ * ADR 0057: `RunnerJobSpec.instructions` (the environment document) and ADR 0064 `connectors` are covered by the spec digest when
  * present and absent (never `""` or `[]`) when not, so the digests of otherwise unchanged specs stay the same.
  */
 class AgentEnvironmentSpecJsonTest {
@@ -38,18 +41,41 @@ class AgentEnvironmentSpecJsonTest {
 
     @Test
     fun `a spec without environment omits both fields so older digests do not change`() {
-        assertThat(canonical(spec)).doesNotContainKeys("instructions", "mcpServers")
+        assertThat(canonical(spec)).doesNotContainKeys("instructions", "connectors", "mcpServers", "agentTools")
         assertThat(canonical(spec.copy(instructions = "  "))).describedAs("a blank document is no document").doesNotContainKey("instructions")
-        assertThat(AssignmentSigner.specDigest(canonical(spec.copy(instructions = null, mcpServers = emptyList())), null))
+        assertThat(AssignmentSigner.specDigest(canonical(spec.copy(instructions = null, connectors = emptyList())), null))
             .isEqualTo(AssignmentSigner.specDigest(canonical(spec), null))
     }
 
     @Test
-    fun `instructions and MCP servers are part of the digest and round-trip`() {
-        val full = spec.copy(instructions = "# Working in Back Office\nRules.", mcpServers = listOf(AgentMcpServer("docs", "https://mcp.example.com/docs")))
+    fun `instructions and connectors are part of the digest and round-trip`() {
+        val full = spec.copy(
+            instructions = "# Working in Back Office\nRules.",
+            connectors = listOf(
+                RunnerConnector("docs", ConnectorKind.MCP_HTTP, "https://mcp.example.com/docs", ConnectorAuth.NONE),
+                RunnerConnector("jira", ConnectorKind.MCP_HTTP, "https://mcp.example.com/jira", ConnectorAuth.HEADER, headerName = "X-Api-Key"),
+                RunnerConnector("gitlab-read", ConnectorKind.GITLAB_READ, repository = "app"),
+            ),
+            credentials = listOf(
+                JobCredentialRef("11111111-1111-1111-1111-111111111111", "", JobCredentialRef.CONNECTOR, "jira"),
+                JobCredentialRef("22222222-2222-2222-2222-222222222222", "app", JobCredentialRef.CI_READ),
+            ),
+        )
         val canonical = canonical(full)
         assertThat(canonical["instructions"]).isEqualTo("# Working in Back Office\nRules.")
-        assertThat(canonical["mcpServers"]).isEqualTo(listOf(mapOf("name" to "docs", "url" to "https://mcp.example.com/docs")))
+        assertThat(canonical["connectors"]).describedAs("null members are left out").isEqualTo(
+            listOf(
+                mapOf("key" to "docs", "kind" to "MCP_HTTP", "url" to "https://mcp.example.com/docs", "auth" to "NONE"),
+                mapOf("key" to "jira", "kind" to "MCP_HTTP", "url" to "https://mcp.example.com/jira", "auth" to "HEADER", "headerName" to "X-Api-Key"),
+                mapOf("key" to "gitlab-read", "kind" to "GITLAB_READ", "repository" to "app"),
+            ),
+        )
+        assertThat(canonical["credentials"]).isEqualTo(
+            listOf(
+                mapOf("ref" to "11111111-1111-1111-1111-111111111111", "repository" to "", "capability" to "CONNECTOR", "connector" to "jira"),
+                mapOf("ref" to "22222222-2222-2222-2222-222222222222", "repository" to "app", "capability" to "CI_READ"),
+            ),
+        )
         val digest = AssignmentSigner.specDigest(canonical, null)
         assertThat(digest).isNotEqualTo(AssignmentSigner.specDigest(canonical(spec), null))
         assertThat(AssignmentSigner.specDigest(canonical(full.copy(instructions = "other")), null)).isNotEqualTo(digest)
@@ -57,10 +83,11 @@ class AgentEnvironmentSpecJsonTest {
         val stored = json.writeValueAsString(RunnerJobSpecJson.of(full))
         val back = json.readValue(stored, RunnerJobSpecJson::class.java).toSpec(full.usageContext, full.jobLabel, null)
         assertThat(back.instructions).isEqualTo(full.instructions)
-        assertThat(back.mcpServers).isEqualTo(full.mcpServers)
+        assertThat(back.connectors).isEqualTo(full.connectors)
+        assertThat(back.credentials).isEqualTo(full.credentials)
         val older = json.readValue(json.writeValueAsString(RunnerJobSpecJson.of(spec)), RunnerJobSpecJson::class.java).toSpec(spec.usageContext, spec.jobLabel, null)
         assertThat(older.instructions).isNull()
-        assertThat(older.mcpServers).isEmpty()
+        assertThat(older.connectors).isEmpty()
     }
 
     @Test
@@ -94,5 +121,17 @@ class AgentEnvironmentSpecJsonTest {
         val again = json.readValue(json.writeValueAsString(RunnerResultJson.of(result)), RunnerResultJson::class.java).toRunnerResult(java.time.Instant.EPOCH)
         assertThat(again.access).isEqualTo(access)
         assertThat(json.readValue("""{"status":"SUCCEEDED"}""", RunnerResultJson::class.java).toRunnerResult(java.time.Instant.EPOCH).access).isNull()
+    }
+
+    @Test
+    fun `specs stored before ADR 0064 keep their mcpServers and agentTools for the digest but give no connectors`() {
+        val stored = """{"mode":"IMPLEMENT","agent":"OPENCODE","model":{"provider":"ANTHROPIC","modelId":"m"},"prompt":"p","timeoutSeconds":60,""" +
+            """"mcpServers":[{"name":"docs","url":"https://mcp.example.com"}],"agentTools":[{"name":"gitlab-read","repository":"app"}],""" +
+            """"connectors":[{"key":"future","kind":"SOMETHING_NEW"}]}"""
+        val read = json.readValue(stored, RunnerJobSpecJson::class.java)
+        @Suppress("UNCHECKED_CAST")
+        val canonical = signer.canonical(read) as Map<String, Any?>
+        assertThat(canonical).containsKeys("mcpServers", "agentTools")
+        assertThat(read.toSpec(spec.usageContext, spec.jobLabel, null).connectors).describedAs("unknown kinds are dropped").isEmpty()
     }
 }

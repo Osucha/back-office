@@ -137,7 +137,7 @@ class JobSupervisorTest {
         register()
         val toolSpec = sealedSpec + mapOf(
             "credentials" to listOf(mapOf("ref" to "ref-1", "repository" to "main", "capability" to "GIT_READ"), mapOf("ref" to "ref-1", "repository" to "main", "capability" to "CI_READ")),
-            "agentTools" to listOf(mapOf("name" to "gitlab-read", "repository" to "main")),
+            "connectors" to listOf(mapOf("key" to "gitlab-read", "kind" to "GITLAB_READ", "repository" to "main")),
         )
         val jobId = bo.enqueue(toolSpec, policy)
         bo.projectTokens[jobId] = mapOf("ref-1" to ("main" to "tkn-reader"))
@@ -147,6 +147,46 @@ class JobSupervisorTest {
         assertThat(launched.projectTokens.byRepository).containsExactlyEntriesOf(mapOf("main" to "tkn-reader"))
         assertThat(launched.projectTokens.tools).containsExactlyEntriesOf(mapOf("main" to "tkn-reader"))
         assertThat(launched.projectTokens.secretEntries()).containsKeys("scm-repo-main", "tool-token-main")
+    }
+
+    @Test
+    fun `ADR 0064 - a connector secret is opened and delivered as connector-token-key, never as a git token`() {
+        register()
+        val connectorSpec = sealedSpec + mapOf(
+            "credentials" to listOf(
+                mapOf("ref" to "ref-1", "repository" to "main", "capability" to "GIT_READ"),
+                mapOf("ref" to "conn-1", "repository" to "", "capability" to "CONNECTOR", "connector" to "docs"),
+            ),
+            "connectors" to listOf(mapOf("key" to "docs", "kind" to "MCP_HTTP", "url" to "https://mcp.example.com", "auth" to "BEARER")),
+        )
+        val jobId = bo.enqueue(connectorSpec, policy)
+        bo.projectTokens[jobId] = mapOf("ref-1" to ("main" to "tkn-reader"), "conn-1" to ("" to "tkn-mcp-secret"))
+        bo.credentialConnectors = mapOf("conn-1" to "docs")
+        leaseOnce()
+        val launched = backend.launched.getValue(jobId)
+        assertThat(launched.projectTokens.byRepository).containsExactlyEntriesOf(mapOf("main" to "tkn-reader"))
+        assertThat(launched.projectTokens.tools).isEmpty()
+        assertThat(launched.projectTokens.connectors).containsExactlyEntriesOf(mapOf("docs" to "tkn-mcp-secret"))
+        assertThat(launched.projectTokens.secretEntries()).containsEntry("connector-token-docs", "tkn-mcp-secret").containsKey("scm-repo-main")
+        assertThat(launched.projectTokens.toolFiles("/job")).containsExactlyEntriesOf(mapOf("/job/connector-token-docs" to "tkn-mcp-secret"))
+        assertThat(launched.projectTokens.toString()).doesNotContain("tkn-mcp-secret")
+
+        // a release for another connector than the signed one fails the job
+        val other = bo.enqueue(connectorSpec, policy)
+        bo.projectTokens[other] = mapOf("ref-1" to ("main" to "tkn-reader"), "conn-1" to ("" to "tkn-mcp-secret"))
+        bo.credentialConnectors = mapOf("conn-1" to "jira")
+        leaseOnce()
+        assertThat(backend.launched).doesNotContainKey(other)
+        assertThat(bo.completionOf(other)!!.get("reason").asString()).contains("not 'docs'")
+
+        // a CONNECTOR credential without a valid key in the signed spec is refused
+        val invalid = bo.enqueue(
+            sealedSpec + mapOf("credentials" to listOf(mapOf("ref" to "conn-1", "repository" to "", "capability" to "CONNECTOR", "connector" to "../etc"))),
+            policy,
+        )
+        leaseOnce()
+        assertThat(backend.launched).doesNotContainKey(invalid)
+        assertThat(bo.completionOf(invalid)!!.get("reason").asString()).contains("names no valid connector key")
     }
 
     @Test

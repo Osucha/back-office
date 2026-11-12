@@ -171,10 +171,10 @@ umiejętności**, **Required skills**), której agent kroku nie ma.
 
 | Nadpisanie | Skutek |
 |---|---|
-| **Agent** | Kto wykonuje ten krok: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)); wybierany wstępnie jak wyżej. Puste: **OpenCode**, gdy szablon wymaga agenta kodującego, w przeciwnym razie **Odpowiedź modelu**. Z agentem przychodzą jego instrukcje, reguły, umiejętności, serwery MCP i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (szablon wymagający agenta kodującego z agentem odpowiedzi modelu: „Szablon wymaga agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”). |
+| **Agent** | Kto wykonuje ten krok: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)); wybierany wstępnie jak wyżej. Puste: **OpenCode**, gdy szablon wymaga agenta kodującego, w przeciwnym razie **Odpowiedź modelu**. Z agentem przychodzą jego instrukcje, reguły, umiejętności, konektory i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (szablon wymagający agenta kodującego z agentem odpowiedzi modelu: „Szablon wymaga agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”). |
 | **Agent może zadawać pytania** (**Agent may ask questions**), **Rundy pytań** (**Question rounds**) | Domyślnie włączone, 2 rundy: agent może zatrzymać się z pytaniami, a przebieg czeka na Twoje odpowiedzi ([Agent zadaje pytania](#agent-questions)). |
 | **Profil modelu** (**Model profile**) | Model dla tego węzła. Puste: model agenta, w przeciwnym razie domyślne dla jego rodzaju (projekt, osoba uruchamiająca, platforma). |
-| **Konfiguracja** (**Config**) | Ustawienia pracy scalane z konfiguracją szablonu: **Pracuje w repozytorium (wymaga agenta kodującego)** (**Works in the repository (needs a coding agent)**), **Polecenie weryfikacji** (**Verify command**; sprawdzenie akceptacyjne uruchamiane po agencie, np. `./gradlew test`; niepowodzenie oznacza błąd kroku), **Narzędzia agenta** (**Agent tools**). Krok nie ma ustawień gita: commit, gałąź i merge request ustawia się w [Dostarcz zmiany](#deliver-changes). |
+| **Konfiguracja** (**Config**) | Ustawienia pracy scalane z konfiguracją szablonu: **Pracuje w repozytorium (wymaga agenta kodującego)** (**Works in the repository (needs a coding agent)**), **Polecenie weryfikacji** (**Verify command**; sprawdzenie akceptacyjne uruchamiane po agencie, np. `./gradlew test`; niepowodzenie oznacza błąd kroku). Krok nie dodaje narzędzi: to [konektory](task-library.md#connectors) agenta (dawne **Narzędzia agenta**, **Agent tools**, stały się konektorem `gitlab-read`, ADR 0064). Krok nie ma ustawień gita: commit, gałąź i merge request ustawia się w [Dostarcz zmiany](#deliver-changes). |
 
 Katalog i sesja nie są już ustawieniami kroku (ADR 0062): należą do agenta (**Katalog**, **Sesja**; [Katalog
 przebiegu i sesje agentów](#run-directory)). Sandbox ustawia się w projekcie ([Polityka
@@ -258,6 +258,7 @@ Uwagi, każda z krokami, których dotyczy (**ERROR** nie pozwala wykonać kroku,
 | **Wymaga agenta kodującego** (**Needs a coding agent**) | błąd | krok, którego szablon wymaga agenta kodującego, wykonuje agent odpowiedzi modelu |
 | **Nieznana reguła**, **Nieznana umiejętność** (**Unknown rule**, **Unknown skill**) | błąd | agent wymienia regułę lub umiejętność, która już nie istnieje |
 | **Nieznany agent** (**Unknown agent**) | błąd | krok wskazuje agenta, który już nie istnieje |
+| **Nieznany konektor** (**Unknown connector**) | ostrzeżenie | agent kodujący wskazuje klucz [konektora](task-library.md#connectors), którego nie zdefiniowano ani w projekcie, ani na platformie; krok działa bez tego narzędzia |
 | **Dwie umiejętności o tej samej nazwie** (**Two skills with the same name**) | ostrzeżenie | dwie umiejętności agenta mają tę samą nazwę, więc agent nie może ich odróżnić |
 
 Dawna uwaga **Agent tylko do odczytu w kroku z push** (**Read-only agent on a pushing step**) nie jest już zgłaszana:

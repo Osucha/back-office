@@ -108,7 +108,6 @@ object ControlNodeCatalog {
     fun codingAgentConfigSchema(): Map<String, Any?> = schema(
         mapOf(
             "verifyCommand" to string("Command run after the agent, e.g. ./gradlew test; a non-zero exit fails the step"),
-            "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
             CODING_AGENT to boolean("The work needs a coding agent in the workflow's sources (a model answer cannot do it)", false),
         ) + directorySettings() + questionSettings(),
     )

@@ -232,4 +232,12 @@ data class RunnerPublicKeyJson(val publicKey: String)
 /** ADR 0051: answer of `POST /runner/v2/jobs/{jobId}/credentials`; [expiresAt] is part of every token's associated data. */
 data class JobCredentialsJson(val expiresAt: String, val credentials: List<SealedCredentialJson>)
 
-data class SealedCredentialJson(val ref: String, val repository: String, val capability: String, val enc: String, val ciphertext: String)
+data class SealedCredentialJson(
+    val ref: String,
+    val repository: String,
+    val capability: String,
+    val enc: String,
+    val ciphertext: String,
+    /** ADR 0064: the connector key of a `CONNECTOR` secret; absent otherwise. */
+    val connector: String? = null,
+)

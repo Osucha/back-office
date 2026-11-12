@@ -4,11 +4,12 @@ import {
   type SegmentedNavItem,
 } from '../../../core/ui/relay/segmented-nav.component';
 
-export type LibrarySection = 'templates' | 'skills' | 'rules' | 'agents' | 'workflows' | 'sources';
+export type LibrarySection =
+  'templates' | 'skills' | 'rules' | 'agents' | 'connectors' | 'workflows' | 'sources';
 
 /**
  * Relay segmented control shared by the Library pages (with optional item counts), in three groups
- * (ADR 0055): Tasks (templates, skills, rules, agents - ADR 0056), Workflows and Sources.
+ * (ADR 0055): Tasks (templates, skills, rules, agents - ADR 0056 - and connectors - ADR 0064), Workflows and Sources.
  */
 @Component({
   selector: 'app-library-nav',
@@ -59,6 +60,14 @@ export class LibraryNavComponent {
         label: $localize`:@@library.nav.agents:Agents`,
         link: '/library/agents',
         count: c.agents,
+        group: 'tasks',
+        groupLabel: tasks,
+      },
+      {
+        id: 'connectors',
+        label: $localize`:@@library.nav.connectors:Connectors`,
+        link: '/library/connectors',
+        count: c.connectors,
         group: 'tasks',
         groupLabel: tasks,
       },

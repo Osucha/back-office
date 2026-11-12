@@ -267,7 +267,8 @@ interface RunnerFleetProtocol {
 /** ADR 0051: sealed tokens of one job; [expiresAt] is part of every token's associated data. */
 data class CredentialRelease(val expiresAt: Instant, val credentials: List<ReleasedCredential>)
 
-data class ReleasedCredential(val ref: String, val repository: String, val capability: String, val sealed: SealedCredential)
+/** ADR 0064: [connector] = the connector key of a `CONNECTOR` secret, else null. */
+data class ReleasedCredential(val ref: String, val repository: String, val capability: String, val sealed: SealedCredential, val connector: String? = null)
 
 // ------------------------------------------------------------------------------------------------
 // Sandbox callbacks (the agent inside the sandbox, authenticated by its `bo_job_` token) - system operations

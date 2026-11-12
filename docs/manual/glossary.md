@@ -13,8 +13,8 @@ in the gate panel. See [Gate settings](workflows.md#gates-config).
 **Action**: A workflow node that runs a fixed operation without a model: Fetch issue, Comment on issue, Transition
 issue, Start workflow or Project digest. See [Action nodes](workflows.md#actions).
 
-**Agent**: Who works and how: a library entry with a harness, optionally a model, instructions, rules, skills and MCP
-servers. Without a harness it gives a single model answer inside Back Office (**Model answer**); with OpenCode or
+**Agent**: Who works and how: a library entry with a harness, optionally a model, instructions, rules, skills and
+connectors. Without a harness it gives a single model answer inside Back Office (**Model answer**); with OpenCode or
 Claude Code it is a coding agent session in an agent job. The workflow step chooses its agent (templates name none),
 so two agents can be compared on the same task. See [Agents](task-library.md#agents).
 
@@ -90,6 +90,11 @@ when the agent is sure. See [Decisions](workflows.md#decisions).
 model reads an agent's whole environment and lists contradictions, ambiguities and redundancies with quotes. One
 model call, booked as usage.
 
+**Connector**: A tool coding agents use while they work: an MCP server with its credentials, or read-only GitLab
+(`glab` with the project's read-only token). Platform connectors (**Library** → **Connectors**) serve every project; a
+project's own connector replaces the platform one with the same key. Agents list the connectors they use by key.
+See [Connectors](task-library.md#connectors).
+
 **Constitution**: The project owner's rules in Markdown, part of every agent's environment; it wins
 over every other source when they disagree. See [Creating a project](projects.md#create-project) and
 [When sources disagree](task-library.md#precedence).
@@ -147,9 +152,8 @@ budget, and expires with the job. See [How agent jobs run](agent-execution.md#cr
 **Max visits**: How often a node may run within one run; the guard against endless loops. See [Node kinds](workflows.md#nodes).
 
 **MCP (Model Context Protocol)**: The protocol your IDE's coding agent uses to call Back Office tools (list turns, read artefacts, start
-workflows, decide gates) with a personal access token. See [IDE and MCP](integrations-ide.md#mcp-tools). An agent
-of the library may also list remote MCP servers it uses in its sandbox; see
-[MCP servers of an agent](task-library.md#agent-mcp).
+workflows, decide gates) with a personal access token. See [IDE and MCP](integrations-ide.md#mcp-tools). Agents of
+the library use MCP servers as their tools too, as [connectors](task-library.md#connectors).
 
 **Model answer**: The built-in agent `model-answer`: one model call inside Back Office, without tools or a
 repository; it can return structured JSON and a confidence. A step without its own agent whose template does not

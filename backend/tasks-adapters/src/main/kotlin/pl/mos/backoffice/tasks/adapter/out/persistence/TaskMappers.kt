@@ -10,7 +10,7 @@ import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentDirectory
 import pl.mos.backoffice.shared.runner.AgentSession
-import pl.mos.backoffice.shared.runner.AgentMcpServer
+import pl.mos.backoffice.shared.runner.ConnectorKeys
 import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.Rule
@@ -111,16 +111,6 @@ class TaskMappers(private val json: JsonMapper) {
         }
     }
 
-    /** ADR 0057: one stored MCP server, or null for an entry the domain refuses now. */
-    private fun mcpServer(raw: Any?): AgentMcpServer? {
-        val m = raw as? Map<*, *> ?: return null
-        return try {
-            AgentMcpServer(m["name"]?.toString() ?: return null, m["url"]?.toString() ?: return null)
-        } catch (_: ValidationException) {
-            null
-        }
-    }
-
     // ----- skills -------------------------------------------------------------------------------------
 
     fun toEntity(s: Skill) = SkillEntity(
@@ -202,7 +192,7 @@ class TaskMappers(private val json: JsonMapper) {
         instructions = a.instructions,
         rules = json.writeValueAsString(a.rules),
         skills = json.writeValueAsString(a.skills),
-        mcpServers = json.writeValueAsString(a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) }),
+        connectors = json.writeValueAsString(a.connectors),
         access = json.writeValueAsString(mapOf("mode" to a.access.mode.name, "paths" to a.access.paths, "directory" to a.access.directory.name)),
         session = a.session.name,
         modelProfileId = a.modelProfileId?.value,
@@ -225,7 +215,7 @@ class TaskMappers(private val json: JsonMapper) {
         instructions = e.instructions,
         rules = readStrings(e.rules),
         skills = readStrings(e.skills),
-        mcpServers = readList(e.mcpServers).mapNotNull(::mcpServer),
+        connectors = readStrings(e.connectors).filter { ConnectorKeys.PATTERN.matches(it) },
         access = access(e.access),
         session = AgentSession.entries.firstOrNull { it.name == e.session } ?: AgentSession.PER_STEP,
         modelProfileId = e.modelProfileId?.let(::ModelProfileId),

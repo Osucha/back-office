@@ -1273,6 +1273,63 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/connectors': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description ADR 0064: platform connectors (library.view) and, with projectId, that project's connectors (project.view). Secrets are never returned. */
+    get: operations['listConnectors'];
+    put?: never;
+    /** @description ADR 0064: platform scope needs library.manage (administrators); project scope needs project.connections.manage. Audited CONNECTOR_CREATE. */
+    post: operations['createConnector'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/connectors/{connectorId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connectorId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** @description Same permissions as create. An omitted or null secret keeps the stored one; an empty string removes it. The key and scope cannot change. Audited CONNECTOR_UPDATE. */
+    put: operations['updateConnector'];
+    post?: never;
+    /** @description Same permissions as create. Agents that list the key skip it from then on. Audited CONNECTOR_DELETE. */
+    delete: operations['deleteConnector'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/connectors/{connectorId}/test': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connectorId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description ADR 0064: from Back Office (not the sandbox): reachability and, for MCP_HTTP, the MCP initialize handshake with the stored secret; GITLAB_READ checks the repository token. The result is stored on the connector. */
+    post: operations['testConnector'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/dashboard': {
     parameters: {
       query?: never;
@@ -3741,7 +3798,8 @@ export interface components {
         | 'UNKNOWN_RULE'
         | 'UNKNOWN_SKILL'
         | 'DUPLICATE_SKILL_NAME'
-        | 'UNKNOWN_AGENT';
+        | 'UNKNOWN_AGENT'
+        | 'UNKNOWN_CONNECTOR';
       message: string;
       nodeIds?: string[];
       /** @enum {string} */
@@ -3755,13 +3813,14 @@ export interface components {
     /** @description ADR 0056/0057: who works on a task and how. Without a harness the step is one model answer (no tools, no repository); with OPENCODE or CLAUDE_CODE it is a coding agent session in the runner sandbox. Without a model the step uses the defaults for its kind (project, starting user, platform). Instructions, rules, skills and MCP servers are the agent's environment: model answers get them in the system prompt, coding agents in the harness's own files (AGENTS.md / CLAUDE.md user memory, skill directories, MCP config). */
     AgentInput: {
       access?: components['schemas']['AgentAccess'];
+      /** @description ADR 0064: connector keys the agent may use (coding agents); looked up in the run's project, then the platform; missing ones are skipped */
+      connectors?: string[];
       description?: string;
       harness?: components['schemas']['AgentHarness'] | null;
       /** @description ADR 0057: the agent's role and way of working (markdown; may use {{project.*}}); added after the platform preamble */
       instructions?: string;
       /** @description derived from the name when omitted on create; kept when omitted on update */
       key?: string | null;
-      mcpServers?: components['schemas']['AgentMcpServer'][];
       /** Format: uuid */
       modelProfileId?: string | null;
       name: string;
@@ -3866,12 +3925,6 @@ export interface components {
       | 'TIMED_OUT'
       | 'CANCELLED'
       | 'LOST';
-    /** @description ADR 0057: a remote MCP server the agent may use (HTTP(S), no credentials); the sandbox egress policy decides whether it is reachable */
-    AgentMcpServer: {
-      name: string;
-      /** @description http:// or https:// URL of the MCP endpoint (streamable HTTP) */
-      url: string;
-    };
     /** @description ADR 0059: task steps done by one agent with one model. Accepted = a succeeded execution that is the last one of its node in a run that ended successfully; costPerAccepted = cost of every execution / accepted executions. */
     AgentMetrics: {
       accepted: number;
@@ -4540,6 +4593,51 @@ export interface components {
       /** @description sample Jira project key; default: allowedProjectKeys, else verifyProjectKey */
       projectKey?: string | null;
     };
+    Connector: components['schemas']['ConnectorInput'] & {
+      /** Format: date-time */
+      createdAt?: string;
+      readonly hasSecret?: boolean;
+      /** @description MCP_HTTP: the host the sandbox egress policy must allow */
+      readonly host?: string | null;
+      /** Format: uuid */
+      id?: string;
+      readonly lastTest?: components['schemas']['ConnectorTest'] | null;
+      /** Format: date-time */
+      updatedAt?: string;
+      readonly updatedBy?: components['schemas']['ActorRef'];
+    };
+    /** @description ADR 0064: a tool agents may use. MCP_HTTP: a remote MCP server (streamable HTTP) with optional credentials; GITLAB_READ: glab with the project's read-only CI_READ token of a repository (project scope only). A project connector shadows the platform connector of the same key. */
+    ConnectorInput: {
+      /**
+       * @description MCP_HTTP: BEARER sends Authorization: Bearer <secret>; HEADER sends <headerName>: <secret>
+       * @default NONE
+       * @enum {string}
+       */
+      auth: 'NONE' | 'BEARER' | 'HEADER';
+      description?: string;
+      /** @description HEADER only */
+      headerName?: string | null;
+      /** @description derived from the name when omitted on create; fixed afterwards */
+      key?: string | null;
+      /** @enum {string} */
+      kind: 'MCP_HTTP' | 'GITLAB_READ';
+      name: string;
+      /** @description GITLAB_READ: project repository key; empty = the primary repository */
+      repository?: string | null;
+      scope: components['schemas']['Scope'];
+      /** @description write-only; null/omitted on update keeps the stored one, empty removes it */
+      secret?: string | null;
+      /** @description MCP_HTTP: http:// or https:// URL of the MCP endpoint */
+      url?: string | null;
+    };
+    ConnectorTest: {
+      message?: string | null;
+      ok: boolean;
+      /** Format: date-time */
+      testedAt: string;
+      /** @description MCP_HTTP: tool names the server announced, when it answered */
+      tools?: string[];
+    };
     ControlNodeDescriptor: {
       /** @description JSON Schema of the kind-specific section (gate/ci/end/decision) */
       configSchema?: {
@@ -5050,12 +5148,13 @@ export interface components {
     JobCredentials: {
       credentials: {
         /**
-         * @description CI_READ = the read-only token of an agent tool (agentTools)
+         * @description CI_READ = the read-only token of a GITLAB_READ connector; CONNECTOR = the secret of an MCP connector (ADR 0064)
          * @enum {string}
          */
-        capability: 'GIT_READ' | 'PUSH_BRANCH' | 'CI_READ';
+        capability: 'GIT_READ' | 'PUSH_BRANCH' | 'CI_READ' | 'CONNECTOR';
         /** @description the sealed token */
         ciphertext: string;
+        connector?: string | null;
         /** @description HPKE encapsulated key */
         enc: string;
         ref: string;
@@ -6146,24 +6245,33 @@ export interface components {
       agent: 'OPENCODE' | 'CLAUDE_CODE';
       /** @description ADR 0060: the agent key whose home /workspace/.agents/<agentHome>/ holds the environment document, skills, MCP configuration and sessions of the agent (Claude Code CLAUDE_CONFIG_DIR; OpenCode config and data directories); nothing is written into a repository. Absent (older Back Office): the ADR 0057 locations. Covered by the spec digest when present. */
       agentHome?: string | null;
-      /** @description ADR 0051 step 4: read-only tools of the agent. gitlab-read = glab (GITLAB_TOKEN, GITLAB_HOST) with the CI_READ token of the repository, named in credentials and delivered as the bundle file tool-token-<repository>; the runner hands only this token to the agent and redacts it everywhere. Covered by the spec digest when present. */
-      agentTools?:
-        | {
-            /** @enum {string} */
-            name: 'gitlab-read';
-            repository: string;
-          }[]
-        | null;
       collectArtifacts?: string[];
       /** @default true */
       collectDiff: boolean;
+      /** @description ADR 0064: the agent's connectors. MCP_HTTP: the runner configures the harness (Claude Code --mcp-config with ${VAR} header expansion, OpenCode mcp with {env:VAR}); a secret is named in credentials (capability CONNECTOR) and reaches only the agent process as an environment variable, redacted everywhere. GITLAB_READ: glab with the CI_READ token of the repository (ADR 0051). Covered by the spec digest when present. */
+      connectors?:
+        | {
+            /** @enum {string|null} */
+            auth?: 'NONE' | 'BEARER' | 'HEADER' | null;
+            headerName?: string | null;
+            key: string;
+            /** @enum {string} */
+            kind: 'MCP_HTTP' | 'GITLAB_READ';
+            /** @description GITLAB_READ: repositories[].key */
+            repository?: string | null;
+            url?: string | null;
+          }[]
+        | null;
       /** @description ADR 0051: project repository tokens of the job, by name only (never values): the controller fetches them sealed with POST /runner/v2/jobs/{jobId}/credentials before the sandbox starts and delivers each as the token of its repository. Absent = the runner pool's own git tokens (deprecated fallback). Covered by the spec digest when present. */
       credentials?:
         | {
             /** @enum {string} */
-            capability: 'GIT_READ' | 'PUSH_BRANCH' | 'CI_READ';
-            /** @description the repository token (its connection id) */
+            capability: 'GIT_READ' | 'PUSH_BRANCH' | 'CI_READ' | 'CONNECTOR';
+            /** @description CONNECTOR: the connector key; delivered as the bundle file connector-token-<key> (ADR 0064) */
+            connector?: string | null;
+            /** @description the repository token (its connection id) or the connector id */
             ref: string;
+            /** @description repositories[].key; empty for CONNECTOR */
             repository: string;
           }[]
         | null;
@@ -6181,8 +6289,6 @@ export interface components {
        * @enum {string|null}
        */
       llmCredentials?: 'GATEWAY' | 'LOCAL_LOGIN' | null;
-      /** @description ADR 0057: remote MCP servers of the agent (no credentials); Claude Code --mcp-config, OpenCode `mcp` (type remote). The sandbox egress policy decides reachability. Covered by the spec digest when present. */
-      mcpServers?: components['schemas']['AgentMcpServer'][] | null;
       /**
        * @description ADR 0063: IMPLEMENT an agent job (never pushes); DELIVER no agent: commit, push and merge request of the run directory; PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact
        * @enum {string}
@@ -9516,6 +9622,122 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['JiraScopes'];
+        };
+      };
+    };
+  };
+  listConnectors: {
+    parameters: {
+      query?: {
+        projectId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Connector'][];
+        };
+      };
+    };
+  };
+  createConnector: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConnectorInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Connector'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  updateConnector: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connectorId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConnectorInput'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Connector'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  deleteConnector: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connectorId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  testConnector: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connectorId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ConnectorTest'];
         };
       };
     };

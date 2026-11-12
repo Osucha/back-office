@@ -139,6 +139,7 @@ Karty, każda dostępna przez `?tab=` w URL:
 | **CI** | Punkty wejścia, tokeny CI, fragment konfiguracji GitLab CI i wykonania CI. | `project.manage`, `project.ci.manage` |
 | **Członkowie** (**Members**) | Użytkownicy i grupy z ich rolami projektowymi. | `project.members.manage` |
 | **Połączenia** (**Connections**) | Połączenia Jiry projektu i połączenia platformy, z których projekt korzysta awaryjnie (zob. [Połączenia projektu](#project-connections)). | `project.connections.manage` |
+| **Konektory** (**Connectors**) | Narzędzia, z których korzystają agenci projektu: konektory projektu i platformy (zob. [Konektory projektu](#project-connectors)). | `project.connections.manage` |
 | **Sandbox** | Polityka sandboxa projektu i to, co dziś dostaje zadanie. | `project.manage` |
 | **Budżet** (**Budget**) | Miesięczny budżet projektu. | `project.manage` |
 | **Ustawienia** (**Settings**) | Formularz projektu opisany wyżej (bez repozytoriów, które są na karcie **Źródła**) z konstytucją, [monitor zgłoszeń Jira](integrations-jira.md#jira-intake) i **Usuń ten projekt**. | `project.manage` |
@@ -279,6 +280,28 @@ do Jiry, w dwóch częściach:
   ([Tokeny API z zakresami](integrations-jira.md#jira-scoped-token)).
 
 Usunięcie projektu usuwa jego połączenia.
+
+<a id="project-connectors"></a>
+## Konektory projektu
+
+Karta **Konektory** (**Connectors**) wyświetla narzędzia, z których korzystają agenci tego projektu (ADR 0064): własne
+konektory projektu i, oznaczone **platforma** (**platform**), konektory platformy, z których projekt może korzystać.
+Konektor projektu z kluczem konektora platformy zastępuje go w tym projekcie (konektor platformy pokazuje **zastąpiony
+przez konektor projektu**). Czym jest konektor, jego rodzaje, **Testuj** i **Host do dopuszczenia**:
+[Konektory](task-library.md#connectors).
+
+- **Dodaj konektor** (**Add connector**), edycja, **Testuj** (**Test**) i usuwanie wymagają
+  `project.connections.manage`: tylko rola **Właściciel**. Każdy z `project.view` widzi listę, ale nigdy sekretów.
+  Konektory platformy otwierają się tu tylko do odczytu.
+- **GitLab (tylko odczyt)** istnieje tylko tutaj: `glab` dla agentów ze zweryfikowanym tokenem projektu tylko do
+  odczytu z `CI_READ` dla **Repozytorium** (puste: główne); ten token dodajesz na karcie **Źródła**
+  ([Dostęp agentów do gita](integrations-git.md#git-agent-tools)).
+- **Serwer MCP (HTTP)** jest osiągalny dla agentów tylko wtedy, gdy sandbox dopuszcza jego host
+  ([Polityka sandboxa](#sandbox-policy)).
+- Agenci korzystają z konektora tylko wtedy, gdy wskazują jego klucz; wbudowani **OpenCode** i **Claude Code**
+  wskazują `gitlab-read`.
+
+Usunięcie projektu usuwa jego konektory.
 
 <a id="sandbox-policy"></a>
 ## Polityka sandboxa

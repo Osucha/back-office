@@ -111,6 +111,9 @@ class TestProblemHandler {
 /** ADR 0051: the tokens [RunnerTestBeans.repositoryTokenSource] knows (ref -> plaintext). */
 val REPOSITORY_TOKENS: MutableMap<String, String> = java.util.concurrent.ConcurrentHashMap()
 
+/** ADR 0064: connector secrets by (connector id, connector key). */
+val CONNECTOR_SECRETS: MutableMap<Pair<String, String>, String> = java.util.concurrent.ConcurrentHashMap()
+
 /** Shared kernel beans normally provided by other modules, plus a throw-away PostgreSQL. */
 @TestConfiguration(proxyBeanMethods = false)
 class RunnerTestBeans {
@@ -153,7 +156,10 @@ class RunnerTestBeans {
     /** ADR 0051: project repository tokens by ref (the projects context in the app). */
     @Bean
     fun repositoryTokenSource(): pl.mos.backoffice.shared.runner.RepositoryTokenSource =
-        pl.mos.backoffice.shared.runner.RepositoryTokenSource { ref -> REPOSITORY_TOKENS[ref] }
+        object : pl.mos.backoffice.shared.runner.RepositoryTokenSource {
+            override fun open(ref: String): String? = REPOSITORY_TOKENS[ref]
+            override fun openConnector(ref: String, connector: String): String? = CONNECTOR_SECRETS[ref to connector]
+        }
 
     @Bean
     fun testProblemHandler() = TestProblemHandler()

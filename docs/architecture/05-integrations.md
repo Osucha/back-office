@@ -115,7 +115,11 @@ MCP would make sense for an **agent that explores Jira on its own** (searching r
 safe pattern for that is a narrow **Back-Office-brokered tool** (the agent asks Back Office, e.g. through the MCP
 server of ADR 0025 or the runner callback API; Back Office runs the call with the same selection, capability
 narrowing, allowed projects, audit and, for writes, the ADR 0033 approval, and returns the result as an untrusted
-data block, ADR 0029). Atlassian MCP credentials or any Jira token never go into a sandbox.
+data block, ADR 0029). The Jira tokens of Back Office's connections never go into a sandbox. Since ADR 0064 an
+administrator or project owner can still give agents an MCP server with a token of its own as a **connector**
+(07-task-library.md, "Connectors"); that token is issued for the connector, is meant to be read-only and least
+privileged, and reaches only the agent process of the jobs whose agent lists it (12-prompt-injection.md, residual
+risks).
 
 ### Model
 

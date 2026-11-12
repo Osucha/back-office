@@ -183,7 +183,8 @@ attempt progress and cost.
 **Which candidate does which task.** Prompt tasks go to model answer agents (agents without a harness, such as
 **Model answer**, **Analyst** or **Reviewer**; their environment is the system prompt), coding tasks go to coding
 agents (**Claude Code**, **OpenCode** or your own; they run with their environment in the job: instructions, rules,
-skills and MCP servers, as in a workflow step, see [The agent's environment](task-library.md#environment)). Any
+skills and connectors, as in a workflow step, see [The agent's environment](task-library.md#environment); a
+benchmark has no project, so only platform MCP connectors apply). Any
 other pair, a coding task for a model answer agent or a prompt task for a coding agent, makes no attempt and is
 counted as **Not applicable**. To compare agents on both kinds of tasks, add one candidate of each kind.
 

@@ -93,7 +93,7 @@ class DockerBackend(
         listOf(bundleDir, gitDir).forEach(::allowSandboxToDelete)
         // ADR 0040: the owner's Claude Code login, before `ready`; the runner reads and deletes it
         request.localLoginCredential?.let(env)?.takeIf { it.isNotBlank() }?.let { Files.writeString(bundleDir.resolve(LOCAL_LOGIN_FILE), it.trim()) }
-        // ADR 0051 step 4: agent tool tokens, before `ready`; the runner reads and deletes them
+        // ADR 0051 step 4: agent tool tokens (ADR 0064: and connector secrets), before `ready`; the runner reads and deletes them
         request.projectTokens.toolFiles(bundleDir.toString()).forEach { (path, token) -> Files.writeString(Path.of(path), token) }
         request.bundle.files(proxyUrl(request)).forEach { (name, content) -> Files.writeString(bundleDir.resolve(name), content) }
         // only the variable selected for this job's level (ADR 0031): READ -> BO_GIT_TOKEN_READ, PUSH_MR -> BO_GIT_TOKEN_PUSH

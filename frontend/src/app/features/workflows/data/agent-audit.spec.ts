@@ -107,8 +107,10 @@ describe('agent audit view (ADR 0061)', () => {
       'UNKNOWN_SKILL',
       'DUPLICATE_SKILL_NAME',
       'UNKNOWN_AGENT',
+      'UNKNOWN_CONNECTOR',
     ] as const)
       expect(auditFindingTitle(k)).not.toBe(k);
+    expect(auditFindingTitle('UNKNOWN_CONNECTOR')).toBe('Unknown connector');
     expect(coherenceSeverityLabel('CONTRADICTION')).toBe('Contradiction');
     expect(coherenceSeverityLabel('AMBIGUITY')).toBe('Ambiguity');
     expect(coherenceSeverityLabel('REDUNDANCY')).toBe('Redundancy');

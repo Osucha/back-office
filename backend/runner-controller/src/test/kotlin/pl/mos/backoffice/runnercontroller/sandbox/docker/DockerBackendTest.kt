@@ -80,15 +80,17 @@ class DockerBackendTest {
         assertThat(plan.tokens).isEmpty()
         val request = TestPolicies.launch(
             gitAccess = plan.access, gitCredential = null, repositoryTokens = plan.tokens,
-            projectTokens = ProjectTokens(mapOf("main" to "tkn-project"), tools = mapOf("main" to "tkn-tool")),
+            projectTokens = ProjectTokens(mapOf("main" to "tkn-project"), tools = mapOf("main" to "tkn-tool"), connectors = mapOf("docs" to "tkn-mcp")),
         )
         backend.launch(request)
         val gitDir = dir.resolve(request.jobId).resolve("git")
         assertThat(Files.readString(gitDir.resolve("main/token"))).isEqualTo("tkn-project")
         // ADR 0051 step 4: the agent tool's token is a bundle file next to the job token
         assertThat(Files.readString(dir.resolve(request.jobId).resolve("job/tool-token-main"))).isEqualTo("tkn-tool")
+        // ADR 0064: a connector secret likewise, as connector-token-<key>
+        assertThat(Files.readString(dir.resolve(request.jobId).resolve("job/connector-token-docs"))).isEqualTo("tkn-mcp")
         val args = docker.calls.single { it.firstOrNull() == "run" && "bo-job-${request.jobId}" in it }
-        assertThat(args.joinToString(" ")).doesNotContain("tkn-project")
+        assertThat(args.joinToString(" ")).doesNotContain("tkn-project").doesNotContain("tkn-mcp")
     }
 
     @Test

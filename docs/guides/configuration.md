@@ -278,7 +278,9 @@ Tokens of **connections** (Jira credentials added in **Administration → Connec
 **Connections** tab, [manual](../manual/integrations-jira.md#jira-connections)) are stored in the database
 with envelope encryption: a random data key per secret encrypts the token (AES-256-GCM, the connection id
 as associated data), and the data key is wrapped with the key-encryption key (KEK) configured here.
-Properties `backoffice.secrets.*`.
+Properties `backoffice.secrets.*`. The same key seals the project repository tokens (ADR 0051) and the secrets of
+**connectors** (ADR 0064, the MCP servers agents use; associated data `connector:<id>`); a key rotation re-wraps them
+too (audited `CONNECTOR_SECRET_REWRAP`), and without the key **Add connector** with a secret answers `409`.
 
 | Variable | Default | Description | Secret | Helm value |
 |---|---|---|---|---|

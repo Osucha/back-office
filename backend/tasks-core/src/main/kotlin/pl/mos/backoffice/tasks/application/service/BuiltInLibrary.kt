@@ -1,6 +1,7 @@
 package pl.mos.backoffice.tasks.application.service
 
 import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.runner.ConnectorKeys
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TemplateCategory
@@ -1223,17 +1224,26 @@ object BuiltInLibrary {
         agent(now, REVIEWER, "Reviewer", null,
             "Model answer agent that reviews changes against what was agreed, with the security checklist and the Definition of Ready / Done.",
             REVIEWER_INSTRUCTIONS),
+        // ADR 0064: the coding agents list the gitlab-read connector; a project that defines it gives them the tool
         agent(now, AgentSnapshot.OPENCODE, "OpenCode", AgentHarness.OPENCODE,
-            "OpenCode coding agent session in the runner sandbox with the step's workspace, its rules and skills."),
+            "OpenCode coding agent session in the runner sandbox with the step's workspace, its rules and skills.",
+            connectors = codingAgentConnectors),
         agent(now, AgentSnapshot.CLAUDE_CODE, "Claude Code", AgentHarness.CLAUDE_CODE,
-            "Claude Code coding agent session in the runner sandbox with the step's workspace, its rules and skills."),
+            "Claude Code coding agent session in the runner sandbox with the step's workspace, its rules and skills.",
+            connectors = codingAgentConnectors),
     )
 
-    private fun agent(now: Instant, key: String, name: String, harness: AgentHarness?, description: String, instructions: String = "") =
+    /** ADR 0064: connector keys of the built-in coding agents. */
+    val codingAgentConnectors = listOf(ConnectorKeys.GITLAB_READ)
+
+    private fun agent(
+        now: Instant, key: String, name: String, harness: AgentHarness?, description: String, instructions: String = "",
+        connectors: List<String> = emptyList(),
+    ) =
         Agent.create(
             Agent.Content(
                 key = key, name = name, description = description, harness = harness, instructions = instructions,
-                rules = baseAgentRules, skills = agentSkills[key].orEmpty(),
+                rules = baseAgentRules, skills = agentSkills[key].orEmpty(), connectors = connectors,
             ),
             now, builtIn = true, actor = Actor.SYSTEM,
         )

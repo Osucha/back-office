@@ -82,7 +82,7 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
     const env = Array.from(
       fixture.nativeElement.querySelectorAll('[data-environment]') as NodeListOf<HTMLElement>,
     ).map((e) => e.textContent?.trim());
-    expect(env).toEqual(['0 rules · 0 skills', '2 rules · 1 skill']);
+    expect(env).toEqual(['0 rules · 0 skills', '2 rules · 1 skill · 0 connectors']);
     const access = Array.from(
       fixture.nativeElement.querySelectorAll('td [data-access]') as NodeListOf<HTMLElement>,
     ).map((e) => e.textContent?.trim());
@@ -132,7 +132,7 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
     });
   });
 
-  it('edits the environment: rules and skills of the scope, MCP servers only for coding agents (ADR 0057)', () => {
+  it('edits the environment: rules, skills and connectors of the scope, connectors only for coding agents (ADR 0057/0064)', () => {
     const { fixture, page, ed } = create();
     http
       .match((r) => r.url === '/api/v1/rules')
@@ -157,43 +157,66 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
       .forEach((r) =>
         r.flush([{ key: 'kotlin', name: 'Kotlin', scope: { type: 'GLOBAL' }, content: '' }]),
       );
+    http
+      .match((r) => r.url === '/api/v1/connectors')
+      .forEach((r) =>
+        r.flush([
+          {
+            id: 'c1',
+            key: 'docs',
+            name: 'Docs',
+            kind: 'MCP_HTTP',
+            auth: 'NONE',
+            scope: { type: 'GLOBAL' },
+          },
+          {
+            id: 'c2',
+            key: 'gitlab-read',
+            name: 'GitLab P2',
+            kind: 'GITLAB_READ',
+            auth: 'NONE',
+            scope: { type: 'PROJECT', projectId: 'p2' },
+          },
+        ]),
+      );
     page.create();
     fixture.detectChanges();
     expect(ed.ruleOptions()).toEqual([{ key: 'ask-dont-guess', label: 'Ask, do not guess' }]);
     expect(ed.skillOptions()).toEqual([{ key: 'kotlin', label: 'Kotlin' }]);
+    // a global agent sees the platform connectors only
+    expect(ed.connectorOptions()).toEqual([{ key: 'docs', label: 'Docs (docs)', unknown: false }]);
 
     ed.patch({ name: 'Coder', instructions: 'Write tests first.', rules: ['ask-dont-guess'] });
     ed.setKind('OPENCODE');
-    ed.addMcp();
-    ed.patchMcp(0, { name: 'Docs', url: 'https://mcp.example.com' });
-    expect(ed.mcpError()).toContain('lowercase');
+    fixture.detectChanges();
+    ed.patch({ connectors: ['docs', 'Bad Key'] });
+    expect(ed.connectorError()).toContain('Bad Key');
     expect(ed.canSave()).toBe(false);
-    ed.patchMcp(0, { name: 'docs', url: 'ftp://x' });
-    expect(ed.mcpError()).toContain('http');
-    ed.patchMcp(0, { url: 'https://mcp.example.com/mcp' });
-    expect(ed.mcpError()).toBeNull();
+    // a key projects provide is allowed for a global agent and shown as not defined here
+    ed.patch({ connectors: ['docs', 'jira'] });
+    expect(ed.connectorError()).toBeNull();
+    expect(ed.connectorOptions().find((o) => o.key === 'jira')?.unknown).toBe(true);
     expect(ed.canSave()).toBe(true);
 
     ed.save();
     const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
     expect(req.request.body.instructions).toBe('Write tests first.');
     expect(req.request.body.rules).toEqual(['ask-dont-guess']);
-    expect(req.request.body.mcpServers).toEqual([
-      { name: 'docs', url: 'https://mcp.example.com/mcp' },
-    ]);
+    expect(req.request.body.connectors).toEqual(['docs', 'jira']);
     req.flush({ ...req.request.body, id: 'a3', key: 'coder' });
     http.match((r) => r.url === '/api/v1/agents').forEach((r) => r.flush(agents));
   });
 
-  it('sends no MCP servers for a model answer agent', () => {
-    const { page, ed } = create();
+  it('sends no connectors for a model answer agent', () => {
+    const { fixture, page, ed } = create();
     page.create();
-    ed.patch({ name: 'Answer', mcpServers: [{ name: 'Bad', url: 'x' }] });
-    expect(ed.mcpError()).toBeNull();
+    ed.patch({ name: 'Answer', connectors: ['Bad'] });
+    fixture.detectChanges();
+    expect(ed.connectorError()).toBeNull();
     expect(ed.canSave()).toBe(true);
     ed.save();
     const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
-    expect(req.request.body.mcpServers).toEqual([]);
+    expect(req.request.body.connectors).toEqual([]);
   });
 
   it('creates an agent without a key, with the chosen kind', () => {
@@ -213,7 +236,7 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
       instructions: '',
       rules: [],
       skills: [],
-      mcpServers: [],
+      connectors: [],
       session: 'PER_STEP',
       tags: [],
     });

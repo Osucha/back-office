@@ -123,6 +123,7 @@ Zobacz [runner-fleet.md](runner-fleet.md#sandbox-policies).
 | Token agenta `bo_job_...` (tylko brama) | Jedyne poświadczenie agenta: wywołuje bramę LLM tylko dla modelu zadania (plus wzorców z `RUNNER_EXTRA_ALLOWED_MODELS`) w granicach budżetów i limitu żądań zadania; odrzucany przez wszystkie callbacki, więc agent nie może przesłać ani podrobić wyniku. Unieważniany razem z zadaniem |
 | Token gita (z Secretu gita puli) | Runner wczytuje go do pamięci i usuwa plik; używany tylko przez polecenia gita, które runner uruchamia przed agentem i po nim ([integrations-git.md](integrations-git.md#git-overview)) |
 | URL proxy z hasłem przypisanym do zadania | Ważny tylko w proxy swojej puli, usuwany po zakończeniu |
+| Sekrety [konektorów](task-library.md#connectors) agenta (ADR 0064) | Tylko dla konektorów, które agent wskazuje: sekret serwera MCP, zapieczętowany przez Back Office dla tego zadania, wczytany przez runnera (plik jest usuwany), potem umieszczony tylko w środowisku procesu agenta (nigdy w pliku, nigdy w poleceniu przygotowania ani weryfikacji) i ukrywany w każdym logu; zweryfikowany token tylko do odczytu `CI_READ` konektora **GitLab (tylko odczyt)** trafia tylko do `glab`. Znikają razem z zadaniem |
 
 | Sandbox nigdy nie ma | Gdzie pozostaje |
 |---|---|
@@ -132,7 +133,8 @@ Zobacz [runner-fleet.md](runner-fleet.md#sandbox-policies).
 | Tokenów CI, osobistych tokenów dostępu | w bazie danych jako skróty |
 | Poświadczeń Kubernetesa | token konta usługowego nie jest montowany |
 
-Wewnątrz sandboxa proces agenta (OpenCode lub Claude Code) widzi tylko token agenta: kluczy dostawców,
+Wewnątrz sandboxa proces agenta (OpenCode lub Claude Code) widzi tylko token agenta i sekrety własnych
+konektorów: kluczy dostawców,
 tokenu gita i tokenu zadania nie ma ani w jego środowisku, ani na dysku, a proces runnera jest niedostępny
 dla agenta (oznaczony jako non-dumpable). Uprawnienia narzędzi z polityki
 (`tools.allow` / `deny` / `ask`) są przekładane na własne ustawienia uprawnień agenta; „ask” w zadaniach

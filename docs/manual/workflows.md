@@ -162,10 +162,10 @@ step's agent does not have.
 
 | Override | Effect |
 |---|---|
-| **Agent** | Who runs this step: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)); pre-selected as above. Empty: **OpenCode** when the template needs a coding agent, else **Model answer**. With the agent come its instructions, rules, skills, MCP servers and access. The step shows a problem when the agent does not fit the template (a template that needs a coding agent with a model answer agent: "The template needs a coding agent: this step cannot run with a model answer agent."). |
+| **Agent** | Who runs this step: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)); pre-selected as above. Empty: **OpenCode** when the template needs a coding agent, else **Model answer**. With the agent come its instructions, rules, skills, connectors and access. The step shows a problem when the agent does not fit the template (a template that needs a coding agent with a model answer agent: "The template needs a coding agent: this step cannot run with a model answer agent."). |
 | **Agent may ask questions**, **Question rounds** | On by default, 2 rounds: the agent may stop with questions and the run waits for your answers ([Agents asking questions](#agent-questions)). |
 | **Model profile** | Model for this node. Empty: the agent's model, else the defaults for its kind (project, starting user, platform). |
-| **Config** | Settings of the work merged over the template's config: **Works in the repository (needs a coding agent)**, **Verify command** (the acceptance check run after the agent, for example `./gradlew test`; a failure fails the step), **Agent tools**. A step has no git settings: committing, the branch and the merge request are set on [Deliver changes](#deliver-changes). |
+| **Config** | Settings of the work merged over the template's config: **Works in the repository (needs a coding agent)**, **Verify command** (the acceptance check run after the agent, for example `./gradlew test`; a failure fails the step). A step adds no tools: they are the agent's [connectors](task-library.md#connectors) (the former **Agent tools** became the connector `gitlab-read`, ADR 0064). A step has no git settings: committing, the branch and the merge request are set on [Deliver changes](#deliver-changes). |
 
 The directory and the session are not step settings any more (ADR 0062): they belong to the agent (**Directory**,
 **Session**; [The run directory and agent sessions](#run-directory)). The sandbox is set on the project
@@ -248,6 +248,7 @@ Findings, each with the steps concerned (**ERROR** stops the step from running, 
 | **Needs a coding agent** | error | a step whose template needs a coding agent is run by a model answer agent |
 | **Unknown rule**, **Unknown skill** | error | the agent lists a rule or skill that no longer exists |
 | **Unknown agent** | error | a step names an agent that no longer exists |
+| **Unknown connector** | warning | a coding agent lists a [connector](task-library.md#connectors) key defined neither in the project nor on the platform; the step runs without that tool |
 | **Two skills with the same name** | warning | two of the agent's skills share a name, so the agent cannot tell them apart |
 
 The former finding **Read-only agent on a pushing step** is no longer reported: agents never push (ADR 0063), so a

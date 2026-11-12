@@ -12,8 +12,9 @@ Identifiers are UUIDs wrapped in typed value classes (`ProjectId`, `WorkflowRunI
 | `LlmRequest` / `LlmResult` / `TokenUsage` | value objects | one chat call and its outcome; `responseSchema` asks for structured output |
 | `UsageRecord`, `UsageContext`, `Pricing` | ledger | cost accounting; `UsageKind = PIPELINE_STEP, CODE_REVIEW, BENCHMARK_ATTEMPT, MODEL_TEST` |
 | `LlmGateway`, `UsageLedger`, `ModelCatalog`, `AgentRunner`, `TaskCatalog`, `Clock`, `EventPublisher` | ports | see 01-overview for who implements what |
-| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `AgentSnapshot`, `SkillSnapshot`, `RuleSnapshot`, `TemplateCategory`, `RunInputField` | value objects | what the Task Library hands to the workflow engine; `AgentSnapshot(key, name, harness?, modelProfileId?, instructions, rules, skills, mcpServers, access, session)` is who runs the step and how (no harness = model answer, ADR 0056, 0057; `session` and `access.directory` ADR 0062); `TemplateParameter`, `ResolvedParameter(definition, value, source, binding?, fallback?)` (ADR 0058, 0062), `ParameterBinding(source VALUE/START/ARTIFACT, value?, artifact?)` (ADR 0062); `ResolvedTask.instructions` is the merged instruction text (ADR 0062) |
+| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `AgentSnapshot`, `SkillSnapshot`, `RuleSnapshot`, `TemplateCategory`, `RunInputField` | value objects | what the Task Library hands to the workflow engine; `AgentSnapshot(key, name, harness?, modelProfileId?, instructions, rules, skills, connectors, access, session)` is who runs the step and how (no harness = model answer, ADR 0056, 0057; `session` and `access.directory` ADR 0062; `connectors` = connector keys, ADR 0064); `TemplateParameter`, `ResolvedParameter(definition, value, source, binding?, fallback?)` (ADR 0058, 0062), `ParameterBinding(source VALUE/START/ARTIFACT, value?, artifact?)` (ADR 0062); `ResolvedTask.instructions` is the merged instruction text (ADR 0062) |
 | `RunnerJobSpec`, `RunnerResult`, `RunnerSkill`, `RunnerMergeRequest` | value objects | runner protocol |
+| `ConnectorKind` (`MCP_HTTP`, `GITLAB_READ`), `ConnectorAuth` (`NONE`, `BEARER`, `HEADER`), `RunnerConnector(key, kind, url?, auth?, headerName?, repository?)`, `JobConnectors(connectors, credentials, notes)`, `JobCredentialRef` capability `CONNECTOR` | value objects | ADR 0064: a job's connectors as the runner gets them; the secret is only named (`JobCredentialRef(ref = connector id, capability CONNECTOR, connector = key)`), never carried |
 
 ## Context: Task Library (`tasks-core`)
 
@@ -24,7 +25,7 @@ See [07-task-library.md](07-task-library.md) for semantics.
 | `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, scope: Scope(GLOBAL | PROJECT(projectId)), instructions?, instructionsMode: APPEND/REPLACE, parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, requiresSkills, outputFiles, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058; `requiresSkills` ADR 0060: a step whose agent lacks one gets a warning; ADR 0061: no `agentKey` and no `modelProfileId`, the template is only the work; derived, read-only `needsCodingAgent` = the merged config has `codingAgent: true` or `prepareOnly` (ADR 0063; until then also a Spec Kit `phase` or `push`); ADR 0063: `outputFiles` replaces the config key `collectArtifacts`; ADR 0062: one `instructions` text instead of the system and user prompt, no `runInputs` (a step binds parameters to the run start), no sandbox policy) |
 | `Skill` | `id, key, name, description, content, scope, tags, builtIn, timestamps` |
 | `Rule` | `id, key, name, description, content, scope, automatic, tags, builtIn, timestamps` (ADR 0055) |
-| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, mcpServers: List<AgentMcpServer(name, url)>, access: AgentAccess(mode FULL/READ_ONLY/PATHS, paths, directory RUN/SEPARATE), session: AgentSession(PER_STEP/PER_RUN/FRESH), tags, builtIn, timestamps` (ADR 0056, 0057; access ADR 0060; directory and session ADR 0062) |
+| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, connectors: List<String> (connector keys, ADR 0064; replaced `mcpServers`), access: AgentAccess(mode FULL/READ_ONLY/PATHS, paths, directory RUN/SEPARATE), session: AgentSession(PER_STEP/PER_RUN/FRESH), tags, builtIn, timestamps` (ADR 0056, 0057; access ADR 0060; directory and session ADR 0062) |
 
 Template keys are unique across scopes; skills, rules and agents by `(key, scope)` (ADR 0055). Domain service
 `TaskResolver` produces `ResolvedTask` (with the resolved agent: the step's, else `opencode` when the work needs a
@@ -133,6 +134,28 @@ linked), publish, adopt, update a copy, detach. Tables `library_workflow`, `libr
 `config.repositories` entry `{key, access: READ, library: true}`); `WorkflowSources.plan` resolves it through
 `LibrarySourceRepository` (unknown key or a clash with a project key is an error). It is never delivered to. Use case `ManageLibrarySources` (`LibrarySourceService`, `library.view` / `library.manage`, audited).
 Table `library_source` (V116).
+
+### Connector (aggregate root, ADR 0064)
+
+| Field | Notes |
+|---|---|
+| `id, key, name, description, kind: ConnectorKind, projectId?` | `projectId` null = platform scope (every project), else project scope; `key` `^[a-z][a-z0-9-]{0,39}$`, derived from the name when omitted, immutable, unique per scope; the scope cannot change either |
+| `url?, auth: ConnectorAuth, headerName?` | `MCP_HTTP`: http(s) URL of the MCP endpoint (streamable HTTP); `BEARER` sends `Authorization: Bearer <secret>`, `HEADER` sends `<headerName>: <secret>` (`^[A-Za-z0-9-]{1,64}$`). Derived `host` = the host the sandbox egress policy must allow |
+| `secret: SealedSecret?` | write-only, single line; AES-256-GCM with a random data key wrapped by the key-encryption key (like connection secrets, ADR 0030), associated data `connector:<id>`; never returned (`hasSecret` only). Rewrapped on key rotation (`CONNECTOR_SECRET_REWRAP`) |
+| `repository?` | `GITLAB_READ` (project scope only): a project repository key; null = the primary repository |
+| `lastTest: ConnectorTest(ok, message?, tools, testedAt)?` | result of the last **Test** from Back Office |
+| `createdAt, createdBy, updatedAt, updatedBy` | |
+
+Use case `ManageConnectors` (`ConnectorService`): list (`library.view` for the platform, `project.view` with a
+project), create / update / delete / test (`library.manage` for platform connectors, `project.connections.manage` for
+project connectors), audited `CONNECTOR_CREATE` / `UPDATE` / `DELETE` / `TEST`. Test: `MCP_HTTP` through the port
+`McpProbePort` (`McpHttpProbe`: `initialize`, `notifications/initialized`, `tools/list`, JSON or SSE answers, no
+redirects, short timeouts); `GITLAB_READ` re-verifies the least-privileged read-only `CI_READ` token of the repository.
+Domain service `ConnectorResolution` turns an agent's keys into the job's `JobConnectors`: the project's connector of
+a key, else the platform's (`lookup`); unknown keys and MCP connectors whose auth needs a missing secret are skipped
+with a note in the step log; a `GITLAB_READ` connector without a verified read-only `CI_READ` token fails the step
+before any job exists. Table `connector` (V123; partial unique indexes on `key` for the platform and on
+`(project_id, key)`); V310 migrated agent MCP servers and step `agentTools` (see 07-task-library.md).
 
 ### WorkflowRun (aggregate root)
 

@@ -4,7 +4,6 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
-import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.runner.AgentSession
 import java.util.UUID
 
@@ -12,7 +11,8 @@ import java.util.UUID
  * ADR 0056/0057: who works on a task and how. Without a [harness] the step is a single model answer in-process (no tools,
  * no repository); with one it is a coding agent session in the runner sandbox. Without a [modelProfileId] the step uses
  * the defaults for its kind. [instructions] (markdown, may use `{{project.*}}`), the rules and skills (resolved into the
- * task; [rules] and [skills] are the agent's own keys, for display) and [mcpServers] are the agent's environment. The
+ * task; [rules] and [skills] are the agent's own keys, for display) and [connectors] (ADR 0064: connector keys, looked up in
+ * the run's project, then the platform; coding agents only) are the agent's environment. The
  * Projects context decides how to run a step from the agent and the task's config.
  */
 data class AgentSnapshot(
@@ -23,7 +23,8 @@ data class AgentSnapshot(
     val instructions: String = "",
     val rules: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
-    val mcpServers: List<AgentMcpServer> = emptyList(),
+    /** ADR 0064: connector keys of the agent (coding agents; a model answer has no tools). */
+    val connectors: List<String> = emptyList(),
     /** ADR 0060: what the agent may change (coding agents; irrelevant for a model answer); ADR 0062: and its directory. */
     val access: AgentAccess = AgentAccess.FULL,
     /** ADR 0062: which executions of the agent continue one conversation (coding agents). */

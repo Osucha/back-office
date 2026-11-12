@@ -7,6 +7,7 @@ import org.springframework.boot.ApplicationRunner
 import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
 import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectorSecrets
 import pl.mos.backoffice.projects.application.port.`in`.RewrapScmConnectionSecrets
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 
@@ -17,7 +18,7 @@ import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
  *   neither as the active nor as a previous key -> startup fails with a message saying what to set (unless the
  *   recovery switch `BACKOFFICE_SECRETS_ALLOW_UNREADABLE` is on, then it only warns);
  * - worker role: secrets wrapped with a previous key are re-wrapped to the active key (audited per connection),
- *   repository tokens (ADR 0051) included.
+ *   repository tokens (ADR 0051) and connector secrets (ADR 0064) included.
  */
 @Component
 class ConnectionSecretsStartup(
@@ -27,6 +28,7 @@ class ConnectionSecretsStartup(
     private val rewrap: RewrapConnectionSecrets,
     private val environment: Environment,
     private val scmRewrap: ObjectProvider<RewrapScmConnectionSecrets>,
+    private val connectorRewrap: ObjectProvider<RewrapConnectorSecrets>,
 ) : ApplicationRunner {
 
     private val log = LoggerFactory.getLogger(ConnectionSecretsStartup::class.java)
@@ -41,6 +43,8 @@ class ConnectionSecretsStartup(
             if (count > 0) log.info("re-wrapped {} connection secrets to key {}", count, cipher.activeKeyId)
             val scm = scmRewrap.ifAvailable?.rewrapScmSecrets() ?: 0
             if (scm > 0) log.info("re-wrapped {} repository tokens to key {}", scm, cipher.activeKeyId)
+            val connectorSecrets = connectorRewrap.ifAvailable?.rewrapConnectorSecrets() ?: 0
+            if (connectorSecrets > 0) log.info("re-wrapped {} connector secrets to key {}", connectorSecrets, cipher.activeKeyId)
         }
     }
 

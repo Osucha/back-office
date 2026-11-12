@@ -91,8 +91,11 @@ internal fun loadExtraCa(path: String): String? {
     return text
 }
 
-/** ADR 0051 step 4: the capability of the read-only tokens that agent tools receive. */
+/** ADR 0051 step 4: the capability of the read-only tokens that agent tools (ADR 0064: GITLAB_READ connectors) receive. */
 private const val TOOL_CAPABILITY = "CI_READ"
+
+/** ADR 0064: the capability of the secrets of MCP connectors. */
+private const val CONNECTOR_CAPABILITY = "CONNECTOR"
 
 class JobSupervisor(
     private val props: ControllerProperties,
@@ -261,6 +264,12 @@ class JobSupervisor(
         val named = spec.get("credentials")?.takeIf { it.isArray && it.size() > 0 } ?: return ProjectTokens.NONE
         // (ref, capability) -> repository: one token may be named twice (clone and an agent tool)
         val signed = named.associate { ((it.get("ref")?.asString() ?: "") to (it.get("capability")?.asString() ?: "")) to (it.get("repository")?.asString() ?: "") }
+        // ADR 0064: (ref, CONNECTOR) -> connector key, as signed
+        val connectorKeys = named.filter { it.get("capability")?.asString() == CONNECTOR_CAPABILITY }.associate { n ->
+            val key = n.get("connector")?.takeIf { it.isString }?.asString().orEmpty()
+            if (!ProjectTokens.CONNECTOR_KEY.matches(key)) throw PolicyViolation("connector secret ${n.get("ref")?.asString()} names no valid connector key")
+            ((n.get("ref")?.asString() ?: "") to CONNECTOR_CAPABILITY) to key
+        }
         val keys = keys() ?: throw PolicyViolation("this controller has no key for sealed project tokens")
         val answer = try {
             client.credentials(jobId)
@@ -273,16 +282,27 @@ class JobSupervisor(
             val key = c.ref to c.capability
             val repository = signed[key] ?: throw PolicyViolation("token ${c.ref} (${c.capability}) is not named in the signed spec")
             if (repository != c.repository) throw PolicyViolation("token ${c.ref} was released for repository '${c.repository}', not '$repository'")
+            connectorKeys[key]?.let { connector ->
+                if (c.connector != null && c.connector != connector) throw PolicyViolation("secret ${c.ref} was released for connector '${c.connector}', not '$connector'")
+            }
             val token = runCatching { keys.open(c.enc, c.ciphertext, "$jobId|${c.ref}|${answer.expiresAt}") }
                 .getOrElse { throw PolicyViolation("the token for repository '$repository' does not open with this controller's key") }
             key to (repository to token)
         }
         val missing = signed.keys - opened.keys
         if (missing.isNotEmpty()) throw PolicyViolation("no token released for repositories ${missing.map { signed.getValue(it) }.distinct().sorted()}")
-        // CI_READ tokens belong to agent tools (ADR 0051 step 4); all others are the runner's own git tokens
-        val (tools, git) = opened.entries.partition { it.key.second == TOOL_CAPABILITY }
-        val tokens = ProjectTokens(git.associate { it.value }, tools.associate { it.value })
-        log.info("job {}: project tokens released sealed and opened: git {}, agent tools {}", jobId, tokens.byRepository.keys.sorted(), tokens.tools.keys.sorted())
+        // CI_READ tokens belong to agent tools (ADR 0051 step 4), CONNECTOR secrets to MCP connectors (ADR 0064, by
+        // connector key); all others are the runner's own git tokens
+        val (secrets, repositoryTokens) = opened.entries.partition { it.key.second == CONNECTOR_CAPABILITY }
+        val (tools, git) = repositoryTokens.partition { it.key.second == TOOL_CAPABILITY }
+        val tokens = ProjectTokens(
+            git.associate { it.value }, tools.associate { it.value },
+            connectors = secrets.associate { connectorKeys.getValue(it.key) to it.value.second },
+        )
+        log.info(
+            "job {}: project tokens released sealed and opened: git {}, agent tools {}, connectors {}",
+            jobId, tokens.byRepository.keys.sorted(), tokens.tools.keys.sorted(), tokens.connectors.keys.sorted(),
+        )
         return tokens
     }
 

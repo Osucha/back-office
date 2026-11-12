@@ -18,7 +18,6 @@ import pl.mos.backoffice.shared.tasks.RuleSnapshot
 import pl.mos.backoffice.shared.tasks.ParameterSource
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
-import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.support.Library
@@ -69,7 +68,7 @@ class TaskResolverTest {
 
         assertThat(task.lineage).containsExactly("leaf", "middle", "root")
         assertThat(task.name).isEqualTo("Leaf")
-        assertThat(task.agent).isEqualTo(AgentSnapshot("opencode", "OpenCode", AgentHarness.OPENCODE))
+        assertThat(task.agent).isEqualTo(AgentSnapshot("opencode", "OpenCode", AgentHarness.OPENCODE, connectors = listOf("gitlab-read")))
         assertThat(task.instructions).isEqualTo("root\n\nmiddle\n\nleaf")
         assertThat(task.produces).containsExactly("diff", "mr")
         assertThat(resolver.preview("leaf", null)!!.tags).containsExactly("aa", "bb", "cc")
@@ -603,7 +602,7 @@ class TaskResolverTest {
             pl.mos.backoffice.tasks.domain.model.Agent.create(
                 pl.mos.backoffice.tasks.domain.model.Agent.Content(
                     key = "mcp", name = "With MCP", harness = AgentHarness.CLAUDE_CODE, modelProfileId = agentModel, instructions = "Be brief.",
-                    mcpServers = listOf(AgentMcpServer("docs", "https://mcp.example.com/docs")),
+                    connectors = listOf("docs"),
                 ),
                 lib.now,
             ),
@@ -616,7 +615,7 @@ class TaskResolverTest {
         )
         val task = resolver.resolve("tt", null, on("mcp"))!!
         assertThat(task.agent.instructions).isEqualTo("Be brief.")
-        assertThat(task.agent.mcpServers.single().url).isEqualTo("https://mcp.example.com/docs")
+        assertThat(task.agent.connectors).containsExactly("docs")
         assertThat(task.modelProfileId).isEqualTo(agentModel)
         val stepModel = ModelProfileId.new()
         assertThat(resolver.resolve("tt", null, TaskOverrides(agentKey = "mcp", modelProfileId = stepModel))!!.modelProfileId).isEqualTo(stepModel)

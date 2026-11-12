@@ -164,6 +164,7 @@ export const HELP_TOPICS = {
   skills: t('task-library', 'skills', $localize`:@@core.help.topic.skills:Skills`),
   rules: t('task-library', 'rules', $localize`:@@core.help.topic.rules:Rules`),
   agents: t('task-library', 'agents', $localize`:@@core.help.topic.agents:Agents`),
+  connectors: t('task-library', 'connectors', $localize`:@@core.help.topic.connectors:Connectors`),
   librarySources: t(
     'task-library',
     'sources',
@@ -318,6 +319,7 @@ const PROJECT_TABS: Record<string, HelpKey> = {
   ci: 'project.ci',
   members: 'project.members',
   connections: 'project.connections',
+  connectors: 'connectors',
   sandbox: 'project.sandbox',
   budget: 'project.budget',
   settings: 'project.settings',
@@ -340,6 +342,7 @@ const ROUTES: Array<[RegExp, HelpKey | ((query: URLSearchParams) => HelpKey)]> =
   [/^\/library\/skills$/, 'skills'],
   [/^\/library\/rules$/, 'rules'],
   [/^\/library\/agents$/, 'agents'],
+  [/^\/library\/connectors$/, 'connectors'],
   [/^\/library\/sources$/, 'librarySources'],
   [/^\/my-work$/, 'myWork'],
   [/^\/library\/workflows$/, 'libraryWorkflows'],

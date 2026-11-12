@@ -37,8 +37,8 @@ Code: `shared-kernel` `pl.mos.backoffice.shared.prompt` (`UntrustedText`, `Promp
 | Questions an agent asks (ADR 0060: `agent-questions.json`, `{"agentQuestions": [...]}`) | the approval panel and notifications (sanitised, at most 10 questions of 2 000 characters), the step's next prompt next to the owner's answers |
 | Other agents' homes in the run directory (ADR 0060: environment, skills, sessions under `/workspace/.agents/`) | every coding step of the run can read and change them; use an agent with `access.directory: SEPARATE` (ADR 0062) for an independent step |
 | Benchmark task attempt outputs | the judge model |
-| Agents (instructions, rules, skills, MCP servers), templates, constitutions (curators, project managers) | the environment document and the task instructions (semi-trusted: authenticated, audited, reviewed by people) |
-| Remote MCP servers an agent lists (ADR 0057) | tool results inside the coding agent session; reachable only through the sandbox egress policy, no credentials |
+| Agents (instructions, rules, skills, connector keys), templates, constitutions (curators, project managers) | the environment document and the task instructions (semi-trusted: authenticated, audited, reviewed by people) |
+| Connectors the agent lists (ADR 0064): remote MCP servers (tool names, descriptions and results) and read-only GitLab (pipelines, job logs, merge requests, issues through glab) | tool descriptions and results inside the coding agent session, untrusted like repository content; MCP servers reachable only through the sandbox egress policy; the connector configuration itself (URL, auth, key) is semi-trusted, set by administrators or project owners and audited |
 | Everything Back Office returns through MCP | the user's IDE agent, which holds the user's token |
 
 Trusted: the platform's own text (system notices, task templates as shipped), human gate decisions and
@@ -184,6 +184,7 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 | Verdict of the job | status and verification come from the entrypoint (it runs `verifyCommand` itself); the agent's self-report is only the summary |
 | Gateway token scope | model allowlist (spec model + `backoffice.runner.extra-allowed-models`), job budget (`maxCostUsd`, `maxTokens` of the policy), request cap `backoffice.runner.max-llm-requests-per-job` (default 2000, `402 budget-exceeded` scope JOB), valid only while the job is active and the lease alive, revoked at the end |
 | Egress and tools | egress allowlist through the per-pool proxy (the boundary); tool deny list by default `curl`, `wget`, `ssh`, `scp`, `docker`, `sudo`, ask = deny `rm -rf` (defence in depth only) |
+| Connector secrets (ADR 0064) | only the connectors the agent lists; an MCP secret is sealed for the job, read and deleted by the entrypoint, set only in the agent process's environment (`BO_CONNECTOR_<KEY>`, not in `setupCommand` / `verifyCommand`), never written to the MCP config (it refers to `${VAR}` / `{env:VAR}`), redacted from logs and artefacts; a `GITLAB_READ` connector gets only a token verified read-only (`CI_READ`), never one with write powers |
 | Evidence | `RunnerResult.security` (non-dumpable, token files removed, agent token isolated, strays killed, config restored) |
 
 ### 6. MCP server
@@ -233,6 +234,12 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 - Agents, rules, skills, templates and constitutions are trusted text in the environment and the task instructions; a
   malicious curator can weaken the prompts (not the deterministic guards) or point an agent at an MCP server the
   egress policy allows. Changes are audited.
+- Connectors (ADR 0064) are a tool surface: a steered agent can call every tool of a connector it lists with the
+  connector's credentials, and can read its secret from its own environment and send it to any host the egress policy
+  allows (redaction only covers what Back Office logs). Give connectors least-privileged, read-only, short-lived
+  tokens issued for this purpose, list them only on agents that need them, and allow only the hosts they need. An MCP
+  server is also an injection source: its tool descriptions and results reach the agent unfiltered. A project owner can
+  shadow a platform connector by key in the project, which changes what that project's agents call (audited).
 - An IDE agent with an opted-in token and a client that auto-approves destructive tools can still be steered.
 - Older runner images or controllers without the init container keep the token files readable (logged as WARN
   and visible in `RunnerResult.security`).
@@ -254,6 +261,9 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 7. Review new or changed agents, rules, skills, templates and constitutions like code (the audit log shows who
    changed them).
 8. Watch `PROMPT_INJECTION_SUSPECTED` and `MCP_GATE_DECISION` in the audit log.
+9. Connectors (ADR 0064): prefer read-only MCP servers and tokens issued only for the connector (scoped, expiring);
+   list a connector only on the agents that need it; add its host to the sandbox allowlist at the narrowest level;
+   watch `CONNECTOR_CREATE` / `CONNECTOR_UPDATE` / `CONNECTOR_DELETE` in the audit log.
 
 ## Tests (the injection suite)
 

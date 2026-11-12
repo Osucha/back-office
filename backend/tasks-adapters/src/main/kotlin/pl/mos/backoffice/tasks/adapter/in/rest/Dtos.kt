@@ -197,7 +197,8 @@ data class AgentInputDto(
     @field:Size(max = 20_000) val instructions: String = "",
     val rules: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
-    @field:Valid @field:Size(max = 10) val mcpServers: List<AgentMcpServerDto> = emptyList(),
+    /** ADR 0064: connector keys. */
+    @field:Size(max = 20) val connectors: List<String> = emptyList(),
     val access: AgentAccessDto? = null,
     /** ADR 0062: default PER_STEP. */
     val session: AgentSession = AgentSession.PER_STEP,
@@ -215,7 +216,7 @@ data class AgentDto(
     val instructions: String,
     val rules: List<String>,
     val skills: List<String>,
-    val mcpServers: List<AgentMcpServerDto>,
+    val connectors: List<String>,
     val access: AgentAccessDto = AgentAccessDto(),
     val session: AgentSession = AgentSession.PER_STEP,
     val tags: List<String>,
@@ -273,12 +274,6 @@ data class ResolvedParameterDto(
     val help: String?,
     val value: Any?,
     val source: ParameterSource,
-)
-
-/** `AgentMcpServer` schema (ADR 0057): a remote MCP server, no credentials. */
-data class AgentMcpServerDto(
-    @field:NotBlank @field:Pattern(regexp = "^[a-z][a-z0-9-]{0,39}$") val name: String,
-    @field:NotBlank @field:Size(max = 500) val url: String,
 )
 
 /** `AgentAccess` schema (ADR 0060): FULL (default), READ_ONLY, or PATHS with globs the agent may change; ADR 0062: the directory. */

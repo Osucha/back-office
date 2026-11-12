@@ -95,16 +95,16 @@ class TaskLibraryRestIntegrationTest {
             .extractingPath("$.rules[*].key").asArray().doesNotContain(key)
 
         // ADR 0057: rules belong to agents; an agent lists only rules visible in its scope
-        val agent = post("/api/v1/agents", """{"name":"Uses $suffix","scope":$scope,"rules":["$key"],"instructions":"Be careful.","mcpServers":[{"name":"docs","url":"https://mcp.example.com/docs"}]}""").exchange()
+        val agent = post("/api/v1/agents", """{"name":"Uses $suffix","scope":$scope,"rules":["$key"],"instructions":"Be careful.","connectors":["docs"]}""").exchange()
         assertThat(agent).hasStatus(HttpStatus.CREATED)
         assertThat(agent).bodyJson().satisfies(
             { assertThat(it).extractingPath("$.rules").asArray().containsExactly(key) },
             { assertThat(it).extractingPath("$.instructions").isEqualTo("Be careful.") },
-            { assertThat(it).extractingPath("$.mcpServers[0].url").isEqualTo("https://mcp.example.com/docs") },
+            { assertThat(it).extractingPath("$.connectors[0]").isEqualTo("docs") },
         )
         assertThat(post("/api/v1/agents", """{"name":"Ghost $suffix","scope":{"type":"GLOBAL"},"rules":["$key"]}""")).describedAs("a project rule is not visible to a global agent")
             .hasStatus(HttpStatus.BAD_REQUEST)
-        assertThat(post("/api/v1/agents", """{"name":"Bad mcp $suffix","scope":$scope,"mcpServers":[{"name":"x","url":"ftp://x"}]}""")).hasStatus(HttpStatus.BAD_REQUEST)
+        assertThat(post("/api/v1/agents", """{"name":"Bad connector $suffix","scope":$scope,"connectors":["Not A Key"]}""")).hasStatus(HttpStatus.BAD_REQUEST)
         assertThat(mvc.delete().uri("/api/v1/rules/$id")).hasStatus(HttpStatus.CONFLICT)
 
         assertThat(mvc.delete().uri("/api/v1/agents/${idOf(agent.response.contentAsString)}")).hasStatus(HttpStatus.NO_CONTENT)

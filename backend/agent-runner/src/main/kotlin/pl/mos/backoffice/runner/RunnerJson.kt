@@ -24,11 +24,12 @@ import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.RevertedChange
 import pl.mos.backoffice.shared.runner.RunnerAccessReport
-import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.JobMergeRequest
-import pl.mos.backoffice.shared.runner.AgentTool
+import pl.mos.backoffice.shared.runner.ConnectorAuth
+import pl.mos.backoffice.shared.runner.ConnectorKind
 import pl.mos.backoffice.shared.runner.JobCredentialRef
+import pl.mos.backoffice.shared.runner.RunnerConnector
 import pl.mos.backoffice.shared.runner.JobRepository
 import pl.mos.backoffice.shared.runner.RepoResult
 import pl.mos.backoffice.shared.runner.RunnerMode
@@ -221,12 +222,14 @@ data class RunnerJobSpecJson(
     val acceptance: AcceptanceJson? = null,
     /** ADR 0051: absent when the job uses the runner pool's tokens (older specs keep their digests). */
     val credentials: List<JobCredentialRefJson>? = null,
-    /** ADR 0051 step 4: absent when the agent gets no tools. */
+    /** ADR 0051 step 4, replaced by [connectors] (ADR 0064): read from specs stored before (their digests stay), never written. */
     val agentTools: List<AgentToolJson>? = null,
     /** ADR 0057: the environment document; absent when there is none (older specs keep their digests). */
     val instructions: String? = null,
-    /** ADR 0057: remote MCP servers of the agent; absent (never []) when there are none, so digests of other specs stay. */
+    /** ADR 0057, replaced by [connectors] (ADR 0064): read from specs stored before (their digests stay), never written. */
     val mcpServers: List<McpServerJson>? = null,
+    /** ADR 0064: the agent's connectors; absent (never []) when there are none, so digests of other specs stay. */
+    val connectors: List<ConnectorJson>? = null,
     /** ADR 0060: the agent's home under /workspace/.agents; absent for jobs without an agent (older specs keep their digests). */
     val agentHome: String? = null,
     /** ADR 0060: what the agent may change; absent = FULL (never sent for FULL, so digests of other specs stay). */
@@ -253,18 +256,20 @@ data class RunnerJobSpecJson(
             workspace = spec.workspace?.let { WorkspaceJson.of(it) },
             commitSubject = spec.commitSubject,
             acceptance = spec.acceptance?.let { AcceptanceJson(it.files, it.protectedPaths, it.requireChanges) },
-            credentials = spec.credentials.takeIf { it.isNotEmpty() }?.map { JobCredentialRefJson(it.ref, it.repository, it.capability) },
-            agentTools = spec.agentTools.takeIf { it.isNotEmpty() }?.map { AgentToolJson(it.name, it.repository) },
+            credentials = spec.credentials.takeIf { it.isNotEmpty() }?.map { JobCredentialRefJson(it.ref, it.repository, it.capability, it.connector) },
             instructions = spec.instructions?.takeIf { it.isNotBlank() },
-            mcpServers = spec.mcpServers.takeIf { it.isNotEmpty() }?.map { McpServerJson(it.name, it.url) },
+            connectors = spec.connectors.takeIf { it.isNotEmpty() }?.map { ConnectorJson.of(it) },
             agentHome = spec.agentHome?.takeIf { it.isNotBlank() },
             access = spec.access?.takeUnless { it.full }?.let { AgentAccessJson(it.mode.name, it.paths.takeIf { p -> p.isNotEmpty() }) },
         )
     }
 }
 
-/** ADR 0051: `RunnerJobSpec.credentials` (names of project repository tokens, never values). */
-data class JobCredentialRefJson(val ref: String, val repository: String, val capability: String)
+/**
+ * ADR 0051: `RunnerJobSpec.credentials` (names of project repository tokens, never values). ADR 0064: [connector] = the
+ * connector key of a `CONNECTOR` secret; absent otherwise (older specs keep their digests).
+ */
+data class JobCredentialRefJson(val ref: String, val repository: String, val capability: String, val connector: String? = null)
 
 /** ADR 0060: `RunnerResult.access.reverted[]`. */
 data class RevertedChangeJson(val repository: String? = null, val path: String = "", val change: String = "modified")
@@ -287,11 +292,31 @@ data class AgentAccessJson(val mode: String, val paths: List<String>? = null) {
     }
 }
 
-/** ADR 0057: `RunnerJobSpec.mcpServers[]` (no credentials). */
+/** ADR 0057: `RunnerJobSpec.mcpServers[]` of specs stored before ADR 0064 (read only). */
 data class McpServerJson(val name: String, val url: String)
 
-/** ADR 0051 step 4: `RunnerJobSpec.agentTools`. */
+/** ADR 0051 step 4: `RunnerJobSpec.agentTools` of specs stored before ADR 0064 (read only). */
 data class AgentToolJson(val name: String, val repository: String)
+
+/** ADR 0064: `RunnerJobSpec.connectors[]`; null members are left out (and removed from the digest). */
+data class ConnectorJson(
+    val key: String,
+    val kind: String,
+    val url: String? = null,
+    val auth: String? = null,
+    val headerName: String? = null,
+    val repository: String? = null,
+) {
+    /** Null for a kind this Back Office does not know (never more than was signed). */
+    fun toConnector(): RunnerConnector? {
+        val k = ConnectorKind.entries.firstOrNull { it.name == kind } ?: return null
+        return RunnerConnector(key, k, url, auth?.let { a -> ConnectorAuth.entries.firstOrNull { it.name == a } }, headerName, repository)
+    }
+
+    companion object {
+        fun of(c: RunnerConnector) = ConnectorJson(c.key, c.kind.name, c.url, c.auth?.name, c.headerName, c.repository)
+    }
+}
 
 /** ADR 0047: `RunnerJobSpec.acceptance`. */
 data class AcceptanceJson(
@@ -550,10 +575,9 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         workspace = workspace?.toWorkspace(),
         commitSubject = commitSubject,
         acceptance = acceptance?.let { RunnerAcceptance(it.files, it.protectedPaths, it.requireChanges) },
-        credentials = credentials.orEmpty().map { JobCredentialRef(it.ref, it.repository, it.capability) },
-        agentTools = agentTools.orEmpty().map { AgentTool(it.name, it.repository) },
+        credentials = credentials.orEmpty().map { JobCredentialRef(it.ref, it.repository, it.capability, it.connector) },
         instructions = instructions,
-        mcpServers = mcpServers.orEmpty().map { AgentMcpServer(it.name, it.url) },
+        connectors = connectors.orEmpty().mapNotNull { it.toConnector() },
         agentHome = agentHome,
         access = access?.toAccess(),
     )

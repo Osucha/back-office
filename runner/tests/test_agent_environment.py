@@ -39,11 +39,11 @@ class ParsingTests(unittest.TestCase):
     def test_older_specs_have_no_environment(self):
         parsed = ep.parse_spec(spec())
         self.assertIsNone(parsed.instructions)
-        self.assertEqual(parsed.mcp_servers, [])
+        self.assertEqual(parsed.connectors, [])
         self.assertEqual(parsed.warnings, [])
         nulls = ep.parse_spec(spec(instructions=None, mcpServers=None))
         self.assertIsNone(nulls.instructions)
-        self.assertEqual(nulls.mcp_servers, [])
+        self.assertEqual(nulls.connectors, [])
 
     def test_instructions_are_kept_verbatim_and_blank_means_none(self):
         self.assertEqual(ep.parse_spec(spec(instructions=DOC)).instructions, DOC)
@@ -53,8 +53,8 @@ class ParsingTests(unittest.TestCase):
 
     def test_mcp_servers_are_parsed(self):
         parsed = ep.parse_spec(spec(mcpServers=SERVERS))
-        self.assertEqual(parsed.mcp_servers, [ep.McpServer("docs", "https://mcp.example.com/mcp"),
-                                              ep.McpServer("jira-read", "http://jira.internal:8080/mcp")])
+        self.assertEqual(parsed.connectors, [ep.Connector("docs", "MCP_HTTP", "https://mcp.example.com/mcp"),
+                                             ep.Connector("jira-read", "MCP_HTTP", "http://jira.internal:8080/mcp")])
         self.assertEqual(parsed.warnings, [])
 
     def test_invalid_mcp_servers_are_skipped_with_a_warning(self):
@@ -72,7 +72,7 @@ class ParsingTests(unittest.TestCase):
             {"name": "docs", "url": "https://second.example/mcp"},
         ]
         parsed = ep.parse_spec(spec(mcpServers=bad))
-        self.assertEqual(parsed.mcp_servers, [ep.McpServer("docs", "https://first.example/mcp")])
+        self.assertEqual(parsed.connectors, [ep.Connector("docs", "MCP_HTTP", "https://first.example/mcp")])
         self.assertEqual(len(parsed.warnings), len(bad) - 1)
         self.assertTrue(all(w.startswith("mcpServers[") and " ignored: " in w for w in parsed.warnings), parsed.warnings)
         self.assertIn("repeated", parsed.warnings[-1])
@@ -81,7 +81,7 @@ class ParsingTests(unittest.TestCase):
 
 class HarnessConfigTests(unittest.TestCase):
     def setUp(self):
-        self.servers = ep.parse_spec(spec(mcpServers=SERVERS)).mcp_servers
+        self.servers = ep.parse_spec(spec(mcpServers=SERVERS)).connectors
 
     def test_opencode_config_lists_the_document_and_the_servers(self):
         model = ep.ModelRef("ANTHROPIC", "m")
@@ -160,7 +160,7 @@ class EnvironmentFilesTests(unittest.TestCase):
         self.assertEqual(files.instructions, self.ws / ".claude-config" / "CLAUDE.md")
         self.assertEqual(files.instructions.read_text(encoding="utf-8"), DOC)
         self.assertEqual(files.mcp_config, self.ws / ".backoffice-agent" / "mcp.json")
-        self.assertEqual(json.loads(files.mcp_config.read_text(encoding="utf-8")), ep.claude_mcp_config(job.mcp_servers))
+        self.assertEqual(json.loads(files.mcp_config.read_text(encoding="utf-8")), ep.claude_mcp_config(job.mcp_connectors))
         self.assertFalse((self.ws / ".backoffice-agent" / "AGENTS.md").exists())
         self.assert_repository_untouched()
 
@@ -383,7 +383,7 @@ class MainFlowTests(unittest.TestCase):
             result, stdout = self.run_main(tmp_path, job)
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertIn(f"[environment] PROMPT job: instructions ({len(DOC)} chars) not written", stdout)
-            self.assertIn("[mcp] PROMPT job: 2 MCP server(s) ignored", stdout)
+            self.assertIn("[connector] PROMPT job: 2 connector(s) ignored", stdout)
             self.assertFalse((tmp_path / "ws" / ".backoffice-agent").exists())
             # the stub is not Claude Code: its user memory path does not apply
             self.assertTrue(memory.exists())

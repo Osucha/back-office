@@ -43,7 +43,7 @@ class AgentService(
         audit.record(entry("AGENT_CREATE", saved, mapOf(
             "key" to saved.key, "scope" to saved.scope.describe(), "harness" to saved.harness?.name,
             "modelProfileId" to saved.modelProfileId?.toString(), "instructionsLength" to saved.instructions.length,
-            "rules" to saved.rules, "skills" to saved.skills, "mcpServers" to saved.mcpServers.map { "${it.name}=${it.url}" },
+            "rules" to saved.rules, "skills" to saved.skills, "connectors" to saved.connectors,
             "access" to saved.access.mode.name, "accessPaths" to saved.access.paths,
             "directory" to saved.access.directory.name, "session" to saved.session.name,
         )))
@@ -72,7 +72,7 @@ class AgentService(
             "instructionsChanged" to (false to (existing.instructions != saved.instructions)),
             "rules" to (existing.rules to saved.rules),
             "skills" to (existing.skills to saved.skills),
-            "mcpServers" to (existing.mcpServers.map { "${it.name}=${it.url}" } to saved.mcpServers.map { "${it.name}=${it.url}" }),
+            "connectors" to (existing.connectors to saved.connectors),
             "access" to (existing.access.mode.name to saved.access.mode.name),
             "accessPaths" to (existing.access.paths to saved.access.paths),
             "directory" to (existing.access.directory.name to saved.access.directory.name),

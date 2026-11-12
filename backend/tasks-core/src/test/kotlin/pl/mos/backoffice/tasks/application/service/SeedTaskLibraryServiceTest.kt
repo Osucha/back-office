@@ -359,7 +359,7 @@ class SeedTaskLibraryServiceTest {
         val agent = BuiltInLibrary.agents(lib.now).first { it.key == BuiltInLibrary.ANALYST }
         listOf(
             agent.copy(instructions = "x"), agent.copy(rules = listOf("x")), agent.copy(skills = listOf("x")),
-            agent.copy(mcpServers = listOf(pl.mos.backoffice.shared.runner.AgentMcpServer("x", "https://x.example"))),
+            agent.copy(connectors = listOf("x")),
         ).forEach { assertThat(BuiltInChecksum.of(it)).isNotEqualTo(BuiltInChecksum.of(agent)) }
     }
 }

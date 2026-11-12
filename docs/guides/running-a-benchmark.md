@@ -5,7 +5,8 @@
 You want a number, not an opinion, for questions like "is Sonnet good enough for spec writing in my
 projects?", "which agent and model should implement tickets in this Kotlin codebase, and what does an
 accepted ticket cost?" or "does my Analyst agent with its rules beat a plain model answer?". A benchmark
-compares **candidates**: an agent of the task library (harness, instructions, rules, skills, MCP servers)
+compares **candidates**: an agent of the task library (harness, instructions, rules, skills, connectors; in a
+benchmark only the platform MCP connectors, ADR 0064)
 with a model (ADR 0059). This guide walks through the Model Evaluation context end to end: catalogue entries, task
 suites, tasks of both kinds, starting a benchmark, reading the leaderboard and applying the result to
 pipeline steps. Concepts are described in

@@ -133,6 +133,7 @@ The tabs, each reachable with `?tab=` in the URL:
 | **CI** | Entrypoints, CI tokens, a GitLab CI snippet and the CI executions. | `project.manage`, `project.ci.manage` |
 | **Members** | Users and groups with their project roles. | `project.members.manage` |
 | **Connections** | The project's Jira connections and the platform connections it falls back to (see [Project connections](#project-connections)). | `project.connections.manage` |
+| **Connectors** | The tools the project's agents use: the project's connectors and the platform's (see [Connectors of the project](#project-connectors)). | `project.connections.manage` |
 | **Sandbox** | The project's sandbox policy and what a job gets today. | `project.manage` |
 | **Budget** | The project's monthly budget. | `project.manage` |
 | **Settings** | The project form above (without the repositories, which are on **Sources**) with the constitution, the [Jira intake watcher](integrations-jira.md#jira-intake), and **Delete this project**. | `project.manage` |
@@ -265,6 +266,25 @@ The **Connections** tab holds the credentials the project's workflow steps use f
   ([Scoped API tokens](integrations-jira.md#jira-scoped-token)).
 
 Deleting the project deletes its connections.
+
+<a id="project-connectors"></a>
+## Connectors of the project
+
+The **Connectors** tab lists the tools the agents of this project use (ADR 0064): the project's own connectors and,
+marked **platform**, the platform connectors it can use. A project connector with the key of a platform connector
+replaces it in this project (the platform one shows **replaced by the project's**). What a connector is, its kinds,
+**Test** and the **Host to allow**: [Connectors](task-library.md#connectors).
+
+- **Add connector**, edit, **Test** and delete need `project.connections.manage`: role **Owner** only. Everyone with
+  `project.view` sees the list, never the secrets. Platform connectors open read-only here.
+- **GitLab (read-only)** exists only here: `glab` for the agents with the project's verified read-only token with
+  `CI_READ` of a **Repository** (empty: the primary one); add that token on the **Sources** tab
+  ([Git access for agents](integrations-git.md#git-agent-tools)).
+- An **MCP server (HTTP)** reaches agents only when the sandbox allows its host ([Sandbox policy](#sandbox-policy)).
+- Agents use a connector only when they list its key; the built-in **OpenCode** and **Claude Code** list
+  `gitlab-read`.
+
+Deleting the project deletes its connectors.
 
 <a id="sandbox-policy"></a>
 ## Sandbox policy

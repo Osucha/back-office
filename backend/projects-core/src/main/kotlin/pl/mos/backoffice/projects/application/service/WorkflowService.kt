@@ -79,6 +79,8 @@ class WorkflowService(
     private val availability: ModelAvailability? = null,
     /** ADR 0050 step 2: the default models after the project defaults; null = none. */
     defaults: ModelDefaults? = null,
+    /** ADR 0064: connectors the agent audit checks agents' keys against; null = not checked (tests). */
+    private val connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository? = null,
 ) : ManageWorkflows {
 
     private val jiraSteps = jira?.let { JiraStepCheck(it) }
@@ -272,7 +274,8 @@ class WorkflowService(
             runCatching { taskCatalog.stepNeeds(node.task.templateKey, project, node.task.overrides) }.getOrNull()?.let { AuditedStep(node.id, it) }
         }
         val profiles = steps.map { it.needs.agentKey }.distinct().associateWith { taskCatalog.agentProfile(it, project) }
-        return AgentAuditor.audit(steps, profiles)
+        val known = connectors?.let { c -> (c.findByProject(projectId) + c.findPlatform()).map { it.key }.toSet() }
+        return AgentAuditor.audit(steps, profiles, known)
     }
 
     /** The user the designer validates for; null outside a request (system work). */

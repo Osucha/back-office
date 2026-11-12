@@ -2,6 +2,7 @@ package pl.mos.backoffice.projects.application.service.tasks
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import pl.mos.backoffice.projects.ConnectorFakes
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
 import pl.mos.backoffice.projects.application.port.out.NodeContext
@@ -28,8 +29,11 @@ import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.platform.WorkRequest
 import pl.mos.backoffice.shared.runner.AgentRunner
+import pl.mos.backoffice.shared.runner.ConnectorAuth
+import pl.mos.backoffice.shared.runner.ConnectorKind
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.JobCredentialRef
+import pl.mos.backoffice.shared.runner.RunnerConnector
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerLogLine
@@ -158,21 +162,37 @@ class GitAccessDerivationTest {
         // the spec only names the token, it never carries a value
         assertThat(runner.specs.last().toString()).doesNotContain("SealedSecret")
 
-        // ADR 0051 step 4: gitlab-read takes the verified read-only CI_READ token, never one with write powers
+        // ADR 0064: the agent's gitlab-read connector takes the verified read-only CI_READ token, never one with write powers
         val ci = token("ci-reader", setOf(ScmCapability.GIT_READ, ScmCapability.CI_READ))
         val apiWriter = token("api-writer", setOf(ScmCapability.CI_READ, ScmCapability.MR_COMMENT), listOf("api scope"))
         tokens.rows = listOf(apiWriter, ci, push)
-        val withTool = specOf(mapOf("agentTools" to listOf("gitlab-read")))
-        assertThat(withTool.agentTools).containsExactly(pl.mos.backoffice.shared.runner.AgentTool("gitlab-read", key))
-        assertThat(withTool.credentials).contains(JobCredentialRef(ci.id.toString(), key, "CI_READ"))
+        val docs = ConnectorFakes.mcp("docs", auth = ConnectorAuth.BEARER)
+        val connectors = ConnectorFakes.InMemoryConnectors(ConnectorFakes.gitlabRead(project.id), docs, ConnectorFakes.mcp("gitlab-read"))
+        val withConnectors = RunnerTaskSupport(
+            runner, ModelResolver(catalog), TemplateRenderer(), TemplateModelBuilder(), Duration.ofMinutes(30), scmConnections = tokens, connectorRepository = connectors,
+        )
+        val coder = TestAgents.OPENCODE.copy(connectors = listOf("gitlab-read", "docs", "missing"))
+        withConnectors.run(context(), task(coder, emptyMap()), "x")
+        val withTool = runner.specs.last()
+        assertThat(withTool.connectors).describedAs("the project's gitlab-read shadows the platform one; missing is skipped").containsExactly(
+            RunnerConnector("gitlab-read", ConnectorKind.GITLAB_READ, repository = key),
+            RunnerConnector("docs", ConnectorKind.MCP_HTTP, url = "https://mcp.example.com/docs", auth = ConnectorAuth.BEARER),
+        )
+        assertThat(withTool.credentials).contains(
+            JobCredentialRef(ci.id.toString(), key, "CI_READ"),
+            JobCredentialRef(docs.id.toString(), "", "CONNECTOR", "docs"),
+        )
         assertThat(withTool.credentials.map { it.ref }).doesNotContain(apiWriter.id.toString())
+        assertThat(withTool.toString()).doesNotContain("cipher-docs")
+
+        // a model answer is never planned here; an agent without connectors gets none
+        withConnectors.run(context(), task(TestAgents.OPENCODE, emptyMap()), "x")
+        assertThat(runner.specs.last().connectors).isEmpty()
 
         tokens.rows = listOf(apiWriter, push)
-        val refused = withTokens.run(context(), task(TestAgents.OPENCODE, mapOf("agentTools" to listOf("gitlab-read"))), "x")
+        val refused = withConnectors.run(context(), task(coder, emptyMap()), "x")
         assertThat(refused.failed).isTrue()
         assertThat(refused.error).contains("read-only token with CI_READ")
-        val unknown = withTokens.run(context(), task(TestAgents.OPENCODE, mapOf("agentTools" to listOf("root-shell"))), "x")
-        assertThat(unknown.error).contains("unknown agent tool 'root-shell'")
     }
 
     @Test

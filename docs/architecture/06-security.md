@@ -27,6 +27,9 @@ touching the rest of the application.
 - Project CI tokens are the one secret the platform issues itself: only the hash is stored, the plaintext is
   shown once, and revocation is immediate.
 - API responses never echo secrets; settings endpoints return `configured: true/false` only.
+- Connector secrets (ADR 0064) are write-only, stored sealed like connection secrets (`BACKOFFICE_SECRETS_KEY`),
+  returned only as `hasSecret`, released sealed to the runner of one job and given only to the agent process's
+  environment (10-agent-execution.md, "Project repository tokens").
 
 ## Agent sandboxing
 

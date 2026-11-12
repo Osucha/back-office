@@ -555,6 +555,7 @@
   "core.parameter.type.choice": "Wybór",
   "core.help.topic.runDirectory": "Katalog przebiegu i sesje agentów",
   "core.help.topic.agents": "Agenci",
+  "core.help.topic.connectors": "Konektory",
   "core.notify.questionsTitle": "Agent ma pytania · {$project}",
   "core.notify.questionsTitleNoProject": "Agent ma pytania",
   "core.turn.questionsTitle": "Agent ma pytania",

@@ -166,7 +166,7 @@ connection capabilities), not tasks.
 | Way of running | When | Implementation | Inputs / outputs |
 |---|---|---|---|
 | model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; system prompt = environment document, then the skills in a `<skills>` section, then the data-block notice; the gateway adds the answer schema (PROMPT jobs of ADR 0050 get the same as `systemPrompt`); user message = the task message (ADR 0062), rendered with `issue`, `artifacts.*`, `feedback`, `answers`, `params.*`, `project.*`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
-| agent job (former `IMPLEMENT`) | coding agent (OpenCode, Claude Code) | runner Job, `mode = IMPLEMENT`, the agent's harness; environment document in `spec.instructions`, the agent's MCP servers in `spec.mcpServers`; skills written to the agent's home (ADR 0060); `verifyCommand`; the template's `outputFiles` as `collectArtifacts` (named like the file without extension: `spec`, `plan`, `tasks`, `work-log`, ...); the workflow's sources, all `READ` ([Workflow sources and delivery](#step-repositories)); **never commits or pushes** (ADR 0063): result `diff` (work tree against the base) becomes artefact `diff`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff` and the output files; without a repository the final answer is the `result` artefact |
+| agent job (former `IMPLEMENT`) | coding agent (OpenCode, Claude Code) | runner Job, `mode = IMPLEMENT`, the agent's harness; environment document in `spec.instructions`, the agent's connectors in `spec.connectors` (secrets named in `credentials`, ADR 0064, [Connectors at a step](#connectors-at-a-step)); skills written to the agent's home (ADR 0060); `verifyCommand`; the template's `outputFiles` as `collectArtifacts` (named like the file without extension: `spec`, `plan`, `tasks`, `work-log`, ...); the workflow's sources, all `READ` ([Workflow sources and delivery](#step-repositories)); **never commits or pushes** (ADR 0063): result `diff` (work tree against the base) becomes artefact `diff`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff` and the output files; without a repository the final answer is the `result` artefact |
 
 ADR 0063 removed the Spec Kit job (`mode = SPEC_KIT`, config `phase`, ADR 0036): `write-spec`, `write-plan` and
 `write-task-list` are ordinary agent jobs that write `specs/<feature>/spec.md`, `plan.md` and `tasks.md`, and a stored
@@ -185,7 +185,8 @@ when the agent's sources disagree, the project constitution wins, then the rules
 the draft's `nodes`) runs `AgentAuditor` over the draft: per agent its task steps use, its rules, skills, the skills
 the steps require (from `TaskCatalog.stepNeeds`, which resolves each step with its overrides) and the missing ones,
 plus deterministic findings (`MISSING_SKILL`, `NEEDS_CODING_AGENT`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`,
-`UNKNOWN_AGENT`, `DUPLICATE_SKILL_NAME`; `READ_ONLY_PUSH` stays in the API but is no longer reported, ADR 0063). No model is called and nothing changes; the designer reloads it on edits
+`UNKNOWN_AGENT`, `DUPLICATE_SKILL_NAME`; `UNKNOWN_CONNECTOR`, a warning, when a coding agent lists a connector key
+defined neither in the project nor on the platform, ADR 0064; `READ_ONLY_PUSH` stays in the API but is no longer reported, ADR 0063). No model is called and nothing changes; the designer reloads it on edits
 and shows the panel "Agents in this workflow". "Add to agent" is an ordinary agent update (a global agent is first
 copied into the project with the same key). `POST /agents/{agentId}/coherence-check?projectId=` (`library.view`, with
 a project also `project.view`) is the on-demand model check: `AgentCoherenceService` sends the environment document
@@ -220,7 +221,7 @@ workflows whose steps named it and its sources to the `repositories` of those st
 workflow's `sources`), then dropped `project_workspace`.
 
 **Agent home and access (ADR 0060).** Every coding job names its agent's home (`RunnerJobSpec.agentHome` = the agent
-key): `/workspace/.agents/<key>/` holds the environment document, skills, MCP configuration and sessions (Claude Code
+key): `/workspace/.agents/<key>/` holds the environment document, skills, MCP configuration (without secrets) and sessions (Claude Code
 `CLAUDE_CONFIG_DIR`; OpenCode `OPENCODE_CONFIG_DIR` and the data directory per session role). Nothing of an agent is
 written into a repository. `Agent.access` (`FULL` default, `READ_ONLY`, `PATHS` with globs) travels as
 `RunnerJobSpec.access` when not `FULL`; the runner applies it as harness tool rules and reverts changes outside it
@@ -228,6 +229,20 @@ after the agent (runner README, "Agent home, access and questions"). Agents neve
 agent fits every step. The environment is set once, on the agent: `TaskOverrides.addSkills` / `removeSkills` are gone
 (stored steps are read without them); a template's `requiresSkills` (inherited, unioned) the agent lacks becomes a
 `check.warnings` entry, not a problem (and a `MISSING_SKILL` finding of the agent audit, ADR 0061).
+
+<a id="connectors-at-a-step"></a>**Connectors at a step (ADR 0064).** The tools of a coding step are its agent's
+connectors; a step adds none (the step config key `agentTools` is gone: V310 removed it from workflows, library
+versions and unfinished run snapshots, and the config forms no longer show it). When `RunnerTaskExecutors` plans an agent job it
+reads `AgentSnapshot.connectors` (model answer agents: ignored) and `ConnectorResolution` resolves each key: the run's
+project connector, else the platform one. The result is `spec.connectors` plus `spec.credentials` entries
+(`CONNECTOR` for an `MCP_HTTP` secret, `CI_READ` for a `GITLAB_READ` repository's verified read-only token), never a
+secret value, and step-log notes: what each connector is, which are skipped (unknown key; an `MCP_HTTP` connector
+whose auth needs a missing secret; a `GITLAB_READ` repository that is not a source of the step). A `GITLAB_READ`
+connector without a verified read-only `CI_READ` token fails the step before any job exists, naming the token to
+add; a token with write powers never reaches an agent. The runner-controller fetches the secrets sealed (ADR 0051)
+and delivers them as bundle files; the runner puts an MCP secret only into the agent process's environment
+(`BO_CONNECTOR_<KEY>`) and redacts it; reachability is the sandbox egress policy's (10-agent-execution.md). Benchmarks
+get only platform `MCP_HTTP` connectors (04-model-evaluation.md).
 
 **Agent questions (ADR 0060).** When the step allows it (config `allowQuestions`, default true; `maxQuestionRounds`,
 default 2), the platform preamble tells the agent how to ask. A model answer that replies with only
@@ -487,7 +502,8 @@ Unchanged from the first iteration except for these additions, all optional:
 | `spec.workspace` | ADR 0044: `{name, key, sessionRole, prepareOnly, setupCommand}`; since ADR 0060 the key is always `run` (the run directory); absent for a `SEPARATE` step; a `DELIVER` job reuses it (same name and setup command, so nothing is set up again) |
 | `spec.mode` | ADR 0063: `IMPLEMENT` (agent job, never pushes), `DELIVER` (no agent: commit, push and merge request of the run directory), `EVAL_CODING`, `PROMPT`; `SPEC_KIT` is gone and refused by current runners |
 | `spec.commitSubject` | ADR 0063: the first line of the delivery's commit message (rendered `commitSubjectTemplate`, sanitised) |
-| `spec.mcpServers[]` | ADR 0057: `{name, url}` remote MCP servers of the agent; OpenCode `mcp` entries of type `remote`, Claude Code `--mcp-config`; invalid entries are skipped with a warning |
+| `spec.connectors[]` | ADR 0064 (replaces ADR 0057 `mcpServers` and ADR 0051 `agentTools`): `{key, kind, url?, auth?, headerName?, repository?}`. `MCP_HTTP`: OpenCode `mcp.<key>` (type `remote`, headers `{env:BO_CONNECTOR_<KEY>}`), Claude Code `mcp.json` in the agent home with `--mcp-config` (headers `${BO_CONNECTOR_<KEY>}`); `GITLAB_READ`: glab with the repository's `CI_READ` token. Invalid or repeated entries are skipped with a warning; a runner still reads an older Back Office's `mcpServers` / `agentTools`. Covered by the spec digest |
+| `spec.credentials[]` | ADR 0051, 0064: `{ref, repository, capability, connector?}`, names only; capability `CONNECTOR` names a connector's secret (`ref` = connector id, `connector` = key, delivered as the bundle file `connector-token-<key>`), `CI_READ` the token of a `GITLAB_READ` connector (bundle file `tool-token-<repository>`) |
 | `spec.repository.mergeRequest` | legacy single-repository mirror, filled only for a `DELIVER` job: `{create, title, description, targetBranch, draft}` → `git push -o merge_request.create -o merge_request.target=<t> -o merge_request.title=<title> [-o merge_request.draft]`; the runner reads the MR URL GitLab prints on push and returns it as `result.mergeRequestUrl` |
 | `spec.collectDiff` | when true the runner returns `git diff <baseRef>...HEAD` (≤ 2 MB) as `result.diff` |
 | `spec.repositories[]` | ADR 0034: one `JobRepository` per repository of the job, each cloned into `/workspace/<path>` with its own `access`; `pushBranch` and `mergeRequest` only in a `DELIVER` job (an agent job uses a `PUSH_MR` entry as `READ`); the result carries `result.repositories[]`; see [Workflow sources and delivery](#step-repositories) |

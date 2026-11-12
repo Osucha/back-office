@@ -17,14 +17,15 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzSelectModule } from 'ng-zorro-antd/select';
+import { ConnectorsApi } from '../../../core/api/connectors.service';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type {
   Agent,
   AgentAccessMode,
   AgentDirectory,
   AgentInput,
-  AgentMcpServer,
   AgentSession,
+  Connector,
   ModelProfile,
   Project,
   Rule,
@@ -53,7 +54,6 @@ import {
   accessDirectory,
   accessMode,
   accessProblem,
-  addMcpServer,
   agentDraft,
   agentPayload,
   agentSavable,
@@ -61,13 +61,11 @@ import {
   emptyAgent,
   harnessOf,
   kindValue,
-  mcpServerProblem,
-  patchMcpServer,
-  removeMcpServer,
   withAccessDirectory,
   withAccessMode,
   withAccessPaths,
 } from '../data/agent-form';
+import { badConnectorKey, connectorOptions } from '../data/connector-form';
 import { canCreateInLibrary, canEditScope, editableProjects } from '../data/library-access';
 
 /** Rules or skills an item of this scope may list (global plus the scope's project), by name. */
@@ -88,7 +86,7 @@ function visibleOptions(
 
 /**
  * The agent editor (ADR 0056/0057/0060) in a side panel, shared by the library page and the project tab Agents: name,
- * kind, model, instructions, rules, skills, MCP servers and access (coding agents), scope and tags. Built-in agents and
+ * kind, model, instructions, rules, skills, connectors (ADR 0064) and access (coding agents), scope and tags. Built-in agents and
  * agents of a scope the user cannot change are read-only. With `lockProject` the editor creates agents of the
  * `projectId` only (project tab).
  */
@@ -379,71 +377,36 @@ function visibleOptions(
             </nz-form-control>
           </nz-form-item>
         }
-        <nz-form-item data-mcp-servers>
-          <nz-form-label
-            [nzTooltipTitle]="draft().harness ? text.mcpHelp : text.mcpModelAnswer"
-            i18n="@@library.agents.mcp"
-            >MCP servers</nz-form-label
-          >
-          <nz-form-control>
-            @if (draft().harness) {
-              @for (s of draft().mcpServers ?? []; track $index; let i = $index) {
-                <div class="mcp-row" [attr.data-mcp-row]="i">
-                  <input
-                    nz-input
-                    class="mono"
-                    [name]="'mcp-name-' + i"
-                    [ngModel]="s.name"
-                    (ngModelChange)="patchMcp(i, { name: $event })"
-                    placeholder="docs"
-                    i18n-placeholder="@@library.agents.mcp.namePlaceholder"
-                    aria-label="Name of the MCP server"
-                    i18n-aria-label="@@library.agents.mcp.nameLabel"
-                  />
-                  <input
-                    nz-input
-                    class="mono"
-                    [name]="'mcp-url-' + i"
-                    [ngModel]="s.url"
-                    (ngModelChange)="patchMcp(i, { url: $event })"
-                    placeholder="https://mcp.example.com/mcp"
-                    i18n-placeholder="@@library.agents.mcp.urlPlaceholder"
-                    aria-label="URL of the MCP server"
-                    i18n-aria-label="@@library.agents.mcp.urlLabel"
-                  />
-                  @if (canEditDraft()) {
-                    <button
-                      nz-button
-                      nzSize="small"
-                      nzDanger
-                      type="button"
-                      (click)="removeMcp(i)"
-                      aria-label="Remove MCP server"
-                      i18n-aria-label="@@library.agents.mcp.remove"
-                    >
-                      <nz-icon nzType="delete" />
-                    </button>
-                  }
-                </div>
-              }
-              @if (mcpError(); as err) {
-                <div class="danger small" data-mcp-error>{{ err }}</div>
-              }
-              @if (canEditDraft()) {
-                <button
-                  nz-button
-                  nzType="dashed"
-                  nzSize="small"
-                  type="button"
-                  (click)="addMcp()"
-                  i18n="@@library.agents.mcp.add"
-                >
-                  Add MCP server
-                </button>
-              }
-            }
-          </nz-form-control>
-        </nz-form-item>
+        @if (draft().harness) {
+          <nz-form-item data-agent-connectors>
+            <nz-form-label
+              [nzTooltipTitle]="text.connectorsHelp"
+              nzFor="ag-connectors"
+              i18n="@@library.agents.connectors"
+              >Connectors</nz-form-label
+            >
+            <nz-form-control
+              [nzExtra]="draft().scope.type === 'GLOBAL' ? text.connectorsGlobal : ''"
+              [nzValidateStatus]="connectorError() ? 'error' : ''"
+              [nzErrorTip]="connectorError() ?? ''"
+            >
+              <nz-select
+                id="ag-connectors"
+                name="connectors"
+                [nzMode]="draft().scope.type === 'GLOBAL' ? 'tags' : 'multiple'"
+                nzShowSearch
+                nzPlaceHolder="none"
+                i18n-nzPlaceHolder="@@library.agents.none"
+                [ngModel]="draft().connectors ?? []"
+                (ngModelChange)="patch({ connectors: $event })"
+              >
+                @for (c of connectorOptions(); track c.key) {
+                  <nz-option [nzValue]="c.key" [nzLabel]="c.label" />
+                }
+              </nz-select>
+            </nz-form-control>
+          </nz-form-item>
+        }
         <div class="grid">
           <nz-form-item>
             <nz-form-label i18n="@@library.agents.scope">Scope</nz-form-label>
@@ -561,18 +524,6 @@ function visibleOptions(
         width: 100%;
         margin-top: 6px;
       }
-      .mcp-row {
-        display: grid;
-        grid-template-columns: 140px minmax(0, 1fr) auto;
-        gap: 6px;
-        align-items: center;
-        margin-bottom: 6px;
-      }
-      .danger.small {
-        font-size: 12px;
-        color: var(--bo-blocked-ink);
-        margin-bottom: 6px;
-      }
       .advanced summary {
         cursor: pointer;
         font-size: 12.5px;
@@ -591,6 +542,7 @@ function visibleOptions(
 })
 export class AgentEditorPanelComponent {
   private readonly api = inject(TaskLibraryApi);
+  private readonly connectorsApi = inject(ConnectorsApi);
   private readonly message = inject(NzMessageService);
   private readonly confirm = inject(ConfirmService);
   readonly identity = inject(IdentityService);
@@ -620,6 +572,8 @@ export class AgentEditorPanelComponent {
   /** ADR 0057: rules and skills of the draft's project (plus the global ones). */
   readonly rules = signal<Rule[]>([]);
   readonly skills = signal<Skill[]>([]);
+  /** ADR 0064: the platform connectors plus the draft's project's. */
+  readonly connectors = signal<Connector[]>([]);
 
   readonly text = {
     create: $localize`:@@library.agents.create:Create agent`,
@@ -633,8 +587,8 @@ export class AgentEditorPanelComponent {
     close: $localize`:@@library.agents.close:Close`,
     modelHelp: $localize`:@@library.agents.model.help:Empty: the step's model or the defaults for its kind (project, starting user, platform).`,
     instructionsHelp: $localize`:@@library.agents.instructions.help:The agent's role and way of working, in markdown. It may use ${'{{project.*}}'}:example: and comes after the platform preamble (what Back Office is, honesty, safety).`,
-    mcpHelp: $localize`:@@library.agents.mcp.help:Remote MCP servers (HTTP or HTTPS) the agent may use. No credentials: the sandbox network policy decides whether a server is reachable.`,
-    mcpModelAnswer: $localize`:@@library.agents.mcp.modelAnswer:Only coding agents use MCP servers; a model answer has no tools.`,
+    connectorsHelp: $localize`:@@library.agents.connectors.help:Tools the agent may use (MCP servers, GitLab read-only), by key. At a step they are looked up in the run's project, then the platform; a key with no connector there is skipped.`,
+    connectorsGlobal: $localize`:@@library.agents.connectors.global:A global agent may also list keys that projects provide: type the key.`,
     accessHelp: $localize`:@@library.agents.access.help:What the agent may change in the repositories of its steps. After the agent finished, Back Office reverts every other change and lists it in the step's log.`,
     accessPathsRequired: $localize`:@@library.agents.access.pathsRequired:Name at least one path, e.g. docs/**`,
     directoryHelp: $localize`:@@library.agents.directory.help:Run directory: the coding steps of a run work here one after another and see what earlier steps left. Separate directory: a fresh copy of only the step's repositories, thrown away after the step; for an agent that must not see the rest.`,
@@ -682,20 +636,17 @@ export class AgentEditorPanelComponent {
   /** ADR 0057: rules and skills an agent of the draft's scope may list (global plus its project's). */
   readonly ruleOptions = computed(() => visibleOptions(this.rules(), this.draft().scope));
   readonly skillOptions = computed(() => visibleOptions(this.skills(), this.draft().scope));
-  /** ADR 0057: what is wrong with the MCP servers of a coding agent, in words. */
-  readonly mcpError = computed(() => {
+  /** ADR 0064: the connectors an agent of the draft's scope may list, plus selected keys defined nowhere here. */
+  readonly connectorOptions = computed(() =>
+    connectorOptions(this.connectors(), this.draft().scope, this.draft().connectors ?? []),
+  );
+  /** ADR 0064: a connector key typed for a global agent that is not a valid key, in words. */
+  readonly connectorError = computed(() => {
     const d = this.draft();
-    const p = d.harness ? mcpServerProblem(d.mcpServers) : null;
-    if (!p) return null;
-    const n = p.index + 1;
-    switch (p.kind) {
-      case 'badName':
-        return $localize`:@@library.agents.mcp.badName:MCP server ${n}:index:: the name starts with a lowercase letter and uses only lowercase letters, digits and - (at most 40)`;
-      case 'duplicate':
-        return $localize`:@@library.agents.mcp.duplicate:MCP server name ${p.name}:name: is used twice`;
-      case 'badUrl':
-        return $localize`:@@library.agents.mcp.badUrl:MCP server ${p.name}:name: needs an http:// or https:// URL`;
-    }
+    const bad = d.harness ? badConnectorKey(d.connectors) : null;
+    return bad
+      ? $localize`:@@library.agents.connectors.badKey:${bad}:key: is not a connector key: lowercase letters, digits and -, starting with a letter (at most 40)`
+      : null;
   });
 
   constructor() {
@@ -734,6 +685,10 @@ export class AgentEditorPanelComponent {
       next: (s) => this.skills.set(s),
       error: () => undefined,
     });
+    this.connectorsApi.list(projectId).subscribe({
+      next: (c) => this.connectors.set(c),
+      error: () => undefined,
+    });
   }
 
   patch(changes: Partial<AgentInput>): void {
@@ -769,18 +724,6 @@ export class AgentEditorPanelComponent {
             : null,
       },
     });
-  }
-
-  addMcp(): void {
-    this.patch({ mcpServers: addMcpServer(this.draft().mcpServers) });
-  }
-
-  patchMcp(index: number, changes: Partial<AgentMcpServer>): void {
-    this.patch({ mcpServers: patchMcpServer(this.draft().mcpServers, index, changes) });
-  }
-
-  removeMcp(index: number): void {
-    this.patch({ mcpServers: removeMcpServer(this.draft().mcpServers, index) });
   }
 
   async requestClose(): Promise<void> {

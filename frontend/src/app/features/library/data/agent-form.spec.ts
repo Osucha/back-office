@@ -8,7 +8,6 @@ import {
   accessMode,
   accessPaths,
   accessProblem,
-  addMcpServer,
   agentDraft,
   agentPayload,
   agentSavable,
@@ -17,11 +16,7 @@ import {
   emptyAgent,
   harnessOf,
   instructionsExcerpt,
-  isHttpUrl,
   kindValue,
-  mcpServerProblem,
-  patchMcpServer,
-  removeMcpServer,
   withAccessDirectory,
   withAccessMode,
   withAccessPaths,
@@ -40,7 +35,7 @@ describe('agent form (ADR 0056/0057)', () => {
     instructions: 'You write small, tested changes.',
     rules: ['agent-ground-rules'],
     skills: ['spec-writing'],
-    mcpServers: [{ name: 'docs', url: 'https://mcp.example.com/docs' }],
+    connectors: ['gitlab-read', 'docs'],
     tags: ['budget'],
     builtIn: false,
   };
@@ -53,7 +48,7 @@ describe('agent form (ADR 0056/0057)', () => {
     expect(d.instructions).toBe('');
     expect(d.rules).toEqual([]);
     expect(d.skills).toEqual([]);
-    expect(d.mcpServers).toEqual([]);
+    expect(d.connectors).toEqual([]);
     expect(agentSavable(d)).toBe(false);
     expect(agentSavable({ ...d, name: 'X' })).toBe(true);
     expect(agentSavable({ ...d, name: 'X', scope: { type: 'PROJECT', projectId: null } })).toBe(
@@ -72,13 +67,13 @@ describe('agent form (ADR 0056/0057)', () => {
       instructions: 'You write small, tested changes.',
       rules: ['agent-ground-rules'],
       skills: ['spec-writing'],
-      mcpServers: [{ name: 'docs', url: 'https://mcp.example.com/docs' }],
+      connectors: ['gitlab-read', 'docs'],
       session: 'PER_STEP',
       tags: ['budget'],
     });
     expect(d.tags).not.toBe(saved.tags);
     expect(d.rules).not.toBe(saved.rules);
-    expect(d.mcpServers![0]).not.toBe(saved.mcpServers![0]);
+    expect(d.connectors).not.toBe(saved.connectors);
   });
 
   it('maps kinds to radio values and back', () => {
@@ -95,50 +90,25 @@ describe('agent form (ADR 0056/0057)', () => {
     expect(d.skills).toEqual(['spec-writing']);
   });
 
-  it('accepts only http(s) URLs', () => {
-    expect(isHttpUrl('https://mcp.example.com/x')).toBe(true);
-    expect(isHttpUrl('http://localhost:8080/mcp')).toBe(true);
-    expect(isHttpUrl('ftp://example.com')).toBe(false);
-    expect(isHttpUrl('mcp.example.com')).toBe(false);
-    expect(isHttpUrl('https://')).toBe(false);
-    expect(isHttpUrl('')).toBe(false);
-    expect(isHttpUrl(`https://e.com/${'a'.repeat(500)}`)).toBe(false);
-  });
-
-  it('finds the first MCP server problem', () => {
-    const ok = { name: 'docs', url: 'https://e.com/mcp' };
-    expect(mcpServerProblem([ok])).toBeNull();
-    expect(mcpServerProblem(undefined)).toBeNull();
-    expect(mcpServerProblem([{ name: 'Docs', url: ok.url }])).toEqual({
-      kind: 'badName',
-      index: 0,
-      name: 'Docs',
-    });
-    expect(mcpServerProblem([{ name: '', url: ok.url }])?.kind).toBe('badName');
-    expect(mcpServerProblem([ok, { ...ok }])).toEqual({
-      kind: 'duplicate',
-      index: 1,
-      name: 'docs',
-    });
-    expect(mcpServerProblem([{ name: 'docs', url: 'file:///etc' }])?.kind).toBe('badUrl');
-  });
-
-  it('blocks saving a coding agent with a wrong MCP server, not a model answer', () => {
-    const bad = [{ name: 'Bad Name', url: 'x' }];
-    expect(agentSavable({ ...emptyAgent(), name: 'A', harness: 'OPENCODE', mcpServers: bad })).toBe(
+  it('blocks saving a coding agent with a malformed connector key, not a model answer (ADR 0064)', () => {
+    const bad = ['Bad Key'];
+    expect(agentSavable({ ...emptyAgent(), name: 'A', harness: 'OPENCODE', connectors: bad })).toBe(
       false,
     );
-    expect(agentSavable({ ...emptyAgent(), name: 'A', harness: null, mcpServers: bad })).toBe(true);
+    expect(agentSavable({ ...emptyAgent(), name: 'A', harness: null, connectors: bad })).toBe(true);
+    expect(
+      agentSavable({ ...emptyAgent(), name: 'A', harness: 'OPENCODE', connectors: ['jira'] }),
+    ).toBe(true);
   });
 
-  it('sends trimmed MCP servers for coding agents and none for a model answer', () => {
-    const servers = [{ name: ' docs ', url: ' https://e.com/mcp ' }];
+  it('sends trimmed connector keys once for coding agents and none for a model answer (ADR 0064)', () => {
+    const keys = [' docs ', 'docs', '', 'gitlab-read'];
     expect(
-      agentPayload({ ...emptyAgent(), harness: 'CLAUDE_CODE', mcpServers: servers }).mcpServers,
-    ).toEqual([{ name: 'docs', url: 'https://e.com/mcp' }]);
-    expect(
-      agentPayload({ ...emptyAgent(), harness: null, mcpServers: servers }).mcpServers,
-    ).toEqual([]);
+      agentPayload({ ...emptyAgent(), harness: 'CLAUDE_CODE', connectors: keys }).connectors,
+    ).toEqual(['docs', 'gitlab-read']);
+    expect(agentPayload({ ...emptyAgent(), harness: null, connectors: keys }).connectors).toEqual(
+      [],
+    );
   });
 
   it('edits the access of a coding agent and sends it only for coding agents (ADR 0060)', () => {
@@ -197,14 +167,6 @@ describe('agent form (ADR 0056/0057)', () => {
     ).toBe('RUN');
     expect(AGENT_SESSIONS).toEqual(['PER_STEP', 'PER_RUN', 'FRESH']);
     expect(AGENT_DIRECTORIES).toEqual(['RUN', 'SEPARATE']);
-  });
-
-  it('edits the MCP server rows', () => {
-    const one = addMcpServer(undefined);
-    expect(one).toEqual([{ name: '', url: '' }]);
-    const two = patchMcpServer(addMcpServer(one), 1, { name: 'b' });
-    expect(two[1]).toEqual({ name: 'b', url: '' });
-    expect(removeMcpServer(two, 0)).toEqual([{ name: 'b', url: '' }]);
   });
 
   it('cuts the instructions to a short excerpt at a word boundary', () => {

@@ -301,18 +301,16 @@ data class RunnerJobSpec(
      */
     val credentials: List<JobCredentialRef> = emptyList(),
     /**
-     * ADR 0051 step 4: read-only tools the agent gets (e.g. `gitlab-read` = glab with the CI_READ token of a repository,
-     * named in [credentials] with that capability). Empty = none.
-     */
-    val agentTools: List<AgentTool> = emptyList(),
-    /**
      * ADR 0057: the agent's environment document (platform preamble, agent instructions, project constitution, rules).
      * The runner writes it outside every repository in the harness's own form (OpenCode `AGENTS.md` listed in
      * `opencode.json`, Claude Code user memory `CLAUDE.md`). Null = none (older specs keep their digests).
      */
     val instructions: String? = null,
-    /** ADR 0057: remote MCP servers of the agent (no credentials). Empty = none (omitted from the spec digest). */
-    val mcpServers: List<AgentMcpServer> = emptyList(),
+    /**
+     * ADR 0064: the agent's connectors (MCP servers, `GITLAB_READ`); their secrets are named in [credentials] (capability
+     * `CONNECTOR`, resp. `CI_READ` for `GITLAB_READ`), never the values. Empty = none (omitted from the spec digest).
+     */
+    val connectors: List<RunnerConnector> = emptyList(),
     /**
      * ADR 0060: the agent key whose home `/workspace/.agents/<agentHome>/` holds the environment document, skills, MCP
      * configuration and sessions. Null = the ADR 0057 locations (omitted from the spec digest).
@@ -322,45 +320,49 @@ data class RunnerJobSpec(
     val access: AgentAccess? = null,
 )
 
+/** ADR 0064: what a connector is: a remote MCP server (streamable HTTP) or glab with a read-only project token. */
+enum class ConnectorKind { MCP_HTTP, GITLAB_READ }
+
+/** ADR 0064: how an `MCP_HTTP` connector sends its secret: none, `Authorization: Bearer`, or a header of its own. */
+enum class ConnectorAuth { NONE, BEARER, HEADER }
+
 /**
- * ADR 0057: a remote MCP server an agent may use: [name] (`^[a-z][a-z0-9-]{0,39}$`) and an HTTP(S) [url] of at most
- * [MAX_URL_LENGTH] characters, no credentials. The sandbox egress policy decides whether it is reachable.
+ * ADR 0064: one connector of a job (`RunnerJobSpec.connectors[]`): never its secret. `MCP_HTTP` has [url], [auth] and
+ * for `HEADER` the [headerName]; `GITLAB_READ` the [repository] (a `repositories[].key`) whose `CI_READ` token it uses.
  */
-data class AgentMcpServer(val name: String, val url: String) {
-    init {
-        if (!NAME_PATTERN.matches(name)) throw ValidationException("MCP server name must match ${NAME_PATTERN.pattern}", "mcpServers.name")
-        if (url.length > MAX_URL_LENGTH) throw ValidationException("MCP server $name: url is longer than $MAX_URL_LENGTH characters", "mcpServers.url")
-        val lower = url.lowercase()
-        val scheme = listOf("http://", "https://").firstOrNull { lower.startsWith(it) }
-        if (scheme == null || url.length <= scheme.length || url.any { it.isWhitespace() }) {
-            throw ValidationException("MCP server $name: url must be an http:// or https:// URL", "mcpServers.url")
-        }
-    }
+data class RunnerConnector(
+    val key: String,
+    val kind: ConnectorKind,
+    val url: String? = null,
+    val auth: ConnectorAuth? = null,
+    val headerName: String? = null,
+    val repository: String? = null,
+)
 
-    companion object {
-        val NAME_PATTERN: Regex = Regex("^[a-z][a-z0-9-]{0,39}$")
-        const val MAX_URL_LENGTH = 500
+/** ADR 0064: rules shared by the contexts that name connectors (agents list keys, the projects context owns them). */
+object ConnectorKeys {
+    val PATTERN: Regex = Regex("^[a-z][a-z0-9-]{0,39}$")
 
-        /** Most MCP servers one agent may list. */
-        const val MAX_PER_AGENT = 10
-    }
-}
+    /** Most connectors one agent may list. */
+    const val MAX_PER_AGENT = 20
 
-/** ADR 0051 step 4: one agent tool of a job and the repository its token belongs to. */
-data class AgentTool(val name: String, val repository: String) {
-    companion object {
-        /** glab with a verified read-only token (CI_READ): pipelines, job logs, merge requests, issues of the repository. */
-        const val GITLAB_READ = "gitlab-read"
-        val KNOWN = setOf(GITLAB_READ)
-    }
+    /** The key of the former agent tool (ADR 0051 step 4), listed by the built-in coding agents. */
+    const val GITLAB_READ = "gitlab-read"
 }
 
 /**
  * ADR 0051: one project repository token of a job. [ref] identifies the token (its connection id), [repository] the
  * job repository it is for (a `repositories[].key`, or "" for the single legacy `repository`), [capability] what
- * the runner uses it for (`GIT_READ`: clone, `PUSH_BRANCH`: clone and push).
+ * the runner uses it for (`GIT_READ`: clone, `PUSH_BRANCH`: clone and push, `CI_READ`: a `GITLAB_READ` connector).
+ * ADR 0064: capability `CONNECTOR` names the secret of an MCP connector: [ref] is the connector id, [repository] "" and
+ * [connector] its key (delivered as the bundle file `connector-token-<key>`).
  */
-data class JobCredentialRef(val ref: String, val repository: String, val capability: String)
+data class JobCredentialRef(val ref: String, val repository: String, val capability: String, val connector: String? = null) {
+    companion object {
+        const val CI_READ = "CI_READ"
+        const val CONNECTOR = "CONNECTOR"
+    }
+}
 
 /**
  * ADR 0047: what a verification checks besides `verifyCommand`. After the agent the runner fails the verification when

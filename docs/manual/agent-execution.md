@@ -117,6 +117,7 @@ covered by the pool ceiling and the platform policy, or it is narrowed away. See
 | Agent token `bo_job_...` (gateway only) | The only credential the coding agent gets: calls the LLM gateway for the job's model only (plus `RUNNER_EXTRA_ALLOWED_MODELS` patterns) within the job's budgets and request cap; refused by every callback, so the agent cannot post or fake the result. Revoked with the job |
 | Git token (from the pool's git Secret) | Read by the runner into memory, the file is deleted; used only by the git commands the runner runs before and after the agent ([integrations-git.md](integrations-git.md#git-overview)) |
 | Proxy URL with a per-job password | Valid only on its pool's proxy, dropped at completion |
+| Secrets of the agent's [connectors](task-library.md#connectors) (ADR 0064) | Only for the connectors the agent lists: an MCP server's secret, sealed for this job by Back Office, read by the runner and its file deleted, then put only into the agent process's environment (never into a file, never into the setup or verify command) and redacted from every log; a **GitLab (read-only)** connector's verified read-only `CI_READ` token goes only to `glab`. Gone with the job |
 
 | The sandbox never holds | Where it stays |
 |---|---|
@@ -126,7 +127,8 @@ covered by the pool ceiling and the platform policy, or it is narrowed away. See
 | CI tokens, personal access tokens | hashed in the database |
 | Kubernetes credentials | service-account token not mounted |
 
-Inside the sandbox the agent process (OpenCode or Claude Code) sees only the agent token: provider keys,
+Inside the sandbox the agent process (OpenCode or Claude Code) sees only the agent token and the secrets of
+its own connectors: provider keys,
 the git token and the job token are not in its environment or on disk, and the runner process cannot be read
 by the agent (it is marked non-dumpable). Tool permissions from the policy
 (`tools.allow` / `deny` / `ask`) are rendered into the agent's own permission settings; "ask" counts as

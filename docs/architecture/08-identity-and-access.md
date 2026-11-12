@@ -150,8 +150,8 @@ equivalents through the `auditor` role).
 | `integrations.view` | PLATFORM | projects | see integration status and run connection tests; list platform connections (ADR 0030) |
 | `admin.connections.manage` | PLATFORM | projects | create, edit, rotate, verify and delete platform connections (Administration → Connections, ADR 0030); see the metadata of personal connections (ADR 0035) |
 | `connections.personal` | PLATFORM | projects | create and use own personal connections (My account → Connections, ADR 0035); a personal connection is used only with its owner's approval or run start and is invisible to everybody else |
-| `library.view` | PLATFORM | tasks | read the global task library |
-| `library.manage` | PLATFORM | tasks | create/edit global templates, interfaces, skills |
+| `library.view` | PLATFORM | tasks | read the global task library; list the platform connectors (ADR 0064, never their secrets) |
+| `library.manage` | PLATFORM | tasks | create/edit global templates, interfaces, skills; create, edit, test and delete platform connectors (Library → Connectors, ADR 0064) |
 | `models.view` | PLATFORM | evaluation | read model profiles |
 | `models.manage` | PLATFORM | evaluation | create/edit model profiles and pricing, test a profile |
 | `evaluation.view` | PLATFORM | evaluation | read suites, benchmarks, leaderboards |
@@ -164,7 +164,7 @@ equivalents through the `auditor` role).
 | `project.manage` | PROJECT | projects | edit project settings, CI entrypoints; deleting the project also needs `project.members.manage` (owners only) |
 | `project.members.manage` | PROJECT | identity | add/remove members and change their project roles |
 | `project.ci.manage` | PROJECT | projects | create/revoke CI tokens |
-| `project.connections.manage` | PROJECT | projects | create, edit, rotate, verify and delete the project's connections (ADR 0030); listing them needs only `project.view` |
+| `project.connections.manage` | PROJECT | projects | create, edit, rotate, verify and delete the project's connections (ADR 0030) and the project's connectors (project tab Connectors: create, edit, test, delete, ADR 0064); listing them needs only `project.view` |
 | `workflow.edit` | PROJECT | projects | create/edit/delete/duplicate workflows |
 | `run.start` | PROJECT | projects | start and retry runs |
 | `run.cancel` | PROJECT | projects | cancel runs |

@@ -214,6 +214,8 @@
   "shell.nav.rules": "Reguły",
   "shell.route.agents": "Agenci",
   "shell.nav.agents": "Agenci",
+  "shell.nav.connectors": "Konektory",
+  "shell.route.connectors": "Konektory",
   "shell.route.agentInsights": "Wskaźniki agentów",
   "shell.palette.openAgentInsights.title": "Porównaj agentów",
   "shell.palette.openAgentInsights.subtitle": "Koszt zaakceptowanego wyniku według agenta i modelu",

@@ -87,15 +87,15 @@ class TaskMappersTest {
         val agent = pl.mos.backoffice.tasks.domain.model.Agent.create(
             pl.mos.backoffice.tasks.domain.model.Agent.Content(
                 key = "env", name = "Env", instructions = "Be precise.", rules = listOf("r1"), skills = listOf("s1", "s2"),
-                mcpServers = listOf(pl.mos.backoffice.shared.runner.AgentMcpServer("docs", "https://mcp.example.com")),
+                connectors = listOf("docs", "gitlab-read"),
             ),
             Instant.parse("2026-10-24T10:00:00Z"),
         )
         val entity = mappers.toEntity(agent)
-        assertThat(entity.mcpServers).isEqualTo("""[{"name":"docs","url":"https://mcp.example.com"}]""")
+        assertThat(entity.connectors).isEqualTo("""["docs","gitlab-read"]""")
         assertThat(mappers.toDomain(entity)).isEqualTo(agent)
-        val broken = AgentEntity(key = "env", name = "Env", mcpServers = """[{"name":"ok","url":"https://a.example"},{"name":"bad","url":"file:///x"},{"url":"https://b"}]""")
-        assertThat(mappers.toDomain(broken).mcpServers.map { it.name }).containsExactly("ok")
+        val broken = AgentEntity(key = "env", name = "Env", connectors = """["ok","Not A Key","gitlab-read"]""")
+        assertThat(mappers.toDomain(broken).connectors).containsExactly("ok", "gitlab-read")
     }
 
     @Test

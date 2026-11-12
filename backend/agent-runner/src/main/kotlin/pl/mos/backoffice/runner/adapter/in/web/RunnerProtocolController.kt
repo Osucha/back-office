@@ -134,7 +134,7 @@ class RunnerProtocolController(
         val release = gate.asSystem(REASON) { protocol.releaseCredentials(RunnerTokenFilter.runner(request), RunnerJobId(jobId)) }
         return JobCredentialsJson(
             release.expiresAt.toString(),
-            release.credentials.map { SealedCredentialJson(it.ref, it.repository, it.capability, it.sealed.enc, it.sealed.ciphertext) },
+            release.credentials.map { SealedCredentialJson(it.ref, it.repository, it.capability, it.sealed.enc, it.sealed.ciphertext, it.connector) },
         )
     }
 

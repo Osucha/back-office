@@ -1928,7 +1928,7 @@ class AgentToolTests(unittest.TestCase):
 
     def test_only_known_tools_are_parsed_and_their_token_is_read_once_from_the_bundle(self):
         spec = ep.parse_spec(self.raw)
-        self.assertEqual([t.name for t in spec.agent_tools], ["gitlab-read"])
+        self.assertEqual([(c.key, c.kind, c.repository) for c in spec.connectors], [("gitlab-read", "GITLAB_READ", "main")])
         with tempfile.TemporaryDirectory() as job_dir:
             token_file = Path(job_dir) / "tool-token-main"
             token_file.write_text("tkn-ci-reader")

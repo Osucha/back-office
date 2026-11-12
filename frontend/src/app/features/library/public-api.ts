@@ -6,3 +6,4 @@ export { updateAvailable } from './data/workflow-metrics';
 export { AgentEditorPanelComponent } from './components/agent-editor-panel.component';
 export { agentDraft, customizeAgentForProject } from './data/agent-form';
 export { canEditScope } from './data/library-access';
+export { ConnectorsPanelComponent } from './components/connectors-panel.component';

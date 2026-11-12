@@ -6,7 +6,7 @@ import pl.mos.backoffice.shared.tasks.StepNeeds
 import java.util.UUID
 
 /** ADR 0061: what the agent audit found. */
-enum class AgentAuditFindingKind { MISSING_SKILL, NEEDS_CODING_AGENT, READ_ONLY_PUSH, UNKNOWN_RULE, UNKNOWN_SKILL, DUPLICATE_SKILL_NAME, UNKNOWN_AGENT }
+enum class AgentAuditFindingKind { MISSING_SKILL, NEEDS_CODING_AGENT, READ_ONLY_PUSH, UNKNOWN_RULE, UNKNOWN_SKILL, DUPLICATE_SKILL_NAME, UNKNOWN_AGENT, UNKNOWN_CONNECTOR }
 
 /** ADR 0061: an ERROR stops a run (the resolver refuses the step); a WARNING does not. */
 enum class AgentAuditSeverity { ERROR, WARNING }
@@ -56,11 +56,13 @@ data class AgentAuditReport(val agents: List<AgentAuditEntry>, val findings: Lis
  * - `READ_ONLY_PUSH`: no longer reported (ADR 0063: agents never push; the kind stays in the API);
  * - `UNKNOWN_RULE` / `UNKNOWN_SKILL` (error): the agent names a rule or skill the library no longer has;
  * - `DUPLICATE_SKILL_NAME` (warning): two skills of one agent have the same name (the harness cannot tell them apart);
- * - `UNKNOWN_AGENT` (error, not tied to an agent entry): a step names an agent that does not exist.
+ * - `UNKNOWN_AGENT` (error, not tied to an agent entry): a step names an agent that does not exist;
+ * - `UNKNOWN_CONNECTOR` (warning, ADR 0064): a coding agent lists a connector key found neither in the project nor on
+ *   the platform ([knownConnectors]; null = not checked); the step skips it. Model answer agents have no tools.
  */
 object AgentAuditor {
 
-    fun audit(steps: List<AuditedStep>, profiles: Map<String, AgentProfile?>): AgentAuditReport {
+    fun audit(steps: List<AuditedStep>, profiles: Map<String, AgentProfile?>, knownConnectors: Set<String>? = null): AgentAuditReport {
         val byAgent = steps.groupBy { it.needs.agentKey }
         val unknown = byAgent.filterKeys { profiles[it] == null }.map { (key, agentSteps) ->
             AgentAuditFinding(
@@ -69,11 +71,11 @@ object AgentAuditor {
                 agentSteps.map { it.nodeId }, key,
             )
         }
-        val entries = byAgent.mapNotNull { (key, agentSteps) -> profiles[key]?.let { entry(it, agentSteps) } }
+        val entries = byAgent.mapNotNull { (key, agentSteps) -> profiles[key]?.let { entry(it, agentSteps, knownConnectors) } }
         return AgentAuditReport(entries, unknown)
     }
 
-    private fun entry(profile: AgentProfile, steps: List<AuditedStep>): AgentAuditEntry {
+    private fun entry(profile: AgentProfile, steps: List<AuditedStep>, knownConnectors: Set<String>?): AgentAuditEntry {
         val agent = profile.agent
         val skillKeys = profile.skills.map { it.key }.toSet()
         val required = steps.flatMap { step -> step.needs.requiredSkills.map { it to step.nodeId } }
@@ -103,6 +105,15 @@ object AgentAuditor {
             }
             profile.unknownSkills.forEach {
                 add(AgentAuditFinding(AgentAuditFindingKind.UNKNOWN_SKILL, AgentAuditSeverity.ERROR, "skill $it of agent ${agent.name} no longer exists", nodeIds, it))
+            }
+            if (knownConnectors != null && !agent.modelAnswer) {
+                agent.connectors.filter { it !in knownConnectors }.forEach {
+                    add(AgentAuditFinding(
+                        AgentAuditFindingKind.UNKNOWN_CONNECTOR, AgentAuditSeverity.WARNING,
+                        "connector $it of agent ${agent.name} is defined neither in this project nor on the platform; the agent works without it",
+                        nodeIds, it,
+                    ))
+                }
             }
             profile.skills.groupBy { it.name.trim().lowercase() }.values.filter { it.size > 1 }.forEach { same ->
                 add(AgentAuditFinding(

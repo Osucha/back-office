@@ -119,4 +119,27 @@ class AgentAuditorTest {
         assertThat(report.agents).isEmpty()
         assertThat(report.findings).isEmpty()
     }
+
+    @Test
+    fun `ADR 0064 - a coding agent's connector found neither in the project nor on the platform is a warning, model answers have no tools`() {
+        val tooled = coder.copy(agent = coder.agent.copy(connectors = listOf("gitlab-read", "jira", "docs")), unknownRules = emptyList(), unknownSkills = emptyList(), skills = emptyList())
+        val answering = reviewer.copy(agent = reviewer.agent.copy(connectors = listOf("jira")))
+        val report = AgentAuditor.audit(
+            listOf(step("code", "coder", coding = true), step("review", "reviewer")),
+            mapOf("coder" to tooled, "reviewer" to answering),
+            knownConnectors = setOf("gitlab-read"),
+        )
+        val byAgent = report.agents.associateBy { it.agent.key }
+        val findings = byAgent.getValue("coder").findings
+        assertThat(findings.map { it.kind to it.key }).containsExactly(
+            AgentAuditFindingKind.UNKNOWN_CONNECTOR to "jira",
+            AgentAuditFindingKind.UNKNOWN_CONNECTOR to "docs",
+        )
+        assertThat(findings.first().severity).isEqualTo(AgentAuditSeverity.WARNING)
+        assertThat(findings.first().nodeIds).containsExactly("code")
+        assertThat(findings.first().message).contains("jira").contains("Coder")
+        assertThat(byAgent.getValue("reviewer").findings).isEmpty()
+        assertThat(AgentAuditor.audit(listOf(step("code", "coder", coding = true)), mapOf("coder" to tooled)).agents.single().findings)
+            .describedAs("not checked without the known connectors").isEmpty()
+    }
 }

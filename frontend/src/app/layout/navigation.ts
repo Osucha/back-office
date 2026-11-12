@@ -112,6 +112,13 @@ export const NAVIGATION: NavItem[] = [
         groupLabel: $localize`:@@shell.nav.libraryTasks:Tasks`,
       },
       {
+        path: '/library/connectors',
+        label: $localize`:@@shell.nav.connectors:Connectors`,
+        access: { permission: 'library.view' },
+        group: 'tasks',
+        groupLabel: $localize`:@@shell.nav.libraryTasks:Tasks`,
+      },
+      {
         path: '/library/workflows',
         label: $localize`:@@shell.nav.libraryWorkflows:Workflows`,
         access: { permission: 'library.view' },

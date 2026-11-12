@@ -252,6 +252,7 @@
   "projects.ci.copy.done": "Skopiowano",
   "projects.ci.copy.unavailable": "Schowek niedostępny; zaznacz tekst i skopiuj go ręcznie",
   "projects.detail.tab.connections": "Połączenia",
+  "projects.detail.tab.connectors": "Konektory",
   "projects.intake.title": "Monitor zgłoszeń Jira",
   "projects.intake.on": "włączony",
   "projects.intake.off": "wyłączony",
@@ -366,5 +367,6 @@
   "projects.agents.rulesCount": "{count, plural, one {# reguła} few {# reguły} many {# reguł} other {# reguły}}",
   "projects.agents.skillsCount": "{count, plural, one {# umiejętność} few {# umiejętności} many {# umiejętności} other {# umiejętności}}",
   "projects.agents.imported": "Agent „{$name}” zaimportowany do projektu",
-  "projects.detail.tab.agents": "Agenci"
+  "projects.detail.tab.agents": "Agenci",
+  "projects.agents.connectorsCount": "{count, plural, one {# konektor} few {# konektory} many {# konektorów} other {# konektora}}"
 }

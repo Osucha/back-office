@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import pl.mos.backoffice.projects.application.port.out.ConnectorRepository
 import pl.mos.backoffice.projects.application.port.out.JsonCodec
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
@@ -16,6 +17,7 @@ import pl.mos.backoffice.projects.domain.model.ArtifactKind
 import pl.mos.backoffice.projects.domain.model.ReviewReport
 import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.projects.domain.service.ConnectorResolution
 import pl.mos.backoffice.projects.domain.service.RunDirectory
 import pl.mos.backoffice.projects.domain.service.StepRepository
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
@@ -27,9 +29,8 @@ import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.prompt.UntrustedText
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentRunner
-import pl.mos.backoffice.shared.runner.AgentTool
 import pl.mos.backoffice.shared.runner.GitAccess
-import pl.mos.backoffice.shared.runner.JobCredentialRef
+import pl.mos.backoffice.shared.runner.JobConnectors
 import pl.mos.backoffice.shared.runner.JobRepository
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
@@ -86,6 +87,8 @@ class RunnerTaskSupport(
     private val structuredAnswers: StructuredAnswers? = null,
     /** ADR 0060: reads `agent-questions.json`; null = questions of coding agents are not read (tests). */
     private val json: JsonCodec? = null,
+    /** ADR 0064: the connectors the agent's keys resolve to; null = none (tests). */
+    private val connectorRepository: ConnectorRepository? = null,
 ) {
     private val environment = AgentEnvironment(renderer)
     private val taskMessage = TaskMessage(renderer)
@@ -168,7 +171,8 @@ class RunnerTaskSupport(
             JobRepository(key = r.key, url = r.repository.url, baseBranch = r.repository.defaultBranch, access = GitAccess.READ, path = r.key, primary = r.primary)
         }
         val credentials = RunnerJobs.credentialsOf(scmConnections, project.id, jobRepositories)
-        val tools = agentToolsOf(project.id, config.list("agentTools"), jobRepositories.firstOrNull { it.primary })
+        // ADR 0064: the agent's connectors (project first, then platform); GITLAB_READ needs a verified read-only CI_READ token
+        val tools = connectorsOf(project.id, task.agent.connectors, jobRepositories)
         // legacy mirror of the primary entry for runners older than ADR 0034; none for an empty workspace
         val repository = primary?.let { RunnerRepository(url = it.repository.url, baseRef = it.repository.defaultBranch) }
         val spec = RunnerJobSpec(
@@ -197,10 +201,9 @@ class RunnerTaskSupport(
             gitAccess = GitAccess.highest(jobRepositories.map { it.access }),
             personalRunnerOf = RunnerJobs.personalRunnerOf(context),
             workspace = workspace,
-            credentials = credentials.map { it.first } + tools.map { it.second },
-            agentTools = tools.map { it.first },
+            credentials = credentials.map { it.first } + tools.credentials,
             instructions = environmentDocument.text.takeIf { it.isNotBlank() },
-            mcpServers = task.agent.mcpServers,
+            connectors = tools.connectors,
             // ADR 0060: the agent's home in the run directory, and what it may change when not everything
             agentHome = task.agent.key,
             access = task.agent.access.takeUnless { it.full },
@@ -217,9 +220,7 @@ class RunnerTaskSupport(
             }
             spec.access?.let { a -> context.log("agent ${task.agent.key} may change ${if (a.paths.isEmpty()) "nothing (read only)" else "only " + a.paths.joinToString()}; the runner reverts other changes") }
             jobRepositories.forEach { r -> context.log("repository ${r.key} (/workspace/${r.path}${if (r.primary) ", primary" else ""}): git access ${r.access}, ${describe(r.access)}") }
-            tools.forEach { (tool, ref) ->
-                context.log("agent tool ${tool.name} for repository ${tool.repository}: read-only project token ${ref.ref} (CI_READ), delivered sealed to the runner")
-            }
+            tools.notes.forEach { context.log(it) }
             RunnerJobs.logCredentials(context, jobRepositories, credentials)
         }
         return Plan(spec, profile, repos)
@@ -230,25 +231,20 @@ class RunnerTaskSupport(
         (task.outputFiles + task.config.list(LEGACY_COLLECT_ARTIFACTS)).map { it.trim() }.filter { it.isNotEmpty() }.distinct().ifEmpty { DEFAULT_COLLECT }
 
     /**
-     * ADR 0051 step 4: the agent tools a step asks for (`agentTools`), each bound to the primary repository's
-     * least-privileged token that is declared and verified read-only and has CI_READ. A tool without such a token
-     * fails the step before any job exists: a token with write powers never reaches an agent.
+     * ADR 0064: the connectors of the agent's [keys] for this job ([ConnectorResolution]); a `GITLAB_READ` connector without
+     * a verified read-only `CI_READ` token fails the step before any job exists.
      */
-    private fun agentToolsOf(projectId: pl.mos.backoffice.projects.domain.model.ProjectId, requested: List<String>, primary: JobRepository?): List<Pair<AgentTool, JobCredentialRef>> {
-        val names = requested.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
-        if (names.isEmpty()) return emptyList()
-        names.firstOrNull { it !in AgentTool.KNOWN }?.let { throw RunnerJobs.PlanException("unknown agent tool '$it' (known: ${AgentTool.KNOWN.sorted().joinToString()})") }
-        val repository = primary ?: throw RunnerJobs.PlanException("agent tool ${names.first()} needs a repository; this step has none")
-        val connections = scmConnections?.findByProject(projectId).orEmpty()
-        return names.map { name ->
-            val token = pl.mos.backoffice.projects.domain.model.ScmConnectionSelector.select(
-                connections, repository.key, setOf(pl.mos.backoffice.projects.domain.model.ScmCapability.CI_READ), readOnly = true,
-            ) ?: throw RunnerJobs.PlanException(
-                "agent tool $name needs a read-only token with CI_READ for repository '${repository.key}': add one under the project's " +
-                    "Sources tab, Repository access tokens (role Reporter, scopes read_api and read_repository), and test it",
-            )
-            AgentTool(name, repository.key) to JobCredentialRef(token.id.toString(), repository.key, pl.mos.backoffice.projects.domain.model.ScmCapability.CI_READ.name)
-        }
+    private fun connectorsOf(projectId: pl.mos.backoffice.projects.domain.model.ProjectId, keys: List<String>, repositories: List<JobRepository>): JobConnectors {
+        val repository = connectorRepository
+        if (keys.isEmpty()) return JobConnectors.NONE
+        if (repository == null) return JobConnectors(notes = listOf("connectors are not available here; ${keys.joinToString()} skipped"))
+        val result = ConnectorResolution.resolve(
+            keys, repository.findByProject(projectId), repository.findPlatform(),
+            repositories.map { ConnectorResolution.Repository(it.key, it.primary) },
+            scmConnections?.findByProject(projectId).orEmpty(),
+        )
+        result.failure?.let { throw RunnerJobs.PlanException(it) }
+        return result.connectors
     }
 
     /** ADR 0057: how a coding agent with an output schema hands over its answer. */

@@ -36,6 +36,8 @@ import pl.mos.backoffice.shared.llm.OwnLoginLlm
 import pl.mos.backoffice.shared.llm.chatAs
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.GitAccess
+import pl.mos.backoffice.shared.runner.ConnectorCatalog
+import pl.mos.backoffice.shared.runner.JobConnectors
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerMode
@@ -70,8 +72,10 @@ class ExecuteAttemptService(
     private val clock: Clock,
     /** ADR 0050 step 4: answers of Claude Code login models (candidates and judges) on the creator's runner; null = none. */
     private val ownLogin: OwnLoginLlm? = null,
-    /** ADR 0059: the environment of a candidate's agent (instructions, rules, skills, MCP servers); null = models only. */
+    /** ADR 0059: the environment of a candidate's agent (instructions, rules, skills, connector keys); null = models only. */
     private val agents: TaskCatalog? = null,
+    /** ADR 0064: the platform connectors (MCP_HTTP) of a candidate's agent; null = none. */
+    private val connectors: ConnectorCatalog? = null,
 ) : ExecuteAttempt {
 
     @SystemOperation("runs on the benchmark executor's threads after an authorised start; never exposed through a controller")
@@ -176,6 +180,8 @@ class ExecuteAttemptService(
         onProgress: (Attempt) -> Unit,
     ): Attempt? {
         val repository = task.repository ?: throw IllegalStateException("CODING_JOB task ${task.id} has no repository")
+        // ADR 0064: the candidate agent's platform connectors (a benchmark has no project); GITLAB_READ needs a project
+        val tools = environment?.agent?.connectors?.takeIf { it.isNotEmpty() }?.let { keys -> connectors?.mcpConnectors(keys, null) } ?: JobConnectors.NONE
         val spec = RunnerJobSpec(
             mode = RunnerMode.EVAL_CODING,
             // ADR 0059: the candidate's agent chose the harness (a benchmark of models: its coding harness)
@@ -203,7 +209,8 @@ class ExecuteAttemptService(
             // ADR 0059: the agent's environment as in a workflow step (ADR 0057); absent for a benchmark of models
             instructions = environment?.let { AgentEnvironmentText.compose(modelAnswer = false, it.agent.instructions, null, it.rules) },
             skills = environment?.skills.orEmpty().map { RunnerSkill(it.key, it.name, it.content) },
-            mcpServers = environment?.agent?.mcpServers.orEmpty(),
+            connectors = tools.connectors,
+            credentials = tools.credentials,
             // ADR 0060: the candidate's home and access as in a workflow step; a benchmark of models has no agent
             agentHome = environment?.agent?.key,
             access = environment?.agent?.access?.takeUnless { it.full },

@@ -160,8 +160,12 @@ export type AgentAuditFinding = S['AgentAuditFinding'];
 /** ADR 0061: contradictions in an agent's whole environment, found by a model on request. */
 export type CoherenceReport = S['CoherenceReport'];
 export type CoherenceFinding = CoherenceReport['findings'][number];
-/** ADR 0057: a remote MCP server of a coding agent (HTTP(S), no credentials). */
-export type AgentMcpServer = S['AgentMcpServer'];
+/** ADR 0064: a tool agents use (an MCP server or GitLab read-only), platform or project scope. */
+export type ConnectorInput = S['ConnectorInput'];
+export type Connector = S['Connector'];
+export type ConnectorTest = S['ConnectorTest'];
+export type ConnectorKind = ConnectorInput['kind'];
+export type ConnectorAuth = ConnectorInput['auth'];
 /** ADR 0058: a typed parameter of a template, read in prompts as {{params.<name>}}. */
 export type TemplateParameter = S['TemplateParameter'];
 export type TemplateParameterType = TemplateParameter['type'];

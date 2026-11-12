@@ -87,7 +87,7 @@ class AgentEntity(
     @Column(nullable = false, columnDefinition = "text") val instructions: String = "",
     @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false) val rules: String = "[]",
     @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false) val skills: String = "[]",
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "mcp_servers", nullable = false) val mcpServers: String = "[]",
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false) val connectors: String = "[]",
     @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false) val access: String = "{\"mode\":\"FULL\"}",
     @Column(nullable = false, length = 16) val session: String = "PER_STEP",
     @Column(name = "model_profile_id") val modelProfileId: UUID? = null,

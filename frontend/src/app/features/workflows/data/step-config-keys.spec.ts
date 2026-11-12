@@ -3,7 +3,14 @@ import { fieldsFromSchema } from './schema-form';
 
 describe('step config keys (ADR 0063)', () => {
   it('lists the keys that left the step', () => {
-    for (const k of ['push', 'phase', 'repositories', 'setupCommand', 'collectArtifacts'])
+    for (const k of [
+      'push',
+      'phase',
+      'repositories',
+      'setupCommand',
+      'collectArtifacts',
+      'agentTools',
+    ])
       expect(REMOVED_STEP_KEYS).toContain(k);
     expect(REMOVED_STEP_KEYS).not.toContain('verifyCommand');
   });

@@ -107,7 +107,7 @@ export function templateNeedsCodingAgent(
 
 /**
  * The config schema for the template editor: the keys of model answer steps and the coding agent keys a template
- * still sets (ADR 0063: verifyCommand, agentTools, the questions and codingAgent as a checkbox), translated; a
+ * still sets (ADR 0063: verifyCommand, the questions and codingAgent as a checkbox), translated; a
  * template does not know who runs it. Null when unknown or without keys. `required` is dropped: a template only
  * sets what it changes, the rest comes from its parent.
  */

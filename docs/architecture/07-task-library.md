@@ -15,8 +15,9 @@ how they are instructed, independent of any single workflow (ADR 0015). Projects
 | `RunInputField` | form field | `name` (key in the run parameters), `label`, `type` `TEXT|MULTILINE|ISSUE_KEY`, `required`, `help`; shared kernel; since ADR 0062 derived from the parameters a step binds `START` (`ResolvedTask.runInputs`) and declared by actions |
 | `Skill` | handbook chapter | `key`, `name`, `description`, `content` (markdown, Agent Skills `SKILL.md` convention), `scope`, `tags`, `builtIn`; knowledge or a procedure the agent opens when the task needs it |
 | `Rule` | standing order | `key`, `name`, `description`, `content` (markdown, no frontmatter), `scope`, `automatic`, `tags`, `builtIn`; a norm that is always in the agent's context (ADR 0055) |
-| `Agent` | worker (who and how) | `key`, `name`, `description`, `scope`, `harness` (`OPENCODE`, `CLAUDE_CODE` or none = model answer), `modelProfileId`, `instructions` (markdown, may use `{{project.*}}`), `rules[]`, `skills[]`, `mcpServers[] {name, url}`, `access {mode, paths, directory}` (ADR 0060, 0062), `session` (`PER_STEP|PER_RUN|FRESH`, ADR 0062), `tags`, `builtIn` (ADR 0056, 0057); `AgentSnapshot` in the shared kernel carries it to the Projects context |
-| `ResolvedTask` | instance | the merged result the workflow engine runs: the merged `instructions`, the resolved `agent` (with its instructions, MCP servers, access and session), the step's `rules` and `skills`, and `parameters` (definition, value, source `STEP`/`TEMPLATE`/`DEFAULT`/`NONE`, the step's binding and the fallback) |
+| `Agent` | worker (who and how) | `key`, `name`, `description`, `scope`, `harness` (`OPENCODE`, `CLAUDE_CODE` or none = model answer), `modelProfileId`, `instructions` (markdown, may use `{{project.*}}`), `rules[]`, `skills[]`, `connectors[]` (connector keys, ADR 0064), `access {mode, paths, directory}` (ADR 0060, 0062), `session` (`PER_STEP|PER_RUN|FRESH`, ADR 0062), `tags`, `builtIn` (ADR 0056, 0057); `AgentSnapshot` in the shared kernel carries it to the Projects context |
+| `Connector` | tool (ADR 0064) | lives in the Projects context (it holds secrets and a project's repositories): `key`, `name`, `description`, `kind` (`MCP_HTTP`, `GITLAB_READ`), scope platform or project, `url`, `auth`, `headerName`, write-only `secret`, `repository`, `lastTest`; agents only name it by key ([Connectors](#connectors-adr-0064)) |
+| `ResolvedTask` | instance | the merged result the workflow engine runs: the merged `instructions`, the resolved `agent` (with its instructions, connector keys, access and session), the step's `rules` and `skills`, and `parameters` (definition, value, source `STEP`/`TEMPLATE`/`DEFAULT`/`NONE`, the step's binding and the fallback) |
 
 Until ADR 0056 a template had an **executor** (`LLM`, `SPEC_KIT` (gone since ADR 0063), `IMPLEMENT`, `FETCH_ISSUE`, `NOTIFY`,
 `TRANSITION_ISSUE`, `START_WORKFLOW`, `PROJECT_DIGEST`) that mixed what thinks, how it works and whether it is AI work
@@ -90,7 +91,7 @@ not receive the rules twice. Skills, by contrast, reach runner steps as `.claude
 
 | | **Agent: who and how** | **Task template: what** |
 |---|---|---|
-| Holds | harness, model (optional), instructions, rules, skills, MCP servers, access (ADR 0060) | instructions with parameters, output schema, produces/consumes, config, category, required skills (ADR 0060) |
+| Holds | harness, model (optional), instructions, rules, skills, connectors (ADR 0064), access (ADR 0060) | instructions with parameters, output schema, produces/consumes, config, category, required skills (ADR 0060) |
 | Goes to | the session's environment | the session's prompt |
 | Changes when | you look for a cheaper or better way to work | the work changes |
 
@@ -138,6 +139,9 @@ Built-in agents (no model of their own; all list `agent-ground-rules` and `ask-d
 | `opencode` | OpenCode | `OPENCODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | none |
 | `claude-code` | Claude Code | `CLAUDE_CODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | none |
 
+`opencode` and `claude-code` list the connector `gitlab-read` (ADR 0064): a project that defines it gives them the
+read-only GitLab tool without editing agents; elsewhere the key is skipped.
+
 Deleting a rule or skill an agent lists is refused (`InvalidStateException`). Deleting an agent is not blocked by
 anything since ADR 0061 (templates name none); workflow steps that still name it are reported as `UNKNOWN_AGENT` by the
 agent audit and cannot run.
@@ -167,7 +171,7 @@ a contradiction the agent cannot resolve is asked (when the step allows question
 
 **The agent home** (ADR 0060): `<home>` = `/workspace/.agents/<agent key>/` in the run directory, outside every
 repository (`RunnerJobSpec.agentHome`). It holds everything of the agent: the environment document, the skills
-(rewritten on every job), the MCP configuration (Claude Code `mcp.json`, OpenCode `mcp` in `opencode.json`), the
+(rewritten on every job), the MCP configuration of its connectors, without secrets (Claude Code `mcp.json`, OpenCode `mcp` in `opencode.json`), the
 tool rules (Claude Code `settings.json`, OpenCode `permission`) and the sessions (Claude Code's own session files;
 OpenCode's data directory `data/<session role>`). Agents in one run directory never see each other's skills or
 memory, and nothing of an agent lands in a commit. The repository's own `AGENTS.md` / `CLAUDE.md` stay untouched and
@@ -177,12 +181,24 @@ covered by the spec digest. A spec without `agentHome` (older Back Office) uses 
 (`/workspace/.backoffice-agent/`, `$CLAUDE_CONFIG_DIR`, skills in the repository's git-excluded `.claude/skills` and
 `.opencode/skills`).
 
-**MCP servers** (`mcpServers`, `{name, url}`, name `^[a-z][a-z0-9-]{0,39}$`, `http(s)` only, no credentials): the
-runner configures them for coding agents (OpenCode `mcp.<name> = {type: remote, url}`; Claude Code
-`<home>/mcp.json` passed with `--mcp-config`, plus `mcp__<name>` in `permissions.allow` under a
-tool policy). Reachability is the sandbox egress policy's call (runner controller, ADR 0024): a host it does not
-allow is refused by the proxy. Credentials for MCP servers need sealed delivery like repository tokens (ADR 0051) and
-get their own record.
+<a id="connectors-adr-0064"></a>**Connectors (ADR 0064).** The tools of a coding agent are its `connectors`: keys of
+connectors (`^[a-z][a-z0-9-]{0,39}$`, at most 40 characters). The `Connector` itself lives in the Projects context
+(`projects-core`, table `connector`), because it holds secrets and a `GITLAB_READ` connector names a project
+repository; the task library stores only keys and does not check them (a global agent may name keys that projects
+provide). Two kinds: `MCP_HTTP` (a remote MCP server over streamable HTTP, `url`, `auth` `NONE` / `BEARER` / `HEADER`
+with `headerName`, write-only sealed `secret`) and `GITLAB_READ` (glab with the verified read-only `CI_READ` token
+of a project `repository`, default the primary; project scope only). Scope platform (`library.manage`) or project
+(`project.connections.manage`); a project connector shadows the platform one of the same key. **Why MCP**: it is the
+standard agent-tool protocol (Claude Code, OpenCode, Copilot, Cursor, Codex; Claude's connectors are MCP servers),
+so Back Office manages servers and credentials instead of inventing a plugin API. At a step the keys are resolved in
+the run's project, then the platform (`ConnectorResolution`, 03-pipelines-and-agents.md "Connectors at a step");
+missing keys are skipped with a log line and reported by the agent audit as `UNKNOWN_CONNECTOR` (warning). Model
+answer agents have no tools: their `connectors` are ignored (the agent editor shows the field for coding agents
+only). The runner configures them for the harness (OpenCode `mcp.<key> = {type: remote, url, headers}` with
+`{env:BO_CONNECTOR_<KEY>}`; Claude Code `<home>/mcp.json` with `${BO_CONNECTOR_<KEY>}` passed with `--mcp-config`,
+plus `mcp__<key>` in `permissions.allow` under a tool policy); the secret is only in the agent process's
+environment. Reachability is the sandbox egress policy's call (ADR 0024): a host it does not allow is refused by the
+proxy; the connector shows the `host` to allow.
 
 | Question | Answer |
 |---|---|
@@ -196,7 +212,7 @@ allowed since ADR 0057: it writes `structured-answer.json` (see
 [03-pipelines-and-agents.md](03-pipelines-and-agents.md#how-task-and-action-nodes-run)). The config key `agent` (`CLAUDE_CODE`/`OPENCODE`) no longer exists; a stored step's
 `config.agent` is read as `overrides.agentKey` (`claude-code`, `opencode`); on a template it is dropped (ADR 0061). `GET /workflows/task-config-schemas`
 returns the JSON Schema of the config keys of a model answer step and of a coding agent step (since ADR 0063:
-`codingAgent`, `verifyCommand`, `agentTools`, `allowQuestions`, `maxQuestionRounds`; the git keys, `repositories`,
+`codingAgent`, `verifyCommand`, `allowQuestions`, `maxQuestionRounds`; `agentTools` left with ADR 0064, the git keys, `repositories`,
 `setupCommand`, `phase` and `collectArtifacts` are gone); it replaced `/workflows/task-executors`.
 
 **Results and repositories of a template (ADR 0063).** `TaskTemplate.outputFiles` (column `output_files`, inherited
@@ -312,6 +328,18 @@ that name exists; `prompt_system`, `prompt_user`, `prompt_mode` and `run_inputs`
 `session` (default `PER_STEP`); the directory lives in the `access` JSON (no key = `RUN`). Templates never had a
 sandbox policy column (it was an API field only). Tables of other modules are touched only when they exist.
 
+### Migration V310 (ADR 0064)
+
+`V310__connectors.sql` (tasks-adapters; the `connector` table comes from the projects module's `V123__connectors.sql`,
+which sorts before it) adds `agent.connectors` (JSONB array of keys) and drops `agent.mcp_servers`: every MCP server
+of an agent becomes a **platform** connector (`MCP_HTTP`, auth `NONE`, key = the server name; a platform connector
+with the same URL is reused, one with that key and another URL makes the next free `<name>-2`, `-3`, ...) that the
+agent lists. The step setting `agentTools` (ADR 0051 step 4) goes: every project whose steps used `gitlab-read`
+(its workflows, library versions published from it, snapshots of its unfinished runs) gets the project connector
+`gitlab-read` (`GITLAB_READ`, the primary repository) unless it has one with that key, and `agentTools` is removed
+from those steps and from template configs. The seed makes the built-in coding agents list `gitlab-read`. Tables of
+other modules are touched only when they exist.
+
 ## Seeded content
 
 Agents (five, `GLOBAL`, `builtIn`): see the table under [Agents](#agents-adr-0056-0057). Built-in agents nobody
@@ -424,11 +452,19 @@ extends, a skill or a rule an agent lists cannot be deleted, and their key and s
 has such a guard, ADR 0061). `POST /agents/{agentId}/coherence-check` needs `library.view` (with `projectId` also
 `project.view`) and is audited as `AGENT_COHERENCE_CHECK`.
 
+Connectors (ADR 0064) are not library entries of the tasks module: list needs `library.view` (platform) or
+`project.view` (with `projectId`); create, update, delete and test need `library.manage` (platform) or
+`project.connections.manage` (project); audited `CONNECTOR_CREATE/UPDATE/DELETE/TEST` (the secret never appears in
+details), `CONNECTOR_SECRET_REWRAP` after a key rotation.
+
 ## API
 
 `/api/v1/task-templates` (+ `/resolve/{key}`, GET for the template, POST with a step's overrides),
 `/api/v1/skills`, `/api/v1/rules`, `/api/v1/agents` (ADR 0056) — CRUD per `openapi.yaml`; `key` is optional on
-create and update. `GET /api/v1/workflows/task-config-schemas` gives the config schema of model answer and coding
+create and update. `/api/v1/connectors` (ADR 0064; `?projectId=` for a project's): CRUD and
+`POST /connectors/{id}/test`; `Connector` never carries the secret (`hasSecret`, `host`, `lastTest`); on update an
+omitted or null `secret` keeps the stored one, an empty string removes it; key and scope cannot change.
+`AgentInput.connectors` replaced `mcpServers`. `GET /api/v1/workflows/task-config-schemas` gives the config schema of model answer and coding
 agent steps (it replaced `/workflows/task-executors`). Built-in
 entries can be edited and shadowed per project; built-in templates cannot be deleted.
 
@@ -444,8 +480,12 @@ the tag **Needs a coding agent** (read-only, from the merged config), **Required
 **Parameter values**, **Create preset**, an "effective prompt" preview (resolved, with the skills and rules of the
 default agent for the kind of work, an **Instructions** and a **Parameters** tab) and the problems of the check. Since ADR 0061 it has no
 **Agent**, no **Model profile** and no "Environment of the agent" box. Field descriptions sit behind a "?" next to
-the label; warnings and consequences stay visible. The agent editor has **Instructions**, **Rules**, **Skills** and
-**MCP servers**, **Access**, **Directory** and **Session** (ADR 0062). Since ADR 0062 the template editor has no
+the label; warnings and consequences stay visible. The agent editor has **Instructions**, **Rules**, **Skills**,
+**Connectors** (coding agents; a multi-select of the platform connectors and the project's, a global agent may type
+other keys; ADR 0064), **Access**, **Directory** and **Session** (ADR 0062). **Library → Connectors**
+(`/library/connectors`) and the project tab **Connectors** list connectors (kind, endpoint, last test) with a side
+panel editor: kind, URL, **Host to allow**, authentication, write-only secret, repository, **Test** and the last
+result. Since ADR 0062 the template editor has no
 **System prompt** / **User prompt**, no **Run inputs** tab and no **Sandbox** section (the sandbox is set on the
 project). The old `/library/interfaces` link redirects to the templates. The workflow designer palette lists
 concrete templates grouped by category with the **needs parameters** and **coding agent** marks (hover: the kind of

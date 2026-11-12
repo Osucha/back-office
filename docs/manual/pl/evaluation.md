@@ -202,8 +202,9 @@ je trzyma, zestawem, **Kandydatami** (**Candidates**), postępem prób i kosztem
 **Który kandydat robi które zadanie.** Zadania z promptem trafiają do agentów odpowiedzi modelu (agentów bez
 harnessu, takich jak **Odpowiedź modelu**, **Analyst** czy **Reviewer**; ich środowiskiem jest prompt systemowy),
 zadania programistyczne do agentów programistycznych (**Claude Code**, **OpenCode** albo Twoich; działają ze swoim
-środowiskiem w zadaniu runnera: instrukcjami, regułami, umiejętnościami i serwerami MCP, jak w kroku workflowu, zob.
-[Środowisko agenta](task-library.md#environment)). Każda inna para, zadanie programistyczne dla agenta odpowiedzi
+środowiskiem w zadaniu runnera: instrukcjami, regułami, umiejętnościami i konektorami, jak w kroku workflowu, zob.
+[Środowisko agenta](task-library.md#environment); benchmark nie ma projektu, więc działają tylko konektory MCP
+platformy). Każda inna para, zadanie programistyczne dla agenta odpowiedzi
 modelu albo zadanie z promptem dla agenta programistycznego, nie tworzy próby i jest liczona jako **Nie dotyczy**
 (**Not applicable**). Żeby porównać agentów na obu rodzajach zadań, dodaj po jednym kandydacie każdego rodzaju.
 

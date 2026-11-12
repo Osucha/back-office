@@ -230,12 +230,17 @@ encrypted to that runner's own key, once per job, right before the sandbox start
 the way sees only ciphertext. A repository without a fitting token falls back to the runner pool's tokens below
 (deprecated; the job log says which one was used). 
 <a id="git-agent-tools"></a>
-**Agent tools.** A coding step can give its agent read-only tools in its configuration field **agentTools**.
-`gitlab-read` gives the agent `glab`, the GitLab CLI, with the repository's token that is declared read-only
-(CI_READ) and verified to have no write powers: the agent can read pipelines, job logs, merge requests and issues,
-for example to analyse a failing pipeline, and cannot change anything. Without such a token for the step's primary
-repository the step fails at once with a message saying which token to add. The token reaches only that step's
-agent; it is masked in every log and artefact, and the job log names the tool.
+**Read-only GitLab for agents (connector).** A coding agent can read GitLab through the project
+[connector](task-library.md#connectors) of the kind **GitLab (read-only)** (ADR 0064): add it on the project tab
+**Connectors** (usually with the key `gitlab-read`, which the built-in **OpenCode** and **Claude Code** agents list)
+and choose its **Repository** (empty: the primary one). The agent then gets `glab`, the GitLab CLI, with the
+repository's token that is declared read-only (CI_READ) and verified to have no write powers: it can read pipelines,
+job logs, merge requests and issues, for example to analyse a failing pipeline, and cannot change anything.
+**Test** on the connector verifies that token again. Without such a token the step fails at once with a message
+saying which token to add (role Reporter, scopes `read_api` and `read_repository`). The token reaches only that
+step's agent; it is masked in every log and artefact, and the job log names the connector. This replaces the former
+step setting **Agent tools** (`agentTools: gitlab-read`): the upgrade gave every project whose steps used it the
+connector `gitlab-read`.
 
 - **Never a push token for reading.** A step that only reads gets only a token declared and verified read-only;
   with nothing but a push token for that repository it falls back to the pool.
@@ -251,8 +256,8 @@ agent; it is masked in every log and artefact, and the job log names the tool.
   | MR_COMMENT | post review comments | `api`, role Reporter |
   | PIPELINE_RUN | retry or start pipelines | `api`, role Developer |
 
-  Read capabilities (GIT_READ, CI_READ) may later be handed to an agent as a tool, but only when the token is
-  verified read-only. Write capabilities are used only by Back Office itself, never by an agent.
+  CI_READ reaches an agent only through a **GitLab (read-only)** connector, and only when the token is verified
+  read-only. Write capabilities are used only by Back Office itself, never by an agent.
 - **A typical setup:** a project access token with role Reporter and scopes `read_repository` and `read_api`
   (GIT_READ, CI_READ), and one with role Developer and scope `write_repository` (PUSH_BRANCH). Never use role
   Maintainer: it can merge.

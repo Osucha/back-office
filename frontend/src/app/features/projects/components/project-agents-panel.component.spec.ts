@@ -18,6 +18,7 @@ const agents: Agent[] = [
     builtIn: true,
     rules: ['ask'],
     skills: ['kotlin', 'spec'],
+    connectors: ['gitlab-read'],
   },
   {
     session: 'PER_STEP',
@@ -64,7 +65,10 @@ describe('ProjectAgentsPanelComponent (ADR 0060)', () => {
     expect(list.request.params.get('projectId')).toBe('p-1');
     list.flush(agents);
     http
-      .match((r) => r.url === '/api/v1/rules' || r.url === '/api/v1/skills')
+      .match(
+        (r) =>
+          r.url === '/api/v1/rules' || r.url === '/api/v1/skills' || r.url === '/api/v1/connectors',
+      )
       .forEach((r) => r.flush([]));
     fixture.detectChanges();
     return { fixture, panel: fixture.componentInstance };
@@ -81,7 +85,9 @@ describe('ProjectAgentsPanelComponent (ADR 0060)', () => {
       fixture.nativeElement.querySelectorAll('td[data-access]') as NodeListOf<HTMLElement>,
     ).map((e) => e.textContent?.trim());
     expect(access).toEqual(['Read only', 'Full', '—']);
-    expect(panel.environmentLabel(agents[0])).toBe('1 rule · 2 skills');
+    // ADR 0064: coding agents show their connectors too
+    expect(panel.environmentLabel(agents[0])).toBe('1 rule · 2 skills · 1 connector');
+    expect(panel.environmentLabel(agents[1])).toBe('0 rules · 0 skills');
   });
 
   it('imports a global agent as a project copy with the same key and opens it', () => {

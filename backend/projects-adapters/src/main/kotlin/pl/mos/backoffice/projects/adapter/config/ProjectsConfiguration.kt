@@ -186,9 +186,10 @@ class ProjectsConfiguration {
         taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
         jira: JiraConnectionAccess, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
         availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
+        connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository,
     ) = WorkflowService(
         workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, library = library, librarySources = librarySources,
-        availability.getIfAvailable(), defaults.getIfAvailable(),
+        availability.getIfAvailable(), defaults.getIfAvailable(), connectors,
     )
 
     /** Sources of the library (ADR 0043). */
@@ -328,9 +329,10 @@ class ProjectsConfiguration {
         runner: AgentRunner, modelResolver: ModelResolver, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, settings: RunnerSettings,
         librarySources: LibrarySourceRepository,
         scmConnections: ScmConnectionRepository, verdictPolicy: ReviewVerdictPolicy, json: JsonCodec,
+        connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository,
     ) = RunnerTaskSupport(
         runner, modelResolver, renderer, templateModel, settings.defaultTimeout, librarySources,
-        scmConnections, pl.mos.backoffice.projects.application.service.tasks.StructuredAnswers(json, verdictPolicy), json,
+        scmConnections, pl.mos.backoffice.projects.application.service.tasks.StructuredAnswers(json, verdictPolicy), json, connectors,
     )
 
     /** ADR 0063: the only step with push rights: commits the run directory, pushes a branch, opens the merge request. */
@@ -413,12 +415,42 @@ class ProjectsConfiguration {
         engine: WorkflowEngine, clock: Clock,
     ) = PipelineWatchService(runs, projects, connections, pipelines, engine, clock)
 
-    /** ADR 0051: opens a project repository token only for its sealed release to the runner holding the job (agent-runner). */
+    /**
+     * ADR 0051: opens a project repository token only for its sealed release to the runner holding the job (agent-runner);
+     * ADR 0064: likewise the secret of an MCP connector.
+     */
     @Bean
-    fun repositoryTokenSource(connections: ScmConnectionRepository, cipher: AesGcmSecretCipher) = RepositoryTokenSource { ref ->
-        val connection = runCatching { ScmConnectionId.of(ref) }.getOrNull()?.let(connections::findById) ?: return@RepositoryTokenSource null
-        runCatching { cipher.open(connection.secret, ScmConnection.secretAssociatedData(connection.id)) }.getOrNull()
+    fun repositoryTokenSource(
+        connections: ScmConnectionRepository, connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository, cipher: AesGcmSecretCipher,
+    ): RepositoryTokenSource = object : RepositoryTokenSource {
+        override fun open(ref: String): String? {
+            val connection = runCatching { ScmConnectionId.of(ref) }.getOrNull()?.let(connections::findById) ?: return null
+            return runCatching { cipher.open(connection.secret, ScmConnection.secretAssociatedData(connection.id)) }.getOrNull()
+        }
+
+        override fun openConnector(ref: String, connector: String): String? {
+            val found = runCatching { pl.mos.backoffice.projects.domain.model.ConnectorId.of(ref) }.getOrNull()?.let(connectors::findById)
+                ?.takeIf { it.key == connector } ?: return null
+            val sealed = found.secret ?: return null
+            return runCatching { cipher.open(sealed, pl.mos.backoffice.projects.domain.model.Connector.secretAssociatedData(found.id)) }.getOrNull()
+        }
     }
+
+    // ---- connectors (ADR 0064)
+
+    @Bean fun mcpHttpProbe(cipher: AesGcmSecretCipher, json: JsonMapper) = pl.mos.backoffice.projects.adapter.out.mcp.McpHttpProbe(cipher, json)
+
+    @Bean
+    fun connectorService(
+        connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository, projects: ProjectRepository, cipher: AesGcmSecretCipher,
+        mcp: pl.mos.backoffice.projects.application.port.out.McpProbePort, scmConnections: ScmConnectionRepository, scmProbe: ScmProbePort,
+        gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+    ) = pl.mos.backoffice.projects.application.service.ConnectorService(connectors, projects, cipher, mcp, scmConnections, scmProbe, gate, audit, clock)
+
+    /** ADR 0064: connectors for other contexts' agent jobs (benchmarks), shared-kernel port. */
+    @Bean
+    fun connectorCatalog(connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository): pl.mos.backoffice.shared.runner.ConnectorCatalog =
+        pl.mos.backoffice.projects.application.service.ConnectorCatalogService(connectors)
 
     // ---- engine
 

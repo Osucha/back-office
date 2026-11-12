@@ -3,7 +3,7 @@
 The task library holds what agents do and how they work, separately from the workflows that use it.
 **Library** has three groups (ADR 0055, 0056):
 
-- **Tasks**: **Templates**, **Skills**, **Rules** and **Agents**, this chapter;
+- **Tasks**: **Templates**, **Skills**, **Rules**, **Agents** and **Connectors**, this chapter;
 - **Workflows**: workflows shared between projects ([Workflow library](workflow-library.md));
 - **Sources**: material steps can attach ([Sources](#sources)).
 
@@ -12,7 +12,8 @@ The task library holds what agents do and how they work, separately from the wor
 | Piece | Think of it as | You use it to |
 |---|---|---|
 | Task template | the assignment: **what** to do | describe the work and nothing else: category, one **Instructions** text with [parameters](#parameters), config, outputs and the skills the work needs; it may be based on one parent |
-| Agent | the worker: **who** works and **how** | name a way of working: the harness (**Model answer**, **OpenCode** or **Claude Code**), optionally a model, **Instructions**, **Rules**, **Skills** and **MCP servers** ([Agents](#agents)) |
+| Agent | the worker: **who** works and **how** | name a way of working: the harness (**Model answer**, **OpenCode** or **Claude Code**), optionally a model, **Instructions**, **Rules**, **Skills** and **Connectors** ([Agents](#agents)) |
+| Connector | a tool on the workbench | give coding agents a tool they use while they work: an MCP server with its credentials, or read-only GitLab ([Connectors](#connectors)) |
 | Rule | a standing order | state something the agent must always follow; always in the agent's context |
 | Skill | a handbook chapter | give the agent knowledge or a procedure it opens when the task needs it (a `SKILL.md` file) |
 | Workflow step | the job on the board | join the two: a template, the agent that does it (and optionally a model), where each of the template's parameters takes its value from, and notes for this step ([Task nodes](workflows.md#task-nodes)) |
@@ -40,6 +41,7 @@ they resolved.
 |---|---|---|
 | See templates, skills, rules, agents and the preview | `library.view` (every **Member**) | `project.view` on the project |
 | Create, edit or delete templates, skills, rules and agents | `library.manage` (role **Library curator**) | `library.project.manage` (project **Owner**, **Maintainer**) |
+| Create, edit, test or delete connectors | `library.manage` (platform connectors) | `project.connections.manage` (project **Owner**; [Connectors](#connectors)) |
 
 Without the right permission the editors open read-only. Every change is recorded in the audit log, and
 the lists show who changed an entry last.
@@ -97,8 +99,8 @@ task to complete in the workflow step. The others are ready blocks.
 5. **Configuration**: a form with the settings of the work, for model answers and coding agents together: the
    checkbox **Works in the repository (needs a coding agent)** (the work reads and changes files of the run
    directory; off: any agent, also a model answer), **Verify command** (the acceptance check of the work, run after
-   the agent, for example `./gradlew test`; a failure fails the step), **Agent tools**, **Agent may ask questions**,
-   **Question rounds**. **Works in the repository** or `prepareOnly` (prepare only) makes the template need a coding
+   the agent, for example `./gradlew test`; a failure fails the step), **Agent may ask questions**,
+   **Question rounds**. Tools of the agent are not set here: they are the agent's [connectors](#connectors). **Works in the repository** or `prepareOnly` (prepare only) makes the template need a coding
    agent. Set only what differs from the template it is based on; empty fields are inherited. **Raw JSON** shows the
    same settings as JSON, also keys the form does not know. A template has no git settings, repositories or setup
    command (ADR 0063): delivering is the workflow's [Deliver changes](workflows.md#deliver-changes) action, the
@@ -311,7 +313,7 @@ template is what to do; a workflow step joins the two."
 
 **Why create agents.** An agent gives a way of working a name: "careful reviewer on a strong model", "cheap
 implementer with our stack rules", "analyst who writes in our formats". Choose it on any step, whatever the
-template. Because the agent is complete (harness, model, instructions, rules, skills, MCP servers), you can run
+template. Because the agent is complete (harness, model, instructions, rules, skills, connectors), you can run
 the same task with two agents and compare cost and quality on equal terms ([Evaluation](evaluation.md)); the
 template stays the same.
 
@@ -322,13 +324,14 @@ template stays the same.
 | **Instructions** | The agent's role and way of working, in markdown, for example "You are a careful reviewer. Explain every finding with a file and a line." It may use `{{project.*}}` values and comes after the platform preamble. |
 | **Rules** | [Rules](#rules) the agent always follows, after the automatic ones. |
 | **Skills** | [Skills](#skills) the agent opens when it needs them. |
-| **MCP servers** | Remote MCP servers (a name and an `http://` or `https://` URL) the agent may use. Coding agents only: a model answer has no tools. See [MCP servers of an agent](#agent-mcp). |
+| **Connectors** | Coding agents only: the [connectors](#connectors) (tools) the agent may use, by key. At a step each key is looked up in the run's project, then on the platform; a key with no connector there is skipped. A global agent may also list keys that projects provide: type the key. A model answer has no tools. |
 | **Access** | Coding agents only: what the agent may change in the repositories of its steps: **Full** (default), **Read only** or **Only these paths**. See [Access of an agent](#agent-access). |
 | **Directory** | Coding agents only: **Run directory (shared)** (default) or **Separate directory**. See [Access of an agent](#agent-access). |
 | **Session** | Coding agents only: **Per step (repeats continue)** (default), **One per run** or **Always fresh**. See [Agent sessions](workflows.md#continue-session). |
 | **Name**, **Description**, **Scope**, **Tags** | As for rules; the key is derived from the name. |
 
-The list shows each agent's **Kind**, **Model**, **Access**, **Session** and **Environment** (how many rules and skills it has).
+The list shows each agent's **Kind**, **Model**, **Access**, **Session** and **Environment** (how many rules and
+skills it has, and for a coding agent how many connectors).
 A project's own agents and the global ones it can use are also on the project tab **Agents**
 ([Agents of the project](projects.md#project-agents)).
 
@@ -344,6 +347,9 @@ Built-in agents (none has a model of its own; all list the rules `agent-ground-r
 | **Reviewer** (`reviewer`) | Model answer | `security-review-checklist`, `definition-of-ready-done` | `code-review`, `review-against-spec` |
 | **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `write-spec`, `write-plan`, `write-task-list`, `implement-opencode`, `implement-task-list`, `prepare-workspace`; a step without its own agent whose template needs a coding agent |
 | **Claude Code** (`claude-code`) | Claude Code | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task`, any coding work |
+
+**OpenCode** and **Claude Code** also list the connector `gitlab-read`: in a project that defines it (read-only
+GitLab, [Connectors](#connectors)) they get the tool without any change to the agents; elsewhere the key is skipped.
 
 The built-in templates' **Required skills** match these agents, so the designer pre-selects them. **Analyst** and
 **Reviewer** come with short instructions for their role. Built-in agents cannot be changed; **Customize for
@@ -400,8 +406,8 @@ outside every repository: `/workspace/.agents/<agent key>/`. Everything of the a
 
 | Agent | The home is | It holds |
 |---|---|---|
-| Claude Code | its configuration directory (`CLAUDE_CONFIG_DIR`) | `CLAUDE.md` (the environment, as Claude Code's user memory), `skills/<key>/SKILL.md`, `mcp.json` (its MCP servers), `settings.json` (tool rules, only with a tool policy or a restricted access) and Claude Code's own session files |
-| OpenCode | its configuration directory (`OPENCODE_CONFIG_DIR`) | `opencode.json` (lists `AGENTS.md` under `instructions`, plus its MCP servers and edit permissions), `AGENTS.md` (the environment), `skills/<key>/SKILL.md`, and its sessions under `data/<session>` |
+| Claude Code | its configuration directory (`CLAUDE_CONFIG_DIR`) | `CLAUDE.md` (the environment, as Claude Code's user memory), `skills/<key>/SKILL.md`, `mcp.json` (its MCP connectors, without secrets), `settings.json` (tool rules, only with a tool policy or a restricted access) and Claude Code's own session files |
+| OpenCode | its configuration directory (`OPENCODE_CONFIG_DIR`) | `opencode.json` (lists `AGENTS.md` under `instructions`, plus its MCP connectors, without secrets, and edit permissions), `AGENTS.md` (the environment), `skills/<key>/SKILL.md`, and its sessions under `data/<session>` |
 
 Nothing of an agent is written into a repository any more, so nothing ends up in a commit, and two agents working
 in one run directory never see each other's skills or memory. The skills are written again on every job, so an
@@ -425,15 +431,6 @@ contradict each other (ADR 0061):
 When the agent cannot resolve a contradiction, it asks ([Agents asking questions](workflows.md#agent-questions))
 instead of guessing. To find contradictions before a run, use **Check coherence** in
 [Agents in this workflow](workflows.md#coherence-check).
-
-<a id="agent-mcp"></a>
-### MCP servers of an agent
-
-A coding agent may list remote MCP servers: a name (lower case letters, digits and `-`, at most 40) and an
-`http://` or `https://` URL. The runner configures them for the harness (Claude Code `--mcp-config`, OpenCode
-`mcp` entries of type `remote`). Credentials are not supported yet: list only servers that need none. Whether a
-server is reachable is the sandbox's call: its egress policy ([Sandbox policy](projects.md#sandbox-policy)) must
-allow the host, otherwise the proxy refuses the connection and the agent sees the server as unavailable.
 
 <a id="agent-access"></a>
 ### Access of an agent
@@ -482,7 +479,7 @@ the step. Until ADR 0062 the directory was a setting of the step; it is the agen
 3. Pick the **Kind** (**Model answer**, **OpenCode** or **Claude Code**) and, if the agent should always use one
    model, the **Model**.
 4. Write the **Instructions**: the role and the way of working, short and concrete.
-5. Choose **Rules** and **Skills**; for a coding agent optionally add **MCP servers** (**Add MCP server**) and set
+5. Choose **Rules** and **Skills**; for a coding agent optionally choose **Connectors** and set
    **Access** (for **Only these paths**, list the paths that the agent may change, for example `docs/**`),
    **Directory** and **Session**.
 6. Set **Scope** (**Global** or **Project**) and **Tags**.
@@ -493,6 +490,102 @@ To compare harnesses, models or ways of working on the same task, make an agent 
 the variants as candidates of a [benchmark](evaluation.md#benchmarks) and on real runs in
 [Agents: cost and effectiveness](costs-insights.md#agent-insights): every task step records the agent and model it
 ran with.
+
+<a id="connectors"></a>
+## Connectors
+
+A **connector** is a tool coding agents use while they work (ADR 0064): read CI pipelines and job logs, read an issue
+tracker, search documentation. Technically it is an **MCP server** with its credentials, or the read-only GitLab
+tool. Connectors live in two places:
+
+- **Library** → **Tasks** → **Connectors** (`/library/connectors`): the **platform connectors**, available in every
+  project;
+- the project tab **Connectors**: the project's own connectors and, marked **platform**, the platform ones the
+  project can use.
+
+**Why MCP.** MCP (Model Context Protocol) is the common standard for agent tools: Claude's connectors are MCP
+servers, and Claude Code, OpenCode, Copilot, Cursor and Codex all speak it; most systems already have a published MCP
+server. Back Office therefore has no plugin interface of its own: it keeps the servers and their secrets and hands
+them to the agents safely. (Back Office is itself an MCP server for your IDE, a different thing:
+[IDE and MCP](integrations-ide.md).)
+
+An agent uses a connector only when it lists the connector's key in its **Connectors** field ([Agents](#agents)). A
+step never adds tools.
+
+### Kinds
+
+| Kind | Settings | The agent gets |
+|---|---|---|
+| **MCP server (HTTP)** | **URL**: the MCP endpoint (streamable HTTP), `http://` or `https://`. **Authentication**: **None**, **Bearer token** (sends `Authorization: Bearer <secret>`) or **Custom header** (sends the secret in the header named in **Header name**, for example `X-Api-Key`). **Secret** for the latter two. | the server's tools in its harness (Claude Code, OpenCode) |
+| **GitLab (read-only)** | **Repository**: a repository of the project; empty means the primary repository. Project connectors only. | `glab`, the GitLab CLI, with the project's verified read-only token with `CI_READ` of that repository: pipelines, job logs, merge requests ([Git access for agents](integrations-git.md#git-agent-tools)). A step whose agent lists it fails before the job when the repository has no such token. |
+
+Every connector also has a **Name**, a **Key** (derived from the name when left empty and fixed afterwards; agents
+list connectors by key) and a **Description** (what the tool is for; shown to people who choose connectors for an
+agent).
+
+**The secret is write-only.** It is stored encrypted like the other connection secrets and never shown again. An
+existing secret shows **stored - leave empty to keep**: leave the field empty to keep it, type a new one to replace
+it, or tick **Remove secret**. Storing secrets needs the server key `BACKOFFICE_SECRETS_KEY` (set by the
+administrator).
+
+### Platform and project connectors
+
+| | Platform connectors | Project connectors |
+|---|---|---|
+| Where | **Library** → **Connectors** | project tab **Connectors** |
+| Used by | the agents of every project | the agents in the project's runs |
+| Changed by | `library.manage` (administrators and library curators) | `project.connections.manage` (project **Owner**) |
+| Kinds | **MCP server (HTTP)** | both; **GitLab (read-only)** only here |
+
+A project connector with the key of a platform connector **replaces** it in that project: the project tab marks
+the platform one **replaced by the project's**. On the project tab a platform connector opens read-only ("Platform
+connector: administrators change it in the library."). Everyone with `library.view` (platform) or `project.view`
+(project) sees the lists; secrets are never returned. Every create, change, test and delete is in the audit log
+(`CONNECTOR_CREATE`, `CONNECTOR_UPDATE`, `CONNECTOR_TEST`, `CONNECTOR_DELETE`). Deleting a connector never breaks a
+workflow: agents that list its key skip it from then on.
+
+### Test
+
+**Test** (in the editor, after saving) checks the connector **from Back Office, not from the sandbox**: for an MCP
+server it sends the MCP `initialize` handshake with the stored secret and asks for the tools (`tools/list`); for
+GitLab (read-only) it verifies the repository's read-only token again. The result is stored on the connector: the
+list's **Last test** column shows **ok** or **failed** (hover for the reason) and when, or **not tested**; the editor
+also shows **Tools:**, the tool names the MCP server announced. A passing test does not prove that agents reach the
+server from the sandbox: see the next paragraph.
+
+**Host to allow.** For an MCP server the editor shows **Host to allow:** with the host of
+the URL. Agents reach it only when the sandbox network allowlist allows it: the **Allowed hosts** of the project's
+[Sandbox policy](projects.md#sandbox-policy), which must also be covered by the runner pool and the platform policy
+([Sandbox policies](runner-fleet.md#sandbox-policies), administrators). Otherwise the egress proxy refuses the
+connection, the job shows the host under **Egress denied**, and the agent sees the tool as unavailable.
+
+### At a step
+
+When a coding agent's step starts, each key of the agent's **Connectors** is looked up in the run's project, then on
+the platform:
+
+- found: the runner configures the tool for the harness (Claude Code `--mcp-config`, OpenCode `mcp`);
+- not found: the key is skipped, and the step's log says so ("connector `<key>` is defined neither in this project
+  nor on the platform; skipped"). **Agents in this workflow** shows it before the run as **Unknown connector**, a
+  warning ([Agents in this workflow](workflows.md#agent-audit));
+- an MCP server whose authentication needs a secret it does not have is skipped too, with a log line.
+
+**Secrets never touch the disk.** The secret travels to the runner sealed for that one job (like the repository
+tokens, [How agent jobs run](agent-execution.md#credentials)). The runner gives it to the agent process only, as an
+environment variable; the configuration files in the agent's home only refer to it (`${VAR}` for Claude Code,
+`{env:VAR}` for OpenCode). The setup and verify commands do not get it, and it is redacted from every log.
+
+### Upgrade from agent MCP servers and agent tools
+
+Before ADR 0064 an agent could list MCP servers without credentials, and a coding step could have the setting
+**Agent tools** (`agentTools: gitlab-read`). The upgrade turned them into connectors:
+
+- every MCP server of an agent became a platform connector (**MCP server (HTTP)**, authentication **None**, the key is
+  the server's name, `-2`, `-3`, ... when another platform connector already had that key with another URL) that the
+  agent lists;
+- every project whose steps used `gitlab-read` got the project connector `gitlab-read` (**GitLab (read-only)**, the
+  primary repository); the setting left the steps, and the built-in **OpenCode** and **Claude Code** list
+  `gitlab-read`. A library agent of your own that should read GitLab must list `gitlab-read` too.
 
 <a id="skills"></a>
 ## Skills

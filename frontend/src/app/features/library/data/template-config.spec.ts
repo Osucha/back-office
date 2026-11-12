@@ -129,7 +129,6 @@ describe('template config (ADR 0054, 0061)', () => {
     };
     const schema = templateConfigSchema(schemas);
     expect(Object.keys(schema?.properties ?? {}).sort()).toEqual([
-      'agentTools',
       'allowQuestions',
       'codingAgent',
       'maxQuestionRounds',

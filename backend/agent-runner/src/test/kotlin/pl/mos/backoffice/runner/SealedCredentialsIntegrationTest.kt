@@ -160,4 +160,39 @@ class SealedCredentialsIntegrationTest {
         REPOSITORY_TOKENS["missing"] = "tkn-late"
         credentials(runnerToken, gone).andExpect(status().isOk)
     }
+
+    @Test
+    fun `ADR 0064 - a connector secret is sealed like a repository token, with its connector key, a vanished one is refused`() {
+        val runnerToken = register()
+        setKey(runnerToken, publicKey).andExpect(status().isNoContent)
+        val connectorId = UUID.randomUUID().toString()
+        val secret = "tkn-mcp-connector-secret"
+        CONNECTOR_SECRETS[connectorId to "docs"] = secret
+        val jobId = runner.start(
+            spec(listOf(JobCredentialRef(ref, "main", "CI_READ"), JobCredentialRef(connectorId, "", JobCredentialRef.CONNECTOR, "docs"))),
+        ).toString()
+        val assignment = lease(runnerToken)
+        val signed = assignment.get("spec").get("credentials")
+        assertThat(signed.get(1).get("connector").asString()).isEqualTo("docs")
+        assertThat(signed.get(0).has("connector")).describedAs("absent for repository tokens").isFalse()
+
+        val answer = json.readTree(credentials(runnerToken, jobId).andExpect(status().isOk).andReturn().response.contentAsString)
+        val sealed = answer.get("credentials").first { it.get("capability").asString() == "CONNECTOR" }
+        assertThat(sealed.get("connector").asString()).isEqualTo("docs")
+        assertThat(sealed.get("repository").asString()).isEmpty()
+        assertThat(answer.toString()).doesNotContain(secret)
+        val aad = "$jobId|$connectorId|${answer.get("expiresAt").asString()}".toByteArray()
+        val opened = hpke.open(
+            Base64.getDecoder().decode(sealed.get("enc").asString()), keys, "back-office credentials v1".toByteArray(), aad,
+            Base64.getDecoder().decode(sealed.get("ciphertext").asString()), null, null, null,
+        )
+        assertThat(String(opened)).isEqualTo(secret)
+        val released = audit.entries.single { it.operation == "RUNNER_CREDENTIALS_RELEASED" && it.entityId == jobId }
+        assertThat(released.details.toString()).contains("docs").doesNotContain(secret)
+
+        // the connector was deleted (or its key changed) after the job was planned
+        val gone = runner.start(spec(listOf(JobCredentialRef(UUID.randomUUID().toString(), "", JobCredentialRef.CONNECTOR, "docs")))).toString()
+        lease(runnerToken)
+        credentials(runnerToken, gone).andExpect(status().isConflict)
+    }
 }

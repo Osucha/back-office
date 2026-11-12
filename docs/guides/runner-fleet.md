@@ -95,6 +95,25 @@ project policy, the ceiling, the effective policy and `sources` (which level set
 
 Every agent job shows its effective policy and sources in *Administration → Runner fleet → Agent jobs*.
 
+### Egress for connector hosts (ADR 0064)
+
+A connector of the kind **MCP server (HTTP)** is called by the agent from inside the sandbox, through the pool's
+egress proxy, so its host needs no exception of its own and gets none: it must be in the job's effective
+`network.allow`. The connector page shows it as **Host to allow** (API field `Connector.host`). To let agents reach
+it:
+
+1. make sure the platform policy (`backoffice.runner.platform-policy.*`) and the pool ceiling cover the host (a
+   level that lists hosts narrows everything below it);
+2. add it to the project's *Sandbox* tab (**Allowed hosts**) of every project whose agents use the connector (a
+   platform connector serves every project, but the egress decision stays per project);
+3. if the server resolves to a private address (an MCP server inside your network), add its CIDR to the controller's
+   `egressProxy.allowedCidrs` / `runner-controller.egress.allow-ranges`, as for a self-hosted GitLab.
+
+The connector's **Test** runs from the Back Office API pods, not through the proxy: a passing test proves the server
+and the secret, not the sandbox route. When an agent cannot use the tool, the job shows the host under **Egress
+denied** (`egressDenied`). A **GitLab (read-only)** connector needs nothing extra: the git host of the job's
+repositories is always allowed.
+
 ## 4. Budgets
 
 | Scope | Where | Permission |

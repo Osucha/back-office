@@ -1550,6 +1550,47 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ResolvedTask' } } } }
         '400': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /connectors:
+    get:
+      tags: [task-library]
+      operationId: listConnectors
+      description: 'ADR 0064: platform connectors (library.view) and, with projectId, that project''s connectors (project.view). Secrets are never returned.'
+      parameters:
+        - { name: projectId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Connector' } } } } }
+    post:
+      tags: [task-library]
+      operationId: createConnector
+      description: 'ADR 0064: platform scope needs library.manage (administrators); project scope needs project.connections.manage. Audited CONNECTOR_CREATE.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ConnectorInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Connector' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /connectors/{connectorId}:
+    parameters: [ { name: connectorId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    put:
+      tags: [task-library]
+      operationId: updateConnector
+      description: 'Same permissions as create. An omitted or null secret keeps the stored one; an empty string removes it. The key and scope cannot change. Audited CONNECTOR_UPDATE.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ConnectorInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Connector' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [task-library]
+      operationId: deleteConnector
+      description: 'Same permissions as create. Agents that list the key skip it from then on. Audited CONNECTOR_DELETE.'
+      responses:
+        '204': { description: Deleted }
+  /connectors/{connectorId}/test:
+    parameters: [ { name: connectorId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [task-library]
+      operationId: testConnector
+      description: 'ADR 0064: from Back Office (not the sandbox): reachability and, for MCP_HTTP, the MCP initialize handshake with the stored secret; GITLAB_READ checks the repository token. The result is stored on the connector.'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ConnectorTest' } } } }
   /agents:
     get:
       tags: [task-library]
@@ -3557,13 +3598,44 @@ components:
         modelProfileId: { type: string, format: uuid, nullable: true }
         rules: { type: array, items: { type: string }, description: 'ADR 0057: rule keys of the agent' }
         skills: { type: array, items: { type: string }, description: 'ADR 0057: skill keys of the agent' }
-    AgentMcpServer:
+    ConnectorInput:
       type: object
-      description: 'ADR 0057: a remote MCP server the agent may use (HTTP(S), no credentials); the sandbox egress policy decides whether it is reachable'
-      required: [name, url]
+      description: >-
+        ADR 0064: a tool agents may use. MCP_HTTP: a remote MCP server (streamable HTTP) with optional credentials;
+        GITLAB_READ: glab with the project's read-only CI_READ token of a repository (project scope only). A project
+        connector shadows the platform connector of the same key.
+      required: [name, kind, scope]
       properties:
-        name: { type: string, pattern: '^[a-z][a-z0-9-]{0,39}$' }
-        url: { type: string, maxLength: 500, description: 'http:// or https:// URL of the MCP endpoint (streamable HTTP)' }
+        key: { type: string, nullable: true, pattern: '^[a-z][a-z0-9-]{0,39}$', description: derived from the name when omitted on create; fixed afterwards }
+        name: { type: string, maxLength: 200 }
+        description: { type: string }
+        kind: { type: string, enum: [MCP_HTTP, GITLAB_READ] }
+        scope: { $ref: '#/components/schemas/Scope' }
+        url: { type: string, nullable: true, maxLength: 500, description: 'MCP_HTTP: http:// or https:// URL of the MCP endpoint' }
+        auth: { type: string, enum: [NONE, BEARER, HEADER], default: NONE, description: 'MCP_HTTP: BEARER sends Authorization: Bearer <secret>; HEADER sends <headerName>: <secret>' }
+        headerName: { type: string, nullable: true, pattern: '^[A-Za-z0-9-]{1,64}$', description: HEADER only }
+        secret: { type: string, nullable: true, writeOnly: true, description: 'write-only; null/omitted on update keeps the stored one, empty removes it' }
+        repository: { type: string, nullable: true, description: 'GITLAB_READ: project repository key; empty = the primary repository' }
+    ConnectorTest:
+      type: object
+      required: [ok, testedAt]
+      properties:
+        ok: { type: boolean }
+        message: { type: string, nullable: true }
+        tools: { type: array, items: { type: string }, description: 'MCP_HTTP: tool names the server announced, when it answered' }
+        testedAt: { type: string, format: date-time }
+    Connector:
+      allOf:
+        - $ref: '#/components/schemas/ConnectorInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            hasSecret: { type: boolean, readOnly: true }
+            host: { type: string, nullable: true, readOnly: true, description: 'MCP_HTTP: the host the sandbox egress policy must allow' }
+            lastTest: { allOf: [ { $ref: '#/components/schemas/ConnectorTest' } ], nullable: true, readOnly: true }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], readOnly: true }
     AgentAccess:
       type: object
       description: >-
@@ -3579,7 +3651,7 @@ components:
       type: object
       required: [kind, severity, message]
       properties:
-        kind: { type: string, enum: [MISSING_SKILL, NEEDS_CODING_AGENT, READ_ONLY_PUSH, UNKNOWN_RULE, UNKNOWN_SKILL, DUPLICATE_SKILL_NAME, UNKNOWN_AGENT] }
+        kind: { type: string, enum: [MISSING_SKILL, NEEDS_CODING_AGENT, READ_ONLY_PUSH, UNKNOWN_RULE, UNKNOWN_SKILL, DUPLICATE_SKILL_NAME, UNKNOWN_AGENT, UNKNOWN_CONNECTOR] }
         severity: { type: string, enum: [ERROR, WARNING] }
         message: { type: string }
         nodeIds: { type: array, items: { type: string } }
@@ -3640,7 +3712,7 @@ components:
         instructions: { type: string, description: 'ADR 0057: the agent''s role and way of working (markdown; may use {{project.*}}); added after the platform preamble' }
         rules: { type: array, items: { type: string }, description: 'ADR 0057: keys of rules always in the agent''s context (after the automatic ones)' }
         skills: { type: array, items: { type: string }, description: 'ADR 0057: keys of skills the agent loads when it needs them' }
-        mcpServers: { type: array, items: { $ref: '#/components/schemas/AgentMcpServer' } }
+        connectors: { type: array, items: { type: string }, description: 'ADR 0064: connector keys the agent may use (coding agents); looked up in the run''s project, then the platform; missing ones are skipped' }
         access: { $ref: '#/components/schemas/AgentAccess' }
         session:
           type: string
@@ -5450,7 +5522,8 @@ components:
             properties:
               ref: { type: string }
               repository: { type: string, description: 'repositories[].key of the spec ("" = the legacy single repository)' }
-              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH, CI_READ], description: 'CI_READ = the read-only token of an agent tool (agentTools)' }
+              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH, CI_READ, CONNECTOR], description: 'CI_READ = the read-only token of a GITLAB_READ connector; CONNECTOR = the secret of an MCP connector (ADR 0064)' }
+              connector: { type: string, nullable: true }
               enc: { type: string, description: HPKE encapsulated key, base64 }
               ciphertext: { type: string, description: the sealed token, base64 }
     WorkspaceSync:
@@ -5516,13 +5589,24 @@ components:
             rules; markdown). The runner writes it outside every repository in the harness's own form: OpenCode
             /workspace/.backoffice-agent/AGENTS.md listed under `instructions` of opencode.json, Claude Code the user
             memory $CLAUDE_CONFIG_DIR/CLAUDE.md. PROMPT jobs get it in `system` instead. Covered by the spec digest when present.
-        mcpServers:
+        connectors:
           type: array
           nullable: true
           description: >-
-            ADR 0057: remote MCP servers of the agent (no credentials); Claude Code --mcp-config, OpenCode `mcp` (type
-            remote). The sandbox egress policy decides reachability. Covered by the spec digest when present.
-          items: { $ref: '#/components/schemas/AgentMcpServer' }
+            ADR 0064: the agent's connectors. MCP_HTTP: the runner configures the harness (Claude Code --mcp-config with
+            ${VAR} header expansion, OpenCode mcp with {env:VAR}); a secret is named in credentials (capability
+            CONNECTOR) and reaches only the agent process as an environment variable, redacted everywhere. GITLAB_READ:
+            glab with the CI_READ token of the repository (ADR 0051). Covered by the spec digest when present.
+          items:
+            type: object
+            required: [key, kind]
+            properties:
+              key: { type: string, pattern: '^[a-z][a-z0-9-]{0,39}$' }
+              kind: { type: string, enum: [MCP_HTTP, GITLAB_READ] }
+              url: { type: string, nullable: true }
+              auth: { type: string, enum: [NONE, BEARER, HEADER], nullable: true }
+              headerName: { type: string, nullable: true }
+              repository: { type: string, nullable: true, description: 'GITLAB_READ: repositories[].key' }
         agentHome:
           type: string
           nullable: true
@@ -5583,22 +5667,10 @@ components:
             type: object
             required: [ref, repository, capability]
             properties:
-              ref: { type: string, description: the repository token (its connection id) }
-              repository: { type: string }
-              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH, CI_READ] }
-        agentTools:
-          type: array
-          nullable: true
-          description: >-
-            ADR 0051 step 4: read-only tools of the agent. gitlab-read = glab (GITLAB_TOKEN, GITLAB_HOST) with the CI_READ
-            token of the repository, named in credentials and delivered as the bundle file tool-token-<repository>; the
-            runner hands only this token to the agent and redacts it everywhere. Covered by the spec digest when present.
-          items:
-            type: object
-            required: [name, repository]
-            properties:
-              name: { type: string, enum: [gitlab-read] }
-              repository: { type: string }
+              ref: { type: string, description: 'the repository token (its connection id) or the connector id' }
+              repository: { type: string, description: 'repositories[].key; empty for CONNECTOR' }
+              capability: { type: string, enum: [GIT_READ, PUSH_BRANCH, CI_READ, CONNECTOR] }
+              connector: { type: string, nullable: true, description: 'CONNECTOR: the connector key; delivered as the bundle file connector-token-<key> (ADR 0064)' }
     JobRepository:
       type: object
       description: >-

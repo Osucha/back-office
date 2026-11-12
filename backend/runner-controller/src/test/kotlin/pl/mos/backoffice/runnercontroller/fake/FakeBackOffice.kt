@@ -53,6 +53,8 @@ class FakeBackOffice(bindHost: String = "127.0.0.1") : AutoCloseable {
     @Volatile var credentialAad: String? = null
     /** ADR 0051 step 4: every token is answered once per capability listed here. */
     @Volatile var credentialCapabilities: List<String> = listOf("GIT_READ")
+    /** ADR 0064: refs answered as connector secrets (capability CONNECTOR) with this connector key. */
+    @Volatile var credentialConnectors: Map<String, String> = emptyMap()
 
     /** Host name under which sandboxes reach this server (e.g. `host.docker.internal`). */
     var publicHost: String = bindHost
@@ -210,13 +212,14 @@ class FakeBackOffice(bindHost: String = "127.0.0.1") : AutoCloseable {
                 )
                 val recipient = hpke.deserializePublicKey(java.util.Base64.getDecoder().decode(key))
                 val sealed = projectTokens[jobId].orEmpty().flatMap { (ref, value) ->
-                    credentialCapabilities.map { capability ->
+                    val connector = credentialConnectors[ref]
+                    (if (connector != null) listOf("CONNECTOR") else credentialCapabilities).map { capability ->
                         val aad = credentialAad ?: "$jobId|$ref|$expiresAt"
                         val r = hpke.seal(recipient, "back-office credentials v1".toByteArray(), aad.toByteArray(), value.second.toByteArray(), null, null, null)
                         mapOf(
                             "ref" to ref, "repository" to value.first, "capability" to capability,
                             "enc" to java.util.Base64.getEncoder().encodeToString(r[1]), "ciphertext" to java.util.Base64.getEncoder().encodeToString(r[0]),
-                        )
+                        ) + (if (connector != null) mapOf("connector" to connector) else emptyMap())
                     }
                 }
                 respond(ex, 200, mapOf("expiresAt" to expiresAt, "credentials" to sealed))

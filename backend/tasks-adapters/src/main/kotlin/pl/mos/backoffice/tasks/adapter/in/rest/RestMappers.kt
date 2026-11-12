@@ -7,7 +7,6 @@ import pl.mos.backoffice.shared.tasks.ResolvedParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentAccessMode
-import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.shared.tasks.ParameterBinding
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
@@ -132,7 +131,7 @@ object RestMappers {
     fun agentContent(dto: AgentInputDto) = Agent.Content(
         key = dto.key?.takeIf { it.isNotBlank() }, name = dto.name, description = dto.description, scope = scope(dto.scope),
         harness = dto.harness, modelProfileId = dto.modelProfileId?.let(::ModelProfileId), tags = dto.tags,
-        instructions = dto.instructions, rules = dto.rules, skills = dto.skills, mcpServers = dto.mcpServers.map { AgentMcpServer(it.name, it.url) },
+        instructions = dto.instructions, rules = dto.rules, skills = dto.skills, connectors = dto.connectors,
         access = dto.access?.let { AgentAccess(it.mode, if (it.mode == AgentAccessMode.PATHS) it.paths.map(String::trim) else emptyList(), it.directory) } ?: AgentAccess.FULL,
         session = dto.session,
     )
@@ -140,7 +139,7 @@ object RestMappers {
     fun agent(a: Agent) = AgentDto(
         id = a.id.value, key = a.key, name = a.name, description = a.description, scope = scope(a.scope), harness = a.harness,
         modelProfileId = a.modelProfileId?.value, instructions = a.instructions, rules = a.rules, skills = a.skills,
-        mcpServers = a.mcpServers.map { AgentMcpServerDto(it.name, it.url) },
+        connectors = a.connectors,
         access = AgentAccessDto(a.access.mode, a.access.paths, a.access.directory),
         session = a.session,
         tags = a.tags, builtIn = a.builtIn, createdAt = a.createdAt, updatedAt = a.updatedAt,

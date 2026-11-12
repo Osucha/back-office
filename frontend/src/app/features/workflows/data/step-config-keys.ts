@@ -19,13 +19,14 @@ export const REMOVED_STEP_KEYS = [
   'setupCommand',
   'phase',
   'collectArtifacts',
+  // ADR 0064: agent tools are connectors of the agent
+  'agentTools',
 ];
 
 /** The coding agent keys a template still sets (ADR 0063). */
 export const TEMPLATE_CODING_KEYS = [
   'codingAgent',
   'verifyCommand',
-  'agentTools',
   'allowQuestions',
   'maxQuestionRounds',
 ];
@@ -45,12 +46,6 @@ function knownKeys(): Record<string, JsonSchema> {
       title: $localize`:@@workflows.config.verifyCommand:Verify command`,
       description: $localize`:@@workflows.config.verifyCommand.help:The acceptance check of the work, run after the agent, e.g. ./gradlew test. A failure fails the step.`,
       'x-multiline': false,
-    },
-    agentTools: {
-      type: 'array',
-      items: { type: 'string' },
-      title: $localize`:@@workflows.config.agentTools:Agent tools`,
-      description: $localize`:@@workflows.config.agentTools.help:Read-only tools for the agent, e.g. gitlab-read (pipelines, job logs and merge requests of the primary repository).`,
     },
     allowQuestions: {
       type: 'boolean',

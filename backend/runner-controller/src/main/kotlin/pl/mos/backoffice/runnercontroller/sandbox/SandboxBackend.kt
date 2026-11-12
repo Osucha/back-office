@@ -59,23 +59,37 @@ data class LaunchRequest(
 /**
  * ADR 0051: opened project repository tokens of one job; never printed. [byRepository] are git tokens (clone, push)
  * the runner keeps to itself; [tools] are the read-only tokens of agent tools (step 4, capability CI_READ) by
- * repository, which the runner hands to the agent.
+ * repository, which the runner hands to the agent. ADR 0064: [connectors] are the secrets of MCP connectors (capability
+ * CONNECTOR) by connector key, delivered as `connector-token-<key>` next to the tool tokens.
  */
-class ProjectTokens(val byRepository: Map<String, String>, val tools: Map<String, String> = emptyMap()) {
+class ProjectTokens(
+    val byRepository: Map<String, String>,
+    val tools: Map<String, String> = emptyMap(),
+    val connectors: Map<String, String> = emptyMap(),
+) {
+    init {
+        connectors.keys.firstOrNull { !CONNECTOR_KEY.matches(it) }?.let { throw IllegalArgumentException("invalid connector key $it") }
+    }
+
     /**
      * Keys of the per-job Kubernetes Secret: `scm-legacy` and `scm-repo-<key>` (moved to the git volume by the init
-     * container) and `tool-token[-<key>]` (stay in the job directory with the rest of the bundle).
+     * container), `tool-token[-<key>]` and `connector-token-<key>` (stay in the job directory with the rest of the bundle).
      */
     fun secretEntries(): Map<String, String> =
-        byRepository.mapKeys { (key, _) -> if (key.isEmpty()) SECRET_LEGACY else SECRET_PREFIX + key } + tools.mapKeys { (key, _) -> toolFile(key) }
+        byRepository.mapKeys { (key, _) -> if (key.isEmpty()) SECRET_LEGACY else SECRET_PREFIX + key } +
+            tools.mapKeys { (key, _) -> toolFile(key) } + connectors.mapKeys { (key, _) -> connectorFile(key) }
 
     /** Files under the git directory: `token` (legacy) or `<key>/token`. */
     fun files(gitDir: String): Map<String, String> = byRepository.mapKeys { (key, _) -> if (key.isEmpty()) "$gitDir/token" else "$gitDir/$key/token" }
 
-    /** Agent tool tokens under the job directory: `tool-token` (legacy) or `tool-token-<key>`. */
-    fun toolFiles(jobDir: String): Map<String, String> = tools.mapKeys { (key, _) -> "$jobDir/${toolFile(key)}" }
+    /**
+     * Agent tool tokens under the job directory: `tool-token` (legacy) or `tool-token-<key>`; ADR 0064: and the connector
+     * secrets `connector-token-<key>`.
+     */
+    fun toolFiles(jobDir: String): Map<String, String> =
+        tools.mapKeys { (key, _) -> "$jobDir/${toolFile(key)}" } + connectors.mapKeys { (key, _) -> "$jobDir/${connectorFile(key)}" }
 
-    override fun toString() = "ProjectTokens(${byRepository.keys}, tools=${tools.keys})"
+    override fun toString() = "ProjectTokens(${byRepository.keys}, tools=${tools.keys}, connectors=${connectors.keys})"
 
     companion object {
         val NONE = ProjectTokens(emptyMap())
@@ -83,7 +97,15 @@ class ProjectTokens(val byRepository: Map<String, String>, val tools: Map<String
         const val SECRET_PREFIX = "scm-repo-"
         const val TOOL_FILE = "tool-token"
 
+        /** ADR 0064: prefix of the bundle files with connector secrets. */
+        const val CONNECTOR_FILE = "connector-token"
+
+        /** ADR 0064: a connector key (also a safe file name part). */
+        val CONNECTOR_KEY = Regex("^[a-z][a-z0-9-]{0,39}$")
+
         fun toolFile(key: String) = if (key.isEmpty()) TOOL_FILE else "$TOOL_FILE-$key"
+
+        fun connectorFile(key: String) = "$CONNECTOR_FILE-$key"
     }
 }
 

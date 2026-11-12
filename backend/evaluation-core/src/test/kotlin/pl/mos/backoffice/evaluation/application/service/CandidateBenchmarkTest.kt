@@ -29,7 +29,12 @@ import pl.mos.backoffice.shared.llm.LlmResult
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.runner.AgentHarness
-import pl.mos.backoffice.shared.runner.AgentMcpServer
+import pl.mos.backoffice.shared.runner.ConnectorAuth
+import pl.mos.backoffice.shared.runner.ConnectorCatalog
+import pl.mos.backoffice.shared.runner.ConnectorKind
+import pl.mos.backoffice.shared.runner.JobConnectors
+import pl.mos.backoffice.shared.runner.JobCredentialRef
+import pl.mos.backoffice.shared.runner.RunnerConnector
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.ExecutionTarget
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
@@ -75,7 +80,7 @@ class CandidateBenchmarkTest {
     )
     private val coder = AgentSnapshot(
         AgentSnapshot.CLAUDE_CODE, "Claude Code", AgentHarness.CLAUDE_CODE, instructions = "You write code.",
-        mcpServers = listOf(AgentMcpServer("docs", "https://mcp.example.com")),
+        connectors = listOf("docs"),
     )
     private val agents = mutableMapOf(analyst.key to analyst, coder.key to coder, AgentSnapshot.MODEL_ANSWER to AgentSnapshot.DEFAULT)
     private val catalog = object : TaskCatalog {
@@ -90,7 +95,15 @@ class CandidateBenchmarkTest {
     private fun service(withAgents: Boolean = true) =
         BenchmarkService(benchmarks, suites, profiles, { submitted += it }, runner, clock, gate, RecordingAuditPort(), if (withAgents) catalog else null)
 
-    private val execute = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, agents = catalog)
+    private val asked = mutableListOf<Pair<List<String>, UUID?>>()
+    private val connectorCatalog = ConnectorCatalog { keys, projectId ->
+        asked += keys to projectId
+        JobConnectors(
+            listOf(RunnerConnector("docs", ConnectorKind.MCP_HTTP, "https://mcp.example.com", ConnectorAuth.BEARER)),
+            listOf(JobCredentialRef("c-1", "", JobCredentialRef.CONNECTOR, "docs")),
+        )
+    }
+    private val execute = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, agents = catalog, connectors = connectorCatalog)
 
     @BeforeEach
     fun setUp() {
@@ -218,7 +231,7 @@ class CandidateBenchmarkTest {
     }
 
     @Test
-    fun `a coding candidate's job runs its harness with its environment, skills and MCP servers, a benchmark of models without`() {
+    fun `a coding candidate's job runs its harness with its environment, skills and platform connectors, a benchmark of models without`() {
         val created = service().create(command(CandidateInput(AgentSnapshot.CLAUDE_CODE, sonnet.id)))
         service().start(created.benchmark.id)
         val specs = mutableListOf<RunnerJobSpec>()
@@ -232,7 +245,9 @@ class CandidateBenchmarkTest {
         assertThat(spec.instructions).startsWith(AgentEnvironmentText.PLATFORM_PREAMBLE).contains(AgentEnvironmentText.CODING_AGENT_PREAMBLE)
             .contains("You write code.").contains("Cite evidence.")
         assertThat(spec.skills.map { it.key }).containsExactly("adr")
-        assertThat(spec.mcpServers).containsExactly(AgentMcpServer("docs", "https://mcp.example.com"))
+        assertThat(spec.connectors).containsExactly(RunnerConnector("docs", ConnectorKind.MCP_HTTP, "https://mcp.example.com", ConnectorAuth.BEARER))
+        assertThat(spec.credentials).containsExactly(JobCredentialRef("c-1", "", JobCredentialRef.CONNECTOR, "docs"))
+        assertThat(asked).describedAs("platform connectors only: a benchmark has no project").containsExactly(listOf("docs") to null)
 
         val models = service().create(command(models = listOf(sonnet.id)))
         service().start(models.benchmark.id)
@@ -241,7 +256,8 @@ class CandidateBenchmarkTest {
         assertThat(legacy.agent).isEqualTo(AgentHarness.OPENCODE)
         assertThat(legacy.instructions).isNull()
         assertThat(legacy.skills).isEmpty()
-        assertThat(legacy.mcpServers).isEmpty()
+        assertThat(legacy.connectors).isEmpty()
+        assertThat(legacy.credentials).isEmpty()
     }
 
     @Test

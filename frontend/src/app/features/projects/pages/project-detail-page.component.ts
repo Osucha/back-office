@@ -65,6 +65,7 @@ import { ProjectSandboxPanelComponent } from '../../fleet/public-api';
 import { RunsTableComponent } from '../../runs/public-api';
 import {
   AdoptWorkflowDialogComponent,
+  ConnectorsPanelComponent,
   PublishWorkflowDialogComponent,
   WorkflowMetricsPanelComponent,
   updateAvailable,
@@ -86,6 +87,7 @@ const TABS = [
   'ci',
   'members',
   'connections',
+  'connectors',
   'sandbox',
   'budget',
   'settings',
@@ -93,7 +95,7 @@ const TABS = [
 
 /**
  * Project: header (monogram, repository, provenance, your roles, what is in flight), then
- * Workflows, Sources, Agents, Runs, CI, Members, Connections, Sandbox, Budget and Settings tabs (`?tab=`). `?start=<workflowId>` opens the start
+ * Workflows, Sources, Agents, Runs, CI, Members, Connections, Connectors, Sandbox, Budget and Settings tabs (`?tab=`). `?start=<workflowId>` opens the start
  * dialog (the command palette's "Start run…").
  */
 @Component({
@@ -117,6 +119,7 @@ const TABS = [
     ProjectAgentsPanelComponent,
     ProjectBudgetPanelComponent,
     ProjectConnectionsPanelComponent,
+    ConnectorsPanelComponent,
     ScmConnectionsPanelComponent,
     ProjectSandboxPanelComponent,
     BatonComponent,
@@ -566,6 +569,15 @@ const TABS = [
               }
             </ng-template>
           </nz-tab>
+          <nz-tab nzTitle="Connectors" i18n-nzTitle="@@projects.detail.tab.connectors">
+            <ng-template nz-tab>
+              <app-connectors-panel
+                [projectId]="p.id"
+                [repositories]="repositories()"
+                [canManage]="can('project.connections.manage')"
+              />
+            </ng-template>
+          </nz-tab>
           <nz-tab nzTitle="Sandbox" i18n-nzTitle="@@projects.detail.tab.sandbox">
             <ng-template nz-tab>
               @defer (on immediate) {
@@ -957,7 +969,7 @@ export class ProjectDetailPageComponent {
   readonly router = inject(Router);
 
   readonly projectId = input.required<string>();
-  /** Optional `?tab=` query param (workflows | sources | agents | runs | ci | members | connections | sandbox | budget | settings). */
+  /** Optional `?tab=` query param (workflows | sources | agents | runs | ci | members | connections | connectors | sandbox | budget | settings). */
   readonly tab = input<string | undefined>();
   /** Optional `?start=<workflowId>`: open the start dialog. */
   readonly start = input<string | undefined>();

@@ -67,7 +67,17 @@ data class RunnerPublicKey(val publicKey: String)
 /** ADR 0051: answer of `POST /runner/v2/jobs/{jobId}/credentials`. */
 data class JobCredentials(val expiresAt: String = "", val credentials: List<SealedJobCredential> = emptyList())
 
-data class SealedJobCredential(val ref: String = "", val repository: String = "", val capability: String = "", val enc: String = "", val ciphertext: String = "")
+/** ADR 0064: [connector] = the connector key of a `CONNECTOR` secret, else null. */
+data class SealedJobCredential(
+    val ref: String = "",
+    val repository: String = "",
+    val capability: String = "",
+    val enc: String = "",
+    val ciphertext: String = "",
+    val connector: String? = null,
+) {
+    override fun toString() = "SealedJobCredential(ref=$ref, repository=$repository, capability=$capability, connector=$connector)"
+}
 
 data class WorkspaceSync(val held: List<String>)
 

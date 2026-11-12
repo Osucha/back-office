@@ -47,7 +47,9 @@ object BuiltInChecksum {
         canonical(
             mapOf(
                 "name" to a.name, "description" to a.description, "harness" to a.harness?.name, "modelProfileId" to a.modelProfileId?.value?.toString(), "tags" to a.tags,
-                "instructions" to a.instructions, "rules" to a.rules, "skills" to a.skills, "mcpServers" to a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) },
+                "instructions" to a.instructions, "rules" to a.rules, "skills" to a.skills, 
+                // ADR 0064: only when set
+                "connectors" to a.connectors.takeIf { it.isNotEmpty() },
                 // ADR 0060: only when not FULL, so the checksums of other agents stay
                 "access" to a.access.takeUnless { it == AgentAccess.FULL }?.let { mapOf("mode" to it.mode.name, "paths" to it.paths, "directory" to it.directory.name.takeIf { _ -> it.separate }) },
                 // ADR 0062: only when not the default

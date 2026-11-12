@@ -235,13 +235,17 @@ sandboxa; serwer proxy, który po drodze zagląda w ruch TLS, widzi tylko szyfro
 tokenu korzysta z tokenów puli runnerów opisanych niżej (wycofywane; dziennik zadania mówi, którego użyto).
 
 <a id="git-agent-tools"></a>
-**Narzędzia agenta.** Krok kodujący może dać swojemu agentowi narzędzia tylko do odczytu w polu konfiguracji
-**agentTools**. `gitlab-read` daje agentowi `glab`, czyli CLI GitLaba, z tokenem repozytorium zadeklarowanym jako
-tylko do odczytu (CI_READ) i zweryfikowanym jako pozbawiony uprawnień do zapisu: agent może czytać pipeline'y, logi
-jobów, merge requesty i issues, na przykład żeby przeanalizować nieudany pipeline, i niczego nie może zmienić. Bez
-takiego tokenu dla głównego repozytorium kroku krok od razu kończy się błędem z informacją, jaki token dodać. Token
-trafia tylko do agenta tego kroku; jest maskowany we wszystkich logach i artefaktach, a dziennik zadania wymienia
-narzędzie.
+**GitLab tylko do odczytu dla agentów (konektor).** Agent kodujący może czytać GitLaba przez
+[konektor](task-library.md#connectors) projektu rodzaju **GitLab (tylko odczyt)** (ADR 0064): dodaj go na karcie
+projektu **Konektory** (zwykle z kluczem `gitlab-read`, który wskazują wbudowani agenci **OpenCode** i **Claude
+Code**) i wybierz jego **Repozytorium** (puste: główne). Agent dostaje wtedy `glab`, czyli CLI GitLaba, z tokenem
+repozytorium zadeklarowanym jako tylko do odczytu (CI_READ) i zweryfikowanym jako pozbawiony uprawnień do zapisu:
+może czytać pipeline'y, logi jobów, merge requesty i issues, na przykład żeby przeanalizować nieudany pipeline,
+i niczego nie może zmienić. **Testuj** przy konektorze ponownie weryfikuje ten token. Bez takiego tokenu krok od razu
+kończy się błędem z informacją, jaki token dodać (rola Reporter, zakresy `read_api` i `read_repository`). Token trafia
+tylko do agenta tego kroku; jest maskowany we wszystkich logach i artefaktach, a dziennik zadania wymienia konektor.
+To zastępuje dawne ustawienie kroku **Narzędzia agenta** (**Agent tools**, `agentTools: gitlab-read`): aktualizacja
+dała każdemu projektowi, którego kroki go używały, konektor `gitlab-read`.
 
 - **Nigdy token do wypychania do czytania.** Krok, który tylko czyta, dostaje wyłącznie token zadeklarowany
   i zweryfikowany jako tylko do odczytu; gdy dla tego repozytorium jest tylko token do wypychania, używa puli.
@@ -257,8 +261,8 @@ narzędzie.
   | MR_COMMENT | komentarze z przeglądu | `api`, rola Reporter |
   | PIPELINE_RUN | ponowne uruchomienie lub start pipeline'ów | `api`, rola Developer |
 
-  Uprawnienia do odczytu (GIT_READ, CI_READ) mogą później trafić do agenta jako narzędzie, ale tylko gdy token
-  jest zweryfikowany jako tylko do odczytu. Uprawnień do zapisu używa wyłącznie Back Office, nigdy agent.
+  CI_READ trafia do agenta tylko przez konektor **GitLab (tylko odczyt)** i tylko wtedy, gdy token jest
+  zweryfikowany jako tylko do odczytu. Uprawnień do zapisu używa wyłącznie Back Office, nigdy agent.
 - **Typowa konfiguracja:** token dostępu projektu z rolą Reporter i zakresami `read_repository` oraz `read_api`
   (GIT_READ, CI_READ) oraz token z rolą Developer i zakresem `write_repository` (PUSH_BRANCH). Nigdy nie używaj
   roli Maintainer: może scalać.

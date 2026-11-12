@@ -130,7 +130,10 @@ class EvaluationConfiguration {
         clock: Clock,
         ownLogin: ObjectProvider<OwnLoginLlm>,
         agents: ObjectProvider<TaskCatalog>,
-    ): ExecuteAttempt = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, ownLogin.getIfAvailable(), agents.getIfAvailable())
+        connectors: ObjectProvider<pl.mos.backoffice.shared.runner.ConnectorCatalog>,
+    ): ExecuteAttempt = ExecuteAttemptService(
+        benchmarks, suites, profiles, gateway, runner, clock, ownLogin.getIfAvailable(), agents.getIfAvailable(), connectors.getIfAvailable(),
+    )
 
 
     @Bean

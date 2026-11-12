@@ -11,7 +11,7 @@ Implementation: `backend/runner-controller` (Spring Boot application, own image 
 
 | Threat | Control |
 |---|---|
-| Prompt injection makes the agent exfiltrate secrets | no provider keys in the sandbox (LLM gateway); the agent gets a gateway-only agent token; the git and job tokens stay in the runner entrypoint's memory (files deleted, process non-dumpable); egress allowlist (docs/architecture/12-prompt-injection.md) |
+| Prompt injection makes the agent exfiltrate secrets | no provider keys in the sandbox (LLM gateway); the agent gets a gateway-only agent token and only the secrets of the connectors its agent lists (ADR 0064: environment of the agent process only, redacted, scoped by whoever issued them); the git and job tokens stay in the runner entrypoint's memory (files deleted, process non-dumpable); egress allowlist (docs/architecture/12-prompt-injection.md) |
 | Model-written code escapes the container | gVisor (user-space kernel) by default, Kata microVM for `isolation: HIGH`; non-root, read-only rootfs, dropped caps, seccomp, no SA token |
 | Lateral movement inside the cluster | NetworkPolicy default-deny; sandbox reaches only its pool's egress proxy and DNS; proxy reaches only allowlisted hosts and never private ranges; separate namespace (or cluster) per pool |
 | Runaway cost | per-job, per-run and per-project budgets enforced at the gateway; `max_tokens` caps; deadline |
@@ -176,6 +176,10 @@ additionally resolves each host and refuses private addresses unless allowed by 
 `--allow-address` (use them when Back Office itself runs in the same cluster). Every decision
 (`CANONICAL-PROXY-DECISION`) is posted to `POST /egress/v1/decisions` and printed as `BO-EGRESS {json}`.
 
+Connector hosts (ADR 0064) get no exception: an agent reaches an `MCP_HTTP` connector only when the job's effective
+`network.allow` contains its host (the connector API returns it as `host`, the UI shows it as "Host to allow"). The
+connector **Test** runs from Back Office, not through this proxy, so a passing test says nothing about the sandbox.
+
 At completion the controller reports `egressDenied` (distinct refused hosts) and `egressLogDigest` =
 `sha256:` + hex SHA-256 over the job's decisions, one line each, `at|host|ALLOW or DENY|reason`, in arrival
 order, joined with `\n`.
@@ -247,10 +251,22 @@ capability}]`), never its value.
   starts. A repository with a project token gets none of the pool's tokens; a token that is not released, does not
   open or arrives after its expiry fails the job (`credentials: ...`) before any sandbox exists.
 - **Fallback.** Repositories without a fitting project token use the pool's tokens below (deprecated).
-- **Agent tools (step 4).** `agentTools: [{name: gitlab-read, repository}]` in the spec with a CI_READ credential: the
-  controller delivers that token as the bundle file `tool-token-<repository>` (Docker file, Kubernetes job Secret key,
-  warm pods a written file); the runner reads and deletes it and sets `GITLAB_TOKEN` / `GITLAB_HOST` only in the
-  agent's environment. It is the one token an agent may hold, always verified read-only.
+- **Connectors (ADR 0064; replaced the step's `agentTools`, ADR 0051 step 4).** `spec.connectors` lists the agent's
+  connectors (`{key, kind, url, auth, headerName, repository}`); their credentials are named like repository tokens:
+  - `GITLAB_READ`: a `CI_READ` credential of the repository (always a verified read-only token; the step fails before
+    the job when there is none). The controller delivers it as the bundle file `tool-token-<repository>`; the runner
+    reads and deletes it and gives glab (`GITLAB_TOKEN`, `GITLAB_HOST`) only to the agent.
+  - `MCP_HTTP` with auth `BEARER` / `HEADER`: a credential with capability `CONNECTOR` (`ref` = connector id,
+    `repository` empty, `connector` = key). Back Office opens the connector's stored secret only to seal it for this
+    job (same HPKE release, audited by reference); the controller delivers it as the bundle file
+    `connector-token-<key>` (Docker file, Kubernetes job Secret key, warm pods a written file). The runner reads and
+    deletes every such file (also one the job does not use), sets the secret only in the agent process's environment
+    as `BO_CONNECTOR_<KEY>` (never inherited by the setup or verify command) and redacts it in every log and artefact.
+    The harness configuration on disk only refers to the variable (Claude Code `--mcp-config` headers
+    `${BO_CONNECTOR_<KEY>}`, OpenCode `mcp.<key>.headers` `{env:BO_CONNECTOR_<KEY>}`; both expansions verified in the
+    runner image, runner README). A connector whose secret did not arrive is skipped with a WARN.
+  Writing the secret into the MCP config was rejected (ADR 0064): files in the run directory outlive the step and
+  other agents share the directory.
 - Conformance vector: `docs/api/fixtures/sealed-credential-vector.json` (both sides open it in their tests).
 
 ## Git access (ADR 0031)
@@ -591,7 +607,9 @@ deletes those it does not run and reports them `LOST` / `controller-restarted`.
   tool calls the agent reported as refused (Claude Code `permission_denials`) are in `RunnerResult.policy.denials`.
 - `HTTPS_PROXY`/`HTTP_PROXY`/`https_proxy`/`http_proxy`/`ALL_PROXY` = the `proxy-url` of the bundle; `NO_PROXY`
   removed. The runner's own callbacks use the same proxy.
-- The **agent token** is the only credential in the agent's environment (ADR 0029). The entrypoint reads the
+- The **agent token** is the only Back Office credential in the agent's environment (ADR 0029); next to it the agent
+  gets only the secrets of its own connectors (ADR 0064, above) and, for a `GITLAB_READ` connector, glab's read-only
+  token. The entrypoint reads the
   job token and the git token into memory and deletes both files, marks itself non-dumpable
   (`prctl(PR_SET_DUMPABLE, 0)`), exchanges the job token for a gateway-only agent token
   (`POST /api/v1/internal/runner/jobs/{id}/agent-token`) and starts the agent with that token only; provider

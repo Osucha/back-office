@@ -80,6 +80,9 @@ export function auditFindingTitle(kind: AgentAuditFinding['kind']): string {
       return $localize`:@@workflows.audit.kind.duplicateSkillName:Two skills with the same name`;
     case 'UNKNOWN_AGENT':
       return $localize`:@@workflows.audit.kind.unknownAgent:Unknown agent`;
+    case 'UNKNOWN_CONNECTOR':
+      // ADR 0064: an agent lists a connector key the project and the platform do not define
+      return $localize`:@@workflows.audit.kind.unknownConnector:Unknown connector`;
     default:
       return String(kind);
   }

@@ -34,6 +34,7 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.BudgetRefusals
 import pl.mos.backoffice.shared.llm.PersonalLoginModels
+import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.shared.runner.RepositoryTokenSource
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.security.Actor
@@ -127,16 +128,26 @@ class RunnerProtocolService(
         val source = repositoryTokens ?: throw InvalidStateException("no project repository tokens are available")
         if (!jobs.markCredentialsReleased(jobId, now)) throw InvalidStateException("the tokens of agent job $jobId were already released for this lease")
         val released = refs.map { ref ->
-            val token = source.open(ref.ref)
-                ?: throw InvalidStateException("the project token for repository '${ref.repository}' no longer exists or cannot be opened; check the project's repository access tokens")
-            ReleasedCredential(ref.ref, ref.repository, ref.capability, sealer.seal(key, token, CredentialSealer.associatedData(jobId.toString(), ref.ref, expiresAt.toString())))
+            val token = if (ref.capability == JobCredentialRef.CONNECTOR) {
+                // ADR 0064: the secret of an MCP connector, named by its id and key
+                val connector = ref.connector ?: throw InvalidStateException("connector secret ${ref.ref} of agent job $jobId names no connector key")
+                source.openConnector(ref.ref, connector)
+                    ?: throw InvalidStateException("the secret of connector '$connector' no longer exists or cannot be opened; check the connector")
+            } else {
+                source.open(ref.ref)
+                    ?: throw InvalidStateException("the project token for repository '${ref.repository}' no longer exists or cannot be opened; check the project's repository access tokens")
+            }
+            ReleasedCredential(
+                ref.ref, ref.repository, ref.capability,
+                sealer.seal(key, token, CredentialSealer.associatedData(jobId.toString(), ref.ref, expiresAt.toString())), ref.connector,
+            )
         }
         audit.record(
             AuditEntry(
                 "RUNNER_CREDENTIALS_RELEASED", "AgentJob", jobId.toString(), projectId = job.spec.usageContext.projectId,
                 details = mapOf(
                     "runnerId" to runner.id.toString(), "runner" to runner.name, "poolId" to runner.poolId,
-                    "credentials" to refs.map { mapOf("ref" to it.ref, "repository" to it.repository, "capability" to it.capability) },
+                    "credentials" to refs.map { mapOf("ref" to it.ref, "repository" to it.repository, "capability" to it.capability, "connector" to it.connector) },
                 ),
                 actor = Actor(PrincipalKind.SYSTEM, null, "runner:${runner.name}"),
             ),

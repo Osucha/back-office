@@ -19,8 +19,10 @@ ticket" or "implement a Kotlin feature in my hexagonal codebase with my test sui
 
 ## Candidates (ADR 0059)
 
-A benchmark compares **candidates**: an agent (harness, model, instructions, rules, skills, MCP servers, ADR 0056/0057)
-with a model profile. `BenchmarkInput.candidates` holds `{agentKey, modelProfileId?}`; without a model the agent's own
+A benchmark compares **candidates**: an agent (harness, model, instructions, rules, skills, connectors, ADR 0056/0057,
+0064) with a model profile. A benchmark has no project, so a coding candidate gets only the **platform** `MCP_HTTP`
+connectors its agent lists, through the shared-kernel port `ConnectorCatalog` (`ConnectorCatalogService` in
+projects-core); `GITLAB_READ` and project connectors are skipped with a note. `BenchmarkInput.candidates` holds `{agentKey, modelProfileId?}`; without a model the agent's own
 model is used (an agent without one is refused). The evaluation context reads agents through the `TaskCatalog` port of
 the shared kernel (`agentEnvironment`); it never imports the task library. Stored in `benchmark.candidates` (JSONB,
 `V208__benchmark_candidates.sql`); attempts store `agent_key`, `agent_name`, `harness`.
