@@ -149,11 +149,14 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzFor="p-jql" i18n="@@projects.form.jql">JQL filter</nz-form-label>
-              <nz-form-control
-                nzExtra="Used by the Jira intake watcher (below); Back Office adds the Jira project and the time window."
-                i18n-nzExtra="@@projects.form.jqlHint"
+              <nz-form-label
+                nzTooltipTitle="Used by the Jira intake watcher (below); Back Office adds the Jira project and the time window."
+                i18n-nzTooltipTitle="@@projects.form.jqlHint"
+                nzFor="p-jql"
+                i18n="@@projects.form.jql"
+                >JQL filter</nz-form-label
               >
+              <nz-form-control>
                 <input
                   nz-input
                   id="p-jql"
@@ -174,13 +177,14 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
         />
         <div class="grid" formGroupName="defaults">
           <nz-form-item>
-            <nz-form-label nzFor="p-model" i18n="@@projects.form.defaultModel"
+            <nz-form-label
+              nzTooltipTitle="Used by LLM-backed tasks without an explicit profile."
+              i18n-nzTooltipTitle="@@projects.form.defaultModelHint"
+              nzFor="p-model"
+              i18n="@@projects.form.defaultModel"
               >Default model profile</nz-form-label
             >
-            <nz-form-control
-              nzExtra="Used by LLM-backed tasks without an explicit profile."
-              i18n-nzExtra="@@projects.form.defaultModelHint"
-            >
+            <nz-form-control>
               @if (availability(); as a) {
                 <app-model-select
                   selectId="p-model"
@@ -210,13 +214,14 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
-            <nz-form-label nzFor="p-review-model" i18n="@@projects.form.reviewModel"
+            <nz-form-label
+              nzTooltipTitle="Used by code-review tasks for this project."
+              i18n-nzTooltipTitle="@@projects.form.reviewModelHint"
+              nzFor="p-review-model"
+              i18n="@@projects.form.reviewModel"
               >Review model profile</nz-form-label
             >
-            <nz-form-control
-              nzExtra="Used by code-review tasks for this project."
-              i18n-nzExtra="@@projects.form.reviewModelHint"
-            >
+            <nz-form-control>
               @if (availability(); as a) {
                 <app-model-select
                   selectId="p-review-model"
@@ -274,13 +279,14 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
         </nz-form-item>
         @if (form.controls.specKit.value) {
           <nz-form-item>
-            <nz-form-label nzFor="p-constitution" i18n="@@projects.form.constitutionLabel"
+            <nz-form-label
+              nzTooltipTitle="Written to .specify/memory/constitution.md before spec, plan and implement tasks."
+              i18n-nzTooltipTitle="@@projects.form.constitutionHint"
+              nzFor="p-constitution"
+              i18n="@@projects.form.constitutionLabel"
               >Spec Kit constitution (markdown)</nz-form-label
             >
-            <nz-form-control
-              nzExtra="Written to .specify/memory/constitution.md before spec, plan and implement tasks."
-              i18n-nzExtra="@@projects.form.constitutionHint"
-            >
+            <nz-form-control>
               <textarea
                 nz-input
                 id="p-constitution"

@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -56,6 +57,7 @@ const agentColumns = {
 @Component({
   selector: 'app-agent-insights-page',
   imports: [
+    HelpTipComponent,
     NgTemplateOutlet,
     FormsModule,
     NzSelectModule,
@@ -159,10 +161,15 @@ const agentColumns = {
 
         @if (templates().length) {
           <section class="card" aria-labelledby="h-templates">
-            <h2 id="h-templates" i18n="@@insights.agents.byTemplate">Per template</h2>
-            <p class="hint" i18n="@@insights.agents.byTemplateHint">
-              The same agents on the same task: compare within one template.
-            </p>
+            <h2 id="h-templates">
+              <span i18n="@@insights.agents.byTemplate">Per template</span>
+              <bo-help-tip [text]="byTemplateHelp" />
+            </h2>
+            <ng-template #byTemplateHelp
+              ><span i18n="@@insights.agents.byTemplateHint">
+                The same agents on the same task: compare within one template.
+              </span></ng-template
+            >
             @for (t of templates(); track t.templateKey; let first = $first) {
               <details class="tpl" [open]="first">
                 <summary>

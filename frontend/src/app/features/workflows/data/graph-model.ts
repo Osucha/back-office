@@ -19,6 +19,7 @@ import type {
 
 import { SLUG_PATTERN } from '../../../core/forms/patterns';
 import { actionTitle } from '../../../core/ui/agents';
+import { defaultStepAgentKey } from './agent-choice';
 import { continuesFromName } from './step-session';
 
 export const NODE_ID_PATTERN = SLUG_PATTERN;
@@ -266,7 +267,8 @@ function actionSlug(type: string): string {
 
 /**
  * A fresh node of the given kind (or task template, or action - ADR 0056) with sensible
- * defaults. A new action node starts with the action's default config and its translated title.
+ * defaults. A new action node starts with the action's default config and its translated title;
+ * a new task node with the agent the designer pre-selected (ADR 0061).
  */
 export function createNode(
   kind: NodeKind,
@@ -274,6 +276,7 @@ export function createNode(
   existingIds: Iterable<string>,
   task?: PaletteTask | null,
   action?: ActionDescriptor | null,
+  agentKey?: string | null,
 ): WorkflowNode {
   const meta = NODE_KIND_META[kind];
   const base =
@@ -291,7 +294,7 @@ export function createNode(
   };
   switch (kind) {
     case 'TASK':
-      node.task = { templateKey: task?.key ?? '', overrides: {} };
+      node.task = { templateKey: task?.key ?? '', overrides: agentKey ? { agentKey } : {} };
       break;
     case 'ACTION':
       if (action?.type) {
@@ -470,13 +473,18 @@ export function buildNodeData(
     node.kind === 'ACTION' && node.action?.type
       ? opts.palette?.actions.get(node.action.type)
       : undefined;
-  const stepAgentKey = node.kind === 'TASK' ? node.task?.overrides?.agentKey : null;
+  // ADR 0061: the step's own agent, else the default for what its template needs
+  const stepAgentKey =
+    node.kind === 'TASK'
+      ? node.task?.overrides?.agentKey ||
+        (template ? defaultStepAgentKey(template.needsCodingAgent) : null)
+      : null;
   const agent: AgentRef | null = stepAgentKey
     ? (opts.agents?.find((a) => a.key === stepAgentKey) ?? {
         key: stepAgentKey,
         name: stepAgentKey,
       })
-    : (template?.agent ?? null);
+    : null;
   const execs = (opts.executions ?? []).filter((e) => e.nodeId === node.id);
   const last = execs.length ? execs[execs.length - 1] : undefined;
   let status: NodeVisualStatus = last?.status ?? null;

@@ -28,7 +28,7 @@ class TaskMappersTest {
             RunInputField("branch", "Branch", RunInputType.TEXT),
         )
         val template = TaskTemplate.create(
-            TaskTemplate.Content(key = "story-writer", name = "Story writer", agentKey = "opencode", runInputs = inputs),
+            TaskTemplate.Content(key = "story-writer", name = "Story writer", runInputs = inputs),
             Instant.parse("2026-10-24T10:00:00Z"),
         )
 
@@ -54,7 +54,7 @@ class TaskMappersTest {
         val template = TaskTemplate.create(TaskTemplate.Content(key = "plain", name = "Plain"), Instant.parse("2026-10-24T10:00:00Z"))
         val stored = mappers.toEntity(template)
         val broken = TaskTemplateEntity(
-            id = stored.id, key = stored.key, name = stored.name, agentKey = stored.agentKey, createdAt = stored.createdAt, updatedAt = stored.updatedAt,
+            id = stored.id, key = stored.key, name = stored.name, createdAt = stored.createdAt, updatedAt = stored.updatedAt,
             runInputs = """["text", {"label": "No name"}, {"name": "has space", "label": "Bad"}, {"name": "audience", "label": "Audience", "type": "FANCY"},
                 {"name": "issueKey", "label": "Issue", "type": "ISSUE_KEY", "required": true}]""",
         )
@@ -129,9 +129,8 @@ class TaskMappersTest {
     private fun AgentEntity.storedAsGlobalCoder() = harness == AgentHarness.CLAUDE_CODE && scopeType == ScopeType.GLOBAL && tags == "[\"t\"]"
 
     @Test
-    fun `a template agent key survives the entity`() {
-        val template = TaskTemplate.create(TaskTemplate.Content(key = "plain", name = "Plain", agentKey = "claude-code"), Instant.parse("2026-10-24T10:00:00Z"))
-        assertThat(mappers.toEntity(template).agentKey).isEqualTo("claude-code")
-        assertThat(mappers.toDomain(mappers.toEntity(template)).agentKey).isEqualTo("claude-code")
+    fun `ADR 0061 - required skills survive the entity`() {
+        val template = TaskTemplate.create(TaskTemplate.Content(key = "plain", name = "Plain", requiresSkills = listOf("adr-format")), Instant.parse("2026-10-24T10:00:00Z"))
+        assertThat(mappers.toDomain(mappers.toEntity(template)).requiresSkills).containsExactly("adr-format")
     }
 }

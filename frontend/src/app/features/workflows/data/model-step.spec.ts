@@ -43,15 +43,21 @@ describe('effectiveStepAgent (ADR 0056)', () => {
       harness: 'CLAUDE_CODE',
     },
   ];
-  const task = { agent: { key: 'model-answer', name: 'Model answer', harness: null } };
+  const all: Agent[] = [
+    ...agents,
+    { key: 'model-answer', name: 'Model answer', scope: { type: 'GLOBAL' } },
+    { key: 'opencode', name: 'OpenCode', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
+  ];
+  const task = { needsCodingAgent: false };
 
-  it('takes the step agent before the template agent', () => {
-    expect(effectiveStepAgent(task, 'claude-code', agents)?.harness).toBe('CLAUDE_CODE');
-    expect(effectiveStepAgent(task, null, agents)?.key).toBe('model-answer');
-    expect(stepModelUse(effectiveStepAgent(task, 'claude-code', agents))?.stepKind).toBe(
+  it('takes the step agent, else the default for what the template needs (ADR 0061)', () => {
+    expect(effectiveStepAgent(task, 'claude-code', all)?.harness).toBe('CLAUDE_CODE');
+    expect(effectiveStepAgent(task, null, all)?.key).toBe('model-answer');
+    expect(effectiveStepAgent({ needsCodingAgent: true }, null, all)?.key).toBe('opencode');
+    expect(stepModelUse(effectiveStepAgent(task, 'claude-code', all))?.stepKind).toBe(
       'CODING_AGENT',
     );
-    expect(stepModelUse(effectiveStepAgent(task, null, agents))?.stepKind).toBe('LLM_CALL');
+    expect(stepModelUse(effectiveStepAgent(task, null, all))?.stepKind).toBe('LLM_CALL');
   });
 
   it('prefers the project agent of a key and is null for an unknown one', () => {

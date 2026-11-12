@@ -21,6 +21,9 @@ import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.projects.domain.service.AgentAuditReport
+import pl.mos.backoffice.projects.domain.service.AgentAuditor
+import pl.mos.backoffice.projects.domain.service.AuditedStep
 import pl.mos.backoffice.projects.domain.service.ControlNodeCatalog
 import pl.mos.backoffice.projects.domain.service.ExpressionValidator
 import pl.mos.backoffice.projects.domain.service.TaskPortsProvider
@@ -191,15 +194,16 @@ class WorkflowService(
                     key = t.key,
                     name = t.name,
                     description = t.description,
-                    agent = t.agent,
                     category = t.category,
                     ports = t.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS },
                     projectScoped = t.projectId != null,
-                    configSchema = if (t.agent.modelAnswer) ControlNodeCatalog.modelAnswerConfigSchema() else ControlNodeCatalog.codingAgentConfigSchema(),
+                    configSchema = if (t.needsCodingAgent) ControlNodeCatalog.codingAgentConfigSchema() else ControlNodeCatalog.modelAnswerConfigSchema(),
                     deprecated = t.deprecated,
                     parameters = t.parameters,
                     parameterValues = t.parameterValues,
                     needsParameters = t.needsParameters,
+                    needsCodingAgent = t.needsCodingAgent,
+                    requiresSkills = t.requiresSkills,
                 )
             }
         return Palette(ControlNodeCatalog.controlNodes(), tasks, ControlNodeCatalog.stateFields(), ActionCatalog.all)
@@ -269,6 +273,17 @@ class WorkflowService(
         val user = gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         val project = projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         return availability?.options(ModelUse(stepKind, harness, project.personal, user.userId?.value)).orEmpty()
+    }
+
+    override fun auditAgents(projectId: ProjectId, nodes: List<WorkflowNode>): AgentAuditReport {
+        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        val project = projectId.value
+        // a step whose template is unknown or whose chain is broken is the validator's finding, not the audit's
+        val steps = nodes.filterIsInstance<WorkflowNode.Task>().filter { it.task.templateKey.isNotBlank() }.mapNotNull { node ->
+            runCatching { taskCatalog.stepNeeds(node.task.templateKey, project, node.task.overrides) }.getOrNull()?.let { AuditedStep(node.id, it) }
+        }
+        val profiles = steps.map { it.needs.agentKey }.distinct().associateWith { taskCatalog.agentProfile(it, project) }
+        return AgentAuditor.audit(steps, profiles)
     }
 
     /** The user the designer validates for; null outside a request (system work). */

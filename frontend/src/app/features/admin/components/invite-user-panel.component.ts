@@ -143,13 +143,14 @@ import { StateChipComponent } from './state-chip.component';
             {{ control.errors?.server || text.emailInvalid }}
           </ng-template>
           <nz-form-item>
-            <nz-form-label nzFor="inv-name" i18n="@@admin.invite.displayName"
+            <nz-form-label
+              nzTooltipTitle="Optional; otherwise taken from the first sign-in."
+              i18n-nzTooltipTitle="@@admin.invite.displayNameExtra"
+              nzFor="inv-name"
+              i18n="@@admin.invite.displayName"
               >Display name</nz-form-label
             >
-            <nz-form-control
-              nzExtra="Optional; otherwise taken from the first sign-in."
-              i18n-nzExtra="@@admin.invite.displayNameExtra"
-            >
+            <nz-form-control>
               <input nz-input id="inv-name" formControlName="displayName" autocomplete="off" />
             </nz-form-control>
           </nz-form-item>
@@ -183,13 +184,14 @@ import { StateChipComponent } from './state-chip.component';
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
-            <nz-form-label nzFor="inv-roles" i18n="@@admin.invite.roles"
+            <nz-form-label
+              nzTooltipTitle="Assigned to the user, on top of the system defaults and the groups."
+              i18n-nzTooltipTitle="@@admin.invite.rolesExtra"
+              nzFor="inv-roles"
+              i18n="@@admin.invite.roles"
               >Platform roles</nz-form-label
             >
-            <nz-form-control
-              nzExtra="Assigned to the user, on top of the system defaults and the groups."
-              i18n-nzExtra="@@admin.invite.rolesExtra"
-            >
+            <nz-form-control>
               <nz-select
                 nzId="inv-roles"
                 nzMode="multiple"

@@ -37,9 +37,9 @@ repozytorium](projects.md#no-repository)).
 | Uruchomienie | Jedno wykonanie workflowu, zwykle dla jednego zgłoszenia w Jirze. | **Uruchomienia** (**Runs**), `/runs/:id` |
 | Węzeł | Jeden blok workflowu; uruchomienie odwiedza węzły po kolei. | Kanwa projektanta, **Oś czasu** (**Timeline**) uruchomienia |
 | Bramka | Węzeł, w którym uruchomienie zatrzymuje się, dopóki zatwierdzający nie wybierze opcji. | **Twoja kolej**, panel boczny bramki |
-| Szablon zadania | Co zrobić: zadanie wielokrotnego użytku (prompt z parametrami, konfiguracja, domyślny agent), na które wskazuje węzeł zadania. | **Biblioteka** (**Library**) → **Szablony** (**Templates**) |
+| Szablon zadania | Co zrobić: zadanie wielokrotnego użytku (prompt z parametrami, konfiguracja, wymagane umiejętności), na które wskazuje węzeł zadania; agenta wybiera węzeł. | **Biblioteka** (**Library**) → **Szablony** (**Templates**) |
 | Agent | Kto pracuje i jak: pojedyncza odpowiedź modelu albo agent kodujący (OpenCode, Claude Code), opcjonalnie z własnym modelem, z instrukcjami, regułami, umiejętnościami i serwerami MCP. | **Biblioteka** → **Agenci** (**Agents**) |
-| Profil modelu | Model z jego opcjami i cenami, wybierany przez zadania i benchmarki. | **Modele** (**Models**) |
+| Profil modelu | Model z jego opcjami i cenami, wybierany przez agentów, kroki workflowów i benchmarki. | **Modele** (**Models**) |
 | Zadanie agenta | Zadanie programistyczne wykonywane w sandboxie na runnerze. | **Oś czasu** uruchomienia; administratorzy widzą **Zadania agentów** (**Agent jobs**) |
 | Budżet | Miesięczny limit wydatków platformy lub projektu. | Karta projektu **Budżet** (**Budget**), **Koszty** (**Costs**) |
 | Wykonanie CI | Workflow uruchomiony z Twojego pipeline'u przez punkt wejścia. | **CI**, karta projektu **CI** |

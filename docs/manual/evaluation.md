@@ -51,11 +51,12 @@ of 0 makes a model look free; check prices before you trust **Costs** or a leade
 | Place | Setting |
 |---|---|
 | A project | **Default model profile** and **Review model profile** (see [Projects](projects.md#create-project)) |
-| A task template | **Model profile** (see [Task library](task-library.md#templates)) |
+| An agent | **Model** (see [Agents](task-library.md#agents)) |
 | A task node | **Model profile** override (see [Designing workflows](workflows.md#nodes)) |
 | A benchmark | the models of the candidates (an agent with a model) and the judge model |
 
-A node's profile wins over the template's, which wins over the project default.
+A node's profile wins over the agent's, which wins over the defaults (project, your own, platform). Task templates
+have no model profile since ADR 0061: the step and its agent choose the model.
 
 <a id="model-availability"></a>
 ### Which models a step can use
@@ -82,13 +83,13 @@ A personal runner that is offline is only a warning: the jobs wait until it conn
 **Personal (only you)**. Only you see, change, test and use them, in your private projects and your own benchmarks;
 administrators create **Platform** profiles for everyone. Claude Code login profiles are always personal.
 
-**Default models.** When neither a step, its agent, its template nor the project names a model, Back Office takes your own
+**Default models.** When neither a step, its agent nor the project names a model, Back Office takes your own
 default for that kind of step (**LLM steps** or **Coding steps**), then the platform default set by an
 administrator. Set them on the **Models** page under **Default models**. A Claude Code login model can be the
 default for both: LLM steps then get their answer from Claude Code on your personal runner.
 
 The **model plan** of a workflow shows, for every step, the model a run would use and where it comes from (the
-step, its agent, its template, the project default or the review default). The designer marks steps whose model you cannot
+step, its agent, the project default or the review default). The designer marks steps whose model you cannot
 use with a warning, and a run does not start while a step has no usable model; the start dialog lists the steps
 and the reason. The MCP tools `get_model_options` and `get_model_plan` give an IDE agent the same information.
 

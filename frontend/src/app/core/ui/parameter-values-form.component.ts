@@ -19,14 +19,17 @@ import { type ParameterField, isEmptyValue, parameterValueText } from './templat
   template: `
     @for (f of fields(); track f.param.name) {
       <nz-form-item class="param" [attr.data-param]="f.param.name">
-        <nz-form-label [nzRequired]="f.param.required" [nzFor]="idPrefix() + '-' + f.param.name">
+        <nz-form-label
+          [nzTooltipTitle]="extra(f)"
+          [nzRequired]="f.param.required"
+          [nzFor]="idPrefix() + '-' + f.param.name"
+        >
           {{ f.param.label || f.param.name }}
           <span class="mono name">{{ f.param.name }}</span>
         </nz-form-label>
         <nz-form-control
           [nzValidateStatus]="f.missing || f.invalid ? 'error' : ''"
           [nzErrorTip]="f.missing ? text.required : f.invalid ? text.invalid : ''"
-          [nzExtra]="extra(f)"
         >
           @switch (f.param.type) {
             @case ('MULTILINE') {

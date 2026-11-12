@@ -249,14 +249,14 @@ interface IssuedLink {
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="u-roles" i18n="@@admin.userDetail.roles"
+                <nz-form-label
+                  nzTooltipTitle="Assigned to this user, on top of the system defaults and the groups."
+                  i18n-nzTooltipTitle="@@admin.userDetail.rolesExtra"
+                  nzFor="u-roles"
+                  i18n="@@admin.userDetail.roles"
                   >Platform roles</nz-form-label
                 >
-                <nz-form-control
-                  [nzErrorTip]="serverTip"
-                  nzExtra="Assigned to this user, on top of the system defaults and the groups."
-                  i18n-nzExtra="@@admin.userDetail.rolesExtra"
-                >
+                <nz-form-control [nzErrorTip]="serverTip">
                   <nz-select
                     nzId="u-roles"
                     nzMode="multiple"

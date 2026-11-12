@@ -7,7 +7,6 @@ import {
   filterTemplates,
   nameOfKey,
   sizeLabel,
-  templateAgent,
 } from './library-filters';
 
 const T = (over: Partial<TaskTemplate>): TaskTemplate =>
@@ -22,39 +21,44 @@ describe('library filters', () => {
 
   it('hides deprecated templates unless asked to show them', () => {
     const list = [
-      T({ key: 'implement-claude-code', agentKey: 'claude-code', tags: ['deprecated'] }),
-      T({ key: 'implement', agentKey: 'opencode' }),
+      T({ key: 'implement-claude-code', needsCodingAgent: true, tags: ['deprecated'] }),
+      T({ key: 'implement', needsCodingAgent: true }),
     ];
     expect(filterTemplates(list, {}).map((t) => t.key)).toEqual(['implement']);
     expect(filterTemplates(list, { showDeprecated: true }).map((t) => t.key)).toEqual([
       'implement-claude-code',
       'implement',
     ]);
-    expect(filterTemplates(list, { query: 'opencode', agents }).map((t) => t.key)).toEqual([
-      'implement',
-    ]);
   });
 
-  it('filters templates by text and their own or inherited agent (ADR 0056)', () => {
+  it('filters templates by text and the kind of agent they need (ADR 0061)', () => {
     const list = [
       T({ key: 'code-review', name: 'Code review', category: 'REVIEW' }),
-      T({ key: 'implement', name: 'Implement', agentKey: 'opencode', tags: ['jira'] }),
-      T({ key: 'strict', name: 'Strict implement', extendsKey: 'implement' }),
+      T({ key: 'implement', name: 'Implement', needsCodingAgent: true, tags: ['jira'] }),
+      T({
+        key: 'strict',
+        name: 'Strict implement',
+        extendsKey: 'implement',
+        needsCodingAgent: true,
+      }),
       T({ key: 'base', name: 'Base agent', description: 'Abstract root' }),
     ];
     expect(filterTemplates(list, { query: 'review' }).map((t) => t.key)).toEqual(['code-review']);
     expect(filterTemplates(list, { query: 'JIRA' }).map((t) => t.key)).toEqual(['implement']);
     expect(filterTemplates(list, { query: 'root' }).map((t) => t.key)).toEqual(['base']);
-    expect(filterTemplates(list, { agent: 'opencode' }).map((t) => t.key)).toEqual([
+    expect(filterTemplates(list, { query: 'coding agent' }).map((t) => t.key)).toEqual([
       'implement',
       'strict',
     ]);
-    expect(filterTemplates(list, { agent: 'model-answer' }).map((t) => t.key)).toEqual([
+    expect(filterTemplates(list, { needs: 'coding' }).map((t) => t.key)).toEqual([
+      'implement',
+      'strict',
+    ]);
+    expect(filterTemplates(list, { needs: 'any' }).map((t) => t.key)).toEqual([
       'code-review',
       'base',
     ]);
     expect(filterTemplates(list, {}).length).toBe(4);
-    expect(templateAgent(list[2], list, agents).agent?.name).toBe('OpenCode');
   });
 
   it('filters agents by name, tag and kind', () => {

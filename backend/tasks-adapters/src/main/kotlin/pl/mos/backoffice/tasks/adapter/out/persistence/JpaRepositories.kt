@@ -11,11 +11,6 @@ interface TaskTemplateJpaRepository : JpaRepository<TaskTemplateEntity, UUID> {
     fun findAllByScopeTypeOrProjectId(scopeType: ScopeType, projectId: UUID): List<TaskTemplateEntity>
     fun existsByExtendsKey(extendsKey: String): Boolean
     fun existsByKey(key: String): Boolean
-
-    fun existsByAgentKey(agentKey: String): Boolean
-
-    @Query(value = "select exists(select 1 from task_template t where t.agent_key = :key and (t.project_id is null or t.project_id = :projectId))", nativeQuery = true)
-    fun existsUsingAgentVisibleTo(key: String, projectId: UUID): Boolean
 }
 
 interface AgentJpaRepository : JpaRepository<AgentEntity, UUID> {

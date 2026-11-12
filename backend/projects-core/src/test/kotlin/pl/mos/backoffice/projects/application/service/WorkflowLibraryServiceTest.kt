@@ -67,8 +67,8 @@ class WorkflowLibraryServiceTest {
         }
         every { palette(any()) } answers {
             val projectId = firstArg<java.util.UUID?>()
-            listOf(TaskSummary("llm-task", "LLM task", "", TestAgents.MODEL_ANSWER, null, false, null, listOf("success", "failure"))) +
-                if (projectId == shop.id.value) listOf(TaskSummary("shop-only", "Shop only", "", TestAgents.MODEL_ANSWER, null, false, projectId, listOf("success", "failure"))) else emptyList()
+            listOf(TaskSummary("llm-task", "LLM task", "", null, false, null, listOf("success", "failure"))) +
+                if (projectId == shop.id.value) listOf(TaskSummary("shop-only", "Shop only", "", null, false, projectId, listOf("success", "failure"))) else emptyList()
         }
     }
 

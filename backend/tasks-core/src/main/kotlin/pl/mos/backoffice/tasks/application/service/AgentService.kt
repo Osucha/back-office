@@ -11,7 +11,6 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.tasks.application.port.`in`.ManageAgents
 import pl.mos.backoffice.tasks.application.port.out.AgentRepository
-import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.Keys
@@ -20,14 +19,13 @@ import java.util.UUID
 
 /**
  * Agent CRUD (ADR 0056/0057). Same access rules as rules and skills (global: `library.view` / `library.manage`; project:
- * members read, `library.project.manage` writes); an agent a template names keeps its key and scope and cannot be
- * deleted. ADR 0057: every rule and skill an agent lists must be visible in its scope (a global agent: global entries;
- * a project agent: the project's and the global ones). Changes are audited as `AGENT_CREATE`, `AGENT_UPDATE`,
+ * members read, `library.project.manage` writes). ADR 0061: templates name no agent; workflow steps do, and the agent
+ * audit reports a step whose agent is gone. ADR 0057: every rule and skill an agent lists must be visible in its scope
+ * (a global agent: global entries; a project agent: the project's and the global ones). Changes are audited as `AGENT_CREATE`, `AGENT_UPDATE`,
  * `AGENT_DELETE`.
  */
 class AgentService(
     private val agents: AgentRepository,
-    private val templates: TaskTemplateRepository,
     private val clock: Clock,
     private val gate: AuthorizationGate,
     private val audit: AuditPort,
@@ -58,9 +56,6 @@ class AgentService(
         val key = command.key ?: existing.key
         agents.findByKeyAndScope(key, command.scope)?.let { clash ->
             if (clash.id != id) throw InvalidStateException("agent $key already exists in scope ${command.scope.describe()}")
-        }
-        if ((key != existing.key || command.scope != existing.scope) && inUse(existing)) {
-            throw InvalidStateException("agent ${existing.key} is used by templates; its key and scope cannot change")
         }
         validateEnvironment(command)
         val saved = agents.save(existing.update(command.copy(key = key), clock.now(), user.actor))
@@ -100,7 +95,6 @@ class AgentService(
     override fun delete(id: AgentId) {
         val existing = load(id)
         gate.requireWrite(existing.scope)
-        if (inUse(existing)) throw InvalidStateException("agent ${existing.key} is used by templates and cannot be deleted")
         agents.delete(id)
         audit.record(entry("AGENT_DELETE", existing, mapOf("key" to existing.key, "scope" to existing.scope.describe())))
     }
@@ -118,8 +112,6 @@ class AgentService(
         if (errors.isNotEmpty()) throw ValidationException(errors)
     }
 
-    /** A template that sees the agent names it: any template for a global agent, the project's and global ones for a project agent. */
-    private fun inUse(agent: Agent): Boolean = templates.existsUsingAgent(agent.key, agent.scope.projectId)
 
     private fun load(id: AgentId): Agent = agents.findById(id) ?: throw NotFoundException("Agent", id)
 

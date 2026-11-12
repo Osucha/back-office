@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -54,6 +55,7 @@ import { automaticHint, emptyRule, ruleDraft, ruleSavable } from '../data/rule-f
 @Component({
   selector: 'app-rules-page',
   imports: [
+    HelpTipComponent,
     ReadonlyFormDirective,
     FormsModule,
     NzTableModule,
@@ -447,7 +449,17 @@ import { automaticHint, emptyRule, ruleDraft, ruleSavable } from '../data/rule-f
             </label>
           </nz-form-control>
         </nz-form-item>
-        <nz-tabs nzSize="small" [nzSelectedIndex]="canEditDraft() ? 0 : 1">
+        <ng-template #contentTip><bo-help-tip [text]="contentHelp" /></ng-template>
+        <ng-template #contentHelp
+          ><span i18n="@@library.rules.content.help">
+            Markdown. Keep it short and concrete: it is in the context of every step it applies to.
+          </span></ng-template
+        >
+        <nz-tabs
+          nzSize="small"
+          [nzSelectedIndex]="canEditDraft() ? 0 : 1"
+          [nzTabBarExtraContent]="contentTip"
+        >
           <nz-tab nzTitle="Rule" i18n-nzTitle="@@library.rules.contentTab">
             <textarea
               nz-input
@@ -461,10 +473,6 @@ import { automaticHint, emptyRule, ruleDraft, ruleSavable } from '../data/rule-f
               [nzAutosize]="{ minRows: 10, maxRows: 32 }"
               spellcheck="false"
             ></textarea>
-            <p class="field-help" i18n="@@library.rules.content.help">
-              Markdown. Keep it short and concrete: it is in the context of every step it applies
-              to.
-            </p>
           </nz-tab>
           <nz-tab nzTitle="Preview" i18n-nzTitle="@@library.rules.preview">
             <div class="preview-box"><app-markdown [source]="draft().content" /></div>

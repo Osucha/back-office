@@ -1096,6 +1096,27 @@ paths:
         any signed-in user.
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TaskConfigSchemas' } } } }
+  /workflows/agent-audit:
+    post:
+      tags: [workflows]
+      operationId: auditWorkflowAgents
+      description: >-
+        ADR 0061 (`project.view` of `projectId`): for the workflow draft in the body, per agent its steps use: the agent's
+        rules and skills, the skills its steps require (and which steps), the missing ones, and deterministic findings.
+        Nothing is changed; no model is called.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [projectId, nodes]
+              properties:
+                projectId: { type: string, format: uuid }
+                nodes: { type: array, items: { $ref: '#/components/schemas/WorkflowNode' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AgentAudit' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
   /workflows/model-options:
     get:
       tags: [workflows]
@@ -1563,6 +1584,21 @@ paths:
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Agent' } } } }
         '400': { $ref: '#/components/responses/Problem' }
+  /agents/{agentId}/coherence-check:
+    parameters: [ { name: agentId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [task-library]
+      operationId: checkAgentCoherence
+      description: >-
+        ADR 0061 (`library.view`; with `projectId` also `project.view`): a model (the platform default for model answers,
+        booked as usage) reads the agent's whole environment (platform preamble, instructions, constitution, project and
+        agent rules, skill names and descriptions; with a project the primary repository's AGENTS.md / CLAUDE.md when
+        readable) and lists contradictions with quotes. On request only.
+      parameters:
+        - { name: projectId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CoherenceReport' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
   /agents/{agentId}:
     parameters: [ { name: agentId, in: path, required: true, schema: { type: string, format: uuid } } ]
     get:
@@ -3085,7 +3121,8 @@ components:
         key: { type: string }
         name: { type: string }
         description: { type: string }
-        agent: { $ref: '#/components/schemas/AgentRef' }
+        needsCodingAgent: { type: boolean, description: 'ADR 0061: the step needs a coding agent; the designer pre-selects a fitting agent' }
+        requiresSkills: { type: array, items: { type: string }, description: 'ADR 0061: skills the work needs (merged over the lineage)' }
         category: { $ref: '#/components/schemas/TemplateCategory' }
         ports: { type: array, items: { type: string } }
         projectScoped: { type: boolean }
@@ -3552,6 +3589,52 @@ components:
       properties:
         mode: { type: string, enum: [FULL, READ_ONLY, PATHS], default: FULL }
         paths: { type: array, items: { type: string }, description: PATHS only }
+    AgentAuditFinding:
+      type: object
+      required: [kind, severity, message]
+      properties:
+        kind: { type: string, enum: [MISSING_SKILL, NEEDS_CODING_AGENT, READ_ONLY_PUSH, UNKNOWN_RULE, UNKNOWN_SKILL, DUPLICATE_SKILL_NAME, UNKNOWN_AGENT] }
+        severity: { type: string, enum: [ERROR, WARNING] }
+        message: { type: string }
+        nodeIds: { type: array, items: { type: string } }
+        key: { type: string, nullable: true, description: the skill or rule key concerned }
+    AgentAuditEntry:
+      type: object
+      required: [agent, nodeIds, rules, skills, requiredSkills, missingSkills, findings]
+      properties:
+        agent: { $ref: '#/components/schemas/AgentRef' }
+        agentId: { type: string, format: uuid, nullable: true }
+        scope: { $ref: '#/components/schemas/Scope' }
+        nodeIds: { type: array, items: { type: string }, description: steps of the workflow this agent runs }
+        rules: { type: array, items: { type: object, properties: { key: { type: string }, name: { type: string }, automatic: { type: boolean } } } }
+        skills: { type: array, items: { type: object, properties: { key: { type: string }, name: { type: string } } } }
+        requiredSkills: { type: array, items: { type: object, properties: { key: { type: string }, name: { type: string, nullable: true }, nodeIds: { type: array, items: { type: string } } } } }
+        missingSkills: { type: array, items: { type: string } }
+        findings: { type: array, items: { $ref: '#/components/schemas/AgentAuditFinding' } }
+    AgentAudit:
+      type: object
+      required: [agents, findings]
+      properties:
+        agents: { type: array, items: { $ref: '#/components/schemas/AgentAuditEntry' } }
+        findings: { type: array, items: { $ref: '#/components/schemas/AgentAuditFinding' }, description: 'findings not tied to one agent' }
+    CoherenceReport:
+      type: object
+      required: [agentKey, findings]
+      properties:
+        agentKey: { type: string }
+        model: { type: string, nullable: true, description: the model that checked }
+        cost: { $ref: '#/components/schemas/Money' }
+        sources: { type: array, items: { type: string }, description: 'what was read, e.g. constitution, rule:agent-ground-rules, repo:AGENTS.md' }
+        findings:
+          type: array
+          items:
+            type: object
+            required: [severity, summary]
+            properties:
+              severity: { type: string, enum: [CONTRADICTION, AMBIGUITY, REDUNDANCY] }
+              summary: { type: string }
+              quotes: { type: array, items: { type: object, properties: { source: { type: string }, text: { type: string } } } }
+              suggestion: { type: string, nullable: true }
     AgentInput:
       type: object
       description: >-
@@ -3617,9 +3700,7 @@ components:
         abstract: { type: boolean, default: false }
         extendsKey: { type: string, nullable: true }
         category: { allOf: [ { $ref: '#/components/schemas/TemplateCategory' } ], nullable: true, description: empty means inherited }
-        agentKey: { type: string, nullable: true, description: 'ADR 0056: the agent that runs the task by default; inherited, child wins; none anywhere = model-answer' }
         scope: { $ref: '#/components/schemas/Scope' }
-        modelProfileId: { type: string, format: uuid, nullable: true }
         prompt: { $ref: '#/components/schemas/TaskPrompt' }
         parameters: { type: array, items: { $ref: '#/components/schemas/TemplateParameter' }, description: 'ADR 0058: parameters the prompt reads as {{params.<name>}}; inherited, child wins by name' }
         parameterValues: { type: object, additionalProperties: true, description: 'ADR 0058: values for parameters of the lineage (a preset); child wins, the step wins over all' }
@@ -3669,6 +3750,7 @@ components:
             id: { type: string, format: uuid }
             version: { type: integer }
             builtIn: { type: boolean }
+            needsCodingAgent: { type: boolean, readOnly: true, description: 'ADR 0061: the merged config needs a coding agent (codingAgent: true, Spec Kit phase, push, prepareOnly); else any agent' }
             createdAt: { type: string, format: date-time }
             updatedAt: { type: string, format: date-time }
             updatedBy: { allOf: [ { $ref: '#/components/schemas/ActorRef' } ], readOnly: true, description: who saved the current version (ADR 0017) }

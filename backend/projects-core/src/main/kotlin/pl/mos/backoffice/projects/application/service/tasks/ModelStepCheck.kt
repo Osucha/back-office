@@ -30,7 +30,7 @@ class ModelStepCheck(
     private val defaults: ModelDefaults? = null,
 ) {
 
-    /** Where a step's model comes from. */
+    /** Where a step's model comes from; ADR 0061: [Source.TEMPLATE] is no longer produced (kept for the contract). */
     enum class Source { NODE, AGENT, TEMPLATE, PROJECT, PROJECT_REVIEW, PERSONAL_DEFAULT, PLATFORM_DEFAULT, NONE }
 
     data class StepModel(
@@ -45,7 +45,7 @@ class ModelStepCheck(
         /** Why the step cannot run with its model; null = it can. */
         val problem: String?
             get() = when {
-                profileId == null -> "no model profile is set on the step, its template, the project defaults or a default model"
+                profileId == null -> "no model profile is set on the step, its agent, the project defaults or a default model"
                 model == null -> "its model profile no longer exists"
                 !model.usable -> "${model.displayName}: ${model.problem}"
                 else -> null
@@ -90,12 +90,10 @@ class ModelStepCheck(
         /** The coding agent harness of a runner step: the step's agent's (ADR 0056), OpenCode for a model answer. */
         fun harness(task: ResolvedTask): AgentHarness = task.agent.harness ?: AgentHarness.OPENCODE
 
-        /** ADR 0056/0057: the step's model, else its agent's (AGENT), else its template's, else the project defaults. */
+        /** ADR 0056/0057/0061: the step's model, else its agent's (AGENT), else the project defaults; templates name no model. */
         private fun modelOf(node: WorkflowNode.Task, task: ResolvedTask, project: Project): Pair<ModelProfileId?, Source>? = when {
             node.task.overrides.modelProfileId != null -> node.task.overrides.modelProfileId to Source.NODE
-            // the resolver takes the agent's model before the template's (step, agent, template)
             task.agent.modelProfileId != null -> task.agent.modelProfileId to Source.AGENT
-            task.modelProfileId != null -> task.modelProfileId to Source.TEMPLATE
             task.producesReview && project.defaults.reviewModelProfileId != null -> project.defaults.reviewModelProfileId to Source.PROJECT_REVIEW
             project.defaults.modelProfileId != null -> project.defaults.modelProfileId to Source.PROJECT
             else -> null

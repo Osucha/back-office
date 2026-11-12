@@ -36,7 +36,7 @@ class V304MigrationTest {
                 ).forEach { s.executeUpdate(it) }
             }
         }
-        flyway(null).migrate()
+        flyway("304").migrate()
     }
 
     @AfterAll

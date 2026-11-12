@@ -29,13 +29,9 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type {
-  Agent,
-  AgentRef,
-  ModelProfile,
   Project,
   ResolvedParameter,
   ResolvedTask,
-  Rule,
   RunInputField,
   Skill,
   TaskConfigSchemas,
@@ -44,6 +40,7 @@ import type {
   TemplateParameter,
 } from '../../../core/api/types';
 import { ParameterValuesFormComponent } from '../../../core/ui/parameter-values-form.component';
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   PARAMETER_TYPES,
   addParameter,
@@ -58,27 +55,18 @@ import {
   removeParameter,
   withParameterValue,
 } from '../../../core/ui/template-parameters';
-import { instructionsExcerpt } from '../data/agent-form';
 import { TEMPLATE_CATEGORIES, categoryLabel } from '../../../core/ui/template-categories';
 import { effectiveCategory, nameOfKey } from '../data/library-filters';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
-import { agentKindDescription, agentKindLabel, isCodingAgent } from '../../../core/ui/agents';
+import { neededAgentLabel } from '../../../core/ui/agents';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
 import { SchemaFormComponent } from '../../workflows/public-api';
-import {
-  DEFAULT_AGENT_KEY,
-  agentByKey,
-  agentRef,
-  agentsForScope,
-  effectiveAgentKey,
-  templateConfigSchema,
-} from '../data/template-config';
+import { templateConfigSchema, templateNeedsCodingAgent } from '../data/template-config';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ActionBarComponent } from '../../../core/ui/relay/action-bar.component';
 import { SandboxPolicyEditorComponent } from '../../fleet/public-api';
 import {
-  automaticRules,
   emptyTemplate,
   parentCandidates,
   presetOf,
@@ -125,6 +113,7 @@ function invalidJson(e: unknown): string {
     ParameterValuesFormComponent,
     SandboxPolicyEditorComponent,
     SchemaFormComponent,
+    HelpTipComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -157,6 +146,15 @@ function invalidJson(e: unknown): string {
           }
           @if (draft().abstract) {
             <span class="title-chip" i18n="@@library.templateEditor.abstractChip">abstract</span>
+          }
+          @if (needsCodingAgent()) {
+            <span
+              class="title-chip coding"
+              data-needs-coding-agent
+              nz-tooltip
+              [nzTooltipTitle]="text.needsCodingHint"
+              >{{ text.needsCoding }}</span
+            >
           }
           @if (deprecated()) {
             <span class="title-chip deprecated" [attr.title]="text.deprecatedHint">{{
@@ -208,13 +206,14 @@ function invalidJson(e: unknown): string {
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="tt-category" i18n="@@library.templateEditor.category"
+                <nz-form-label
+                  nzTooltipTitle="Groups the template in the library and in the workflow designer. Empty: inherited."
+                  i18n-nzTooltipTitle="@@library.templateEditor.category.extra"
+                  nzFor="tt-category"
+                  i18n="@@library.templateEditor.category"
                   >Category</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Groups the template in the library and in the workflow designer. Empty: inherited."
-                  i18n-nzExtra="@@library.templateEditor.category.extra"
-                >
+                <nz-form-control>
                   <nz-select
                     id="tt-category"
                     name="category"
@@ -249,13 +248,14 @@ function invalidJson(e: unknown): string {
             <h3 class="sec" i18n="@@library.templateEditor.type">Type</h3>
             <div class="grid">
               <nz-form-item>
-                <nz-form-label nzFor="tt-extends" i18n="@@library.templateEditor.extends"
+                <nz-form-label
+                  nzTooltipTitle="The template this one starts from: it inherits its prompts, parameters and configuration and changes only what you set here."
+                  i18n-nzTooltipTitle="@@library.templateEditor.extends.extra"
+                  nzFor="tt-extends"
+                  i18n="@@library.templateEditor.extends"
                   >Based on</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="The template this one starts from: it inherits its prompts, parameters and configuration and changes only what you set here."
-                  i18n-nzExtra="@@library.templateEditor.extends.extra"
-                >
+                <nz-form-control>
                   <nz-select
                     id="tt-extends"
                     name="extendsKey"
@@ -268,35 +268,6 @@ function invalidJson(e: unknown): string {
                   >
                     @for (t of parents(); track t.key) {
                       <nz-option [nzValue]="t.key" [nzLabel]="parentLabel(t)" />
-                    }
-                  </nz-select>
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label nzFor="tt-agent" i18n="@@library.templateEditor.agent"
-                  >Agent</nz-form-label
-                >
-                <nz-form-control [nzExtra]="agentHelp()">
-                  <nz-select
-                    id="tt-agent"
-                    name="agentKey"
-                    nzAllowClear
-                    nzShowSearch
-                    [nzPlaceHolder]="agentPlaceholder()"
-                    [ngModel]="draft().agentKey ?? null"
-                    (ngModelChange)="patch({ agentKey: $event ?? null })"
-                  >
-                    @for (a of agentOptions(); track a.id ?? a.key) {
-                      <nz-option nzCustomContent [nzValue]="a.key" [nzLabel]="a.name">
-                        <div class="exec-option">
-                          <span class="exec-label">{{ a.name }}</span>
-                          <span class="exec-enum">{{ agentKindLabel(a.harness) }}</span>
-                        </div>
-                        <div class="exec-desc">{{ agentKindDescription(a.harness) }}</div>
-                      </nz-option>
-                    }
-                    @if (missingAgentKey(); as key) {
-                      <nz-option [nzValue]="key" [nzLabel]="key" nzDisabled />
                     }
                   </nz-select>
                 </nz-form-control>
@@ -351,96 +322,17 @@ function invalidJson(e: unknown): string {
                   </nz-form-control>
                 </nz-form-item>
               }
-              <nz-form-item>
-                <nz-form-label nzFor="tt-model" i18n="@@library.templateEditor.modelProfile"
-                  >Model profile</nz-form-label
-                >
-                <nz-form-control>
-                  <nz-select
-                    id="tt-model"
-                    name="modelProfileId"
-                    nzAllowClear
-                    nzShowSearch
-                    nzPlaceHolder="inherited / project default"
-                    i18n-nzPlaceHolder="@@library.templateEditor.modelProfile.placeholder"
-                    [ngModel]="draft().modelProfileId ?? null"
-                    (ngModelChange)="patch({ modelProfileId: $event ?? null })"
-                  >
-                    @for (p of profiles(); track p.id) {
-                      <nz-option
-                        [nzValue]="p.id"
-                        [nzLabel]="p.displayName + ' (' + p.ref.modelId + ')'"
-                      />
-                    }
-                  </nz-select>
-                </nz-form-control>
-              </nz-form-item>
             </div>
-            @if (agentEnvironment(); as env) {
-              <div class="agent-env" data-agent-environment>
-                <div class="env-head">
-                  <span i18n="@@library.templateEditor.agentEnv.title"
-                    >Environment of the agent</span
-                  >
-                  <span class="env-name">{{ env.name }}</span>
-                </div>
-                @if (env.instructions) {
-                  <p class="env-instructions" data-agent-instructions>{{ env.instructions }}</p>
-                } @else {
-                  <p class="sec-help" i18n="@@library.templateEditor.agentEnv.noInstructions">
-                    No instructions of its own (the platform preamble only).
-                  </p>
-                }
-                <div class="chips">
-                  <span class="env-label" i18n="@@library.templateEditor.agentEnv.rules"
-                    >Rules:</span
-                  >
-                  @for (r of automatic(); track r.key) {
-                    <nz-tag nzColor="gold" [attr.data-env-rule]="r.key"
-                      >{{ r.name }}
-                      <span i18n="@@library.templateEditor.automaticSuffix"
-                        >(automatic)</span
-                      ></nz-tag
-                    >
-                  }
-                  @for (r of env.rules; track r.key) {
-                    <nz-tag [attr.data-env-rule]="r.key">{{ r.name }}</nz-tag>
-                  }
-                  @if (!env.rules.length && !automatic().length) {
-                    <span class="muted small" i18n="@@library.templateEditor.agentEnv.none"
-                      >none</span
-                    >
-                  }
-                </div>
-                <div class="chips">
-                  <span class="env-label" i18n="@@library.templateEditor.agentEnv.skills"
-                    >Skills:</span
-                  >
-                  @for (s of env.skills; track s.key) {
-                    <nz-tag nzColor="blue" [attr.data-env-skill]="s.key">{{ s.name }}</nz-tag>
-                  } @empty {
-                    <span class="muted small" i18n="@@library.templateEditor.agentEnv.none"
-                      >none</span
-                    >
-                  }
-                </div>
-                <p class="sec-help env-note" i18n="@@library.templateEditor.agentEnv.help">
-                  Instructions, rules and skills belong to the agent: change them on the Agents
-                  page, or pick another agent.
-                </p>
-              </div>
-            }
 
             <nz-form-item data-requires-skills>
               <nz-form-label
                 nzFor="tt-requires-skills"
+                nzTooltipTitle="Skills the work needs. A step whose agent lacks one gets a warning (it still runs)."
+                i18n-nzTooltipTitle="@@library.templateEditor.requiresSkills.help"
                 i18n="@@library.templateEditor.requiresSkills"
                 >Required skills</nz-form-label
               >
-              <nz-form-control
-                nzExtra="Skills the work needs. A step whose agent lacks one gets a warning (it still runs)."
-                i18n-nzExtra="@@library.templateEditor.requiresSkills.help"
-              >
+              <nz-form-control>
                 <nz-select
                   id="tt-requires-skills"
                   name="requiresSkills"
@@ -499,13 +391,14 @@ function invalidJson(e: unknown): string {
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzFor="tt-user" i18n="@@library.templateEditor.userPrompt"
+              <nz-form-label
+                nzTooltipTitle="Template variables: issue, artifacts.*, feedback, params.*, project.*, input.ci.*"
+                i18n-nzTooltipTitle="@@library.templateEditor.userPrompt.extra"
+                nzFor="tt-user"
+                i18n="@@library.templateEditor.userPrompt"
                 >User prompt</nz-form-label
               >
-              <nz-form-control
-                nzExtra="Template variables: issue, artifacts.*, feedback, params.*, project.*, input.ci.*"
-                i18n-nzExtra="@@library.templateEditor.userPrompt.extra"
-              >
+              <nz-form-control>
                 <textarea
                   nz-input
                   id="tt-user"
@@ -518,12 +411,17 @@ function invalidJson(e: unknown): string {
               </nz-form-control>
             </nz-form-item>
 
-            <h3 class="sec" i18n="@@library.templateEditor.parameters">Parameters</h3>
-            <p class="sec-help" i18n="@@library.templateEditor.parameters.help">
-              Fields a workflow step fills in when it uses this template. Prompts and text settings
-              read them as {{ paramsExample }}. A parameter with the name of an inherited one
-              replaces it.
-            </p>
+            <h3 class="sec">
+              <span i18n="@@library.templateEditor.parameters">Parameters</span>
+              <bo-help-tip [text]="parametersHelp" />
+            </h3>
+            <ng-template #parametersHelp
+              ><span i18n="@@library.templateEditor.parameters.help">
+                Fields a workflow step fills in when it uses this template. Prompts and text
+                settings read them as {{ paramsExample }}. A parameter with the name of an inherited
+                one replaces it.
+              </span></ng-template
+            >
             @for (p of draft().parameters ?? []; track $index; let i = $index) {
               <div class="param-row" [attr.data-parameter]="i">
                 <input
@@ -696,11 +594,16 @@ function invalidJson(e: unknown): string {
             }
 
             @if (inheritedParameterFields().length) {
-              <h3 class="sec" i18n="@@library.templateEditor.parameterValues">Parameter values</h3>
-              <p class="sec-help" i18n="@@library.templateEditor.parameterValues.help">
-                Values for the parameters of the parent templates. Empty: the parent's value or the
-                default; a workflow step may still set its own.
-              </p>
+              <h3 class="sec">
+                <span i18n="@@library.templateEditor.parameterValues">Parameter values</span>
+                <bo-help-tip [text]="parameterValuesHelp" />
+              </h3>
+              <ng-template #parameterValuesHelp
+                ><span i18n="@@library.templateEditor.parameterValues.help">
+                  Values for the parameters of the parent templates. Empty: the parent's value or
+                  the default; a workflow step may still set its own.
+                </span></ng-template
+              >
               <div class="param-values" data-parameter-values>
                 <app-parameter-values-form
                   [fields]="inheritedParameterFields()"
@@ -711,12 +614,17 @@ function invalidJson(e: unknown): string {
               </div>
             }
 
-            <h3 class="sec" i18n="@@library.templates.runInputs.title">Run inputs</h3>
-            <p class="sec-help" i18n="@@library.templates.runInputs.help">
-              Fields of the start form this task asks for. A workflow asks for the fields of all its
-              steps; a field with the name of an inherited one replaces it. The values reach the
-              prompt as the Run input list; an issue key field is also the run's issue key.
-            </p>
+            <h3 class="sec">
+              <span i18n="@@library.templates.runInputs.title">Run inputs</span>
+              <bo-help-tip [text]="runInputsHelp" />
+            </h3>
+            <ng-template #runInputsHelp
+              ><span i18n="@@library.templates.runInputs.help">
+                Fields of the start form this task asks for. A workflow asks for the fields of all
+                its steps; a field with the name of an inherited one replaces it. The values reach
+                the prompt as the Run input list; an issue key field is also the run's issue key.
+              </span></ng-template
+            >
             @for (f of draft().runInputs ?? []; track $index; let i = $index) {
               <div class="run-input-row" [attr.data-run-input]="i">
                 <input
@@ -824,6 +732,7 @@ function invalidJson(e: unknown): string {
             }
             <h3 class="sec">
               <span i18n="@@library.templateEditor.configuration">Configuration</span>
+              <bo-help-tip [text]="configHelp" />
               @if (configSchema() && !readonly()) {
                 <label class="raw-toggle">
                   <nz-switch
@@ -837,14 +746,11 @@ function invalidJson(e: unknown): string {
                 </label>
               }
             </h3>
-            <p class="sec-help">
-              @if (configHelpFor(); as help) {
-                <span>{{ help }}</span>
-              }
-              <span i18n="@@library.templateEditor.config.help"
+            <ng-template #configHelp
+              ><span i18n="@@library.templateEditor.config.help"
                 >Set only what differs from the parent template; empty fields are inherited.</span
-              >
-            </p>
+              ></ng-template
+            >
             @if (configSchema() && !configRaw() && !readonly()) {
               @for (k of [configFormKey()]; track k) {
                 <div class="config-form" data-config-form>
@@ -858,13 +764,14 @@ function invalidJson(e: unknown): string {
               }
             } @else {
               <nz-form-item>
-                <nz-form-label nzFor="tt-config" i18n="@@library.templateEditor.config"
+                <nz-form-label
+                  nzTooltipTitle="Keys of model answer or coding agent steps (phase, verifyCommand, push, ...). Deep-merged over the parent; null deletes."
+                  i18n-nzTooltipTitle="@@library.templateEditor.config.extra"
+                  nzFor="tt-config"
+                  i18n="@@library.templateEditor.config"
                   >Config (JSON)</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Keys of model answer or coding agent steps (phase, verifyCommand, push, ...). Deep-merged over the parent; null deletes."
-                  i18n-nzExtra="@@library.templateEditor.config.extra"
-                >
+                <nz-form-control>
                   <textarea
                     nz-input
                     id="tt-config"
@@ -885,11 +792,17 @@ function invalidJson(e: unknown): string {
               <nz-collapse-panel
                 nzHeader="Advanced: artefacts, output schema, sandbox"
                 i18n-nzHeader="@@library.templateEditor.advanced"
+                [nzExtra]="advancedTip"
               >
-                <p class="sec-help" i18n="@@library.templateEditor.advanced.help">
-                  Most templates need nothing here. These settings matter for base templates,
-                  decisions on the model answer and coding agents with special sandbox needs.
-                </p>
+                <ng-template #advancedTip>
+                  <bo-help-tip [text]="advancedHelp" (click)="$event.stopPropagation()" />
+                </ng-template>
+                <ng-template #advancedHelp
+                  ><span i18n="@@library.templateEditor.advanced.help">
+                    Most templates need nothing here. These settings matter for base templates,
+                    decisions on the model answer and coding agents with special sandbox needs.
+                  </span></ng-template
+                >
                 @if (template()?.id && template()?.key) {
                   <p class="sec-help" data-template-key>
                     <span i18n="@@library.templateEditor.keyNote"
@@ -900,11 +813,13 @@ function invalidJson(e: unknown): string {
                 }
                 <div class="grid">
                   <nz-form-item>
-                    <nz-form-label i18n="@@library.templateEditor.abstract">Abstract</nz-form-label>
-                    <nz-form-control
-                      nzExtra="Only a base for other templates, never a step itself."
-                      i18n-nzExtra="@@library.templateEditor.abstract.extra"
+                    <nz-form-label
+                      nzTooltipTitle="Only a base for other templates, never a step itself."
+                      i18n-nzTooltipTitle="@@library.templateEditor.abstract.extra"
+                      i18n="@@library.templateEditor.abstract"
+                      >Abstract</nz-form-label
                     >
+                    <nz-form-control>
                       <nz-switch
                         name="abstract"
                         [ngModel]="draft().abstract"
@@ -913,13 +828,14 @@ function invalidJson(e: unknown): string {
                     </nz-form-control>
                   </nz-form-item>
                   <nz-form-item>
-                    <nz-form-label nzFor="tt-produces" i18n="@@library.templateEditor.produces"
+                    <nz-form-label
+                      nzTooltipTitle="Artefact names this step writes."
+                      i18n-nzTooltipTitle="@@library.templateEditor.produces.extra"
+                      nzFor="tt-produces"
+                      i18n="@@library.templateEditor.produces"
                       >Produces</nz-form-label
                     >
-                    <nz-form-control
-                      nzExtra="Artefact names this step writes."
-                      i18n-nzExtra="@@library.templateEditor.produces.extra"
-                    >
+                    <nz-form-control>
                       <nz-select
                         id="tt-produces"
                         name="produces"
@@ -936,13 +852,14 @@ function invalidJson(e: unknown): string {
                     </nz-form-control>
                   </nz-form-item>
                   <nz-form-item>
-                    <nz-form-label nzFor="tt-consumes" i18n="@@library.templateEditor.consumes"
+                    <nz-form-label
+                      nzTooltipTitle="Artefact names this step reads; the workflow check warns when a step reads something nobody writes."
+                      i18n-nzTooltipTitle="@@library.templateEditor.consumes.extra"
+                      nzFor="tt-consumes"
+                      i18n="@@library.templateEditor.consumes"
                       >Consumes</nz-form-label
                     >
-                    <nz-form-control
-                      nzExtra="Artefact names this step reads; the workflow check warns when a step reads something nobody writes."
-                      i18n-nzExtra="@@library.templateEditor.consumes.extra"
-                    >
+                    <nz-form-control>
                       <nz-select
                         id="tt-consumes"
                         name="consumes"
@@ -959,13 +876,14 @@ function invalidJson(e: unknown): string {
                     </nz-form-control>
                   </nz-form-item>
                   <nz-form-item>
-                    <nz-form-label nzFor="tt-confidence" i18n="@@library.templateEditor.confidence"
+                    <nz-form-label
+                      nzTooltipTitle="Field of the model answer copied to state.confidence, for decisions such as confidence < 0.7."
+                      i18n-nzTooltipTitle="@@library.templateEditor.confidence.extra"
+                      nzFor="tt-confidence"
+                      i18n="@@library.templateEditor.confidence"
                       >Confidence field</nz-form-label
                     >
-                    <nz-form-control
-                      nzExtra="Field of the model answer copied to state.confidence, for decisions such as confidence < 0.7."
-                      i18n-nzExtra="@@library.templateEditor.confidence.extra"
-                    >
+                    <nz-form-control>
                       <input
                         nz-input
                         id="tt-confidence"
@@ -979,13 +897,14 @@ function invalidJson(e: unknown): string {
                     </nz-form-control>
                   </nz-form-item>
                   <nz-form-item>
-                    <nz-form-label nzFor="tt-tags" i18n="@@library.templateEditor.tags"
+                    <nz-form-label
+                      nzTooltipTitle="Free labels for search. The tag deprecated hides the template from new steps."
+                      i18n-nzTooltipTitle="@@library.templateEditor.tags.extra"
+                      nzFor="tt-tags"
+                      i18n="@@library.templateEditor.tags"
                       >Tags</nz-form-label
                     >
-                    <nz-form-control
-                      nzExtra="Free labels for search. The tag deprecated hides the template from new steps."
-                      i18n-nzExtra="@@library.templateEditor.tags.extra"
-                    >
+                    <nz-form-control>
                       <nz-select
                         id="tt-tags"
                         name="tags"
@@ -999,13 +918,14 @@ function invalidJson(e: unknown): string {
                   </nz-form-item>
                 </div>
                 <nz-form-item>
-                  <nz-form-label nzFor="tt-schema" i18n="@@library.templateEditor.outputSchema"
+                  <nz-form-label
+                    nzTooltipTitle="Shape of a structured answer; empty for free text. A model answers with it, a coding agent writes it to structured-answer.json."
+                    i18n-nzTooltipTitle="@@library.templateEditor.outputSchema.extra"
+                    nzFor="tt-schema"
+                    i18n="@@library.templateEditor.outputSchema"
                     >Output schema (JSON Schema)</nz-form-label
                   >
-                  <nz-form-control
-                    nzExtra="Shape of a structured answer; empty for free text. A model answers with it, a coding agent writes it to structured-answer.json."
-                    i18n-nzExtra="@@library.templateEditor.outputSchema.extra"
-                  >
+                  <nz-form-control>
                     <textarea
                       nz-input
                       id="tt-schema"
@@ -1021,12 +941,17 @@ function invalidJson(e: unknown): string {
                     }
                   </nz-form-control>
                 </nz-form-item>
-                <h3 class="sec" i18n="@@library.templateEditor.sandbox">Sandbox</h3>
-                <p class="sec-help" i18n="@@library.templateEditor.sandbox.help">
-                  Narrows the project's sandbox policy for jobs of this template (stronger
-                  isolation, fewer hosts and tools, lower caps). Empty fields inherit. The platform,
-                  pool and project ceilings are checked when the job is resolved.
-                </p>
+                <h3 class="sec">
+                  <span i18n="@@library.templateEditor.sandbox">Sandbox</span>
+                  <bo-help-tip [text]="sandboxHelp" />
+                </h3>
+                <ng-template #sandboxHelp
+                  ><span i18n="@@library.templateEditor.sandbox.help">
+                    Narrows the project's sandbox policy for jobs of this template (stronger
+                    isolation, fewer hosts and tools, lower caps). Empty fields inherit. The
+                    platform, pool and project ceilings are checked when the job is resolved.
+                  </span></ng-template
+                >
                 @defer (on viewport) {
                   <app-sandbox-policy-editor
                     [policy]="draft().sandboxPolicy ?? null"
@@ -1051,7 +976,16 @@ function invalidJson(e: unknown): string {
             i18n-aria-label="@@library.templateEditor.preview"
           >
             <div class="preview-head">
-              <h3 class="sec flush" i18n="@@library.templateEditor.preview">Resolved preview</h3>
+              <h3 class="sec flush">
+                <span i18n="@@library.templateEditor.preview">Resolved preview</span>
+                <bo-help-tip [text]="previewHelp" />
+              </h3>
+              <ng-template #previewHelp
+                ><span i18n="@@library.templateEditor.preview.help">
+                  What the agent receives after inheritance and project shadowing are applied, with
+                  the skills and rules of the agent. Reflects the saved version.
+                </span></ng-template
+              >
               @if (resolving()) {
                 <nz-icon nzType="loading" nzSpin />
               }
@@ -1073,10 +1007,6 @@ function invalidJson(e: unknown): string {
                 }
               </nz-select>
             </div>
-            <p class="muted small" i18n="@@library.templateEditor.preview.help">
-              What the agent receives after inheritance and project shadowing are applied, with the
-              skills and rules of the agent. Reflects the saved version.
-            </p>
             @if (preview(); as pv) {
               <div
                 class="lineage"
@@ -1091,15 +1021,6 @@ function invalidJson(e: unknown): string {
                 }
               </div>
               <div class="chips">
-                @if (pv.agent) {
-                  <nz-tag
-                    nzColor="purple"
-                    nz-tooltip
-                    [nzTooltipTitle]="agentKindDescription(pv.agent.harness)"
-                    [attr.data-agent]="pv.agent.key"
-                    >{{ agentTagLabel(pv.agent) }}</nz-tag
-                  >
-                }
                 @if (deprecated()) {
                   <nz-tag nzColor="red" nz-tooltip [nzTooltipTitle]="text.deprecatedHint">{{
                     text.deprecated
@@ -1378,42 +1299,6 @@ function invalidJson(e: unknown): string {
       .param-values {
         margin-bottom: 8px;
       }
-      .agent-env {
-        margin: 0 0 8px;
-        padding: 10px 12px;
-        border: 1px solid var(--bo-line);
-        border-radius: 6px;
-        background: var(--bo-surface-2);
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .env-head {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--bo-ink-2);
-      }
-      .env-name {
-        font-weight: 400;
-        color: var(--bo-ink-3);
-      }
-      .env-instructions {
-        margin: 0;
-        font-size: 12px;
-        white-space: pre-wrap;
-        color: var(--bo-ink-2);
-      }
-      .env-label {
-        font-size: 12px;
-        color: var(--bo-ink-3);
-        margin-right: 2px;
-      }
-      .env-note {
-        margin: 0;
-      }
       .ri-resolved {
         list-style: none;
         padding: 0;
@@ -1482,25 +1367,9 @@ function invalidJson(e: unknown): string {
         color: var(--bo-blocked-ink);
         box-shadow: inset 0 0 0 1px currentColor;
       }
-      .exec-option {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
-        justify-content: space-between;
-      }
-      .exec-label {
-        font-weight: 500;
-      }
-      .exec-enum {
-        font-family: var(--bo-font-mono);
-        font-size: 10.5px;
-        color: var(--bo-ink-3);
-      }
-      .exec-desc {
-        font-size: 11.5px;
-        color: var(--bo-ink-3);
-        white-space: normal;
-        line-height: 1.35;
+      .title-chip.coding {
+        color: var(--bo-accent);
+        box-shadow: inset 0 0 0 1px currentColor;
       }
       .raw-toggle {
         display: inline-flex;
@@ -1608,11 +1477,6 @@ export class TemplateEditorDrawerComponent {
    */
   readonly preset = input<TaskTemplateInput | null>(null);
   readonly skills = input<Skill[]>([]);
-  /** ADR 0055: rules a template may list. */
-  readonly rules = input<Rule[]>([]);
-  readonly profiles = input<ModelProfile[]>([]);
-  /** ADR 0056: agents a template may name (global plus those of the listed project). */
-  readonly agents = input<Agent[]>([]);
   readonly projects = input<Project[]>([]);
   readonly saving = input(false);
   /** Bumps when the template was saved, to refresh the preview. */
@@ -1629,8 +1493,6 @@ export class TemplateEditorDrawerComponent {
   /** ADR 0058: the user asked for a preset of the open template (the page opens a new drawer). */
   readonly createPreset = output<TaskTemplateInput>();
 
-  readonly agentKindLabel = agentKindLabel;
-  readonly agentKindDescription = agentKindDescription;
   /** ADR 0056: config schemas of model answer and coding agent steps; null until loaded. */
   readonly configSchemas = signal<TaskConfigSchemas | null>(null);
   /** The configuration is edited as raw JSON instead of the form. */
@@ -1686,6 +1548,8 @@ export class TemplateEditorDrawerComponent {
     yes: $localize`:@@library.templateEditor.parameters.yes:Yes`,
     no: $localize`:@@library.templateEditor.parameters.no:No`,
     presetHint: $localize`:@@library.templateEditor.createPreset.hint:A new template that extends this one and only sets its parameter values`,
+    needsCoding: neededAgentLabel(true),
+    needsCodingHint: $localize`:@@library.templateEditor.needsCoding.hint:Its configuration (Spec Kit phase, push or prepare only) needs a coding agent. The workflow step chooses the agent.`,
   };
   /** ADR 0058: how prompts read a parameter (help of the parameters section). */
   readonly paramsExample = '{{params.<name>}}'; // i18n-ignore
@@ -1695,59 +1559,23 @@ export class TemplateEditorDrawerComponent {
     label: parameterTypeLabel(t),
   }));
 
-  /** ADR 0056: agents the template's scope may name. */
-  readonly agentOptions = computed(() => agentsForScope(this.agents(), this.draft().scope));
-  /** An own agent key that is not among the loaded agents (deleted or of another project). */
-  readonly missingAgentKey = computed(() => {
-    const key = this.draft().agentKey;
-    return key && !this.agentOptions().some((a) => a.key === key) ? key : null;
-  });
   /**
-   * ADR 0056: the agent the template runs with: own, else inherited, else `model-answer`. The
-   * resolved view names it when the loaded agents do not (another project's, not loaded yet).
+   * ADR 0061: the template needs a coding agent (read-only, from its merged config): the saved
+   * value while the config is unchanged, else computed from the draft and its lineage.
    */
-  readonly effectiveAgent = computed<AgentRef | null>(() => {
+  readonly needsCodingAgent = computed(() => {
+    const t = this.template();
     const d = this.draft();
-    const key = effectiveAgentKey(d, this.templates(), null);
-    const resolved = this.preview()?.agent ?? null;
-    // the resolved view is the inherited one while the saved template has no own agent
-    if (!key) return (!this.template()?.agentKey && resolved) || this.defaultAgent();
-    const a = agentByKey(this.agents(), key, d.scope);
-    return a ? agentRef(a) : resolved?.key === key ? resolved : { key, name: key, harness: null };
+    if (
+      t?.needsCodingAgent !== undefined &&
+      JSON.stringify(t.config ?? {}) === JSON.stringify(d.config ?? {}) &&
+      (t.extendsKey ?? null) === (d.extendsKey ?? null)
+    )
+      return !!t.needsCodingAgent;
+    return templateNeedsCodingAgent(d, this.templates());
   });
-  private readonly defaultAgent = computed<AgentRef>(() => {
-    const a = agentByKey(this.agents(), DEFAULT_AGENT_KEY);
-    return a ? agentRef(a) : { key: DEFAULT_AGENT_KEY, name: agentKindLabel(null), harness: null };
-  });
-  /** Placeholder of the agent select: the inherited agent, or the model answer. */
-  readonly agentPlaceholder = computed(() => {
-    const a = this.effectiveAgent();
-    return a
-      ? $localize`:@@library.templateEditor.agent.inherited:Inherited: ${a.name}:agent:`
-      : agentKindLabel(null);
-  });
-  /** Help under the agent select. */
-  readonly agentHelp = computed(() => {
-    const a = this.effectiveAgent();
-    const base = $localize`:@@library.templateEditor.agent.help:Who runs this task by default; a workflow step can choose another agent.`;
-    return a ? `${base} ${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}` : base;
-  });
-  /** Form of the configuration: the config schema of the effective agent's kind; null = raw JSON only. */
-  readonly configSchema = computed(() =>
-    templateConfigSchema(this.configSchemas(), isCodingAgent(this.effectiveAgent())),
-  );
-  readonly configHelpFor = computed(() => {
-    const a = this.effectiveAgent();
-    return a
-      ? $localize`:@@library.templateEditor.config.helpForAgent:Settings of steps run by ${agentKindLabel(a.harness)}:kind:.`
-      : null;
-  });
-
-  /** "Claude Code · Claude Code" collapses to one name; else "name · kind". */
-  agentTagLabel(a: AgentRef): string {
-    const kind = agentKindLabel(a.harness);
-    return a.name === kind ? kind : `${a.name} · ${kind}`;
-  }
+  /** Form of the configuration: the keys of model answer and coding agent steps; null = raw JSON only. */
+  readonly configSchema = computed(() => templateConfigSchema(this.configSchemas()));
   /** The template carries the `deprecated` tag. */
   readonly deprecated = computed(() => isDeprecated(this.draft()));
 
@@ -1780,26 +1608,6 @@ export class TemplateEditorDrawerComponent {
     for (const k of this.draft().requiresSkills ?? [])
       if (!byKey.has(k)) byKey.set(k, { key: k, label: k });
     return [...byKey.values()];
-  });
-  /** Rules the step gets anyway (automatic, from the resolved preview). */
-  readonly automatic = computed(() => automaticRules(this.preview()));
-  /**
-   * ADR 0057: the environment of the effective agent, read-only under the agent select: an
-   * instructions excerpt and the agent's rules and skills by name. From the loaded agent, else
-   * from the resolved view's agent reference (keys only).
-   */
-  readonly agentEnvironment = computed(() => {
-    const ref = this.effectiveAgent();
-    if (!ref) return null;
-    const full = agentByKey(this.agents(), ref.key, this.draft().scope);
-    const ruleKeys = full?.rules ?? ref.rules ?? [];
-    const skillKeys = full?.skills ?? ref.skills ?? [];
-    return {
-      name: full?.name ?? ref.name,
-      instructions: instructionsExcerpt(full?.instructions),
-      rules: ruleKeys.map((key) => ({ key, name: nameOfKey(this.rules(), key) })),
-      skills: skillKeys.map((key) => ({ key, name: nameOfKey(this.skills(), key) })),
-    };
   });
 
   // ---------------------------------------------------------------- ADR 0058: parameters

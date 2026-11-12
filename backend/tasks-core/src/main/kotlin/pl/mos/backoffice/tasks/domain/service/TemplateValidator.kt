@@ -32,10 +32,6 @@ class TemplateValidator(private val lookup: LibraryLookup) {
         // a project template shadowing the global one extends a parent with its own key: that parent is no cycle
         val ancestors = ancestors(parent, projectId, template.key.takeUnless { parent?.key == template.key }).toList()
 
-        template.agentKey?.let { key ->
-            if (lookup.visibleAgent(key, projectId) == null) errors += FieldError("agentKey", "agent $key does not exist")
-        }
-
         template.outputSchema?.let { schema ->
             JsonSyntax.problem(schema)?.let { errors += FieldError("outputSchema", "not well-formed JSON: $it") }
         }

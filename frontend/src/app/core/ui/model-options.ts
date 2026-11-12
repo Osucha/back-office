@@ -82,6 +82,7 @@ export function planSourceLabel(source: StepModelPlan['source']): string {
       return $localize`:@@core.modelPlan.source.node:step`;
     case 'AGENT':
       return $localize`:@@core.modelPlan.source.agent:agent`;
+    // ADR 0061: no longer produced (templates have no model); kept for plans of older data
     case 'TEMPLATE':
       return $localize`:@@core.modelPlan.source.template:template`;
     case 'PROJECT':

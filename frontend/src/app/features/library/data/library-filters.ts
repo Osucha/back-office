@@ -2,23 +2,9 @@
 import type { Agent, Rule, Skill, TaskTemplate } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
 import { fixed } from '../../../core/i18n/numbers';
-import { agentKindLabel } from '../../../core/ui/agents';
+import { agentKindLabel, neededAgentLabel } from '../../../core/ui/agents';
 import { categoryLabel } from '../../../core/ui/template-categories';
 import { isDeprecated } from '../../../core/ui/template-tags';
-import { DEFAULT_AGENT_KEY, agentByKey, effectiveAgentKey } from './template-config';
-
-/**
- * ADR 0056: the agent a template runs with (own or inherited, else `model-answer`) as the list
- * shows it; null when the agent is not among the loaded ones.
- */
-export function templateAgent(
-  t: TaskTemplate,
-  all: readonly TaskTemplate[],
-  agents: readonly Agent[],
-) {
-  const key = effectiveAgentKey(t, all, DEFAULT_AGENT_KEY) ?? DEFAULT_AGENT_KEY;
-  return { key, agent: agentByKey(agents, key, t.scope) };
-}
 
 function matches(q: string, ...fields: (string | null | undefined | readonly string[])[]): boolean {
   return fields.some((f) =>
@@ -55,29 +41,27 @@ export function effectiveCategory(
 }
 
 /**
- * Templates matching the search (name, key, description, category, tag, agent name and kind),
- * agent and category (ADR 0055/0056, effective ones); deprecated templates (ADR 0054) only with
- * `showDeprecated`.
+ * Templates matching the search (name, key, description, category, tag, the kind of agent they
+ * need), the kind of agent (ADR 0061: `coding` or `any`) and category (ADR 0055, effective one);
+ * deprecated templates (ADR 0054) only with `showDeprecated`.
  */
 export function filterTemplates(
   list: readonly TaskTemplate[],
   opts: {
     query?: string | null;
-    /** ADR 0056: key of the (effective) agent. */
-    agent?: string | null;
+    /** ADR 0061: `coding` = needs a coding agent, `any` = any agent does. */
+    needs?: string | null;
     category?: string | null;
     showDeprecated?: boolean | null;
-    /** The loaded agents, for the search by agent name and kind. */
-    agents?: readonly Agent[];
   },
 ): TaskTemplate[] {
   const q = (opts.query ?? '').trim().toLowerCase();
   return list.filter((t) => {
     const category = effectiveCategory(t, list);
-    const { key: agentKey, agent } = templateAgent(t, list, opts.agents ?? []);
+    const coding = !!t.needsCodingAgent;
     return (
       (opts.showDeprecated || !isDeprecated(t)) &&
-      (!opts.agent || agentKey === opts.agent) &&
+      (!opts.needs || (opts.needs === 'coding') === coding) &&
       (!opts.category || category === opts.category) &&
       (!q ||
         matches(
@@ -87,8 +71,7 @@ export function filterTemplates(
           t.description,
           categoryLabel(category),
           t.tags ?? [],
-          agent?.name,
-          agent ? agentKindLabel(agent.harness) : null,
+          neededAgentLabel(coding),
         ))
     );
   });

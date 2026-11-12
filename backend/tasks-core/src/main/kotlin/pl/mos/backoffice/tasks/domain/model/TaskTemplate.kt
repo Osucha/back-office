@@ -1,6 +1,5 @@
 package pl.mos.backoffice.tasks.domain.model
 
-import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.RunInputField
@@ -27,7 +26,7 @@ data class Prompt(
  * inheritance chains through [extendsKey] and are merged by the `TaskResolver` into a `ResolvedTask`. Structural
  * rules that need other templates or agents are checked by `TemplateValidator`; this class only guards its
  * own invariants. ADR 0055: [category] groups templates (inherited, child wins). ADR 0057: rules and skills are the
- * agent's, not the template's. ADR 0058: [parameters] the prompts read as `{{params.<name>}}` (inherited, child wins by
+ * agent's, not the template's. ADR 0061: the template is only the work; the step chooses the agent and the model. ADR 0058: [parameters] the prompts read as `{{params.<name>}}` (inherited, child wins by
  * name) and [parameterValues] for parameters of the lineage (a preset).
  */
 data class TaskTemplate(
@@ -38,10 +37,7 @@ data class TaskTemplate(
     val abstract: Boolean,
     val extendsKey: String?,
     val category: TemplateCategory?,
-    /** ADR 0056: the agent that runs the task by default; inherited, nearest non-null wins; none anywhere = model-answer. */
-    val agentKey: String?,
     val scope: Scope,
-    val modelProfileId: ModelProfileId?,
     val prompt: Prompt,
     val config: Map<String, Any?>,
     val outputSchema: String?,
@@ -81,9 +77,7 @@ data class TaskTemplate(
         val abstract: Boolean = false,
         val extendsKey: String? = null,
         val category: TemplateCategory? = null,
-        val agentKey: String? = null,
         val scope: Scope = Scope.Global,
-        val modelProfileId: ModelProfileId? = null,
         val prompt: Prompt = Prompt.EMPTY,
         val config: Map<String, Any?> = emptyMap(),
         val outputSchema: String? = null,
@@ -99,7 +93,7 @@ data class TaskTemplate(
 
     val content: Content
         get() = Content(
-            key, name, description, abstract, extendsKey, category, agentKey, scope, modelProfileId, prompt,
+            key, name, description, abstract, extendsKey, category, scope, prompt,
             config, outputSchema, confidenceField, produces, consumes, tags, runInputs, parameters, parameterValues, requiresSkills,
         )
 
@@ -119,9 +113,7 @@ data class TaskTemplate(
             abstract = c.abstract,
             extendsKey = c.extendsKey?.takeIf { it.isNotBlank() },
             category = c.category,
-            agentKey = c.agentKey?.takeIf { it.isNotBlank() },
             scope = c.scope,
-            modelProfileId = c.modelProfileId,
             prompt = c.prompt,
             config = c.config,
             outputSchema = c.outputSchema?.takeIf { it.isNotBlank() },

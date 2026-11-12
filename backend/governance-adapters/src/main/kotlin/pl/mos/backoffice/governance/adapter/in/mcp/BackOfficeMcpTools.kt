@@ -238,11 +238,11 @@ class BackOfficeMcpTools(
             .filter { matches(it.key, it.name, it.description, it.tags.joinToString(" ")) }
             .take(MAX_LIMIT)
             .map {
-                // ADR 0056: the agent that runs the template (inherited, else the model answer); null when the chain is broken
+                // ADR 0061: templates name no agent; what kind of agent the work needs and the skills it requires (null: broken chain)
                 val resolved = runCatching { templates.resolve(it.key, project) }.getOrNull()
                 linkedMapOf(
                     "key" to it.key, "name" to it.name, "description" to it.description,
-                    "agent" to resolved?.agent?.let(::agentRef),
+                    "needsCodingAgent" to (resolved?.needsCodingAgent ?: false), "requiresSkills" to resolved?.requiresSkills.orEmpty(),
                     "category" to it.category?.name, "tags" to it.tags, "version" to it.version,
                     // ADR 0058: parameters the step sets in overrides.parameters; needsParameters = not a ready block
                     "parameters" to resolved?.parameters?.map { p -> parameter(p.definition) + ("value" to p.value) + ("source" to p.source.name) }.orEmpty(),
@@ -336,7 +336,8 @@ class BackOfficeMcpTools(
         name = "get_workflow_palette",
         description = "What a workflow of a project can be built from: control nodes (START, END, DECISION, HUMAN_GATE, WAIT_FOR_CI, NOTE) " +
             "with their ports and config, the actions usable as ACTION nodes (type, defaults, config schema, run inputs, Jira capabilities), " +
-            "the task templates usable as TASK nodes (templateKey, agent, output ports, config schema) and the " +
+            "the task templates usable as TASK nodes (templateKey, needsCodingAgent, requiresSkills, output ports, config schema; " +
+            "the step names its agent in overrides.agentKey, ADR 0061) and the " +
             "run-state fields DECISION expressions can read. Call it before create_workflow.",
         annotations = McpTool.McpAnnotations(title = "Get workflow palette", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
     )
@@ -355,7 +356,7 @@ class BackOfficeMcpTools(
             "tasks" to palette.tasks.filterNot { it.deprecated }.map {
                 linkedMapOf(
                     "templateKey" to it.key, "name" to it.name, "description" to it.description,
-                    "agent" to agentRef(it.agent),
+                    "needsCodingAgent" to it.needsCodingAgent, "requiresSkills" to it.requiresSkills,
                     "category" to it.category?.name, "ports" to it.ports, "projectScoped" to it.projectScoped, "configSchema" to it.configSchema,
                     "parameters" to it.parameters.map(::parameter), "parameterValues" to it.parameterValues, "needsParameters" to it.needsParameters,
                 )
@@ -501,7 +502,7 @@ class BackOfficeMcpTools(
 
     @McpTool(
         name = "get_model_plan",
-        description = "The model of every task step of a workflow as a run would resolve it (node, template, project default or review default), " +
+        description = "The model of every task step of a workflow as a run would resolve it (node, agent, project default or review default), " +
             "where it comes from, its route and whether the caller can use it. A step with a problem stops a run from starting (ADR 0050).",
         annotations = McpTool.McpAnnotations(title = "Get model plan", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
     )
@@ -615,10 +616,6 @@ class BackOfficeMcpTools(
     private fun instant(value: String?, field: String): Instant? =
         value?.takeIf { it.isNotBlank() }?.let { runCatching { Instant.parse(it.trim()) }.getOrElse { throw ValidationException("must be an ISO-8601 instant", field) } }
 
-
-    /** ADR 0056/0057: who runs a task: harness, rules and skills of the agent. */
-    private fun agentRef(a: pl.mos.backoffice.shared.tasks.AgentSnapshot): Map<String, Any?> =
-        linkedMapOf("key" to a.key, "name" to a.name, "harness" to a.harness?.name, "rules" to a.rules, "skills" to a.skills)
 
     /** ADR 0058: a template parameter for MCP clients. */
     private fun parameter(p: pl.mos.backoffice.shared.tasks.TemplateParameter): Map<String, Any?> = linkedMapOf(

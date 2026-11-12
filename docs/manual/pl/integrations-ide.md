@@ -159,7 +159,7 @@ Odrzucone wywołanie wraca jako błąd narzędzia, a nie błąd transportu.
 | `get_delivery_insights` | Wskaźniki dostarczania jednego projektu lub wszystkich widocznych projektów | `project.view` |
 | `get_agent_insights` | Wskaźniki agentów jednego projektu lub wszystkich widocznych projektów: według agenta i modelu oraz według szablonu wykonania, zaakceptowane wyniki, odsetek „za pierwszym razem”, koszt i koszt zaakceptowanego wyniku, od najtańszego ([costs-insights.md](costs-insights.md#agent-insights)) | `project.view` |
 | `list_projects` | Projekty, które widzisz | `project.view` |
-| `get_workflow_palette` | Z czego można zbudować workflow: węzły sterujące, szablony zadań z portami i ustawieniami, pola stanu uruchomienia | `project.view` |
+| `get_workflow_palette` | Z czego można zbudować workflow: węzły sterujące, szablony zadań z portami, ustawieniami, informacją, czy wymagają agenta kodującego, i wymaganymi umiejętnościami (agenta wskazuje krok), pola stanu uruchomienia | `project.view` |
 | `get_workflow` | Jeden workflow z pełną definicją (węzły, krawędzie, wyzwalacze) | `project.view` |
 | `validate_workflow` | Sprawdza definicję bez zapisywania i wypisuje błędy oraz ostrzeżenia | `project.view` |
 | `create_workflow` | Tworzy workflow; najpierw jest sprawdzany i przy błędach nic nie zostaje zapisane | `workflow.edit` i token utworzony z opcją **Zezwól na edycję workflowów przez MCP** |

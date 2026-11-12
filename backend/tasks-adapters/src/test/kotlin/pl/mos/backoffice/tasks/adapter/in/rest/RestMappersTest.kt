@@ -29,7 +29,7 @@ class RestMappersTest {
 
     @Test
     fun `template run inputs go from the request to the domain and back to the response`() {
-        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", agentKey = "claude-code", scope = ScopeDto(ScopeTypeDto.GLOBAL), runInputs = listOf(issue, input))
+        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL), runInputs = listOf(issue, input), config = mapOf("push" to true))
 
         val content = RestMappers.templateContent(dto)
         assertThat(content.runInputs).containsExactly(
@@ -39,9 +39,8 @@ class RestMappersTest {
 
         val response = RestMappers.template(TaskTemplate.create(content, now))
         assertThat(response.runInputs).containsExactly(issue, input)
-        assertThat(content.agentKey).isEqualTo("claude-code")
-        assertThat(response.agentKey).isEqualTo("claude-code")
-        assertThat(RestMappers.templateContent(dto.copy(agentKey = " ")).agentKey).describedAs("blank = inherit").isNull()
+        assertThat(response.needsCodingAgent).describedAs("unknown to the mapper: the use case derives it").isFalse()
+        assertThat(RestMappers.template(TaskTemplate.create(content, now), needsCodingAgent = true).needsCodingAgent).isTrue()
     }
 
     @Test

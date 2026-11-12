@@ -56,6 +56,32 @@ export function agentAccessText(access: AgentAccess | null | undefined): string 
   return agentAccessModeLabel(access?.mode);
 }
 
+/** ADR 0061: what kind of worker a template needs, as a small tag: "Needs a coding agent" / "Any agent". */
+export function neededAgentLabel(needsCodingAgent: boolean | null | undefined): string {
+  return needsCodingAgent
+    ? $localize`:@@core.agent.needsCoding:Needs a coding agent`
+    : $localize`:@@core.agent.needsAny:Any agent`;
+}
+
+/**
+ * ADR 0061: whether a (merged) task config needs a coding agent: `codingAgent: true` (work in the
+ * repository without a push), a Spec Kit `phase`, `push` or `prepareOnly`. Anything else can be
+ * done by any agent.
+ */
+export function configNeedsCodingAgent(
+  config: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!config) return false;
+  const truthy = (v: unknown) => v === true || String(v).toLowerCase() === 'true';
+  const phase = config['phase'];
+  return (
+    truthy(config['codingAgent']) ||
+    (typeof phase === 'string' && phase.trim() !== '') ||
+    truthy(config['push']) ||
+    truthy(config['prepareOnly'])
+  );
+}
+
 /** Whether an agent (or agent reference) is a coding agent: it has a harness. */
 export function isCodingAgent(agent: { harness?: string | null } | null | undefined): boolean {
   return !!agent?.harness;

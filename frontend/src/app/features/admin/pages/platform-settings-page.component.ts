@@ -124,7 +124,11 @@ import {
             <div class="fields">
               <div class="row">
                 <nz-form-item>
-                  <nz-form-label nzFor="ps-min" i18n="@@admin.platformSettings.policy.min"
+                  <nz-form-label
+                    nzFor="ps-min"
+                    nzTooltipTitle="Length beats composition rules: no digits or symbols are required."
+                    i18n-nzTooltipTitle="@@admin.platformSettings.policy.lengthHelp"
+                    i18n="@@admin.platformSettings.policy.min"
                     >Minimum length</nz-form-label
                   >
                   <nz-form-control [nzErrorTip]="tip">
@@ -150,9 +154,6 @@ import {
                   </nz-form-control>
                 </nz-form-item>
               </div>
-              <p class="help" i18n="@@admin.platformSettings.policy.lengthHelp">
-                Length beats composition rules: no digits or symbols are required.
-              </p>
               <div class="toggle">
                 <nz-switch id="ps-common" formControlName="rejectCommon" />
                 <label for="ps-common" class="t-body">
@@ -201,7 +202,10 @@ import {
                   </nz-form-control>
                 </nz-form-item>
                 <nz-form-item>
-                  <nz-form-label nzFor="ps-lock" i18n="@@admin.platformSettings.lockout.firstLock"
+                  <nz-form-label
+                    nzFor="ps-lock"
+                    [nzTooltipTitle]="lockHelp"
+                    i18n="@@admin.platformSettings.lockout.firstLock"
                     >First lock (minutes)</nz-form-label
                   >
                   <nz-form-control [nzErrorTip]="tip">
@@ -214,11 +218,13 @@ import {
                   </nz-form-control>
                 </nz-form-item>
               </div>
-              <p class="help" i18n="@@admin.platformSettings.lockout.help">
-                The lock doubles on every further lockout, up to 24 h
-                <span class="num">({{ lockSeries() }})</span>. A successful sign-in or "Unlock
-                account" on the user resets it.
-              </p>
+              <ng-template #lockHelp
+                ><span i18n="@@admin.platformSettings.lockout.help">
+                  The lock doubles on every further lockout, up to 24 h
+                  <span class="num">({{ lockSeries() }})</span>. A successful sign-in or "Unlock
+                  account" on the user resets it.
+                </span></ng-template
+              >
             </div>
           </section>
 
@@ -251,15 +257,13 @@ import {
               </nz-form-item>
               <nz-form-item>
                 <nz-form-label
+                  nzTooltipTitle="With invite only, people from these domains may still sign in through the identity provider."
+                  i18n-nzTooltipTitle="@@admin.platformSettings.registration.domainsHelp"
                   nzFor="ps-domains"
                   i18n="@@admin.platformSettings.registration.domains"
                   >Allowed e-mail domains</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="With invite only, people from these domains may still sign in through the identity provider."
-                  i18n-nzExtra="@@admin.platformSettings.registration.domainsHelp"
-                  [nzErrorTip]="tip"
-                >
+                <nz-form-control [nzErrorTip]="tip">
                   <nz-select
                     nzId="ps-domains"
                     nzMode="tags"

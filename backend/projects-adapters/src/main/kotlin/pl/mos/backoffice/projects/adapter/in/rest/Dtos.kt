@@ -177,6 +177,60 @@ data class StepModelPlanDto(
     }
 }
 
+/** ADR 0061: body of `POST /workflows/agent-audit`: the designer's draft. */
+data class AgentAuditRequestDto(
+    @field:NotNull val projectId: UUID? = null,
+    val nodes: List<WorkflowNodeJson> = emptyList(),
+)
+
+/** `AgentAuditFinding` schema (ADR 0061). */
+data class AgentAuditFindingDto(val kind: String, val severity: String, val message: String, val nodeIds: List<String>, val key: String?)
+
+/** `Scope` schema: `PROJECT` carries `projectId`. */
+data class AgentScopeDto(val type: String, val projectId: UUID? = null)
+
+data class AgentAuditRuleDto(val key: String, val name: String, val automatic: Boolean)
+data class AgentAuditSkillDto(val key: String, val name: String)
+data class AgentAuditRequiredSkillDto(val key: String, val name: String?, val nodeIds: List<String>)
+
+/** `AgentAuditEntry` schema (ADR 0061). */
+data class AgentAuditEntryDto(
+    val agent: AgentRefDto,
+    val agentId: UUID?,
+    val scope: AgentScopeDto,
+    val nodeIds: List<String>,
+    val rules: List<AgentAuditRuleDto>,
+    val skills: List<AgentAuditSkillDto>,
+    val requiredSkills: List<AgentAuditRequiredSkillDto>,
+    val missingSkills: List<String>,
+    val findings: List<AgentAuditFindingDto>,
+)
+
+/** `AgentAudit` schema (ADR 0061). */
+data class AgentAuditDto(val agents: List<AgentAuditEntryDto>, val findings: List<AgentAuditFindingDto>) {
+    companion object {
+        fun of(r: pl.mos.backoffice.projects.domain.service.AgentAuditReport) = AgentAuditDto(
+            agents = r.agents.map { e ->
+                AgentAuditEntryDto(
+                    agent = AgentRefDto(e.agent.key, e.agent.name, e.agent.harness?.name, e.agent.modelProfileId?.value, e.agent.rules, e.agent.skills),
+                    agentId = e.agentId,
+                    scope = if (e.projectId == null) AgentScopeDto("GLOBAL") else AgentScopeDto("PROJECT", e.projectId),
+                    nodeIds = e.nodeIds,
+                    rules = e.rules.map { AgentAuditRuleDto(it.key, it.name, it.automatic) },
+                    skills = e.skills.map { AgentAuditSkillDto(it.key, it.name) },
+                    requiredSkills = e.requiredSkills.map { AgentAuditRequiredSkillDto(it.key, it.name, it.nodeIds) },
+                    missingSkills = e.missingSkills,
+                    findings = e.findings.map(::finding),
+                )
+            },
+            findings = r.findings.map(::finding),
+        )
+
+        private fun finding(f: pl.mos.backoffice.projects.domain.service.AgentAuditFinding) =
+            AgentAuditFindingDto(f.kind.name, f.severity.name, f.message, f.nodeIds, f.key)
+    }
+}
+
 data class WorkflowDefinitionInputDto(
     @field:NotBlank val name: String = "",
     val description: String = "",
@@ -318,7 +372,6 @@ data class PaletteTaskDto(
     val key: String,
     val name: String,
     val description: String,
-    val agent: AgentRefDto,
     val category: String?,
     val ports: List<String>,
     val projectScoped: Boolean,
@@ -327,6 +380,10 @@ data class PaletteTaskDto(
     val parameters: List<TemplateParameterDto> = emptyList(),
     val parameterValues: Map<String, Any?> = emptyMap(),
     val needsParameters: Boolean = false,
+    /** ADR 0061: the step needs a coding agent. */
+    val needsCodingAgent: Boolean = false,
+    /** ADR 0061: skills the work needs. */
+    val requiresSkills: List<String> = emptyList(),
 )
 
 /** `ActionDescriptor` schema (ADR 0056). */

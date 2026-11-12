@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { params, silent, url } from './api-base';
 import type {
+  AgentAudit,
   CodingHarness,
   ExpressionValidation,
   ModelOption,
@@ -14,6 +15,7 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionInput,
   WorkflowPalette,
+  WorkflowNode,
   WorkflowRun,
 } from './types';
 
@@ -58,6 +60,18 @@ export class WorkflowsApi {
     return this.http.get<WorkflowPalette>(url('workflows', 'palette'), {
       params: params({ projectId }),
     });
+  }
+
+  /**
+   * ADR 0061: per agent the draft's steps use: its rules and skills, the skills its steps require
+   * and which are missing, and deterministic findings. Nothing changes; no model is called.
+   */
+  agentAudit(projectId: string, nodes: readonly WorkflowNode[]): Observable<AgentAudit> {
+    return this.http.post<AgentAudit>(
+      url('workflows', 'agent-audit'),
+      { projectId, nodes },
+      silent(),
+    );
   }
 
   /** ADR 0050: the models a step of the given kind may use for the caller, usable first. */

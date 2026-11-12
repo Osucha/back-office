@@ -30,7 +30,7 @@ class AgentServiceTest {
     )
     private val audit = RecordingAuditPort()
 
-    private fun agents(gate: FakeAuthorizationGate = curator) = AgentService(lib.agents, lib.templates, lib.clock, gate, audit, lib.lookup)
+    private fun agents(gate: FakeAuthorizationGate = curator) = AgentService(lib.agents, lib.clock, gate, audit, lib.lookup)
     private fun templates() = TaskTemplateService(lib.templates, lib.lookup, lib.clock, curator, audit)
 
     @Test
@@ -66,29 +66,15 @@ class AgentServiceTest {
     }
 
     @Test
-    fun `an agent a template names cannot be deleted, renamed or moved`() {
+    fun `ADR 0061 - templates name no agent, so an agent can be renamed, moved and deleted`() {
         val agent = agents().create(Agent.Content(key = "coder", name = "Coder", harness = AgentHarness.OPENCODE))
-        val template = templates().create(TaskTemplate.Content(key = "work", name = "Work", agentKey = "coder"))
+        templates().create(TaskTemplate.Content(key = "work", name = "Work"))
 
-        assertThatThrownBy { agents().delete(agent.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("used by templates")
-        assertThatThrownBy { agents().update(agent.id, Agent.Content(key = "renamed", name = "Coder")) }.isInstanceOf(InvalidStateException::class.java)
-        assertThatThrownBy { agents().update(agent.id, Agent.Content(name = "Coder", scope = Scope.Project(lib.projectId))) }.isInstanceOf(InvalidStateException::class.java)
-        assertThat(agents().update(agent.id, Agent.Content(name = "Coder 2")).name).isEqualTo("Coder 2")
-
-        templates().delete(template.id)
+        assertThat(agents().update(agent.id, Agent.Content(key = "renamed", name = "Coder 2")).key).isEqualTo("renamed")
+        assertThat(agents().update(agent.id, Agent.Content(name = "Coder", scope = Scope.Project(lib.projectId))).scope).isEqualTo(Scope.Project(lib.projectId))
         agents().delete(agent.id)
         assertThat(lib.agents.rows).isEmpty()
-        assertThat(audit.operations()).containsExactly("AGENT_CREATE", "TEMPLATE_CREATE", "AGENT_UPDATE", "TEMPLATE_DELETE", "AGENT_DELETE")
-    }
-
-    @Test
-    fun `a project agent is in use only by templates that see it`() {
-        val project = agents().create(Agent.Content(key = "coder", name = "Coder", scope = Scope.Project(lib.projectId)))
-        agents().create(Agent.Content(key = "coder", name = "Coder", scope = Scope.Project(other)))
-        lib.template("work", agentKey = "coder", scope = Scope.Project(other))
-
-        agents().delete(project.id)
-        assertThat(lib.agents.findByKeyAndScope("coder", Scope.Project(lib.projectId))).isNull()
+        assertThat(audit.operations()).containsExactly("AGENT_CREATE", "TEMPLATE_CREATE", "AGENT_UPDATE", "AGENT_UPDATE", "AGENT_DELETE")
     }
 
     @Test

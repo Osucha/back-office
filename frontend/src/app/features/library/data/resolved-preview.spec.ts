@@ -81,7 +81,6 @@ describe('save payload (ADR 0055)', () => {
     expect(d.extendsKey).toBe('code-review');
     expect(d.name).toBe('Code review');
     expect(d.scope).toEqual({ type: 'PROJECT', projectId: 'p1' });
-    expect(d.agentKey).toBeNull();
     expect(d.category).toBeNull();
     expect(d.parameters).toEqual([]);
     expect(d.parameterValues).toEqual({});

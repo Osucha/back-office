@@ -163,14 +163,14 @@ import { EDITOR_STYLES } from '../components/editor-styles';
             </div>
             <div class="fields">
               <nz-form-item>
-                <nz-form-label nzFor="g-ext" i18n="@@admin.groupEdit.externalGroup"
+                <nz-form-label
+                  nzTooltipTitle="Value of the OIDC groups claim."
+                  i18n-nzTooltipTitle="@@admin.groupEdit.externalGroupHint"
+                  nzFor="g-ext"
+                  i18n="@@admin.groupEdit.externalGroup"
                   >Identity provider group</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Value of the OIDC groups claim."
-                  i18n-nzExtra="@@admin.groupEdit.externalGroupHint"
-                  [nzErrorTip]="tip"
-                >
+                <nz-form-control [nzErrorTip]="tip">
                   <input
                     nz-input
                     id="g-ext"

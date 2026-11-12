@@ -202,13 +202,14 @@ function acceptanceValidator(c: AbstractControl): ValidationErrors | null {
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzFor="t-ctx" i18n="@@evaluation.task.context"
+              <nz-form-label
+                nzTooltipTitle="Extra material handed to the model: existing spec, code excerpt, stack trace."
+                i18n-nzTooltipTitle="@@evaluation.task.contextHint"
+                nzFor="t-ctx"
+                i18n="@@evaluation.task.context"
                 >Context (optional)</nz-form-label
               >
-              <nz-form-control
-                nzExtra="Extra material handed to the model: existing spec, code excerpt, stack trace."
-                i18n-nzExtra="@@evaluation.task.contextHint"
-              >
+              <nz-form-control>
                 <textarea
                   nz-input
                   id="t-ctx"
@@ -219,15 +220,15 @@ function acceptanceValidator(c: AbstractControl): ValidationErrors | null {
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzRequired nzFor="t-rubric" i18n="@@evaluation.task.rubric"
+              <nz-form-label
+                nzTooltipTitle="Criteria the judge model scores 0-10 each."
+                i18n-nzTooltipTitle="@@evaluation.task.rubricHint"
+                nzRequired
+                nzFor="t-rubric"
+                i18n="@@evaluation.task.rubric"
                 >Rubric (markdown)</nz-form-label
               >
-              <nz-form-control
-                nzErrorTip="Required"
-                i18n-nzErrorTip="@@evaluation.task.required"
-                nzExtra="Criteria the judge model scores 0-10 each."
-                i18n-nzExtra="@@evaluation.task.rubricHint"
-              >
+              <nz-form-control nzErrorTip="Required" i18n-nzErrorTip="@@evaluation.task.required">
                 <textarea
                   nz-input
                   id="t-rubric"
@@ -299,14 +300,17 @@ function acceptanceValidator(c: AbstractControl): ValidationErrors | null {
                   /></nz-form-control>
                 </nz-form-item>
                 <nz-form-item class="span-3">
-                  <nz-form-label nzRequired nzFor="t-verify" i18n="@@evaluation.task.verify"
+                  <nz-form-label
+                    nzTooltipTitle="Exit code 0 means passed."
+                    i18n-nzTooltipTitle="@@evaluation.task.verifyHint"
+                    nzRequired
+                    nzFor="t-verify"
+                    i18n="@@evaluation.task.verify"
                     >Verify command</nz-form-label
                   >
                   <nz-form-control
                     nzErrorTip="Required"
                     i18n-nzErrorTip="@@evaluation.task.required"
-                    nzExtra="Exit code 0 means passed."
-                    i18n-nzExtra="@@evaluation.task.verifyHint"
                     ><input
                       nz-input
                       id="t-verify"
@@ -316,14 +320,16 @@ function acceptanceValidator(c: AbstractControl): ValidationErrors | null {
                   /></nz-form-control>
                 </nz-form-item>
                 <nz-form-item class="full">
-                  <nz-form-label nzFor="t-acceptance" i18n="@@evaluation.task.acceptance"
+                  <nz-form-label
+                    nzTooltipTitle="Hidden from the agent: files (e.g. acceptance tests) are written only for the verification command, protectedPaths (git pathspecs such as existing tests) must stay unchanged, requireChanges fails a run that changed nothing. Empty = none."
+                    i18n-nzTooltipTitle="@@evaluation.task.acceptanceHint"
+                    nzFor="t-acceptance"
+                    i18n="@@evaluation.task.acceptance"
                     >Acceptance checks (JSON)</nz-form-label
                   >
                   <nz-form-control
                     nzErrorTip="Not valid: an object with files (path to content), protectedPaths and requireChanges"
                     i18n-nzErrorTip="@@evaluation.task.acceptanceInvalid"
-                    nzExtra="Hidden from the agent: files (e.g. acceptance tests) are written only for the verification command, protectedPaths (git pathspecs such as existing tests) must stay unchanged, requireChanges fails a run that changed nothing. Empty = none."
-                    i18n-nzExtra="@@evaluation.task.acceptanceHint"
                   >
                     <textarea
                       nz-input
@@ -355,12 +361,14 @@ function acceptanceValidator(c: AbstractControl): ValidationErrors | null {
                 /></nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="t-weight" i18n="@@evaluation.task.weight"
+                <nz-form-label
+                  nzTooltipTitle="Relative weight in suite aggregates."
+                  i18n-nzTooltipTitle="@@evaluation.task.weightHint"
+                  nzFor="t-weight"
+                  i18n="@@evaluation.task.weight"
                   >Weight</nz-form-label
                 >
                 <nz-form-control
-                  nzExtra="Relative weight in suite aggregates."
-                  i18n-nzExtra="@@evaluation.task.weightHint"
                   ><nz-input-number
                     id="t-weight"
                     formControlName="weight"

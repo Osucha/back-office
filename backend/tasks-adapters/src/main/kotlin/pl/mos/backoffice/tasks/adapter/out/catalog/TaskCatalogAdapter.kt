@@ -3,11 +3,14 @@ package pl.mos.backoffice.tasks.adapter.out.catalog
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentSnapshot
+import pl.mos.backoffice.shared.tasks.AgentProfile
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.ResolvedTask
+import pl.mos.backoffice.shared.tasks.StepNeeds
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskSummary
+import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
 import pl.mos.backoffice.tasks.application.service.TaskCatalogService
@@ -20,11 +23,14 @@ import java.util.UUID
  */
 @Component
 @Transactional(readOnly = true)
-class TaskCatalogAdapter(templates: TaskTemplateRepository, lookup: RepositoryLookup) : TaskCatalog {
-    private val service = TaskCatalogService(templates, lookup)
+class TaskCatalogAdapter(templates: TaskTemplateRepository, lookup: RepositoryLookup, agents: AgentRepository) : TaskCatalog {
+    private val service = TaskCatalogService(templates, lookup, agents)
 
     override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? = service.resolve(key, projectId, overrides)
     override fun palette(projectId: UUID?): List<TaskSummary> = service.palette(projectId)
     override fun agent(key: String, projectId: UUID?): AgentSnapshot? = service.agent(key, projectId)
     override fun agentEnvironment(key: String, projectId: UUID?): AgentEnvironmentSnapshot? = service.agentEnvironment(key, projectId)
+    override fun stepNeeds(key: String, projectId: UUID?, overrides: TaskOverrides): StepNeeds? = service.stepNeeds(key, projectId, overrides)
+    override fun agentProfile(key: String, projectId: UUID?): AgentProfile? = service.agentProfile(key, projectId)
+    override fun agentProfileById(id: UUID, projectId: UUID?): AgentProfile? = service.agentProfileById(id, projectId)
 }

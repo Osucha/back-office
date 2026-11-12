@@ -57,9 +57,9 @@ class SpecKitGatingTest {
             return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = listOf(
-            TaskSummary("spec-kit-specify", "Spec Kit: specify", "", TestAgents.OPENCODE, null, false, null, listOf("success", "failure")),
-            TaskSummary("my-spec", "My spec (extends Spec Kit)", "", TestAgents.OPENCODE, null, false, null, listOf("success", "failure")),
-            TaskSummary("llm-task", "LLM task", "", TestAgents.MODEL_ANSWER, null, false, null, listOf("success", "failure")),
+            TaskSummary("spec-kit-specify", "Spec Kit: specify", "", null, false, null, listOf("success", "failure")),
+            TaskSummary("my-spec", "My spec (extends Spec Kit)", "", null, false, null, listOf("success", "failure")),
+            TaskSummary("llm-task", "LLM task", "", null, false, null, listOf("success", "failure")),
         )
     }
 

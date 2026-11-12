@@ -7,6 +7,7 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.domain.model.Keys
@@ -101,6 +102,10 @@ class TaskTemplateService(
         return lookup.resolver.preview(key, access.projectId, overrides) ?: throw NotFoundException("TaskTemplate", key)
     }
 
+    @SystemOperation("ADR 0061: a flag derived from a template the caller already obtained through an authorised read; reveals nothing else")
+    override fun needsCodingAgent(template: TaskTemplate): Boolean =
+        lookup.resolver.needsCodingAgent(template, template.scope.projectId)
+
     private fun load(id: TaskTemplateId): TaskTemplate = templates.findById(id) ?: throw NotFoundException("TaskTemplate", id)
 
     /** Static checks, then the chain walk (cycles, depth, unknown parents) against the not-yet-saved template. */
@@ -128,7 +133,6 @@ class TaskTemplateService(
             "abstract" to t.abstract,
             "extendsKey" to t.extendsKey,
             "category" to t.category?.name,
-            "agentKey" to t.agentKey,
             "parameters" to t.parameters.map { it.name },
             "systemPromptLength" to (t.prompt.system?.length ?: 0),
             "userPromptLength" to (t.prompt.user?.length ?: 0),
@@ -149,8 +153,6 @@ class TaskTemplateService(
             "abstract" to (old.abstract to new.abstract),
             "extendsKey" to (old.extendsKey to new.extendsKey),
             "category" to (old.category?.name to new.category?.name),
-            "agentKey" to (old.agentKey to new.agentKey),
-            "modelProfileId" to (old.modelProfileId?.toString() to new.modelProfileId?.toString()),
             "promptMode" to (old.prompt.mode.name to new.prompt.mode.name),
             "systemPromptLength" to ((old.prompt.system?.length ?: 0) to (new.prompt.system?.length ?: 0)),
             "userPromptLength" to ((old.prompt.user?.length ?: 0) to (new.prompt.user?.length ?: 0)),

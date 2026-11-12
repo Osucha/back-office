@@ -14,8 +14,8 @@ Otwierasz go z projektu: karta **Workflowy** (**Workflows**) → **Edytuj** (**E
 
 | Obszar | Co zawiera |
 |---|---|
-| Nagłówek | Klucz projektu i wersję, nazwę workflowu, znacznik stanu (**poprawny**, błędy, ostrzeżenia lub **tylko do odczytu**), przełącznik **Projektant** / **JSON** (**Designer** / **JSON**), **Szablon** (**Template**; tylko nowe workflowy), cofnij i ponów, **Uporządkuj układ** (**Tidy layout**), **Waliduj** (**Validate**) oraz przyciski pokazujące lub ukrywające paletę i właściwości. |
-| Paleta (po lewej) | Węzły **Sterowanie** (**Control**), **Akcje** (**Actions**; operacje Jiry i Back Office bez modelu, zob. [Węzły akcji](#actions)) i **Zadania** (**Tasks**) z biblioteki zadań, pogrupowane według kategorii (Analiza, Specyfikacja, ...), z polem wyszukiwania. Szablon należący do projektu ma ikonę projektu. |
+| Nagłówek | Klucz projektu i wersję, nazwę workflowu, znacznik stanu (**poprawny**, błędy, ostrzeżenia lub **tylko do odczytu**), przełącznik **Projektant** / **JSON** (**Designer** / **JSON**), **Szablon** (**Template**; tylko nowe workflowy), cofnij i ponów, **Uporządkuj układ** (**Tidy layout**), **Waliduj** (**Validate**), **Agenci w tym workflowie** (**Agents in this workflow**) ze znaczkiem liczby problemów ([Agenci w tym workflowie](#agent-audit)) oraz przyciski pokazujące lub ukrywające paletę i właściwości. |
+| Paleta (po lewej) | Węzły **Sterowanie** (**Control**), **Akcje** (**Actions**; operacje Jiry i Back Office bez modelu, zob. [Węzły akcji](#actions)) i **Zadania** (**Tasks**) z biblioteki zadań, pogrupowane według kategorii (Analiza, Specyfikacja, ...), z polem wyszukiwania. Szablon należący do projektu ma ikonę projektu; szablon, który wymaga agenta kodującego, ma znacznik **agent kodujący** (**coding agent**). Po najechaniu na zadanie widać jego opis, rodzaj agenta, którego wymaga, i **Wymagane umiejętności**. |
 | Kanwa | Graf. Przyciski powiększenia, **Czytelny widok od START** (**Readable view from START**), **Dopasuj wszystko** (**Fit everything**) i, od ośmiu węzłów, mapa poglądowa (**Pokaż mapę** / **Ukryj mapę**, **Show the overview** / **Hide the overview**). |
 | Właściwości (po prawej) | Zaznaczony węzeł lub krawędź; gdy nic nie jest zaznaczone: **Opis** (**Description**) workflowu, przełącznik **Włączony** (**Enabled**) i **Wyzwalacze** (**Triggers**). |
 | Arkusz **Walidacja** (**Validation**; na dole) | Błędy i ostrzeżenia pogrupowane według węzłów; kliknij pozycję, aby przejść do węzła. |
@@ -113,12 +113,28 @@ niepołączony port `failure`, `fail` lub `timeout`, kończy się niepowodzeniem
 ### Węzły zadań
 
 Krok zadania łączy trzy rzeczy: **szablon** (co zrobić), **agenta** (kto pracuje i jak) oraz wartości
-**parametrów** szablonu ([Biblioteka zadań](task-library.md#agents)).
+**parametrów** szablonu ([Biblioteka zadań](task-library.md#agents)). Szablon nie wskazuje agenta ani modelu: wybiera
+je krok (ADR 0061).
 
 Wybierz **Szablon** (przestarzałe szablony nie są proponowane; krok, który już go używa, ma znacznik
 **Przestarzały**, **Deprecated**; szablony ze znacznikiem **wymaga parametrów**, **needs parameters**, oczekują
-wartości w kroku). Pod nim widać rodowód szablonu, agenta i kategorię oraz **Otwórz w bibliotece** (**Open in
-library**).
+wartości w kroku). Pod nim widać rodowód szablonu, znacznik **Wymaga agenta kodującego** (**Needs a coding agent**),
+gdy go wymaga, kategorię oraz **Otwórz w bibliotece** (**Open in library**).
+
+**Projektant wstępnie wybiera agenta**, gdy upuszczasz szablon na tablicę albo wybierasz inny szablon dla kroku,
+który nie ma agenta (albo ma agenta złego rodzaju):
+
+1. tylko agenci właściwego rodzaju: agent kodujący, gdy szablon go wymaga; w przeciwnym razie dowolny agent, najpierw
+   agenci odpowiedzi modelu;
+2. agent, który ma najwięcej spośród [Wymaganych umiejętności](task-library.md#required-skills) szablonu;
+3. przy remisie domyślny agent platformy dla tego rodzaju (**OpenCode** dla pracy z kodem, w przeciwnym razie
+   **Odpowiedź modelu**), potem agenci wbudowani, potem według nazwy.
+
+Własny agent projektu zastępuje globalnego o tym samym kluczu. Zawsze możesz wybrać innego agenta. Krok zapisany bez
+agenta wykonuje **OpenCode**, gdy jego szablon wymaga agenta kodującego, w przeciwnym razie **Odpowiedź modelu**;
+pole **Agent** pokazuje wtedy **Domyślnie: OpenCode** albo **Domyślnie: Model answer** (**Default: {agent}**; nazwy
+agentów wbudowanych są po angielsku). Agent kroku nigdy nie jest wybierany po cichu w czasie wykonania: wykonuje ten,
+którego pokazuje pole.
 
 **Parametry** (**Parameters**; widoczne, gdy szablon je ma) pokazują [parametry](task-library.md#parameters)
 szablonu jako formularz: pola tekstowe, liczby, przełącznik dla **Tak / nie**, listę dla **Wyboru**. Puste oznacza
@@ -134,11 +150,11 @@ umiejętności**, **Required skills**), której agent kroku nie ma.
 
 | Nadpisanie | Skutek |
 |---|---|
-| **Agent** | Kto wykonuje ten krok zamiast agenta szablonu: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)). Puste = agent szablonu. Z agentem przychodzą jego instrukcje, reguły, umiejętności, serwery MCP i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (na przykład faza Spec Kit albo `push` z **Odpowiedzią modelu** albo agent z dostępem **Tylko odczyt** w kroku, który wypycha). |
+| **Agent** | Kto wykonuje ten krok: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)); wybierany wstępnie jak wyżej. Puste: **OpenCode**, gdy szablon wymaga agenta kodującego, w przeciwnym razie **Odpowiedź modelu**. Z agentem przychodzą jego instrukcje, reguły, umiejętności, serwery MCP i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (szablon wymagający agenta kodującego z agentem odpowiedzi modelu: „Szablon wymaga agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”; albo agent z dostępem **Tylko odczyt** w kroku, który wypycha). |
 | **Katalog** (**Directory**) | Tylko agenci kodujący: **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) albo **Osobny katalog** (**Separate directory**) ([Katalog przebiegu](#run-directory)). |
 | **Sesja agenta** (**Agent session**) | Tylko agenci kodujący: **Własna (powtórzenia kontynuują)** (**Own (repeats continue)**, domyślnie), **Nowa za każdym razem** (**New each time**) albo **Kontynuuj sesję kroku …** (**Continue the session of step …**) ([Sesje agenta](#continue-session)). |
 | **Agent może zadawać pytania** (**Agent may ask questions**), **Rundy pytań** (**Question rounds**) | Domyślnie włączone, 2 rundy: agent może zatrzymać się z pytaniami, a przebieg czeka na Twoje odpowiedzi ([Agent zadaje pytania](#agent-questions)). |
-| **Profil modelu** (**Model profile**) | Model dla tego węzła zamiast modelu agenta, szablonu lub ustawień domyślnych. |
+| **Profil modelu** (**Model profile**) | Model dla tego węzła. Puste: model agenta, w przeciwnym razie domyślne dla jego rodzaju (projekt, osoba uruchamiająca, platforma). |
 | **Prompt użytkownika** (**User prompt**) | **Dziedziczony** (**Inherited**), **Dopisz** (**Append**; dodawany po prompcie szablonu) lub **Zastąp** (**Replace**). |
 | **Dopisek do promptu systemowego** (**System prompt append**) | Dodawany do promptu systemowego szablonu. |
 | **Konfiguracja** (**Config**) | Ustawienia dla agenta kroku, takie jak polecenie weryfikacji, nazwa gałęzi czy opcje merge requestu; scalane z konfiguracją szablonu. |
@@ -154,6 +170,65 @@ a następny zapis utrwala go w tej postaci.
 **Szablony Spec Kit** (**Spec Kit: specify**, **plan**, **tasks** i szablony, które je rozszerzają) pojawiają się
 w palecie tylko wtedy, gdy projekt ma włączony [Spec Kit](projects.md#spec-kit); w przeciwnym razie krok Spec Kit
 jest błędem walidacji, a uruchomienia nie startują.
+
+**Workflowy zapisane przed ADR 0061.** Szablony wskazywały kiedyś agenta i profil modelu. Przy aktualizacji każdy
+zapisany krok bez własnego agenta dostał agenta, którego wskazywał jego szablon (albo najbliższy rodzic), oraz profil
+modelu szablonu, gdy krok nie miał własnego, a agent nie ma własnego modelu; tak samo zaktualizowano wersje
+workflowów w bibliotece i przebiegi, które jeszcze czekają. Te kroki działają tak jak wcześniej, a pole **Agent**
+pokazuje teraz agenta wprost.
+
+<a id="agent-audit"></a>
+### Agenci w tym workflowie
+
+**Agenci w tym workflowie** (**Agents in this workflow**) w nagłówku projektanta otwiera panel, który sprawdza
+agentów szkicu na tablicy, takiego jak jest, przed jakimkolwiek uruchomieniem (ADR 0061). Żaden model nie jest
+wywoływany i nic nie jest zmieniane; panel nadąża za Twoimi zmianami. Znaczek na przycisku liczy problemy.
+
+Dla każdego agenta, którego używają kroki zadań szkicu, panel pokazuje jego rodzaj (**Odpowiedź modelu**,
+**OpenCode**, **Claude Code**), **Globalny** albo **Ten projekt** (**Global** / **This project**) oraz:
+
+| Wiersz | Zawartość |
+|---|---|
+| **Kroki** (**Steps**) | kroki, które wykonuje; kliknij krok, aby zaznaczyć go na tablicy |
+| **Reguły** (**Rules**) | jego reguły, łącznie z automatycznymi |
+| **Umiejętności** (**Skills**) | jego umiejętności |
+| **Wymagane umiejętności** (**Required skills**) | umiejętności wymagane przez szablony jego kroków, z krokami, które ich potrzebują; brakujące są oznaczone i mają **Dodaj do agenta** (**Add to agent**) |
+
+Uwagi, każda z krokami, których dotyczy (**ERROR** nie pozwala wykonać kroku, **WARNING** nie blokuje):
+
+| Uwaga | Waga | Znaczy |
+|---|---|---|
+| **Brakująca umiejętność** (**Missing skill**) | ostrzeżenie | szablon kroku wymaga umiejętności, której agent nie ma |
+| **Wymaga agenta kodującego** (**Needs a coding agent**) | błąd | krok, którego szablon wymaga agenta kodującego, wykonuje agent odpowiedzi modelu |
+| **Agent tylko do odczytu w kroku z push** (**Read-only agent on a pushing step**) | błąd | agent z dostępem **Tylko odczyt** wykonuje krok, który wypycha |
+| **Nieznana reguła**, **Nieznana umiejętność** (**Unknown rule**, **Unknown skill**) | błąd | agent wymienia regułę lub umiejętność, która już nie istnieje |
+| **Nieznany agent** (**Unknown agent**) | błąd | krok wskazuje agenta, który już nie istnieje |
+| **Dwie umiejętności o tej samej nazwie** (**Two skills with the same name**) | ostrzeżenie | dwie umiejętności agenta mają tę samą nazwę, więc agent nie może ich odróżnić |
+
+**Dodaj do agenta** dodaje brakującą umiejętność agentowi raz, dla wszystkich kroków i przebiegów (wymaga
+`library.project.manage` w projekcie). Agent projektu dostaje umiejętność od razu. Agent globalny jest najpierw
+kopiowany do projektu: potwierdzenie **Skopiować {agent} do tego projektu?** (**Copy {agent} into this project?**)
+wyjaśnia, że projekt dostanie własną kopię z tym samym kluczem i tą umiejętnością, która zastąpi agenta globalnego
+w krokach tego projektu, a inne projekty zachowają swojego; **Skopiuj i dodaj** (**Copy and add**) to robi.
+Umiejętności nigdy nie są dodawane w czasie wykonania.
+
+<a id="coherence-check"></a>
+#### Sprawdź spójność
+
+**Sprawdź spójność** (**Check coherence**, dla każdego agenta) prosi model o przeczytanie całego środowiska agenta
+i wypisanie miejsc, w których sobie przeczy. To wywołanie modelu, więc działa tylko na Twoje żądanie i po
+potwierdzeniu (**Sprawdzić spójność agenta {agent}?**); jego koszt jest wliczany do zużycia i pokazywany przy wyniku.
+Model to domyślny model platformy dla odpowiedzi modelu; bez niego sprawdzenie odpowiada „Nie ustawiono modelu dla
+odpowiedzi modelu: administrator ustawia domyślny model platformy w sekcji Modele, potem spróbuj ponownie.”
+(HTTP `409`).
+
+Model czyta preambułę platformy, instrukcje agenta, konstytucję projektu, reguły automatyczne i reguły agenta,
+nazwy i opisy jego umiejętności oraz, gdy Back Office może je odczytać, pliki `AGENTS.md` / `CLAUDE.md` głównego
+repozytorium; wynik wymienia, co zostało przeczytane. Każda uwaga to **Sprzeczność** (**Contradiction**),
+**Niejasność** (**Ambiguity**) albo **Powtórzenie** (**Redundancy**), z cytatami ze źródeł, których dotyczy, oraz,
+gdy model ją ma, **Propozycją:** (**Suggestion:**). „Nie znaleziono sprzeczności.” znaczy, że model żadnej nie
+znalazł. Poprawiaj sprzeczności tam, gdzie powstają (w regule, umiejętności, instrukcjach agenta albo pliku
+repozytorium); kolejność, której agent tymczasem się trzyma, opisuje [Gdy źródła są sprzeczne](task-library.md#precedence).
 
 <a id="actions"></a>
 ### Węzły akcji

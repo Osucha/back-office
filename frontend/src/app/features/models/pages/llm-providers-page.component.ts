@@ -229,10 +229,13 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
                 </div>
               }
               <nz-form-item>
-                <nz-form-label nzFor="lp-scope" i18n="@@models.providers.form.scope"
+                <nz-form-label
+                  [nzTooltipTitle]="scopeHint()"
+                  nzFor="lp-scope"
+                  i18n="@@models.providers.form.scope"
                   >Available to</nz-form-label
                 >
-                <nz-form-control [nzExtra]="scopeHint()">
+                <nz-form-control>
                   @if (editing() || scopes().length === 1) {
                     <input nz-input id="lp-scope" [value]="scopeName(scope())" readonly />
                   } @else {

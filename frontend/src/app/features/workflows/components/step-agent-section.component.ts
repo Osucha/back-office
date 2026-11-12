@@ -48,8 +48,12 @@ import {
   template: `
     @if (coding()) {
       <nz-form-item data-step-directory>
-        <nz-form-label i18n="@@workflows.stepAgent.directory">Directory</nz-form-label>
-        <nz-form-control [nzExtra]="directory() === 'SEPARATE' ? text.separateHelp : text.runHelp">
+        <nz-form-label
+          [nzTooltipTitle]="directory() === 'SEPARATE' ? text.separateHelp : text.runHelp"
+          i18n="@@workflows.stepAgent.directory"
+          >Directory</nz-form-label
+        >
+        <nz-form-control>
           <nz-radio-group
             name="directory"
             nzSize="small"
@@ -70,11 +74,14 @@ import {
         </nz-form-control>
       </nz-form-item>
       <nz-form-item data-agent-session>
-        <nz-form-label i18n="@@workflows.stepAgent.session">Agent session</nz-form-label>
+        <nz-form-label
+          [nzTooltipTitle]="directory() === 'SEPARATE' ? text.sessionSeparate : text.sessionHelp"
+          i18n="@@workflows.stepAgent.session"
+          >Agent session</nz-form-label
+        >
         <nz-form-control
           [nzValidateStatus]="sessionProblem() ? 'error' : ''"
           [nzErrorTip]="sessionProblem() ?? ''"
-          [nzExtra]="directory() === 'SEPARATE' ? text.sessionSeparate : text.sessionHelp"
         >
           <nz-radio-group
             class="stack"
@@ -122,8 +129,10 @@ import {
       </nz-form-item>
     }
     <nz-form-item data-step-questions>
-      <nz-form-label i18n="@@workflows.stepAgent.questions">Agent may ask questions</nz-form-label>
-      <nz-form-control [nzExtra]="text.questionsHelp">
+      <nz-form-label [nzTooltipTitle]="text.questionsHelp" i18n="@@workflows.stepAgent.questions"
+        >Agent may ask questions</nz-form-label
+      >
+      <nz-form-control>
         <nz-switch
           name="allowQuestions"
           [ngModel]="questions().allow"
@@ -135,10 +144,13 @@ import {
     </nz-form-item>
     @if (questions().allow) {
       <nz-form-item>
-        <nz-form-label nzFor="pp-question-rounds" i18n="@@workflows.stepAgent.rounds"
+        <nz-form-label
+          [nzTooltipTitle]="text.roundsHelp"
+          nzFor="pp-question-rounds"
+          i18n="@@workflows.stepAgent.rounds"
           >Question rounds</nz-form-label
         >
-        <nz-form-control [nzExtra]="text.roundsHelp">
+        <nz-form-control>
           <nz-input-number
             id="pp-question-rounds"
             name="maxQuestionRounds"

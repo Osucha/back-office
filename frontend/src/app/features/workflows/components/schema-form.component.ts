@@ -44,11 +44,15 @@ function invalidJson(err: unknown): string {
     <form nz-form nzLayout="vertical" (submit)="$event.preventDefault()">
       @for (f of fields(); track f.key) {
         <nz-form-item>
-          <nz-form-label [nzRequired]="f.required" [nzFor]="idFor(f)">{{ f.label }}</nz-form-label>
+          <nz-form-label
+            [nzTooltipTitle]="f.description ?? ''"
+            [nzRequired]="f.required"
+            [nzFor]="idFor(f)"
+            >{{ f.label }}</nz-form-label
+          >
           <nz-form-control
             [nzValidateStatus]="errors()[f.key] ? 'error' : ''"
             [nzErrorTip]="errors()[f.key] || ''"
-            [nzExtra]="f.description ?? ''"
           >
             @switch (f.kind) {
               @case ('textarea') {
@@ -155,13 +159,12 @@ function invalidJson(err: unknown): string {
       @if (extra().length) {
         <nz-form-item>
           <nz-form-label
+            nzTooltipTitle="Keys not described by the schema. Edited as JSON and merged into the config."
+            i18n-nzTooltipTitle="@@workflows.schemaForm.otherKeys.extra"
             ><span i18n="@@workflows.schemaForm.otherKeys">Other config keys</span>
             <nz-tag style="margin-left: 6px">{{ extra().join(', ') }}</nz-tag></nz-form-label
           >
-          <nz-form-control
-            nzExtra="Keys not described by the schema. Edited as JSON and merged into the config."
-            i18n-nzExtra="@@workflows.schemaForm.otherKeys.extra"
-          >
+          <nz-form-control>
             <textarea
               nz-input
               class="mono-textarea"

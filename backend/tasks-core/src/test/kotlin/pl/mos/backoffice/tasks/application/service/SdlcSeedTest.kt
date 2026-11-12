@@ -4,6 +4,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.service.JsonSyntax
@@ -66,7 +67,8 @@ class SdlcSeedTest {
     @Test
     fun `write-user-story is an LLM requirement writer with confidence and the story skills`() {
         service.seed()
-        val task = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_USER_STORY, null)!!
+        val task = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_USER_STORY, null, TaskOverrides(agentKey = BuiltInLibrary.ANALYST))!!
+        assertThat(lib.lookup.resolver.preview(BuiltInLibrary.WRITE_USER_STORY, null, TaskOverrides(agentKey = BuiltInLibrary.ANALYST))!!.check.warnings).isEmpty()
         assertThat(task.agent.key).isEqualTo(BuiltInLibrary.ANALYST)
         assertThat(task.agent.modelAnswer).isTrue()
         assertThat(task.category).isEqualTo(TemplateCategory.SPECIFICATION)

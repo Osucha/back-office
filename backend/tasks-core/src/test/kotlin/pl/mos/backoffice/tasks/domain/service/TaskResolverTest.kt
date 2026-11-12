@@ -60,11 +60,11 @@ class TaskResolverTest {
 
     @Test
     fun `a three level chain merges root to leaf and reports the lineage leaf first`() {
-        lib.template("root", abstract = true, agentKey = "opencode", prompt = Prompt(system = "root system", user = "root user"), tags = listOf("aa"))
+        lib.template("root", abstract = true, prompt = Prompt(system = "root system", user = "root user"), tags = listOf("aa"))
         lib.template("middle", extendsKey = "root", prompt = Prompt(system = "middle system"), produces = listOf("diff"), tags = listOf("bb"))
         lib.template("leaf", extendsKey = "middle", prompt = Prompt(user = "leaf user"), produces = listOf("mr"), tags = listOf("aa", "cc"), name = "Leaf")
 
-        val task = resolver.resolve("leaf", null)!!
+        val task = resolver.resolve("leaf", null, on("opencode"))!!
 
         assertThat(task.lineage).containsExactly("leaf", "middle", "root")
         assertThat(task.name).isEqualTo("Leaf")
@@ -76,42 +76,53 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `nearest agent and child-wins scalars`() {
-        val rootModel = ModelProfileId.new()
-        val leafModel = ModelProfileId.new()
+    fun `ADR 0061 - the step's agent, else opencode for coding work, else the model answer, and child-wins scalars`() {
         lib.template("root", abstract = true, confidenceField = "cc")
-        lib.template("middle", extendsKey = "root", agentKey = "claude-code", abstract = true)
-        lib.template("leaf", extendsKey = "middle", agentKey = AgentSnapshot.MODEL_ANSWER, outputSchema = """{"type":"object"}""")
-        lib.template("coder", extendsKey = "middle")
+        lib.template("leaf", extendsKey = "root", outputSchema = """{"type":"object"}""")
+        lib.template("coder", extendsKey = "root", config = mapOf("push" to true))
         lib.template("other", extendsKey = "root", outputSchema = "{}")
-        lib.templates.save(lib.templates.findByKeyAndScope("root", Scope.Global)!!.copy(modelProfileId = rootModel))
-        lib.templates.save(lib.templates.findByKeyAndScope("leaf", Scope.Global)!!.copy(modelProfileId = leafModel))
 
-        val leaf = resolver.resolve("leaf", null)!!
+        val leaf = resolver.preview("leaf", null)!!
         assertThat(leaf.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
         assertThat(leaf.agent.modelAnswer).isTrue()
-        assertThat(leaf.modelProfileId).isEqualTo(leafModel)
+        assertThat(leaf.needsCodingAgent).isFalse()
+        assertThat(leaf.modelProfileId).describedAs("templates name no model").isNull()
         assertThat(leaf.outputSchema).isEqualTo("""{"type":"object"}""")
         assertThat(leaf.confidenceField).isEqualTo("cc")
 
-        assertThat(resolver.resolve("coder", null)!!.agent.harness).isEqualTo(AgentHarness.CLAUDE_CODE)
+        val coder = resolver.preview("coder", null)!!
+        assertThat(coder.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
+        assertThat(coder.needsCodingAgent).isTrue()
+        assertThat(coder.pushes).isTrue()
+        assertThat(resolver.resolve("coder", null, on("claude-code"))!!.agent.harness).isEqualTo(AgentHarness.CLAUDE_CODE)
+        assertThat(resolver.resolve("coder", null, TaskOverrides(config = mapOf("push" to false)))!!.agent.key)
+            .describedAs("the step's config decides the kind of work").isEqualTo(AgentSnapshot.MODEL_ANSWER)
 
-        val other = resolver.resolve("other", null)!!
-        assertThat(other.agent.key).describedAs("no agent in the lineage").isEqualTo(AgentSnapshot.MODEL_ANSWER)
-        assertThat(other.modelProfileId).isEqualTo(rootModel)
-        assertThat(other.outputSchema).isEqualTo("{}")
+        assertThat(resolver.resolve("other", null)!!.outputSchema).isEqualTo("{}")
     }
 
     @Test
-    fun `model order is the step's, then the agent's, then the lineage's`() {
-        val templateModel = ModelProfileId.new()
+    fun `ADR 0061 - needsCodingAgent of a template reads its merged config, false for a broken chain`() {
+        lib.template("root", abstract = true, config = mapOf("phase" to "PLAN"))
+        val child = lib.template("child", extendsKey = "root")
+        val undone = lib.template("undone", extendsKey = "root", config = mapOf("phase" to null))
+        val broken = lib.template("broken", extendsKey = "ghost", config = mapOf("push" to true))
+
+        assertThat(resolver.needsCodingAgent(child, null)).isTrue()
+        assertThat(resolver.needsCodingAgent(undone, null)).isFalse()
+        assertThat(resolver.needsCodingAgent(broken, null)).isFalse()
+        assertThat(TaskResolver.defaultAgentKey(mapOf("prepareOnly" to true))).isEqualTo(AgentSnapshot.OPENCODE)
+        assertThat(TaskResolver.defaultAgentKey(emptyMap())).isEqualTo(AgentSnapshot.MODEL_ANSWER)
+    }
+
+    @Test
+    fun `model order is the step's, then the agent's`() {
         val agentModel = ModelProfileId.new()
         val stepModel = ModelProfileId.new()
         lib.agents.save(lib.agent("cheap", AgentHarness.OPENCODE).copy(modelProfileId = agentModel))
-        lib.template("work", agentKey = "opencode")
-        lib.templates.save(lib.templates.findByKeyAndScope("work", Scope.Global)!!.copy(modelProfileId = templateModel))
+        lib.template("work")
 
-        assertThat(resolver.resolve("work", null)!!.modelProfileId).isEqualTo(templateModel)
+        assertThat(resolver.resolve("work", null)!!.modelProfileId).describedAs("none: the defaults").isNull()
         val withAgent = resolver.resolve("work", null, TaskOverrides(agentKey = "cheap"))!!
         assertThat(withAgent.modelProfileId).isEqualTo(agentModel)
         assertThat(withAgent.agent.modelProfileId).isEqualTo(agentModel)
@@ -121,7 +132,7 @@ class TaskResolverTest {
     @Test
     fun `the step's agent wins and a project agent shadows the global one`() {
         lib.agent("opencode", AgentHarness.CLAUDE_CODE, scope = Scope.Project(lib.projectId), name = "Project coder")
-        lib.template("work", agentKey = "claude-code")
+        lib.template("work")
 
         assertThat(resolver.resolve("work", null, TaskOverrides(agentKey = "opencode"))!!.agent.harness).isEqualTo(AgentHarness.OPENCODE)
         val shadowed = resolver.resolve("work", lib.projectId, TaskOverrides(agentKey = "opencode"))!!.agent
@@ -131,13 +142,13 @@ class TaskResolverTest {
 
     @Test
     fun `an unknown agent is a problem and the step falls back to a model answer under its key`() {
-        lib.template("work", agentKey = "ghost")
+        lib.template("work")
 
-        val preview = resolver.preview("work", null)!!
+        val preview = resolver.preview("work", null, on("ghost"))!!
         assertThat(preview.check.problems).containsExactly("agent ghost does not exist")
         assertThat(preview.agent).isEqualTo(AgentSnapshot("ghost", "ghost"))
         assertThat(preview.executable).isFalse()
-        assertThatThrownBy { resolver.resolve("work", null) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("ghost")
+        assertThatThrownBy { resolver.resolve("work", null, on("ghost")) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("ghost")
     }
 
     @Test
@@ -156,11 +167,12 @@ class TaskResolverTest {
         lib.template("prepare", config = mapOf("prepareOnly" to true))
         lib.template("blank-phase", config = mapOf("phase" to " ", "push" to false))
 
-        assertThat(resolver.preview("spec", null)!!.check.problems.single()).contains("Spec Kit phase needs a coding agent")
-        assertThat(resolver.preview("pusher", null)!!.check.problems.single()).contains("push needs a coding agent")
-        assertThat(resolver.preview("prepare", null)!!.check.problems.single()).contains("prepareOnly needs a coding agent")
-        assertThat(resolver.preview("blank-phase", null)!!.check.ok).isTrue()
-        assertThat(resolver.preview("spec", null, TaskOverrides(agentKey = "opencode"))!!.check.ok).isTrue()
+        val answer = on(AgentSnapshot.MODEL_ANSWER)
+        assertThat(resolver.preview("spec", null, answer)!!.check.problems.single()).contains("Spec Kit phase needs a coding agent")
+        assertThat(resolver.preview("pusher", null, answer)!!.check.problems.single()).contains("push needs a coding agent")
+        assertThat(resolver.preview("prepare", null, answer)!!.check.problems.single()).contains("prepareOnly needs a coding agent")
+        assertThat(resolver.preview("blank-phase", null, answer)!!.check.ok).isTrue()
+        assertThat(resolver.preview("spec", null)!!.check.ok).describedAs("ADR 0061: no step agent, coding work runs with opencode").isTrue()
     }
 
     @Test
@@ -174,19 +186,19 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `the legacy config key agent reads as the agent key, on templates and steps`() {
+    fun `the legacy config key agent reads as the agent key on steps and is dropped on templates`() {
         lib.template("old", config = mapOf("agent" to "CLAUDE_CODE", "push" to true))
         lib.template("odd", config = mapOf("agent" to "SOMETHING"))
 
         val old = resolver.resolve("old", null)!!
-        assertThat(old.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
+        assertThat(old.agent.key).describedAs("ADR 0061: a template names no agent; pushing work falls back to opencode").isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(old.config).doesNotContainKey("agent").containsEntry("push", true)
 
-        val step = resolver.resolve("old", null, TaskOverrides(config = mapOf("agent" to "OPENCODE")))!!
-        assertThat(step.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
+        val step = resolver.resolve("old", null, TaskOverrides(config = mapOf("agent" to "CLAUDE_CODE")))!!
+        assertThat(step.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
         assertThat(step.config).doesNotContainKey("agent")
-        assertThat(resolver.resolve("old", null, TaskOverrides(agentKey = "claude-code", config = mapOf("agent" to "OPENCODE")))!!.agent.key)
-            .describedAs("an explicit agent key wins over the legacy key").isEqualTo(AgentSnapshot.CLAUDE_CODE)
+        assertThat(resolver.resolve("old", null, TaskOverrides(agentKey = "opencode", config = mapOf("agent" to "CLAUDE_CODE")))!!.agent.key)
+            .describedAs("an explicit agent key wins over the legacy key").isEqualTo(AgentSnapshot.OPENCODE)
 
         val odd = resolver.resolve("odd", null)!!
         assertThat(odd.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
@@ -211,7 +223,7 @@ class TaskResolverTest {
     @Test
     fun `config deep merges with child keys winning and null deleting`() {
         lib.template(
-            "root", abstract = true, agentKey = "opencode",
+            "root", abstract = true,
             config = mapOf("agent" to "OPENCODE", "verifyCommand" to null, "push" to true, "mergeRequest" to mapOf("create" to true, "draft" to false, "labels" to listOf("ai"))),
         )
         lib.template(
@@ -222,7 +234,8 @@ class TaskResolverTest {
         val config = resolver.resolve("leaf", null)!!.config
 
         assertThat(config).doesNotContainKeys("agent", "push", "verifyCommand")
-        assertThat(resolver.resolve("leaf", null)!!.agent.key).describedAs("the legacy key of the leaf wins").isEqualTo(AgentSnapshot.CLAUDE_CODE)
+        assertThat(resolver.resolve("leaf", null)!!.agent.key)
+            .describedAs("templates name no agent and the merged config needs none").isEqualTo(AgentSnapshot.MODEL_ANSWER)
         assertThat(config["mergeRequest"]).isEqualTo(mapOf("create" to true, "draft" to true))
         assertThat(config["extra"]).isEqualTo(mapOf("aa" to 1))
     }
@@ -232,24 +245,25 @@ class TaskResolverTest {
         listOf("aa", "bb", "cc").forEach { lib.skill(it) }
         lib.skill("bb", scope = Scope.Project(lib.projectId), content = "# project bb")
         lib.agent("writer", skills = listOf("aa", "bb"))
-        lib.template("root", abstract = true, agentKey = "writer")
+        lib.template("root", abstract = true)
         lib.template("leaf", extendsKey = "root")
 
-        val skills = resolver.resolve("leaf", lib.projectId)!!.skills
+        val skills = resolver.resolve("leaf", lib.projectId, on("writer"))!!.skills
         assertThat(skills.map { it.key }).containsExactly("aa", "bb")
         assertThat(skills.last().content).isEqualTo("# project bb")
-        assertThat(resolver.resolve("leaf", null)!!.skills.last().content).isEqualTo("# bb")
-        assertThat(resolver.resolve("leaf", null)!!.agent.skills).describedAs("the agent's own keys, for display").containsExactly("aa", "bb")
+        assertThat(resolver.resolve("leaf", null, on("writer"))!!.skills.last().content).isEqualTo("# bb")
+        assertThat(resolver.resolve("leaf", null, on("writer"))!!.agent.skills).describedAs("the agent's own keys, for display").containsExactly("aa", "bb")
     }
 
     @Test
     fun `ADR 0060 - required skills of the lineage the agent lacks are warnings, not problems`() {
         listOf("aa", "bb", "cc").forEach { lib.skill(it) }
         lib.agent("writer", skills = listOf("aa"))
-        lib.template("root", abstract = true, agentKey = "writer", requiresSkills = listOf("aa", "bb"))
+        lib.template("root", abstract = true, requiresSkills = listOf("aa", "bb"))
         lib.template("leaf", extendsKey = "root", requiresSkills = listOf("cc", "bb"))
 
-        val preview = resolver.preview("leaf", null)!!
+        val preview = resolver.preview("leaf", null, on("writer"))!!
+        assertThat(preview.requiresSkills).containsExactly("aa", "bb", "cc")
         assertThat(preview.check.ok).isTrue()
         assertThat(preview.executable).isTrue()
         assertThat(preview.check.warnings).hasSize(2)
@@ -260,13 +274,13 @@ class TaskResolverTest {
     @Test
     fun `ADR 0060 - a read-only coding agent on a step that pushes is a problem`() {
         lib.agent("reader", harness = AgentHarness.CLAUDE_CODE, access = AgentAccess.READ_ONLY)
-        lib.template("look", agentKey = "reader")
-        lib.template("look-only", agentKey = "reader", config = mapOf("push" to false))
+        lib.template("look")
+        lib.template("look-only", config = mapOf("push" to false))
 
-        assertThat(resolver.preview("look", null)!!.check.problems.single()).contains("may only read (access READ_ONLY) but the step pushes")
-        assertThat(resolver.preview("look-only", null)!!.check.ok).isTrue()
-        assertThat(resolver.preview("look", null, TaskOverrides(config = mapOf("prepareOnly" to true)))!!.check.ok).isTrue()
-        assertThat(resolver.resolve("look-only", null)!!.agent.access).isEqualTo(AgentAccess.READ_ONLY)
+        assertThat(resolver.preview("look", null, on("reader"))!!.check.problems.single()).contains("may only read (access READ_ONLY) but the step pushes")
+        assertThat(resolver.preview("look-only", null, on("reader"))!!.check.ok).isTrue()
+        assertThat(resolver.preview("look", null, TaskOverrides(agentKey = "reader", config = mapOf("prepareOnly" to true)))!!.check.ok).isTrue()
+        assertThat(resolver.resolve("look-only", null, on("reader"))!!.agent.access).isEqualTo(AgentAccess.READ_ONLY)
     }
 
     @Test
@@ -274,10 +288,10 @@ class TaskResolverTest {
         listOf("aa", "bb", "xx").forEach { lib.skill(it) }
         val model = ModelProfileId.new()
         lib.agent("skilled", skills = listOf("aa", "bb"))
-        lib.template("task", agentKey = "skilled", prompt = Prompt(system = "sys", user = "usr"), config = mapOf("k" to 1, "n" to mapOf("xx" to 1)))
+        lib.template("task", prompt = Prompt(system = "sys", user = "usr"), config = mapOf("k" to 1, "n" to mapOf("xx" to 1)))
 
         val overrides = TaskOverrides(
-            modelProfileId = model, systemPromptAppend = "more sys", promptReplace = "new usr", promptAppend = "and more",
+            agentKey = "skilled", modelProfileId = model, systemPromptAppend = "more sys", promptReplace = "new usr", promptAppend = "and more",
             config = mapOf("k" to 2, "n" to mapOf("y" to 2)),
         )
         val task = resolver.resolve("task", null, overrides)!!
@@ -359,17 +373,17 @@ class TaskResolverTest {
         lib.rule("listed-two", content = "second")
         lib.rule("unused")
         lib.agent("ruled", rules = listOf("listed-one", "listed-two", "g-auto"))
-        lib.template("root", abstract = true, agentKey = "ruled")
+        lib.template("root", abstract = true)
         lib.template("leaf", extendsKey = "root")
 
-        val inProject = resolver.resolve("leaf", lib.projectId)!!
+        val inProject = resolver.resolve("leaf", lib.projectId, on("ruled"))!!
         assertThat(inProject.rules).containsExactly(
             RuleSnapshot("g-auto", "g-auto", "global automatic", automatic = true),
             RuleSnapshot("p-auto", "p-auto", "project automatic", automatic = true),
             RuleSnapshot("listed-one", "listed-one", "first", automatic = false),
             RuleSnapshot("listed-two", "listed-two", "second", automatic = false),
         )
-        assertThat(resolver.resolve("leaf", null)!!.rules.map { it.key })
+        assertThat(resolver.resolve("leaf", null, on("ruled"))!!.rules.map { it.key })
             .describedAs("no project: global automatic rules only, an automatic rule the agent lists is not repeated")
             .containsExactly("g-auto", "listed-one", "listed-two")
     }
@@ -393,23 +407,24 @@ class TaskResolverTest {
         lib.rule("style", content = "global style")
         lib.rule("style", scope = Scope.Project(lib.projectId), content = "project style")
         lib.agent("styled", rules = listOf("style"))
-        lib.template("tt", agentKey = "styled")
+        lib.template("tt")
 
-        assertThat(resolver.resolve("tt", lib.projectId)!!.rules.single().content).isEqualTo("project style")
-        assertThat(resolver.resolve("tt", null)!!.rules.single().content).isEqualTo("global style")
+        assertThat(resolver.resolve("tt", lib.projectId, on("styled"))!!.rules.single().content).isEqualTo("project style")
+        assertThat(resolver.resolve("tt", null, on("styled"))!!.rules.single().content).isEqualTo("global style")
     }
 
     @Test
     fun `a missing rule is a check problem and the task is not executable`() {
         lib.agent("haunted", rules = listOf("ghost"))
-        lib.template("tt", agentKey = "haunted")
+        lib.template("tt")
 
-        val preview = resolver.preview("tt", null)!!
+        val preview = resolver.preview("tt", null, on("haunted"))!!
         assertThat(preview.rules).isEmpty()
         assertThat(preview.check.ok).isFalse()
         assertThat(preview.check.problems).containsExactly("rule ghost of agent haunted does not exist")
         assertThat(preview.executable).isFalse()
-        assertThatThrownBy { resolver.resolve("tt", null) }
+        assertThat(resolver.environment("haunted", null).unknownRules).containsExactly("ghost")
+        assertThatThrownBy { resolver.resolve("tt", null, on("haunted")) }
             .isInstanceOf(ValidationException::class.java)
             .hasMessageContaining("rule ghost of agent haunted does not exist")
     }
@@ -420,9 +435,9 @@ class TaskResolverTest {
         lib.rule("was-a-skill", content = "now a rule")
         lib.rule("both")
         lib.agent("compat", skills = listOf("real-skill", "was-a-skill", "both"), rules = listOf("both"))
-        lib.template("tt", agentKey = "compat")
+        lib.template("tt")
 
-        val task = resolver.resolve("tt", null)!!
+        val task = resolver.resolve("tt", null, on("compat"))!!
         assertThat(task.skills.map { it.key }).containsExactly("real-skill")
         assertThat(task.rules.map { it.key }).describedAs("listed once even when named in both lists").containsExactly("both", "was-a-skill")
         assertThat(task.rules.last().content).isEqualTo("now a rule")
@@ -431,11 +446,12 @@ class TaskResolverTest {
     @Test
     fun `an unknown skill is reported as a problem instead of being silently dropped`() {
         lib.agent("needy", skills = listOf("nope"))
-        lib.template("tt", agentKey = "needy")
-        val preview = resolver.preview("tt", null)!!
+        lib.template("tt")
+        val preview = resolver.preview("tt", null, on("needy"))!!
         assertThat(preview.skills).isEmpty()
         assertThat(preview.check.problems).containsExactly("skill nope does not exist")
         assertThat(preview.executable).isFalse()
+        assertThat(resolver.environment("needy", null).unknownSkills).containsExactly("nope")
     }
 
     @Test
@@ -546,9 +562,8 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `ADR 0057 - the agent snapshot carries instructions and MCP servers, the model comes from step, agent, template`() {
+    fun `ADR 0057 - the agent snapshot carries instructions and MCP servers, the model comes from step, agent`() {
         val agentModel = ModelProfileId.new()
-        val templateModel = ModelProfileId.new()
         lib.agents.save(
             pl.mos.backoffice.tasks.domain.model.Agent.create(
                 pl.mos.backoffice.tasks.domain.model.Agent.Content(
@@ -560,16 +575,18 @@ class TaskResolverTest {
         )
         lib.templates.save(
             pl.mos.backoffice.tasks.domain.model.TaskTemplate.create(
-                pl.mos.backoffice.tasks.domain.model.TaskTemplate.Content(key = "tt", name = "tt", agentKey = "mcp", modelProfileId = templateModel),
+                pl.mos.backoffice.tasks.domain.model.TaskTemplate.Content(key = "tt", name = "tt"),
                 lib.now,
             ),
         )
-        val task = resolver.resolve("tt", null)!!
+        val task = resolver.resolve("tt", null, on("mcp"))!!
         assertThat(task.agent.instructions).isEqualTo("Be brief.")
         assertThat(task.agent.mcpServers.single().url).isEqualTo("https://mcp.example.com/docs")
         assertThat(task.modelProfileId).isEqualTo(agentModel)
         val stepModel = ModelProfileId.new()
-        assertThat(resolver.resolve("tt", null, TaskOverrides(modelProfileId = stepModel))!!.modelProfileId).isEqualTo(stepModel)
+        assertThat(resolver.resolve("tt", null, TaskOverrides(agentKey = "mcp", modelProfileId = stepModel))!!.modelProfileId).isEqualTo(stepModel)
     }
 
+    /** ADR 0061: the step names the agent. */
+    private fun on(agentKey: String) = TaskOverrides(agentKey = agentKey)
 }

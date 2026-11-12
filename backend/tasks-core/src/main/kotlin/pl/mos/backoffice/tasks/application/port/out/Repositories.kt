@@ -22,11 +22,6 @@ interface TaskTemplateRepository {
     fun existsByKey(key: String): Boolean
     /** Some template, in any scope, has `extendsKey == key`. */
     fun existsExtending(key: String): Boolean
-    /**
-     * ADR 0056: some template names [agentKey] as its agent where the agent is visible: with [projectId] the project's
-     * templates and the global ones, without it every template.
-     */
-    fun existsUsingAgent(agentKey: String, projectId: UUID?): Boolean
     fun delete(id: TaskTemplateId)
 }
 

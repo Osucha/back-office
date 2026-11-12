@@ -4,5 +4,5 @@ export { PublishWorkflowDialogComponent } from './components/publish-workflow-di
 export { WorkflowMetricsPanelComponent } from './components/workflow-metrics-panel.component';
 export { updateAvailable } from './data/workflow-metrics';
 export { AgentEditorPanelComponent } from './components/agent-editor-panel.component';
-export { customizeAgentForProject } from './data/agent-form';
+export { agentDraft, customizeAgentForProject } from './data/agent-form';
 export { canEditScope } from './data/library-access';

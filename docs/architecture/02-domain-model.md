@@ -21,13 +21,14 @@ See [07-task-library.md](07-task-library.md) for semantics.
 
 | Aggregate | Fields |
 |---|---|
-| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, agentKey?, scope: Scope(GLOBAL | PROJECT(projectId)), modelProfileId?, prompt: Prompt(system?, user?, mode: APPEND/REPLACE), parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, requiresSkills, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058; `requiresSkills` ADR 0060: a step whose agent lacks one gets a warning) |
+| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, scope: Scope(GLOBAL | PROJECT(projectId)), prompt: Prompt(system?, user?, mode: APPEND/REPLACE), parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, requiresSkills, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058; `requiresSkills` ADR 0060: a step whose agent lacks one gets a warning; ADR 0061: no `agentKey` and no `modelProfileId`, the template is only the work; derived, read-only `needsCodingAgent` = the merged config has a Spec Kit `phase`, `push` or `prepareOnly`) |
 | `Skill` | `id, key, name, description, content, scope, tags, builtIn, timestamps` |
 | `Rule` | `id, key, name, description, content, scope, automatic, tags, builtIn, timestamps` (ADR 0055) |
 | `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, mcpServers: List<AgentMcpServer(name, url)>, access: AgentAccess(mode FULL/READ_ONLY/PATHS, paths), tags, builtIn, timestamps` (ADR 0056, 0057; access ADR 0060) |
 
 Template keys are unique across scopes; skills, rules and agents by `(key, scope)` (ADR 0055). Domain service
-`TaskResolver` produces `ResolvedTask` (with the resolved agent: step, template lineage, else `model-answer`; the
+`TaskResolver` produces `ResolvedTask` (with the resolved agent: the step's, else `opencode` when the work needs a
+coding agent, else `model-answer`, ADR 0061; model: the step's, else the agent's, else the defaults; the
 agent's rules and skills; the parameters with value and source; warnings such as required skills the agent lacks, ADR 0060) and reports when the agent does
 not fit the template or a required parameter has no value; `TemplateValidator` checks keys
 (`^[a-z][a-z0-9-]{1,63}$`), parent existence, JSON schema syntax and parameter declarations and values. Task interfaces (ADR 0015) were removed by ADR 0055, the template executor by
@@ -63,7 +64,8 @@ revokedAt?`. The plaintext is returned once on creation and never stored.
 | `canvas: Canvas(zoom, x, y)?` | viewport only; node positions live on nodes |
 
 `WorkflowNode`: `id, kind: NodeKind, name, position: Point(x, y), timeoutSeconds?` plus one of:
-`task: TaskBinding(templateKey, overrides: TaskOverrides)` (overrides include `agentKey`, ADR 0056, `parameters`,
+`task: TaskBinding(templateKey, overrides: TaskOverrides)` (overrides include `agentKey`, ADR 0056, the only place
+an agent is chosen since ADR 0061, `modelProfileId`, `parameters`,
 ADR 0058, and the coding agent config `directory` RUN/SEPARATE, `session` OWN/NEW/CONTINUE with `continueSession`, `allowQuestions`, `maxQuestionRounds`, ADR 0057, 0060; no skill changes since ADR 0060),
 `action` (`type`: FETCH_ISSUE/COMMENT_ISSUE/TRANSITION_ISSUE/START_WORKFLOW/PROJECT_DIGEST, `config`) (node
 kind `ACTION`, ADR 0056; a stored `TASK` node naming a former action template is read as one),
@@ -79,6 +81,15 @@ has its `success`/branch ports connected; no unreachable nodes (warning); expres
 gate options non-empty; signal names `^[a-z][a-z0-9-]{0,39}$`. Step repositories (ADR 0034, rules in
 [03-pipelines-and-agents.md](03-pipelines-and-agents.md#step-repositories)) are checked against the project's
 repositories; `StartRun` re-checks them and refuses a run whose steps have repository errors.
+
+`AgentAuditor` (domain service, ADR 0061) builds the agent audit of a workflow draft: per agent its steps use
+(`AgentAuditEntry`: agent, scope, node ids, rules, skills, required skills with the nodes needing them, missing
+skills) and `AgentAuditFinding(kind, severity, message, nodeIds, key?)` with kinds `MISSING_SKILL` (WARNING),
+`NEEDS_CODING_AGENT`, `READ_ONLY_PUSH`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`, `UNKNOWN_AGENT` (ERROR: the resolver refuses
+the step) and `DUPLICATE_SKILL_NAME` (WARNING). It reads the Task Library only through the `TaskCatalog` port
+(`stepNeeds`, `agentProfile`). `AgentCoherenceService` (application service) produces a `CoherenceReport(agentKey,
+model?, cost, sources, findings[severity CONTRADICTION/AMBIGUITY/REDUNDANCY, summary, quotes, suggestion?])`; nothing
+is stored but the audit entry `AGENT_COHERENCE_CHECK`.
 
 `library: LibraryLink(libraryWorkflowId, key, version, modified)?` marks a linked copy of a library workflow
 (ADR 0037); `WorkflowService.update` recomputes `modified` against the followed version.

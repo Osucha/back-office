@@ -33,6 +33,17 @@ describe('TaskLibraryApi (ADR 0054)', () => {
     expect(key).toBe('code-review');
   });
 
+  it('checkAgentCoherence() posts for the agent with the project, errors silent (ADR 0061)', () => {
+    let model = '';
+    api.checkAgentCoherence('a 1', 'p1').subscribe((r) => (model = r.model ?? ''));
+    const req = http.expectOne((r) => r.url === '/api/v1/agents/a%201/coherence-check');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.params.get('projectId')).toBe('p1');
+    expect(req.request.context.get(SKIP_ERROR_TOAST)).toBe(true);
+    req.flush({ agentKey: 'x', model: 'Sonnet', findings: [] });
+    expect(model).toBe('Sonnet');
+  });
+
   it('taskConfigSchemas() is loaded once and retried after an error (ADR 0056)', () => {
     const schemas: TaskConfigSchemas = { modelAnswer: { type: 'object' }, codingAgent: {} };
     let failed = false;

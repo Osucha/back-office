@@ -569,5 +569,8 @@
   "core.agent.access.paths": "Tylko te ścieżki",
   "core.agent.access.full": "Pełny",
   "core.agent.access.pathsList": "Tylko {$paths}",
-  "core.baton.waitingForAnswers": "czeka na Twoje odpowiedzi"
+  "core.baton.waitingForAnswers": "czeka na Twoje odpowiedzi",
+  "core.agent.needsCoding": "Wymaga agenta kodującego",
+  "core.agent.needsAny": "Dowolny agent",
+  "core.helpTip.label": "Pomoc"
 }

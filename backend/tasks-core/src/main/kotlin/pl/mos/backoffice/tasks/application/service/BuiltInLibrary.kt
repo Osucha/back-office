@@ -26,7 +26,8 @@ import java.time.Instant
  * Projects context. ADR 0058: the built-in templates are flat (only `implement-task-list` and the deprecated
  * `implement-claude-code` extend `implement-opencode`); `base-agent`, `base-llm` and `base-coding-agent` stay as empty,
  * deprecated abstract templates for user templates that extend them. `llm-task` and `agent-task` take their task as the
- * parameter `task`.
+ * parameter `task`. ADR 0061: templates name no agent and no model; the skills they require guide the designer's choice
+ * of the step's agent.
  *
  * Prompts use the executor placeholders `{{issue.*}}`, `{{artifacts.*}}`, `{{params.*}}` (ADR 0058),
  * `{{runInputText}}` (ADR 0053: the run inputs the task declares; templates that ask for `input` render them as a "Run
@@ -168,14 +169,12 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = BASE_CODING_AGENT, name = "Base coding agent", abstract = true, extendsKey = BASE_AGENT,
-            agentKey = AgentSnapshot.OPENCODE,
-            description = "Deprecated (ADR 0057, 0058): the platform preamble for coding agents replaces it. Kept for templates that extend it " +
-                "(agent OpenCode unless the template or step chooses another).",
+            description = "Deprecated (ADR 0057, 0058): the platform preamble for coding agents replaces it. Kept for templates that extend it.",
             tags = listOf("base", "agent", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", category = TemplateCategory.SPECIFICATION,
-            agentKey = AgentSnapshot.OPENCODE,
+            requiresSkills = listOf(SPEC_WRITING),
             description = "Runs the Spec Kit SPECIFY phase in the repository and returns the feature specification. " +
                 "The user prompt starts with the subject line and the issue text, which become the feature description.",
             prompt = Prompt(system = RUN_INPUT_SECTION, user = SPECIFY_USER),
@@ -185,7 +184,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = CLARIFY_SPEC, name = "Clarify specification", category = TemplateCategory.SPECIFICATION,
-            agentKey = ANALYST,
+            requiresSkills = listOf(DEFINITION_OF_READY_DONE),
             description = "Reads the specification as the implementer would and reports confidence plus the questions (markdown) that would block a clean implementation.",
             prompt = Prompt(system = withRunInput(CLARIFY_SYSTEM), user = CLARIFY_USER),
             outputSchema = CLARIFY_SCHEMA, confidenceField = "confidence",
@@ -194,7 +193,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_PLAN, name = "Spec Kit: plan", category = TemplateCategory.PLANNING,
-            agentKey = AgentSnapshot.OPENCODE,
+            requiresSkills = listOf(SPEC_WRITING),
             description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification Spec Kit reads from the repository. " +
                 "Optional run input techHints passes stack hints.",
             prompt = Prompt(system = RUN_INPUT_SECTION, user = PLAN_USER),
@@ -210,7 +209,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", category = TemplateCategory.PLANNING,
-            agentKey = AgentSnapshot.OPENCODE,
+            requiresSkills = listOf(SPEC_WRITING),
             description = "Runs the Spec Kit TASKS phase: an ordered, dependency-aware task list from the plan Spec Kit reads from the repository.",
             prompt = Prompt(system = RUN_INPUT_SECTION, user = TASKS_USER),
             config = mapOf("phase" to "TASKS"),
@@ -219,9 +218,9 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_OPENCODE, name = "Implement", category = TemplateCategory.IMPLEMENTATION,
-            agentKey = AgentSnapshot.OPENCODE,
-            description = "Implements the task list (or the issue) in a runner job with a coding agent (OpenCode unless the step chooses " +
-                "another); on a rework it gets the latest review findings. " +
+            requiresSkills = listOf(BUILD_GUARDRAILS),
+            description = "Implements the task list (or the issue) in a runner job with the step's coding agent (OpenCode when the step " +
+                "names none); on a rework it gets the latest review findings. " +
                 "The runner runs verifyCommand when set (none by default), commits, pushes a feature branch and opens a merge request.",
             prompt = Prompt(system = RUN_INPUT_SECTION, user = IMPLEMENT_USER),
             config = IMPLEMENT_CONFIG,
@@ -230,14 +229,13 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_CLAUDE_CODE, name = "Implement with Claude Code", extendsKey = IMPLEMENT_OPENCODE,
-            agentKey = AgentSnapshot.CLAUDE_CODE,
             description = "Deprecated (ADR 0054, 0056): use implement-opencode, implement-task-list or agent-task and choose the agent " +
-                "Claude Code on the step. Same as implement-opencode with the agent Claude Code.",
+                "Claude Code on the step. Same as implement-opencode (ADR 0061: the step names the agent).",
             tags = listOf("claude-code", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
             key = CODE_REVIEW, name = "Code review", category = TemplateCategory.REVIEW,
-            agentKey = REVIEWER,
+            requiresSkills = listOf(SECURITY_REVIEW_CHECKLIST),
             description = "Strict review of a diff: findings with severity, a verdict and a 0..100 score. Uses the issue, or in a CI run the merge request " +
                 "title and description, as context. The diff comes last, so a cut at maxInputChars never removes the instructions.",
             prompt = Prompt(system = withRunInput(REVIEW_SYSTEM), user = REVIEW_USER),
@@ -247,7 +245,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = ANALYSE_ISSUE, name = "Analyse issue", category = TemplateCategory.ANALYSIS,
-            agentKey = ANALYST,
             description = "Deprecated (ADR 0054): use impact-analysis. Reads the issue and produces a structured analysis (stored as JSON): " +
                 "scope, affected areas, risks and open questions.",
             prompt = Prompt(system = withRunInput(ANALYSE_SYSTEM), user = ANALYSE_USER),
@@ -257,7 +254,6 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = LLM_TASK, name = "LLM task", category = TemplateCategory.GENERAL,
-            agentKey = AgentSnapshot.MODEL_ANSWER,
             description = "Generic LLM work without a repository (ADR 0034): write the task into the parameter task in the designer; " +
                 "the run input material is what it works on and revision comments come back as feedback (both in the system prompt). " +
                 "Produces the result artefact.",
@@ -268,20 +264,18 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = AGENT_TASK, name = "Agent task", category = TemplateCategory.GENERAL,
-            agentKey = AgentSnapshot.CLAUDE_CODE,
             description = "Generic coding-agent work in the project's repository: write the task into the parameter task in the designer. " +
-                "The issue, the run input material and revision comments are in the system prompt. Claude Code by default (choose another agent on the step), " +
+                "The issue, the run input material and revision comments are in the system prompt. Choose a coding agent on the step, " +
                 "no push by default: set push to true for a branch and a merge request. In a project without repositories it runs in an empty " +
                 "workspace and its final answer becomes the result artefact.",
             prompt = Prompt(system = AGENT_TASK_SYSTEM, user = TASK_PARAMETER_PROMPT),
-            config = IMPLEMENT_CONFIG + mapOf("push" to false, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
+            config = IMPLEMENT_CONFIG + mapOf("push" to false, "codingAgent" to true, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
             produces = listOf("result"), tags = listOf("agent", "generic"),
             runInputs = listOf(INPUT_MATERIAL),
             parameters = listOf(taskParameter(AGENT_TASK_USER)),
         )),
         template(now, TaskTemplate.Content(
             key = PREPARE_WORKSPACE, name = "Prepare workspace", category = TemplateCategory.OPERATIONS,
-            agentKey = AgentSnapshot.OPENCODE,
             description = "Rarely needed (ADR 0060): the run directory is prepared automatically before the first coding step (the " +
                 "workflow's setup command). This step clones its repositories into the run directory and runs the workflow setup and " +
                 "the step's setupCommand at a chosen point. Starts no agent and never pushes.",
@@ -298,7 +292,7 @@ object BuiltInLibrary {
     fun sdlcTemplates(now: Instant): List<TaskTemplate> = listOf(
         template(now, TaskTemplate.Content(
             key = WRITE_USER_STORY, name = "Write user story", category = TemplateCategory.SPECIFICATION,
-            agentKey = ANALYST,
+            requiresSkills = listOf(USER_STORY_FORMAT),
             description = "Turns the issue into a user story with falsifiable acceptance criteria, explicit open questions and a confidence score.",
             prompt = Prompt(system = withRunInput(WRITE_US_SYSTEM), user = WRITE_US_USER),
             outputSchema = WRITE_US_SCHEMA, confidenceField = "confidence",
@@ -307,7 +301,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = WRITE_USE_CASE, name = "Write use case", category = TemplateCategory.SPECIFICATION,
-            agentKey = ANALYST,
+            requiresSkills = listOf(USE_CASE_FORMAT),
             description = "Expands the user story into a use case: actors, triggers, main and alternative flows, business rules, postconditions and permissions.",
             prompt = Prompt(system = withRunInput(WRITE_UC_SYSTEM), user = WRITE_UC_USER),
             outputSchema = WRITE_UC_SCHEMA, confidenceField = "confidence",
@@ -316,7 +310,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = WRITE_ADR, name = "Write ADR", category = TemplateCategory.PLANNING,
-            agentKey = ANALYST,
+            requiresSkills = listOf(ADR_FORMAT),
             description = "Drafts an Architecture Decision Record with at least two options, a decision, its rationale and honest consequences " +
                 "(status Proposed; number and date stay placeholders for people to fill in).",
             prompt = Prompt(system = withRunInput(WRITE_ADR_SYSTEM), user = WRITE_ADR_USER),
@@ -326,7 +320,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = IMPACT_ANALYSIS, name = "Change request impact analysis", category = TemplateCategory.ANALYSIS,
-            agentKey = ANALYST,
+            requiresSkills = listOf(USER_STORY_FORMAT),
             description = "Analyses a change request: description, business justification, impact on artefacts and components, new stories, effect on the " +
                 "specification, estimate, options and a recommendation (stored as JSON; plan-task-list reads it).",
             prompt = Prompt(system = withRunInput(IMPACT_SYSTEM), user = IMPACT_USER),
@@ -336,7 +330,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = PLAN_TASK_LIST, name = "Plan task list", category = TemplateCategory.PLANNING,
-            agentKey = ANALYST,
+            requiresSkills = listOf(BUILD_GUARDRAILS, DEFINITION_OF_READY_DONE),
             description = "Breaks the work (plan or approved impact analysis, user story) into an ordered task list (title, description, verification, " +
                 "test_command, completed) that ends with the mandatory \"$FINAL_TASK_TITLE\" task.",
             prompt = Prompt(system = withRunInput(PLAN_TASKS_SYSTEM), user = PLAN_TASKS_USER),
@@ -354,7 +348,7 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = REVIEW_AGAINST_SPEC, name = "Review against specification", category = TemplateCategory.REVIEW,
-            agentKey = REVIEWER,
+            requiresSkills = listOf(SECURITY_REVIEW_CHECKLIST, DEFINITION_OF_READY_DONE),
             description = "Reviews the diff against the user story, specification and task list: a requirement coverage matrix (kept in the review; " +
                 "a MISSING requirement requests changes), scope creep and defects, with a verdict and a score.",
             prompt = Prompt(system = withRunInput(REVIEW_SPEC_SYSTEM), user = REVIEW_SPEC_USER),

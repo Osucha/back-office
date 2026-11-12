@@ -3,19 +3,22 @@ import {
   deprecatedPaletteTask,
   paletteActions,
   paletteGroups,
+  paletteTaskTooltip,
   paletteTasks,
 } from './palette-tasks';
 
-describe('palette tasks (ADR 0054, 0056)', () => {
-  const opencode = { key: 'opencode', name: 'OpenCode', harness: 'OPENCODE' as const };
-  const claude = { key: 'claude-code', name: 'Claude Code', harness: 'CLAUDE_CODE' as const };
-  const answer = { key: 'model-answer', name: 'Model answer', harness: null };
+describe('palette tasks (ADR 0054, 0056, 0061)', () => {
   const tasks: PaletteTask[] = [
-    { key: 'implement-opencode', name: 'Implement', agent: opencode },
-    { key: 'implement-claude-code', name: 'Implement with Claude Code', agent: claude },
-    { key: 'code-review', name: 'Code review', agent: answer, category: 'REVIEW' },
-    { key: 'tagged', name: 'Tagged', agent: answer, tags: ['deprecated'] } as PaletteTask,
-    { key: 'flagged', name: 'Flagged', agent: answer, deprecated: true } as PaletteTask,
+    {
+      key: 'implement-opencode',
+      name: 'Implement',
+      needsCodingAgent: true,
+      requiresSkills: ['kotlin'],
+    },
+    { key: 'implement-claude-code', name: 'Implement with Claude Code', needsCodingAgent: true },
+    { key: 'code-review', name: 'Code review', needsCodingAgent: false, category: 'REVIEW' },
+    { key: 'tagged', name: 'Tagged', tags: ['deprecated'] } as PaletteTask,
+    { key: 'flagged', name: 'Flagged', deprecated: true } as PaletteTask,
   ];
   const deprecated = new Set(['implement-claude-code']);
 
@@ -30,16 +33,26 @@ describe('palette tasks (ADR 0054, 0056)', () => {
     expect(deprecatedPaletteTask(tasks[0], deprecated)).toBe(false);
   });
 
-  it('matches name, key, category and the agent name or kind', () => {
+  it('matches name, key, category, the kind of agent needed and required skills', () => {
     expect(paletteTasks(tasks, 'code-rev', deprecated).map((t) => t.key)).toEqual(['code-review']);
     expect(paletteTasks(tasks, 'REVIEW', deprecated).map((t) => t.key)).toEqual(['code-review']);
-    expect(paletteTasks(tasks, 'opencode', deprecated).map((t) => t.key)).toEqual([
+    expect(paletteTasks(tasks, 'coding agent', deprecated).map((t) => t.key)).toEqual([
       'implement-opencode',
     ]);
-    expect(paletteTasks(tasks, 'model answer', deprecated).map((t) => t.key)).toEqual([
-      'code-review',
+    expect(paletteTasks(tasks, 'any agent', deprecated).map((t) => t.key)).toEqual(['code-review']);
+    expect(paletteTasks(tasks, 'kotlin', deprecated).map((t) => t.key)).toEqual([
+      'implement-opencode',
     ]);
     expect(paletteTasks(tasks, 'claude', deprecated)).toEqual([]);
+  });
+
+  it('shows the kind of agent and the required skills on hover', () => {
+    expect(paletteTaskTooltip(tasks[0], (k) => (k === 'kotlin' ? 'Kotlin' : k))).toBe(
+      'Implement\nNeeds a coding agent\nRequired skills: Kotlin',
+    );
+    expect(paletteTaskTooltip({ ...tasks[2], description: 'Reviews the diff' })).toBe(
+      'Reviews the diff\nAny agent',
+    );
   });
 
   it('groups by category, those without one under General (ADR 0055)', () => {

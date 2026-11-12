@@ -3,61 +3,66 @@ import {
   agentByKey,
   agentRef,
   agentsForScope,
-  effectiveAgentKey,
+  lineageConfig,
   templateConfigSchema,
+  templateNeedsCodingAgent,
 } from './template-config';
 
 const T = (over: Partial<TaskTemplate>): TaskTemplate =>
   ({ key: 'k', name: 'N', abstract: false, scope: { type: 'GLOBAL' }, ...over }) as TaskTemplate;
 
-describe('template config (ADR 0054, 0056)', () => {
+describe('template config (ADR 0054, 0061)', () => {
   const templates = [
-    T({ key: 'base-agent', abstract: true }),
-    T({ key: 'base-llm', extendsKey: 'base-agent', agentKey: 'model-answer' }),
-    T({ key: 'implement-opencode', extendsKey: 'base-agent', agentKey: 'opencode' }),
+    T({ key: 'base', abstract: true, config: { temperature: 0.2 } }),
+    T({ key: 'specify', extendsKey: 'base', config: { phase: 'specify' } }),
+    T({ key: 'review', extendsKey: 'base', config: {} }),
     T({
-      key: 'base-llm',
-      extendsKey: 'base-agent',
-      agentKey: 'claude-code',
+      key: 'review',
+      extendsKey: 'base',
+      config: { push: true },
       scope: { type: 'PROJECT', projectId: 'p1' },
     }),
     T({ key: 'loop-a', extendsKey: 'loop-b' }),
     T({ key: 'loop-b', extendsKey: 'loop-a' }),
   ];
   const global = { type: 'GLOBAL' as const };
+  const p1 = { type: 'PROJECT' as const, projectId: 'p1' };
 
-  it('prefers the own agent', () => {
+  it('merges the config of the lineage, the own keys win and null deletes', () => {
     expect(
-      effectiveAgentKey({ agentKey: 'opencode', extendsKey: 'base-llm', scope: global }, templates),
-    ).toBe('opencode');
+      lineageConfig({ config: { x: 1 }, extendsKey: 'specify', scope: global }, templates),
+    ).toEqual({ temperature: 0.2, phase: 'specify', x: 1 });
+    expect(
+      lineageConfig({ config: { phase: null }, extendsKey: 'specify', scope: global }, templates),
+    ).toEqual({ temperature: 0.2 });
+    expect(lineageConfig({ config: {}, extendsKey: 'loop-a', scope: global }, templates)).toEqual(
+      {},
+    );
   });
 
-  it('inherits the agent of the nearest ancestor', () => {
+  it('needs a coding agent for a phase, push or prepareOnly anywhere in the lineage', () => {
     expect(
-      effectiveAgentKey({ agentKey: null, extendsKey: 'base-llm', scope: global }, templates),
-    ).toBe('model-answer');
+      templateNeedsCodingAgent({ config: {}, extendsKey: 'specify', scope: global }, templates),
+    ).toBe(true);
     expect(
-      effectiveAgentKey(
-        { agentKey: null, extendsKey: 'base-llm', scope: { type: 'PROJECT', projectId: 'p1' } },
-        templates,
-      ),
-    ).toBe('claude-code');
+      templateNeedsCodingAgent({ config: {}, extendsKey: 'review', scope: global }, templates),
+    ).toBe(false);
+    // the project's version of the parent pushes
+    expect(
+      templateNeedsCodingAgent({ config: {}, extendsKey: 'review', scope: p1 }, templates),
+    ).toBe(true);
+    expect(
+      templateNeedsCodingAgent({ config: { prepareOnly: true }, scope: global }, templates),
+    ).toBe(true);
   });
 
-  it('falls back when nothing up the chain has an agent (also on cycles)', () => {
+  it('a project template customising the global one of its key extends the global one', () => {
     expect(
-      effectiveAgentKey({ agentKey: null, extendsKey: 'base-agent', scope: global }, templates),
-    ).toBeNull();
-    expect(
-      effectiveAgentKey(
-        { agentKey: null, extendsKey: 'loop-a', scope: global },
+      templateNeedsCodingAgent(
+        { key: 'review', config: {}, extendsKey: 'review', scope: p1 },
         templates,
-        'model-answer',
       ),
-    ).toBe('model-answer');
-    expect(
-      effectiveAgentKey({ agentKey: null, extendsKey: 'missing', scope: global }, templates),
-    ).toBeNull();
+    ).toBe(false);
   });
 
   it('finds agents by key and scope (project first)', () => {
@@ -72,15 +77,11 @@ describe('template config (ADR 0054, 0056)', () => {
       { key: 'p2-only', name: 'P2', scope: { type: 'PROJECT', projectId: 'p2' } },
     ];
     expect(agentByKey(agents, 'coder')?.name).toBe('Global coder');
-    expect(agentByKey(agents, 'coder', { type: 'PROJECT', projectId: 'p1' })?.name).toBe(
-      'P1 coder',
-    );
+    expect(agentByKey(agents, 'coder', p1)?.name).toBe('P1 coder');
     expect(agentByKey(agents, 'p2-only')).toBeNull();
     expect(agentByKey(agents, null)).toBeNull();
     expect(agentsForScope(agents, global).map((a) => a.name)).toEqual(['Global coder']);
-    expect(agentsForScope(agents, { type: 'PROJECT', projectId: 'p1' }).map((a) => a.name)).toEqual(
-      ['Global coder', 'P1 coder'],
-    );
+    expect(agentsForScope(agents, p1).map((a) => a.name)).toEqual(['Global coder', 'P1 coder']);
     expect(agentRef(agents[1])).toEqual({
       key: 'coder',
       name: 'P1 coder',
@@ -89,19 +90,19 @@ describe('template config (ADR 0054, 0056)', () => {
     });
   });
 
-  it('picks the schema by the kind of agent without required keys', () => {
+  it('offers the keys of both kinds of steps without required keys', () => {
     const schemas: TaskConfigSchemas = {
       codingAgent: {
         type: 'object',
         required: ['phase'],
         properties: { phase: { type: 'string' } },
       },
-      modelAnswer: { type: 'object', properties: {} },
+      modelAnswer: { type: 'object', properties: { temperature: { type: 'number' } } },
     };
-    const schema = templateConfigSchema(schemas, true);
-    expect(schema?.properties?.['phase']).toBeTruthy();
+    const schema = templateConfigSchema(schemas);
+    expect(Object.keys(schema?.properties ?? {})).toEqual(['temperature', 'phase']);
     expect(schema?.required).toBeUndefined();
-    expect(templateConfigSchema(schemas, false)).toBeNull();
-    expect(templateConfigSchema(null, true)).toBeNull();
+    expect(templateConfigSchema({ codingAgent: {}, modelAnswer: {} })).toBeNull();
+    expect(templateConfigSchema(null)).toBeNull();
   });
 });

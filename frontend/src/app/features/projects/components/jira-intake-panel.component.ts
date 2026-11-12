@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -42,6 +43,7 @@ import {
 @Component({
   selector: 'app-jira-intake-panel',
   imports: [
+    HelpTipComponent,
     FormsModule,
     RouterLink,
     NzAlertModule,
@@ -58,8 +60,16 @@ import {
     <nz-card [nzTitle]="titleTpl" [nzExtra]="extraTpl">
       <ng-template #titleTpl>
         <span i18n="@@projects.intake.title">Jira intake watcher</span>
+        <bo-help-tip [text]="introHelp" style="margin-left: 6px" />
         <bo-help-link topic="jira.intake" style="margin-left: 6px" />
       </ng-template>
+      <ng-template #introHelp
+        ><span i18n="@@projects.intake.intro">
+          Starts a run when a Jira issue enters the status of the workflow's Jira trigger (or,
+          without a status, for each new issue matching the JQL filter). It only reads Jira, with a
+          reader connection.
+        </span></ng-template
+      >
       <ng-template #extraTpl>
         @if (intake(); as i) {
           @if (i.enabled) {
@@ -78,12 +88,6 @@ import {
       } @else if (loadError()) {
         <nz-alert nzType="error" nzShowIcon [nzMessage]="loadError()!" />
       } @else if (intake(); as i) {
-        <p class="muted small" i18n="@@projects.intake.intro">
-          Starts a run when a Jira issue enters the status of the workflow's Jira trigger (or,
-          without a status, for each new issue matching the JQL filter). It only reads Jira, with a
-          reader connection.
-        </p>
-
         <div class="form">
           <label class="row">
             <nz-switch
@@ -240,12 +244,17 @@ import {
           <nz-alert nzType="warning" nzShowIcon [nzMessage]="p" class="block" />
         }
         @if (i.jql) {
-          <h4 i18n="@@projects.intake.query">Query sent to Jira</h4>
+          <h4>
+            <span i18n="@@projects.intake.query">Query sent to Jira</span>
+            <bo-help-tip [text]="queryHelp" />
+          </h4>
+          <ng-template #queryHelp
+            ><span i18n="@@projects.intake.queryHint">
+              The project's JQL filter, limited to its Jira project and to the time since the last
+              poll (plus an overlap); a connection limited to projects adds them too.
+            </span></ng-template
+          >
           <pre class="jql">{{ i.jql }}</pre>
-          <p class="muted small" i18n="@@projects.intake.queryHint">
-            The project's JQL filter, limited to its Jira project and to the time since the last
-            poll (plus an overlap); a connection limited to projects adds them too.
-          </p>
         }
       } @else {
         <p class="muted" i18n="@@projects.intake.loading">Loading…</p>

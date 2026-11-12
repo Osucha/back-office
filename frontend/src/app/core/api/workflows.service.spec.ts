@@ -19,6 +19,17 @@ describe('WorkflowsApi model availability (ADR 0050)', () => {
 
   afterEach(() => http.verify());
 
+  it('agentAudit() posts the draft nodes of the project, errors silent (ADR 0061)', () => {
+    let count = -1;
+    api.agentAudit('p1', []).subscribe((a) => (count = a.agents.length));
+    const req = http.expectOne('/api/v1/workflows/agent-audit');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ projectId: 'p1', nodes: [] });
+    expect(req.request.context.get(SKIP_ERROR_TOAST)).toBe(true);
+    req.flush({ agents: [], findings: [] });
+    expect(count).toBe(0);
+  });
+
   it('modelOptions() asks for the options of a step kind and harness', () => {
     let ids: string[] = [];
     api

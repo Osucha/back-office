@@ -20,18 +20,9 @@ import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { forkJoin } from 'rxjs';
-import { ModelProfilesApi } from '../../../core/api/model-profiles.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
 import { TaskLibraryApi } from '../../../core/api/task-library.service';
-import type {
-  Agent,
-  ModelProfile,
-  Project,
-  Rule,
-  Skill,
-  TaskTemplate,
-  TaskTemplateInput,
-} from '../../../core/api/types';
+import type { Project, Skill, TaskTemplate, TaskTemplateInput } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
 import { icu } from '../../../core/i18n/icu';
 import type { HasUnsavedChanges } from '../../../core/auth/guards';
@@ -57,7 +48,7 @@ import {
   canEditScope,
   editableProjects,
 } from '../data/library-access';
-import { agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
+import { neededAgentLabel } from '../../../core/ui/agents';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
 import { templateNeedsParameters } from '../../../core/ui/template-parameters';
 import {
@@ -65,16 +56,12 @@ import {
   categoryLabel,
   categoryOrder,
 } from '../../../core/ui/template-categories';
-import {
-  effectiveCategory,
-  filterTemplates,
-  nameOfKey,
-  templateAgent,
-} from '../data/library-filters';
+import { effectiveCategory, filterTemplates, nameOfKey } from '../data/library-filters';
 import { customizeForProject } from '../data/resolved-preview';
 
 /**
- * Library: task templates. Filters (search, project templates, category, agent) live in the URL; `j` / `k`
+ * Library: task templates. Filters (search, project templates, category, the kind of agent a
+ * template needs) live in the URL; `j` / `k`
  * / `Enter` open a template in the editor, `?key=` deep-links one.
  */
 @Component({
@@ -162,19 +149,17 @@ import { customizeForProject } from '../data/resolved-preview';
           }
         </nz-select>
         <nz-select
-          [ngModel]="f.values().agent"
-          (ngModelChange)="f.set({ agent: $event })"
+          [ngModel]="f.values().needs"
+          (ngModelChange)="f.set({ needs: $event })"
           nzAllowClear
-          nzShowSearch
-          nzPlaceHolder="Any agent"
-          i18n-nzPlaceHolder="@@library.templates.filter.anyAgent"
-          style="width: 170px"
-          aria-label="Filter by agent"
-          i18n-aria-label="@@library.templates.filter.agent"
+          nzPlaceHolder="Any kind of agent"
+          i18n-nzPlaceHolder="@@library.templates.filter.anyNeeds"
+          style="width: 200px"
+          aria-label="Filter by the agent a template needs"
+          i18n-aria-label="@@library.templates.filter.needs"
         >
-          @for (a of agentFilterOptions(); track a.key) {
-            <nz-option [nzValue]="a.key" [nzLabel]="a.name" />
-          }
+          <nz-option nzValue="coding" [nzLabel]="text.needsCoding" />
+          <nz-option nzValue="any" [nzLabel]="text.needsAny" />
         </nz-select>
         <label class="show-deprecated">
           <nz-switch
@@ -249,15 +234,6 @@ import { customizeForProject } from '../data/resolved-preview';
               <th
                 nzShowSort
                 [boSort]="sort"
-                boSortKey="agent"
-                nzWidth="136px"
-                i18n="@@library.templates.col.agent"
-              >
-                Agent
-              </th>
-              <th
-                nzShowSort
-                [boSort]="sort"
                 boSortKey="scope"
                 nzWidth="106px"
                 i18n="@@library.templates.col.scope"
@@ -282,7 +258,7 @@ import { customizeForProject } from '../data/resolved-preview';
             @for (tpl of t.data; track tpl.id ?? tpl.key; let i = $index) {
               @if (i === 0 || categoryOf(tpl) !== categoryOf(t.data[i - 1])) {
                 <tr class="group-row" [attr.data-category-group]="categoryOf(tpl)">
-                  <td colspan="6">
+                  <td colspan="5">
                     <span class="group-title">{{ categoryName(categoryOf(tpl)) }}</span>
                   </td>
                 </tr>
@@ -310,6 +286,11 @@ import { customizeForProject } from '../data/resolved-preview';
                         <span class="chip outline" i18n="@@library.templates.abstract"
                           >abstract</span
                         >
+                      }
+                      @if (tpl.needsCodingAgent) {
+                        <span class="chip accent" data-needs-coding-agent>{{
+                          text.needsCoding
+                        }}</span>
                       }
                       @if (isDeprecated(tpl)) {
                         <span
@@ -347,19 +328,6 @@ import { customizeForProject } from '../data/resolved-preview';
                     <span class="ink-2">{{ parentName(tpl) }}</span>
                   } @else {
                     <span class="quiet">-</span>
-                  }
-                </td>
-                <td>
-                  @if (agentOf(tpl); as a) {
-                    <span
-                      [class.chip]="!!tpl.agentKey"
-                      [class.accent]="!!tpl.agentKey && !!a.harness"
-                      [class.quiet]="!tpl.agentKey"
-                      nz-tooltip
-                      [nzTooltipTitle]="agentTooltip(tpl, a)"
-                      [attr.data-agent]="a.key"
-                      >{{ a.name }}</span
-                    >
                   }
                 </td>
                 <td>
@@ -440,10 +408,7 @@ import { customizeForProject } from '../data/resolved-preview';
       [template]="editing()"
       [preset]="preset()"
       [templates]="templates()"
-      [rules]="rules()"
       [skills]="skills()"
-      [profiles]="profiles()"
-      [agents]="agents()"
       [projects]="projects()"
       [saving]="saving()"
       [savedVersion]="savedVersion()"
@@ -506,7 +471,6 @@ import { customizeForProject } from '../data/resolved-preview';
 export class TemplatesPageComponent implements HasUnsavedChanges {
   private readonly api = inject(TaskLibraryApi);
   private readonly projectsApi = inject(ProjectsApi);
-  private readonly profilesApi = inject(ModelProfilesApi);
   private readonly message = inject(NzMessageService);
   private readonly confirm = inject(ConfirmService);
   readonly identity = inject(IdentityService);
@@ -523,19 +487,15 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   readonly f = urlFilters({
     q: 'string',
     projectId: 'string',
-    /** ADR 0056: an agent key (own or inherited). */
-    agent: 'string',
+    /** ADR 0061: `coding` (needs a coding agent) or `any`. */
+    needs: 'string',
     /** ADR 0055: a template category (own or inherited). */
     category: 'string',
     /** ADR 0054: `1` shows deprecated templates (hidden by default). */
     deprecated: 'string',
   });
   readonly templates = signal<TaskTemplate[]>([]);
-  readonly rules = signal<Rule[]>([]);
   readonly skills = signal<Skill[]>([]);
-  readonly profiles = signal<ModelProfile[]>([]);
-  /** ADR 0056: global agents plus those of the filtered project. */
-  readonly agents = signal<Agent[]>([]);
   readonly projects = signal<Project[]>([]);
   readonly loading = signal(false);
   readonly loaded = signal(false);
@@ -566,29 +526,13 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     view: $localize`:@@library.templates.view:View template`,
     builtInNoDelete: $localize`:@@library.templates.builtInNoDelete:Built-in templates cannot be deleted; extend them per project`,
     delete: $localize`:@@library.templates.delete:Delete template`,
+    needsCoding: neededAgentLabel(true),
+    needsAny: neededAgentLabel(false),
   };
-  /** ADR 0056: the agent per template (own or inherited, else model answer). */
-  private readonly agentMap = computed(() => {
-    const all = this.templates();
-    const agents = this.agents();
-    return new Map(
-      all.map((t) => {
-        const { key, agent } = templateAgent(t, all, agents);
-        return [t, { key, name: agent?.name ?? key, harness: agent?.harness ?? null }] as const;
-      }),
-    );
-  });
-  /** The agents the filter offers: those the listed templates use. */
-  readonly agentFilterOptions = computed(() => {
-    const seen = new Map<string, { key: string; name: string }>();
-    for (const a of this.agentMap().values()) seen.set(a.key, { key: a.key, name: a.name });
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
-  });
   readonly filtered = computed(() =>
     filterTemplates(this.templates(), {
       query: this.f.values().q,
-      agent: this.f.values().agent,
-      agents: this.agents(),
+      needs: this.f.values().needs,
       category: this.f.values().category,
       showDeprecated: !!this.f.values().deprecated,
     }),
@@ -596,7 +540,6 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
   readonly sort = tableSort<TaskTemplate>({
     name: (t) => t.name,
     extends: (t) => (t.extendsKey ? this.parentName(t) : null),
-    agent: (t) => this.agentOf(t)?.name ?? null,
     // global templates first, then project templates by project key
     scope: (t) =>
       t.scope.type === 'PROJECT' ? `PROJECT ${this.projectKey(t.scope.projectId)}` : 'GLOBAL',
@@ -626,10 +569,10 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
         id: 'category',
         label: $localize`:@@library.templates.chip.category:Category: ${categoryLabel(v.category)}:category:`,
       });
-    if (v.agent)
+    if (v.needs)
       out.push({
-        id: 'agent',
-        label: $localize`:@@library.templates.chip.agent:Agent: ${this.agentName(v.agent)}:agent:`,
+        id: 'needs',
+        label: v.needs === 'coding' ? this.text.needsCoding : this.text.needsAny,
       });
     if (v.deprecated)
       out.push({
@@ -654,7 +597,6 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
       { label: $localize`:@@library.templates.crumb.templates:Templates` },
     ]);
     this.projectsApi.list().subscribe((p) => this.projects.set(p));
-    this.profilesApi.listCallable().subscribe((p) => this.profiles.set(p));
     effect(() => {
       this.f.values().projectId;
       untracked(() => this.load());
@@ -698,25 +640,9 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     );
   }
 
-  /** ADR 0056: the agent a template runs with (own or inherited). */
-  agentOf(t: TaskTemplate): { key: string; name: string; harness: string | null } | null {
-    return this.agentMap().get(t) ?? null;
-  }
-
-  agentName(key: string): string {
-    return this.agentFilterOptions().find((a) => a.key === key)?.name ?? key;
-  }
-
-  agentTooltip(t: TaskTemplate, a: { harness: string | null }): string {
-    const kind = `${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}`;
-    return t.agentKey
-      ? kind
-      : $localize`:@@library.templates.agentInherited:Inherited. ${kind}:kind:`;
-  }
-
   removeChip(id: string): void {
     if (id === 'projectId') this.f.set({ projectId: null });
-    else if (id === 'agent') this.f.set({ agent: null });
+    else if (id === 'needs') this.f.set({ needs: null });
     else if (id === 'category') this.f.set({ category: null });
     else if (id === 'deprecated') this.f.set({ deprecated: null });
   }
@@ -802,13 +728,9 @@ export class TemplatesPageComponent implements HasUnsavedChanges {
     forkJoin({
       templates: this.api.listTemplates({ projectId, includeAbstract: true }),
       skills: this.api.listSkills(projectId),
-      rules: this.api.listRules(projectId),
-      agents: this.api.listAgents(projectId),
     }).subscribe({
-      next: ({ templates, skills, rules, agents }) => {
+      next: ({ templates, skills }) => {
         this.templates.set(templates);
-        this.agents.set(agents);
-        this.rules.set(rules);
         this.skills.set(skills);
         this.loading.set(false);
         this.loaded.set(true);

@@ -55,7 +55,6 @@ class Library(builtInAgents: Boolean = true) {
         key: String,
         extendsKey: String? = null,
         abstract: Boolean = false,
-        agentKey: String? = null,
         scope: Scope = Scope.Global,
         category: TemplateCategory? = null,
         prompt: Prompt = Prompt.EMPTY,
@@ -73,7 +72,7 @@ class Library(builtInAgents: Boolean = true) {
     ): TaskTemplate = templates.save(
         TaskTemplate.create(
             TaskTemplate.Content(
-                key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category, agentKey = agentKey,
+                key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category,
                 scope = scope, prompt = prompt, config = config, outputSchema = outputSchema,
                 confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags, runInputs = runInputs,
                 parameters = parameters, parameterValues = parameterValues, requiresSkills = requiresSkills,

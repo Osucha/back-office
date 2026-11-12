@@ -103,7 +103,14 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
   answer gets it at the start of its system prompt; a coding agent gets it as `AGENTS.md` / user `CLAUDE.md` written
   into its agent home outside every repository (ADR 0060: `/workspace/.agents/<agent key>/`, rewritten on every job,
   never through a symlink), so repository content cannot replace it (the repository's own `AGENTS.md` / `CLAUDE.md`
-  are still read by the harness as project memory and are data like the rest of the repository).
+  are still read by the harness as project memory and are data like the rest of the repository). ADR 0061: the
+  preamble's precedence (constitution, then rules including the repository's `AGENTS.md` / `CLAUDE.md`, then skills,
+  then the task) orders norms the agent already has; it does not lift the notices above it, so a repository file that
+  asks to reveal credentials or push elsewhere is still refused. Templates carry no rules, so the task prompt cannot add
+  a norm that outranks the agent's rules.
+- Coherence check (ADR 0061): on request only, a model reads the agent's environment (and the repository's
+  `AGENTS.md` / `CLAUDE.md` when readable) and returns findings with quotes. The answer is shown to the person who
+  asked and never fed into a run, so an injected instruction in a source can at most distort the report.
 - `LlmTaskExecutor` (every step the agent **model answer** runs, including the code review): user and system prompt
   through `renderPrompt`, the notice is appended last to the system prompt (after the environment document, the
   template's system prompt and the skills).

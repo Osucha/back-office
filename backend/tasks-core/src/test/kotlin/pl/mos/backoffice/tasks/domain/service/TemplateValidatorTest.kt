@@ -8,7 +8,6 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
-import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.support.Library
@@ -22,7 +21,6 @@ class TemplateValidatorTest {
         key: String = "candidate",
         extendsKey: String? = null,
         abstract: Boolean = false,
-        agentKey: String? = null,
         parameters: List<TemplateParameter> = emptyList(),
         parameterValues: Map<String, Any?> = emptyMap(),
         outputSchema: String? = null,
@@ -31,7 +29,7 @@ class TemplateValidatorTest {
         runInputs: List<RunInputField> = emptyList(),
     ) = TaskTemplate.create(
         TaskTemplate.Content(
-            key = key, name = key, extendsKey = extendsKey, abstract = abstract, agentKey = agentKey,
+            key = key, name = key, extendsKey = extendsKey, abstract = abstract,
             parameters = parameters, parameterValues = parameterValues, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope, runInputs = runInputs,
         ),
         lib.now,
@@ -67,14 +65,8 @@ class TemplateValidatorTest {
     }
 
     @Test
-    fun `a template needs no agent, but a named agent must exist where the template is visible`() {
-        assertThat(fields(candidate())).describedAs("no agent anywhere = model answer").isEmpty()
-        assertThat(fields(candidate(agentKey = "opencode"))).isEmpty()
-        assertThat(validator.problems(candidate(agentKey = "ghost")).map { it.field to it.message }).containsExactly("agentKey" to "agent ghost does not exist")
-
-        lib.agent("mine", AgentHarness.CLAUDE_CODE, scope = Scope.Project(lib.projectId))
-        assertThat(fields(candidate(agentKey = "mine"))).describedAs("a project agent is not visible globally").containsExactly("agentKey")
-        assertThat(fields(candidate(agentKey = "mine", scope = Scope.Project(lib.projectId)))).isEmpty()
+    fun `ADR 0061 - a template names no agent and needs none`() {
+        assertThat(fields(candidate())).describedAs("the step chooses the agent").isEmpty()
     }
 
     @Test
@@ -125,9 +117,9 @@ class TemplateValidatorTest {
 
     @Test
     fun `validate collects every problem into one exception`() {
-        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", agentKey = "nobody", confidenceField = "cc", parameterValues = mapOf("i" to 1))) }
+        assertThatThrownBy { validator.validate(candidate(extendsKey = "ghost", confidenceField = "cc", parameterValues = mapOf("i" to 1))) }
             .isInstanceOf(ValidationException::class.java)
-            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "agentKey", "confidenceField", "parameterValues") })
+            .satisfies({ e -> assertThat((e as ValidationException).errors.map { it.field }).containsExactly("extendsKey", "confidenceField", "parameterValues") })
     }
 
     @Test

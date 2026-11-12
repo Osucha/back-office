@@ -33,7 +33,11 @@ import {
   actionTitle,
   agentKindDescription,
   agentKindLabel,
+  configNeedsCodingAgent,
+  neededAgentLabel,
 } from '../../../core/ui/agents';
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
+import { defaultStepAgentKey, pickAgent } from '../data/agent-choice';
 import { JsonViewComponent } from '../../../core/ui/json-view.component';
 import { ModelSelectComponent } from '../../../core/ui/model-select.component';
 import { deprecatedHint, deprecatedLabel } from '../../../core/ui/template-tags';
@@ -141,6 +145,7 @@ import {
     StartRunInputsComponent,
     JsonViewComponent,
     ParameterValuesFormComponent,
+    HelpTipComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -149,6 +154,7 @@ import {
         <div class="head">
           <nz-icon [nzType]="meta().icon" [style.color]="meta().color" />
           <span class="kind">{{ meta().title }}</span>
+          <bo-help-tip [text]="meta().description" />
           <span class="spacer"></span>
           @if (!readonly()) {
             @if (n.kind !== 'START') {
@@ -184,8 +190,6 @@ import {
             </button>
           }
         </div>
-        <p class="muted small">{{ meta().description }}</p>
-
         @for (e of issues()?.errors ?? []; track $index) {
           <nz-alert
             nzType="error"
@@ -297,14 +301,10 @@ import {
                     }
                   </div>
                   <div class="chips">
-                    @if (r.agent) {
-                      <nz-tag
-                        nzColor="purple"
-                        nz-tooltip
-                        [nzTooltipTitle]="agentKindDescription(r.agent.harness)"
-                        [attr.data-agent]="r.agent.key"
-                        >{{ r.agent.name }}</nz-tag
-                      >
+                    @if (needsCodingAgent()) {
+                      <nz-tag nzColor="purple" data-needs-coding-agent>{{
+                        text.needsCoding
+                      }}</nz-tag>
                     }
                     @if (templateDeprecated()) {
                       <nz-tag
@@ -344,16 +344,17 @@ import {
               }
 
               @if (parameterFields().length) {
-                <nz-divider
-                  nzText="Parameters"
-                  i18n-nzText="@@workflows.props.parameters"
-                  nzOrientation="left"
-                  nzPlain
-                />
-                <p class="muted small" i18n="@@workflows.props.parameters.help">
-                  Values of the template's parameters for this step. Empty: the template's value or
-                  the default (shown greyed out).
-                </p>
+                <nz-divider [nzText]="parametersTitle" nzOrientation="left" nzPlain />
+                <ng-template #parametersTitle
+                  ><span i18n="@@workflows.props.parameters">Parameters</span>
+                  <bo-help-tip [text]="parametersHelp"
+                /></ng-template>
+                <ng-template #parametersHelp
+                  ><span i18n="@@workflows.props.parameters.help">
+                    Values of the template's parameters for this step. Empty: the template's value
+                    or the default (shown greyed out).
+                  </span></ng-template
+                >
                 <div data-step-parameters>
                   <app-parameter-values-form
                     [fields]="parameterFields()"
@@ -371,11 +372,17 @@ import {
                     i18n-nzHeader="@@workflows.props.stepGets"
                     [nzActive]="stepGetsOpen()"
                     (nzActiveChange)="stepGetsOpen.set($event)"
+                    [nzExtra]="stepGetsTip"
                   >
-                    <p class="muted small" i18n="@@workflows.props.stepGets.help">
-                      The template with this step's overrides applied: exactly what the model or the
-                      coding agent receives (before the run fills in the variables).
-                    </p>
+                    <ng-template #stepGetsTip>
+                      <bo-help-tip [text]="stepGetsHelp" (click)="$event.stopPropagation()" />
+                    </ng-template>
+                    <ng-template #stepGetsHelp
+                      ><span i18n="@@workflows.props.stepGets.help">
+                        The template with this step's overrides applied: exactly what the model or
+                        the coding agent receives (before the run fills in the variables).
+                      </span></ng-template
+                    >
                     @if (stepResolving()) {
                       <p class="muted small">
                         <nz-icon nzType="loading" nzSpin />
@@ -494,8 +501,16 @@ import {
                 nzPlain
               />
               <nz-form-item>
-                <nz-form-label nzFor="pp-agent" i18n="@@workflows.props.agent">Agent</nz-form-label>
-                <nz-form-control [nzExtra]="agentHelp()">
+                <nz-form-label
+                  nzFor="pp-agent"
+                  [nzTooltipTitle]="agentHelp()"
+                  i18n="@@workflows.props.agent"
+                  >Agent</nz-form-label
+                >
+                <nz-form-control
+                  [nzValidateStatus]="agentMismatch() ? 'warning' : ''"
+                  [nzExtra]="agentMismatch() ? text.agentMismatch : ''"
+                >
                   <nz-select
                     id="pp-agent"
                     name="agentKey"
@@ -526,13 +541,14 @@ import {
                 />
               }
               <nz-form-item>
-                <nz-form-label nzFor="pp-model" i18n="@@workflows.props.modelProfile"
+                <nz-form-label
+                  nzTooltipTitle="Empty: the agent's model, else the defaults for its kind (project, starting user, platform)."
+                  i18n-nzTooltipTitle="@@workflows.props.modelProfile.help"
+                  nzFor="pp-model"
+                  i18n="@@workflows.props.modelProfile"
                   >Model profile</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Overrides the template / project default for this node."
-                  i18n-nzExtra="@@workflows.props.modelProfile.extra"
-                >
+                <nz-form-control>
                   @if (modelUse() && modelChoices() !== null) {
                     <app-model-select
                       name="modelProfileId"
@@ -646,13 +662,14 @@ import {
                 />
               } @else {
                 <nz-form-item>
-                  <nz-form-label nzFor="pp-cfg-json" i18n="@@workflows.props.configJson"
+                  <nz-form-label
+                    nzTooltipTitle="Deep-merged into the template config; null deletes a key."
+                    i18n-nzTooltipTitle="@@workflows.props.configJson.extra"
+                    nzFor="pp-cfg-json"
+                    i18n="@@workflows.props.configJson"
                     >Config overrides (JSON)</nz-form-label
                   >
-                  <nz-form-control
-                    nzExtra="Deep-merged into the template config; null deletes a key."
-                    i18n-nzExtra="@@workflows.props.configJson.extra"
-                  >
+                  <nz-form-control>
                     <textarea
                       nz-input
                       id="pp-cfg-json"
@@ -745,13 +762,14 @@ import {
                 />
               } @else {
                 <nz-form-item>
-                  <nz-form-label nzFor="pp-act-json" i18n="@@workflows.props.actionConfigJson"
+                  <nz-form-label
+                    nzTooltipTitle="Missing keys take the action's defaults."
+                    i18n-nzTooltipTitle="@@workflows.props.actionConfigJson.extra"
+                    nzFor="pp-act-json"
+                    i18n="@@workflows.props.actionConfigJson"
                     >Action config (JSON)</nz-form-label
                   >
-                  <nz-form-control
-                    nzExtra="Missing keys take the action's defaults."
-                    i18n-nzExtra="@@workflows.props.actionConfigJson.extra"
-                  >
+                  <nz-form-control>
                     <textarea
                       nz-input
                       id="pp-act-json"
@@ -771,16 +789,17 @@ import {
             }
 
             @case ('DECISION') {
-              <nz-divider
-                nzText="Branches"
-                i18n-nzText="@@workflows.props.branches"
-                nzOrientation="left"
-                nzPlain
-              />
-              <p class="muted small" i18n="@@workflows.props.branches.hint">
-                Evaluated in order; the first true expression wins. Each branch id is an output
-                port.
-              </p>
+              <nz-divider [nzText]="branchesTitle" nzOrientation="left" nzPlain />
+              <ng-template #branchesTitle
+                ><span i18n="@@workflows.props.branches">Branches</span>
+                <bo-help-tip [text]="branchesHelp"
+              /></ng-template>
+              <ng-template #branchesHelp
+                ><span i18n="@@workflows.props.branches.hint">
+                  Evaluated in order; the first true expression wins. Each branch id is an output
+                  port.
+                </span></ng-template
+              >
               @for (b of n.decision?.branches ?? []; track $index; let i = $index) {
                 <div class="branch">
                   <div class="branch-row">
@@ -902,10 +921,14 @@ import {
                 nzPlain
               />
               <nz-form-item>
-                <nz-form-label nzRequired nzFor="pp-question" i18n="@@workflows.props.question"
+                <nz-form-label
+                  [nzTooltipTitle]="text.questionHint"
+                  nzRequired
+                  nzFor="pp-question"
+                  i18n="@@workflows.props.question"
                   >Question</nz-form-label
                 >
-                <nz-form-control [nzExtra]="text.questionHint">
+                <nz-form-control>
                   <textarea
                     nz-input
                     id="pp-question"
@@ -951,13 +974,14 @@ import {
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="pp-artifacts" i18n="@@workflows.props.showArtifacts"
+                <nz-form-label
+                  nzTooltipTitle="Artefact names shown (and editable) in the inbox."
+                  i18n-nzTooltipTitle="@@workflows.props.showArtifacts.extra"
+                  nzFor="pp-artifacts"
+                  i18n="@@workflows.props.showArtifacts"
                   >Show artefacts</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Artefact names shown (and editable) in the inbox."
-                  i18n-nzExtra="@@workflows.props.showArtifacts.extra"
-                >
+                <nz-form-control>
                   <nz-select
                     id="pp-artifacts"
                     name="showArtifacts"
@@ -1008,13 +1032,15 @@ import {
                 nzPlain
               />
               <nz-form-item>
-                <nz-form-label nzRequired nzFor="pp-signal" i18n="@@workflows.props.signal"
+                <nz-form-label
+                  nzTooltipTitle="The CI job calls: backoffice-ci signal <name> --status success|fail"
+                  i18n-nzTooltipTitle="@@workflows.props.signal.extra"
+                  nzRequired
+                  nzFor="pp-signal"
+                  i18n="@@workflows.props.signal"
                   >Signal</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="The CI job calls: backoffice-ci signal <name> --status success|fail"
-                  i18n-nzExtra="@@workflows.props.signal.extra"
-                >
+                <nz-form-control>
                   <input
                     nz-input
                     id="pp-signal"
@@ -1029,13 +1055,14 @@ import {
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="pp-ci-timeout" i18n="@@workflows.props.timeoutSeconds"
+                <nz-form-label
+                  nzTooltipTitle="After the timeout the 'timeout' port is taken."
+                  i18n-nzTooltipTitle="@@workflows.props.ciTimeout.extra"
+                  nzFor="pp-ci-timeout"
+                  i18n="@@workflows.props.timeoutSeconds"
                   >Timeout (seconds)</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="After the timeout the 'timeout' port is taken."
-                  i18n-nzExtra="@@workflows.props.ciTimeout.extra"
-                >
+                <nz-form-control>
                   <nz-input-number
                     id="pp-ci-timeout"
                     name="ciTimeout"
@@ -1049,13 +1076,14 @@ import {
                 </nz-form-control>
               </nz-form-item>
               <nz-form-item>
-                <nz-form-label nzFor="pp-ci-watch" i18n="@@workflows.props.ciWatch"
+                <nz-form-label
+                  nzTooltipTitle="Back Office reads the pipeline of the run's branch itself (CI_READ token of the repository); a failure sends the failed jobs and their logs to the next step. Your CI sends no signal."
+                  i18n-nzTooltipTitle="@@workflows.props.ciWatch.extra"
+                  nzFor="pp-ci-watch"
+                  i18n="@@workflows.props.ciWatch"
                   >Watch pipeline</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Back Office reads the pipeline of the run's branch itself (CI_READ token of the repository); a failure sends the failed jobs and their logs to the next step. Your CI sends no signal."
-                  i18n-nzExtra="@@workflows.props.ciWatch.extra"
-                >
+                <nz-form-control>
                   <nz-switch
                     id="pp-ci-watch"
                     name="ciWatch"
@@ -1067,13 +1095,14 @@ import {
               </nz-form-item>
               @if (n.ci?.watchPipeline) {
                 <nz-form-item>
-                  <nz-form-label nzFor="pp-ci-repo" i18n="@@workflows.props.ciRepository"
+                  <nz-form-label
+                    nzTooltipTitle="Empty = the primary repository."
+                    i18n-nzTooltipTitle="@@workflows.props.ciRepository.extra"
+                    nzFor="pp-ci-repo"
+                    i18n="@@workflows.props.ciRepository"
                     >Repository</nz-form-label
                   >
-                  <nz-form-control
-                    nzExtra="Empty = the primary repository."
-                    i18n-nzExtra="@@workflows.props.ciRepository.extra"
-                  >
+                  <nz-form-control>
                     <nz-select
                       nzId="pp-ci-repo"
                       name="ciRepository"
@@ -1150,13 +1179,14 @@ import {
             />
             <div class="grid2">
               <nz-form-item>
-                <nz-form-label nzFor="pp-max" i18n="@@workflows.props.maxVisits"
+                <nz-form-label
+                  nzTooltipTitle="Loop guard."
+                  i18n-nzTooltipTitle="@@workflows.props.maxVisits.extra"
+                  nzFor="pp-max"
+                  i18n="@@workflows.props.maxVisits"
                   >Max visits</nz-form-label
                 >
-                <nz-form-control
-                  nzExtra="Loop guard."
-                  i18n-nzExtra="@@workflows.props.maxVisits.extra"
-                >
+                <nz-form-control>
                   <nz-input-number
                     id="pp-max"
                     name="maxVisits"
@@ -1381,6 +1411,8 @@ export class NodePropertyPanelComponent {
     deprecated: deprecatedLabel(),
     deprecatedHint: deprecatedHint(),
     empty: $localize`:@@workflows.props.stepGets.empty:(empty)`,
+    needsCoding: neededAgentLabel(true),
+    agentMismatch: $localize`:@@workflows.props.agent.mismatch:The template needs a coding agent: this step cannot run with a model answer agent.`,
   };
   readonly categoryLabel = categoryLabel;
   readonly agentKindDescription = agentKindDescription;
@@ -1435,7 +1467,6 @@ export class NodePropertyPanelComponent {
           {
             key: current,
             name: r?.key === current ? (r.name ?? current) : current,
-            agent: r?.key === current ? r.agent : undefined,
           },
         ],
       });
@@ -1488,14 +1519,29 @@ export class NodePropertyPanelComponent {
 
   // ---------------------------------------------------------------- ADR 0056: agents
 
-  /** The agent that runs the step: its own (`overrides.agentKey`), else the template's. */
+  /**
+   * ADR 0061: the step's template needs a coding agent (palette; for a template the palette no
+   * longer offers, its resolved config).
+   */
+  readonly needsCodingAgent = computed(() => {
+    const t = this.paletteTask();
+    if (t) return !!t.needsCodingAgent;
+    const r = this.resolved();
+    return !!r && configNeedsCodingAgent(r.config);
+  });
+  /** The agent that runs the step: its own (`overrides.agentKey`), else the default for its template. */
   readonly effectiveAgent = computed<AgentRef | null>(() =>
     effectiveStepAgent(
-      this.paletteTask() ?? this.resolved(),
+      this.node()?.task?.templateKey ? { needsCodingAgent: this.needsCodingAgent() } : null,
       this.node()?.task?.overrides?.agentKey,
       this.agents(),
     ),
   );
+  /** ADR 0061: the template needs a coding agent and the step's agent is a model answer. */
+  readonly agentMismatch = computed(() => {
+    const a = this.effectiveAgent();
+    return this.needsCodingAgent() && !!a && !a.harness;
+  });
   /** The agents a step may choose, "name (kind)". */
   readonly agentOptions = computed(() =>
     uniqueAgents(this.agents()).map((a) => ({
@@ -1508,16 +1554,20 @@ export class NodePropertyPanelComponent {
     const key = this.node()?.task?.overrides?.agentKey;
     return key && !this.agentOptions().some((a) => a.key === key) ? key : null;
   });
-  /** Placeholder of the step's agent select: the template's agent. */
+  /** Placeholder of the step's agent select: the agent a step without one runs with. */
   readonly agentPlaceholder = computed(() => {
-    const a = this.paletteTask()?.agent ?? this.resolved()?.agent;
-    return a
-      ? $localize`:@@workflows.props.agent.templateDefault:Template default: ${a.name}:agent:`
-      : $localize`:@@workflows.props.agent.default:Template default`;
+    const a = effectiveStepAgent(
+      { needsCodingAgent: this.needsCodingAgent() },
+      null,
+      this.agents(),
+    );
+    const name = a?.name ?? defaultStepAgentKey(this.needsCodingAgent());
+    return $localize`:@@workflows.props.agent.defaultAgent:Default: ${name}:agent:`;
   });
+  /** Tooltip of the agent label: who runs the step and how the chosen kind works. */
   readonly agentHelp = computed(() => {
     const a = this.effectiveAgent();
-    const base = $localize`:@@workflows.props.agent.help:Who runs this step; empty = the template's agent.`;
+    const base = $localize`:@@workflows.props.agent.whoRuns:Who runs this step. Empty: OpenCode when the template needs a coding agent, else Model answer.`;
     return a ? `${base} ${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}` : base;
   });
   // ---------------------------------------------------------------- ADR 0057/0058: session, parameters
@@ -1529,7 +1579,8 @@ export class NodePropertyPanelComponent {
     const tasks = this.palette()?.tasks ?? [];
     return sessionCandidates(this.nodes(), n.id, this.effectiveAgent()?.key, (other) =>
       effectiveStepAgent(
-        tasks.find((t) => t.key === other.task?.templateKey),
+        tasks.find((t) => t.key === other.task?.templateKey) ??
+          (other.task?.templateKey ? {} : null),
         other.task?.overrides?.agentKey,
         this.agents(),
       ),
@@ -1550,8 +1601,7 @@ export class NodePropertyPanelComponent {
   }
 
   templateOptionLabel(t: PaletteTask): string {
-    const name = t.name || t.key || '';
-    return t.agent ? `${name} (${t.agent.name})` : name;
+    return t.name || t.key || '';
   }
   /** The palette entry of the node's template. */
   readonly paletteTask = computed<PaletteTask | null>(() => {
@@ -1738,8 +1788,17 @@ export class NodePropertyPanelComponent {
     const n = this.node();
     if (!n) return;
     const t = this.palette()?.tasks?.find((x) => x.key === key);
+    // ADR 0061: a step without an agent, or with one of the wrong kind, gets a fitting agent
+    const overrides = { ...(n.task?.overrides ?? {}) };
+    const own = overrides.agentKey
+      ? effectiveStepAgent(t ?? null, overrides.agentKey, this.agents())
+      : null;
+    if (t && (!overrides.agentKey || (t.needsCodingAgent && own && !own.harness))) {
+      const pick = pickAgent(t, this.agents());
+      if (pick?.key) overrides.agentKey = pick.key;
+    }
     this.patch({
-      task: { templateKey: key ?? '', overrides: n.task?.overrides ?? {} },
+      task: { templateKey: key ?? '', overrides },
       name: n.name === (this.resolved()?.name ?? '') || !n.name ? (t?.name ?? n.name) : n.name,
     });
     this.resolve$.next(key);

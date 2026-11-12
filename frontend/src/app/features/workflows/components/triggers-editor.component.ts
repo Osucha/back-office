@@ -122,12 +122,6 @@ import {
           No triggers: the workflow can still be started from the project page.
         </p>
       }
-      <p class="muted small" i18n="@@workflows.triggers.hint">
-        Triggers record how this workflow is meant to start. Runs start from the UI, the API or a CI
-        entrypoint whatever is listed here. A Jira trigger is used by the project's Jira intake
-        watcher (Project › Settings): an issue entering the status starts a run (empty status: each
-        new issue).
-      </p>
       @if (!readonly()) {
         <button nz-button nzType="dashed" nzSize="small" type="button" (click)="add()">
           <nz-icon nzType="plus" />

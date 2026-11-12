@@ -62,6 +62,15 @@ object DefaultWorkflows {
     /** ADR 0059: the agent of the reference workflow's single step. */
     const val AGENT_CLAUDE_CODE = "claude-code"
 
+    /** ADR 0061: the built-in agents the default workflows name on their steps (templates name no agent). */
+    const val AGENT_OPENCODE = "opencode"
+    const val AGENT_MODEL_ANSWER = "model-answer"
+    const val AGENT_ANALYST = "analyst"
+    const val AGENT_REVIEWER = "reviewer"
+
+    /** ADR 0061: a task step of [templateKey] run by agent [agentKey]. */
+    private fun step(templateKey: String, agentKey: String) = TaskBinding(templateKey, TaskOverrides(agentKey = agentKey))
+
     /** ADR 0059: the task of the reference workflow's step (parameter `task` of `agent-task`; the issue is in its system prompt). */
     const val REFERENCE_TASK = "Implement the issue above end to end. Read the repository first: its structure, conventions, build and tests. " +
         "Then implement the change the issue asks for, add or update the tests that prove it and run the build and the tests until they pass. " +
@@ -139,7 +148,7 @@ object DefaultWorkflows {
         version = 1,
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
-            WorkflowNode.Task("llm-task", "LLM task", Point(316.0, 40.0), maxVisits = 5, task = TaskBinding(TEMPLATE_LLM_TASK)),
+            WorkflowNode.Task("llm-task", "LLM task", Point(316.0, 40.0), maxVisits = 5, task = step(TEMPLATE_LLM_TASK, AGENT_MODEL_ANSWER)),
             WorkflowNode.HumanGate(
                 "review", "Result ok?", Point(652.0, 40.0),
                 gate = GateSpec(
@@ -178,8 +187,8 @@ object DefaultWorkflows {
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
             WorkflowNode.Action(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), action = ActionBinding(ActionType.FETCH_ISSUE)),
-            WorkflowNode.Task("specify", "Specify", Point(652.0, 40.0), task = TaskBinding(TEMPLATE_SPECIFY)),
-            WorkflowNode.Task("clarify", "Clarify spec", Point(988.0, 40.0), task = TaskBinding(TEMPLATE_CLARIFY)),
+            WorkflowNode.Task("specify", "Specify", Point(652.0, 40.0), task = step(TEMPLATE_SPECIFY, AGENT_OPENCODE)),
+            WorkflowNode.Task("clarify", "Clarify spec", Point(988.0, 40.0), task = step(TEMPLATE_CLARIFY, AGENT_ANALYST)),
             WorkflowNode.Decision(
                 "confident", "Spec confident?", Point(1324.0, 40.0),
                 decision = DecisionSpec(
@@ -196,12 +205,12 @@ object DefaultWorkflows {
                     checklist = SPEC_READY,
                 ),
             ),
-            WorkflowNode.Task("plan", "Plan", Point(1996.0, 40.0), task = TaskBinding(TEMPLATE_PLAN)),
-            WorkflowNode.Task("tasks", "Tasks", Point(2332.0, 40.0), task = TaskBinding(TEMPLATE_TASKS)),
-            WorkflowNode.Task("implement", "Implement", Point(2668.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_IMPLEMENT)),
+            WorkflowNode.Task("plan", "Plan", Point(1996.0, 40.0), task = step(TEMPLATE_PLAN, AGENT_OPENCODE)),
+            WorkflowNode.Task("tasks", "Tasks", Point(2332.0, 40.0), task = step(TEMPLATE_TASKS, AGENT_OPENCODE)),
+            WorkflowNode.Task("implement", "Implement", Point(2668.0, 40.0), maxVisits = 3, task = step(TEMPLATE_IMPLEMENT, AGENT_OPENCODE)),
             WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(3004.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
             WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(3370.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
-            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3340.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_CODE_REVIEW)),
+            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3340.0, 40.0), maxVisits = 3, task = step(TEMPLATE_CODE_REVIEW, AGENT_REVIEWER)),
             WorkflowNode.Decision(
                 NODE_REVIEW_OK, LABEL_REVIEW_OK, Point(3676.0, 40.0),
                 decision = DecisionSpec(
@@ -309,7 +318,7 @@ object DefaultWorkflows {
         version = 1,
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
-            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(316.0, 40.0), task = TaskBinding(TEMPLATE_CODE_REVIEW)),
+            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(316.0, 40.0), task = step(TEMPLATE_CODE_REVIEW, AGENT_REVIEWER)),
             WorkflowNode.Decision(
                 "verdict", LABEL_REVIEW_OK, Point(652.0, 40.0),
                 decision = DecisionSpec(
@@ -347,7 +356,7 @@ object DefaultWorkflows {
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
             WorkflowNode.Action(NODE_FETCH_ISSUE, "Fetch issue", Point(316.0, 40.0), action = ActionBinding(ActionType.FETCH_ISSUE)),
-            WorkflowNode.Task(NODE_IMPACT_ANALYSIS, "Impact analysis", Point(652.0, 40.0), task = TaskBinding(TEMPLATE_IMPACT_ANALYSIS)),
+            WorkflowNode.Task(NODE_IMPACT_ANALYSIS, "Impact analysis", Point(652.0, 40.0), task = step(TEMPLATE_IMPACT_ANALYSIS, AGENT_ANALYST)),
             WorkflowNode.HumanGate(
                 NODE_IMPACT_GATE, "Approve impact analysis?", Point(988.0, 40.0),
                 gate = GateSpec(
@@ -361,8 +370,8 @@ object DefaultWorkflows {
                     ),
                 ),
             ),
-            WorkflowNode.Task(NODE_USER_STORY, "Write user story", Point(1324.0, 40.0), task = TaskBinding(TEMPLATE_WRITE_USER_STORY)),
-            WorkflowNode.Task(NODE_PLAN_TASKS, "Plan task list", Point(1660.0, 40.0), task = TaskBinding(TEMPLATE_PLAN_TASK_LIST)),
+            WorkflowNode.Task(NODE_USER_STORY, "Write user story", Point(1324.0, 40.0), task = step(TEMPLATE_WRITE_USER_STORY, AGENT_ANALYST)),
+            WorkflowNode.Task(NODE_PLAN_TASKS, "Plan task list", Point(1660.0, 40.0), task = step(TEMPLATE_PLAN_TASK_LIST, AGENT_ANALYST)),
             WorkflowNode.HumanGate(
                 NODE_TASK_LIST_GATE, "Approve task list?", Point(1996.0, 40.0),
                 gate = GateSpec(
@@ -375,10 +384,10 @@ object DefaultWorkflows {
                     ),
                 ),
             ),
-            WorkflowNode.Task("implement", "Implement task list", Point(2332.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_IMPLEMENT_TASK_LIST)),
+            WorkflowNode.Task("implement", "Implement task list", Point(2332.0, 40.0), maxVisits = 3, task = step(TEMPLATE_IMPLEMENT_TASK_LIST, AGENT_OPENCODE)),
             WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(2668.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
             WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(3034.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
-            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3004.0, 40.0), maxVisits = 3, task = TaskBinding(TEMPLATE_CODE_REVIEW)),
+            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3004.0, 40.0), maxVisits = 3, task = step(TEMPLATE_CODE_REVIEW, AGENT_REVIEWER)),
             WorkflowNode.Decision(
                 "verdict", LABEL_REVIEW_OK, Point(3340.0, 40.0),
                 decision = DecisionSpec(

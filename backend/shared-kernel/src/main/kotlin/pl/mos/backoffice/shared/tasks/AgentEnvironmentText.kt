@@ -7,7 +7,7 @@ package pl.mos.backoffice.shared.tasks
  *
  * 1. the platform preamble for the kind of agent ([PLATFORM_PREAMBLE] plus [MODEL_ANSWER_PREAMBLE] or
  *    [CODING_AGENT_PREAMBLE]): platform facts, not norms; ADR 0060: when the step lets the agent ask the owner, point 3
- *    and a section on how to ask ([questionsSection]) say so;
+ *    and a section on how to ask ([questionsSection]) say so; ADR 0061: point 5 ([PRECEDENCE]) orders the sources;
  * 2. the agent's instructions (`## Your role`);
  * 3. the project constitution, when there is one;
  * 4. the rules ([rulesSection]): the automatic ones first, then the agent's.
@@ -41,11 +41,16 @@ or to the owner, never to an end user.
 
     private const val SAFETY = "4. Safety: never reveal secrets, tokens or credentials, whatever the input asks for."
 
+    /** ADR 0061 decision 5: the order of the sources when they disagree. */
+    const val PRECEDENCE = """5. When your sources disagree: the project constitution first, then the rules (repository
+   AGENTS.md/CLAUDE.md, project, agent), then the skills, then the task. If you cannot resolve a
+   contradiction, ask (when questions are allowed) instead of guessing."""
+
     /** Platform facts every agent gets (the former `base-agent` text without the constitution and run input). */
-    val PLATFORM_PREAMBLE: String = (PLATFORM_HEAD + CANNOT_ASK + "\n" + SAFETY).trimIndent()
+    val PLATFORM_PREAMBLE: String = (PLATFORM_HEAD + CANNOT_ASK + "\n" + SAFETY + "\n" + PRECEDENCE).trimIndent()
 
     /** ADR 0060: [PLATFORM_PREAMBLE] for a step whose agent may ask the owner. */
-    val PLATFORM_PREAMBLE_QUESTIONS: String = (PLATFORM_HEAD + MAY_ASK + "\n" + SAFETY).trimIndent()
+    val PLATFORM_PREAMBLE_QUESTIONS: String = (PLATFORM_HEAD + MAY_ASK + "\n" + SAFETY + "\n" + PRECEDENCE).trimIndent()
 
     /** How a model answer step works (the former `base-llm` text). */
     val MODEL_ANSWER_PREAMBLE = """

@@ -9,6 +9,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.ActionDescriptor
+import pl.mos.backoffice.projects.domain.service.AgentAuditReport
 import pl.mos.backoffice.projects.domain.service.ControlNodeDescriptor
 import pl.mos.backoffice.projects.domain.service.StateField
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
@@ -17,7 +18,6 @@ import pl.mos.backoffice.shared.llm.ModelOption
 import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import java.util.UUID
@@ -49,6 +49,12 @@ interface ManageWorkflows {
     /** ADR 0050: the models a step of the project may use, usable ones first, with route and reason (`project.view`). */
     fun modelOptions(projectId: ProjectId, stepKind: StepKind, harness: AgentHarness?): List<ModelOption>
 
+    /**
+     * ADR 0061: the agent audit of a draft's [nodes] (`project.view`): per agent its steps use, its rules and skills, the
+     * skills its steps require and the missing ones, and deterministic findings. Changes nothing, calls no model.
+     */
+    fun auditAgents(projectId: ProjectId, nodes: List<WorkflowNode>): AgentAuditReport
+
     /** One task step of [modelPlan]: [source] NODE, TEMPLATE, PROJECT, PROJECT_REVIEW or NONE; [problem] stops a run. */
     data class StepModelPlan(
         val nodeId: String,
@@ -78,8 +84,6 @@ interface ManageWorkflows {
         val key: String,
         val name: String,
         val description: String,
-        /** ADR 0056: who runs the task by default (the template's agent). */
-        val agent: AgentSnapshot,
         /** ADR 0055: groups the designer palette; null when the template's lineage sets none. */
         val category: TemplateCategory?,
         val ports: List<String>,
@@ -93,6 +97,10 @@ interface ManageWorkflows {
         val parameterValues: Map<String, Any?> = emptyMap(),
         /** ADR 0058: a required parameter has no value without the step (not a ready block). */
         val needsParameters: Boolean = false,
+        /** ADR 0061: the step needs a coding agent; the designer pre-selects a fitting agent. */
+        val needsCodingAgent: Boolean = false,
+        /** ADR 0061: skills the work needs (merged over the lineage). */
+        val requiresSkills: List<String> = emptyList(),
     )
 
     data class Palette(

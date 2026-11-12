@@ -14,8 +14,8 @@ workflow** in the page header (`/projects/:id/workflows/new`). An existing workf
 
 | Area | What it holds |
 |---|---|
-| Header | Project key and version, the workflow name, a status chip (**valid**, errors, warnings, or **read-only**), the **Designer** / **JSON** switch, **Template** (new workflows only), undo and redo, **Tidy layout**, **Validate**, and the buttons that show or hide the palette and the properties. |
-| Palette (left) | **Control** nodes, **Actions** (Jira and Back Office operations without a model, see [Action nodes](#actions)) and **Tasks** from the task library, grouped by category (Analysis, Specification, ...), with a search field. A project's own template has a project icon. |
+| Header | Project key and version, the workflow name, a status chip (**valid**, errors, warnings, or **read-only**), the **Designer** / **JSON** switch, **Template** (new workflows only), undo and redo, **Tidy layout**, **Validate**, **Agents in this workflow** with a badge counting its problems ([Agents in this workflow](#agent-audit)), and the buttons that show or hide the palette and the properties. |
+| Palette (left) | **Control** nodes, **Actions** (Jira and Back Office operations without a model, see [Action nodes](#actions)) and **Tasks** from the task library, grouped by category (Analysis, Specification, ...), with a search field. A project's own template has a project icon; a template that needs a coding agent has the tag **coding agent**. Hovering a task shows its description, the kind of agent it needs and its **Required skills**. |
 | Canvas | The graph. Zoom buttons, **Readable view from START**, **Fit everything**, and from eight nodes an overview map (**Show the overview** / **Hide the overview**). |
 | Properties (right) | The selected node or edge; with nothing selected, the workflow's **Description**, the **Enabled** switch and **Triggers**. |
 | **Validation** sheet (bottom) | Errors and warnings grouped by node; click one to jump to the node. |
@@ -108,11 +108,26 @@ validation warns about other unconnected ports.
 ### Task nodes
 
 A task step joins three things: a **template** (what to do), an **agent** (who works and how) and the values of the
-template's **parameters** ([Task library](task-library.md#agents)).
+template's **parameters** ([Task library](task-library.md#agents)). The template names no agent and no model: the
+step chooses them (ADR 0061).
 
 Pick the **Template** (deprecated templates are not offered; a step that already uses one shows the tag
 **Deprecated**; templates tagged **needs parameters** expect values in the step). Under it you see the template's
-lineage, agent and category, and **Open in library**.
+lineage, the tag **Needs a coding agent** when it needs one, its category, and **Open in library**.
+
+**The designer pre-selects an agent** when you drop a template on the canvas or pick another template for a step
+that has no agent (or one of the wrong kind):
+
+1. only agents of the right kind: a coding agent when the template needs one; otherwise any agent, model answer
+   agents first;
+2. the agent that has the most of the template's [Required skills](task-library.md#required-skills);
+3. on a tie, the platform default of that kind (**OpenCode** for coding work, **Model answer** otherwise), then
+   built-in agents, then by name.
+
+A project's own agent replaces the global one with the same key. You can always choose another agent. A step stored
+without an agent runs with **OpenCode** when its template needs a coding agent, else with **Model answer**; the
+**Agent** field then shows **Default: OpenCode** or **Default: Model answer**. A step's agent is never chosen behind
+your back at run time: what the field shows is what runs.
 
 **Parameters** (shown when the template has any) lists the template's [parameters](task-library.md#parameters)
 as a form: text fields, numbers, a switch for **Yes / no**, a list for **Choice**. Empty means the template's value
@@ -127,11 +142,11 @@ for example a skill the template requires (**Required skills**) that the step's 
 
 | Override | Effect |
 |---|---|
-| **Agent** | Who runs this step instead of the template's agent: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)). Empty = the template's agent. With the agent come its instructions, rules, skills, MCP servers and access. The step shows a problem when the agent does not fit the template (for example a Spec Kit phase or `push` with **Model answer**, or an agent with access **Read only** on a step that pushes). |
+| **Agent** | Who runs this step: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)); pre-selected as above. Empty: **OpenCode** when the template needs a coding agent, else **Model answer**. With the agent come its instructions, rules, skills, MCP servers and access. The step shows a problem when the agent does not fit the template (a template that needs a coding agent with a model answer agent: "The template needs a coding agent: this step cannot run with a model answer agent."; or an agent with access **Read only** on a step that pushes). |
 | **Directory** | Coding agents only: **Run directory (shared)** (default) or **Separate directory** ([The run directory](#run-directory)). |
 | **Agent session** | Coding agents only: **Own (repeats continue)** (default), **New each time** or **Continue the session of step …** ([Agent sessions](#continue-session)). |
 | **Agent may ask questions**, **Question rounds** | On by default, 2 rounds: the agent may stop with questions and the run waits for your answers ([Agents asking questions](#agent-questions)). |
-| **Model profile** | Model for this node instead of the agent's, the template's or the defaults. |
+| **Model profile** | Model for this node. Empty: the agent's model, else the defaults for its kind (project, starting user, platform). |
 | **User prompt** | **Inherited**, **Append** (added after the template prompt) or **Replace**. |
 | **System prompt append** | Added to the template's system prompt. |
 | **Config** | Settings for the step's agent such as the verify command, branch name or merge request options; merged over the template's config. |
@@ -147,6 +162,63 @@ writes it that way.
 **Spec Kit templates** (**Spec Kit: specify**, **plan**, **tasks** and templates that extend them) appear in the
 palette only when the project has [Spec Kit](projects.md#spec-kit) on; otherwise a Spec Kit step is a validation
 error and runs refuse to start.
+
+**Workflows stored before ADR 0061.** Templates used to name an agent and a model profile. On the upgrade every
+stored step without an agent of its own got the agent its template (or the nearest parent) named, and the
+template's model profile when the step had none and the agent has no model of its own; library workflow versions
+and runs still waiting were updated the same way. Nothing changes in how those steps run, and the **Agent** field
+now shows the agent explicitly.
+
+<a id="agent-audit"></a>
+### Agents in this workflow
+
+**Agents in this workflow** in the designer's header opens a panel that checks the agents of the draft on the
+canvas, as it is, before any run (ADR 0061). No model is called and nothing is changed; the panel follows your
+edits. The badge on the button counts its problems.
+
+For each agent the draft's task steps use, the panel shows its kind (**Model answer**, **OpenCode**, **Claude
+Code**), **Global** or **This project**, and:
+
+| Row | Content |
+|---|---|
+| **Steps** | the steps it runs; click one to select it on the canvas |
+| **Rules** | its rules, automatic ones included |
+| **Skills** | its skills |
+| **Required skills** | the skills its steps' templates require, with the steps that need them; missing ones are marked and have **Add to agent** |
+
+Findings, each with the steps concerned (**ERROR** stops the step from running, **WARNING** does not):
+
+| Finding | Severity | Means |
+|---|---|---|
+| **Missing skill** | warning | a step's template requires a skill the agent lacks |
+| **Needs a coding agent** | error | a step whose template needs a coding agent is run by a model answer agent |
+| **Read-only agent on a pushing step** | error | an agent with access **Read only** runs a step that pushes |
+| **Unknown rule**, **Unknown skill** | error | the agent lists a rule or skill that no longer exists |
+| **Unknown agent** | error | a step names an agent that no longer exists |
+| **Two skills with the same name** | warning | two of the agent's skills share a name, so the agent cannot tell them apart |
+
+**Add to agent** adds the missing skill to the agent once, for every step and run (needs
+`library.project.manage` on the project). A project agent gets the skill directly. A global agent is first copied
+into the project: the confirmation **Copy {agent} into this project?** explains that the project gets its own copy
+with the same key and the skill, which replaces the global agent in this project's steps while other projects keep
+theirs; **Copy and add** does it. Skills are never added at run time.
+
+<a id="coherence-check"></a>
+#### Check coherence
+
+**Check coherence** (per agent) asks a model to read the agent's whole environment and list where it contradicts
+itself. It is a model call, so it runs only when you ask and after a confirmation (**Check the coherence of
+{agent}?**); its cost is booked as usage and shown with the result. The model is the platform default for model
+answers; without one the check answers "No model is set for model answers: an administrator sets the platform
+default under Models, then try again." (HTTP `409`).
+
+The model reads the platform preamble, the agent's instructions, the project constitution, the automatic and the
+agent's rules, the names and descriptions of its skills and, when Back Office can read them, the primary
+repository's `AGENTS.md` / `CLAUDE.md`; the result lists what was read. Each finding is a **Contradiction**, an
+**Ambiguity** or a **Redundancy**, with quotes from the sources involved and, where the model has one, a
+**Suggestion:**. "No contradictions found." means the model found none. Fix contradictions where they live (the
+rule, the skill, the agent's instructions or the repository file); the order the agent follows meanwhile is in
+[When sources disagree](task-library.md#precedence).
 
 <a id="actions"></a>
 ### Action nodes

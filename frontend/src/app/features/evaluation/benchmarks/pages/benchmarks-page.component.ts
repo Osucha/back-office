@@ -380,13 +380,14 @@ import {
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
-          <nz-form-label nzFor="b-tasks" i18n="@@evaluation.benchmarks.form.tasks"
+          <nz-form-label
+            nzTooltipTitle="Leave empty to run every task of the suite."
+            i18n-nzTooltipTitle="@@evaluation.benchmarks.form.tasksHint"
+            nzFor="b-tasks"
+            i18n="@@evaluation.benchmarks.form.tasks"
             >Tasks</nz-form-label
           >
-          <nz-form-control
-            nzExtra="Leave empty to run every task of the suite."
-            i18n-nzExtra="@@evaluation.benchmarks.form.tasksHint"
-          >
+          <nz-form-control>
             <nz-select
               id="b-tasks"
               name="taskIds"
@@ -479,13 +480,15 @@ import {
           </button>
         </fieldset>
         <nz-form-item>
-          <nz-form-label nzRequired nzFor="b-judge" i18n="@@evaluation.benchmarks.form.judge"
+          <nz-form-label
+            nzTooltipTitle="Fixed for the whole benchmark so scores stay comparable. A Claude Code login model judges on your personal runner with your own login."
+            i18n-nzTooltipTitle="@@evaluation.benchmarks.form.judgeHintLogin"
+            nzRequired
+            nzFor="b-judge"
+            i18n="@@evaluation.benchmarks.form.judge"
             >Judge model</nz-form-label
           >
-          <nz-form-control
-            nzExtra="Fixed for the whole benchmark so scores stay comparable. A Claude Code login model judges on your personal runner with your own login."
-            i18n-nzExtra="@@evaluation.benchmarks.form.judgeHintLogin"
-          >
+          <nz-form-control>
             <nz-select
               id="b-judge"
               name="judgeModelProfileId"
@@ -507,12 +510,14 @@ import {
         </nz-form-item>
         <div class="grid">
           <nz-form-item>
-            <nz-form-label nzFor="b-reps" i18n="@@evaluation.benchmarks.form.repetitions"
+            <nz-form-label
+              nzTooltipTitle="1-5; more repetitions measure stability."
+              i18n-nzTooltipTitle="@@evaluation.benchmarks.form.repetitionsHint"
+              nzFor="b-reps"
+              i18n="@@evaluation.benchmarks.form.repetitions"
               >Repetitions</nz-form-label
             >
             <nz-form-control
-              nzExtra="1-5; more repetitions measure stability."
-              i18n-nzExtra="@@evaluation.benchmarks.form.repetitionsHint"
               ><nz-input-number
                 id="b-reps"
                 name="repetitions"

@@ -7,15 +7,14 @@ import { By } from '@angular/platform-browser';
 import { NodePropertyPanelComponent } from './node-property-panel.component';
 import { StepAgentSectionComponent } from './step-agent-section.component';
 
-const answer = { key: 'model-answer', name: 'Model answer', harness: null };
 const palette: WorkflowPalette = {
   tasks: [
-    { key: 'code-review', name: 'Code review', agent: answer },
-    { key: 'analyse-issue', name: 'Analyse issue', agent: answer },
+    { key: 'code-review', name: 'Code review', needsCodingAgent: false },
+    { key: 'analyse-issue', name: 'Analyse issue', needsCodingAgent: false },
     {
       key: 'llm-task',
       name: 'LLM task',
-      agent: answer,
+      needsCodingAgent: false,
       needsParameters: true,
       parameters: [
         { name: 'task', label: 'Task', type: 'MULTILINE', required: true },
@@ -23,16 +22,8 @@ const palette: WorkflowPalette = {
       ],
       parameterValues: {},
     },
-    {
-      key: 'implement',
-      name: 'Implement',
-      agent: { key: 'claude-code', name: 'Claude Code', harness: 'CLAUDE_CODE' },
-    },
-    {
-      key: 'implement-oc',
-      name: 'Implement (OpenCode)',
-      agent: { key: 'opencode', name: 'OpenCode', harness: 'OPENCODE' },
-    },
+    { key: 'implement', name: 'Implement', needsCodingAgent: true, requiresSkills: ['kotlin'] },
+    { key: 'implement-oc', name: 'Implement (OpenCode)', needsCodingAgent: true },
   ],
   actions: [
     {
@@ -55,8 +46,15 @@ const palette: WorkflowPalette = {
   ],
 };
 const agents: Agent[] = [
-  { ...answer, scope: { type: 'GLOBAL' } },
-  { key: 'claude-code', name: 'Claude Code', harness: 'CLAUDE_CODE', scope: { type: 'GLOBAL' } },
+  { key: 'model-answer', name: 'Model answer', harness: null, scope: { type: 'GLOBAL' } },
+  {
+    key: 'claude-code',
+    name: 'Claude Code',
+    harness: 'CLAUDE_CODE',
+    scope: { type: 'GLOBAL' },
+    skills: ['kotlin'],
+  },
+  { key: 'opencode', name: 'OpenCode', harness: 'OPENCODE', scope: { type: 'GLOBAL' } },
 ];
 
 const node = (templateKey: string, overrides = {}): WorkflowNode =>
@@ -136,7 +134,7 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     expect(offered).not.toContain('analyse-issue');
   });
 
-  it('chooses the agent of a step and derives the step kind from it (ADR 0056)', () => {
+  it('chooses the agent of a step and derives the step kind from it (ADR 0056, 0061)', () => {
     const { fixture, panel } = create(node('code-review'));
     let changed: WorkflowNode | null = null;
     panel.nodeChange.subscribe((n) => (changed = n));
@@ -144,10 +142,11 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     expect(panel.effectiveAgent()?.key).toBe('model-answer');
     expect(panel.modelUse()).toEqual({ stepKind: 'LLM_CALL', harness: null });
     expect(panel.runnerStep()).toBe(false);
-    expect(panel.agentPlaceholder()).toBe('Template default: Model answer');
+    expect(panel.agentPlaceholder()).toBe('Default: Model answer');
     expect(panel.agentOptions().map((a) => a.label)).toEqual([
       'Model answer (Model answer)',
       'Claude Code (Claude Code)',
+      'OpenCode (OpenCode)',
     ]);
 
     panel.patchOverrides({ agentKey: 'claude-code' });
@@ -159,6 +158,42 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
 
     panel.patchOverrides({ agentKey: null });
     expect('agentKey' in (changed!.task?.overrides ?? {})).toBe(false);
+  });
+
+  it('runs a coding template without an agent with OpenCode and warns on a model answer (ADR 0061)', () => {
+    const { fixture, panel } = create(node('implement-oc'));
+    expect(panel.needsCodingAgent()).toBe(true);
+    expect(panel.effectiveAgent()?.key).toBe('opencode');
+    expect(panel.agentPlaceholder()).toBe('Default: OpenCode');
+    expect(panel.agentMismatch()).toBe(false);
+    expect(document.querySelector('[data-needs-coding-agent]')).toBeNull();
+
+    fixture.componentRef.setInput('node', node('implement-oc', { agentKey: 'model-answer' }));
+    fixture.detectChanges();
+    expect(panel.agentMismatch()).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('cannot run with a model answer agent');
+  });
+
+  it('pre-selects a fitting agent when a template is chosen (ADR 0061)', () => {
+    const { fixture, panel } = create(node('code-review'));
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+
+    // no agent yet: the coding agent with the required skill
+    panel.setTemplate('implement');
+    expect(changed!.task?.overrides?.agentKey).toBe('claude-code');
+
+    // a model answer agent on a coding template is replaced
+    fixture.componentRef.setInput('node', node('code-review', { agentKey: 'model-answer' }));
+    fixture.detectChanges();
+    panel.setTemplate('implement-oc');
+    expect(changed!.task?.overrides?.agentKey).toBe('opencode');
+
+    // an agent of the right kind stays
+    fixture.componentRef.setInput('node', node('code-review', { agentKey: 'claude-code' }));
+    fixture.detectChanges();
+    panel.setTemplate('implement-oc');
+    expect(changed!.task?.overrides?.agentKey).toBe('claude-code');
   });
 
   it('edits an ACTION node from its descriptor, keeping the Jira pin (ADR 0056)', () => {
@@ -217,10 +252,14 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
 
   it('sets the directory, the session of the same agent and the questions of a coding step (ADR 0060)', () => {
     const nodes: WorkflowNode[] = [
-      { ...node('implement'), id: 'spec', name: 'Write spec' },
+      { ...node('implement', { agentKey: 'claude-code' }), id: 'spec', name: 'Write spec' },
       { ...node('implement-oc'), id: 'oc', name: 'OpenCode step' },
       { ...node('code-review'), id: 'answer', name: 'Answer' },
-      { ...node('implement', { config: { push: true } }), id: 'impl', name: 'Implement' },
+      {
+        ...node('implement', { agentKey: 'claude-code', config: { push: true } }),
+        id: 'impl',
+        name: 'Implement',
+      },
     ];
     const { fixture, panel } = create(nodes[3]);
     fixture.componentRef.setInput('nodes', nodes);

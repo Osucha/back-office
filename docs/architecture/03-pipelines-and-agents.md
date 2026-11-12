@@ -134,9 +134,11 @@ Jobs by name (`run-<runId8>-<nodeId>-<attempt>`).
 ## How task and action nodes run
 
 The Projects context resolves a `TASK` node through the `TaskCatalog` port into a `ResolvedTask`. Since ADR 0056 a
-template has no executor: the step runs according to its resolved **agent** (the step's `overrides.agentKey`, else the
-template's `agentKey`, else `model-answer`) and the template's config. Model: the step's, else the agent's, else the
-template's, then the defaults (`ModelResolver`; the model plan reports the source `AGENT` for the agent's model).
+template has no executor: the step runs according to its resolved **agent** and the template's config. Since ADR 0061
+the template names no agent and no model: the agent is the step's `overrides.agentKey`, else `opencode` when the
+merged config needs a coding agent (Spec Kit `phase`, `push`, `prepareOnly`), else `model-answer`. Model: the step's,
+else the agent's, then the defaults (`ModelResolver`; the model plan reports the source `AGENT` for the agent's model;
+the source `TEMPLATE` is no longer produced).
 Since ADR 0057 every task step gets one **environment document** rendered by `AgentEnvironment`: the platform preamble
 for its kind of agent, the agent's instructions, the project constitution, then the rules (automatic, then the
 agent's); see [07-task-library.md](07-task-library.md#agents-adr-0056-0057). The task prompt carries the task only. The deterministic integrations are `ACTION` nodes (`action.type`,
@@ -150,7 +152,26 @@ connection capabilities), not tasks.
 | agent job (former `IMPLEMENT`) | coding agent otherwise | runner Job, `mode = IMPLEMENT`, the agent's harness; `spec.instructions`, `spec.mcpServers` as above; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff`, `mr`; without a push the final answer is the `result` artefact |
 
 The resolver reports a problem (the step cannot run) when a template needs a coding agent (Spec Kit `phase`,
-`push: true`, `prepareOnly`) but gets a model answer, or when a required template parameter (ADR 0058) has no value.
+`push: true`, `prepareOnly`) but the step's agent is a model answer, or when a required template parameter (ADR 0058)
+has no value.
+
+**Precedence of sources (ADR 0061).** The platform preamble ends with point 5 (`AgentEnvironmentText.PRECEDENCE`):
+when the agent's sources disagree, the project constitution wins, then the rules (repository `AGENTS.md` /
+`CLAUDE.md`, project, agent), then the skills, then the task; a contradiction the agent cannot resolve is asked
+(when questions are allowed) instead of guessed.
+
+**Agent audit and coherence check (ADR 0061).** `POST /workflows/agent-audit` (`project.view`; body: `projectId` and
+the draft's `nodes`) runs `AgentAuditor` over the draft: per agent its task steps use, its rules, skills, the skills
+the steps require (from `TaskCatalog.stepNeeds`, which resolves each step with its overrides) and the missing ones,
+plus deterministic findings (`MISSING_SKILL`, `NEEDS_CODING_AGENT`, `READ_ONLY_PUSH`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`,
+`UNKNOWN_AGENT`, `DUPLICATE_SKILL_NAME`). No model is called and nothing changes; the designer reloads it on edits
+and shows the panel "Agents in this workflow". "Add to agent" is an ordinary agent update (a global agent is first
+copied into the project with the same key). `POST /agents/{agentId}/coherence-check?projectId=` (`library.view`, with
+a project also `project.view`) is the on-demand model check: `AgentCoherenceService` sends the environment document
+(preamble, instructions, constitution, rules) plus skill names and descriptions, and the primary repository's
+`AGENTS.md` / `CLAUDE.md` when Back Office can read them (otherwise `sources` says the repository files were not read),
+to the platform default model for model answers through `LlmGateway` (booked as usage); `409` when no usable default
+model is configured. Never run before a run.
 
 **Structured answers of coding agents (ADR 0057).** A coding agent step with an `outputSchema` is told in its prompt
 to write its answer as one JSON object to `structured-answer.json` in its working directory. The runner collects it
@@ -183,7 +204,7 @@ written into a repository. `Agent.access` (`FULL` default, `READ_ONLY`, `PATHS` 
 after the agent (runner README, "Agent home, access and questions"). A `READ_ONLY` agent on a pushing step is a
 resolution problem. The environment is set once, on the agent: `TaskOverrides.addSkills` / `removeSkills` are gone
 (stored steps are read without them); a template's `requiresSkills` (inherited, unioned) the agent lacks becomes a
-`check.warnings` entry, not a problem.
+`check.warnings` entry, not a problem (and a `MISSING_SKILL` finding of the agent audit, ADR 0061).
 
 **Agent questions (ADR 0060).** When the step allows it (config `allowQuestions`, default true; `maxQuestionRounds`,
 default 2), the platform preamble tells the agent how to ask. A model answer that replies with only
@@ -213,7 +234,8 @@ A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jir
 `config` and its `promptReplace` as the comment message; the next save writes the new form.
 
 Model answer, action, decision, gate and CI-wait nodes need no repository; a project without repositories (ADR 0034)
-runs workflows made of these. The built-in `llm-task` template (agent `model-answer`) is the generic step of such
+runs workflows made of these. The built-in `llm-task` template (run by a model answer agent, `model-answer` in the
+default workflow) is the generic step of such
 workflows: its task is the template parameter `task` set per node (ADR 0058; the user prompt is `{{params.task}}`,
 and a stored `promptReplace` still wins); its run input `input` ("Input material") and the revision feedback
 (`{{feedback}}`, filled on a second visit) are part of the template's system prompt, so changing the task keeps
@@ -315,7 +337,18 @@ validator rejects Spec Kit steps, run starts refuse them and runner jobs carry `
 default workflows other than the Spec Kit ones that a project with a repository lacks, and `POST` on the same path
 ("Add missing default workflows", `workflow.edit`, audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`, 409 without a
 repository) seeds them by name; existing workflows with the same name are never replaced. That is how projects created
-before the reference workflow get it.
+before the reference workflow get it. ADR 0061: every task step of a default workflow names its agent
+(`overrides.agentKey`): `opencode` for Spec Kit and implementation steps, `analyst` for clarify, impact analysis,
+user story and task list, `reviewer` for code review, `model-answer` for `llm-task`, `claude-code` in the reference
+workflow.
+
+**Steps stored before ADR 0061.** `V307__template_is_only_the_work.sql` (Task Library range, because it must run before
+the template columns are dropped) gives every task step of `workflow_definition`, `library_workflow_version` and the
+definition snapshot of unfinished runs (`PENDING`, `RUNNING`, `WAITING`) that names no agent (`overrides.agentKey` or
+the legacy config key `agent`) the agent its template lineage named (`task_template.agent_key`, nearest first, project
+shadowing as in the resolver), and the lineage's `model_profile_id` when the step has no model and its agent has none
+(the old order was step, agent, template). Then `task_template.agent_key` and `task_template.model_profile_id` are
+dropped.
 
 **Reference workflow (ADR 0059).** "Reference: one Claude Code session" is the yardstick for the cost of an accepted
 result: `start -> fetch-issue` (action `FETCH_ISSUE`) `-> implement` (template `agent-task`, agent `claude-code`,

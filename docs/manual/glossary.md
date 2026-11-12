@@ -15,8 +15,8 @@ issue, Start workflow or Project digest. See [Action nodes](workflows.md#actions
 
 **Agent**: Who works and how: a library entry with a harness, optionally a model, instructions, rules, skills and MCP
 servers. Without a harness it gives a single model answer inside Back Office (**Model answer**); with OpenCode or
-Claude Code it is a coding agent session in an agent job. A template names its default agent; a step can choose
-another, for example to compare two agents on the same task. See [Agents](task-library.md#agents).
+Claude Code it is a coding agent session in an agent job. The workflow step chooses its agent (templates name none),
+so two agents can be compared on the same task. See [Agents](task-library.md#agents).
 
 **Access (of an agent)**: What a coding agent may change in the repositories of its steps: **Full**, **Read only** or
 **Only these paths**. The runner reverts other changes after the agent finished. See
@@ -35,6 +35,10 @@ waits until you answer or cancel the step. See [Answering an agent's questions](
 **Agent session**: The conversation of a coding agent. By default a step keeps its own session (its repeats
 continue it); it can also start a new one each time or continue the session of an earlier step of the same agent.
 See [Agent sessions](workflows.md#continue-session).
+
+**Agents in this workflow**: The designer's panel that lists, per agent a workflow draft uses, its steps, rules,
+skills and the required skills it lacks (with **Add to agent**), plus findings such as **Missing skill** or **Unknown
+agent**; no model is called. See [Agents in this workflow](workflows.md#agent-audit).
 
 **Approver**: A person allowed to decide a gate: `run.approve` in the project plus the gate's own rule. Also the name of
 a project role. See [Deciding a gate](your-turn.md#gates).
@@ -81,8 +85,13 @@ waiting for CI. See [Wait for CI nodes](workflows.md#nodes).
 **Confidence**: A number from 0 to 1 a task reports about its own result. Decisions use it, for example to skip a gate
 when the agent is sure. See [Decisions](workflows.md#decisions).
 
-**Constitution**: A project's principles in Markdown, given to Spec Kit and part of every agent's environment. See
-[Creating a project](projects.md#create-project).
+**Coherence check**: **Check coherence** in [Agents in this workflow](workflows.md#coherence-check): on request, a
+model reads an agent's whole environment and lists contradictions, ambiguities and redundancies with quotes. One
+model call, booked as usage.
+
+**Constitution**: A project's principles in Markdown, given to Spec Kit and part of every agent's environment; it wins
+over every other source when they disagree. See [Creating a project](projects.md#create-project) and
+[When sources disagree](task-library.md#precedence).
 
 **Cost per accepted result (cost of an accepted result)**: Everything spent, failures and rework included, divided by
 the accepted results; the headline number for comparing agents, workflows and benchmark candidates. See
@@ -133,11 +142,15 @@ of the library may also list remote MCP servers it uses in its sandbox; see
 [MCP servers of an agent](task-library.md#agent-mcp).
 
 **Model answer**: The built-in agent `model-answer`: one model call inside Back Office, without tools or a
-repository; it can return structured JSON and a confidence. A step whose template and step name no agent runs this
-way. See [Agents](task-library.md#agents).
+repository; it can return structured JSON and a confidence. A step without its own agent whose template does not
+need a coding agent runs this way. See [Agents](task-library.md#agents).
 
-**Model profile**: A model with its options (temperature, reasoning effort) and prices. Tasks and benchmarks pick profiles.
-See [Model profiles](evaluation.md#models).
+**Model profile**: A model with its options (temperature, reasoning effort) and prices. Agents, workflow steps and
+benchmarks pick profiles; templates do not. See [Model profiles](evaluation.md#models).
+
+**Needs a coding agent**: A read-only tag of a template whose configuration has a Spec Kit `phase`, `push` or
+`prepareOnly`: only an OpenCode or Claude Code agent can do its work. Without it, any agent can. See
+[Templates](task-library.md#templates).
 
 **Node**: One block of a workflow: Start, Task, Action, Decision, Human gate, Wait for CI, End or Note. See
 [Node kinds](workflows.md#nodes).
@@ -199,16 +212,20 @@ See [Sandbox policy](projects.md#sandbox-policy).
 **Shadowing**: A project template, skill, rule or agent with the same key as a global one replaces it for that project. See
 [Templates](task-library.md#templates).
 
+**Required skills**: The skills a template's work needs. They guide the designer's choice of the step's agent and
+warn when the agent lacks one; they never add a skill at run time. See [Required skills](task-library.md#required-skills).
+
 **Rule**: Something an agent must always follow, always in its context; automatic rules apply to every step of
-their scope. See [Rules](task-library.md#rules).
+their scope. Rules belong to the repository, the project and the agent, never to a template. See [Rules](task-library.md#rules).
 
 **Skill**: Knowledge or a procedure (`SKILL.md`) an agent opens when the task needs it; given to the agents that
 list it. See [Skills](task-library.md#skills).
 
 **Suite (task suite)**: The set of prompt tasks and coding jobs models are measured on. See [Task suites](evaluation.md#suites).
 
-**Task template**: A reusable description of what to do: category, prompts with parameters, config, outputs and the
-agent that does it by default; it may be based on one parent. Rules and skills belong to the agent.
+**Task template**: A reusable description of what to do, and only that: category, prompts with parameters, config,
+outputs and the skills the work needs; it may be based on one parent. It names no agent and no model (the step does);
+rules and skills belong to the agent.
 See [Templates](task-library.md#templates).
 
 **Trigger**: How a workflow is meant to start: manual, API, CI entrypoint or Jira transition. See

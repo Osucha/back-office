@@ -5,7 +5,7 @@
  * palette at all. ADR 0056: actions (deterministic integration steps) are a group of their own.
  */
 import type { ActionDescriptor, PaletteTask } from '../../../core/api/types';
-import { actionDescription, actionTitle, agentKindLabel } from '../../../core/ui/agents';
+import { actionDescription, actionTitle, neededAgentLabel } from '../../../core/ui/agents';
 import { categoryLabel, groupByCategory } from '../../../core/ui/template-categories';
 import { isDeprecated } from '../../../core/ui/template-tags';
 
@@ -21,8 +21,8 @@ export function deprecatedPaletteTask(
 }
 
 /**
- * The palette entries to offer: not deprecated and matching the query (name, key, category,
- * agent name and kind).
+ * The palette entries to offer: not deprecated and matching the query (name, key, category, the
+ * kind of agent it needs and its required skills, ADR 0061).
  */
 export function paletteTasks(
   tasks: readonly PaletteTask[],
@@ -37,10 +37,24 @@ export function paletteTasks(
         (t.name ?? '').toLowerCase().includes(q) ||
         (t.key ?? '').toLowerCase().includes(q) ||
         categoryLabel(t.category).toLowerCase().includes(q) ||
-        (!!t.agent &&
-          (t.agent.name.toLowerCase().includes(q) ||
-            agentKindLabel(t.agent.harness).toLowerCase().includes(q)))),
+        neededAgentLabel(t.needsCodingAgent).toLowerCase().includes(q) ||
+        (t.requiresSkills ?? []).some((s) => s.toLowerCase().includes(q))),
   );
+}
+
+/**
+ * ADR 0061: the hover text of a palette entry: its description (or name), the kind of agent it
+ * needs and the names of its required skills.
+ */
+export function paletteTaskTooltip(
+  t: PaletteTask,
+  skillName: (key: string) => string = (k) => k,
+): string {
+  const lines = [t.description || t.name || t.key || '', neededAgentLabel(t.needsCodingAgent)];
+  const skills = (t.requiresSkills ?? []).map(skillName).join(', ');
+  if (skills)
+    lines.push($localize`:@@workflows.palette.requiredSkills:Required skills: ${skills}:skills:`);
+  return lines.filter((x) => !!x).join('\n');
 }
 
 /** ADR 0056: an action as the palette shows it (translated title and description). */

@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -38,6 +39,7 @@ import { importableAgents, projectAgentRows } from '../data/project-agents';
 @Component({
   selector: 'app-project-agents-panel',
   imports: [
+    HelpTipComponent,
     FormsModule,
     NzButtonModule,
     NzCardModule,
@@ -50,11 +52,17 @@ import { importableAgents, projectAgentRows } from '../data/project-agents';
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nz-card nzTitle="Agents" i18n-nzTitle="@@projects.agents.title" [nzExtra]="actions">
-      <p class="muted" i18n="@@projects.agents.intro">
-        Who works on the steps of this project: the global agents of the library and the project's
-        own. A project agent with the key of a global one replaces it in this project.
-      </p>
+    <nz-card [nzTitle]="agentsTitle" [nzExtra]="actions">
+      <ng-template #agentsTitle
+        ><span i18n="@@projects.agents.title">Agents</span>
+        <bo-help-tip [text]="agentsHelp" style="margin-left: 6px"
+      /></ng-template>
+      <ng-template #agentsHelp
+        ><span i18n="@@projects.agents.intro">
+          Who works on the steps of this project: the global agents of the library and the project's
+          own. A project agent with the key of a global one replaces it in this project.
+        </span></ng-template
+      >
       @if (!loaded()) {
         <p class="muted" i18n="@@projects.agents.loading">Loading…</p>
       } @else if (!rows().length) {

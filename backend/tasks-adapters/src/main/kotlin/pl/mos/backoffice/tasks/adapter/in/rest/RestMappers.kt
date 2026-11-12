@@ -48,9 +48,7 @@ object RestMappers {
         abstract = dto.abstract,
         extendsKey = dto.extendsKey,
         category = dto.category,
-        agentKey = dto.agentKey?.takeIf { it.isNotBlank() },
         scope = scope(dto.scope),
-        modelProfileId = dto.modelProfileId?.let(::ModelProfileId),
         prompt = Prompt(dto.prompt.system, dto.prompt.user, dto.prompt.mode),
         config = dto.config,
         outputSchema = dto.outputSchema,
@@ -64,7 +62,8 @@ object RestMappers {
         requiresSkills = dto.requiresSkills,
     )
 
-    fun template(t: TaskTemplate) = TaskTemplateDto(
+    /** [needsCodingAgent]: ADR 0061, derived from the merged config by the use case. */
+    fun template(t: TaskTemplate, needsCodingAgent: Boolean = false) = TaskTemplateDto(
         id = t.id.value,
         key = t.key,
         name = t.name,
@@ -72,9 +71,7 @@ object RestMappers {
         abstract = t.abstract,
         extendsKey = t.extendsKey,
         category = t.category,
-        agentKey = t.agentKey,
         scope = scope(t.scope),
-        modelProfileId = t.modelProfileId?.value,
         prompt = TaskPromptDto(t.prompt.system, t.prompt.user, t.prompt.mode),
         config = t.config,
         outputSchema = t.outputSchema,
@@ -86,6 +83,7 @@ object RestMappers {
         parameters = t.parameters.map(::parameter),
         parameterValues = t.parameterValues,
         requiresSkills = t.requiresSkills,
+        needsCodingAgent = needsCodingAgent,
         builtIn = t.builtIn,
         version = t.version,
         createdAt = t.createdAt,

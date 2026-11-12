@@ -5,6 +5,7 @@ import { params, silent, url } from './api-base';
 import type {
   Agent,
   AgentInput,
+  CoherenceReport,
   ResolvedTask,
   Rule,
   RuleInput,
@@ -108,6 +109,19 @@ export class TaskLibraryApi {
   /** Refused (409) while a template uses the agent. */
   deleteAgent(agentId: string): Observable<void> {
     return this.http.delete<void>(url('agents', agentId));
+  }
+
+  /**
+   * ADR 0061: a model reads the agent's whole environment (with a project also the primary
+   * repository's AGENTS.md / CLAUDE.md) and lists contradictions; costs one model call. 409 when no
+   * model is configured; errors handled by the caller.
+   */
+  checkAgentCoherence(agentId: string, projectId?: string | null): Observable<CoherenceReport> {
+    return this.http.post<CoherenceReport>(
+      url('agents', agentId, 'coherence-check'),
+      {},
+      { params: params({ projectId }), ...silent() },
+    );
   }
 
   // ---- skills

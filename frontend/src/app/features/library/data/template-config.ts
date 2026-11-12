@@ -1,8 +1,9 @@
 /**
- * ADR 0054/0056: the configuration of a template as a form. The agent of a template is its own or
- * the nearest ancestor's (none anywhere = `model-answer`); the form comes from the config schema of
- * a model answer or of a coding agent (`GET /workflows/task-config-schemas`). Pure; tested in
- * template-config.spec.ts.
+ * ADR 0054/0061: the configuration of a template as a form, and the kind of worker the template
+ * needs. A template no longer names an agent (the step does); it needs a coding agent when its
+ * merged config has a Spec Kit `phase`, `push` or `prepareOnly`, else any agent. The form shows
+ * the keys of model answer and coding agent steps together (`GET /workflows/task-config-schemas`).
+ * Pure; tested in template-config.spec.ts.
  */
 import type {
   Agent,
@@ -12,35 +13,8 @@ import type {
   TaskTemplate,
   TaskTemplateInput,
 } from '../../../core/api/types';
+import { configNeedsCodingAgent } from '../../../core/ui/agents';
 import type { JsonSchema } from '../../workflows/public-api';
-
-/** ADR 0056: the agent of a step when neither the step nor any template names one. */
-export const DEFAULT_AGENT_KEY = 'model-answer';
-
-/**
- * The agent key a template runs with: its own, else the first one up the `extendsKey` chain (a
- * parent in the template's project wins over the global one), else `fallback`.
- */
-export function effectiveAgentKey(
-  draft: Pick<TaskTemplateInput, 'agentKey' | 'extendsKey' | 'scope'>,
-  templates: readonly TaskTemplate[],
-  fallback: string | null = null,
-): string | null {
-  if (draft.agentKey) return draft.agentKey;
-  const seen = new Set<string>();
-  let key = draft.extendsKey ?? null;
-  while (key && !seen.has(key)) {
-    seen.add(key);
-    const parent = pickByScope(
-      templates.filter((t) => t.key === key),
-      draft.scope,
-    );
-    if (!parent) break;
-    if (parent.agentKey) return parent.agentKey;
-    key = parent.extendsKey ?? null;
-  }
-  return fallback;
-}
 
 /**
  * The agent with this key as a step of the given scope sees it: the project's own first, else
@@ -61,7 +35,7 @@ export function agentByKey(
   );
 }
 
-/** The agents a template (or a step) of this scope may name: global ones plus the project's. */
+/** The agents a step of this scope may name: global ones plus the project's. */
 export function agentsForScope(agents: readonly Agent[], scope?: Scope | null): Agent[] {
   const projectId = scope?.type === 'PROJECT' ? scope.projectId : null;
   return agents.filter(
@@ -69,7 +43,7 @@ export function agentsForScope(agents: readonly Agent[], scope?: Scope | null): 
   );
 }
 
-/** The short reference of an agent (as `ResolvedTask.agent` and `PaletteTask.agent` carry it). */
+/** The short reference of an agent (as `ResolvedTask.agent` carries it). */
 export function agentRef(a: Agent): AgentRef {
   return {
     key: a.key ?? '',
@@ -90,18 +64,60 @@ function pickByScope(candidates: TaskTemplate[], scope: Scope | undefined): Task
 }
 
 /**
- * The config schema for the template editor: the coding agent's schema for a coding agent, the
- * model answer's otherwise; null when unknown or without keys. `required` is dropped: a template
- * only sets what it changes, the rest comes from its parent.
+ * The top-level config keys of a template after inheritance: the ancestors' configs (root first,
+ * a parent in the template's project before the global one), then the template's own; a `null`
+ * value deletes the key. Nested objects are not merged (the coding keys are flat).
+ */
+export function lineageConfig(
+  draft: Pick<TaskTemplateInput, 'config' | 'extendsKey' | 'scope' | 'key'>,
+  templates: readonly TaskTemplate[],
+): Record<string, unknown> {
+  const chain: Array<Record<string, unknown> | null | undefined> = [draft.config];
+  // a project template customising the global one of its key extends that global one
+  const seen = new Set<string>();
+  let key = draft.extendsKey ?? null;
+  let scope: Scope | undefined = draft.scope;
+  while (key && !seen.has(key)) {
+    seen.add(key);
+    const candidates = templates.filter(
+      (t) => t.key === key && !(key === draft.key && t.scope?.type === 'PROJECT'),
+    );
+    const parent = pickByScope(candidates, scope);
+    if (!parent) break;
+    chain.push(parent.config);
+    key = parent.extendsKey ?? null;
+    scope = parent.scope;
+  }
+  const merged: Record<string, unknown> = {};
+  for (const config of chain.reverse())
+    for (const [k, v] of Object.entries(config ?? {})) {
+      if (v === null) delete merged[k];
+      else merged[k] = v;
+    }
+  return merged;
+}
+
+/** ADR 0061: the template needs a coding agent (its merged config), else any agent does. */
+export function templateNeedsCodingAgent(
+  draft: Pick<TaskTemplateInput, 'config' | 'extendsKey' | 'scope' | 'key'>,
+  templates: readonly TaskTemplate[],
+): boolean {
+  return configNeedsCodingAgent(lineageConfig(draft, templates));
+}
+
+/**
+ * The config schema for the template editor: the keys of model answer and coding agent steps
+ * together (a template does not know who runs it); null when unknown or without keys. `required`
+ * is dropped: a template only sets what it changes, the rest comes from its parent.
  */
 export function templateConfigSchema(
   schemas: TaskConfigSchemas | null | undefined,
-  codingAgent: boolean,
 ): JsonSchema | null {
-  const schema = (codingAgent ? schemas?.codingAgent : schemas?.modelAnswer) as
-    JsonSchema | undefined;
-  if (!schema?.properties || !Object.keys(schema.properties).length) return null;
-  const copy: JsonSchema = { ...schema };
+  const answer = schemas?.modelAnswer as JsonSchema | undefined;
+  const coding = schemas?.codingAgent as JsonSchema | undefined;
+  const properties = { ...(answer?.properties ?? {}), ...(coding?.properties ?? {}) };
+  if (!Object.keys(properties).length) return null;
+  const copy: JsonSchema = { ...(answer ?? {}), ...(coding ?? {}), properties };
   delete copy.required;
   return copy;
 }

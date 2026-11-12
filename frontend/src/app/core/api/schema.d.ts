@@ -693,6 +693,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/agents/{agentId}/coherence-check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agentId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description ADR 0061 (`library.view`; with `projectId` also `project.view`): a model (the platform default for model answers, booked as usage) reads the agent's whole environment (platform preamble, instructions, constitution, project and agent rules, skill names and descriptions; with a project the primary repository's AGENTS.md / CLAUDE.md when readable) and lists contradictions with quotes. On request only. */
+    post: operations['checkAgentCoherence'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/approvals': {
     parameters: {
       query?: never;
@@ -3542,6 +3561,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/workflows/agent-audit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description ADR 0061 (`project.view` of `projectId`): for the workflow draft in the body, per agent its steps use: the agent's rules and skills, the skills its steps require (and which steps), the missing ones, and deterministic findings. Nothing is changed; no model is called. */
+    post: operations['auditWorkflowAgents'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/workflows/expressions/validate': {
     parameters: {
       query?: never;
@@ -3691,6 +3727,52 @@ export interface components {
       mode: 'FULL' | 'READ_ONLY' | 'PATHS';
       /** @description PATHS only */
       paths?: string[];
+    };
+    AgentAudit: {
+      agents: components['schemas']['AgentAuditEntry'][];
+      /** @description findings not tied to one agent */
+      findings: components['schemas']['AgentAuditFinding'][];
+    };
+    AgentAuditEntry: {
+      agent: components['schemas']['AgentRef'];
+      /** Format: uuid */
+      agentId?: string | null;
+      findings: components['schemas']['AgentAuditFinding'][];
+      missingSkills: string[];
+      /** @description steps of the workflow this agent runs */
+      nodeIds: string[];
+      requiredSkills: {
+        key?: string;
+        name?: string | null;
+        nodeIds?: string[];
+      }[];
+      rules: {
+        automatic?: boolean;
+        key?: string;
+        name?: string;
+      }[];
+      scope?: components['schemas']['Scope'];
+      skills: {
+        key?: string;
+        name?: string;
+      }[];
+    };
+    AgentAuditFinding: {
+      /** @description the skill or rule key concerned */
+      key?: string | null;
+      /** @enum {string} */
+      kind:
+        | 'MISSING_SKILL'
+        | 'NEEDS_CODING_AGENT'
+        | 'READ_ONLY_PUSH'
+        | 'UNKNOWN_RULE'
+        | 'UNKNOWN_SKILL'
+        | 'DUPLICATE_SKILL_NAME'
+        | 'UNKNOWN_AGENT';
+      message: string;
+      nodeIds?: string[];
+      /** @enum {string} */
+      severity: 'ERROR' | 'WARNING';
     };
     /**
      * @description coding agent harness; an agent without one gives a single model answer (ADR 0056)
@@ -4282,6 +4364,24 @@ export interface components {
     CiTokenCreated: components['schemas']['CiToken'] & {
       /** @description plaintext, shown once */
       token: string;
+    };
+    CoherenceReport: {
+      agentKey: string;
+      cost?: components['schemas']['Money'];
+      findings: {
+        quotes?: {
+          source?: string;
+          text?: string;
+        }[];
+        /** @enum {string} */
+        severity: 'CONTRADICTION' | 'AMBIGUITY' | 'REDUNDANCY';
+        suggestion?: string | null;
+        summary: string;
+      }[];
+      /** @description the model that checked */
+      model?: string | null;
+      /** @description what was read, e.g. constitution, rule:agent-ground-rules, repo:AGENTS.md */
+      sources?: string[];
     };
     Connection: {
       accountEmail: string;
@@ -5511,7 +5611,6 @@ export interface components {
       };
     };
     PaletteTask: {
-      agent?: components['schemas']['AgentRef'];
       category?: components['schemas']['TemplateCategory'];
       /** @description JSON Schema for `overrides.config`, by the template's agent (model answer or coding agent) */
       configSchema?: {
@@ -5522,6 +5621,8 @@ export interface components {
       description?: string;
       key?: string;
       name?: string;
+      /** @description ADR 0061: the step needs a coding agent; the designer pre-selects a fitting agent */
+      needsCodingAgent?: boolean;
       /** @description ADR 0058: a required parameter has no value without the step (not a ready block) */
       needsParameters?: boolean;
       /** @description ADR 0058: merged parameter declarations of the lineage */
@@ -5532,6 +5633,8 @@ export interface components {
       };
       ports?: string[];
       projectScoped?: boolean;
+      /** @description ADR 0061: skills the work needs (merged over the lineage) */
+      requiresSkills?: string[];
     };
     PasswordChangeRequest: {
       /**
@@ -6601,6 +6704,8 @@ export interface components {
       createdAt?: string;
       /** Format: uuid */
       id?: string;
+      /** @description ADR 0061: the merged config needs a coding agent (Spec Kit phase, push, prepareOnly); else any agent */
+      readonly needsCodingAgent?: boolean;
       /** Format: date-time */
       updatedAt?: string;
       /** @description who saved the current version (ADR 0017) */
@@ -6610,8 +6715,6 @@ export interface components {
     TaskTemplateInput: {
       /** @default false */
       abstract: boolean;
-      /** @description ADR 0056: the agent that runs the task by default; inherited, child wins; none anywhere = model-answer */
-      agentKey?: string | null;
       /** @description empty means inherited */
       category?: components['schemas']['TemplateCategory'] | null;
       confidenceField?: string | null;
@@ -6623,8 +6726,6 @@ export interface components {
       extendsKey?: string | null;
       /** @description ADR 0055: technical identifier that workflow steps and other templates refer to. Omitted on create, it is derived from the name (unique across scopes); omitted on update, it stays. Given on create of a project template together with the same extendsKey, the template customises the global one of that key for the project. */
       key?: string | null;
-      /** Format: uuid */
-      modelProfileId?: string | null;
       name: string;
       /** @description JSON Schema of a structured answer (model answers answer with it, coding agents write it to structured-answer.json, ADR 0057) */
       outputSchema?: string | null;
@@ -8593,6 +8694,31 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      409: components['responses']['Problem'];
+    };
+  };
+  checkAgentCoherence: {
+    parameters: {
+      query?: {
+        projectId?: string;
+      };
+      header?: never;
+      path: {
+        agentId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CoherenceReport'];
+        };
       };
       409: components['responses']['Problem'];
     };
@@ -13719,6 +13845,35 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['WorkflowRun'];
+        };
+      };
+      400: components['responses']['Problem'];
+    };
+  };
+  auditWorkflowAgents: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          nodes: components['schemas']['WorkflowNode'][];
+          /** Format: uuid */
+          projectId: string;
+        };
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AgentAudit'];
         };
       };
       400: components['responses']['Problem'];

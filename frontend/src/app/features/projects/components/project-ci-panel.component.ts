@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -52,6 +53,7 @@ import {
 @Component({
   selector: 'app-project-ci-panel',
   imports: [
+    HelpTipComponent,
     FormsModule,
     NzCardModule,
     NzButtonModule,
@@ -74,11 +76,17 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="two-col" style="margin-bottom: 16px">
-      <nz-card
-        nzTitle="CI entrypoints"
-        i18n-nzTitle="@@projects.ci.entrypoints.title"
-        [nzExtra]="epExtra"
-      >
+      <nz-card [nzTitle]="epTitle" [nzExtra]="epExtra">
+        <ng-template #epTitle
+          ><span i18n="@@projects.ci.entrypoints.title">CI entrypoints</span>
+          <bo-help-tip [text]="epHelp" style="margin-left: 6px"
+        /></ng-template>
+        <ng-template #epHelp
+          ><span i18n="@@projects.ci.entrypoints.intro">
+            <code>backoffice-ci run &lt;key&gt;</code> starts the mapped workflow with the CI
+            context. BLOCKING fails the job on a FAILURE outcome; ADVISORY never fails it.
+          </span></ng-template
+        >
         <ng-template #epExtra>
           @if (canManage()) {
             <button nz-button nzSize="small" type="button" (click)="addEntrypoint()">
@@ -88,10 +96,6 @@ import {
             <span class="muted" i18n="@@projects.ci.readOnly">read-only</span>
           }
         </ng-template>
-        <p class="muted" i18n="@@projects.ci.entrypoints.intro">
-          <code>backoffice-ci run &lt;key&gt;</code> starts the mapped workflow with the CI context.
-          BLOCKING fails the job on a FAILURE outcome; ADVISORY never fails it.
-        </p>
         @if (entrypointsLoading()) {
           <nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 2 }" />
         } @else {

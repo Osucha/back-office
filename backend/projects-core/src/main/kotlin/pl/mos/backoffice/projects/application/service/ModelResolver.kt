@@ -13,7 +13,7 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 
 /**
- * Resolves the model profile of a task: the resolved task's profile (template or node override), then the project
+ * Resolves the model profile of a task: the resolved task's profile (the step's, else its agent's; ADR 0061), then the project
  * default (the review default for tasks that produce a review), then (ADR 0050 step 2) the default model of the user
  * who started the run for this kind of step and the platform default ([ModelDefaults]).
  */
@@ -46,7 +46,7 @@ class ModelResolver(private val catalog: ModelCatalog, private val defaults: Mod
 
     fun resolve(id: ModelProfileId?, purpose: String): ModelProfileSnapshot {
         if (id == null) {
-            throw InvalidStateException("no model profile configured for $purpose; set one on the step, its template, the project defaults or a default model")
+            throw InvalidStateException("no model profile configured for $purpose; set one on the step, its agent, the project defaults or a default model")
         }
         val profile = catalog.find(id) ?: throw InvalidStateException("model profile $id used by $purpose does not exist")
         if (!profile.enabled) throw InvalidStateException("model profile ${profile.displayName} used by $purpose is disabled")

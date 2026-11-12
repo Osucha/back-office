@@ -185,10 +185,13 @@ import {
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
-          <nz-form-label nzFor="mp-runtime" i18n="@@models.drawer.runtime"
+          <nz-form-label
+            [nzTooltipTitle]="login() ? text.loginRuntimeHint : text.apiRuntimeHint"
+            nzFor="mp-runtime"
+            i18n="@@models.drawer.runtime"
             >Runs through</nz-form-label
           >
-          <nz-form-control [nzExtra]="login() ? text.loginRuntimeHint : text.apiRuntimeHint">
+          <nz-form-control>
             <nz-select id="mp-runtime" formControlName="runtime">
               <nz-option nzValue="API" [nzLabel]="text.runtimeApi" />
               <nz-option nzValue="CLAUDE_CODE_LOGIN" [nzLabel]="text.runtimeLogin" />
@@ -196,8 +199,13 @@ import {
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
-          <nz-form-label nzFor="mp-scope" i18n="@@models.drawer.scope">Available to</nz-form-label>
-          <nz-form-control [nzExtra]="scopeHint()">
+          <nz-form-label
+            [nzTooltipTitle]="scopeHint()"
+            nzFor="mp-scope"
+            i18n="@@models.drawer.scope"
+            >Available to</nz-form-label
+          >
+          <nz-form-control>
             @if (profile()?.id || scopes().length === 1) {
               <input nz-input id="mp-scope" [value]="scopeName(scope())" readonly />
             } @else {
@@ -219,14 +227,16 @@ import {
         </nz-form-item>
         <div class="grid">
           <nz-form-item>
-            <nz-form-label nzRequired nzFor="mp-provider" i18n="@@models.drawer.provider"
+            <nz-form-label
+              nzTooltipTitle="Claude Code runs Anthropic models only."
+              i18n-nzTooltipTitle="@@models.drawer.loginProviderHint"
+              nzRequired
+              nzFor="mp-provider"
+              i18n="@@models.drawer.provider"
               >Provider</nz-form-label
             >
             @if (login()) {
-              <nz-form-control
-                nzExtra="Claude Code runs Anthropic models only."
-                i18n-nzExtra="@@models.drawer.loginProviderHint"
-              >
+              <nz-form-control>
                 <input nz-input id="mp-provider" [value]="providerName('ANTHROPIC')" readonly />
               </nz-form-control>
             } @else {
@@ -241,13 +251,14 @@ import {
           </nz-form-item>
           @if (connectionsOfType().length && !login()) {
             <nz-form-item>
-              <nz-form-label nzFor="mp-connection" i18n="@@models.drawer.connection"
+              <nz-form-label
+                nzTooltipTitle="Which connection of this provider type serves the model (LLM providers)."
+                i18n-nzTooltipTitle="@@models.drawer.connectionHint"
+                nzFor="mp-connection"
+                i18n="@@models.drawer.connection"
                 >Connection</nz-form-label
               >
-              <nz-form-control
-                nzExtra="Which connection of this provider type serves the model (LLM providers)."
-                i18n-nzExtra="@@models.drawer.connectionHint"
-              >
+              <nz-form-control>
                 <nz-select id="mp-connection" formControlName="connection">
                   <nz-option nzValue="" [nzLabel]="text.defaultConnection" />
                   @for (c of connectionsOfType(); track c.id) {
@@ -258,14 +269,14 @@ import {
             </nz-form-item>
           }
           <nz-form-item>
-            <nz-form-label nzRequired nzFor="mp-model" i18n="@@models.drawer.modelId"
+            <nz-form-label
+              [nzTooltipTitle]="login() ? text.loginModelIdHint : text.modelIdHint"
+              nzRequired
+              nzFor="mp-model"
+              i18n="@@models.drawer.modelId"
               >Model id</nz-form-label
             >
-            <nz-form-control
-              nzErrorTip="Required"
-              i18n-nzErrorTip="@@models.drawer.required"
-              [nzExtra]="login() ? text.loginModelIdHint : text.modelIdHint"
-            >
+            <nz-form-control nzErrorTip="Required" i18n-nzErrorTip="@@models.drawer.required">
               <input
                 nz-input
                 id="mp-model"
@@ -338,12 +349,14 @@ import {
             </nz-form-item>
           </div>
           <nz-form-item formGroupName="options">
-            <nz-form-label nzFor="mp-extra" i18n="@@models.drawer.extra"
+            <nz-form-label
+              nzTooltipTitle="Provider-specific parameters passed through as-is (e.g. top_p, thinking budgets)."
+              i18n-nzTooltipTitle="@@models.drawer.extraHint"
+              nzFor="mp-extra"
+              i18n="@@models.drawer.extra"
               >Extra options (JSON)</nz-form-label
             >
             <nz-form-control
-              nzExtra="Provider-specific parameters passed through as-is (e.g. top_p, thinking budgets)."
-              i18n-nzExtra="@@models.drawer.extraHint"
               [nzValidateStatus]="extraError() ? 'error' : ''"
               [nzErrorTip]="extraError() ?? ''"
             >

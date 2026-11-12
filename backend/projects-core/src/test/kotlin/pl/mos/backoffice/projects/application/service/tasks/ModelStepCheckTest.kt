@@ -43,12 +43,13 @@ class ModelStepCheckTest {
         override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? {
             val executor = when {
                 key == "agent-model" -> TestAgents.MODEL_ANSWER.copy(modelProfileId = gpt)
+                key == "with-model" -> TestAgents.MODEL_ANSWER.copy(modelProfileId = templateModel)
                 key == "implement-claude-code" -> TestAgents.CLAUDE_CODE
                 key.startsWith("implement") -> TestAgents.OPENCODE
                 else -> TestAgents.MODEL_ANSWER
             }
             return ResolvedTask(
-                key, key, executor, overrides.modelProfileId ?: executor.modelProfileId ?: templateModel.takeIf { key == "with-model" }, TaskPrompt(null, null), emptyList(),
+                key, key, executor, overrides.modelProfileId ?: executor.modelProfileId, TaskPrompt(null, null), emptyList(),
                 overrides.config, null, null, if (key == "code-review") listOf("review") else emptyList(), emptyList(), null, listOf(key),
                 WorkflowNode.DEFAULT_TASK_PORTS,
             )
@@ -82,7 +83,7 @@ class ModelStepCheckTest {
         WorkflowNode.Task(id, id, task = TaskBinding(key, TaskOverrides(modelProfileId = model, config = config)))
 
     @Test
-    fun `models come from the node, the template, the review default or the project default, steps without a model are left out`() {
+    fun `models come from the node, the agent, the review default or the project default, steps without a model are left out`() {
         val project = Fixtures.project().copy(defaults = ProjectDefaults(modelProfileId = gpt, reviewModelProfileId = reviewer), personal = true)
         val nodes = listOf(
             pl.mos.backoffice.projects.domain.model.WorkflowNode.Action("fetch", "fetch", action = pl.mos.backoffice.projects.domain.model.ActionBinding(pl.mos.backoffice.projects.domain.model.ActionType.FETCH_ISSUE)),
@@ -97,7 +98,7 @@ class ModelStepCheckTest {
 
         assertThat(plan.keys).containsExactly("ask", "tmpl", "review", "impl")
         assertThat(plan.mapValues { it.value.source }).containsExactlyInAnyOrderEntriesOf(
-            mapOf("ask" to ModelStepCheck.Source.NODE, "tmpl" to ModelStepCheck.Source.TEMPLATE, "review" to ModelStepCheck.Source.PROJECT_REVIEW, "impl" to ModelStepCheck.Source.NODE),
+            mapOf("ask" to ModelStepCheck.Source.NODE, "tmpl" to ModelStepCheck.Source.AGENT, "review" to ModelStepCheck.Source.PROJECT_REVIEW, "impl" to ModelStepCheck.Source.NODE),
         )
         assertThat(plan["review"]!!.profileId).isEqualTo(reviewer)
         assertThat(plan["impl"]!!.let { it.stepKind to it.harness }).isEqualTo(StepKind.CODING_AGENT to AgentHarness.CLAUDE_CODE)

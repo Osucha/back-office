@@ -24,8 +24,6 @@ class InMemoryTaskTemplateRepository : TaskTemplateRepository {
         rows.values.filter { it.scope == Scope.Global || (projectId != null && it.scope == Scope.Project(projectId)) }
     override fun existsByKey(key: String): Boolean = rows.values.any { it.key == key }
     override fun existsExtending(key: String): Boolean = rows.values.any { it.extendsKey == key }
-    override fun existsUsingAgent(agentKey: String, projectId: UUID?): Boolean =
-        rows.values.any { it.agentKey == agentKey && (projectId == null || it.scope.projectId == null || it.scope.projectId == projectId) }
     override fun delete(id: TaskTemplateId) { rows.remove(id) }
 }
 

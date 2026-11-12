@@ -38,8 +38,8 @@ class LibraryServicesTest {
     private val skills = SkillService(lib.skills, lib.agents, lib.clock, gate, audit)
     private val catalog = TaskCatalogService(lib.templates, lib.lookup)
 
-    private fun content(key: String, scope: Scope = Scope.Global, extendsKey: String? = null, agentKey: String? = null, abstract: Boolean = false) =
-        TaskTemplate.Content(key = key, name = key, scope = scope, extendsKey = extendsKey, agentKey = agentKey, abstract = abstract)
+    private fun content(key: String, scope: Scope = Scope.Global, extendsKey: String? = null, abstract: Boolean = false) =
+        TaskTemplate.Content(key = key, name = key, scope = scope, extendsKey = extendsKey, abstract = abstract)
 
     @Test
     fun `rules are unique per scope, sorted by name, and cannot be deleted or renamed while an agent lists them`() {
@@ -139,7 +139,6 @@ class LibraryServicesTest {
     @Test
     fun `templates validate on save, bump version on update and refuse built-in or extended deletion`() {
         assertThatThrownBy { templates.create(content("child", extendsKey = "ghost")) }.isInstanceOf(ValidationException::class.java)
-        assertThatThrownBy { templates.create(content("bare", agentKey = "ghost")) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("agent ghost does not exist")
 
         val base = templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "base")))
         assertThat(base.version).isEqualTo(1)
@@ -196,16 +195,27 @@ class LibraryServicesTest {
     }
 
     @Test
+    fun `ADR 0061 - a template needs a coding agent when its merged config does`() {
+        val base = templates.create(content("spec-base", abstract = true).copy(config = mapOf("phase" to "PLAN")))
+        val child = templates.create(content("spec-child", extendsKey = "spec-base"))
+        val mine = templates.create(content("spec-child", scope = Scope.Project(lib.projectId), extendsKey = "spec-child").copy(config = mapOf("phase" to null)))
+
+        assertThat(templates.needsCodingAgent(base)).isTrue()
+        assertThat(templates.needsCodingAgent(child)).isTrue()
+        assertThat(templates.needsCodingAgent(mine)).describedAs("the project copy removes the phase").isFalse()
+    }
+
+    @Test
     fun `resolve previews abstract and broken templates and is 404 for unknown keys`() {
         val gone = lib.rule("gone")
         lib.agent("fading", rules = listOf("gone"))
         templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "hello")))
-        templates.create(content("half", extendsKey = "base", agentKey = "fading"))
+        templates.create(content("half", extendsKey = "base"))
         lib.rules.delete(gone.id)
 
         assertThat(templates.resolve("base").abstract).isTrue()
         assertThat(templates.resolve("base").prompt.system).isEqualTo("hello")
-        val half = templates.resolve("half")
+        val half = templates.resolveStep("half", null, TaskOverrides(agentKey = "fading"))
         assertThat(half.check.ok).isFalse()
         assertThat(half.check.problems).containsExactly("rule gone of agent fading does not exist")
         assertThat(half.executable).isFalse()
@@ -274,7 +284,7 @@ class LibraryServicesTest {
         assertThat(global.single().name).isEqualTo("Global review")
         assertThat(global.single().ports).containsExactly("success", "failure")
         assertThat(global.single().category).isEqualTo(TemplateCategory.REVIEW)
-        assertThat(global.single().agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
+        assertThat(global.single().needsCodingAgent).describedAs("ADR 0061: the palette says what kind of agent, not which").isFalse()
 
         val mine = catalog.palette(lib.projectId).single()
         assertThat(mine.name).isEqualTo("Project review")

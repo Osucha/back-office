@@ -5,10 +5,14 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
-import type { NodeKind, PaletteTask, WorkflowPalette } from '../../../core/api/types';
-import { agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
+import type { NodeKind, PaletteTask, Skill, WorkflowPalette } from '../../../core/api/types';
 import { NODE_KIND_META, type NodeKindMeta } from '../data/graph-model';
-import { paletteActions, paletteGroups, paletteTasks } from '../data/palette-tasks';
+import {
+  paletteActions,
+  paletteGroups,
+  paletteTaskTooltip,
+  paletteTasks,
+} from '../data/palette-tasks';
 import { NODE_DRAG_MIME } from './workflow-canvas.component';
 
 export interface PalettePick {
@@ -142,7 +146,8 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
                 (click)="pick.emit({ kind: 'TASK', templateKey: t.key })"
                 (keydown.enter)="pick.emit({ kind: 'TASK', templateKey: t.key })"
                 nz-tooltip
-                [nzTooltipTitle]="t.description || t.name || t.key"
+                [nzTooltipTitle]="tooltip(t)"
+                nzTooltipOverlayClassName="bo-palette-tip"
                 nzTooltipPlacement="right"
               >
                 <nz-icon nzType="robot" />
@@ -157,13 +162,8 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
                     >
                   }
                 </span>
-                @if (t.agent) {
-                  <span
-                    class="exec"
-                    [class.coding]="!!t.agent.harness"
-                    [attr.title]="agentKindDescription(t.agent.harness)"
-                    >{{ agentKindLabel(t.agent.harness) }}</span
-                  >
+                @if (t.needsCodingAgent) {
+                  <span class="exec coding" data-needs-coding-agent>{{ text.coding }}</span>
                 }
                 @if (t.projectScoped) {
                   <nz-icon
@@ -288,6 +288,9 @@ const CONTROL_ORDER: NodeKind[] = ['START', 'END', 'DECISION', 'HUMAN_GATE', 'WA
       .scoped {
         color: var(--bo-accent) !important;
       }
+      ::ng-deep .bo-palette-tip .ant-tooltip-inner {
+        white-space: pre-line;
+      }
       .muted {
         color: var(--bo-ink-3);
         font-size: 12px;
@@ -301,12 +304,24 @@ export class NodePaletteComponent {
   readonly loading = input(false);
   /** ADR 0054: keys of deprecated templates; never offered for new steps. */
   readonly deprecatedKeys = input<ReadonlySet<string>>(new Set());
+  /** ADR 0061: the library's skills, to name the required skills of a template on hover. */
+  readonly skills = input<readonly Skill[]>([]);
   readonly pick = output<PalettePick>();
 
   readonly query = signal('');
-  readonly agentKindLabel = agentKindLabel;
-  readonly agentKindDescription = agentKindDescription;
   readonly actionMeta = NODE_KIND_META.ACTION;
+  readonly text = {
+    coding: $localize`:@@workflows.palette.codingTag:coding agent`,
+  };
+  private readonly skillNames = computed(
+    () => new Map(this.skills().map((s) => [s.key ?? '', s.name || s.key || ''])),
+  );
+
+  /** ADR 0061: description, the kind of agent needed and the required skills. */
+  tooltip(t: PaletteTask): string {
+    const names = this.skillNames();
+    return paletteTaskTooltip(t, (k) => names.get(k) ?? k);
+  }
 
   /** ADR 0056: actions matching the search (translated titles). */
   readonly actions = computed(() => paletteActions(this.palette()?.actions, this.query()));

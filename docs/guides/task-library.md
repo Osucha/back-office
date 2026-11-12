@@ -14,11 +14,11 @@ other groups are **Workflows** and **Sources**).
 
 | Concept | Analogy | You use it to |
 |---|---|---|
-| Task template | the assignment: **what** | describe the work: category, prompts with parameters (`{{params.<name>}}`), config, outputs, run inputs, the default agent (`agentKey`), optionally `extends` one parent |
+| Task template | the assignment: **what** | describe the work and only the work: category, prompts with parameters (`{{params.<name>}}`), config, outputs, run inputs, the skills the work needs (`requiresSkills`), optionally `extends` one parent; no agent, no model (ADR 0061) |
 | Agent | the worker: **who and how** | name a way of working: harness (none = model answer, `OPENCODE`, `CLAUDE_CODE`), optional model, `instructions`, `rules`, `skills`, `mcpServers` (ADR 0056, 0057) |
 | Rule | standing order | state a norm the agent must always follow; always in the agent's context |
 | Skill | handbook chapter | give the agent knowledge or a procedure (`SKILL.md` convention) it opens when the task needs it |
-| Step | the job on the board | a template + an agent + parameter values (a `TASK` node of a workflow) |
+| Step | the job on the board | a template + the agent it chooses (`overrides.agentKey`, optionally `overrides.modelProfileId`) + parameter values (a `TASK` node of a workflow) |
 | Resolved task | instance | the merged result the step runs: template + ancestors + project shadowing + node overrides, with the resolved agent, its rules and skills, and the parameter values |
 
 The template changes when the work changes; the agent changes when you look for a cheaper or better way to work.
@@ -88,8 +88,9 @@ between scopes needs the write permission of both. Every change is recorded in t
 
 ## 2. A template with parameters
 
-A template names its default agent with `agentKey`, its own or inherited from an ancestor; when no template in the
-chain sets one, the step is a model answer (`model-answer`). Leave `agentKey` and `category` empty to inherit them.
+A template is only the work (ADR 0061): it names no agent and no model, the workflow step does. Say which skills the
+work needs in `requiresSkills`, and write what this task demands into the prompt (templates have no rules). Leave
+`category` empty to inherit it.
 
 ```http
 POST /api/v1/task-templates
@@ -97,7 +98,7 @@ POST /api/v1/task-templates
   "name": "Write changelog entry",
   "scope": { "type": "GLOBAL" },
   "category": "GENERAL",
-  "agentKey": "analyst",
+  "requiresSkills": ["conventional-commits"],
   "prompt": {
     "system": "Write for {{params.audience}} readers.",
     "user": "Write a Keep-a-Changelog entry for this diff:\n\n{{artifacts.diff}}",
@@ -114,7 +115,10 @@ POST /api/v1/task-templates
 }
 ```
 
-The answer carries the derived key, here `write-changelog-entry`; workflows refer to it. Because `audience` is
+The answer carries the derived key, here `write-changelog-entry`, and the read-only `needsCodingAgent` (here `false`:
+the config has no Spec Kit `phase`, `push: true` or `prepareOnly: true`, so any agent can do it; with one of them it
+is `true` and only an OpenCode or Claude Code agent can). `agentKey` and `modelProfileId` are no longer part of
+`TaskTemplateInput`. Workflows refer to the key. Because `audience` is
 required and has no default, the template **needs parameters**: a step must set it (`overrides.parameters`), or you
 create a preset:
 
@@ -149,17 +153,17 @@ Merge rules, root to leaf:
 
 | Field | Rule |
 |---|---|
-| `agentKey`, `category` | nearest defined wins |
-| `modelProfileId`, `outputSchema`, `confidenceField` | child wins when set |
+| `category` | nearest defined wins |
+| `outputSchema`, `confidenceField` | child wins when set |
 | `prompt.system`, `prompt.user` | per field: child `APPEND` = parent + blank line + child; `REPLACE` = child only; a field the child leaves empty keeps the parent's |
 | `parameters` | union by name; a child's parameter replaces the parent's with the same name |
 | `parameterValues` | the nearest template that sets a value wins; the step's value wins over all |
 | `config` | deep merge, child keys win, a `null` value deletes the key (so `null`s never reach the step) |
-| `produces`, `consumes`, `tags` | union |
+| `produces`, `consumes`, `tags`, `requiresSkills` | union |
 | `runInputs` | union by name; a child's field replaces the parent's field with the same name |
 
-The project constitution and the rules are not template text any more: every step gets them in its agent's
-environment (section 6). A template whose prompt still contains `{{project.constitution}}` shows it twice; the
+`needsCodingAgent` follows from the merged `config`. The project constitution and the rules are not template text
+any more: every step gets them in its agent's environment (section 6). A template whose prompt still contains `{{project.constitution}}` shows it twice; the
 built-ins were cleaned up.
 
 ## 3. A project-scoped override (shadowing)
@@ -176,13 +180,13 @@ POST /api/v1/task-templates
   "name": "Code review (SHOP)",
   "scope": { "type": "PROJECT", "projectId": "5d3e...-project-uuid" },
   "extendsKey": "code-review",
-  "agentKey": "shop-reviewer",
   "prompt": { "system": "This is a payment system: treat any change to money handling as MAJOR at least.", "mode": "APPEND" }
 }
 ```
 
 Without the `extendsKey` the project template is a plain replacement, not an extension: it has to bring its own
-agent, prompts, schema and so on.
+prompts, schema and so on. To have the project's code reviews done by `shop-reviewer`, choose that agent on the steps
+(or give the project an agent with the key `reviewer` that shadows the built-in one); the template does not name it.
 
 `GET /api/v1/task-templates?projectId=<uuid>` lists global templates plus that project's own, both
 entries for a shadowed key (the `scope` field tells them apart). `includeAbstract=false` hides abstract
@@ -212,7 +216,9 @@ POST /api/v1/skills
 
 A step gets the skills of its agent, nothing else: since ADR 0060 a step no longer adds or removes skills
 (`overrides.addSkills` / `removeSkills` of stored workflows are ignored). A template may list the skills its work needs
-in `requiresSkills` (inherited, unioned); a step whose agent lacks one gets a `check.warnings` entry, not a problem.
+in `requiresSkills` (inherited, unioned); a step whose agent lacks one gets a `check.warnings` entry, not a problem,
+and a `MISSING_SKILL` finding in the agent audit (section 6). Required skills are never injected at run time; the
+designer uses them to pre-select the step's agent, and "Add to agent" adds a missing one to the agent once.
 How skills reach the agent: model answer steps get them appended to the system prompt in a `<skills>` section (a
 single model call cannot open files); coding agent steps (Spec Kit phases and agent jobs) get them written to
 `skills/<key>/SKILL.md` in the agent's home `/workspace/.agents/<agent key>/` (never into a repository), which Claude
@@ -277,24 +283,53 @@ POST /api/v1/agents
 
 Built-in agents (no model of their own; all list `agent-ground-rules` and `ask-dont-guess`):
 
-| Key | Harness | Skills | Used by |
+| Key | Harness | Skills | Good for (the default workflows name it on these steps) |
 |---|---|---|---|
-| `model-answer` | none | none | `llm-task`, any step that names no agent |
+| `model-answer` | none | none | `llm-task`; a step without its own agent whose template needs no coding agent |
 | `analyst` | none | `user-story-format`, `use-case-format`, `adr-format`, `definition-of-ready-done`, `build-guardrails` | `write-user-story`, `write-use-case`, `write-adr`, `impact-analysis`, `plan-task-list`, `clarify-spec`, `analyse-issue` |
 | `reviewer` | none | `security-review-checklist`, `definition-of-ready-done` | `code-review`, `review-against-spec` |
-| `opencode` | `OPENCODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | Spec Kit phases, `implement-opencode`, `implement-task-list`, `prepare-workspace` |
-| `claude-code` | `CLAUDE_CODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task`, `implement-claude-code` |
+| `opencode` | `OPENCODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | Spec Kit phases, `implement-opencode`, `implement-task-list`, `prepare-workspace`; a step without its own agent whose template needs a coding agent |
+| `claude-code` | `CLAUDE_CODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task` (reference workflow), any coding work |
 
-- **Who runs a step**: the step's `overrides.agentKey`, else the template's `agentKey` (inherited, child wins), else
-  `model-answer`.
-- **Which model**: the step's `modelProfileId`, else the agent's, else the template's, then the defaults
-  (`ModelResolver`; the model plan shows the source `AGENT` for the agent's model).
+Deleting an agent is not blocked by templates any more (they name none); steps that still name it get the
+`UNKNOWN_AGENT` finding of the agent audit and cannot run.
+
+- **Who runs a step** (ADR 0061): the step's `overrides.agentKey`, else `opencode` when the template needs a coding
+  agent (`needsCodingAgent`), else `model-answer`. The designer pre-selects an agent when a template is dropped: right
+  kind (coding agent when needed; otherwise model answer agents first), most `requiresSkills` covered, then the
+  platform default of the kind, then built-in, then name.
+- **Which model**: the step's `modelProfileId`, else the agent's, then the defaults (`ModelResolver`; the model plan
+  shows the source `AGENT` for the agent's model; `TEMPLATE` is no longer produced).
 - **How it runs**: model answer → the in-process call (structured output, confidence, injection guard); coding
   agent and a template with the config key `phase` → the Spec Kit job; coding agent otherwise → the agent job (push and
   merge request per config; without a push the final answer becomes the `result` artefact).
 - **Problems** (the step cannot run, listed in `check.problems`): a template that needs a coding agent (`phase`,
-  `push: true`, `prepareOnly`) gets a model answer; a skill or rule the agent lists does not exist; a required
-  parameter has no value.
+  `push: true`, `prepareOnly`) with a model answer agent on the step; a skill or rule the agent lists does not exist; a
+  required parameter has no value.
+
+**Agent audit and coherence check (ADR 0061).** Before a run, check the agents of a workflow draft:
+
+```http
+POST /api/v1/workflows/agent-audit
+{ "projectId": "5d3e...-project-uuid", "nodes": [ ...the draft's nodes... ] }
+```
+
+The answer (`AgentAudit`) lists per agent its steps (`nodeIds`), `rules`, `skills`, `requiredSkills` (with the steps
+needing each) and `missingSkills`, plus `findings` (`MISSING_SKILL`, `DUPLICATE_SKILL_NAME` as WARNING;
+`NEEDS_CODING_AGENT`, `READ_ONLY_PUSH`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`, `UNKNOWN_AGENT` as ERROR). No model is
+called and nothing changes (`project.view`). To fix a missing skill, update the agent (a global agent: create a
+project copy with the same key and the skill, as the designer's "Add to agent" does).
+
+`POST /api/v1/agents/{agentId}/coherence-check?projectId=<uuid>` (`library.view`, with a project also
+`project.view`) asks the platform default model for model answers to read the agent's whole environment (preamble,
+instructions, constitution, rules, skill names and descriptions, and the primary repository's `AGENTS.md` /
+`CLAUDE.md` when Back Office can read them). The `CoherenceReport` has the `model`, the `cost` (booked as usage), the
+`sources` read and `findings` (`CONTRADICTION`, `AMBIGUITY`, `REDUNDANCY`, each with `summary`, `quotes` and an optional
+`suggestion`). Without a usable default model the answer is `409`. Run it on request; it is never part of a run.
+
+**Precedence.** The platform preamble tells every agent the order when its sources disagree: the project
+constitution, then the rules (repository `AGENTS.md` / `CLAUDE.md`, project, agent), then the skills, then the task;
+when it cannot resolve a contradiction it asks instead of guessing.
 
 **The environment document.** Back Office renders one document per step: the platform preamble for the kind of agent
 (fixed in code: what Back Office is, honesty, scope, safety; for model answers no repository, no tools, JSON only
@@ -334,9 +369,10 @@ starts fresh every time; `CONTINUE` with `continueSession: <node id>` shares the
 **same agent** (the session lives in the agent's home); see
 [designing-a-workflow.md](designing-a-workflow.md#agent-sessions).
 
-Deleting an agent a template names is refused (`409`); choose another agent in those templates first. The config key
-`agent` (`CLAUDE_CODE`/`OPENCODE`) no longer exists: choose the agent instead. A stored step's `config.agent` is
-read as its `agentKey` (`claude-code`, `opencode`); V304 moved the key out of template config into `agentKey`.
+The config key `agent` (`CLAUDE_CODE`/`OPENCODE`) no longer exists: choose the agent on the step instead. A stored
+step's `config.agent` is read as its `agentKey` (`claude-code`, `opencode`); on a template it is dropped. V304 had moved
+the key out of template config into the template's `agentKey`; V307 (ADR 0061) wrote every template's agent and model
+into the stored steps that had none and dropped both template columns.
 `GET /api/v1/workflows/task-config-schemas` returns the JSON Schema of the config keys of model answer and coding
 agent steps (it replaced `/workflows/task-executors`).
 
@@ -384,7 +420,8 @@ gets):
   agent lacks.
 - `abstract: true` means the same: previewable, not executable.
 - `ports` is always `success`, `failure`.
-- `agent` is always set: `model-answer` when neither the step nor any template in the chain names one.
+- `agent` is always set: the step's, else `opencode` when the template needs a coding agent, else `model-answer`
+  (ADR 0061). Without step overrides the `rules` and `skills` are therefore those of that default agent.
 
 The endpoint answers `404` for an unknown key and `400` for a cycle or a missing parent.
 
@@ -396,9 +433,9 @@ are applied last, after the whole chain:
 
 | Override | Effect |
 |---|---|
-| `agentKey` | the agent that runs this step instead of the template's (section 6) |
+| `agentKey` | the agent that runs this step (section 6); empty: `opencode` when the template needs a coding agent, else `model-answer` |
 | `parameters` | values of the template's parameters for this step (section 2) |
-| `modelProfileId` | replaces the resolved model |
+| `modelProfileId` | the model of this step; empty: the agent's, else the defaults |
 | `systemPromptAppend` | appended to the resolved system prompt |
 | `promptReplace`, then `promptAppend` | replace and/or extend the user prompt (`promptReplace` still wins over a parameterised prompt) |
 | `config` | deep-merged with the same null-deletes rule; `directory`, `session` and `continueSession` choose the directory and session, `allowQuestions` / `maxQuestionRounds` the agent questions (section 6, ADR 0060) |
@@ -426,7 +463,7 @@ must not see them. Until ADR 0055 they were skills; `V303__rules_and_categories.
 example rules `kotlin-hexagonal` and `angular-ng-zorro`, into rules. The two stack rules describe the Back Office code
 base: copy them into a project rule for your stack and make that one automatic, or list them on a project agent.
 
-| Template | Agent | Use it for | Output |
+| Template | Agent (chosen on the step; pre-selected by the required skills) | Use it for | Output |
 |---|---|---|---|
 | `impact-analysis` | `analyst` | a change request arrives as an issue | JSON with description, business justification, impact on artefacts/components/new stories/specification, estimate, options, recommendation, open questions, `confidence` |
 | `write-user-story` | `analyst` | turn the issue into a story with falsifiable acceptance criteria ("System: 1. displays ..., 2. validates ...") | artefact `user-story` (the markdown of the schema field `user-story`; `openQuestions` and `confidence` in the answer) |
@@ -437,7 +474,8 @@ base: copy them into a project rule for your stack and make that one automatic, 
 | `review-against-spec` | `reviewer` | review the diff against story, spec and task list | `review` with per-requirement coverage (MET/PARTIAL/MISSING) plus findings |
 
 The skills these templates need (`definition-of-ready-done`, `user-story-format`, `use-case-format`, `adr-format`,
-`build-guardrails`, `security-review-checklist`) come from their agents. A human gate after `write-user-story` or
+`build-guardrails`, `security-review-checklist`) come from the step's agent; the templates list them in
+`requiresSkills`, so the designer pre-selects `analyst`, `reviewer` or `opencode`. A human gate after `write-user-story` or
 `plan-task-list` with a DoR checklist (ADR 0017) is the usual way to stop a run on low `confidence`. The "Change
 request (delta)" workflow template chains the **Fetch issue** action → `impact-analysis` → `write-user-story` →
 `plan-task-list` (which reads the approved impact analysis) → `implement-task-list`; after the AI review the rework
@@ -456,9 +494,11 @@ prompt carries the `review` artefact.
 | `400` with `extendsKey: inheritance cycle ...` | the message prints the chain; break it at the template you are saving |
 | `400` with `outputSchema: not well-formed JSON at offset N` | the schema is checked as raw JSON; escape quotes when sending it as a string |
 | `400` with `skills[i]: skill X does not exist in scope ...` or `rules[i]: rule X does not exist in scope ...` on an agent | the key is wrong, the entry is in another project's scope, or names the other kind of entry (for example a former skill that is now a rule): move it between `skills` and `rules` |
-| `409` on delete | built-in template, a template another one extends, an agent a template names, or a skill or rule an agent lists; the message names the referrers |
+| `409` on delete | built-in template, a template another one extends, or a skill or rule an agent lists; the message names the referrers |
+| a step shows **Unknown agent** in "Agents in this workflow" | the agent it names was deleted or is in another project's scope: choose another agent on the step |
+| `409` from the coherence check | no usable platform default model for model answers: an administrator sets it under **Models**, then try again |
 | resolve shows the global template although a project one exists | the `projectId` query parameter is missing, or the project template's key differs |
-| `check.warnings` on a step | the template's `requiresSkills` names a skill the step's agent lacks: add it to the agent or choose another agent (the step still runs) |
+| `check.warnings` on a step | the template's `requiresSkills` names a skill the step's agent lacks: add it to the agent ("Add to agent" in the designer's "Agents in this workflow") or choose another agent (the step still runs) |
 | `check.problems`: `may only read (access READ_ONLY) but the step pushes` | set `push: false` on the step or choose another agent |
 | a rule does not reach a step | the step's agent does not list it and it is not automatic, or the project has a non-automatic copy of a global automatic rule |
 | a step continuing a session is refused | the named step does not exist, is not a coding agent step, works in a separate directory or uses another agent |

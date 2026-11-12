@@ -6,6 +6,7 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -77,7 +78,7 @@ class SeedTaskLibraryServiceTest {
     fun `untouched built-ins of an older seed are upgraded completely, edited ones are left alone`() {
         service.seed()
         val review = lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!
-        val oldReview = review.copy(prompt = Prompt(system = "old system", user = "old user"), config = mapOf("maxChunkLines" to 1500), agentKey = null)
+        val oldReview = review.copy(prompt = Prompt(system = "old system", user = "old user"), config = mapOf("maxChunkLines" to 1500), requiresSkills = emptyList())
         lib.templates.save(oldReview)
         val analyse = lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!
         lib.templates.save(analyse.copy(prompt = Prompt(user = "owner's prompt"), version = 2, updatedBy = alice))
@@ -101,7 +102,7 @@ class SeedTaskLibraryServiceTest {
         assertThat(upgraded.prompt.user).isEqualTo(BuiltInLibrary.REVIEW_USER)
         assertThat(upgraded.prompt.system).startsWith(BuiltInLibrary.REVIEW_SYSTEM).contains("{{runInputText}}")
         assertThat(upgraded.config).describedAs("a removed config key goes away").doesNotContainKey("maxChunkLines")
-        assertThat(upgraded.agentKey).isEqualTo(BuiltInLibrary.REVIEWER)
+        assertThat(upgraded.requiresSkills).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST)
         assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!.prompt.user).isEqualTo("owner's prompt")
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.USER_STORY_FORMAT, Scope.Global)!!.content).isEqualTo(BuiltInLibrary.USER_STORY_FORMAT_MD)
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.ADR_FORMAT, Scope.Global)!!.content).isEqualTo("# my ADR rules")
@@ -206,10 +207,11 @@ class SeedTaskLibraryServiceTest {
     }
 
     @Test
-    fun `implement-claude-code inherits the OpenCode implementer and overrides the agent`() {
+    fun `implement-claude-code inherits the OpenCode implementer and the step names Claude Code`() {
         service.seed()
 
-        val task = lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, null)!!
+        val task = lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, null, TaskOverrides(agentKey = AgentSnapshot.CLAUDE_CODE))!!
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, null)!!.agent.key).describedAs("ADR 0061: no step agent, coding work").isEqualTo(AgentSnapshot.OPENCODE)
 
         assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_OPENCODE)
         assertThat(task.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
@@ -236,7 +238,7 @@ class SeedTaskLibraryServiceTest {
     fun `LLM templates carry schemas, confidence and the review category`() {
         service.seed()
 
-        val clarify = lib.lookup.resolver.resolve(BuiltInLibrary.CLARIFY_SPEC, null)!!
+        val clarify = lib.lookup.resolver.resolve(BuiltInLibrary.CLARIFY_SPEC, null, TaskOverrides(agentKey = BuiltInLibrary.ANALYST))!!
         assertThat(clarify.agent.modelAnswer).isTrue()
         assertThat(clarify.confidenceField).isEqualTo("confidence")
         assertThat(BuiltInLibrary.schemaProperties(clarify.outputSchema)).containsExactlyInAnyOrder("confidence", "clarifications", "summary")
@@ -246,7 +248,8 @@ class SeedTaskLibraryServiceTest {
         assertThat(clarify.agent.key).isEqualTo(BuiltInLibrary.ANALYST)
         assertThat(clarify.prompt.system).contains("implementer").doesNotContain("no repository")
 
-        val review = lib.lookup.resolver.resolve(BuiltInLibrary.CODE_REVIEW, null)!!
+        val review = lib.lookup.resolver.resolve(BuiltInLibrary.CODE_REVIEW, null, TaskOverrides(agentKey = BuiltInLibrary.REVIEWER))!!
+        assertThat(lib.lookup.resolver.preview(BuiltInLibrary.CODE_REVIEW, null, TaskOverrides(agentKey = BuiltInLibrary.REVIEWER))!!.check.warnings).describedAs("the reviewer has the required skill").isEmpty()
         assertThat(review.consumes).containsExactly("diff")
         assertThat(review.produces).containsExactly("review")
         assertThat(review.outputSchema).contains("BLOCKER").contains("\"verdict\"").contains("\"score\"")
@@ -263,7 +266,7 @@ class SeedTaskLibraryServiceTest {
 
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.config["phase"]).isEqualTo("PLAN")
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
-        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.agent.key).describedAs("ADR 0061: no push, so any agent; the step names one").isEqualTo(AgentSnapshot.MODEL_ANSWER)
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.PREPARE_WORKSPACE, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         val llmTask = lib.lookup.resolver.resolve(BuiltInLibrary.LLM_TASK, null)!!
         assertThat(llmTask.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)

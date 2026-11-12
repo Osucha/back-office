@@ -12,7 +12,6 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
@@ -37,7 +36,7 @@ class AgentInsightsServiceTest {
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? = null
         override fun palette(projectId: UUID?): List<TaskSummary> =
-            listOf(TaskSummary("agent-task", "Agent task", "", AgentSnapshot.DEFAULT, null, false, null, emptyList()))
+            listOf(TaskSummary("agent-task", "Agent task", "", null, false, null, emptyList()))
     }
 
     private fun service(gate: FakeAuthorizationGate, tasks: TaskCatalog? = catalog) = AgentInsightsService(readModel, gate, clock, tasks)

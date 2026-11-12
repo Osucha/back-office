@@ -11,11 +11,11 @@ korzystają. **Biblioteka** (**Library**) ma trzy grupy (ADR 0055, 0056):
 
 | Element | Odpowiednik | Służy do |
 |---|---|---|
-| Szablon zadania | zlecenie: **co** zrobić | opisania pracy: kategoria, prompty z [parametrami](#parameters), konfiguracja, wyniki, dane wejściowe uruchomienia i agent, który domyślnie ją wykonuje; może mieć jednego rodzica |
+| Szablon zadania | zlecenie: **co** zrobić | opisania pracy i niczego więcej: kategoria, prompty z [parametrami](#parameters), konfiguracja, wyniki, dane wejściowe uruchomienia i umiejętności, których praca wymaga; może mieć jednego rodzica |
 | Agent | wykonawca: **kto** pracuje i **jak** | nazwania sposobu pracy: harness (**Odpowiedź modelu**, **OpenCode** albo **Claude Code**), opcjonalnie model, **Instrukcje**, **Reguły**, **Umiejętności** i **Serwery MCP** ([Agenci](#agents)) |
 | Reguła | stały rozkaz | zapisania tego, czego agent musi zawsze przestrzegać; jest zawsze w kontekście agenta |
 | Umiejętność | rozdział podręcznika | dania agentowi wiedzy lub procedury, którą otwiera, gdy zadanie jej wymaga (plik `SKILL.md`) |
-| Krok workflowu | zadanie na tablicy | połączenia jednego z drugim: szablon, agent i wartości parametrów szablonu ([Węzły zadań](workflows.md#task-nodes)) |
+| Krok workflowu | zadanie na tablicy | połączenia jednego z drugim: szablon, agent, który wykonuje pracę (i opcjonalnie model), oraz wartości parametrów szablonu ([Węzły zadań](workflows.md#task-nodes)) |
 | Rozwiązane zadanie | instancja | tego, co ostatecznie otrzymuje agent: szablon scalony z przodkami, nadpisaniami projektu i nadpisaniami kroku, w środowisku jego agenta |
 
 Szablon zmienia się, gdy zmienia się praca; agent zmienia się, gdy szukasz tańszego albo lepszego sposobu pracy.
@@ -50,15 +50,28 @@ zapisywana w dzienniku audytu, a listy pokazują, kto ostatnio zmienił wpis.
 **Biblioteka** → **Zadania** → **Szablony** (**Templates**, `/library/templates`) wyświetla szablony pogrupowane
 według **Kategorii** (**Category**): Analiza, Specyfikacja, Planowanie, Implementacja, Przegląd, Jira, Operacje
 i Ogólne (szablony bez kategorii). Projektant workflowów grupuje paletę tak samo. Szablony wbudowane są oznaczone;
-podobnie abstrakcyjne, które mogą być bazą dla innych, ale nigdy nie są wykonywane. Filtruj tekstem, kategorią i agentem
-oraz przełącznikiem **Szablony globalne** / **Globalne + KEY** (**Global templates** /
-**Global + KEY**), aby uwzględnić własne szablony projektu.
+podobnie abstrakcyjne, które mogą być bazą dla innych, ale nigdy nie są wykonywane. Filtruj tekstem, kategorią
+i rodzajem agenta, którego wymaga szablon (**Wymaga agenta kodującego** / **Dowolny agent**, **Needs a coding agent**
+/ **Any agent**; puste: **Dowolny rodzaj agenta**), oraz przełącznikiem **Szablony globalne** / **Globalne + KEY**
+(**Global templates** / **Global + KEY**), aby uwzględnić własne szablony projektu.
 
-Szablon opisuje pracę; jego **Agent** mówi, kto domyślnie ją wykonuje (zob. [Agenci](#agents)): agent z harnessem
-**Odpowiedź modelu** (**Model answer**; jedno wywołanie modelu wewnątrz Back Office, bez repozytorium; może zwrócić
-ustrukturyzowany JSON i pewność), **OpenCode** albo **Claude Code** (agent kodujący w sandboxie na runnerze,
-z repozytorium; może wypchnąć gałąź i otworzyć merge request; szablon z fazą Spec Kit `phase` wykonuje tę fazę Spec
-Kit). Krok workflowu może wybrać innego agenta. Szablon nie ma reguł ani umiejętności: należą do agenta.
+Szablon to wyłącznie praca (ADR 0061). Nie wskazuje agenta ani modelu: to [krok workflowu](workflows.md#task-nodes)
+wybiera, kto wykona pracę, więc ten sam szablon można wykonać różnymi agentami i ich porównać
+([Ewaluacja](evaluation.md)). Co szablon nadal mówi o wykonawcy:
+
+- **Wymaga agenta kodującego** (**Needs a coding agent**; znacznik tylko do odczytu na liście, w edytorze, w palecie
+  projektanta i w kroku): jego konfiguracja, razem z konfiguracją rodziców, ma fazę Spec Kit `phase`, `push` albo
+  `prepareOnly`. Taka praca wymaga agenta z harnessem **OpenCode** albo **Claude Code** (agent kodujący w sandboxie na
+  runnerze, z repozytorium; może wypchnąć gałąź i otworzyć merge request). Znacznika nie ustawiasz; wynika
+  z konfiguracji. Bez niego pracę może wykonać dowolny agent, także agent z harnessem **Odpowiedź modelu** (**Model
+  answer**; jedno wywołanie modelu wewnątrz Back Office, bez repozytorium; może zwrócić ustrukturyzowany JSON
+  i pewność).
+- **Wymagane umiejętności** (**Required skills**): [umiejętności](#skills), których wymaga praca (zob. [Wymagane
+  umiejętności](#required-skills)).
+
+Szablon nie ma reguł: reguły to normy zachowania i należą do repozytorium, projektu i agenta. To, czego wymaga jedno
+zadanie („odpowiedz po polsku”, „zmieniaj tylko katalog `docs`”), należy do promptu szablonu. Czwarte źródło norm
+tylko zwiększyłoby ryzyko sprzeczności ([Gdy źródła są sprzeczne](#precedence)).
 
 Szablon, którego wymagane [parametry](#parameters) nie mają jeszcze wartości, ma znacznik **wymaga parametrów**
 (**needs parameters**): to prompt do uzupełnienia w kroku workflowu. Pozostałe to gotowe klocki.
@@ -69,19 +82,17 @@ Szablon, którego wymagane [parametry](#parameters) nie mają jeszcze wartości,
    szablonu projektu).
 2. **Typ** (**Type**): **Nazwa**, **Opis**, **Na bazie** (**Based on**; opcjonalny, jeden rodzic: szablon
    dziedziczy jego prompty, parametry i konfigurację, a zmienia tylko to, co ustawisz), **Kategoria** (**Category**;
-   puste oznacza dziedziczoną), **Agent** (puste oznacza dziedziczonego; puste w całym łańcuchu oznacza **Odpowiedź
-   modelu**), **Zakres** (**Globalny** lub
-   **Projektowy** z wyborem **Projektu**), **Profil modelu** (**Model profile**). Pod agentem sekcja **Środowisko
-   agenta** (**Environment of the agent**) pokazuje tylko do odczytu, co wnosi wybrany agent: jego instrukcje,
-   reguły (automatyczne są oznaczone) i umiejętności. Aby je zmienić, edytuj agenta na stronie **Agenci** albo
-   wybierz innego agenta. **Wymagane umiejętności** (**Required skills**): umiejętności, których wymaga praca
-   (dziedziczone i sumowane wzdłuż łańcucha). Krok, którego agent którejś nie ma, dostaje ostrzeżenie w sekcji
-   **Ostrzeżenia** (**Warnings**; i tak się wykona); szablon nie daje tej umiejętności agentowi.
+   puste oznacza dziedziczoną), **Zakres** (**Globalny** lub **Projektowy** z wyborem **Projektu**) i **Wymagane
+   umiejętności** (**Required skills**; umiejętności, których wymaga praca, dziedziczone i sumowane wzdłuż łańcucha;
+   zob. [Wymagane umiejętności](#required-skills)). Nie ma tu agenta ani profilu modelu: wybiera je krok workflowu.
+   Gdy konfiguracja wymaga agenta kodującego, nagłówek edytora pokazuje znacznik **Wymaga agenta kodującego**
+   (po najechaniu widać powód).
 3. **Prompt**: wybierz **Dopisz do rodzica** (**Append to parent**) lub **Zastąp rodzica** (**Replace
    parent**), a następnie napisz **Prompt systemowy** (**System prompt**) i **Prompt użytkownika** (**User
    prompt**). Wartości szablonowe, takie jak `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
    i `{{params.<nazwa>}}` ([parametr](#parameters)), są wypełniane w czasie wykonania. Konstytucji projektu ani
-   reguł szablon nie wstawia: każdy krok dostaje je w środowisku swojego agenta. Sekcja
+   reguł szablon nie wstawia: każdy krok dostaje je w środowisku swojego agenta. To, czego wymaga to zadanie,
+   zapisz w samym prompcie. Sekcja
    `{{#artifacts.review}}...{{/artifacts.review}}` zachowuje swój tekst tylko wtedy, gdy wartość istnieje
    (`{{^path}}...{{/path}}` tylko wtedy, gdy jej nie ma), więc prompt nie pokazuje pustego nagłówka
    „Issue” czy „Feedback” w przebiegu bez zgłoszenia ani przy pierwszej próbie. `{{feedback}}` zawiera
@@ -94,9 +105,10 @@ Szablon, którego wymagane [parametry](#parameters) nie mają jeszcze wartości,
    [Parametry](#parameters)). Kliknij **Dodaj parametr** (**Add parameter**), potem ustaw nazwę, etykietę
    pokazywaną w kroku, typ, **Wymagany**, opcjonalną wartość domyślną i tekst pomocy. Szablon oparty na innym
    pokazuje też **Wartości parametrów** (**Parameter values**): wartości parametrów jego rodziców.
-5. **Konfiguracja** (**Configuration**): formularz z ustawieniami dla agenta szablonu (dla agenta kodującego:
-   polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania, narzędzia agenta, faza
-   Spec Kit, ...). Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
+5. **Konfiguracja** (**Configuration**): formularz z ustawieniami pracy, dla odpowiedzi modelu i agentów kodujących
+   razem (dla agenta kodującego: polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania,
+   narzędzia agenta, faza Spec Kit, ...). Faza Spec Kit (`phase`), `push` albo `prepareOnly` (tylko przygotowanie) sprawiają, że
+   szablon wymaga agenta kodującego. Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
    (**Raw JSON**) pokazuje te same ustawienia jako JSON, także klucze, których formularz nie zna.
    **Zaawansowane: kontrakty, artefakty, schemat wyjścia, sandbox** (zwinięte; większość szablonów niczego tu nie
    potrzebuje): **Abstrakcyjny** (**Abstract**; tylko baza dla innych szablonów, nigdy samodzielny krok),
@@ -122,16 +134,34 @@ Szablon, którego wymagane [parametry](#parameters) nie mają jeszcze wartości,
 
 | Pole | Reguła |
 |---|---|
-| Agent, kategoria | Wygrywa najbliższy w łańcuchu. |
-| Profil modelu, schemat wyjścia, pole pewności | Wygrywa wartość potomka, jeśli jest ustawiona. |
+| Kategoria | Wygrywa najbliższa w łańcuchu. |
+| Schemat wyjścia, pole pewności | Wygrywa wartość potomka, jeśli jest ustawiona. |
 | Prompt systemowy i użytkownika | Dla każdego pola osobno: **Dopisz do rodzica** dodaje tekst potomka po tekście rodzica; **Zastąp rodzica** używa tylko tekstu potomka. Puste pole zachowuje wartość rodzica. |
 | Parametry | Suma według nazwy; parametr dziecka zastępuje parametr rodzica o tej samej nazwie. |
 | Wartości parametrów | Wygrywa najbliższy szablon, który ustawia wartość. |
 | Konfiguracja | Scalana klucz po kluczu; wygrywa potomek; `null` usuwa klucz. |
-| Produkuje, konsumuje, tagi | Suma. |
+| Produkuje, konsumuje, tagi, wymagane umiejętności | Suma. |
 | Dane wejściowe uruchomienia | Suma według nazwy; pole dziecka zastępuje pole rodzica o tej samej nazwie. |
 
-Reguły i umiejętności nie są dziedziczone po szablonach: krok dostaje te, które ma jego agent.
+Reguły i umiejętności nie są dziedziczone po szablonach: krok dostaje te, które ma jego agent. To, czy szablon
+wymaga agenta kodującego, wynika ze scalonej konfiguracji.
+
+<a id="required-skills"></a>
+### Wymagane umiejętności
+
+**Wymagane umiejętności** (**Required skills**) wskazują umiejętności, których wymaga praca, na przykład
+`user-story-format` dla **Write user story**. Szablon nikomu ich nie daje: krok dostaje dokładnie umiejętności
+swojego agenta. Służą do trzech rzeczy:
+
+- dla upuszczonego szablonu projektant wstępnie wybiera agenta, który ma ich najwięcej
+  ([Węzły zadań](workflows.md#task-nodes));
+- krok, którego agent którejś nie ma, dostaje ostrzeżenie (**Brakująca umiejętność**, **Missing skill**); i tak się
+  wykona;
+- panel projektanta [Agenci w tym workflowie](workflows.md#agent-audit) pokazuje brakujące dla każdego agenta
+  i dodaje je przyciskiem **Dodaj do agenta** (**Add to agent**), raz, przed jakimkolwiek uruchomieniem.
+
+Umiejętności celowo nie są dodawane w czasie wykonania: środowisko agenta różniłoby się wtedy od kroku do kroku,
+a porównanie jednego agenta w różnych krokach i benchmarkach przestałoby być uczciwe.
 
 <a id="parameters"></a>
 ### Parametry
@@ -181,19 +211,21 @@ zgłoszenia Jira** ustawia też klucz zgłoszenia uruchomienia.
 
 Prawa strona edytora pokazuje **Podgląd rozwiązanego zadania** (**Resolved preview**): dokładnie to, co
 otrzymuje agent po dziedziczeniu i przesłonięciu przez projekt, dla biblioteki globalnej lub wybranego
-projektu. Pokazuje rodowód, agenta i kategorię oraz karty **Prompt systemowy** i **Prompt użytkownika** (własne
-prompty szablonu; środowisko agenta edytor pokazuje w sekcji **Środowisko agenta**), **Umiejętności** i **Reguły**
-(te agenta; reguły automatyczne są oznaczone), **Konfiguracja**, **Dane wejściowe** (**Run inputs**: scalone pola
-wraz z szablonem, z którego każde jest dziedziczone) i **Parametry**. Jeśli umiejętność lub reguła, którą wymienia
-agent, nie istnieje albo wymagany parametr nie ma wartości, podgląd to wskazuje, a zadanie nie może działać, dopóki
-tego nie poprawisz. Podgląd odzwierciedla zapisaną wersję; niezapisane zmiany są wymienione jako różnice.
+projektu. Pokazuje rodowód i kategorię oraz karty **Prompt systemowy** i **Prompt użytkownika** (własne prompty
+szablonu), **Umiejętności** i **Reguły**, **Konfiguracja**, **Dane wejściowe** (**Run inputs**: scalone pola wraz
+z szablonem, z którego każde jest dziedziczone) i **Parametry**. Ponieważ szablon nie ma agenta, **Umiejętności**
+i **Reguły** pokazują środowisko agenta, którego dostałby krok bez własnego agenta (**OpenCode**, gdy szablon wymaga
+agenta kodującego, w przeciwnym razie **Odpowiedź modelu**; reguły automatyczne są oznaczone); krok z innym agentem
+dostaje środowisko tamtego agenta. Jeśli wymagany parametr nie ma wartości, podgląd to wskazuje, a zadanie nie może
+działać, dopóki tego nie poprawisz. Podgląd odzwierciedla zapisaną wersję; niezapisane zmiany są wymienione jako
+różnice.
 
 ### Kroki: zmiana zadania dla jednego projektu
 
 1. W wierszu szablonu kliknij **Dostosuj dla projektu** (**Customize for project**).
 2. Otworzy się nowy szablon z zakresem **Projektowy** i szablonem globalnym jako rodzicem; zachowuje klucz
    szablonu globalnego, więc zastępuje go w tym projekcie. Wybierz projekt i zmień tylko to, co się różni, na przykład dopisz akapit do promptu
-   użytkownika albo wybierz agenta projektu.
+   użytkownika. (Agenta wybiera się w kroku workflowu, nie tutaj.)
 3. Zapisz. Od tej chwili workflowy tego projektu używają szablonu projektowego wszędzie, gdzie występuje
    ten klucz, także jako rodzica innych szablonów. Pozostałe projekty zachowują szablon globalny.
 
@@ -272,24 +304,29 @@ umiejętności. Na wariant utwórz innego agenta (albo kopię projektową).
 
 Agenci wbudowani (żaden nie ma własnego modelu; każdy wymienia reguły `agent-ground-rules` i `ask-dont-guess`):
 
-| Agent | Rodzaj | Umiejętności | Używają go |
+| Agent | Rodzaj | Umiejętności | Pasuje do |
 |---|---|---|---|
-| **Odpowiedź modelu** (**Model answer**, `model-answer`) | Odpowiedź modelu | brak | `llm-task`; każdy krok, który nie wskazuje agenta |
+| **Odpowiedź modelu** (**Model answer**, `model-answer`) | Odpowiedź modelu | brak | `llm-task`; krok bez własnego agenta, którego szablon nie wymaga agenta kodującego |
 | **Analyst** (`analyst`) | Odpowiedź modelu | `user-story-format`, `use-case-format`, `adr-format`, `definition-of-ready-done`, `build-guardrails` | szablony analizy, specyfikacji i planowania (`write-user-story`, `write-use-case`, `write-adr`, `impact-analysis`, `plan-task-list`, `clarify-spec`) |
 | **Reviewer** (`reviewer`) | Odpowiedź modelu | `security-review-checklist`, `definition-of-ready-done` | `code-review`, `review-against-spec` |
-| **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | fazy Spec Kit, `implement-opencode`, `implement-task-list`, `prepare-workspace` |
-| **Claude Code** (`claude-code`) | Claude Code | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task` |
+| **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | fazy Spec Kit, `implement-opencode`, `implement-task-list`, `prepare-workspace`; krok bez własnego agenta, którego szablon wymaga agenta kodującego |
+| **Claude Code** (`claude-code`) | Claude Code | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task`, dowolna praca z kodem |
 
+**Wymagane umiejętności** szablonów wbudowanych pasują do tych agentów, więc projektant wybiera ich wstępnie.
 **Analyst** i **Reviewer** mają krótkie instrukcje swojej roli (nazwy wpisów wbudowanych są po angielsku).
 Agentów wbudowanych nie można zmieniać; **Dostosuj dla projektu** tworzy kopię projektową, którą możesz zmienić
 (na przykład inny model albo reguły stosu projektu). Agenci mają te same uprawnienia, zakresy i audyt co reguły.
-Agenta, którego używa szablon, nie można usunąć: najpierw wybierz w tych szablonach innego agenta.
+Szablony nie wskazują agentów, więc żaden szablon nie blokuje usunięcia agenta; kroki workflowów, które nadal go
+wskazują, pokazują **Nieznany agent** (**Unknown agent**) w panelu [Agenci w tym workflowie](workflows.md#agent-audit)
+i nie mogą się wykonać, dopóki nie wybierzesz innego agenta.
 
-**Kto wykonuje krok**: **Agent** wybrany w kroku w projektancie, w przeciwnym razie **Agent** szablonu
-(dziedziczony, wygrywa najbliższy w łańcuchu), w przeciwnym razie **Odpowiedź modelu**.
+**Kto wykonuje krok** (ADR 0061): **Agent** wybrany w kroku w projektancie. Krok bez własnego agenta (na przykład
+zapisany, zanim pojawili się agenci) wykonuje **OpenCode**, gdy jego szablon wymaga agenta kodującego, w przeciwnym
+razie **Odpowiedź modelu**; projektant pokazuje to jako **Domyślnie: {agent}** (**Default: {agent}**). Gdy
+upuszczasz szablon na tablicę, projektant wstępnie wybiera agenta za Ciebie ([Węzły zadań](workflows.md#task-nodes)).
 
-**Jaki model**: **Profil modelu** kroku, w przeciwnym razie agenta, w przeciwnym razie szablonu, a potem ustawienia
-domyślne (projekt, osoba uruchamiająca, platforma).
+**Jaki model**: **Profil modelu** kroku, w przeciwnym razie **Model** agenta, a potem ustawienia domyślne dla rodzaju
+agenta (projekt, osoba uruchamiająca, platforma). Szablony nie mają modelu.
 
 **Jak krok działa**, wynika z agenta i szablonu:
 
@@ -299,8 +336,9 @@ domyślne (projekt, osoba uruchamiająca, platforma).
 | OpenCode lub Claude Code | z fazą Spec Kit `phase` w konfiguracji | faza Spec Kit |
 | OpenCode lub Claude Code | każdy inny | zadanie agenta: push i merge request zgodnie z konfiguracją; bez pushu jego końcowa odpowiedź staje się artefaktem `result` |
 
-Krok nie może zostać wykonany (projektant i podgląd mówią dlaczego), gdy szablon wymaga agenta kodującego (faza
-Spec Kit `phase`, `push: true`, `prepareOnly`), a dostaje **Odpowiedź modelu**.
+Krok nie może zostać wykonany (projektant i podgląd mówią dlaczego), gdy jego szablon wymaga agenta kodującego
+(faza Spec Kit `phase`, `push: true`, `prepareOnly`), a agent kroku jest agentem odpowiedzi modelu („Szablon wymaga
+agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”).
 
 **Agent kodujący odpowiadający według schematu.** Szablon ze **Schematem wyjścia** działa także z agentem
 kodującym. Agent dostaje polecenie, by zapisać odpowiedź jako jeden obiekt JSON w pliku `structured-answer.json`
@@ -339,6 +377,22 @@ każdym zadaniu, więc agent zawsze pracuje ze swoim aktualnym środowiskiem. W�
 repozytorium zostają nietknięte: harness czyta je jak zwykle i są regułami projektu dla każdego agenta, obok
 środowiska Back Office. OpenCode czyta też własne umiejętności repozytorium (`.opencode/skills`, `.claude/skills`):
 to umiejętności projektu, dostępne dla każdego agenta OpenCode.
+
+<a id="precedence"></a>
+### Gdy źródła są sprzeczne
+
+Agent słyszy wiele źródeł: konstytucję projektu, własne pliki `AGENTS.md` / `CLAUDE.md` repozytorium, reguły
+projektu i agenta, swoje umiejętności i zadanie. Preambuła platformy podaje kolejność na wypadek, gdy sobie
+przeczą (ADR 0061):
+
+1. **konstytucja** projektu;
+2. **reguły**: `AGENTS.md` / `CLAUDE.md` repozytorium, potem reguły projektu, potem reguły agenta;
+3. **umiejętności**;
+4. **zadanie** (prompt szablonu i kroku).
+
+Gdy agent nie umie rozstrzygnąć sprzeczności, pyta ([Agent zadaje pytania](workflows.md#agent-questions)) zamiast
+zgadywać. Aby znaleźć sprzeczności przed uruchomieniem, użyj **Sprawdź spójność** (**Check coherence**) w panelu
+[Agenci w tym workflowie](workflows.md#coherence-check).
 
 <a id="agent-mcp"></a>
 ### Serwery MCP agenta
@@ -407,8 +461,9 @@ i **Zaktualizowano**. Umiejętność stosuje konwencję Agent Skills: nagłówek
 a potem krótkie, konkretne, ponumerowane kroki.
 
 Krok dostaje umiejętności swojego agenta (**Umiejętności** agenta), ani więcej, ani mniej: krok nie może dodawać
-ani pomijać umiejętności (ADR 0060). Szablon może wymienić umiejętności, których wymaga jego praca (**Wymagane
-umiejętności**, **Required skills**); krok, którego agent którejś nie ma, dostaje ostrzeżenie.
+ani pomijać umiejętności (ADR 0060). Szablon może wymienić umiejętności, których wymaga jego praca ([Wymagane
+umiejętności](#required-skills)); krok, którego agent którejś nie ma, dostaje ostrzeżenie, a **Dodaj do agenta**
+w panelu [Agenci w tym workflowie](workflows.md#agent-audit) naprawia to na agencie.
 
 Jak umiejętność trafia do agenta:
 
@@ -491,7 +546,8 @@ instalacji i przenieś to, czego potrzebujesz, albo usuń swoją niewbudowaną k
 
 ### Jak zbudowane są zadania wbudowane
 
-- Wbudowane szablony są płaskie (ADR 0058): mówią, co zrobić, i wskazują swojego agenta; tylko
+- Wbudowane szablony są płaskie (ADR 0058): mówią, co zrobić i jakich umiejętności wymaga praca, a agenta
+  nie wskazują (ADR 0061; domyślne workflowy wskazują agenta w każdym kroku); tylko
   `implement-task-list` (i przestarzały `implement-claude-code`) rozszerzają `implement-opencode`. Sposób pracy
   (uczciwość, zakres, bezpieczeństwo, reguły podstawowe, „runner commituje i wypycha po agencie”, umiejętności
   formatów) pochodzi od agenta i jego [środowiska](#environment).
@@ -539,10 +595,13 @@ domyślne (dla **LLM task**: podsumuj materiał wejściowy; dla **Agent task**: 
 przed wprowadzeniem parametrów zastąpiły prompt przez **Nadpisania** (**Overrides**) → **Zastąp** (**Replace**),
 działają dalej; zastąpiony prompt wygrywa.
 
-| Szablon | Kto go wykonuje | Do czego |
+| Szablon | Wybierz w kroku | Do czego |
 |---|---|---|
-| **LLM task** (`llm-task`) | agent **Odpowiedź modelu**: jedno wywołanie modelu, bez repozytorium | podsumowania, szkice, odpowiedzi na podstawie materiału wejściowego przebiegu |
-| **Agent task** (`agent-task`) | agent kodujący na runnerze (domyślnie **Claude Code**; innego wybierzesz w polu **Agent** kroku), z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
+| **LLM task** (`llm-task`) | agenta odpowiedzi modelu, na przykład **Odpowiedź modelu**: jedno wywołanie modelu, bez repozytorium | podsumowania, szkice, odpowiedzi na podstawie materiału wejściowego przebiegu |
+| **Agent task** (`agent-task`) | agenta kodującego, takiego jak **Claude Code** albo **OpenCode**: zadanie na runnerze z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
+
+**Agent task** wymaga agenta kodującego także bez pusha: mówi to jego konfiguracja (`codingAgent: true`), więc
+projektant wybiera takiego agenta od razu.
 
 Oba wstawiają do promptu systemowego zgłoszenie (gdy przebieg je ma), daną wejściową **Materiał wejściowy** i uwagi
 recenzenta (każde tylko wtedy, gdy istnieje), więc **Task** może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian; w projekcie

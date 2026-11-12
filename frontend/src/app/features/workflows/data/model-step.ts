@@ -2,7 +2,8 @@
  * The kind of model use of a task step (ADR 0050/0056), as the server derives it: the step's agent
  * decides. An agent without a harness gives a model answer (one gateway call, `LLM_CALL`); an agent
  * with a harness (OpenCode, Claude Code) runs a coding agent (`CODING_AGENT`) unless the step only
- * prepares the run directory. The step's agent is its own (`overrides.agentKey`), else the template's.
+ * prepares the run directory. The step's agent is its own (`overrides.agentKey`), else the default
+ * for what its template needs (ADR 0061).
  */
 import type {
   Agent,
@@ -11,6 +12,7 @@ import type {
   PaletteTask,
   StepKind,
 } from '../../../core/api/types';
+import { defaultStepAgentKey } from './agent-choice';
 import { PREPARE_ONLY_KEY } from './step-session';
 
 export interface StepModelUse {
@@ -30,21 +32,23 @@ function truthy(value: unknown): boolean {
 }
 
 /**
- * ADR 0056: the agent that runs a task step: the step's own (looked up among the project's agents,
- * a project agent before a global one of the same key), else the template's (palette). Null when
- * the step names an agent that is not among the loaded ones, or nothing is known.
+ * ADR 0056/0061: the agent that runs a task step: the step's own (looked up among the project's
+ * agents, a project agent before a global one of the same key), else the default for what the
+ * template needs (`opencode` for a coding agent, else `model-answer`). Null without a template
+ * (`task` null), or when the agent is not among the loaded ones.
  */
 export function effectiveStepAgent(
-  task: Pick<PaletteTask, 'agent'> | null | undefined,
+  task: Pick<PaletteTask, 'needsCodingAgent'> | null | undefined,
   stepAgentKey: string | null | undefined,
   agents: readonly Agent[] | null | undefined,
 ): AgentRef | null {
-  if (!stepAgentKey) return task?.agent ?? null;
-  const candidates = (agents ?? []).filter((a) => a.key === stepAgentKey);
+  if (!stepAgentKey && !task) return null;
+  const key = stepAgentKey || defaultStepAgentKey(task?.needsCodingAgent);
+  const candidates = (agents ?? []).filter((a) => a.key === key);
   const a = candidates.find((x) => x.scope?.type === 'PROJECT') ?? candidates[0];
   return a
     ? {
-        key: stepAgentKey,
+        key,
         name: a.name,
         harness: a.harness ?? null,
         modelProfileId: a.modelProfileId ?? null,

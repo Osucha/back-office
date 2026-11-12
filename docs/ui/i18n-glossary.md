@@ -37,12 +37,14 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | access (agent) | dostęp | ADR 0060 agent field and column "Dostęp" (Access): "Pełny" (Full) / "Tylko odczyt" (Read only) / "Tylko te ścieżki" (Only these paths), list chip "Tylko {paths}"; "Ścieżki, które agent może zmieniać" (Paths the agent may change); runner log line `[Back Office runner] reverted N change(s) ...` stays English |
 | accountable (role) | odpowiedzialny | "Odpowiedzialny: owner" |
 | Add missing default workflows (N) | Dodaj brakujące workflowy domyślne (N) | ADR 0059 button in the project's workflows list; "workflowy domyślne" = default workflows |
+| Add to agent | Dodaj do agenta | ADR 0061 button in "Agenci w tym workflowie" for a missing required skill; for a global agent the confirmation "Skopiować {agent} do tego projektu?" (Copy {agent} into this project?), button "Skopiuj i dodaj" (Copy and add); message "Dodano umiejętność {skill} do agenta {agent}" |
 | agent | agent (pl. agenci) | "agent pracuje"; library entry (ADR 0056, 0057): page "Agenci", "Utwórz agenta", "Zapisz agenta", step setting "Agent"; page subtitle „Agent to ten, kto pracuje, i to, jak pracuje: harness, model, instrukcje, reguły i umiejętności. Szablon zadania mówi, co zrobić; krok workflow łączy jedno z drugim.” Built-in agent names (Analyst, Reviewer) are data and stay English |
 | agent home | dom agenta | ADR 0060; manual only: the folder `/workspace/.agents/<agent key>/` of an agent in the run directory; on first use "dom agenta (agent home)" |
 | agent insights | wskaźniki agentów | ADR 0059 route title "Wskaźniki agentów"; page title "Agenci: koszt i skuteczność" (Agents: cost and effectiveness); Insights switcher "Dostarczanie / Agenci" (Delivery / Agents); sections "Według agenta i modelu" (Per agent and model), "Według szablonu" (Per template); palette "Porównaj agentów" (Compare agents) |
 | agent job | zadanie agenta (pl. zadania agentów) | runner fleet |
 | agent questions | pytania agenta | ADR 0060: step settings "Agent może zadawać pytania" (Agent may ask questions), "Rundy pytań" (Question rounds); inbox panel "Agent pyta" (The agent asks), "Dlaczego:" (Why:), buttons "Odpowiedz i kontynuuj" (Answer and continue) / "Anuluj krok" (Cancel the step), "Runda 1 z 2" (Round 1 of 2); turn card and notification "Agent ma pytania" (The agent has questions), "Odpowiedz na pytania" (Answer the questions), "Zobacz pytania" (View the questions); baton "czeka na Twoje odpowiedzi" (waiting for your answers); the prompt section "Answers of the owner" stays English |
 | agent session | sesja agenta | ADR 0057/0060 step setting "Sesja agenta": "Własna (powtórzenia kontynuują)" (Own (repeats continue)) / "Nowa za każdym razem" (New each time) / "Kontynuuj sesję kroku …" (Continue the session of step …), "Wybierz krok" (Pick the step); "Nowa sesja" (New session) is gone |
+| agents in this workflow | agenci w tym workflowie | ADR 0061 designer toolbar button and panel title "Agenci w tym workflowie" (Agents in this workflow), badge "{count} problem / problemy / problemów"; intro "Reguły, umiejętności i uwagi dla każdego agenta"; rows "Kroki" (Steps), "Reguły" (Rules), "Umiejętności" (Skills), "Wymagane umiejętności" (Required skills), "brak" (none); scope "Globalny" / "Ten projekt" (Global / This project); empty "Ten workflow nie ma jeszcze kroków z zadaniami."; see also audit finding, coherence check |
 | alert (budget) | alert | "alert budżetu", "Alert przy (%)" |
 | allowed projects (connection) | dozwolone projekty | field label "Dozwolone projekty" (Jira project keys a connection may touch); not the network allowlist |
 | allowlist (network) | lista dozwolonych hostów | "Dozwolone hosty" |
@@ -50,6 +52,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | API token (Jira) | token API | connection field "Token API"; "klasyczny token API" (classic API token); "token API z zakresami" (scoped API token, ADR 0035), "Zakresy tokenu", "Identyfikator chmury witryny" (cloud id) |
 | act as (Jira node) | działaj jako | designer "Działaj jako": "Połączenie systemowe projektu", "Wskazane połączenie", "Osoba, która zatwierdza zapis" / "Osoba, która rozpoczyna uruchomienie" (ADR 0035) |
 | action (node kind) | akcja (pl. akcje) | ADR 0056: palette group "Akcje"; Fetch issue / Comment on issue / Transition issue / Start workflow / Project digest = "Pobierz zgłoszenie" / "Skomentuj zgłoszenie" / "Zmień status zgłoszenia" / "Uruchom workflow" / "Podsumowanie projektu" |
+| any agent | dowolny agent | ADR 0061: what a template needs when it does not need a coding agent; tag and templates filter option "Dowolny agent" (Any agent), filter placeholder "Dowolny rodzaj agenta" (Any kind of agent), aria label "Filtruj według agenta, którego wymaga szablon"; see needs a coding agent |
 | approval before write (Jira) | zatwierdzenie przed zapisem | ADR 0033; designer section "Zatwierdzenie przed zapisem w Jirze" (Approval before writing to Jira); values **Wymagane** / **Niewymagane** (Required / Not required); "Kto zatwierdza" (Who approves) |
 | approve / approved | zatwierdź / zatwierdzone | gate decision |
 | approver | zatwierdzający | "u zatwierdzającego" (baton) |
@@ -57,6 +60,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | assign (a step) / assigned to / assignee | przypisz / przypisane do / osoba przypisana | run-time assignment of a waiting gate (ADR 0028): "Przypisz…", "Przypisane do: Ann", "Przypisane do Ciebie przez …"; "Kto rozstrzyga ten krok" (Who decides this step) |
 | attempt | próba | "próba 2" |
 | attestation | atestacja | provenance |
+| audit finding (agents in this workflow) | uwaga (pl. uwagi) | ADR 0061 finding kinds: "Brakująca umiejętność" (Missing skill), "Wymaga agenta kodującego" (Needs a coding agent), "Agent tylko do odczytu w kroku z push" (Read-only agent on a pushing step), "Nieznana reguła" (Unknown rule), "Nieznana umiejętność" (Unknown skill), "Nieznany agent" (Unknown agent), "Dwie umiejętności o tej samej nazwie" (Two skills with the same name); load error "Nie udało się sprawdzić agentów tego workflowu."; the server's message under the title stays English |
 | audit log | dziennik audytu | |
 | automatic (connection pick) | automatycznie | designer picker "Automatycznie (zasada najmniejszych uprawnień)" = no pinned connection |
 | baton | pałeczka | only where the UI says baton; the holder = "posiadacz pałeczki" |
@@ -83,8 +87,10 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | CI entrypoint | punkt wejścia CI | |
 | CI snippet | fragment GitLab CI | project CI tab |
 | CI token | token CI | |
+| coding agent | agent kodujący | ADR 0056/0061: an agent with a harness (OpenCode, Claude Code); palette tag "agent kodujący" (coding agent); step warning "Szablon wymaga agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu." |
 | coding harness | agent programistyczny | OpenCode / Claude Code; the benchmark form no longer has it (ADR 0059: the candidate's agent brings its harness) |
 | coding job (evaluation task kind) | zadanie programistyczne | vs "prompt" |
+| coherence check | sprawdzenie spójności | ADR 0061 button "Sprawdź spójność" (Check coherence); confirmation "Sprawdzić spójność agenta {agent}?"; finding severities "Sprzeczność" (Contradiction), "Niejasność" (Ambiguity), "Powtórzenie" (Redundancy); "Propozycja:" (Suggestion:); "Nie znaleziono sprzeczności." (No contradictions found.); errors "Nie ustawiono modelu dla odpowiedzi modelu: …" (409), "Sprawdzenie nie powiodło się." |
 | command palette | paleta poleceń | |
 | Connection expiring (notification type) | Wygasające połączenie | desktop notification type (ADR 0030 amendment); the Your turn card says "Token Jiry wkrótce wygaśnie" / "Token Jiry wygasł" |
 | connection / Connections | połączenie (pl. połączenia) / Połączenia | credential registry (ADR 0030): page and tab "Połączenia", "Dodaj połączenie", "Połączenie Jira" (designer section), "połączenie platformy" / "połączenie projektu"; "Testuj połączenie" in Settings stays |
@@ -96,6 +102,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | cost per day | koszt dzienny | Costs chart |
 | create | utwórz | |
 | dashboard / Home | strona główna | the Home page |
+| Default: {agent} (step agent) | Domyślnie: {agent} | ADR 0061 placeholder of the step's "Agent" field: the agent a step without one runs with (OpenCode when the template needs a coding agent, else Model answer); help "Kto wykonuje ten krok. Puste: OpenCode, gdy szablon wymaga agenta kodującego, w przeciwnym razie Odpowiedź modelu." Replaces "Domyślny z szablonu: {agent}" |
 | decide / decision | rozstrzygnij / decyzja | "Potrzebna decyzja", "bramka rozstrzygnięta" |
 | delete | usuń | |
 | delivery (insights) | dostarczanie | Insights switcher "Dostarczanie / Agenci" (Delivery / Agents) |
@@ -113,7 +120,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | egress | ruch wychodzący | sandbox |
 | egress denied | zablokowany ruch wychodzący | agent job panel |
 | entrypoint | punkt wejścia | |
-| environment (of the agent) | środowisko agenta | ADR 0057: template editor section "Środowisko agenta" (Environment of the agent), agents list column "Środowisko" (Environment); see also platform preamble |
+| environment (of the agent) | środowisko agenta | ADR 0057: agents list column "Środowisko" (Environment), manual section "Środowisko agenta"; the template editor section of that name was removed by ADR 0061 (templates have no agent); see also platform preamble |
 | ephemeral storage | pamięć tymczasowa (dysk) | sandbox policy resources |
 | evaluation | ewaluacja | |
 | excess permissions / over-privileged | uprawnienia nadmiarowe / ma więcej uprawnień niż potrzeba | connection test chips: granted / missing / excess = "przyznane" / "brakujące" / "nadmiarowe"; designer warning "ma więcej uprawnień niż potrzeba" |
@@ -133,6 +140,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | harness (agent) | harness | ADR 0056: agent field; OpenCode / Claude Code, empty = model answer |
 | hard stop | twarda blokada | budgets; never "twarde zatrzymanie" |
 | heartbeat | sygnał życia | "brak sygnału życia" |
+| help ("?" next to a label) | pomoc | ADR 0061: field descriptions sit behind a "?" tooltip; its accessible name "Pomoc" (Help) |
 | holder (baton) | posiadacz (pałeczki) | "Filtruj według posiadacza pałeczki" |
 | holder (runs column) | kto trzyma | runs table, as in the manual |
 | human gate (node kind) | bramka decyzyjna | node kind and status label; a gate in prose is "bramka" |
@@ -173,6 +181,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | merge request | merge request | not translated |
 | model answer | odpowiedź modelu | built-in agent "Odpowiedź modelu" (ADR 0056) |
 | model / model profile | model / profil modelu | |
+| needs a coding agent | wymaga agenta kodującego | ADR 0061 read-only tag of a template (templates list, editor header, step) and templates filter option "Wymaga agenta kodującego" (Needs a coding agent); editor hint "Jego konfiguracja (faza Spec Kit, push lub tylko przygotowanie) wymaga agenta kodującego. Agenta wybiera krok workflow."; palette tag "agent kodujący"; see any agent |
 | node | węzeł | workflow node |
 | not applicable (benchmark) | nie dotyczy | ADR 0059 leaderboard column "Nie dotyczy": tasks a candidate's agent cannot do |
 | operations | operacje | admin page |
@@ -216,7 +225,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | replace token | zastąp token | connection secret rotation: "Zastąp token" |
 | replica | replika | operations |
 | repository | repozytorium | |
-| required skills (template) | wymagane umiejętności | ADR 0060 template field "Wymagane umiejętności"; a missing one is shown under "Ostrzeżenia" (Warnings) |
+| required skills (template) | wymagane umiejętności | ADR 0060 template field "Wymagane umiejętności"; a missing one is shown under "Ostrzeżenia" (Warnings); ADR 0061: palette hover "Wymagane umiejętności: {skills}", the agents panel row and finding "Brakująca umiejętność", button "Dodaj do agenta" |
 | resolve / resolved preview | rozwiąż / podgląd rozwiązanego zadania | |
 | retry | ponów | "Ponów" button, "próba" for an attempt |
 | review (CI, gate) | przegląd | "Przejrzyj bramkę", "Otwórz przegląd" |

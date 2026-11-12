@@ -112,9 +112,7 @@ export function emptyTemplate(): TaskTemplateInput {
     // ADR 0058: built-ins are flat; the deprecated base-* templates are no longer the default parent
     extendsKey: null,
     category: null,
-    agentKey: null,
     scope: { type: 'GLOBAL', projectId: null },
-    modelProfileId: null,
     prompt: { system: '', user: '', mode: 'APPEND' },
     parameters: [],
     parameterValues: {},
@@ -138,9 +136,7 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     abstract: !!t.abstract,
     extendsKey: t.extendsKey ?? null,
     category: t.category ?? null,
-    agentKey: t.agentKey ?? null,
     scope: t.scope ?? { type: 'GLOBAL', projectId: null },
-    modelProfileId: t.modelProfileId ?? null,
     prompt: {
       system: t.prompt?.system ?? '',
       user: t.prompt?.user ?? '',
@@ -184,7 +180,6 @@ export function customizeForProject(
     key: t.key,
     name: t.name,
     extendsKey: t.key ?? null,
-    agentKey: null,
     prompt: { system: '', user: '', mode: 'APPEND' },
     scope: { type: 'PROJECT', projectId },
   };

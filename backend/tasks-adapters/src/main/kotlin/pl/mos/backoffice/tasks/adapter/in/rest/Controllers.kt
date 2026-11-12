@@ -20,6 +20,7 @@ import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 import pl.mos.backoffice.tasks.domain.model.AgentId
 import pl.mos.backoffice.tasks.domain.model.RuleId
 import pl.mos.backoffice.tasks.domain.model.SkillId
+import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
 import java.net.URI
 import java.util.UUID
@@ -33,13 +34,16 @@ class TaskTemplateController(private val templates: ManageTaskTemplates) {
     fun list(
         @RequestParam(required = false) projectId: UUID?,
         @RequestParam(required = false, defaultValue = "true") includeAbstract: Boolean,
-    ): List<TaskTemplateDto> = templates.list(projectId, includeAbstract).map(RestMappers::template)
+    ): List<TaskTemplateDto> = templates.list(projectId, includeAbstract).map(::dto)
 
     @PostMapping
     fun create(@Valid @RequestBody body: TaskTemplateInputDto): ResponseEntity<TaskTemplateDto> {
         val created = templates.create(RestMappers.templateContent(body))
-        return ResponseEntity.created(URI.create("/api/v1/task-templates/${created.id}")).body(RestMappers.template(created))
+        return ResponseEntity.created(URI.create("/api/v1/task-templates/${created.id}")).body(dto(created))
     }
+
+    /** ADR 0061: the template with its derived, read-only `needsCodingAgent`. */
+    private fun dto(t: TaskTemplate): TaskTemplateDto = RestMappers.template(t, templates.needsCodingAgent(t))
 
     /** Declared before `/{templateId}` so the literal segment wins over the UUID path variable. */
     @GetMapping("/resolve/{key}")
@@ -52,11 +56,11 @@ class TaskTemplateController(private val templates: ManageTaskTemplates) {
         RestMappers.resolved(templates.resolveStep(key, projectId, RestMappers.overrides(body)))
 
     @GetMapping("/{templateId}")
-    fun get(@PathVariable templateId: UUID): TaskTemplateDto = RestMappers.template(templates.get(TaskTemplateId(templateId)))
+    fun get(@PathVariable templateId: UUID): TaskTemplateDto = dto(templates.get(TaskTemplateId(templateId)))
 
     @PutMapping("/{templateId}")
     fun update(@PathVariable templateId: UUID, @Valid @RequestBody body: TaskTemplateInputDto): TaskTemplateDto =
-        RestMappers.template(templates.update(TaskTemplateId(templateId), RestMappers.templateContent(body)))
+        dto(templates.update(TaskTemplateId(templateId), RestMappers.templateContent(body)))
 
     @DeleteMapping("/{templateId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

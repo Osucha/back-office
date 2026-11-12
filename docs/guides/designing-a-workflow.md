@@ -25,8 +25,8 @@ A workflow is a directed graph edited on a canvas (`WorkflowDefinition`, see
 
 `GET /api/v1/workflows/palette?projectId=` returns everything the designer needs: the control nodes
 with a JSON Schema per section, the actions (`actions`: config schema, defaults, run inputs, ports and required connection capabilities of
-each, ADR 0056), the concrete task templates of the Task Library (grouped by category, with their agent, ports and
-the config schema for that agent) and the state fields usable in expressions.
+each, ADR 0056), the concrete task templates of the Task Library (grouped by category, with `needsCodingAgent`, `requiresSkills`,
+ports and config schema; ADR 0061: no agent, the step chooses it) and the state fields usable in expressions.
 
 ## Node kinds and ports
 
@@ -61,14 +61,14 @@ works and how) and the values of the template's parameters (ADR 0057, 0058):
 
 | Override | Effect |
 |---|---|
-| `agentKey` | the agent that runs this node instead of the template's (`model-answer`, `analyst`, `reviewer`, `opencode`, `claude-code` or a library agent; ADR 0056). With it come its instructions, rules, skills, MCP servers and access (ADR 0060) |
+| `agentKey` | the agent that runs this node (`model-answer`, `analyst`, `reviewer`, `opencode`, `claude-code` or a library agent; ADR 0056). Templates name no agent (ADR 0061): the designer pre-selects one when a template is dropped, and empty means `opencode` when the template needs a coding agent, else `model-answer`. With it come its instructions, rules, skills, MCP servers and access (ADR 0060) |
 | `parameters` | values of the template's parameters (`{{params.<name>}}`) for this node; empty = the nearest template's value, else the default; a required parameter without a value is a validation error (ADR 0058) |
-| `modelProfileId` | model for this node (else the agent's, else the template's, else the defaults: project, starting user, platform; review tasks use the project's review default) |
+| `modelProfileId` | model for this node (else the agent's, else the defaults: project, starting user, platform; review tasks use the project's review default; templates have no model since ADR 0061) |
 | `systemPromptAppend`, `promptAppend`, `promptReplace` | extend or replace the resolved prompts (`promptReplace` wins over a parameterised prompt) |
 | `config` | deep-merged into the template config: `phase`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (coding agent steps; see [Repositories of a step](#step-repositories)), `directory`, `session`, `continueSession` ([Run directory and agent sessions](#agent-sessions)); `allowQuestions`, `maxQuestionRounds` (agent steps, [Agent questions](#agent-questions)); `maxInputChars` (model answer steps). Since ADR 0060 a node no longer adds or removes skills (`addSkills` / `removeSkills` of stored workflows are ignored) and `workspace` / `sessionRole` are only read compatibly. The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
 
-The step's agent decides what runs where (ADR 0056; the agent is the step's `agentKey`, else the template's, else
-`model-answer`) and brings the step's environment (ADR 0057): the platform preamble, the agent's instructions, the
+The step's agent decides what runs where (ADR 0056; the agent is the step's `agentKey`, else `opencode` when the
+template needs a coding agent, else `model-answer`, ADR 0061) and brings the step's environment (ADR 0057): the platform preamble, the agent's instructions, the
 project constitution and the rules. A **model answer** step is one structured model call in Back Office (the
 environment opens the system prompt, skills go into a `<skills>` section after the template's system prompt,
 `outputSchema` asks for JSON, `confidenceField` feeds `confidence`, every `produces` name becomes an artefact; a task
@@ -84,6 +84,21 @@ final answer is the `result` artefact). With an `outputSchema` a coding agent wr
 actions `FETCH_ISSUE`, `COMMENT_ISSUE` and `TRANSITION_ISSUE` call Jira; `START_WORKFLOW` and `PROJECT_DIGEST` are
 Back Office operations. A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`,
 `transition-issue`, `start-workflow`, `project-digest`) is read as that action.
+
+<a id="agent-audit"></a>**Agents in this workflow (ADR 0061).** Choosing agents is part of designing the workflow. When
+you drop a template, the designer pre-selects an agent of the right kind (a coding agent for a template tagged
+"Needs a coding agent", i.e. Spec Kit `phase`, `push: true` or `prepareOnly`; otherwise model answer agents first)
+that covers most of the template's `requiresSkills`; ties go to the platform default of the kind (`opencode` /
+`model-answer`), then built-in, then name. Before a run, open **Agents in this workflow** in the header (its badge
+counts the problems): `POST /workflows/agent-audit` lists per agent its steps, rules, skills, the required skills and
+the missing ones, and findings (missing skill, a coding-agent template on a model answer agent, a read-only agent on
+a pushing step, unknown rule/skill/agent, two skills with the same name). **Add to agent** adds a missing skill once
+(a global agent is copied into the project with the same key first). **Check coherence** asks the platform default
+model to read one agent's whole environment, with the repository's `AGENTS.md` / `CLAUDE.md` when readable, and
+list contradictions, ambiguities and redundancies with quotes; it costs one model call and answers `409` without a
+default model. When sources still disagree at run time, the preamble's order applies: constitution, rules (repository
+`AGENTS.md` / `CLAUDE.md`, project, agent), skills, task; otherwise the agent asks. Workflows stored before ADR 0061
+had the agent and model of their templates written into their steps by the upgrade (V307), so they run as before.
 
 Templates are Mustache-like: `{{issue.summary}}`, `{{artifacts.spec}}` (artefact content),
 `{{feedback}}` (the revision comments for this step), `{{project.constitution}}`, `{{mr.url}}`, `{{review.score}}`,

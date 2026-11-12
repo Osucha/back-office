@@ -140,13 +140,14 @@ class TaskLibraryRestIntegrationTest {
         val key = "tpl-$suffix"
         val created = post(
             "/api/v1/task-templates",
-            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","agentKey":"opencode","prompt":{"system":"more","mode":"APPEND"},"config":{"depth":{"max":3}},"parameters":[{"name":"depth","label":"Depth","type":"NUMBER","required":true,"default":2}],"parameterValues":{"depth":3},"tags":["t"]"""),
+            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","agentKey":"ignored","modelProfileId":"${UUID.randomUUID()}","prompt":{"system":"more","mode":"APPEND"},"config":{"depth":{"max":3},"push":true},"parameters":[{"name":"depth","label":"Depth","type":"NUMBER","required":true,"default":2}],"parameterValues":{"depth":3},"tags":["t"]"""),
         ).exchange()
         assertThat(created).hasStatus(HttpStatus.CREATED)
         val id = idOf(created.response.contentAsString)
         assertThat(created).bodyJson().satisfies(
             { assertThat(it).extractingPath("$.version").isEqualTo(1) },
-            { assertThat(it).extractingPath("$.agentKey").isEqualTo("opencode") },
+            { assertThat(it).extractingPath("$").asMap().describedAs("ADR 0061: templates name no agent and no model").doesNotContainKeys("agentKey", "modelProfileId") },
+            { assertThat(it).extractingPath("$.needsCodingAgent").isEqualTo(true) },
             { assertThat(it).extractingPath("$.extendsKey").isEqualTo(BuiltInLibrary.BASE_AGENT) },
             { assertThat(it).extractingPath("$.scope.type").isEqualTo("GLOBAL") },
             { assertThat(it).extractingPath("$.config.depth.max").isEqualTo(3) },
@@ -157,7 +158,6 @@ class TaskLibraryRestIntegrationTest {
         assertThat(post("/api/v1/task-templates", templateBody("badname-$suffix", extra = ""","parameters":[{"name":"1x","label":"x","type":"TEXT","required":false}]"""))).hasStatus(HttpStatus.BAD_REQUEST)
 
         assertThat(post("/api/v1/task-templates", templateBody(key))).hasStatus(HttpStatus.CONFLICT)
-        assertThat(post("/api/v1/task-templates", templateBody("ghost-agent-$suffix", extra = ""","agentKey":"ghost-$suffix""""))).hasStatus(HttpStatus.BAD_REQUEST)
         assertThat(post("/api/v1/task-templates", templateBody("orphan-$suffix", extra = ""","extendsKey":"ghost-$suffix""""))).hasStatus(HttpStatus.BAD_REQUEST)
         assertThat(post("/api/v1/task-templates", templateBody("schema-$suffix", extra = ""","outputSchema":"{oops""""))).hasStatus(HttpStatus.BAD_REQUEST)
         assertThat(post("/api/v1/task-templates", templateBody("noproj-$suffix", scope = """{"type":"PROJECT"}""", extra = """"""))).hasStatus(HttpStatus.BAD_REQUEST)
@@ -165,6 +165,7 @@ class TaskLibraryRestIntegrationTest {
         assertThat(put("/api/v1/task-templates/$id", templateBody(key, extra = ""","description":"updated""""))).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.version").isEqualTo(2) },
             { assertThat(it).extractingPath("$.description").isEqualTo("updated") },
+            { assertThat(it).extractingPath("$.needsCodingAgent").isEqualTo(false) },
         )
         assertThat(mvc.get().uri("/api/v1/task-templates/$id")).hasStatusOk().bodyJson().extractingPath("$.version").isEqualTo(2)
         assertThat(mvc.get().uri("/api/v1/task-templates").param("includeAbstract", "false")).hasStatusOk().bodyJson()
@@ -183,8 +184,8 @@ class TaskLibraryRestIntegrationTest {
     fun `resolve returns the merged built-in implementer with lineage, config and skills`() {
         assertThat(mvc.get().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.IMPLEMENT_CLAUDE_CODE}")).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.lineage").asArray().containsExactly(BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_OPENCODE) },
-            { assertThat(it).extractingPath("$.agent.key").isEqualTo("claude-code") },
-            { assertThat(it).extractingPath("$.agent.harness").isEqualTo("CLAUDE_CODE") },
+            { assertThat(it).extractingPath("$.agent.key").describedAs("ADR 0061: no step agent, coding work").isEqualTo("opencode") },
+            { assertThat(it).extractingPath("$.agent.harness").isEqualTo("OPENCODE") },
             { assertThat(it).extractingPath("$.config").asMap().doesNotContainKey("agent") },
             { assertThat(it).extractingPath("$.config.push").isEqualTo(true) },
             { assertThat(it).extractingPath("$.config.mergeRequestTitleTemplate").isEqualTo("{{issue.key}}: {{issue.summary}}") },
@@ -262,12 +263,12 @@ class TaskLibraryRestIntegrationTest {
             templateBody(
                 BuiltInLibrary.CODE_REVIEW,
                 scope = """{"type":"PROJECT","projectId":"$projectId"}""",
-                extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","category":"REVIEW","consumes":["diff"],"produces":["review"],"prompt":{"user":"Review strictly"},"agentKey":"strict-$suffix","config":{"maxChunkLines":500}""",
+                extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","category":"REVIEW","consumes":["diff"],"produces":["review"],"prompt":{"user":"Review strictly"},"config":{"maxChunkLines":500}""",
             ),
         ).exchange()
         assertThat(shadow).hasStatus(HttpStatus.CREATED)
 
-        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.CODE_REVIEW}").param("projectId", projectId.toString())).hasStatusOk().bodyJson().satisfies(
+        assertThat(post("/api/v1/task-templates/resolve/${BuiltInLibrary.CODE_REVIEW}?projectId=$projectId", """{"agentKey":"strict-$suffix"}""")).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.name").isEqualTo("Name ${BuiltInLibrary.CODE_REVIEW}") },
             { assertThat(it).extractingPath("$.lineage").asArray().containsExactly(BuiltInLibrary.CODE_REVIEW, BuiltInLibrary.BASE_AGENT) },
             { assertThat(it).extractingPath("$.prompt.user").isEqualTo("Review strictly") },
@@ -276,8 +277,9 @@ class TaskLibraryRestIntegrationTest {
             { assertThat(it).extractingPath("$.config.maxChunkLines").isEqualTo(500) },
             { assertThat(it).extractingPath("$.check.ok").isEqualTo(true) },
         )
-        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.CODE_REVIEW}")).hasStatusOk().bodyJson().satisfies(
+        assertThat(post("/api/v1/task-templates/resolve/${BuiltInLibrary.CODE_REVIEW}", """{"agentKey":"${BuiltInLibrary.REVIEWER}"}""")).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.name").isEqualTo("Code review") },
+            { assertThat(it).extractingPath("$.check.warnings").asArray().describedAs("the reviewer has the skill the review requires").isEmpty() },
             { assertThat(it).extractingPath("$.skills[*].key").asArray().containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST, BuiltInLibrary.DEFINITION_OF_READY_DONE) },
             { assertThat(it).extractingPath("$.agent.key").isEqualTo(BuiltInLibrary.REVIEWER) },
         )
@@ -320,9 +322,9 @@ class TaskLibraryRestIntegrationTest {
         assertThat(plain).bodyJson().extractingPath("$.access.mode").isEqualTo("FULL")
 
         // a template that requires a skill the agent lacks: a warning, still executable
-        val needs = post("/api/v1/task-templates", templateBody("needs-$suffix", extra = ""","agentKey":"docs-$suffix","requiresSkills":["$skill"],"config":{"push":false}""")).exchange()
+        val needs = post("/api/v1/task-templates", templateBody("needs-$suffix", extra = ""","requiresSkills":["$skill"],"config":{"push":false}""")).exchange()
         assertThat(needs).hasStatus(HttpStatus.CREATED).bodyJson().extractingPath("$.requiresSkills[0]").isEqualTo(skill)
-        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/needs-$suffix")).hasStatusOk().bodyJson().satisfies(
+        assertThat(post("/api/v1/task-templates/resolve/needs-$suffix", """{"agentKey":"docs-$suffix"}""")).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.check.ok").isEqualTo(true) },
             { assertThat(it).extractingPath("$.check.warnings[0]").asString().contains("lacks skill $skill") },
         )
@@ -330,7 +332,7 @@ class TaskLibraryRestIntegrationTest {
 
         // the project's read-only copy on a step that pushes is a problem
         assertThat(
-            post("/api/v1/task-templates/resolve/needs-$suffix?projectId=$projectId", """{"config":{"push":true}}"""),
+            post("/api/v1/task-templates/resolve/needs-$suffix?projectId=$projectId", """{"agentKey":"docs-$suffix","config":{"push":true}}"""),
         ).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.check.ok").isEqualTo(false) },
             { assertThat(it).extractingPath("$.check.problems[0]").asString().contains("READ_ONLY") },
@@ -397,7 +399,7 @@ class TaskLibraryRestIntegrationTest {
     }
 
     @Test
-    fun `agents support create, read, update, list and delete with a 409 while a template names them`() {
+    fun `agents support create, read, update, list and delete, and a step names them`() {
         val projectId = UUID.randomUUID()
         val scope = """{"type":"PROJECT","projectId":"$projectId"}"""
         val model = UUID.randomUUID()
@@ -425,15 +427,14 @@ class TaskLibraryRestIntegrationTest {
             .extractingPath("$[*].key").asArray().contains(key, "model-answer")
         assertThat(mvc.get().uri("/api/v1/agents")).hasStatusOk().bodyJson().extractingPath("$[*].key").asArray().doesNotContain(key)
 
-        val template = post("/api/v1/task-templates", templateBody("agent-user-$suffix", scope = scope, extra = ""","agentKey":"$key"""")).exchange()
+        val template = post("/api/v1/task-templates", templateBody("agent-user-$suffix", scope = scope, extra = "")).exchange()
         assertThat(template).hasStatus(HttpStatus.CREATED)
-        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/agent-user-$suffix").param("projectId", projectId.toString())).hasStatusOk().bodyJson().satisfies(
+        assertThat(post("/api/v1/task-templates/resolve/agent-user-$suffix?projectId=$projectId", """{"agentKey":"$key"}""")).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.agent.key").isEqualTo(key) },
             { assertThat(it).extractingPath("$.agent.harness").isEqualTo("CLAUDE_CODE") },
         )
-        assertThat(mvc.delete().uri("/api/v1/agents/$id")).hasStatus(HttpStatus.CONFLICT)
         assertThat(mvc.delete().uri("/api/v1/task-templates/${idOf(template.response.contentAsString)}")).hasStatus(HttpStatus.NO_CONTENT)
-        assertThat(mvc.delete().uri("/api/v1/agents/$id")).hasStatus(HttpStatus.NO_CONTENT)
+        assertThat(mvc.delete().uri("/api/v1/agents/$id")).describedAs("ADR 0061: templates name no agent").hasStatus(HttpStatus.NO_CONTENT)
         assertThat(mvc.get().uri("/api/v1/agents/$id")).hasStatus(HttpStatus.NOT_FOUND)
         assertThat(audit.entries.filter { it.entityId == id.toString() }.map { it.operation }).containsExactly("AGENT_CREATE", "AGENT_UPDATE", "AGENT_DELETE")
     }

@@ -16,6 +16,7 @@ import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
 import pl.mos.backoffice.projects.application.port.`in`.TaskConfigSchemas
+import pl.mos.backoffice.projects.application.port.`in`.WorkflowJson
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.TriggerSource
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
@@ -59,6 +60,13 @@ class WorkflowController(
     @GetMapping("/model-options")
     fun modelOptions(@RequestParam projectId: UUID, @RequestParam stepKind: StepKind, @RequestParam(required = false) harness: AgentHarness?): List<ModelOptionDto> =
         workflows.modelOptions(ProjectId(projectId), stepKind, harness).map(ModelOptionDto::of)
+
+    /** ADR 0061: the agents of the designer's draft, their environments, missing skills and findings. Changes nothing. */
+    @PostMapping("/agent-audit")
+    fun auditAgents(@RequestBody @Valid body: AgentAuditRequestDto): AgentAuditDto {
+        val projectId = body.projectId ?: throw ValidationException("required", "projectId")
+        return AgentAuditDto.of(workflows.auditAgents(ProjectId(projectId), body.nodes.map(WorkflowJson::toDomain)))
+    }
 
     /** ADR 0053: the effective run inputs of the workflow for the start dialog. */
     @GetMapping("/{workflowId}/run-inputs")

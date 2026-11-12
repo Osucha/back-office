@@ -33,7 +33,7 @@ data class AgentSnapshot(
         const val OPENCODE = "opencode"
         const val CLAUDE_CODE = "claude-code"
 
-        /** Used when no template in the lineage and no step names an agent and the library has none under [MODEL_ANSWER]. */
+        /** Used when the step names no agent and its work needs none (ADR 0061) and the library has none under [MODEL_ANSWER]. */
         val DEFAULT = AgentSnapshot(MODEL_ANSWER, "Model answer")
 
         /** Built-in agent key of a harness (the former config key `agent`). */
@@ -159,7 +159,7 @@ data class ResolvedParameter(val definition: TemplateParameter, val value: Any?,
  * inheritance chain has been merged.
  */
 data class TaskOverrides(
-    /** ADR 0056: the agent that runs this step instead of the template's. */
+    /** ADR 0061: the agent that runs this step; none = `opencode` when the work needs a coding agent, else the model answer. */
     val agentKey: String? = null,
     val modelProfileId: ModelProfileId? = null,
     val systemPromptAppend: String? = null,
@@ -181,9 +181,9 @@ data class TaskOverrides(
 data class ResolvedTask(
     val key: String,
     val name: String,
-    /** ADR 0056: the step's agent, else the nearest in the lineage, else the built-in model answer. */
+    /** ADR 0061: the step's agent, else `opencode` when the work needs a coding agent, else the built-in model answer. */
     val agent: AgentSnapshot,
-    /** ADR 0056: the step's model, else the agent's, else the template lineage's; null = the defaults (ModelResolver). */
+    /** ADR 0061: the step's model, else the agent's; null = the defaults (ModelResolver). */
     val modelProfileId: ModelProfileId?,
     val prompt: TaskPrompt,
     val skills: List<SkillSnapshot>,
@@ -219,7 +219,6 @@ data class TaskSummary(
     val key: String,
     val name: String,
     val description: String,
-    val agent: AgentSnapshot,
     val category: TemplateCategory?,
     val abstract: Boolean,
     val projectId: UUID?,
@@ -232,6 +231,44 @@ data class TaskSummary(
     val parameterValues: Map<String, Any?> = emptyMap(),
     /** ADR 0058: a required parameter has no value without the step (not a ready block). */
     val needsParameters: Boolean = false,
+    /** ADR 0061: the merged config needs a coding agent (Spec Kit phase, push, prepareOnly); else any agent. */
+    val needsCodingAgent: Boolean = false,
+    /** ADR 0061: skills the work needs, merged over the lineage. */
+    val requiresSkills: List<String> = emptyList(),
+)
+
+/** ADR 0061: a skill the work needs; [name] is null when the library has no skill with the key. */
+data class RequiredSkill(val key: String, val name: String?)
+
+/**
+ * ADR 0061: what the agent audit needs of one task step: the agent it runs with ([agentKey], the step's or the default
+ * of decision 2), the skills its template lineage requires, whether the work needs a coding agent and whether a coding
+ * agent would push.
+ */
+data class StepNeeds(
+    val agentKey: String,
+    val requiredSkills: List<RequiredSkill>,
+    val needsCodingAgent: Boolean,
+    val pushes: Boolean,
+)
+
+/** ADR 0061: a skill of an agent with its description (the coherence check reads names and descriptions). */
+data class SkillInfo(val key: String, val name: String, val description: String)
+
+/**
+ * ADR 0061: an agent as the audit and the coherence check see it: its library identity ([id] null for the implicit
+ * model answer without a library entry; [projectId] null for a global agent), the resolved rules (automatic ones first)
+ * and skills, and the keys it names that the library no longer has.
+ */
+data class AgentProfile(
+    val id: UUID?,
+    val agent: AgentSnapshot,
+    val projectId: UUID?,
+    val builtIn: Boolean,
+    val rules: List<RuleSnapshot>,
+    val skills: List<SkillInfo>,
+    val unknownRules: List<String> = emptyList(),
+    val unknownSkills: List<String> = emptyList(),
 )
 
 /**
@@ -264,4 +301,16 @@ interface TaskCatalog {
      * agent is unknown.
      */
     fun agentEnvironment(key: String, projectId: UUID?): AgentEnvironmentSnapshot? = null
+
+    /**
+     * ADR 0061: what the agent audit needs of a step with template [key] and [overrides]; null when the template is
+     * unknown or its chain cannot be resolved.
+     */
+    fun stepNeeds(key: String, projectId: UUID?, overrides: TaskOverrides = TaskOverrides.NONE): StepNeeds? = null
+
+    /** ADR 0061: the agent [key] a project sees with its environment; null when unknown. */
+    fun agentProfile(key: String, projectId: UUID?): AgentProfile? = null
+
+    /** ADR 0061: the agent with library id [id] (any scope); its environment as seen from [projectId] or its own scope. */
+    fun agentProfileById(id: UUID, projectId: UUID?): AgentProfile? = null
 }

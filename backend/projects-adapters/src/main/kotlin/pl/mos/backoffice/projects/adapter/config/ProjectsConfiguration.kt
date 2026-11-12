@@ -152,6 +152,14 @@ class ProjectsConfiguration {
 
     @Bean fun modelResolver(catalog: ModelCatalog, defaults: ObjectProvider<ModelDefaults>) = ModelResolver(catalog, defaults.getIfAvailable())
 
+    /** ADR 0061: the coherence check of an agent's environment by the platform default model. */
+    @Bean
+    fun checkAgentCoherence(
+        taskCatalog: TaskCatalog, projects: ProjectRepository, llmGateway: LlmGateway, models: ModelCatalog,
+        defaults: ObjectProvider<ModelDefaults>, gate: AuthorizationGate, audit: AuditPort,
+    ): pl.mos.backoffice.projects.application.port.`in`.CheckAgentCoherence =
+        pl.mos.backoffice.projects.application.service.AgentCoherenceService(taskCatalog, projects, llmGateway, models, defaults.getIfAvailable(), gate, audit)
+
     @Bean fun tokenHasher(): TokenHasher = Sha256TokenHasher()
 
     // ---- security contributions

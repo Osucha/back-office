@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NzCardModule } from 'ng-zorro-antd/card';
@@ -15,15 +16,21 @@ import { purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
  */
 @Component({
   selector: 'app-project-sources-panel',
-  imports: [RouterLink, NzCardModule, NzTableModule, SortHeaderDirective],
+  imports: [RouterLink, NzCardModule, NzTableModule, SortHeaderDirective, HelpTipComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nz-card nzTitle="Library sources" i18n-nzTitle="@@projects.sources.library.title">
-      <p class="muted" i18n="@@projects.sources.library.intro">
-        Shared by all projects: standards, templates and reference material. Steps attach them
-        read-only in the designer (section Repositories of a step); the job gets them in
-        /workspace/lib-&lt;key&gt;.
-      </p>
+    <nz-card [nzTitle]="sourcesTitle">
+      <ng-template #sourcesTitle
+        ><span i18n="@@projects.sources.library.title">Library sources</span>
+        <bo-help-tip [text]="sourcesHelp" style="margin-left: 6px"
+      /></ng-template>
+      <ng-template #sourcesHelp
+        ><span i18n="@@projects.sources.library.intro">
+          Shared by all projects: standards, templates and reference material. Steps attach them
+          read-only in the designer (section Repositories of a step); the job gets them in
+          /workspace/lib-&lt;key&gt;.
+        </span></ng-template
+      >
       @if (!loaded()) {
         <p class="muted" i18n="@@projects.sources.library.loading">Loading…</p>
       } @else if (!items().length) {

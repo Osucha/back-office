@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { Agent, TaskTemplate, TaskTemplateInput } from '../../../core/api/types';
+import type { TaskTemplate, TaskTemplateInput } from '../../../core/api/types';
 import { customizeForProject } from '../data/resolved-preview';
 import { TemplateEditorDrawerComponent } from './template-editor-drawer.component';
 
@@ -11,7 +11,6 @@ const writer: TaskTemplate = {
   name: 'Writer',
   abstract: false,
   extendsKey: 'base-agent',
-  agentKey: 'model-answer',
   scope: { type: 'GLOBAL' },
   builtIn: false,
   version: 1,
@@ -102,20 +101,8 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     ]);
   });
 
-  const agents: Agent[] = [
-    { key: 'model-answer', name: 'Model answer', scope: { type: 'GLOBAL' }, harness: null },
-    { key: 'opencode', name: 'OpenCode', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
-    {
-      key: 'p2-coder',
-      name: 'P2 coder',
-      scope: { type: 'PROJECT', projectId: 'p2' },
-      harness: 'CLAUDE_CODE',
-    },
-  ];
-
-  it('renders the configuration from the schema of the inherited agent kind (ADR 0056)', async () => {
+  it('renders the configuration with the keys of both kinds of steps (ADR 0061)', async () => {
     const { fixture, drawer } = create(null);
-    fixture.componentRef.setInput('agents', agents);
     http.expectOne('/api/v1/workflows/task-config-schemas').flush({
       modelAnswer: { type: 'object', properties: { temperature: { type: 'number' } } },
       codingAgent: {
@@ -124,25 +111,13 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
         properties: { phase: { type: 'string' }, push: { type: 'boolean' } },
       },
     });
-    fixture.componentRef.setInput('templates', [
-      baseAgent,
-      { ...writer, key: 'coder', agentKey: 'opencode', extendsKey: 'base-agent' },
-    ]);
-    drawer.patch({ key: 'my-coder', name: 'My coder', agentKey: null, extendsKey: 'coder' });
+    drawer.patch({ name: 'My task' });
     fixture.detectChanges();
 
-    expect(drawer.effectiveAgent()?.key).toBe('opencode');
     expect(drawer.configSchema()?.properties?.['phase']).toBeTruthy();
-    expect(drawer.configSchema()?.required).toBeUndefined();
-    expect(drawer.agentPlaceholder()).toBe('Inherited: OpenCode');
-    expect(drawer.agentHelp()).toContain('a workflow step can choose another agent');
-    expect(drawer.agentHelp()).toContain('sandbox');
-    expect(document.querySelector('[data-config-form]')).not.toBeNull();
-
-    // a model answer gets the model answer schema
-    drawer.patch({ agentKey: 'model-answer' });
     expect(drawer.configSchema()?.properties?.['temperature']).toBeTruthy();
-    drawer.patch({ agentKey: null });
+    expect(drawer.configSchema()?.required).toBeUndefined();
+    expect(document.querySelector('[data-config-form]')).not.toBeNull();
 
     drawer.onConfigForm({ phase: 'plan', extra: 1 });
     expect(drawer.draft().config).toEqual({ phase: 'plan', extra: 1 });
@@ -157,24 +132,44 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     expect(drawer.configRaw()).toBe(true);
   });
 
-  it('offers the agents of the template scope and sends the chosen agent key (ADR 0056)', () => {
+  it('shows read-only whether the template needs a coding agent and sends no agent (ADR 0061)', () => {
     const { fixture, drawer } = create(null);
-    fixture.componentRef.setInput('agents', agents);
-    fixture.detectChanges();
+    fixture.componentRef.setInput('templates', [
+      baseAgent,
+      { ...writer, key: 'coder', extendsKey: 'base-agent', config: { push: true } },
+    ]);
     let payload: TaskTemplateInput | null = null;
     drawer.saved.subscribe((p) => (payload = p));
+    drawer.patch({ name: 'Brief' });
+    fixture.detectChanges();
+    expect(drawer.needsCodingAgent()).toBe(false);
+    expect(document.querySelector('[data-needs-coding-agent]')).toBeNull();
 
-    expect(drawer.draft().agentKey).toBeNull();
-    expect(drawer.agentOptions().map((a) => a.key)).toEqual(['model-answer', 'opencode']);
-    drawer.setScope('PROJECT');
-    drawer.patch({ scope: { type: 'PROJECT', projectId: 'p2' } });
-    expect(drawer.agentOptions().map((a) => a.key)).toContain('p2-coder');
-    drawer.patch({ name: 'Brief', agentKey: 'p2-coder' });
-    expect(drawer.effectiveAgent()?.harness).toBe('CLAUDE_CODE');
-    expect(drawer.missingAgentKey()).toBeNull();
+    // inherited from the parent's config
+    drawer.patch({ extendsKey: 'coder' });
+    fixture.detectChanges();
+    expect(drawer.needsCodingAgent()).toBe(true);
+    expect(document.querySelector('[data-needs-coding-agent]')?.textContent).toContain(
+      'Needs a coding agent',
+    );
+    // the own config deletes the key
+    drawer.patch({ config: { push: null } });
+    expect(drawer.needsCodingAgent()).toBe(false);
+    drawer.patch({ extendsKey: null, config: { phase: 'specify' } });
+    expect(drawer.needsCodingAgent()).toBe(true);
+
     drawer.submit();
-    expect(payload!.agentKey).toBe('p2-coder');
-    expect('executor' in payload!).toBe(false);
+    expect('agentKey' in payload!).toBe(false);
+    expect('modelProfileId' in payload!).toBe(false);
+    expect(document.querySelector('#tt-agent')).toBeNull();
+    expect(document.querySelector('#tt-model')).toBeNull();
+  });
+
+  it('takes the saved value while the configuration is unchanged (ADR 0061)', () => {
+    const { drawer } = create({ ...writer, needsCodingAgent: true });
+    expect(drawer.needsCodingAgent()).toBe(true);
+    drawer.patch({ config: { temperature: 0.1 } });
+    expect(drawer.needsCodingAgent()).toBe(false);
   });
 
   it('never sends a key on update and none on a plain create (ADR 0055)', () => {
@@ -219,50 +214,22 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     expect(payload!.scope).toEqual({ type: 'PROJECT', projectId: 'p1' });
   });
 
-  it('shows the environment of the agent read-only with the automatic rules (ADR 0057)', async () => {
+  it('names the inherited category and keeps descriptions behind a "?" (ADR 0061)', async () => {
     const { fixture, drawer } = create(writer);
-    fixture.componentRef.setInput('agents', [
-      {
-        key: 'model-answer',
-        name: 'Model answer',
-        scope: { type: 'GLOBAL' },
-        harness: null,
-        instructions: 'You answer briefly and cite the issue.',
-        rules: ['polish'],
-        skills: ['kotlin'],
-      },
-    ]);
-    fixture.componentRef.setInput('skills', [{ key: 'kotlin', name: 'Kotlin', content: '' }]);
-    fixture.componentRef.setInput('rules', [
-      { key: 'polish', name: 'Polish', automatic: false, content: '' },
-    ]);
     await new Promise((r) => setTimeout(r, 200));
     http
       .expectOne((r) => r.url === '/api/v1/task-templates/resolve/writer')
-      .flush({
-        key: 'writer',
-        lineage: ['base-agent', 'writer'],
-        category: 'REVIEW',
-        rules: [{ key: 'no-secrets', name: 'No secrets', automatic: true }],
-      });
+      .flush({ key: 'writer', lineage: ['base-agent', 'writer'], category: 'REVIEW' });
     fixture.detectChanges();
 
-    expect(drawer.automatic()).toEqual([{ key: 'no-secrets', name: 'No secrets' }]);
-    expect(drawer.agentEnvironment()).toEqual({
-      name: 'Model answer',
-      instructions: 'You answer briefly and cite the issue.',
-      rules: [{ key: 'polish', name: 'Polish' }],
-      skills: [{ key: 'kotlin', name: 'Kotlin' }],
-    });
-    const env = document.querySelector('[data-agent-environment]')?.textContent ?? '';
-    expect(env).toContain('No secrets');
-    expect(env).toContain('Polish');
-    expect(env).toContain('Kotlin');
-    expect(env).toContain('cite the issue');
     expect(drawer.categoryPlaceholder()).toBe('inherited: Review');
     expect(drawer.templateName('base-agent')).toBe('Base agent');
+    expect(document.querySelector('[data-agent-environment]')).toBeNull();
     expect(document.querySelector('#tt-skills')).toBeNull();
     expect(document.querySelector('#tt-rules')).toBeNull();
+    // the field descriptions are tooltips, not text under the fields
+    expect(document.querySelector('.ant-form-item-extra')).toBeNull();
+    expect(document.querySelectorAll('bo-help-tip').length).toBeGreaterThan(0);
   });
 
   it('declares parameters, blocks saving on a wrong one and sends them cleaned (ADR 0058)', () => {

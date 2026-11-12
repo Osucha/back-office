@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -71,6 +72,7 @@ const EMPTY: SkillInput = {
 @Component({
   selector: 'app-skills-page',
   imports: [
+    HelpTipComponent,
     ReadonlyFormDirective,
     FormsModule,
     NzTableModule,
@@ -432,7 +434,17 @@ const EMPTY: SkillInput = {
             </nz-form-control>
           </nz-form-item>
         </div>
-        <nz-tabs nzSize="small" [nzSelectedIndex]="canEditDraft() ? 0 : 1">
+        <ng-template #contentTip><bo-help-tip [text]="contentHelp" /></ng-template>
+        <ng-template #contentHelp
+          ><span i18n="@@library.skills.content.help">
+            Frontmatter name and description, then concrete rules (Agent Skills convention).
+          </span></ng-template
+        >
+        <nz-tabs
+          nzSize="small"
+          [nzSelectedIndex]="canEditDraft() ? 0 : 1"
+          [nzTabBarExtraContent]="contentTip"
+        >
           <nz-tab [nzTitle]="skillFile">
             <textarea
               nz-input
@@ -446,9 +458,6 @@ const EMPTY: SkillInput = {
               [nzAutosize]="{ minRows: 16, maxRows: 40 }"
               spellcheck="false"
             ></textarea>
-            <p class="field-help" i18n="@@library.skills.content.help">
-              Frontmatter name and description, then concrete rules (Agent Skills convention).
-            </p>
           </nz-tab>
           <nz-tab nzTitle="Preview" i18n-nzTitle="@@library.skills.preview">
             <div class="preview-box"><app-markdown [source]="previewSource()" /></div>

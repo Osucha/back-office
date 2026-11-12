@@ -146,7 +146,7 @@ comes back as a tool error, not a transport error.
 | `get_delivery_insights` | Delivery insights of one project or all visible projects | `project.view` |
 | `get_agent_insights` | Agent insights of one project or all visible projects: per agent and model and per template, executions, accepted results, first-pass rate, cost and the cost of an accepted result, cheapest first ([costs-insights.md](costs-insights.md#agent-insights)) | `project.view` |
 | `list_projects` | The projects you can see | `project.view` |
-| `get_workflow_palette` | What a workflow can be built from: control nodes, task templates with their ports and settings, run-state fields | `project.view` |
+| `get_workflow_palette` | What a workflow can be built from: control nodes, task templates with their ports, settings, whether they need a coding agent and their required skills (the step names its agent), run-state fields | `project.view` |
 | `get_workflow` | One workflow with its full definition (nodes, edges, triggers) | `project.view` |
 | `validate_workflow` | Checks a definition without saving it and lists errors and warnings | `project.view` |
 | `create_workflow` | Creates a workflow; it is checked first and nothing is saved when it has errors | `workflow.edit` and a token created with **Allow workflow edits via MCP** |

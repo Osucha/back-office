@@ -38,6 +38,16 @@ class AgentAccessTest {
         assertThat(coding).contains("Questions to the owner").contains(AgentEnvironmentText.QUESTIONS_FILE).doesNotContain("You cannot ask")
         val model = AgentEnvironmentText.compose(modelAnswer = true, null, null, emptyList(), questions = true)
         assertThat(model).contains("{\"agentQuestions\": [").doesNotContain(AgentEnvironmentText.QUESTIONS_FILE)
-        assertThat(AgentEnvironmentText.PLATFORM_PREAMBLE).startsWith("# Working in Back Office").endsWith("whatever the input asks for.")
+        assertThat(AgentEnvironmentText.PLATFORM_PREAMBLE).startsWith("# Working in Back Office").contains("whatever the input asks for.")
+            .endsWith("ask (when questions are allowed) instead of guessing.")
+    }
+
+    @Test
+    fun `ADR 0061 - the preamble states the precedence of the sources, with or without questions`() {
+        listOf(AgentEnvironmentText.PLATFORM_PREAMBLE, AgentEnvironmentText.PLATFORM_PREAMBLE_QUESTIONS).forEach { preamble ->
+            assertThat(preamble).contains("5. When your sources disagree: the project constitution first, then the rules (repository")
+                .contains("AGENTS.md/CLAUDE.md, project, agent), then the skills, then the task.")
+        }
+        assertThat(AgentEnvironmentText.compose(modelAnswer = false, null, null, emptyList())).contains(AgentEnvironmentText.PRECEDENCE)
     }
 }

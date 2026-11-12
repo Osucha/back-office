@@ -226,7 +226,7 @@ or failed call is an MCP tool error (`isError: true`), not a transport error. Di
 | `get_delivery_insights` | the insights of a project (or of all visible projects) | `DeliveryInsightsQuery.get` | `project.view` |
 | `get_agent_insights` | agent insights of a project (or of all visible projects): per agent and model and per template (ADR 0059) | `AgentInsightsQuery.get` | `project.view` |
 | `list_projects` | the projects the caller can see | `ManageProjects.list` | `project.view` |
-| `get_workflow_palette` | control nodes, task templates (ports, config schema) and state fields to build a workflow from | `ManageWorkflows.palette` | `project.view` |
+| `get_workflow_palette` | control nodes, task templates (ports, config schema, `needsCodingAgent`, `requiresSkills`; ADR 0061: the step names its agent in `overrides.agentKey`) and state fields to build a workflow from | `ManageWorkflows.palette` | `project.view` |
 | `get_workflow` | one workflow with its definition as `WorkflowDefinitionInput` JSON | `ManageWorkflows.get` | `project.view` |
 | `validate_workflow` | check a definition without saving it (errors, warnings) | `ManageWorkflows.validate` | `project.view` |
 | `create_workflow` | create a workflow; validated first, nothing saved on errors | `ManageWorkflows.create` | `workflow.edit` + token option "Allow workflow edits via MCP" |

@@ -190,8 +190,13 @@ function visibleOptions(
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
-          <nz-form-label nzFor="ag-model" i18n="@@library.agents.model">Model</nz-form-label>
-          <nz-form-control [nzExtra]="text.modelHelp">
+          <nz-form-label
+            [nzTooltipTitle]="text.modelHelp"
+            nzFor="ag-model"
+            i18n="@@library.agents.model"
+            >Model</nz-form-label
+          >
+          <nz-form-control>
             <nz-select
               id="ag-model"
               name="modelProfileId"
@@ -212,10 +217,13 @@ function visibleOptions(
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
-          <nz-form-label nzFor="ag-instructions" i18n="@@library.agents.instructions"
+          <nz-form-label
+            [nzTooltipTitle]="text.instructionsHelp"
+            nzFor="ag-instructions"
+            i18n="@@library.agents.instructions"
             >Instructions</nz-form-label
           >
-          <nz-form-control [nzExtra]="text.instructionsHelp">
+          <nz-form-control>
             <textarea
               nz-input
               id="ag-instructions"
@@ -231,11 +239,14 @@ function visibleOptions(
         </nz-form-item>
         <div class="grid">
           <nz-form-item>
-            <nz-form-label nzFor="ag-rules" i18n="@@library.agents.rules">Rules</nz-form-label>
-            <nz-form-control
-              nzExtra="Always in the agent's context, after the automatic rules."
-              i18n-nzExtra="@@library.agents.rules.help"
+            <nz-form-label
+              nzTooltipTitle="Always in the agent's context, after the automatic rules."
+              i18n-nzTooltipTitle="@@library.agents.rules.help"
+              nzFor="ag-rules"
+              i18n="@@library.agents.rules"
+              >Rules</nz-form-label
             >
+            <nz-form-control>
               <nz-select
                 id="ag-rules"
                 name="rules"
@@ -253,11 +264,14 @@ function visibleOptions(
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
-            <nz-form-label nzFor="ag-skills" i18n="@@library.agents.skills">Skills</nz-form-label>
-            <nz-form-control
-              nzExtra="Knowledge the agent loads when it needs it."
-              i18n-nzExtra="@@library.agents.skills.help"
+            <nz-form-label
+              nzTooltipTitle="Knowledge the agent loads when it needs it."
+              i18n-nzTooltipTitle="@@library.agents.skills.help"
+              nzFor="ag-skills"
+              i18n="@@library.agents.skills"
+              >Skills</nz-form-label
             >
+            <nz-form-control>
               <nz-select
                 id="ag-skills"
                 name="skills"
@@ -312,8 +326,12 @@ function visibleOptions(
           </nz-form-item>
         }
         <nz-form-item data-mcp-servers>
-          <nz-form-label i18n="@@library.agents.mcp">MCP servers</nz-form-label>
-          <nz-form-control [nzExtra]="draft().harness ? text.mcpHelp : text.mcpModelAnswer">
+          <nz-form-label
+            [nzTooltipTitle]="draft().harness ? text.mcpHelp : text.mcpModelAnswer"
+            i18n="@@library.agents.mcp"
+            >MCP servers</nz-form-label
+          >
+          <nz-form-control>
             @if (draft().harness) {
               @for (s of draft().mcpServers ?? []; track $index; let i = $index) {
                 <div class="mcp-row" [attr.data-mcp-row]="i">

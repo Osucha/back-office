@@ -42,6 +42,60 @@ class AgentCatalogTest {
     }
 
     @Test
+    fun `ADR 0061 - the agent profile has the library identity, the resolved environment and the lost keys`() {
+        lib.rule("auto", automatic = true)
+        lib.skill("spec-writing")
+        lib.skills.save(lib.skills.findByKeyAndScope("spec-writing", Scope.Global)!!.copy(description = "How to write specs"))
+        val stored = lib.agent("coder", AgentHarness.OPENCODE, rules = listOf("gone"), skills = listOf("spec-writing", "missing"))
+        val mine = lib.agent("coder", AgentHarness.CLAUDE_CODE, scope = Scope.Project(lib.projectId))
+        val byId = TaskCatalogService(lib.templates, lib.lookup, lib.agents)
+
+        val profile = byId.agentProfile("coder", null)!!
+        assertThat(profile.id).isEqualTo(stored.id.value)
+        assertThat(profile.projectId).isNull()
+        assertThat(profile.builtIn).isFalse()
+        assertThat(profile.rules.map { it.key }).containsExactly("auto")
+        assertThat(profile.skills.map { Triple(it.key, it.name, it.description) }).containsExactly(Triple("spec-writing", "spec-writing", "How to write specs"))
+        assertThat(profile.unknownRules).containsExactly("gone")
+        assertThat(profile.unknownSkills).containsExactly("missing")
+
+        assertThat(byId.agentProfile("coder", lib.projectId)!!.projectId).describedAs("the project's agent shadows").isEqualTo(lib.projectId)
+        assertThat(byId.agentProfile(AgentSnapshot.MODEL_ANSWER, null)!!.agent.modelAnswer).isTrue()
+        val bare = Library(builtInAgents = false)
+        assertThat(TaskCatalogService(bare.templates, bare.lookup).agentProfile(AgentSnapshot.MODEL_ANSWER, null)!!.id)
+            .describedAs("the implicit model answer has no library id").isNull()
+        assertThat(byId.agentProfile("nobody", null)).isNull()
+
+        assertThat(byId.agentProfileById(mine.id.value, null)!!.agent.harness).describedAs("seen from its own project").isEqualTo(AgentHarness.CLAUDE_CODE)
+        assertThat(byId.agentProfileById(stored.id.value, lib.projectId)!!.agent.key).isEqualTo("coder")
+        assertThat(byId.agentProfileById(java.util.UUID.randomUUID(), null)).isNull()
+        assertThat(catalog.agentProfileById(stored.id.value, null)).describedAs("no agent repository: none by id").isNull()
+    }
+
+    @Test
+    fun `ADR 0061 - step needs name the step's agent or the fallback, the required skills and the kind of work`() {
+        lib.skill("adr-format")
+        lib.template("adr", requiresSkills = listOf("adr-format", "ghost"))
+        lib.template("pusher", config = mapOf("push" to true))
+        lib.template("cycle", extendsKey = "cycle")
+
+        val adr = catalog.stepNeeds("adr", null, pl.mos.backoffice.shared.tasks.TaskOverrides(agentKey = "claude-code"))!!
+        assertThat(adr.agentKey).isEqualTo("claude-code")
+        assertThat(adr.requiredSkills.map { it.key to it.name }).containsExactly("adr-format" to "adr-format", "ghost" to null)
+        assertThat(adr.needsCodingAgent).isFalse()
+        val pusher = catalog.stepNeeds("pusher", null)!!
+        assertThat(pusher.agentKey).isEqualTo(AgentSnapshot.OPENCODE)
+        assertThat(pusher.needsCodingAgent).isTrue()
+        assertThat(pusher.pushes).isTrue()
+        assertThat(catalog.stepNeeds("cycle", null)).isNull()
+        assertThat(catalog.stepNeeds("unknown", null)).isNull()
+
+        val palette = catalog.palette(null).associateBy { it.key }
+        assertThat(palette.getValue("pusher").needsCodingAgent).isTrue()
+        assertThat(palette.getValue("adr").requiresSkills).containsExactly("adr-format", "ghost")
+    }
+
+    @Test
     fun `without the built-in model answer agent stored, the default one is its environment`() {
         val bare = Library(builtInAgents = false)
         val env = TaskCatalogService(bare.templates, bare.lookup).agentEnvironment(AgentSnapshot.MODEL_ANSWER, null)!!

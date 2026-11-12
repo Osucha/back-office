@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NzButtonModule } from 'ng-zorro-antd/button';
@@ -27,6 +28,7 @@ import {
 @Component({
   selector: 'app-gate-rules-editor',
   imports: [
+    HelpTipComponent,
     FormsModule,
     NzFormModule,
     NzSelectModule,
@@ -51,13 +53,14 @@ import {
       other people in a single run (Assign… on the gate in Your turn or on the run).
     </p>
     <nz-form-item>
-      <nz-form-label nzFor="gate-roles" i18n="@@workflows.gate.projectRoles"
+      <nz-form-label
+        nzTooltipTitle="Empty = anyone with run.approve on the project."
+        i18n-nzTooltipTitle="@@workflows.gate.projectRoles.extra"
+        nzFor="gate-roles"
+        i18n="@@workflows.gate.projectRoles"
         >Project roles</nz-form-label
       >
-      <nz-form-control
-        nzExtra="Empty = anyone with run.approve on the project."
-        i18n-nzExtra="@@workflows.gate.projectRoles.extra"
-      >
+      <nz-form-control>
         <nz-select
           id="gate-roles"
           nzMode="multiple"
@@ -74,11 +77,13 @@ import {
       </nz-form-control>
     </nz-form-item>
     <nz-form-item>
-      <nz-form-label i18n="@@workflows.gate.users">Named people</nz-form-label>
-      <nz-form-control
-        nzExtra="Only these people may decide (each also needs one of the roles above, if set). Empty = anyone in those roles."
-        i18n-nzExtra="@@workflows.gate.users.extra"
+      <nz-form-label
+        nzTooltipTitle="Only these people may decide (each also needs one of the roles above, if set). Empty = anyone in those roles."
+        i18n-nzTooltipTitle="@@workflows.gate.users.extra"
+        i18n="@@workflows.gate.users"
+        >Named people</nz-form-label
       >
+      <nz-form-control>
         <app-principal-picker
           kind="user"
           [multiple]="true"
@@ -132,16 +137,17 @@ import {
     </nz-form-item>
 
     @if (showChecklist()) {
-      <nz-divider
-        nzText="Checklist"
-        i18n-nzText="@@workflows.gate.checklist"
-        nzOrientation="left"
-        nzPlain
-      />
-      <p class="muted small" i18n="@@workflows.gate.checklist.hint">
-        Definition of Ready/Done items shown in the inbox; approving needs every required item
-        ticked.
-      </p>
+      <nz-divider [nzText]="checklistTitle" nzOrientation="left" nzPlain />
+      <ng-template #checklistTitle
+        ><span i18n="@@workflows.gate.checklist">Checklist</span>
+        <bo-help-tip [text]="checklistHelp"
+      /></ng-template>
+      <ng-template #checklistHelp
+        ><span i18n="@@workflows.gate.checklist.hint">
+          Definition of Ready/Done items shown in the inbox; approving needs every required item
+          ticked.
+        </span></ng-template
+      >
       @for (item of checklist(); track $index; let i = $index) {
         <div class="check-row">
           <input

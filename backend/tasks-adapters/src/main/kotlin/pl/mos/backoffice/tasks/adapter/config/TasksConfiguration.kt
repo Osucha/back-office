@@ -68,8 +68,8 @@ class TasksConfiguration {
 
     @Bean
     fun manageAgents(
-        agents: AgentRepository, templates: TaskTemplateRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort, lookup: RepositoryLookup,
-    ): ManageAgents = TransactionalManageAgents(AgentService(agents, templates, clock, gate, audit, lookup))
+        agents: AgentRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort, lookup: RepositoryLookup,
+    ): ManageAgents = TransactionalManageAgents(AgentService(agents, clock, gate, audit, lookup))
 
     @Bean
     fun seedTaskLibrary(

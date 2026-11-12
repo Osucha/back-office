@@ -132,7 +132,7 @@ class FakeTaskCatalog : TaskCatalog {
     }
 
     override fun palette(projectId: UUID?): List<TaskSummary> =
-        templates.values.map { TaskSummary(it.key, it.name, "template ${it.key}", it.agent, it.category, false, null, it.ports) }.sortedBy { it.key }
+        templates.values.map { TaskSummary(it.key, it.name, "template ${it.key}", it.category, false, null, it.ports) }.sortedBy { it.key }
 
     companion object {
         const val CLARIFY_SCHEMA = """{"type":"object","properties":{"confidence":{"type":"number"},"questions":{"type":"array","items":{"type":"string"}}},"required":["confidence","questions"]}"""

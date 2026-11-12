@@ -185,13 +185,15 @@ import {
               </nz-form-control>
             </nz-form-item>
             <nz-form-item>
-              <nz-form-label nzRequired nzFor="src-url" i18n="@@library.sources.form.url"
+              <nz-form-label
+                nzTooltipTitle="Private repositories need a read credential on the runners (see the manual)."
+                i18n-nzTooltipTitle="@@library.sources.form.urlHint"
+                nzRequired
+                nzFor="src-url"
+                i18n="@@library.sources.form.url"
                 >Git URL</nz-form-label
               >
-              <nz-form-control
-                nzExtra="Private repositories need a read credential on the runners (see the manual)."
-                i18n-nzExtra="@@library.sources.form.urlHint"
-              >
+              <nz-form-control>
                 <input
                   nz-input
                   id="src-url"
@@ -242,13 +244,14 @@ import {
               </nz-form-item>
             </div>
             <nz-form-item>
-              <nz-form-label nzFor="src-desc" i18n="@@library.sources.form.description"
+              <nz-form-label
+                nzTooltipTitle="Shown to the agent next to the source: say what to follow or reuse."
+                i18n-nzTooltipTitle="@@library.sources.form.descriptionHint"
+                nzFor="src-desc"
+                i18n="@@library.sources.form.description"
                 >Description</nz-form-label
               >
-              <nz-form-control
-                nzExtra="Shown to the agent next to the source: say what to follow or reuse."
-                i18n-nzExtra="@@library.sources.form.descriptionHint"
-              >
+              <nz-form-control>
                 <textarea
                   nz-input
                   id="src-desc"

@@ -21,7 +21,7 @@ object BuiltInChecksum {
         canonical(
             mapOf(
                 "name" to t.name, "description" to t.description, "abstract" to t.abstract, "extendsKey" to t.extendsKey,
-                "category" to t.category?.name, "agentKey" to t.agentKey, "modelProfileId" to t.modelProfileId?.value?.toString(),
+                "category" to t.category?.name,
                 "promptSystem" to t.prompt.system, "promptUser" to t.prompt.user, "promptMode" to t.prompt.mode.name,
                 "config" to t.config, "outputSchema" to t.outputSchema,
                 "confidenceField" to t.confidenceField, "produces" to t.produces, "consumes" to t.consumes, "tags" to t.tags,

@@ -222,10 +222,9 @@ class RestMapper {
         tasks = p.tasks.map {
             PaletteTaskDto(
                 it.key, it.name, it.description,
-                AgentRefDto(it.agent.key, it.agent.name, it.agent.harness?.name, it.agent.modelProfileId?.value, it.agent.rules, it.agent.skills),
                 it.category?.name, it.ports, it.projectScoped, it.configSchema, it.deprecated,
                 it.parameters.map { p -> TemplateParameterDto(p.name, p.label, p.type.name, p.required, p.default, p.options, p.help) },
-                it.parameterValues, it.needsParameters,
+                it.parameterValues, it.needsParameters, it.needsCodingAgent, it.requiresSkills,
             )
         },
         stateFields = p.stateFields.map { StateFieldDto(it.path, it.description) },

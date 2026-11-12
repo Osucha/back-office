@@ -1,3 +1,4 @@
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -59,6 +60,7 @@ let nextId = 0;
 @Component({
   selector: 'app-sandbox-policy-editor',
   imports: [
+    HelpTipComponent,
     NgTemplateOutlet,
     FormsModule,
     NzIconModule,
@@ -243,13 +245,16 @@ let nextId = 0;
         <section class="sec" [attr.aria-labelledby]="id + '-net'">
           <header>
             <h3 [id]="id + '-net'" i18n="@@fleet.policyEditor.network">Network allowlist</h3>
+            <bo-help-tip [text]="networkHelp" />
             <ng-container *ngTemplateOutlet="src; context: { $implicit: 'network.allow' }" />
           </header>
-          <p class="help" i18n="@@fleet.policyEditor.networkHelp">
-            Hosts the egress proxy lets the agent reach, as <code>host</code> or
-            <code>host:port</code>; <code>*</code> stands for one label. The LLM gateway and the
-            project's git host are always added. Everything else is refused and reported.
-          </p>
+          <ng-template #networkHelp
+            ><span i18n="@@fleet.policyEditor.networkHelp">
+              Hosts the egress proxy lets the agent reach, as <code>host</code> or
+              <code>host:port</code>; <code>*</code> stands for one label. The LLM gateway and the
+              project's git host are always added. Everything else is refused and reported.
+            </span></ng-template
+          >
           <app-chip-list
             label="Allowed hosts"
             i18n-label="@@fleet.policyEditor.allowedHosts"
@@ -283,13 +288,16 @@ let nextId = 0;
         <section class="sec" [attr.aria-labelledby]="id + '-tools'">
           <header>
             <h3 [id]="id + '-tools'" i18n="@@fleet.policyEditor.tools">Tools</h3>
+            <bo-help-tip [text]="toolsHelp" />
             <ng-container *ngTemplateOutlet="src; context: { $implicit: 'tools' }" />
           </header>
-          <p class="help" i18n="@@fleet.policyEditor.toolsHelp">
-            Shell command patterns for the agent harness (OpenCode <code>permission</code>, Claude
-            Code <code>permissions</code>). Deny always wins; unattended jobs treat "ask" as deny
-            and report it.
-          </p>
+          <ng-template #toolsHelp
+            ><span i18n="@@fleet.policyEditor.toolsHelp">
+              Shell command patterns for the agent harness (OpenCode <code>permission</code>, Claude
+              Code <code>permissions</code>). Deny always wins; unattended jobs treat "ask" as deny
+              and report it.
+            </span></ng-template
+          >
           <div class="grid3">
             <div class="field">
               <span class="label" [id]="id + '-allow'" i18n="@@fleet.policyEditor.allow"

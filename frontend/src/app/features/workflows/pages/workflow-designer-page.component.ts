@@ -14,6 +14,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { NzButtonModule } from 'ng-zorro-antd/button';
+import { NzDrawerModule } from 'ng-zorro-antd/drawer';
 import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzIconModule } from 'ng-zorro-antd/icon';
@@ -41,9 +42,11 @@ import { LibrarySourcesApi } from '../../../core/api/library-sources.service';
 import { ProjectsApi } from '../../../core/api/projects.service';
 import { projectRepositories } from '../../../core/ui/repositories';
 import type {
+  AgentAudit,
   ModelOption,
   ModelProfile,
   Point,
+  Skill,
   LibrarySource,
   ProjectRepository,
   Agent,
@@ -69,6 +72,10 @@ import { SkeletonComponent } from '../../../core/ui/relay/skeleton.component';
 import { HelpLinkComponent } from '../../../core/help/help-link.component';
 import { ProjectsStore } from '../../../core/state/projects.store';
 import { NodePaletteComponent, type PalettePick } from '../components/node-palette.component';
+import { AgentAuditPanelComponent } from '../components/agent-audit-panel.component';
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
+import { auditView } from '../data/agent-audit';
+import { pickAgent } from '../data/agent-choice';
 import { NodePropertyPanelComponent } from '../components/node-property-panel.component';
 import { TriggersEditorComponent } from '../components/triggers-editor.component';
 import { type StepModelUse, stepModelUseKey } from '../data/model-step';
@@ -118,6 +125,9 @@ const MAX_HISTORY = 50;
     NzDropDownModule,
     NzTooltipModule,
     NzSegmentedModule,
+    NzDrawerModule,
+    AgentAuditPanelComponent,
+    HelpTipComponent,
     WorkflowCanvasComponent,
     NodePaletteComponent,
     NodePropertyPanelComponent,
@@ -310,6 +320,28 @@ const MAX_HISTORY = 50;
                 Validate
               </button>
             }
+            @if (resolvedProjectId()) {
+              <button
+                nz-button
+                nzSize="small"
+                type="button"
+                class="audit-btn"
+                (click)="auditOpen.set(!auditOpen())"
+                [attr.aria-pressed]="auditOpen()"
+                data-agent-audit-toggle
+              >
+                <nz-icon nzType="team" />
+                <span i18n="@@workflows.audit.title">Agents in this workflow</span>
+                @if (auditView().problems) {
+                  <span
+                    class="badge"
+                    data-agent-audit-count
+                    [attr.aria-label]="problemsLabel(auditView().problems)"
+                    >{{ auditView().problems }}</span
+                  >
+                }
+              </button>
+            }
             <span class="divider" aria-hidden="true"></span>
             <button
               nz-button
@@ -366,6 +398,7 @@ const MAX_HISTORY = 50;
                     [palette]="palette()"
                     [loading]="paletteLoading()"
                     [deprecatedKeys]="deprecatedKeys()"
+                    [skills]="skills()"
                     (pick)="addFromPalette($event)"
                   />
                 }
@@ -522,13 +555,14 @@ const MAX_HISTORY = 50;
                       <p class="danger small">{{ i.message }}</p>
                     }
                     <nz-form-item>
-                      <nz-form-label nzFor="edge-label" i18n="@@workflows.designer.edgeLabel"
+                      <nz-form-label
+                        nzTooltipTitle="Shown on the edge instead of the port name."
+                        i18n-nzTooltipTitle="@@workflows.designer.edgeLabel.extra"
+                        nzFor="edge-label"
+                        i18n="@@workflows.designer.edgeLabel"
                         >Label</nz-form-label
                       >
-                      <nz-form-control
-                        nzExtra="Shown on the edge instead of the port name."
-                        i18n-nzExtra="@@workflows.designer.edgeLabel.extra"
-                      >
+                      <nz-form-control>
                         <input
                           nz-input
                           id="edge-label"
@@ -556,7 +590,14 @@ const MAX_HISTORY = 50;
                     <div class="head2">
                       <nz-icon nzType="setting" />
                       <span i18n="@@workflows.designer.workflow">Workflow</span>
+                      <bo-help-tip [text]="selectHelp" />
                     </div>
+                    <ng-template #selectHelp
+                      ><span i18n="@@workflows.designer.selectHint">
+                        Select a node to edit it. Issues are listed in the Validation sheet under
+                        the canvas.
+                      </span></ng-template
+                    >
                     <form nz-form nzLayout="vertical" (submit)="$event.preventDefault()">
                       <nz-form-item>
                         <nz-form-label nzFor="wf-desc" i18n="@@workflows.designer.description"
@@ -602,13 +643,14 @@ const MAX_HISTORY = 50;
                         </nz-form-control>
                       </nz-form-item>
                       <nz-form-item>
-                        <nz-form-label nzFor="wf-setup" i18n="@@workflows.designer.setupCommand"
+                        <nz-form-label
+                          nzTooltipTitle="Runs once in the run directory before the first coding step (again when it changes), e.g. npm ci."
+                          i18n-nzTooltipTitle="@@workflows.designer.setupCommand.help"
+                          nzFor="wf-setup"
+                          i18n="@@workflows.designer.setupCommand"
                           >Setup command</nz-form-label
                         >
-                        <nz-form-control
-                          nzExtra="Runs once in the run directory before the first coding step (again when it changes), e.g. npm ci."
-                          i18n-nzExtra="@@workflows.designer.setupCommand.help"
-                        >
+                        <nz-form-control>
                           <textarea
                             nz-input
                             id="wf-setup"
@@ -622,7 +664,19 @@ const MAX_HISTORY = 50;
                         </nz-form-control>
                       </nz-form-item>
                       <nz-form-item>
-                        <nz-form-label i18n="@@workflows.designer.triggers">Triggers</nz-form-label>
+                        <nz-form-label
+                          [nzTooltipTitle]="triggersHelp"
+                          i18n="@@workflows.designer.triggers"
+                          >Triggers</nz-form-label
+                        >
+                        <ng-template #triggersHelp
+                          ><span i18n="@@workflows.triggers.hint">
+                            Triggers record how this workflow is meant to start. Runs start from the
+                            UI, the API or a CI entrypoint whatever is listed here. A Jira trigger
+                            is used by the project's Jira intake watcher (Project › Settings): an
+                            issue entering the status starts a run (empty status: each new issue).
+                          </span></ng-template
+                        >
                         <nz-form-control>
                           <app-triggers-editor
                             [triggers]="def().triggers ?? []"
@@ -632,10 +686,6 @@ const MAX_HISTORY = 50;
                         </nz-form-control>
                       </nz-form-item>
                     </form>
-                    <p class="muted small" i18n="@@workflows.designer.selectHint">
-                      Select a node to edit it. Issues are listed in the Validation sheet under the
-                      canvas.
-                    </p>
                   </div>
                 }
               </aside>
@@ -724,6 +774,28 @@ const MAX_HISTORY = 50;
         </bo-action-bar>
       }
     </div>
+    <nz-drawer
+      [nzVisible]="auditOpen()"
+      [nzTitle]="text.auditTitle"
+      nzPlacement="right"
+      [nzWidth]="auditWidth"
+      [nzMask]="false"
+      (nzOnClose)="auditOpen.set(false)"
+    >
+      <ng-container *nzDrawerContent>
+        <app-agent-audit-panel
+          [projectId]="resolvedProjectId() || null"
+          [audit]="audit()"
+          [loading]="auditLoading()"
+          [error]="auditError()"
+          [nodes]="def().nodes"
+          [agents]="agents()"
+          [readonly]="readOnly()"
+          (selectNode)="jumpTo({ nodeId: $event })"
+          (changed)="onAgentsChanged()"
+        />
+      </ng-container>
+    </nz-drawer>
   `,
   styles: [
     `
@@ -794,6 +866,18 @@ const MAX_HISTORY = 50;
         gap: 6px;
         align-items: center;
         flex-wrap: wrap;
+      }
+      .audit-btn .badge {
+        display: inline-block;
+        min-width: 16px;
+        margin-left: 6px;
+        padding: 0 4px;
+        border-radius: 8px;
+        font-size: 10.5px;
+        line-height: 16px;
+        text-align: center;
+        color: #fff;
+        background: var(--bo-blocked-ink);
       }
       .divider {
         width: 1px;
@@ -1091,6 +1175,16 @@ export class WorkflowDesignerPageComponent {
         });
     return [...byKey.values()];
   });
+  /** ADR 0061: the library's skills (names of required skills in the palette). */
+  readonly skills = signal<Skill[]>([]);
+  /** ADR 0061: the agent audit of the draft ("Agents in this workflow"), loaded on changes. */
+  readonly auditOpen = signal(false);
+  readonly audit = signal<AgentAudit | null>(null);
+  readonly auditLoading = signal(false);
+  readonly auditError = signal<string | null>(null);
+  readonly auditView = computed(() => auditView(this.audit(), new Map()));
+  readonly auditWidth = 'min(460px, 92vw)'; // i18n-ignore
+  private readonly audit$ = new Subject<void>();
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly duplicating = signal(false);
@@ -1124,6 +1218,7 @@ export class WorkflowDesignerPageComponent {
     showProperties: $localize`:@@workflows.designer.showProperties:Show properties`,
     saveVersion: $localize`:@@workflows.designer.saveVersion:Save as new version`,
     create: $localize`:@@workflows.designer.create:Create workflow`,
+    auditTitle: $localize`:@@workflows.audit.title:Agents in this workflow`,
   };
   readonly errorsLabel = errorsLabel;
   readonly warningsLabel = warningsLabel;
@@ -1189,6 +1284,13 @@ export class WorkflowDesignerPageComponent {
   placesLabel(count: number): string {
     return icu(
       $localize`:@@workflows.designer.places:on {count, plural, one {# place} other {# places}}`,
+      { count },
+    );
+  }
+
+  problemsLabel(count: number): string {
+    return icu(
+      $localize`:@@workflows.audit.problems:{count, plural, one {# problem} other {# problems}}`,
       { count },
     );
   }
@@ -1384,6 +1486,56 @@ export class WorkflowDesignerPageComponent {
       const d = this.def();
       if (!this.jsonError()) this.jsonText.set(JSON.stringify(d, null, 2));
     });
+
+    // ADR 0061: the agent audit of the draft's task steps (no model is called; also for the badge)
+    merge(
+      toObservable(this.def).pipe(
+        map((d) => JSON.stringify(d.nodes.filter((n) => n.kind === 'TASK'))),
+        distinctUntilChanged(),
+        debounceTime(800),
+        map(() => undefined),
+      ),
+      this.audit$,
+    )
+      .pipe(
+        switchMap(() => {
+          const projectId = this.resolvedProjectId();
+          const nodes = this.def().nodes;
+          if (!projectId) return of(undefined);
+          this.auditLoading.set(true);
+          return this.workflowsApi.agentAudit(projectId, nodes).pipe(
+            catchError(() => {
+              this.auditError.set(
+                $localize`:@@workflows.audit.loadError:The agents of this workflow could not be checked.`,
+              );
+              return of(null);
+            }),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((a) => {
+        this.auditLoading.set(false);
+        if (a === undefined) return;
+        if (a) {
+          this.audit.set(a);
+          this.auditError.set(null);
+        }
+      });
+  }
+
+  /** ADR 0061: "Add to agent" changed an agent: reload the agents, the palette and the audit. */
+  onAgentsChanged(): void {
+    const projectId = this.resolvedProjectId();
+    if (!projectId) return;
+    this.library
+      .listAgents(projectId)
+      .subscribe({ next: (a) => this.agents.set(a), error: () => undefined });
+    this.workflowsApi.palette(projectId).subscribe({
+      next: (p) => this.palette.set(p),
+      error: () => undefined,
+    });
+    this.audit$.next();
   }
 
   // ---------------------------------------------------------------- loading
@@ -1446,6 +1598,10 @@ export class WorkflowDesignerPageComponent {
       next: (list) => this.deprecatedKeys.set(deprecatedKeys(list)),
       error: () => undefined,
     });
+    this.library
+      .listSkills(projectId)
+      .subscribe({ next: (s) => this.skills.set(s), error: () => undefined });
+    this.audit$.next();
     this.librarySourcesApi
       .list()
       .subscribe({ next: (s) => this.librarySources.set(s), error: () => undefined });
@@ -1542,7 +1698,9 @@ export class WorkflowDesignerPageComponent {
     const action = pick.actionType
       ? (this.palette()?.actions?.find((a) => a.type === pick.actionType) ?? null)
       : null;
-    const node = createNode(pick.kind, position, this.nodeIds(), task, action);
+    // ADR 0061: a new step starts with a fitting agent (kind and required skills)
+    const agentKey = task ? (pickAgent(task, this.agents())?.key ?? null) : null;
+    const node = createNode(pick.kind, position, this.nodeIds(), task, action, agentKey);
     this.commit({ ...d, nodes: [...d.nodes, node] });
     this.select(node.id);
     this.canvas()?.focus();

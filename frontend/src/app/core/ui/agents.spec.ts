@@ -6,7 +6,9 @@ import {
   agentKindDescription,
   agentKindLabel,
   agentModelText,
+  configNeedsCodingAgent,
   isCodingAgent,
+  neededAgentLabel,
 } from './agents';
 
 describe('agent and action labels (ADR 0056)', () => {
@@ -38,6 +40,17 @@ describe('agent and action labels (ADR 0056)', () => {
       'Only docs/**, README.md',
     );
     expect(agentAccessText({ mode: 'PATHS', paths: [] })).toBe('Only these paths');
+  });
+
+  it('derives the kind of worker a config needs (ADR 0061)', () => {
+    expect(configNeedsCodingAgent({ phase: 'specify' })).toBe(true);
+    expect(configNeedsCodingAgent({ phase: '  ' })).toBe(false);
+    expect(configNeedsCodingAgent({ push: true })).toBe(true);
+    expect(configNeedsCodingAgent({ prepareOnly: 'true' })).toBe(true);
+    expect(configNeedsCodingAgent({ push: false, temperature: 0.2 })).toBe(false);
+    expect(configNeedsCodingAgent(null)).toBe(false);
+    expect(neededAgentLabel(true)).toBe('Needs a coding agent');
+    expect(neededAgentLabel(false)).toBe('Any agent');
   });
 
   it('tells a coding agent by its harness', () => {

@@ -43,7 +43,10 @@ data class RunInputFieldDto(
 
 data class TaskPromptDto(val system: String? = null, val user: String? = null, val mode: PromptMode = PromptMode.APPEND)
 
-/** ADR 0055: [key] omitted on create is derived from the name; omitted on update it stays. */
+/**
+ * ADR 0055: [key] omitted on create is derived from the name; omitted on update it stays. ADR 0061: no agent and no
+ * model (the step chooses them); such fields sent by older clients are ignored.
+ */
 data class TaskTemplateInputDto(
     @field:Pattern(regexp = KEY_PATTERN) val key: String? = null,
     @field:NotBlank val name: String,
@@ -51,9 +54,7 @@ data class TaskTemplateInputDto(
     val abstract: Boolean = false,
     val extendsKey: String? = null,
     val category: TemplateCategory? = null,
-    @field:Pattern(regexp = KEY_PATTERN) val agentKey: String? = null,
     val scope: ScopeDto,
-    val modelProfileId: UUID? = null,
     val prompt: TaskPromptDto = TaskPromptDto(),
     val config: Map<String, Any?> = emptyMap(),
     val outputSchema: String? = null,
@@ -75,9 +76,7 @@ data class TaskTemplateDto(
     val abstract: Boolean,
     val extendsKey: String?,
     val category: TemplateCategory?,
-    val agentKey: String?,
     val scope: ScopeDto,
-    val modelProfileId: UUID?,
     val prompt: TaskPromptDto,
     val config: Map<String, Any?>,
     val outputSchema: String?,
@@ -89,6 +88,8 @@ data class TaskTemplateDto(
     val parameters: List<TemplateParameterDto>,
     val parameterValues: Map<String, Any?>,
     val requiresSkills: List<String> = emptyList(),
+    /** ADR 0061 (read-only): the merged config needs a coding agent. */
+    val needsCodingAgent: Boolean = false,
     val builtIn: Boolean,
     val version: Int,
     val createdAt: Instant,

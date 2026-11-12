@@ -241,13 +241,13 @@ import { filterSuites, weightsText } from '../data/suite-view';
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
-            <nz-form-label i18n="@@evaluation.suites.form.weights"
+            <nz-form-label
+              nzTooltipTitle="Coding jobs score = verification × passed (0 or 100) + judge × judge score. The two should sum to 1."
+              i18n-nzTooltipTitle="@@evaluation.suites.form.weightsHint"
+              i18n="@@evaluation.suites.form.weights"
               >Coding score weights</nz-form-label
             >
-            <nz-form-control
-              nzExtra="Coding jobs score = verification × passed (0 or 100) + judge × judge score. The two should sum to 1."
-              i18n-nzExtra="@@evaluation.suites.form.weightsHint"
-            >
+            <nz-form-control>
               <div class="weights">
                 <label for="s-ver" i18n="@@evaluation.suites.form.verification">Verification</label>
                 <nz-input-number

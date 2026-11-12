@@ -58,11 +58,12 @@ wygląda na darmowy; sprawdź ceny, zanim zaufasz **Kosztom** (**Costs**) lub ra
 | Miejsce | Ustawienie |
 |---|---|
 | Projekt | **Domyślny profil modelu** i **Profil modelu do przeglądów** (zob. [Projekty](projects.md#create-project)) |
-| Szablon zadania | **Profil modelu** (zob. [Biblioteka zadań](task-library.md#templates)) |
+| Agent | **Model** (zob. [Agenci](task-library.md#agents)) |
 | Węzeł zadania | Nadpisanie **Profil modelu** (zob. [Projektowanie workflowów](workflows.md#nodes)) |
 | Benchmark | modele kandydatów (agent z modelem) i model oceniający |
 
-Profil węzła wygrywa z profilem szablonu, a ten z domyślnym profilem projektu.
+Profil węzła wygrywa z modelem agenta, a ten z ustawieniami domyślnymi (projekt, Twoje własne, platforma). Szablony
+zadań nie mają profilu modelu od ADR 0061: model wybierają krok i jego agent.
 
 <a id="model-availability"></a>
 ### Których modeli może użyć krok
@@ -91,14 +92,14 @@ profile**) wybierz **Osobisty (tylko Ty)** (**Personal (only you)**). Tylko Ty j
 i używasz, w swoich prywatnych projektach i własnych benchmarkach; administratorzy tworzą profile **Platformowe**
 (**Platform**) dla wszystkich. Profile z logowaniem Claude Code są zawsze osobiste.
 
-**Modele domyślne.** Gdy ani krok, ani jego agent, ani jego szablon, ani projekt nie wskazuje modelu, Back Office bierze Twój
+**Modele domyślne.** Gdy ani krok, ani jego agent, ani projekt nie wskazuje modelu, Back Office bierze Twój
 własny model domyślny dla tego rodzaju kroku (**Kroki LLM** albo **Kroki kodujące**), a potem domyślny model
 platformy ustawiony przez administratora. Ustawisz je na stronie **Modele** (**Models**) w sekcji **Modele
 domyślne** (**Default models**). Model z logowaniem Claude Code może być domyślny dla obu: kroki LLM dostają wtedy
 odpowiedź od Claude Code na Twoim osobistym runnerze.
 
 **Plan modeli** workflowu pokazuje dla każdego kroku model, którego użyłoby uruchomienie, i skąd pochodzi (krok,
-jego agent, jego szablon, model domyślny projektu albo model przeglądu). Projektant oznacza ostrzeżeniem kroki z modelem,
+jego agent, model domyślny projektu albo model przeglądu). Projektant oznacza ostrzeżeniem kroki z modelem,
 którego nie możesz użyć, a uruchomienie nie wystartuje, dopóki któryś krok nie ma dostępnego modelu; okno
 uruchamiania wypisuje kroki i powód. Narzędzia MCP `get_model_options` i `get_model_plan` dają agentowi w IDE te
 same informacje.

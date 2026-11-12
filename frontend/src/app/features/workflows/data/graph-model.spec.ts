@@ -38,7 +38,7 @@ const PALETTE: WorkflowPalette = {
     {
       key: 'code-review',
       name: 'Code review',
-      agent: { key: 'model-answer', name: 'Model answer', harness: null },
+      needsCodingAgent: false,
       category: 'REVIEW',
       ports: ['success', 'failure', 'blocked'],
     },
@@ -305,7 +305,16 @@ describe('canvas mapping', () => {
     expect(data.warningCount).toBe(2);
   });
 
-  it('names the agent a step chooses itself before the template agent (ADR 0056)', () => {
+  it('creates a task node with the pre-selected agent (ADR 0061)', () => {
+    const task = PALETTE.tasks![0];
+    expect(createNode('TASK', { x: 0, y: 0 }, [], task, null, 'reviewer').task).toEqual({
+      templateKey: 'code-review',
+      overrides: { agentKey: 'reviewer' },
+    });
+    expect(createNode('TASK', { x: 0, y: 0 }, [], task).task?.overrides).toEqual({});
+  });
+
+  it('names the agent a step chooses itself before the default agent (ADR 0056, 0061)', () => {
     const palette = indexPalette(PALETTE);
     const own = node('r', 'TASK', {
       task: { templateKey: 'code-review', overrides: { agentKey: 'claude-code' } },
