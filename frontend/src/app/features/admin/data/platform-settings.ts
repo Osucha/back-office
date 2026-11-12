@@ -11,7 +11,6 @@ export const DEFAULT_SETTINGS: Required<
     | 'personalTokenMaxDays'
     | 'localLoginEnabled'
     | 'mfaRequiredForLocal'
-    | 'specKitAllowed'
   >
 > & {
   passwordPolicy: Required<PasswordPolicy>;
@@ -23,7 +22,6 @@ export const DEFAULT_SETTINGS: Required<
   personalTokenMaxDays: 90,
   localLoginEnabled: true,
   mfaRequiredForLocal: false,
-  specKitAllowed: true,
   passwordPolicy: {
     minLength: 12,
     maxLength: 128,
@@ -42,8 +40,6 @@ export interface SettingsFormValue {
   allowedEmailDomains: string[];
   syncGroupsFromIdentityProvider: boolean;
   personalTokenMaxDays: number;
-  /** ADR 0036: projects may turn Spec Kit on. */
-  specKitAllowed: boolean;
 }
 
 /** Request body: the saved settings (fields this form does not know are kept) + the form. */

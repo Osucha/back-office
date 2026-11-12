@@ -67,7 +67,6 @@ describe('my models (ADR 0050 step 3)', () => {
   it('names the coding agents', () => {
     expect(harnessName('CLAUDE_CODE')).toBe('Claude Code');
     expect(harnessName('OPENCODE')).toBe('OpenCode');
-    expect(harnessName('SPEC_KIT')).toBe('Spec Kit');
     expect(harnessName('AIDER')).toBe('AIDER');
   });
 

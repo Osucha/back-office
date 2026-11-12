@@ -11,8 +11,21 @@ import java.time.Instant
 import java.util.UUID
 import pl.mos.backoffice.shared.platform.WorkRequest
 
-/** PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools (an LLM call on a user's own login). */
-enum class RunnerMode { SPEC_KIT, IMPLEMENT, EVAL_CODING, PROMPT }
+/**
+ * IMPLEMENT: an agent job (ADR 0063: never pushes). DELIVER (ADR 0063): no agent; commits the run directory, pushes the job
+ * branch and opens the merge request through push options. PROMPT (ADR 0050 step 4): one answer of Claude Code without a
+ * repository or tools (an LLM call on a user's own login).
+ */
+enum class RunnerMode {
+    IMPLEMENT, DELIVER, EVAL_CODING, PROMPT;
+
+    companion object {
+        /** The mode named [name]; ADR 0063: `SPEC_KIT` of jobs stored before reads as [IMPLEMENT]. */
+        fun of(name: String): RunnerMode = entries.firstOrNull { it.name == name } ?: if (name == LEGACY_SPEC_KIT) IMPLEMENT else valueOf(name)
+
+        private const val LEGACY_SPEC_KIT = "SPEC_KIT"
+    }
+}
 enum class AgentHarness { OPENCODE, CLAUDE_CODE }
 
 /** Where agent jobs of a benchmark run (ADR 0046): the shared runner fleet or the starting user's personal runner. */
@@ -37,7 +50,6 @@ data class ExecutionTarget(
 ) {
     val exists: Boolean get() = pools > 0
 }
-enum class SpecKitPhase { SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT }
 
 /**
  * ADR 0044/0060: the persistent run directory a job works in. Every job of the run that names the same [key] gets the
@@ -90,23 +102,24 @@ enum class GitAccess {
     /** No repository, no git credential. */
     NONE,
 
-    /** Clone and fetch only: reviews, specification analysis, benchmarks, steps with `push = false`. */
+    /** Clone and fetch only: every agent job (ADR 0063), reviews, benchmarks. */
     READ,
 
-    /** Clone, push the job branch and open a merge request through push options; never merge. */
+    /** Clone, push the job branch and open a merge request through push options; never merge (DELIVER jobs, ADR 0063). */
     PUSH_MR,
     ;
 
     companion object {
-        /** Modes whose result is pushed when `repository.push` is set (evaluation attempts never push). */
-        private val PUSHING_MODES = setOf(RunnerMode.IMPLEMENT, RunnerMode.SPEC_KIT)
+        /** ADR 0063: only delivery jobs push; agent jobs and evaluation attempts never do. */
+        private val PUSHING_MODES = setOf(RunnerMode.DELIVER)
 
-        /** IMPLEMENT / SPEC_KIT with `push = true` -> PUSH_MR; any other job with a repository -> READ; none -> NONE. */
-        fun derive(mode: RunnerMode, repository: RunnerRepository?): GitAccess = when {
-            repository == null -> NONE
-            mode in PUSHING_MODES && repository.push -> PUSH_MR
-            else -> READ
-        }
+        /**
+         * The level of a spec without `repositories` (legacy single `repository`): READ with a repository, NONE without.
+         * ADR 0063: such a spec never pushes; a DELIVER job always sends `repositories` with PUSH_MR (the runner refuses a
+         * DELIVER spec without them).
+         */
+        @Suppress("UNUSED_PARAMETER")
+        fun derive(mode: RunnerMode, repository: RunnerRepository?): GitAccess = if (repository == null) NONE else READ
 
         /** Whether a job of [mode] may push at all (evaluation attempts never push). */
         fun pushingMode(mode: RunnerMode): Boolean = mode in PUSHING_MODES
@@ -239,8 +252,6 @@ data class RunnerJobSpec(
     val model: ModelRef,
     val prompt: String,
     val repository: RunnerRepository? = null,
-    val specKitPhase: SpecKitPhase? = null,
-    val constitution: String? = null,
     /** ADR 0050 step 4: the system prompt of a PROMPT job; [prompt] is then the user message. */
     val systemPrompt: String? = null,
     val setupCommand: String? = null,
@@ -272,13 +283,6 @@ data class RunnerJobSpec(
      */
     val gitAccess: GitAccess = if (repositories.isNotEmpty()) GitAccess.highest(repositories.map { it.access }) else GitAccess.derive(mode, repository),
     /**
-     * ADR 0036: whether the job may use Spec Kit (`specify init`, the constitution, `/speckit.*` commands). Set by
-     * pipeline steps from the project setting and the platform switch; `false` = the runner does no Spec Kit work at
-     * all. Null (jobs built the legacy way, specs stored before 0036) keeps the runner's earlier behaviour and is
-     * omitted from the canonical JSON, so their spec digests do not change.
-     */
-    val specKit: Boolean? = null,
-    /**
      * ADR 0040: the user whose personal runner should run this job (a step of a private project started by its
      * owner). When that user has a personal runner pool the job goes there and nowhere else; otherwise it is routed
      * like any other job. Routing data only: never sent to the runner.
@@ -286,10 +290,8 @@ data class RunnerJobSpec(
     val personalRunnerOf: UUID? = null,
     /** ADR 0044: the run workspace the job works in; null = a throwaway workspace (and a new agent session). */
     val workspace: RunnerWorkspace? = null,
-    /** ADR 0047: the commit subject; null = the runner derives it from the first prompt line (older behaviour). */
+    /** ADR 0047/0063: the commit subject of a DELIVER job; null = the runner derives one. */
     val commitSubject: String? = null,
-    /** ADR 0047: the Spec Kit command argument (feature description, feedback); null = the whole prompt. */
-    val featureDescription: String? = null,
     /** ADR 0047: checks after the agent (coding benchmarks): hidden files for the verification, protected paths. */
     val acceptance: RunnerAcceptance? = null,
     /**

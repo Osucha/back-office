@@ -31,6 +31,8 @@ object BuiltInChecksum {
                 "parameterValues" to t.parameterValues,
                 // ADR 0060: only when set, so the checksums of templates without it stay
                 "requiresSkills" to t.requiresSkills.takeIf { it.isNotEmpty() },
+                // ADR 0063: likewise only when set
+                "outputFiles" to t.outputFiles.takeIf { it.isNotEmpty() },
             ),
         ),
     )

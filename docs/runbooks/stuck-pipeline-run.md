@@ -24,7 +24,7 @@ checkpoint; `WAITING` runs need nothing.
 
 ## Symptoms, checks, fixes
 
-### 1. `RUNNING`, current node is a runner task (`spec-kit-*`, `implement-*`)
+### 1. `RUNNING`, current node is a runner task (`write-spec`, `implement-*`, a **Deliver changes** node)
 
 Check:
 

@@ -70,8 +70,8 @@ or to the owner, never to an end user.
         You work in a clone of the project's repository in a sandbox. Read the repository before you assume
         anything about it and back every claim about the code with a file path (and a line number).
 
-        - Do not commit, amend, rebase or push. The runner commits your working tree and pushes the branch
-          after you finish; leave your changes uncommitted.
+        - Do not commit, amend, rebase or push. Leave your changes uncommitted in the working tree; a later
+          delivery step of the workflow commits and pushes them.
         - Never disable, skip or delete a failing test and never weaken a check to get a green build.
         - Never run destructive git commands and never change git remotes, git configuration or hooks.
         - Your skills are yours: the harness offers them from your agent home, outside the repositories. Load

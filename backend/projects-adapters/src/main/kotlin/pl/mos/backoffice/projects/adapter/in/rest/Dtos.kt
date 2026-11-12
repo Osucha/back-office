@@ -71,8 +71,6 @@ data class ProjectInputDto(
     val defaults: ProjectDefaultsDto = ProjectDefaultsDto(),
     /** ADR 0038: create a private project (only on create). */
     val personal: Boolean = false,
-    /** ADR 0036: Spec Kit for this project; null = off on create, unchanged on update. */
-    val specKit: Boolean? = null,
 )
 data class CiEntrypointDto(
     @field:NotBlank val key: String = "",
@@ -105,13 +103,9 @@ data class ProjectDto(
     val myRoles: List<String> = emptyList(),
     /** The caller's effective project permissions on this project (the UI hides what they cannot do). */
     val myPermissions: List<String> = emptyList(),
-    /** ADR 0036: Spec Kit is on for this project (it is used only when the platform allows it too). */
-    val specKit: Boolean = false,
     /** ADR 0038: a private project of its creator only. */
     val personal: Boolean = false,
 )
-/** ADR 0036: the project's Spec Kit setting, the platform switch and the seeded Spec Kit workflows the project lacks. */
-data class SpecKitStatusDto(val enabled: Boolean, val allowedByPlatform: Boolean, val effective: Boolean, val missingWorkflows: List<String>)
 data class CiSnippetDto(val gitlabCi: String, val scriptUrl: String, val variables: List<String>)
 
 // ---- CI tokens
@@ -239,6 +233,8 @@ data class WorkflowDefinitionInputDto(
     val triggers: List<TriggerJson> = listOf(TriggerJson()),
     val enabled: Boolean = true,
     val canvas: CanvasJson? = null,
+    /** ADR 0063: the repositories of the run directory; empty = the project's primary repository. */
+    val sources: List<pl.mos.backoffice.projects.application.port.`in`.WorkflowSourceJson> = emptyList(),
     /** ADR 0060: runs once per run directory before the first coding step. */
     val setupCommand: String? = null,
 )
@@ -259,6 +255,8 @@ data class WorkflowDefinitionDto(
     val library: LibraryLinkDto? = null,
     /** Saved with validation errors: no runs start from it until it is saved without errors. */
     val draft: Boolean = false,
+    /** ADR 0063: the repositories of the run directory; empty = the project's primary repository. */
+    val sources: List<pl.mos.backoffice.projects.application.port.`in`.WorkflowSourceJson> = emptyList(),
     /** ADR 0060: runs once per run directory before the first coding step. */
     val setupCommand: String? = null,
 )

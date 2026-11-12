@@ -273,8 +273,6 @@ data class PlatformSettingsDto(
     val mfaRequiredForLocal: Boolean? = null,
     val passwordPolicy: PasswordPolicyDto? = null,
     val lockout: LockoutDto? = null,
-    /** ADR 0036: projects may turn Spec Kit on. */
-    val specKitAllowed: Boolean? = null,
 ) {
     fun toDomain(current: PlatformSettings) = PlatformSettings(
         registration = registration ?: current.registration,
@@ -285,14 +283,12 @@ data class PlatformSettingsDto(
         mfaRequiredForLocal = mfaRequiredForLocal ?: current.mfaRequiredForLocal,
         passwordPolicy = passwordPolicy?.toDomain(current.passwordPolicy) ?: current.passwordPolicy,
         lockout = LockoutSettings(lockout?.maxFailures ?: current.lockout.maxFailures, lockout?.lockMinutes ?: current.lockout.lockMinutes),
-        specKitAllowed = specKitAllowed ?: current.specKitAllowed,
     )
 
     companion object {
         fun of(s: PlatformSettings) = PlatformSettingsDto(
             s.registration, s.allowedEmailDomains, s.syncGroupsFromIdentityProvider, s.personalTokenMaxDays,
             s.localLoginEnabled, s.mfaRequiredForLocal, PasswordPolicyDto.of(s.passwordPolicy), LockoutDto(s.lockout.maxFailures, s.lockout.lockMinutes),
-            s.specKitAllowed,
         )
     }
 }

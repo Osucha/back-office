@@ -80,7 +80,8 @@ class JiraConnectionModelMigrationTest {
             c.connection(projectWriter, "Shop writer", shop, listOf("ISSUE_COMMENT", "ISSUE_READ"))
         }
 
-        flyway(null).migrate()
+        // up to the projects schema before ADR 0063 (V122 drops the Spec Kit switch this test reads)
+        flyway("121").migrate()
 
         db().use { c ->
             fun row(id: UUID): Triple<UUID?, List<String>, Boolean> = c.prepareStatement(

@@ -11,6 +11,7 @@ import pl.mos.backoffice.projects.domain.model.PendingWrite
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.shared.InvalidStateException
+import pl.mos.backoffice.shared.RunnerJobId
 
 /** Registry of action strategies by [ActionType] (ADR 0056). */
 class ActionStrategies(strategies: List<ActionStrategy>) {
@@ -31,6 +32,12 @@ class ActionNodeExecutor(private val strategies: ActionStrategies) : NodeExecuto
         val step = stepOf(context)
         context.log("running action ${step.type}")
         return consumingFeedback(context, strategies.forType(step.type).execute(context, step))
+    }
+
+    /** ADR 0063: a runner-backed action (Deliver changes) finished its job [jobId]. */
+    override fun resume(context: NodeContext, jobId: RunnerJobId): NodeResult {
+        val step = stepOf(context)
+        return consumingFeedback(context, strategies.forType(step.type).resume(context, step, jobId))
     }
 
     override fun commit(context: NodeContext, write: PendingWrite): NodeResult {

@@ -90,24 +90,25 @@ segment, aby zaznaczyć dany krok.
 <a id="repository-results"></a>
 ## Wyniki dla repozytoriów
 
-Krok programistyczny może pracować w kilku repozytoriach projektu ([Repozytoria
-kroku](workflows.md#step-repositories)). Strona uruchomienia pokazuje, co stało się w każdym z nich:
+Workflow może mieć kilka repozytoriów wśród swoich [źródeł](workflows.md#workflow-sources). Strona uruchomienia
+pokazuje, co stało się w każdym z nich:
 w faktach zaznaczonego kroku, a dla **Całego uruchomienia** jako najnowszy wynik każdego repozytorium ze
 wszystkich kroków:
 
 | Kolumna | Znaczenie |
 |---|---|
 | **Repozytorium** (**Repository**) | Klucz, przeznaczenie (**Kod źródłowy**, **Dokumentacja**, **Inne**) i oznaczenie głównego repozytorium. |
-| **Dostęp** (**Access**) | **Odczyt** (**Read**) lub **Wypchnięcie i merge request** (**Push and merge request**). |
-| **Gałąź** (**Branch**) | Gałąź wypchnięta przez agenta (albo, przy **Odczycie**, gałąź, na której pracował). |
-| **Commit** | Commit po kroku, w skrócie; dla repozytoriów, do których wypychano, wypchnięty commit. |
-| **Zmiany** (**Changes**) | Statystyka diffu: zmienione pliki, dodane i usunięte wiersze. |
-| **Merge request** | Link do merge requestu otwartego przez wypchnięcie, jeśli powstał. |
-| **Wypchnięto** (**Pushed**) | Tak tylko wtedy, gdy gałąź została wypchnięta do tego repozytorium. Repozytoria z dostępem **Odczyt** nigdy nie są wypychane. |
+| **Dostęp** (**Access**) | **Odczyt** (**Read**) dla kroków kodujących (agenci nigdy nie wypychają), **Wypchnięcie i merge request** (**Push and merge request**) dla kroku [Dostarcz zmiany](workflows.md#deliver-changes). |
+| **Gałąź** (**Branch**) | Gałąź wypchnięta przez dostarczenie (albo, przy **Odczycie**, gałąź, na której pracował agent). |
+| **Commit** | Commit po kroku, w skrócie; dla dostarczonych repozytoriów wypchnięty commit. |
+| **Zmiany** (**Changes**) | Statystyka diffu: zmienione pliki, dodane i usunięte wiersze (dla kroku kodującego niezacommitowana praca względem gałęzi bazowej). |
+| **Merge request** | Link do merge requestu otwartego przez dostarczenie, jeśli powstał. |
+| **Wypchnięto** (**Pushed**) | Tak tylko wtedy, gdy dostarczenie wypchnęło gałąź do tego repozytorium. Kroki kodujące nigdy nie wypychają. |
 | **Błąd** (**Error**) | Dlaczego klonowanie, commit lub wypchnięcie w tym repozytorium się nie powiodło, jeśli tak się stało. |
 
-Merge request w nagłówku uruchomienia (i ten, do którego odwołują się decyzje i bramki) to merge request
-głównego repozytorium albo pierwszy wypchnięty, jeśli do głównego nic nie wypchnięto. Kroki wykonane przez
+Krok **Dostarcz zmiany** ma też fakty **Akcja** (**Action**), **Gałąź** (**Branch**), **Merge request**
+i **Repozytoria** (**Repositories**). Merge request w nagłówku uruchomienia (i ten, do którego odwołują się decyzje
+i bramki) to merge request głównego repozytorium albo pierwszy otwarty, jeśli głównego nie dostarczono. Kroki wykonane przez
 starsze runnery pokazują jeden wiersz, dla głównego repozytorium. Nieudane wypchnięcie do jednego
 repozytorium nie cofa wypchnięć do pozostałych; sprawdź kolumnę **Błąd** i **Logi** kroku.
 
@@ -140,7 +141,7 @@ Uruchomienie wychodzi przez odpowiedni port. Ręczne sygnały są zapisywane w d
 <a id="provenance"></a>
 ## Pochodzenie
 
-Gdy kończy się zadanie agenta, które wytworzyło commit lub diff, oraz gdy kończy się uruchomienie,
+Gdy kończy się job runnera, który wytworzył commit lub diff, oraz gdy kończy się uruchomienie,
 Back Office podpisuje **atestację**: oświadczenie, które wiąże commit (po jednym na każde repozytorium, do
 którego wypchnięto zmiany) i diff ze sposobem ich powstania:
 modelem, szablonem i promptami (jako skróty), polityką sandboxa i obrazem, dozwolonymi hostami, tokenami

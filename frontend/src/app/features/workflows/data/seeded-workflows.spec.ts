@@ -63,7 +63,7 @@ describe('seeded workflows (regression: the designer opened "Issue to reviewed M
 
   it('detects the revision loops as back edges', () => {
     const g = layerGraph(SEEDED_WORKFLOWS[0](), palette);
-    expect([...g.backEdges].sort()).toEqual(['e16', 'e18', 'e8']);
+    expect([...g.backEdges].sort()).toEqual(['e17', 'e19', 'e8']);
     expect(g.mainPath[0]).toBe('start');
     expect(g.mainPath[g.mainPath.length - 1]).toBe('done');
   });

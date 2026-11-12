@@ -45,7 +45,7 @@
   "library.templateEditor.config.help": "Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone.",
   "library.templateEditor.outputSchema.extra": "Kształt ustrukturyzowanej odpowiedzi; puste dla wolnego tekstu. Model odpowiada według niego, agent kodujący zapisuje odpowiedź do structured-answer.json.",
   "library.templateEditor.config": "Konfiguracja (JSON)",
-  "library.templateEditor.config.extra": "Klucze kroków odpowiedzi modelu lub agenta kodującego (phase, verifyCommand, push, …). Scalane głęboko z konfiguracją rodzica; null usuwa klucz.",
+  "library.templateEditor.config.extra": "Klucze kroków odpowiedzi modelu lub agenta kodującego (codingAgent, verifyCommand, agentTools, …). Scalane głęboko z konfiguracją rodzica; null usuwa klucz.",
   "library.templateEditor.outputSchema": "Schemat wyjścia (JSON Schema)",
   "library.templateEditor.preview": "Podgląd rozwiązanego zadania",
   "library.templateEditor.asGlobal": "jak globalnie",
@@ -603,7 +603,7 @@
   "library.templateEditor.requiresSkills.none": "brak",
   "library.templateEditor.checkWarnings": "Ostrzeżenia",
   "library.agents.col.access": "Dostęp",
-  "library.templateEditor.needsCoding.hint": "Jego konfiguracja (faza Spec Kit, push lub tylko przygotowanie) wymaga agenta kodującego. Agenta wybiera krok workflow.",
+  "library.templateEditor.needsCoding.hint": "Jego konfiguracja mówi, że pracuje w repozytorium, więc wymaga agenta kodującego. Agenta wybiera krok workflow.",
   "library.templates.filter.anyNeeds": "Dowolny rodzaj agenta",
   "library.templates.filter.needs": "Filtruj według agenta, którego wymaga szablon",
   "library.agents.directory": "Katalog",
@@ -616,6 +616,9 @@
   "library.templateEditor.instructions.placeholder": "Co zrobić i kiedy wynik jest wystarczająco dobry",
   "library.templateEditor.instructions.help": " Co zrobić i kryteria akceptacji. Platforma sama dodaje zgłoszenie, wyniki wcześniejszych kroków, dane podane przy starcie, uwagi recenzenta i odpowiedzi właściciela, chyba że umieścisz je w poleceniu za pomocą ich znaczników: {$INTERPOLATION}, {$INTERPOLATION_1}, {$INTERPOLATION_2}, {$INTERPOLATION_3}, {$INTERPOLATION_4}. ",
   "library.templateEditor.parameters.sourcesHelp": " Dane wejściowe pracy. Krok workflow nadaje każdemu wartość, pyta o nią przy starcie uruchomienia albo bierze wynik wcześniejszego kroku. Polecenie i ustawienia tekstowe odczytują je jako {$INTERPOLATION}. Parametr o nazwie parametru dziedziczonego go zastępuje. ",
-  "library.templateEditor.advancedNoSandbox": "Zaawansowane: artefakty, schemat wyjścia",
-  "library.templateEditor.advancedNoSandbox.help": " Większość szablonów nie potrzebuje tu niczego. Te ustawienia mają znaczenie dla szablonów bazowych i decyzji na podstawie odpowiedzi modelu. Sandbox ustawia się w projekcie. "
+  "library.templateEditor.advancedNoSandbox": "Zaawansowane: artefakty, pliki wynikowe, schemat wyjścia",
+  "library.templateEditor.advancedNoSandbox.help": " Większość szablonów nie potrzebuje tu niczego. Te ustawienia mają znaczenie dla szablonów bazowych i decyzji na podstawie odpowiedzi modelu. Sandbox ustawia się w projekcie. ",
+  "library.templateEditor.outputFiles": "Pliki wynikowe",
+  "library.templateEditor.outputFiles.help": "Wzorce (globy) plików, które agent zostawia w katalogu przebiegu i które wracają jako artefakty, nazwane jak plik bez rozszerzenia (np. specs/**/spec.md daje spec).",
+  "library.templateEditor.outputFiles.placeholder": "specs/**/spec.md, plan.md"
 }

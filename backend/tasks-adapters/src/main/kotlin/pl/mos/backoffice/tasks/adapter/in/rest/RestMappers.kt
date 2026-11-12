@@ -60,6 +60,7 @@ object RestMappers {
         parameters = dto.parameters.map(::parameter),
         parameterValues = dto.parameterValues,
         requiresSkills = dto.requiresSkills,
+        outputFiles = dto.outputFiles,
     )
 
     /** [needsCodingAgent]: ADR 0061, derived from the merged config by the use case. */
@@ -83,6 +84,7 @@ object RestMappers {
         parameters = t.parameters.map(::parameter),
         parameterValues = t.parameterValues,
         requiresSkills = t.requiresSkills,
+        outputFiles = t.outputFiles,
         needsCodingAgent = needsCodingAgent,
         builtIn = t.builtIn,
         version = t.version,

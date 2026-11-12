@@ -31,32 +31,19 @@ interface ManageProjects {
     fun replaceEntrypoints(id: ProjectId, entrypoints: List<CiEntrypoint>): List<CiEntrypoint>
     fun ciSnippet(id: ProjectId): CiSnippet
 
-    /** ADR 0036: whether the project can use Spec Kit and which seeded Spec Kit workflows it lacks (`project.view`). */
-    fun specKitStatus(id: ProjectId): SpecKitStatus
-
     /**
-     * ADR 0036: seeds the Spec Kit workflows the project lacks ("Add Spec Kit workflows"); needs `workflow.edit`, Spec
-     * Kit on for the project and the platform, and at least one repository. Audited `PROJECT_SPEC_KIT_SEEDED`.
-     */
-    fun addSpecKitWorkflows(id: ProjectId): List<pl.mos.backoffice.projects.domain.model.WorkflowDefinition>
-
-    /**
-     * ADR 0059: names of the default workflows other than the Spec Kit ones that the project lacks (by name), e.g.
+     * ADR 0059: names of the default workflows that the project lacks (by name), e.g.
      * "Reference: one Claude Code session" for projects created before it existed (`project.view`). Empty without a
      * repository.
      */
     fun missingDefaultWorkflows(id: ProjectId): List<String>
 
     /**
-     * ADR 0059 "Add missing default workflows": seeds the default workflows other than the Spec Kit ones that the project
+     * ADR 0059 "Add missing default workflows": seeds the default workflows that the project
      * lacks; needs `workflow.edit` and at least one repository. Registers no CI entrypoint. Audited
      * `PROJECT_DEFAULT_WORKFLOWS_SEEDED` when anything was added.
      */
     fun addDefaultWorkflows(id: ProjectId): List<pl.mos.backoffice.projects.domain.model.WorkflowDefinition>
-
-    data class SpecKitStatus(val enabled: Boolean, val allowedByPlatform: Boolean, val missingWorkflows: List<String>) {
-        val effective: Boolean get() = enabled && allowedByPlatform
-    }
 
     data class ProjectCommand(
         /** Short code; null or blank = generated from the name on create, unchanged on update. */
@@ -68,8 +55,6 @@ interface ManageProjects {
         val issueTracker: IssueTrackerBinding = IssueTrackerBinding(),
         val constitution: String = "",
         val defaults: ProjectDefaults = ProjectDefaults(),
-        /** ADR 0036: Spec Kit for this project; null = off on create, unchanged on update. */
-        val specKit: Boolean? = null,
         /** ADR 0038: create a private project (only on create; ignored on update). */
         val personal: Boolean = false,
     )

@@ -18,8 +18,6 @@ export type Dashboard = S['Dashboard'];
 
 // ---- projects / CI configuration
 export type ProjectInput = S['ProjectInput'];
-/** ADR 0036: Spec Kit of a project (setting, platform switch, missing workflows). */
-export type SpecKitStatus = S['SpecKitStatus'];
 export type Project = S['Project'];
 /** One git repository of a project (ADR 0034); a project has zero or more. */
 export type ProjectRepository = S['ProjectRepository'];

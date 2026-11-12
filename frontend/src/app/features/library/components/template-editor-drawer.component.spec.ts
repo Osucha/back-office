@@ -117,27 +117,49 @@ describe('TemplateEditorDrawerComponent', () => {
     expect(payload!.parameters?.[0]).toMatchObject({ type: 'ISSUE_KEY', default: 'BO-1' });
   });
 
-  it('renders the configuration with the keys of both kinds of steps (ADR 0061)', async () => {
+  it('edits and sends the output files of the template (ADR 0063)', () => {
+    const { fixture, drawer } = create({ ...writer, outputFiles: ['specs/**/spec.md'] });
+    let payload: TaskTemplateInput | null = null;
+    drawer.saved.subscribe((p) => (payload = p));
+    fixture.detectChanges();
+    expect(drawer.draft().outputFiles).toEqual(['specs/**/spec.md']);
+    expect(document.querySelector('[data-output-files]')).not.toBeNull();
+    drawer.patch({ outputFiles: drawer.cleanGlobs(['specs/**/spec.md', ' plan.md ', '']) });
+    drawer.submit();
+    expect(payload!.outputFiles).toEqual(['specs/**/spec.md', 'plan.md']);
+  });
+
+  it('renders the configuration with the keys a template still sets (ADR 0061, 0063)', async () => {
     const { fixture, drawer } = create(null);
     http.expectOne('/api/v1/workflows/task-config-schemas').flush({
       modelAnswer: { type: 'object', properties: { temperature: { type: 'number' } } },
       codingAgent: {
         type: 'object',
-        required: ['phase'],
-        properties: { phase: { type: 'string' }, push: { type: 'boolean' } },
+        required: ['verifyCommand'],
+        properties: {
+          phase: { type: 'string' },
+          push: { type: 'boolean' },
+          verifyCommand: { type: 'string' },
+        },
       },
     });
     drawer.patch({ name: 'My task' });
     fixture.detectChanges();
 
-    expect(drawer.configSchema()?.properties?.['phase']).toBeTruthy();
+    // ADR 0063: Spec Kit and git keys are gone; codingAgent is a checkbox
+    expect(drawer.configSchema()?.properties?.['phase']).toBeUndefined();
+    expect(drawer.configSchema()?.properties?.['push']).toBeUndefined();
+    expect(drawer.configSchema()?.properties?.['verifyCommand']).toBeTruthy();
     expect(drawer.configSchema()?.properties?.['temperature']).toBeTruthy();
     expect(drawer.configSchema()?.required).toBeUndefined();
     expect(document.querySelector('[data-config-form]')).not.toBeNull();
+    expect(document.querySelector('[data-checkbox="codingAgent"]')?.textContent).toContain(
+      'Works in the repository (needs a coding agent)',
+    );
 
-    drawer.onConfigForm({ phase: 'plan', extra: 1 });
-    expect(drawer.draft().config).toEqual({ phase: 'plan', extra: 1 });
-    expect(JSON.parse(drawer.configText())).toEqual({ phase: 'plan', extra: 1 });
+    drawer.onConfigForm({ codingAgent: true, extra: 1 });
+    expect(drawer.draft().config).toEqual({ codingAgent: true, extra: 1 });
+    expect(JSON.parse(drawer.configText())).toEqual({ codingAgent: true, extra: 1 });
 
     drawer.setConfigRaw(true);
     fixture.detectChanges();
@@ -152,7 +174,7 @@ describe('TemplateEditorDrawerComponent', () => {
     const { fixture, drawer } = create(null);
     fixture.componentRef.setInput('templates', [
       baseAgent,
-      { ...writer, key: 'coder', extendsKey: 'base-agent', config: { push: true } },
+      { ...writer, key: 'coder', extendsKey: 'base-agent', config: { codingAgent: true } },
     ]);
     let payload: TaskTemplateInput | null = null;
     drawer.saved.subscribe((p) => (payload = p));
@@ -169,9 +191,9 @@ describe('TemplateEditorDrawerComponent', () => {
       'Needs a coding agent',
     );
     // the own config deletes the key
-    drawer.patch({ config: { push: null } });
+    drawer.patch({ config: { codingAgent: null } });
     expect(drawer.needsCodingAgent()).toBe(false);
-    drawer.patch({ extendsKey: null, config: { phase: 'specify' } });
+    drawer.patch({ extendsKey: null, config: { codingAgent: true } });
     expect(drawer.needsCodingAgent()).toBe(true);
 
     drawer.submit();

@@ -267,18 +267,12 @@ class ConnectionRestTest {
     }
 
     @Test
-    fun `a project has Spec Kit off by default and can add the Spec Kit workflows after turning it on`() {
+    fun `ADR 0063 - projects have no Spec Kit switch and no Spec Kit endpoints`() {
         val project = createProject(key("SPK"))
         val pid = project["id"]
-        assertThat(project["specKit"]).isEqualTo(false)
-        mvc.perform(httpGet("/api/v1/projects/$pid/spec-kit")).andExpect(status().isOk)
-            .andExpect(jsonPath("$.effective").value(false)).andExpect(jsonPath("$.missingWorkflows[0]").value("Issue to reviewed MR"))
-        mvc.perform(post("/api/v1/projects/$pid/spec-kit/workflows")).andExpect(status().isConflict)
-
-        val update = """{"key":"${project["key"]}","name":"P","repository":{"url":"https://git.example.com/g/x.git","defaultBranch":"main"},"specKit":true}"""
-        mvc.perform(put("/api/v1/projects/$pid").contentType(MediaType.APPLICATION_JSON).content(update)).andExpect(status().isOk).andExpect(jsonPath("$.specKit").value(true))
-        mvc.perform(post("/api/v1/projects/$pid/spec-kit/workflows")).andExpect(status().isOk).andExpect(jsonPath("$[0].name").value("Issue to reviewed MR"))
-        mvc.perform(httpGet("/api/v1/projects/$pid/spec-kit")).andExpect(jsonPath("$.missingWorkflows.length()").value(0))
+        assertThat(project.keys.map { it.toString() }).doesNotContain("specKit")
+        mvc.perform(httpGet("/api/v1/projects/$pid/spec-kit")).andExpect(status().isNotFound)
+        mvc.perform(post("/api/v1/projects/$pid/spec-kit/workflows")).andExpect(status().isNotFound)
     }
 
     @Test

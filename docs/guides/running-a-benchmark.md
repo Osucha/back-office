@@ -109,7 +109,7 @@ POST /api/v1/task-suites/{suiteId}/tasks
   "category": "SPECIFICATION",
   "difficulty": "MEDIUM",
   "kind": "PROMPT",
-  "instructions": "Turn the ticket into a Spec Kit spec.md with: Overview, User scenarios (Given/When/Then), Functional requirements FR-1.., Key entities, Out of scope, Open questions tagged [NEEDS CLARIFICATION]. Requirements must be testable and implementation-agnostic.",
+  "instructions": "Turn the ticket into a feature specification (spec.md) with: Overview, User scenarios (Given/When/Then), Functional requirements FR-1.., Key entities, Out of scope, Open questions tagged [NEEDS CLARIFICATION]. Requirements must be testable and implementation-agnostic.",
   "context": "Ticket SHOP-482: Customers should be able to save a cart for later and restore it on another device. Carts older than 30 days can be dropped. Customers log in with email; carts live in the browser session today.",
   "rubric": "- Structure (0-10): all sections present; scenarios in Given/When/Then.\n- Requirement quality (0-10): testable, unambiguous, no technology names; covers save, restore on another device, 30-day expiry, conflict with an existing cart on the current device.\n- Open questions (0-10): at least three real product decisions, each tagged.\n- Scope discipline (0-10): out-of-scope section keeps it small; nothing invented.",
   "referenceAnswer": null,
@@ -247,7 +247,7 @@ Pipeline steps refer to models by `modelProfileId` (`StepDefinition.modelProfile
 outcome of a benchmark:
 
 1. Set the cheapest model that clears your bar (for example passRate >= 0.9 and meanScore >= 80 in
-   `SPECIFICATION`) as the project default for `LLM` and `SPEC_KIT` steps.
+   `SPECIFICATION`) as the project default for model answer steps (and choose it on the agents of the specification steps).
 2. Keep a stronger model on the steps where the benchmark showed a real gap (`ARCHITECTURE`, hard
    `CODING`), not everywhere.
 3. Prefer the profile (model plus reasoning level) that won, not just the model; `HIGH` reasoning on a

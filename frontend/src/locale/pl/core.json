@@ -477,7 +477,6 @@
   "core.turn.replaceToken": "Zastąp token",
   "core.help.topic.project.repositories": "Repozytoria projektu",
   "core.help.topic.project.noRepository": "Projekty bez repozytorium",
-  "core.help.topic.step.repositories": "Repozytoria kroku",
   "core.help.topic.run.repositories": "Wyniki w repozytoriach",
   "core.repository.purpose.docs": "Dokumentacja",
   "core.repository.purpose.other": "Inne",
@@ -489,7 +488,6 @@
   "core.help.topic.connections.actAs": "Działaj jako (którą tożsamością Jiry działa krok)",
   "core.help.topic.connections.scoped": "Tokeny API z zakresami",
   "core.help.topic.project.jiraConnections": "Połączenie systemowe projektu",
-  "core.help.topic.project.specKit": "Spec Kit",
   "core.permission.connections.personal": "Tworzenie i używanie własnych połączeń osobistych (Jira jako Ty, ADR 0035)",
   "core.help.topic.libraryWorkflows": "Biblioteka workflowów",
   "core.help.topic.libraryMetrics": "Mierzenie workflowów",
@@ -578,5 +576,7 @@
   "core.agent.session.fresh": "Zawsze od nowa",
   "core.agent.directory.run": "Katalog przebiegu (wspólny)",
   "core.agent.directory.separate": "Osobny katalog",
-  "core.parameter.type.issueKey": "Klucz zgłoszenia Jira"
+  "core.parameter.type.issueKey": "Klucz zgłoszenia Jira",
+  "core.action.deliverChanges": "Dostarcz zmiany",
+  "core.action.deliverChanges.description": "Zatwierdza (commit) to, co agenci zmienili w katalogu przebiegu, wypycha gałąź i opcjonalnie otwiera merge request. Jedyny krok, który zapisuje do repozytoriów."
 }

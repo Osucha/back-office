@@ -140,7 +140,7 @@ class TaskLibraryRestIntegrationTest {
         val key = "tpl-$suffix"
         val created = post(
             "/api/v1/task-templates",
-            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","agentKey":"ignored","modelProfileId":"${UUID.randomUUID()}","instructions":"more","instructionsMode":"APPEND","config":{"depth":{"max":3},"push":true},"parameters":[{"name":"depth","label":"Depth","type":"NUMBER","required":true,"default":2}],"parameterValues":{"depth":3},"tags":["t"]"""),
+            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","agentKey":"ignored","modelProfileId":"${UUID.randomUUID()}","instructions":"more","instructionsMode":"APPEND","config":{"depth":{"max":3},"codingAgent":true},"outputFiles":["specs/**/spec.md"],"parameters":[{"name":"depth","label":"Depth","type":"NUMBER","required":true,"default":2}],"parameterValues":{"depth":3},"tags":["t"]"""),
         ).exchange()
         assertThat(created).hasStatus(HttpStatus.CREATED)
         val id = idOf(created.response.contentAsString)
@@ -153,6 +153,7 @@ class TaskLibraryRestIntegrationTest {
             { assertThat(it).extractingPath("$.config.depth.max").isEqualTo(3) },
             { assertThat(it).extractingPath("$.parameters[0].type").isEqualTo("NUMBER") },
             { assertThat(it).extractingPath("$.parameterValues.depth").isEqualTo(3) },
+            { assertThat(it).extractingPath("$.outputFiles[0]").isEqualTo("specs/**/spec.md") },
             { assertThat(it).extractingPath("$.instructions").isEqualTo("more") },
             { assertThat(it).extractingPath("$.instructionsMode").isEqualTo("APPEND") },
         )
@@ -189,13 +190,12 @@ class TaskLibraryRestIntegrationTest {
             { assertThat(it).extractingPath("$.agent.key").describedAs("ADR 0061: no step agent, coding work").isEqualTo("opencode") },
             { assertThat(it).extractingPath("$.agent.harness").isEqualTo("OPENCODE") },
             { assertThat(it).extractingPath("$.config").asMap().doesNotContainKey("agent") },
-            { assertThat(it).extractingPath("$.config.push").isEqualTo(true) },
-            { assertThat(it).extractingPath("$.config.mergeRequestTitleTemplate").isEqualTo("{{issue.key}}: {{issue.summary}}") },
+            { assertThat(it).extractingPath("$.config").asMap().describedAs("ADR 0063").doesNotContainKeys("push", "branchTemplate", "mergeRequestTitleTemplate").containsEntry("codingAgent", true) },
             { assertThat(it).extractingPath("$.skills[*].key").asArray().containsExactly(BuiltInLibrary.SPEC_WRITING, BuiltInLibrary.DEFINITION_OF_READY_DONE, BuiltInLibrary.BUILD_GUARDRAILS) },
             { assertThat(it).extractingPath("$.agent.skills").asArray().contains(BuiltInLibrary.SPEC_WRITING) },
             { assertThat(it).extractingPath("$.rules[*].key").asArray().containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS) },
             { assertThat(it).extractingPath("$.category").isEqualTo("IMPLEMENTATION") },
-            { assertThat(it).extractingPath("$.produces").asArray().containsExactly("diff", "mr") },
+            { assertThat(it).extractingPath("$.produces").asArray().containsExactly("diff") },
             { assertThat(it).extractingPath("$.ports").asArray().containsExactly("success", "failure") },
             { assertThat(it).extractingPath("$.abstract").isEqualTo(false) },
             { assertThat(it).extractingPath("$.check.ok").isEqualTo(true) },
@@ -341,12 +341,12 @@ class TaskLibraryRestIntegrationTest {
         )
         assertThat(post("/api/v1/task-templates", templateBody("unknown-skill-$suffix", extra = ""","requiresSkills":["nope-$suffix"]"""))).hasStatus(HttpStatus.BAD_REQUEST)
 
-        // the project's read-only copy on a step that pushes is a problem
+        // ADR 0063: the project's read-only copy fits any coding step (agents never push)
         assertThat(
             post("/api/v1/task-templates/resolve/needs-$suffix?projectId=$projectId", """{"agentKey":"docs-$suffix","config":{"push":true}}"""),
         ).hasStatusOk().bodyJson().satisfies(
-            { assertThat(it).extractingPath("$.check.ok").isEqualTo(false) },
-            { assertThat(it).extractingPath("$.check.problems[0]").asString().contains("READ_ONLY") },
+            { assertThat(it).extractingPath("$.check.ok").isEqualTo(true) },
+            { assertThat(it).extractingPath("$.check.problems").asArray().isEmpty() },
         )
     }
 

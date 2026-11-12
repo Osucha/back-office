@@ -2,7 +2,7 @@
 
 Workflow to proces dostarczania projektu narysowany jako graf: zadania wykonywane przez agentów, decyzje
 na podstawie wyników, bramki, w których decyduje człowiek, oraz oczekiwania na Twoje CI. Ten rozdział
-opisuje projektanta, rodzaje węzłów, repozytoria kroków programistycznych, decyzje, ustawienia bramek,
+opisuje projektanta, rodzaje węzłów, dostarczanie zmian, źródła workflowu, decyzje, ustawienia bramek,
 zatwierdzanie przed zapisem zewnętrznym i uruchamianie workflowu.
 
 <a id="designer"></a>
@@ -17,7 +17,7 @@ Otwierasz go z projektu: karta **Workflowy** (**Workflows**) → **Edytuj** (**E
 | Nagłówek | Klucz projektu i wersję, nazwę workflowu, znacznik stanu (**poprawny**, błędy, ostrzeżenia lub **tylko do odczytu**), przełącznik **Projektant** / **JSON** (**Designer** / **JSON**), **Szablon** (**Template**; tylko nowe workflowy), cofnij i ponów, **Uporządkuj układ** (**Tidy layout**), **Waliduj** (**Validate**), **Agenci w tym workflowie** (**Agents in this workflow**) ze znaczkiem liczby problemów ([Agenci w tym workflowie](#agent-audit)) oraz przyciski pokazujące lub ukrywające paletę i właściwości. |
 | Paleta (po lewej) | Węzły **Sterowanie** (**Control**), **Akcje** (**Actions**; operacje Jiry i Back Office bez modelu, zob. [Węzły akcji](#actions)) i **Zadania** (**Tasks**) z biblioteki zadań, pogrupowane według kategorii (Analiza, Specyfikacja, ...), z polem wyszukiwania. Szablon należący do projektu ma ikonę projektu; szablon, który wymaga agenta kodującego, ma znacznik **agent kodujący** (**coding agent**). Po najechaniu na zadanie widać jego opis, rodzaj agenta, którego wymaga, i **Wymagane umiejętności**. |
 | Kanwa | Graf. Przyciski powiększenia, **Czytelny widok od START** (**Readable view from START**), **Dopasuj wszystko** (**Fit everything**) i, od ośmiu węzłów, mapa poglądowa (**Pokaż mapę** / **Ukryj mapę**, **Show the overview** / **Hide the overview**). |
-| Właściwości (po prawej) | Zaznaczony węzeł lub krawędź; gdy nic nie jest zaznaczone: **Opis** (**Description**) workflowu, przełącznik **Włączony** (**Enabled**) i **Wyzwalacze** (**Triggers**). |
+| Właściwości (po prawej) | Zaznaczony węzeł lub krawędź; gdy nic nie jest zaznaczone: **Opis** (**Description**) workflowu, przełącznik **Włączony** (**Enabled**), **Wyzwalacze** (**Triggers**), **Źródła** (**Sources**; [Źródła workflowu](#workflow-sources)) i **Polecenie przygotowania** (**Setup command**; [Katalog przebiegu](#run-directory)). |
 | Arkusz **Walidacja** (**Validation**; na dole) | Błędy i ostrzeżenia pogrupowane według węzłów; kliknij pozycję, aby przejść do węzła. |
 | Pasek akcji | **Zamknij** (**Close**), **Duplikuj workflow** (**Duplicate workflow**) oraz **Utwórz workflow** (**Create workflow**) lub **Zapisz jako nową wersję** (**Save as new version**) (`Ctrl S`). |
 
@@ -61,29 +61,32 @@ wprowadzone w nim obowiązują, gdy tylko JSON da się sparsować (**Kopiuj JSON
 Każdy nowy projekt z repozytorium dostaje te workflowy (projekt bez repozytorium dostaje zamiast nich
 workflow startowy **LLM task with review**, zob. [Projekty bez repozytorium](projects.md#no-repository)):
 
-- **Issue to reviewed MR**: pobiera zgłoszenie, pisze specyfikację, sprawdza ją (bramka pyta Cię tylko
-  wtedy, gdy pewność agenta jest niższa niż 0.8), planuje, tworzy listę zadań, implementuje, czeka na
-  sygnał CI `tests`, przegląda kod, a potem bramka **Merge?** na zasadzie czterech oczu i zmiana statusu
+- **Issue to reviewed MR**: pobiera zgłoszenie, zapisuje specyfikację w repozytorium (**Write specification**),
+  sprawdza ją (bramka pyta Cię tylko wtedy, gdy pewność agenta jest niższa niż 0.8), zapisuje plan i listę zadań,
+  implementuje, **Dostarcz zmiany** (**Deliver changes**; gałąź `feature/<klucz zgłoszenia>` i merge request), czeka
+  na sygnał CI `tests`, przegląda kod, a potem bramka **Merge?** na zasadzie czterech oczu i zmiana statusu
   w Jirze **Move issue to In Review**, którą człowiek musi zatwierdzić
   ([Zatwierdzanie przed zapisem zewnętrznym](#write-confirmations)).
 - **CI code review**: uruchamiany z Twojego pipeline'u przez punkt wejścia `code-review`; przegląda
   przesłany diff i zalicza albo oblewa zadanie CI.
 - **Change request (delta)**: analiza wpływu, historyjka użytkownika i lista zadań, każdy ważny krok za
-  bramką z listą kontrolną, a następnie implementacja, CI, przegląd i bramka scalenia.
+  bramką z listą kontrolną, a następnie implementacja, **Dostarcz zmiany**, CI, przegląd i bramka scalenia.
 - **Reference: one Claude Code session**: pobiera zgłoszenie, potem jeden krok zadania (szablon **Agent task**,
-  `agent-task`, z agentem **Claude Code**, z wypchnięciem i merge requestem), który czyta repozytorium, implementuje
-  zgłoszenie od początku do końca, uruchamia build i testy i otwiera merge request, a następnie bramka **Merge?** na
-  zasadzie czterech oczu (**revise** odsyła Twój komentarz do kroku). To punkt odniesienia: przepuść te same
-  zgłoszenia przez niego i przez tańsze workflowy i porównaj ich koszt zaakceptowanego wyniku
+  `agent-task`, z agentem **Claude Code**), który czyta repozytorium, implementuje zgłoszenie od początku do końca
+  i uruchamia build i testy, potem **Dostarcz zmiany** wypycha gałąź i otwiera merge request, a następnie bramka
+  **Merge?** na zasadzie czterech oczu (**revise** odsyła Twój komentarz do kroku). To punkt odniesienia: przepuść te
+  same zgłoszenia przez niego i przez tańsze workflowy i porównaj ich koszt zaakceptowanego wyniku
   ([Agenci: koszt i skuteczność](costs-insights.md#agent-insights)).
 
-**Issue to reviewed MR** powstaje tylko wtedy, gdy Spec Kit jest włączony ([Spec Kit](projects.md#spec-kit)).
+W każdym domyślnym workflowie krok implementacji tylko zmienia pliki katalogu przebiegu; węzeł **Dostarcz zmiany** po
+nim (id `implement-deliver`) zatwierdza (commit), wypycha i otwiera merge request
+([Dostarcz zmiany](#deliver-changes)).
 
 **Projekty utworzone, zanim istniał dany workflow domyślny**, nie dostają go automatycznie. Gdy projektowi
 z repozytorium brakuje workflowów domyślnych, jego karta **Workflowy** (**Workflows**) proponuje **Dodaj brakujące
 workflowy domyślne (N)** (**Add missing default workflows (N)**, `workflow.edit`): dodaje brakujące po nazwie, na
-przykład **Reference: one Claude Code session**, i nigdy nie zastępuje istniejącego workflowu o tej samej nazwie.
-Workflowy Spec Kit dodaje się zamiast tego z karty **Spec Kit** ([Spec Kit](projects.md#spec-kit)).
+przykład **Reference: one Claude Code session** albo **Issue to reviewed MR** (który dawniej wymagał Spec Kit),
+i nigdy nie zastępuje istniejącego workflowu o tej samej nazwie.
 
 <a id="nodes"></a>
 ## Rodzaje węzłów
@@ -92,7 +95,7 @@ Workflowy Spec Kit dodaje się zamiast tego z karty **Spec Kit** ([Spec Kit](pro
 |---|---|---|
 | **Start** | Wejście; dokładnie jeden na workflow. | `out` |
 | **Zadanie** (**Task**) | Wykonuje szablon zadania z biblioteki za pomocą agenta (zob. niżej). | `success`, `failure` |
-| **Akcja** (**Action**) | Wykonuje stałą operację bez modelu: Jira, uruchamianie workflowów, podsumowanie projektu (zob. [Węzły akcji](#actions)). | `success`, `failure` |
+| **Akcja** (**Action**) | Wykonuje stałą operację bez modelu: Jira, dostarczanie zmian, uruchamianie workflowów, podsumowanie projektu (zob. [Węzły akcji](#actions)). | `success`, `failure` |
 | **Decyzja** (**Decision**) | Kieruje uruchomienie według warunków na stanie uruchomienia (zob. [Decyzje](workflows.md#decisions)). | jeden na gałąź plus domyślny |
 | **Bramka decyzyjna** (**Human gate**) | Zatrzymuje uruchomienie, dopóki zatwierdzający nie wybierze opcji (zob. [Ustawienia bramki](workflows.md#gates-config)). | jeden na opcję (domyślnie `approve`, `revise`, `reject`) plus `timeout` |
 | **Oczekiwanie na CI** (**Wait for CI**) | Zatrzymuje uruchomienie, dopóki Twoje CI nie wyśle sygnału. | `success`, `fail`, `timeout` |
@@ -168,10 +171,10 @@ umiejętności**, **Required skills**), której agent kroku nie ma.
 
 | Nadpisanie | Skutek |
 |---|---|
-| **Agent** | Kto wykonuje ten krok: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)); wybierany wstępnie jak wyżej. Puste: **OpenCode**, gdy szablon wymaga agenta kodującego, w przeciwnym razie **Odpowiedź modelu**. Z agentem przychodzą jego instrukcje, reguły, umiejętności, serwery MCP i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (szablon wymagający agenta kodującego z agentem odpowiedzi modelu: „Szablon wymaga agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”; albo agent z dostępem **Tylko odczyt** w kroku, który wypycha). |
+| **Agent** | Kto wykonuje ten krok: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)); wybierany wstępnie jak wyżej. Puste: **OpenCode**, gdy szablon wymaga agenta kodującego, w przeciwnym razie **Odpowiedź modelu**. Z agentem przychodzą jego instrukcje, reguły, umiejętności, serwery MCP i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (szablon wymagający agenta kodującego z agentem odpowiedzi modelu: „Szablon wymaga agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”). |
 | **Agent może zadawać pytania** (**Agent may ask questions**), **Rundy pytań** (**Question rounds**) | Domyślnie włączone, 2 rundy: agent może zatrzymać się z pytaniami, a przebieg czeka na Twoje odpowiedzi ([Agent zadaje pytania](#agent-questions)). |
 | **Profil modelu** (**Model profile**) | Model dla tego węzła. Puste: model agenta, w przeciwnym razie domyślne dla jego rodzaju (projekt, osoba uruchamiająca, platforma). |
-| **Konfiguracja** (**Config**) | Ustawienia dla agenta kroku, takie jak polecenie weryfikacji, nazwa gałęzi czy opcje merge requestu; scalane z konfiguracją szablonu. |
+| **Konfiguracja** (**Config**) | Ustawienia pracy scalane z konfiguracją szablonu: **Pracuje w repozytorium (wymaga agenta kodującego)** (**Works in the repository (needs a coding agent)**), **Polecenie weryfikacji** (**Verify command**; sprawdzenie akceptacyjne uruchamiane po agencie, np. `./gradlew test`; niepowodzenie oznacza błąd kroku), **Narzędzia agenta** (**Agent tools**). Krok nie ma ustawień gita: commit, gałąź i merge request ustawia się w [Dostarcz zmiany](#deliver-changes). |
 
 Katalog i sesja nie są już ustawieniami kroku (ADR 0062): należą do agenta (**Katalog**, **Sesja**; [Katalog
 przebiegu i sesje agentów](#run-directory)). Sandbox ustawia się w projekcie ([Polityka
@@ -185,9 +188,29 @@ Agent kodujący był dawniej kluczem konfiguracji `agent` (`CLAUDE_CODE`, `OPENC
 Zapisane workflowy działają dalej: `agent` kroku jest odczytywany jako jego **Agent** (**Claude Code**, **OpenCode**),
 a następny zapis utrwala go w tej postaci.
 
-**Szablony Spec Kit** (**Spec Kit: specify**, **plan**, **tasks** i szablony, które je rozszerzają) pojawiają się
-w palecie tylko wtedy, gdy projekt ma włączony [Spec Kit](projects.md#spec-kit); w przeciwnym razie krok Spec Kit
-jest błędem walidacji, a uruchomienia nie startują.
+**Agenci nigdy nie wypychają** (ADR 0063). Krok kodujący czyta [źródła](#workflow-sources) workflowu i zmienia pliki
+w katalogu przebiegu; nigdy nie robi commita, nie wypycha i nie otwiera merge requestu, a jego dostęp do gita jest
+zawsze tylko do odczytu. Diff jego pracy względem gałęzi bazowej nadal jest jego artefaktem `diff`, więc krok
+przeglądu może go przeczytać. Aby dostarczyć pracę, postaw po kroku węzeł [Dostarcz zmiany](#deliver-changes)
+(zwykle po przeglądzie, nie w środku pracy).
+
+**Workflowy zapisane przed ADR 0063.** Krok miał kiedyś własne ustawienia gita (**push**, gałąź, temat commita,
+tytuł, opis i szkic merge requestu), własne **Repozytoria** i własne polecenie przygotowania, a Back Office potrafił
+uruchamiać Spec Kit. Aktualizacja (migracja bazy V309) przepisała zapisane workflowy, wersje workflowów w bibliotece
+i niezakończone przebiegi:
+
+- krok, który wypychał (jego konfiguracja albo konfiguracja jego szablonu miała `push: true`), dostał tuż za sobą
+  węzeł **Dostarcz zmiany** `<id kroku>-deliver` z ustawieniami gita kroku: `success` kroku prowadzi teraz do
+  dostarczenia, `success` dostarczenia tam, dokąd prowadził `success` kroku, a jego `failure` tam, dokąd prowadził
+  `failure` kroku;
+- repozytoria kroków stały się **Źródłami** workflowu (wszystkie razem), a polecenia przygotowania kroków dopisano do
+  **Polecenia przygotowania** workflowu;
+- kroki **Spec Kit: specify**, **plan** i **tasks** używają teraz **Write specification**, **Write plan** i **Write
+  task list** ([Wbudowana biblioteka](task-library.md#built-in-library));
+- klucze `push`, `phase`, `repositories`, `setupCommand` i klucze gita zostały usunięte z konfiguracji kroków.
+
+Workflowy importowane później są odczytywane w ten sam sposób. Dawne szablony Spec Kit nadal istnieją, oznaczone jako
+przestarzałe, i działają dokładnie jak ich następcy.
 
 **Workflowy zapisane przed ADR 0061.** Szablony wskazywały kiedyś agenta i profil modelu. Przy aktualizacji każdy
 zapisany krok bez własnego agenta dostał agenta, którego wskazywał jego szablon (albo najbliższy rodzic), oraz profil
@@ -233,10 +256,12 @@ Uwagi, każda z krokami, których dotyczy (**ERROR** nie pozwala wykonać kroku,
 |---|---|---|
 | **Brakująca umiejętność** (**Missing skill**) | ostrzeżenie | szablon kroku wymaga umiejętności, której agent nie ma |
 | **Wymaga agenta kodującego** (**Needs a coding agent**) | błąd | krok, którego szablon wymaga agenta kodującego, wykonuje agent odpowiedzi modelu |
-| **Agent tylko do odczytu w kroku z push** (**Read-only agent on a pushing step**) | błąd | agent z dostępem **Tylko odczyt** wykonuje krok, który wypycha |
 | **Nieznana reguła**, **Nieznana umiejętność** (**Unknown rule**, **Unknown skill**) | błąd | agent wymienia regułę lub umiejętność, która już nie istnieje |
 | **Nieznany agent** (**Unknown agent**) | błąd | krok wskazuje agenta, który już nie istnieje |
 | **Dwie umiejętności o tej samej nazwie** (**Two skills with the same name**) | ostrzeżenie | dwie umiejętności agenta mają tę samą nazwę, więc agent nie może ich odróżnić |
+
+Dawna uwaga **Agent tylko do odczytu w kroku z push** (**Read-only agent on a pushing step**) nie jest już zgłaszana:
+agenci nigdy nie wypychają (ADR 0063), więc agent **Tylko odczyt** pasuje do każdego kroku.
 
 **Dodaj do agenta** dodaje brakującą umiejętność agentowi raz, dla wszystkich kroków i przebiegów (wymaga
 `library.project.manage` w projekcie). Agent projektu dostaje umiejętność od razu. Agent globalny jest najpierw
@@ -275,6 +300,7 @@ oraz porty `success` i `failure`.
 | **Pobierz zgłoszenie** (**Fetch issue**) | Wczytuje zgłoszenie Jira przebiegu do artefaktu `issue` i `state.issue`; przy starcie uruchomienia prosi o **Klucz zgłoszenia Jira**. |
 | **Skomentuj zgłoszenie** (**Comment on issue**) | Dodaje komentarz do zgłoszenia po zatwierdzeniu przez człowieka ([Zatwierdzanie przed zapisem zewnętrznym](#write-confirmations)). |
 | **Zmień status zgłoszenia** (**Transition issue**) | Przenosi zgłoszenie do statusu po zatwierdzeniu przez człowieka. |
+| **Dostarcz zmiany** (**Deliver changes**) | Zatwierdza (commit) to, co agenci zmienili w katalogu przebiegu, wypycha gałąź i opcjonalnie otwiera merge request ([Dostarcz zmiany](#deliver-changes)). |
 | **Uruchom workflow** (**Start workflow**) | Uruchamia inne workflowy projektu (zob. niżej). |
 | **Podsumowanie projektu** (**Project digest**) | Zapisuje artefakt `digest` (zob. niżej). |
 
@@ -317,7 +343,7 @@ uruchomienie wychodzi przez `success` lub `fail` albo przez `timeout`. Zob.
 [GitLab CI](integrations-gitlab-ci.md#ci-overview).
 
 Po włączeniu **Obserwuj pipeline** (**Watch pipeline**) Back Office sam obserwuje pipeline, a Twoje CI nic nie wysyła:
-co minutę odczytuje najnowszy pipeline gałęzi, którą uruchomienie wypchnęło (w **Repozytorium** kroku, puste = główne),
+co minutę odczytuje najnowszy pipeline gałęzi, którą wypchnął krok [Dostarcz zmiany](#deliver-changes) uruchomienia (w **Repozytorium** kroku, puste = główne),
 tokenem projektu tylko do odczytu z uprawnieniem CI_READ
 ([Tokeny dostępu do repozytoriów](integrations-git.md#git-project-tokens)). Gdy pipeline się powiedzie, uruchomienie
 wychodzi przez `success`; gdy się nie powiedzie, przez `fail`, a następny krok dostaje nieudane joby (poza tymi, którym
@@ -326,62 +352,99 @@ implementacji, a agent poprawi to, co zgłasza CI; **Maks. odwiedzin** kroku ogr
 kończy dziennik pracy linią `RESULT: PARTIAL` (wszystko, co dało się sprawdzić w sandboxie, przeszło, reszta wymaga
 CI), powinien stać przed takim węzłem.
 
-<a id="step-repositories"></a>
-## Repozytoria kroku
+<a id="deliver-changes"></a>
+## Dostarcz zmiany
 
-Kroki programistyczne (kroki zadań wykonywane przez agenta kodującego, **OpenCode** lub **Claude Code**, także fazy
-Spec Kit) pracują w repozytoriach Git projektu ([Repozytoria](projects.md#repositories)). Pozostałe kroki
-(odpowiedzi modelu, akcje, bramki, oczekiwanie na CI) nie używają repozytoriów, więc ich właściwości nie mają
-sekcji repozytoriów.
+**Dostarcz zmiany** (**Deliver changes**) to akcja, która przekazuje pracę agentów Twojemu serwerowi Git (ADR 0063).
+W katalogu przebiegu zatwierdza (commit) to, co agenci zmienili, wypycha gałąź i, jeśli chcesz, otwiera merge
+request. To jedyny krok workflowu, który zapisuje do repozytorium: kroki kodujące tylko zmieniają pliki ([Agenci nigdy
+nie wypychają](#task-nodes)). Postaw go tam, gdzie workflow ma dostarczać, zwykle po implementacji albo po przeglądzie,
+tak aby z przebiegu wychodziła tylko przejrzana praca.
 
-Zaznacz krok programistyczny; jego właściwości mają sekcję **Repozytoria** (**Repositories**):
+Zaznacz węzeł; jego właściwości mają:
 
 | Ustawienie | Znaczenie |
 |---|---|
-| **Użyj głównego repozytorium** (**Use the primary repository**; domyślnie) | Krok pracuje w głównym repozytorium projektu, z dostępem **Odczyt**, gdy **push** jest wyłączony, i **Wypchnięcie i merge request**, gdy jest włączony. Tak działa każdy workflow napisany dla jednego repozytorium. |
-| Lista repozytoriów | **Dodaj repozytorium** (**Add repository**) wybiera repozytorium projektu po kluczu (z jego przeznaczeniem i URL); dodaj tyle, ile krok potrzebuje. Usuwasz je przyciskiem usuwania. |
-| **Dostęp** (**Access**; dla każdego repozytorium) | **Odczyt** (**Read**): agent może sklonować i czytać repozytorium, nic nie jest wypychane. **Wypchnięcie i merge request** (**Push and merge request**): zmiany agenta są wypychane na nową gałąź i otwierany jest merge request do gałęzi domyślnej repozytorium. |
+| **Gałąź** (**Branch**) | Nazwa gałęzi wypychanej dla przebiegu (szablon). Nigdy domyślna gałąź repozytorium. Puste: `feature/` i klucz zgłoszenia małymi literami, na przykład `feature/shop-123`. |
+| **Temat commita** (**Commit subject**) | Pierwszy wiersz opisu commita (szablon). Puste: klucz i tytuł zgłoszenia. Commit zawsze kończy się wpisem `Back-Office-Run: <id przebiegu>`. |
+| **Otwórz merge request** (**Open a merge request**) | Domyślnie włączone. Otwiera merge request z gałęzi do gałęzi domyślnej. Back Office nigdy go nie scala. |
+| **Tytuł merge requestu** (**Merge request title**) | Szablon. Puste: `{{issue.key}}: {{issue.summary}}`. |
+| **Opis merge requestu** (**Merge request description**) | Szablon; może czytać wyniki wcześniejszych kroków, np. `{{artifacts.review}}`. |
+| **Szkic** (**Draft**) | Otwiera merge request jako szkic. |
+| **Repozytoria do dostarczenia** (**Repositories to deliver**) | Repozytoria projektu spośród [źródeł](#workflow-sources) workflowu, które dostają gałąź i merge request. Puste (**Każde zmienione repozytorium**, **Every changed repository**): każde, które agenci zmienili. Do źródeł z biblioteki nic nie jest zapisywane. |
 
-**Najmniejsze uprawnienia.** Daj każdemu repozytorium najniższy dostęp, jakiego krok potrzebuje: **Odczyt**
-dla kontraktu, materiałów referencyjnych czy dokumentacji, do których agent tylko zagląda, a **Wypchnięcie
-i merge request** tylko tam, gdzie musi coś zmienić. Runner dostaje token tylko do odczytu dla repozytoriów
-z dostępem **Odczyt**, a token do wypychania tylko dla repozytoriów z dostępem **Wypchnięcie i merge
-request** ([Dostęp agentów do gita](integrations-git.md#git-least-privilege)).
+Karta na płótnie podsumowuje ustawienia, na przykład **Gałąź feature/{{issue.key | lower}}, MR, każde zmienione
+repozytorium**.
 
-**Nigdy nie scala.** Agenci wypychają gałąź i otwierają merge request; nigdy nie scalają, nigdy nie
-wypychają do gałęzi domyślnej i nigdy nie wypychają z wymuszeniem (force push). Scala człowiek (albo reguły
-zatwierdzania Twojego serwera Git). Gdy krok wypycha do kilku repozytoriów, w każdym używa tej samej nazwy
-gałęzi i każde dostaje własny merge request.
+**Co robi.** Dostarczenie wykonuje się jako job runnera bez agenta i bez żadnego polecenia repozytoriów, w katalogu
+przebiegu, w którym pracowali agenci. Dla każdego dostarczanego repozytorium ze zmianami zatwierdza każdy zmieniony
+i nowy plik (pliki pomijane przez `.gitignore` zostają poza commitem, podobnie jak własne pliki runnera `work-log.md`,
+`structured-answer.json` i `agent-questions.json`, które nigdy nie trafiają do commita), wypycha gałąź i otwiera merge
+request przez opcje push GitLaba. Gdy dostarczanych jest kilka repozytoriów, każde dostaje tę samą nazwę gałęzi
+i własny merge request. Repozytorium bez zmian jest pomijane; gdy żadne repozytorium nie ma zmian, krok i tak kończy
+się sukcesem z ostrzeżeniem „nothing to deliver”.
 
-**Katalogi.** Każde repozytorium jest klonowane do osobnego katalogu nazwanego jego kluczem:
-`/workspace/service`, `/workspace/docs`, … (w [katalogu przebiegu](#run-directory) albo we własnym katalogu kroku,
-gdy jego agent pracuje w **Osobnym katalogu**). Agent zaczyna w głównym repozytorium kroku (w głównym
-repozytorium projektu, jeśli krok go używa, w przeciwnym razie w pierwszym z listy) i dostaje informację,
-jakie repozytoria istnieją, gdzie są, jakie mają przeznaczenie i gałąź bazową oraz czy może je zmieniać.
+**Wyniki.** Krok wychodzi przez `success` albo przez `failure`, gdy commit lub wypchnięcie się nie powiodło (błąd
+wskazuje repozytorium; błąd w jednym repozytorium nie zatrzymuje pozostałych). Wytwarza `mr` (merge request przebiegu,
+dla późniejszych kroków także `{{mr.url}}`) i `diff` (dostarczone zmiany względem gałęzi bazowej). Strona przebiegu
+pokazuje **Gałąź**, **Merge request** i **Repozytoria** kroku ([Wyniki dla repozytoriów](runs.md#repository-results)).
 
-**Źródła z biblioteki.** W części **Źródła z biblioteki (tylko odczyt)** krok zaznacza źródła
-[biblioteki](task-library.md#sources): standardy, szablony, materiały referencyjne wspólne dla wszystkich
-projektów. Każde jest klonowane tylko do odczytu do `/workspace/lib-<key>`, a agent dostaje polecenie, by
-się do niego stosował, a nie je zmieniał. Zaznaczenie źródła, gdy krok używa głównego repozytorium,
-przełącza krok na własną listę, zaczynającą się od głównego repozytorium; powrót do **Użyj głównego
-repozytorium** usuwa zaznaczone źródła.
+**Tylko ten job ma prawo wypychania.** Runner dostaje poświadczenie do wypychania tylko dla joba dostarczenia: token
+repozytorium projektu z **PUSH_BRANCH**, a bez niego token puli runnerów ([Dostęp agentów do
+gita](integrations-git.md#git-least-privilege)). Każdy job agenta dostaje tylko odczyt.
 
-**Komunikaty walidacji** (w arkuszu **Walidacja** i przy starcie uruchomienia):
+**Bezpieczeństwo gałęzi.** Dostarczenie nigdy nie wypycha do gałęzi domyślnej ani do gałęzi docelowej merge requestu,
+nigdy nie wypycha z wymuszeniem (force push) i nigdy nie scala. Szablon gałęzi, który daje gałąź domyślną, `HEAD` albo
+ścieżkę `refs/...`, jest zastępowany własną gałęzią przebiegu `run/<id przebiegu>`; runner odrzuca taką gałąź, zanim
+cokolwiek sklonuje. Scala człowiek (albo reguły zatwierdzania Twojego serwera Git).
+
+**Walidacja.** Dostarczenie potrzebuje co najmniej jednego repozytorium projektu wśród źródeł („nothing to deliver:
+the workflow's sources hold no project repository”). **Repozytoria do dostarczenia** muszą wskazywać repozytoria
+projektu ze źródeł; źródło z biblioteki jest tylko do odczytu. Gdy agent każdego kroku kodującego pracuje w **Osobnym
+katalogu**, katalog przebiegu nie ma czego dostarczyć i dostarczenie jest błędem. Dostarczenie osiągalne z decyzji na
+podstawie odpowiedzi modelu bez bramki decyzyjnej po drodze dostaje ostrzeżenie, jak wcześniej kroki wypychające. Gdy
+**Repozytoria do dostarczenia** obejmują repozytorium dokumentacji i repozytorium kodu źródłowego, dostajesz
+ostrzeżenie: to dozwolone, ale recenzenci dostaną osobny merge request dla każdego repozytorium.
+
+<a id="workflow-sources"></a><a id="step-repositories"></a>
+## Źródła workflowu
+
+**Źródła** (**Sources**) workflowu (ADR 0063) to repozytoria Git klonowane do jego [katalogu
+przebiegu](#run-directory): repozytoria projektu ([Repozytoria](projects.md#repositories)) i źródła
+[biblioteki](task-library.md#sources) (standardy, szablony, materiały referencyjne wspólne dla wszystkich projektów).
+Ustawiasz je we właściwościach workflowu (kliknij puste płótno), obok **Polecenia przygotowania**; lista ma grupy
+**Repozytoria projektu** (**Project repositories**) i **Źródła z biblioteki** (**Library sources**). Puste (podpowiedź
+**Główne repozytorium projektu**, **Project's primary repository**): główne repozytorium projektu.
+
+- **Agenci je czytają.** Każdy krok kodujący pracuje w tych klonach; odpowiedzi modelu, akcje, bramki i oczekiwanie na
+  CI nie używają repozytoriów. Agent z **Osobnym katalogiem** dostaje świeżą kopię tych samych źródeł.
+- **Tylko dostarczenie zapisuje z powrotem**, i tylko do repozytoriów projektu: [Dostarcz zmiany](#deliver-changes)
+  wypycha te zmienione (albo te, które wskażesz). Źródła z biblioteki są klonowane tylko do odczytu, a agent dostaje
+  polecenie, by się do nich stosował, a nie je zmieniał.
+- **Katalogi.** Każde repozytorium jest klonowane do osobnego katalogu nazwanego jego kluczem: `/workspace/service`,
+  `/workspace/docs`, …; źródło z biblioteki do `/workspace/lib-<key>`. Agent zaczyna w głównym repozytorium (głównym
+  repozytorium projektu, gdy jest wśród źródeł, w przeciwnym razie w pierwszym wymienionym repozytorium projektu)
+  i dostaje informację, jakie repozytoria istnieją, gdzie są, jakie mają przeznaczenie i gałąź bazową.
+
+**Komunikaty walidacji** (w arkuszu **Walidacja** i przy starcie uruchomienia; mają znaczenie, gdy workflow ma krok
+kodujący albo dostarczenie):
 
 | Komunikat dotyczy | Co zrobić |
 |---|---|
 | projekt nie ma repozytorium | Dodaj repozytorium do projektu albo użyj kroku, który nie jest programistyczny. |
-| brak głównego repozytorium i brak repozytoriów w kroku | Dodaj repozytoria do kroku albo oznacz jedno repozytorium projektu jako **Główne**. |
-| nieznany klucz repozytorium | Komunikat podaje klucze projektu; wybierz jeden z nich (repozytorium mogło zostać usunięte lub przemianowane). |
-| repozytorium wymienione dwa razy | Usuń duplikat. |
-| dostęp inny niż odczyt lub wypchnięcie i merge request | Popraw wartość (w widoku **JSON**: `READ` lub `PUSH_MR`). |
-| wypchnięcie i merge request przy wyłączonym **push** | Włącz **push** w **Konfiguracji** albo ustaw dostęp **Odczyt**. |
-| repozytoria w kroku, który nie jest programistyczny | Usuń je; repozytoriów używają tylko kroki programistyczne. |
-| (ostrzeżenie) jeden krok wypycha do repozytorium dokumentacji i repozytorium kodu źródłowego | Dozwolone; sprawdź, czy jeden agent rzeczywiście ma zmieniać oba. |
+| brak głównego repozytorium i brak źródeł | Wymień źródła workflowu albo oznacz jedno repozytorium projektu jako **Główne**. |
+| nieznany klucz repozytorium | Komunikat podaje klucze projektu; wybierz jeden z nich (repozytorium mogło zostać usunięte lub przemianowane). Źródło, które już nie istnieje, ma dopisek **(nie znaleziono)** (**(not found)**). |
+| nieznane źródło z biblioteki | Odznacz je albo utwórz źródło w **Biblioteka** → **Źródła**. |
+| źródło wymienione dwa razy | Usuń duplikat. |
+| repozytorium projektu z kluczem źródła z biblioteki | Zmień nazwę repozytorium. |
 
-Błędy blokują zapis. Uruchomienie, którego kroki mają takie błędy (na przykład repozytorium usunięto
-z projektu po zapisaniu workflowu), nie wystartuje; komunikat wskazuje krok. W widoku **JSON** ustawienie to
-`config.repositories: [{"key": "docs", "access": "READ"}]`.
+Błędy blokują zapis (zostaje wersja robocza). Uruchomienie, którego źródła mają takie błędy (na przykład repozytorium
+usunięto z projektu po zapisaniu workflowu), nie wystartuje. W widoku **JSON** ustawienie to
+`sources: [{"key": "service"}, {"key": "standards", "library": true}]`.
+
+Do ADR 0063 każdy krok kodujący miał własną sekcję **Repozytoria** z dostępem dla każdego repozytorium (**Odczyt** albo
+**Wypchnięcie i merge request**). Aktualizacja przeniosła repozytoria wszystkich kroków do źródeł workflowu, a
+wypychanie do węzłów [Dostarcz zmiany](#deliver-changes) ([Workflowy zapisane przed ADR 0063](#task-nodes)).
 
 <a id="run-directory"></a><a id="workspaces"></a>
 ## Katalog przebiegu i sesje agentów
@@ -393,24 +456,25 @@ kontynuują nawzajem swoją pracę.
 
 **Polecenie przygotowania.** We właściwościach workflowu (kliknij puste płótno) **Polecenie przygotowania**
 (**Setup command**), na przykład `npm ci`, wykonuje się raz w katalogu przebiegu przed pierwszym krokiem kodującym,
-a ponownie tylko po zmianie. Puste = bez przygotowania. Własne `setupCommand` kroku w **Konfiguracji** nadal wykonuje
-się przed tym krokiem.
+a ponownie tylko po zmianie. Puste = bez przygotowania. Stoi obok [Źródeł](#workflow-sources) workflowu, czyli
+repozytoriów klonowanych do katalogu przebiegu. Kroki nie mają już własnego polecenia przygotowania (ADR 0063):
+aktualizacja dopisała dawne polecenia kroków do polecenia workflowu.
 
 **Katalog agenta.** To, czy krok kodujący pracuje w katalogu przebiegu, jest ustawieniem jego agenta, **Katalog**
 (**Directory**; [Dostęp agenta](task-library.md#agent-access), ADR 0062):
 
 | Wybór | Znaczenie |
 |---|---|
-| **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) | Krok pracuje w katalogu przebiegu. Jego repozytoria są tam klonowane raz; późniejsze kroki używają tych klonów i wszystkiego, co w nich zostało. |
-| **Osobny katalog** (**Separate directory**) | Świeża kopia tylko repozytoriów tego kroku, usuwana po kroku. Do izolacji: agent, który nie może widzieć reszty pracy przebiegu (albo, z innymi **Repozytoriami**, w ogóle kodu). Taki krok zawsze zaczyna nową sesję agenta. |
+| **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) | Krok pracuje w katalogu przebiegu. Źródła workflowu są tam klonowane raz; późniejsze kroki używają tych klonów i wszystkiego, co w nich zostało. |
+| **Osobny katalog** (**Separate directory**) | Świeża kopia źródeł workflowu, usuwana po kroku. Do izolacji: agent, który nie może widzieć reszty pracy przebiegu. Taki krok zawsze zaczyna nową sesję agenta, a jego zmiany nigdy nie są dostarczane. |
 
 Aby wykonać jeden krok w izolacji, wybierz dla niego agenta z **Osobnym katalogiem**.
 
-**Agenci na zmianę.** Na przykład *implementacja* (push włączony) → *weryfikacja* (push wyłączony) → decyzja →
-z powrotem do *implementacji*. Każdy agent kontynuuje własną sesję i widzi, co zostawił drugi: weryfikujący czyta
-niezacommitowane zmiany implementującego, implementujący znajduje notatki weryfikującego. Krok bez pushu zostawia
-swoje zmiany niezacommitowane dla następnego kroku; krok wypychający commituje wszystko w swoich repozytoriach
-i wypycha gałąź uruchomienia.
+**Agenci na zmianę.** Na przykład *implementacja* → *weryfikacja* → decyzja → z powrotem do *implementacji* →
+**Dostarcz zmiany**. Każdy agent kontynuuje własną sesję i widzi, co zostawił drugi: weryfikujący czyta
+niezacommitowane zmiany implementującego, implementujący znajduje notatki weryfikującego. Żaden agent nie robi
+commita: zmiany zostają niezacommitowane w katalogu przebiegu, dopóki krok [Dostarcz zmiany](#deliver-changes) ich nie
+zatwierdzi i nie wypchnie gałęzi uruchomienia.
 
 **Co dzieje się na runnerze.** Katalog przebiegu żyje na runnerze, który wykonał pierwszy krok kodujący, jako
 wolumen Dockera albo żądanie wolumenu (PVC) w Kubernetes; kroki kodujące przebiegu wykonują się tam jeden po drugim.
@@ -419,7 +483,7 @@ nic, co poprzedni agent podłożył w `.git`, się nie uruchomi.
 
 **Po zakończeniu uruchomienia** (udanym, nieudanym lub anulowanym) katalog przebiegu jest usuwany; po nieudanym
 uruchomieniu zostaje na 24 godziny, żeby **Ponów** (**Retry**) kontynuował w nim. Katalog przebiegu użyty później
-zaczyna pusty (wypchnięta gałąź uruchomienia zostaje).
+zaczyna pusty (gałąź już dostarczona zostaje na Twoim serwerze Git).
 
 **Uwaga na zaufanie.** Wszystkie kroki przebiegu mogą czytać i zmieniać wszystko w katalogu przebiegu, także domy
 i historię sesji innych agentów. Do niezależnej weryfikacji użyj agenta z **Osobnym katalogiem**.
@@ -432,10 +496,10 @@ umiejętności ani pamięci. Własne `AGENTS.md` i `CLAUDE.md` repozytorium to r
 **Dawne przestrzenie robocze.** Do ADR 0060 projekt definiował przestrzenie robocze uruchomień (karta projektu
 **Przestrzenie robocze**, **Workspaces**), kroki wybierały jedną z nich, a płótno rysowało wokół nich obszar. Już ich
 nie ma, a istniejące workflowy zostały przeniesione: polecenie przygotowania przestrzeni stało się **Poleceniem
-przygotowania** workflowów, których kroki z niej korzystały, a jej źródła stały się **Repozytoriami** tych kroków,
-które nie miały własnych. Zapisana przestrzeń kroku jest pomijana (każdy krok pracuje w katalogu przebiegu); kroki,
+przygotowania** workflowów, których kroki z niej korzystały, a jej źródła stały się repozytoriami tych kroków,
+które nie miały własnych (od ADR 0063 **Źródłami** workflowu). Zapisana przestrzeń kroku jest pomijana (każdy krok pracuje w katalogu przebiegu); kroki,
 które współdzieliły rolę agenta, nadal współdzielą sesję. Wbudowane zadanie **Prepare workspace**
-(`prepare-workspace`, przestarzałe) klonuje repozytoria kroku do katalogu przebiegu i wykonuje przygotowanie bez
+(`prepare-workspace`, przestarzałe) klonuje źródła workflowu do katalogu przebiegu i wykonuje przygotowanie bez
 agenta; nie jest potrzebne, pierwszy krok kodujący też przygotowuje katalog przebiegu.
 
 <a id="continue-session"></a>
@@ -637,6 +701,7 @@ nowe rzeczy. Uruchomienie odbywa się w imieniu osoby, która ostatnio zapisała
 
 Uruchomienie nie wystartuje (`409`), gdy krok Jiry w workflowie nie ma połączenia, którego mógłby użyć;
 komunikat wskazuje krok. Zapis workflowu tylko o tym ostrzega
-([Ostrzeżenia i błędy](integrations-jira.md#jira-tasks)). Uruchomienie nie wystartuje też wtedy, gdy krok
-programistyczny wskazuje repozytorium, którego projekt nie ma, albo potrzebuje głównego repozytorium, którego
-projekt nie ma ([Repozytoria kroku](#step-repositories)).
+([Ostrzeżenia i błędy](integrations-jira.md#jira-tasks)). Uruchomienie nie wystartuje też wtedy, gdy źródła workflowu
+wskazują repozytorium, którego projekt nie ma, gdy jego kroki kodujące albo dostarczenia potrzebują głównego
+repozytorium, którego projekt nie ma, albo gdy dostarczenie nie ma dokąd dostarczyć ([Źródła
+workflowu](#workflow-sources), [Dostarcz zmiany](#deliver-changes)).

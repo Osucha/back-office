@@ -1,7 +1,7 @@
 # Back Office agent runner
 
-Container image that executes one coding or specification task for Back Office inside a sandbox (ADR 0006,
-ADR 0024). The runner-controller (`backend/runner-controller`) starts it as an Agent Sandbox pod, a
+Container image that executes one coding task, or one delivery of a run's changes (ADR 0063), for Back Office
+inside a sandbox (ADR 0006, ADR 0024). The runner-controller (`backend/runner-controller`) starts it as an Agent Sandbox pod, a
 Kubernetes `Job` or a `docker run`, hands it a job bundle, and Back Office receives log events and a
 `RunnerResult` over HTTP. The protocol is in
 [docs/architecture/03-pipelines-and-agents.md](../docs/architecture/03-pipelines-and-agents.md) and the
@@ -12,15 +12,15 @@ sandbox model in [docs/architecture/10-agent-execution.md](../docs/architecture/
 | Tool | Why |
 |---|---|
 | Ubuntu 24.04, git, git-lfs, curl, jq, openssh-client, build-essential | cloning, scripting, native npm modules |
-| Python 3.12 + `uv` | `entrypoint.py` (stdlib only) and Spec Kit (`specify`) |
+| Python 3.12 + `uv` | `entrypoint.py` (stdlib only), Python projects |
 | Node 22 (NodeSource) | OpenCode, Claude Code, JS/TS projects |
 | Temurin JDK 21 (`JAVA_HOME=/usr/lib/jvm/default-jdk`) | Kotlin/Java projects (Gradle/Maven wrappers are used from the repository) |
 | `opencode-ai` (OpenCode) | provider-agnostic coding agent, default |
 | `@anthropic-ai/claude-code` | Claude Code, Anthropic best case |
-| `specify-cli` (GitHub Spec Kit) | `specify init`, `/speckit.*` commands |
 
-Versions are pinned with build args (`OPENCODE_VERSION`, `CLAUDE_CODE_VERSION`, `SPEC_KIT_REF`,
-`UV_VERSION`, `NODE_MAJOR`, `TEMURIN_PACKAGE`). The process runs as user `runner` (uid 10001) with
+Versions are pinned with build args (`OPENCODE_VERSION`, `CLAUDE_CODE_VERSION`, `UV_VERSION`, `NODE_MAJOR`,
+`TEMURIN_PACKAGE`). ADR 0063: the Spec Kit CLI is not part of the image any more; an agent can still use Spec Kit
+when a repository or its skills bring it. The process runs as user `runner` (uid 10001) with
 `/workspace` as working directory; the image works with `readOnlyRootFilesystem: true` as long as
 `/workspace` (and `/tmp`) are writable volumes - the entrypoint relocates `HOME` into `/workspace/.home`
 when `/home/runner` is not writable.
@@ -32,7 +32,7 @@ volume, or a memory volume the controller fills in a warm sandbox):
 
 | File | Content |
 |---|---|
-| `spec.json` | `RunnerJobSpec` (`mode`, `agent`, `model`, `repository` incl. `mergeRequest`, `specKitPhase`, `prompt`, `constitution`, `setupCommand`, `verifyCommand`, `timeoutSeconds`, `collectArtifacts`, `collectDiff`, `skills`, `runId`, `gateway`, `specKit`, ADR 0060 `agentHome` and `access`) |
+| `spec.json` | `RunnerJobSpec` (`mode` IMPLEMENT / DELIVER / EVAL_CODING / PROMPT, `agent`, `model`, `repositories` (or the legacy `repository`), `prompt`, `setupCommand`, `verifyCommand`, `timeoutSeconds`, `collectArtifacts`, `collectDiff`, `skills`, `runId`, `commitSubject`, `gateway`, `workspace`, ADR 0060 `agentHome` and `access`) |
 | `policy.json` | resolved `SandboxPolicy` (the runner uses `tools.allow/deny/ask`) |
 | `job-id`, `job-token` | job UUID and the per-job token (`bo_job_`); read into memory and deleted, exchanged for the agent's gateway-only token |
 | `proxy-url` | egress proxy, e.g. `http://<jobId>:<secret>@bo-egress-pool.ns.svc:4750` |
@@ -59,27 +59,60 @@ Provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...) are not used any more
 agent's environment together with `GIT_TOKEN` and `RUNNER_CALLBACK_TOKEN`: agents reach models only through
 the Back Office LLM gateway (`spec.gateway`) with the gateway-only agent token (job token as fallback).
 
-Steps performed by `entrypoint.py`:
+Steps performed by `entrypoint.py` for an agent job (`IMPLEMENT`, `EVAL_CODING`; `DELIVER` see "Delivery (ADR 0063)"
+below, `PROMPT` is one answer of Claude Code without a repository):
 
 1. Read the bundle (or the fallback environment); set `HTTPS_PROXY`/`HTTP_PROXY`/`https_proxy`/`http_proxy`/`ALL_PROXY` to `proxy-url` and drop `NO_PROXY`; apply `RLIMIT_NPROC`; start the log batcher (POST `{apiBaseUrl}/api/v1/internal/runner/jobs/{id}/events` through the proxy, every 2 s or 50 lines, `Authorization: Bearer <job token>`). Logging failures never abort the job. The callback base is `spec.gateway.apiBaseUrl` (a trailing `/api/v1` is accepted).
-2. Clone `repository.url` at `baseRef` into `/workspace/repo`. The git token (read once from `RUNNER_GIT_TOKEN_FILE` into memory) reaches only clone/fetch/ls-remote/push through an inline credential helper (see "Prompt-injection hardening"), so it is never written to `.git/config`, a file, logs or the agent environment. Create the run branch (or re-attach to it when it already exists on the remote). Configure `user.name`/`user.email`, then snapshot `.git/config` and pin the base commit.
-3. Without `agentHome` (older Back Office): write `skills[]` (`{key, name, content}`, Task Library ADR 0015) to `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md`, adding a `name`/`description` frontmatter when the content has none. The directories are listed in `.git/info/exclude` so they never land in the commit. With `agentHome` (ADR 0060) the skills go to the agent home instead (see "Agent home, access and questions"); nothing is written into a repository.
+2. Clone the repositories (see "Multi-repository jobs"; the legacy `repository` goes to `/workspace/repo`). Git tokens (read once into memory) reach only clone/fetch/ls-remote/push through an inline credential helper (see "Prompt-injection hardening"), so they are never written to `.git/config`, a file, logs or the agent environment. A legacy `repository.branch` is checked out (re-attached when it already exists on the remote; it is never pushed). Configure `user.name`/`user.email`, then snapshot `.git/config` and pin the base commit.
+3. Without `agentHome` (older Back Office): write `skills[]` (`{key, name, content}`, Task Library ADR 0015) to `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md`, adding a `name`/`description` frontmatter when the content has none. The directories are listed in `.git/info/exclude` so they are never delivered. With `agentHome` (ADR 0060) the skills go to the agent home instead (see "Agent home, access and questions"); nothing is written into a repository.
 4. Run `setupCommand` (shell) when given.
-5. `specKit: false` (ADR 0036: the project does not use Spec Kit): no Spec Kit work at all (no `specify init`, no constitution, no `/speckit.implement`), and a `SPEC_KIT` job is refused. Otherwise (`true`, or absent in older specs): for `SPEC_KIT` (or when a constitution is provided, or an `IMPLEMENT` job on a `specs/**/tasks.md`): `specify init --here --force --script sh --integration <claude|opencode> --non-interactive` when `.specify/` is missing (the flags are chosen from `specify init --help`, older Spec Kit versions get `--ai`/`--no-git`), then write the constitution to `.specify/memory/constitution.md`. Failures are logged and the job continues.
-6. Build the prompt: `SPEC_KIT` -> `/speckit.<phase> <prompt>` (Claude Code uses the `/speckit-<phase>` skill form when Spec Kit installed skills), `IMPLEMENT` -> `/speckit.implement` + prompt when `specs/**/tasks.md` exists and `specKit` is not false, else the prompt; `EVAL_CODING` -> the prompt.
-7. Render the tool policy and run the agent with `timeoutSeconds` (minus time already spent) enforced on its process group:
+5. The prompt is `spec.prompt` (plus a `## Repositories` section for multi-repository specs, the tools and the sandbox sections). ADR 0063: there is no Spec Kit mode any more; a spec with `mode: SPEC_KIT` (an older Back Office) fails the job with a clear error, and `specKit`, `specKitPhase` and `constitution` are ignored.
+6. Render the tool policy and run the agent with `timeoutSeconds` (minus time already spent) enforced on its process group:
    - `OPENCODE`: `opencode run --model <provider>/<modelId> --format json "<prompt>"` with a generated `opencode.json` (`OPENCODE_CONFIG`): `provider.anthropic.options.baseURL = <anthropicBaseUrl>/v1`, `provider.openai.options.baseURL = <openaiBaseUrl>`, other providers as `backoffice/<modelId>` via `@ai-sdk/openai-compatible` on the gateway's OpenAI endpoint; `apiKey = {env:BACKOFFICE_JOB_TOKEN}`; `options.reasoning` mapped to per-model options (`thinking.budgetTokens`, `reasoningEffort`, ...); `permission` from the tool policy (`bash`: `*` deny when an allowlist exists, allow patterns, then deny + ask patterns last because the last matching rule wins; `webfetch`/`websearch`/`external_directory`/`question` denied).
    - `CLAUDE_CODE`: `claude -p "<prompt>" --output-format stream-json --verbose --model <modelId> --permission-mode dontAsk --settings <file>` with `ANTHROPIC_BASE_URL=<anthropicBaseUrl without /v1>`, `ANTHROPIC_AUTH_TOKEN=<agent token>`; the settings (`permissions.allow` = file tools + `Bash(<pattern>)`, `permissions.deny` = deny + ask patterns, `defaultMode: dontAsk`) are also written to `.claude/settings.local.json` (git-excluded). `MAX_THINKING_TOKENS` from `options.reasoning`, `--effort` when the installed CLI supports it.
-   - ADR 0057, the agent's environment (IMPLEMENT, SPEC_KIT, EVAL_CODING; outside every repository, the repository's own `AGENTS.md` / `CLAUDE.md` stay untouched): `spec.instructions` (the environment document) goes to `/workspace/.backoffice-agent/AGENTS.md`, listed under `instructions` of `opencode.json` (OpenCode), or to the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md` (Claude Code; default `/workspace/.claude-config`). Rewritten on every job and removed when a job has none (run workspaces persist between steps). `spec.mcpServers` (`{name, url}`, name `^[a-z][a-z0-9-]{0,39}$`, http(s) URL; invalid or repeated entries are skipped with a `[spec] WARN` line): OpenCode `mcp.<name> = {type: remote, url, enabled: true}`; Claude Code `/workspace/.backoffice-agent/mcp.json` (`{"mcpServers": {"<name>": {"type": "http", "url": "..."}}}`) passed with `--mcp-config` when the CLI has it, and `mcp__<name>` added to `permissions.allow` under a tool policy. Reachability is the sandbox egress policy's call. PROMPT jobs ignore both (Back Office puts the document into `systemPrompt`).
+   - ADR 0057, the agent's environment (IMPLEMENT, EVAL_CODING; outside every repository, the repository's own `AGENTS.md` / `CLAUDE.md` stay untouched): `spec.instructions` (the environment document) goes to `/workspace/.backoffice-agent/AGENTS.md`, listed under `instructions` of `opencode.json` (OpenCode), or to the user memory `$CLAUDE_CONFIG_DIR/CLAUDE.md` (Claude Code; default `/workspace/.claude-config`). Rewritten on every job and removed when a job has none (run workspaces persist between steps). `spec.mcpServers` (`{name, url}`, name `^[a-z][a-z0-9-]{0,39}$`, http(s) URL; invalid or repeated entries are skipped with a `[spec] WARN` line): OpenCode `mcp.<name> = {type: remote, url, enabled: true}`; Claude Code `/workspace/.backoffice-agent/mcp.json` (`{"mcpServers": {"<name>": {"type": "http", "url": "..."}}}`) passed with `--mcp-config` when the CLI has it, and `mcp__<name>` added to `permissions.allow` under a tool policy. Reachability is the sandbox egress policy's call. PROMPT jobs ignore both (Back Office puts the document into `systemPrompt`).
    - Unattended jobs cannot ask: `ask` patterns are denied and reported (PROGRESS event and `result.policy.askTreatedAsDeny`); refused tool calls (Claude Code `permission_denials`, OpenCode rejected tools) go to `result.policy.denials`.
    - Token usage: OpenCode `step_finish` events (`part.tokens.{input,output,cache.read,cache.write}`, `part.cost`, summed), Claude Code final `result` event (`usage.*`, `total_cost_usd`, `result` as summary). Unknown formats produce zero usage and a WARN line.
-8. Run `verifyCommand` (shell; tail 8 KB kept) when given and the agent did not time out.
-9. Collect artefacts by glob (`SPEC_KIT` default `specs/**/{spec,plan,tasks,*}.md`), named `spec`/`plan`/`tasks`/`analysis` or the relative path, 2 MB cap each (`structured-answer.json`, the coding agent's answer in the step's output schema, ADR 0057, is named `structured-answer` and, like `work-log.md`, kept out of the commit; a stale one from an earlier step is removed before the agent starts); a capped file is also uploaded in full (see 12).
-10. `git add -A && git commit -m "<mode>: <first prompt line>"` when there are changes. With `runId` the message ends with the trailer `Back-Office-Run: <runId>` (ADR 0013), which is how `backoffice-ci signal` in the project's CI later finds the waiting run. `diffStat` from `git diff --shortstat <baseRef>...HEAD`; with `collectDiff` (default true) the full `git diff --merge-base <baseRef> HEAD` is returned as `diff` (2 MB cap, cut on a line boundary with a marker); `digests.diffSha256` is the SHA-256 of the full diff, which is uploaded when it exceeds the cap.
-11. `git -c push.pushOption= push <repository.url> HEAD:refs/heads/<branch>` when `repository.push` is true and `spec.gitAccess` is `PUSH_MR` (ADR 0031: `READ` / `NONE` jobs never push, their clone gets `remote.origin.pushurl = disabled://read-only-job`, `NONE` uses no token; a spec without `gitAccess` is derived as Back Office does: IMPLEMENT/SPEC_KIT with `push` -> PUSH_MR, else READ). Push options are whitelisted (`merge_request.create`, `.target`, `.title`, `.description`, `.draft`; never `merge_when_pipeline_succeeds`, `auto_merge`, `remove_source_branch`, `ci.skip`) (explicit URL and refspec, never `origin`, never forced; the base branch and the MR target are refused). With `repository.mergeRequest` (`{title, description, targetBranch, draft}`) the push carries GitLab push options `-o merge_request.create -o merge_request.target=<t> -o merge_request.title=<title> [-o merge_request.description=<d>] [-o merge_request.draft]` (title/description collapsed to one line, capped at 255/1000 chars); the MR URL GitLab prints (`remote:   https://.../-/merge_requests/N`) is returned as `mergeRequestUrl`. Hosts that ignore push options just receive the branch. The platform never calls an SCM API.
-12. Uploads: `POST {api}/api/v1/runner/v2/jobs/{id}/uploads` (`{name, contentType, sizeBytes, sha256}`, job token) returns a presigned `PUT` target; the runner uploads full versions of capped artefacts, the full diff when over 2 MB, and always the complete runner log (`runner.log`, `digests.logSha256`). Each upload is referenced as an artefact with media type `application/vnd.backoffice.blob-ref+json` and content `{blobKey, sha256, sizeBytes, mediaType}`. Upload failures are logged, never fatal.
-    Multi-repository specs: see "Multi-repository jobs" below.
-13. POST `RunnerResult` (plus `digests`, `policy`, `security` and, for a restricted agent access, `access`) to `/api/v1/internal/runner/jobs/{id}/result` (`SUCCEEDED` when the agent exited 0 and verification passed, `TIMED_OUT` on timeout, `FAILED` otherwise) with up to 12 retries. Exit code `0` when the result was delivered (even for `FAILED`), `3` when it could not be delivered.
+7. Run `verifyCommand` (shell; tail 8 KB kept) when given and the agent did not time out.
+8. Collect artefacts by glob (`collectArtifacts`, no default), named `spec`/`plan`/`tasks` (the documents of `write-spec`, `write-plan`, `write-task-list`), `analysis`, `work-log`, ... or the relative path, 2 MB cap each (`structured-answer.json`, the coding agent's answer in the step's output schema, ADR 0057, is named `structured-answer`; like `work-log.md` and `agent-questions.json` it is never delivered and left out of the diff; a stale one from an earlier step is removed before the agent starts); a capped file is also uploaded in full (see 10).
+9. ADR 0063: **an agent job never commits or pushes**, whatever the spec says (defence in depth: a repository with `access: PUSH_MR` / `pushBranch`, a legacy `repository.push` or `gitAccess: PUSH_MR` is used as READ and a `[spec] WARN` line says so). The work tree stays as the agent left it (the run directory hands it to the next step or to the delivery). `commitSha` is HEAD; `diffStat` and, with `collectDiff` (default true), `diff` compare the work tree (tracked, changed and untracked files, as a commit would record them: `.gitignore` and `.git/info/exclude` honoured, a temporary index, the repository's own index untouched) with the merge base of the pinned base and HEAD (2 MB cap, cut on a line boundary with a marker); `digests.diffSha256` is the SHA-256 of the full diff, which is uploaded when it exceeds the cap.
+10. Uploads: `POST {api}/api/v1/runner/v2/jobs/{id}/uploads` (`{name, contentType, sizeBytes, sha256}`, job token) returns a presigned `PUT` target; the runner uploads full versions of capped artefacts, the full diff when over 2 MB, and always the complete runner log (`runner.log`, `digests.logSha256`). Each upload is referenced as an artefact with media type `application/vnd.backoffice.blob-ref+json` and content `{blobKey, sha256, sizeBytes, mediaType}`. Upload failures are logged, never fatal.
+11. POST `RunnerResult` (plus `digests`, `policy`, `security` and, for a restricted agent access, `access`) to `/api/v1/internal/runner/jobs/{id}/result` (`SUCCEEDED` when the agent exited 0 and verification passed, `TIMED_OUT` on timeout, `FAILED` otherwise) with up to 12 retries. Exit code `0` when the result was delivered (even for `FAILED`), `3` when it could not be delivered.
+
+## Delivery (ADR 0063)
+
+`mode: DELIVER` is the runner side of the `DELIVER_CHANGES` action: **no agent** and no command of the repositories
+runs (`setupCommand`, `verifyCommand` and the workspace's setup are ignored with a log line; `agent`, `model` and
+`prompt` are optional, no agent token is requested). It is the only job that commits and pushes, and it needs
+`spec.repositories` (a legacy `repository` spec is refused).
+
+1. It works in the run directory (`spec.workspace`, key `run`, ADR 0044/0060): the clones of the earlier steps are
+   reused with their work trees (`.git/config` rewritten, hooks emptied, fetch); without a workspace it clones fresh
+   (and so has nothing to deliver, with a WARN). Every `pushBranch` is validated before anything is cloned (never the
+   base branch or the merge request target, `git check-ref-format` rules); a PUSH_MR clone is switched to its
+   `pushBranch` (kept when it is already checked out, a local branch is reused, else re-attached from the remote or
+   created at HEAD; the work tree comes along).
+2. For each entry with `access: PUSH_MR` and a `pushBranch`: when the work tree has changes, `git add -A` (tracked
+   and untracked files; `.gitignore` and `.git/info/exclude` honoured, so the runner's skill directories and
+   `.claude/settings.local.json` stay out; the user's default excludes file is not read) without the runner's
+   ephemeral files (`work-log.md`, `structured-answer.json`, `agent-questions.json`), then
+   `git commit -m "<commitSubject>"` with the `Back-Office-Run: <runId>` trailer (ADR 0013; without `commitSubject`
+   `DELIVER: <first prompt line>`, or `Back Office: agent changes`). The agent homes (`/workspace/.agents`) are outside
+   every repository.
+3. When the branch is ahead of the base: `git -c push.pushOption= push <url> HEAD:refs/heads/<pushBranch>` with the
+   whitelisted push options of `mergeRequest` (`-o merge_request.create -o merge_request.target=<baseBranch or
+   targetBranch> -o merge_request.title=<title> [-o merge_request.description=<d>] [-o merge_request.draft]`; title /
+   description collapsed to one line, capped at 255 / 1000 chars; never `merge_when_pipeline_succeeds`, `auto_merge`,
+   `remove_source_branch`, `ci.skip`); explicit URL and refspec, never `origin`, never forced. The MR URL GitLab
+   prints (`remote:   https://.../-/merge_requests/N`) is the entry's `mergeRequestUrl`. Hosts that ignore push
+   options just receive the branch. The platform never calls an SCM API. A repository without changes (nothing
+   ahead of the base): no commit, `pushed: false`.
+4. READ / NONE entries of a DELIVER spec are not delivered (their HEAD is reported).
+5. Result: `repositories[] {key, branch, commitSha, diffStat, mergeRequestUrl, pushed, error}`; the top-level
+   `branch` / `commitSha` / `diffStat` / `diff` / `mergeRequestUrl` are the primary repository's (`diff` =
+   `git diff --merge-base <base> HEAD` after the commit), other repositories' diffs are artefacts `diff:<key>`; the
+   summary lists each repository; status `SUCCEEDED` unless a commit or push failed (`FAILED`, the error names the
+   repository; one failing repository does not stop the others).
 
 ## Multi-repository jobs
 
@@ -99,22 +132,23 @@ with several repositories, or none (docs/architecture/10-agent-execution.md, "Mu
 - Validation before anything runs: key `^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`, unique keys, `path` relative
   (no `..`, no component starting with `.`), unique and not nested, at most one `primary` (default: the first
   `PUSH_MR`, else the first repository), `PUSH_MR` needs `pushBranch` (never the base branch or the MR target).
+  `PUSH_MR` takes effect only in a DELIVER job; an agent job uses such an entry as READ (ADR 0063).
 - Each repository is cloned into `/workspace/<path>` with its own `Git`: its own token from
   `RUNNER_GIT_TOKEN_DIR/<key>/token` (`NONE`: none), a credential helper bound to its host **and path**
   (`credential.useHttpPath=true`, `BO_GIT_PATH`), `remote.origin.pushurl = disabled://read-only-job` for READ /
-  NONE, the `pushBranch` checked out for PUSH_MR, `.git/config` snapshot and pinned base.
-- Agent, `setupCommand`, `verifyCommand`, Spec Kit, skills and `collectArtifacts` run in the primary repository
+  NONE, the `pushBranch` checked out for PUSH_MR (DELIVER), `.git/config` snapshot and pinned base.
+- Agent, `setupCommand`, `verifyCommand`, skills and `collectArtifacts` run in the primary repository
   (`/workspace` when the list is empty). The other repositories are reachable (OpenCode `external_directory`
   allows exactly their paths; Claude Code `--add-dir`), and the prompt gets a `## Repositories` section.
-- Afterwards, per repository: git integrity restored, commit (trailer), diff against the pinned base, and for
-  PUSH_MR only `push <url> HEAD:refs/heads/<pushBranch>` with the whitelisted push options (target =
-  `baseBranch`). A failure stays in that repository's entry.
+- Afterwards, per repository: git integrity restored, HEAD and the diff of the work tree against the pinned base
+  (nothing committed or pushed). A failure stays in that repository's entry.
 - Result: `repositories: [{key, branch, commitSha, diffStat, mergeRequestUrl, pushed, error}]`; the top-level
   `branch`/`commitSha`/`diffStat`/`diff`/`mergeRequestUrl` are the primary repository's; other repositories'
   diffs are artefacts `diff:<key>`; `security.gitAccessByRepository`; status `FAILED` when a PUSH_MR repository
-  failed (the error names it).
+  of a DELIVER job failed (the error names it).
 
-Specs without `repositories` run exactly as before (`/workspace/repo`, `gitAccess`, `RUNNER_GIT_TOKEN_FILE`).
+Specs without `repositories` run as before, read-only (`/workspace/repo`, `gitAccess` at most READ,
+`RUNNER_GIT_TOKEN_FILE`).
 
 ## Agent home, access and questions (ADR 0060)
 
@@ -154,7 +188,7 @@ covers what is below it, `dir/` = `dir/**`.
    (with directories it leaves empty), modified / deleted / type changed -> `git restore --source=<T0> --worktree`.
    This repeats (up to 3 rounds) because a reverted `.gitignore` can uncover files it hid; a change that cannot be
    reverted fails the job. Ignored files are not part of the snapshot (they are never committed either). Then
-   `verifyCommand`, commit and push run on the reverted work tree.
+   `verifyCommand` and the diff run on the reverted work tree (and a later delivery delivers it).
 3. Each reverted path is logged (`[access] reverted <key>:<path> (<change>; outside the agent's access)`) and
    reported: `result.access = {mode, paths, reverted: [{repository, path, change: added|modified|deleted|type
    changed}]}` (`repository` null for a legacy single-repository spec) and a last summary line
@@ -171,12 +205,12 @@ covers what is below it, `dir/` = `dir/**`.
 
 **Questions**: `agent-questions.json` in the working directory (`{"questions": [{"question", "why"?}]}`) is the
 artefact `agent-questions` when Back Office lists it in `collectArtifacts`; like `structured-answer.json` it is never
-committed and a stale one from an earlier step is removed before the agent starts. When it holds at least one
+delivered and a stale one from an earlier step is removed before the agent starts. When it holds at least one
 question (an entry with a non-empty `question`; read right after the agent, before any revert), the agent stopped
-with questions: `verifyCommand`, commit, push and the merge request are skipped and the work tree stays as the agent
-left it (the session continues after the owner answers); access enforcement still runs, artefacts are collected,
-the status is `SUCCEEDED` (unless the agent failed) and the summary ends with `[Back Office runner] the agent asked N
-question(s); verification, commit and push skipped`.
+with questions: `verifyCommand` and the diff are skipped and the work tree stays as the agent left it (the session
+continues after the owner answers); access enforcement still runs, artefacts are collected, the status is
+`SUCCEEDED` (unless the agent failed) and the summary ends with `[Back Office runner] the agent asked N
+question(s); verification skipped`.
 
 ## Prompt-injection hardening
 
@@ -212,10 +246,12 @@ issue text, so anything it can reach is assumed hostile. The entrypoint therefor
    reads no file: the password is passed only in the environment of the invocation that needs it
    (`BO_GIT_PASSWORD`, plus `BO_GIT_HOST` = host of `repository.url`), and the helper answers only `get` for
    exactly that host (a redirect or `insteadOf` to another host gets nothing).
-7. **Push only to the job branch.** `git push <repository.url> HEAD:refs/heads/<branch>` with the GitLab
-   `-o merge_request.*` options; never `origin`, `--force`, `--mirror`, `--all` or `--tags`. `validate_push_branch`
-   refuses the base branch (also as `refs/heads/<base>`), the MR target, `HEAD`, `refs/...`, `-...` and anything
-   `git check-ref-format` would reject; the job FAILS with `push refused: ...` before the agent runs.
+7. **Only a delivery pushes, only to the job branch.** No agent job commits or pushes (ADR 0063); a DELIVER job,
+   which runs no agent and no repository command, runs `git push <repository url> HEAD:refs/heads/<branch>` with
+   the GitLab `-o merge_request.*` options; never `origin`, `--force`, `--mirror`, `--all` or `--tags`.
+   `validate_push_branch` refuses the base branch (also as `refs/heads/<base>`), the MR target, `HEAD`, `refs/...`,
+   `-...` and anything `git check-ref-format` would reject; the job FAILS with `push refused: ...` before anything
+   is cloned.
 8. **Evidence in the result.** `result.security = {processNonDumpable, gitTokenFileRemoved, jobTokenFileRemoved,
    agentTokenIsolated, strayProcessesKilled, gitConfigRestored}` (`*FileRemoved` is `null` without a file,
    `gitConfigRestored` is true when the agent had changed `.git/config`). Back Office stores it as is.
@@ -243,7 +279,7 @@ cat > job/spec.json <<'JSON'
   "mode": "IMPLEMENT",
   "agent": "OPENCODE",
   "model": { "provider": "ANTHROPIC", "modelId": "claude-sonnet-4-5", "options": { "reasoning": "MEDIUM" } },
-  "repository": { "url": "https://gitlab.example.com/group/demo.git", "baseRef": "main", "branch": "feature/demo-1", "push": false },
+  "repository": { "url": "https://gitlab.example.com/group/demo.git", "baseRef": "main" },
   "prompt": "Add a README section describing how to run the tests.",
   "verifyCommand": "test -f README.md",
   "timeoutSeconds": 900,
@@ -280,10 +316,13 @@ model/provider mapping, usage parsing, artefact naming, result building, skill f
 push option composition and MR URL parsing, the diff cap, and a real `git push -o ...` to a bare repository
 (`receive.advertisePushOptions=true`); one test runs `entrypoint.py` end to end against a fake `opencode`
 binary (POSIX only). `test_multi_repo.py` covers multi-repository jobs: parsing and refusals, per-repository
-token files, the host+path-bound credential helper (`sh` and `git credential fill`), a READ docs repository next
-to a PUSH_MR source repository against local bare repositories (only the source is pushed, the docs push URL is
-disabled, a NONE repository gets no token), failure isolation between two pushing repositories, an empty
-repository list, and the legacy single-repository spec. The sandboxed end-to-end run (runner-controller DOCKER backend, egress proxy, STUB
+token files, the host+path-bound credential helper (`sh` and `git credential fill`), an agent job with a PUSH_MR
+entry that never pushes (ADR 0063: every push URL disabled, the work tree reported as the diff, a NONE repository
+gets no token), an empty repository list, the legacy single-repository spec, and DELIVER jobs against local bare
+repositories after an agent job in the same run directory: commit (subject, trailer, untracked files, ignored /
+excluded / ephemeral files left out) and push with the merge request push options, no changes = nothing pushed,
+branch safety before anything is cloned, several repositories (READ ones not delivered) and failure isolation
+between two pushing repositories. The removed Spec Kit mode is refused (`test_entrypoint.py`). The sandboxed end-to-end run (runner-controller DOCKER backend, egress proxy, STUB
 agent) is `DockerEndToEndTest` in `backend/runner-controller`. Run the unit tests inside the image to use the
 shipped Python and git:
 

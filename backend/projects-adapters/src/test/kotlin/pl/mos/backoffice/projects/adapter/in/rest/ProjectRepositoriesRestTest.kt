@@ -121,7 +121,7 @@ class ProjectRepositoriesRestTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.valid").value(false))
             .andExpect(jsonPath("$.errors[0].nodeId").value("step"))
-            .andExpect(jsonPath("$.errors[0].field").value("task.config.repositories"))
+            .andExpect(jsonPath("$.errors[0].field").value("sources"))
         mvc.perform(post("/api/v1/workflows/validate").param("projectId", project["id"].toString()).contentType(MediaType.APPLICATION_JSON).content(workflow("code-review")))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.valid").value(true))

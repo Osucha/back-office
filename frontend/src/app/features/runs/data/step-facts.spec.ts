@@ -23,6 +23,19 @@ const snapshot = {
       kind: 'DECISION',
       decision: { branches: [{ id: 'big', expression: 'size > 3' }], defaultBranch: 'small' },
     },
+    {
+      id: 'deliver',
+      kind: 'ACTION',
+      action: {
+        type: 'DELIVER_CHANGES',
+        config: {
+          branchTemplate: 'fix/{{issue.key}}',
+          mergeRequestDraft: true,
+          repositories: ['app'],
+        },
+      },
+    },
+    { id: 'fetch', kind: 'ACTION', action: { type: 'FETCH_ISSUE', config: {} } },
   ],
   edges: [{ from: 'impl', fromPort: 'success', to: 'review' }],
 };
@@ -35,6 +48,21 @@ const labels = (facts: { label: string; value: string }[]) =>
   Object.fromEntries(facts.map((f) => [f.label, f.value]));
 
 describe('stepFacts', () => {
+  it('names the action and what Deliver changes pushes (ADR 0063)', () => {
+    const r = run([
+      { nodeId: 'deliver', kind: 'ACTION' },
+      { nodeId: 'fetch', kind: 'ACTION' },
+    ] as Partial<NodeExecution>[]);
+    const deliver = labels(stepFacts(r, r.nodes![0]));
+    expect(deliver['Action']).toBe('Deliver changes');
+    expect(deliver['Branch']).toBe('fix/{{issue.key}}');
+    expect(deliver['Merge request']).toBe('MR (draft)');
+    expect(deliver['Repositories']).toBe('app');
+    const fetch = labels(stepFacts(r, r.nodes![1]));
+    expect(fetch['Action']).toBe('Fetch issue');
+    expect(fetch['Branch']).toBeUndefined();
+  });
+
   it('lists the task configuration, where the baton went, and the execution', () => {
     const start = { nodeId: 'start', nodeName: 'Start', kind: 'START', port: 'next' };
     const impl = {

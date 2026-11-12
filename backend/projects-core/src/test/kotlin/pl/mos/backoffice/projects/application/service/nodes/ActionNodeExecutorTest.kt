@@ -85,6 +85,15 @@ class ActionNodeExecutorTest {
         assertThat(ActionCatalog.of(ActionType.FETCH_ISSUE).externalWrite).isFalse()
         assertThat(ActionCatalog.of(ActionType.PROJECT_DIGEST).defaults).containsEntry("maxRuns", 20)
         assertThat(ActionCatalog.of(ActionType.START_WORKFLOW).produces).containsExactly("started-runs")
+        // ADR 0063: delivery opens a merge request by default, writes to no issue tracker and lists repository keys
+        val deliver = ActionCatalog.of(ActionType.DELIVER_CHANGES)
+        assertThat(deliver.defaults).containsEntry("mergeRequest", true)
+        assertThat(deliver.produces).containsExactly("mr", "diff")
+        assertThat(deliver.externalWrite).isFalse()
+        @Suppress("UNCHECKED_CAST")
+        val properties = deliver.configSchema["properties"] as Map<String, Any?>
+        assertThat(properties.keys).containsExactly("branchTemplate", "commitSubjectTemplate", "mergeRequest", "mergeRequestTitleTemplate", "mergeRequestDescriptionTemplate", "mergeRequestDraft", "repositories")
+        assertThat(ActionCatalog.DELIVERY_KEYS).doesNotContain("repositories")
         assertThat(ActionCatalog.of(ActionType.TRANSITION_ISSUE).configSchema["required"]).isEqualTo(listOf("toStatus"))
 
         val fetch = ActionBinding(ActionType.FETCH_ISSUE)
@@ -111,9 +120,9 @@ class ActionNodeExecutorTest {
     )
 
     @Test
-    fun `a task runs as a model answer, a Spec Kit job or an agent job depending on its agent and phase`() {
+    fun `a task runs as a model answer or an agent job depending on its agent (ADR 0063 - no Spec Kit job)`() {
         assertThat(TaskRunKind.of(task(TestAgents.MODEL_ANSWER, mapOf("phase" to "PLAN")))).isEqualTo(TaskRunKind.MODEL_ANSWER)
-        assertThat(TaskRunKind.of(task(TestAgents.OPENCODE, mapOf("phase" to "PLAN")))).isEqualTo(TaskRunKind.SPEC_KIT)
+        assertThat(TaskRunKind.of(task(TestAgents.OPENCODE, mapOf("phase" to "PLAN")))).isEqualTo(TaskRunKind.AGENT_JOB)
         assertThat(TaskRunKind.of(task(TestAgents.CLAUDE_CODE, mapOf("phase" to " ")))).isEqualTo(TaskRunKind.AGENT_JOB)
         assertThat(TaskRunKind.MODEL_ANSWER.runner).isFalse()
         assertThat(TaskRunKind.AGENT_JOB.runner).isTrue()
@@ -135,6 +144,6 @@ class ActionNodeExecutorTest {
         executor.execute(context(node))
         assertThat(ran).containsExactly(TaskRunKind.AGENT_JOB, TaskRunKind.MODEL_ANSWER)
         assertThat(executor.resume(context(node), RunnerJobId.new()).failed).describedAs("a model answer waits for no job").isTrue()
-        assertThatThrownBy { TaskExecutors(emptyList()).forKind(TaskRunKind.SPEC_KIT) }.isInstanceOf(InvalidStateException::class.java)
+        assertThatThrownBy { TaskExecutors(emptyList()).forKind(TaskRunKind.AGENT_JOB) }.isInstanceOf(InvalidStateException::class.java)
     }
 }

@@ -9,9 +9,11 @@ docs/architecture/10-agent-execution.md, ADR 0024):
   the environment (RUNNER_SPEC base64, RUNNER_JOB_ID, RUNNER_CALLBACK_URL, RUNNER_CALLBACK_TOKEN)
 * sends everything through the egress proxy (HTTPS_PROXY) and talks to LLMs only through the Back Office
   LLM gateway (spec.gateway); provider keys are never used and are scrubbed
-* clones the repository, writes skills, prepares Spec Kit, renders the tool policy into OpenCode `permission` /
-  Claude Code permissions, runs the agent, verifies, commits (with the `Back-Office-Run` trailer), pushes (with
-  merge request push options) and collects the diff
+* agent jobs (IMPLEMENT, EVAL_CODING): clones the repositories, writes skills, renders the tool policy into OpenCode
+  `permission` / Claude Code permissions, runs the agent, verifies and collects the diff of the work tree against
+  the base; an agent job never commits or pushes (ADR 0063)
+* DELIVER jobs (ADR 0063, no agent): in the run directory, commits the work tree of every PUSH_MR repository (with
+  the `Back-Office-Run` trailer), pushes its branch and opens the merge request through push options
 * streams log events to POST {api}/api/v1/internal/runner/jobs/{id}/events
 * uploads large artefacts and the full log with presigned URLs from POST {api}/api/v1/runner/v2/jobs/{id}/uploads
 * posts the final RunnerResult (with digests) to POST {api}/api/v1/internal/runner/jobs/{id}/result
@@ -32,21 +34,22 @@ issue text, so everything it can reach must be assumed hostile. Therefore:
   restored from a snapshot and `.git/hooks` emptied; the push goes to the explicit spec URL with the explicit
   refspec HEAD:refs/heads/<branch> (never origin, never forced, never the base branch).
 
-Least-privilege git (ADR 0031): `spec.gitAccess` is NONE (no credential used), READ (clone/fetch only: the runner
-never pushes, `remote.origin.pushurl` is set to `disabled://`, `Git.push` refuses) or PUSH_MR (push the job branch
-and open a merge request). Push options are whitelisted (`ALLOWED_PUSH_OPTIONS`): merge_request.create, .target,
-.title, .description and .draft; never merge_when_pipeline_succeeds / auto_merge / remove_source_branch / ci.skip,
-and `push.pushOption` from any git config is reset, so the runner can open a merge request but never merge one.
+Least-privilege git (ADR 0031, 0063): `spec.gitAccess` is NONE (no credential used), READ (clone/fetch only: the
+runner never pushes, `remote.origin.pushurl` is set to `disabled://`, `Git.push` refuses) or PUSH_MR (push the job
+branch and open a merge request; only DELIVER jobs, an agent job with PUSH_MR is downgraded to READ). Push options
+are whitelisted (`ALLOWED_PUSH_OPTIONS`): merge_request.create, .target, .title, .description and .draft; never
+merge_when_pipeline_succeeds / auto_merge / remove_source_branch / ci.skip, and `push.pushOption` from any git config is reset, so the runner can open a merge request but never merge one.
 
 Multi-repository jobs (`spec.repositories`, docs/architecture/10-agent-execution.md "Multi-repository workspace"):
 each entry `{key, url, baseBranch, access, path, pushBranch?, mergeRequest?, primary}` is cloned into
 /workspace/<path> with its OWN access level and its OWN token (`<RUNNER_GIT_TOKEN_DIR>/<key>/token`, read once and
 deleted; NONE repositories never get one), the credential helper is bound to that repository's host and path; the
 agent works in the primary repository (the workspace when the list is empty). After the agent every repository is
-restored, diffed against its pinned base, committed, and - PUSH_MR only - pushed to its own job branch; results go
-to `result.repositories[]` (one failing push does not hide the others; the job FAILS when a PUSH_MR repository
+restored and its work tree (untracked files included) diffed against its pinned base, nothing is committed. A
+DELIVER job commits and pushes each PUSH_MR repository to its own job branch; results go to
+`result.repositories[]` (one failing push does not hide the others; the job FAILS when a PUSH_MR repository
 failed) and the primary repository fills the legacy top-level fields. Specs without `repositories` (older control
-planes) run exactly as before: one repository in /workspace/repo with `spec.gitAccess`.
+planes) run as before, read-only: one repository in /workspace/repo with `spec.gitAccess`.
 
 Standard library only. Exit code is 0 whenever the result was delivered (even when the job FAILED)
 so that the Kubernetes Job does not retry; non-zero only when the callback could not be reached.
@@ -89,7 +92,6 @@ DIFF_MAX_BYTES = 2 * 1024 * 1024
 VERIFY_TAIL_BYTES = 8 * 1024
 RUN_TRAILER = "Back-Office-Run"
 CLAUDE_DIR = ".claude"  # Claude Code project directory (skills, commands, settings)
-SPECIFY_DIR = ".specify"  # Spec Kit project directory
 JSON_MEDIA_TYPE = "application/json"
 HTTPS_PREFIX = "https://"
 USER_AGENT = "back-office-runner/2"
@@ -134,14 +136,8 @@ REASONING_TO_CLAUDE_EFFORT = {
     "MAX": "max",
 }
 
-DEFAULT_SPEC_KIT_ARTIFACTS = [
-    "specs/**/spec.md",
-    "specs/**/plan.md",
-    "specs/**/tasks.md",
-    "specs/**/*.md",
-]
-
 ARTIFACT_NAME_BY_FILE = {
+    # ADR 0063: the documents of write-spec, write-plan and write-task-list
     "spec.md": "spec",
     "plan.md": "plan",
     "tasks.md": "tasks",
@@ -188,7 +184,7 @@ AGENT_ENV_DIR = ".backoffice-agent"
 OPENCODE_INSTRUCTIONS_FILE = "AGENTS.md"
 CLAUDE_USER_MEMORY_FILE = "CLAUDE.md"
 CLAUDE_MCP_CONFIG_FILE = "mcp.json"
-ENVIRONMENT_MODES = ("IMPLEMENT", "SPEC_KIT", "EVAL_CODING")
+ENVIRONMENT_MODES = ("IMPLEMENT", "EVAL_CODING")
 MCP_SERVER_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 MCP_URL_MAX_LENGTH = 500
 # Hidden acceptance files (ADR 0047) may not be written outside the repository or into .git.
@@ -276,8 +272,8 @@ GIT_ACCESS_NONE = "NONE"
 GIT_ACCESS_READ = "READ"
 GIT_ACCESS_PUSH_MR = "PUSH_MR"
 GIT_ACCESS_LEVELS = (GIT_ACCESS_NONE, GIT_ACCESS_READ, GIT_ACCESS_PUSH_MR)
-# Modes whose result is pushed when `repository.push` is set (as Back Office derives the level).
-PUSHING_MODES = ("IMPLEMENT", "SPEC_KIT")
+# ADR 0063: the only mode that commits and pushes (no agent); agent jobs are at most READ.
+DELIVER_MODE = "DELIVER"
 # Push URL of READ / NONE clones: any `git push` (by the agent or by mistake) fails before contacting a host.
 DISABLED_PUSH_URL = "disabled://read-only-job"
 # The only GitLab push options the runner sends: open (or update) a merge request, never merge it. Anything else,
@@ -772,11 +768,13 @@ class MergeRequest:
 
 @dataclass
 class Repository:
+    """The legacy single-repository `spec.repository` (older control planes): an agent job, read-only (ADR 0063);
+    `push` is kept only to warn that it is ignored."""
+
     url: str
     base_ref: str = "main"
     branch: Optional[str] = None
     push: bool = False
-    merge_request: Optional[MergeRequest] = None
 
 
 @dataclass
@@ -873,8 +871,6 @@ class JobSpec:
     prompt: str
     timeout_seconds: int
     repository: Optional[Repository] = None
-    spec_kit_phase: Optional[str] = None
-    constitution: Optional[str] = None
     setup_command: Optional[str] = None
     verify_command: Optional[str] = None
     collect_artifacts: List[str] = field(default_factory=list)
@@ -882,25 +878,19 @@ class JobSpec:
     skills: List[Skill] = field(default_factory=list)
     run_id: Optional[str] = None
     gateway: Optional[Gateway] = None
-    # NONE | READ | PUSH_MR (ADR 0031); only PUSH_MR jobs push. Multi-repository jobs: the highest level of any
-    # repository (logging and `result.security` only; every repository uses its own level).
+    # NONE | READ | PUSH_MR (ADR 0031); only PUSH_MR repositories of DELIVER jobs push (ADR 0063). Multi-repository
+    # jobs: the highest level of any repository (logging and `result.security` only; every repository uses its own).
     git_access: str = GIT_ACCESS_NONE
     # True when the spec carries `repositories` (then `repository` is None); False = legacy single-repo spec.
     multi_repo: bool = False
     repositories: List[RepoSpec] = field(default_factory=list)
-    # ADR 0036: False = the project does not use Spec Kit: no `specify init`, no constitution, no `/speckit.*` command.
-    # None = a spec from an older Back Office (or a legacy-built job): the earlier behaviour (Spec Kit for SPEC_KIT
-    # jobs, jobs with a constitution and IMPLEMENT jobs on a tasks.md).
-    spec_kit: Optional[bool] = None
     # ADR 0040: GATEWAY (the Back Office LLM gateway) or LOCAL_LOGIN (Claude Code uses the personal runner owner's own
     # login, delivered as <job dir>/claude-login-token; other harnesses still use the gateway).
     llm_credentials: str = "GATEWAY"
     # ADR 0044: the run workspace; None = a throwaway workspace and a new agent session
     workspace: Optional[WorkspaceSpec] = None
-    # ADR 0047: the commit subject and the Spec Kit feature description chosen by Back Office; None = derived from the
-    # prompt as before
+    # ADR 0047 / 0063: the commit subject of a DELIVER job chosen by Back Office; None = derived from the prompt
     commit_subject: Optional[str] = None
-    feature_description: Optional[str] = None
     # ADR 0047: checks after the agent (coding benchmarks): hidden files written only for the verification
     acceptance: Optional["Acceptance"] = None
     # ADR 0050 step 4: the system prompt of a PROMPT job (the step's instructions; the prompt is the user message)
@@ -924,8 +914,9 @@ class JobSpec:
         return self.llm_credentials == LLM_CREDENTIALS_LOCAL_LOGIN
 
     @property
-    def spec_kit_allowed(self) -> bool:
-        return self.spec_kit is not False
+    def delivers(self) -> bool:
+        """ADR 0063: a DELIVER job (no agent): commit, push and merge request of the run directory."""
+        return self.mode == DELIVER_MODE
 
     @property
     def primary_repository(self) -> Optional[RepoSpec]:
@@ -991,7 +982,12 @@ TOOL_TOKEN_FILE = "tool-token"
 GITLAB_READ = "gitlab-read"
 AGENT_TOOLS = (GITLAB_READ,)
 BILLING_SUBSCRIPTION = "SUBSCRIPTION"
-SPEC_MODES = ("SPEC_KIT", "IMPLEMENT", "EVAL_CODING", "PROMPT")
+SPEC_MODES = ("IMPLEMENT", DELIVER_MODE, "EVAL_CODING", "PROMPT")
+# ADR 0063: Spec Kit is no longer part of Back Office; a spec of an older Back Office with this mode is refused
+REMOVED_SPEC_KIT_MODE = "SPEC_KIT"
+# ADR 0063: a DELIVER job runs no agent; agent, model and prompt are optional
+DELIVER_REQUIRED_SPEC_KEYS = ("mode",)
+DELIVER_DEFAULT_TIMEOUT_SECONDS = 600
 
 # ADR 0050 step 4: a PROMPT job is one model answer (an LLM step or a judge on the user's own login): Claude Code
 # without a repository and without tools; the answer comes back as the `response` artefact.
@@ -1022,21 +1018,6 @@ def _parse_model(model_raw: Dict[str, Any]) -> ModelRef:
     return model
 
 
-def _parse_merge_request(repo_raw: Dict[str, Any]) -> Optional[MergeRequest]:
-    mr_raw = repo_raw.get("mergeRequest")
-    if not isinstance(mr_raw, dict) or not mr_raw.get("create", True):
-        return None
-    target = str(mr_raw.get("targetBranch") or repo_raw.get("baseRef") or "main")
-    title = str(mr_raw.get("title") or "").strip() or f"Back Office: {str(repo_raw.get('branch') or 'agent changes')}"
-    return MergeRequest(
-        title=title,
-        target_branch=target,
-        description=_opt_str(mr_raw, "description"),
-        draft=bool(mr_raw.get("draft", False)),
-        create=True,
-    )
-
-
 def _parse_repository(repo_raw: Any) -> Optional[Repository]:
     if not repo_raw or not repo_raw.get("url"):
         return None
@@ -1045,7 +1026,6 @@ def _parse_repository(repo_raw: Any) -> Optional[Repository]:
         base_ref=str(repo_raw.get("baseRef") or "main"),
         branch=_opt_str(repo_raw, "branch"),
         push=bool(repo_raw.get("push", False)),
-        merge_request=_parse_merge_request(repo_raw),
     )
 
 
@@ -1061,41 +1041,67 @@ def _parse_skills(raw_skills: Any) -> List[Skill]:
 def _require_spec_keys(raw: Any) -> None:
     if not isinstance(raw, dict):
         raise ValueError("RunnerJobSpec must be a JSON object")
-    for key in REQUIRED_SPEC_KEYS:
+    delivers = str(raw.get("mode") or "").upper() == DELIVER_MODE
+    for key in DELIVER_REQUIRED_SPEC_KEYS if delivers else REQUIRED_SPEC_KEYS:
         if key not in raw or raw[key] in (None, ""):
             raise ValueError(f"RunnerJobSpec.{key} is required")
 
 
-def _validate_mode_and_agent(mode: str, agent: str) -> None:
+def _validate_mode(mode: str) -> None:
+    if mode == REMOVED_SPEC_KIT_MODE:
+        raise ValueError(
+            "mode SPEC_KIT is not supported any more (ADR 0063: Spec Kit was removed from Back Office); the job comes"
+            " from an older Back Office - upgrade it (the write-spec, write-plan and write-task-list templates replace"
+            " the Spec Kit steps)"
+        )
     if mode not in SPEC_MODES:
         raise ValueError(f"unknown mode {mode}")
+
+
+def _validate_agent(mode: str, agent: str) -> None:
+    if mode == DELIVER_MODE:
+        return  # no agent runs
     if agent not in SPEC_AGENTS and not (agent == STUB_AGENT and stub_agent_enabled()):
         raise ValueError(f"unknown agent {agent}")
 
 
-def derive_git_access(mode: str, repo: Optional[Repository]) -> str:
-    """The level of a spec without `gitAccess` (Back Office before ADR 0031): same rule as Back Office."""
-    if repo is None:
-        return GIT_ACCESS_NONE
-    return GIT_ACCESS_PUSH_MR if mode in PUSHING_MODES and repo.push else GIT_ACCESS_READ
+def derive_git_access(repo: Optional[Repository]) -> str:
+    """The level of a legacy single-repository spec without `gitAccess`: READ with a repository (ADR 0063: an agent
+    job never pushes), else NONE."""
+    return GIT_ACCESS_NONE if repo is None else GIT_ACCESS_READ
 
 
-def _parse_git_access(raw: Dict[str, Any], mode: str, repo: Optional[Repository]) -> str:
-    """`gitAccess` of the spec (validated) or the derived level. A job below PUSH_MR never pushes: `push` and the
-    merge request of its repository are switched off here, whatever the rest of the spec says."""
+def _parse_git_access(raw: Dict[str, Any], repo: Optional[Repository], warnings: List[str]) -> str:
+    """`gitAccess` of a legacy single-repository spec (validated) or the derived level. Such a spec is always an
+    agent (or PROMPT) job, which never pushes (ADR 0063): PUSH_MR becomes READ with a warning, and `push` and the
+    merge request of the repository are ignored, whatever the rest of the spec says."""
     declared = raw.get("gitAccess")
     if declared in (None, ""):
-        access = derive_git_access(mode, repo)
+        access = derive_git_access(repo)
     else:
         access = str(declared).upper()
         if access not in GIT_ACCESS_LEVELS:
             raise ValueError(f"unknown gitAccess {declared!r} (expected NONE, READ or PUSH_MR)")
     if repo is None:
         return GIT_ACCESS_NONE
-    if access != GIT_ACCESS_PUSH_MR:
-        repo.push = False
-        repo.merge_request = None
+    if access == GIT_ACCESS_PUSH_MR or repo.push:
+        warnings.append("an agent job never commits or pushes (ADR 0063): push / gitAccess PUSH_MR of the repository"
+                        " ignored, access READ")
+        access = GIT_ACCESS_READ
+    repo.push = False
     return access
+
+
+def downgrade_agent_repositories(repos: List[RepoSpec], warnings: List[str]) -> None:
+    """ADR 0063, defence in depth: an agent job never commits or pushes. A PUSH_MR repository in its spec is used as
+    READ (no push branch, no merge request) and a warning is logged."""
+    for repo in repos:
+        if repo.access == GIT_ACCESS_PUSH_MR:
+            warnings.append(f"repository {repo.key}: an agent job never commits or pushes (ADR 0063): access PUSH_MR"
+                            f" and pushBranch {repo.push_branch or '-'} ignored, access READ")
+            repo.access = GIT_ACCESS_READ
+            repo.push_branch = None
+            repo.merge_request = None
 
 
 # Workspace entries of the runner itself; no repository may be cloned over them.
@@ -1237,41 +1243,46 @@ def parse_workspace(raw: Any) -> Optional[WorkspaceSpec]:
     )
 
 
+def _parse_deliver_model(raw: Any) -> ModelRef:
+    """A DELIVER job runs no model: whatever `model` says is only logged."""
+    if not isinstance(raw, dict):
+        return ModelRef(provider="NONE", model_id="-")
+    return ModelRef(provider=str(raw.get("provider") or "NONE").upper(), model_id=str(raw.get("modelId") or "-"))
+
+
 def parse_spec(raw: Dict[str, Any]) -> JobSpec:
     _require_spec_keys(raw)
-    model = _parse_model(raw["model"])
+    mode = str(raw["mode"]).upper()
+    _validate_mode(mode)
+    delivers = mode == DELIVER_MODE
+    agent = str(raw.get("agent") or "NONE").upper()
+    _validate_agent(mode, agent)
+    model = _parse_deliver_model(raw.get("model")) if delivers else _parse_model(raw["model"])
     workspace = parse_workspace(raw.get("workspace"))
     # a workspace job without repositories still takes the multi-repository path (the agent works in /workspace)
     multi = is_multi_repo_spec(raw) or (workspace is not None and not (isinstance(raw.get("repository"), dict) and raw["repository"].get("url")))
+    if delivers and not multi:
+        raise ValueError("a DELIVER job needs spec.repositories (the repositories of the run directory to deliver)")
+    warnings: List[str] = []
     repositories = parse_repositories(raw.get("repositories") or []) if multi else []
+    if not delivers:
+        downgrade_agent_repositories(repositories, warnings)
     repo = None if multi else _parse_repository(raw.get("repository"))
     skills = _parse_skills(raw.get("skills"))
-    mode = str(raw["mode"]).upper()
-    agent = str(raw["agent"]).upper()
-    _validate_mode_and_agent(mode, agent)
-    git_access = highest_git_access(repositories) if multi else _parse_git_access(raw, mode, repo)
+    git_access = highest_git_access(repositories) if multi else _parse_git_access(raw, repo, warnings)
     collect = list(raw.get("collectArtifacts") or [])
-    if not collect and mode == "SPEC_KIT":
-        collect = list(DEFAULT_SPEC_KIT_ARTIFACTS)
-    phase = _opt_str(raw, "specKitPhase")
-    spec_kit = raw.get("specKit")
-    if spec_kit is not None and not isinstance(spec_kit, bool):
-        raise ValueError("specKit must be a boolean")
-    if mode == "SPEC_KIT" and spec_kit is False:
-        raise ValueError("a SPEC_KIT job with specKit false: Spec Kit is off for this project")
     llm_credentials = str(raw.get("llmCredentials") or "GATEWAY").upper()
     if llm_credentials not in LLM_CREDENTIALS:
         raise ValueError(f"llmCredentials must be one of {', '.join(LLM_CREDENTIALS)}")
     mcp_servers, mcp_warnings = parse_mcp_servers(raw.get("mcpServers"))
+    timeout = raw.get("timeoutSeconds")
     return JobSpec(
         mode=mode,
         agent=agent,
         model=model,
-        prompt=str(raw["prompt"]),
-        timeout_seconds=int(raw["timeoutSeconds"]),
+        prompt=str(raw.get("prompt") or ""),
+        timeout_seconds=int(timeout) if timeout not in (None, "") else DELIVER_DEFAULT_TIMEOUT_SECONDS,
         repository=repo,
-        spec_kit_phase=phase.upper() if phase else None,
-        constitution=raw.get("constitution") or None,
         setup_command=raw.get("setupCommand") or None,
         verify_command=raw.get("verifyCommand") or None,
         collect_artifacts=collect,
@@ -1282,11 +1293,9 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         git_access=git_access,
         multi_repo=multi,
         repositories=repositories,
-        spec_kit=spec_kit,
         llm_credentials=llm_credentials,
         workspace=workspace,
         commit_subject=_opt_str(raw, "commitSubject"),
-        feature_description=_opt_str(raw, "featureDescription"),
         acceptance=parse_acceptance(raw.get("acceptance")),
         system_prompt=_opt_str(raw, "systemPrompt"),
         agent_tools=parse_agent_tools(raw.get("agentTools")),
@@ -1294,7 +1303,7 @@ def parse_spec(raw: Dict[str, Any]) -> JobSpec:
         mcp_servers=mcp_servers,
         agent_home=parse_agent_home(raw.get("agentHome")),
         access=parse_access(raw.get("access")),
-        warnings=mcp_warnings,
+        warnings=warnings + mcp_warnings,
     )
 
 
@@ -1888,48 +1897,11 @@ def command_matches(patterns: Iterable[str], command: str) -> Optional[str]:
 # --------------------------------------------------------------------------------------------
 
 
-def speckit_command(agent: str, phase: str, repo_dir: Optional[Path]) -> str:
-    """Return the slash command for a Spec Kit phase.
-
-    OpenCode: `/speckit.<phase>` (markdown commands in .opencode/commands).
-    Claude Code: recent Spec Kit releases install skills as `/speckit-<phase>`; older ones used
-    `/speckit.<phase>` commands. We look at what `specify init` actually produced.
-    """
-    phase = phase.lower()
-    if agent == "CLAUDE_CODE" and repo_dir is not None:
-        claude_dir = repo_dir / CLAUDE_DIR
-        if (claude_dir / "skills" / f"speckit-{phase}").exists():
-            return f"/speckit-{phase}"
-        if (claude_dir / "commands" / f"speckit.{phase}.md").exists():
-            return f"/speckit.{phase}"
-        if (claude_dir / "skills").is_dir():
-            return f"/speckit-{phase}"
-    return f"/speckit.{phase}"
-
-
-def has_tasks_md(repo_dir: Path) -> bool:
-    return any((repo_dir / "specs").glob("**/tasks.md")) if (repo_dir / "specs").is_dir() else False
-
-
-def build_agent_prompt(spec: JobSpec, repo_dir: Optional[Path]) -> str:
-    if spec.mode == "SPEC_KIT":
-        phase = spec.spec_kit_phase or "SPECIFY"
-        # ADR 0047: the command's argument is the feature description only (Spec Kit may write it into spec.md);
-        # role, rules and the security notice stay out of the committed files
-        argument = spec.feature_description or spec.prompt
-        return f"{speckit_command(spec.agent, phase, repo_dir)} {argument}".strip()
-    if spec.mode == "IMPLEMENT":
-        if spec.spec_kit_allowed and repo_dir is not None and has_tasks_md(repo_dir):
-            cmd = speckit_command(spec.agent, "implement", repo_dir)
-            return f"{cmd}\n\n{spec.prompt}".strip() if spec.prompt else cmd
-        return spec.prompt
-    return spec.prompt
-
-
 ACCESS_DESCRIPTIONS = {
-    GIT_ACCESS_PUSH_MR: "changes are committed and pushed to branch {branch} (merge request)",
-    GIT_ACCESS_READ: "read-only: changes here are not pushed",
-    GIT_ACCESS_NONE: "read-only, no credential: changes here are not pushed",
+    # ADR 0063: an agent job never commits or pushes; a later delivery step of the workflow does
+    GIT_ACCESS_PUSH_MR: "changes stay in the work tree; a delivery step pushes branch {branch}",
+    GIT_ACCESS_READ: "changes stay in the work tree; the runner does not commit or push",
+    GIT_ACCESS_NONE: "no credential; changes stay in the work tree, the runner does not commit or push",
 }
 
 
@@ -2850,9 +2822,13 @@ class Git:
         return bool(self.run(["status", "--porcelain"]).stdout.strip())
 
     def commit_all(self, message: str, run_id: Optional[str] = None, keep_out: Iterable[str] = ()) -> Optional[str]:
-        """Stage everything and commit with the `Back-Office-Run: <runId>` trailer (ADR 0013). Files named in
-        [keep_out] (collected work logs) are left out of the commit unless the repository already tracks them."""
-        self.run(["add", "-A"])
+        """Stage everything (tracked and untracked, honouring `.gitignore` and `.git/info/exclude`, never the user's
+        default excludes file, which untrusted code could write) and commit with the `Back-Office-Run: <runId>`
+        trailer (ADR 0013). Files named in [keep_out] (collected work logs, answers) are left out of the commit."""
+        with tempfile.TemporaryDirectory(prefix="bo-commit-") as tmp:
+            no_excludes = Path(tmp) / "no-excludes"
+            no_excludes.write_bytes(b"")
+            self.run(["-c", f"core.excludesFile={no_excludes.as_posix()}", "add", "-A"])
         for name in keep_out:
             self.run(["reset", "--quiet", "--", f":(glob)**/{name}"], check=False)
         if not self.run(["diff", *GIT_DIFF_SAFETY_ARGS, "--cached", "--quiet"], check=False).returncode == 0:
@@ -2906,6 +2882,39 @@ class Git:
             if cp.returncode == 0:
                 return cp.stdout
         return None
+
+    def worktree_tree(self, keep_out: Iterable[str] = ()) -> str:
+        """Tree id of the work tree as a commit of everything would record it (ADR 0063: agent jobs never commit):
+        a temporary index seeded from HEAD, `add --all` (tracked, changed and untracked files, honouring `.gitignore`
+        and `.git/info/exclude`, never the user's default excludes file), [keep_out] names reset to HEAD. The
+        repository's own index, HEAD and refs are not touched."""
+        with tempfile.TemporaryDirectory(prefix="bo-worktree-") as tmp:
+            no_excludes = Path(tmp) / "no-excludes"
+            no_excludes.write_bytes(b"")
+            env = dict(self.env)
+            env["GIT_INDEX_FILE"] = str(Path(tmp) / "index")
+            self._run_bytes(["read-tree", "HEAD"], env)
+            self._run_bytes(["-c", f"core.excludesFile={no_excludes.as_posix()}", "add", "--all", "--", "."], env)
+            for name in keep_out:
+                subprocess.run(self._cmd(["reset", "--quiet", "--", f":(glob)**/{name}"]), cwd=str(self.repo_dir),  # noqa: S603
+                               env=env, capture_output=True)
+            return self._run_bytes(["write-tree"], env).decode("ascii").strip()
+
+    def _worktree_base(self, base_ref: str) -> str:
+        """The merge base of the (pinned) base and HEAD, else the base itself."""
+        base = self.resolve_base(base_ref)
+        cp = self.run(["merge-base", base, "HEAD"], check=False)
+        return cp.stdout.strip() if cp.returncode == 0 and cp.stdout.strip() else base
+
+    def worktree_diff_bytes(self, base_ref: str, tree: str) -> Optional[bytes]:
+        """Full diff of the base (merge base with HEAD) against the work tree [tree] (`worktree_tree`), uncapped."""
+        args = ["diff", *GIT_DIFF_SAFETY_ARGS, self._worktree_base(base_ref), tree]
+        cp = subprocess.run(self._cmd(args), cwd=str(self.repo_dir), env=self.env, capture_output=True)  # noqa: S603
+        return cp.stdout if cp.returncode == 0 else None
+
+    def worktree_diff_stat(self, base_ref: str, tree: str) -> Optional[Dict[str, int]]:
+        cp = self.run(["diff", *GIT_DIFF_SAFETY_ARGS, "--shortstat", self._worktree_base(base_ref), tree], check=False)
+        return parse_shortstat(cp.stdout) if cp.returncode == 0 else None
 
     def diff_text(self, base_ref: str, max_bytes: int = DIFF_MAX_BYTES) -> Optional[str]:
         """`git diff <baseRef>...HEAD` (merge base) capped at `max_bytes` with a marker."""
@@ -3095,7 +3104,6 @@ def commit_message(mode: str, prompt: str) -> str:
     first = lines[0] if lines else "agent changes"
     opens_block = bool(UNTRUSTED_OPEN_RE.search(first)) and not UNTRUSTED_CLOSE_RE.search(first)
     first = " ".join(UNTRUSTED_CLOSE_RE.sub(" ", UNTRUSTED_OPEN_RE.sub(" ", first)).split())
-    first = re.sub(r"^/speckit[.-]\w+\s*", "", first)
     if opens_block and (not first or first.endswith(":")) and len(lines) > 1:
         nxt = " ".join(UNTRUSTED_CLOSE_RE.sub(" ", UNTRUSTED_OPEN_RE.sub(" ", lines[1])).split())
         if nxt and not nxt.startswith("#"):  # never the "## Untrusted data" notice
@@ -3215,57 +3223,6 @@ def cap_diff(data: bytes, max_bytes: int = DIFF_MAX_BYTES) -> str:
 
 
 # --------------------------------------------------------------------------------------------
-# Spec Kit
-# --------------------------------------------------------------------------------------------
-
-
-def specify_init_command(agent: str, help_text: str) -> List[str]:
-    """Build `specify init` for the installed Spec Kit version.
-
-    Spec Kit >= 1.0 uses `--integration <claude|opencode>` and `--non-interactive`; older releases
-    used `--ai <agent>` and `--no-git`.
-    """
-    agent_key = "claude" if agent == "CLAUDE_CODE" else "opencode"
-    cmd = ["specify", "init", "--here", "--force", "--script", "sh"]
-    if "--integration" in help_text:
-        cmd += ["--integration", agent_key]
-    else:
-        cmd += ["--ai", agent_key]
-    if "--non-interactive" in help_text:
-        cmd.append("--non-interactive")
-    if "--no-git" in help_text:
-        cmd.append("--no-git")
-    if "--ignore-agent-tools" in help_text:
-        cmd.append("--ignore-agent-tools")
-    return cmd
-
-
-def ensure_spec_kit(repo_dir: Path, agent: str, env: Dict[str, str], log: Callable[[str], None]) -> bool:
-    if (repo_dir / SPECIFY_DIR).is_dir():
-        log(f"[spec-kit] {SPECIFY_DIR}/ already present")
-        return True
-    if shutil.which("specify") is None:
-        log("[spec-kit] WARN specify CLI not installed; skipping init")
-        return False
-    help_cp = subprocess.run(["specify", "init", "--help"], cwd=str(repo_dir), env=env, capture_output=True, text=True, errors="replace")  # noqa: S603
-    help_text = (help_cp.stdout or "") + (help_cp.stderr or "")
-    cmd = specify_init_command(agent, help_text)
-    log(f"[spec-kit] {' '.join(shlex.quote(c) for c in cmd)}")
-    res = run_process(cmd, repo_dir, env, timeout=600, on_line=lambda l: log(f"[spec-kit] {l}"))
-    if res.exit_code != 0 or not (repo_dir / SPECIFY_DIR).is_dir():
-        log(f"[spec-kit] WARN specify init exited {res.exit_code}; continuing without it")
-        return False
-    return True
-
-
-def write_constitution(repo_dir: Path, constitution: str, log: Callable[[str], None]) -> None:
-    target = repo_dir / SPECIFY_DIR / "memory" / "constitution.md"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(constitution if constitution.endswith("\n") else constitution + "\n", encoding="utf-8")
-    log(f"[spec-kit] wrote constitution ({len(constitution)} chars) to {target.relative_to(repo_dir)}")
-
-
-# --------------------------------------------------------------------------------------------
 # Skills (Task Library, ADR 0015)
 # --------------------------------------------------------------------------------------------
 
@@ -3319,7 +3276,7 @@ def _write_skill(repo_dir: Path, skill: Skill) -> List[Path]:
 def write_skills(repo_dir: Path, skills: List[Skill], log: Callable[[str], None]) -> List[Path]:
     """Write `spec.skills[]` to .claude/skills/<key>/SKILL.md and .opencode/skills/<key>/SKILL.md.
 
-    The directories are added to `.git/info/exclude` so they never end up in the agent's commit.
+    The directories are added to `.git/info/exclude` so they are never part of the diff or a delivery (ADR 0063).
     """
     written: List[Path] = []
     if not skills:
@@ -3755,7 +3712,7 @@ class _Run:
     access_repos: List["AccessRepo"] = field(default_factory=list)
     access_report: Optional[Dict[str, Any]] = None
     artifacts_collected: bool = False
-    # ADR 0060 §6: questions the agent stopped with (verification, commit and push are skipped)
+    # ADR 0060 §6: questions the agent stopped with (the verification is skipped)
     questions: int = 0
 
     def log(self, message: str) -> None:
@@ -3942,8 +3899,9 @@ def _security_report(
 def _isolate_agent_token(
     client: CallbackClient, ctx: Optional[JobContext], redact: Redactor, security: Dict[str, Any], log: Callable[[str], None]
 ) -> Optional[str]:
-    """The agent gets a gateway-only token; the job token (result/events/uploads) stays with the entrypoint."""
-    agent_token = exchange_agent_token(client, log) if ctx is not None else None
+    """The agent gets a gateway-only token; the job token (result/events/uploads) stays with the entrypoint. A DELIVER
+    job runs no agent and needs none."""
+    agent_token = exchange_agent_token(client, log) if ctx is not None and not ctx.spec.delivers else None
     if agent_token:
         redact.add(agent_token)
         security["agentTokenIsolated"] = True
@@ -3952,14 +3910,14 @@ def _isolate_agent_token(
 
 
 def _untrusted_env(run: _Run, spec: JobSpec) -> Dict[str, str]:
-    """Environment of setupCommand, verifyCommand and Spec Kit: the agent environment without any token."""
+    """Environment of setupCommand and verifyCommand: the agent environment without any token."""
     return agent_environment(spec, run.env, run.workspace, "", run.proxy_url)
 
 
 def _log_job_header(run: _Run, spec: JobSpec, job_id: str, source: str) -> None:
     run.log(
         f"[runner] job={job_id or '-'} mode={spec.mode} agent={spec.agent} model={spec.model.provider}/{spec.model.model_id}"
-        f" reasoning={spec.model.reasoning or '-'} timeout={spec.timeout_seconds}s phase={spec.spec_kit_phase or '-'}"
+        f" reasoning={spec.model.reasoning or '-'} timeout={spec.timeout_seconds}s"
         f" spec={source} proxy={'yes' if run.proxy_url else 'no'} gateway={'yes' if spec.gateway else 'no'}"
         f" git={spec.git_access}"
         + (f" repositories={','.join(f'{r.key}:{r.access}' for r in spec.repositories) or '-'}" if spec.multi_repo else "")
@@ -3979,23 +3937,12 @@ def _log_tool_versions(run: _Run) -> None:
     env = run.env
     run.log(f"[runner] tools: git={_tool_version(['git', '--version'], env)} | node={_tool_version(['node', '--version'], env)}"
             f" | java={_tool_version(['java', '-version'], env)} | opencode={_tool_version(['opencode', '--version'], env)}"
-            f" | claude={_tool_version(['claude', '--version'], env)} | specify={_tool_version(['specify', '--version'], env)}")
-
-
-def _validate_push_target(repository: Repository) -> None:
-    """Fail before any untrusted code runs; Git.push checks again right before pushing."""
-    if not (repository.branch and repository.push):
-        return
-    try:
-        validate_push_branch(repository.branch, repository.base_ref)
-        if repository.merge_request is not None:
-            validate_push_branch(repository.branch, repository.merge_request.target_branch)
-    except ValueError as e:
-        raise RuntimeError(f"push refused: {e}") from e
+            f" | claude={_tool_version(['claude', '--version'], env)}")
 
 
 def _prepare_repository(run: _Run, spec: JobSpec, repo_dir: Path, git_token: str) -> Optional[Git]:
-    """Clone, identity, push target check, run branch; then the trusted `.git` state is recorded."""
+    """Clone, identity, run branch; then the trusted `.git` state is recorded. A legacy single-repository spec is an
+    agent job: read-only (ADR 0063), the branch is only checked out."""
     repository = spec.repository
     if not repository:
         repo_dir.mkdir(parents=True, exist_ok=True)
@@ -4005,13 +3952,12 @@ def _prepare_repository(run: _Run, spec: JobSpec, repo_dir: Path, git_token: str
         shutil.rmtree(repo_dir, ignore_errors=True)
     git = Git(repo_dir, run.env, run.log, token=git_token, repo_url=repository.url, access=spec.git_access)
     if spec.git_access != GIT_ACCESS_PUSH_MR:
-        run.log(f"[git] access {spec.git_access}: clone only, pushing is disabled (ADR 0031)")
+        run.log(f"[git] access {spec.git_access}: clone only, pushing is disabled (ADR 0031, 0063)")
     if not git.has_token and repository.url.startswith(HTTPS_PREFIX):
         run.log("[git] WARN no git token; cloning anonymously")
     run.sink.progress(f"cloning {run.redact(repository.url)} @ {repository.base_ref}")
     git.clone(repository.url, repository.base_ref)
     git.configure_identity(run.env.get("GIT_USER_NAME") or "Back Office Agent", run.env.get("GIT_USER_EMAIL") or "agent@backoffice.local")
-    _validate_push_target(repository)
     if repository.branch:
         run.branch = repository.branch
         existed = git.checkout_branch(run.branch)
@@ -4054,24 +4000,6 @@ def _run_setup(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     res = run_process([spec.setup_command], repo_dir, _untrusted_env(run, spec), timeout=max(60, spec.timeout_seconds), on_line=lambda l: run.log(f"[setup] {l}"), shell=True)
     if res.exit_code != 0:
         raise RuntimeError(f"setupCommand exited with code {res.exit_code}" + (" (timed out)" if res.timed_out else ""))
-
-
-def needs_spec_kit(spec: JobSpec, repo_dir: Path) -> bool:
-    """Spec Kit is initialised for SPEC_KIT jobs, jobs with a constitution and IMPLEMENT jobs on a tasks.md - never when
-    the spec says `specKit: false` (ADR 0036: the project does not use Spec Kit)."""
-    if spec.agent == STUB_AGENT or not spec.spec_kit_allowed:
-        return False
-    return spec.mode == "SPEC_KIT" or bool(spec.constitution) or (spec.mode == "IMPLEMENT" and has_tasks_md(repo_dir))
-
-
-def _prepare_spec_kit(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
-    if not spec.spec_kit_allowed:
-        run.log("[spec-kit] off for this project (specKit: false): no specify init, no constitution")
-        return
-    if needs_spec_kit(spec, repo_dir):
-        ensure_spec_kit(repo_dir, spec.agent, _untrusted_env(run, spec), run.log)
-    if spec.constitution:
-        write_constitution(repo_dir, spec.constitution, run.log)
 
 
 def _claude_help(agent_env: Dict[str, str]) -> str:
@@ -4212,8 +4140,11 @@ def write_home_skills(home: Path, skills: List[Skill], log: Callable[[str], None
 
 
 def prepare_agent_files(spec: JobSpec, workspace: Path, agent_env: Dict[str, str], log: Callable[[str], None]) -> AgentFiles:
-    """ADR 0057 §2/§3 for coding agent jobs (IMPLEMENT, SPEC_KIT, EVAL_CODING) that run a harness; ADR 0060 §3: with
-    `agentHome` everything (environment document, skills, MCP configuration) goes to the agent's home."""
+    """ADR 0057 §2/§3 for coding agent jobs (IMPLEMENT, EVAL_CODING) that run a harness; ADR 0060 §3: with
+    `agentHome` everything (environment document, skills, MCP configuration) goes to the agent's home. A DELIVER job
+    (ADR 0063) runs no agent and gets nothing."""
+    if spec.delivers:
+        return AgentFiles()
     home = prepare_agent_home(spec, workspace, log)
     if home is not None:
         write_home_skills(home, spec.skills, log)
@@ -4367,7 +4298,7 @@ def _execute_prompt(run: _Run, spec: JobSpec) -> None:
 
 
 def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
-    prompt = with_repositories_section(build_agent_prompt(spec, repo_dir), spec, run.workspace) if spec.agent != STUB_AGENT else spec.prompt
+    prompt = with_repositories_section(spec.prompt, spec, run.workspace) if spec.agent != STUB_AGENT else spec.prompt
     tools_section = tools_prompt_section(spec, run.tool_tokens)
     if tools_section and spec.agent != STUB_AGENT:
         prompt = f"{prompt}\n\n{tools_section}"
@@ -4415,18 +4346,18 @@ def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
 
 def _note_questions(run: _Run, spec: JobSpec, work_dir: Path) -> bool:
     """ADR 0060 §6, right after the agent (before any revert can remove the file): an agent that stopped with
-    questions gets no verification, commit, push or merge request; the work tree stays as it left it so its session
-    continues after the owner answers. Returns True in that case."""
+    questions gets no verification (ADR 0063: no agent job commits or pushes anyway); the work tree stays as it left
+    it so its session continues after the owner answers. Returns True in that case."""
     if run.timed_out:
         return False
     run.questions = count_agent_questions(work_dir, spec.collect_artifacts, run.log)
     if run.questions:
-        run.log(f"[agent] stopped with {run.questions} question(s) ({AGENT_QUESTIONS_FILE}): verification, commit and push skipped")
+        run.log(f"[agent] stopped with {run.questions} question(s) ({AGENT_QUESTIONS_FILE}): verification skipped")
     return run.questions > 0
 
 
 def _hold_to_access(run: _Run, spec: JobSpec, work_dir: Path, restore_git: Callable[[], None]) -> None:
-    """ADR 0060 §5, after the agent and before verification and commit: the step's artefacts are collected first
+    """ADR 0060 §5, after the agent and before verification and the diff: the step's artefacts are collected first
     (what the agent wrote is reported even when it is reverted), `.git` is restored (untrusted code ran), then every
     change outside the access is reverted and reported."""
     access = spec.access
@@ -4529,9 +4460,11 @@ def remove_acceptance_files(repo_dir: Path, written: List[Tuple[Path, Optional[b
 
 
 def commit_subject_for(spec: JobSpec) -> str:
-    """ADR 0047: the subject Back Office chose, else <mode>: <first prompt line> as before."""
+    """ADR 0047 / 0063: the subject Back Office chose, else <mode>: <first prompt line>, else a generic subject."""
     subject = " ".join((spec.commit_subject or "").split())[:100]
-    return subject or commit_message(spec.mode, spec.prompt)
+    if subject:
+        return subject
+    return commit_message(spec.mode, spec.prompt) if spec.prompt.strip() else "Back Office: agent changes"
 
 
 def _collect_run_artifacts(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
@@ -4543,21 +4476,6 @@ def _collect_run_artifacts(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
             ref = run.uploader.upload(f"artifact:{a['path']}", a["mediaType"], data)
             if ref:
                 run.artifacts.append(blob_ref_artifact(ref, a["path"]))
-
-
-def _commit_changes(run: _Run, spec: JobSpec, git: Git) -> None:
-    if not git.has_changes():
-        run.log("[git] no changes to commit")
-        return
-    sha = git.commit_all(commit_subject_for(spec), run_id=spec.run_id, keep_out=EPHEMERAL_ARTIFACT_FILES)
-    if sha:
-        trailer = f" (trailer {RUN_TRAILER}: {spec.run_id})" if spec.run_id else ""
-        run.log(f"[git] committed {sha[:12]}" + trailer)
-
-
-def _collect_diff(run: _Run, git: Git, base_ref: str) -> None:
-    """Digest and capped text of the full diff; a diff over the cap is also uploaded in full (redacted)."""
-    _record_diff(run, git.diff_bytes(base_ref), base_ref)
 
 
 def _record_diff(run: _Run, full_diff: Optional[bytes], base_ref: str) -> None:
@@ -4572,10 +4490,6 @@ def _record_diff(run: _Run, full_diff: Optional[bytes], base_ref: str) -> None:
     run.log(f"[git] diff against {base_ref}: {len(full_diff) if full_diff else 0} bytes")
 
 
-def _has_commits_to_push(run: _Run, git: Git, base_ref: str) -> bool:
-    return _commits_ahead_of_base(git, base_ref, run.diff_stat)
-
-
 def _commits_ahead_of_base(git: Git, base_ref: str, diff_stat: Optional[Dict[str, int]]) -> bool:
     if (diff_stat or {}).get("files", 0) > 0:
         return True
@@ -4583,46 +4497,34 @@ def _commits_ahead_of_base(git: Git, base_ref: str, diff_stat: Optional[Dict[str
     return count not in ("", "0")
 
 
-def _log_merge_request(run: _Run, mr: Optional[MergeRequest]) -> None:
-    if mr is None:
-        return
-    if run.merge_request_url:
-        run.log(f"[git] merge request: {run.merge_request_url}")
-    else:
-        run.log("[git] WARN push options sent but no merge request URL found in the push output (host ignores merge_request.* options, or the MR already existed?)")
+@dataclass
+class WorktreeReport:
+    """ADR 0063: what an agent left in a repository, nothing committed: HEAD, and the diff of the work tree
+    (untracked files included, the runner's ephemeral answer files left out) against the base."""
+
+    head: Optional[str]
+    diff_stat: Optional[Dict[str, int]]
+    diff: Optional[bytes]
 
 
-def _push_branch(run: _Run, repository: Repository, git: Git, branch: str) -> None:
-    """Push the run branch (merge request push options when requested); a refused or failed push fails the job."""
-    if not _has_commits_to_push(run, git, repository.base_ref):
-        run.log("[git] nothing to push")
-        return
-    mr = repository.merge_request
-    run.sink.progress(f"pushing {branch}" + (f" (merge request -> {mr.target_branch})" if mr else ""))
-    try:
-        run.merge_request_url = git.push(branch, repository.url, repository.base_ref, mr)
-    except ValueError as e:
-        run.fatal_error = f"push refused: {run.redact(str(e))}"
-        run.log(f"[git] ERROR {run.fatal_error}")
-        return
-    except RuntimeError as e:
-        run.fatal_error = f"push failed: {run.redact(str(e))}"
-        run.log(f"[git] ERROR {run.fatal_error}")
-        return
-    run.log(f"[git] pushed {branch}")
-    _log_merge_request(run, mr)
+def report_worktree(git: Git, base_ref: str, collect_diff: bool) -> WorktreeReport:
+    tree = git.worktree_tree(keep_out=EPHEMERAL_ARTIFACT_FILES)
+    return WorktreeReport(
+        head=git.head(),
+        diff_stat=git.worktree_diff_stat(base_ref, tree),
+        diff=git.worktree_diff_bytes(base_ref, tree) if collect_diff else None,
+    )
 
 
-def _commit_and_push(run: _Run, spec: JobSpec, repository: Repository, git: Git) -> None:
-    _commit_changes(run, spec, git)
-    run.commit_sha = git.head()
-    run.diff_stat = git.diff_stat(repository.base_ref)
+def _report_legacy_worktree(run: _Run, spec: JobSpec, repository: Repository, git: Git) -> None:
+    """Legacy single-repository agent job: nothing committed or pushed (ADR 0063), the work tree is reported."""
+    report = report_worktree(git, repository.base_ref, spec.collect_diff)
+    run.commit_sha = report.head
+    run.diff_stat = report.diff_stat
     if spec.collect_diff:
-        _collect_diff(run, git, repository.base_ref)
-    if repository.push and run.branch and git.can_push:
-        _push_branch(run, repository, git, run.branch)
-    elif run.branch and not git.can_push:
-        run.log(f"[git] access {git.access}: nothing is pushed")
+        _record_diff(run, report.diff, repository.base_ref)
+    if (report.diff_stat or {}).get("files", 0) > 0:
+        run.log("[git] changes stay in the work tree: an agent job never commits or pushes (ADR 0063)")
 
 
 # --------------------------------------------------------------------------------------------
@@ -4775,7 +4677,7 @@ def _prepare_repositories(run: _Run, spec: JobSpec) -> List[_RepoState]:
 
 def _restore_repositories(run: _Run, states: List[_RepoState]) -> None:
     """Git integrity of every repository after untrusted code ran; a repository whose `.git` was replaced is
-    neither committed nor pushed (its error is reported, the others continue)."""
+    not reported or delivered (its error is reported, the others continue)."""
     restored = run.security.get("gitConfigRestored") is True  # called again after verifyCommand (ADR 0060 access)
     for state in states:
         if not state.integrity_ok:
@@ -4789,17 +4691,35 @@ def _restore_repositories(run: _Run, states: List[_RepoState]) -> None:
     run.security["gitConfigRestored"] = restored
 
 
+def _report_agent_repository(run: _Run, spec: JobSpec, state: _RepoState) -> None:
+    """ADR 0063: after an agent nothing is committed or pushed; HEAD and the diff of the work tree (untracked files
+    included) against the pinned base are reported. Any failure stays in the repository's own result entry."""
+    if not state.integrity_ok or state.git is None:
+        return
+    try:
+        report = report_worktree(state.git, state.repo.base_ref, spec.collect_diff)
+    except (RuntimeError, OSError, ValueError) as e:
+        state.result["error"] = run.redact(f"{e.__class__.__name__}: {e}")
+        run.log(f"{state.tag} ERROR {state.result['error']}")
+        return
+    state.result["commitSha"] = report.head
+    state.result["diffStat"] = report.diff_stat
+    state.diff = report.diff
+    if (report.diff_stat or {}).get("files", 0) > 0:
+        run.log(f"{state.tag} changes stay in the work tree (an agent job never commits or pushes, ADR 0063)")
+
+
+# ---- ADR 0063: delivery (DELIVER jobs, no agent) ---------------------------------------------------------------
+
+
 def _commit_repository(run: _Run, spec: JobSpec, state: _RepoState) -> None:
+    """DELIVER: commit the work tree (tracked and untracked files, `.gitignore` and `.git/info/exclude` honoured, the
+    runner's ephemeral files left out) with the commit subject and the `Back-Office-Run` trailer."""
     git = state.git
     assert git is not None
-    if spec.workspace is not None and not state.repo.can_push:
-        # ADR 0044: in a run workspace a read-only step leaves its changes uncommitted for the next step
-        if git.has_changes():
-            run.log(f"{state.tag} changes left uncommitted in the run workspace (access {state.repo.access})")
-    elif git.has_changes():
-        sha = git.commit_all(commit_subject_for(spec), run_id=spec.run_id, keep_out=EPHEMERAL_ARTIFACT_FILES)
-        if sha:
-            run.log(f"{state.tag} committed {sha[:12]}" + (f" (trailer {RUN_TRAILER}: {spec.run_id})" if spec.run_id else ""))
+    sha = git.commit_all(commit_subject_for(spec), run_id=spec.run_id, keep_out=EPHEMERAL_ARTIFACT_FILES) if git.has_changes() else None
+    if sha:
+        run.log(f"{state.tag} committed {sha[:12]}" + (f" (trailer {RUN_TRAILER}: {spec.run_id})" if spec.run_id else ""))
     else:
         run.log(f"{state.tag} no changes to commit")
     state.result["commitSha"] = git.head()
@@ -4809,6 +4729,8 @@ def _commit_repository(run: _Run, spec: JobSpec, state: _RepoState) -> None:
 
 
 def _push_repository(run: _Run, state: _RepoState) -> None:
+    """DELIVER: push the job branch (merge request push options when requested); nothing ahead of the base = nothing
+    pushed. A refused or failed push stays in the repository's result entry."""
     repo, git = state.repo, state.git
     assert git is not None
     if not _commits_ahead_of_base(git, repo.base_ref, state.result["diffStat"]):
@@ -4832,19 +4754,58 @@ def _push_repository(run: _Run, state: _RepoState) -> None:
     run.log(f"{state.tag} ERROR {state.result['error']}")
 
 
-def _finish_repository(run: _Run, spec: JobSpec, state: _RepoState) -> None:
-    """Commit, diff and (PUSH_MR only) push one repository; any failure stays in its own result entry."""
-    if not state.integrity_ok:
+def _deliver_repository(run: _Run, spec: JobSpec, state: _RepoState) -> None:
+    """DELIVER: commit and push one PUSH_MR repository; READ / NONE repositories of the spec are only reported. Any
+    failure stays in the repository's own result entry."""
+    if state.git is None or not state.integrity_ok:
+        return
+    if not (state.repo.can_push and state.repo.push_branch):
+        state.result["commitSha"] = state.git.head()
+        run.log(f"{state.tag} access {state.repo.access}: not delivered")
         return
     try:
         _commit_repository(run, spec, state)
-        if state.repo.can_push:
-            _push_repository(run, state)
-        elif (state.result["diffStat"] or {}).get("files", 0) > 0:
-            run.log(f"{state.tag} access {state.repo.access}: local changes are reported, nothing is pushed")
+        _push_repository(run, state)
     except (RuntimeError, OSError, ValueError) as e:
         state.result["error"] = run.redact(f"{e.__class__.__name__}: {e}")
         run.log(f"{state.tag} ERROR {state.result['error']}")
+
+
+def delivery_summary(states: List["_RepoState"]) -> str:
+    """One line per repository of a DELIVER job (its `result.summary`)."""
+    lines = []
+    for s in states:
+        r = s.result
+        if r["error"]:
+            what = f"failed: {r['error']}"
+        elif r["pushed"]:
+            what = f"pushed {r['branch']} at {(r['commitSha'] or '-')[:12]}" + (f", merge request {r['mergeRequestUrl']}" if r["mergeRequestUrl"] else "")
+        elif s.repo.can_push:
+            what = "no changes, nothing pushed"
+        else:
+            what = f"not delivered (access {s.repo.access})"
+        lines.append(f"- {s.repo.key}: {what}")
+    return "Delivery (no agent ran):\n" + ("\n".join(lines) if lines else "- no repositories")
+
+
+def _execute_deliver(run: _Run, spec: JobSpec) -> None:
+    """ADR 0063 `DELIVER`: no agent and no command of the repositories runs. In the run directory (the clones of the
+    earlier steps are reused; a clone is re-attached to its push branch) every PUSH_MR repository with a pushBranch
+    gets its work tree committed, its branch pushed and the merge request opened through push options."""
+    if spec.workspace is None:
+        run.log("[deliver] WARN no run directory (spec.workspace): fresh clones have nothing to deliver")
+    ignored = [name for name, value in (("setupCommand", spec.setup_command), ("verifyCommand", spec.verify_command),
+                                         ("workspace.setupCommand", spec.workspace.setup_command if spec.workspace else None))
+               if value]
+    if ignored:
+        run.log(f"[deliver] {', '.join(ignored)} ignored: a delivery runs no command")
+    run.verify_command = None
+    states = _prepare_repositories(run, spec)
+    run.agent_exit = 0
+    for state in states:
+        _deliver_repository(run, spec, state)
+    _report_repositories(run, states)
+    run.outcome.final_result = delivery_summary(states)
 
 
 def _report_repositories(run: _Run, states: List[_RepoState]) -> None:
@@ -4867,7 +4828,8 @@ def _report_repositories(run: _Run, states: List[_RepoState]) -> None:
 
 def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
     """Workspace with several repositories (or none): clone each into <workspace>/<path>, run everything in the
-    primary repository (the workspace when there is none), then commit / diff / push per repository."""
+    primary repository (the workspace when there is none), then report HEAD and the work-tree diff per repository
+    (ADR 0063: nothing is committed or pushed after an agent)."""
     states = _prepare_repositories(run, spec)
     primary = next((s for s in states if s.repo.primary), None)
     work_dir = primary.directory if primary else run.workspace
@@ -4881,7 +4843,6 @@ def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
     if spec.workspace is not None and spec.workspace.prepare_only:
         _finish_prepare_only(run, spec, states)
         return
-    _prepare_spec_kit(run, spec, work_dir)
     run.access_repos = [AccessRepo(s.repo.key, s.git) for s in states if s.git is not None]
     _run_agent(run, spec, work_dir)
 
@@ -4890,7 +4851,7 @@ def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
         broken = {s.repo.key for s in states if not s.integrity_ok}
         for r in run.access_repos:
             if r.key in broken:
-                r.tree = None  # neither committed nor pushed (its error is reported)
+                r.tree = None  # not reported (its error is)
 
     asked = _note_questions(run, spec, work_dir)
     _hold_to_access(run, spec, work_dir, restore_git)
@@ -4902,7 +4863,7 @@ def _execute_multi_repo(run: _Run, spec: JobSpec) -> None:
     if spec.collect_artifacts and not run.artifacts_collected:
         _collect_run_artifacts(run, spec, work_dir)
     for state in states:
-        _finish_repository(run, spec, state)
+        _report_agent_repository(run, spec, state)
     _report_repositories(run, states)
 
 
@@ -4949,7 +4910,7 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
     _prepare_home(run.workspace, run.env, run.log)
     write_maven_proxy_settings(run.env, run.proxy_url, run.log)
     _log_tool_policy(run)
-    if spec.agent != STUB_AGENT:
+    if spec.agent != STUB_AGENT and not spec.delivers:
         _log_tool_versions(run)
     if spec.mode == "PROMPT":
         _execute_prompt(run, spec)
@@ -4957,14 +4918,16 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
     if spec.multi_repo:
         if git_token:
             run.log("[git] WARN a single-repository git token was delivered for a multi-repository job; it is not used")
-        _execute_multi_repo(run, spec)
+        if spec.delivers:
+            _execute_deliver(run, spec)
+        else:
+            _execute_multi_repo(run, spec)
         return
 
     repo_dir = run.workspace / "repo"
     git = _prepare_repository(run, spec, repo_dir, git_token)
     _write_repo_skills(run, spec, repo_dir)
     _run_setup(run, spec, repo_dir)
-    _prepare_spec_kit(run, spec, repo_dir)
     run.access_repos = [AccessRepo(None, git)] if git is not None else []
     _run_agent(run, spec, repo_dir)
 
@@ -4981,13 +4944,13 @@ def _execute_job(run: _Run, ctx: Optional[JobContext], ctx_error: Optional[str],
         run.commit_sha = git.head() if git is not None else None
         return
     _run_verify(run, spec, repo_dir, git)
-    # git integrity: nothing the agent planted in .git runs during commit/diff/push
+    # git integrity: nothing the agent planted in .git runs during the diff
     if git is not None:
         run.security["gitConfigRestored"] = git.restore_after_agent() or run.security.get("gitConfigRestored") is True
     if spec.collect_artifacts and not run.artifacts_collected:
         _collect_run_artifacts(run, spec, repo_dir)
     if git is not None and spec.repository is not None:
-        _commit_and_push(run, spec, spec.repository, git)
+        _report_legacy_worktree(run, spec, spec.repository, git)
 
 
 def _redact_result(result: Dict[str, Any], redact: Redactor) -> None:
@@ -5027,7 +4990,7 @@ def _finalize_result(run: _Run, log_file: LogFile) -> Dict[str, Any]:
         # ADR 0040: costUsd stays Claude Code's estimate; Back Office does not count it as spend
         result["usage"]["billing"] = BILLING_SUBSCRIPTION
     if run.questions:
-        line = f"[Back Office runner] the agent asked {run.questions} question(s); verification, commit and push skipped"
+        line = f"[Back Office runner] the agent asked {run.questions} question(s); verification skipped"
         result["summary"] = f"{result['summary']}\n\n{line}" if result.get("summary") else line
     if run.access_report is not None:
         # ADR 0060 §5: the agent's access and the changes outside it that were reverted (also a line of the summary)

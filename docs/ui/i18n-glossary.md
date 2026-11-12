@@ -92,9 +92,10 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | coding job (evaluation task kind) | zadanie programistyczne | vs "prompt" |
 | coherence check | sprawdzenie spójności | ADR 0061 button "Sprawdź spójność" (Check coherence); confirmation "Sprawdzić spójność agenta {agent}?"; finding severities "Sprzeczność" (Contradiction), "Niejasność" (Ambiguity), "Powtórzenie" (Redundancy); "Propozycja:" (Suggestion:); "Nie znaleziono sprzeczności." (No contradictions found.); errors "Nie ustawiono modelu dla odpowiedzi modelu: …" (409), "Sprawdzenie nie powiodło się." |
 | command palette | paleta poleceń | |
+| commit subject | temat commita | ADR 0063 field of **Dostarcz zmiany** "Temat commita" (Commit subject), help "Pierwszy wiersz opisu commita (szablon)…"; "commit" stays, verb "zatwierdza (commit)" in descriptions |
 | Connection expiring (notification type) | Wygasające połączenie | desktop notification type (ADR 0030 amendment); the Your turn card says "Token Jiry wkrótce wygaśnie" / "Token Jiry wygasł" |
 | connection / Connections | połączenie (pl. połączenia) / Połączenia | credential registry (ADR 0030): page and tab "Połączenia", "Dodaj połączenie", "Połączenie Jira" (designer section), "połączenie platformy" / "połączenie projektu"; "Testuj połączenie" in Settings stays |
-| constitution (Spec Kit) | konstytucja | |
+| constitution | konstytucja | ADR 0063: the project owner's rules for every agent (no longer Spec Kit's); project form "Konstytucja (markdown)" (Constitution (markdown)), hint "Zasady właściciela projektu. Każdy agent projektu dostaje je jako część swojego środowiska." |
 | personal connection | połączenie osobiste | My account → Connections (ADR 0035); "przez połączenie osobiste" (via personal connection) |
 | copy (button) | kopiuj | button label; "Skopiuj token teraz" stays as an instruction in sentences |
 | cost | koszt | |
@@ -106,13 +107,14 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | decide / decision | rozstrzygnij / decyzja | "Potrzebna decyzja", "bramka rozstrzygnięta" |
 | delete | usuń | |
 | delivery (insights) | dostarczanie | Insights switcher "Dostarczanie / Agenci" (Delivery / Agents) |
+| Deliver changes (action) / a delivery | Dostarcz zmiany / dostarczenie | ADR 0063 action node "Dostarcz zmiany" (imperative, like a button), description "Zatwierdza (commit) to, co agenci zmienili w katalogu przebiegu, wypycha gałąź i opcjonalnie otwiera merge request. Jedyny krok, który zapisuje do repozytoriów."; one run of it is "dostarczenie"; fields "Gałąź", "Temat commita", "Otwórz merge request", "Tytuł merge requestu", "Opis merge requestu", "Szkic", "Repozytoria do dostarczenia"; run facts "Akcja", "Gałąź", "Merge request", "Repozytoria" |
 | density (comfortable / compact) | gęstość (wygodna / kompaktowa) | preference values "Wygodna" / "Kompaktowa" |
 | designer (workflow) | projektant workflowów | |
 | directory (agent) | katalog | ADR 0062: an agent field next to "Dostęp" (Access), label "Katalog" (Directory): "Katalog przebiegu (wspólny)" (Run directory (shared)) / "Osobny katalog" (Separate directory). No longer a step setting (ADR 0060), and the run fact "Katalog: osobny" is gone |
 | discard (unsaved edits) | porzuć zmiany | not "odrzuć" (= reject a gate) |
 | display name | wyświetlana nazwa | users and model profiles |
 | done | gotowe | baton holder |
-| draft | szkic | |
+| draft | szkic | also the merge request option "Szkic" (Draft) of **Dostarcz zmiany**, card "MR (szkic)" |
 | duplicate (action) | duplikuj | |
 | edge | krawędź | workflow designer |
 | effective permissions | uprawnienia efektywne | admin user page tab; not "efektywne uprawnienia" |
@@ -179,13 +181,14 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | max output tokens | maks. liczba tokenów wyjściowych | model profile default options |
 | MCP server (of an agent) | serwer MCP (pl. serwery MCP) | ADR 0057 agent field "Serwery MCP" (MCP servers), "Dodaj serwer MCP", "Usuń serwer MCP" |
 | member / members | członek / członkowie | project |
-| merge request | merge request | not translated |
+| merge request | merge request | not translated; gen. "merge requestu" ("Tytuł merge requestu", "Opis merge requestu"); "Otwórz merge request" (Open a merge request); card abbreviation "MR", "bez MR" (no MR) |
 | model answer | odpowiedź modelu | built-in agent "Odpowiedź modelu" (ADR 0056) |
 | model / model profile | model / profil modelu | |
-| needs a coding agent | wymaga agenta kodującego | ADR 0061 read-only tag of a template (templates list, editor header, step) and templates filter option "Wymaga agenta kodującego" (Needs a coding agent); editor hint "Jego konfiguracja (faza Spec Kit, push lub tylko przygotowanie) wymaga agenta kodującego. Agenta wybiera krok workflow."; palette tag "agent kodujący"; see any agent |
+| needs a coding agent | wymaga agenta kodującego | ADR 0061 read-only tag of a template (templates list, editor header, step) and templates filter option "Wymaga agenta kodującego" (Needs a coding agent); editor hint "Jego konfiguracja mówi, że pracuje w repozytorium, więc wymaga agenta kodującego. Agenta wybiera krok workflow." (ADR 0063: follows from the config checkbox "Pracuje w repozytorium (wymaga agenta kodującego)", key `codingAgent`, or `prepareOnly`; no Spec Kit phase or push any more); palette tag "agent kodujący"; see any agent, works in the repository |
 | node | węzeł | workflow node |
 | not applicable (benchmark) | nie dotyczy | ADR 0059 leaderboard column "Nie dotyczy": tasks a candidate's agent cannot do |
 | operations | operacje | admin page |
+| output files (template) | pliki wynikowe | ADR 0063 template field "Pliki wynikowe" (Output files) in "Zaawansowane: artefakty, pliki wynikowe, schemat wyjścia"; globs ("wzorce (globy)") of files returned as artefacts |
 | override(s) | nadpisanie (pl. nadpisania) | task node overrides |
 | owner / maintainer / developer / approver / viewer | właściciel / maintainer / deweloper / zatwierdzający / obserwator | built-in project roles; UI names "Właściciel", "Maintainer", "Deweloper", "Zatwierdzający", "Obserwator" (`roleName()`, `core/i18n/catalog-labels.ts`); keys (`owner`, …) stay in code font |
 | platform administrator / member / evaluator / library curator / auditor | administrator platformy / członek / ewaluator / kurator biblioteki / audytor | built-in platform roles; UI names "Administrator platformy", "Członek", "Ewaluator", "Kurator biblioteki", "Audytor" |
@@ -227,6 +230,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | replace token | zastąp token | connection secret rotation: "Zastąp token" |
 | replica | replika | operations |
 | repository | repozytorium | |
+| repositories to deliver | repozytoria do dostarczenia | ADR 0063 field of **Dostarcz zmiany** "Repozytoria do dostarczenia" (Repositories to deliver); empty placeholder "Każde zmienione repozytorium" (Every changed repository) |
 | required skills (template) | wymagane umiejętności | ADR 0060 template field "Wymagane umiejętności"; a missing one is shown under "Ostrzeżenia" (Warnings); ADR 0061: palette hover "Wymagane umiejętności: {skills}", the agents panel row and finding "Brakująca umiejętność", button "Dodaj do agenta" |
 | resolve / resolved preview | rozwiąż / podgląd rozwiązanego zadania | |
 | retry | ponów | "Ponów" button, "próba" for an attempt |
@@ -256,6 +260,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | signal (CI) | sygnał | "Wyślij sygnał ręcznie" |
 | sign-in method: local / identity provider / both | lokalne / dostawca tożsamości / lokalne i {provider} | "Lokalne i Keycloak"; never "Oba" |
 | skill | umiejętność (pl. umiejętności) | Agent Skills; agent field "Umiejętności"; the step overrides "Dodaj umiejętności do umiejętności agenta" / "Pomiń umiejętności agenta" were removed in ADR 0060 |
+| sources (workflow) | źródła | ADR 0063 workflow setting "Źródła" (Sources) next to "Polecenie przygotowania"; groups "Repozytoria projektu" (Project repositories) and "Źródła z biblioteki" (Library sources); placeholder "Główne repozytorium projektu" (Project's primary repository); a missing one " (nie znaleziono)" (not found); the project tab "Źródła" uses the same word |
 | spec gate | bramka specyfikacji | |
 | spend / usage | wydatki / użycie | |
 | spent in (month) | wydano w miesiącu | "Wydano w miesiącu: październik 2026" on budget cards |
@@ -279,6 +284,8 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | validate | waliduj | designer |
 | verdict (review) | werdykt | approve / comment / request changes: zatwierdzenie / komentarz / prośba o zmiany |
 | verify | zweryfikuj | attestation, MFA code; not "weryfikuj". A connection check is "Testuj" / "sprawdzenie" (see test) |
+| verify command | polecenie weryfikacji | template / step config "Polecenie weryfikacji" (Verify command): the acceptance check run after the agent (noun form, so "weryfikacji" is fine) |
+| works in the repository (config) | pracuje w repozytorium | ADR 0063 config checkbox "Pracuje w repozytorium (wymaga agenta kodującego)" (Works in the repository (needs a coding agent)), key `codingAgent`; see needs a coding agent |
 | wait for CI (node kind) | oczekiwanie na CI | node kind and status label; the baton / status chip "waiting for CI" = "czeka na CI" |
 | warnings (resolution check) | ostrzeżenia | "Ostrzeżenia" (Warnings) in the template preview and "What this step gets"; they do not block (ADR 0060) |
 | warm pool (size) | rozgrzane sandboxy (liczba rozgrzanych sandboxów) | |

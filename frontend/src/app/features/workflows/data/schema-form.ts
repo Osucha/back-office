@@ -4,7 +4,7 @@
  * NG-ZORRO controls.
  *
  * Mapping: string -> input (textarea for long/template-like fields), enum -> select,
- * boolean -> switch, integer/number -> input-number, array of strings -> tags,
+ * boolean -> switch (checkbox with `x-widget: checkbox`), integer/number -> input-number, array of strings -> tags,
  * anything else (objects, arrays of objects, mixed types) -> JSON textarea.
  */
 export type JsonSchema = {
@@ -24,11 +24,14 @@ export type JsonSchema = {
   pattern?: string;
   additionalProperties?: boolean | JsonSchema;
   'x-multiline'?: boolean;
+  /** `checkbox`: a boolean shown as a checkbox with its label (instead of a switch). */
+  'x-widget'?: 'checkbox';
   'x-order'?: number;
   [key: string]: unknown;
 };
 
-export type FieldKind = 'text' | 'textarea' | 'select' | 'switch' | 'number' | 'tags' | 'json';
+export type FieldKind =
+  'text' | 'textarea' | 'select' | 'switch' | 'checkbox' | 'number' | 'tags' | 'json';
 
 export interface FieldSpec {
   key: string;
@@ -81,7 +84,7 @@ function toField(key: string, prop: JsonSchema, required: boolean): FieldSpec {
   }
   switch (type) {
     case 'boolean':
-      return { ...base, kind: 'switch' };
+      return { ...base, kind: prop['x-widget'] === 'checkbox' ? 'checkbox' : 'switch' };
     case 'integer':
     case 'number':
       return {
@@ -92,13 +95,14 @@ function toField(key: string, prop: JsonSchema, required: boolean): FieldSpec {
         max: prop.maximum,
       };
     case 'string': {
+      // `x-multiline: false` keeps a one-line input even for a key that looks like a template
       const multiline =
-        prop['x-multiline'] === true ||
-        ['markdown', 'multiline', 'textarea', 'template', 'json', 'json-schema'].includes(
+        prop['x-multiline'] ??
+        (['markdown', 'multiline', 'textarea', 'template', 'json', 'json-schema'].includes(
           prop.format ?? '',
         ) ||
-        (prop.maxLength ?? 0) > 200 ||
-        MULTILINE_KEY.test(key);
+          (prop.maxLength ?? 0) > 200 ||
+          MULTILINE_KEY.test(key));
       return {
         ...base,
         kind: multiline ? 'textarea' : 'text',
@@ -166,6 +170,7 @@ export function coerceValue(spec: FieldSpec, raw: unknown): unknown {
       return spec.integer ? Math.round(n) : n;
     }
     case 'switch':
+    case 'checkbox':
       return Boolean(raw);
     case 'tags':
       return Array.isArray(raw)

@@ -60,7 +60,11 @@ import { JsonViewComponent } from '../../../core/ui/json-view.component';
 import { neededAgentLabel } from '../../../core/ui/agents';
 import { deprecatedHint, deprecatedLabel, isDeprecated } from '../../../core/ui/template-tags';
 import { SchemaFormComponent } from '../../workflows/public-api';
-import { templateConfigSchema, templateNeedsCodingAgent } from '../data/template-config';
+import {
+  cleanGlobs,
+  templateConfigSchema,
+  templateNeedsCodingAgent,
+} from '../data/template-config';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ActionBarComponent } from '../../../core/ui/relay/action-bar.component';
@@ -635,7 +639,7 @@ function invalidJson(e: unknown): string {
             } @else {
               <nz-form-item>
                 <nz-form-label
-                  nzTooltipTitle="Keys of model answer or coding agent steps (phase, verifyCommand, push, ...). Deep-merged over the parent; null deletes."
+                  nzTooltipTitle="Keys of model answer or coding agent steps (codingAgent, verifyCommand, agentTools, ...). Deep-merged over the parent; null deletes."
                   i18n-nzTooltipTitle="@@library.templateEditor.config.extra"
                   nzFor="tt-config"
                   i18n="@@library.templateEditor.config"
@@ -660,7 +664,7 @@ function invalidJson(e: unknown): string {
 
             <nz-collapse nzGhost class="advanced">
               <nz-collapse-panel
-                nzHeader="Advanced: artefacts, output schema"
+                nzHeader="Advanced: artefacts, output files, output schema"
                 i18n-nzHeader="@@library.templateEditor.advancedNoSandbox"
                 [nzExtra]="advancedTip"
               >
@@ -787,6 +791,27 @@ function invalidJson(e: unknown): string {
                     </nz-form-control>
                   </nz-form-item>
                 </div>
+                <nz-form-item data-output-files>
+                  <nz-form-label
+                    nzTooltipTitle="Globs of files the agent leaves in the run directory that are returned as artefacts, named like the file without its extension (e.g. specs/**/spec.md gives spec)."
+                    i18n-nzTooltipTitle="@@library.templateEditor.outputFiles.help"
+                    nzFor="tt-output-files"
+                    i18n="@@library.templateEditor.outputFiles"
+                    >Output files</nz-form-label
+                  >
+                  <nz-form-control>
+                    <nz-select
+                      id="tt-output-files"
+                      name="outputFiles"
+                      nzMode="tags"
+                      [nzTokenSeparators]="[',']"
+                      nzPlaceHolder="specs/**/spec.md, plan.md"
+                      i18n-nzPlaceHolder="@@library.templateEditor.outputFiles.placeholder"
+                      [ngModel]="draft().outputFiles ?? []"
+                      (ngModelChange)="patch({ outputFiles: cleanGlobs($event) })"
+                    ></nz-select>
+                  </nz-form-control>
+                </nz-form-item>
                 <nz-form-item>
                   <nz-form-label
                     nzTooltipTitle="Shape of a structured answer; empty for free text. A model answers with it, a coding agent writes it to structured-answer.json."
@@ -1352,7 +1377,7 @@ export class TemplateEditorDrawerComponent {
     no: $localize`:@@library.templateEditor.parameters.no:No`,
     presetHint: $localize`:@@library.templateEditor.createPreset.hint:A new template that extends this one and only sets its parameter values`,
     needsCoding: neededAgentLabel(true),
-    needsCodingHint: $localize`:@@library.templateEditor.needsCoding.hint:Its configuration (Spec Kit phase, push or prepare only) needs a coding agent. The workflow step chooses the agent.`,
+    needsCodingHint: $localize`:@@library.templateEditor.needsCoding.hint:Its configuration says it works in the repository, so it needs a coding agent. The workflow step chooses the agent.`,
   };
   /** ADR 0058: how the instructions read a parameter (help of the parameters section). */
   readonly paramsExample = '{{params.<name>}}'; // i18n-ignore
@@ -1365,6 +1390,7 @@ export class TemplateEditorDrawerComponent {
     answers: '{{answers}}', // i18n-ignore
   };
   readonly parameterTypeLabel = parameterTypeLabel;
+  readonly cleanGlobs = cleanGlobs;
   readonly parameterTypes = PARAMETER_TYPES.map((t) => ({
     value: t,
     label: parameterTypeLabel(t),

@@ -21,7 +21,7 @@ and can be retried.
 
 The controller stopped heartbeating (node failure, controller crash, network partition) and the lease
 expired (60 s). The first loss re-queues the job (new lease, new job token) unless it was already running a
-job that pushes - then it ends `LOST` with the runner, sandbox and node in the reason, because a retry could
+job that pushes (a `DELIVER` job of **Deliver changes**, ADR 0063) - then it ends `LOST` with the runner, sandbox and node in the reason, because a retry could
 push twice. Check the controller logs and the sandbox pod on that node; retry the run node once the fleet is
 healthy. Jobs that were leased but never heartbeated are re-queued up to 5 times, then `FAILED`
 (`lease-not-acknowledged`) - usually a controller that cannot start sandboxes (RuntimeClass missing, image pull).

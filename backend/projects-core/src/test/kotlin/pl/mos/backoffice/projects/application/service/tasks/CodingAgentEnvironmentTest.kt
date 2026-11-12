@@ -121,13 +121,13 @@ class CodingAgentEnvironmentTest {
     )
 
     private fun submit(task: ResolvedTask, ctx: NodeContext = context()): RunnerJobSpec {
-        support.run(ctx, task, RunnerMode.IMPLEMENT, null, "x")
+        support.run(ctx, task, "x")
         return runner.specs.last()
     }
 
     private fun complete(task: ResolvedTask, artifacts: List<RunnerArtifact>, status: RunnerJobStatus = RunnerJobStatus.SUCCEEDED): pl.mos.backoffice.projects.application.port.out.NodeResult {
         runner.result = result(artifacts, status)
-        return support.complete(context(), task, RunnerMode.IMPLEMENT, null, "x", RunnerJobId(UUID.randomUUID()))
+        return support.complete(context(), task, "x", RunnerJobId(UUID.randomUUID()))
     }
 
     @Test
@@ -209,9 +209,9 @@ class CodingAgentEnvironmentTest {
     @Test
     fun `ADR 0058 - params reach the prompt and the text config`() {
         val params = listOf(ResolvedParameter(TemplateParameter("area", "Area"), "billing", ParameterSource.STEP))
-        val spec = submit(task(user = "Work on {{params.area}}.", parameters = params, config = mapOf("push" to false, "commitSubjectTemplate" to "fix({{params.area}}): pay")))
+        val spec = submit(task(user = "Work on {{params.area}}.", parameters = params, config = mapOf("commitSubjectTemplate" to "fix({{params.area}}): pay")))
         assertThat(spec.prompt).startsWith("Work on billing.")
-        assertThat(spec.commitSubject).isEqualTo("fix(billing): pay")
+        assertThat(spec.commitSubject).describedAs("ADR 0063: agents do not commit").isNull()
     }
 
     @Test
@@ -304,12 +304,12 @@ class CodingAgentEnvironmentTest {
                 listOf(RevertedChange("main", "src/App.kt", "modified"), RevertedChange(null, "notes.txt", "added")),
             ),
         )
-        support.complete(ctx, task(), RunnerMode.IMPLEMENT, null, "x", RunnerJobId(UUID.randomUUID()))
+        support.complete(ctx, task(), "x", RunnerJobId(UUID.randomUUID()))
         assertThat(warnings).containsExactly("reverted 2 change(s) outside the agent's access: main:src/App.kt (modified), notes.txt (added)")
 
         warnings.clear()
         runner.result = result(emptyList(), RunnerJobStatus.SUCCEEDED).copy(access = RunnerAccessReport(AgentAccessMode.READ_ONLY))
-        support.complete(ctx, task(), RunnerMode.IMPLEMENT, null, "x", RunnerJobId(UUID.randomUUID()))
+        support.complete(ctx, task(), "x", RunnerJobId(UUID.randomUUID()))
         assertThat(warnings).isEmpty()
     }
 

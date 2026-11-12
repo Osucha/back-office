@@ -4,7 +4,7 @@
 
 You want to run Back Office on your laptop: PostgreSQL and MinIO in Docker, the Kotlin API and the Angular UI
 from source, and optionally the runner fleet (runner-controller with the DOCKER backend and the Smokescreen
-egress proxy) so `IMPLEMENT` / `SPEC_KIT` steps and coding benchmarks work end to end. Keycloak is optional.
+egress proxy) so coding steps (`IMPLEMENT`), deliveries (`DELIVER`) and coding benchmarks work end to end. Keycloak is optional.
 
 ## 0. Everything at once (just use it)
 
@@ -248,8 +248,8 @@ clone/push: `GIT_TOKEN_READ` and `GIT_TOKEN_PUSH` (and optionally `GIT_USER_NAME
 
 To exercise the runner by hand without the API, follow [runner/README.md](../../runner/README.md):
 build a `RunnerJobSpec`, base64 it into `RUNNER_SPEC`, omit `RUNNER_CALLBACK_URL` and use
-`RUNNER_RESULT_FILE` to capture the result. Handy for debugging agent prompts and Spec Kit
-behaviour on a throw-away repository.
+`RUNNER_RESULT_FILE` to capture the result. Handy for debugging agent prompts and deliveries
+(`mode: DELIVER`) on a throw-away repository.
 
 ## 7. Testing the CI client against the dev server
 

@@ -30,7 +30,7 @@ belong to the agent (section 6), and `V305__agent_environment.sql` gave every no
 an agent of its own (`<key>-agent`, same scope, the harness of its former agent, the ground rules plus its rules and
 skills) and named it. Library imports ignore template skills and rules with a warning.
 
-Until ADR 0056 a template had an `executor` (`LLM`, `SPEC_KIT`, `IMPLEMENT`, `FETCH_ISSUE`, `NOTIFY`,
+Until ADR 0056 a template had an `executor` (`LLM`, `SPEC_KIT` (gone since ADR 0063), `IMPLEMENT`, `FETCH_ISSUE`, `NOTIFY`,
 `TRANSITION_ISSUE`, `START_WORKFLOW`, `PROJECT_DIGEST`). It is gone: who runs a step is its agent (section 6), and
 the five deterministic integrations are `ACTION` nodes of the workflow designer, not library entries (section 8).
 
@@ -48,8 +48,10 @@ rules and agents are unique by `(key, scope)` where scope is `GLOBAL` or `PROJEC
 shadow a global entry in a project (section 3).
 
 The built-in library (seeded on startup, `backoffice.tasks.seed-builtin=true`) contains flat templates (ADR 0058:
-only `implement-task-list` and the deprecated `implement-claude-code` extend `implement-opencode`): the Spec Kit
-phases, `implement-opencode`, `clarify-spec`, `code-review`, `analyse-issue` (deprecated), the generic `llm-task`
+only `implement-task-list` and the deprecated `implement-claude-code` extend `implement-opencode`): `write-spec`,
+`write-plan` and `write-task-list` (ADR 0063: a coding agent writes `specs/<feature>/spec.md`, `plan.md` and
+`tasks.md` into the repository; the former `spec-kit-specify`, `spec-kit-plan` and `spec-kit-tasks` are deprecated
+templates that extend them unchanged, so stored steps still resolve), `implement-opencode`, `clarify-spec`, `code-review`, `analyse-issue` (deprecated), the generic `llm-task`
 and `agent-task`, `prepare-workspace` and the SDLC templates of section 9; the deprecated, emptied abstract
 `base-agent`, `base-llm` and `base-coding-agent` (kept only for user templates that extend them; their text is the
 platform preamble now); eight skills; four rules (`agent-ground-rules`, `ask-dont-guess`, `kotlin-hexagonal`,
@@ -113,11 +115,33 @@ POST /api/v1/task-templates
 ```
 
 The answer carries the derived key, here `write-changelog-entry`, and the read-only `needsCodingAgent` (here `false`:
-the config has no Spec Kit `phase`, `push: true` or `prepareOnly: true`, so any agent can do it; with one of them it
-is `true` and only an OpenCode or Claude Code agent can). `agentKey` and `modelProfileId` are no longer part of
+the config has no `codingAgent: true` or `prepareOnly: true`, so any agent can do it; with one of them it is `true`
+and only an OpenCode or Claude Code agent can). `agentKey` and `modelProfileId` are no longer part of
 `TaskTemplateInput`. Workflows refer to the key. Because `audience` is
 required and has no default, the template **needs parameters**: a step must give it a value or bind it
-(`overrides.parameterBindings`, section 8), or you create a preset:
+(`overrides.parameterBindings`, section 8), or you create a preset (below).
+
+Work in the repository is a template with `"config": { "codingAgent": true }` (UI: the checkbox **Works in the
+repository (needs a coding agent)**), optionally `verifyCommand` (**Verify command**, the acceptance check run after
+the agent) and `outputFiles` (**Output files**, under **Advanced: artefacts, output files, output schema**): globs of
+files the agent leaves that come back as artefacts, named like the file without its extension (ADR 0063; the former
+config key `collectArtifacts`). A template has no git settings, repositories or setup command: the workflow's
+`sources` and `setupCommand` and its **Deliver changes** action cover them
+([designing-a-workflow.md](designing-a-workflow.md#deliver-changes)).
+
+```http
+POST /api/v1/task-templates
+{
+  "name": "Write release notes",
+  "category": "OPERATIONS",
+  "instructions": "Write docs/release-notes.md for the change of this issue ...",
+  "config": { "codingAgent": true, "verifyCommand": "test -s docs/release-notes.md" },
+  "outputFiles": ["docs/release-notes.md"],
+  "produces": ["release-notes"]
+}
+```
+
+A preset:
 
 ```http
 POST /api/v1/task-templates
@@ -241,7 +265,7 @@ in `requiresSkills` (inherited, unioned); a step whose agent lacks one gets a `c
 and a `MISSING_SKILL` finding in the agent audit (section 6). Required skills are never injected at run time; the
 designer uses them to pre-select the step's agent, and "Add to agent" adds a missing one to the agent once.
 How skills reach the agent: model answer steps get them appended to the system prompt in a `<skills>` section (a
-single model call cannot open files); coding agent steps (Spec Kit phases and agent jobs) get them written to
+single model call cannot open files); coding agent steps get them written to
 `skills/<key>/SKILL.md` in the agent's home `/workspace/.agents/<agent key>/` (never into a repository), which Claude
 Code and OpenCode load on their own; the platform preamble tells the agent where they are. A skill an agent
 lists cannot be deleted, and its key and scope cannot change (`409`); built-in skills cannot be deleted.
@@ -310,7 +334,7 @@ Built-in agents (no model of their own; all list `agent-ground-rules` and `ask-d
 | `model-answer` | none | none | `llm-task`; a step without its own agent whose template needs no coding agent |
 | `analyst` | none | `user-story-format`, `use-case-format`, `adr-format`, `definition-of-ready-done`, `build-guardrails` | `write-user-story`, `write-use-case`, `write-adr`, `impact-analysis`, `plan-task-list`, `clarify-spec`, `analyse-issue` |
 | `reviewer` | none | `security-review-checklist`, `definition-of-ready-done` | `code-review`, `review-against-spec` |
-| `opencode` | `OPENCODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | Spec Kit phases, `implement-opencode`, `implement-task-list`, `prepare-workspace`; a step without its own agent whose template needs a coding agent |
+| `opencode` | `OPENCODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `write-spec`, `write-plan`, `write-task-list`, `implement-opencode`, `implement-task-list`, `prepare-workspace`; a step without its own agent whose template needs a coding agent |
 | `claude-code` | `CLAUDE_CODE` | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task` (reference workflow), any coding work |
 
 Deleting an agent is not blocked by templates any more (they name none); steps that still name it get the
@@ -323,10 +347,11 @@ Deleting an agent is not blocked by templates any more (they name none); steps t
 - **Which model**: the step's `modelProfileId`, else the agent's, then the defaults (`ModelResolver`; the model plan
   shows the source `AGENT` for the agent's model; `TEMPLATE` is no longer produced).
 - **How it runs**: model answer → the in-process call (structured output, confidence, injection guard); coding
-  agent and a template with the config key `phase` → the Spec Kit job; coding agent otherwise → the agent job (push and
-  merge request per config; without a push the final answer becomes the `result` artefact).
-- **Problems** (the step cannot run, listed in `check.problems`): a template that needs a coding agent (`phase`,
-  `push: true`, `prepareOnly`) with a model answer agent on the step; a skill or rule the agent lists does not exist; a
+  agent → the agent job in the run directory, which never commits or pushes (ADR 0063: the workflow's
+  `DELIVER_CHANGES` action delivers); its `outputFiles` come back as artefacts, and without a repository the final
+  answer becomes the `result` artefact.
+- **Problems** (the step cannot run, listed in `check.problems`): a template that needs a coding agent
+  (`codingAgent: true`, `prepareOnly`) with a model answer agent on the step; a skill or rule the agent lists does not exist; a
   required parameter has no value.
 
 **Agent audit and coherence check (ADR 0061).** Before a run, check the agents of a workflow draft:
@@ -338,7 +363,8 @@ POST /api/v1/workflows/agent-audit
 
 The answer (`AgentAudit`) lists per agent its steps (`nodeIds`), `rules`, `skills`, `requiredSkills` (with the steps
 needing each) and `missingSkills`, plus `findings` (`MISSING_SKILL`, `DUPLICATE_SKILL_NAME` as WARNING;
-`NEEDS_CODING_AGENT`, `READ_ONLY_PUSH`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`, `UNKNOWN_AGENT` as ERROR). No model is
+`NEEDS_CODING_AGENT`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`, `UNKNOWN_AGENT` as ERROR; `READ_ONLY_PUSH` is no longer
+reported since agents never push, ADR 0063). No model is
 called and nothing changes (`project.view`). To fix a missing skill, update the agent (a global agent: create a
 project copy with the same key and the skill, as the designer's "Add to agent" does).
 
@@ -355,8 +381,8 @@ when it cannot resolve a contradiction it asks instead of guessing.
 
 **The environment document.** Back Office renders one document per step: the platform preamble for the kind of agent
 (fixed in code: what Back Office is, honesty, scope, safety; for model answers no repository, no tools, JSON only
-with a schema; for coding agents the runner commits and pushes, never weaken a test, quote file paths, where the
-skills are), the agent's `instructions` (rendered like a prompt, `{{project.*}}` allowed), the project constitution,
+with a schema; for coding agents do not commit or push, leave the changes uncommitted, never weaken a test, quote
+file paths, where the skills are), the agent's `instructions` (rendered like a prompt, `{{project.*}}` allowed), the project constitution,
 then the rules. A model answer gets it as the start of its system prompt (then the skills; the template contributes
 no system text since ADR 0062, the task message is the user message). For coding agents it travels as `RunnerJobSpec.instructions` and the runner writes it into the agent's
 **home** `/workspace/.agents/<agent key>/` (`RunnerJobSpec.agentHome`, ADR 0060), outside every repository: Claude
@@ -371,13 +397,13 @@ also reads the repository's `.opencode/skills` and `.claude/skills` as project s
 `{"mode": "PATHS", "paths": ["docs/**"]}` (globs relative to a repository root, at most 50, no leading `/`, no `..`).
 The harness's tool rules keep the agent from editing elsewhere, and the runner reverts every change outside the access
 after the agent finished (shell included), lists it in the step log and ends the summary with `[Back Office runner]
-reverted N change(s) outside the agent's access (...)`; ignored files are not covered. A `READ_ONLY` agent on a step
-that pushes is a problem. Access narrows what the agent may change, not what it sees: use an agent with
-`"directory": "SEPARATE"` and give the step only the right repositories to hide code.
+reverted N change(s) outside the agent's access (...)`; ignored files are not covered. Agents never push (ADR 0063),
+so a `READ_ONLY` agent fits every step. Access narrows what the agent may change, not what it sees: use an agent with
+`"directory": "SEPARATE"` to hide the rest of the run; what it sees of the code is the workflow's `sources`.
 
 **Directory** (`access.directory`, ADR 0062, coding agents; UI **Directory**): `RUN` (**Run directory (shared)**,
 default: the run directory every coding step of the run works in, seeing what earlier steps left) or `SEPARATE`
-(**Separate directory**: a fresh directory with only the step's repositories, thrown away after the step; no session
+(**Separate directory**: a fresh copy of the workflow's sources, thrown away after the step, never delivered; no session
 continuation).
 
 **MCP servers.** `mcpServers` lists remote servers (`name` `^[a-z][a-z0-9-]{0,39}$`, `url` `http://` or `https://`,
@@ -472,7 +498,7 @@ are applied last, after the whole chain:
 | `modelProfileId` | the model of this step; empty: the agent's, else the defaults |
 | `instructionsAppend` | notes added after the merged instructions (UI **Instructions for this step** → **Append**); the former `systemPromptAppend` / `promptAppend` are read as this |
 | `instructionsReplace` | replaces the merged instructions for this step (UI **Replace (advanced)**; wins over a parameterised instruction; the data sections are still added); the former `promptReplace` is read as this |
-| `config` | deep-merged with the same null-deletes rule; `allowQuestions` / `maxQuestionRounds` the agent questions (ADR 0060); the former keys `directory`, `session` and `continueSession` are the agent's since ADR 0062 and dropped on read |
+| `config` | deep-merged with the same null-deletes rule; `codingAgent`, `verifyCommand`, `agentTools`; `allowQuestions` / `maxQuestionRounds` the agent questions (ADR 0060); the former keys `directory`, `session` and `continueSession` are the agent's since ADR 0062 and dropped on read; the git keys, `repositories`, `setupCommand` and `phase` left the step with ADR 0063 (read compatibly, [designing-a-workflow.md](designing-a-workflow.md#before-adr-0063)) |
 
 The designer validates a node's `templateKey` against the catalog (error when unknown, warning when
 abstract), required parameters and their bindings; every task node has the ports `success` and `failure`.
@@ -480,7 +506,7 @@ Because nodes reference keys, editing a template changes every workflow using it
 project when only one project should change.
 
 Work without a model is not a template: an `ACTION` node holds `action.type` (`FETCH_ISSUE`, `COMMENT_ISSUE`,
-`TRANSITION_ISSUE`, `START_WORKFLOW`, `PROJECT_DIGEST`) and `action.config`; the palette (`actions`) gives each its
+`TRANSITION_ISSUE`, `DELIVER_CHANGES`, `START_WORKFLOW`, `PROJECT_DIGEST`) and `action.config`; the palette (`actions`) gives each its
 config schema, defaults, run inputs, ports and required connection capabilities. A stored `TASK` node naming a former
 action template (`fetch-issue`, `notify-jira`, `transition-issue`, `start-workflow`, `project-digest`) is read as
 that action with the former template defaults, the step's `config` and its `instructionsReplace` (formerly
@@ -492,7 +518,7 @@ the next save writes the action.
 Every built-in agent lists two rules: `agent-ground-rules` (evidence, scope and safety: re-read a file before
 claiming anything about it, paths as evidence, a search hit outside the task is not a task, narrowest edit, report
 contradictions) and `ask-dont-guess` (source hierarchy; one open-question marker per context,
-`[NEEDS CLARIFICATION: ...]` in Spec Kit specs and `[?] question` elsewhere, never an invented owner or date;
+`[NEEDS CLARIFICATION: ...]` in feature specifications (`write-spec`) and `[?] question` elsewhere, never an invented owner or date;
 TODO/TBD with a reason; append, do not rewrite; never touch status fields). Leave them out of your own agent if a task
 must not see them. Until ADR 0055 they were skills; `V303__rules_and_categories.sql` moved them, together with the
 example rules `kotlin-hexagonal` and `angular-ng-zorro`, into rules. The two stack rules describe the Back Office code
@@ -523,7 +549,7 @@ message carries the `review` artefact.
 | `403` on a library call | the caller lacks the permission of the table in section 1 ("Who may do what"); the audit log has an `ACCESS_DENIED` row with the permission |
 | a project member does not see global templates | they hold `project.view` on the project but not `library.view` (normally granted by the SYSTEM `member` role) |
 | a built-in on an old installation does not get the shipped changes | it was edited (version > 1, or saved by a person), so the seed leaves it alone; compare it with a fresh installation and copy the changes by hand |
-| a step reports that it needs a coding agent | the agent does not fit the template (section 6): choose OpenCode or Claude Code (or your coding agent) for a Spec Kit phase, `push: true` or `prepareOnly` |
+| a step reports that it needs a coding agent | the agent does not fit the template (section 6): choose OpenCode or Claude Code (or your coding agent) for a template with `codingAgent: true` (**Works in the repository**) or `prepareOnly` |
 | a step reports `parameter X needs a value` | a required parameter has no value on the step, in the template chain or as a default and is not bound at run time: give it a **Value**, choose **Ask at start** or **Result of an earlier step** in the step's **Parameters**, or use a preset |
 | a step reports `an ARTIFACT binding needs the name of the artefact` | a parameter bound **Result of an earlier step** has no artefact name: type the name an earlier step produces |
 | a coding agent step with an `outputSchema` fails with "wrote no structured-answer.json" | the agent did not write the file or wrote invalid JSON; tighten the instructions, or use a model answer agent |
@@ -535,7 +561,7 @@ message carries the `review` artefact.
 | `409` from the coherence check | no usable platform default model for model answers: an administrator sets it under **Models**, then try again |
 | resolve shows the global template although a project one exists | the `projectId` query parameter is missing, or the project template's key differs |
 | `check.warnings` on a step | the template's `requiresSkills` names a skill the step's agent lacks: add it to the agent ("Add to agent" in the designer's "Agents in this workflow") or choose another agent (the step still runs) |
-| `check.problems`: `may only read (access READ_ONLY) but the step pushes` | set `push: false` on the step or choose another agent |
+| a template's output file does not appear as an artefact | the glob in **Output files** does not match the path the agent wrote (relative to the primary repository; `**` for any directories), or the file is over the size cap; the artefact is named like the file without extension |
 | a rule does not reach a step | the step's agent does not list it and it is not automatic, or the project has a non-automatic copy of a global automatic rule |
 | a coding step does not continue an earlier conversation | the session is the agent's (ADR 0062): **Per step** continues only the repeats of one step, **One per run** all steps of that agent, **Always fresh** nothing; an agent with **Separate directory** never continues |
 | an agent's MCP server is not available in the job | the sandbox egress policy does not allow its host (the run log shows the proxy refusal), the URL is not `http(s)`, or the installed Claude Code has no `--mcp-config` (`[mcp] WARN` in the runner log) |

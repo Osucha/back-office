@@ -1,7 +1,8 @@
 # Dostęp agentów do gita
 
-Agenci kodujący klonują repozytorium projektu, wypychają gałąź, a na GitLabie otwierają merge request. Robią
-to ze swojego sandboxa za pomocą tokenów gita, które znajdują się **wyłącznie w klastrze runnerów**.
+Agenci kodujący klonują repozytoria projektu i zmieniają je w katalogu przebiegu; krok **Dostarcz zmiany** potem
+zatwierdza pracę (commit), wypycha gałąź, a na GitLabie otwiera merge request (ADR 0063). Oba dzieją się w sandboxie
+za pomocą tokenów gita, które znajdują się **wyłącznie w klastrze runnerów**.
 Płaszczyzna sterowania Back Office nie ma żadnych poświadczeń gita i nigdy nie wywołuje API SCM. Ten rozdział
 opisuje konfigurację najmniejszych uprawnień (token tylko do odczytu i token do wypychania dla każdego
 repozytorium), tworzenie tokenów w GitLabie lub GitHubie, ochronę gałęzi domyślnej tak, aby żaden token
@@ -13,16 +14,22 @@ w GitLabie/GitHubie.
 <a id="git-overview"></a>
 ## Co agent robi z gitem
 
-W każdym kroku **Spec Kit** lub **Implement** (oraz w próbach benchmarków kodowania) runner wewnątrz
-sandboxa (`runner/entrypoint.py`):
+W każdym kroku kodującym (oraz w próbach benchmarków kodowania) runner wewnątrz sandboxa (`runner/entrypoint.py`)
+klonuje źródła workflowu przez HTTPS (`git clone`) do katalogu przebiegu, przełącza się na bazowy ref i pozwala
+agentowi pracować. Zadanie agenta **nigdy nie tworzy commitów ani nie wypycha**: jego dostęp do gita to najwyżej
+`READ`, a diff katalogu roboczego względem bazy trafia do artefaktu `diff` kroku.
 
-1. Klonuje **URL repozytorium Git** (**Git URL**) projektu przez HTTPS (`git clone`), przełącza się na bazowy ref,
-   pobiera lub tworzy gałąź uruchomienia (`git ls-remote`, `git fetch`), domyślnie `feature/<issue key>`.
-2. Tworzy commity jako **Back Office Agent** `<agent@backoffice.local>`, chyba że ustawisz inną tożsamość;
-   każdy commit zawiera trailer `Back-Office-Run: <runId>`, którego CI używa do sygnalizowania uruchomienia.
-3. Wypycha gałąź, ale tylko wtedy, gdy **dostęp do gita** zadania to `PUSH_MR` (patrz niżej; `push` jest
-   domyślnie włączone w konfiguracji zadania).
-4. W krokach **Implement** z włączonym `mergeRequest` (domyślnie) dodaje push options GitLaba:
+W kroku [Dostarcz zmiany](workflows.md#deliver-changes) runner nie uruchamia **żadnego agenta** ani żadnego polecenia
+repozytoriów. W katalogu przebiegu:
+
+1. Przełącza każde dostarczane repozytorium na gałąź uruchomienia (domyślnie `feature/<issue key>`), po sprawdzeniu,
+   że nie jest to gałąź domyślna ani docelowa merge requestu.
+2. Zatwierdza każdy zmieniony i nowy plik (bez plików pomijanych przez `.gitignore` i nigdy plików runnera
+   `work-log.md`, `structured-answer.json` i `agent-questions.json`) jako **Back Office Agent**
+   `<agent@backoffice.local>`, chyba że ustawisz inną tożsamość; każdy commit zawiera trailer `Back-Office-Run:
+   <runId>`, którego CI używa do sygnalizowania uruchomienia.
+3. Wypycha gałąź; dostęp do gita `PUSH_MR` dostaje tylko zadanie dostarczenia (patrz niżej).
+4. Przy włączonym **Otwórz merge request** (domyślnie) dodaje push options GitLaba:
    `-o merge_request.create -o merge_request.target=<default branch> -o merge_request.title=...`
    (`description`, `draft`, jeśli skonfigurowano). GitLab otwiera lub aktualizuje merge request i wypisuje
    jego URL, który Back Office zapisuje w uruchomieniu. Runner **nigdy** nie wysyła opcji, które scalają
@@ -31,17 +38,17 @@ sandboxa (`runner/entrypoint.py`):
 
 Uwierzytelnianie: wbudowany credential helper gita odpowiada nazwą użytkownika `oauth2` i tokenem odczytanym
 z pliku `/var/run/backoffice/git/token`. Jest używany tylko przy clone, fetch, ls-remote oraz (w zadaniach
-PUSH_MR) push; token nigdy nie jest zapisywany w `.git/config`, w środowisku agenta ani w logach.
+dostarczenia, PUSH_MR) push; token nigdy nie jest zapisywany w `.git/config`, w środowisku agenta ani w logach.
 
 Nic nie wywołuje API GitLaba ani GitHuba, więc żaden token nie potrzebuje zakresu API.
 
-**Kilka repozytoriów.** Projekt może mieć kilka repozytoriów, a krok może używać kilku z nich
-([Repozytoria kroku](workflows.md#step-repositories)). Runner wykonuje wtedy powyższe czynności dla każdego
-repozytorium, w osobnym katalogu `/workspace/<klucz>`, z dostępem, jaki krok nadał temu repozytorium:
-repozytoria z dostępem **Odczyt** są klonowane tokenem do odczytu i nigdy nie są wypychane, a repozytoria
-z dostępem **Wypchnięcie i merge request** dostają token do wypychania, tę samą gałąź i własny merge request.
-Zainstaluj tokeny do odczytu i do wypychania dla każdego repozytorium (lub grupy), którego używają kroki; pula
-wybiera je osobno dla każdego repozytorium, dokładnie tak, jak opisano niżej. Zanim użyjesz kroków z kilkoma
+**Kilka repozytoriów.** Projekt może mieć kilka repozytoriów, a workflow może klonować kilka z nich
+([Źródła workflowu](workflows.md#workflow-sources)). Runner wykonuje wtedy powyższe czynności dla każdego
+repozytorium, w osobnym katalogu `/workspace/<klucz>`: zadania agentów klonują każde źródło tokenem do odczytu
+i nigdy nie wypychają; dostarczenie wypycha każde dostarczane repozytorium jego tokenem do wypychania, z tą samą
+gałęzią i własnym merge requestem. Zainstaluj tokeny do odczytu dla każdego repozytorium (lub grupy), które workflowy
+klonują, i tokeny do wypychania dla tych, do których dostarczają; pula wybiera je osobno dla każdego repozytorium,
+dokładnie tak, jak opisano niżej. Zanim użyjesz kroków z kilkoma
 repozytoriami, zaktualizuj obrazy runnerów i runner-controllery: starsze runnery klonują tylko główne
 repozytorium, a starsze controllery wybierają jeden token, dla głównego repozytorium, na najwyższym poziomie
 dostępu używanym przez krok.
@@ -57,18 +64,19 @@ dostępu używanym przez krok.
 <a id="git-least-privilege"></a>
 ## Najmniejsze uprawnienia: token do odczytu i token do wypychania
 
-Back Office wyznacza dla każdego zadania agenta **poziom dostępu do gita** i wysyła do puli runnerów tylko ten
+Back Office wyznacza dla każdego zadania runnera **poziom dostępu do gita** i wysyła do puli runnerów tylko ten
 poziom, nigdy sekret. Runner-controller wybiera odpowiedni token ze swojego klastra:
 
 | Poziom | Które zadania | Token w sandboxie | Co robi runner |
 |---|---|---|---|
 | `NONE` | zadania bez repozytorium | brak | nic z gitem |
-| `READ` | kroki z wyłączonym `push`, analiza Spec Kit bez wypychania, benchmarki kodowania | token **do odczytu** | tylko clone i fetch; wypychanie jest wyłączone (`remote.origin.pushurl` = `disabled://read-only-job`) i runner nigdy nie wypycha |
-| `PUSH_MR` | kroki **Implement** i **Spec Kit** z włączonym `push` | token **do wypychania** | wypycha gałąź zadania i otwiera merge request przez push options; nigdy nie scala |
+| `READ` | każde zadanie agenta (kroki kodujące, benchmarki kodowania) | token **do odczytu** | tylko clone i fetch; wypychanie jest wyłączone (`remote.origin.pushurl` = `disabled://read-only-job`) i runner nigdy nie tworzy commitów ani nie wypycha |
+| `PUSH_MR` | tylko zadania [Dostarcz zmiany](workflows.md#deliver-changes) (bez agenta) | token **do wypychania** | zatwierdza katalog przebiegu, wypycha gałąź zadania i otwiera merge request przez push options; nigdy nie scala |
 
-Gdzie to widać: w projektancie przepływów pole `push` węzła Implement lub Spec Kit podaje, jaki poziom daje;
-w **Administracja** → **Flota runnerów** → **Zadania agentów** panel zadania pokazuje **Dostęp do gita**;
-log kroku zawiera `[git] access READ: clone only, pushing is disabled`.
+Do dostarczenia najpierw używany jest token repozytorium projektu z **PUSH_BRANCH** ([Tokeny dostępu do
+repozytoriów](#git-project-tokens)); bez niego token do wypychania puli runnerów. Gdzie to widać: w **Administracja**
+→ **Flota runnerów** → **Zadania agentów** panel zadania pokazuje **Dostęp do gita**; log kroku zawiera `[git] access
+READ: clone only, pushing is disabled`, a dostarczenie loguje `deliver repository <key> ...: git access PUSH_MR`.
 
 Co konfigurujesz dla każdego repozytorium (lub grupy):
 
@@ -203,26 +211,25 @@ wymaganym zatwierdzeniem, **Require status checks to pass**, **Block force pushe
 użytkownika maszynowego do listy bypass. Użytkownik maszynowy nie może wtedy wypychać do ani scalać do gałęzi
 domyślnej; GitHub nigdy też nie pozwala autorowi pull requestu go zatwierdzić.
 
-**Pull requesty na GitHubie.** GitHub ignoruje push options GitLaba, więc agent wypycha gałąź, a uruchomienie
+**Pull requesty na GitHubie.** GitHub ignoruje push options GitLaba, więc **Dostarcz zmiany** wypycha gałąź, a uruchomienie
 nie ma URL-a merge requestu. Zamiast tego:
 
-1. W projektancie przepływów zaznacz węzeł **Implement** i ustaw w konfiguracji zadania `mergeRequest`
-   na `false` (pozostaw włączone `push`) albo wprowadź zmianę w kopii szablonu na poziomie projektu
-   ([task-library.md](task-library.md#templates)).
+1. W projektancie przepływów zaznacz węzeł **Dostarcz zmiany** i wyłącz **Otwórz merge request** (gałąź nadal jest
+   wypychana).
 2. Otwieraj pull request z GitHub Actions przy wypchnięciu gałęzi `feature/**` (na przykład przez
    `gh pr create --fill`, co wymaga `pull-requests: write` dla `GITHUB_TOKEN` workflow) albo ręcznie.
 
 Inne hosty (Gitea, Bitbucket, Azure Repos) działają tak samo jak GitHub: token tylko do odczytu i token
-z prawem zapisu do repozytorium używane jako hasła HTTPS, ochrona gałęzi domyślnej, `mergeRequest` ustawione
-na `false`.
+z prawem zapisu do repozytorium używane jako hasła HTTPS, ochrona gałęzi domyślnej, wyłączone **Otwórz merge
+request** w **Dostarcz zmiany**.
 
 <a id="git-project-tokens"></a>
 ## Tokeny dostępu do repozytoriów w projekcie
 
 Od ADR 0051 projekt sam przechowuje tokeny swoich repozytoriów, więc nie trzeba ich instalować w każdym
 runnerze. Właściciel projektu dodaje je na zakładce **Źródła** projektu, w karcie **Tokeny dostępu do
-repozytoriów**. Zadania klonują i wypychają za ich pomocą: dla każdego repozytorium krok czyta najmniej uprzywilejowanym
-zweryfikowanym tokenem tylko do odczytu (GIT_READ), a wypycha tokenem PUSH_BRANCH. Back Office przekazuje je
+repozytoriów**. Zadania klonują i wypychają za ich pomocą: dla każdego repozytorium zadanie agenta czyta najmniej uprzywilejowanym
+zweryfikowanym tokenem tylko do odczytu (GIT_READ), a wypycha tylko zadanie Dostarcz zmiany, tokenem PUSH_BRANCH. Back Office przekazuje je
 runnerowi, który wykonuje zadanie, zaszyfrowane do jego własnego klucza, raz na zadanie, tuż przed startem
 sandboxa; serwer proxy, który po drodze zagląda w ruch TLS, widzi tylko szyfrogram. Repozytorium bez pasującego
 tokenu korzysta z tokenów puli runnerów opisanych niżej (wycofywane; dziennik zadania mówi, którego użyto).
@@ -245,7 +252,7 @@ narzędzie.
   |---|---|---|
   | GIT_READ | klonowanie repozytorium | `read_repository`, rola Reporter |
   | CI_READ | odczyt pipeline'ów i logów jobów | `read_api`, rola Reporter |
-  | PUSH_BRANCH | wypchnięcie gałęzi agenta | `write_repository`, rola Developer |
+  | PUSH_BRANCH | wypchnięcie gałęzi przebiegu (tylko Dostarcz zmiany) | `write_repository`, rola Developer |
   | MR_WRITE | tworzenie i zmiana merge requestów | `api`, rola Developer |
   | MR_COMMENT | komentarze z przeglądu | `api`, rola Reporter |
   | PIPELINE_RUN | ponowne uruchomienie lub start pipeline'ów | `api`, rola Developer |
@@ -324,8 +331,8 @@ Tokeny trafiają do klastra, w którym działa runner-controller puli, nigdy do 
 5. Host gita jest zawsze dodawany do listy dozwolonego ruchu wychodzącego zadania. Self-hosted GitLab pod
    adresem prywatnym wymaga też `egressProxy.allowedCidrs` (patrz [agent-execution.md](agent-execution.md#network)).
 
-**Przejście z jednego tokenu** (`existingSecret` / `hostSecrets`): zadania implementacji działają dalej;
-zadania READ (benchmarki, kroki z wyłączonym `push`) kończą się błędem `git credential`, dopóki nie dodasz
+**Przejście z jednego tokenu** (`existingSecret` / `hostSecrets`): zadania dostarczenia działają dalej;
+zadania READ (każde zadanie agenta, także benchmarki) kończą się błędem `git credential`, dopóki nie dodasz
 Secretu do odczytu w `repoSecrets`. Log startowy controllera wymienia zastępcze tokeny push, których nadal używa.
 
 **Docker Compose (laptop, profil `full`)**: ustaw `GIT_TOKEN_READ` i `GIT_TOKEN_PUSH` (opcjonalnie
@@ -336,15 +343,15 @@ zadania. Starszy `GIT_TOKEN` (`BO_GIT_TOKEN`) nadal działa jako token push.
 
 **Sprawdź działanie**
 
-1. Uruchom przepływ z krokiem **Implement** na małym zgłoszeniu.
-2. Na stronie uruchomienia log kroku pokazuje linie `[git] remote: ...`; na GitLabie ostatnia zawiera URL
-   merge requestu, który pojawia się też w uruchomieniu. Panel zadania agenta pokazuje **Dostęp do gita**
-   `PUSH_MR`.
-3. Uruchom benchmark kodowania (lub krok z wyłączonym `push`): jego zadanie pokazuje **Dostęp do gita**
-   `READ`, log zawiera `[git] access READ: clone only, pushing is disabled` i nic nie jest wypychane.
+1. Uruchom przepływ z krokiem **Implement**, po którym jest **Dostarcz zmiany**, na małym zgłoszeniu (na przykład
+   **Reference: one Claude Code session**).
+2. Zadanie kroku implementacji pokazuje **Dostęp do gita** `READ`, jego log zawiera `[git] access READ: clone only,
+   pushing is disabled` i nic nie jest wypychane.
+3. Log dostarczenia pokazuje linie `[git] remote: ...`; na GitLabie ostatnia zawiera URL merge requestu, który
+   pojawia się też w uruchomieniu. Panel jego zadania pokazuje **Dostęp do gita** `PUSH_MR`.
 4. Błędy brzmią `git clone failed` (zły token lub URL, ruch wychodzący), `git push failed (...)` (uprawnienia,
    chroniona gałąź, push rules), `the receiving end does not support push options` (to nie GitLab: wyłącz
-   `mergeRequest`) albo `policy-violation: git credential: ...` (brak Secretu do odczytu lub do wypychania dla
+   **Otwórz merge request**) albo `policy-violation: git credential: ...` (brak Secretu do odczytu lub do wypychania dla
    tego repozytorium).
 
 <a id="git-multi-repo"></a>
@@ -357,12 +364,12 @@ repozytorium i tego poziomu:
 
 | Repozytorium w zadaniu | Dostęp | Token, który dostaje sandbox | Co się dzieje |
 |---|---|---|---|
-| `src` (`gitlab.example.com/shop/api`, główne) | `PUSH_MR` | token **push** dla `shop/api` | tu pracuje agent; gałąź zadania jest wypychana, otwiera się merge request |
-| `docs` (`gitlab.example.com/shop/docs`) | `READ` | token **read** dla `shop/docs` | klonowane do wglądu; lokalne zmiany są raportowane, nigdy wypychane (`remote.origin.pushurl` wyłączony) |
+| `src` (`gitlab.example.com/shop/api`, główne) | `PUSH_MR` (zadanie dostarczenia) / `READ` (zadanie agenta) | token **push** dla `shop/api` przy dostarczeniu, w przeciwnym razie jego token **read** | tu pracuje agent; dostarczenie wypycha gałąź zadania i otwiera merge request |
+| `docs` (`gitlab.example.com/shop/docs`) | `READ` | token **read** dla `shop/docs` | klonowane do wglądu; lokalne zmiany są raportowane, nigdy wypychane (`remote.origin.pushurl` wyłączony), chyba że dostarczenie je wymienia |
 | `tools` (publiczne repozytorium) | `NONE` | żaden | klonowane anonimowo |
 
 Układ sandboxa: każde repozytorium jest klonowane do `/workspace/<path>` (domyślnie jego klucz). Agent,
-`setupCommand`, `verifyCommand`, Spec Kit i skille działają w repozytorium **głównym** (primary); pozostałe
+`setupCommand`, `verifyCommand` i skille działają w repozytorium **głównym** (primary); pozostałe
 leżą obok (`../docs`) i agent może je edytować. Prompt agenta kończy się krótką listą **Repositories** (klucz,
 ścieżka, dostęp, cel). Zadanie bez repozytoriów startuje w pustym `/workspace`.
 

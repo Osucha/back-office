@@ -54,7 +54,7 @@ Pełny runbook: `docs/runbooks/cannot-log-in.md`.
 | Log agenta: `model-not-allowed` (403) | agent poprosił o model inny niż model zadania (model działający w tle Claude Code) | `RUNNER_EXTRA_ALLOWED_MODELS=anthropic/claude-haiku-*` |
 | **Zablokowany ruch wychodzący** (**Egress denied**) zawiera host potrzebny do builda | hosta nie ma na efektywnej liście dozwolonych | dodaj go do polityki projektu lub szablonu, w granicach pułapu puli |
 | `git clone failed` / `git push failed` | brak tokenu lub token bez `write_repository`/zapisu Contents, gałąź chroniona, push rules, prywatny host gita spoza `egressProxy.allowedCidrs` | [integrations-git.md](integrations-git.md#gitlab-token) |
-| `the receiving end does not support push options` | repozytorium nie jest na GitLabie | ustaw `mergeRequest` na `false` w węźle |
+| `the receiving end does not support push options` | repozytorium nie jest na GitLabie | wyłącz **Otwórz merge request** w węźle **Dostarcz zmiany** |
 | Wypchnięto, ale brak URL-a merge requestu | rola tokenu poniżej Developer, brak gałęzi docelowej, MR już istniał | popraw rolę lub gałąź |
 
 Runbooki: `docs/runbooks/agent-jobs.md`, `docs/runbooks/runner-job-failed.md`.
@@ -71,7 +71,6 @@ Runbooki: `docs/runbooks/agent-jobs.md`, `docs/runbooks/runner-job-failed.md`.
 | krok pokazuje **czeka na Twoje odpowiedzi** | agent zatrzymał się z pytaniami ([Agent zadaje pytania](workflows.md#agent-questions)) | odpowiedz na nie na stronie **Twoja kolej** (**Odpowiedz i kontynuuj**) albo **Anuluj krok**; wyłącz w kroku **Agent może zadawać pytania**, jeśli krok nigdy nie ma czekać |
 | krok nie powiódł się: „the agent asked more than N rounds of questions” | agent pytał dalej po ostatniej z **Rund pytań** kroku | odpowiadaj pełniej, zwiększ **Rundy pytań** albo doprecyzuj zadanie w prompcie; pytania są w logu kroku |
 | podsumowanie kroku kończy się wierszem `[Back Office runner] reverted N change(s) outside the agent's access` | agent zmienił pliki, na które nie pozwala jego **Dostęp**; runner je cofnął | rozszerz dostęp agenta ([Dostęp agenta](task-library.md#agent-access)) albo napisz w jego instrukcjach, co może zmieniać |
-| krok agenta z dostępem **Tylko odczyt** nie może się wykonać | krok wypycha, a agent nie może niczego zmieniać | wybierz innego agenta albo wyłącz **push** w kroku |
 | Krok Jiry kończy się błędem `HTTP 401/403/404` lub „no Jira connection with capabilities” | wygasły token, licencja, uprawnienie projektowe albo brak połączenia z potrzebną możliwością | [integrations-jira.md](integrations-jira.md#jira-test), [połączenia](integrations-jira.md#jira-connections) |
 | `has no transition to status X` | brak przejścia z bieżącego statusu do `X` | popraw `toStatus` lub workflow w Jirze |
 | Krok zakończony błędem, widoczny w **Operacje** (**Operations**) → **Martwe elementy** (**Dead items**) | krok wyczerpał wszystkie ponowienia | usuń przyczynę, a następnie **Ponów** (**Retry**) |

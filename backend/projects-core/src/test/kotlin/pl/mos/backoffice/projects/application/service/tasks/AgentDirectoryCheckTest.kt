@@ -43,11 +43,11 @@ class AgentDirectoryCheckTest {
     fun `a prepare step whose agent works in a SEPARATE directory is a designer error and a run blocker`() {
         val nodes = listOf(step("prep", "sep-prepare", mapOf(RunDirectory.PREPARE_ONLY to true)))
 
-        val issues = check.designIssues(project, nodes)
+        val issues = check.designIssues(project, emptyList(), nodes)
 
         assertThat(issues.errors.single().field).isEqualTo(RunDirectory.FIELD_PREPARE_ONLY)
         assertThat(issues.errors.single().message).contains("agent loner works in a SEPARATE directory")
-        assertThat(check.runBlockers(project, nodes).single()).startsWith("step \"Step prep\" (prep): a prepare step")
+        assertThat(check.runBlockers(project, emptyList(), nodes).single()).startsWith("step \"Step prep\" (prep): a prepare step")
     }
 
     @Test
@@ -58,11 +58,11 @@ class AgentDirectoryCheckTest {
             step("alone", "sep-review"),
         )
 
-        val issues = check.designIssues(project, nodes)
+        val issues = check.designIssues(project, emptyList(), nodes)
 
         assertThat(issues.errors).isEmpty()
         assertThat(issues.warnings.single().nodeId).isEqualTo("answer")
         assertThat(issues.warnings.single().message).contains("only coding agent steps use prepareOnly")
-        assertThat(check.runBlockers(project, nodes)).isEmpty()
+        assertThat(check.runBlockers(project, emptyList(), nodes)).isEmpty()
     }
 }

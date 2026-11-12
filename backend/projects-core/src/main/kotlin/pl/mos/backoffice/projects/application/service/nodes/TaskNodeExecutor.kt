@@ -29,7 +29,7 @@ class TaskExecutors(strategies: List<TaskExecutorStrategy>) {
 
 /**
  * `TASK`: resolves the template through the Task Library (`TaskCatalog`, node overrides applied) and
- * dispatches on the resolved agent (ADR 0056: model answer, Spec Kit job or agent job). Missing inputs (`consumes`) are logged, unknown or abstract
+ * dispatches on the resolved agent (ADR 0056: model answer or agent job). Missing inputs (`consumes`) are logged, unknown or abstract
  * templates fail the node.
  */
 class TaskNodeExecutor(

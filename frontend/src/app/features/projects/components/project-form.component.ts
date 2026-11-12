@@ -252,53 +252,26 @@ import { ProjectRepositoriesEditorComponent } from './project-repositories-edito
           </nz-form-item>
         </div>
 
-        <nz-divider
-          nzText="Spec Kit"
-          i18n-nzText="@@projects.form.specKit"
-          nzOrientation="left"
-          nzPlain
-        />
         <nz-form-item>
+          <nz-form-label
+            nzTooltipTitle="The project owner's rules. Every agent of the project gets them as part of its environment."
+            i18n-nzTooltipTitle="@@projects.form.constitutionHint"
+            nzFor="p-constitution"
+            i18n="@@projects.form.constitutionLabel"
+            >Constitution (markdown)</nz-form-label
+          >
           <nz-form-control>
-            <nz-switch id="p-speckit" formControlName="specKit" />
-            <label
-              for="p-speckit"
-              class="muted"
-              style="margin-left: 8px"
-              i18n="@@projects.form.specKitHint"
-              >Use Spec Kit in this project: specify, plan and tasks steps and the constitution.
-              Off: the designer hides the Spec Kit steps and runs refuse them.</label
-            >
-            @if (!specKitAllowed()) {
-              <div class="muted" i18n="@@projects.form.specKitDisabled">
-                An administrator turned Spec Kit off for the whole platform; this setting has no
-                effect until it is allowed again.
-              </div>
-            }
+            <textarea
+              nz-input
+              id="p-constitution"
+              class="mono-textarea"
+              formControlName="constitution"
+              [nzAutosize]="{ minRows: 8, maxRows: 30 }"
+              placeholder="# Constitution&#10;&#10;## Principles&#10;- Hexagonal architecture ..."
+              i18n-placeholder="@@projects.form.constitutionPlaceholder"
+            ></textarea>
           </nz-form-control>
         </nz-form-item>
-        @if (form.controls.specKit.value) {
-          <nz-form-item>
-            <nz-form-label
-              nzTooltipTitle="Written to .specify/memory/constitution.md before spec, plan and implement tasks."
-              i18n-nzTooltipTitle="@@projects.form.constitutionHint"
-              nzFor="p-constitution"
-              i18n="@@projects.form.constitutionLabel"
-              >Spec Kit constitution (markdown)</nz-form-label
-            >
-            <nz-form-control>
-              <textarea
-                nz-input
-                id="p-constitution"
-                class="mono-textarea"
-                formControlName="constitution"
-                [nzAutosize]="{ minRows: 8, maxRows: 30 }"
-                placeholder="# Constitution&#10;&#10;## Principles&#10;- Hexagonal architecture ..."
-                i18n-placeholder="@@projects.form.constitutionPlaceholder"
-              ></textarea>
-            </nz-form-control>
-          </nz-form-item>
-        }
       }
 
       @if (!readonly()) {
@@ -371,8 +344,6 @@ export class ProjectFormComponent {
   readonly cancellable = input(true);
   /** Without `project.manage`: every control disabled, no save button. */
   readonly readonly = input(false);
-  /** ADR 0036: the platform allows Spec Kit (otherwise the switch is shown with a note). */
-  readonly specKitAllowed = input(true);
   /**
    * Which part of the form is shown (ADR 0043): `all` (create), `settings` (everything but the repositories)
    * or `sources` (only the repositories, the project tab Sources). Hidden controls keep their values, so a
@@ -425,7 +396,6 @@ export class ProjectFormComponent {
       jiraProjectKey: [''],
       jql: [''],
     }),
-    specKit: [false],
     constitution: [''],
     defaults: this.fb.group({
       modelProfileId: this.fb.control<string | null>(null),
@@ -459,7 +429,6 @@ export class ProjectFormComponent {
           jiraProjectKey: p.issueTracker?.jiraProjectKey ?? '',
           jql: p.issueTracker?.jql ?? '',
         },
-        specKit: !!p.specKit,
         constitution: p.constitution ?? '',
         defaults: {
           modelProfileId: p.defaults?.modelProfileId ?? null,
@@ -526,9 +495,7 @@ export class ProjectFormComponent {
             jql: v.issueTracker.jql || null,
           }
         : null,
-      // kept (and sent) while Spec Kit is off: turning it on again brings it back
       constitution: v.constitution || undefined,
-      specKit: v.specKit,
       defaults: {
         modelProfileId: v.defaults.modelProfileId ?? null,
         reviewModelProfileId: v.defaults.reviewModelProfileId ?? null,

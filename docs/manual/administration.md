@@ -145,8 +145,8 @@ of token, expiry, last check). Administrators can neither see their e-mail or to
 are used only with their owner's own approval or run start
 ([Personal connections](integrations-jira.md#jira-personal-connections)).
 
-**Platform settings** → **Features** → **Allow Spec Kit** (default on) lets projects turn on Spec Kit; when off,
-no project can run Spec Kit steps ([Spec Kit](projects.md#spec-kit)).
+The former **Platform settings** → **Features** → **Allow Spec Kit** is gone: Back Office no longer runs Spec Kit
+(ADR 0063, [Spec Kit (removed)](projects.md#spec-kit)).
 
 - **View**: `integrations.view` (every member). **Add**, **Edit**, **Replace token**, **Test**, **Test
   before saving**, **Delete**: `admin.connections.manage` (built-in `platform-admin`).

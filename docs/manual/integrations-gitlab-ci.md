@@ -86,7 +86,7 @@ In GitLab (as of 2026; docs: https://docs.gitlab.com/ci/variables/):
    `bo_ci_` tokens satisfy GitLab's masking rules.
 4. **Flags**: leave **Protect variable** **unticked**. GitLab passes protected variables only to pipelines
    of protected branches and tags, but the review job runs in merge request pipelines of feature branches
-   and the signal jobs run on the branches the agents push. A protected token is simply absent there and the
+   and the signal jobs run on the branches **Deliver changes** pushes. A protected token is simply absent there and the
    job stops with `BACKOFFICE_CI_TOKEN is required`. Leave **Expand variable reference** unticked.
 5. Add `BACKOFFICE_URL` the same way (visibility **Visible**).
 

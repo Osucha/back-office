@@ -45,8 +45,11 @@ class WorkflowValidatorTest {
         seeded.forEach { wf ->
             val result = validator.validate(wf.name, wf.nodes, wf.edges, triggers = wf.triggers)
             assertThat(errorsOf(result)).describedAs(wf.name).isEmpty()
-            // The designer opens them clean: no warnings either (the CI gate runs unattended by design).
-            assertThat(result.warnings.map { it.message }).describedAs(wf.name).isEmpty()
+            // The designer opens them clean (the CI gate runs unattended by design); the issue workflow routes on spec confidence
+            // towards the delivery (ADR 0029 warning, the merge gate still follows), as it routed towards the pushing step before ADR 0063.
+            val expected = if (wf.name == DefaultWorkflows.ISSUE_TO_REVIEWED_MR) 1 else 0
+            assertThat(result.warnings.map { it.message }).describedAs(wf.name).hasSize(expected).allSatisfy { assertThat(it).contains("implement-deliver") }
+
         }
     }
 
@@ -76,19 +79,21 @@ class WorkflowValidatorTest {
         val reference = DefaultWorkflows.referenceClaudeCode(project.id, Fixtures.now)
         assertThat(reference.name).isEqualTo("Reference: one Claude Code session")
         assertThat(reference.nodes.map { it.kind }).containsExactly(
-            NodeKind.START, NodeKind.ACTION, NodeKind.TASK, NodeKind.HUMAN_GATE, NodeKind.END, NodeKind.END,
+            NodeKind.START, NodeKind.ACTION, NodeKind.TASK, NodeKind.ACTION, NodeKind.HUMAN_GATE, NodeKind.END, NodeKind.END,
         )
         val step = reference.nodes.filterIsInstance<WorkflowNode.Task>().single()
         assertThat(step.task.templateKey).isEqualTo("agent-task")
         assertThat(step.task.overrides.agentKey).isEqualTo("claude-code")
-        assertThat(step.task.overrides.config).containsEntry("push", true).containsEntry("mergeRequest", true)
+        assertThat(step.task.overrides.config).describedAs("ADR 0063: the step does not push").isEmpty()
+        val deliver = reference.nodes.filterIsInstance<WorkflowNode.Action>().single { it.action.type == pl.mos.backoffice.projects.domain.model.ActionType.DELIVER_CHANGES }
+        assertThat(deliver.id).isEqualTo("implement-deliver")
+        assertThat(reference.edges.map { Triple(it.from, it.fromPort, it.to) }).contains(Triple("implement", "success", deliver.id), Triple(deliver.id, "success", "merge-gate"))
         assertThat(step.task.overrides.parameterBindings.getValue("task").value.toString()).contains("end to end").contains("tests")
         assertThat(step.task.overrides.parameterBindings["input"]).describedAs("ADR 0062: the start form asks for the input material").isEqualTo(ParameterBinding.START)
         val gate = reference.nodes.filterIsInstance<WorkflowNode.HumanGate>().single()
         assertThat(gate.gate.approvers.forbidSelfApproval).isTrue()
         assertThat(reference.edges.filter { it.from == gate.id }.map { it.fromPort to it.to })
             .containsExactlyInAnyOrder("approve" to "done", "revise" to step.id, "reject" to "rejected")
-        assertThat(DefaultWorkflows.usesSpecKit(reference)).isFalse()
     }
 
     @Test
@@ -117,7 +122,7 @@ class WorkflowValidatorTest {
             assertThat(gate.gate.checklist.map { it.id }).containsExactly("tests-green", "review-findings-addressed", "spec-updated")
         }
         val change = DefaultWorkflows.changeRequest(project.id, Fixtures.now)
-        assertThat(change.nodes.filterIsInstance<WorkflowNode.Action>().map { it.action.type }).containsExactly(ActionType.FETCH_ISSUE)
+        assertThat(change.nodes.filterIsInstance<WorkflowNode.Action>().map { it.action.type }).containsExactly(ActionType.FETCH_ISSUE, ActionType.DELIVER_CHANGES)
         assertThat(change.nodes.filterIsInstance<WorkflowNode.Task>().map { it.task.templateKey })
             .containsExactly("impact-analysis", "write-user-story", "plan-task-list", "implement-task-list", "code-review")
         assertThat((change.requireNode("task-list-gate") as WorkflowNode.HumanGate).gate.checklist.map { it.text })
@@ -273,16 +278,14 @@ class WorkflowValidatorTest {
 
     // ---- prompt injection (ADR 0029): routing on model output
 
-    private val pushing = TaskPortsProvider { key ->
-        TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, pushCapable = key in setOf("spec-kit-plan", "spec-kit-tasks", "implement-opencode", "implement-task-list"))
-    }
+    private val pushing = TaskPortsProvider.DEFAULT
 
     @Test
     fun `a decision on model output that reaches a push without a human gate is a warning`() {
         val nodes = listOf(
             start(), task("clarify", "clarify-spec"),
             WorkflowNode.Decision("ok", "ok?", decision = DecisionSpec(listOf(DecisionBranch("yes", "confident", "confidence >= 0.8 and review.score > 50")), defaultBranch = "no")),
-            task("impl", "implement-opencode"), end(), end("stop"),
+            WorkflowNode.Action("impl", "Deliver", action = pl.mos.backoffice.projects.domain.model.ActionBinding(pl.mos.backoffice.projects.domain.model.ActionType.DELIVER_CHANGES)), end(), end("stop"),
         )
         val edges = listOf(
             edge("start", "out", "clarify"), edge("clarify", "success", "ok"), edge("ok", "yes", "impl"), edge("ok", "no", "stop"), edge("impl", "success", "done"),
@@ -300,7 +303,7 @@ class WorkflowValidatorTest {
         assertThat(validator.validate(change.name, change.nodes, change.edges, pushing, triggers = change.triggers).warnings).isEmpty()
         val ci = DefaultWorkflows.ciCodeReview(project.id, Fixtures.now)
         assertThat(validator.validate(ci.name, ci.nodes, ci.edges, pushing, triggers = ci.triggers).warnings).isEmpty()
-        // the issue workflow routes on spec confidence into Spec Kit and implementation: warned, the merge gate still follows
+        // the issue workflow routes on spec confidence towards the delivery: warned, the merge gate still follows
         val issue = DefaultWorkflows.issueToReviewedMr(project.id, Fixtures.now)
         val warnings = validator.validate(issue.name, issue.nodes, issue.edges, pushing, triggers = issue.triggers).warnings
         assertThat(warnings.map { it.nodeId }).containsExactly("confident")

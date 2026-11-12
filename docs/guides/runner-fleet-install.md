@@ -2,7 +2,7 @@
 
 ## When to use this guide
 
-You want coding agents (`SPEC_KIT`, `IMPLEMENT` steps, coding benchmark attempts) to run: you install a
+You want coding agents (`IMPLEMENT` steps, coding benchmark attempts) and deliveries (`DELIVER` jobs of **Deliver changes**) to run: you install a
 **runner pool** - the `back-office-runner` chart - in a Kubernetes cluster (the control-plane cluster, a
 dedicated agents cluster, or a customer's on-prem cluster). The pool pulls jobs from Back Office over
 HTTPS; Back Office never gets credentials for that cluster (ADR 0024,

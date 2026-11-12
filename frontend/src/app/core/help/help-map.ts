@@ -133,11 +133,6 @@ export const HELP_TOPICS = {
     'jira-system-connection',
     $localize`:@@core.help.topic.project.jiraConnections:System connection of a project`,
   ),
-  'project.specKit': t(
-    'projects',
-    'spec-kit',
-    $localize`:@@core.help.topic.project.specKit:Spec Kit`,
-  ),
   'gates.writeConfirmations': t(
     'your-turn',
     'write-confirmations',
@@ -153,11 +148,6 @@ export const HELP_TOPICS = {
     'workflows',
     'run-directory',
     $localize`:@@core.help.topic.runDirectory:Run directory and agent sessions`,
-  ),
-  'step.repositories': t(
-    'workflows',
-    'step-repositories',
-    $localize`:@@core.help.topic.step.repositories:Repositories of a step`,
   ),
   runs: t('runs', 'run-list', $localize`:@@core.help.topic.runs:Runs`),
   run: t('runs', 'run-detail', $localize`:@@core.help.topic.run:Run`),

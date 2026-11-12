@@ -26,11 +26,10 @@ import java.util.UUID
 object Fixtures {
     val now: Instant = Instant.parse("2026-09-26T10:00:00Z")
 
-    /** A project with one repository and Spec Kit on (ADR 0036; the seeded issue workflow uses Spec Kit). */
-    fun project(key: String = "SHOP", id: ProjectId = ProjectId.new(), specKit: Boolean = true) = Project(
+    /** A project with one (primary) repository. */
+    fun project(key: String = "SHOP", id: ProjectId = ProjectId.new()) = Project(
         id = id, key = key, name = "Shop", repositories = listOf(GitRepository.legacy("https://git.example.com/g/shop.git", "main")),
         constitution = "Keep it simple.", defaults = ProjectDefaults(modelProfileId = ModelProfileId.new()), createdAt = now, updatedAt = now,
-        specKit = specKit,
     )
 
     fun issueWorkflow(project: Project): WorkflowDefinition = DefaultWorkflows.issueToReviewedMr(project.id, now)

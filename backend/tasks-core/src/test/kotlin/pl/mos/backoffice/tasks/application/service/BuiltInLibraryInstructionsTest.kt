@@ -41,8 +41,8 @@ class BuiltInLibraryInstructionsTest {
     }
 
     @Test
-    fun `spec-kit-plan asks for the input material and the technical hints when its step binds them to the run start`() {
-        assertThat(parameterNames(BuiltInLibrary.SPEC_KIT_PLAN)).containsExactly("input", "techHints")
+    fun `write-plan asks for the input material and the technical hints when its step binds them to the run start`() {
+        assertThat(parameterNames(BuiltInLibrary.WRITE_PLAN)).containsExactly("input", "techHints")
         val lib = Library()
         BuiltInLibrary.rules(now).forEach { lib.rules.save(it) }
         BuiltInLibrary.skills(now).forEach { lib.skills.save(it) }
@@ -50,11 +50,11 @@ class BuiltInLibraryInstructionsTest {
         val resolver = TaskResolver(lib.lookup)
 
         val bound = resolver.resolve(
-            BuiltInLibrary.SPEC_KIT_PLAN, null,
+            BuiltInLibrary.WRITE_PLAN, null,
             TaskOverrides(agentKey = "opencode", parameterBindings = mapOf("input" to ParameterBinding.START, "techHints" to ParameterBinding.START)),
         )!!
         assertThat(bound.runInputs.map { it.name to it.type }).containsExactly("input" to RunInputType.MULTILINE, "techHints" to RunInputType.MULTILINE)
-        assertThat(resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null, TaskOverrides(agentKey = "opencode"))!!.runInputs).isEmpty()
+        assertThat(resolver.resolve(BuiltInLibrary.WRITE_PLAN, null, TaskOverrides(agentKey = "opencode"))!!.runInputs).isEmpty()
     }
 
     @Test
@@ -71,11 +71,22 @@ class BuiltInLibraryInstructionsTest {
     }
 
     @Test
-    fun `instructions that need no issue framing leave the issue to the platform and Spec Kit places it itself`() {
-        listOf(BuiltInLibrary.WRITE_USER_STORY, BuiltInLibrary.IMPACT_ANALYSIS, BuiltInLibrary.CODE_REVIEW, BuiltInLibrary.IMPLEMENT_OPENCODE).forEach {
+    fun `instructions leave the issue to the platform, the specification templates write into specs`() {
+        listOf(BuiltInLibrary.WRITE_USER_STORY, BuiltInLibrary.IMPACT_ANALYSIS, BuiltInLibrary.CODE_REVIEW, BuiltInLibrary.IMPLEMENT_OPENCODE, BuiltInLibrary.WRITE_SPEC).forEach {
             assertThat(templates.getValue(it).instructions).describedAs(it).doesNotContain("{{issue.")
         }
-        assertThat(templates.getValue(BuiltInLibrary.SPEC_KIT_SPECIFY).instructions).startsWith("{{issue.key}}: {{issue.summary}}")
+        // ADR 0063: the same documents a careful engineer writes, as output files; the deprecated Spec Kit keys extend them
+        mapOf(BuiltInLibrary.WRITE_SPEC to "spec", BuiltInLibrary.WRITE_PLAN to "plan", BuiltInLibrary.WRITE_TASK_LIST to "tasks").forEach { (key, artefact) ->
+            val template = templates.getValue(key)
+            assertThat(template.outputFiles).containsExactly("specs/**/$artefact.md")
+            assertThat(template.produces).containsExactly(artefact)
+            assertThat(template.config).containsEntry("codingAgent", true)
+            assertThat(template.instructions!!.replace(Regex("\\s+"), " ")).contains("specs/<feature>/").contains("do not commit")
+        }
+        BuiltInLibrary.SPEC_KIT_REPLACEMENTS.forEach { (old, replacement) ->
+            assertThat(templates.getValue(old).extendsKey).isEqualTo(replacement)
+            assertThat(templates.getValue(old).tags).contains(BuiltInLibrary.DEPRECATED_TAG)
+        }
     }
 
     @Test

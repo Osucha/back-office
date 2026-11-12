@@ -119,6 +119,7 @@ class WorkflowLibraryService(
             publishedBy = actor,
             source = LibraryWorkflowSource(project.id, project.key, source.id, source.version),
             setupCommand = source.setupCommand,
+            sources = LibraryPortability.portableSources(source.sources),
         )
         val target = command.libraryWorkflowId?.let(::load)
         val saved = if (target == null) {
@@ -139,7 +140,7 @@ class WorkflowLibraryService(
             )
         } else {
             val latest = target.latest
-            if (LibraryPortability.sameGraph(source.nodes, source.edges, latest.nodes, latest.edges) && source.setupCommand == latest.setupCommand) {
+            if (LibraryPortability.sameGraph(source.nodes, source.edges, latest.nodes, latest.edges) && source.setupCommand == latest.setupCommand && LibraryPortability.portableSources(source.sources) == latest.sources) {
                 throw ValidationException("the workflow does not differ from version ${latest.version} of ${target.key}", "workflow")
             }
             val published = target.publish(draft, now, actor)
@@ -179,6 +180,7 @@ class WorkflowLibraryService(
             enabled = true,
             canvas = chosen.canvas,
             setupCommand = chosen.setupCommand,
+            sources = LibraryPortability.portableSources(chosen.sources),
         )
         workflowService.requireValidFor(projectId, command)
         val now = clock.now()
@@ -195,6 +197,7 @@ class WorkflowLibraryService(
                 enabled = command.enabled,
                 canvas = command.canvas,
                 setupCommand = command.setupCommand,
+                sources = command.sources,
                 createdAt = now,
                 updatedAt = now,
                 updatedBy = actor,
@@ -223,11 +226,15 @@ class WorkflowLibraryService(
         }
         if (!modified && target.version == link.version) return existing
         val nodes = LibraryPortability.withLocalSettings(target.nodes, existing.nodes)
-        // ADR 0060: the library version's setup command wins; a version without one keeps the project's
-        val command = WorkflowCommand(existing.name, existing.description, nodes, target.edges, existing.triggers, existing.enabled, existing.canvas, target.setupCommand ?: existing.setupCommand)
+        // ADR 0060: the library version's setup command wins; a version without one keeps the project's (ADR 0063: sources alike)
+        val sources = LibraryPortability.withLocalSources(target.sources, existing.sources)
+        val command = WorkflowCommand(
+            existing.name, existing.description, nodes, target.edges, existing.triggers, existing.enabled, existing.canvas,
+            target.setupCommand ?: existing.setupCommand, sources,
+        )
         workflowService.requireValidFor(existing.projectId, command)
         val saved = workflows.save(
-            existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.setupCommand)
+            existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.setupCommand, command.sources)
                 .withLibrary(link.copy(version = target.version, modified = false)),
         )
         audit.record(

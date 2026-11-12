@@ -1,6 +1,6 @@
 # Jak działają zadania agentów
 
-Agenci kodujący (fazy Spec Kit, kroki **Implement**, próby benchmarków kodowania) nigdy nie działają wewnątrz
+Agenci kodujący (kroki **Implement** i inne kroki kodujące, próby benchmarków kodowania) i dostarczenia nigdy nie działają wewnątrz
 Back Office. Back Office umieszcza w kolejce **zadanie agenta**; runner-controller w jednym z Twoich klastrów
 bierze je w dzierżawę (lease), uruchamia izolowany sandbox i raportuje wynik. Ten rozdział wyjaśnia cykl
 życia, poziomy izolacji, granice sieci i poświadczeń, budżety, limity czasu oraz dowody pochodzenia, które

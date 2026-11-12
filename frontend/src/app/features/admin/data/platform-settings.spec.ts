@@ -20,7 +20,6 @@ const form = {
   allowedEmailDomains: [' Example.COM ', '@example.com', ''],
   syncGroupsFromIdentityProvider: false,
   personalTokenMaxDays: 90,
-  specKitAllowed: false,
 };
 
 describe('toSettings', () => {
@@ -30,7 +29,6 @@ describe('toSettings', () => {
     expect(out['extra']).toBe(1);
     expect(out['allowedEmailDomains']).toEqual(['example.com']);
     expect(out['lockout']).toEqual({ maxFailures: 5, lockMinutes: 15 });
-    expect(out['specKitAllowed']).toBe(false);
   });
 });
 

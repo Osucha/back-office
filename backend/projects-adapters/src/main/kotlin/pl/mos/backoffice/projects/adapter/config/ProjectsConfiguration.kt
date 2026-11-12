@@ -3,14 +3,12 @@ package pl.mos.backoffice.projects.adapter.config
 import pl.mos.backoffice.projects.adapter.out.scm.GitLabPipelineStatus
 import pl.mos.backoffice.projects.application.port.out.PipelineStatusPort
 import pl.mos.backoffice.projects.application.service.PipelineWatchService
-import pl.mos.backoffice.shared.platform.PlatformFeatures
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
 import pl.mos.backoffice.projects.application.service.WorkflowLibraryService
 import pl.mos.backoffice.projects.application.service.LibrarySourceService
 import pl.mos.backoffice.projects.application.service.PersonalIntakeService
 import pl.mos.backoffice.projects.application.port.out.PersonalIntakeRepository
-import pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck
 import org.bsc.langgraph4j.checkpoint.BaseCheckpointSaver
 import org.bsc.langgraph4j.checkpoint.PostgresSaverV2
 import org.bsc.langgraph4j.serializer.std.ObjectStreamStateSerializer
@@ -98,7 +96,6 @@ import pl.mos.backoffice.projects.application.service.tasks.ImplementTaskExecuto
 import pl.mos.backoffice.projects.application.service.tasks.LlmTaskExecutor
 import pl.mos.backoffice.projects.application.service.tasks.NotifyTaskExecutor
 import pl.mos.backoffice.projects.application.service.tasks.RunnerTaskSupport
-import pl.mos.backoffice.projects.application.service.tasks.SpecKitTaskExecutor
 import pl.mos.backoffice.projects.application.service.tasks.TransitionIssueTaskExecutor
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.service.CiSnippetRenderer
@@ -175,10 +172,8 @@ class ProjectsConfiguration {
         projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: WorkflowRunRepository, approvals: ApprovalRequestRepository,
         ciExecutions: CiExecutionRepository, ciTokens: ProjectCiTokenRepository, usageLedger: UsageLedger, snippets: CiSnippetRenderer,
         publicUrl: PublicUrlProperties, gate: AuthorizationGate, provisioner: ProjectAccessProvisioner, audit: AuditPort, clock: Clock,
-        features: ObjectProvider<PlatformFeatures>,
     ) = ProjectService(
         projects, workflows, runs, approvals, ciExecutions, ciTokens, usageLedger, snippets, publicUrl.publicUrl, gate, provisioner, audit, clock,
-        features.getIfAvailable { PlatformFeatures.DEFAULTS },
     )
 
     @Bean
@@ -189,10 +184,10 @@ class ProjectsConfiguration {
     fun workflowService(
         workflows: WorkflowDefinitionRepository, projects: ProjectRepository, runs: WorkflowRunRepository, validator: WorkflowValidator,
         taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-        jira: JiraConnectionAccess, specKit: SpecKitStepCheck, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
+        jira: JiraConnectionAccess, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
         availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
     ) = WorkflowService(
-        workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, specKit, library, librarySources,
+        workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, library = library, librarySources = librarySources,
         availability.getIfAvailable(), defaults.getIfAvailable(),
     )
 
@@ -208,15 +203,11 @@ class ProjectsConfiguration {
         taskCatalog: TaskCatalog, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
     ) = WorkflowLibraryService(library, workflows, projects, workflowService, taskCatalog, gate, audit, clock)
 
-    /** Spec Kit gating of workflows (ADR 0036): project setting and platform switch. */
-    @Bean
-    fun specKitStepCheck(taskCatalog: TaskCatalog, features: ObjectProvider<PlatformFeatures>) =
-        SpecKitStepCheck(taskCatalog, features.getIfAvailable { PlatformFeatures.DEFAULTS })
 
     /** Jira steps of a workflow: connection per step and write-approval settings (ADR 0030, 0033). */
     @Bean fun jiraStepCheck(jira: JiraConnectionAccess) = JiraStepCheck(jira)
 
-    /** Sources of the runner steps of a workflow: project repositories (ADR 0034) and library sources (ADR 0043). */
+    /** The workflow's sources (ADR 0063): project repositories (ADR 0034) and library sources (ADR 0043); coding steps and deliveries. */
     @Bean fun repositoryStepCheck(taskCatalog: TaskCatalog, librarySources: LibrarySourceRepository) =
         RepositoryStepCheck(taskCatalog, librarySources)
 
@@ -225,10 +216,10 @@ class ProjectsConfiguration {
         runs: WorkflowRunRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository, logs: RunLogRepository,
         engine: WorkflowEngine, progress: RecordRunProgress, validator: WorkflowValidator, events: EventPublisher,
         gate: AuthorizationGate, audit: AuditPort, clock: Clock, jiraSteps: JiraStepCheck, repositorySteps: RepositoryStepCheck,
-        specKitSteps: SpecKitStepCheck, taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
+        taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
         directory: ObjectProvider<ProjectAccessDirectory>,
     ) = RunService(
-        runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps, specKitSteps,
+        runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps,
         // ADR 0050: the model of every task step must be usable by the starting user; without the model catalogue (the
         // Projects module alone) models are not checked
         availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it, defaults.getIfAvailable()) },
@@ -335,14 +326,18 @@ class ProjectsConfiguration {
     @Bean
     fun runnerTaskSupport(
         runner: AgentRunner, modelResolver: ModelResolver, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, settings: RunnerSettings,
-        features: ObjectProvider<PlatformFeatures>, librarySources: LibrarySourceRepository,
+        librarySources: LibrarySourceRepository,
         scmConnections: ScmConnectionRepository, verdictPolicy: ReviewVerdictPolicy, json: JsonCodec,
     ) = RunnerTaskSupport(
-        runner, modelResolver, renderer, templateModel, settings.defaultTimeout, features.getIfAvailable { PlatformFeatures.DEFAULTS }, librarySources,
+        runner, modelResolver, renderer, templateModel, settings.defaultTimeout, librarySources,
         scmConnections, pl.mos.backoffice.projects.application.service.tasks.StructuredAnswers(json, verdictPolicy), json,
     )
 
-    @Bean fun specKitTaskExecutor(support: RunnerTaskSupport) = SpecKitTaskExecutor(support)
+    /** ADR 0063: the only step with push rights: commits the run directory, pushes a branch, opens the merge request. */
+    @Bean
+    fun deliverChangesExecutor(
+        runner: AgentRunner, renderer: TemplateRenderer, templateModel: TemplateModelBuilder, librarySources: LibrarySourceRepository, scmConnections: ScmConnectionRepository,
+    ) = pl.mos.backoffice.projects.application.service.tasks.DeliverChangesExecutor(runner, renderer, templateModel, librarySources, scmConnections)
 
     @Bean fun implementTaskExecutor(support: RunnerTaskSupport) = ImplementTaskExecutor(support)
 

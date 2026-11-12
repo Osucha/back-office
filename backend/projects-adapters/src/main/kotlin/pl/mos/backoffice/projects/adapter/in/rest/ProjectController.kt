@@ -67,23 +67,12 @@ class ProjectController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(@PathVariable projectId: UUID) = projects.delete(ProjectId(projectId))
 
-    // ---- Spec Kit (ADR 0036)
-
-    @GetMapping("/{projectId}/spec-kit")
-    fun specKit(@PathVariable projectId: UUID): SpecKitStatusDto =
-        projects.specKitStatus(ProjectId(projectId)).let { SpecKitStatusDto(it.enabled, it.allowedByPlatform, it.effective, it.missingWorkflows) }
-
-    /** "Add Spec Kit workflows": seeds the Spec Kit workflows the project lacks. */
-    @PostMapping("/{projectId}/spec-kit/workflows")
-    fun addSpecKitWorkflows(@PathVariable projectId: UUID): List<WorkflowDefinitionDto> =
-        projects.addSpecKitWorkflows(ProjectId(projectId)).map { mapper.toDto(it) }
-
     // ---- default workflows added later (ADR 0059)
 
     @GetMapping("/{projectId}/default-workflows")
     fun missingDefaultWorkflows(@PathVariable projectId: UUID): List<String> = projects.missingDefaultWorkflows(ProjectId(projectId))
 
-    /** "Add missing default workflows": seeds the non-Spec Kit default workflows the project lacks. */
+    /** "Add missing default workflows": seeds the default workflows the project lacks. */
     @PostMapping("/{projectId}/default-workflows")
     fun addDefaultWorkflows(@PathVariable projectId: UUID): List<WorkflowDefinitionDto> =
         projects.addDefaultWorkflows(ProjectId(projectId)).map { mapper.toDto(it) }

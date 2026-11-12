@@ -90,22 +90,16 @@ export function neededAgentLabel(needsCodingAgent: boolean | null | undefined): 
 }
 
 /**
- * ADR 0061: whether a (merged) task config needs a coding agent: `codingAgent: true` (work in the
- * repository without a push), a Spec Kit `phase`, `push` or `prepareOnly`. Anything else can be
- * done by any agent.
+ * ADR 0061/0063: whether a (merged) task config needs a coding agent: `codingAgent: true` (works in
+ * the repository) or the legacy `prepareOnly`. Anything else can be done by any agent. Spec Kit
+ * `phase` and `push` are gone (ADR 0063).
  */
 export function configNeedsCodingAgent(
   config: Record<string, unknown> | null | undefined,
 ): boolean {
   if (!config) return false;
   const truthy = (v: unknown) => v === true || String(v).toLowerCase() === 'true';
-  const phase = config['phase'];
-  return (
-    truthy(config['codingAgent']) ||
-    (typeof phase === 'string' && phase.trim() !== '') ||
-    truthy(config['push']) ||
-    truthy(config['prepareOnly'])
-  );
+  return truthy(config['codingAgent']) || truthy(config['prepareOnly']);
 }
 
 /** Whether an agent (or agent reference) is a coding agent: it has a harness. */
@@ -148,6 +142,10 @@ const actionTexts = (): Record<ActionType, { title: string; description: string 
   PROJECT_DIGEST: {
     title: $localize`:@@core.action.projectDigest:Project digest`,
     description: $localize`:@@core.action.projectDigest.description:Collects a summary of the recent activity of the project.`,
+  },
+  DELIVER_CHANGES: {
+    title: $localize`:@@core.action.deliverChanges:Deliver changes`,
+    description: $localize`:@@core.action.deliverChanges.description:Commits what the agents changed in the run directory, pushes a branch and optionally opens a merge request. The only step that writes to the repositories.`,
   },
 });
 

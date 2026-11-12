@@ -81,7 +81,6 @@ class RestMapper {
         issueTracker = IssueTrackerBinding(dto.issueTracker?.jiraProjectKey?.takeIf { it.isNotBlank() }, dto.issueTracker?.jql?.takeIf { it.isNotBlank() }),
         constitution = dto.constitution,
         defaults = ProjectDefaults(dto.defaults.modelProfileId?.let(::ModelProfileId), dto.defaults.reviewModelProfileId?.let(::ModelProfileId)),
-        specKit = dto.specKit,
         personal = dto.personal,
     )
 
@@ -125,7 +124,6 @@ class RestMapper {
         createdAt = p.createdAt, updatedAt = p.updatedAt,
         stats = stats?.let { ProjectStatsDto(it.workflows, it.activeRuns, it.openApprovals, it.ciExecutionsLast7Days, money(it.costLast30Days)) },
         createdBy = actor(p.createdBy), myRoles = myRoles.sorted(), myPermissions = myPermissions.sorted(),
-        specKit = p.specKit,
         personal = p.personal,
     )
 
@@ -149,15 +147,12 @@ class RestMapper {
 
     // ---- workflows
 
-    fun toCommand(dto: WorkflowDefinitionInputDto) = ManageWorkflows.WorkflowCommand(
-        name = dto.name.trim(),
-        description = dto.description,
-        nodes = dto.nodes.map(WorkflowJson::toDomain),
-        edges = dto.edges.map(WorkflowJson::toDomain),
-        triggers = dto.triggers.map(WorkflowJson::toDomain).ifEmpty { listOf(pl.mos.backoffice.projects.domain.model.Trigger(pl.mos.backoffice.projects.domain.model.TriggerType.MANUAL)) },
-        enabled = dto.enabled,
-        canvas = WorkflowJson.toDomain(dto.canvas),
-        setupCommand = dto.setupCommand?.takeIf { it.isNotBlank() },
+    /** The same conversion as MCP and imports ([WorkflowJson.toCommand], ADR 0063 compatibility included). */
+    fun toCommand(dto: WorkflowDefinitionInputDto): ManageWorkflows.WorkflowCommand = WorkflowJson.toCommand(
+        pl.mos.backoffice.projects.application.port.`in`.WorkflowDocumentJson(
+            name = dto.name, description = dto.description, nodes = dto.nodes, edges = dto.edges, triggers = dto.triggers,
+            enabled = dto.enabled, canvas = dto.canvas, setupCommand = dto.setupCommand, sources = dto.sources,
+        ),
     )
 
     /**
@@ -176,6 +171,7 @@ class RestMapper {
         },
         draft = d.draft,
         setupCommand = d.setupCommand,
+        sources = WorkflowJson.toJson(d.sources),
     )
 
     // ---- workflow library (ADR 0037)

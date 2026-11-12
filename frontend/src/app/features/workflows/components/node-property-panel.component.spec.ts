@@ -390,8 +390,8 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     expect(document.querySelector('[data-agent-session]')).toBeNull();
     expect(document.querySelector('[data-step-directory]')).toBeNull();
     expect(document.querySelector('[data-step-questions]')).not.toBeNull();
-    // the ignored keys stay out of the form and are kept as they are
-    expect(panel.formConfig()).toEqual({ push: true });
+    // the ignored keys (ADR 0063: push too) stay out of the form and are kept as they are
+    expect(panel.formConfig()).toEqual({});
     section.setQuestions({ allow: false });
     expect(changed!.task?.overrides?.config).toEqual({
       push: true,
@@ -412,6 +412,111 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
       .componentInstance as StepAgentSectionComponent;
     section.setRounds(3);
     expect(changed!.task?.overrides?.config).toEqual({ maxQuestionRounds: 3 });
+  });
+
+  it('shows no git, repository, setup or Spec Kit settings on a step (ADR 0063)', () => {
+    const withSchema: WorkflowPalette = {
+      ...palette,
+      tasks: [
+        {
+          key: 'implement',
+          name: 'Implement',
+          needsCodingAgent: true,
+          configSchema: {
+            type: 'object',
+            properties: {
+              phase: { type: 'string' },
+              push: { type: 'boolean' },
+              branchTemplate: { type: 'string' },
+              mergeRequest: { type: 'boolean' },
+              commitSubjectTemplate: { type: 'string' },
+              repositories: { type: 'array' },
+              setupCommand: { type: 'string' },
+              verifyCommand: { type: 'string' },
+            },
+          },
+        },
+      ],
+    };
+    const fixture = TestBed.createComponent(NodePropertyPanelComponent);
+    fixture.componentRef.setInput('palette', withSchema);
+    fixture.componentRef.setInput('agents', agents);
+    fixture.componentRef.setInput(
+      'node',
+      node('implement', { agentKey: 'claude-code', config: { push: true, verifyCommand: 'make' } }),
+    );
+    fixture.detectChanges();
+    const panel = fixture.componentInstance;
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+
+    expect(Object.keys(panel.configSchema()?.properties ?? {})).toEqual(['verifyCommand']);
+    expect(panel.configSchema()?.properties?.['verifyCommand']?.title).toBe('Verify command');
+    expect(panel.formConfig()).toEqual({ verifyCommand: 'make' });
+    expect(document.querySelector('app-step-repositories-section')).toBeNull();
+    // a form change keeps the legacy key for the server's migration
+    panel.onSchemaConfig({ verifyCommand: 'make test' });
+    expect(changed!.task?.overrides?.config).toEqual({ verifyCommand: 'make test', push: true });
+  });
+
+  it('edits "Deliver changes": translated form, repositories of the workflow sources (ADR 0063)', () => {
+    const deliver: WorkflowNode = {
+      id: 'implement-deliver',
+      kind: 'ACTION',
+      name: 'Deliver changes',
+      position: { x: 0, y: 0 },
+      maxVisits: 3,
+      action: {
+        type: 'DELIVER_CHANGES',
+        config: { branchTemplate: 'feature/x', repositories: ['old'] },
+      },
+    };
+    const fixture = TestBed.createComponent(NodePropertyPanelComponent);
+    // the palette offers the action without a schema: the form still renders
+    fixture.componentRef.setInput('palette', {
+      ...palette,
+      actions: [
+        {
+          type: 'DELIVER_CHANGES',
+          title: 'Deliver changes',
+          description: 'server text',
+          ports: ['success', 'failure'],
+          configSchema: {},
+          defaults: { mergeRequest: true },
+        },
+      ],
+    });
+    fixture.componentRef.setInput('projectRepositories', [
+      { key: 'app', url: 'u', defaultBranch: 'main', primary: true },
+      { key: 'web', url: 'u', defaultBranch: 'main', primary: false },
+    ]);
+    fixture.componentRef.setInput('sources', [
+      { key: 'web', library: false },
+      { key: 'docs', library: true },
+    ]);
+    fixture.componentRef.setInput('node', deliver);
+    fixture.detectChanges();
+    const panel = fixture.componentInstance;
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+
+    expect(panel.isDelivery()).toBe(true);
+    expect(document.querySelector('[data-action-info]')?.textContent).toContain('Deliver changes');
+    expect(Object.keys(panel.actionConfigSchema()?.properties ?? {})).toContain('branchTemplate');
+    expect(document.querySelector('#pp-act-branchTemplate')).not.toBeNull();
+    expect(document.querySelector('[data-deliver-repositories]')).not.toBeNull();
+    expect(panel.actionFormConfig()).toEqual({ branchTemplate: 'feature/x' });
+    // project repositories of the sources (not the library), plus a key the node names already
+    expect(panel.deliverOptions()).toEqual(['web', 'old']);
+
+    panel.onActionSchemaConfig({ branchTemplate: 'fix/y', mergeRequest: false });
+    expect(changed!.action?.config).toEqual({
+      branchTemplate: 'fix/y',
+      mergeRequest: false,
+      repositories: ['old'],
+    });
+    panel.setDeliverRepositories([]);
+    expect(changed!.action?.config).toEqual({ branchTemplate: 'feature/x' });
   });
 
   it('keeps a template the palette no longer has as the current choice', () => {

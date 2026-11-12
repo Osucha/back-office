@@ -203,8 +203,8 @@ Upgrades: built-in roles are stored and never overwritten by seeding. Seeding cr
 `project.connections.manage` to the stored `owner` only (ADR 0030; audited the same way); `platform-admin`
 receives `admin.connections.manage` as one of all platform permissions. The identity migration V409 adds
 `connections.personal` to the stored `member`, `project-manager`, `evaluator` and `library-curator` (ADR 0035;
-audited the same way) and the platform setting `specKitAllowed` (ADR 0036, default true; read by other contexts
-through the shared-kernel port `PlatformFeatures`).
+audited the same way) and the platform setting `specKitAllowed` (ADR 0036; dropped with the port `PlatformFeatures`
+by V413 when ADR 0063 removed Spec Kit).
 
 ### Operating model: who creates projects, who assigns steps (ADR 0028)
 

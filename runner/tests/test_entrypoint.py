@@ -26,18 +26,20 @@ def b64(obj) -> str:
 
 
 BASE_SPEC = {
-    "mode": "SPEC_KIT",
+    "mode": "IMPLEMENT",
     "agent": "OPENCODE",
     "model": {"provider": "ANTHROPIC", "modelId": "claude-opus-5", "options": {"reasoning": "HIGH"}},
-    "repository": {"url": "https://gitlab.example.com/group/shop-api.git", "baseRef": "main", "branch": "feature/shop-123", "push": True},
-    "specKitPhase": "SPECIFY",
+    "repository": {"url": "https://gitlab.example.com/group/shop-api.git", "baseRef": "main", "branch": "feature/shop-123"},
     "prompt": "Add a shopping cart\nwith persistence",
-    "constitution": "# Constitution\n",
     "setupCommand": "npm ci",
     "verifyCommand": "./gradlew test",
     "timeoutSeconds": 3600,
     "collectArtifacts": ["specs/**/*.md", "REVIEW.md"],
 }
+
+
+# the documents the write-spec / write-plan / write-task-list templates leave (ADR 0063)
+DOC_GLOBS = ["specs/**/spec.md", "specs/**/plan.md", "specs/**/tasks.md", "specs/**/*.md"]
 
 
 GATEWAY_JSON = {
@@ -51,25 +53,36 @@ GATEWAY = ep.Gateway(GATEWAY_JSON["anthropicBaseUrl"], GATEWAY_JSON["openaiBaseU
 class SpecParsingTests(unittest.TestCase):
     def test_parses_full_spec(self):
         spec = ep.decode_spec(b64(BASE_SPEC))
-        self.assertEqual(spec.mode, "SPEC_KIT")
+        self.assertEqual(spec.mode, "IMPLEMENT")
         self.assertEqual(spec.agent, "OPENCODE")
         self.assertEqual(spec.model.provider, "ANTHROPIC")
         self.assertEqual(spec.model.model_id, "claude-opus-5")
         self.assertEqual(spec.model.reasoning, "HIGH")
         self.assertEqual(spec.repository.branch, "feature/shop-123")
-        self.assertTrue(spec.repository.push)
-        self.assertEqual(spec.spec_kit_phase, "SPECIFY")
+        self.assertFalse(spec.repository.push)
+        self.assertEqual(spec.git_access, "READ")
         self.assertEqual(spec.timeout_seconds, 3600)
         self.assertEqual(spec.collect_artifacts, ["specs/**/*.md", "REVIEW.md"])
 
-    def test_spec_kit_defaults_artifact_globs(self):
-        raw = dict(BASE_SPEC)
-        raw.pop("collectArtifacts")
-        spec = ep.parse_spec(raw)
-        self.assertEqual(spec.collect_artifacts, ep.DEFAULT_SPEC_KIT_ARTIFACTS)
+    def test_spec_kit_mode_of_an_older_back_office_is_refused(self):
+        """ADR 0063: Spec Kit is gone; a SPEC_KIT job fails with a clear error, its old keys are ignored elsewhere."""
+        with self.assertRaises(ValueError) as ctx:
+            ep.parse_spec(dict(BASE_SPEC, mode="SPEC_KIT", specKitPhase="SPECIFY", constitution="# C", specKit=True))
+        self.assertIn("SPEC_KIT is not supported any more (ADR 0063", str(ctx.exception))
+        spec = ep.parse_spec(dict(BASE_SPEC, specKitPhase="PLAN", constitution="# C", specKit=True, featureDescription="x"))
+        self.assertEqual(spec.mode, "IMPLEMENT")
+        for gone in ("spec_kit", "spec_kit_phase", "constitution", "feature_description"):
+            self.assertFalse(hasattr(spec, gone), gone)
+        for gone in ("DEFAULT_SPEC_KIT_ARTIFACTS", "SPECIFY_DIR", "speckit_command", "specify_init_command", "ensure_spec_kit",
+                     "write_constitution", "needs_spec_kit", "build_agent_prompt", "PUSHING_MODES"):
+            self.assertFalse(hasattr(ep, gone), gone)
+        self.assertNotIn("SPEC_KIT", ep.SPEC_MODES)
+        self.assertNotIn("SPEC_KIT", ep.ENVIRONMENT_MODES)
+        # the generic document names stay (the write-spec / write-plan / write-task-list templates write them)
+        self.assertEqual([ep.ARTIFACT_NAME_BY_FILE[f] for f in ("spec.md", "plan.md", "tasks.md")], ["spec", "plan", "tasks"])
 
     def test_implement_without_globs_collects_nothing(self):
-        raw = dict(BASE_SPEC, mode="IMPLEMENT")
+        raw = dict(BASE_SPEC)
         raw.pop("collectArtifacts")
         spec = ep.parse_spec(raw)
         self.assertEqual(spec.collect_artifacts, [])
@@ -100,28 +113,25 @@ class SpecParsingTests(unittest.TestCase):
         self.assertTrue(spec.collect_diff)
         self.assertEqual(spec.skills, [])
         self.assertIsNone(spec.run_id)
-        self.assertIsNone(spec.repository.merge_request)
+        self.assertFalse(spec.repository.push)
 
-    def test_parses_merge_request_skills_and_run_id(self):
+    def test_parses_skills_and_run_id_and_ignores_a_legacy_merge_request(self):
         raw = json.loads(json.dumps(BASE_SPEC))
         raw["repository"]["mergeRequest"] = {"create": True, "title": "Add cart", "description": "Body", "targetBranch": "develop", "draft": True}
         raw["skills"] = [{"key": "kotlin-style", "name": "Kotlin style", "content": "# Kotlin\nUse val."}, {"key": "", "name": "x", "content": "ignored"}]
         raw["runId"] = "11111111-2222-4333-8444-555555555555"
         raw["collectDiff"] = False
         spec = ep.parse_spec(raw)
-        mr = spec.repository.merge_request
-        self.assertEqual((mr.title, mr.description, mr.target_branch, mr.draft, mr.create), ("Add cart", "Body", "develop", True, True))
+        self.assertFalse(hasattr(spec.repository, "merge_request"))  # ADR 0063: only a DELIVER job opens a merge request
         self.assertEqual([s.key for s in spec.skills], ["kotlin-style"])
         self.assertEqual(spec.run_id, "11111111-2222-4333-8444-555555555555")
         self.assertFalse(spec.collect_diff)
 
-    def test_merge_request_create_false_or_missing_title(self):
-        raw = json.loads(json.dumps(BASE_SPEC))
-        raw["repository"]["mergeRequest"] = {"create": False, "title": "x", "targetBranch": "main"}
-        self.assertIsNone(ep.parse_spec(raw).repository.merge_request)
-        raw["repository"]["mergeRequest"] = {"targetBranch": ""}
-        mr = ep.parse_spec(raw).repository.merge_request
-        self.assertEqual(mr.target_branch, "main")  # falls back to baseRef
+    def test_merge_request_of_a_repository_entry(self):
+        entry = {"key": "src", "url": "u", "access": "PUSH_MR", "pushBranch": "feature/shop-123"}
+        self.assertIsNone(ep._parse_repo_merge_request(dict(entry, mergeRequest={"create": False, "title": "x"}), "main", "feature/shop-123"))
+        mr = ep._parse_repo_merge_request(dict(entry, mergeRequest={"targetBranch": ""}), "main", "feature/shop-123")
+        self.assertEqual(mr.target_branch, "main")  # falls back to the base branch
         self.assertIn("feature/shop-123", mr.title)
 
 
@@ -468,64 +478,17 @@ class UploadTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
-    def test_feature_description_and_commit_subject_come_from_back_office(self):
-        # ADR 0047: the Spec Kit argument is the feature description only; the commit subject is chosen by Back Office
-        spec = ep.parse_spec(dict(BASE_SPEC, prompt="You are an engineering agent...\nlong rules", featureDescription="SHOP-123: cart with persistence",
-                                  commitSubject="SHOP-123: add the cart spec"))
-        self.assertEqual(ep.build_agent_prompt(spec, None), "/speckit.specify SHOP-123: cart with persistence")
-        self.assertEqual(ep.commit_subject_for(spec), "SHOP-123: add the cart spec")
+    def test_commit_subject_comes_from_back_office(self):
+        spec = ep.parse_spec(dict(BASE_SPEC, prompt="You are an engineering agent...\nlong rules", commitSubject="SHOP-123: add the cart"))
+        self.assertEqual(ep.commit_subject_for(spec), "SHOP-123: add the cart")
         legacy = ep.parse_spec(dict(BASE_SPEC))
-        self.assertEqual(ep.commit_subject_for(legacy), ep.commit_message("SPEC_KIT", legacy.prompt))
-
-    def test_spec_kit_prompt_opencode(self):
-        spec = ep.parse_spec(dict(BASE_SPEC, specKitPhase="PLAN", prompt="focus on the API"))
-        self.assertEqual(ep.build_agent_prompt(spec, None), "/speckit.plan focus on the API")
-
-    def test_spec_kit_prompt_claude_uses_skill_syntax_when_installed(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            (repo / ".claude" / "skills" / "speckit-specify").mkdir(parents=True)
-            spec = ep.parse_spec(dict(BASE_SPEC, agent="CLAUDE_CODE"))
-            self.assertTrue(ep.build_agent_prompt(spec, repo).startswith("/speckit-specify Add a shopping cart"))
-
-    def test_spec_kit_prompt_claude_legacy_commands(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            (repo / ".claude" / "commands").mkdir(parents=True)
-            (repo / ".claude" / "commands" / "speckit.specify.md").write_text("x")
-            spec = ep.parse_spec(dict(BASE_SPEC, agent="CLAUDE_CODE"))
-            self.assertTrue(ep.build_agent_prompt(spec, repo).startswith("/speckit.specify "))
-
-    def test_implement_uses_speckit_implement_when_tasks_exist(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            (repo / "specs" / "001-cart").mkdir(parents=True)
-            (repo / "specs" / "001-cart" / "tasks.md").write_text("- [ ] T1")
-            spec = ep.parse_spec(dict(BASE_SPEC, mode="IMPLEMENT", prompt="Implement it"))
-            self.assertEqual(ep.build_agent_prompt(spec, repo), "/speckit.implement\n\nImplement it")
-
-    def test_implement_falls_back_to_prompt(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            spec = ep.parse_spec(dict(BASE_SPEC, mode="IMPLEMENT", prompt="Implement it"))
-            self.assertEqual(ep.build_agent_prompt(spec, Path(tmp)), "Implement it")
-
-    def test_eval_coding_prompt_verbatim(self):
-        spec = ep.parse_spec(dict(BASE_SPEC, mode="EVAL_CODING", prompt="Solve task 7"))
-        self.assertEqual(ep.build_agent_prompt(spec, None), "Solve task 7")
+        self.assertEqual(ep.commit_subject_for(legacy), ep.commit_message("IMPLEMENT", legacy.prompt))
+        deliver = ep.parse_spec({"mode": "DELIVER", "repositories": []})
+        self.assertEqual(ep.commit_subject_for(deliver), "Back Office: agent changes")
 
     def test_commit_message(self):
-        self.assertEqual(ep.commit_message("SPEC_KIT", "/speckit.specify Add a cart\nmore"), "SPEC_KIT: Add a cart")
+        self.assertEqual(ep.commit_message("DELIVER", "Add a cart\nmore"), "DELIVER: Add a cart")
         self.assertTrue(len(ep.commit_message("IMPLEMENT", "x" * 200)) <= 72 + len("IMPLEMENT: "))
-
-    def test_specify_init_command_new_and_legacy(self):
-        new = ep.specify_init_command("CLAUDE_CODE", "--here --force --script --integration --non-interactive --ignore-agent-tools")
-        self.assertIn("--integration", new)
-        self.assertEqual(new[new.index("--integration") + 1], "claude")
-        self.assertIn("--non-interactive", new)
-        self.assertNotIn("--ai", new)
-        legacy = ep.specify_init_command("OPENCODE", "--here --ai --script --no-git")
-        self.assertEqual(legacy[legacy.index("--ai") + 1], "opencode")
-        self.assertIn("--no-git", legacy)
 
 
 class OpenCodeUsageParsingTests(unittest.TestCase):
@@ -617,7 +580,7 @@ class ArtifactTests(unittest.TestCase):
             (d / "research.md").write_text("# Research")
             (d / "data.json").write_text("{}")
             (repo / "REVIEW.txt").write_text("ok")
-            arts = ep.collect_artifacts(repo, ep.DEFAULT_SPEC_KIT_ARTIFACTS + ["specs/**/*.json", "REVIEW.txt", "missing/**"], lambda m: None)
+            arts = ep.collect_artifacts(repo, DOC_GLOBS + ["specs/**/*.json", "REVIEW.txt", "missing/**"], lambda m: None)
             by_name = {a["name"]: a for a in arts}
             self.assertEqual(set(by_name), {"spec", "plan", "tasks", "analysis", "specs/001-cart/research.md", "specs/001-cart/data.json", "REVIEW.txt"})
             self.assertEqual(by_name["spec"]["path"], "specs/001-cart/spec.md")
@@ -625,7 +588,7 @@ class ArtifactTests(unittest.TestCase):
             (repo / "specs" / "002-cart").mkdir()
             (repo / "specs" / "002-cart" / "spec.md").write_text("# Spec v2")
             (repo / "work-log.md").write_text("log")
-            arts2 = {a["name"]: a for a in ep.collect_artifacts(repo, ep.DEFAULT_SPEC_KIT_ARTIFACTS + ["work-log.md"], lambda m: None)}
+            arts2 = {a["name"]: a for a in ep.collect_artifacts(repo, DOC_GLOBS + ["work-log.md"], lambda m: None)}
             self.assertEqual(arts2["spec"]["path"], "specs/002-cart/spec.md")
             self.assertIn("specs/001-cart/spec.md", arts2)
             self.assertEqual(arts2["work-log"]["path"], "work-log.md")
@@ -834,8 +797,43 @@ class GitIntegrationTests(unittest.TestCase):
             work = self.make_repo(Path(tmp))
             g = ep.Git(work, make_git_env(), lambda m: None)
             (work / "a.txt").write_text("a")
-            g.commit_all("SPEC_KIT: spec")
+            g.commit_all("DELIVER: spec")
             self.assertEqual(git(work, "log", "-1", "--format=%(trailers:key=Back-Office-Run,valueonly)").strip(), "")
+
+    def test_work_tree_diff_without_a_commit(self):
+        """ADR 0063: the diff of an agent job is the work tree (untracked files included, ignored and ephemeral files
+        left out) against the base; the repository's index, HEAD and refs stay as they were."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = self.make_repo(Path(tmp))
+            (work / ".gitignore").write_text("build/\n")
+            git(work, "add", "-A")
+            git(work, "commit", "-q", "-m", "ignore build")
+            git(work, "push", "-q", "origin", "main")
+            head = git(work, "rev-parse", "HEAD").strip()
+            g = ep.Git(work, make_git_env(), lambda m: None)
+            g.pin_base("main")
+            (work / "README.md").write_text("# demo\nchanged\n")
+            (work / "New.kt").write_text("class New\n")
+            (work / "build").mkdir()
+            (work / "build" / "out.bin").write_text("binary")
+            (work / "work-log.md").write_text("log\n")
+            (work / "structured-answer.json").write_text("{}")
+            (work / ".claude" / "skills" / "k").mkdir(parents=True)
+            (work / ".claude" / "skills" / "k" / "SKILL.md").write_text("skill")
+            (work / ".git" / "info" / "exclude").write_text("/.claude/skills/k/\n")
+            git(work, "add", "README.md")  # a staged change of the agent: the real index is not touched
+            index_before = (work / ".git" / "index").read_bytes()
+            tree = g.worktree_tree(keep_out=ep.EPHEMERAL_ARTIFACT_FILES)
+            diff = g.worktree_diff_bytes("main", tree).decode()
+            self.assertIn("+changed", diff)
+            self.assertIn("+class New", diff)
+            for absent in ("build/out.bin", "work-log.md", "structured-answer.json", "SKILL.md"):
+                self.assertNotIn(absent, diff)
+            self.assertEqual(g.worktree_diff_stat("main", tree), {"files": 2, "insertions": 2, "deletions": 0})
+            self.assertEqual(git(work, "rev-parse", "HEAD").strip(), head)
+            self.assertEqual((work / ".git" / "index").read_bytes(), index_before)
+            report = ep.report_worktree(g, "main", collect_diff=False)
+            self.assertEqual((report.head, report.diff, report.diff_stat["files"]), (head, None, 2))
 
 
 class HelperTests(unittest.TestCase):
@@ -1536,51 +1534,6 @@ class RunnerHelperTests(unittest.TestCase):
         env = {"RUNNER_JOB_ID": "j", "RUNNER_CALLBACK_TOKEN": "t", "RUNNER_CALLBACK_URL": "u"}
         self.assertEqual(ep._connection_settings(env, None), ("j", "t", "u", None))
 
-    def test_needs_spec_kit(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            implement = ep.parse_spec(dict(BASE_SPEC, mode="IMPLEMENT", constitution=None))
-            self.assertFalse(ep.needs_spec_kit(implement, repo))
-            (repo / "specs" / "001").mkdir(parents=True)
-            (repo / "specs" / "001" / "tasks.md").write_text("- [ ] x", encoding="utf-8")
-            self.assertTrue(ep.needs_spec_kit(implement, repo))
-            self.assertTrue(ep.needs_spec_kit(ep.parse_spec(dict(BASE_SPEC, mode="EVAL_CODING")), repo))  # constitution
-            self.assertTrue(ep.needs_spec_kit(ep.parse_spec(BASE_SPEC), repo))
-
-    def test_spec_kit_false_means_no_spec_kit_work(self):
-        """ADR 0036: `specKit: false` = no specify init, no constitution, no /speckit.implement, SPEC_KIT jobs refused."""
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            (repo / "specs" / "001").mkdir(parents=True)
-            (repo / "specs" / "001" / "tasks.md").write_text("- [ ] x", encoding="utf-8")
-            off = ep.parse_spec(dict(BASE_SPEC, mode="IMPLEMENT", prompt="Implement it", specKit=False))
-            self.assertIs(off.spec_kit, False)
-            self.assertFalse(ep.needs_spec_kit(off, repo))  # despite the constitution and the tasks.md
-            self.assertEqual(ep.build_agent_prompt(off, repo), "Implement it")
-            on = ep.parse_spec(dict(BASE_SPEC, mode="IMPLEMENT", prompt="Implement it", specKit=True))
-            self.assertTrue(ep.needs_spec_kit(on, repo))
-            self.assertTrue(ep.build_agent_prompt(on, repo).startswith("/speckit.implement"))
-            legacy = ep.parse_spec(dict(BASE_SPEC, mode="IMPLEMENT", prompt="Implement it"))
-            self.assertIsNone(legacy.spec_kit)
-            self.assertTrue(ep.needs_spec_kit(legacy, repo))
-        with self.assertRaises(ValueError):
-            ep.parse_spec(dict(BASE_SPEC, specKit=False))
-        with self.assertRaises(ValueError):
-            ep.parse_spec(dict(BASE_SPEC, specKit="no"))
-
-    def test_prepare_spec_kit_skips_everything_when_off(self):
-        logs = []
-        run = types.SimpleNamespace(log=logs.append, env={}, tools=None)
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            spec = ep.parse_spec(dict(BASE_SPEC, mode="IMPLEMENT", specKit=False))
-            with mock.patch.object(ep, "ensure_spec_kit") as ensure, mock.patch.object(ep, "write_constitution") as constitution:
-                ep._prepare_spec_kit(run, spec, repo)
-            ensure.assert_not_called()
-            constitution.assert_not_called()
-            self.assertFalse((repo / ".specify").exists())
-        self.assertTrue(any("specKit: false" in line for line in logs))
-
     def test_artifact_files_dedupe_and_skip_git(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -1596,16 +1549,16 @@ class RunnerHelperTests(unittest.TestCase):
         self.assertEqual([(s.key, s.name) for s in skills], [("k", "k"), ("n", "N")])
         self.assertEqual(ep._parse_skills(None), [])
 
-    def test_validate_push_target(self):
-        repo = ep.Repository(url="u", base_ref="main", branch="main", push=False)
-        ep._validate_push_target(repo)  # no push: nothing to check
-        repo.push = True
-        with self.assertRaisesRegex(RuntimeError, "push refused"):
-            ep._validate_push_target(repo)
-        repo.branch = "feature/x"
-        repo.merge_request = ep.MergeRequest(title="t", target_branch="feature/x")
-        with self.assertRaisesRegex(RuntimeError, "push refused"):
-            ep._validate_push_target(repo)
+    def test_legacy_push_of_an_agent_job_is_ignored(self):
+        """ADR 0063: a legacy single-repository agent spec that asks to push is read-only, with a warning."""
+        for raw in (dict(BASE_SPEC, repository=dict(BASE_SPEC["repository"], push=True)), dict(BASE_SPEC, gitAccess="PUSH_MR")):
+            spec = ep.parse_spec(raw)
+            self.assertEqual(spec.git_access, "READ")
+            self.assertFalse(spec.repository.push)
+            self.assertTrue(any("never commits or pushes (ADR 0063)" in w for w in spec.warnings), spec.warnings)
+        self.assertEqual(ep.parse_spec(dict(BASE_SPEC)).warnings, [])
+        for gone in ("_validate_push_target", "_commit_and_push", "_push_branch", "_commit_changes"):
+            self.assertFalse(hasattr(ep, gone), gone)
 
 
 @unittest.skipUnless(HAS_GIT, "git not installed")
@@ -1613,23 +1566,25 @@ class GitAccessTests(unittest.TestCase):
     """Least-privilege git (ADR 0031): access levels, READ cannot push, push options never merge."""
 
     def test_level_from_spec_or_derived_like_back_office(self):
-        self.assertEqual(ep.parse_spec(dict(BASE_SPEC)).git_access, "PUSH_MR")  # SPEC_KIT + push, no gitAccess
-        no_push = json.loads(json.dumps(BASE_SPEC))
-        no_push["repository"]["push"] = False
-        self.assertEqual(ep.parse_spec(no_push).git_access, "READ")
+        self.assertEqual(ep.parse_spec(dict(BASE_SPEC)).git_access, "READ")  # a repository, no gitAccess
+        push = json.loads(json.dumps(BASE_SPEC))
+        push["repository"]["push"] = True
+        self.assertEqual(ep.parse_spec(push).git_access, "READ")  # ADR 0063: an agent job never pushes
         self.assertEqual(ep.parse_spec(dict(BASE_SPEC, mode="EVAL_CODING")).git_access, "READ")
         self.assertEqual(ep.parse_spec(dict(BASE_SPEC, repository=None, gitAccess="PUSH_MR")).git_access, "NONE")
-        self.assertEqual(ep.parse_spec(dict(BASE_SPEC, gitAccess="push_mr")).git_access, "PUSH_MR")
+        self.assertEqual(ep.parse_spec(dict(BASE_SPEC, gitAccess="push_mr")).git_access, "READ")
+        self.assertEqual(ep.parse_spec(dict(BASE_SPEC, gitAccess="none")).git_access, "NONE")
         with self.assertRaises(ValueError):
             ep.parse_spec(dict(BASE_SPEC, gitAccess="ADMIN"))
 
     def test_read_level_switches_push_and_merge_request_off(self):
         raw = json.loads(json.dumps(BASE_SPEC))
         raw["gitAccess"] = "READ"
+        raw["repository"]["push"] = True
         raw["repository"]["mergeRequest"] = {"create": True, "title": "t", "targetBranch": "main"}
         spec = ep.parse_spec(raw)
         self.assertFalse(spec.repository.push)
-        self.assertIsNone(spec.repository.merge_request)
+        self.assertFalse(hasattr(spec.repository, "merge_request"))
 
     def test_read_git_refuses_push_without_running_git(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1735,7 +1690,7 @@ class MainFlowTests(unittest.TestCase):
             **kw,
         )
 
-    def test_stub_run_commits_pushes_and_collects(self):
+    def test_stub_run_reports_the_work_tree_and_never_pushes(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             GitIntegrationTests().make_repo(tmp_path)
@@ -1755,12 +1710,15 @@ class MainFlowTests(unittest.TestCase):
             self.assertIn("logSha256", result["digests"])
             self.assertEqual(set(result["security"]), {"gitAccess", "processNonDumpable", "gitTokenFileRemoved", "jobTokenFileRemoved",
                                                        "agentTokenIsolated", "strayProcessesKilled", "gitConfigRestored"})
-            self.assertEqual(result["security"]["gitAccess"], "PUSH_MR")  # derived: IMPLEMENT with push, no gitAccess
+            self.assertEqual(result["security"]["gitAccess"], "READ")  # ADR 0063: `push: true` of an agent job is ignored
             self.assertNotIn("policy", result)
-            pushed = git(origin, "rev-parse", "refs/heads/feature/stub").strip()
-            self.assertEqual(pushed, result["commitSha"])
-            trailer = git(origin, "log", "-1", "--format=%(trailers:key=Back-Office-Run,valueonly)", "feature/stub").strip()
-            self.assertEqual(trailer, "11111111-2222-4333-8444-555555555555")
+            # nothing committed or pushed: HEAD is the base, the new file is untracked but part of the diff
+            base = git(origin, "rev-parse", "refs/heads/main").strip()
+            self.assertEqual(result["commitSha"], base)
+            repo = tmp_path / "ws" / "repo"
+            self.assertEqual(git(repo, "rev-parse", "HEAD").strip(), base)
+            self.assertEqual(git(repo, "status", "--porcelain").strip(), "?? out.txt")
+            self.assertEqual(git(origin, "for-each-ref", "--format=%(refname)", "refs/heads").split(), ["refs/heads/main"])
 
     def test_prompt_job_answers_without_a_repository(self):
         """ADR 0050 step 4: a PROMPT job returns the answer as the response artefact and touches no repository."""
@@ -1777,7 +1735,7 @@ class MainFlowTests(unittest.TestCase):
             self.assertIsNone(result.get("branch"))
             self.assertEqual(result["security"]["gitAccess"], "NONE")
 
-    def test_read_job_commits_locally_but_never_pushes(self):
+    def test_read_job_never_commits_or_pushes(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             GitIntegrationTests().make_repo(tmp_path)
@@ -1794,7 +1752,9 @@ class MainFlowTests(unittest.TestCase):
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertEqual(result["security"]["gitAccess"], "READ")
             self.assertIn("+hello", result["diff"])        # the work is still reported as a diff
+            self.assertIn("agent push exit 128", result["summary"])
             self.assertIsNone(result.get("mergeRequestUrl"))
+            self.assertEqual(result["commitSha"], git(origin, "rev-parse", "refs/heads/main").strip())
             branches = git(origin, "branch", "--list")
             self.assertNotIn("feature/stub", branches)
             self.assertNotIn("agent-push", branches)
@@ -1812,17 +1772,19 @@ class MainFlowTests(unittest.TestCase):
             self.assertEqual(result["diffStat"]["files"], 0)
             self.assertNotIn("feature/stub", git(origin, "branch", "--list"))
 
-    def test_push_to_base_branch_refused_before_agent_runs(self):
+    def test_branch_on_the_base_is_harmless_because_nothing_is_pushed(self):
+        """ADR 0063: the branch of a legacy agent spec is only checked out; branch safety is the delivery's (DELIVER)."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             GitIntegrationTests().make_repo(tmp_path)
             origin = tmp_path / "origin.git"
+            base = git(origin, "rev-parse", "refs/heads/main").strip()
             spec = self.spec(origin, self.stub_command("open('marker', 'w')"))
             spec["repository"]["branch"] = "main"
             result = self.run_main(tmp_path, spec)
-            self.assertEqual(result["status"], "FAILED")
-            self.assertIn("push refused", result["error"])
-            self.assertIsNone(result["summary"])
+            self.assertEqual(result["status"], "SUCCEEDED", result)
+            self.assertEqual(result["diffStat"]["files"], 1)
+            self.assertEqual(git(origin, "rev-parse", "refs/heads/main").strip(), base)
 
     def test_setup_failure_and_missing_spec(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1860,7 +1822,7 @@ class PromptModeTests(unittest.TestCase):
                "prompt": "Summarise", "systemPrompt": "You are terse.", "timeoutSeconds": 300}
         spec = ep.parse_spec(raw)
         self.assertEqual((spec.mode, spec.system_prompt, spec.repository), ("PROMPT", "You are terse.", None))
-        self.assertEqual(ep.derive_git_access("PROMPT", None), ep.GIT_ACCESS_NONE)
+        self.assertEqual(ep.derive_git_access(None), ep.GIT_ACCESS_NONE)
 
     def test_command_has_no_tools_a_turn_limit_and_the_system_prompt(self):
         help_text = "--system-prompt --disallowedTools --no-session-persistence --effort"

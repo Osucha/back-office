@@ -2,7 +2,9 @@
 
 Coding agents run on **runner-controllers** in your clusters, never inside Back Office (ADR 0024,
 [architecture](../architecture/10-agent-execution.md)). Back Office queues agent jobs; a controller leases
-them over HTTPS, runs each in a sandbox and reports back. This guide is for platform operators
+them over HTTPS, runs each in a sandbox and reports back. The **Deliver changes** action (ADR 0063) runs there too, as
+a job of mode `DELIVER` without an agent in the run's directory; it is the only job that gets a push credential.
+This guide is for platform operators
 (`fleet.manage`) and project owners (`project.manage`).
 
 ## 1. Create a pool

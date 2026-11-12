@@ -29,7 +29,7 @@ Implementation: `backend/runner-controller` (Spring Boot application, own image 
 | Agent job queue | PostgreSQL (`agent_job`) | queued jobs per pool with priority, labels, deadline |
 | LLM gateway proxy | Back Office api | Anthropic- and OpenAI-compatible endpoints for sandboxes; job-token auth; model allowlist; budgets; usage ledger |
 | runner-controller | execution cluster | lease → verify → render sandbox → watch → heartbeat → report; warm pool management; enforce policy; egress ACL source |
-| Sandbox pod | execution cluster | one `agent` container (runner image: OpenCode, Claude Code, Spec Kit, toolchains); no sidecar |
+| Sandbox pod | execution cluster | one `agent` container (runner image: OpenCode, Claude Code, toolchains; the Spec Kit CLI left the image with ADR 0063); no sidecar |
 | Egress proxy | execution cluster, one Deployment per pool (`bo-egress-<pool>`) | Stripe Smokescreen with per-job roles: CONNECT/HTTP allowlist per job, private-range blocking, decisions reported to the controller |
 
 ## Job lifecycle
@@ -261,8 +261,12 @@ that level with the spec (`RunnerJobSpec.gitAccess`):
 | Level | Derived for | Credential the controller mounts | Runner behaviour |
 |---|---|---|---|
 | `NONE` | no repository | none | no clone |
-| `READ` | any job with a repository that does not push: `push = false`, Spec Kit analysis without push, `EVAL_CODING` benchmarks | `read` Secret of the matching `repoSecrets` entry | clone/fetch only; `repository.push` and the merge request are switched off, `remote.origin.pushurl = disabled://read-only-job`, `Git.push` refuses |
-| `PUSH_MR` | IMPLEMENT or SPEC_KIT with `push = true` | `push` Secret of the matching entry | push `HEAD:refs/heads/<job branch>` to the spec URL with whitelisted push options |
+| `READ` | every agent job with a repository (ADR 0063: `IMPLEMENT`, `EVAL_CODING` benchmarks) | `read` Secret of the matching `repoSecrets` entry | clone/fetch only; no commit; `repository.push` and the merge request are switched off, `remote.origin.pushurl = disabled://read-only-job`, `Git.push` refuses |
+| `PUSH_MR` | only `DELIVER` jobs (the `DELIVER_CHANGES` action; no agent runs in them) | `push` Secret of the matching entry, or the project's PUSH_BRANCH token (ADR 0051) | commit the run directory, push `HEAD:refs/heads/<job branch>` to the spec URL with whitelisted push options |
+
+ADR 0063 removed `SPEC_KIT` and the step key `push`: an agent job never pushes, whatever its spec says (a `PUSH_MR`
+entry, a legacy `repository.push` or `gitAccess: PUSH_MR` in an `IMPLEMENT` spec is used as READ and logged as a
+`[spec] WARN`).
 
 Multi-repository jobs (ADR 0034) carry the level per `repositories[]` entry; `gitAccess` is then the highest
 level among the entries (see [Repositories and workspace](#repositories-and-workspace-adr-0034)).
@@ -286,8 +290,8 @@ Maintainers" (docs/manual/integrations-git.md#gitlab-protect-branches).
 ## Repositories and workspace (ADR 0034)
 
 A job can work in several repositories of its project. Back Office builds `RunnerJobSpec.repositories`, one
-`JobRepository` per repository the step uses (rules in
-[03-pipelines-and-agents.md](03-pipelines-and-agents.md#step-repositories)):
+`JobRepository` per source of the workflow (agent jobs, all `READ`) or per delivered repository (`DELIVER` jobs,
+`PUSH_MR`; rules in [03-pipelines-and-agents.md](03-pipelines-and-agents.md#workflow-sources)):
 
 | Field | Meaning |
 |---|---|
@@ -296,8 +300,8 @@ A job can work in several repositories of its project. Back Office builds `Runne
 | `baseBranch` | checked out before the agent starts; the diff is taken against it; target of the merge request; never pushed to |
 | `access` | `NONE`, `READ` or `PUSH_MR` (Back Office sends READ or PUSH_MR) |
 | `path` | workspace subdirectory, equal to `key` |
-| `pushBranch` | `PUSH_MR` only: the job branch, never the base branch |
-| `mergeRequest` | `PUSH_MR` only: `{create, title, description, draft}`, target = `baseBranch` |
+| `pushBranch` | `PUSH_MR` in a `DELIVER` job only: the job branch, never the base branch |
+| `mergeRequest` | `PUSH_MR` in a `DELIVER` job only: `{create, title, description, draft}`, target = `baseBranch` |
 | `primary` | exactly one entry: the agent's working directory and the legacy mirror |
 
 **Workspace layout.**
@@ -305,16 +309,18 @@ A job can work in several repositories of its project. Back Office builds `Runne
 ```
 /workspace/                 workspace root (agent working directory when the list is empty)
   service/                  primary entry  -> the agent starts here
-  docs/                     PUSH_MR entry  -> same job branch pushed, own merge request
+  docs/                     second source  -> in a DELIVER job: same job branch pushed, own merge request
   api/                      READ entry     -> pushurl disabled, never pushed
 ```
 
-Every entry is cloned into `/workspace/<path>` with the credential selected for it, its base branch pinned at
-clone time and `.git/config` snapshotted; after the agent the runner restores the config, empties the hooks,
-diffs and commits **per repository**. The same job branch is pushed to every `PUSH_MR` entry with the
+Every entry is cloned into `/workspace/<path>` (in the run directory, reused by later jobs) with the credential
+selected for it, its base branch pinned at clone time and `.git/config` snapshotted; after the agent the runner
+restores the config, empties the hooks and diffs **per repository**; an agent job commits nothing. A `DELIVER` job
+(ADR 0063) then commits **per repository** and pushes the same job branch to every `PUSH_MR` entry with the
 whitelisted push options of ADR 0031; Back Office refuses a job branch that equals the default branch of any
-`PUSH_MR` repository (it falls back to `run/<run id>`). `READ` entries get `remote.origin.pushurl =
-disabled://read-only-job` and are never pushed. The runner never merges.
+`PUSH_MR` repository (it falls back to `run/<run id>`) and the runner validates every `pushBranch` before anything
+is cloned. `READ` entries get `remote.origin.pushurl = disabled://read-only-job` and are never pushed. The runner
+never merges.
 
 **Credentials.** The runner-controller selects a credential for each entry by (url, access) exactly as for the
 single repository: the `read` Secret of the matching `repoSecrets` entry for `READ`, the `push` Secret for
@@ -322,7 +328,7 @@ single repository: the `read` Secret of the matching `repoSecrets` entry for `RE
 job's egress allowlist.
 
 **Result.** `RunnerResult.repositories[]` has one item per spec entry with the same `key`: `branch`,
-`commitSha`, `diffStat`, `mergeRequestUrl`, `pushed` (true only when the job branch was pushed to that
+`commitSha`, `diffStat`, `mergeRequestUrl`, `pushed` (true only when a `DELIVER` job pushed the job branch to that
 repository) and `error` (clone, commit or push failure of that repository). The legacy top-level `branch`,
 `commitSha`, `diff`/`diffStat` and `mergeRequestUrl` mirror the primary entry.
 
@@ -343,26 +349,30 @@ description, draft}, primary, purpose?}]` and the levels above apply **per repos
 
 | | Controller (`GitCredentialSelector.plan`) | Runner (`entrypoint.py`) |
 |---|---|---|
-| parsing | keys `^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`, unique; unknown `access` refused; absent `access` = `READ` | the same, plus `path` relative without `.`-components, unique and not nested; `PUSH_MR` needs `pushBranch`; without an explicit primary the first `PUSH_MR` (else the first) repository is primary |
+| parsing | keys `^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`, unique; unknown `access` refused; absent `access` = `READ` | the same, plus `path` relative without `.`-components, unique and not nested; `PUSH_MR` needs `pushBranch` in a `DELIVER` job (an agent job uses it as `READ`); without an explicit primary the first `PUSH_MR` (else the first) repository is primary |
 | credential | selected per repository by its URL and its level from `repoSecrets` (most specific pattern); `NONE` and anonymous repositories get nothing | reads `<RUNNER_GIT_TOKEN_DIR>/<key>/token` of each spec repository once into memory and deletes it |
 | refusal | `policy-violation: repository '<key>' (<host/path>): git credential: ...` (READ with only a push Secret unless `allowPushCredentialForRead`; PUSH_MR without a push Secret) | - |
 | delivery | Kubernetes: one Secret volume per repository with a credential, init container only, copied to `git/<key>/token`; warm pods: written by the controller; Docker: `BO_GIT_TOKEN_READ` / `BO_GIT_TOKEN_PUSH` by each repository's level | one `Git` per repository with its own token; the inline credential helper is bound to the repository host **and path** (`credential.useHttpPath=true`, `BO_GIT_PATH`), so a token is never answered for a sibling repository on the same host |
 | egress | every repository host is a mandatory egress host (like the gateway) | - |
 
 Workspace: `/workspace/<path>` per repository (cloned and checked out at `baseBranch` exactly like the single
-repository). The agent, `setupCommand`,
-`verifyCommand`, Spec Kit (`.specify`; only when the spec does not say `specKit: false`, ADR 0036) and `collectArtifacts` run in the **primary** repository (skills: in the agent home, ADR 0060); with an
-empty list in `/workspace`. The agent may reach the other repositories (OpenCode `external_directory` allows exactly
+repository). The agent, `setupCommand`, `verifyCommand` and `collectArtifacts` (the template's `outputFiles`, ADR 0063)
+run in the **primary** repository (skills: in the agent home, ADR 0060); with an empty list in `/workspace`. The agent may reach the other repositories (OpenCode `external_directory` allows exactly
 their paths, Claude Code gets `--add-dir`), and its prompt ends with a short `## Repositories` section (key, path,
-access, `purpose`). READ / NONE clones get `remote.origin.pushurl = disabled://read-only-job`; PUSH_MR clones check
-out their `pushBranch`.
+access, `purpose`). READ / NONE clones get `remote.origin.pushurl = disabled://read-only-job`; in a `DELIVER` job
+PUSH_MR clones are switched to their `pushBranch` (kept when checked out, a local branch reused, else re-attached
+from the remote or created at HEAD; the work tree comes along).
 
 After the agent, per repository: `.git/config` restored and `.git/hooks` emptied (a repository whose `.git` was
-replaced is skipped with an error), commit with the `Back-Office-Run` trailer, diff against the pinned base
-(`--no-ext-diff --no-textconv`), and only for `PUSH_MR` a push of `HEAD:refs/heads/<pushBranch>` to the spec URL
-with the whitelisted push options (target = `baseBranch`). One repository failing does not stop the others.
-`result.repositories[] = {key, branch, commitSha, diffStat, mergeRequestUrl, pushed, error}`; the job is `FAILED`
-when any `PUSH_MR` repository has an error (`error` names it). The legacy top-level `branch`, `commitSha`,
+replaced is skipped with an error), HEAD and the diff of the work tree against the pinned base
+(`--no-ext-diff --no-textconv`); nothing is committed or pushed. A `DELIVER` job (no agent, no `setupCommand` /
+`verifyCommand`, no agent token) instead commits, per `PUSH_MR` repository with changes, `git add -A` (`.gitignore`
+and `.git/info/exclude` honoured; the runner's ephemeral `work-log.md`, `structured-answer.json`,
+`agent-questions.json` left out) with the commit subject of the spec and the `Back-Office-Run` trailer, then pushes
+`HEAD:refs/heads/<pushBranch>` to the spec URL with the whitelisted push options (target = `baseBranch`) when the
+branch is ahead of the base; a repository without changes is not pushed (`pushed: false`). One repository failing
+does not stop the others. `result.repositories[] = {key, branch, commitSha, diffStat, mergeRequestUrl, pushed,
+error}`; a `DELIVER` job is `FAILED` when any `PUSH_MR` repository has a commit or push error (`error` names it). The legacy top-level `branch`, `commitSha`,
 `diffStat`, `diff` and `mergeRequestUrl` come from the primary repository; other repositories' diffs are artefacts
 `diff:<key>`. `result.security.gitAccessByRepository` records the levels.
 
@@ -402,8 +412,8 @@ the step keys `workspace` / `sessionRole`) with one **run directory** per run; t
   not used by a running sandbox.
 - runner: a clone is reused when `/workspace/.bo/repos/<path>.json` names the same URL: `.git` checked, hooks and
   grafts removed, `.git/config` rewritten (`trusted_git_config`), fetch, access of the job; the working tree stays.
-  READ repositories are not committed in a workspace. `prepareOnly`: clone + setupCommand + `.git` restore, no agent,
-  no commit.
+  Agent jobs commit nothing in a workspace (ADR 0063); a `DELIVER` job reuses the run directory's clones with their
+  work trees and commits there. `prepareOnly`: clone + setupCommand + `.git` restore, no agent, no commit.
 - **Agent home** (`RunnerJobSpec.agentHome` = the agent key): `/workspace/.agents/<key>/`, outside every repository,
   recreated as a real directory when a symlink or file was left in its place; files are written fresh, never through
   a symlink; `skills/` is rewritten on every job. Claude Code: `CLAUDE_CONFIG_DIR` = the home (`CLAUDE.md` = the
@@ -428,7 +438,8 @@ the step keys `workspace` / `sessionRole`) with one **run directory** per run; t
   modified / deleted / type changed: restored from the first snapshot), repeating up to 3 rounds; a change that
   cannot be reverted fails the job. Ignored files are not part of the snapshot. Each reverted path is logged and
   reported in `result.access.reverted[]`, and the summary ends with `[Back Office runner] reverted N change(s)
-  outside the agent's access (<mode>): ...`. Verify, commit and push run on the reverted tree. The harness rules
+  outside the agent's access (<mode>): ...`. Verify and the diff run on the reverted tree (a later delivery delivers it).
+  The harness rules
   (Claude Code `--permission-mode dontAsk` without editing tools outside the paths, OpenCode `permission.edit`) are
   guidance; the revert is the guarantee. Details: runner README, "Agent home, access and questions".
 - **Questions** (ADR 0060): `agent-questions.json` in the working directory is collected as the artefact

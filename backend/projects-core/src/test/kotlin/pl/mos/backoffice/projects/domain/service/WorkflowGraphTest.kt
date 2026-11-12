@@ -33,7 +33,8 @@ class WorkflowGraphTest {
 
     @Test
     fun `routing through unconnected ports fails or cancels the run`() {
-        assertThat(graph.route("implement", "success")).isEqualTo(WorkflowGraph.Route.Next("ci-tests"))
+        assertThat(graph.route("implement", "success")).isEqualTo(WorkflowGraph.Route.Next("implement-deliver"))
+        assertThat(graph.route("implement-deliver", "success")).isEqualTo(WorkflowGraph.Route.Next("ci-tests"))
         assertThat(graph.route("implement", "failure")).isInstanceOf(WorkflowGraph.Route.Fail::class.java)
         assertThat(graph.route("spec-gate", "reject")).isInstanceOf(WorkflowGraph.Route.Cancel::class.java)
         assertThat(graph.route("ci-tests", "timeout")).isInstanceOf(WorkflowGraph.Route.Fail::class.java)

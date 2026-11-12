@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 # Back Office agent runner image (ADR 0006, sandboxed execution ADR 0024).
 #
-# One image for every SPEC_KIT / IMPLEMENT step and coding benchmark attempt:
-#   git, curl, jq, Python 3 + uv, Node 22, Temurin JDK 21, OpenCode, Claude Code, Spec Kit.
+# One image for every coding step (IMPLEMENT), delivery (DELIVER, ADR 0063) and coding benchmark attempt:
+#   git, curl, jq, Python 3 + uv, Node 22, Temurin JDK 21, OpenCode, Claude Code.
 # Runs as non-root `runner` (uid 10001) with /workspace as the only writable location (emptyDir in
 # Kubernetes). entrypoint.py implements the runner protocol (docs/architecture/03-pipelines-and-agents.md).
 #
@@ -14,8 +14,6 @@ FROM ubuntu:24.04
 ARG NODE_MAJOR=22
 ARG OPENCODE_VERSION=1.18.32
 ARG CLAUDE_CODE_VERSION=2.1.283
-# Git ref of https://github.com/github/spec-kit (tag with leading v, branch or SHA)
-ARG SPEC_KIT_REF=v1.0.12
 ARG UV_VERSION=0.12.19
 ARG TEMURIN_PACKAGE=temurin-21-jdk
 
@@ -71,16 +69,6 @@ RUN \
     && npm cache clean --force \
     && opencode --version && claude --version
 
-# Spec Kit CLI (specify) ---------------------------------------------------------------------------
-ENV UV_TOOL_DIR=/opt/uv/tools \
-    UV_TOOL_BIN_DIR=/usr/local/bin
-RUN \
-    --mount=type=secret,id=extra_ca,required=false --mount=type=tmpfs,target=/run/ca \
-    . /usr/local/bin/with-extra-ca \
-    && uv tool install "specify-cli" --from "git+https://github.com/github/spec-kit.git@${SPEC_KIT_REF}" \
-    && rm -rf /root/.cache/uv \
-    && specify --help >/dev/null
-
 # Non-root user and workspace ------------------------------------------------------------------------
 RUN useradd --uid 10001 --user-group --create-home --shell /bin/bash runner \
     && install -d -o runner -g runner -m 0755 /workspace
@@ -100,6 +88,6 @@ ENV HOME=/home/runner \
 
 # Smoke check that the tools work as the runtime user.
 RUN git --version && python3 --version && uv --version && node --version && java -version 2>&1 | head -1 \
-    && opencode --version && claude --version && specify --help >/dev/null
+    && opencode --version && claude --version
 
 ENTRYPOINT ["/usr/bin/tini", "--", "python3", "/usr/local/bin/entrypoint.py"]

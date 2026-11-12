@@ -60,12 +60,14 @@ wybiera, kto wykona pracę, więc ten sam szablon można wykonać różnymi agen
 ([Ewaluacja](evaluation.md)). Co szablon nadal mówi o wykonawcy:
 
 - **Wymaga agenta kodującego** (**Needs a coding agent**; znacznik tylko do odczytu na liście, w edytorze, w palecie
-  projektanta i w kroku): jego konfiguracja, razem z konfiguracją rodziców, ma fazę Spec Kit `phase`, `push` albo
-  `prepareOnly`. Taka praca wymaga agenta z harnessem **OpenCode** albo **Claude Code** (agent kodujący w sandboxie na
-  runnerze, z repozytorium; może wypchnąć gałąź i otworzyć merge request). Znacznika nie ustawiasz; wynika
-  z konfiguracji. Bez niego pracę może wykonać dowolny agent, także agent z harnessem **Odpowiedź modelu** (**Model
-  answer**; jedno wywołanie modelu wewnątrz Back Office, bez repozytorium; może zwrócić ustrukturyzowany JSON
-  i pewność).
+  projektanta i w kroku): jego konfiguracja, razem z konfiguracją rodziców, ma **Pracuje w repozytorium (wymaga
+  agenta kodującego)** (`codingAgent: true`) albo `prepareOnly`. Taka praca wymaga agenta z harnessem **OpenCode**
+  albo **Claude Code** (agent kodujący w sandboxie na runnerze, pracujący w katalogu przebiegu ze źródłami workflowu;
+  nigdy nie wypycha, dostarczanie to akcja workflowu [Dostarcz zmiany](workflows.md#deliver-changes)). Znacznika nie
+  ustawiasz; wynika z konfiguracji. Bez niego pracę może wykonać dowolny agent, także agent z harnessem **Odpowiedź
+  modelu** (**Model answer**; jedno wywołanie modelu wewnątrz Back Office, bez repozytorium; może zwrócić
+  ustrukturyzowany JSON i pewność). Szablony, które miały fazę Spec Kit `phase` albo `push: true`, dostały przy
+  aktualizacji `codingAgent: true` (ADR 0063).
 - **Wymagane umiejętności** (**Required skills**): [umiejętności](#skills), których wymaga praca (zob. [Wymagane
   umiejętności](#required-skills)).
 
@@ -99,12 +101,21 @@ Szablon, którego wymagane [parametry](#parameters) nie mają jeszcze wartości,
    albo wynik wcześniejszego kroku. Szablon oparty na innym pokazuje też **Wartości parametrów** (**Parameter
    values**): wartości parametrów jego rodziców.
 5. **Konfiguracja** (**Configuration**): formularz z ustawieniami pracy, dla odpowiedzi modelu i agentów kodujących
-   razem (dla agenta kodującego: polecenie weryfikacji i przygotowania, push, merge request, artefakty do zebrania,
-   narzędzia agenta, faza Spec Kit, ...). Faza Spec Kit (`phase`), `push` albo `prepareOnly` (tylko przygotowanie) sprawiają, że
-   szablon wymaga agenta kodującego. Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone. **Surowy JSON**
-   (**Raw JSON**) pokazuje te same ustawienia jako JSON, także klucze, których formularz nie zna.
-   **Zaawansowane: artefakty, schemat wyjścia** (**Advanced: artefacts, output schema**; zwinięte; większość
-   szablonów niczego tu nie potrzebuje): **Abstrakcyjny** (**Abstract**; tylko baza dla innych szablonów, nigdy
+   razem: pole wyboru **Pracuje w repozytorium (wymaga agenta kodującego)** (**Works in the repository (needs a coding
+   agent)**; praca czyta i zmienia pliki katalogu przebiegu; wyłączone: dowolny agent, także odpowiedź modelu),
+   **Polecenie weryfikacji** (**Verify command**; sprawdzenie akceptacyjne pracy uruchamiane po agencie, np.
+   `./gradlew test`; niepowodzenie oznacza błąd kroku), **Narzędzia agenta** (**Agent tools**), **Agent może zadawać
+   pytania**, **Rundy pytań**. **Pracuje w repozytorium** albo `prepareOnly` (tylko przygotowanie) sprawiają, że
+   szablon wymaga agenta kodującego. Ustaw tylko to, co różni się od szablonu bazowego; puste pola są dziedziczone.
+   **Surowy JSON** (**Raw JSON**) pokazuje te same ustawienia jako JSON, także klucze, których formularz nie zna.
+   Szablon nie ma ustawień gita, repozytoriów ani polecenia przygotowania (ADR 0063): dostarczanie to akcja workflowu
+   [Dostarcz zmiany](workflows.md#deliver-changes), a repozytoria i polecenie przygotowania należą do workflowu
+   ([Źródła workflowu](workflows.md#workflow-sources)). Takie klucze pozostawione w starszych konfiguracjach nie są
+   pokazywane i nie mają skutku.
+   **Zaawansowane: artefakty, pliki wynikowe, schemat wyjścia** (**Advanced: artefacts, output files, output
+   schema**; zwinięte; większość szablonów niczego tu nie potrzebuje): **Pliki wynikowe** (**Output files**; wzorce
+   (globy) plików, które agent zostawia w katalogu przebiegu i które wracają jako artefakty, nazwane jak plik bez
+   rozszerzenia: `specs/**/spec.md` daje `spec`; dawniej klucz konfiguracji `collectArtifacts`), **Abstrakcyjny** (**Abstract**; tylko baza dla innych szablonów, nigdy
    samodzielny krok), **Produkuje** (**Produces**) i **Konsumuje** (**Consumes**) (nazwy artefaktów, które krok
    zapisuje i odczytuje; kontrola workflowu ostrzega, gdy krok czyta coś, czego nikt nie zapisuje), **Pole pewności**
    (**Confidence field**; pole odpowiedzi kopiowane do `state.confidence` na potrzeby decyzji takich jak
@@ -347,7 +358,7 @@ Agenci wbudowani (żaden nie ma własnego modelu; każdy wymienia reguły `agent
 | **Odpowiedź modelu** (**Model answer**, `model-answer`) | Odpowiedź modelu | brak | `llm-task`; krok bez własnego agenta, którego szablon nie wymaga agenta kodującego |
 | **Analyst** (`analyst`) | Odpowiedź modelu | `user-story-format`, `use-case-format`, `adr-format`, `definition-of-ready-done`, `build-guardrails` | szablony analizy, specyfikacji i planowania (`write-user-story`, `write-use-case`, `write-adr`, `impact-analysis`, `plan-task-list`, `clarify-spec`) |
 | **Reviewer** (`reviewer`) | Odpowiedź modelu | `security-review-checklist`, `definition-of-ready-done` | `code-review`, `review-against-spec` |
-| **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | fazy Spec Kit, `implement-opencode`, `implement-task-list`, `prepare-workspace`; krok bez własnego agenta, którego szablon wymaga agenta kodującego |
+| **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `write-spec`, `write-plan`, `write-task-list`, `implement-opencode`, `implement-task-list`, `prepare-workspace`; krok bez własnego agenta, którego szablon wymaga agenta kodującego |
 | **Claude Code** (`claude-code`) | Claude Code | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task`, dowolna praca z kodem |
 
 **Wymagane umiejętności** szablonów wbudowanych pasują do tych agentów, więc projektant wybiera ich wstępnie.
@@ -371,11 +382,10 @@ agenta (projekt, osoba uruchamiająca, platforma). Szablony nie mają modelu.
 | Agent | Szablon | Krok |
 |---|---|---|
 | Odpowiedź modelu | każdy, który nie wymaga agenta kodującego | jedno wywołanie modelu: ustrukturyzowana odpowiedź, pewność i ochrona przed wstrzyknięciem promptu |
-| OpenCode lub Claude Code | z fazą Spec Kit `phase` w konfiguracji | faza Spec Kit |
-| OpenCode lub Claude Code | każdy inny | zadanie agenta: push i merge request zgodnie z konfiguracją; bez pushu jego końcowa odpowiedź staje się artefaktem `result` |
+| OpenCode lub Claude Code | każdy | zadanie agenta w katalogu przebiegu: zmienia pliki, nigdy nie robi commita ani nie wypycha (robi to późniejszy krok [Dostarcz zmiany](workflows.md#deliver-changes)); jego diff względem gałęzi bazowej to artefakt `diff`, jego **Pliki wynikowe** wracają jako artefakty, a bez repozytorium jego końcowa odpowiedź staje się artefaktem `result` |
 
 Krok nie może zostać wykonany (projektant i podgląd mówią dlaczego), gdy jego szablon wymaga agenta kodującego
-(faza Spec Kit `phase`, `push: true`, `prepareOnly`), a agent kroku jest agentem odpowiedzi modelu („Szablon wymaga
+(`codingAgent: true`, `prepareOnly`), a agent kroku jest agentem odpowiedzi modelu („Szablon wymaga
 agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”).
 
 **Agent kodujący odpowiadający według schematu.** Szablon ze **Schematem wyjścia** działa także z agentem
@@ -391,8 +401,8 @@ Przed swoim zadaniem każdy krok dostaje jeden dokument opisujący, gdzie i jak 
 
 1. **preambuła platformy**, ustalona przez Back Office dla rodzaju agenta: czym jest Back Office, uczciwość, zakres,
    bezpieczeństwo; dla odpowiedzi modelu „bez repozytorium, bez narzędzi, przy schemacie tylko JSON”; dla agenta
-   kodującego „runner commituje i wypycha, nigdy nie osłabiaj testu, cytuj ścieżki plików, gdzie są Twoje
-   umiejętności”; gdy krok pozwala agentowi pytać ([Agent zadaje pytania](workflows.md#agent-questions)), także jak
+   kodującego „nie rób commita ani pushu, zostaw zmiany niezacommitowane, nigdy nie osłabiaj testu, cytuj ścieżki
+   plików, gdzie są Twoje umiejętności”; gdy krok pozwala agentowi pytać ([Agent zadaje pytania](workflows.md#agent-questions)), także jak
    pytać;
 2. **Instrukcje** agenta;
 3. konstytucja projektu, jeśli projekt ją ma;
@@ -462,23 +472,23 @@ Jest egzekwowany dwa razy:
    każdą zmianę spoza dostępu (dodane pliki usuwa, zmienione lub usunięte przywraca), cokolwiek agent zrobił, także
    poleceniami powłoki. Log kroku wypisuje każdą cofniętą ścieżkę, a jego podsumowanie kończy się wierszem
    `[Back Office runner] reverted N change(s) outside the agent's access (...)`. Dopiero potem wykonują się polecenie
-   weryfikacji, commit i push. Pliki ignorowane przez gita nie są objęte (i tak nigdy nie trafiają do commita);
-   artefakty kroku są zbierane przed cofnięciem.
+   weryfikacji i diff, a późniejsze [Dostarcz zmiany](workflows.md#deliver-changes) dostarcza katalog roboczy w stanie
+   po cofnięciu. Pliki ignorowane przez gita nie są objęte (i tak nigdy nie trafiają do commita); artefakty kroku są
+   zbierane przed cofnięciem.
 
-Agent z dostępem **Tylko odczyt** w kroku, który wypycha, to problem: krok nie wykona się, dopóki nie zmienisz agenta
-albo nie wyłączysz pushu. To, czy krok commituje i wypycha, pozostaje ustawieniem kroku; dostęp tylko zawęża, co
-agent może zmieniać. Odpowiedź modelu nie ma repozytorium, więc dostęp jej nie dotyczy.
+Agenci nigdy nie wypychają (ADR 0063), więc agent **Tylko odczyt** pasuje do każdego kroku; commit i wypchnięcie to
+akcja workflowu [Dostarcz zmiany](workflows.md#deliver-changes), a dostęp tylko zawęża, co agent może zmieniać.
+Odpowiedź modelu nie ma repozytorium, więc dostęp jej nie dotyczy.
 
 **Katalog** (**Directory**) mówi, co agent może widzieć z przebiegu (ADR 0062):
 
 | Katalog | Agent pracuje w |
 |---|---|
 | **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) | [katalogu przebiegu](workflows.md#run-directory): kroki kodujące przebiegu pracują w nim jeden po drugim i widzą, co zostawiły wcześniejsze kroki, także niezacommitowaną pracę |
-| **Osobny katalog** (**Separate directory**) | świeżej kopii tylko repozytoriów kroku, usuwanej po kroku; nie widzi, co zostawiły inne kroki, a jego sesja nigdy nie jest kontynuowana |
+| **Osobny katalog** (**Separate directory**) | świeżej kopii źródeł workflowu, usuwanej po kroku; nie widzi, co zostawiły inne kroki, jego sesja nigdy nie jest kontynuowana, a jego zmiany nigdy nie są dostarczane |
 
-Dostęp niczego nie ukrywa: agent, który nie może widzieć reszty pracy przebiegu, potrzebuje **Osobnego katalogu**,
-a taki, który w ogóle nie może widzieć kodu, także kroku z tylko tymi repozytoriami, które może widzieć
-([Repozytoria kroku](workflows.md#step-repositories)). Do niezależnej kontroli utwórz agenta kodującego
+Dostęp niczego nie ukrywa: agent, który nie może widzieć reszty pracy przebiegu, potrzebuje **Osobnego katalogu**;
+to, co widzi z kodu, to [Źródła](workflows.md#workflow-sources) workflowu. Do niezależnej kontroli utwórz agenta kodującego
 z **Osobnym katalogiem** (na przykład kopię projektową **Claude Code** z dostępem **Tylko odczyt**) i wybierz go
 w kroku. Do ADR 0062 katalog był ustawieniem kroku; teraz należy do agenta (co aktualizacja zrobiła z zapisanymi
 krokami, opisuje [Sesje agenta](workflows.md#continue-session)).
@@ -520,7 +530,7 @@ Jak umiejętność trafia do agenta:
 
 - Kroki wykonywane przez **Odpowiedź modelu** dostają umiejętność dopisaną do promptu systemowego (pojedyncze
   wywołanie modelu nie może otwierać plików).
-- Kroki wykonywane przez agenta kodującego (także fazy Spec Kit) dostają ją zapisaną w domu agenta jako
+- Kroki wykonywane przez agenta kodującego dostają ją zapisaną w domu agenta jako
   `skills/<key>/SKILL.md` ([Środowisko agenta](#environment)), nigdy w repozytorium; Claude Code i OpenCode
   wczytują ją samodzielnie, a preambuła platformy mówi agentowi, gdzie są jego umiejętności.
 
@@ -557,20 +567,21 @@ zmienia i usuwa źródła.
 | **Przeznaczenie** (**Purpose**) | **Standardy**, **Szablony**, **Dokumentacja**, **Kod źródłowy** albo **Inne**. Agent dostaje tę informację. |
 | **Opis** (**Description**) | Czego w nim przestrzegać albo co wykorzystać. Agent dostaje go jako dane, nie jako instrukcje. |
 
-Jak źródło trafia do agenta: w projektancie krok programistyczny zaznacza je w sekcji **Repozytoria**,
-w części **Źródła z biblioteki (tylko odczyt)** ([Repozytoria kroku](workflows.md#step-repositories)).
+Jak źródło trafia do agenta: w projektancie workflow wymienia je w swoich **Źródłach**, w grupie **Źródła
+z biblioteki** ([Źródła workflowu](workflows.md#workflow-sources)).
 Zadanie klonuje je do `/workspace/lib-<key>` (na przykład `/workspace/lib-standards`) tylko do odczytu:
 do źródła z biblioteki nic nie jest wypychane, a agent dostaje polecenie, by się do niego stosował, a nie
 je zmieniał.
 
-Usunięcie źródła nie zmienia żadnego workflowu: kroki, które nadal je wskazują, nie przechodzą walidacji
-(workflow da się zapisać tylko jako wersję roboczą), dopóki ich nie odznaczysz. Gdy publikujesz workflow do
-biblioteki workflowów, źródła z biblioteki używane przez jego kroki idą razem z nim; projekty, które go
-przyjmą, też je dostają.
+Usunięcie źródła nie zmienia żadnego workflowu: workflowy, które nadal je wskazują, nie przechodzą walidacji
+(da się je zapisać tylko jako wersję roboczą), dopóki go nie odznaczysz. Gdy publikujesz workflow do biblioteki
+workflowów, źródła z biblioteki, których używa, idą razem z nim; projekty, które go przyjmą, też je dostają.
 
+<a id="built-in-library"></a>
 ## Biblioteka wbudowana
 
-Back Office zawiera szablony faz Spec Kit, implementacji, `clarify-spec`, `code-review`, `analyse-issue` oraz
+Back Office zawiera szablony zapisu specyfikacji, planu i listy zadań (`write-spec`, `write-plan`,
+`write-task-list`), implementacji, `clarify-spec`, `code-review`, `analyse-issue` oraz
 zadań SDLC, takich jak `impact-analysis`, `write-user-story`, `plan-task-list`, `implement-task-list`
 i `review-against-spec`, ogólne `llm-task` i `agent-task`, a także umiejętności, reguły i pięciu wbudowanych
 [agentów](#agents). Wbudowane szablony, umiejętności i reguły możesz edytować; Back Office nigdy nie nadpisuje zmienionego wpisu. Dawne szablony **Fetch issue**,
@@ -581,9 +592,11 @@ Szablon z tagiem `deprecated` działa dalej w krokach, które go używają, ale 
 że włączysz **Pokaż przestarzałe**, **Show deprecated**) już go nie proponują. Przestarzałe są teraz (ADR 0054):
 `implement-claude-code` (to `implement-opencode` z agentem Claude Code; użyj `implement-opencode`,
 `implement-task-list` albo `agent-task` i wybierz w kroku agenta **Claude Code**), `analyse-issue` (użyj
-`impact-analysis`) oraz, od ADR 0058, abstrakcyjne `base-agent`, `base-llm` i `base-coding-agent`: ich tekst jest
-teraz preambułą platformy w [środowisku agenta](#environment), wbudowane szablony już ich nie rozszerzają, a zostają
-tylko dla Twoich szablonów, które to robią.
+`impact-analysis`), od ADR 0058 abstrakcyjne `base-agent`, `base-llm` i `base-coding-agent` (ich tekst jest teraz
+preambułą platformy w [środowisku agenta](#environment), wbudowane szablony już ich nie rozszerzają, a zostają tylko
+dla Twoich szablonów, które to robią), a od ADR 0063 **Spec Kit: specify**, **Spec Kit: plan** i **Spec Kit: tasks**
+(`spec-kit-specify`, `spec-kit-plan`, `spec-kit-tasks`): każdy rozszerza teraz bez zmian swojego następcę
+(`write-spec`, `write-plan`, `write-task-list`), więc kroki i Twoje szablony, które nadal je wskazują, działają dalej.
 
 <a id="built-in-updates"></a>
 ### Aktualizacje biblioteki wbudowanej
@@ -602,22 +615,28 @@ instalacji i przenieś to, czego potrzebujesz, albo usuń swoją niewbudowaną k
   domyślne workflowy wskazują agenta w każdym kroku), a zgłoszenie, konsumowane artefakty, materiał wejściowy
   i uwagi zostawiają sekcjom danych platformy; tylko
   `implement-task-list` (i przestarzały `implement-claude-code`) rozszerzają `implement-opencode`. Sposób pracy
-  (uczciwość, zakres, bezpieczeństwo, reguły podstawowe, „runner commituje i wypycha po agencie”, umiejętności
+  (uczciwość, zakres, bezpieczeństwo, reguły podstawowe, „nie rób commita ani pushu, zostaw zmiany niezacommitowane”, umiejętności
   formatów) pochodzi od agenta i jego [środowiska](#environment).
-- Zadania **Spec Kit**: polecenie fazy specify zaczyna się linią `KLUCZ: podsumowanie`, potem opis zgłoszenia
-  i kryteria akceptacji, potem instrukcje. Fazy plan i tasks nie wklejają specyfikacji ani planu, które
-  Spec Kit czyta z repozytorium; przekazują uwagi do kroku i, w fazie plan, opcjonalny parametr
-  **Wskazówki techniczne** (**Technical hints**, `techHints`, w domyślnych workflowach pytany przy starcie).
+- **Specyfikacja, plan i lista zadań** (`write-spec`, `write-plan`, `write-task-list`, ADR 0063): agent kodujący
+  (`codingAgent: true`) zapisuje dokument w repozytorium, obok siebie w `specs/<funkcja>/`: `spec.md` (scenariusze,
+  testowalne wymagania, encje, zakres i otwarte pytania, nigdy projekt rozwiązania), `plan.md` (kontekst techniczny,
+  podejście, zmiany według komponentów, model danych i kontrakty, weryfikacja, ryzyka) i `tasks.md` (uporządkowana
+  lista zadań z zależnościami, każde zadanie małe, testowalne i powiązane z wymaganiem). Ich **Pliki wynikowe**
+  (`specs/**/spec.md`, `specs/**/plan.md`, `specs/**/tasks.md`) wracają jako artefakty `spec`, `plan` i `tasks`. Plan
+  i lista zadań czytają wcześniejsze dokumenty z repozytorium; plan przyjmuje opcjonalny parametr **Wskazówki
+  techniczne** (**Technical hints**, `techHints`, w domyślnych workflowach pytany przy starcie). Dokumenty zostają
+  w katalogu przebiegu i trafiają na gałąź razem z resztą pracy, gdy workflow ją dostarcza.
 - **Implementacja** (`implement-opencode`, `implement-claude-code`): runner uruchamia `verifyCommand`
   z **Konfiguracji**, jeśli go ustawisz (domyślnie brak), i oznacza krok jako nieudany, gdy polecenie
-  zakończy się kodem różnym od zera; merge request używa kluczy `mergeRequest` (true/false),
-  `mergeRequestTitleTemplate` i `mergeRequestDraft`.
+  zakończy się kodem różnym od zera. Commit, gałąź i merge request to akcja workflowu
+  [Dostarcz zmiany](workflows.md#deliver-changes).
 - **Poprawki po przeglądzie**: gdy przebieg ma artefakt `review`, polecenie implementacji zawiera go pod
   nagłówkiem „Latest review findings”, więc krawędź `changes` węzła **Review ok?** przekazuje uwagi
   z przeglądu do implementacji zamiast powtarzać ten sam prompt.
 - `implement-task-list` wykonuje listę zadań po kolei i kończy `work-log.md` linią `RESULT: GREEN` albo
   `RESULT: STOPPED at <zadanie>`; jego `verifyCommand` sprawdza tę linię, więc zatrzymanie na czerwonym
-  teście oznacza nieudany krok. Runner zbiera plik jako artefakt `work-log` i nie dodaje go do commita.
+  teście oznacza nieudany krok. Runner zbiera plik jako artefakt `work-log` (plik wynikowy), a dostarczenie nie dodaje
+  go do commita.
   Aby po agencie uruchomić też pełny zestaw testów, ustaw `verifyCommand` w kroku, na przykład
   `tail -n 3 work-log.md | grep -q "^RESULT: GREEN" && ./gradlew test`.
 - `code-review` podaje instrukcje przed diffem, więc diff obcięty na `maxInputChars` nigdy ich nie usuwa;
@@ -630,7 +649,7 @@ instalacji i przenieś to, czego potrzebujesz, albo usuń swoją niewbudowaną k
   i `use-case`. Akcja **Pobierz zgłoszenie** czyta podsumowanie, opis, kryteria akceptacji i etykiety, bez
   komentarzy i załączników.
 - Otwarte pytania mają jeden znacznik na rodzaj dokumentu: `[NEEDS CLARIFICATION: ...]` w specyfikacji
-  Spec Kit, `[?]` wszędzie indziej. Agenci nigdy nie wymyślają właściciela ani terminu, zostawiają
+  pisanej przez `write-spec`, `[?]` wszędzie indziej. Agenci nigdy nie wymyślają właściciela ani terminu, zostawiają
   identyfikatory takie jak `US-<AREA>-<NN>` i numery ADR `NNNN` jako symbole zastępcze i nigdy nie
   ustawiają statusu, na przykład Accepted.
 
@@ -651,14 +670,14 @@ dla tego kroku** → **Zastąp (zaawansowane)** (**Replace (advanced)**), które
 | Szablon | Wybierz w kroku | Do czego |
 |---|---|---|
 | **LLM task** (`llm-task`) | agenta odpowiedzi modelu, na przykład **Odpowiedź modelu**: jedno wywołanie modelu, bez repozytorium | podsumowania, szkice, odpowiedzi na podstawie materiału wejściowego przebiegu |
-| **Agent task** (`agent-task`) | agenta kodującego, takiego jak **Claude Code** albo **OpenCode**: zadanie na runnerze z klonem repozytorium projektu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; z `push: true` w **Konfiguracji** także zmiany na gałęzi z merge requestem |
+| **Agent task** (`agent-task`) | agenta kodującego, takiego jak **Claude Code** albo **OpenCode**: zadanie na runnerze w katalogu przebiegu ze źródłami workflowu | analiza kodu, przeglądy, odpowiedzi na pytania o repozytorium; zmiany w kodzie, dostarczane na gałęzi z merge requestem przez węzeł [Dostarcz zmiany](workflows.md#deliver-changes) po kroku |
 
-**Agent task** wymaga agenta kodującego także bez pusha: mówi to jego konfiguracja (`codingAgent: true`), więc
-projektant wybiera takiego agenta od razu.
+**Agent task** wymaga agenta kodującego: mówi to jego konfiguracja (`codingAgent: true`), więc projektant wybiera
+takiego agenta od razu.
 
 Ich polecenie to tylko `{{params.task}}`: platforma dodaje po nim jako sekcje danych zgłoszenie (gdy przebieg je
 ma), **Materiał wejściowy** (gdy krok pyta o niego przy starcie i ktoś go wpisał) i uwagi recenzenta, więc **Task**
-może zawierać samo zadanie. **Agent task** domyślnie nie wypycha zmian; w projekcie
+może zawierać samo zadanie. **Agent task** nigdy nie wypycha zmian; w projekcie
 bez repozytoriów działa w pustym katalogu roboczym, a jego końcowa odpowiedź staje się artefaktem `result`.
 **LLM task** działa na serwerze Back Office i wymaga skonfigurowanego dostawcy modeli (klucza API); **Agent task**
 działa na runnerze, więc na [osobistym runnerze](personal-runner.md) może zamiast tego korzystać z Twojego logowania

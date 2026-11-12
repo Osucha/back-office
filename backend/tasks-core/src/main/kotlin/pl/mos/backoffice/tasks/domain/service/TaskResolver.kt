@@ -2,7 +2,6 @@ package pl.mos.backoffice.tasks.domain.service
 
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.ParameterSource
@@ -68,12 +67,11 @@ data class TaskResolution(
     val parameters: List<ResolvedParameter> = emptyList(),
     /** ADR 0060/0061: skills the work needs, unioned over the lineage. */
     val requiresSkills: List<String> = emptyList(),
+    /** ADR 0063: output files of the lineage, unioned (root first). */
+    val outputFiles: List<String> = emptyList(),
 ) {
-    /** ADR 0061: the merged config (with the step's) needs a coding agent (Spec Kit phase, push, prepareOnly). */
+    /** ADR 0061: the merged config (with the step's) needs a coding agent (codingAgent, prepareOnly). */
     val needsCodingAgent: Boolean get() = TaskResolver.codingAgentReason(config) != null
-
-    /** ADR 0031/0044: a coding agent on this step pushes (unless `push: false` or `prepareOnly`). */
-    val pushes: Boolean get() = TaskResolver.codingStepPushes(config)
 
     /** True when a step can run this: concrete, every skill, rule and the agent found, the agent fits the work. */
     val executable: Boolean get() = !abstract && check.ok
@@ -112,6 +110,7 @@ data class TaskResolution(
             runInputs = runInputs,
             rules = rules,
             parameters = parameters,
+            outputFiles = outputFiles,
         )
     }
 }
@@ -128,7 +127,7 @@ data class TaskResolution(
  * 5. ADR 0057: the agent's environment: the agent's skills (ADR 0060: no step adds or removes any);
  *    rules are the automatic ones (global, then the project's) and then the agent's (ADR 0055: a skill key that names a
  *    rule, as skills turned rules did, counts as that rule); every one must exist,
- * 6. the agent looked up and checked against the work (Spec Kit phase, push or prepareOnly need a coding agent),
+ * 6. the agent looked up and checked against the work (codingAgent or prepareOnly need a coding agent),
  * 7. ADR 0058/0062: parameter values: the step's binding (a VALUE now; START and ARTIFACT when the step runs), else the
  *    nearest template's value, else the default; unknown names, values of the wrong type, ARTIFACT bindings without a
  *    name and required parameters without a value (and not bound at run time) are problems; the parameters bound START
@@ -220,12 +219,13 @@ class TaskResolver(private val lookup: LibraryLookup) {
             rules = rules,
             parameters = parameters.parameters,
             requiresSkills = merged.requiresSkills,
+            outputFiles = merged.outputFiles,
         )
     }
 
     /**
-     * ADR 0061: whether [template] (seen from [projectId]) needs a coding agent: its merged config has a Spec Kit phase,
-     * `push: true` or `prepareOnly: true`. False when its chain cannot be walked.
+     * ADR 0061: whether [template] (seen from [projectId]) needs a coding agent: its merged config has `codingAgent: true`
+     * or `prepareOnly: true`. False when its chain cannot be walked.
      */
     fun needsCodingAgent(template: TaskTemplate, projectId: UUID?): Boolean {
         val chain = try {
@@ -293,15 +293,12 @@ class TaskResolver(private val lookup: LibraryLookup) {
     )
 
     /**
-     * ADR 0056 decision 4: work the agent cannot do (ADR 0057 lifted the output schema restriction). ADR 0060: a
-     * read-only coding agent on a step that pushes (a coding step pushes unless `push: false` or `prepareOnly`).
+     * ADR 0056 decision 4: work the agent cannot do (ADR 0057 lifted the output schema restriction; ADR 0063: agents never
+     * push, so a read-only coding agent fits any coding step).
      */
     private fun compatibilityProblems(agent: AgentSnapshot, config: Map<String, Any?>): List<String> = buildList {
         val needs = codingAgentReason(config)
         if (agent.modelAnswer && needs != null) add("$needs needs a coding agent; agent ${agent.key} gives a model answer")
-        if (!agent.modelAnswer && agent.access.mode == AgentAccessMode.READ_ONLY && codingStepPushes(config)) {
-            add("agent ${agent.key} may only read (access READ_ONLY) but the step pushes: set push to false or choose another agent")
-        }
     }
 
     /** Accumulator of the root-to-leaf merge; [agentKey] is the step's (ADR 0061: templates name no agent). */
@@ -320,6 +317,8 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val parameterValues: Map<String, Pair<Any?, String>> = emptyMap(),
         /** ADR 0060: skills the lineage requires, unioned. */
         val requiresSkills: List<String> = emptyList(),
+        /** ADR 0063: output files of the lineage, unioned. */
+        val outputFiles: List<String> = emptyList(),
     ) {
         fun merge(t: TaskTemplate): Merged = Merged(
             instructions = combine(instructions, t.instructions, t.instructionsMode),
@@ -333,6 +332,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             parameters = byName(parameters, t.parameters) { it.name },
             parameterValues = parameterValues + t.parameterValues.filterValues(Parameters::present).mapValues { (_, v) -> v to t.key },
             requiresSkills = (requiresSkills + t.requiresSkills).distinct(),
+            outputFiles = (outputFiles + t.outputFiles).distinct(),
         )
 
         /** ADR 0062: the step's replace first, then its notes. */
@@ -435,17 +435,18 @@ class TaskResolver(private val lookup: LibraryLookup) {
             if (legacyAgentKey(config) != null) config - LEGACY_AGENT_CONFIG_KEY else config
 
         /**
-         * Why a task's merged [config] needs a coding agent (ADR 0056): a Spec Kit `phase`, `push: true` or
-         * `prepareOnly: true`; null when a model answer can do it.
+         * Why a task's merged [config] needs a coding agent (ADR 0056): `codingAgent: true` (work in the repository) or
+         * `prepareOnly: true`; null when a model answer can do it. ADR 0063: the former reasons `phase` and `push` were
+         * turned into `codingAgent` by V309.
          */
         fun codingAgentReason(config: Map<String, Any?>): String? = when {
-            // ADR 0061: work in the repository that does not push (agent-task) says so explicitly
-            config["codingAgent"] == true || config["codingAgent"]?.toString() == "true" -> "work in the repository (codingAgent)"
-            (config["phase"] as? String)?.isNotBlank() == true -> "a Spec Kit phase"
-            config["push"] == true -> "push"
+            config[CODING_AGENT] == true || config[CODING_AGENT]?.toString() == "true" -> "work in the repository ($CODING_AGENT)"
             config["prepareOnly"] == true -> "prepareOnly"
             else -> null
         }
+
+        /** ADR 0061/0063: the config key that says the work needs a coding agent (in the repository). */
+        const val CODING_AGENT = "codingAgent"
 
         /**
          * ADR 0061 decision 2: the agent of a step that names none: `opencode` when the merged [config] needs a coding
@@ -453,10 +454,6 @@ class TaskResolver(private val lookup: LibraryLookup) {
          */
         fun defaultAgentKey(config: Map<String, Any?>): String =
             if (codingAgentReason(config) != null) AgentSnapshot.OPENCODE else AgentSnapshot.MODEL_ANSWER
-
-        /** ADR 0031/0044: a coding step pushes unless `push` is false or it only prepares the run directory. */
-        fun codingStepPushes(config: Map<String, Any?>): Boolean =
-            config["push"]?.toString()?.lowercase() != "false" && config["prepareOnly"]?.toString()?.lowercase() != "true"
 
         /** Output ports of every task node. */
         val DEFAULT_PORTS: List<String> = listOf("success", "failure")

@@ -160,6 +160,7 @@ class TaskTemplateService(
             "consumes" to (old.consumes to new.consumes),
             "tags" to (old.tags to new.tags),
             "requiresSkills" to (old.requiresSkills to new.requiresSkills),
+            "outputFiles" to (old.outputFiles to new.outputFiles),
         )
     }
 }

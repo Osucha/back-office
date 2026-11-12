@@ -39,8 +39,6 @@ class ProjectEntity(
     @Column(name = "created_at", nullable = false) var createdAt: Instant,
     @Column(name = "updated_at", nullable = false) var updatedAt: Instant,
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "created_by", columnDefinition = "jsonb") var createdBy: String? = null,
-    /** V110 (ADR 0036): Spec Kit is on for the project. */
-    @Column(name = "spec_kit_enabled", nullable = false) var specKitEnabled: Boolean = false,
     /** V110 (ADR 0035): the system connection of the project's Jira steps. */
     @Column(name = "jira_system_connection_id") var jiraSystemConnectionId: UUID? = null,
     /** V110 (ADR 0035): ordered ids of the further connections of the project's Jira steps. */
@@ -86,6 +84,8 @@ class WorkflowDefinitionEntity(
     @Column(name = "library_modified", nullable = false) var libraryModified: Boolean = false,
     /** V113: saved with validation errors (no runs, no publishing). */
     @Column(nullable = false) var draft: Boolean = false,
+    /** V122 (ADR 0063): the repositories of the run directory (JSON list of {key, library}). */
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false, columnDefinition = "jsonb") var sources: String = "[]",
     /** V121 (ADR 0060): runs once per run directory before the first coding step. */
     @Column(name = "setup_command") var setupCommand: String? = null,
 )
@@ -125,6 +125,8 @@ class LibraryWorkflowVersionEntity(
     @Column(name = "source_project_key") var sourceProjectKey: String? = null,
     @Column(name = "source_workflow_id") var sourceWorkflowId: UUID? = null,
     @Column(name = "source_workflow_version") var sourceWorkflowVersion: Int? = null,
+    /** V122 (ADR 0063): the workflow's sources (library sources only when published). */
+    @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false, columnDefinition = "jsonb") var sources: String = "[]",
     /** V121 (ADR 0060): the workflow's setup command. */
     @Column(name = "setup_command") var setupCommand: String? = null,
 )

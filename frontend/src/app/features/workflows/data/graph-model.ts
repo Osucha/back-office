@@ -72,7 +72,7 @@ export const NODE_KIND_META: Record<NodeKind, NodeKindMeta> = {
     color: 'var(--bo-ci)',
     defaultPorts: ['success', 'failure'],
     hasInput: true,
-    description: $localize`:@@workflows.kind.action.description:A deterministic integration step (Jira, other workflows, project digest); no model.`,
+    description: $localize`:@@workflows.kind.action.description:A deterministic integration step (Jira, delivering changes, other workflows, project digest); no model.`,
   },
   DECISION: {
     kind: 'DECISION',
@@ -578,7 +578,7 @@ export function issueToMergeRequestTemplate(): WorkflowDefinitionInput {
   const nodes: WorkflowNode[] = [
     n('start', 'START', 'Start'),
     n('fetch-issue', 'ACTION', 'Fetch issue', { action: { type: 'FETCH_ISSUE', config: {} } }), // i18n-ignore
-    n('specify', 'TASK', 'Specify', { task: { templateKey: 'spec-kit-specify' } }),
+    n('specify', 'TASK', 'Specify', { task: { templateKey: 'write-spec' } }),
     n('clarify', 'TASK', 'Clarify spec', { task: { templateKey: 'clarify-spec' } }), // i18n-ignore
     n('confident', 'DECISION', 'Confident?', {
       decision: {
@@ -598,10 +598,16 @@ export function issueToMergeRequestTemplate(): WorkflowDefinitionInput {
         timeoutSeconds: null,
       },
     }),
-    n('plan', 'TASK', 'Plan', { task: { templateKey: 'spec-kit-plan' } }),
-    n('tasks', 'TASK', 'Tasks', { task: { templateKey: 'spec-kit-tasks' } }),
+    n('plan', 'TASK', 'Plan', { task: { templateKey: 'write-plan' } }),
+    n('tasks', 'TASK', 'Tasks', { task: { templateKey: 'write-task-list' } }),
     n('implement', 'TASK', 'Implement', {
       task: { templateKey: 'implement-opencode' },
+      maxVisits: 3,
+    }),
+    // ADR 0063: delivering is an action after the work (the agents never push)
+    // i18n-ignore
+    n('deliver', 'ACTION', 'Deliver changes', {
+      action: { type: 'DELIVER_CHANGES', config: { mergeRequest: true } },
       maxVisits: 3,
     }),
     // i18n-ignore
@@ -656,7 +662,9 @@ export function issueToMergeRequestTemplate(): WorkflowDefinitionInput {
     e('spec-gate', 'reject', 'failed'),
     e('plan', 'success', 'tasks'),
     e('tasks', 'success', 'implement'),
-    e('implement', 'success', 'ci-tests'),
+    e('implement', 'success', 'deliver'),
+    e('deliver', 'success', 'ci-tests'),
+    e('deliver', 'failure', 'failed'),
     e('ci-tests', 'success', 'review'),
     e('ci-tests', 'fail', 'failed'),
     e('ci-tests', 'timeout', 'failed'),
@@ -669,7 +677,8 @@ export function issueToMergeRequestTemplate(): WorkflowDefinitionInput {
   ];
   return {
     name: 'Issue to reviewed MR', // i18n-ignore
-    description: 'Fetch a Jira issue, specify, plan, implement, wait for CI, review and merge.', // i18n-ignore
+    description:
+      'Fetch a Jira issue, specify, plan, implement, deliver the changes, wait for CI, review and merge.', // i18n-ignore
     nodes,
     edges,
     triggers: [{ type: 'MANUAL' }, { type: 'JIRA_TRANSITION', status: 'Ready for AI' }], // i18n-ignore
@@ -773,6 +782,7 @@ export function normalizeDefinition(
     edges: (raw.edges ?? []).map((e) => ({ ...e, id: e.id || edgeId(e.from, e.fromPort, e.to) })),
     triggers: raw.triggers ?? [],
     enabled: raw.enabled ?? true,
+    ...(raw.sources?.length ? { sources: raw.sources } : {}),
     ...(raw.setupCommand ? { setupCommand: raw.setupCommand } : {}),
     canvas: raw.canvas ?? null,
   };

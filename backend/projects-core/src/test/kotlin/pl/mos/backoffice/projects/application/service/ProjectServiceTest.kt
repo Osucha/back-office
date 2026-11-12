@@ -66,7 +66,7 @@ class ProjectServiceTest {
         projects, workflows, runs, approvals, executions, tokens, mockk(relaxed = true), CiSnippetRenderer(), "http://bo", gate, provisioner, audit, Clock.fixed(now),
     )
 
-    private val command = ProjectCommand(key = "SHOP", name = "Shop", repositories = listOf(GitRepository.legacy("https://git.example.com/g/shop.git", null)), specKit = true)
+    private val command = ProjectCommand(key = "SHOP", name = "Shop", repositories = listOf(GitRepository.legacy("https://git.example.com/g/shop.git", null)))
 
     @Test
     fun `creating a project needs projects create, makes the creator owner, seeds the SDLC workflows and is audited`() {
@@ -197,9 +197,8 @@ class ProjectServiceTest {
     }
 
     @Test
-    fun `missing default workflows other than Spec Kit ones are listed with project view and added once with workflow edit`() {
-        // Spec Kit off: "Issue to reviewed MR" is missing too, but it is offered through "Add Spec Kit workflows" only
-        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(specKit = false))
+    fun `missing default workflows are listed with project view and added once with workflow edit`() {
+        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command)
         val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
         assertThat(service(viewer).missingDefaultWorkflows(project.id)).isEmpty()
 
@@ -216,7 +215,7 @@ class ProjectServiceTest {
         val added = service(editor).addDefaultWorkflows(project.id)
         assertThat(added.map { it.name }).containsExactly(DefaultWorkflows.REFERENCE_CLAUDE_CODE)
         assertThat(added.single().updatedBy).isEqualTo(alice)
-        assertThat(seeded.map { it.name }).doesNotContain(DefaultWorkflows.ISSUE_TO_REVIEWED_MR)
+        assertThat(seeded.map { it.name }).describedAs("ADR 0063: no Spec Kit, every default is seeded").contains(DefaultWorkflows.ISSUE_TO_REVIEWED_MR)
         val entry = audit.entries.single()
         assertThat(entry.operation).isEqualTo("PROJECT_DEFAULT_WORKFLOWS_SEEDED")
         assertThat(entry.projectId).isEqualTo(project.id.value)

@@ -49,6 +49,7 @@ class TaskMappers(private val json: JsonMapper) {
         parameters = json.writeValueAsString(t.parameters.map(::parameterMap)),
         parameterValues = json.writeValueAsString(t.parameterValues),
         requiresSkills = json.writeValueAsString(t.requiresSkills),
+        outputFiles = json.writeValueAsString(t.outputFiles),
         builtIn = t.builtIn,
         version = t.version,
         createdAt = t.createdAt,
@@ -83,6 +84,7 @@ class TaskMappers(private val json: JsonMapper) {
         parameters = readList(e.parameters).mapNotNull(::parameter),
         parameterValues = readMap(e.parameterValues),
         requiresSkills = readStrings(e.requiresSkills),
+        outputFiles = readStrings(e.outputFiles),
     )
 
     private fun parameterMap(p: TemplateParameter) = mapOf(

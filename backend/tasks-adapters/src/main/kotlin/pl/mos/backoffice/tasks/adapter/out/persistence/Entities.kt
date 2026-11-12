@@ -45,6 +45,7 @@ class TaskTemplateEntity(
     @JdbcTypeCode(SqlTypes.JSON) @Column(nullable = false) val parameters: String = "[]",
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "parameter_values", nullable = false) val parameterValues: String = "{}",
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "requires_skills", nullable = false) val requiresSkills: String = "[]",
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "output_files", nullable = false) val outputFiles: String = "[]",
     @Column(name = "built_in", nullable = false) val builtIn: Boolean = false,
     @Column(nullable = false) val version: Int = 1,
     @Column(name = "created_at", nullable = false) val createdAt: Instant = Instant.EPOCH,

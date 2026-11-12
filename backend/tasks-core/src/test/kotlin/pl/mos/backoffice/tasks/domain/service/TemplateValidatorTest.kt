@@ -35,6 +35,23 @@ class TemplateValidatorTest {
     private fun fields(t: TaskTemplate) = validator.problems(t).map { it.field }
 
     @Test
+    fun `ADR 0063 - output files are relative globs without parent directories, inherited as a union`() {
+        fun withFiles(vararg files: String) = TaskTemplate.create(TaskTemplate.Content(key = "files", name = "files", outputFiles = files.toList()), lib.now)
+        assertThat(validator.problems(withFiles("specs/**/spec.md", "work-log.md"))).isEmpty()
+        assertThat(withFiles(" a.md ", "a.md", "").outputFiles).containsExactly("a.md")
+        assertThat(validator.problems(withFiles("/etc/passwd", "../x.md", "C:/x.md", "x/" + "a".repeat(300))).map { it.field })
+            .containsExactly("outputFiles[0]", "outputFiles[1]", "outputFiles[2]", "outputFiles[3]")
+        assertThat(validator.problems(withFiles(*Array(51) { "f$it.md" })).map { it.message }).contains("at most 50 output files")
+
+        lib.template("parent", outputFiles = listOf("specs/**/spec.md"))
+        lib.template("child", extendsKey = "parent", outputFiles = listOf("notes.md", "specs/**/spec.md"))
+        assertThat(TaskResolver(lib.lookup).resolve("child", null)!!.outputFiles).containsExactly("specs/**/spec.md", "notes.md")
+        val parent = lib.lookup.visibleTemplate("parent", null)!!
+        assertThat(pl.mos.backoffice.tasks.application.service.BuiltInChecksum.of(parent.update(parent.content.copy(outputFiles = emptyList()), lib.now)))
+            .isNotEqualTo(pl.mos.backoffice.tasks.application.service.BuiltInChecksum.of(parent))
+    }
+
+    @Test
     fun `a well formed concrete template passes`() {
         validator.validate(candidate(parameters = listOf(TemplateParameter("pp", "P", default = "x")), outputSchema = """{"type":"object"}""", confidenceField = "confidence"))
     }

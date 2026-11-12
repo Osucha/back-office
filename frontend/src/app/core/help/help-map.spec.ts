@@ -102,7 +102,6 @@ describe('help map', () => {
   it('links the multi-repository topics (ADR 0034) to their manual sections', () => {
     expect(manualLink(HELP_TOPICS['project.repositories'])).toBe('/help/projects#repositories');
     expect(manualLink(HELP_TOPICS['project.noRepository'])).toBe('/help/projects#no-repository');
-    expect(manualLink(HELP_TOPICS['step.repositories'])).toBe('/help/workflows#step-repositories');
     expect(manualLink(HELP_TOPICS['run.repositories'])).toBe('/help/runs#repository-results');
   });
 

@@ -2,8 +2,8 @@
 
 A workflow is the delivery process of a project drawn as a graph: tasks that agents do, decisions on the
 results, gates where a person decides and waits for your CI. This chapter covers the designer, the node
-kinds, the repositories of coding steps, decisions, gate settings, confirmations before external writes and
-starting a run.
+kinds, delivering changes, the workflow's sources, decisions, gate settings, confirmations before external writes
+and starting a run.
 
 <a id="designer"></a>
 ## The workflow designer
@@ -17,7 +17,7 @@ workflow** in the page header (`/projects/:id/workflows/new`). An existing workf
 | Header | Project key and version, the workflow name, a status chip (**valid**, errors, warnings, or **read-only**), the **Designer** / **JSON** switch, **Template** (new workflows only), undo and redo, **Tidy layout**, **Validate**, **Agents in this workflow** with a badge counting its problems ([Agents in this workflow](#agent-audit)), and the buttons that show or hide the palette and the properties. |
 | Palette (left) | **Control** nodes, **Actions** (Jira and Back Office operations without a model, see [Action nodes](#actions)) and **Tasks** from the task library, grouped by category (Analysis, Specification, ...), with a search field. A project's own template has a project icon; a template that needs a coding agent has the tag **coding agent**. Hovering a task shows its description, the kind of agent it needs and its **Required skills**. |
 | Canvas | The graph. Zoom buttons, **Readable view from START**, **Fit everything**, and from eight nodes an overview map (**Show the overview** / **Hide the overview**). |
-| Properties (right) | The selected node or edge; with nothing selected, the workflow's **Description**, the **Enabled** switch and **Triggers**. |
+| Properties (right) | The selected node or edge; with nothing selected, the workflow's **Description**, the **Enabled** switch, **Triggers**, **Sources** ([Sources of a workflow](#workflow-sources)) and **Setup command** ([The run directory](#run-directory)). |
 | **Validation** sheet (bottom) | Errors and warnings grouped by node; click one to jump to the node. |
 | Action bar | **Close**, **Duplicate workflow**, and **Create workflow** or **Save as new version** (`Ctrl S`). |
 
@@ -59,27 +59,30 @@ The **JSON** view shows the full definition; edits there apply as soon as the JS
 Every new project with a repository gets these workflows (a project without a repository gets the starter
 workflow **LLM task with review** instead, see [Projects without a repository](projects.md#no-repository)):
 
-- **Issue to reviewed MR**: fetch the issue, write a spec, check it (a gate asks you only when the
-  agent's confidence is below 0.8), plan, list tasks, implement, wait for the CI signal `tests`, review
-  the code, then a four-eyes **Merge?** gate and the Jira transition **Move issue to In Review**, which
-  asks a person to confirm the move ([Confirmations before external writes](#write-confirmations)).
+- **Issue to reviewed MR**: fetch the issue, write the specification into the repository (**Write
+  specification**), check it (a gate asks you only when the agent's confidence is below 0.8), write the plan and the
+  task list, implement, **Deliver changes** (branch `feature/<issue key>` and a merge request), wait for the CI
+  signal `tests`, review the code, then a four-eyes **Merge?** gate and the Jira transition **Move issue to In
+  Review**, which asks a person to confirm the move ([Confirmations before external writes](#write-confirmations)).
 - **CI code review**: started from your pipeline through the entrypoint `code-review`; reviews the
   uploaded diff and passes or fails the CI job.
 - **Change request (delta)**: impact analysis, user story and task list, each important step behind a
-  gate with a checklist, then implementation, CI, review and a merge gate.
-- **Reference: one Claude Code session**: fetch the issue, then one task step (template **Agent task**, `agent-task`, with the
-  agent **Claude Code**, push and merge request on) that reads the repository, implements the issue end to end,
-  runs the build and the tests and opens the merge request, then a four-eyes **Merge?** gate (**revise** sends your
-  comment back to the step). It is the yardstick: run the same issues through it and through the cheaper workflows
-  and compare their cost of an accepted result ([Agents: cost and effectiveness](costs-insights.md#agent-insights)).
+  gate with a checklist, then implementation, **Deliver changes**, CI, review and a merge gate.
+- **Reference: one Claude Code session**: fetch the issue, then one task step (template **Agent task**, `agent-task`,
+  with the agent **Claude Code**) that reads the repository, implements the issue end to end and runs the build and
+  the tests, then **Deliver changes** pushes the branch and opens the merge request, then a four-eyes **Merge?** gate
+  (**revise** sends your comment back to the step). It is the yardstick: run the same issues through it and through
+  the cheaper workflows and compare their cost of an accepted result ([Agents: cost and
+  effectiveness](costs-insights.md#agent-insights)).
 
-**Issue to reviewed MR** is created only when Spec Kit is on ([Spec Kit](projects.md#spec-kit)).
+In every default workflow the implementing step only changes the files of the run directory; the **Deliver changes**
+node after it (id `implement-deliver`) is the one that commits, pushes and opens the merge request
+([Deliver changes](#deliver-changes)).
 
 **Projects created before a default workflow existed** do not get it automatically. When a project with a
 repository lacks default workflows, its **Workflows** tab offers **Add missing default workflows (N)**
-(`workflow.edit`): it adds the missing ones by name, for example **Reference: one Claude Code session**, and never
-replaces an existing workflow with the same name. The Spec Kit workflows are added from the **Spec Kit** card
-instead ([Spec Kit](projects.md#spec-kit)).
+(`workflow.edit`): it adds the missing ones by name, for example **Reference: one Claude Code session** or **Issue to
+reviewed MR** (which used to need Spec Kit), and never replaces an existing workflow with the same name.
 
 <a id="nodes"></a>
 ## Node kinds
@@ -88,7 +91,7 @@ instead ([Spec Kit](projects.md#spec-kit)).
 |---|---|---|
 | **Start** | Entry; exactly one per workflow. | `out` |
 | **Task** | Runs a task template from the library with an agent (see below). | `success`, `failure` |
-| **Action** | Runs a fixed operation without a model: Jira, starting workflows, project digest (see [Action nodes](#actions)). | `success`, `failure` |
+| **Action** | Runs a fixed operation without a model: Jira, delivering changes, starting workflows, project digest (see [Action nodes](#actions)). | `success`, `failure` |
 | **Decision** | Routes on conditions over the run state (see [Decisions](workflows.md#decisions)). | one per branch, plus the default |
 | **Human gate** | Stops the run until an approver picks an option (see [Gate settings](workflows.md#gates-config)). | one per option (default `approve`, `revise`, `reject`) plus `timeout` |
 | **Wait for CI** | Stops the run until your CI sends a signal. | `success`, `fail`, `timeout` |
@@ -159,10 +162,10 @@ step's agent does not have.
 
 | Override | Effect |
 |---|---|
-| **Agent** | Who runs this step: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)); pre-selected as above. Empty: **OpenCode** when the template needs a coding agent, else **Model answer**. With the agent come its instructions, rules, skills, MCP servers and access. The step shows a problem when the agent does not fit the template (a template that needs a coding agent with a model answer agent: "The template needs a coding agent: this step cannot run with a model answer agent."; or an agent with access **Read only** on a step that pushes). |
+| **Agent** | Who runs this step: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)); pre-selected as above. Empty: **OpenCode** when the template needs a coding agent, else **Model answer**. With the agent come its instructions, rules, skills, MCP servers and access. The step shows a problem when the agent does not fit the template (a template that needs a coding agent with a model answer agent: "The template needs a coding agent: this step cannot run with a model answer agent."). |
 | **Agent may ask questions**, **Question rounds** | On by default, 2 rounds: the agent may stop with questions and the run waits for your answers ([Agents asking questions](#agent-questions)). |
 | **Model profile** | Model for this node. Empty: the agent's model, else the defaults for its kind (project, starting user, platform). |
-| **Config** | Settings for the step's agent such as the verify command, branch name or merge request options; merged over the template's config. |
+| **Config** | Settings of the work merged over the template's config: **Works in the repository (needs a coding agent)**, **Verify command** (the acceptance check run after the agent, for example `./gradlew test`; a failure fails the step), **Agent tools**. A step has no git settings: committing, the branch and the merge request are set on [Deliver changes](#deliver-changes). |
 
 The directory and the session are not step settings any more (ADR 0062): they belong to the agent (**Directory**,
 **Session**; [The run directory and agent sessions](#run-directory)). The sandbox is set on the project
@@ -176,9 +179,28 @@ The coding agent used to be the config key `agent` (`CLAUDE_CODE`, `OPENCODE`); 
 workflows keep working: a step's `agent` is read as its **Agent** (**Claude Code**, **OpenCode**), and the next save
 writes it that way.
 
-**Spec Kit templates** (**Spec Kit: specify**, **plan**, **tasks** and templates that extend them) appear in the
-palette only when the project has [Spec Kit](projects.md#spec-kit) on; otherwise a Spec Kit step is a validation
-error and runs refuse to start.
+**Agents never push** (ADR 0063). A coding step reads the workflow's [sources](#workflow-sources) and changes files in
+the run directory; it never commits, pushes or opens a merge request, and its git access is always read-only. The
+diff of its work against the base branch is still its `diff` artefact, so a review step can read it. To deliver the
+work, put a [Deliver changes](#deliver-changes) node after the step (usually after the review, not in the middle of
+the work).
+
+**Workflows stored before ADR 0063.** A step used to carry its own git settings (**push**, branch, commit subject,
+merge request title, description and draft), its own **Repositories** and its own setup command, and Back Office
+could run Spec Kit. The upgrade (database migration V309) rewrote stored workflows, library workflow versions and
+runs that had not finished:
+
+- a step that pushed (its config, or its template's, had `push: true`) got a **Deliver changes** node `<step
+  id>-deliver` right after it, carrying the step's git settings: the step's `success` now goes to the delivery, the
+  delivery's `success` goes where the step's `success` went and its `failure` where the step's `failure` went;
+- the steps' repositories became the workflow's **Sources** (all of them together), and the steps' setup commands
+  were added to the workflow's **Setup command**;
+- steps of **Spec Kit: specify**, **plan** and **tasks** now use **Write specification**, **Write plan** and
+  **Write task list** ([The built-in library](task-library.md#built-in-library));
+- the keys `push`, `phase`, `repositories`, `setupCommand` and the git keys were removed from the steps' config.
+
+Workflows imported later are read the same way. The former Spec Kit templates still exist, marked deprecated, and
+behave exactly like their replacements.
 
 **Workflows stored before ADR 0061.** Templates used to name an agent and a model profile. On the upgrade every
 stored step without an agent of its own got the agent its template (or the nearest parent) named, and the
@@ -224,10 +246,12 @@ Findings, each with the steps concerned (**ERROR** stops the step from running, 
 |---|---|---|
 | **Missing skill** | warning | a step's template requires a skill the agent lacks |
 | **Needs a coding agent** | error | a step whose template needs a coding agent is run by a model answer agent |
-| **Read-only agent on a pushing step** | error | an agent with access **Read only** runs a step that pushes |
 | **Unknown rule**, **Unknown skill** | error | the agent lists a rule or skill that no longer exists |
 | **Unknown agent** | error | a step names an agent that no longer exists |
 | **Two skills with the same name** | warning | two of the agent's skills share a name, so the agent cannot tell them apart |
+
+The former finding **Read-only agent on a pushing step** is no longer reported: agents never push (ADR 0063), so a
+**Read only** agent fits every step.
 
 **Add to agent** adds the missing skill to the agent once, for every step and run (needs
 `library.project.manage` on the project). A project agent gets the skill directly. A global agent is first copied
@@ -263,6 +287,7 @@ Actions are fixed operations that never call a model (ADR 0056). The palette lis
 | **Fetch issue** | Loads the run's Jira issue into the `issue` artefact and `state.issue`; asks for the **Jira issue key** when a run starts. |
 | **Comment on issue** | Posts a comment on the issue, after a person confirmed it ([Confirmations before external writes](#write-confirmations)). |
 | **Transition issue** | Moves the issue to a status, after a person confirmed it. |
+| **Deliver changes** | Commits what the agents changed in the run directory, pushes a branch and optionally opens a merge request ([Deliver changes](#deliver-changes)). |
 | **Start workflow** | Starts other workflows of the project (see below). |
 | **Project digest** | Writes the `digest` artefact (see below). |
 
@@ -303,7 +328,7 @@ Set the **Signal** name (for example `tests`) and an optional **Timeout (seconds
 `timeout`. See [GitLab CI](integrations-gitlab-ci.md#ci-overview).
 
 With **Watch pipeline** on, Back Office watches the pipeline itself and your CI sends nothing: it reads the latest
-pipeline of the branch the run pushed (in the step's **Repository**, empty = the primary one) once a minute with the
+pipeline of the branch the run's [Deliver changes](#deliver-changes) pushed (in the step's **Repository**, empty = the primary one) once a minute with the
 project's read-only token that has CI_READ ([Repository access tokens](integrations-git.md#git-project-tokens)).
 When the pipeline succeeds the run leaves through `success`; when it fails, through `fail`, and the next step receives
 the failed jobs (except those allowed to fail) with the last lines of their logs as feedback. Connect `fail` back to
@@ -311,58 +336,99 @@ the implementing step and the agent fixes what CI reports; the step's **Max visi
 step that ends its work log with `RESULT: PARTIAL` (everything it could check in its sandbox passed, the rest needs
 CI) belongs in front of such a node.
 
-<a id="step-repositories"></a>
-## Repositories of a step
+<a id="deliver-changes"></a>
+## Deliver changes
 
-Coding steps (task steps run by a coding agent, **OpenCode** or **Claude Code**, Spec Kit phases included) work in
-Git repositories of the project ([Repositories](projects.md#repositories)). All other steps (model answers, actions,
-gates, CI waits) use no repository, so their properties have no repository section.
+**Deliver changes** is the action that hands the agents' work to your Git server (ADR 0063). In the run directory it
+commits what the agents changed, pushes a branch and, when you want, opens a merge request. It is the only step of a
+workflow that writes to a repository: coding steps only change files ([Agents never push](#task-nodes)). Put it where
+the workflow should deliver, typically after the implementation, or after the review so that only reviewed work
+leaves the run.
 
-Select a coding step; its properties have the section **Repositories**:
+Select the node; its properties have:
 
 | Setting | Meaning |
 |---|---|
-| **Use the primary repository** (default) | The step works in the project's primary repository, with **Read** access when **push** is off and **Push and merge request** when it is on. This is how every workflow behaves that was written for one repository. |
-| Repository list | **Add repository** picks a project repository by key (shown with its purpose and URL); add as many as the step needs. Remove one with the delete button. |
-| **Access** (per repository) | **Read**: the agent can clone and read it, nothing is pushed. **Push and merge request**: the agent's changes are pushed to a new branch and a merge request is opened against the repository's default branch. |
+| **Branch** | Name of the branch pushed for the run (a template). Never the default branch of the repository. Empty: `feature/` and the issue key in lower case, for example `feature/shop-123`. |
+| **Commit subject** | First line of the commit message (a template). Empty: the issue key and summary. The commit always ends with the trailer `Back-Office-Run: <run id>`. |
+| **Open a merge request** | On by default. Opens a merge request from the branch to the default branch. Back Office never merges it. |
+| **Merge request title** | A template. Empty: `{{issue.key}}: {{issue.summary}}`. |
+| **Merge request description** | A template; it may read the results of earlier steps, for example `{{artifacts.review}}`. |
+| **Draft** | Opens the merge request as a draft. |
+| **Repositories to deliver** | The project repositories among the workflow's [sources](#workflow-sources) that get the branch and a merge request. Empty (**Every changed repository**): each one the agents changed. Library sources are never written to. |
 
-**Least privilege.** Give each repository the lowest access the step needs: **Read** for a contract,
-reference or documentation the agent only consults, **Push and merge request** only where it must change
-something. The runner gets a read-only token for **Read** repositories and a push token only for **Push and
-merge request** ones ([Git access for agents](integrations-git.md#git-least-privilege)).
+The card on the canvas sums it up, for example **Branch feature/{{issue.key | lower}}, MR, every changed
+repository**.
 
-**Never merge.** Agents push a branch and open a merge request; they never merge, never push to the default
-branch and never force-push. A person (or your Git server's approval rules) merges. When a step pushes to
-several repositories, the same branch name is used in each and each gets its own merge request.
+**What it does.** The delivery runs as a runner job without an agent and without any command of the repositories, in
+the run directory the agents worked in. For each delivered repository with changes it commits every changed and new
+file (files ignored by `.gitignore` stay out, and so do the runner's own files `work-log.md`,
+`structured-answer.json` and `agent-questions.json`, which are never committed), pushes the branch and opens the merge
+request through GitLab push options. When several repositories are delivered, each gets the same branch name and its
+own merge request. A repository without changes is skipped; when no repository has changes, the step still succeeds
+with the warning "nothing to deliver".
 
-**Folders.** Each repository is cloned into its own folder named after its key: `/workspace/service`,
-`/workspace/docs`, ... (in the [run directory](#run-directory), or in the step's own directory when its agent works
-in a **Separate directory**). The agent starts in the step's main repository (the project's primary one if the step
-uses it, otherwise the first in the list) and is told which repositories exist, where they are, their purpose,
-base branch and whether it may change them.
+**Results.** The step leaves through `success`, or through `failure` when a commit or a push failed (the error names
+the repository; one failing repository does not stop the others). It produces `mr` (the run's merge request, also
+`{{mr.url}}` for later steps) and `diff` (the delivered changes against the base branch). The run page shows the
+**Branch**, **Merge request** and **Repositories** of the step ([Results per repository](runs.md#repository-results)).
 
-**Library sources.** Under **Library sources (read only)** the step ticks sources of the
-[library](task-library.md#sources): standards, templates, reference material shared by all projects. Each is
-cloned read only into `/workspace/lib-<key>` and the agent is told to follow it, not to change it. Ticking a
-source while the step uses the primary repository switches the step to its own list, starting with the
-primary repository; going back to **Use the primary repository** drops the ticked sources.
+**Only this job has push rights.** The runner gets a push credential only for a delivery job: the project's repository
+token with **PUSH_BRANCH**, else the runner pool's token ([Git access for agents](integrations-git.md#git-least-privilege)).
+Every agent job gets read access only.
 
-**Validation messages** (in the **Validation** sheet and when a run starts):
+**Branch safety.** A delivery never pushes to the default branch or the merge request's target, never force-pushes and
+never merges. A branch template that renders to the default branch, `HEAD` or a `refs/...` path is replaced by the
+run's own branch `run/<run id>`; the runner refuses such a branch before it clones anything. A person (or your Git
+server's approval rules) merges.
+
+**Validation.** A delivery needs at least one project repository among the sources ("nothing to deliver: the
+workflow's sources hold no project repository"). **Repositories to deliver** must name project repositories of the
+sources; a library source is read only. When every coding step's agent works in a **Separate directory**, the run
+directory has nothing to deliver and the delivery is an error. A delivery reachable from a decision on a model's
+answer without a human gate in between gets a warning, as before for pushing steps. With **Repositories to deliver**
+holding a documentation and a source-code repository you get a warning: allowed, but reviewers get one merge request
+per repository.
+
+<a id="workflow-sources"></a><a id="step-repositories"></a>
+## Sources of a workflow
+
+The **Sources** of a workflow (ADR 0063) are the Git repositories cloned into its [run directory](#run-directory):
+project repositories ([Repositories](projects.md#repositories)) and sources of the [library](task-library.md#sources)
+(standards, templates, reference material shared by all projects). Set them in the workflow properties (click the
+empty canvas), next to **Setup command**; the list has the groups **Project repositories** and **Library sources**.
+Empty (placeholder **Project's primary repository**): the project's primary repository.
+
+- **Agents read them.** Every coding step works in these clones; model answers, actions, gates and CI waits use no
+  repository. An agent with a **Separate directory** gets a fresh copy of the same sources.
+- **Only delivery writes back**, and only to project repositories: [Deliver changes](#deliver-changes) pushes the
+  changed ones (or those you list). Library sources are cloned read only and the agent is told to follow them, not to
+  change them.
+- **Folders.** Each repository is cloned into its own folder named after its key: `/workspace/service`,
+  `/workspace/docs`, ...; a library source into `/workspace/lib-<key>`. The agent starts in the main repository (the
+  project's primary one when it is a source, otherwise the first project repository listed) and is told which
+  repositories exist, where they are, their purpose and base branch.
+
+**Validation messages** (in the **Validation** sheet and when a run starts; they matter when the workflow has a coding
+step or a delivery):
 
 | Message is about | What to do |
 |---|---|
 | the project has no repository | Add a repository to the project, or use a non-coding step. |
-| no primary repository and no repositories on the step | Add repositories to the step, or mark one project repository **Primary**. |
-| an unknown repository key | The message lists the project's keys; pick one of them (the repository may have been removed or renamed). |
-| a repository listed twice | Remove the duplicate. |
-| an access other than read or push and merge request | Fix the value (in the **JSON** view: `READ` or `PUSH_MR`). |
-| push and merge request while **push** is off | Turn **push** on in **Config**, or set the access to **Read**. |
-| repositories on a step that is not a coding step | Remove them; only coding steps use repositories. |
-| (warning) one step pushes to a documentation and a source-code repository | Allowed; check that one agent should really change both. |
+| no primary repository and no sources | List the workflow's sources, or mark one project repository **Primary**. |
+| an unknown repository key | The message lists the project's keys; pick one of them (the repository may have been removed or renamed). A source that no longer exists is shown with **(not found)**. |
+| an unknown library source | Untick it, or create the source in **Library** → **Sources**. |
+| a source listed twice | Remove the duplicate. |
+| a project repository with the key of a library source | Rename the repository. |
 
-Errors block saving. A run whose steps have such errors (for example a repository was removed from the project
-after the workflow was saved) does not start; the message names the step. In the **JSON** view the setting is
-`config.repositories: [{"key": "docs", "access": "READ"}]`.
+Errors block saving (a draft is kept). A run whose sources have such errors (for example a repository was removed from
+the project after the workflow was saved) does not start. In the **JSON** view the setting is
+`sources: [{"key": "service"}, {"key": "standards", "library": true}]`.
+
+Until ADR 0063 each coding step had its own **Repositories** section with an access per repository (**Read** or
+**Push and merge request**). The upgrade moved the repositories of all steps into the workflow's sources and the
+pushing into [Deliver changes](#deliver-changes) nodes ([Workflows stored before ADR 0063](#task-nodes)).
+
 
 <a id="run-directory"></a><a id="workspaces"></a>
 ## The run directory and agent sessions
@@ -372,23 +438,24 @@ sees what the earlier steps left there, uncommitted work included, and the agent
 not define or name anything: *implement* → *verify* → back to *implement* simply continue each other's work.
 
 **Setup command.** In the workflow properties (click the empty canvas) **Setup command**, for example `npm ci`, runs
-once in the run directory before the first coding step, and again only when you change it. Empty = no setup. A step's
-own `setupCommand` in **Config** still runs before that step.
+once in the run directory before the first coding step, and again only when you change it. Empty = no setup. It sits
+next to the workflow's [Sources](#workflow-sources), the repositories cloned into the run directory. Steps have no
+setup command of their own any more (ADR 0063): the upgrade added the former step setup commands to the workflow's.
 
 **Directory of the agent.** Whether a coding step works in the run directory is a setting of its agent, **Directory**
 ([Access of an agent](task-library.md#agent-access), ADR 0062):
 
 | Choice | Meaning |
 |---|---|
-| **Run directory (shared)** (default) | The step works in the run directory. Its repositories are cloned there once; later steps reuse the clones and everything left in them. |
-| **Separate directory** | A fresh copy of only this step's repositories, thrown away after the step. Use it for isolation: an agent that must not see the rest of the run's work (or, with **Repositories** set to other repositories, not the code at all). Such a step always starts a new agent session. |
+| **Run directory (shared)** (default) | The step works in the run directory. The workflow's sources are cloned there once; later steps reuse the clones and everything left in them. |
+| **Separate directory** | A fresh copy of the workflow's sources, thrown away after the step. Use it for isolation: an agent that must not see the rest of the run's work. Such a step always starts a new agent session, and its changes are never delivered. |
 
 To run one step in isolation, choose an agent with **Separate directory** for it.
 
-**Agents taking turns.** For example *implement* (push on) → *verify* (push off) → a decision → back to *implement*.
+**Agents taking turns.** For example *implement* → *verify* → a decision → back to *implement* → **Deliver changes**.
 Each agent continues its own session and sees what the other left: the reviewer reads the implementer's uncommitted
-changes, the implementer finds the reviewer's notes. A step without push leaves its changes uncommitted for the next
-step; a pushing step commits everything in its repositories and pushes the run branch.
+changes, the implementer finds the reviewer's notes. No agent commits: the changes stay uncommitted in the run
+directory until a [Deliver changes](#deliver-changes) step commits them and pushes the run branch.
 
 **What happens on the runner.** The run directory lives on the runner that ran the first coding step, as a Docker
 volume or a Kubernetes volume claim; the run's coding steps run there, one after the other. Before each step the
@@ -396,8 +463,8 @@ runner checks every reused repository and rewrites its git configuration, so not
 `.git` runs.
 
 **When the run ends** (succeeded, failed or cancelled) the run directory is removed; after a failed run it is kept
-for 24 hours so **Retry** continues in it. A run directory used after that starts empty (the pushed run branch is
-still there).
+for 24 hours so **Retry** continues in it. A run directory used after that starts empty (a branch already delivered
+is still on your Git server).
 
 **Mind the trust.** All steps of a run can read and change everything in the run directory, including the other
 agents' homes and session history. For an independent check use an agent with **Separate directory**.
@@ -411,9 +478,9 @@ two agents in one run directory never see each other's skills or memory. The rep
 **Former run workspaces.** Until ADR 0060 a project defined run workspaces (the project tab **Workspaces**), steps
 picked one and the canvas drew a region around them. They are gone, and existing workflows were migrated: a
 workspace's setup command became the **Setup command** of the workflows whose steps used it, and its sources became
-the **Repositories** of those steps that had none of their own. A stored step's workspace is ignored (every step
+the repositories of those steps that had none of their own (since ADR 0063, the workflow's **Sources**). A stored step's workspace is ignored (every step
 works in the run directory); steps that shared an agent role keep sharing their session. The built-in task **Prepare
-workspace** (`prepare-workspace`, deprecated) clones the step's repositories into the run directory and runs the
+workspace** (`prepare-workspace`, deprecated) clones the workflow's sources into the run directory and runs the
 setup without an agent; it is not needed, the first coding step prepares the run directory too.
 
 <a id="continue-session"></a>
@@ -598,6 +665,7 @@ started on behalf of whoever last saved the workflow: their `run.start` permissi
 apply, so a schedule may use your own subscription model profile.
 
 A run refuses to start (`409`) when a Jira step of the workflow has no usable connection; the message
-names the step. It also refuses to start when a coding step names a repository the project does not have, or
-needs a primary repository the project lacks ([Repositories of a step](#step-repositories)). Saving the workflow only warns about it
+names the step. It also refuses to start when the workflow's sources name a repository the project does not have,
+when its coding steps or deliveries need a primary repository the project lacks, or when a delivery has nothing to
+deliver to ([Sources of a workflow](#workflow-sources), [Deliver changes](#deliver-changes)). Saving the workflow only warns about it
 ([Warnings and errors](integrations-jira.md#jira-tasks)).

@@ -116,7 +116,6 @@ class PlatformSettingsService(
             "personalTokenMaxDays" to (before.personalTokenMaxDays to after.personalTokenMaxDays),
             "localLoginEnabled" to (before.localLoginEnabled to after.localLoginEnabled),
             "mfaRequiredForLocal" to (before.mfaRequiredForLocal to after.mfaRequiredForLocal),
-            "specKitAllowed" to (before.specKitAllowed to after.specKitAllowed),
             "passwordPolicy" to (policyMap(before) to policyMap(after)),
             "lockout" to (mapOf("maxFailures" to before.lockout.maxFailures, "lockMinutes" to before.lockout.lockMinutes) to
                 mapOf("maxFailures" to after.lockout.maxFailures, "lockMinutes" to after.lockout.lockMinutes)),

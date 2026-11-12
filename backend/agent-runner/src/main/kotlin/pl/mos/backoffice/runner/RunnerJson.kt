@@ -37,7 +37,6 @@ import pl.mos.backoffice.shared.runner.SandboxIsolation
 import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.runner.SandboxResources
 import pl.mos.backoffice.shared.runner.SandboxTools
-import pl.mos.backoffice.shared.runner.SpecKitPhase
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import java.math.BigDecimal
@@ -183,8 +182,10 @@ data class RunnerJobSpecJson(
      */
     val repositories: List<JobRepositoryJson>? = null,
     val repository: RepositoryJson? = null,
+    /** ADR 0063: Spec Kit is gone; read from specs stored before (their digests stay), never written. */
     val specKitPhase: String? = null,
     val prompt: String,
+    /** ADR 0063: read from specs stored before, never written (the constitution is part of [instructions], ADR 0057). */
     val constitution: String? = null,
     val systemPrompt: String? = null,
     val setupCommand: String? = null,
@@ -202,7 +203,7 @@ data class RunnerJobSpecJson(
      * selects the credential by it and the runner pushes only for PUSH_MR. Null in specs stored before 0031.
      */
     val gitAccess: String? = null,
-    /** ADR 0036: false = no Spec Kit work in the job; null (legacy-built jobs, older specs) = the runner's earlier behaviour. */
+    /** ADR 0036, removed by ADR 0063: read from specs stored before (their digests stay), never written. */
     val specKit: Boolean? = null,
     /**
      * ADR 0040, set in v2 assignments only: `LOCAL_LOGIN` = Claude Code uses the login of the personal runner's owner
@@ -215,6 +216,7 @@ data class RunnerJobSpecJson(
     val workspace: WorkspaceJson? = null,
     /** ADR 0047: absent in older specs (their digests do not change). */
     val commitSubject: String? = null,
+    /** ADR 0047 Spec Kit argument, removed by ADR 0063: read from specs stored before, never written. */
     val featureDescription: String? = null,
     val acceptance: AcceptanceJson? = null,
     /** ADR 0051: absent when the job uses the runner pool's tokens (older specs keep their digests). */
@@ -237,9 +239,7 @@ data class RunnerJobSpecJson(
             model = ModelRefJson.of(spec.model),
             repositories = spec.repositories.takeIf { it.isNotEmpty() }?.map { JobRepositoryJson.of(it) },
             repository = spec.repository?.let { RepositoryJson.of(it) },
-            specKitPhase = spec.specKitPhase?.name,
             prompt = spec.prompt,
-            constitution = spec.constitution,
             systemPrompt = spec.systemPrompt,
             setupCommand = spec.setupCommand,
             verifyCommand = spec.verifyCommand,
@@ -249,11 +249,9 @@ data class RunnerJobSpecJson(
             skills = spec.skills.map { SkillJson.of(it) },
             runId = spec.usageContext.runId?.toString(),
             gitAccess = spec.gitAccess.name,
-            specKit = spec.specKit,
             personalRunnerOf = spec.personalRunnerOf?.toString(),
             workspace = spec.workspace?.let { WorkspaceJson.of(it) },
             commitSubject = spec.commitSubject,
-            featureDescription = spec.featureDescription,
             acceptance = spec.acceptance?.let { AcceptanceJson(it.files, it.protectedPaths, it.requireChanges) },
             credentials = spec.credentials.takeIf { it.isNotEmpty() }?.map { JobCredentialRefJson(it.ref, it.repository, it.capability) },
             agentTools = spec.agentTools.takeIf { it.isNotEmpty() }?.map { AgentToolJson(it.name, it.repository) },
@@ -525,7 +523,7 @@ fun UsageContextJson.toContext() = UsageContext(
 
 /** Rebuilds the port-level spec from its stored JSON parts. */
 fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: SandboxPolicy?): RunnerJobSpec {
-    val runnerMode = RunnerMode.valueOf(mode)
+    val runnerMode = RunnerMode.of(mode)
     val repo = repository?.toRepository()
     val repos = repositories.orEmpty().map { it.toRepository() }
     return RunnerJobSpec(
@@ -534,8 +532,6 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         model = model.toModelRef(),
         prompt = prompt,
         repository = repo,
-        specKitPhase = specKitPhase?.let { p -> SpecKitPhase.entries.firstOrNull { it.name == p } },
-        constitution = constitution,
         systemPrompt = systemPrompt,
         setupCommand = setupCommand,
         verifyCommand = verifyCommand,
@@ -550,11 +546,9 @@ fun RunnerJobSpecJson.toSpec(context: UsageContext, label: String, policy: Sandb
         // specs stored before ADR 0031 have no level: derived the same way Back Office derives it today
         gitAccess = gitAccess?.let { g -> GitAccess.entries.firstOrNull { it.name == g } }
             ?: if (repos.isNotEmpty()) GitAccess.highest(repos.map { it.access }) else GitAccess.derive(runnerMode, repo),
-        specKit = specKit,
         personalRunnerOf = personalRunnerOf?.let { runCatching { UUID.fromString(it) }.getOrNull() },
         workspace = workspace?.toWorkspace(),
         commitSubject = commitSubject,
-        featureDescription = featureDescription,
         acceptance = acceptance?.let { RunnerAcceptance(it.files, it.protectedPaths, it.requireChanges) },
         credentials = credentials.orEmpty().map { JobCredentialRef(it.ref, it.repository, it.capability) },
         agentTools = agentTools.orEmpty().map { AgentTool(it.name, it.repository) },

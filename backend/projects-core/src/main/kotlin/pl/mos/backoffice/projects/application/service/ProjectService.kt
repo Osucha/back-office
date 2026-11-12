@@ -35,7 +35,6 @@ import pl.mos.backoffice.shared.security.PublicOperation
 import pl.mos.backoffice.shared.usage.UsageLedger
 import pl.mos.backoffice.shared.usage.UsageQuery
 import java.time.Duration
-import pl.mos.backoffice.shared.platform.PlatformFeatures
 
 /**
  * Implements [ManageProjects]. Creating a project makes the creator its OWNER (through the identity
@@ -58,8 +57,6 @@ class ProjectService(
     private val provisioner: ProjectAccessProvisioner,
     private val audit: AuditPort,
     private val clock: Clock,
-    /** ADR 0036: the platform switch for Spec Kit. */
-    private val features: PlatformFeatures = PlatformFeatures.DEFAULTS,
 ) : ManageProjects {
 
     override fun create(command: ProjectCommand): Project {
@@ -86,7 +83,6 @@ class ProjectService(
                 createdAt = now,
                 updatedAt = now,
                 createdBy = actor,
-                specKit = requireSpecKitAllowed(command.specKit ?: false, false),
                 personal = command.personal,
             ),
         )
@@ -102,7 +98,7 @@ class ProjectService(
                 "PROJECT_CREATE", ENTITY, saved.id.toString(), projectId = saved.id.value,
                 details = mapOf(
                     "key" to saved.key, "name" to saved.name, "repositories" to describe(saved.repositories),
-                    "seededWorkflows" to seeded.map { it.name }, "specKit" to saved.specKit, "personal" to saved.personal,
+                    "seededWorkflows" to seeded.map { it.name }, "personal" to saved.personal,
                 ),
             ),
         )
@@ -117,8 +113,7 @@ class ProjectService(
 
     private fun seedSdlc(project: Project, actor: Actor, now: java.time.Instant): Pair<Project, List<WorkflowDefinition>> {
         val existing = workflows.findByProjectId(project.id).map { it.name }.toSet()
-        // ADR 0036: the Spec Kit workflows only when Spec Kit is on (offered later through "Add Spec Kit workflows")
-        val seeded = DefaultWorkflows.sdlc(project.id, now, specKitOn(project)).filter { it.name !in existing }.map { workflows.save(it.copy(updatedBy = actor)) }
+        val seeded = DefaultWorkflows.all(project.id, now).filter { it.name !in existing }.map { workflows.save(it.copy(updatedBy = actor)) }
         val review = seeded.firstOrNull { it.name == DefaultWorkflows.CI_CODE_REVIEW }
         if (review == null || project.entrypoint(CiEntrypoint.CODE_REVIEW) != null) return project to seeded
         val saved = projects.save(
@@ -146,7 +141,6 @@ class ProjectService(
                 constitution = command.constitution,
                 defaults = command.defaults,
                 now = now,
-                specKit = requireSpecKitAllowed(command.specKit ?: existing.specKit, existing.specKit),
             ),
         )
         if (newKey != null) provisioner.projectRenamed(id.value, newKey)
@@ -159,7 +153,6 @@ class ProjectService(
             "issueTracker.jql" to (existing.issueTracker.jql to saved.issueTracker.jql),
             "defaults.modelProfileId" to (existing.defaults.modelProfileId?.toString() to saved.defaults.modelProfileId?.toString()),
             "defaults.reviewModelProfileId" to (existing.defaults.reviewModelProfileId?.toString() to saved.defaults.reviewModelProfileId?.toString()),
-            "specKit" to (existing.specKit to saved.specKit),
         ).let { diff ->
             // the constitution can be long markdown: record that it changed and its size, not the text
             if (existing.constitution == saved.constitution) diff
@@ -174,28 +167,6 @@ class ProjectService(
             return withEntrypoint
         }
         return saved
-    }
-
-    override fun specKitStatus(id: ProjectId): ManageProjects.SpecKitStatus {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, id.value)
-        return specKitStatusOf(load(id))
-    }
-
-    override fun addSpecKitWorkflows(id: ProjectId): List<WorkflowDefinition> {
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, id.value).actor
-        val project = load(id)
-        if (!specKitOn(project)) {
-            throw InvalidStateException("Spec Kit is ${pl.mos.backoffice.projects.application.service.tasks.specKitOff(project.specKit)}; turn it on first")
-        }
-        if (project.repositories.isEmpty()) throw InvalidStateException("the Spec Kit workflows need a repository; add one to the project first")
-        val now = clock.now()
-        val existing = workflows.findByProjectId(id).map { it.name }.toSet()
-        val seeded = DefaultWorkflows.all(id, now).filter { DefaultWorkflows.usesSpecKit(it) && it.name !in existing }
-            .map { workflows.save(it.copy(updatedBy = actor)) }
-        if (seeded.isNotEmpty()) {
-            audit.record(AuditEntry("PROJECT_SPEC_KIT_SEEDED", ENTITY, id.toString(), projectId = id.value, details = mapOf("seededWorkflows" to seeded.map { it.name })))
-        }
-        return seeded
     }
 
     override fun missingDefaultWorkflows(id: ProjectId): List<String> {
@@ -218,30 +189,10 @@ class ProjectService(
         return seeded
     }
 
-    /** ADR 0059: the non-Spec Kit default workflows the project lacks by name (the Spec Kit ones go through [addSpecKitWorkflows]). */
+    /** ADR 0059: the default workflows the project lacks by name. */
     private fun missingDefaults(project: Project, now: java.time.Instant): List<WorkflowDefinition> {
         val existing = workflows.findByProjectId(project.id).map { it.name }.toSet()
-        return DefaultWorkflows.all(project.id, now).filter { !DefaultWorkflows.usesSpecKit(it) && it.name !in existing }
-    }
-
-    private fun specKitOn(project: Project): Boolean = project.specKit && features.specKitAllowed()
-
-    private fun specKitStatusOf(project: Project): ManageProjects.SpecKitStatus {
-        val existing = workflows.findByProjectId(project.id).map { it.name }.toSet()
-        val missing = if (project.repositories.isEmpty()) {
-            emptyList()
-        } else {
-            DefaultWorkflows.all(project.id, clock.now()).filter { DefaultWorkflows.usesSpecKit(it) && it.name !in existing }.map { it.name }
-        }
-        return ManageProjects.SpecKitStatus(project.specKit, features.specKitAllowed(), missing)
-    }
-
-    /** ADR 0036: turning Spec Kit on is refused while the platform disallows it (an existing "on" may stay, it has no effect). */
-    private fun requireSpecKitAllowed(wanted: Boolean, current: Boolean): Boolean {
-        if (wanted && !current && !features.specKitAllowed()) {
-            throw ValidationException("Spec Kit is disabled for the whole platform by an administrator (Platform settings)", "specKit")
-        }
-        return wanted
+        return DefaultWorkflows.all(project.id, now).filter { it.name !in existing }
     }
 
     override fun delete(id: ProjectId) {

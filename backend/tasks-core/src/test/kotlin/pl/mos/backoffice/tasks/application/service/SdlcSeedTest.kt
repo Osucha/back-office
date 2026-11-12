@@ -34,7 +34,7 @@ class SdlcSeedTest {
     fun `seeding twice creates the SDLC entries once`() {
         val first = service.seed()
         val second = service.seed()
-        assertThat(first.total).describedAs("templates, skills, rules and the five agents").isEqualTo(21 + 8 + 4 + 5)
+        assertThat(first.total).describedAs("templates, skills, rules and the five agents").isEqualTo(24 + 8 + 4 + 5)
         assertThat(second.total).isZero()
         assertThat(lib.templates.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcTemplateKeys }).hasSize(BuiltInLibrary.sdlcTemplateKeys.size)
         assertThat(lib.skills.rows.values.map { it.key }.filter { it in BuiltInLibrary.sdlcSkillKeys }).hasSize(BuiltInLibrary.sdlcSkillKeys.size)
@@ -128,8 +128,8 @@ class SdlcSeedTest {
         assertThat(task.lineage).containsExactly(BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.IMPLEMENT_OPENCODE)
         assertThat(task.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(task.category).describedAs("inherited from implement-opencode").isEqualTo(TemplateCategory.IMPLEMENTATION)
-        assertThat(task.produces).contains("diff", "mr", "work-log")
-        assertThat(task.config["collectArtifacts"]).isEqualTo(listOf("work-log.md"))
+        assertThat(task.produces).contains("diff", "work-log")
+        assertThat(task.outputFiles).containsExactly("work-log.md")
         assertThat(task.config).doesNotContainKey("agent")
         // a STOP fails the step: the verification command checks the RESULT line of the work log
         assertThat(task.config["verifyCommand"]).isEqualTo(BuiltInLibrary.WORK_LOG_VERIFY_COMMAND)

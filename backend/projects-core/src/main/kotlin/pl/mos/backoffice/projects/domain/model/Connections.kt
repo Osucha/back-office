@@ -78,7 +78,8 @@ enum class ConnectionCapability(val write: Boolean, val jiraPermissions: Set<Jir
             ActionType.FETCH_ISSUE -> setOf(ISSUE_READ)
             ActionType.COMMENT_ISSUE -> setOf(ISSUE_COMMENT)
             ActionType.TRANSITION_ISSUE -> setOf(ISSUE_TRANSITION, ISSUE_READ)
-            ActionType.START_WORKFLOW, ActionType.PROJECT_DIGEST -> emptySet()
+            // ADR 0063: delivery uses the project repository tokens (ADR 0051), no issue tracker connection
+            ActionType.START_WORKFLOW, ActionType.PROJECT_DIGEST, ActionType.DELIVER_CHANGES -> emptySet()
         }
     }
 }

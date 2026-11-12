@@ -20,6 +20,8 @@ import pl.mos.backoffice.projects.domain.model.TriggerType
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.projects.domain.model.WorkflowSource
+import pl.mos.backoffice.projects.domain.service.LegacyStepGit
 import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
@@ -44,7 +46,9 @@ import java.util.UUID
  * ADR 0062 compatibility on read (V308 rewrote the stored steps; library imports and MCP clients may still send them):
  * `systemPromptAppend` / `promptAppend` read as `instructionsAppend`, `promptReplace` as `instructionsReplace`, step
  * `parameters` as VALUE `parameterBindings`; the config keys `session`, `continueSession` and `directory` are dropped.
- * Only the current fields are written.
+ * ADR 0063 compatibility ([LegacyStepGit], on [toCommand] and [normalised]): a step with `push: true` becomes the step and a
+ * `DELIVER_CHANGES` node; step `repositories` join the sources, a step `setupCommand` the workflow setup; Spec Kit steps
+ * name the replacement templates. Only the current fields are written.
  */
 
 data class PointJson(val x: Double = 0.0, val y: Double = 0.0)
@@ -117,6 +121,8 @@ data class WorkflowNodeJson(
 
 data class WorkflowEdgeJson(val id: String = "", val from: String = "", val fromPort: String = "", val to: String = "", val label: String? = null)
 data class TriggerJson(val type: String = "MANUAL", val status: String? = null, val intervalMinutes: Int? = null)
+/** ADR 0063: one entry of `WorkflowDefinitionInput.sources`. */
+data class WorkflowSourceJson(val key: String = "", val library: Boolean = false)
 
 /** A whole workflow as `WorkflowDefinitionInput` in openapi.yaml: what the MCP tools read and write (ADR 0049). */
 data class WorkflowDocumentJson(
@@ -129,6 +135,8 @@ data class WorkflowDocumentJson(
     val canvas: CanvasJson? = null,
     /** ADR 0060: runs once per run directory before the first coding step. */
     val setupCommand: String? = null,
+    /** ADR 0063: the repositories of the run directory; empty = the project's primary repository. */
+    val sources: List<WorkflowSourceJson> = emptyList(),
 )
 
 /** Conversions between the JSON shape and the sealed domain model. Kind/section mismatches are validation errors. */
@@ -292,16 +300,21 @@ object WorkflowJson {
     fun toDomain(c: CanvasJson?) = c?.let { Canvas(it.zoom, it.x, it.y) }
     fun toJson(c: Canvas?) = c?.let { CanvasJson(it.zoom, it.x, it.y) }
 
-    fun toCommand(d: WorkflowDocumentJson) = ManageWorkflows.WorkflowCommand(
-        name = d.name.trim(),
-        description = d.description,
-        nodes = d.nodes.map { toDomain(it) },
-        edges = d.edges.map { toDomain(it) },
-        triggers = d.triggers.map { toDomain(it) }.ifEmpty { listOf(Trigger(TriggerType.MANUAL)) },
-        enabled = d.enabled,
-        canvas = toDomain(d.canvas),
-        setupCommand = d.setupCommand?.takeIf { it.isNotBlank() },
-    )
+    /** ADR 0063: the read-time compatibility of the former step git keys ([LegacyStepGit]) applied. */
+    fun toCommand(d: WorkflowDocumentJson): ManageWorkflows.WorkflowCommand {
+        val graph = LegacyStepGit.normalise(d.nodes.map { toDomain(it) }, d.edges.map { toDomain(it) }, toDomain(d.sources), d.setupCommand)
+        return ManageWorkflows.WorkflowCommand(
+            name = d.name.trim(),
+            description = d.description,
+            nodes = graph.nodes,
+            edges = graph.edges,
+            triggers = d.triggers.map { toDomain(it) }.ifEmpty { listOf(Trigger(TriggerType.MANUAL)) },
+            enabled = d.enabled,
+            canvas = toDomain(d.canvas),
+            setupCommand = graph.setupCommand?.takeIf { it.isNotBlank() },
+            sources = graph.sources,
+        )
+    }
 
     fun toDocument(d: WorkflowDefinition) = WorkflowDocumentJson(
         name = d.name,
@@ -312,7 +325,24 @@ object WorkflowJson {
         enabled = d.enabled,
         canvas = toJson(d.canvas),
         setupCommand = d.setupCommand,
+        sources = toJson(d.sources),
     )
+
+    /** ADR 0063: the sources; blank keys are dropped, duplicates kept once. */
+    fun toDomain(sources: List<WorkflowSourceJson>?): List<WorkflowSource> =
+        sources.orEmpty().filter { it.key.isNotBlank() }.map { WorkflowSource(it.key.trim(), it.library) }.distinct()
+
+    fun toJson(sources: List<WorkflowSource>): List<WorkflowSourceJson> = sources.map { WorkflowSourceJson(it.key, it.library) }
+
+    /**
+     * ADR 0063: a stored definition (row, library version or run snapshot) with the former step git keys rewritten
+     * ([LegacyStepGit]); V309 rewrote what was stored, this covers anything older.
+     */
+    fun normalised(definition: WorkflowDefinition): WorkflowDefinition {
+        if (!LegacyStepGit.needed(definition.nodes)) return definition
+        val graph = LegacyStepGit.normalise(definition.nodes, definition.edges, definition.sources, definition.setupCommand)
+        return definition.copy(nodes = graph.nodes, edges = graph.edges, sources = graph.sources, setupCommand = graph.setupCommand)
+    }
 
     private fun defaultName(kind: NodeKind) = when (kind) {
         NodeKind.START -> "Start"

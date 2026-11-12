@@ -213,5 +213,9 @@
   "runs.detail.questions.at": "w {$node}. Krok wykona się ponownie z Twoimi odpowiedziami; anulowanie kończy go niepowodzeniem.",
   "runs.detail.fact.instructions": "Polecenie",
   "runs.detail.fact.instructionsReplaced": "zastąpione w węźle",
-  "runs.detail.fact.instructionsExtended": "rozszerzone w węźle"
+  "runs.detail.fact.instructionsExtended": "rozszerzone w węźle",
+  "runs.detail.fact.action": "Akcja",
+  "runs.detail.fact.deliverBranch": "Gałąź",
+  "runs.detail.fact.deliverMr": "Merge request",
+  "runs.detail.fact.deliverRepositories": "Repozytoria"
 }

@@ -45,7 +45,22 @@ class TemplateValidator(private val lookup: LibraryLookup) {
         }
 
         errors += parameterProblems(template, ancestors)
+        errors += outputFileProblems(template.outputFiles)
         return errors
+    }
+
+    /** ADR 0063: output files are globs relative to a repository root: no absolute paths, no `..`, bounded. */
+    private fun outputFileProblems(files: List<String>): List<FieldError> = buildList {
+        if (files.size > MAX_OUTPUT_FILES) add(FieldError(FIELD_OUTPUT_FILES, "at most $MAX_OUTPUT_FILES output files"))
+        files.forEachIndexed { i, glob ->
+            val field = "$FIELD_OUTPUT_FILES[$i]"
+            when {
+                glob.startsWith("/") || glob.startsWith("\\") || Regex("^[A-Za-z]:").containsMatchIn(glob) ->
+                    add(FieldError(field, "$glob must be relative to the repository root (no leading /)"))
+                glob.split('/', '\\').any { it == ".." } -> add(FieldError(field, "$glob must not contain .."))
+                glob.length > MAX_OUTPUT_FILE_LENGTH -> add(FieldError(field, "$glob is longer than $MAX_OUTPUT_FILE_LENGTH characters"))
+            }
+        }
     }
 
     /**
@@ -96,6 +111,9 @@ class TemplateValidator(private val lookup: LibraryLookup) {
         const val FIELD_EXTENDS_KEY = "extendsKey"
         const val FIELD_PARAMETERS = "parameters"
         const val FIELD_PARAMETER_VALUES = "parameterValues"
+        const val FIELD_OUTPUT_FILES = "outputFiles"
+        const val MAX_OUTPUT_FILES = 50
+        const val MAX_OUTPUT_FILE_LENGTH = 300
     }
 
     /**

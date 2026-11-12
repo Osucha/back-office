@@ -1,5 +1,6 @@
-"""Multi-repository jobs (`spec.repositories`): parsing, per-repository tokens and credentials, per-repository
-push / results and failure isolation. Run with: python3 -m unittest discover -s runner/tests"""
+"""Multi-repository jobs (`spec.repositories`): parsing, per-repository tokens and credentials, agent jobs that never
+push (ADR 0063), and DELIVER jobs: commit, push and merge request of the run directory, per-repository results and
+failure isolation. Run with: python3 -m unittest discover -s runner/tests"""
 
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ RUN_ID = "11111111-2222-4333-8444-555555555555"
 DOCS_TOKEN = "glpat-docs-read-0123456789"
 SRC_TOKEN = "glpat-src-push-0123456789"
 TOOLS_TOKEN = "glpat-tools-none-0123456789"  # trufflehog:ignore (test fixture)
+RUN_WORKSPACE = {"name": "bo-ws-11111111222243338444555555555555-run", "key": "run"}
 
 
 def base_spec(**kw) -> dict:
@@ -48,7 +50,7 @@ def two_repos(docs_url: str = "https://gitlab.example.com/shop/docs.git", src_ur
 
 class MultiRepoSpecParsingTests(unittest.TestCase):
     def test_parses_repositories_with_per_repository_access(self):
-        spec = ep.parse_spec(base_spec(repositories=two_repos()))
+        spec = ep.parse_spec(base_spec(mode="DELIVER", repositories=two_repos()))
         self.assertTrue(spec.multi_repo)
         self.assertIsNone(spec.repository)
         self.assertEqual(spec.git_access, "PUSH_MR")  # highest level, for logs and result.security only
@@ -58,6 +60,33 @@ class MultiRepoSpecParsingTests(unittest.TestCase):
         self.assertEqual((src.access, src.push_branch, src.primary), ("PUSH_MR", "feature/shop-1", True))
         self.assertEqual(src.merge_request, ep.MergeRequest(title="SHOP-1", target_branch="main", description="d", draft=True))
         self.assertEqual(spec.primary_repository, src)
+        self.assertEqual(spec.warnings, [])
+
+    def test_an_agent_job_uses_push_entries_as_read(self):
+        """ADR 0063, defence in depth: whatever the spec says, an agent job never pushes."""
+        for mode in ("IMPLEMENT", "EVAL_CODING", "PROMPT"):
+            spec = ep.parse_spec(base_spec(mode=mode, repositories=two_repos()))
+            docs, src = spec.repositories
+            self.assertEqual((src.access, src.push_branch, src.merge_request, src.primary), ("READ", None, None, True), mode)
+            self.assertEqual(docs.access, "READ")
+            self.assertEqual(spec.git_access, "READ")
+            self.assertEqual(spec.warnings, ["repository src: an agent job never commits or pushes (ADR 0063): access PUSH_MR"
+                                             " and pushBranch feature/shop-1 ignored, access READ"])
+
+    def test_deliver_spec(self):
+        """ADR 0063: a DELIVER job runs no agent: agent, model and prompt are optional; it needs `repositories`."""
+        minimal = ep.parse_spec({"mode": "deliver", "repositories": two_repos()})
+        self.assertTrue(minimal.delivers)
+        self.assertEqual((minimal.agent, minimal.model.provider, minimal.prompt, minimal.timeout_seconds), ("NONE", "NONE", "", 600))
+        self.assertEqual(minimal.repositories[1].push_branch, "feature/shop-1")
+        from_back_office = ep.parse_spec(base_spec(mode="DELIVER", agent="SOMETHING", repositories=two_repos(), commitSubject="SHOP-1: cart",
+                                                   workspace=RUN_WORKSPACE))
+        self.assertEqual((from_back_office.agent, from_back_office.commit_subject), ("SOMETHING", "SHOP-1: cart"))
+        self.assertEqual(from_back_office.workspace.key, "run")
+        with self.assertRaisesRegex(ValueError, "DELIVER job needs spec.repositories"):
+            ep.parse_spec(base_spec(mode="DELIVER", repository={"url": "https://h/a.git", "branch": "f", "push": True}))
+        with self.assertRaisesRegex(ValueError, "RunnerJobSpec.agent is required"):
+            ep.parse_spec({"mode": "IMPLEMENT", "repositories": []})
 
     def test_defaults_primary_path_and_access(self):
         repos = [{"key": "a", "url": "https://h/a.git"}, {"key": "b", "url": "https://h/b.git", "access": "push_mr", "pushBranch": "x"}]
@@ -96,7 +125,7 @@ class MultiRepoSpecParsingTests(unittest.TestCase):
             spec = ep.parse_spec(raw)
             self.assertFalse(spec.multi_repo)
             self.assertEqual(spec.repository.url, "https://h/a.git")
-            self.assertEqual(spec.git_access, "PUSH_MR")
+            self.assertEqual(spec.git_access, "READ")  # ADR 0063: an agent job never pushes
         empty = ep.parse_spec(base_spec(repositories=[]))
         self.assertTrue(empty.multi_repo)
         self.assertEqual((empty.repositories, empty.git_access), ([], "NONE"))
@@ -105,8 +134,9 @@ class MultiRepoSpecParsingTests(unittest.TestCase):
         spec = ep.parse_spec(base_spec(repositories=two_repos()))
         section = ep.repositories_prompt_section(spec, Path("/workspace"))
         self.assertTrue(section.startswith("## Repositories"))
-        self.assertIn("`docs` at /workspace/docs (READ; read-only: changes here are not pushed) - Product documentation", section)
-        self.assertIn("`src` at /workspace/src (PUSH_MR, primary; changes are committed and pushed to branch feature/shop-1", section)
+        self.assertIn("`docs` at /workspace/docs (READ; changes stay in the work tree; the runner does not commit or push)"
+                      " - Product documentation", section)
+        self.assertIn("`src` at /workspace/src (READ, primary; changes stay in the work tree", section)
         prompt = ep.with_repositories_section("Do it", spec, Path("/workspace"))
         self.assertTrue(prompt.startswith("Do it\n\n## Repositories"))
         legacy = ep.parse_spec(base_spec())
@@ -218,9 +248,8 @@ def make_origin(root: Path, name: str) -> Path:
     return origin
 
 
-@unittest.skipUnless(HAS_GIT, "git not installed")
-class MultiRepoMainFlowTests(unittest.TestCase):
-    """In-process main() with the STUB agent against local bare repositories."""
+class _MainFlow:
+    """In-process main() with the STUB agent against local bare repositories (helpers, not a test case)."""
 
     def stub(self, code: str) -> str:
         return f'"{sys.executable}" -c "{code}"'
@@ -240,6 +269,8 @@ class MultiRepoMainFlowTests(unittest.TestCase):
             "RUNNER_GIT_TOKEN_DIR": str(token_dir), "HOME": str(tmp / "home"), "TMPDIR": str(tmp), "RUNNER_SPEC": b64(spec),
         })
         created: list = []
+        self.pushes: list = []
+        pushes = self.pushes
         real_git = ep.Git
 
         class RecordingGit(real_git):  # type: ignore[misc, valid-type]
@@ -247,6 +278,11 @@ class MultiRepoMainFlowTests(unittest.TestCase):
                 super().__init__(*args, **kwargs)
                 # plain data only: a Git keeps the run's log (and its open log file) alive
                 created.append({"dir": Path(self.repo_dir).name, "token": self.token, "access": self.access, "bind_path": self.bind_path})
+
+            def run(self, args, *a, **kw):
+                if "push" in args:
+                    pushes.append({"dir": Path(self.repo_dir).name, "args": list(args)})
+                return super().run(args, *a, **kw)
 
         out = io.StringIO()
         with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(ep.sys, "stdout", out), \
@@ -259,106 +295,84 @@ class MultiRepoMainFlowTests(unittest.TestCase):
         return dict({"mode": "IMPLEMENT", "agent": "STUB", "model": {"provider": "ANTHROPIC", "modelId": "m"}, "prompt": prompt,
                      "timeoutSeconds": 600, "runId": RUN_ID, "repositories": repos}, **kw)
 
-    def test_read_docs_and_push_source_with_tokens_per_repository(self):
+    def deliver(self, repos: list, **kw) -> dict:
+        """A DELIVER job as Back Office sends it (agent and model present but unused) in the run directory."""
+        return dict({"mode": "DELIVER", "agent": "CLAUDE_CODE", "model": {"provider": "ANTHROPIC", "modelId": "m"},
+                     "prompt": "Deliver the changes of the run", "timeoutSeconds": 600, "runId": RUN_ID, "repositories": repos,
+                     "workspace": RUN_WORKSPACE}, **kw)
+
+
+def entry(key: str, origin: Path, access: str = "READ", **kw) -> dict:
+    e = {"key": key, "url": str(origin), "baseBranch": "main", "access": access, "path": key}
+    e.update(kw)
+    return e
+
+
+def origin_branches(origin: Path) -> list:
+    return git(origin, "for-each-ref", "--format=%(refname)", "refs/heads").split()
+
+
+@unittest.skipUnless(HAS_GIT, "git not installed")
+class MultiRepoMainFlowTests(_MainFlow, unittest.TestCase):
+    def test_agent_job_never_pushes_even_with_push_entries(self):
+        """ADR 0063: an IMPLEMENT job never commits or pushes; a PUSH_MR entry is used as READ with a warning."""
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             tmp_path = Path(tmp)
             docs_origin, src_origin, tools_origin = (make_origin(tmp_path, n) for n in ("docs", "src", "tools"))
             repos = two_repos(str(docs_origin), str(src_origin)) + [
                 {"key": "tools", "url": str(tools_origin), "baseBranch": "main", "access": "NONE", "path": "vendor/tools"}]
-            # the agent runs in the primary repository (src), edits the docs sibling and tries to push it itself
+            # the agent runs in the primary repository (src), edits the docs sibling and tries to push both itself
             prompt = self.stub(
                 "import pathlib, subprocess, os; print('cwd', pathlib.Path.cwd().name);"
                 " pathlib.Path('cart.kt').write_text('fun cart() = 1');"
                 " pathlib.Path('../docs/cart.md').write_text('# Cart');"
                 " r = subprocess.run(['git', '-C', '../docs', 'push', 'origin', 'HEAD:refs/heads/agent-push'], capture_output=True);"
-                " print('agent docs push exit', r.returncode)"
+                " s = subprocess.run(['git', 'push', 'origin', 'HEAD:refs/heads/agent-push'], capture_output=True);"
+                " print('agent pushes exit', r.returncode != 0, s.returncode != 0)"
             )
             tokens = {"docs": DOCS_TOKEN, "src": SRC_TOKEN, "tools": TOOLS_TOKEN}
             result, created, stdout = self.run_main(tmp_path, self.spec(repos, prompt, collectArtifacts=["cart.kt"]), tokens)
 
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertIn("cwd src", result["summary"])
+            self.assertIn("agent pushes exit True True", result["summary"])
+            self.assertIn("[spec] WARN repository src: an agent job never commits or pushes (ADR 0063): access PUSH_MR and"
+                          " pushBranch feature/shop-1 ignored, access READ", stdout)
             by_key = {r["key"]: r for r in result["repositories"]}
             self.assertEqual(set(by_key), {"docs", "src", "tools"})
-            src, docs, tools = by_key["src"], by_key["docs"], by_key["tools"]
-            # only the PUSH_MR repository is pushed, to its job branch
-            self.assertTrue(src["pushed"])
-            self.assertEqual(src["branch"], "feature/shop-1")
-            self.assertEqual(git(src_origin, "rev-parse", "refs/heads/feature/shop-1").strip(), src["commitSha"])
-            trailer = git(src_origin, "log", "-1", "--format=%(trailers:key=Back-Office-Run,valueonly)", "feature/shop-1").strip()
-            self.assertEqual(trailer, RUN_ID)
-            self.assertFalse(docs["pushed"])
-            self.assertIsNone(docs["branch"])
-            self.assertEqual(docs["diffStat"]["files"], 1)  # local change reported, not pushed
-            self.assertNotIn("agent-push", git(docs_origin, "branch", "--list"))
-            self.assertEqual(git(docs_origin, "for-each-ref", "--format=%(refname)", "refs/heads").split(), ["refs/heads/main"])
-            self.assertFalse(tools["pushed"])
-            self.assertIsNone(tools["error"])
-            for entry in result["repositories"]:
-                self.assertEqual(set(entry), {"key", "branch", "commitSha", "diffStat", "mergeRequestUrl", "pushed", "error"})
-            # READ clone: push URL disabled; PUSH_MR clone keeps it
+            for entry_ in result["repositories"]:
+                self.assertEqual(set(entry_), {"key", "branch", "commitSha", "diffStat", "mergeRequestUrl", "pushed", "error"})
+                self.assertFalse(entry_["pushed"])
+                self.assertIsNone(entry_["branch"])
+                self.assertIsNone(entry_["mergeRequestUrl"])
+                self.assertIsNone(entry_["error"])
+            self.assertEqual(self.pushes, [])
+            for origin in (docs_origin, src_origin, tools_origin):
+                self.assertEqual(origin_branches(origin), ["refs/heads/main"])
+            # nothing committed: HEAD is the base, the work is in the work tree and in the diff
             ws = tmp_path / "ws"
-            self.assertEqual(git(ws / "docs", "config", "remote.origin.pushurl").strip(), ep.DISABLED_PUSH_URL)
-            self.assertEqual(git(ws / "vendor" / "tools", "config", "remote.origin.pushurl").strip(), ep.DISABLED_PUSH_URL)
-            self.assertNotIn("pushurl", git(ws / "src", "config", "--list"))
-            # one token per repository, NONE gets none; every token file was consumed
-            tokens_by_dir = {g["dir"]: (g["token"], g["access"]) for g in created}
-            self.assertEqual(tokens_by_dir["docs"], (DOCS_TOKEN, "READ"))
-            self.assertEqual(tokens_by_dir["src"], (SRC_TOKEN, "PUSH_MR"))
-            self.assertEqual(tokens_by_dir["tools"], (None, "NONE"))
-            self.assertTrue(all(g["bind_path"] for g in created))
-            for key in tokens:
-                self.assertFalse((tmp_path / "git-tokens" / key / "token").exists(), key)
-            self.assertTrue(result["security"]["gitTokenFileRemoved"])
-            self.assertEqual(result["security"]["gitAccess"], "PUSH_MR")
-            self.assertEqual(result["security"]["gitAccessByRepository"], {"docs": "READ", "src": "PUSH_MR", "tools": "NONE"})
-            # legacy top-level fields come from the primary repository
-            self.assertEqual((result["branch"], result["commitSha"]), ("feature/shop-1", src["commitSha"]))
-            self.assertEqual(result["diffStat"], src["diffStat"])
+            src, docs = by_key["src"], by_key["docs"]
+            self.assertEqual(src["commitSha"], git(src_origin, "rev-parse", "main").strip())
+            self.assertEqual(git(ws / "src", "status", "--porcelain").strip(), "?? cart.kt")
+            self.assertEqual((src["diffStat"]["files"], docs["diffStat"]["files"]), (1, 1))
             self.assertIn("+fun cart() = 1", result["diff"])
             self.assertNotIn("# Cart", result["diff"])
             artifacts = {a["name"]: a for a in result["artifacts"]}
             self.assertIn("+# Cart", artifacts["diff:docs"]["content"])
-            self.assertEqual(artifacts["cart.kt"]["content"], "fun cart() = 1")  # collected in the primary repository
+            self.assertEqual(artifacts["cart.kt"]["content"], "fun cart() = 1")
+            # every clone of an agent job has its push URL disabled, the downgraded one too
+            for path in ("docs", "src", "vendor/tools"):
+                self.assertEqual(git(ws / path, "config", "remote.origin.pushurl").strip(), ep.DISABLED_PUSH_URL, path)
+            tokens_by_dir = {g["dir"]: (g["token"], g["access"]) for g in created}
+            self.assertEqual(tokens_by_dir, {"docs": (DOCS_TOKEN, "READ"), "src": (SRC_TOKEN, "READ"), "tools": (None, "NONE")})
+            self.assertTrue(all(g["bind_path"] for g in created))
+            for key in tokens:
+                self.assertFalse((tmp_path / "git-tokens" / key / "token").exists(), key)
+            self.assertEqual(result["security"]["gitAccess"], "READ")
+            self.assertEqual(result["security"]["gitAccessByRepository"], {"docs": "READ", "src": "READ", "tools": "NONE"})
             for token in tokens.values():
                 self.assertNotIn(token, json.dumps(result))
                 self.assertNotIn(token, stdout)
-
-    def test_one_failing_push_does_not_hide_the_others(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            tmp_path = Path(tmp)
-            a_origin, b_origin = make_origin(tmp_path, "a"), make_origin(tmp_path, "b")
-            repos = [
-                {"key": "a", "url": str(a_origin), "access": "PUSH_MR", "path": "a", "pushBranch": "feature/x", "primary": True},
-                {"key": "b", "url": str(b_origin), "access": "PUSH_MR", "path": "b", "pushBranch": "feature/x"},
-            ]
-            # the agent changes both and makes b's remote disappear: b's push fails, a's still goes through
-            prompt = self.stub(
-                "import pathlib, os; pathlib.Path('x.txt').write_text('a'); pathlib.Path('../b/y.txt').write_text('b');"
-                f" os.rename('{b_origin.as_posix()}', '{b_origin.as_posix()}-gone')"
-            )
-            result, _, _ = self.run_main(tmp_path, self.spec(repos, prompt))
-            self.assertEqual(result["status"], "FAILED")
-            self.assertIn("repository b: push failed", result["error"])
-            a, b = result["repositories"]
-            self.assertTrue(a["pushed"])
-            self.assertIsNone(a["error"])
-            self.assertEqual(git(a_origin, "rev-parse", "refs/heads/feature/x").strip(), a["commitSha"])
-            self.assertFalse(b["pushed"])
-            self.assertIn("push failed", b["error"])
-            self.assertIsNotNone(b["commitSha"])
-            self.assertEqual(result["commitSha"], a["commitSha"])  # primary still reported
-
-    def test_push_to_base_branch_is_refused_before_anything_runs(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            tmp_path = Path(tmp)
-            origin = make_origin(tmp_path, "src")
-            repos = [{"key": "src", "url": str(origin), "access": "PUSH_MR", "path": "src", "pushBranch": "main"}]
-            result, created, _ = self.run_main(tmp_path, self.spec(repos, self.stub("open('marker', 'w')")))
-            self.assertEqual(result["status"], "FAILED")
-            self.assertIn("push refused: repository src", result["error"])
-            self.assertEqual(created, [])  # nothing cloned
-            self.assertIsNone(result["summary"])
 
     def test_clone_failure_names_the_repository(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
@@ -382,19 +396,168 @@ class MultiRepoMainFlowTests(unittest.TestCase):
             self.assertEqual(created, [])
             self.assertIsNone(result["branch"])
 
-    def test_legacy_single_repository_spec_keeps_its_shape(self):
+    def test_legacy_single_repository_spec_keeps_its_shape_and_never_pushes(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             tmp_path = Path(tmp)
             origin = make_origin(tmp_path, "src")
             spec = self.spec([], self.stub("import pathlib; pathlib.Path('out.txt').write_text('x'); print(pathlib.Path.cwd().name)"),
                              repository={"url": str(origin), "baseRef": "main", "branch": "feature/legacy", "push": True})
-            result, created, _ = self.run_main(tmp_path, spec)
+            result, created, stdout = self.run_main(tmp_path, spec)
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertNotIn("repositories", result)
             self.assertEqual(result["summary"], "repo")  # /workspace/repo as before
-            self.assertEqual(git(origin, "rev-parse", "refs/heads/feature/legacy").strip(), result["commitSha"])
+            self.assertEqual(result["branch"], "feature/legacy")
+            self.assertEqual(result["commitSha"], git(origin, "rev-parse", "main").strip())
+            self.assertIn("+x", result["diff"])
+            self.assertEqual(origin_branches(origin), ["refs/heads/main"])
+            self.assertEqual(self.pushes, [])
+            self.assertIn("[spec] WARN an agent job never commits or pushes (ADR 0063)", stdout)
             self.assertEqual(len(created), 1)
             self.assertFalse(created[0]["bind_path"])
+
+
+@unittest.skipUnless(HAS_GIT, "git not installed")
+class DeliverTests(_MainFlow, unittest.TestCase):
+    """ADR 0063 `DELIVER`: no agent; the run directory an agent job left is committed, pushed and the merge request
+    opened through push options."""
+
+    def implement(self, tmp_path: Path, repos: list, code: str, **kw) -> dict:
+        result, _, _ = self.run_main(tmp_path, self.spec(repos, self.stub(code), workspace=RUN_WORKSPACE, **kw))
+        self.assertEqual(result["status"], "SUCCEEDED", result)
+        self.assertEqual(self.pushes, [])
+        return result
+
+    def test_delivers_the_run_directory_with_a_merge_request(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            tmp_path = Path(tmp)
+            origin = make_origin(tmp_path, "src")
+            code = ("import pathlib; pathlib.Path('cart.kt').write_text('fun cart() = 1');"
+                    " pathlib.Path('README.md').write_text('# src\\nchanged');"
+                    " pathlib.Path('.gitignore').write_text('build/');"
+                    " pathlib.Path('build').mkdir(); pathlib.Path('build/out.bin').write_text('bin');"
+                    " pathlib.Path('work-log.md').write_text('log');"
+                    " pathlib.Path('structured-answer.json').write_text('{}');"
+                    " pathlib.Path('agent-questions.json').write_text('{}')")
+            # an older Back Office: skills in the repository (git-excluded)
+            self.implement(tmp_path, [entry("src", origin, primary=True)], code,
+                           skills=[{"key": "kotlin", "name": "Kotlin", "content": "# Kotlin"}])
+            self.assertEqual(origin_branches(origin), ["refs/heads/main"])
+
+            mr = {"create": True, "title": "SHOP-1: cart", "description": "line 1\nline 2", "draft": True}
+            job = self.deliver([entry("src", origin, "PUSH_MR", pushBranch="feature/shop-1", mergeRequest=mr)],
+                               commitSubject="SHOP-1: add the cart", verifyCommand="exit 1", setupCommand="exit 1")
+            result, created, stdout = self.run_main(tmp_path, job, {"src": SRC_TOKEN})
+
+            self.assertEqual(result["status"], "SUCCEEDED", result)
+            src = result["repositories"][0]
+            sha = git(origin, "rev-parse", "refs/heads/feature/shop-1").strip()
+            self.assertEqual((src["pushed"], src["branch"], src["commitSha"], src["error"]), (True, "feature/shop-1", sha, None))
+            self.assertIsNone(src["mergeRequestUrl"])  # a bare repository prints none
+            self.assertEqual((result["branch"], result["commitSha"]), ("feature/shop-1", sha))
+            self.assertEqual(git(origin, "log", "-1", "--format=%s", "feature/shop-1").strip(), "SHOP-1: add the cart")
+            trailer = git(origin, "log", "-1", "--format=%(trailers:key=Back-Office-Run,valueonly)", "feature/shop-1").strip()
+            self.assertEqual(trailer, RUN_ID)
+            # tracked and untracked changes; ignored files, skills and the runner's ephemeral files stay out
+            files = git(origin, "ls-tree", "-r", "--name-only", "feature/shop-1").split()
+            self.assertEqual(sorted(files), [".gitignore", "README.md", "cart.kt"])
+            self.assertIn("+fun cart() = 1", result["diff"])
+            self.assertIn("+changed", result["diff"])
+            self.assertEqual(src["diffStat"]["files"], 3)
+            self.assertIn("- src: pushed feature/shop-1", result["summary"])
+            # the merge request through whitelisted push options to the explicit URL and refspec
+            self.assertEqual(len(self.pushes), 1)
+            args = self.pushes[0]["args"]
+            options = [args[i + 1] for i, a in enumerate(args) if a == "-o"]
+            self.assertEqual(options, ["merge_request.create", "merge_request.target=main", "merge_request.title=SHOP-1: cart",
+                                       "merge_request.description=line 1 line 2", "merge_request.draft"])
+            self.assertEqual(args[-2:], [str(origin), "HEAD:refs/heads/feature/shop-1"])
+            self.assertNotIn("--force", args)
+            # no agent, no command
+            self.assertEqual(created[0]["token"], SRC_TOKEN)
+            self.assertIn("setupCommand, verifyCommand ignored: a delivery runs no command", stdout)
+            self.assertIsNone(result["verification"])
+            self.assertNotIn("agent running", stdout)
+            self.assertFalse(result["security"]["agentTokenIsolated"])
+            self.assertEqual(result["security"]["gitAccess"], "PUSH_MR")
+            # the ephemeral files stay in the run directory, untracked
+            self.assertTrue((tmp_path / "ws" / "src" / "work-log.md").exists())
+
+    def test_a_repository_without_changes_is_not_pushed(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            tmp_path = Path(tmp)
+            origin = make_origin(tmp_path, "src")
+            result, _, stdout = self.run_main(tmp_path, self.deliver([entry("src", origin, "PUSH_MR", pushBranch="feature/x")]))
+            self.assertEqual(result["status"], "SUCCEEDED", result)
+            src = result["repositories"][0]
+            self.assertFalse(src["pushed"])
+            self.assertIsNone(src["error"])
+            self.assertEqual(src["commitSha"], git(origin, "rev-parse", "main").strip())
+            self.assertEqual(origin_branches(origin), ["refs/heads/main"])
+            self.assertEqual(self.pushes, [])
+            self.assertIn("- src: no changes, nothing pushed", result["summary"])
+            self.assertIn("no changes to commit", stdout)
+
+    def test_branch_safety_refuses_before_anything_is_cloned(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            tmp_path = Path(tmp)
+            origin = make_origin(tmp_path, "src")
+            cases = {"main": None, "release": {"targetBranch": "release"}, "refs/heads/x": None, "-x": None, "a..b": None}
+            for branch, mr in cases.items():
+                with self.subTest(branch=branch):
+                    extra = {"mergeRequest": mr} if mr else {}
+                    result, created, _ = self.run_main(tmp_path, self.deliver([entry("src", origin, "PUSH_MR", pushBranch=branch, **extra)]))
+                    self.assertEqual(result["status"], "FAILED")
+                    self.assertIn("push refused: repository src", result["error"])
+                    self.assertEqual(created, [])
+            self.assertEqual(origin_branches(origin), ["refs/heads/main"])
+
+    def test_several_repositories(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            tmp_path = Path(tmp)
+            a_origin, b_origin, docs_origin = (make_origin(tmp_path, n) for n in ("a", "b", "docs"))
+            agent_repos = [entry("a", a_origin, primary=True), entry("b", b_origin), entry("docs", docs_origin)]
+            self.implement(tmp_path, agent_repos, "import pathlib; pathlib.Path('x.txt').write_text('a'); pathlib.Path('../docs/d.md').write_text('d')")
+            repos = [entry("a", a_origin, "PUSH_MR", pushBranch="feature/x", primary=True),
+                     entry("b", b_origin, "PUSH_MR", pushBranch="feature/x"), entry("docs", docs_origin)]
+            result, created, _ = self.run_main(tmp_path, self.deliver(repos), {"a": "tok-a", "b": "tok-b", "docs": DOCS_TOKEN})
+            self.assertEqual(result["status"], "SUCCEEDED", result)
+            a, b, docs = result["repositories"]
+            self.assertTrue(a["pushed"])
+            self.assertEqual(git(a_origin, "ls-tree", "-r", "--name-only", "feature/x").split(), ["README.md", "x.txt"])
+            self.assertEqual((b["pushed"], b["error"]), (False, None))  # no changes
+            self.assertEqual(origin_branches(b_origin), ["refs/heads/main"])
+            self.assertEqual((docs["pushed"], docs["branch"]), (False, None))  # READ: not delivered
+            self.assertEqual(origin_branches(docs_origin), ["refs/heads/main"])
+            self.assertIn("?? d.md", git(tmp_path / "ws" / "docs", "status", "--porcelain"))
+            self.assertEqual(result["commitSha"], a["commitSha"])
+            self.assertEqual(result["security"]["gitAccessByRepository"], {"a": "PUSH_MR", "b": "PUSH_MR", "docs": "READ"})
+            self.assertEqual({g["dir"]: g["token"] for g in created}, {"a": "tok-a", "b": "tok-b", "docs": DOCS_TOKEN})
+            self.assertEqual([p["dir"] for p in self.pushes], ["a"])
+            self.assertIn("- b: no changes, nothing pushed", result["summary"])
+            self.assertIn("- docs: not delivered (access READ)", result["summary"])
+
+    def test_one_failing_push_does_not_hide_the_others(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            tmp_path = Path(tmp)
+            a_origin, b_origin = make_origin(tmp_path, "a"), make_origin(tmp_path, "b")
+            # b's remote cannot take refs/heads/feature/x (a branch feature/x/blocker exists there)
+            git(b_origin, "branch", "feature/x/blocker", "main")
+            self.implement(tmp_path, [entry("a", a_origin, primary=True), entry("b", b_origin)],
+                           "import pathlib; pathlib.Path('x.txt').write_text('a'); pathlib.Path('../b/y.txt').write_text('b')")
+            repos = [entry("a", a_origin, "PUSH_MR", pushBranch="feature/x", primary=True),
+                     entry("b", b_origin, "PUSH_MR", pushBranch="feature/x")]
+            result, _, _ = self.run_main(tmp_path, self.deliver(repos))
+            self.assertEqual(result["status"], "FAILED")
+            self.assertIn("repository b: push failed", result["error"])
+            a, b = result["repositories"]
+            self.assertTrue(a["pushed"])
+            self.assertIsNone(a["error"])
+            self.assertEqual(git(a_origin, "rev-parse", "refs/heads/feature/x").strip(), a["commitSha"])
+            self.assertFalse(b["pushed"])
+            self.assertIn("push failed", b["error"])
+            self.assertIsNotNone(b["commitSha"])  # committed in the run directory, so a retry can push it
+            self.assertEqual(result["commitSha"], a["commitSha"])  # primary still reported
+            self.assertIn("- b: failed: push failed", result["summary"])
 
 
 if __name__ == "__main__":

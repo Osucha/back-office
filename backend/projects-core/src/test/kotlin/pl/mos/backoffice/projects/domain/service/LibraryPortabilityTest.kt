@@ -96,4 +96,15 @@ class LibraryPortabilityTest {
         assertThat(LibraryPortability.sameGraph(published, edges + WorkflowEdge("e2", "gate", "revise", "notify"), published, edges)).isFalse()
         assertThat(LibraryPortability.sameGraph(published.take(1), edges, published, edges)).isFalse()
     }
+
+    @Test
+    fun `ADR 0063 - published sources are the library sources, a linked copy keeps its own project repositories`() {
+        val app = pl.mos.backoffice.projects.domain.model.WorkflowSource("app")
+        val docs = pl.mos.backoffice.projects.domain.model.WorkflowSource("docs")
+        val std = pl.mos.backoffice.projects.domain.model.WorkflowSource("standards", library = true)
+        val other = pl.mos.backoffice.projects.domain.model.WorkflowSource("other", library = true)
+        assertThat(LibraryPortability.portableSources(listOf(app, std, docs))).containsExactly(std)
+        assertThat(LibraryPortability.withLocalSources(listOf(other, app), listOf(docs, std))).containsExactly(docs, other)
+        assertThat(LibraryPortability.withLocalSources(emptyList(), emptyList())).isEmpty()
+    }
 }

@@ -2,7 +2,8 @@
 
 ## When to use this runbook
 
-A `SPEC_KIT` or `IMPLEMENT` step (or a `CODING_JOB` benchmark attempt) ended as `FAILED` or
+An `IMPLEMENT` step (a coding agent), a **Deliver changes** step (runner mode `DELIVER`, ADR 0063) or a
+`CODING_JOB` benchmark attempt ended as `FAILED` or
 `TIMED_OUT`, or the Kubernetes Job / docker container is gone while the API still waits for it.
 
 ## How the runner protocol works
@@ -67,7 +68,8 @@ kubectl -n <ns> logs -l job-name=<label> --tail=200
   409 as delivered; nothing to do.
 - Provider `401`/`403`: the provider key is missing from the `back-office-provider-keys` Secret for
   the model profile used by the step.
-- Git push rejected: the git tokens live on the runner side, not in the control plane - in Kubernetes the
+- Git push rejected (only **Deliver changes** jobs push, ADR 0063): the project's repository token with
+  PUSH_BRANCH is used first (docs/manual/integrations-git.md#git-project-tokens); otherwise the git tokens live on the runner side, not in the control plane - in Kubernetes the
   runner chart's `gitCredentials.repoSecrets[].push` Secret of the repository (legacy: `existingSecret` /
   `hostSecrets`; sandbox namespace, key `token`), in compose `BO_GIT_TOKEN_PUSH` (`GIT_TOKEN_PUSH` in `.env`).
   It needs scope `write_repository` and role Developer; the job branch must not be protected.
@@ -75,17 +77,23 @@ kubectl -n <ns> logs -l job-name=<label> --tail=200
   credential` (ADR 0031): the pool has no read (or push) Secret for that repository. Add it to
   `gitCredentials.repoSecrets` (docs/manual/integrations-git.md#git-install); `allowPushCredentialForRead`
   is only a temporary exception.
-- READ jobs never push (`[git] access READ: clone only`): turn `push` on in the step if it should push.
+- Agent jobs never push (`[git] access READ: clone only`, ADR 0063): to get the work onto a branch, add a
+  **Deliver changes** node after the step. A spec with `mode: SPEC_KIT` (an older Back Office) fails on a current
+  runner; upgrade Back Office.
+- A delivery fails with `push refused: ...` before cloning: its branch renders to the default branch, `HEAD` or
+  `refs/...`; change **Branch** on the **Deliver changes** node.
+- A delivery succeeds with "nothing to deliver": the work tree had no changes (or the agents worked in a **Separate
+  directory**, whose changes are thrown away); check the implementing step's `diff`.
 
 ### Push rejected because of push options, or the merge request was not created
 
 The runner pushes with `git push -o merge_request.create -o merge_request.target=<branch>
 -o merge_request.title=<title> [-o merge_request.description=...] [-o merge_request.draft]` when the
-task sets `repository.mergeRequest` (ADR 0013). Symptoms and fixes:
+**Deliver changes** step has **Open a merge request** on (ADR 0013, 0063). Symptoms and fixes:
 
 - `push failed: ... the receiving end does not support push options` - the remote is not GitLab (or
   a very old GitLab / a git server without `receive.advertisePushOptions`). Only GitLab creates merge
-  requests this way; on other hosts remove `mergeRequest` from the task (the branch is still pushed)
+  requests this way; on other hosts turn **Open a merge request** off on **Deliver changes** (the branch is still pushed)
   and open the pull request from your CI (`gh pr create`).
 - `push options must not have new line characters` - cannot happen with the runner (it collapses
   title/description to one line and caps them at 255/1000 characters); if you see it the image is
@@ -98,10 +106,10 @@ task sets `repository.mergeRequest` (ADR 0013). Symptoms and fixes:
   or when the target branch does not exist. Check `git log` of the branch on GitLab and the pod log
   lines starting with `[git] remote:`; the run state `mr` stays empty and downstream `WAIT_FOR_CI`
   nodes still work because the CI matches the run by the commit trailer, not by the MR.
-- The MR opened but under the wrong target: `mergeRequest.targetBranch` in the task defaults to the
-  repository `baseRef`.
+- The MR opened but under the wrong target: the target is the delivered repository's default branch
+  (`baseBranch`); check the repository's **Default branch** in the project.
 - Commits without the `Back-Office-Run` trailer (so `backoffice-ci signal` cannot find the run): the
-  spec had no `runId` (older API) or the agent amended/squashed the runner's commit; the CI falls
+  spec had no `runId` (older API) or someone amended/squashed the delivery's commit; the CI falls
   back to matching by branch, or pass `--run <id>` explicitly.
 
 `GET /api/v1/runs/{id}/logs?stepId=<step>` shows what did arrive; when no events were posted the API

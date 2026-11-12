@@ -22,6 +22,7 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzSegmentedModule } from 'ng-zorro-antd/segmented';
 import { NzSkeletonModule } from 'ng-zorro-antd/skeleton';
+import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import {
@@ -78,6 +79,7 @@ import { auditView } from '../data/agent-audit';
 import { pickAgent } from '../data/agent-choice';
 import { templateProduces } from '../data/step-bindings';
 import { NodePropertyPanelComponent } from '../components/node-property-panel.component';
+import { sourceOptions, sourceValues, sourcesFromValues } from '../data/workflow-sources';
 import { TriggersEditorComponent } from '../components/triggers-editor.component';
 import { type StepModelUse, stepModelUseKey } from '../data/model-step';
 import { WorkflowCanvasComponent, type PaletteDrop } from '../components/workflow-canvas.component';
@@ -122,6 +124,7 @@ const MAX_HISTORY = 50;
     NzInputModule,
     NzFormModule,
     NzSwitchModule,
+    NzSelectModule,
     NzSkeletonModule,
     NzDropDownModule,
     NzTooltipModule,
@@ -536,7 +539,7 @@ const MAX_HISTORY = 50;
                     [projectId]="resolvedProjectId()"
                     [workflowId]="workflowId() ?? null"
                     [projectRepositories]="projectRepositories()"
-                    [librarySources]="librarySources()"
+                    [sources]="def().sources ?? []"
                     [idLocked]="persistedIds().has(n.id)"
                     [readonly]="readOnly()"
                     (nodeChange)="updateNode(n.id, $event)"
@@ -643,6 +646,50 @@ const MAX_HISTORY = 50;
                               >Disabled: runs cannot start</span
                             >
                           }
+                        </nz-form-control>
+                      </nz-form-item>
+                      <nz-form-item data-workflow-sources>
+                        <nz-form-label
+                          nzTooltipTitle="Repositories cloned into the run directory: the project's repositories and sources of the library. Agents read them; only Deliver changes writes back, and only to project repositories. Empty: the project's primary repository."
+                          i18n-nzTooltipTitle="@@workflows.designer.sources.help"
+                          nzFor="wf-sources"
+                          i18n="@@workflows.designer.sources"
+                          >Sources</nz-form-label
+                        >
+                        <nz-form-control>
+                          <nz-select
+                            nzId="wf-sources"
+                            name="sources"
+                            nzMode="multiple"
+                            nzAllowClear
+                            nzShowSearch
+                            nzPlaceHolder="The project's primary repository"
+                            i18n-nzPlaceHolder="@@workflows.designer.sources.placeholder"
+                            [ngModel]="sourceValues()"
+                            (ngModelChange)="setSources($event)"
+                            [nzDisabled]="readOnly()"
+                          >
+                            @if (sourceOptions().repositories.length) {
+                              <nz-option-group [nzLabel]="text.projectRepositories">
+                                @for (o of sourceOptions().repositories; track o.value) {
+                                  <nz-option
+                                    [nzValue]="o.value"
+                                    [nzLabel]="o.unknown ? o.key + text.unknownSource : o.key"
+                                  />
+                                }
+                              </nz-option-group>
+                            }
+                            @if (sourceOptions().library.length) {
+                              <nz-option-group [nzLabel]="text.librarySources">
+                                @for (o of sourceOptions().library; track o.value) {
+                                  <nz-option
+                                    [nzValue]="o.value"
+                                    [nzLabel]="o.unknown ? o.key + text.unknownSource : o.key"
+                                  />
+                                }
+                              </nz-option-group>
+                            }
+                          </nz-select>
                         </nz-form-control>
                       </nz-form-item>
                       <nz-form-item>
@@ -1224,6 +1271,9 @@ export class WorkflowDesignerPageComponent {
     saveVersion: $localize`:@@workflows.designer.saveVersion:Save as new version`,
     create: $localize`:@@workflows.designer.create:Create workflow`,
     auditTitle: $localize`:@@workflows.audit.title:Agents in this workflow`,
+    projectRepositories: $localize`:@@workflows.designer.sources.repositories:Project repositories`,
+    librarySources: $localize`:@@workflows.designer.sources.library:Library sources`,
+    unknownSource: $localize`:@@workflows.designer.sources.unknown: (not found)`,
   };
   readonly errorsLabel = errorsLabel;
   readonly warningsLabel = warningsLabel;
@@ -1644,6 +1694,18 @@ export class WorkflowDesignerPageComponent {
 
   patchDef(changes: Partial<WorkflowDefinitionInput>): void {
     this.commit({ ...this.def(), ...changes }, 'coalesce');
+  }
+
+  /** ADR 0063: the workflow's sources as select values ("repo:key" / "lib:key"). */
+  readonly sourceValues = computed(() => sourceValues(this.def().sources));
+  /** ADR 0063: the project's repositories and the library sources (a missing selected key stays shown). */
+  readonly sourceOptions = computed(() =>
+    sourceOptions(this.projectRepositories(), this.librarySources(), this.def().sources),
+  );
+
+  /** ADR 0063: sets the workflow's sources; none = the project's primary repository. */
+  setSources(values: string[] | null): void {
+    this.patchDef({ sources: sourcesFromValues(values) });
   }
 
   issuesFor(id: string): Issues | null {

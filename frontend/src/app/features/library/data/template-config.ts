@@ -1,7 +1,7 @@
 /**
  * ADR 0054/0061: the configuration of a template as a form, and the kind of worker the template
  * needs. A template no longer names an agent (the step does); it needs a coding agent when its
- * merged config has a Spec Kit `phase`, `push` or `prepareOnly`, else any agent. The form shows
+ * merged config sets `codingAgent` (or the legacy `prepareOnly`), else any agent. The form shows
  * the keys of model answer and coding agent steps together (`GET /workflows/task-config-schemas`).
  * Pure; tested in template-config.spec.ts.
  */
@@ -14,7 +14,7 @@ import type {
   TaskTemplateInput,
 } from '../../../core/api/types';
 import { configNeedsCodingAgent } from '../../../core/ui/agents';
-import type { JsonSchema } from '../../workflows/public-api';
+import { type JsonSchema, templateFormSchema } from '../../workflows/public-api';
 
 /**
  * The agent with this key as a step of the given scope sees it: the project's own first, else
@@ -106,18 +106,26 @@ export function templateNeedsCodingAgent(
 }
 
 /**
- * The config schema for the template editor: the keys of model answer and coding agent steps
- * together (a template does not know who runs it); null when unknown or without keys. `required`
- * is dropped: a template only sets what it changes, the rest comes from its parent.
+ * The config schema for the template editor: the keys of model answer steps and the coding agent keys a template
+ * still sets (ADR 0063: verifyCommand, agentTools, the questions and codingAgent as a checkbox), translated; a
+ * template does not know who runs it. Null when unknown or without keys. `required` is dropped: a template only
+ * sets what it changes, the rest comes from its parent.
  */
 export function templateConfigSchema(
   schemas: TaskConfigSchemas | null | undefined,
 ): JsonSchema | null {
-  const answer = schemas?.modelAnswer as JsonSchema | undefined;
-  const coding = schemas?.codingAgent as JsonSchema | undefined;
-  const properties = { ...(answer?.properties ?? {}), ...(coding?.properties ?? {}) };
-  if (!Object.keys(properties).length) return null;
-  const copy: JsonSchema = { ...(answer ?? {}), ...(coding ?? {}), properties };
-  delete copy.required;
-  return copy;
+  return templateFormSchema(
+    schemas?.modelAnswer as JsonSchema | undefined,
+    schemas?.codingAgent as JsonSchema | undefined,
+  );
+}
+
+/** ADR 0063: the output file globs of a template, trimmed, without blanks and duplicates. */
+export function cleanGlobs(values: readonly unknown[] | null | undefined): string[] {
+  const out: string[] = [];
+  for (const v of values ?? []) {
+    const g = String(v ?? '').trim();
+    if (g && !out.includes(g)) out.push(g);
+  }
+  return out;
 }

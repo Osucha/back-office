@@ -34,8 +34,8 @@ class AgentAuditorTest {
         builtIn = false, rules = emptyList(), skills = emptyList(),
     )
 
-    private fun step(id: String, agent: String, vararg skills: RequiredSkill, coding: Boolean = false, pushes: Boolean = true) =
-        AuditedStep(id, StepNeeds(agent, skills.toList(), coding, pushes))
+    private fun step(id: String, agent: String, vararg skills: RequiredSkill, coding: Boolean = false) =
+        AuditedStep(id, StepNeeds(agent, skills.toList(), coding))
 
     @Test
     fun `an agent's entry lists its environment, its steps, the required skills by step and the missing ones`() {
@@ -70,13 +70,13 @@ class AgentAuditorTest {
     }
 
     @Test
-    fun `a model answer on coding work and a read-only agent on a pushing step are errors`() {
+    fun `a model answer on coding work is an error, a read-only coding agent is fine (ADR 0063 - agents never push)`() {
         val report = AgentAuditor.audit(
             listOf(
                 step("plan", "reviewer", coding = true),
                 step("answer", "reviewer"),
-                step("look", "reader", coding = true, pushes = true),
-                step("look-only", "reader", coding = true, pushes = false),
+                step("look", "reader", coding = true),
+                step("look-only", "reader", coding = true),
             ),
             mapOf("reviewer" to reviewer, "reader" to reader),
         )
@@ -87,9 +87,7 @@ class AgentAuditorTest {
         assertThat(coding.severity).isEqualTo(AgentAuditSeverity.ERROR)
         assertThat(coding.nodeIds).containsExactly("plan")
         assertThat(coding.message).contains("a coding agent is needed by 1 step")
-        val push = byAgent.getValue("reader").findings.single()
-        assertThat(push.kind).isEqualTo(AgentAuditFindingKind.READ_ONLY_PUSH)
-        assertThat(push.nodeIds).containsExactly("look")
+        assertThat(byAgent.getValue("reader").findings).isEmpty()
     }
 
     @Test

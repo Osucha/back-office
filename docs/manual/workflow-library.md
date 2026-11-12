@@ -43,7 +43,8 @@ available and whether they were changed locally.
    A workflow that is already linked to a library workflow offers its next version by default.
 4. Say in a sentence what changed. It is shown in the version history next to the metrics of each version.
 
-What is **not** published, because it belongs to the project: the repositories of a step, a Jira connection
+What is **not** published, because it belongs to the project: the project repositories among the workflow's
+**Sources** (its library sources go with it), a Jira connection
 pinned to a step (the modes *system connection* and *acting user* are kept), named approvers of gates and
 write steps (approver roles are kept), and the workflow's name, triggers and on/off state. Steps must use
 **global** task templates: a project template has to be published to the global task library first.
@@ -56,7 +57,8 @@ In a project, click **Add from library** (next to **New workflow**), or open the
 **Use in a project**. Pick the workflow, the version (the latest by default) and, if you like, another name.
 The project gets a **linked copy**: an ordinary workflow that runs, can be started from CI and can be changed
 in the designer, marked with the library key and version (for example `issue-to-mr v3`). Set the
-project-local parts in the designer: step repositories, the Jira connection and named approvers.
+project-local parts in the designer: the workflow's **Sources** (empty = the project's primary repository), the
+Jira connection and named approvers.
 Deprecated library workflows are not offered.
 
 <a id="update-detach"></a>

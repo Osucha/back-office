@@ -9,7 +9,6 @@ import type {
   CiTokenCreated,
   Project,
   ProjectInput,
-  SpecKitStatus,
   WorkflowDefinition,
 } from './types';
 
@@ -38,21 +37,7 @@ export class ProjectsApi {
     return this.http.delete<void>(url('projects', projectId));
   }
 
-  /** ADR 0036: the Spec Kit setting, the platform switch and the missing Spec Kit workflows. */
-  specKit(projectId: string): Observable<SpecKitStatus> {
-    return this.http.get<SpecKitStatus>(url('projects', projectId, 'spec-kit'), silent());
-  }
-
-  /** ADR 0036: "Add Spec Kit workflows"; errors are shown by the caller. */
-  addSpecKitWorkflows(projectId: string): Observable<WorkflowDefinition[]> {
-    return this.http.post<WorkflowDefinition[]>(
-      url('projects', projectId, 'spec-kit', 'workflows'),
-      {},
-      silent(),
-    );
-  }
-
-  /** ADR 0059: names of the default workflows (not the Spec Kit ones) the project lacks; empty without a repository. */
+  /** ADR 0059: names of the default workflows the project lacks; empty without a repository. */
   missingDefaultWorkflows(projectId: string): Observable<string[]> {
     return this.http.get<string[]>(url('projects', projectId, 'default-workflows'), silent());
   }

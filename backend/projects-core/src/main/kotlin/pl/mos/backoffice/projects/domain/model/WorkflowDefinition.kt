@@ -8,8 +8,21 @@ import java.util.UUID
 
 enum class NodeKind { START, END, TASK, ACTION, DECISION, HUMAN_GATE, WAIT_FOR_CI, NOTE }
 
-/** ADR 0056: the deterministic integration steps of a workflow (no model); the former action templates. */
-enum class ActionType { FETCH_ISSUE, COMMENT_ISSUE, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST }
+/**
+ * ADR 0056: the deterministic integration steps of a workflow (no model); the former action templates. ADR 0063:
+ * [DELIVER_CHANGES] commits the run directory, pushes a branch and optionally opens a merge request.
+ */
+enum class ActionType { FETCH_ISSUE, COMMENT_ISSUE, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST, DELIVER_CHANGES }
+
+/**
+ * ADR 0063: a repository the run directory holds: a project repository by [key], or a library source (ADR 0043) when
+ * [library]. Agents read every source; only `DELIVER_CHANGES` writes back, and only to project repositories.
+ */
+data class WorkflowSource(val key: String, val library: Boolean = false) {
+    init {
+        if (key.isBlank()) throw ValidationException("a source needs a key", "sources.key")
+    }
+}
 
 enum class RunOutcome { SUCCESS, FAILURE }
 
@@ -284,6 +297,8 @@ data class WorkflowDefinition(
     val draft: Boolean = false,
     /** ADR 0060: runs once per run directory before the first coding step (again when it changes); null = none. */
     val setupCommand: String? = null,
+    /** ADR 0063: the repositories cloned into the run directory; empty = the project's primary repository. */
+    val sources: List<WorkflowSource> = emptyList(),
 ) {
     init {
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
@@ -314,7 +329,10 @@ data class WorkflowDefinition(
         actor: Actor? = null,
         /** ADR 0060: the setup command of the new version (default: unchanged). */
         setupCommand: String? = this.setupCommand,
+        /** ADR 0063: the sources of the new version (default: unchanged). */
+        sources: List<WorkflowSource> = this.sources,
     ): WorkflowDefinition = copy(
+        sources = sources,
         name = name,
         description = description,
         nodes = nodes,

@@ -259,8 +259,8 @@ jobs:
         run: exit 1
 ```
 
-Merge requests opened by the runner use GitLab push options; GitHub ignores them, so on GitHub the
-runner pushes the branch and `result.mergeRequestUrl` stays empty - open the pull request yourself
+Merge requests opened by the runner (the **Deliver changes** step) use GitLab push options; GitHub ignores them, so
+on GitHub the runner pushes the branch and `result.mergeRequestUrl` stays empty - open the pull request yourself
 or with `gh pr create` in a workflow step.
 
 ## 9. Testing the script locally
@@ -301,6 +301,6 @@ sh backoffice-ci.sh signal tests --status success --run <runId>
   `WAIT_FOR_CI` node's, or HEAD has no trailer and the branch does not match; pass `--run <id>`.
 - **Merge request not created by the runner** - see [runner-job-failed](../runbooks/runner-job-failed.md)
   (push options need GitLab; the runner's push token - runner chart `gitCredentials.repoSecrets[].push`,
-  compose `BO_GIT_TOKEN_PUSH` - needs `write_repository`; the step's git access must be `PUSH_MR`, i.e. `push` on).
+  compose `BO_GIT_TOKEN_PUSH` - needs `write_repository`; only a **Deliver changes** step pushes (git access `PUSH_MR`), with **Open a merge request** on).
 - **`apk: not found` in the template jobs** - a custom `BACKOFFICE_IMAGE` without `apk`; use an image
   that ships `sh`, `curl` and `git`.

@@ -946,39 +946,19 @@ paths:
       operationId: deleteProject
       responses:
         '204': { description: Deleted }
-  /projects/{projectId}/spec-kit:
-    parameters: [ { $ref: '#/components/parameters/projectId' } ]
-    get:
-      tags: [projects]
-      operationId: getProjectSpecKit
-      description: 'ADR 0036 (`project.view`): the Spec Kit setting, the platform switch and the seeded Spec Kit workflows the project lacks.'
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SpecKitStatus' } } } }
-  /projects/{projectId}/spec-kit/workflows:
-    parameters: [ { $ref: '#/components/parameters/projectId' } ]
-    post:
-      tags: [projects]
-      operationId: addSpecKitWorkflows
-      description: >
-        ADR 0036 "Add Spec Kit workflows" (`workflow.edit`): seeds the Spec Kit workflows the project lacks. Needs Spec
-        Kit on for the project and the platform and at least one repository (409 otherwise). Audited `PROJECT_SPEC_KIT_SEEDED`.
-      responses:
-        '200': { description: The workflows that were added, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/WorkflowDefinition' } } } } }
-        '409': { $ref: '#/components/responses/Problem' }
   /projects/{projectId}/default-workflows:
     parameters: [ { $ref: '#/components/parameters/projectId' } ]
     get:
       tags: [projects]
       operationId: getMissingDefaultWorkflows
-      description: 'ADR 0059 (`project.view`): names of the default workflows (other than the Spec Kit ones, see /spec-kit) the project lacks; empty without a repository.'
+      description: 'ADR 0059 (`project.view`): names of the default workflows the project lacks; empty without a repository.'
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { type: string } } } } }
     post:
       tags: [projects]
       operationId: addDefaultWorkflows
       description: >
-        ADR 0059 "Add missing default workflows" (`workflow.edit`): seeds the default workflows (other than the Spec Kit
-        ones) the project lacks, by name, e.g. "Reference: one Claude Code session". Needs a repository (409 otherwise).
+        ADR 0059 "Add missing default workflows" (`workflow.edit`): seeds the default workflows the project lacks, by name, e.g. "Reference: one Claude Code session". Needs a repository (409 otherwise).
         Audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`.
       responses:
         '200': { description: The workflows that were added, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/WorkflowDefinition' } } } } }
@@ -2717,8 +2697,7 @@ components:
           properties:
             jiraProjectKey: { type: string, description: "Jira project of the issues (e.g. LFV); not derived from the project key" }
             jql: { type: string, nullable: true }
-        constitution: { type: string, description: 'Markdown, Spec Kit constitution (kept while Spec Kit is off, ADR 0036)' }
-        specKit: { type: boolean, nullable: true, description: 'ADR 0036: Spec Kit for this project (off by default for new projects; null on update = unchanged). Used only when the platform allows Spec Kit.' }
+        constitution: { type: string, description: 'Markdown: the project owner''s rules, part of every agent''s environment (ADR 0057)' }
         personal: { type: boolean, description: 'ADR 0038 (default false): a private project of its creator only (needs `projects.create.personal` or `projects.create`); members cannot be added. Set at creation, ignored on update.' }
         defaults:
           type: object
@@ -2900,6 +2879,10 @@ components:
         edges: { type: array, items: { $ref: '#/components/schemas/WorkflowEdge' } }
         triggers: { type: array, items: { $ref: '#/components/schemas/Trigger' } }
         enabled: { type: boolean, default: true }
+        sources:
+          type: array
+          description: 'ADR 0063: repositories cloned into the run directory (project repositories, or library sources with library true); empty = the project''s primary repository. Agents read them; only DELIVER_CHANGES writes back, to project repositories.'
+          items: { type: object, required: [key], properties: { key: { type: string }, library: { type: boolean, default: false } } }
         setupCommand: { type: string, nullable: true, description: 'ADR 0060: runs once per run directory before the first coding step (again when it changes)' }
         canvas: { type: object, nullable: true, properties: { zoom: { type: number }, x: { type: number }, y: { type: number } } }
     WorkflowDefinition:
@@ -3135,8 +3118,8 @@ components:
         needsParameters: { type: boolean, description: 'ADR 0058: a required parameter has no value without the step (not a ready block)' }
     ActionType:
       type: string
-      description: 'ADR 0056: deterministic integration steps of a workflow (no model)'
-      enum: [FETCH_ISSUE, COMMENT_ISSUE, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST]
+      description: 'ADR 0056: deterministic integration steps of a workflow (no model). ADR 0063: DELIVER_CHANGES commits the run directory, pushes a branch and optionally opens a merge request (the only job with push rights)'
+      enum: [FETCH_ISSUE, COMMENT_ISSUE, TRANSITION_ISSUE, START_WORKFLOW, PROJECT_DIGEST, DELIVER_CHANGES]
     ActionDescriptor:
       type: object
       required: [type, title, description, ports, configSchema, defaults]
@@ -3717,6 +3700,7 @@ components:
         parameterValues: { type: object, additionalProperties: true, description: 'ADR 0058: values for parameters of the lineage (a preset); child wins, the step wins over all' }
         requiresSkills: { type: array, items: { type: string }, description: 'ADR 0060: skills the work needs; a step whose agent lacks one gets a warning (inherited, unioned)' }
         config: { type: object, additionalProperties: true }
+        outputFiles: { type: array, items: { type: string }, description: 'ADR 0063: globs of files the agent leaves that are returned as artefacts (named like the file without extension; former config collectArtifacts)' }
         outputSchema: { type: string, nullable: true, description: 'JSON Schema of a structured answer (model answers answer with it, coding agents write it to structured-answer.json, ADR 0057)' }
         confidenceField: { type: string, nullable: true }
         produces: { type: array, items: { type: string } }
@@ -4059,7 +4043,6 @@ components:
         registration: { type: string, enum: [OPEN, INVITE_ONLY] }
         allowedEmailDomains: { type: array, items: { type: string } }
         syncGroupsFromIdentityProvider: { type: boolean }
-        specKitAllowed: { type: boolean, default: true, description: 'ADR 0036: projects may turn Spec Kit on; false = no project can use Spec Kit steps' }
         personalTokenMaxDays: { type: integer, default: 90 }
         localLoginEnabled: { type: boolean, default: true }
         mfaRequiredForLocal: { type: boolean, default: false, description: local users must enrol TOTP at their next login }
@@ -4446,7 +4429,7 @@ components:
       type: string
       enum: [NONE, READ, PUSH_MR]
       description: >-
-        Git rights of an agent job (ADR 0031), derived by Back Office: IMPLEMENT or SPEC_KIT with
+        Git rights of a job (ADR 0031, 0063), derived by Back Office: only DELIVER jobs with
         `repository.push` -> PUSH_MR (push the job branch, open a merge request through push options, never
         merge); any other job with a repository -> READ (clone and fetch only, the runner never pushes); no
         repository -> NONE. Only the level is sent; the runner-controller selects the matching credential of its
@@ -5196,14 +5179,6 @@ components:
         systemConnection: { allOf: [ { $ref: '#/components/schemas/Connection' } ], nullable: true }
         additionalConnections: { type: array, items: { $ref: '#/components/schemas/Connection' } }
         available: { type: array, items: { $ref: '#/components/schemas/Connection' }, description: project and platform connections that can be chosen }
-    SpecKitStatus:
-      type: object
-      required: [enabled, allowedByPlatform, effective, missingWorkflows]
-      properties:
-        enabled: { type: boolean, description: the project setting }
-        allowedByPlatform: { type: boolean }
-        effective: { type: boolean, description: enabled and allowed }
-        missingWorkflows: { type: array, items: { type: string }, description: 'seeded Spec Kit workflows the project lacks ("Add Spec Kit workflows")' }
     ScmCapability:
       type: string
       enum: [GIT_READ, CI_READ, PUSH_BRANCH, MR_WRITE, MR_COMMENT, PIPELINE_RUN]
@@ -5494,7 +5469,7 @@ components:
       type: object
       required: [mode, agent, model, prompt, timeoutSeconds]
       properties:
-        mode: { type: string, enum: [SPEC_KIT, IMPLEMENT, EVAL_CODING, PROMPT], description: 'PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact' }
+        mode: { type: string, enum: [IMPLEMENT, DELIVER, EVAL_CODING, PROMPT], description: 'ADR 0063: IMPLEMENT an agent job (never pushes); DELIVER no agent: commit, push and merge request of the run directory; PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact' }
         agent: { type: string, enum: [OPENCODE, CLAUDE_CODE] }
         model: { $ref: '#/components/schemas/ModelRef' }
         repositories:
@@ -5525,9 +5500,7 @@ components:
                 description: { type: string, nullable: true }
                 targetBranch: { type: string }
                 draft: { type: boolean, default: false }
-        specKitPhase: { type: string, enum: [SPECIFY, CLARIFY, PLAN, TASKS, ANALYZE, IMPLEMENT], nullable: true }
         prompt: { type: string }
-        constitution: { type: string, nullable: true }
         systemPrompt: { type: string, nullable: true, description: 'ADR 0050 step 4: the system prompt of a PROMPT job (prompt is then the user message)' }
         setupCommand: { type: string, nullable: true }
         verifyCommand: { type: string, nullable: true }
@@ -5565,13 +5538,6 @@ components:
           description: 'ADR 0060: absent = FULL. Covered by the spec digest when present.'
         runId: { type: string, format: uuid, nullable: true, description: written as the `Back-Office-Run` git trailer }
         gitAccess: { $ref: '#/components/schemas/GitAccess' }
-        specKit:
-          type: boolean
-          nullable: true
-          description: >-
-            ADR 0036: false = the project does not use Spec Kit: no `specify init`, no constitution, no `/speckit.*`
-            commands (a SPEC_KIT job with false is refused). Null/omitted (legacy-built jobs, older Back Office): the
-            runner's earlier behaviour. Covered by the spec digest when present.
         workspace:
           type: object
           nullable: true

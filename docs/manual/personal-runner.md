@@ -1,6 +1,6 @@
 # My computer as a runner
 
-Agent steps (Spec Kit, implementation, coding benchmarks) run in sandboxes of the [runner fleet](runner-fleet.md).
+Agent steps (specification, implementation, coding benchmarks) and deliveries run in sandboxes of the [runner fleet](runner-fleet.md).
 For your **private projects** ([My work](my-work.md#private-projects)) you can run them on **your own computer**
 instead, the way a GitLab runner works: a small controller in Docker on your computer asks Back Office for work and
 starts every step in its own sandbox container there. Optionally, Claude Code in those steps uses **your own Claude

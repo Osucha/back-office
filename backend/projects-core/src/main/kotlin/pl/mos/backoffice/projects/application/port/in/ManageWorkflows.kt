@@ -78,6 +78,8 @@ interface ManageWorkflows {
         val canvas: Canvas? = null,
         /** ADR 0060: runs once per run directory before the first coding step; null = none. */
         val setupCommand: String? = null,
+        /** ADR 0063: the repositories of the run directory; empty = the project's primary repository. */
+        val sources: List<pl.mos.backoffice.projects.domain.model.WorkflowSource> = emptyList(),
     )
 
     data class PaletteTask(

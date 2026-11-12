@@ -113,7 +113,7 @@ visible. The same cost of an accepted result is measured on production runs, per
 The application ships a starter suite (`Starter: SDLC tasks`) with 12 tasks:
 
 - ANALYSIS: root-cause a failing test from a stack trace (EASY), compare two integration approaches (MEDIUM)
-- SPECIFICATION: write a Spec Kit spec from a two-line ticket (MEDIUM), write acceptance criteria and edge cases for a payment retry (HARD)
+- SPECIFICATION: write a feature specification from a two-line ticket (MEDIUM), write acceptance criteria and edge cases for a payment retry (HARD)
 - REVIEW: review a 200-line Kotlin diff with 3 planted bugs (MEDIUM)
 - ARCHITECTURE: propose module boundaries for a described monolith (HARD), write an ADR (MEDIUM)
 - CODING (`CODING_JOB` on a small public Kotlin sample repo): add a validated REST endpoint (EASY), fix a concurrency bug with a failing test (HARD), refactor to hexagonal ports with tests green (EXPERT), add a Flyway migration and JPA mapping (MEDIUM), implement a rate limiter with tests (HARD)

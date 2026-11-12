@@ -8,6 +8,10 @@ import pl.mos.backoffice.projects.application.port.`in`.TriggerJson
 import pl.mos.backoffice.projects.application.port.`in`.WorkflowEdgeJson
 import pl.mos.backoffice.projects.application.port.`in`.WorkflowJson
 import pl.mos.backoffice.projects.application.port.`in`.WorkflowNodeJson
+import pl.mos.backoffice.projects.application.port.`in`.WorkflowSourceJson
+import pl.mos.backoffice.projects.domain.model.WorkflowSource
+import pl.mos.backoffice.projects.domain.service.LegacyStepGit
+import pl.mos.backoffice.projects.domain.service.LibraryPortability
 import pl.mos.backoffice.projects.domain.model.WriteIdentity
 import pl.mos.backoffice.projects.domain.model.ConnectionId
 import pl.mos.backoffice.projects.domain.model.ProjectJiraConnections
@@ -115,6 +119,8 @@ data class DefinitionDoc(
     val library: LibraryLinkDoc? = null,
     /** ADR 0060: the run directory's setup command; absent in older snapshots. */
     val setupCommand: String? = null,
+    /** ADR 0063: the workflow's sources; absent in older snapshots. */
+    val sources: List<WorkflowSourceJson> = emptyList(),
 )
 data class LibraryLinkDoc(val libraryWorkflowId: String, val key: String, val version: Int, val modified: Boolean = false)
 data class RunInputDoc(val issueKey: String? = null, val parameters: Map<String, Any?> = emptyMap(), val ci: Map<String, Any?>? = null)
@@ -239,7 +245,6 @@ class PersistenceMapper(private val json: JsonMapper) {
         defaultModelProfileId = p.defaults.modelProfileId?.value, reviewModelProfileId = p.defaults.reviewModelProfileId?.value,
         ciEntrypoints = write(p.ciEntrypoints.map { CiEntrypointDoc(it.key, it.workflowId.toString(), it.mode.name, it.description, it.uploadDiff, it.repository) }),
         createdAt = p.createdAt, updatedAt = p.updatedAt, createdBy = writeActor(p.createdBy),
-        specKitEnabled = p.specKit,
         jiraSystemConnectionId = p.jiraConnections.systemConnectionId?.value,
         jiraConnectionIds = write(p.jiraConnections.additionalConnectionIds.map { it.toString() }),
         personal = p.personal,
@@ -258,7 +263,6 @@ class PersistenceMapper(private val json: JsonMapper) {
         defaults = ProjectDefaults(e.defaultModelProfileId?.let(::ModelProfileId), e.reviewModelProfileId?.let(::ModelProfileId)),
         ciEntrypoints = json.readValue(e.ciEntrypoints, entrypointList).map { CiEntrypoint(it.key, WorkflowDefinitionId.of(it.workflowId), CiMode.valueOf(it.mode), it.description, it.uploadDiff, it.repository) },
         createdAt = e.createdAt, updatedAt = e.updatedAt, createdBy = readActor(e.createdBy),
-        specKit = e.specKitEnabled,
         personal = e.personal,
         jiraConnections = run {
             val system = e.jiraSystemConnectionId?.let(::ConnectionId)
@@ -282,16 +286,16 @@ class PersistenceMapper(private val json: JsonMapper) {
         canvas = WorkflowJson.toJson(d.canvas)?.let { write(it) }, enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt,
         updatedBy = writeActor(d.updatedBy),
         libraryWorkflowId = d.library?.libraryWorkflowId?.value, libraryKey = d.library?.key, libraryVersion = d.library?.version,
-        libraryModified = d.library?.modified ?: false, draft = d.draft, setupCommand = d.setupCommand,
+        libraryModified = d.library?.modified ?: false, draft = d.draft, setupCommand = d.setupCommand, sources = write(WorkflowJson.toJson(d.sources)),
     )
 
-    fun toDomain(e: WorkflowDefinitionEntity): WorkflowDefinition = WorkflowDefinition(
+    fun toDomain(e: WorkflowDefinitionEntity): WorkflowDefinition = WorkflowJson.normalised(WorkflowDefinition(
         id = WorkflowDefinitionId(e.id), projectId = ProjectId(e.projectId), name = e.name, description = e.description, version = e.version,
         nodes = json.readValue(e.nodes, nodeList).map(WorkflowJson::toDomain), edges = json.readValue(e.edges, edgeList).map(WorkflowJson::toDomain),
         triggers = json.readValue(e.triggers, triggerList).map(WorkflowJson::toDomain), canvas = e.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
         enabled = e.enabled, createdAt = e.createdAt, updatedAt = e.updatedAt, updatedBy = readActor(e.updatedBy), library = libraryLink(e),
-        draft = e.draft, setupCommand = e.setupCommand,
-    )
+        draft = e.draft, setupCommand = e.setupCommand, sources = readSources(e.sources),
+    ))
 
     /** The library link of a definition row; a row without id, key or version has none. */
     fun libraryLink(e: WorkflowDefinitionEntity): LibraryLink? {
@@ -303,16 +307,16 @@ class PersistenceMapper(private val json: JsonMapper) {
         d.id.toString(), d.projectId.toString(), d.name, d.description, d.version, d.nodes.map(WorkflowJson::toJson), d.edges.map(WorkflowJson::toJson),
         d.triggers.map(WorkflowJson::toJson), WorkflowJson.toJson(d.canvas), d.enabled, d.createdAt, d.updatedAt, d.updatedBy?.let(::toDoc),
         d.library?.let { LibraryLinkDoc(it.libraryWorkflowId.toString(), it.key, it.version, it.modified) },
-        d.setupCommand,
+        d.setupCommand, WorkflowJson.toJson(d.sources),
     )
 
-    fun toDomain(d: DefinitionDoc): WorkflowDefinition = WorkflowDefinition(
+    fun toDomain(d: DefinitionDoc): WorkflowDefinition = WorkflowJson.normalised(WorkflowDefinition(
         id = WorkflowDefinitionId.of(d.id), projectId = ProjectId.of(d.projectId), name = d.name, description = d.description, version = d.version,
         nodes = d.nodes.map(WorkflowJson::toDomain), edges = d.edges.map(WorkflowJson::toDomain), triggers = d.triggers.map(WorkflowJson::toDomain),
         canvas = WorkflowJson.toDomain(d.canvas), enabled = d.enabled, createdAt = d.createdAt, updatedAt = d.updatedAt, updatedBy = d.updatedBy?.let(::toDomain),
         library = d.library?.let { LibraryLink(LibraryWorkflowId.of(it.libraryWorkflowId), it.key, it.version, it.modified) },
-        setupCommand = d.setupCommand,
-    )
+        setupCommand = d.setupCommand, sources = WorkflowJson.toDomain(d.sources),
+    ))
 
     // ---- LibraryWorkflow (ADR 0037)
 
@@ -326,7 +330,7 @@ class PersistenceMapper(private val json: JsonMapper) {
         nodes = write(v.nodes.map(WorkflowJson::toJson)), edges = write(v.edges.map(WorkflowJson::toJson)), triggers = write(v.triggers.map(WorkflowJson::toJson)),
         canvas = WorkflowJson.toJson(v.canvas)?.let { write(it) }, publishedAt = v.publishedAt, publishedBy = writeActor(v.publishedBy),
         sourceProjectId = v.source.projectId?.value, sourceProjectKey = v.source.projectKey, sourceWorkflowId = v.source.workflowId?.value,
-        sourceWorkflowVersion = v.source.workflowVersion, setupCommand = v.setupCommand,
+        sourceWorkflowVersion = v.source.workflowVersion, setupCommand = v.setupCommand, sources = write(WorkflowJson.toJson(v.sources)),
     )
 
     fun toDomain(e: LibraryWorkflowEntity, versions: List<LibraryWorkflowVersionEntity>): LibraryWorkflow = LibraryWorkflow(
@@ -335,14 +339,25 @@ class PersistenceMapper(private val json: JsonMapper) {
         updatedBy = readActor(e.updatedBy),
     )
 
-    fun toDomain(v: LibraryWorkflowVersionEntity): LibraryWorkflowVersion = LibraryWorkflowVersion(
+    fun toDomain(v: LibraryWorkflowVersionEntity): LibraryWorkflowVersion = normalised(LibraryWorkflowVersion(
         version = v.version, changeNote = v.changeNote,
         nodes = json.readValue(v.nodes, nodeList).map(WorkflowJson::toDomain), edges = json.readValue(v.edges, edgeList).map(WorkflowJson::toDomain),
         triggers = json.readValue(v.triggers, triggerList).map(WorkflowJson::toDomain), canvas = v.canvas?.let { WorkflowJson.toDomain(read<CanvasJson>(it)) },
         publishedAt = v.publishedAt, publishedBy = readActor(v.publishedBy),
         source = LibraryWorkflowSource(v.sourceProjectId?.let(::ProjectId), v.sourceProjectKey, v.sourceWorkflowId?.let(::WorkflowDefinitionId), v.sourceWorkflowVersion),
-        setupCommand = v.setupCommand,
-    )
+        setupCommand = v.setupCommand, sources = readSources(v.sources),
+    ))
+
+    /** ADR 0063: a library version with the former step git keys rewritten (see [WorkflowJson.normalised]). */
+    private fun normalised(v: LibraryWorkflowVersion): LibraryWorkflowVersion {
+        if (!LegacyStepGit.needed(v.nodes)) return v
+        val graph = LegacyStepGit.normalise(v.nodes, v.edges, v.sources, v.setupCommand)
+        return v.copy(nodes = graph.nodes, edges = graph.edges, sources = LibraryPortability.portableSources(graph.sources), setupCommand = graph.setupCommand)
+    }
+
+    private val sourceList = object : TypeReference<List<WorkflowSourceJson>>() {}
+
+    private fun readSources(text: String?): List<WorkflowSource> = text?.let { WorkflowJson.toDomain(json.readValue(it, sourceList)) }.orEmpty()
 
     // ---- WorkflowRun
 

@@ -92,7 +92,7 @@ W GitLabie (stan na 2026; dokumentacja: https://docs.gitlab.com/ci/variables/):
    Tokeny `bo_ci_` spełniają reguły maskowania GitLaba.
 4. **Flags**: pozostaw **Protect variable** **niezaznaczone**. GitLab przekazuje zmienne chronione tylko do
    pipeline’ów chronionych gałęzi i tagów, a zadanie przeglądu działa w pipeline’ach merge requestów gałęzi
-   funkcjonalnych, natomiast zadania sygnałów działają na gałęziach wypychanych przez agentów. Chronionego
+   funkcjonalnych, natomiast zadania sygnałów działają na gałęziach wypychanych przez **Dostarcz zmiany**. Chronionego
    tokenu po prostu tam nie ma i zadanie zatrzymuje się z `BACKOFFICE_CI_TOKEN is required`. Pozostaw
    **Expand variable reference** niezaznaczone.
 5. W ten sam sposób dodaj `BACKOFFICE_URL` (widoczność **Visible**).

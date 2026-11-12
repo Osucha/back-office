@@ -45,7 +45,7 @@ class WorkflowAgentAuditTest {
             return when (key) {
                 "broken" -> throw pl.mos.backoffice.shared.ValidationException("cycle", "extendsKey")
                 "unknown" -> null
-                else -> StepNeeds(overrides.agentKey ?: AgentSnapshot.MODEL_ANSWER, listOf(RequiredSkill("adr", "ADR format")), key == "plan", true)
+                else -> StepNeeds(overrides.agentKey ?: AgentSnapshot.MODEL_ANSWER, listOf(RequiredSkill("adr", "ADR format")), key == "plan")
             }
         }
         override fun agentProfile(key: String, projectId: UUID?): AgentProfile? = when (key) {

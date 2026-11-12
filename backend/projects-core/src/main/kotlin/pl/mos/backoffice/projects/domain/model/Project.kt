@@ -118,8 +118,8 @@ data class CiEntrypoint(
 
 /**
  * Aggregate root: one project the owner delivers work for - software by default, any LLM work in general
- * (ADR 0034). Holds zero or more git repositories, the issue tracker binding, the Spec Kit switch and constitution
- * (ADR 0036; the constitution is kept while Spec Kit is off), the Jira connection settings (ADR 0035),
+ * (ADR 0034). Holds zero or more git repositories, the issue tracker binding, the constitution (ADR 0057: part of
+ * every agent's environment), the Jira connection settings (ADR 0035),
  * default model profiles and the CI entrypoints. Repository keys are unique; at most one is primary.
  */
 data class Project(
@@ -135,8 +135,6 @@ data class Project(
     val createdAt: Instant,
     val updatedAt: Instant,
     val createdBy: Actor? = null,
-    /** ADR 0036: Spec Kit steps are available in this project (off by default for new projects). */
-    val specKit: Boolean = false,
     /** ADR 0035: the system connection and the list of further connections of the project's Jira steps. */
     val jiraConnections: ProjectJiraConnections = ProjectJiraConnections(),
     /** ADR 0038: a private project of its creator only (members cannot be added); fixed at creation. */
@@ -181,9 +179,7 @@ data class Project(
         constitution: String,
         defaults: ProjectDefaults,
         now: Instant,
-        specKit: Boolean = this.specKit,
     ): Project = copy(
-        specKit = specKit,
         name = name,
         description = description,
         repositories = repositories,

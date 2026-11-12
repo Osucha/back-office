@@ -31,15 +31,14 @@ The manager who creates a project becomes its **Owner**, adds the team with proj
 |---|---|
 | **Short code** | Back Office's own code of the project: 2–16 uppercase letters, digits or underscores, for example `SHOP`. Optional: left empty, it is generated from the name. It appears in CI logins, MCP tools and the `{{project.key}}` template variable, and can be changed later in **Settings** (past runs keep the old code). It is **not** the Jira key. |
 | **Name**, **Description** | Shown on the project card and page. |
-| **Repositories** | Optional. The Git repositories agents clone and push to, each with a key, URL, default branch and purpose; leave the list empty for a project without code. See [Repositories](#repositories). Back Office never calls your Git server's API; your CI calls Back Office. Agents need Git credentials on the runner (see [Git access for agents](integrations-git.md#git-overview)). |
+| **Repositories** | Optional. The Git repositories agents clone and [Deliver changes](workflows.md#deliver-changes) pushes to, each with a key, URL, default branch and purpose; leave the list empty for a project without code. See [Repositories](#repositories). Back Office never calls your Git server's API; your CI calls Back Office. Agents need Git credentials on the runner (see [Git access for agents](integrations-git.md#git-overview)). |
 | Issue tracker switch (**Jira** / **none**) | Turn on when the workflows use the Jira actions (fetch issue, comment on issue, transition issue). The Jira credentials are [connections](#project-connections). |
 | **Jira project key** | Required with Jira on: the key of the Jira project, the prefix of its issue keys (`LFV` in `LFV-123`). The designer uses it to check which connection a Jira node gets, and the intake watcher reads this project. It is independent of the short code. |
 | **JQL filter** | Narrows the issues the **Jira intake watcher** reacts to, for example `issuetype = Story AND labels = ai`. It does not limit runs started by hand, by CI or through MCP. |
 | **Jira intake watcher** (Settings tab, after creation) | Lets Jira start runs: when an issue enters a status (or a new issue appears), a chosen workflow starts with its key. **Watch Jira and start runs**, **Poll every (minutes)**, **Workflow to start**, a status card and **Poll now**; needs `project.manage` and a reader connection. See [Jira intake watcher](integrations-jira.md#jira-intake). |
 | **Default model profile** | Used by model-backed tasks that name no profile. |
 | **Review model profile** | Used by code-review tasks; empty means the default profile. |
-| **Spec Kit** | Off for new projects. Turn it on to use the Spec Kit steps (specify, plan, tasks) and the constitution ([Spec Kit](#spec-kit)). |
-| **Spec Kit constitution (markdown)** | Shown while **Spec Kit** is on. Your project's principles, written to `.specify/memory/constitution.md` before Spec Kit jobs run and part of the [environment](task-library.md#environment) every agent step gets (prompts can also read it as `{{project.constitution}}`). Kept when Spec Kit is turned off. |
+| **Constitution (markdown)** | Optional. The project owner's rules. Every agent of the project gets them as part of its [environment](task-library.md#environment) (instructions can also read them as `{{project.constitution}}`). |
 
 3. Click **Create project**.
 
@@ -47,10 +46,9 @@ The manager who creates a project becomes its **Owner**, adds the team with proj
 
 You become the project's **Owner**. What else is created depends on the repositories:
 
-- **With at least one repository**: the workflows **CI code review**, **Change request (delta)** and
-  **Reference: one Claude Code session**, plus **Issue to reviewed MR** when **Spec Kit** is on (it is built on
-  Spec Kit), and the CI entrypoint `code-review` (see [The default workflows](workflows.md#default-workflows)). You
-  can edit, duplicate or delete them.
+- **With at least one repository**: the workflows **Issue to reviewed MR**, **CI code review**, **Change request
+  (delta)** and **Reference: one Claude Code session**, and the CI entrypoint `code-review` (see [The default
+  workflows](workflows.md#default-workflows)). You can edit, duplicate or delete them.
 - **Without a repository**: one starter workflow, **LLM task with review**, and no CI entrypoint (see
   [Projects without a repository](#no-repository)).
 
@@ -58,46 +56,47 @@ You become the project's **Owner**. What else is created depends on the reposito
 ## Repositories
 
 A project can have no repository, one, or several, for example the service code, its documentation and an
-API contract. Agents in coding steps (**Implement**, **Spec Kit**) clone them; every other step (model
-calls, Jira, gates, CI waits) works without any.
+API contract. A workflow lists the ones its run clones in its [Sources](workflows.md#workflow-sources); agents in
+coding steps read and change them, and only [Deliver changes](workflows.md#deliver-changes) pushes to them. Every
+other step (model calls, Jira, gates, CI waits) works without any.
 
 Edit the list on the project form (**Create project**) or on the project tab **Sources**. You need
 `project.manage`.
 
 | Field | Meaning |
 |---|---|
-| **Key** | Short name, lower case letters, digits and hyphens, starting with a letter (up to 31 characters), for example `service` or `docs`. Unique in the project. Workflow steps refer to the repository by it, and it is the folder the agent finds the repository in (`/workspace/<key>`). |
-| **URL** | The Git URL the runner clones (and pushes to, for steps allowed to push). |
-| **Default branch** | Default `main`. The branch agents start from and merge requests target. Agents never push to it. |
+| **Key** | Short name, lower case letters, digits and hyphens, starting with a letter (up to 31 characters), for example `service` or `docs`. Unique in the project. Workflow sources and deliveries refer to the repository by it, and it is the folder the agent finds the repository in (`/workspace/<key>`). |
+| **URL** | The Git URL the runner clones (and a delivery pushes to). |
+| **Default branch** | Default `main`. The branch agents start from and merge requests target. Nothing is ever pushed to it. |
 | **Purpose** | **Source code**, **Documentation** or **Other**. A label you see in the designer and on runs; the agent is told it too. |
 | **Description** | Optional. What is in the repository, for people and for the agent (passed to the agent as data, not as instructions). |
-| **Primary** | At most one. The repository coding steps use when they name none. Optional. |
+| **Primary** | At most one. The repository a workflow uses when its sources are empty. Optional. |
 
 1. Click **Add repository** and fill in the row.
-2. Mark one repository **Primary** if most coding steps work in it, or none if every step should name its
-   repositories.
+2. Mark one repository **Primary** if most workflows work in it, or none if every workflow should list its
+   sources.
 3. Click **Save** (or **Create project**).
 
-**Primary or not.** With a primary repository, workflows written for one repository work without change: a
-coding step that names no repository uses the primary. Without a primary, every coding step must list its
-repositories ([Repositories of a step](workflows.md#step-repositories)); the designer reports the steps that do
-not. Projects created before this feature have their repository as `main`, purpose **Source code**, primary.
+**Primary or not.** With a primary repository, workflows written for one repository work without change: a workflow
+with empty **Sources** uses the primary. Without a primary, every workflow with coding steps or a delivery must list
+its sources ([Sources of a workflow](workflows.md#workflow-sources)); the designer reports the workflows that do not.
+Projects created before this feature have their repository as `main`, purpose **Source code**, primary.
 
 **Changing the list later.** Removing a repository or changing its key can break workflows that name it. The
-designer shows the error on the step, and a run whose steps name a repository the project no longer has does
-not start; the message names the step and lists the project's repositories.
+designer shows the error, and a run whose sources name a repository the project no longer has does not start; the
+message lists the project's repositories.
 
-**Credentials.** Each repository needs a read token and, if steps push to it, a push token in the runner
-cluster ([Git access for agents](integrations-git.md#git-least-privilege)). A step gets only the access it
-asks for, per repository.
+**Credentials.** Each repository needs a read token and, if a workflow delivers to it, a push token
+([Git access for agents](integrations-git.md#git-least-privilege)). Agent jobs get only the read token; only a
+[Deliver changes](workflows.md#deliver-changes) job gets the push token.
 
 <a id="sources"></a>
 ### The Sources tab
 
-The project tab **Sources** gathers everything steps of the project can attach: on the left the project's
+The project tab **Sources** gathers everything the workflows of the project can clone: on the left the project's
 repositories (the editor above, saved with **Save changes**), on the right the
-[library sources](task-library.md#sources) shared by all projects, read only here. Each step chooses what it
-attaches in the designer ([Repositories of a step](workflows.md#step-repositories)).
+[library sources](task-library.md#sources) shared by all projects, read only here. Each workflow chooses its sources
+in the designer ([Sources of a workflow](workflows.md#workflow-sources)).
 
 <a id="no-repository"></a>
 ### Projects without a repository
@@ -136,7 +135,7 @@ The tabs, each reachable with `?tab=` in the URL:
 | **Connections** | The project's Jira connections and the platform connections it falls back to (see [Project connections](#project-connections)). | `project.connections.manage` |
 | **Sandbox** | The project's sandbox policy and what a job gets today. | `project.manage` |
 | **Budget** | The project's monthly budget. | `project.manage` |
-| **Settings** | The project form above (without the repositories, which are on **Sources**), the [Spec Kit](#spec-kit) switch and constitution, the [Jira intake watcher](integrations-jira.md#jira-intake), the **Spec Kit** card (**Add Spec Kit workflows**), and **Delete this project**. | `project.manage` |
+| **Settings** | The project form above (without the repositories, which are on **Sources**) with the constitution, the [Jira intake watcher](integrations-jira.md#jira-intake), and **Delete this project**. | `project.manage` |
 
 <a id="project-agents"></a>
 ## Agents of the project
@@ -225,27 +224,15 @@ shows CI executions of all your projects; a failed one appears in **Your turn** 
 [Your turn](your-turn.md#inbox)).
 
 <a id="spec-kit"></a>
-## Spec Kit
+### Spec Kit (removed)
 
-[GitHub Spec Kit](https://github.com/github/spec-kit) writes a specification, a plan and a task list in the
-repository before the code is implemented. In Back Office it is **optional per project** (ADR 0036):
-
-- **Off** (the default for new projects): the designer hides the Spec Kit templates (also library templates
-  that extend them), saving a workflow with a Spec Kit step is refused, runs with such a step do not start, the
-  constitution field is hidden, and agent jobs of the project do no Spec Kit work at all (no `specify init`, no
-  `.specify/` directory, no `/speckit.implement`).
-- **On**: Spec Kit steps work as before, and the constitution is written to `.specify/memory/constitution.md`
-  before each Spec Kit job.
-- Turn it on or off with the **Spec Kit** switch in the project form on the **Settings** tab
-  (`project.manage`). The constitution is kept while Spec Kit is off.
-- The workflow **Issue to reviewed MR** uses Spec Kit, so it is created only for projects with Spec Kit on.
-  After turning Spec Kit on, the **Spec Kit** card on the **Settings** tab lists the Spec Kit workflows the
-  project does not have yet with **Add Spec Kit workflows** (`workflow.edit`); existing workflows with the same
-  name are never replaced.
-- Administrators can disallow Spec Kit for the whole platform (**Administration** → **Platform settings** →
-  **Features** → **Allow Spec Kit**). Then no project can run Spec Kit steps, whatever its own switch says.
-
-Projects that already used Spec Kit before this setting existed keep it on.
+Back Office no longer runs GitHub Spec Kit (ADR 0063): the project switch **Spec Kit**, the **Spec Kit** card with
+**Add Spec Kit workflows** and the platform setting **Allow Spec Kit** are gone. The built-in templates **Write
+specification**, **Write plan** and **Write task list** have a coding agent write the same documents into the
+repository (`specs/<feature>/spec.md`, `plan.md`, `tasks.md`), and **Issue to reviewed MR** uses them, so every
+project with a repository gets it. Steps of the former Spec Kit templates now run as these templates
+([Workflows stored before ADR 0063](workflows.md#task-nodes)). The constitution stays: it is the project owner's rules
+for every agent. An agent can still use Spec Kit by itself when your repository or the agent's skills bring it.
 
 <a id="project-connections"></a>
 ## Connections

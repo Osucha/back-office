@@ -126,5 +126,8 @@ class TaskMappersTest {
     fun `ADR 0061 - required skills survive the entity`() {
         val template = TaskTemplate.create(TaskTemplate.Content(key = "plain", name = "Plain", requiresSkills = listOf("adr-format")), Instant.parse("2026-10-24T10:00:00Z"))
         assertThat(mappers.toDomain(mappers.toEntity(template)).requiresSkills).containsExactly("adr-format")
+        val withFiles = TaskTemplate.create(TaskTemplate.Content(key = "files", name = "Files", outputFiles = listOf("specs/**/spec.md")), Instant.parse("2026-10-24T10:00:00Z"))
+        assertThat(mappers.toDomain(mappers.toEntity(withFiles)).outputFiles).describedAs("ADR 0063").containsExactly("specs/**/spec.md")
+        assertThat(mappers.toDomain(mappers.toEntity(template)).outputFiles).isEmpty()
     }
 }

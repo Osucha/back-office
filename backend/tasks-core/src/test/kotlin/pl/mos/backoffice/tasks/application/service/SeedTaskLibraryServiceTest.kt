@@ -24,13 +24,13 @@ class SeedTaskLibraryServiceTest {
     fun `seeds the documented library once and never twice`() {
         val first = service.seed()
         assertThat(first.rulesCreated).isEqualTo(4)
-        assertThat(first.templatesCreated).isEqualTo(21)
+        assertThat(first.templatesCreated).describedAs("ADR 0063: write-spec, write-plan, write-task-list joined").isEqualTo(24)
         assertThat(first.skillsCreated).isEqualTo(8)
         assertThat(first.agentsCreated).isEqualTo(5)
 
         val second = service.seed()
         assertThat(second.total).isZero()
-        assertThat(lib.templates.rows).hasSize(21)
+        assertThat(lib.templates.rows).hasSize(24)
         assertThat(lib.agents.rows.values.associate { it.key to it.harness }).containsExactlyInAnyOrderEntriesOf(
             mapOf(
                 AgentSnapshot.MODEL_ANSWER to null, BuiltInLibrary.ANALYST to null, BuiltInLibrary.REVIEWER to null,
@@ -66,7 +66,7 @@ class SeedTaskLibraryServiceTest {
 
         val result = service.seed()
 
-        assertThat(result.templatesCreated).isEqualTo(20)
+        assertThat(result.templatesCreated).isEqualTo(23)
         assertThat(result.skillsCreated).isEqualTo(7)
         assertThat(result.rulesCreated).isEqualTo(4)
         assertThat(result.templatesUpgraded + result.skillsUpgraded + result.rulesUpgraded).describedAs("entries that are not built-in are never upgraded").isZero()
@@ -181,7 +181,7 @@ class SeedTaskLibraryServiceTest {
 
         val problems = lib.templates.rows.values.filterNot { it.abstract }.flatMap { template ->
             val task = lib.lookup.resolver.resolve(template.key, null)!!
-            BuiltInLibrary.producedNameProblems(task.key, task.agent, task.produces, task.outputSchema, task.confidenceField, task.config)
+            BuiltInLibrary.producedNameProblems(task.key, task.agent, task.produces, task.outputSchema, task.confidenceField, task.outputFiles)
         }
 
         assertThat(problems).isEmpty()
@@ -191,17 +191,18 @@ class SeedTaskLibraryServiceTest {
     fun `the produces check catches a schema field that does not match the produced name`() {
         val schema = """{ "type": "object", "properties": { "userStory": { "type": "string", "properties": { "x": {} } }, "confidence": { "type": "number" } } }"""
         assertThat(BuiltInLibrary.schemaProperties(schema)).containsExactly("userStory", "confidence")
-        val mismatch = BuiltInLibrary.producedNameProblems("write-user-story", AgentSnapshot.DEFAULT, listOf("user-story", "confidence"), schema, "confidence", emptyMap())
+        val mismatch = BuiltInLibrary.producedNameProblems("write-user-story", AgentSnapshot.DEFAULT, listOf("user-story", "confidence"), schema, "confidence", emptyList())
         assertThat(mismatch).hasSize(1)
         assertThat(mismatch.single()).contains("\"user-story\"")
-        assertThat(BuiltInLibrary.producedNameProblems("implement-task-list", opencode, listOf("diff", "work-log"), null, null, mapOf("collectArtifacts" to listOf("work-log.md")))).isEmpty()
-        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("work-log"), null, null, emptyMap())).hasSize(1)
-        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, mapOf("phase" to "PLAN"))).describedAs("a Spec Kit job").isEmpty()
-        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, emptyMap())).describedAs("an agent job").hasSize(1)
-        assertThat(BuiltInLibrary.producedNameProblems("x", null, listOf("plan"), null, null, emptyMap())).isEmpty()
-        assertThat(BuiltInLibrary.producedNameProblems("x", AgentSnapshot.DEFAULT, listOf("a", "b"), null, null, emptyMap())).describedAs("only one name can take the whole answer").hasSize(2)
+        assertThat(BuiltInLibrary.producedNameProblems("implement-task-list", opencode, listOf("diff", "work-log"), null, null, listOf("work-log.md"))).isEmpty()
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("work-log"), null, null, emptyList())).hasSize(1)
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, listOf("specs/**/plan.md"))).describedAs("ADR 0063: an output file under a glob").isEmpty()
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, listOf("specs/**/*.md"))).describedAs("a wildcard file names nothing").hasSize(1)
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("plan"), null, null, emptyList())).describedAs("an agent job").hasSize(1)
+        assertThat(BuiltInLibrary.producedNameProblems("x", null, listOf("plan"), null, null, emptyList())).isEmpty()
+        assertThat(BuiltInLibrary.producedNameProblems("x", AgentSnapshot.DEFAULT, listOf("a", "b"), null, null, emptyList())).describedAs("only one name can take the whole answer").hasSize(2)
         val answerSchema = """{ "type": "object", "properties": { "report": { "type": "string" }, "confidence": { "type": "number" } } }"""
-        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("report", "confidence"), answerSchema, "confidence", emptyMap()))
+        assertThat(BuiltInLibrary.producedNameProblems("x", opencode, listOf("report", "confidence"), answerSchema, "confidence", emptyList()))
             .describedAs("ADR 0057: a coding agent with an output schema is backed by its fields").isEmpty()
     }
 
@@ -216,14 +217,10 @@ class SeedTaskLibraryServiceTest {
         assertThat(task.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
         assertThat(task.agent.harness).isEqualTo(AgentHarness.CLAUDE_CODE)
         assertThat(task.config).doesNotContainKey("agent")
-        assertThat(task.config["push"]).isEqualTo(true)
-        assertThat(task.config["branchTemplate"]).isEqualTo("feature/{{issue.key | lower}}")
-        // the keys RunnerTaskSupport reads (a nested mergeRequest map was never read)
-        assertThat(task.config["mergeRequest"]).isEqualTo(true)
-        assertThat(task.config["mergeRequestTitleTemplate"]).isEqualTo("{{issue.key}}: {{issue.summary}}")
-        assertThat(task.config["mergeRequestDraft"]).isEqualTo(false)
+        assertThat(task.config).describedAs("ADR 0063: agents never push").doesNotContainKeys("push", "branchTemplate", "mergeRequest", "mergeRequestTitleTemplate", "mergeRequestDraft")
+        assertThat(task.config["codingAgent"]).isEqualTo(true)
         assertThat(task.category).isEqualTo(TemplateCategory.IMPLEMENTATION)
-        assertThat(task.produces).containsExactly("diff", "mr")
+        assertThat(task.produces).containsExactly("diff")
         assertThat(task.skills.map { it.key }).containsExactlyElementsOf(BuiltInLibrary.agentSkills.getValue(AgentSnapshot.CLAUDE_CODE))
         assertThat(task.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
         assertThat(task.instructions).describedAs("the preamble is the environment's now").doesNotContain("project.constitution").doesNotContain("Honesty")
@@ -262,7 +259,8 @@ class SeedTaskLibraryServiceTest {
         assertThat(user).describedAs("ADR 0062: the consumed diff and the issue are standard sections, the diff last").doesNotContain("{{artifacts.diff}}")
         assertThat(user).contains("{{input.ci.mergeRequest.title}}").doesNotContain("{{#issue.key}}").contains("at the end of this message")
 
-        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.config["phase"]).isEqualTo("PLAN")
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_PLAN, null)!!.config).doesNotContainKey("phase")
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.lineage).describedAs("ADR 0063: deprecated, extends the replacement").containsExactly(BuiltInLibrary.SPEC_KIT_PLAN, BuiltInLibrary.WRITE_PLAN)
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.agent.key).describedAs("ADR 0061: work in the repository (codingAgent), no push").isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.PREPARE_WORKSPACE, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
@@ -277,13 +275,13 @@ class SeedTaskLibraryServiceTest {
     }
 
     @Test
-    fun `Spec Kit prompts start with the subject and the issue and do not paste artefacts Spec Kit reads from disk`() {
+    fun `the specification templates write into the repository and leave the issue and the feedback to the platform`() {
         service.seed()
 
         val specify = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_SPECIFY, null)!!.instructions!!
-        assertThat(specify.lines().first()).isEqualTo("{{issue.key}}: {{issue.summary}}")
-        assertThat(specify).contains("{{issue.acceptanceCriteria}}").contains("Apply the skill ${BuiltInLibrary.SPEC_WRITING}")
-        assertThat(specify.indexOf("{{issue.description}}")).isLessThan(specify.indexOf("Phase SPECIFY"))
+        assertThat(specify).describedAs("the deprecated key resolves to write-spec").isEqualTo(lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_SPEC, null)!!.instructions)
+        assertThat(specify).contains("specs/<feature>/spec.md").contains("[NEEDS CLARIFICATION").doesNotContain("{{issue.")
+        assertThat(specify).contains("Apply the skill ${BuiltInLibrary.SPEC_WRITING}")
         assertThat(specify).doesNotContain("You are an engineering agent")
 
         val resolvedPlan = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!
@@ -299,7 +297,7 @@ class SeedTaskLibraryServiceTest {
     fun `runner templates name their skills, skills say when to use them and agent-task guards an empty issue`() {
         service.seed()
 
-        listOf(BuiltInLibrary.SPEC_KIT_SPECIFY, BuiltInLibrary.SPEC_KIT_PLAN, BuiltInLibrary.SPEC_KIT_TASKS, BuiltInLibrary.IMPLEMENT_OPENCODE,
+        listOf(BuiltInLibrary.WRITE_SPEC, BuiltInLibrary.WRITE_PLAN, BuiltInLibrary.WRITE_TASK_LIST, BuiltInLibrary.IMPLEMENT_OPENCODE,
             BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.AGENT_TASK).forEach { key ->
             val task = lib.lookup.resolver.resolve(key, null)!!
             val prompt = task.instructions.orEmpty()

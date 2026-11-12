@@ -187,13 +187,13 @@ class LibraryServicesTest {
 
     @Test
     fun `ADR 0061 - a template needs a coding agent when its merged config does`() {
-        val base = templates.create(content("spec-base", abstract = true).copy(config = mapOf("phase" to "PLAN")))
+        val base = templates.create(content("spec-base", abstract = true).copy(config = mapOf("codingAgent" to true)))
         val child = templates.create(content("spec-child", extendsKey = "spec-base"))
-        val mine = templates.create(content("spec-child", scope = Scope.Project(lib.projectId), extendsKey = "spec-child").copy(config = mapOf("phase" to null)))
+        val mine = templates.create(content("spec-child", scope = Scope.Project(lib.projectId), extendsKey = "spec-child").copy(config = mapOf("codingAgent" to null)))
 
         assertThat(templates.needsCodingAgent(base)).isTrue()
         assertThat(templates.needsCodingAgent(child)).isTrue()
-        assertThat(templates.needsCodingAgent(mine)).describedAs("the project copy removes the phase").isFalse()
+        assertThat(templates.needsCodingAgent(mine)).describedAs("the project copy removes codingAgent").isFalse()
     }
 
     @Test
@@ -215,7 +215,7 @@ class LibraryServicesTest {
 
     @Test
     fun `resolveStep shows what a workflow step gets with its overrides applied`() {
-        templates.create(content("step").copy(instructions = "do the work", config = mapOf("agent" to "OPENCODE", "push" to true)))
+        templates.create(content("step").copy(instructions = "do the work", config = mapOf("agent" to "OPENCODE", "codingAgent" to true)))
 
         val step = templates.resolveStep(
             "step", null,
@@ -223,7 +223,7 @@ class LibraryServicesTest {
         )
 
         assertThat(step.instructions).isEqualTo("only analyse\n\nbe brief")
-        assertThat(step.config).doesNotContainKey("agent").containsEntry("push", true)
+        assertThat(step.config).doesNotContainKey("agent").containsEntry("codingAgent", true)
         assertThat(step.agent.key).describedAs("the legacy step key agent").isEqualTo(AgentSnapshot.CLAUDE_CODE)
         assertThat(templates.resolve("step").agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(templates.resolve("step").instructions).isEqualTo("do the work")

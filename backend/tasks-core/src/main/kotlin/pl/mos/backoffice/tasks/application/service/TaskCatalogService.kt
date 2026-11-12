@@ -61,7 +61,6 @@ class TaskCatalogService(
             agentKey = resolution.agent.key,
             requiredSkills = resolution.requiresSkills.map { RequiredSkill(it, lookup.visibleSkill(it, projectId)?.name) },
             needsCodingAgent = resolution.needsCodingAgent,
-            pushes = resolution.pushes,
         )
     }
 

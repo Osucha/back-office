@@ -309,10 +309,18 @@ class PromptInjectionSuiteTest {
             skills = emptyList(), config = mapOf("branchTemplate" to "{{issue.key}}"), outputSchema = null, confidenceField = null,
             produces = listOf("diff"), consumes = emptyList(), category = null, lineage = listOf("implement"), ports = listOf("success", "failure"),
         )
-        support.run(context(run, "implement", mapOf(RunStateKeys.ISSUE to issue)), task, pl.mos.backoffice.shared.runner.RunnerMode.IMPLEMENT, null, "x")
+        support.run(context(run, "implement", mapOf(RunStateKeys.ISSUE to issue)), task, "x")
 
-        val spec = runner.specs.single()
-        assertThat(spec.repository!!.branch).isEqualTo("run/${run.id.short}")
+        val spec = runner.specs.first()
+        // ADR 0063: the agent job pushes nothing; the delivery never pushes the default branch the issue names
+        assertThat(spec.repository!!.branch).isNull()
+        val deliverContext = context(run, pl.mos.backoffice.projects.domain.service.DefaultWorkflows.NODE_DELIVER, mapOf(RunStateKeys.ISSUE to issue))
+        val deliverNode = deliverContext.node as pl.mos.backoffice.projects.domain.model.WorkflowNode.Action
+        DeliverChangesExecutor(runner, TemplateRenderer(), TemplateModelBuilder()).execute(
+            deliverContext,
+            pl.mos.backoffice.projects.application.service.nodes.ActionNodeExecutor.stepOf(deliverNode.copy(action = deliverNode.action.copy(config = mapOf("branchTemplate" to "{{issue.key}}")))),
+        )
+        assertThat(runner.specs.last().repositories.single().pushBranch).isEqualTo("run/${run.id.short}")
         assertThat(spec.prompt.lineSequence().first()).startsWith("Implement main: <untrusted-data source=\"issue.summary\"")
         assertThat(spec.prompt).contains("<untrusted-data source=\"issue.description\"")
         assertThat(spec.prompt.trimEnd()).endsWith("mention it in your summary.")
@@ -371,9 +379,9 @@ class PromptInjectionSuiteTest {
             produces = listOf("diff"), consumes = emptyList(), category = TemplateCategory.IMPLEMENTATION, lineage = listOf("implement"),
             ports = listOf("success", "failure"), rules = rules,
         )
-        support.run(context(Fixtures.runningRun(project), "implement"), task, pl.mos.backoffice.shared.runner.RunnerMode.IMPLEMENT, null, "x")
+        support.run(context(Fixtures.runningRun(project), "implement"), task, "x")
 
-        val spec = runner.specs.single()
+        val spec = runner.specs.first()
         assertThat(spec.prompt).startsWith("Implement the change.").doesNotContain("Cite evidence.")
         assertThat(spec.prompt.trimEnd()).endsWith("mention it in your summary.")
         assertThat(spec.instructions).startsWith(pl.mos.backoffice.shared.tasks.AgentEnvironmentText.PLATFORM_PREAMBLE_QUESTIONS).contains(AgentEnvironment.CODING_AGENT_PREAMBLE)

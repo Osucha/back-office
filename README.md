@@ -21,17 +21,17 @@ Two capabilities are first class:
 | Multi-vendor LLM access | [Spring AI 2.0](https://docs.spring.io/spring-ai/reference/) | One `ChatModel` abstraction for Anthropic, OpenAI, Google Gemini, Mistral, Ollama, Bedrock and any OpenAI-compatible endpoint; token usage and Micrometer observability out of the box. |
 | Durable agent workflows with human and CI gates | [LangGraph4j 1.9](https://github.com/langgraph4j/langgraph4j) | State-graph engine with Postgres checkpoints and native `interruptBefore`; no extra workflow server. |
 | Workflow canvas | [ngx-vflow](https://github.com/artem-mangilev/ngx-vflow) | Angular-native n8n-style canvas for the designer. |
-| Spec-driven development | [GitHub Spec Kit](https://github.com/github/spec-kit) | Standard `constitution → specify → plan → tasks → implement` artefacts instead of a bespoke doc format. |
+| Spec-driven development | Built-in templates `write-spec`, `write-plan`, `write-task-list` (ADR 0063) | A coding agent writes `specs/<feature>/spec.md`, `plan.md` and `tasks.md` into the repository, in the shape GitHub Spec Kit made common; no wrapper around one tool (an agent can still use Spec Kit itself when the repository or its skills bring it). |
 | Coding agents | [OpenCode](https://opencode.ai) (provider-agnostic) and Claude Code inside a Kubernetes Job | Same harness for every model makes benchmarks fair and keeps agents sandboxed. |
 | LLM tracing & cost analytics | [Langfuse](https://langfuse.com) (optional, self-hosted) via OpenTelemetry | Every model call is traced with tokens and cost; the app keeps its own usage ledger too. |
-| Issue tracking / CI | Jira REST; any CI through the served `backoffice-ci.sh` | Merge requests are opened by the runner with git push options; CI jobs call this API with project tokens. |
+| Issue tracking / CI | Jira REST; any CI through the served `backoffice-ci.sh` | Agents never push; the workflow's **Deliver changes** step commits, pushes the branch and opens the merge request with git push options (ADR 0063); CI jobs call this API with project tokens. |
 
 ## Repository layout
 
 ```
 backend/    Kotlin · Spring Boot 4.1 · hexagonal architecture (Gradle multi-module)
 frontend/   Angular 21 · NG-ZORRO (Ant Design)
-runner/     Container image for coding agents (OpenCode, Claude Code, Spec Kit, git)
+runner/     Container image for coding agents and deliveries (OpenCode, Claude Code, git)
 deploy/     Helm chart `back-office` (app + PostgreSQL, optional Langfuse)
 ci/            backoffice-ci.sh - the CI client served by the API (ADR 0013) and its tests
 ci-templates/  GitLab CI template: MR review gate and CI signals through backoffice-ci.sh

@@ -12,12 +12,10 @@ import pl.mos.backoffice.identity.application.port.out.PlatformSettingsRepositor
 import pl.mos.backoffice.identity.application.port.out.RoleRepository
 import pl.mos.backoffice.identity.domain.model.BuiltInRoles
 import pl.mos.backoffice.identity.domain.model.PlatformSettings
-import pl.mos.backoffice.shared.platform.PlatformFeatures
 
 /**
- * V409 (ADR 0035, ADR 0036) on an install seeded by an older release: the stored built-in member-like roles gain
- * `connections.personal` (audited, access version bumped, idempotent); the platform switch "Spec Kit allowed" is stored
- * and read by [PlatformFeatures] (default allowed).
+ * V409 (ADR 0035) on an install seeded by an older release: the stored built-in member-like roles gain
+ * `connections.personal` (audited, access version bumped, idempotent). ADR 0063 (V413): the Spec Kit switch is gone.
  */
 @SpringBootTest
 @Import(PostgresTestSupport::class)
@@ -26,7 +24,6 @@ class PersonalConnectionsMigrationTest {
     @Autowired lateinit var jdbc: JdbcClient
     @Autowired lateinit var roles: RoleRepository
     @Autowired lateinit var settings: PlatformSettingsRepository
-    @Autowired lateinit var features: PlatformFeatures
 
     private val script = ClassPathResource("db/migration/V409__personal_connections_and_spec_kit_switch.sql").getContentAsString(Charsets.UTF_8)
 
@@ -55,12 +52,14 @@ class PersonalConnectionsMigrationTest {
     }
 
     @Test
-    fun `the Spec Kit switch is stored in the platform settings and read by the platform features`() {
-        assertThat(features.specKitAllowed()).isTrue()
-        settings.save(PlatformSettings(specKitAllowed = false))
-        assertThat(settings.load()!!.specKitAllowed).isFalse()
-        assertThat(features.specKitAllowed()).isFalse()
-        settings.save(PlatformSettings(specKitAllowed = true))
-        assertThat(features.specKitAllowed()).isTrue()
+    fun `V413 dropped the Spec Kit switch and the platform settings still round-trip`() {
+        val column = jdbc.sql(
+            "SELECT count(*) FROM information_schema.columns WHERE table_name = :t AND column_name = :c",
+        ).param("t", "identity_platform_settings").param("c", "spec_kit_allowed").query(Long::class.javaObjectType).single()
+        // the V409 test above re-adds it (IF NOT EXISTS) when it runs first; the settings never write it
+        settings.save(PlatformSettings(personalTokenMaxDays = 30))
+        assertThat(settings.load()!!.personalTokenMaxDays).isEqualTo(30)
+        assertThat(column).isBetween(0L, 1L)
+        settings.save(PlatformSettings())
     }
 }

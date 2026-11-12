@@ -3,11 +3,12 @@
  * functions over the run, its definition snapshot and the node executions.
  */
 import type { NodeExecution, StepAgentRecord, WorkflowRun } from '../../../core/api/types';
-import { agentKindLabel, agentModelText } from '../../../core/ui/agents';
+import { actionTitle, agentKindLabel, agentModelText } from '../../../core/ui/agents';
 import { roleName } from '../../../core/i18n/catalog-labels';
 import { icu } from '../../../core/i18n/icu';
 import { intlLocale } from '../../../core/i18n/locale';
 import { formatNumber } from '../../../core/i18n/numbers';
+import { DELIVER_CHANGES, deliverySummary, mergeRequestLabel } from '../../workflows/public-api';
 
 export interface Fact {
   label: string;
@@ -52,9 +53,40 @@ function nodeFacts(
       return ciFacts(node);
     case 'DECISION':
       return decisionFacts(node);
+    case 'ACTION':
+      return actionFacts(node);
     default:
       return [];
   }
+}
+
+/**
+ * ADR 0056/0063: the action of the step; for "Deliver changes" the branch it pushes and whether it opens a merge
+ * request (the per-repository results show what it did).
+ */
+function actionFacts(node: SnapshotNode | undefined): Fact[] {
+  const type = node?.action?.type;
+  if (!type) return [];
+  const out: Fact[] = [
+    { label: $localize`:@@runs.detail.fact.action:Action`, value: actionTitle(type) },
+  ];
+  if (type === DELIVER_CHANGES) {
+    const d = deliverySummary(node?.action?.config);
+    out.push(
+      { label: $localize`:@@runs.detail.fact.deliverBranch:Branch`, value: d.branch, mono: true },
+      {
+        label: $localize`:@@runs.detail.fact.deliverMr:Merge request`,
+        value: mergeRequestLabel(d.mergeRequest),
+      },
+    );
+    if (d.repositories.length)
+      out.push({
+        label: $localize`:@@runs.detail.fact.deliverRepositories:Repositories`,
+        value: d.repositories.join(', '),
+        mono: true,
+      });
+  }
+  return out;
 }
 
 function taskFacts(

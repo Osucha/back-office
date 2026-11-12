@@ -1,7 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
 import pl.mos.backoffice.projects.application.port.`in`.TaskConfigSchemas
-import pl.mos.backoffice.projects.application.port.out.TaskRunKind
 import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.ExpressionCheck
@@ -38,7 +37,6 @@ import pl.mos.backoffice.shared.llm.ModelOption
 import pl.mos.backoffice.shared.llm.ModelUse
 import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
-import pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
 import pl.mos.backoffice.projects.domain.service.WorkflowValidator
@@ -73,8 +71,6 @@ class WorkflowService(
     private val clock: Clock,
     /** Checks that Jira steps have a connection (ADR 0030); null = not checked (tests without connections). */
     jira: JiraConnectionAccess? = null,
-    /** ADR 0036: Spec Kit gating; null = not checked (tests). */
-    private val specKit: SpecKitStepCheck? = null,
     /** ADR 0037: recomputes the `modified` flag of linked copies on save; null = links are kept as they are (tests). */
     private val library: LibraryWorkflowRepository? = null,
     /** ADR 0043: library sources steps may attach; null = none (tests). */
@@ -108,6 +104,7 @@ class WorkflowService(
                 enabled = command.enabled,
                 canvas = command.canvas,
                 setupCommand = command.setupCommand?.takeIf { it.isNotBlank() },
+                sources = command.sources,
                 createdAt = now,
                 updatedAt = now,
                 updatedBy = actor,
@@ -124,7 +121,7 @@ class WorkflowService(
         val existing = load(id)
         val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value).actor
         val draft = !check(existing.projectId, command).valid
-        val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.setupCommand)
+        val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.setupCommand, command.sources)
             .copy(draft = draft)
         val saved = workflows.save(next.withLibrary(refreshedLink(next)))
         audit.record(
@@ -136,6 +133,7 @@ class WorkflowService(
                     "version" to (existing.version to saved.version),
                     "nodes" to (existing.nodes.size to saved.nodes.size),
                     "setupCommand" to (existing.setupCommand to saved.setupCommand),
+                    "sources" to (existing.sources.map { it.key } to saved.sources.map { it.key }),
                     "draft" to (existing.draft to saved.draft),
                 ),
             ),
@@ -184,11 +182,8 @@ class WorkflowService(
 
     override fun palette(projectId: ProjectId): Palette {
         gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
-        val project = projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
-        // ADR 0036: without Spec Kit the palette hides its templates (and templates extending them: the resolved task)
-        val specKitOn = specKit?.effective(project) ?: true
+        projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         val tasks = runCatching { taskCatalog.palette(projectId.value) }.getOrDefault(emptyList())
-            .filter { specKitOn || !specKitTemplate(it.key, projectId) }
             .map { t ->
                 PaletteTask(
                     key = t.key,
@@ -209,10 +204,6 @@ class WorkflowService(
         return Palette(ControlNodeCatalog.controlNodes(), tasks, ControlNodeCatalog.stateFields(), ActionCatalog.all)
     }
 
-    /** ADR 0056: the template runs the Spec Kit job (a coding agent and a `phase`). */
-    private fun specKitTemplate(key: String, projectId: ProjectId): Boolean =
-        runCatching { taskCatalog.resolve(key, projectId.value) }.getOrNull()?.let(TaskRunKind::of) == TaskRunKind.SPEC_KIT
-
     @PublicOperation("static JSON Schemas of the task steps' config keys; reads no project data")
     override fun taskConfigSchemas(): TaskConfigSchemas =
         TaskConfigSchemas(ControlNodeCatalog.modelAnswerConfigSchema(), ControlNodeCatalog.codingAgentConfigSchema())
@@ -228,9 +219,8 @@ class WorkflowService(
     private fun taskPortsFor(projectId: ProjectId): TaskPortsProvider = TaskPortsProvider { key ->
         try {
             taskCatalog.resolve(key, projectId.value)?.let { task ->
-                val pushes = TaskRunKind.of(task).runner && task.config["push"]?.toString()?.lowercase() != "false"
                 TaskTemplateInfo(
-                    task.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS }, pushCapable = pushes,
+                    task.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS },
                     parameters = task.parameters.map { it.definition }, issueKeyFrom = task.config["issueKeyFrom"]?.toString(),
                 )
             }
@@ -244,11 +234,10 @@ class WorkflowService(
     private fun check(projectId: ProjectId, command: WorkflowCommand): WorkflowValidationResult {
         val graph = validator.validate(command.name, command.nodes, command.edges, taskPortsFor(projectId), ExpressionValidator { expressions.validate(it) }, command.triggers)
         val (errors, warnings) = connectionIssues(projectId, command.nodes, command.triggers)
-        val (repoErrors, repoWarnings) = repositoryIssues(projectId, command.nodes)
-        val specKitErrors = specKit?.let { check -> projects.findById(projectId)?.let { check.designIssues(it, command.nodes) } }.orEmpty()
+        val (repoErrors, repoWarnings) = repositoryIssues(projectId, command.sources, command.nodes)
         // ADR 0050: a model the current user cannot use is a warning (it may become usable); the run start refuses it
         val modelWarnings = modelSteps?.let { check -> projects.findById(projectId)?.let { check.designIssues(it, command.nodes, currentUserId()) } }.orEmpty()
-        val allErrors = errors + repoErrors + specKitErrors
+        val allErrors = errors + repoErrors
         val allWarnings = warnings + repoWarnings + modelWarnings
         return if (allErrors.isEmpty() && allWarnings.isEmpty()) graph else WorkflowValidationResult(graph.errors + allErrors, graph.warnings + allWarnings)
     }
@@ -289,10 +278,10 @@ class WorkflowService(
     /** The user the designer validates for; null outside a request (system work). */
     private fun currentUserId() = runCatching { gate.currentUser().userId?.value }.getOrNull()
 
-    /** ADR 0034: the repositories each runner step works on ([RepositoryStepCheck]); a step that cannot get one is an error. */
-    private fun repositoryIssues(projectId: ProjectId, nodes: List<WorkflowNode>): Pair<List<ValidationIssue>, List<ValidationIssue>> {
+    /** ADR 0063: the workflow's sources, the coding steps and the deliveries ([RepositoryStepCheck]). */
+    private fun repositoryIssues(projectId: ProjectId, sources: List<pl.mos.backoffice.projects.domain.model.WorkflowSource>, nodes: List<WorkflowNode>): Pair<List<ValidationIssue>, List<ValidationIssue>> {
         val project = projects.findById(projectId) ?: return emptyList<ValidationIssue>() to emptyList()
-        val issues = repositorySteps.designIssues(project, nodes)
+        val issues = repositorySteps.designIssues(project, sources, nodes)
         return issues.errors to issues.warnings
     }
 
@@ -319,7 +308,7 @@ class WorkflowService(
         return link.copy(modified = !LibraryPortability.sameGraph(definition.nodes, definition.edges, followed.nodes, followed.edges))
     }
 
-    /** Graph, connection, repository and Spec Kit checks of [command] in [projectId]; used by the library to adopt and update. */
+    /** Graph, connection and repository checks of [command] in [projectId]; used by the library to adopt and update. */
     @SystemOperation("validation helper of WorkflowLibraryService, which checks workflow.edit before calling it")
     internal fun requireValidFor(projectId: ProjectId, command: WorkflowCommand) = requireValid(projectId, command)
 

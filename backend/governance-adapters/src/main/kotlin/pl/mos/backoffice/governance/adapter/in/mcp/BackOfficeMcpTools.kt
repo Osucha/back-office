@@ -472,7 +472,7 @@ class BackOfficeMcpTools(
         val project = projects.create(
             ManageProjects.ProjectCommand(
                 key = key?.trim()?.ifEmpty { null }, name = name.trim(), description = description.orEmpty(),
-                repositories = repositories, constitution = constitution.orEmpty(), specKit = false, personal = personal == true,
+                repositories = repositories, constitution = constitution.orEmpty(), personal = personal == true,
             ),
         )
         return linkedMapOf(
@@ -636,11 +636,14 @@ class BackOfficeMcpTools(
             .build()
 
         const val DEFINITION_FORMAT = "Shape (as WorkflowDefinitionInput in the Back Office API): {name, description, enabled, setupCommand, " +
+            "sources: [{key (project repository key, or library source key with library: true)}] (the repositories of the run directory; " +
+            "empty = the primary repository), " +
             "triggers: [{type: MANUAL|API|CI|JIRA_TRANSITION, status}], nodes: [{id (slug), kind: START|END|TASK|ACTION|DECISION|HUMAN_GATE|WAIT_FOR_CI|NOTE, " +
             "name, position: {x, y}, maxVisits, and the section of its kind: task: {templateKey, overrides: {agentKey, modelProfileId, instructionsAppend, " +
             "instructionsReplace, parameterBindings: {<parameter name>: {source: VALUE|START|ARTIFACT, value (VALUE), artifact (ARTIFACT)}}, " +
-            "config (allowQuestions, maxQuestionRounds; session and directory are the agent's)}}, action: {type: FETCH_ISSUE|COMMENT_ISSUE|TRANSITION_ISSUE|START_WORKFLOW|" +
-            "PROJECT_DIGEST, config}, decision: {branches: [{id, label, expression}], defaultBranch}, " +
+            "config (verifyCommand, allowQuestions, maxQuestionRounds; session and directory are the agent's; agents never push)}}, action: {type: FETCH_ISSUE|COMMENT_ISSUE|TRANSITION_ISSUE|START_WORKFLOW|" +
+            "PROJECT_DIGEST|DELIVER_CHANGES (commits the run directory, pushes a branch, opens a merge request: config branchTemplate, " +
+            "commitSubjectTemplate, mergeRequest, mergeRequestTitleTemplate, mergeRequestDescriptionTemplate, mergeRequestDraft, repositories), config}, decision: {branches: [{id, label, expression}], defaultBranch}, " +
             "gate: {question, options (default approve, revise, reject; each option is an output port), showArtifacts, timeoutSeconds, " +
             "approvers: {projectRoles, users, accountable, forbidSelfApproval}, checklist: [{id, text, required}]}, ci: {signal, timeoutSeconds}, " +
             "end: {outcome: SUCCESS|FAILURE}, note: {text}}], edges: [{id, from, fromPort, to, label}]}. A START node has port out; TASK and ACTION nodes " +

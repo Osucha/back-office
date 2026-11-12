@@ -44,12 +44,13 @@ describe('agent and action labels (ADR 0056)', () => {
     );
   });
 
-  it('derives the kind of worker a config needs (ADR 0061)', () => {
-    expect(configNeedsCodingAgent({ phase: 'specify' })).toBe(true);
-    expect(configNeedsCodingAgent({ phase: '  ' })).toBe(false);
-    expect(configNeedsCodingAgent({ push: true })).toBe(true);
+  it('derives the kind of worker a config needs (ADR 0061, 0063)', () => {
+    expect(configNeedsCodingAgent({ codingAgent: true })).toBe(true);
+    expect(configNeedsCodingAgent({ codingAgent: false })).toBe(false);
     expect(configNeedsCodingAgent({ prepareOnly: 'true' })).toBe(true);
-    expect(configNeedsCodingAgent({ push: false, temperature: 0.2 })).toBe(false);
+    // ADR 0063: Spec Kit phases and push are gone; they no longer decide the kind of agent
+    expect(configNeedsCodingAgent({ phase: 'specify', push: true })).toBe(false);
+    expect(configNeedsCodingAgent({ temperature: 0.2 })).toBe(false);
     expect(configNeedsCodingAgent(null)).toBe(false);
     expect(neededAgentLabel(true)).toBe('Needs a coding agent');
     expect(neededAgentLabel(false)).toBe('Any agent');

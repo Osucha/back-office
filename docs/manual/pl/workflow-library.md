@@ -43,7 +43,8 @@ zmienione lokalnie.
    Workflow powiązany już z biblioteką domyślnie proponuje swoją kolejną wersję.
 4. Napisz jednym zdaniem, co się zmieniło. Widać to w historii wersji obok metryk każdej wersji.
 
-Czego się **nie** publikuje, bo należy do projektu: repozytoriów kroku, połączenia Jira przypiętego do kroku
+Czego się **nie** publikuje, bo należy do projektu: repozytoriów projektu wśród **Źródeł** workflowu (jego źródła
+z biblioteki idą razem z nim), połączenia Jira przypiętego do kroku
 (tryby *połączenie systemowe* i *użytkownik działający* zostają), imiennie wskazanych zatwierdzających bramek i
 kroków zapisu (role zatwierdzających zostają) oraz nazwy, wyzwalaczy i stanu włączenia workflowu. Kroki muszą
 używać **globalnych** szablonów zadań: szablon projektowy trzeba najpierw opublikować w globalnej bibliotece
@@ -56,7 +57,7 @@ W projekcie kliknij **Dodaj z biblioteki** (obok **Nowy workflow**) albo otwórz
 **Użyj w projekcie**. Wybierz workflow, wersję (domyślnie najnowszą) i, jeśli chcesz, inną nazwę. Projekt
 dostaje **powiązaną kopię**: zwykły workflow, który się uruchamia, może być startowany z CI i zmieniany w
 projektancie workflowów, oznaczony kluczem i wersją z biblioteki (np. `issue-to-mr v3`). Części lokalne ustaw w projektancie workflowów:
-repozytoria kroków, połączenie Jira i imiennie wskazanych zatwierdzających. Wycofane workflowy nie są
+**Źródła** workflowu (puste = główne repozytorium projektu), połączenie Jira i imiennie wskazanych zatwierdzających. Wycofane workflowy nie są
 proponowane.
 
 <a id="update-detach"></a>

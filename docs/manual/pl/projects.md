@@ -33,15 +33,14 @@ Kierownik, który tworzy projekt, zostaje jego **Właścicielem**, dodaje zespó
 |---|---|
 | **Kod skrócony** (**Short code**) | Własny kod projektu w Back Office: 2–16 wielkich liter, cyfr lub podkreśleń, na przykład `SHOP`. Opcjonalny: puste pole oznacza kod utworzony z nazwy. Pojawia się w loginach CI, narzędziach MCP i zmiennej szablonu `{{project.key}}`; można go później zmienić w **Ustawieniach** (dotychczasowe przebiegi zachowują stary kod). To **nie** jest klucz Jira. |
 | **Nazwa**, **Opis** | Wyświetlane na karcie i stronie projektu. |
-| **Repozytoria** (**Repositories**) | Opcjonalne. Repozytoria Git, które agenci klonują i do których wypychają zmiany; każde ma klucz, URL, gałąź domyślną i przeznaczenie. W projekcie bez kodu zostaw listę pustą. Zob. [Repozytoria](#repositories). Back Office nigdy nie wywołuje API Twojego serwera Git; to Twoje CI wywołuje Back Office. Agenci potrzebują poświadczeń Git na runnerze (zob. [Dostęp agentów do gita](integrations-git.md#git-overview)). |
+| **Repozytoria** (**Repositories**) | Opcjonalne. Repozytoria Git, które agenci klonują i do których wypycha zmiany [Dostarcz zmiany](workflows.md#deliver-changes); każde ma klucz, URL, gałąź domyślną i przeznaczenie. W projekcie bez kodu zostaw listę pustą. Zob. [Repozytoria](#repositories). Back Office nigdy nie wywołuje API Twojego serwera Git; to Twoje CI wywołuje Back Office. Agenci potrzebują poświadczeń Git na runnerze (zob. [Dostęp agentów do gita](integrations-git.md#git-overview)). |
 | Przełącznik systemu zgłoszeń (**Jira** / **brak**) | Włącz, gdy workflowy korzystają z akcji Jiry (pobranie zgłoszenia, komentarz do zgłoszenia, zmiana statusu). Poświadczenia Jiry to [połączenia](#project-connections). |
 | **Klucz projektu Jira** (**Jira project key**) | Wymagany przy włączonej Jirze: klucz projektu w Jirze, czyli przedrostek kluczy zgłoszeń (`LFV` w `LFV-123`). Projektant używa go, aby sprawdzić, które połączenie dostanie węzeł Jiry, a monitor zgłoszeń czyta ten projekt. Nie zależy od kodu skróconego. |
 | **Filtr JQL** (**JQL filter**) | Zawęża zgłoszenia, na które reaguje **monitor zgłoszeń Jira**, na przykład `issuetype = Story AND labels = ai`. Nie ogranicza uruchomień rozpoczynanych ręcznie, z CI ani przez MCP. |
 | **Monitor zgłoszeń Jira** (**Jira intake watcher**; karta Ustawienia, po utworzeniu projektu) | Pozwala Jirze uruchamiać workflowy: gdy zgłoszenie trafi do statusu (albo pojawi się nowe zgłoszenie), wybrany workflow startuje z jego kluczem. **Monitoruj Jirę i uruchamiaj workflowy**, **Sprawdzaj co (minuty)**, **Workflow do uruchomienia**, karta stanu i **Sprawdź teraz** (**Poll now**); wymaga `project.manage` i połączenia do odczytu. Zob. [Monitor zgłoszeń Jira](integrations-jira.md#jira-intake). |
 | **Domyślny profil modelu** (**Default model profile**) | Używany przez zadania oparte na modelu, które nie wskazują profilu. |
 | **Profil modelu do przeglądów** (**Review model profile**) | Używany przez zadania przeglądu kodu; puste oznacza profil domyślny. |
-| **Spec Kit** | Wyłączony w nowych projektach. Włącz, aby używać kroków Spec Kit (specify, plan, tasks) i konstytucji ([Spec Kit](#spec-kit)). |
-| **Konstytucja Spec Kit (markdown)** (**Spec Kit constitution (markdown)**) | Widoczna, gdy **Spec Kit** jest włączony. Zasady Twojego projektu, zapisywane do `.specify/memory/constitution.md` przed zadaniami Spec Kit i będące częścią [środowiska](task-library.md#environment), które dostaje każdy krok agenta (prompty mogą je też czytać jako `{{project.constitution}}`). Zachowywana po wyłączeniu Spec Kit. |
+| **Konstytucja (markdown)** (**Constitution (markdown)**) | Opcjonalna. Zasady właściciela projektu. Każdy agent projektu dostaje je jako część swojego [środowiska](task-library.md#environment) (polecenia mogą je też czytać jako `{{project.constitution}}`). |
 
 3. Kliknij **Utwórz projekt**.
 
@@ -49,10 +48,9 @@ Kierownik, który tworzy projekt, zostaje jego **Właścicielem**, dodaje zespó
 
 Zostajesz **Właścicielem** (**Owner**) projektu. Co jeszcze powstaje, zależy od repozytoriów:
 
-- **Z co najmniej jednym repozytorium**: workflowy **CI code review**, **Change request (delta)** i **Reference:
-  one Claude Code session**, a gdy **Spec Kit** jest włączony także **Issue to reviewed MR** (zbudowany na Spec
-  Kit), oraz punkt wejścia CI `code-review` (zob. [Domyślne workflowy](workflows.md#default-workflows)). Możesz je
-  edytować, duplikować lub usuwać.
+- **Z co najmniej jednym repozytorium**: workflowy **Issue to reviewed MR**, **CI code review**, **Change request
+  (delta)** i **Reference: one Claude Code session** oraz punkt wejścia CI `code-review` (zob. [Domyślne
+  workflowy](workflows.md#default-workflows)). Możesz je edytować, duplikować lub usuwać.
 - **Bez repozytorium**: jeden workflow startowy, **LLM task with review**, i żadnego punktu wejścia CI
   (zob. [Projekty bez repozytorium](#no-repository)).
 
@@ -60,48 +58,50 @@ Zostajesz **Właścicielem** (**Owner**) projektu. Co jeszcze powstaje, zależy 
 ## Repozytoria
 
 Projekt może nie mieć repozytorium, mieć jedno albo kilka, na przykład kod usługi, jej dokumentację
-i kontrakt API. Agenci w krokach programistycznych (**Implement**, **Spec Kit**) je klonują; wszystkie
-pozostałe kroki (wywołania modelu, Jira, bramki, oczekiwanie na CI) działają bez nich.
+i kontrakt API. Workflow wymienia te, które klonuje jego przebieg, w swoich [Źródłach](workflows.md#workflow-sources);
+agenci w krokach programistycznych je czytają i zmieniają, a wypycha do nich tylko [Dostarcz
+zmiany](workflows.md#deliver-changes). Wszystkie pozostałe kroki (wywołania modelu, Jira, bramki, oczekiwanie na CI)
+działają bez nich.
 
 Listę edytujesz w formularzu projektu (**Utwórz projekt**) albo na karcie projektu **Źródła**
 (**Sources**). Wymaga `project.manage`.
 
 | Pole | Znaczenie |
 |---|---|
-| **Klucz** (**Key**) | Krótka nazwa: małe litery, cyfry i myślniki, zaczyna się literą (do 31 znaków), na przykład `service` albo `docs`. Unikalna w projekcie. Kroki workflowu odwołują się nią do repozytorium i jest to katalog, w którym agent je znajdzie (`/workspace/<klucz>`). |
-| **URL** | URL repozytorium Git, które runner klonuje (i do którego wypycha zmiany w krokach, które mogą to robić). |
-| **Gałąź domyślna** (**Default branch**) | Domyślnie `main`. Gałąź, od której agenci zaczynają i do której kierowane są merge requesty. Agenci nigdy do niej nie wypychają. |
+| **Klucz** (**Key**) | Krótka nazwa: małe litery, cyfry i myślniki, zaczyna się literą (do 31 znaków), na przykład `service` albo `docs`. Unikalna w projekcie. Źródła workflowu i dostarczenia odwołują się nią do repozytorium i jest to katalog, w którym agent je znajdzie (`/workspace/<klucz>`). |
+| **URL** | URL repozytorium Git, które runner klonuje (i do którego wypycha dostarczenie). |
+| **Gałąź domyślna** (**Default branch**) | Domyślnie `main`. Gałąź, od której agenci zaczynają i do której kierowane są merge requesty. Nic nigdy do niej nie jest wypychane. |
 | **Przeznaczenie** (**Purpose**) | **Kod źródłowy** (**Source code**), **Dokumentacja** (**Documentation**) lub **Inne** (**Other**). Etykieta widoczna w projektancie i w uruchomieniach; agent też ją dostaje. |
 | **Opis** (**Description**) | Opcjonalny. Co jest w repozytorium, dla ludzi i dla agenta (agent dostaje go jako dane, nie jako polecenia). |
-| **Główne** (**Primary**) | Co najwyżej jedno. Repozytorium, którego używają kroki programistyczne, gdy nie wskazują żadnego. Opcjonalne. |
+| **Główne** (**Primary**) | Co najwyżej jedno. Repozytorium, którego używa workflow, gdy jego źródła są puste. Opcjonalne. |
 
 1. Kliknij **Dodaj repozytorium** (**Add repository**) i wypełnij wiersz.
-2. Oznacz jedno repozytorium jako **Główne**, jeśli większość kroków programistycznych w nim pracuje, albo
-   nie oznaczaj żadnego, jeśli każdy krok ma wskazywać swoje repozytoria.
+2. Oznacz jedno repozytorium jako **Główne**, jeśli większość workflowów w nim pracuje, albo nie oznaczaj
+   żadnego, jeśli każdy workflow ma wymieniać swoje źródła.
 3. Kliknij **Zapisz** (**Save**) (albo **Utwórz projekt**).
 
 **Główne czy nie.** Gdy projekt ma główne repozytorium, workflowy napisane dla jednego repozytorium działają
-bez zmian: krok programistyczny, który nie wskazuje repozytorium, używa głównego. Bez głównego repozytorium
-każdy krok programistyczny musi wymienić swoje repozytoria
-([Repozytoria kroku](workflows.md#step-repositories)); projektant pokazuje kroki, które tego nie robią.
+bez zmian: workflow z pustymi **Źródłami** używa głównego. Bez głównego repozytorium każdy workflow z krokami
+programistycznymi albo dostarczeniem musi wymienić swoje źródła ([Źródła workflowu](workflows.md#workflow-sources));
+projektant pokazuje workflowy, które tego nie robią.
 Projekty utworzone przed wprowadzeniem tej funkcji mają swoje repozytorium jako `main`, z przeznaczeniem
 **Kod źródłowy**, oznaczone jako główne.
 
 **Późniejsze zmiany listy.** Usunięcie repozytorium albo zmiana jego klucza może zepsuć workflowy, które go
-używają. Projektant pokazuje błąd przy kroku, a uruchomienie, którego kroki wskazują repozytorium, którego
-projekt już nie ma, nie wystartuje; komunikat podaje krok i listę repozytoriów projektu.
+używają. Projektant pokazuje błąd, a uruchomienie, którego źródła wskazują repozytorium, którego projekt już nie ma,
+nie wystartuje; komunikat podaje listę repozytoriów projektu.
 
-**Poświadczenia.** Każde repozytorium potrzebuje w klastrze runnerów tokenu do odczytu oraz, jeśli kroki do
-niego wypychają, tokenu do wypychania ([Dostęp agentów do gita](integrations-git.md#git-least-privilege)).
-Krok dostaje tylko taki dostęp, o jaki prosi, osobno dla każdego repozytorium.
+**Poświadczenia.** Każde repozytorium potrzebuje tokenu do odczytu oraz, jeśli workflow do niego dostarcza, tokenu do
+wypychania ([Dostęp agentów do gita](integrations-git.md#git-least-privilege)). Joby agentów dostają tylko token do
+odczytu; token do wypychania dostaje tylko job [Dostarcz zmiany](workflows.md#deliver-changes).
 
 <a id="sources"></a>
 ### Karta Źródła
 
-Karta projektu **Źródła** (**Sources**) zbiera wszystko, co kroki projektu mogą podłączyć: po lewej
+Karta projektu **Źródła** (**Sources**) zbiera wszystko, co workflowy projektu mogą sklonować: po lewej
 repozytoria projektu (edytor opisany wyżej, zapisywany przyciskiem **Zapisz zmiany**), po prawej
 [źródła z biblioteki](task-library.md#sources) wspólne dla wszystkich projektów, tutaj tylko do odczytu.
-Każdy krok wybiera w projektancie, co podłącza ([Repozytoria kroku](workflows.md#step-repositories)).
+Każdy workflow wybiera swoje źródła w projektancie ([Źródła workflowu](workflows.md#workflow-sources)).
 
 <a id="no-repository"></a>
 ### Projekty bez repozytorium
@@ -141,7 +141,7 @@ Karty, każda dostępna przez `?tab=` w URL:
 | **Połączenia** (**Connections**) | Połączenia Jiry projektu i połączenia platformy, z których projekt korzysta awaryjnie (zob. [Połączenia projektu](#project-connections)). | `project.connections.manage` |
 | **Sandbox** | Polityka sandboxa projektu i to, co dziś dostaje zadanie. | `project.manage` |
 | **Budżet** (**Budget**) | Miesięczny budżet projektu. | `project.manage` |
-| **Ustawienia** (**Settings**) | Formularz projektu opisany wyżej (bez repozytoriów, które są na karcie **Źródła**), przełącznik i konstytucja [Spec Kit](#spec-kit), [monitor zgłoszeń Jira](integrations-jira.md#jira-intake), karta **Spec Kit** (**Dodaj workflowy Spec Kit**) i **Usuń ten projekt**. | `project.manage` |
+| **Ustawienia** (**Settings**) | Formularz projektu opisany wyżej (bez repozytoriów, które są na karcie **Źródła**) z konstytucją, [monitor zgłoszeń Jira](integrations-jira.md#jira-intake) i **Usuń ten projekt**. | `project.manage` |
 
 <a id="project-agents"></a>
 ## Agenci projektu
@@ -235,28 +235,15 @@ co uruchomił Twój pipeline. Strona **CI** na pasku bocznym (`/ci`) pokazuje wy
 projektów; nieudane pojawia się w **Twoja kolej** (zob. [Twoja kolej](your-turn.md#inbox)).
 
 <a id="spec-kit"></a>
-## Spec Kit
+### Spec Kit (usunięty)
 
-[GitHub Spec Kit](https://github.com/github/spec-kit) zapisuje w repozytorium specyfikację, plan i listę zadań,
-zanim kod zostanie zaimplementowany. W Back Office jest **opcjonalny dla każdego projektu** (ADR 0036):
-
-- **Wyłączony** (domyślnie w nowych projektach): projektant ukrywa szablony Spec Kit (także szablony biblioteki,
-  które je rozszerzają), zapis workflowu z krokiem Spec Kit jest odrzucany, uruchomienia z takim krokiem nie
-  startują, pole konstytucji jest ukryte, a zadania agentów projektu nie wykonują żadnej pracy Spec Kit (bez
-  `specify init`, bez katalogu `.specify/`, bez `/speckit.implement`).
-- **Włączony**: kroki Spec Kit działają jak dotąd, a konstytucja jest zapisywana do
-  `.specify/memory/constitution.md` przed każdym zadaniem Spec Kit.
-- Włączasz go i wyłączasz przełącznikiem **Spec Kit** w formularzu projektu na karcie **Ustawienia**
-  (`project.manage`). Konstytucja zostaje zachowana, gdy Spec Kit jest wyłączony.
-- Workflow **Issue to reviewed MR** używa Spec Kit, więc powstaje tylko w projektach z włączonym Spec Kit. Po
-  włączeniu Spec Kit karta **Spec Kit** na karcie **Ustawienia** wymienia workflowy Spec Kit, których projekt
-  jeszcze nie ma, z przyciskiem **Dodaj workflowy Spec Kit** (**Add Spec Kit workflows**, `workflow.edit`);
-  istniejące workflowy o tej samej nazwie nigdy nie są zastępowane.
-- Administratorzy mogą zabronić Spec Kit dla całej platformy (**Administracja** → **Ustawienia platformy** →
-  **Funkcje** → **Zezwalaj na Spec Kit**). Wtedy żaden projekt nie może uruchamiać kroków Spec Kit, niezależnie
-  od własnego przełącznika.
-
-Projekty, które używały Spec Kit, zanim pojawiło się to ustawienie, mają go nadal włączony.
+Back Office nie uruchamia już GitHub Spec Kit (ADR 0063): nie ma przełącznika projektu **Spec Kit**, karty **Spec
+Kit** z przyciskiem **Dodaj workflowy Spec Kit** ani ustawienia platformy **Zezwalaj na Spec Kit**. Wbudowane szablony
+**Write specification**, **Write plan** i **Write task list** zlecają agentowi kodującemu zapisanie tych samych
+dokumentów w repozytorium (`specs/<funkcja>/spec.md`, `plan.md`, `tasks.md`), a **Issue to reviewed MR** ich używa,
+więc dostaje go każdy projekt z repozytorium. Kroki dawnych szablonów Spec Kit działają teraz jako te szablony
+([Workflowy zapisane przed ADR 0063](workflows.md#task-nodes)). Konstytucja zostaje: to zasady właściciela projektu
+dla każdego agenta. Agent nadal może sam użyć Spec Kit, gdy przynosi go Twoje repozytorium albo umiejętności agenta.
 
 <a id="project-connections"></a>
 ## Połączenia

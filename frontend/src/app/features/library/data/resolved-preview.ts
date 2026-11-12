@@ -116,6 +116,7 @@ export function emptyTemplate(): TaskTemplateInput {
     config: {},
     outputSchema: null,
     confidenceField: null,
+    outputFiles: [],
     produces: [],
     consumes: [],
     tags: [],
@@ -140,6 +141,8 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     config: t.config ?? {},
     outputSchema: t.outputSchema ?? null,
     confidenceField: t.confidenceField ?? null,
+    // ADR 0063: globs of files returned as artefacts (former config collectArtifacts)
+    outputFiles: [...(t.outputFiles ?? [])],
     produces: t.produces ?? [],
     consumes: t.consumes ?? [],
     tags: t.tags ?? [],

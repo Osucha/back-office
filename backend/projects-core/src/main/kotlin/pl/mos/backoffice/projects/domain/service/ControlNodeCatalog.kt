@@ -100,29 +100,21 @@ object ControlNodeCatalog {
         ) + questionSettings(),
     )
 
-    /** Spec Kit phases a coding agent step can run instead of the agent job (config key `phase`). */
-    val SPEC_KIT_PHASES = listOf("SPECIFY", "CLARIFY", "PLAN", "TASKS", "ANALYZE")
-
     /**
-     * ADR 0056: JSON Schema for `overrides.config` of a step a coding agent runs: the agent job (former IMPLEMENT) and,
-     * with `phase`, the Spec Kit job. The harness is the agent's, so there is no `agent` key.
+     * ADR 0056: JSON Schema for `overrides.config` of a step a coding agent runs. The harness is the agent's, so there is
+     * no `agent` key. ADR 0063: agents never push; the git keys belong to `DELIVER_CHANGES`, the repositories and the
+     * setup command to the workflow, the output files to the template.
      */
     fun codingAgentConfigSchema(): Map<String, Any?> = schema(
         mapOf(
-            "phase" to enum("Spec Kit phase: set it to run that Spec Kit phase instead of the agent job", SPEC_KIT_PHASES),
-            "verifyCommand" to string("Command run after the agent, e.g. ./gradlew test"),
-            "setupCommand" to string("Command run before the agent, e.g. npm ci"),
-            "branchTemplate" to string("Run branch, default feature/{{issue.key | lower}}"),
-            "push" to boolean("Push the branch when done. On: git access PUSH_MR (the runner token may push this branch and open a merge request, never merge). Off: READ (read-only token, nothing is pushed)", true),
-            "mergeRequest" to boolean("Open a merge request with git push options", true),
-            "mergeRequestTitleTemplate" to string("MR title, default {{issue.key}}: {{issue.summary}}"),
-            "mergeRequestDescriptionTemplate" to string("MR description template"),
-            "mergeRequestDraft" to boolean("Open the MR as draft", false),
-            "collectArtifacts" to stringArray("Glob patterns of files returned as artefacts"),
+            "verifyCommand" to string("Command run after the agent, e.g. ./gradlew test; a non-zero exit fails the step"),
             "agentTools" to stringArray("Read-only tools for the agent (ADR 0051): gitlab-read = glab with the project's verified read-only CI_READ token of the primary repository (pipelines, job logs, merge requests)"),
-            StepRepositories.CONFIG_KEY to repositoriesSetting(),
+            CODING_AGENT to boolean("The work needs a coding agent in the workflow's sources (a model answer cannot do it)", false),
         ) + directorySettings() + questionSettings(),
     )
+
+    /** ADR 0061/0063: the config key that says a step needs a coding agent. */
+    const val CODING_AGENT = "codingAgent"
 
     /** ADR 0056: JSON Schema for `action.config` of an action node. */
     fun actionConfigSchema(type: ActionType): Map<String, Any?> = when (type) {
@@ -152,7 +144,30 @@ object ControlNodeCatalog {
                 "pipelineRefs" to string("Comma-separated branches whose latest pipeline is reported, e.g. develop,main (needs a CI_READ token)"),
             ),
         )
+        ActionType.DELIVER_CHANGES -> schema(
+            mapOf(
+                ActionCatalog.BRANCH_TEMPLATE to string("Branch pushed (template; never the default branch), default: the run's branch, else feature/{{issue.key | lower}}"),
+                ActionCatalog.COMMIT_SUBJECT_TEMPLATE to string("Commit subject (template), default {{issue.key}}: {{issue.summary}}"),
+                ActionCatalog.MERGE_REQUEST to boolean("Open a merge request with git push options (never merged by Back Office)", true),
+                ActionCatalog.MERGE_REQUEST_TITLE_TEMPLATE to string("Merge request title (template), default {{issue.key}}: {{issue.summary}}"),
+                ActionCatalog.MERGE_REQUEST_DESCRIPTION_TEMPLATE to string("Merge request description (template)"),
+                ActionCatalog.MERGE_REQUEST_DRAFT to boolean("Open the merge request as draft", false),
+                ActionCatalog.REPOSITORIES to deliveredRepositoriesSetting(),
+            ),
+        )
     }
+
+    /**
+     * ADR 0063: the project repositories a delivery writes back to. `x-editor: repositories` tells the designer to render
+     * its repository picker. Absent = every project repository of the workflow's sources that has changes.
+     */
+    private fun deliveredRepositoriesSetting(): Map<String, Any?> = mapOf(
+        "type" to "array",
+        "x-editor" to "repositories",
+        "description" to "Project repositories to deliver (keys); absent = every project repository among the workflow's sources that has " +
+            "changes. Library sources are read-only.",
+        "items" to mapOf("type" to "string"),
+    )
 
     private const val APPROVAL_FIELD = "approval"
 
@@ -161,7 +176,7 @@ object ControlNodeCatalog {
      * designer to render it in its directory section instead of as a generic field.
      */
     private fun directorySettings(): Map<String, Any?> = mapOf(
-        RunDirectory.PREPARE_ONLY to (boolean("Only prepare the run directory: clone and run its setup, no agent, no push", false) + DIRECTORY_EDITOR),
+        RunDirectory.PREPARE_ONLY to (boolean("Only prepare the run directory: clone the workflow's sources and run its setup, no agent", false) + DIRECTORY_EDITOR),
     )
 
     private val DIRECTORY_EDITOR = mapOf("x-editor" to "directory")
@@ -170,25 +185,6 @@ object ControlNodeCatalog {
     private fun questionSettings(): Map<String, Any?> = mapOf(
         RunDirectory.ALLOW_QUESTIONS to boolean("The agent may stop with questions to the owner instead of guessing; the run waits for the answers", true),
         RunDirectory.MAX_QUESTION_ROUNDS to integer("Most rounds of questions per execution of the step; after that the agent must finish with what it has", RunDirectory.DEFAULT_MAX_QUESTION_ROUNDS),
-    )
-
-    /**
-     * ADR 0034: the repositories of a runner step. `x-editor: repositories` tells the designer to render its repository
-     * picker instead of a generic field. Absent = the project's primary repository with the access derived from `push`.
-     */
-    private fun repositoriesSetting(): Map<String, Any?> = mapOf(
-        "type" to "array",
-        "x-editor" to "repositories",
-        "description" to "Repositories of this step, each cloned into /workspace/<key>; absent = the primary repository. " +
-            "READ: clone only, nothing is pushed. PUSH_MR: the runner pushes the job branch and opens a merge request, never merges. " +
-            "Choose READ unless the step must change that repository (least privilege).",
-        "items" to obj(
-            mapOf(
-                "key" to string("Project repository key"),
-                "access" to enum("Git access in this repository", listOf("READ", "PUSH_MR"), "READ"),
-            ),
-            listOf("key"),
-        ),
     )
 
     /** ADR 0033: approval before the external write; missing = REQUIRED. Who approves is `approvers` (designer section). */
@@ -215,8 +211,8 @@ object ControlNodeCatalog {
         StateField("review.score", "Last review score 0..100"),
         StateField("review.blockers", "Number of BLOCKER findings"),
         StateField("review.majors", "Number of MAJOR findings"),
-        StateField("mr.url", "Merge request URL after an implementation task pushed"),
-        StateField("mr.branch", "Branch pushed by the implementation task"),
+        StateField("mr.url", "Merge request URL after Deliver changes"),
+        StateField("mr.branch", "Branch pushed by Deliver changes"),
         StateField("mr.targetBranch", "Target branch of the merge request"),
         StateField("ci.signal", "Name of the last CI signal"),
         StateField("ci.status", "SUCCESS or FAIL of the last CI signal"),

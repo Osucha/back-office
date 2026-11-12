@@ -1,7 +1,8 @@
 # Git access for agents
 
-Coding agents clone the project's repository, push a branch and, on GitLab, open a merge request. They do
-this from their sandbox with git tokens that live **only in the runner cluster**. The Back Office
+Coding agents clone the project's repositories and change them in the run directory; a **Deliver changes** step
+then commits the work, pushes a branch and, on GitLab, opens a merge request (ADR 0063). Both happen in a sandbox
+with git tokens that live **only in the runner cluster**. The Back Office
 control plane has no git credential and never calls an SCM API. This chapter covers the least-privilege
 setup (a read-only token and a push token per repository), creating the tokens on GitLab or GitHub,
 protecting the default branch so that no agent token can merge, installing the tokens into the runner pool,
@@ -13,16 +14,22 @@ repositories.
 <a id="git-overview"></a>
 ## What the agent does with git
 
-For every **Spec Kit** or **Implement** step (and coding benchmark attempts) the runner inside the sandbox
-(`runner/entrypoint.py`):
+For every coding step (and coding benchmark attempts) the runner inside the sandbox (`runner/entrypoint.py`)
+clones the workflow's sources over HTTPS (`git clone`) into the run directory, checks out the base ref and lets
+the agent work. An agent job **never commits or pushes**: its git access is at most `READ`, and the diff of the
+work tree against the base is reported as the step's `diff` artefact.
 
-1. Clones the project's **Git URL** over HTTPS (`git clone`), checks out the base ref, fetches or creates
-   the run branch (`git ls-remote`, `git fetch`), by default `feature/<issue key>`.
-2. Commits as **Back Office Agent** `<agent@backoffice.local>` unless you set another identity; every commit
-   carries the trailer `Back-Office-Run: <runId>`, which CI uses to signal the run.
-3. Pushes the branch, but only when the job's **git access** is `PUSH_MR` (see below; `push` is on by
-   default in the task configuration).
-4. For **Implement** steps with `mergeRequest` on (the default) it adds GitLab push options:
+For a [Deliver changes](workflows.md#deliver-changes) step the runner runs **no agent** and no command of the
+repositories. In the run directory it:
+
+1. Switches each delivered repository to the run branch (by default `feature/<issue key>`), after checking that the
+   branch is not the default branch or the merge request target.
+2. Commits every changed and new file (not those ignored by `.gitignore`, and never the runner's `work-log.md`,
+   `structured-answer.json` and `agent-questions.json`) as **Back Office Agent** `<agent@backoffice.local>` unless
+   you set another identity; every commit carries the trailer `Back-Office-Run: <runId>`, which CI uses to signal
+   the run.
+3. Pushes the branch; only a delivery job gets the git access `PUSH_MR` (see below).
+4. With **Open a merge request** on (the default) it adds GitLab push options:
    `-o merge_request.create -o merge_request.target=<default branch> -o merge_request.title=...`
    (`description`, `draft` when configured). GitLab opens or updates the merge request and prints its URL,
    which Back Office records on the run. The runner **never** sends options that merge
@@ -30,17 +37,17 @@ For every **Spec Kit** or **Implement** step (and coding benchmark attempts) the
    skip CI, and never force-pushes.
 
 Authentication: an inline git credential helper answers with user name `oauth2` and the token read from
-the file `/var/run/backoffice/git/token`. It is used only for clone, fetch, ls-remote and (PUSH_MR jobs)
+the file `/var/run/backoffice/git/token`. It is used only for clone, fetch, ls-remote and (delivery jobs, PUSH_MR)
 push; the token is never written into `.git/config`, the environment of the agent or the logs.
 
 Nothing calls the GitLab or GitHub API, so no token needs an API scope.
 
-**Several repositories.** A project can have several repositories, and a step can use several of them
-([Repositories of a step](workflows.md#step-repositories)). The runner then does the steps above for each
-repository, in its own folder `/workspace/<key>`, with the access the step gives that repository: **Read**
-repositories are cloned with the read token and never pushed, **Push and merge request** repositories get the
-push token, the same branch and their own merge request. Install read and push tokens for every repository
-(or group) that steps use; the pool selects them per repository exactly as described below. Upgrade runner
+**Several repositories.** A project can have several repositories, and a workflow can clone several of them
+([Sources of a workflow](workflows.md#workflow-sources)). The runner then does the steps above for each
+repository, in its own folder `/workspace/<key>`: agent jobs clone every source with the read token and never
+push; a delivery pushes each delivered repository with its push token, with the same branch and its own merge
+request. Install read tokens for every repository (or group) the workflows clone and push tokens for those they
+deliver to; the pool selects them per repository exactly as described below. Upgrade runner
 images and runner-controllers before using steps with several repositories: older runners clone only the
 primary repository, and older controllers select one token, for the primary repository, at the highest access
 the step uses.
@@ -55,18 +62,19 @@ the step uses.
 <a id="git-least-privilege"></a>
 ## Least privilege: read-only and push tokens
 
-Back Office derives a **git access level** for every agent job and sends only the level to the runner pool,
+Back Office derives a **git access level** for every runner job and sends only the level to the runner pool,
 never a secret. The runner-controller picks the matching token of its cluster:
 
 | Level | Which jobs | Token the sandbox gets | What the runner does |
 |---|---|---|---|
 | `NONE` | jobs without a repository | none | nothing with git |
-| `READ` | steps with `push` off, Spec Kit analysis without push, coding benchmarks | the **read** token | clone and fetch only; pushing is disabled (`remote.origin.pushurl` = `disabled://read-only-job`) and the runner never pushes |
-| `PUSH_MR` | **Implement** and **Spec Kit** steps with `push` on | the **push** token | pushes the job branch and opens a merge request with push options; never merges |
+| `READ` | every agent job (coding steps, coding benchmarks) | the **read** token | clone and fetch only; pushing is disabled (`remote.origin.pushurl` = `disabled://read-only-job`) and the runner never commits or pushes |
+| `PUSH_MR` | only [Deliver changes](workflows.md#deliver-changes) jobs (no agent runs in them) | the **push** token | commits the run directory, pushes the job branch and opens a merge request with push options; never merges |
 
-Where you see it: in the workflow designer the `push` field of an Implement or Spec Kit node says which
-level it produces; on **Administration** → **Runner fleet** → **Agent jobs** the job panel shows **Git
-access**; the run's step log has `[git] access READ: clone only, pushing is disabled`.
+A project repository token with **PUSH_BRANCH** ([Repository access tokens](#git-project-tokens)) is used for a
+delivery first; without one the runner pool's push token is. Where you see it: on **Administration** → **Runner
+fleet** → **Agent jobs** the job panel shows **Git access**; the run's step log has `[git] access READ: clone only,
+pushing is disabled`, and a delivery logs `deliver repository <key> ...: git access PUSH_MR`.
 
 What you set up, per repository (or per group):
 
@@ -199,26 +207,25 @@ required approval, **Require status checks to pass**, **Block force pushes**, an
 without the machine user. The machine user then cannot push to or merge into the default branch; GitHub
 also never lets the author of a pull request approve it.
 
-**Pull requests on GitHub.** GitHub ignores GitLab push options, so the agent pushes the branch and the
+**Pull requests on GitHub.** GitHub ignores GitLab push options, so **Deliver changes** pushes the branch and the
 run has no merge request URL. Do this instead:
 
-1. In the workflow designer select the **Implement** node and set the task configuration `mergeRequest`
-   to `false` (keep `push` on), or make the change in a project-level copy of the template
-   ([task-library.md](task-library.md#templates)).
+1. In the workflow designer select the **Deliver changes** node and turn **Open a merge request** off (the branch
+   is still pushed).
 2. Open the pull request from GitHub Actions on push of `feature/**` branches (for example with
    `gh pr create --fill`, which needs `pull-requests: write` for the workflow's `GITHUB_TOKEN`), or by hand.
 
 Other hosts (Gitea, Bitbucket, Azure Repos) work the same way as GitHub: a read-only token and a token with
-repository write access used as HTTPS passwords, branch protection on the default branch, `mergeRequest` set
-to `false`.
+repository write access used as HTTPS passwords, branch protection on the default branch, **Open a merge request**
+off on **Deliver changes**.
 
 <a id="git-project-tokens"></a>
 ## Repository access tokens in the project
 
 Since ADR 0051 a project keeps the tokens of its repositories itself, so they no longer have to be installed in
 every runner. A project owner adds them on the project's **Sources** tab, card **Repository access tokens**.
-Jobs clone and push with them: for each repository a step reads with the least-privileged verified read-only
-token (GIT_READ) and pushes with a PUSH_BRANCH token. Back Office hands them to the runner that runs the job,
+Jobs clone and push with them: for each repository an agent job reads with the least-privileged verified read-only
+token (GIT_READ), and only a Deliver changes job pushes, with a PUSH_BRANCH token. Back Office hands them to the runner that runs the job,
 encrypted to that runner's own key, once per job, right before the sandbox starts; a proxy that inspects TLS on
 the way sees only ciphertext. A repository without a fitting token falls back to the runner pool's tokens below
 (deprecated; the job log says which one was used). 
@@ -239,7 +246,7 @@ agent; it is masked in every log and artefact, and the job log names the tool.
   |---|---|---|
   | GIT_READ | clone the repository | `read_repository`, role Reporter |
   | CI_READ | read pipelines and job logs | `read_api`, role Reporter |
-  | PUSH_BRANCH | push the agent's branch | `write_repository`, role Developer |
+  | PUSH_BRANCH | push the run branch (only Deliver changes) | `write_repository`, role Developer |
   | MR_WRITE | create and update merge requests | `api`, role Developer |
   | MR_COMMENT | post review comments | `api`, role Reporter |
   | PIPELINE_RUN | retry or start pipelines | `api`, role Developer |
@@ -317,8 +324,8 @@ The tokens go into the cluster where the pool's runner-controller runs, never in
 5. The git host is always added to the job's egress allowlist. A self-hosted GitLab on a private address
    also needs `egressProxy.allowedCidrs` (see [agent-execution.md](agent-execution.md#network)).
 
-**Upgrading from one token** (`existingSecret` / `hostSecrets`): implementation jobs keep working; READ jobs
-(benchmarks, steps with `push` off) fail with the `git credential` reason until you add a read Secret in
+**Upgrading from one token** (`existingSecret` / `hostSecrets`): delivery jobs keep working; READ jobs
+(every agent job, benchmarks included) fail with the `git credential` reason until you add a read Secret in
 `repoSecrets`. The controller's start-up log lists the push-level fallbacks it still uses.
 
 **Docker Compose (laptop, profile `full`)**: set `GIT_TOKEN_READ` and `GIT_TOKEN_PUSH` (and optionally
@@ -328,14 +335,15 @@ The older `GIT_TOKEN` (`BO_GIT_TOKEN`) still works as a push token. `docker comp
 
 **Test it**
 
-1. Start a run of a workflow with an **Implement** step on a small issue.
-2. On the run page the step log shows `[git] remote: ...` lines; on GitLab the last one contains the merge
-   request URL, which also appears on the run. The agent job panel shows **Git access** `PUSH_MR`.
-3. Start a coding benchmark (or a step with `push` off): its job shows **Git access** `READ`, the log has
-   `[git] access READ: clone only, pushing is disabled`, and nothing is pushed.
+1. Start a run of a workflow with an **Implement** step followed by **Deliver changes** on a small issue (for
+   example **Reference: one Claude Code session**).
+2. The implementing step's job shows **Git access** `READ`, its log has `[git] access READ: clone only, pushing
+   is disabled`, and nothing is pushed.
+3. The delivery's log shows `[git] remote: ...` lines; on GitLab the last one contains the merge request URL,
+   which also appears on the run. Its job panel shows **Git access** `PUSH_MR`.
 4. Failures read `git clone failed` (token or URL wrong, egress), `git push failed (...)` (rights, protected
-   branch, push rules), `the receiving end does not support push options` (not GitLab: switch
-   `mergeRequest` off) or `policy-violation: git credential: ...` (no read or push Secret for that repository).
+   branch, push rules), `the receiving end does not support push options` (not GitLab: turn **Open a merge
+   request** off) or `policy-violation: git credential: ...` (no read or push Secret for that repository).
 
 <a id="git-multi-repo"></a>
 ## Several repositories in one job
@@ -347,12 +355,12 @@ only:
 
 | Repository in the job | Access | Token the sandbox gets | What happens |
 |---|---|---|---|
-| `src` (`gitlab.example.com/shop/api`, primary) | `PUSH_MR` | the **push** token of `shop/api` | the agent works here; the job branch is pushed and a merge request opened |
-| `docs` (`gitlab.example.com/shop/docs`) | `READ` | the **read** token of `shop/docs` | cloned for reference; local edits are reported, never pushed (`remote.origin.pushurl` disabled) |
+| `src` (`gitlab.example.com/shop/api`, primary) | `PUSH_MR` (delivery job) / `READ` (agent job) | the **push** token of `shop/api` for the delivery, else its **read** token | the agent works here; the delivery pushes the job branch and opens a merge request |
+| `docs` (`gitlab.example.com/shop/docs`) | `READ` | the **read** token of `shop/docs` | cloned for reference; local edits are reported, never pushed (`remote.origin.pushurl` disabled) unless a delivery lists it |
 | `tools` (a public repository) | `NONE` | none | cloned anonymously |
 
 How the sandbox is laid out: every repository is cloned into `/workspace/<path>` (by default its key). The agent,
-`setupCommand`, `verifyCommand`, Spec Kit and skills run in the **primary** repository; the others are next to
+`setupCommand`, `verifyCommand` and skills run in the **primary** repository; the others are next to
 it (`../docs`) and the agent may edit them. Its prompt ends with a short **Repositories** list (key, path,
 access, purpose). A job without any repository starts in an empty `/workspace`.
 

@@ -11,7 +11,7 @@ Where things execute (ADR 0013):
 
 | Runs in Back Office | Runs in the project's CI (or any CI) |
 |---|---|
-| Agent tasks (LLM calls, Spec Kit phases, implementation in the runner), decisions, human gates, Jira tasks | Build, tests, linters, deployment, and calls to Back Office through `backoffice-ci.sh` |
+| Agent tasks (LLM calls, coding agents in the runner), delivery of changes (commit, branch, merge request), decisions, human gates, Jira tasks | Build, tests, linters, deployment, and calls to Back Office through `backoffice-ci.sh` |
 | A `WAIT_FOR_CI` node pauses a run until CI reports a signal | `backoffice-ci signal <name> --status success|fail` resumes it |
 | A CI entrypoint maps a key to a workflow | `backoffice-ci run <entrypoint>` starts it, waits, exits 0/1 |
 
@@ -52,16 +52,16 @@ Examples: `confidence >= 0.8`, `review.verdict != 'REQUEST_CHANGES'`, `input.ci.
 ## Example: issue to reviewed merge request
 
 ```
-START ─▶ fetch-issue ─▶ spec-kit-specify ─▶ clarify-spec ─▶ [DECISION confidence >= 0.8]
-                                                   ▲                 │ true            │ false
-                                                   │ revise          ▼                 ▼
-                                                   └────────── [HUMAN_GATE "Spec ok?"] ◀┘
-                                                                     │ approve
-                                                                     ▼
-                     spec-kit-plan ─▶ spec-kit-tasks ─▶ implement-opencode ─▶ [WAIT_FOR_CI "tests"]
-                                                              ▲                     │ success   │ fail
-                                                              │ (revise)            ▼           ▼
-                     code-review ◀──────────────────────────────────────────────────┘      END(FAILURE)
+START ─▶ fetch-issue ─▶ write-spec ─▶ clarify-spec ─▶ [DECISION confidence >= 0.8]
+                                             ▲                 │ true            │ false
+                                             │ revise          ▼                 ▼
+                                             └────────── [HUMAN_GATE "Spec ok?"] ◀┘
+                                                               │ approve
+                                                               ▼
+     write-plan ─▶ write-task-list ─▶ implement-opencode ─▶ [ACTION DELIVER_CHANGES] ─▶ [WAIT_FOR_CI "tests"]
+                                              ▲                                          │ success   │ fail
+                                              │ (revise)                                 ▼           ▼
+                     code-review ◀───────────────────────────────────────────────────────┘      END(FAILURE)
                           │
                           ▼
               [DECISION review.verdict != 'REQUEST_CHANGES'] ── false ──▶ implement-opencode (loop, max 2)
@@ -70,8 +70,8 @@ START ─▶ fetch-issue ─▶ spec-kit-specify ─▶ clarify-spec ─▶ [DEC
               [HUMAN_GATE "Merge?"] ── approve ──▶ transition-issue ─▶ END(SUCCESS)
 ```
 
-The owner is involved at most twice. The implementation task pushes a branch with push options that
-open the merge request; the project's CI runs its tests and calls `backoffice-ci signal tests`.
+The owner is involved at most twice. The implementation task changes the run directory; `DELIVER_CHANGES` commits,
+pushes a branch with push options that open the merge request; the project's CI runs its tests and calls `backoffice-ci signal tests`.
 
 ## Example: CI code review entrypoint
 
@@ -136,7 +136,7 @@ Jobs by name (`run-<runId8>-<nodeId>-<attempt>`).
 The Projects context resolves a `TASK` node through the `TaskCatalog` port into a `ResolvedTask`. Since ADR 0056 a
 template has no executor: the step runs according to its resolved **agent** and the template's config. Since ADR 0061
 the template names no agent and no model: the agent is the step's `overrides.agentKey`, else `opencode` when the
-merged config needs a coding agent (Spec Kit `phase`, `push`, `prepareOnly`), else `model-answer`. Model: the step's,
+merged config needs a coding agent (`codingAgent: true`, `prepareOnly`; ADR 0063), else `model-answer`. Model: the step's,
 else the agent's, then the defaults (`ModelResolver`; the model plan reports the source `AGENT` for the agent's model;
 the source `TEMPLATE` is no longer produced).
 Since ADR 0057 every task step gets one **environment document** rendered by `AgentEnvironment`: the platform preamble
@@ -166,12 +166,15 @@ connection capabilities), not tasks.
 | Way of running | When | Implementation | Inputs / outputs |
 |---|---|---|---|
 | model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; system prompt = environment document, then the skills in a `<skills>` section, then the data-block notice; the gateway adds the answer schema (PROMPT jobs of ADR 0050 get the same as `systemPrompt`); user message = the task message (ADR 0062), rendered with `issue`, `artifacts.*`, `feedback`, `answers`, `params.*`, `project.*`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
-| Spec Kit job (former `SPEC_KIT`) | coding agent (OpenCode, Claude Code) and the config key `phase` | runner Job, `mode = SPEC_KIT`, phase from config; environment document in `spec.instructions`, the agent's MCP servers in `spec.mcpServers`; skills written to the agent's home (ADR 0060); artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
-| agent job (former `IMPLEMENT`) | coding agent otherwise | runner Job, `mode = IMPLEMENT`, the agent's harness; `spec.instructions`, `spec.mcpServers` as above; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff`, `mr`; without a push the final answer is the `result` artefact |
+| agent job (former `IMPLEMENT`) | coding agent (OpenCode, Claude Code) | runner Job, `mode = IMPLEMENT`, the agent's harness; environment document in `spec.instructions`, the agent's MCP servers in `spec.mcpServers`; skills written to the agent's home (ADR 0060); `verifyCommand`; the template's `outputFiles` as `collectArtifacts` (named like the file without extension: `spec`, `plan`, `tasks`, `work-log`, ...); the workflow's sources, all `READ` ([Workflow sources and delivery](#step-repositories)); **never commits or pushes** (ADR 0063): result `diff` (work tree against the base) becomes artefact `diff`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff` and the output files; without a repository the final answer is the `result` artefact |
 
-The resolver reports a problem (the step cannot run) when a template needs a coding agent (Spec Kit `phase`,
-`push: true`, `prepareOnly`) but the step's agent is a model answer, or when a required template parameter (ADR 0058)
-has no value.
+ADR 0063 removed the Spec Kit job (`mode = SPEC_KIT`, config `phase`, ADR 0036): `write-spec`, `write-plan` and
+`write-task-list` are ordinary agent jobs that write `specs/<feature>/spec.md`, `plan.md` and `tasks.md`, and a stored
+`phase` is ignored (V309 moved such steps to the replacement templates; `LegacyStepGit` does the same at read time).
+
+The resolver reports a problem (the step cannot run) when a template needs a coding agent (`codingAgent: true`,
+`prepareOnly`; V309 turned a former `phase` or `push: true` into `codingAgent: true`) but the step's agent is a model
+answer, or when a required template parameter (ADR 0058) has no value.
 
 **Precedence of sources (ADR 0061).** The platform preamble ends with point 5 (`AgentEnvironmentText.PRECEDENCE`):
 when the agent's sources disagree, the project constitution wins, then the rules (repository `AGENTS.md` /
@@ -181,8 +184,8 @@ when the agent's sources disagree, the project constitution wins, then the rules
 **Agent audit and coherence check (ADR 0061).** `POST /workflows/agent-audit` (`project.view`; body: `projectId` and
 the draft's `nodes`) runs `AgentAuditor` over the draft: per agent its task steps use, its rules, skills, the skills
 the steps require (from `TaskCatalog.stepNeeds`, which resolves each step with its overrides) and the missing ones,
-plus deterministic findings (`MISSING_SKILL`, `NEEDS_CODING_AGENT`, `READ_ONLY_PUSH`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`,
-`UNKNOWN_AGENT`, `DUPLICATE_SKILL_NAME`). No model is called and nothing changes; the designer reloads it on edits
+plus deterministic findings (`MISSING_SKILL`, `NEEDS_CODING_AGENT`, `UNKNOWN_RULE`, `UNKNOWN_SKILL`,
+`UNKNOWN_AGENT`, `DUPLICATE_SKILL_NAME`; `READ_ONLY_PUSH` stays in the API but is no longer reported, ADR 0063). No model is called and nothing changes; the designer reloads it on edits
 and shows the panel "Agents in this workflow". "Add to agent" is an ordinary agent update (a global agent is first
 copied into the project with the same key). `POST /agents/{agentId}/coherence-check?projectId=` (`library.view`, with
 a project also `project.view`) is the on-demand model check: `AgentCoherenceService` sends the environment document
@@ -193,15 +196,16 @@ model is configured. Never run before a run.
 
 **Structured answers of coding agents (ADR 0057).** A coding agent step with an `outputSchema` is told in its prompt
 to write its answer as one JSON object to `structured-answer.json` in its working directory. The runner collects it
-as the artefact `structured-answer`, keeps it out of the commit and removes a stale one before the agent starts;
+as the artefact `structured-answer`, a delivery keeps it out of the commit, and a stale one is removed before the agent starts;
 `StructuredAnswers` parses it and applies the same schema check, confidence field and produced artefacts as a model
 answer. A missing or invalid answer fails the step with the reasons.
 
 **Run directory and sessions (ADR 0060, 0062; replacing the run workspaces of ADR 0044).** Every run has one run
 directory: the coding steps whose agent has `access.directory` `RUN` (default) work in it one after another (the
 runner workspace with key `run`, ADR 0044 leasing and volumes unchanged); an agent with `SEPARATE` gets a throwaway
-directory with only the step's repositories and no session. `WorkflowDefinition.setupCommand` runs once per run
-directory before the first coding step (again when it changes). Since ADR 0062 the session is the agent's too
+directory with a fresh copy of the workflow's sources and no session (its changes are never delivered).
+`WorkflowDefinition.setupCommand` runs once per run directory before the first coding step (again when it changes);
+since ADR 0063 it is the only setup command (V309 appended former step `setupCommand`s to it, joined by ` && `). Since ADR 0062 the session is the agent's too
 (`Agent.session`), and `RunDirectory` derives the session role from it: `PER_STEP` (default; the step's own role
 `s-<node id>`, so repeated executions such as rework loops or answered questions continue it), `PER_RUN` (the agent's
 role `a-<agent key>`: all steps of this agent in a run are one conversation) or `FRESH` (no role, every execution
@@ -212,16 +216,16 @@ receive them again. Compatibility: the stored step keys `workspace` (ADR 0044) a
 legacy `sessionRole` is the step's session role while the agent keeps `PER_STEP`, so steps that shared one keep
 sharing their session; `prepareOnly` steps (`prepare-workspace`, deprecated) prepare the run directory and need an
 agent with directory `RUN`. Migration `V121__run_directory_and_agent_questions.sql` moved a project workspace's `setupCommand` to the
-workflows whose steps named it and its sources to the `repositories` of those steps that had none, then dropped
-`project_workspace`.
+workflows whose steps named it and its sources to the `repositories` of those steps that had none (since ADR 0063 the
+workflow's `sources`), then dropped `project_workspace`.
 
 **Agent home and access (ADR 0060).** Every coding job names its agent's home (`RunnerJobSpec.agentHome` = the agent
 key): `/workspace/.agents/<key>/` holds the environment document, skills, MCP configuration and sessions (Claude Code
 `CLAUDE_CONFIG_DIR`; OpenCode `OPENCODE_CONFIG_DIR` and the data directory per session role). Nothing of an agent is
 written into a repository. `Agent.access` (`FULL` default, `READ_ONLY`, `PATHS` with globs) travels as
 `RunnerJobSpec.access` when not `FULL`; the runner applies it as harness tool rules and reverts changes outside it
-after the agent (runner README, "Agent home, access and questions"). A `READ_ONLY` agent on a pushing step is a
-resolution problem. The environment is set once, on the agent: `TaskOverrides.addSkills` / `removeSkills` are gone
+after the agent (runner README, "Agent home, access and questions"). Agents never push (ADR 0063), so a `READ_ONLY`
+agent fits every step. The environment is set once, on the agent: `TaskOverrides.addSkills` / `removeSkills` are gone
 (stored steps are read without them); a template's `requiresSkills` (inherited, unioned) the agent lacks becomes a
 `check.warnings` entry, not a problem (and a `MISSING_SKILL` finding of the agent audit, ADR 0061).
 
@@ -247,6 +251,7 @@ Decisions are audited as `RUN_AGENT_QUESTIONS_ANSWERED`.
 | `TRANSITION_ISSUE` | Jira transition, after a write confirmation unless `approval: NOT_REQUIRED` | — |
 | `START_WORKFLOW` | starts runs of another workflow per entry of a JSON artefact (ADR 0052) | produces `started-runs` |
 | `PROJECT_DIGEST` | deterministic project digest (ADR 0052) | produces `digest` |
+| `DELIVER_CHANGES` | ADR 0063: runner job `mode = DELIVER` (no agent) in the run directory: commit, push of the run branch, merge request through push options ([Workflow sources and delivery](#step-repositories)) | produces `mr`, `diff` |
 
 A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`, `transition-issue`,
 `start-workflow`, `project-digest`) is read as the `ACTION` node with the former template defaults, the step's
@@ -310,48 +315,67 @@ schema for `{summary, findings[], verdict, score}`; the verdict policy (blocker 
 > 2 majors → REQUEST_CHANGES, score ≥ 80 → APPROVE, else COMMENT) is applied by Back Office, not the model, and stored
 in `state.review`.
 
-<a id="step-repositories"></a>
-## Step repositories
+<a id="workflow-sources"></a><a id="step-repositories"></a>
+## Workflow sources and delivery (ADR 0034, 0043, 0063)
 
 A project has zero or more repositories (`key`, `url`, `defaultBranch`, `purpose` DOCS / SOURCE / OTHER,
-`description`, optional `primary`; ADR 0034). A runner step (a coding agent's agent job or Spec Kit job) chooses the repositories its
-job gets with the node or template config:
+`description`, optional `primary`; ADR 0034). Since ADR 0063 the repositories a run works with are a setting of the
+**workflow**, not of a step:
 
 ```json
-"config": { "repositories": [ { "key": "service", "access": "PUSH_MR" },
-                              { "key": "docs",    "access": "PUSH_MR" },
-                              { "key": "api",     "access": "READ" } ] }
+"sources": [ { "key": "service" }, { "key": "docs" }, { "key": "standards", "library": true } ]
 ```
 
-Without `repositories` the step uses the **primary** repository with the access it derives from `push`
-(a runner step with `push != false` -> `PUSH_MR`, else `READ`), which is what every workflow written
-before ADR 0034 does. A step may read several repositories and push to several; the same job branch
-(`branchTemplate`) is pushed to each `PUSH_MR` repository and each gets its own merge request against its
-default branch.
+`WorkflowDefinition.sources` lists project repositories by key and library sources (ADR 0043) with `library: true`;
+they are cloned into the run directory (ADR 0060). Empty = the project's primary repository (a project without
+repositories has none: an agent step with `repositoryOptional` runs in an empty directory). `WorkflowSources.plan`
+turns them into a `StepRepositoryPlan`, every entry `READ`: library sources are keyed `lib-<key>` in the job; the job's
+primary entry is the project's primary repository when it is a source, else the first project source, else the first
+library source. Every coding step's agent job gets the same plan; an agent with a `SEPARATE` directory gets a fresh
+copy of it. **Agents never push**: a runner job of mode `IMPLEMENT` carries only `READ` entries, and the runner treats
+any `PUSH_MR` entry of an agent job as `READ` (defence in depth).
+
+**Delivery.** `DELIVER_CHANGES` (`DeliverChangesExecutor`, an `ActionStrategy`) is the only step that writes back.
+Config (`ActionCatalog`): `branchTemplate`, `commitSubjectTemplate`, `mergeRequest` (default true),
+`mergeRequestTitleTemplate`, `mergeRequestDescriptionTemplate`, `mergeRequestDraft`, `repositories` (keys of project
+repositories among the sources; empty = every project repository of the sources; only those with changes are
+committed and pushed). `WorkflowSources.delivery` gives those entries `PUSH_MR` with the job branch as `pushBranch`
+and, with `mergeRequest`, the rendered title, description (default `Implements {{issue.key}}.` plus the run trailer),
+target = the repository's default branch and the draft flag. The job is a runner job of mode `DELIVER` in the run
+directory (`spec.workspace` = the run's, unchanged setup command), no agent, no model, no prompt of an agent; it is
+non-blocking like an agent job (`RUN_ADVANCE` continuation). Credentials: a project repository token with
+`PUSH_BRANCH` (ADR 0051), else the runner pool's push token (deprecated). Branch: `branchTemplate`, else the run's
+branch, else `feature/{{issue.key | lower}}`; a branch equal to a delivered repository's default branch, `HEAD` or a
+`refs/` path falls back to `run/<run id8>`, and the runner refuses such refspecs before cloning (ADR 0031). The result
+maps to `mr` (the primary repository's merge request, else the first opened; also `state.mr`), `diff` (primary
+repository, after the commit), `state.branch` and `NodeExecution.repositories`; ports `success` / `failure` (a failed
+commit or push in any repository); a delivery with nothing to commit succeeds with the warning "nothing to deliver".
 
 `WorkflowValidator` (save and `POST /workflows/validate`) and `StartRun` (the project may have changed after the
-workflow was saved) check:
+workflow was saved) check, through `RepositoryStepCheck`, when the workflow has a coding step or a delivery:
 
 | Severity | Rule |
 |---|---|
-| error | a runner step in a project without repositories |
-| error | no primary repository and no explicit `repositories` on a runner step |
-| error | unknown key (the message lists the project's keys) |
-| error | the same key twice in one step |
-| error | `access` other than `READ` / `PUSH_MR` |
-| error | `PUSH_MR` on a step whose `push` is off |
-| error | `repositories` on a non-runner step (LLM, Jira, gates, waits) |
-| warning | one step pushes to a `DOCS` and a `SOURCE` repository (allowed, made visible) |
+| error | a coding step in a project without repositories (unless `repositoryOptional`) |
+| error | no primary repository and no project repository among the sources |
+| error | unknown project repository key (the message lists the project's keys) or unknown library source |
+| error | the same source twice |
+| error | a project repository whose key clashes with a library source's job key |
+| error | a delivery whose `repositories` names a library source or a key that is not a project source |
+| error | a delivery with no project repository to deliver to |
+| error | a delivery while every coding step's agent works in a `SEPARATE` directory (nothing to deliver) |
+| warning | a delivery that pushes to a `DOCS` and a `SOURCE` repository (one merge request per repository) |
+| warning | a delivery reachable from a decision on model output without a human gate (`modelRoutedPushes`, [12-prompt-injection.md](12-prompt-injection.md)) |
 
-A run whose steps have repository errors is refused at start; the message names the node and the rule.
+A run whose sources or deliveries have errors is refused at start; the message names the step or "sources of the
+workflow".
 
-**Job building** (`RunnerTaskSupport`): every chosen repository becomes a `JobRepository` entry of
-`RunnerJobSpec.repositories` (`key`, `url`, `baseBranch` = the repository's default branch, `access`, `path` =
-`key`, `pushBranch` and `mergeRequest` for `PUSH_MR` only, `primary`). The job's primary entry is the project
-primary when the step uses it, else the step's first repository. The job branch must differ from the default
-branch of every `PUSH_MR` repository; otherwise `run/<run id>` is used. For older runners the legacy
-`repository` is filled from the primary entry and `gitAccess` is the highest access among the entries.
-Workspace layout and the runner side: [10-agent-execution.md](10-agent-execution.md#repositories-and-workspace-adr-0034).
+**Job building** (`RunnerJobs`, `RunnerTaskSupport`): every planned repository becomes a `JobRepository` entry of
+`RunnerJobSpec.repositories` (`key`, `url`, `baseBranch` = the repository's default branch, `access`, `path` = `key`,
+`pushBranch` and `mergeRequest` for `PUSH_MR` in a `DELIVER` job only, `primary`). For older runners the legacy
+`repository` is filled from the primary entry and `gitAccess` is the highest access among the entries (`READ` for
+every agent job). Workspace layout and the runner side:
+[10-agent-execution.md](10-agent-execution.md#repositories-and-workspace-adr-0034).
 
 **Prompt.** The coding agent's prompt lists the repositories (key, path, access, purpose, base branch);
 descriptions are untrusted text and are written inside data blocks (ADR 0029).
@@ -360,29 +384,57 @@ descriptions are untrusted text and are written inside data blocks (ADR 0029).
 `mergeRequestUrl`, `pushed`, `error`) becomes `NodeExecution.repositories` (enriched with url, purpose, access
 and primary from the spec) and updates `WorkflowRun.repositories` (latest result per key). A result without the
 list (older runner) is read from the legacy top-level fields as the result of the primary repository.
-`mr` / `run.mergeRequest` = the primary repository's merge request, else the first one pushed; decisions and
-templates written for one repository keep working.
+`mr` / `run.mergeRequest` = the delivery's merge request of the primary repository, else the first one opened;
+decisions and templates written for one repository keep working.
 
 **Template model.** `project.repositories` (list), `project.repository` (primary, may be null),
 `project.defaultBranch` / `project.repositoryUrl` (primary, may be empty, kept for compatibility), `repos`
-(this step's repositories: key, url, path, access, purpose, baseBranch, primary) and `repositoryResults`
+(this job's repositories: key, url, path, access, purpose, baseBranch, primary) and `repositoryResults`
 (key -> latest result: branch, commitSha, mergeRequestUrl, pushed).
+
+**Workflows stored before ADR 0063.** `V122__workflow_sources_no_spec_kit.sql` (projects range) adds `sources` to
+`workflow_definition` and `library_workflow_version` and drops `project.spec_kit_enabled`;
+`V309__delivery_is_an_action.sql` (tasks range, runs after V122 because Flyway runs out of order and sorts by version)
+rewrites `workflow_definition`, `library_workflow_version` and the definition snapshot of unfinished runs, using the
+template lineage while `task_template` still holds the git keys (nearest template first, a project template shadows
+the global one):
+
+- a TASK step whose effective `push` is true (its config, else the nearest template that sets it; the built-ins
+  `implement-opencode`, `implement-claude-code`, `implement-task-list` had `push: true`) and that is not `prepareOnly`
+  gets an `ACTION` node `<step id>-deliver` (`DELIVER_CHANGES`) to its right, carrying the step's git keys (each from
+  the step, else from the nearest template; the step's `PUSH_MR` repositories as `repositories`): the step's
+  `success` goes to the delivery, the step's former `success` edges start at the delivery's `success`, and the
+  delivery's `failure` goes where the step's `failure` went. Steps that pushed only by default (no `push` key
+  anywhere, for example Spec Kit phases) get no delivery: their work stays in the run directory for a later one;
+- the steps' `repositories` join `sources` (union, first seen first; the primary repository joins when a coding step
+  relied on the default next to listed ones; library versions keep library sources only); step `setupCommand`s are
+  appended to the workflow's setup command (` && `) unless already part of it;
+- steps of `spec-kit-specify` / `spec-kit-plan` / `spec-kit-tasks`, or with `phase` SPECIFY / PLAN / TASKS, name
+  `write-spec` / `write-plan` / `write-task-list`;
+- `push`, `phase`, `repositories`, `setupCommand` and the git keys leave the step config (`collectArtifacts` stays and
+  is read as extra output files);
+- in `task_template`, `collectArtifacts` becomes the column `output_files`, a template with a `phase` or `push: true`
+  gets `codingAgent: true`, and the same keys leave the config.
+
+`LegacyStepGit` applies the same rules when a workflow is read (library imports, MCP clients, anything V309 did not
+rewrite), so a definition with the old keys still runs and the next save writes the new form.
 
 **Seeding.** A project created with at least one repository gets the SDLC workflows (`DefaultWorkflows.all`: Issue
 to reviewed MR, CI code review, Change request (delta) and, since ADR 0059, **Reference: one Claude Code session**) and
-the `code-review` CI entrypoint. A project created without a repository gets the starter workflow **LLM task with
+the `code-review` CI entrypoint. Since ADR 0063 every default workflow that implements has a `DELIVER_CHANGES` node
+`implement-deliver` ("Deliver changes", the action's defaults, `maxVisits` 3) between `implement` and what followed it
+(the CI wait, or the merge gate in the reference workflow). A project created without a repository gets the starter workflow **LLM task with
 review** (`start -> llm-task` (template `llm-task`) `-> review` ("Result ok?", owner accountable): `approve -> done` (End SUCCESS),
 `revise -> llm-task`, `reject -> rejected` (End FAILURE)) and no CI entrypoint. When it later gets its first repository, the SDLC workflows
-and the `code-review` entrypoint are seeded once (skipped when workflows with those names exist). ADR 0036: the
-SDLC workflows that use Spec Kit (**Issue to reviewed MR**) are seeded only while the project's Spec Kit is on
-(and the platform allows it); after turning it on, `POST /projects/{id}/spec-kit/workflows` ("Add Spec Kit
-workflows") seeds the missing ones. With Spec Kit off, the palette hides Spec Kit templates (config `phase`), the
-validator rejects Spec Kit steps, run starts refuse them and runner jobs carry `specKit: false`. ADR 0059: `GET` /projects/{id}/default-workflows` lists the names of the
-default workflows other than the Spec Kit ones that a project with a repository lacks, and `POST` on the same path
+and the `code-review` entrypoint are seeded once (skipped when workflows with those names exist). ADR 0063 removed
+the Spec Kit gating of ADR 0036 (the project and platform switches, `/projects/{id}/spec-kit*`): **Issue to reviewed
+MR** uses `write-spec`, `write-plan` and `write-task-list` and is seeded like the others. ADR 0059: `GET`
+`/projects/{id}/default-workflows` lists the names of the default workflows that a project with a repository lacks,
+and `POST` on the same path
 ("Add missing default workflows", `workflow.edit`, audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`, 409 without a
 repository) seeds them by name; existing workflows with the same name are never replaced. That is how projects created
 before the reference workflow get it. ADR 0061: every task step of a default workflow names its agent
-(`overrides.agentKey`): `opencode` for Spec Kit and implementation steps, `analyst` for clarify, impact analysis,
+(`overrides.agentKey`): `opencode` for the specification, plan, task list and implementation steps, `analyst` for clarify, impact analysis,
 user story and task list, `reviewer` for code review, `model-answer` for `llm-task`, `claude-code` in the reference
 workflow.
 
@@ -396,8 +448,8 @@ dropped.
 
 **Reference workflow (ADR 0059).** "Reference: one Claude Code session" is the yardstick for the cost of an accepted
 result: `start -> fetch-issue` (action `FETCH_ISSUE`) `-> implement` (template `agent-task`, agent `claude-code`,
-config `push: true`, `mergeRequest: true`, parameter `task`: read the repository, implement the issue end to end, add
-tests, run the build and the tests, summarise) `-> merge-gate` ("Merge?", four-eyes, owner accountable, Definition of
+parameter `task`: read the repository, implement the issue end to end, add tests, run the build and the tests,
+summarise) `-> implement-deliver` (`DELIVER_CHANGES`, branch and merge request, ADR 0063) `-> merge-gate` ("Merge?", four-eyes, owner accountable, Definition of
 Done; `revise -> implement`, `reject -> rejected`) `-> done`. Run the same issues through it and through cheaper
 workflows or agents and compare in agent and workflow insights ([11-governance.md](11-governance.md)).
 
@@ -409,7 +461,8 @@ shows "template · agent · model" and agent insights aggregate it.
 
 Workflows can be shared across projects through the Library (ADR 0037). A project workflow is **published**
 (`POST /workflows/{id}/publish`, `library.manage` + `workflow.edit`) as a new `LibraryWorkflow` or as the next
-immutable version of one; `LibraryPortability` strips the project-local settings (step repositories, a pinned
+immutable version of one; `LibraryPortability` strips the project-local settings (the workflow's project-repository
+sources, keeping library sources; an update keeps the copy's own project repositories; a pinned
 Jira connection id, named approver users) and publishing requires every TASK node to resolve to a concrete
 **global** template that the source project does not shadow. Another project **adopts** a version
 (`POST /projects/{id}/workflows/from-library`): an ordinary workflow, validated exactly like a save in the
@@ -431,17 +484,19 @@ Unchanged from the first iteration except for these additions, all optional:
 | `spec.instructions` | ADR 0057: the environment document; with `agentHome` the home's `CLAUDE.md` (Claude Code user memory, `CLAUDE_CONFIG_DIR` = the home) or `AGENTS.md` listed under `instructions` of the home's `opencode.json` (OpenCode); without it OpenCode `/workspace/.backoffice-agent/AGENTS.md` and Claude Code `$CLAUDE_CONFIG_DIR/CLAUDE.md`; outside every repository, covered by the spec digest |
 | `spec.agentHome` | ADR 0060: the agent key; everything of the agent (environment, skills, MCP configuration, sessions) lives in `/workspace/.agents/<agentHome>/`, nothing in a repository; covered by the spec digest |
 | `spec.access` | ADR 0060: `{mode, paths}` with mode `READ_ONLY` or `PATHS` (absent = FULL); harness tool rules plus the runner's revert after the agent; the result's `access.reverted[]` lists what was undone; covered by the spec digest |
-| `spec.workspace` | ADR 0044: `{name, key, sessionRole, prepareOnly, setupCommand}`; since ADR 0060 the key is always `run` (the run directory); absent for a `SEPARATE` step |
+| `spec.workspace` | ADR 0044: `{name, key, sessionRole, prepareOnly, setupCommand}`; since ADR 0060 the key is always `run` (the run directory); absent for a `SEPARATE` step; a `DELIVER` job reuses it (same name and setup command, so nothing is set up again) |
+| `spec.mode` | ADR 0063: `IMPLEMENT` (agent job, never pushes), `DELIVER` (no agent: commit, push and merge request of the run directory), `EVAL_CODING`, `PROMPT`; `SPEC_KIT` is gone and refused by current runners |
+| `spec.commitSubject` | ADR 0063: the first line of the delivery's commit message (rendered `commitSubjectTemplate`, sanitised) |
 | `spec.mcpServers[]` | ADR 0057: `{name, url}` remote MCP servers of the agent; OpenCode `mcp` entries of type `remote`, Claude Code `--mcp-config`; invalid entries are skipped with a warning |
-| `spec.repository.mergeRequest` | `{create, title, description, targetBranch, draft}` → `git push -o merge_request.create -o merge_request.target=<t> -o merge_request.title=<title> [-o merge_request.draft]`; the runner reads the MR URL GitLab prints on push and returns it as `result.mergeRequestUrl` |
+| `spec.repository.mergeRequest` | legacy single-repository mirror, filled only for a `DELIVER` job: `{create, title, description, targetBranch, draft}` → `git push -o merge_request.create -o merge_request.target=<t> -o merge_request.title=<title> [-o merge_request.draft]`; the runner reads the MR URL GitLab prints on push and returns it as `result.mergeRequestUrl` |
 | `spec.collectDiff` | when true the runner returns `git diff <baseRef>...HEAD` (≤ 2 MB) as `result.diff` |
-| `spec.repositories[]` | ADR 0034: one `JobRepository` per repository of the step, each cloned into `/workspace/<path>` with its own `access`, `pushBranch` and `mergeRequest`; the result carries `result.repositories[]`; see [Step repositories](#step-repositories) |
+| `spec.repositories[]` | ADR 0034: one `JobRepository` per repository of the job, each cloned into `/workspace/<path>` with its own `access`; `pushBranch` and `mergeRequest` only in a `DELIVER` job (an agent job uses a `PUSH_MR` entry as `READ`); the result carries `result.repositories[]`; see [Workflow sources and delivery](#step-repositories) |
 
-The runner also adds a git trailer `Back-Office-Run: <runId>` to every commit it makes, which is how a
-later `backoffice-ci signal` finds the waiting run without any SCM API.
+The runner adds a git trailer `Back-Office-Run: <runId>` to every commit it makes (only `DELIVER` jobs commit), which
+is how a later `backoffice-ci signal` finds the waiting run without any SCM API.
 
-Environment, callbacks, `RunnerResult` and Spec Kit handling are described in the runner README and in
-`openapi.yaml` (`RunnerJobSpec`, `RunnerResult`).
+Environment, callbacks and `RunnerResult` are described in the runner README and in `openapi.yaml` (`RunnerJobSpec`,
+`RunnerResult`). The removed fields `specKit`, `specKitPhase` and `constitution` are ignored by current runners.
 
 ## CI client contract
 

@@ -227,13 +227,6 @@ class IdentityConfiguration {
     @Bean fun identityMembershipRepository(jdbc: JdbcClient): ProjectMembershipRepository = JdbcProjectMembershipRepository(jdbc)
     @Bean fun identityTokenRepository(jdbc: JdbcClient): PersonalTokenRepository = JdbcPersonalTokenRepository(jdbc)
     @Bean fun identitySettingsRepository(jdbc: JdbcClient, clock: Clock, json: JsonMapper): PlatformSettingsRepository = JdbcPlatformSettingsRepository(jdbc, clock, json)
-
-    /** ADR 0036: the platform switches other contexts respect (Spec Kit allowed), read from the stored platform settings. */
-    @Bean
-    fun platformFeatures(settings: PlatformSettingsRepository, options: IdentityOptions): pl.mos.backoffice.shared.platform.PlatformFeatures {
-        val provider = SettingsProvider(settings, options)
-        return pl.mos.backoffice.shared.platform.PlatformFeatures { provider.current().specKitAllowed }
-    }
     @Bean fun identityLocalCredentialRepository(jdbc: JdbcClient): LocalCredentialRepository = JdbcLocalCredentialRepository(jdbc)
     @Bean fun identityMfaRepository(jdbc: JdbcClient): MfaRepository = JdbcMfaRepository(jdbc)
     @Bean fun identityPasswordResetTokenRepository(jdbc: JdbcClient): PasswordResetTokenRepository = JdbcPasswordResetTokenRepository(jdbc)

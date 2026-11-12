@@ -68,6 +68,8 @@ data class TaskTemplateInputDto(
     @field:Valid val parameters: List<TemplateParameterDto> = emptyList(),
     val parameterValues: Map<String, Any?> = emptyMap(),
     val requiresSkills: List<String> = emptyList(),
+    /** ADR 0063: globs of files returned as artefacts. */
+    val outputFiles: List<String> = emptyList(),
 )
 
 data class TaskTemplateDto(
@@ -90,6 +92,8 @@ data class TaskTemplateDto(
     val parameters: List<TemplateParameterDto>,
     val parameterValues: Map<String, Any?>,
     val requiresSkills: List<String> = emptyList(),
+    /** ADR 0063: globs of files returned as artefacts. */
+    val outputFiles: List<String> = emptyList(),
     /** ADR 0061 (read-only): the merged config needs a coding agent. */
     val needsCodingAgent: Boolean = false,
     val builtIn: Boolean,

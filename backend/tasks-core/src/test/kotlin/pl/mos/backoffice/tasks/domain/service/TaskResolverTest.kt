@@ -79,7 +79,7 @@ class TaskResolverTest {
     fun `ADR 0061 - the step's agent, else opencode for coding work, else the model answer, and child-wins scalars`() {
         lib.template("root", abstract = true, confidenceField = "cc")
         lib.template("leaf", extendsKey = "root", outputSchema = """{"type":"object"}""")
-        lib.template("coder", extendsKey = "root", config = mapOf("push" to true))
+        lib.template("coder", extendsKey = "root", config = mapOf("codingAgent" to true))
         lib.template("other", extendsKey = "root", outputSchema = "{}")
 
         val leaf = resolver.preview("leaf", null)!!
@@ -93,9 +93,8 @@ class TaskResolverTest {
         val coder = resolver.preview("coder", null)!!
         assertThat(coder.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(coder.needsCodingAgent).isTrue()
-        assertThat(coder.pushes).isTrue()
         assertThat(resolver.resolve("coder", null, on("claude-code"))!!.agent.harness).isEqualTo(AgentHarness.CLAUDE_CODE)
-        assertThat(resolver.resolve("coder", null, TaskOverrides(config = mapOf("push" to false)))!!.agent.key)
+        assertThat(resolver.resolve("coder", null, TaskOverrides(config = mapOf("codingAgent" to false)))!!.agent.key)
             .describedAs("the step's config decides the kind of work").isEqualTo(AgentSnapshot.MODEL_ANSWER)
 
         assertThat(resolver.resolve("other", null)!!.outputSchema).isEqualTo("{}")
@@ -103,10 +102,10 @@ class TaskResolverTest {
 
     @Test
     fun `ADR 0061 - needsCodingAgent of a template reads its merged config, false for a broken chain`() {
-        lib.template("root", abstract = true, config = mapOf("phase" to "PLAN"))
+        lib.template("root", abstract = true, config = mapOf("codingAgent" to true))
         val child = lib.template("child", extendsKey = "root")
-        val undone = lib.template("undone", extendsKey = "root", config = mapOf("phase" to null))
-        val broken = lib.template("broken", extendsKey = "ghost", config = mapOf("push" to true))
+        val undone = lib.template("undone", extendsKey = "root", config = mapOf("codingAgent" to null))
+        val broken = lib.template("broken", extendsKey = "ghost", config = mapOf("codingAgent" to true))
 
         assertThat(resolver.needsCodingAgent(child, null)).isTrue()
         assertThat(resolver.needsCodingAgent(undone, null)).isFalse()
@@ -162,14 +161,14 @@ class TaskResolverTest {
 
     @Test
     fun `work that needs a coding agent is a problem for a model answer`() {
-        lib.template("spec", config = mapOf("phase" to "SPECIFY"))
-        lib.template("pusher", config = mapOf("push" to true))
+        lib.template("spec", config = mapOf("codingAgent" to "true"))
+        lib.template("pusher", config = mapOf("push" to true, "phase" to "PLAN"))
         lib.template("prepare", config = mapOf("prepareOnly" to true))
-        lib.template("blank-phase", config = mapOf("phase" to " ", "push" to false))
+        lib.template("blank-phase", config = mapOf("codingAgent" to false))
 
         val answer = on(AgentSnapshot.MODEL_ANSWER)
-        assertThat(resolver.preview("spec", null, answer)!!.check.problems.single()).contains("Spec Kit phase needs a coding agent")
-        assertThat(resolver.preview("pusher", null, answer)!!.check.problems.single()).contains("push needs a coding agent")
+        assertThat(resolver.preview("spec", null, answer)!!.check.problems.single()).contains("work in the repository (codingAgent) needs a coding agent")
+        assertThat(resolver.preview("pusher", null, answer)!!.check.ok).describedAs("ADR 0063: push and phase are no reasons any more (V309 turned them into codingAgent)").isTrue()
         assertThat(resolver.preview("prepare", null, answer)!!.check.problems.single()).contains("prepareOnly needs a coding agent")
         assertThat(resolver.preview("blank-phase", null, answer)!!.check.ok).isTrue()
         assertThat(resolver.preview("spec", null)!!.check.ok).describedAs("ADR 0061: no step agent, coding work runs with opencode").isTrue()
@@ -187,12 +186,12 @@ class TaskResolverTest {
 
     @Test
     fun `the legacy config key agent reads as the agent key on steps and is dropped on templates`() {
-        lib.template("old", config = mapOf("agent" to "CLAUDE_CODE", "push" to true))
+        lib.template("old", config = mapOf("agent" to "CLAUDE_CODE", "codingAgent" to true))
         lib.template("odd", config = mapOf("agent" to "SOMETHING"))
 
         val old = resolver.resolve("old", null)!!
         assertThat(old.agent.key).describedAs("ADR 0061: a template names no agent; pushing work falls back to opencode").isEqualTo(AgentSnapshot.OPENCODE)
-        assertThat(old.config).doesNotContainKey("agent").containsEntry("push", true)
+        assertThat(old.config).doesNotContainKey("agent").containsEntry("codingAgent", true)
 
         val step = resolver.resolve("old", null, TaskOverrides(config = mapOf("agent" to "CLAUDE_CODE")))!!
         assertThat(step.agent.key).isEqualTo(AgentSnapshot.CLAUDE_CODE)
@@ -269,12 +268,12 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `ADR 0060 - a read-only coding agent on a step that pushes is a problem`() {
+    fun `ADR 0063 - a read-only coding agent fits any coding step, agents never push`() {
         lib.agent("reader", harness = AgentHarness.CLAUDE_CODE, access = AgentAccess.READ_ONLY)
         lib.template("look")
         lib.template("look-only", config = mapOf("push" to false))
 
-        assertThat(resolver.preview("look", null, on("reader"))!!.check.problems.single()).contains("may only read (access READ_ONLY) but the step pushes")
+        assertThat(resolver.preview("look", null, on("reader"))!!.check.ok).isTrue()
         assertThat(resolver.preview("look-only", null, on("reader"))!!.check.ok).isTrue()
         assertThat(resolver.preview("look", null, TaskOverrides(agentKey = "reader", config = mapOf("prepareOnly" to true)))!!.check.ok).isTrue()
         assertThat(resolver.resolve("look-only", null, on("reader"))!!.agent.access).isEqualTo(AgentAccess.READ_ONLY)

@@ -316,30 +316,6 @@ import {
               </nz-form-item>
             </div>
           </section>
-
-          <section class="section" aria-labelledby="s-features">
-            <div class="intro">
-              <h2 id="s-features" i18n="@@admin.platformSettings.features.title">Features</h2>
-              <p i18n="@@admin.platformSettings.features.intro">
-                Optional tools projects may turn on for themselves.
-              </p>
-            </div>
-            <div class="fields">
-              <div class="toggle">
-                <nz-switch id="ps-speckit" formControlName="specKitAllowed" />
-                <label for="ps-speckit" class="t-body">
-                  <span class="t-title" i18n="@@admin.platformSettings.features.specKit"
-                    >Allow Spec Kit</span
-                  >
-                  <span class="t-help" i18n="@@admin.platformSettings.features.specKitHelp"
-                    >Projects may turn on Spec Kit (specify, plan and tasks steps, the
-                    constitution). When off, no project can run Spec Kit steps, whatever its own
-                    setting says; their settings and constitutions are kept.</span
-                  >
-                </label>
-              </div>
-            </div>
-          </section>
           <ng-template #tip let-control>{{
             control.errors?.server || text.rangeError
           }}</ng-template>
@@ -490,7 +466,6 @@ export class PlatformSettingsPageComponent implements HasUnsavedChanges {
     allowedEmailDomains: this.fb.nonNullable.control<string[]>([]),
     syncGroupsFromIdentityProvider: [false],
     personalTokenMaxDays: [90, [Validators.required, Validators.min(1), Validators.max(365)]],
-    specKitAllowed: [true],
   });
   private readonly value = toSignal(this.form.valueChanges, { initialValue: null });
   readonly dirty = computed(() => {
@@ -585,7 +560,6 @@ export class PlatformSettingsPageComponent implements HasUnsavedChanges {
       allowedEmailDomains: s.allowedEmailDomains ?? [],
       syncGroupsFromIdentityProvider: s.syncGroupsFromIdentityProvider ?? false,
       personalTokenMaxDays: s.personalTokenMaxDays ?? 90,
-      specKitAllowed: s.specKitAllowed ?? d.specKitAllowed,
     });
   }
 }

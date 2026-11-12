@@ -59,11 +59,13 @@ chooses who does the work, so the same template can run with different agents an
 ([Evaluation](evaluation.md)). What a template still says about its worker:
 
 - **Needs a coding agent** (a read-only tag in the list, the editor, the designer palette and the step): its
-  configuration, with that of its parents, has a Spec Kit `phase`, `push` or `prepareOnly`. Such work needs an agent
-  with the harness **OpenCode** or **Claude Code** (a coding agent in a sandbox on a runner, with the repository; may
-  push a branch and open a merge request). You do not set the tag; it follows from the configuration. Without it any
-  agent can do the work, including one with the harness **Model answer** (one model call inside Back Office, no
-  repository; can return structured JSON and a confidence).
+  configuration, with that of its parents, has **Works in the repository (needs a coding agent)** (`codingAgent:
+  true`) or `prepareOnly`. Such work needs an agent with the harness **OpenCode** or **Claude Code** (a coding agent
+  in a sandbox on a runner, working in the run directory with the workflow's sources; it never pushes, delivering is
+  the workflow's [Deliver changes](workflows.md#deliver-changes) action). You do not set the tag; it follows from the
+  configuration. Without it any agent can do the work, including one with the harness **Model answer** (one model
+  call inside Back Office, no repository; can return structured JSON and a confidence). Templates that had a Spec Kit
+  `phase` or `push: true` got `codingAgent: true` on the upgrade (ADR 0063).
 - **Required skills**: the [skills](#skills) the work needs (see [Required skills](#required-skills)).
 
 A template holds no rules: rules are norms of behaviour and belong to the repository, the project and the agent.
@@ -92,12 +94,19 @@ task to complete in the workflow step. The others are ready blocks.
    label, the type, **Required**, an optional default and help text. The workflow step decides where each value comes
    from: a value set in the step, a field of the run start form, or the result of an earlier step. A template based on
    another one also shows **Parameter values**: values for the parameters of its parents.
-5. **Configuration**: a form with the settings of the work, for model answers and coding agents together (for a
-   coding agent: verify and setup command, push, merge request, artefacts to collect, agent tools, Spec Kit phase,
-   ...). A Spec Kit `phase`, `push` or `prepareOnly` (prepare only) makes the template need a coding agent. Set only what differs from the
-   template it is based on; empty fields are inherited. **Raw JSON** shows the same settings as JSON, also keys the
-   form does not know.
-   **Advanced: artefacts, output schema** (collapsed; most templates need nothing here):
+5. **Configuration**: a form with the settings of the work, for model answers and coding agents together: the
+   checkbox **Works in the repository (needs a coding agent)** (the work reads and changes files of the run
+   directory; off: any agent, also a model answer), **Verify command** (the acceptance check of the work, run after
+   the agent, for example `./gradlew test`; a failure fails the step), **Agent tools**, **Agent may ask questions**,
+   **Question rounds**. **Works in the repository** or `prepareOnly` (prepare only) makes the template need a coding
+   agent. Set only what differs from the template it is based on; empty fields are inherited. **Raw JSON** shows the
+   same settings as JSON, also keys the form does not know. A template has no git settings, repositories or setup
+   command (ADR 0063): delivering is the workflow's [Deliver changes](workflows.md#deliver-changes) action, the
+   repositories and the setup command belong to the workflow ([Sources of a workflow](workflows.md#workflow-sources)).
+   Such keys left in older configurations are not shown and have no effect.
+   **Advanced: artefacts, output files, output schema** (collapsed; most templates need nothing here):
+   **Output files** (globs of files the agent leaves in the run directory that come back as artefacts, named like the
+   file without its extension: `specs/**/spec.md` gives `spec`; formerly the config key `collectArtifacts`),
    **Abstract** (only a base for other templates, never a step), **Produces** and **Consumes** (artefact names the step writes and reads; the workflow
    check warns when a step reads something nobody writes), **Confidence field** (a field of the answer copied
    to `state.confidence` for decisions such as `confidence < 0.7`), **Tags** and **Output schema** (the shape of a
@@ -333,7 +342,7 @@ Built-in agents (none has a model of its own; all list the rules `agent-ground-r
 | **Model answer** (`model-answer`) | Model answer | none | `llm-task`; a step without its own agent whose template does not need a coding agent |
 | **Analyst** (`analyst`) | Model answer | `user-story-format`, `use-case-format`, `adr-format`, `definition-of-ready-done`, `build-guardrails` | the analysis, specification and planning templates (`write-user-story`, `write-use-case`, `write-adr`, `impact-analysis`, `plan-task-list`, `clarify-spec`) |
 | **Reviewer** (`reviewer`) | Model answer | `security-review-checklist`, `definition-of-ready-done` | `code-review`, `review-against-spec` |
-| **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | Spec Kit phases, `implement-opencode`, `implement-task-list`, `prepare-workspace`; a step without its own agent whose template needs a coding agent |
+| **OpenCode** (`opencode`) | OpenCode | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `write-spec`, `write-plan`, `write-task-list`, `implement-opencode`, `implement-task-list`, `prepare-workspace`; a step without its own agent whose template needs a coding agent |
 | **Claude Code** (`claude-code`) | Claude Code | `spec-writing`, `definition-of-ready-done`, `build-guardrails` | `agent-task`, any coding work |
 
 The built-in templates' **Required skills** match these agents, so the designer pre-selects them. **Analyst** and
@@ -356,11 +365,10 @@ designer pre-selects an agent for you ([Task nodes](workflows.md#task-nodes)).
 | Agent | Template | The step |
 |---|---|---|
 | Model answer | any that needs no coding agent | one model call: structured output, confidence and injection guard |
-| OpenCode or Claude Code | with a Spec Kit `phase` in its configuration | the Spec Kit phase |
-| OpenCode or Claude Code | any other | an agent job: pushes and opens a merge request per configuration; without a push its final answer becomes the `result` artefact |
+| OpenCode or Claude Code | any | an agent job in the run directory: it changes files, never commits or pushes (a later [Deliver changes](workflows.md#deliver-changes) does); its diff against the base is the `diff` artefact, its **Output files** come back as artefacts, and without a repository its final answer becomes the `result` artefact |
 
-The step cannot run, and the designer and the preview say why, when its template needs a coding agent (a Spec Kit
-`phase`, `push: true`, `prepareOnly`) but the step's agent is a model answer agent ("The template needs a coding
+The step cannot run, and the designer and the preview say why, when its template needs a coding agent
+(`codingAgent: true`, `prepareOnly`) but the step's agent is a model answer agent ("The template needs a coding
 agent: this step cannot run with a model answer agent.").
 
 **Coding agents answering in a schema.** A template with an **Output schema** works with a coding agent too. The
@@ -376,7 +384,8 @@ Before its task, every step gets one document that describes where and how it wo
 
 1. the **platform preamble**, fixed by Back Office for the kind of agent: what Back Office is, honesty, scope,
    safety; for a model answer "no repository, no tools, only JSON when there is a schema"; for a coding agent
-   "the runner commits and pushes, never weaken a test, quote file paths, where your skills are"; when the step
+   "do not commit or push, leave your changes uncommitted, never weaken a test, quote file paths, where your skills
+   are"; when the step
    lets the agent ask ([Agents asking questions](workflows.md#agent-questions)), also how to ask;
 2. the agent's **Instructions**;
 3. the project's constitution, when the project has one;
@@ -445,23 +454,23 @@ It is enforced twice:
    starts, and afterwards reverts every change outside the access (added files removed, changed or deleted files
    restored), whatever the agent did, shell commands included. The step's log lists each reverted path, and its
    summary ends with `[Back Office runner] reverted N change(s) outside the agent's access (...)`. Only then are the
-   verify command, the commit and the push run. Files ignored by git are not covered (they are never committed
-   either); artefacts the step collects are collected before the revert.
+   verify command and the diff run, and a later [Deliver changes](workflows.md#deliver-changes) delivers the work tree
+   as it is after the revert. Files ignored by git are not covered (they are never committed either); artefacts the
+   step collects are collected before the revert.
 
-A **Read only** agent on a step that pushes is a problem: the step cannot run until you change the agent or turn the
-push off. Whether a step commits and pushes stays a setting of the step; access only narrows what the agent may
-change. A model answer has no repository, so access does not apply to it.
+Agents never push (ADR 0063), so a **Read only** agent fits every step; committing and pushing is the workflow's
+[Deliver changes](workflows.md#deliver-changes) action, and access only narrows what the agent may change. A model
+answer has no repository, so access does not apply to it.
 
 **Directory** says what the agent may see of the run (ADR 0062):
 
 | Directory | The agent works in |
 |---|---|
 | **Run directory (shared)** (default) | the [run directory](workflows.md#run-directory): the coding steps of the run work there one after another and see what earlier steps left, uncommitted work included |
-| **Separate directory** | a fresh copy of only the step's repositories, thrown away after the step; it does not see what other steps left, and its session is never continued |
+| **Separate directory** | a fresh copy of the workflow's sources, thrown away after the step; it does not see what other steps left, its session is never continued and its changes are never delivered |
 
-Access does not hide anything: an agent that must not see the rest of the run's work needs **Separate directory**,
-and one that must not see the code at all also a step with only the repositories it may see
-([Repositories of a step](workflows.md#step-repositories)). For an independent check, make a coding agent with
+Access does not hide anything: an agent that must not see the rest of the run's work needs **Separate directory**;
+what it sees of the code is the workflow's [Sources](workflows.md#workflow-sources). For an independent check, make a coding agent with
 **Separate directory** (for example a project copy of **Claude Code** with **Read only** access) and choose it on
 the step. Until ADR 0062 the directory was a setting of the step; it is the agent's now (see
 [Agent sessions](workflows.md#continue-session) for what the upgrade did with stored steps).
@@ -500,7 +509,7 @@ fixes it on the agent.
 How a skill reaches the agent:
 
 - Steps run by **Model answer** get the skill appended to the system prompt (a single model call cannot open files).
-- Steps run by a coding agent (Spec Kit phases included) get it written into the agent's home as
+- Steps run by a coding agent get it written into the agent's home as
   `skills/<key>/SKILL.md` ([The environment of the agent](#environment)), never into a repository; Claude Code and
   OpenCode load it on their own, and the platform preamble tells the agent where its skills are.
 
@@ -522,32 +531,34 @@ relies on ("Apply the skill ..."); do the same in your own templates when one sk
 <a id="sources"></a>
 ## Sources
 
-**Library** → **Sources** (`/library/sources`) lists material that steps of every project can attach:
+**Library** → **Sources** (`/library/sources`) lists material that workflows of every project can clone:
 standards to follow, templates to start from, reference documentation. For now a source is a Git
 repository. Everyone with `library.view` sees the list; `library.manage` adds, changes and deletes
 sources.
 
 | Field | Meaning |
 |---|---|
-| **Key** | 2-27 lower case letters, digits and hyphens, starting with a letter, for example `standards`. Steps refer to the source by it. It cannot change later. |
+| **Key** | 2-27 lower case letters, digits and hyphens, starting with a letter, for example `standards`. Workflows refer to the source by it. It cannot change later. |
 | **Name** | What people see in the designer and on the project tab **Sources**. |
 | **Git URL** | The URL the runner clones. Private repositories need a read token on the runners, like project repositories ([Git access for agents](integrations-git.md#git-least-privilege)). |
 | **Branch** | Default `main`. The branch that is cloned. |
 | **Purpose** | **Standards**, **Templates**, **Documentation**, **Source code** or **Other**. Told to the agent. |
 | **Description** | What to follow or reuse in it. Given to the agent as data, not as instructions. |
 
-How a source reaches the agent: in the designer, a coding step ticks it in its section **Repositories**,
-under **Library sources (read only)** ([Repositories of a step](workflows.md#step-repositories)). The job
+How a source reaches the agent: in the designer, the workflow lists it in its **Sources**, under **Library sources**
+([Sources of a workflow](workflows.md#workflow-sources)). The job
 clones it into `/workspace/lib-<key>` (for example `/workspace/lib-standards`), read only: nothing is ever
 pushed to a library source, and the agent is told to follow it, not to change it.
 
-Deleting a source does not change any workflow: steps that still name it fail validation (the workflow can
-be saved only as a draft) until you untick it. When you publish a workflow to the workflow library, the
-library sources its steps use go with it; projects that adopt it get them too.
+Deleting a source does not change any workflow: workflows that still name it fail validation (they can be saved
+only as a draft) until you untick it. When you publish a workflow to the workflow library, the library sources it
+uses go with it; projects that adopt it get them too.
 
+<a id="built-in-library"></a>
 ## The built-in library
 
-Back Office ships with templates for the Spec Kit phases, implementation, `clarify-spec`, `code-review`,
+Back Office ships with templates for writing the specification, the plan and the task list (`write-spec`,
+`write-plan`, `write-task-list`), implementation, `clarify-spec`, `code-review`,
 `analyse-issue`, and SDLC tasks such as `impact-analysis`, `write-user-story`, `plan-task-list`,
 `implement-task-list` and `review-against-spec`, the generic `llm-task` and `agent-task`, plus skills, rules and
 the five built-in [agents](#agents). You can edit built-in templates, skills and rules; Back Office never overwrites an edited entry. The former templates
@@ -557,10 +568,12 @@ the library: they are [actions](workflows.md#actions) in the designer, and workf
 A template tagged `deprecated` keeps working in the steps that use it, but the designer, the MCP palette and the
 list (unless **Show deprecated**) no longer offer it. Deprecated now (ADR 0054): `implement-claude-code` (it is
 `implement-opencode` with the agent Claude Code; use `implement-opencode`, `implement-task-list` or `agent-task`
-and choose the agent **Claude Code** on the step), `analyse-issue` (use `impact-analysis`) and, since ADR 0058, the
-abstract `base-agent`, `base-llm` and `base-coding-agent`: their text is the platform preamble of the
+and choose the agent **Claude Code** on the step), `analyse-issue` (use `impact-analysis`), since ADR 0058 the
+abstract `base-agent`, `base-llm` and `base-coding-agent` (their text is the platform preamble of the
 [environment](#environment) now, the built-in templates no longer extend them, and they stay only for your own
-templates that do.
+templates that do), and since ADR 0063 **Spec Kit: specify**, **Spec Kit: plan** and **Spec Kit: tasks**
+(`spec-kit-specify`, `spec-kit-plan`, `spec-kit-tasks`): each now extends its replacement (`write-spec`,
+`write-plan`, `write-task-list`) unchanged, so steps and your own templates that still name them keep working.
 
 <a id="built-in-updates"></a>
 ### Updates of the built-in library
@@ -579,21 +592,27 @@ non-built-in copy and restart.
   (ADR 0061; the default workflows name the agent on each step) and leave the issue, the consumed artefacts, the
   input material and the feedback to the platform's data sections; only
   `implement-task-list` (and the deprecated `implement-claude-code`) extend `implement-opencode`. How to work
-  (honesty, scope, safety, the ground rules, "the runner commits and pushes after the agent", the format skills)
-  comes from the agent and its [environment](#environment).
-- **Spec Kit** tasks: the specify instructions start with the line `KEY: summary`, then the issue description
-  and acceptance criteria, then the instructions. Plan and tasks do not paste the specification or the plan,
-  which Spec Kit reads from the repository; they pass the step's feedback and, for the plan, the optional
-  parameter **Technical hints** (`techHints`, asked at start in the default workflows).
+  (honesty, scope, safety, the ground rules, "never commit or push, leave your changes uncommitted", the format
+  skills) comes from the agent and its [environment](#environment).
+- **Write specification, plan and task list** (`write-spec`, `write-plan`, `write-task-list`, ADR 0063): a coding
+  agent (`codingAgent: true`) writes the document into the repository, next to each other under
+  `specs/<feature>/`: `spec.md` (scenarios, testable requirements, entities, scope and open questions, never the
+  design), `plan.md` (technical context, approach, changes by component, data model and contracts, verification,
+  risks) and `tasks.md` (an ordered, dependency-aware task list, each task small, testable and traced to a
+  requirement). Their **Output files** (`specs/**/spec.md`, `specs/**/plan.md`, `specs/**/tasks.md`) come back as
+  the artefacts `spec`, `plan` and `tasks`. The plan and the task list read the earlier documents from the
+  repository; the plan takes the optional parameter **Technical hints** (`techHints`, asked at start in the default
+  workflows). The documents stay in the run directory and reach the branch with the rest of the work when the
+  workflow delivers it.
 - **Implementers** (`implement-opencode`, `implement-claude-code`): the runner runs `verifyCommand` from
-  **Config** when you set one (none by default) and fails the step when it exits non-zero; the merge request
-  uses `mergeRequest` (true/false), `mergeRequestTitleTemplate` and `mergeRequestDraft`.
+  **Config** when you set one (none by default) and fails the step when it exits non-zero. Committing, the branch
+  and the merge request are the workflow's [Deliver changes](workflows.md#deliver-changes) action.
 - **Rework after a review**: when the run has a `review` artefact, the implementers' instructions contain it
   under "Latest review findings", so the `changes` edge of **Review ok?** sends the findings back to the
   implementation instead of repeating the same prompt.
 - `implement-task-list` executes the task list in order and ends `work-log.md` with `RESULT: GREEN` or
   `RESULT: STOPPED at <task>`; its `verifyCommand` checks that line, so a stop on a red test fails the step.
-  The runner collects the file as the `work-log` artefact and keeps it out of the commit. To also run your
+  The runner collects the file as the `work-log` artefact (an output file) and a delivery keeps it out of the commit. To also run your
   full test suite after the agent, set `verifyCommand` in the step, for example
   `tail -n 3 work-log.md | grep -q "^RESULT: GREEN" && ./gradlew test`.
 - `code-review` puts its instructions before the diff, so a diff cut at `maxInputChars` never removes them;
@@ -605,8 +624,8 @@ non-built-in copy and restart.
   `write-user-story` and `write-use-case` store their documents as the `user-story` and `use-case`
   artefacts. The **Fetch issue** action reads summary, description, acceptance criteria and labels, not comments
   or attachments.
-- Open questions use one marker per document type: `[NEEDS CLARIFICATION: ...]` in a Spec Kit
-  specification, `[?]` everywhere else. Agents never invent an owner or a date, leave IDs such as
+- Open questions use one marker per document type: `[NEEDS CLARIFICATION: ...]` in a specification written by
+  `write-spec`, `[?]` everywhere else. Agents never invent an owner or a date, leave IDs such as
   `US-<AREA>-<NN>` and ADR numbers `NNNN` as placeholders and never set a status such as Accepted.
 
 The seeded workflows of a new project follow these templates; the **Change request (delta)** workflow
@@ -625,14 +644,13 @@ into **Instructions for this step** → **Replace (advanced)**, which wins over 
 | Template | Choose on the step | Good for |
 |---|---|---|
 | **LLM task** (`llm-task`) | a model answer agent, for example **Model answer**: one model call, no repository | summaries, drafts, answers about the run's input material |
-| **Agent task** (`agent-task`) | a coding agent such as **Claude Code** or **OpenCode**: a runner job with a clone of the project's repository | analysing code, reviewing, answering questions about the repository; with `push: true` in **Config** also changes on a branch with a merge request |
+| **Agent task** (`agent-task`) | a coding agent such as **Claude Code** or **OpenCode**: a runner job in the run directory with the workflow's sources | analysing code, reviewing, answering questions about the repository; changes to the code, delivered on a branch with a merge request by a [Deliver changes](workflows.md#deliver-changes) node after the step |
 
-**Agent task** needs a coding agent even without a push: its configuration says so (`codingAgent: true`), so the
-designer pre-selects one.
+**Agent task** needs a coding agent: its configuration says so (`codingAgent: true`), so the designer pre-selects one.
 
 Their instructions are just `{{params.task}}`: the platform adds the issue (when the run has one), the **Input
 material** (when the step asks for it at start and someone typed it) and the reviewer's feedback as data sections
-after it, so the **Task** can be just the task. The **Agent task** does not push by default; in a
+after it, so the **Task** can be just the task. The **Agent task** never pushes; in a
 project without repositories it runs in an empty directory and its final answer becomes the `result` artefact. The
 **LLM task** runs on the Back Office server and needs a configured model provider (an API key); the **Agent task**
 runs on a runner, so on your [personal runner](personal-runner.md) it can use your own Claude login instead.

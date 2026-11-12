@@ -297,6 +297,11 @@ data class ResolvedTask(
     val rules: List<RuleSnapshot> = emptyList(),
     /** ADR 0058: the merged parameter declarations of the lineage with the value the step uses. */
     val parameters: List<ResolvedParameter> = emptyList(),
+    /**
+     * ADR 0063: globs of files the agent leaves that come back as artefacts (named like the file without extension),
+     * unioned over the lineage (the former config key `collectArtifacts`).
+     */
+    val outputFiles: List<String> = emptyList(),
 ) {
     /**
      * ADR 0058: `params` of the template model: parameter name to the value the design sets (null = none). ADR 0062:
@@ -321,7 +326,7 @@ data class TaskSummary(
     val parameterValues: Map<String, Any?> = emptyMap(),
     /** ADR 0058: a required parameter has no value without the step (not a ready block). */
     val needsParameters: Boolean = false,
-    /** ADR 0061: the merged config needs a coding agent (Spec Kit phase, push, prepareOnly); else any agent. */
+    /** ADR 0061: the merged config needs a coding agent (codingAgent, prepareOnly); else any agent. */
     val needsCodingAgent: Boolean = false,
     /** ADR 0061: skills the work needs, merged over the lineage. */
     val requiresSkills: List<String> = emptyList(),
@@ -332,14 +337,13 @@ data class RequiredSkill(val key: String, val name: String?)
 
 /**
  * ADR 0061: what the agent audit needs of one task step: the agent it runs with ([agentKey], the step's or the default
- * of decision 2), the skills its template lineage requires, whether the work needs a coding agent and whether a coding
- * agent would push.
+ * of decision 2), the skills its template lineage requires and whether the work needs a coding agent (ADR 0063: agents
+ * never push).
  */
 data class StepNeeds(
     val agentKey: String,
     val requiredSkills: List<RequiredSkill>,
     val needsCodingAgent: Boolean,
-    val pushes: Boolean,
 )
 
 /** ADR 0061: a skill of an agent with its description (the coherence check reads names and descriptions). */

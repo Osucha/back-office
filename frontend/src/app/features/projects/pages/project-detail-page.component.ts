@@ -41,7 +41,6 @@ import { PendingSavesService } from '../../../core/state/pending-saves.service';
 import { ProjectsStore, monogram } from '../../../core/state/projects.store';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { planSourceLabel, routeLabel, summarizeModelPlan } from '../../../core/ui/model-options';
-import { SpecKitCardComponent } from '../components/spec-kit-card.component';
 import { RunInputFormComponent } from '../components/run-input-form.component';
 import { projectRepositories, purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
 import { batonOf, type BatonHolder } from '../../../core/ui/relay/baton';
@@ -109,7 +108,6 @@ const TABS = [
     NzDropDownModule,
     NzModalModule,
     NzTooltipModule,
-    SpecKitCardComponent,
     RunInputFormComponent,
     RunsTableComponent,
     ProjectCiPanelComponent,
@@ -500,7 +498,6 @@ const TABS = [
                     [cancellable]="false"
                     [readonly]="!can('project.manage')"
                     [serverError]="saveError()"
-                    [specKitAllowed]="specKitAllowed()"
                     (saved)="save($event)"
                   />
                 </nz-card>
@@ -598,7 +595,6 @@ const TABS = [
                     [cancellable]="false"
                     [readonly]="!can('project.manage')"
                     [serverError]="saveError()"
-                    [specKitAllowed]="specKitAllowed()"
                     (saved)="save($event)"
                   />
                 </nz-card>
@@ -607,13 +603,6 @@ const TABS = [
                     [projectId]="p.id"
                     [workflows]="workflows()"
                     [jiraEnabled]="!!p.issueTracker"
-                  />
-                  <app-spec-kit-card
-                    [projectId]="p.id"
-                    [version]="p.updatedAt"
-                    [constitution]="p.constitution ?? ''"
-                    [canEdit]="can('workflow.edit')"
-                    (workflowsAdded)="reloadWorkflows()"
                   />
                   @if (canDelete()) {
                     <nz-card
@@ -976,9 +965,7 @@ export class ProjectDetailPageComponent {
   readonly project = signal<Project | null>(null);
   readonly workflows = signal<WorkflowDefinition[]>([]);
   readonly workflowsLoading = signal(false);
-  /** ADR 0036: the platform allows Spec Kit (the form explains when it does not). */
-  readonly specKitAllowed = signal(true);
-  /** ADR 0059: default workflows (not Spec Kit) the project lacks, offered as "Add missing default workflows". */
+  /** ADR 0059: default workflows the project lacks, offered as "Add missing default workflows". */
   readonly missingDefaults = signal<string[]>([]);
   readonly addingDefaults = signal(false);
   readonly inFlight = signal<WorkflowRunSummary[]>([]);
@@ -1180,10 +1167,6 @@ export class ProjectDetailPageComponent {
       ]);
     });
     this.reloadWorkflows();
-    this.projectsApi
-      .specKit(id)
-      .pipe(catchError(() => of(null)))
-      .subscribe((s) => this.specKitAllowed.set(s?.allowedByPlatform ?? true));
     this.runsApi
       .list({ projectId: id, status: ['RUNNING', 'WAITING', 'PENDING'], size: 100 })
       .pipe(catchError(() => of({ content: [] })))

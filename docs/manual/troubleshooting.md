@@ -53,7 +53,7 @@ Full runbook: `docs/runbooks/cannot-log-in.md`.
 | Agent log: `model-not-allowed` (403) | agent asked for a model other than the job's (Claude Code background model) | `RUNNER_EXTRA_ALLOWED_MODELS=anthropic/claude-haiku-*` |
 | **Egress denied** lists a host the build needs | host not in the effective allowlist | add it to the project or template policy, within the pool ceiling |
 | `git clone failed` / `git push failed` | token missing or without `write_repository`/Contents write, branch protected, push rules, private Git host not in `egressProxy.allowedCidrs` | [integrations-git.md](integrations-git.md#gitlab-token) |
-| `the receiving end does not support push options` | repository is not on GitLab | set `mergeRequest` to `false` on the node |
+| `the receiving end does not support push options` | repository is not on GitLab | turn **Open a merge request** off on the **Deliver changes** node |
 | Pushed, but no merge request URL | token role below Developer, target branch missing, MR already existed | fix the role or branch |
 
 Runbooks: `docs/runbooks/agent-jobs.md`, `docs/runbooks/runner-job-failed.md`.
@@ -70,7 +70,6 @@ Runbooks: `docs/runbooks/agent-jobs.md`, `docs/runbooks/runner-job-failed.md`.
 | step shows **waiting for your answers** | the agent stopped with questions ([Agents asking questions](workflows.md#agent-questions)) | answer them in **Your turn** (**Answer and continue**) or **Cancel the step**; turn **Agent may ask questions** off on the step if it should never wait |
 | step failed: "the agent asked more than N rounds of questions" | the agent kept asking after the step's last **Question rounds** | answer more completely, raise **Question rounds**, or make the task clearer in the prompt; the questions are in the step log |
 | step summary ends with `[Back Office runner] reverted N change(s) outside the agent's access` | the agent changed files its **Access** does not allow; the runner undid them | widen the agent's access ([Access of an agent](task-library.md#agent-access)) or tell the agent in its instructions what it may change |
-| a **Read only** agent's step cannot run | the step pushes, but the agent may change nothing | choose another agent or turn **push** off on the step |
 | Jira step fails with `HTTP 401/403/404` or "no Jira connection with capabilities" | expired token, licence, project permission, or no connection with the needed capability | [integrations-jira.md](integrations-jira.md#jira-test), [connections](integrations-jira.md#jira-connections) |
 | `has no transition to status X` | no transition from the current status to `X` | fix `toStatus` or the Jira workflow |
 | Step failed, **Operations** → **Dead items** lists it | the step failed all retries | fix the cause, then **Retry** |

@@ -83,7 +83,7 @@ class ModelStepCheck(
         /** ADR 0056: a model answer is an LLM call, a coding agent a coding agent step (a prepare-only step uses no model). */
         fun stepKind(task: ResolvedTask): StepKind? = when (TaskRunKind.of(task)) {
             TaskRunKind.MODEL_ANSWER -> StepKind.LLM_CALL
-            TaskRunKind.SPEC_KIT, TaskRunKind.AGENT_JOB ->
+            TaskRunKind.AGENT_JOB ->
                 StepKind.CODING_AGENT.takeUnless { task.config[RunDirectory.PREPARE_ONLY]?.toString()?.lowercase() == "true" }
         }
 

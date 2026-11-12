@@ -587,16 +587,24 @@ class MainFlowTests(unittest.TestCase):
             self.assertIn("[access] reverted app:evil.sh (added; outside the agent's access)", stdout)
             self.assertEqual(git(app, "status", "--porcelain"), "")
 
-    def test_paths_agent_pushes_only_what_it_may_change(self):
+    def test_paths_agent_leaves_only_what_it_may_change_for_the_delivery(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             tmp_path = Path(tmp)
             origin = make_origin(tmp_path, "app")
             code = ("import pathlib; pathlib.Path('docs').mkdir(); pathlib.Path('docs/guide.md').write_text('guide');"
                     " pathlib.Path('README.md').write_text('hacked'); pathlib.Path('Main.kt').write_text('x')")
-            job = self.job(self.stub(code), repositories=[self.repo(origin)], agentHome="doc-writer",
-                           access={"mode": "PATHS", "paths": ["docs/**"]}, runId=RUN_ID)
+            run_dir = {"name": WS_NAME, "key": "run"}
+            job = self.job(self.stub(code), repositories=[self.repo(origin, "READ")], agentHome="doc-writer",
+                           access={"mode": "PATHS", "paths": ["docs/**"]}, runId=RUN_ID, workspace=run_dir)
             result, _ = self.run_main(tmp_path, job, {"app": "tok"})
             self.assertEqual(result["status"], "SUCCEEDED", result)
+            self.assertIn("docs/guide.md", result["diff"])
+            self.assertNotIn("Main.kt", result["diff"])
+            self.assertEqual(git(origin, "branch", "--list", "feature/docs"), "")
+            # ADR 0063: the delivery pushes what the agent left
+            deliver = {"mode": "DELIVER", "repositories": [self.repo(origin)], "runId": RUN_ID, "workspace": run_dir}
+            delivered, _ = self.run_main(tmp_path, deliver, {"app": "tok"})
+            self.assertEqual(delivered["status"], "SUCCEEDED", delivered)
             files = git(origin, "ls-tree", "-r", "--name-only", "feature/docs").split()
             self.assertEqual(sorted(files), ["README.md", "docs/guide.md"])
             self.assertEqual(git(origin, "show", "feature/docs:README.md"), "# app\n")
@@ -618,7 +626,7 @@ class MainFlowTests(unittest.TestCase):
                       " pathlib.Path('agent-questions.json').write_text('{\\\"questions\\\": [{\\\"question\\\": \\\"Which API?\\\"},"
                       " {\\\"question\\\": \\\"Scope?\\\"}]}')")
 
-    def test_questions_skip_verification_commit_and_push(self):
+    def test_questions_skip_the_verification(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             tmp_path = Path(tmp)
             origin = make_origin(tmp_path, "app")
@@ -636,7 +644,7 @@ class MainFlowTests(unittest.TestCase):
             self.assertEqual(git(app, "log", "--format=%s"), "init\n")
             self.assertEqual(result["repositories"][0]["commitSha"], git(app, "rev-parse", "HEAD").strip())
             self.assertEqual(len([a for a in result["artifacts"] if a["name"] == "agent-questions"]), 1)
-            self.assertIn("[Back Office runner] the agent asked 2 question(s); verification, commit and push skipped", result["summary"])
+            self.assertIn("[Back Office runner] the agent asked 2 question(s); verification skipped", result["summary"])
             self.assertNotIn("[verify]", stdout)
 
     def test_empty_questions_do_not_stop_the_step(self):
@@ -648,9 +656,10 @@ class MainFlowTests(unittest.TestCase):
             job = self.job(self.stub(code), repositories=[self.repo(origin)], runId=RUN_ID, collectArtifacts=["agent-questions.json"])
             result, _ = self.run_main(tmp_path, job, {"app": "tok"})
             self.assertEqual(result["status"], "SUCCEEDED", result)
-            self.assertTrue(result["repositories"][0]["pushed"])
+            self.assertFalse(result["repositories"][0]["pushed"])  # ADR 0063: an agent job never pushes
             self.assertNotIn("question(s)", result["summary"] or "")
-            self.assertNotIn("agent-questions.json", git(origin, "ls-tree", "--name-only", "feature/docs").split())
+            self.assertIn("+x", result["diff"])
+            self.assertNotIn("agent-questions.json", result["diff"])  # an ephemeral answer file is not part of the change
 
     def test_questions_on_a_legacy_spec_with_access_still_revert(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

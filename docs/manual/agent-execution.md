@@ -1,6 +1,6 @@
 # How agent jobs run
 
-Coding agents (Spec Kit phases, **Implement** steps, coding benchmark attempts) never run inside Back
+Coding agents (**Implement** and other coding steps, coding benchmark attempts) and deliveries never run inside Back
 Office. Back Office queues an **agent job**; a runner-controller in one of your clusters leases it, starts
 an isolated sandbox, and reports back. This chapter explains the lifecycle, the isolation levels, the
 network and credential boundaries, budgets, timeouts and the provenance evidence a job leaves behind.

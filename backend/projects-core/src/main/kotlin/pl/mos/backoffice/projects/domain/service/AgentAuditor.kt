@@ -1,6 +1,5 @@
 package pl.mos.backoffice.projects.domain.service
 
-import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.tasks.AgentProfile
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.StepNeeds
@@ -54,7 +53,7 @@ data class AgentAuditReport(val agents: List<AgentAuditEntry>, val findings: Lis
  *
  * - `MISSING_SKILL` (warning): a step requires a skill its agent lacks;
  * - `NEEDS_CODING_AGENT` (error): a step needs a coding agent but its agent gives a model answer;
- * - `READ_ONLY_PUSH` (error): a read-only coding agent on a step that pushes;
+ * - `READ_ONLY_PUSH`: no longer reported (ADR 0063: agents never push; the kind stays in the API);
  * - `UNKNOWN_RULE` / `UNKNOWN_SKILL` (error): the agent names a rule or skill the library no longer has;
  * - `DUPLICATE_SKILL_NAME` (warning): two skills of one agent have the same name (the harness cannot tell them apart);
  * - `UNKNOWN_AGENT` (error, not tied to an agent entry): a step names an agent that does not exist.
@@ -94,14 +93,6 @@ object AgentAuditor {
                     add(AgentAuditFinding(
                         AgentAuditFindingKind.NEEDS_CODING_AGENT, AgentAuditSeverity.ERROR,
                         "agent ${agent.name} gives a model answer; a coding agent is needed by ${nodeIds.size.steps()}",
-                        nodeIds, agent.key,
-                    ))
-                }
-            } else if (agent.access.mode == AgentAccessMode.READ_ONLY) {
-                steps.filter { it.needs.pushes }.map { it.nodeId }.takeIf { it.isNotEmpty() }?.let { nodeIds ->
-                    add(AgentAuditFinding(
-                        AgentAuditFindingKind.READ_ONLY_PUSH, AgentAuditSeverity.ERROR,
-                        "agent ${agent.name} may only read but pushes in ${nodeIds.size.steps()}: set push to false or choose another agent",
                         nodeIds, agent.key,
                     ))
                 }

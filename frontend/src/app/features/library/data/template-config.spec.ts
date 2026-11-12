@@ -3,6 +3,7 @@ import {
   agentByKey,
   agentRef,
   agentsForScope,
+  cleanGlobs,
   lineageConfig,
   templateConfigSchema,
   templateNeedsCodingAgent,
@@ -14,12 +15,12 @@ const T = (over: Partial<TaskTemplate>): TaskTemplate =>
 describe('template config (ADR 0054, 0061)', () => {
   const templates = [
     T({ key: 'base', abstract: true, config: { temperature: 0.2 } }),
-    T({ key: 'specify', extendsKey: 'base', config: { phase: 'specify' } }),
+    T({ key: 'specify', extendsKey: 'base', config: { codingAgent: true } }),
     T({ key: 'review', extendsKey: 'base', config: {} }),
     T({
       key: 'review',
       extendsKey: 'base',
-      config: { push: true },
+      config: { codingAgent: true },
       scope: { type: 'PROJECT', projectId: 'p1' },
     }),
     T({ key: 'loop-a', extendsKey: 'loop-b' }),
@@ -31,23 +32,26 @@ describe('template config (ADR 0054, 0061)', () => {
   it('merges the config of the lineage, the own keys win and null deletes', () => {
     expect(
       lineageConfig({ config: { x: 1 }, extendsKey: 'specify', scope: global }, templates),
-    ).toEqual({ temperature: 0.2, phase: 'specify', x: 1 });
+    ).toEqual({ temperature: 0.2, codingAgent: true, x: 1 });
     expect(
-      lineageConfig({ config: { phase: null }, extendsKey: 'specify', scope: global }, templates),
+      lineageConfig(
+        { config: { codingAgent: null }, extendsKey: 'specify', scope: global },
+        templates,
+      ),
     ).toEqual({ temperature: 0.2 });
     expect(lineageConfig({ config: {}, extendsKey: 'loop-a', scope: global }, templates)).toEqual(
       {},
     );
   });
 
-  it('needs a coding agent for a phase, push or prepareOnly anywhere in the lineage', () => {
+  it('needs a coding agent for codingAgent or prepareOnly anywhere in the lineage', () => {
     expect(
       templateNeedsCodingAgent({ config: {}, extendsKey: 'specify', scope: global }, templates),
     ).toBe(true);
     expect(
       templateNeedsCodingAgent({ config: {}, extendsKey: 'review', scope: global }, templates),
     ).toBe(false);
-    // the project's version of the parent pushes
+    // the project's version of the parent works in the repository
     expect(
       templateNeedsCodingAgent({ config: {}, extendsKey: 'review', scope: p1 }, templates),
     ).toBe(true);
@@ -102,19 +106,52 @@ describe('template config (ADR 0054, 0061)', () => {
     });
   });
 
-  it('offers the keys of both kinds of steps without required keys', () => {
+  it('offers the model answer keys and the coding keys a template still sets (ADR 0063)', () => {
     const schemas: TaskConfigSchemas = {
       codingAgent: {
         type: 'object',
-        required: ['phase'],
-        properties: { phase: { type: 'string' } },
+        required: ['verifyCommand'],
+        properties: {
+          phase: { type: 'string' },
+          push: { type: 'boolean' },
+          branchTemplate: { type: 'string' },
+          setupCommand: { type: 'string' },
+          collectArtifacts: { type: 'array', items: { type: 'string' } },
+          repositories: { type: 'array' },
+          directory: { type: 'string' },
+          verifyCommand: { type: 'string' },
+          agentTools: { type: 'array', items: { type: 'string' } },
+          allowQuestions: { type: 'boolean' },
+          maxQuestionRounds: { type: 'integer' },
+        },
       },
       modelAnswer: { type: 'object', properties: { temperature: { type: 'number' } } },
     };
     const schema = templateConfigSchema(schemas);
-    expect(Object.keys(schema?.properties ?? {})).toEqual(['temperature', 'phase']);
+    expect(Object.keys(schema?.properties ?? {}).sort()).toEqual([
+      'agentTools',
+      'allowQuestions',
+      'codingAgent',
+      'maxQuestionRounds',
+      'temperature',
+      'verifyCommand',
+    ]);
     expect(schema?.required).toBeUndefined();
+    // codingAgent is offered as a checkbox with its own label even when the server lacks it
+    expect(schema?.properties?.['codingAgent']?.['x-widget']).toBe('checkbox');
+    expect(schema?.properties?.['codingAgent']?.title).toBe(
+      'Works in the repository (needs a coding agent)',
+    );
+    expect(schema?.properties?.['verifyCommand']?.title).toBe('Verify command');
     expect(templateConfigSchema({ codingAgent: {}, modelAnswer: {} })).toBeNull();
     expect(templateConfigSchema(null)).toBeNull();
+  });
+
+  it('cleans the output file globs (ADR 0063)', () => {
+    expect(cleanGlobs([' specs/**/spec.md ', '', 'plan.md', 'plan.md', null])).toEqual([
+      'specs/**/spec.md',
+      'plan.md',
+    ]);
+    expect(cleanGlobs(null)).toEqual([]);
   });
 });

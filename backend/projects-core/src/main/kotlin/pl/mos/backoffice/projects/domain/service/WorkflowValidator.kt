@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.domain.service
 
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.DecisionBranch
 import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.projects.domain.model.NodeKind
@@ -18,15 +19,13 @@ data class WorkflowValidationResult(val errors: List<ValidationIssue>, val warni
 }
 
 /**
- * What the validator needs to know about a task template: its output ports, whether it is abstract,
- * whether it can push to the repository (runner-backed `IMPLEMENT` / `SPEC_KIT` with `push` not false), ADR 0062: the
+ * What the validator needs to know about a task template: its output ports, whether it is abstract, ADR 0062: the
  * parameters it declares (a step binding one `START` asks for it at run start) and, for Jira reads, the template's
- * `issueKeyFrom` setting (ADR 0053).
+ * `issueKeyFrom` setting (ADR 0053). ADR 0063: no template pushes (delivery is the `DELIVER_CHANGES` action).
  */
 data class TaskTemplateInfo(
     val ports: List<String>,
     val abstract: Boolean = false,
-    val pushCapable: Boolean = false,
     val parameters: List<TemplateParameter> = emptyList(),
     val issueKeyFrom: String? = null,
 )
@@ -106,7 +105,7 @@ class WorkflowValidator {
         if (nodes.none { it.kind == NodeKind.HUMAN_GATE } && triggers.none { it.type == TriggerType.CI }) {
             warnings += ValidationIssue(message = "workflow has no human gate; it will run fully unattended")
         }
-        if (errors.none { it.field == "id" }) warnings += modelRoutedPushes(nodes, edges, taskPorts)
+        if (errors.none { it.field == "id" }) warnings += modelRoutedPushes(nodes, edges)
         warnings += runInputWarnings(nodes, taskPorts)
         return WorkflowValidationResult(errors, warnings)
     }
@@ -171,15 +170,14 @@ class WorkflowValidator {
     /**
      * Prompt injection (ADR 0029): a DECISION branch whose expression reads only model-produced fields
      * (`confidence`, `review.*`) can be steered by whoever controls the model's input (issue text, diff,
-     * repository). Warn when such a branch reaches a push-capable task without passing a HUMAN_GATE.
-     * Branches that loop back to an earlier step (rework: the target leads back to the decision) are fine.
+     * repository). Warn when such a branch reaches a push-capable step (ADR 0063: a `DELIVER_CHANGES` action) without
+     * passing a HUMAN_GATE. Branches that loop back to an earlier step (rework: the target leads back to the decision)
+     * are fine.
      */
-    private fun modelRoutedPushes(nodes: List<WorkflowNode>, edges: List<WorkflowEdge>, taskPorts: TaskPortsProvider): List<ValidationIssue> {
+    private fun modelRoutedPushes(nodes: List<WorkflowNode>, edges: List<WorkflowEdge>): List<ValidationIssue> {
         val graph = WorkflowGraph(nodes, edges)
         val byId = nodes.associateBy { it.id }
-        val pushCapable = nodes.filterIsInstance<WorkflowNode.Task>()
-            .filter { node -> node.task.templateKey.isNotBlank() && taskPorts.lookup(node.task.templateKey)?.pushCapable == true }
-            .map { it.id }.toSet()
+        val pushCapable = nodes.filterIsInstance<WorkflowNode.Action>().filter { it.action.type == ActionType.DELIVER_CHANGES }.map { it.id }.toSet()
         if (pushCapable.isEmpty()) return emptyList()
         return nodes.filterIsInstance<WorkflowNode.Decision>().flatMap { decision ->
             decision.decision.branches.mapNotNull { branch -> modelRoutedPush(decision, branch, graph, byId, pushCapable) }

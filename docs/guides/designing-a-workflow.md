@@ -35,7 +35,7 @@ ports and config schema; ADR 0061: no agent, the step chooses it) and the state 
 | `START` | entry; exactly one per workflow | - | `out` |
 | `END` | terminal; its `outcome` becomes the run outcome and the CI gate result | `end: {outcome: SUCCESS \| FAILURE}` | none |
 | `TASK` | runs a Task Library template with node overrides, by the step's agent | `task: {templateKey, overrides}` | `success`, `failure` |
-| `ACTION` | a fixed operation without a model (ADR 0056) | `action: {type, config}` with `type` `FETCH_ISSUE`, `COMMENT_ISSUE`, `TRANSITION_ISSUE`, `START_WORKFLOW` or `PROJECT_DIGEST` | `success`, `failure` |
+| `ACTION` | a fixed operation without a model (ADR 0056) | `action: {type, config}` with `type` `FETCH_ISSUE`, `COMMENT_ISSUE`, `TRANSITION_ISSUE`, `DELIVER_CHANGES` ([Deliver changes](#deliver-changes)), `START_WORKFLOW` or `PROJECT_DIGEST` | `success`, `failure` |
 | `DECISION` | routes on boolean expressions over the run state | `decision: {branches: [{id, label, expression}], defaultBranch}` | one port per branch id (+ `defaultBranch` when it is not a branch id) |
 | `HUMAN_GATE` | pauses; an approver picks an option in the inbox | `gate: {question, options, showArtifacts, timeoutSeconds, approvers, checklist}` | one port per option (default `approve`, `revise`, `reject`) + `timeout` |
 | `WAIT_FOR_CI` | pauses until your CI reports a signal for this run | `ci: {signal, timeoutSeconds}` | `success`, `fail`, `timeout` |
@@ -53,7 +53,7 @@ Rules about ports:
 
 ## Tasks and overrides
 
-A `TASK` node names a template key (`spec-kit-specify`, `clarify-spec`, `spec-kit-plan`, `spec-kit-tasks`,
+A `TASK` node names a template key (`write-spec`, `clarify-spec`, `write-plan`, `write-task-list`,
 `implement-opencode`, `code-review`, `llm-task`, `agent-task`, the SDLC templates, or your own). At run time the node is resolved through the Task
 Library (`TaskCatalog.resolve`): inheritance is merged, a project-scoped template with the same key
 shadows the global one, and the node's `overrides` are applied last. A step is a template (what to do), an agent (who
@@ -65,7 +65,10 @@ works and how) and where the template's parameters get their values (ADR 0057, 0
 | `parameterBindings` | per parameter of the template (`{{params.<name>}}`), where its value comes from (ADR 0062; designer **Parameters** → **Where the value comes from**): `{"source": "VALUE", "value": ...}` (**Value**, a fixed value), `{"source": "START"}` (**Ask at start**: the run start form asks for it with the parameter's label, type and required flag; an `ISSUE_KEY` parameter is the run's issue key) or `{"source": "ARTIFACT", "artifact": "spec"}` (**Result of an earlier step**: the content of that artefact). Unbound (or bound but empty in the run) = the nearest template's value, else the default; a required parameter without a value or a run-time binding is a validation error. Values from the run are untrusted and reach the prompt as data blocks. The former `parameters` map is read as `VALUE` bindings |
 | `modelProfileId` | model for this node (else the agent's, else the defaults: project, starting user, platform; review tasks use the project's review default; templates have no model since ADR 0061) |
 | `instructionsAppend`, `instructionsReplace` | designer **Instructions for this step**: **Append** adds notes after the template's instructions, **Replace (advanced)** uses this text instead (it wins over a parameterised instruction); the platform still adds the standard data sections (ADR 0062). The former `systemPromptAppend` / `promptAppend` are read as the append, `promptReplace` as the replacement |
-| `config` | deep-merged into the template config: `phase`, `verifyCommand`, `setupCommand`, `branchTemplate`, `push`, `mergeRequest`, `mergeRequestTitleTemplate`, `mergeRequestDraft`, `collectArtifacts`, `repositories` (coding agent steps; see [Repositories of a step](#step-repositories)); `allowQuestions`, `maxQuestionRounds` (agent steps, [Agent questions](#agent-questions)); `maxInputChars` (model answer steps). Since ADR 0060 a node no longer adds or removes skills (`addSkills` / `removeSkills` of stored workflows are ignored) and `workspace` / `sessionRole` are only read compatibly; since ADR 0062 the keys `directory`, `session` and `continueSession` are the agent's ([Run directory and agent sessions](#agent-sessions)) and are dropped from stored steps. The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
+| `config` | deep-merged into the template config: `codingAgent` (**Works in the repository (needs a coding agent)**), `verifyCommand` (**Verify command**), `agentTools` (coding agent steps); `allowQuestions`, `maxQuestionRounds` (agent steps, [Agent questions](#agent-questions)); `maxInputChars` (model answer steps). Since ADR 0060 a node no longer adds or removes skills (`addSkills` / `removeSkills` of stored workflows are ignored) and `workspace` / `sessionRole` are only read compatibly; since ADR 0062 the keys `directory`, `session` and `continueSession` are the agent's ([Run directory and agent sessions](#agent-sessions)) and are dropped from stored steps. The former key `agent` is gone: a stored `config.agent` is read as `agentKey`. Since ADR 0063 a step has no git
+settings, repositories, setup command or Spec Kit phase: `push`, `branchTemplate`, `commitSubjectTemplate`,
+`mergeRequest*`, `repositories`, `setupCommand` and `phase` are read compatibly ([Workflows stored before ADR
+0063](#before-adr-0063)) and `collectArtifacts` is read as extra output files. Action settings (`issueKeyFrom`, `toStatus`, `failIfMissing`, `messageTemplate`, `approval`, `approvers`, `jiraConnection`, ...) live in `action.config` |
 
 The step's agent decides what runs where (ADR 0056; the agent is the step's `agentKey`, else `opencode` when the
 template needs a coding agent, else `model-answer`, ADR 0061) and brings the step's environment (ADR 0057): the platform preamble, the agent's instructions, the
@@ -77,13 +80,14 @@ that produces `review` is assessed by the verdict policy and stored as the run r
 (OpenCode or Claude Code) runs in the agent runner with the environment written outside the repository (OpenCode
 `AGENTS.md`, Claude Code user `CLAUDE.md`, both in the agent's home `/workspace/.agents/<agent key>/`, ADR 0060), the skills
 written to the same home (never into a repository) and the agent's MCP servers
-configured: with the config key `phase` as a Spec Kit job, otherwise as an agent job that pushes the branch with
-merge-request push options per config, returns the diff as artefact `diff` and the MR URL as `mr` (without a push its
-final answer is the `result` artefact). With an `outputSchema` a coding agent writes its structured answer to
-`structured-answer.json`, which is validated like a model answer. A template that needs a coding agent (`phase`,
-`push: true`, `prepareOnly`) with a model answer is a problem and the step cannot run. The
-actions `FETCH_ISSUE`, `COMMENT_ISSUE` and `TRANSITION_ISSUE` call Jira; `START_WORKFLOW` and `PROJECT_DIGEST` are
-Back Office operations. A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`,
+configured, as an agent job in the run directory with the workflow's [sources](#workflow-sources). **Agents never
+push** (ADR 0063): the job changes files, returns the diff of the work tree against the base as artefact `diff` and
+the template's **Output files** as artefacts (without a repository its final answer is the `result` artefact); a
+[Deliver changes](#deliver-changes) node commits, pushes and opens the merge request. With an `outputSchema` a coding
+agent writes its structured answer to `structured-answer.json`, which is validated like a model answer. A template
+that needs a coding agent (`codingAgent: true`, `prepareOnly`) with a model answer is a problem and the step cannot
+run. The actions `FETCH_ISSUE`, `COMMENT_ISSUE` and `TRANSITION_ISSUE` call Jira; `DELIVER_CHANGES` delivers the run
+directory to Git; `START_WORKFLOW` and `PROJECT_DIGEST` are Back Office operations. A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`,
 `transition-issue`, `start-workflow`, `project-digest`) is read as that action.
 
 <a id="task-message"></a>**What the agent is told (ADR 0062).** A template has one text, its **Instructions**: what to
@@ -108,12 +112,12 @@ template became an **Ask at start** binding).
 
 <a id="agent-audit"></a>**Agents in this workflow (ADR 0061).** Choosing agents is part of designing the workflow. When
 you drop a template, the designer pre-selects an agent of the right kind (a coding agent for a template tagged
-"Needs a coding agent", i.e. Spec Kit `phase`, `push: true` or `prepareOnly`; otherwise model answer agents first)
+"Needs a coding agent", i.e. `codingAgent: true` or `prepareOnly`; otherwise model answer agents first)
 that covers most of the template's `requiresSkills`; ties go to the platform default of the kind (`opencode` /
 `model-answer`), then built-in, then name. Before a run, open **Agents in this workflow** in the header (its badge
 counts the problems): `POST /workflows/agent-audit` lists per agent its steps, rules, skills, the required skills and
-the missing ones, and findings (missing skill, a coding-agent template on a model answer agent, a read-only agent on
-a pushing step, unknown rule/skill/agent, two skills with the same name). **Add to agent** adds a missing skill once
+the missing ones, and findings (missing skill, a coding-agent template on a model answer agent, unknown
+rule/skill/agent, two skills with the same name; a read-only agent is no longer a finding, agents never push). **Add to agent** adds a missing skill once
 (a global agent is copied into the project with the same key first). **Check coherence** asks the platform default
 model to read one agent's whole environment, with the repository's `AGENTS.md` / `CLAUDE.md` when readable, and
 list contradictions, ambiguities and redundancies with quotes; it costs one model call and answers `409` without a
@@ -131,10 +135,11 @@ add a warning to the run log. Sections `{{#path}}...{{/path}}` keep their text o
 <a id="agent-sessions"></a><a id="run-directory"></a>**Run directory and agent sessions (ADR 0060, 0062).** Every run has
 one run directory: coding steps whose agent has **Directory** **Run directory (shared)** (`access.directory: RUN`,
 default) work in it one after another and see what earlier steps left, uncommitted work included; an agent with
-**Separate directory** (`SEPARATE`) gets a fresh directory with only the step's repositories, thrown away after the
-step (isolation; no session continuation). The workflow's `setupCommand` (`WorkflowDefinitionInput.setupCommand`,
-designer: workflow properties → **Setup command**) runs once per run directory before the first coding step, again
-when it changes. The agent's **Session** (`session`, ADR 0062): **Per step (repeats continue)** (`PER_STEP`, default;
+**Separate directory** (`SEPARATE`) gets a fresh copy of the workflow's sources, thrown away after the step
+(isolation; no session continuation; its changes are never delivered). The workflow's `setupCommand`
+(`WorkflowDefinitionInput.setupCommand`, designer: workflow properties → **Setup command**, next to **Sources**) runs
+once per run directory before the first coding step, again when it changes; it is the only setup command (steps have
+none since ADR 0063). The agent's **Session** (`session`, ADR 0062): **Per step (repeats continue)** (`PER_STEP`, default;
 repeated executions of a step, such as rework loops or answered questions, continue its conversation), **One per run**
 (`PER_RUN`; all steps of this agent in the run are one conversation) or **Always fresh** (`FRESH`). Both are set on the
 agent (**Library** → **Agents**), not on the step: a session is the agent's conversation, and the session lives in the
@@ -144,7 +149,7 @@ context without re-reading the repository; for an independent reviewer, use anot
 directory**). Stored workflows: `workspace` is ignored; the step keys `directory`, `session` and `continueSession` of
 ADR 0060 are dropped (V308), so such steps follow their agent's settings; a legacy `sessionRole` keeps a shared
 session while the agent stays **Per step**; the setup command and sources of the former project workspaces were moved
-to the workflows and steps by migration V121.
+to the workflows and steps by migration V121 (and the step repositories to the workflow's sources by V309).
 
 <a id="agent-questions"></a>**Agent questions (ADR 0060).** An agent that cannot do its step well without the owner's
 answers stops with questions: a coding agent writes `agent-questions.json` (`{"questions": [{"question", "why"?}]}`)
@@ -156,7 +161,7 @@ the step. Config `allowQuestions` (default `true`; `false` tells the agent it ca
 runs keep questions on and wait like at a gate.
 
 <a id="template-variables"></a>Template variables (`TemplateModelBuilder`, the same model for prompts, `messageTemplate`,
-`branchTemplate` and merge-request titles):
+and the delivery's `branchTemplate`, `commitSubjectTemplate` and merge-request title and description):
 
 | Variable | Content |
 |---|---|
@@ -279,42 +284,96 @@ entry `RUN_GATE_DECIDED` records the option, the ticked items and the comment le
 Use a Definition of **Ready** on gates before work starts (spec, impact analysis, task list) and a
 Definition of **Done** on gates before merge (ADR 0019).
 
-<a id="step-repositories"></a>
-## Repositories of a step
+<a id="workflow-sources"></a><a id="step-repositories"></a>
+## Workflow sources
 
 A project has zero or more repositories, each with a `key`, URL, default branch, purpose (`DOCS`, `SOURCE`,
-`OTHER`), optional description and at most one `primary` (ADR 0034). Only coding agent steps (agent
-jobs and Spec Kit phases) use repositories; model answer, action, decision, gate and CI-wait nodes need none, so a project without
-repositories can run workflows made of them.
-
-A runner task names its repositories in `config.repositories`, each with the least access it needs:
+`OTHER`), optional description and at most one `primary` (ADR 0034). Since ADR 0063 the repositories a run works with
+are a setting of the **workflow** (designer: workflow properties → **Sources**, next to **Setup command**), not of a
+step:
 
 ```json
-"overrides": { "config": { "repositories": [
-  { "key": "service", "access": "PUSH_MR" },
-  { "key": "docs",    "access": "PUSH_MR" },
-  { "key": "api",     "access": "READ" } ] } }
+"sources": [ { "key": "service" }, { "key": "docs" }, { "key": "standards", "library": true } ]
 ```
 
-- Without `repositories` the task uses the **primary** repository: `PUSH_MR` when `push` is on (the
-  default), `READ` otherwise. Workflows written for single-repository projects therefore work unchanged.
-- `READ` = clone and fetch only, never pushed. `PUSH_MR` = push the job branch and open a merge request
-  against that repository's default branch with whitelisted push options; never merge (ADR 0031).
-- Folders: every repository is cloned into `/workspace/<key>` (the run directory, or the step's own directory when its agent has `access.directory: SEPARATE`); the agent starts in the job's primary
-  repository (the project primary if the step uses it, else the step's first repository). The prompt lists
-  the repositories with key, path, access, purpose and base branch.
-- The same job branch (`branchTemplate`) is pushed to every `PUSH_MR` repository; a branch that equals the
-  default branch of one of them is replaced by `run/<run id>`.
+- Project repositories by key, [library sources](task-library.md) with `"library": true` (cloned read only into
+  `/workspace/lib-<key>`). Empty = the project's primary repository, so workflows written for single-repository
+  projects work unchanged.
+- Every source is cloned once into the run directory (`/workspace/<key>`); every coding step works in these clones
+  and reads them with a read-only token. An agent with `access.directory: SEPARATE` gets a fresh copy of the same
+  sources. The agent starts in the job's primary repository (the project primary when it is a source, else the first
+  project source); the prompt lists the repositories with key, path, access, purpose and base branch.
+- Agents never push. Only a [Deliver changes](#deliver-changes) node writes back, and only to project repositories.
+- Model answer, action, decision, gate and CI-wait nodes need no repository, so a project without repositories can run
+  workflows made of them.
 
-Validation errors: a runner task in a project without repositories; no primary repository and no
-`repositories` list; an unknown key (the message lists the project's keys); a key twice; an access other than
-`READ` / `PUSH_MR`; `PUSH_MR` while `push` is off; `repositories` on a non-runner node. Warning: one task
-pushes to a `DOCS` and a `SOURCE` repository. A run whose tasks have repository errors (for example the
-repository was removed from the project after the workflow was saved) does not start.
+Validation errors (they matter when the workflow has a coding step or a delivery): a coding step in a project without
+repositories; no primary repository and no project repository among the sources; an unknown repository key (the
+message lists the project's keys) or library source; a source listed twice; a project repository whose key clashes
+with a library source. A run whose sources have errors (for example the repository was removed from the project after
+the workflow was saved) does not start.
 
-The run keeps a result per repository (`nodes[].repositories`, `repositories`: branch, commit, diff stat,
-merge request, pushed, error); `mr` and `mergeRequest` are the primary repository's merge request, or the first
-one pushed.
+<a id="deliver-changes"></a>
+## Deliver changes
+
+`DELIVER_CHANGES` ("Deliver changes", ADR 0063) is the action that hands the agents' work to Git: in the run directory
+it commits what the agents changed, pushes a branch and optionally opens a merge request. It is the only step with push
+rights; put it where the workflow should deliver (after the implementation, or after the review so that only reviewed
+work leaves the run).
+
+```json
+{ "id": "implement-deliver", "kind": "ACTION", "name": "Deliver changes",
+  "action": { "type": "DELIVER_CHANGES", "config": {
+    "branchTemplate": "feature/{{issue.key | lower}}",
+    "commitSubjectTemplate": "{{issue.key}}: {{issue.summary}}",
+    "mergeRequest": true,
+    "mergeRequestTitleTemplate": "{{issue.key}}: {{issue.summary}}",
+    "mergeRequestDescriptionTemplate": "{{artifacts.review}}",
+    "mergeRequestDraft": false,
+    "repositories": [] } } }
+```
+
+| Config (designer label) | Meaning |
+|---|---|
+| `branchTemplate` (**Branch**) | the branch pushed for the run; empty: the run's branch, else `feature/{{issue.key \| lower}}`. Never the default branch: a branch equal to a delivered repository's default branch, `HEAD` or `refs/...` becomes `run/<run id>`, and the runner refuses such a refspec before cloning |
+| `commitSubjectTemplate` (**Commit subject**) | first line of the commit message; empty: `{{issue.key}}: {{issue.summary}}`. The commit ends with the trailer `Back-Office-Run: <run id>` |
+| `mergeRequest` (**Open a merge request**) | default `true`: GitLab push options open the merge request against the default branch; Back Office never merges |
+| `mergeRequestTitleTemplate`, `mergeRequestDescriptionTemplate`, `mergeRequestDraft` (**Merge request title**, **Merge request description**, **Draft**) | the merge request; title default `{{issue.key}}: {{issue.summary}}` |
+| `repositories` (**Repositories to deliver**) | keys of project repositories among the sources; empty (**Every changed repository**) = every project source the agents changed; library sources are never written to |
+
+It runs as a runner job of mode `DELIVER` without an agent and without any repository command, in the run directory.
+Per delivered repository with changes it commits every changed and new file (`.gitignore` honoured; the runner's
+ephemeral `work-log.md`, `structured-answer.json` and `agent-questions.json` are never committed), pushes the branch
+(the same name in every repository, one merge request each) and records the result. Credentials: the project's
+repository token with `PUSH_BRANCH` (ADR 0051), else the runner pool's push token. Ports `success` / `failure` (a
+commit or push failed; one failing repository does not stop the others); it produces `mr` (the run's merge request,
+`{{mr.url}}`) and `diff`. Nothing to commit is a success with the warning "nothing to deliver". The run keeps a result
+per repository (`nodes[].repositories`, `repositories`: branch, commit, diff stat, merge request, pushed, error); `mr`
+and `mergeRequest` are the primary repository's merge request, or the first one opened.
+
+Validation: a delivery needs a project repository among the sources; `repositories` may name only project sources;
+a delivery while every coding step's agent works in a `SEPARATE` directory is an error (nothing to deliver); a delivery
+reachable from a decision on model output without a human gate is a warning, and so is one that pushes to a `DOCS` and
+a `SOURCE` repository.
+
+<a id="before-adr-0063"></a>
+### Workflows stored before ADR 0063
+
+Until ADR 0063 a coding step pushed itself (`push`, `branchTemplate`, `commitSubjectTemplate`, `mergeRequest*`), named
+its own `repositories` (with `READ` / `PUSH_MR` access) and its own `setupCommand`, and a Spec Kit step had a `phase`.
+Migration V309 rewrote stored workflows, library workflow versions and unfinished runs, and the same rules apply when a
+workflow is read (imports, MCP clients):
+
+- a step that pushed (its config or its template lineage had `push: true`) gets a `DELIVER_CHANGES` node
+  `<step id>-deliver` right after it with the step's git settings; the step's `success` goes to it, its `success`
+  goes where the step's went and its `failure` where the step's `failure` went;
+- step `repositories` join the workflow's `sources`; step setup commands are appended to the workflow's
+  `setupCommand` (` && `);
+- steps of `spec-kit-specify`, `spec-kit-plan`, `spec-kit-tasks` (or with `phase` SPECIFY / PLAN / TASKS) use
+  `write-spec`, `write-plan`, `write-task-list`; the former keys still resolve (deprecated templates that extend the
+  replacements unchanged);
+- `push`, `phase`, `repositories`, `setupCommand` and the git keys leave the step config; `collectArtifacts` stays and
+  is read as extra output files.
 
 ## CI waits and signals
 
@@ -325,8 +384,8 @@ the project with the same signal whose pushed branch (`mr.branch`) equals the CI
 waiting candidate. `success` and `fail` are the ports; `timeoutSeconds` leaves through `timeout`. A project
 member with `run.signal` can unblock a run by hand with `POST /api/v1/runs/{id}/signals`.
 
-Back Office never triggers CI: pushing the branch does. The `implement-*` tasks push with
-`-o merge_request.create` so GitLab opens the MR and your pipeline runs.
+Back Office never triggers CI: pushing the branch does. The **Deliver changes** action pushes with
+`-o merge_request.create` so GitLab opens the MR and your pipeline runs; put the `WAIT_FOR_CI` node after it.
 
 ## Loops and `maxVisits`
 
@@ -337,7 +396,7 @@ set it per node. Validation lists the nodes on cycles as information, not as an 
 
 ## The default workflows
 
-Three workflows are created for every new project with at least one repository (and can be edited,
+Four workflows are created for every new project with at least one repository (and can be edited,
 duplicated or deleted), together with the CI entrypoint `code-review`; the creator is stamped as
 `updatedBy`. Every seeded gate names `owner` as the accountable role.
 
@@ -350,14 +409,18 @@ A project created **without a repository** gets instead one starter workflow, **
 workflows below and the `code-review` entrypoint are added once (skipped when workflows with those names
 already exist).
 
-**Issue to reviewed MR** (`MANUAL`, `API`): `start -> fetch-issue` (action `FETCH_ISSUE`) `-> specify -> clarify -> confident?`.
+**Issue to reviewed MR** (`MANUAL`, `API`): `start -> fetch-issue` (action `FETCH_ISSUE`) `-> specify` (template
+`write-spec`: the coding agent writes `specs/<feature>/spec.md`) `-> clarify -> confident?`.
 `clarify` (template `clarify-spec`) returns `{confidence, questions}`; the decision takes `yes`
 (`confidence >= 0.8`) straight to `plan`, otherwise `no` to the `spec-gate` ("Spec ok?"): `approve ->
 plan`, `revise -> specify`, `reject` cancels; its Definition of Ready: acceptance criteria are testable,
-open questions are answered or deferred with an owner, scope is stated. Then `plan -> tasks -> implement -> ci-tests`
+open questions are answered or deferred with an owner, scope is stated. Then `plan` (`write-plan`) `-> tasks`
+(`write-task-list`) `-> implement -> implement-deliver` (`DELIVER_CHANGES` "Deliver changes": branch
+`feature/<issue key>`, merge request; its `failure` is unconnected and fails the run) `-> ci-tests`
 (`WAIT_FOR_CI` on signal `tests`, 2 h timeout): `success -> code-review`, `fail -> tests-failed`
 (`END FAILURE`). `code-review -> review-ok?` (`review.verdict != 'REQUEST_CHANGES'`): `approved ->
-merge-gate`, `changes -> implement` (rework loop, `implement` and `code-review` allow 3 visits).
+merge-gate`, `changes -> implement` (rework loop, `implement`, `implement-deliver` and `code-review` allow 3 visits;
+each pass delivers the rework to the same branch).
 `merge-gate` ("Merge?"): `approve -> transition` (action `TRANSITION_ISSUE`, Jira "In Review") `-> done` (`END SUCCESS`),
 `revise -> implement`; it is a four-eyes gate (`forbidSelfApproval`) with the Definition of Done "tests
 green in CI / review findings addressed / spec updated". People are involved at most twice.
@@ -374,23 +437,24 @@ checklist: affected artefacts listed / estimate given / options compared; `revis
 `-> user-story` (`write-user-story`) `-> plan-tasks` (`plan-task-list`, planned from the approved impact
 analysis) `-> task-list-gate` ("Approve task list?", shows `user-story` and `tasks`, checklist: every task has verification and test_command / the last task is
 reformat, lint, and test; `revise -> plan-tasks`) `-> implement` (`implement-task-list`, TDD, stops on a
-red verification) `-> ci-tests` (`WAIT_FOR_CI tests`: `fail -> tests-failed`) `-> code-review -> verdict?`
+red verification) `-> implement-deliver` (`DELIVER_CHANGES`) `-> ci-tests` (`WAIT_FOR_CI tests`: `fail -> tests-failed`) `-> code-review -> verdict?`
 (`changes -> implement`, whose prompt then carries the `review` artefact) `-> merge-gate` (four-eyes,
 owner accountable, Definition of Done as above) `-> done`. `reject` on any gate cancels the run. Projects
 created before the `fetch-issue` step was added keep their stored workflow; add the step in the designer.
 
 **Reference: one Claude Code session** (`MANUAL`, `API`; ADR 0059), the yardstick: `start -> fetch-issue` (action
 `FETCH_ISSUE`) `-> implement` ("Claude Code: implement the issue": template `agent-task` with the agent `claude-code`,
-config `push: true` and `mergeRequest: true`, parameter **Task**: read the repository, implement the issue end to end,
-add or update the tests, run the build and the tests until they pass, summarise what changed, how it was verified and
-what is left open) `-> merge-gate` ("Merge?", four-eyes, owner accountable, Definition of Done as above): `approve ->
+parameter **Task**: read the repository, implement the issue end to end, add or update the tests, run the build and
+the tests until they pass, summarise what changed, how it was verified and what is left open) `-> implement-deliver`
+(`DELIVER_CHANGES`: branch and merge request) `-> merge-gate` ("Merge?", four-eyes, owner accountable, Definition of Done as above): `approve ->
 done` (`END SUCCESS`), `revise -> implement` (your comment goes back to the step, at most 3 visits), `reject ->
 rejected` (`END FAILURE`). One agent session does everything a cheaper workflow splits into steps; the cheaper
 workflow is better only when its cost of an accepted result is lower without more human wait or rework.
 
 Projects created before a default workflow existed get it with **Add missing default workflows (N)** in the
-project's workflows list (`POST /api/v1/projects/{projectId}/default-workflows`, `workflow.edit`; the Spec Kit
-workflows come from `POST .../spec-kit/workflows`). Existing workflows with the same name are never replaced.
+project's workflows list (`POST /api/v1/projects/{projectId}/default-workflows`, `workflow.edit`; since ADR 0063 this
+includes **Issue to reviewed MR**, which used to need Spec Kit). Existing workflows with the same name are never
+replaced.
 
 ### Comparing workflows and agents on the same issues
 
@@ -468,7 +532,10 @@ and warnings as `{nodeId, edgeId, field, message}`. Start a run with
 | Prompt contains empty spots | template warnings in the run log (`missing value for {{...}}`); artefact names are case sensitive |
 | Run waits for CI forever | `docs/runbooks/stuck-pipeline-run.md` section 4 and `docs/guides/ci-integration.md` (signals) |
 | Nothing happens after approval | `docs/runbooks/stuck-pipeline-run.md` |
-| Validation or run start reports an unknown repository key or a missing primary repository | the project's repositories changed; pick keys from the list or mark a repository primary ([Repositories of a step](#step-repositories)) |
+| Validation or run start reports an unknown repository key or a missing primary repository | the project's repositories changed; fix the workflow's **Sources** or mark a repository primary ([Workflow sources](#workflow-sources)) |
+| `nothing to deliver: the workflow's sources hold no project repository` | a **Deliver changes** node in a workflow whose sources are only library sources (or a project without repositories); add a project repository to the sources ([Deliver changes](#deliver-changes)) |
+| a delivery succeeds with "nothing to deliver: no repository has changes" | the agents changed nothing, or worked in a **Separate directory**; check the implementing step's `diff` |
+| `push refused: ...` on a delivery | the branch template renders to the default branch, `HEAD` or `refs/...`; change **Branch** on the **Deliver changes** node |
 | Runner tasks fail immediately | `docs/runbooks/runner-job-failed.md` and `GET /api/v1/settings/integrations` (runner mode) |
 | `Parameter x needs a value` | a required template parameter has no value on the step, in the template chain or as a default: set it under **Parameters** or use a preset ([task-library.md](task-library.md#2-a-template-with-parameters)) |
 | `Parameter x needs the name of the artefact it reads` | a parameter bound **Result of an earlier step** has no artefact name; type the name an earlier step produces ([The run start form](#start-form)) |

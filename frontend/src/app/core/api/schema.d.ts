@@ -2477,10 +2477,10 @@ export interface paths {
       };
       cookie?: never;
     };
-    /** @description ADR 0059 (`project.view`): names of the default workflows (other than the Spec Kit ones, see /spec-kit) the project lacks; empty without a repository. */
+    /** @description ADR 0059 (`project.view`): names of the default workflows the project lacks; empty without a repository. */
     get: operations['getMissingDefaultWorkflows'];
     put?: never;
-    /** @description ADR 0059 "Add missing default workflows" (`workflow.edit`): seeds the default workflows (other than the Spec Kit ones) the project lacks, by name, e.g. "Reference: one Claude Code session". Needs a repository (409 otherwise). Audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`. */
+    /** @description ADR 0059 "Add missing default workflows" (`workflow.edit`): seeds the default workflows the project lacks, by name, e.g. "Reference: one Claude Code session". Needs a repository (409 otherwise). Audited `PROJECT_DEFAULT_WORKFLOWS_SEEDED`. */
     post: operations['addDefaultWorkflows'];
     delete?: never;
     options?: never;
@@ -2677,44 +2677,6 @@ export interface paths {
     put?: never;
     /** @description "Test before saving": needs `project.connections.manage` and `token`. Read-only calls to the repository host; nothing is stored. Audited `SCM_CONNECTION_TEST`. */
     post: operations['testScmConnectionDraft'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/projects/{projectId}/spec-kit': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: components['parameters']['projectId'];
-      };
-      cookie?: never;
-    };
-    /** @description ADR 0036 (`project.view`): the Spec Kit setting, the platform switch and the seeded Spec Kit workflows the project lacks. */
-    get: operations['getProjectSpecKit'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/projects/{projectId}/spec-kit/workflows': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: components['parameters']['projectId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description ADR 0036 "Add Spec Kit workflows" (`workflow.edit`): seeds the Spec Kit workflows the project lacks. Needs Spec Kit on for the project and the platform and at least one repository (409 otherwise). Audited `PROJECT_SPEC_KIT_SEEDED`. */
-    post: operations['addSpecKitWorkflows'];
     delete?: never;
     options?: never;
     head?: never;
@@ -3687,11 +3649,16 @@ export interface components {
       type: components['schemas']['ActionType'];
     };
     /**
-     * @description ADR 0056: deterministic integration steps of a workflow (no model)
+     * @description ADR 0056: deterministic integration steps of a workflow (no model). ADR 0063: DELIVER_CHANGES commits the run directory, pushes a branch and optionally opens a merge request (the only job with push rights)
      * @enum {string}
      */
     ActionType:
-      'FETCH_ISSUE' | 'COMMENT_ISSUE' | 'TRANSITION_ISSUE' | 'START_WORKFLOW' | 'PROJECT_DIGEST';
+      | 'FETCH_ISSUE'
+      | 'COMMENT_ISSUE'
+      | 'TRANSITION_ISSUE'
+      | 'START_WORKFLOW'
+      | 'PROJECT_DIGEST'
+      | 'DELIVER_CHANGES';
     ActorRef: {
       displayName?: string;
       /** @enum {string} */
@@ -4831,7 +4798,7 @@ export interface components {
       users?: string[];
     } | null;
     /**
-     * @description Git rights of an agent job (ADR 0031), derived by Back Office: IMPLEMENT or SPEC_KIT with `repository.push` -> PUSH_MR (push the job branch, open a merge request through push options, never merge); any other job with a repository -> READ (clone and fetch only, the runner never pushes); no repository -> NONE. Only the level is sent; the runner-controller selects the matching credential of its cluster (read Secret, push Secret, none). Absent in specs from older Back Office versions: derived the same way. Multi-repository jobs (ADR 0034): every `repositories[]` entry carries its own `access` (READ or PUSH_MR); the top-level `gitAccess` is the highest access among the entries, kept for older runner-controllers.
+     * @description Git rights of a job (ADR 0031, 0063), derived by Back Office: only DELIVER jobs with `repository.push` -> PUSH_MR (push the job branch, open a merge request through push options, never merge); any other job with a repository -> READ (clone and fetch only, the runner never pushes); no repository -> NONE. Only the level is sent; the runner-controller selects the matching credential of its cluster (read Secret, push Secret, none). Absent in specs from older Back Office versions: derived the same way. Multi-repository jobs (ADR 0034): every `repositories[]` entry carries its own `access` (READ or PUSH_MR); the top-level `gitAccess` is the highest access among the entries, kept for older runner-controllers.
      * @enum {string}
      */
     GitAccess: 'NONE' | 'READ' | 'PUSH_MR';
@@ -5802,11 +5769,6 @@ export interface components {
       personalTokenMaxDays: number;
       /** @enum {string} */
       registration?: 'OPEN' | 'INVITE_ONLY';
-      /**
-       * @description ADR 0036: projects may turn Spec Kit on; false = no project can use Spec Kit steps
-       * @default true
-       */
-      specKitAllowed: boolean;
       syncGroupsFromIdentityProvider?: boolean;
     };
     Point: {
@@ -5855,7 +5817,7 @@ export interface components {
       updatedAt: string;
     };
     ProjectInput: {
-      /** @description Markdown, Spec Kit constitution (kept while Spec Kit is off, ADR 0036) */
+      /** @description Markdown: the project owner's rules, part of every agent's environment (ADR 0057) */
       constitution?: string;
       defaults?: {
         /** Format: uuid */
@@ -5886,8 +5848,6 @@ export interface components {
         /** @description git URL the runner clones and pushes to */
         url: string;
       } | null;
-      /** @description ADR 0036: Spec Kit for this project (off by default for new projects; null on update = unchanged). Used only when the platform allows Spec Kit. */
-      specKit?: boolean | null;
     };
     ProjectJiraConnections: {
       additionalConnectionIds: string[];
@@ -6197,7 +6157,6 @@ export interface components {
       collectArtifacts?: string[];
       /** @default true */
       collectDiff: boolean;
-      constitution?: string | null;
       /** @description ADR 0051: project repository tokens of the job, by name only (never values): the controller fetches them sealed with POST /runner/v2/jobs/{jobId}/credentials before the sandbox starts and delivers each as the token of its repository. Absent = the runner pool's own git tokens (deprecated fallback). Covered by the spec digest when present. */
       credentials?:
         | {
@@ -6225,10 +6184,10 @@ export interface components {
       /** @description ADR 0057: remote MCP servers of the agent (no credentials); Claude Code --mcp-config, OpenCode `mcp` (type remote). The sandbox egress policy decides reachability. Covered by the spec digest when present. */
       mcpServers?: components['schemas']['AgentMcpServer'][] | null;
       /**
-       * @description PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact
+       * @description ADR 0063: IMPLEMENT an agent job (never pushes); DELIVER no agent: commit, push and merge request of the run directory; PROMPT (ADR 0050 step 4): one answer of Claude Code without a repository or tools, returned as the response artefact
        * @enum {string}
        */
-      mode: 'SPEC_KIT' | 'IMPLEMENT' | 'EVAL_CODING' | 'PROMPT';
+      mode: 'IMPLEMENT' | 'DELIVER' | 'EVAL_CODING' | 'PROMPT';
       model: components['schemas']['ModelRef'];
       prompt: string;
       /** @description Repositories of the job (ADR 0034). The workspace root is /workspace; each entry is cloned into /workspace/<path>; the agent works in the path of the `primary` entry (/workspace when the list is empty). Exactly one entry is primary when the list is not empty. Omitted for jobs built the legacy way (coding benchmarks, older Back Office): the runner then uses `repository`. When present, `repository` mirrors the primary entry and `gitAccess` is the highest access among the entries, for older runners. */
@@ -6261,10 +6220,6 @@ export interface components {
         key: string;
         name: string;
       }[];
-      /** @description ADR 0036: false = the project does not use Spec Kit: no `specify init`, no constitution, no `/speckit.*` commands (a SPEC_KIT job with false is refused). Null/omitted (legacy-built jobs, older Back Office): the runner's earlier behaviour. Covered by the spec digest when present. */
-      specKit?: boolean | null;
-      /** @enum {string|null} */
-      specKitPhase?: 'SPECIFY' | 'CLARIFY' | 'PLAN' | 'TASKS' | 'ANALYZE' | 'IMPLEMENT' | null;
       /** @description ADR 0050 step 4: the system prompt of a PROMPT job (prompt is then the user message) */
       systemPrompt?: string | null;
       timeoutSeconds: number;
@@ -6600,15 +6555,6 @@ export interface components {
       scope: components['schemas']['Scope'];
       tags?: string[];
     };
-    SpecKitStatus: {
-      allowedByPlatform: boolean;
-      /** @description enabled and allowed */
-      effective: boolean;
-      /** @description the project setting */
-      enabled: boolean;
-      /** @description seeded Spec Kit workflows the project lacks ("Add Spec Kit workflows") */
-      missingWorkflows: string[];
-    };
     /** @description Declared run inputs (ADR 0053) go into `parameters` by name. On REST starts a required declared input that is missing or blank, or a declared input longer than 20 000 characters, is rejected with a validation problem. */
     StartRunRequest: {
       issueKey?: string | null;
@@ -6746,6 +6692,8 @@ export interface components {
       /** @description ADR 0055: technical identifier that workflow steps and other templates refer to. Omitted on create, it is derived from the name (unique across scopes); omitted on update, it stays. Given on create of a project template together with the same extendsKey, the template customises the global one of that key for the project. */
       key?: string | null;
       name: string;
+      /** @description ADR 0063: globs of files the agent leaves that are returned as artefacts (named like the file without extension; former config collectArtifacts) */
+      outputFiles?: string[];
       /** @description JSON Schema of a structured answer (model answers answer with it, coding agents write it to structured-answer.json, ADR 0057) */
       outputSchema?: string | null;
       /** @description ADR 0058: parameters the prompt reads as {{params.<name>}}; inherited, child wins by name */
@@ -7009,6 +6957,12 @@ export interface components {
       nodes: components['schemas']['WorkflowNode'][];
       /** @description ADR 0060: runs once per run directory before the first coding step (again when it changes) */
       setupCommand?: string | null;
+      /** @description ADR 0063: repositories cloned into the run directory (project repositories, or library sources with library true); empty = the project's primary repository. Agents read them; only DELIVER_CHANGES writes back, to project repositories. */
+      sources?: {
+        key: string;
+        /** @default false */
+        library: boolean;
+      }[];
       triggers?: components['schemas']['Trigger'][];
     };
     WorkflowEdge: {
@@ -12265,51 +12219,6 @@ export interface operations {
         };
       };
       400: components['responses']['Problem'];
-    };
-  };
-  getProjectSpecKit: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: components['parameters']['projectId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['SpecKitStatus'];
-        };
-      };
-    };
-  };
-  addSpecKitWorkflows: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        projectId: components['parameters']['projectId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The workflows that were added */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['WorkflowDefinition'][];
-        };
-      };
-      409: components['responses']['Problem'];
     };
   };
   listWorkflows: {

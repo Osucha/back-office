@@ -149,8 +149,10 @@ default workflow "Reference: one Claude Code session" ([03-pipelines-and-agents.
   one replica at a time via `pg_try_advisory_xact_lock`) attests finished runs of the last 7 days without a run
   attestation. Creation is idempotent (`attestation.subject_key` unique: `RUN:<runId>`, `JOB:<runId>:<executionId>`)
   and audited (`ATTESTATION_CREATE`).
-- `AGENT_JOB` attestation: one per runner-backed `TASK` execution that ended `SUCCEEDED`/`FAILED` **and** produced a
-  commit or a diff. Subjects: `git+<repo>@<commitSha>` (`sha256` of the commit id plus `gitCommit`), one per
+- `AGENT_JOB` attestation: one per runner-backed execution (an agent job of a `TASK` node or, since ADR 0063, the
+  `DELIVER` job of a `DELIVER_CHANGES` node) that ended `SUCCEEDED`/`FAILED` **and** produced a commit or a diff. Since
+  ADR 0063 agent jobs never commit, so their subject is the diff of the work tree, and the commit subjects come from
+  the delivery. Subjects: `git+<repo>@<commitSha>` (`sha256` of the commit id plus `gitCommit`), one per
   pushed repository of the job (ADR 0034; jobs from older runners: the single repository), and
   `diff:<runId>/<nodeId>/<attempt>` (`sha256` of the diff). Job evidence (spec and result) is read from `agent_job`
   (runner v2) or `runner_job` (v1) schema-agnostically (`JdbcJobEvidenceSource`); prompts and skills are reduced to

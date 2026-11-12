@@ -70,13 +70,14 @@ class Library(builtInAgents: Boolean = true) {
         parameters: List<TemplateParameter> = emptyList(),
         parameterValues: Map<String, Any?> = emptyMap(),
         requiresSkills: List<String> = emptyList(),
+        outputFiles: List<String> = emptyList(),
     ): TaskTemplate = templates.save(
         TaskTemplate.create(
             TaskTemplate.Content(
                 key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category,
                 scope = scope, instructions = instructions, instructionsMode = instructionsMode, config = config, outputSchema = outputSchema,
                 confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags,
-                parameters = parameters, parameterValues = parameterValues, requiresSkills = requiresSkills,
+                parameters = parameters, parameterValues = parameterValues, requiresSkills = requiresSkills, outputFiles = outputFiles,
             ),
             now,
         ),

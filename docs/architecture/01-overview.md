@@ -31,7 +31,7 @@ grounded in measured quality and cost on the owner's own kind of work.
 |---|---|---|
 | `web` | Angular 21, NG-ZORRO, ngx-vflow, nginx | Single-page UI: dashboard & inbox, projects, workflow canvas designer, runs, CI executions, task library, model catalogue, task suites, benchmarks, costs |
 | `api` | Kotlin, Spring Boot 4.1, Spring AI 2.0, LangGraph4j 1.9 | REST API, workflow engine, task library, CI endpoints and client script, benchmark engine, usage ledger |
-| `runner` | Container image: OpenCode, Claude Code, Spec Kit, git, JDK/Node toolchains | Executes one coding/spec task inside a Kubernetes Job and reports back over HTTP |
+| `runner` | Container image: OpenCode, Claude Code, git, JDK/Node toolchains | Executes one coding task, or one delivery of a run's changes (commit, push, merge request; ADR 0063), inside a sandbox and reports back over HTTP |
 | `postgres` | PostgreSQL 16 | Application data and LangGraph4j checkpoints |
 | `langfuse` (optional) | Langfuse Helm chart | Trace and cost analytics for every LLM call, fed over OTLP |
 
@@ -90,7 +90,7 @@ Shared ports (in `shared-kernel`) and who implements them:
 | `UsageLedger` | `llm-gateway` | gateway itself, runner adapter, usage API, dashboards |
 | `ModelCatalog` | `evaluation-adapters` | projects (resolve step model), gateway (pricing) |
 | `TaskCatalog` | `tasks-adapters` | projects (resolve TASK nodes, designer palette) |
-| `AgentRunner` | `agent-runner` | projects (SPEC_KIT, IMPLEMENT steps), evaluation (CODING_JOB attempts) |
+| `AgentRunner` | `agent-runner` | projects (IMPLEMENT agent jobs, DELIVER jobs of `DELIVER_CHANGES`; ADR 0063), evaluation (CODING_JOB attempts) |
 | `Clock`, `EventPublisher` | `app` | everyone |
 
 Flyway version ranges: `V1..V49` llm-gateway (usage ledger), `V50..V99` agent-runner, `V100..V199` projects,
@@ -116,7 +116,7 @@ two contexts independently evolvable while sharing one model catalogue.
    `PipelineEngine` port. The LangGraph4j adapter compiles the definition into a `StateGraph`,
    registers `interruptBefore` for every `HUMAN_GATE` step and starts streaming on a virtual thread.
 3. Each node maps to a step executor: fetch the issue (Jira), run an LLM step (Spring AI), run a
-   Spec Kit phase or implementation in a runner Job (Kubernetes), open an MR (GitLab), run an AI
+   coding agent in a runner Job (Kubernetes), deliver the changes and open an MR (GitLab push options), run an AI
    code review, and so on. Every step writes a `StepExecution`, artefacts and usage records.
 4. At a gate the graph checkpoints to Postgres and the run becomes `WAITING_FOR_HUMAN`; an
    `ApprovalRequest` appears in the inbox. Nothing else runs for this thread.

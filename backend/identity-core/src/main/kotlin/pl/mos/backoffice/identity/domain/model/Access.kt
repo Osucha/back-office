@@ -121,8 +121,6 @@ data class PlatformSettings(
     val mfaRequiredForLocal: Boolean = false,
     val passwordPolicy: PasswordPolicy = PasswordPolicy(),
     val lockout: LockoutSettings = LockoutSettings(),
-    /** ADR 0036: projects may turn Spec Kit on (default true); off = no project can use Spec Kit steps. */
-    val specKitAllowed: Boolean = true,
 ) {
     init {
         if (personalTokenMaxDays !in 1..MAX_TOKEN_DAYS) {

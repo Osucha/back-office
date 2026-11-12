@@ -36,6 +36,10 @@ Zob. [Budżety](costs-insights.md#budgets).
 (`/workspace/.agents/<klucz agenta>/`): jego środowisko, umiejętności, konfiguracja MCP i sesje. Zob.
 [Środowisko agenta](task-library.md#environment).
 
+**Dostarcz zmiany** (deliver changes): Akcja, która zatwierdza (commit) to, co agenci zmienili w katalogu przebiegu,
+wypycha gałąź i opcjonalnie otwiera merge request; jedyny krok, który zapisuje do repozytorium, i jedyne zadanie
+z prawem wypychania. Agenci nigdy nie wypychają. Zob. [Dostarcz zmiany](workflows.md#deliver-changes).
+
 **Dostęp, dostęp agenta** (access): Co agent kodujący może zmieniać w repozytoriach swoich kroków: **Pełny**, **Tylko
 odczyt** albo **Tylko te ścieżki**. Runner cofa inne zmiany, gdy agent skończy. Zob. [Dostęp agenta](task-library.md#agent-access).
 
@@ -53,7 +57,7 @@ programistyczne do agentów programistycznych. Zob. [Benchmarki](evaluation.md#b
 drugim i widzą, co zostawiły wcześniejsze kroki; usuwany po zakończeniu przebiegu. Zob. [Katalog
 przebiegu](workflows.md#run-directory).
 
-**Konstytucja** (constitution): Zasady projektu w Markdownie, przekazywane do Spec Kit i będące częścią środowiska
+**Konstytucja** (constitution): Zasady właściciela projektu w Markdownie, będące częścią środowiska
 każdego agenta; gdy źródła są sprzeczne, wygrywa z każdym innym. Zob. [Tworzenie projektu](projects.md#create-project)
 i [Gdy źródła są sprzeczne](task-library.md#precedence).
 
@@ -101,6 +105,10 @@ węższymi uprawnieniami, dla skryptów i IDE. Zob. [Osobiste tokeny dostępu](a
 **Pewność** (confidence): Liczba od 0 do 1, którą zadanie zgłasza na temat własnego wyniku. Korzystają z niej decyzje,
 na przykład by pominąć bramkę, gdy agent jest pewny. Zob. [Decyzje](workflows.md#decisions).
 
+**Pliki wynikowe** (output files): Globy szablonu (na przykład `specs/**/spec.md`) wskazujące pliki, które agent
+kodujący zostawia w katalogu przebiegu i które wracają jako artefakty, nazwane jak plik bez rozszerzenia. Zob.
+[Szablony](task-library.md#templates).
+
 **Polecenie** (instructions): Jeden tekst szablonu, który mówi, co zrobić i jak ocenić wynik. Platforma dodaje
 zgłoszenie, konsumowane artefakty, dane podane przy starcie, uwagi i odpowiedzi jako sekcje danych, chyba że
 polecenie umieszcza je samo; krok workflowu może dopisać uwagi albo zastąpić tekst (**Polecenie dla tego kroku**).
@@ -147,9 +155,9 @@ i kosztem. Zob. [Koszty](costs-insights.md#costs).
 
 **Repozytorium, repozytorium projektu** (repository, project repository): Repozytorium Git projektu z kluczem, URL,
 gałęzią domyślną, przeznaczeniem (kod źródłowy, dokumentacja, inne) i opcjonalnym oznaczeniem **główne** (repozytorium,
-którego używają kroki programistyczne, gdy nie wskazują żadnego). Kroki programistyczne wybierają swoje repozytoria
-z dostępem do odczytu albo do wypchnięcia i merge requestu. Zob. [Repozytoria](projects.md#repositories)
-i [Repozytoria kroku](workflows.md#step-repositories).
+którego używa workflow, gdy jego źródła są puste). Workflowy wymieniają repozytoria klonowane przez ich przebiegi
+w swoich **Źródłach**; wypycha do nich tylko **Dostarcz zmiany**. Zob. [Repozytoria](projects.md#repositories)
+i [Źródła workflowu](workflows.md#workflow-sources).
 
 **Rodowód** (lineage): Łańcuch rodziców szablonu, od samego szablonu do korzenia. Wyświetlany w podglądzie rozwiązanego
 zadania. Zob. [Szablony](task-library.md#templates).
@@ -232,8 +240,9 @@ odniesienia, z którym porównuje się tańsze workflowy i agentów. Zob. [Domy�
 **Wykonanie CI** (CI execution): Uruchomienie workflowu wystartowane przez pipeline przez punkt wejścia, z wynikiem
 bramki (zaliczona lub niezaliczona). Zob. [Wykonania CI](runs.md#ci-executions).
 
-**Wymaga agenta kodującego** (needs a coding agent): Znacznik tylko do odczytu szablonu, którego konfiguracja ma fazę
-Spec Kit `phase`, `push` albo `prepareOnly`: jego pracę może wykonać tylko agent OpenCode lub Claude Code. Bez niego
+**Wymaga agenta kodującego** (needs a coding agent): Znacznik tylko do odczytu szablonu, którego konfiguracja ma
+**Pracuje w repozytorium (wymaga agenta kodującego)** (`codingAgent: true`) albo `prepareOnly`: jego pracę może
+wykonać tylko agent OpenCode lub Claude Code. Bez niego
 może ją wykonać dowolny agent. Zob. [Szablony](task-library.md#templates).
 
 **Wymagane umiejętności** (required skills): Umiejętności, których wymaga praca szablonu. Kierują wyborem agenta kroku
@@ -247,11 +256,16 @@ w Jirze. Zob. [Uruchamianie workflowu](workflows.md#start-run).
 udało, jest ostatnim wykonaniem swojego kroku w uruchomieniu, a uruchomienie zakończyło się sukcesem; udane
 uruchomienie; zaliczona próba benchmarku. Zob. [Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted).
 
-**Zadanie agenta** (agent job): Zadanie programistyczne lub Spec Kit wykonywane w sandboxie na runnerze, z własnym tokenem
-zadania, limitami i logami. Zob. [Jak działają zadania agentów](agent-execution.md#lifecycle).
+**Zadanie agenta** (agent job): Zadanie programistyczne wykonywane w sandboxie na runnerze, z własnym tokenem
+zadania, limitami i logami; nigdy nie wypycha. Dostarczenie ([Dostarcz zmiany](workflows.md#deliver-changes)) też
+jest zadaniem runnera, ale bez agenta. Zob. [Jak działają zadania agentów](agent-execution.md#lifecycle).
 
 **Zatwierdzający** (approver): Osoba uprawniona do rozstrzygnięcia bramki: `run.approve` w projekcie plus własna reguła
 bramki. To także nazwa roli projektowej. Zob. [Rozstrzyganie bramki](your-turn.md#gates).
 
 **Zestaw zadań** (suite, task suite): Zbiór zadań typu prompt i zadań programistycznych, na których mierzy się modele.
 Zob. [Zestawy zadań](evaluation.md#suites).
+
+**Źródła workflowu** (sources): Repozytoria klonowane do katalogu przebiegu workflowu: repozytoria projektu i źródła
+z biblioteki; puste oznacza główne repozytorium projektu. Agenci je czytają; zapisuje z powrotem tylko **Dostarcz
+zmiany**, i tylko do repozytoriów projektu. Zob. [Źródła workflowu](workflows.md#workflow-sources).

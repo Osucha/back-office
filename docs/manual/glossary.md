@@ -26,7 +26,8 @@ so two agents can be compared on the same task. See [Agents](task-library.md#age
 key>/`): its environment, skills, MCP configuration and sessions. See
 [The environment of the agent](task-library.md#environment).
 
-**Agent job**: A coding or Spec Kit task that runs in a sandbox on a runner, with its own job token, limits and logs.
+**Agent job**: A coding task that runs in a sandbox on a runner, with its own job token, limits and logs; it never
+pushes. A delivery ([Deliver changes](workflows.md#deliver-changes)) is a runner job too, without an agent.
 See [How agent jobs run](agent-execution.md#lifecycle).
 
 **Agent questions**: Questions an agent stops a step with when it cannot do it well without your answers; the run
@@ -89,7 +90,7 @@ when the agent is sure. See [Decisions](workflows.md#decisions).
 model reads an agent's whole environment and lists contradictions, ambiguities and redundancies with quotes. One
 model call, booked as usage.
 
-**Constitution**: A project's principles in Markdown, given to Spec Kit and part of every agent's environment; it wins
+**Constitution**: The project owner's rules in Markdown, part of every agent's environment; it wins
 over every other source when they disagree. See [Creating a project](projects.md#create-project) and
 [When sources disagree](task-library.md#precedence).
 
@@ -98,6 +99,10 @@ the accepted results; the headline number for comparing agents, workflows and be
 [Cost of an accepted result](costs-insights.md#cost-per-accepted).
 
 **Decision node**: A node that routes the run by conditions over the run state. See [Decisions](workflows.md#decisions).
+
+**Deliver changes**: The action that commits what the agents changed in the run directory, pushes a branch and
+optionally opens a merge request; the only step that writes to a repository and the only job with push rights.
+Agents never push. See [Deliver changes](workflows.md#deliver-changes).
 
 **Edge**: A connection from an output port of one node to another node.
 
@@ -153,12 +158,16 @@ need a coding agent runs this way. See [Agents](task-library.md#agents).
 **Model profile**: A model with its options (temperature, reasoning effort) and prices. Agents, workflow steps and
 benchmarks pick profiles; templates do not. See [Model profiles](evaluation.md#models).
 
-**Needs a coding agent**: A read-only tag of a template whose configuration has a Spec Kit `phase`, `push` or
-`prepareOnly`: only an OpenCode or Claude Code agent can do its work. Without it, any agent can. See
-[Templates](task-library.md#templates).
+**Needs a coding agent**: A read-only tag of a template whose configuration has **Works in the repository (needs a
+coding agent)** (`codingAgent: true`) or `prepareOnly`: only an OpenCode or Claude Code agent can do its work.
+Without it, any agent can. See [Templates](task-library.md#templates).
 
 **Node**: One block of a workflow: Start, Task, Action, Decision, Human gate, Wait for CI, End or Note. See
 [Node kinds](workflows.md#nodes).
+
+**Output files**: Globs of a template (for example `specs/**/spec.md`) naming the files a coding agent leaves in the
+run directory that come back as artefacts, named like the file without its extension. See
+[Templates](task-library.md#templates).
 
 **Parameter (template parameter)**: A typed input of a template (single line, multi-line text, number, yes / no,
 choice, Jira issue key); the instructions read it as `{{params.<name>}}`. The workflow step chooses where its value
@@ -193,9 +202,9 @@ are compared with. See [The default workflows](workflows.md#default-workflows).
 [The baton](getting-started.md#baton).
 
 **Repository (project repository)**: A Git repository of a project, with a key, URL, default branch, purpose
-(source code, documentation, other) and optionally the **primary** mark (the repository coding steps use when
-they name none). Coding steps choose their repositories with read or push-and-merge-request access. See
-[Repositories](projects.md#repositories) and [Repositories of a step](workflows.md#step-repositories).
+(source code, documentation, other) and optionally the **primary** mark (the repository a workflow uses when its
+sources are empty). Workflows list the repositories their runs clone in their **Sources**; only **Deliver changes**
+pushes to them. See [Repositories](projects.md#repositories) and [Sources of a workflow](workflows.md#workflow-sources).
 
 **Resolved task**: What the agent finally receives: a template merged with its parents, project overrides and node
 overrides. See [Templates](task-library.md#templates).
@@ -227,6 +236,10 @@ their scope. Rules belong to the repository, the project and the agent, never to
 
 **Skill**: Knowledge or a procedure (`SKILL.md`) an agent opens when the task needs it; given to the agents that
 list it. See [Skills](task-library.md#skills).
+
+**Sources (of a workflow)**: The repositories cloned into a workflow's run directory: project repositories and
+library sources; empty means the project's primary repository. Agents read them; only **Deliver changes** writes
+back, to project repositories. See [Sources of a workflow](workflows.md#workflow-sources).
 
 **Suite (task suite)**: The set of prompt tasks and coding jobs models are measured on. See [Task suites](evaluation.md#suites).
 

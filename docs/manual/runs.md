@@ -84,25 +84,26 @@ relay track with labels, durations and costs; click a segment to select that ste
 <a id="repository-results"></a>
 ## Results per repository
 
-A coding step can work in several repositories of the project ([Repositories of a
-step](workflows.md#step-repositories)). The run page shows what happened in each, in the selected step's
-facts and, for **Whole run**, as the latest result per repository over all steps:
+A workflow can have several repositories among its [sources](workflows.md#workflow-sources). The run page shows
+what happened in each, in the selected step's facts and, for **Whole run**, as the latest result per repository over
+all steps:
 
 | Column | Meaning |
 |---|---|
 | **Repository** | The key, its purpose (**Source code**, **Documentation**, **Other**) and a mark for the primary repository. |
-| **Access** | **Read** or **Push and merge request**. |
-| **Branch** | The branch the agent pushed (or worked on, for **Read**). |
-| **Commit** | The commit after the step, short form; for pushed repositories the pushed commit. |
-| **Changes** | Diff stat: files changed, lines added and removed. |
-| **Merge request** | Link to the merge request the push opened, if any. |
-| **Pushed** | Yes only when the branch was pushed to that repository. **Read** repositories are never pushed. |
+| **Access** | **Read** for coding steps (agents never push), **Push and merge request** for a [Deliver changes](workflows.md#deliver-changes) step. |
+| **Branch** | The branch the delivery pushed (or the one the agent worked on, for **Read**). |
+| **Commit** | The commit after the step, short form; for delivered repositories the pushed commit. |
+| **Changes** | Diff stat: files changed, lines added and removed (for a coding step, the uncommitted work against the base). |
+| **Merge request** | Link to the merge request the delivery opened, if any. |
+| **Pushed** | Yes only when the delivery pushed the branch to that repository. Coding steps never push. |
 | **Error** | Why cloning, committing or pushing failed in that repository, if it did. |
 
-The merge request in the run header (and the one decisions and gates refer to) is the primary repository's
-merge request, or the first one pushed when the primary was not pushed. Steps run by older runners show one
-row, for the primary repository. A failed push to one repository does not undo pushes to the others; check
-the **Error** column and the step's **Logs**.
+A **Deliver changes** step also has the facts **Action**, **Branch**, **Merge request** and **Repositories**. The
+merge request in the run header (and the one decisions and gates refer to) is the primary repository's merge request,
+or the first one opened when the primary was not delivered. Steps run by older runners show one row, for the primary
+repository. A failed push to one repository does not undo pushes to the others; check the **Error** column and the
+step's **Logs**.
 
 <a id="retry-cancel"></a>
 ## Retrying, cancelling and sending a signal by hand
@@ -132,7 +133,7 @@ are recorded in the audit log.
 <a id="provenance"></a>
 ## Provenance
 
-When an agent job that produced a commit or a diff finishes, and when a run ends, Back Office signs an
+When a runner job that produced a commit or a diff finishes, and when a run ends, Back Office signs an
 **attestation**: a statement that binds the commit (one per pushed repository) and diff to how they were made: model, template and
 prompts (as digests), sandbox policy and image, allowed hosts, tokens and cost, the verification result
 and who approved the gates on the way. It is signed with the platform key (Ed25519, DSSE envelope, in-toto

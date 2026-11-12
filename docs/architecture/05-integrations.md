@@ -67,11 +67,11 @@ returned instead of created, unless `--var force=true`.
 
 ## Merge requests without an API
 
-The runner pushes with git push options: `-o merge_request.create -o merge_request.target=<branch>
+Only a `DELIVER` job (the `DELIVER_CHANGES` action, ADR 0063; agent jobs never push) pushes, with git push options: `-o merge_request.create -o merge_request.target=<branch>
 -o merge_request.title=<title> -o merge_request.description=<text> [-o merge_request.draft]`. GitLab
 creates the MR and prints its URL in the push output, which the runner captures into
-`RunnerResult.mergeRequestUrl`. Every runner commit carries the trailer `Back-Office-Run: <runId>`. A step that
-pushes to several repositories (ADR 0034) pushes the same job branch to each and opens one merge request per
+`RunnerResult.mergeRequestUrl`. Every runner commit carries the trailer `Back-Office-Run: <runId>`. A delivery
+that pushes to several repositories (ADR 0034) pushes the same job branch to each and opens one merge request per
 repository, each targeting that repository's default branch; the URLs come back in
 `RunnerResult.repositories[].mergeRequestUrl`.
 

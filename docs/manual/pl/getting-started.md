@@ -14,7 +14,7 @@ scalenia. Następnie Back Office wykonuje ten workflow dla każdego zadania:
 - **Agenci** piszą teksty i kod. Krótkie kroki to pojedyncze wywołanie modelu wewnątrz Back Office; kroki
   programistyczne działają jako zadania agenta w sandboxie na runnerze (zob. [Jak działają zadania agentów](agent-execution.md#lifecycle)).
 - **Twoje CI** uruchamia testy i zgłasza wynik skryptem `backoffice-ci`. Back Office nigdy nie wywołuje API
-  Twojego serwera Git; agent wypycha gałąź, a Twój pipeline się uruchamia (zob. [GitLab CI i inne CI](integrations-gitlab-ci.md#ci-overview)).
+  Twojego serwera Git; krok **Dostarcz zmiany** wypycha gałąź agentów, a Twój pipeline się uruchamia (zob. [GitLab CI i inne CI](integrations-gitlab-ci.md#ci-overview)).
 - **Ludzie** decydują w **bramkach**: zatwierdzają, odsyłają do poprawy albo odrzucają. Wszystko, co
   wymaga Twojej uwagi, trafia do jednej kolejki: **Twoja kolej** (**Your turn**).
 

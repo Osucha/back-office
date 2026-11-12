@@ -34,6 +34,7 @@ import {
   agentKindDescription,
   agentKindLabel,
   configNeedsCodingAgent,
+  isCodingAgent,
   neededAgentLabel,
 } from '../../../core/ui/agents';
 import { HelpTipComponent } from '../../../core/ui/help-tip.component';
@@ -51,7 +52,6 @@ import type {
   ModelOption,
   ModelProfile,
   PaletteTask,
-  LibrarySource,
   ProjectRepository,
   ResolvedTask,
   TaskOverrides,
@@ -79,13 +79,16 @@ import { SchemaFormComponent } from './schema-form.component';
 import { GateRulesEditorComponent } from './gate-rules-editor.component';
 import { WriteApprovalSectionComponent } from './write-approval-section.component';
 import { SECTION_CONFIG_KEYS } from '../data/write-approval';
+import { REMOVED_STEP_KEYS, localizedConfigSchema } from '../data/step-config-keys';
 import {
-  STEP_REPOSITORIES_KEY,
-  isRunnerStep,
-  ownEditorKeys,
-  stepPushes,
-} from '../data/step-repositories';
-import { StepRepositoriesSectionComponent } from './step-repositories-section.component';
+  DELIVER_CHANGES,
+  deliverChangesSchema,
+  deliverFormConfig,
+  deliverRepositories,
+  withDeliverRepositories,
+  withFormConfig,
+} from '../data/deliver-changes';
+import { type WorkflowSource, deliverableRepositories } from '../data/workflow-sources';
 import { StepAgentSectionComponent } from './step-agent-section.component';
 import {
   type StepModelUse,
@@ -137,7 +140,6 @@ import { StepParameterBindingsComponent } from './step-parameter-bindings.compon
     GateRulesEditorComponent,
     NodeConnectionSectionComponent,
     WriteApprovalSectionComponent,
-    StepRepositoriesSectionComponent,
     StepAgentSectionComponent,
     ModelSelectComponent,
     StartRunInputsComponent,
@@ -540,24 +542,6 @@ import { StepParameterBindingsComponent } from './step-parameter-bindings.compon
                 </nz-collapse>
               }
 
-              @if (runnerStep()) {
-                <nz-divider
-                  nzText="Repositories"
-                  i18n-nzText="@@workflows.props.repositories"
-                  nzOrientation="left"
-                  nzPlain
-                />
-                <app-step-repositories-section
-                  [repositories]="projectRepositories()"
-                  [librarySources]="librarySources()"
-                  [config]="n.task?.overrides?.config ?? null"
-                  [pushes]="stepPushes()"
-                  [nodeIssues]="allIssues()"
-                  [readonly]="readonly()"
-                  (configChange)="patchOverrides({ config: $event })"
-                />
-              }
-
               <nz-divider
                 nzText="Overrides"
                 i18n-nzText="@@workflows.props.overrides"
@@ -741,6 +725,42 @@ import { StepParameterBindingsComponent } from './step-parameter-bindings.compon
                   [readonly]="readonly()"
                   (configChange)="patchActionConfig($event)"
                 />
+              }
+
+              @if (isDelivery()) {
+                <nz-divider [nzText]="deliverReposTitle" nzOrientation="left" nzPlain />
+                <ng-template #deliverReposTitle
+                  ><span i18n="@@workflows.deliver.repositories">Repositories to deliver</span>
+                  <bo-help-tip [text]="deliverReposHelp"
+                /></ng-template>
+                <ng-template #deliverReposHelp
+                  ><span i18n="@@workflows.deliver.repositories.help">
+                    Project repositories among the workflow's sources that get a branch and a merge
+                    request. Empty: every one the agents changed. Library sources are never written
+                    to.
+                  </span></ng-template
+                >
+                <nz-form-item data-deliver-repositories>
+                  <nz-form-control>
+                    <nz-select
+                      nzId="pp-deliver-repos"
+                      name="deliverRepositories"
+                      nzMode="multiple"
+                      nzAllowClear
+                      nzPlaceHolder="Every changed repository"
+                      i18n-nzPlaceHolder="@@workflows.deliver.repositories.all"
+                      aria-label="Repositories to deliver"
+                      i18n-aria-label="@@workflows.deliver.repositories"
+                      [ngModel]="deliverRepositories()"
+                      (ngModelChange)="setDeliverRepositories($event)"
+                      [nzDisabled]="readonly()"
+                    >
+                      @for (k of deliverOptions(); track k) {
+                        <nz-option [nzValue]="k" [nzLabel]="k" />
+                      }
+                    </nz-select>
+                  </nz-form-control>
+                </nz-form-item>
               }
 
               <nz-divider
@@ -1389,10 +1409,10 @@ export class NodePropertyPanelComponent {
   readonly projectId = input<string | null>(null);
   /** ADR 0053: the saved workflow, for the START node's read-only run inputs; null while unsaved. */
   readonly workflowId = input<string | null>(null);
-  /** The project's repositories (ADR 0034), for the repositories of runner steps. */
+  /** The project's repositories (ADR 0034), for the delivery and the CI pipeline watch. */
   readonly projectRepositories = input<readonly ProjectRepository[]>([]);
-  /** Sources of the library (ADR 0043) a runner step may attach. */
-  readonly librarySources = input<readonly LibrarySource[]>([]);
+  /** ADR 0063: the workflow's sources (empty = the project's primary repository), for "Deliver changes". */
+  readonly sources = input<readonly WorkflowSource[] | null | undefined>([]);
   /** Ids of nodes that exist in the saved version (renaming them is not allowed). */
   readonly idLocked = input(false);
   readonly readonly = input(false);
@@ -1430,10 +1450,6 @@ export class NodePropertyPanelComponent {
   ];
 
   readonly meta = computed(() => NODE_KIND_META[this.node()?.kind ?? 'NOTE']);
-  readonly allIssues = computed(() => [
-    ...(this.issues()?.errors ?? []),
-    ...(this.issues()?.warnings ?? []),
-  ]);
   readonly ports = computed(() => {
     const n = this.node();
     if (!n) return [];
@@ -1484,9 +1500,13 @@ export class NodePropertyPanelComponent {
     const key = this.node()?.task?.templateKey;
     const t = key ? this.palette()?.tasks?.find((x) => x.key === key) : undefined;
     const schema = t?.configSchema as JsonSchema | undefined;
-    // The step repositories have their own section; keep them out of the form.
-    // ADR 0060: the directory, the session and the questions have their own controls too.
-    return withoutKeys(schema, [...ownEditorKeys(schema), ...CODING_STEP_KEYS, ...QUESTION_KEYS]);
+    // ADR 0060: the directory, the session and the questions have their own controls.
+    // ADR 0063: git, the step repositories, the setup command and Spec Kit left the step.
+    return localizedConfigSchema(schema, [
+      ...REMOVED_STEP_KEYS,
+      ...CODING_STEP_KEYS,
+      ...QUESTION_KEYS,
+    ]);
   });
 
   // ---------------------------------------------------------------- ADR 0056: actions
@@ -1503,15 +1523,29 @@ export class NodePropertyPanelComponent {
   );
   /** The action writes to Jira: approval before write applies (ADR 0033). */
   readonly externalWrite = computed<boolean>(() => this.actionDescriptor()?.externalWrite === true);
+  /** ADR 0063: the node is a "Deliver changes" action. */
+  readonly isDelivery = computed(() => {
+    const n = this.node();
+    return n?.kind === 'ACTION' && n.action?.type === DELIVER_CHANGES;
+  });
   /** Form of the action's config, without the keys that have their own section. */
-  readonly actionConfigSchema = computed<JsonSchema | null>(() =>
-    withoutKeys(this.actionDescriptor()?.configSchema as JsonSchema | undefined, [
-      JIRA_CONNECTION_KEY,
-      ...SECTION_CONFIG_KEYS,
-    ]),
-  );
+  readonly actionConfigSchema = computed<JsonSchema | null>(() => {
+    const server = this.actionDescriptor()?.configSchema as JsonSchema | undefined;
+    // ADR 0063: the delivery form renders (translated) even when the palette has no schema for it
+    if (this.isDelivery()) return deliverChangesSchema(server, this.node()?.action?.config);
+    return withoutKeys(server, [JIRA_CONNECTION_KEY, ...SECTION_CONFIG_KEYS]);
+  });
+  /** ADR 0063: the repositories the delivery writes to (empty = every changed one). */
+  readonly deliverRepositories = computed(() => deliverRepositories(this.node()?.action?.config));
+  /** ADR 0063: project repositories among the workflow's sources, plus keys the node names already. */
+  readonly deliverOptions = computed(() => {
+    const keys = deliverableRepositories(this.sources(), this.projectRepositories());
+    for (const k of this.deliverRepositories()) if (!keys.includes(k)) keys.push(k);
+    return keys;
+  });
   /** Action config shown in the schema form: without the pin and the write approval. */
   readonly actionFormConfig = computed<Record<string, unknown>>(() => {
+    if (this.isDelivery()) return deliverFormConfig(this.node()?.action?.config);
     const rest = { ...(withPinnedConnection(this.node()?.action?.config ?? {}, null) ?? {}) };
     for (const k of SECTION_CONFIG_KEYS) delete rest[k];
     return rest;
@@ -1631,24 +1665,17 @@ export class NodePropertyPanelComponent {
     const use = this.modelUse();
     return use ? this.modelOptions()[stepModelUseKey(use)] : null;
   });
-  /** Steps a coding agent runs are runner steps and use repositories (ADR 0034/0056). */
-  readonly runnerStep = computed(() => isRunnerStep(this.effectiveAgent()));
-  /** Whether the runner step pushes (node config, template config, schema default). */
-  readonly stepPushes = computed(() =>
-    stepPushes(
-      this.node()?.task?.overrides?.config,
-      this.resolved()?.config,
-      this.paletteTask()?.configSchema as JsonSchema | undefined,
-    ),
-  );
-  /** Config keys with their own section (kept out of the schema form, kept on schema changes). */
-  private readonly ownSectionKeys = computed<string[]>(() =>
-    this.runnerStep()
-      ? [STEP_REPOSITORIES_KEY, ...CODING_STEP_KEYS, ...QUESTION_KEYS]
-      : this.effectiveAgent()
-        ? [...QUESTION_KEYS]
-        : [],
-  );
+  /** Steps a coding agent runs are runner steps (ADR 0056). */
+  readonly runnerStep = computed(() => isCodingAgent(this.effectiveAgent()));
+  /**
+   * Config keys with their own section or no longer edited (ADR 0063: git, repositories, setup command, Spec Kit);
+   * kept out of the schema form and kept as they are on schema changes.
+   */
+  private readonly ownSectionKeys = computed<string[]>(() => [
+    ...REMOVED_STEP_KEYS,
+    ...(this.runnerStep() ? CODING_STEP_KEYS : []),
+    ...(this.effectiveAgent() ? QUESTION_KEYS : []),
+  ]);
   /** Config shown in the schema form: without the keys of the own sections. */
   readonly formConfig = computed<Record<string, unknown>>(() => {
     const config = this.node()?.task?.overrides?.config ?? {};
@@ -1833,6 +1860,10 @@ export class NodePropertyPanelComponent {
   /** Action schema form changes keep the node's Jira connection pin and write approval. */
   onActionSchemaConfig(config: Record<string, unknown>): void {
     const current = this.node()?.action?.config ?? {};
+    if (this.isDelivery()) {
+      this.patchActionConfig(withFormConfig(current, config));
+      return;
+    }
     const pin = pinnedConnection(current);
     const next: Record<string, unknown> = {
       ...((pin ? withPinnedConnection(config, pin) : config) ?? {}),
@@ -1911,6 +1942,11 @@ export class NodePropertyPanelComponent {
         ...changes,
       },
     });
+  }
+
+  /** ADR 0063: the repositories the delivery writes to; none = every changed one. */
+  setDeliverRepositories(keys: string[] | null): void {
+    this.patchActionConfig(withDeliverRepositories(this.node()?.action?.config, keys ?? []));
   }
 
   patchCi(changes: Partial<NonNullable<WorkflowNode['ci']>>): void {

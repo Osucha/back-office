@@ -241,7 +241,6 @@ class JdbcPlatformSettingsRepository(private val jdbc: JdbcClient, private val c
             mfaRequiredForLocal = rs.getBoolean("mfa_required_local"),
             passwordPolicy = readPolicy(rs.getString("password_policy")),
             lockout = LockoutSettings(rs.getInt("lockout_max_failures"), rs.getInt("lockout_minutes")),
-            specKitAllowed = rs.getBoolean("spec_kit_allowed"),
         )
     }.optional().orElse(null)
 
@@ -249,15 +248,13 @@ class JdbcPlatformSettingsRepository(private val jdbc: JdbcClient, private val c
         jdbc.sql(
             """
             INSERT INTO identity_platform_settings (id, registration, allowed_email_domains, sync_groups, personal_token_max_days, updated_at,
-                                                    local_login_enabled, mfa_required_local, password_policy, lockout_max_failures, lockout_minutes,
-                                                    spec_kit_allowed)
+                                                    local_login_enabled, mfa_required_local, password_policy, lockout_max_failures, lockout_minutes)
             VALUES (1, :registration, string_to_array(:domains, ','), :sync, :maxDays, :updatedAt,
-                    :localLogin, :mfaRequired, CAST(:policy AS jsonb), :maxFailures, :lockMinutes, :specKitAllowed)
+                    :localLogin, :mfaRequired, CAST(:policy AS jsonb), :maxFailures, :lockMinutes)
             ON CONFLICT (id) DO UPDATE SET registration = EXCLUDED.registration, allowed_email_domains = EXCLUDED.allowed_email_domains,
                 sync_groups = EXCLUDED.sync_groups, personal_token_max_days = EXCLUDED.personal_token_max_days, updated_at = EXCLUDED.updated_at,
                 local_login_enabled = EXCLUDED.local_login_enabled, mfa_required_local = EXCLUDED.mfa_required_local,
-                password_policy = EXCLUDED.password_policy, lockout_max_failures = EXCLUDED.lockout_max_failures, lockout_minutes = EXCLUDED.lockout_minutes,
-                spec_kit_allowed = EXCLUDED.spec_kit_allowed
+                password_policy = EXCLUDED.password_policy, lockout_max_failures = EXCLUDED.lockout_max_failures, lockout_minutes = EXCLUDED.lockout_minutes
             """.trimIndent(),
         )
             .param("registration", settings.registration.name).param("domains", JdbcSupport.csv(settings.allowedEmailDomains))
@@ -265,7 +262,6 @@ class JdbcPlatformSettingsRepository(private val jdbc: JdbcClient, private val c
             .param("updatedAt", JdbcSupport.ts(clock.now()))
             .param("localLogin", settings.localLoginEnabled).param("mfaRequired", settings.mfaRequiredForLocal)
             .param("policy", writePolicy(settings.passwordPolicy))
-            .param("specKitAllowed", settings.specKitAllowed)
             .param("maxFailures", settings.lockout.maxFailures).param("lockMinutes", settings.lockout.lockMinutes)
             .update()
     }

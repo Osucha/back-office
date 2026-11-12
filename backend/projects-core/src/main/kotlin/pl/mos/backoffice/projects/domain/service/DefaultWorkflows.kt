@@ -47,10 +47,10 @@ object DefaultWorkflows {
     /** The single accountable project role of the seeded gates. */
     const val ACCOUNTABLE_ROLE = "owner"
 
-    const val TEMPLATE_SPECIFY = "spec-kit-specify"
+    const val TEMPLATE_SPECIFY = "write-spec"
     const val TEMPLATE_CLARIFY = "clarify-spec"
-    const val TEMPLATE_PLAN = "spec-kit-plan"
-    const val TEMPLATE_TASKS = "spec-kit-tasks"
+    const val TEMPLATE_PLAN = "write-plan"
+    const val TEMPLATE_TASKS = "write-task-list"
     const val TEMPLATE_IMPLEMENT = "implement-opencode"
     const val TEMPLATE_CODE_REVIEW = "code-review"
     const val TEMPLATE_IMPACT_ANALYSIS = "impact-analysis"
@@ -95,6 +95,16 @@ object DefaultWorkflows {
     private const val NODE_PLAN_TASKS = "plan-tasks"
     private const val NODE_TASK_LIST_GATE = "task-list-gate"
 
+    /** ADR 0063: the delivery after the implementation (commit, branch, merge request); `<step id>-deliver` like V309. */
+    const val NODE_DELIVER = "implement-deliver"
+
+    /**
+     * ADR 0063: the `DELIVER_CHANGES` node after the implementation, with the action's defaults (branch
+     * `feature/<issue key>`, a merge request titled like the issue); as many visits as the implementation it follows.
+     */
+    private fun deliver(position: Point) =
+        WorkflowNode.Action(NODE_DELIVER, "Deliver changes", position, maxVisits = 3, action = ActionBinding(ActionType.DELIVER_CHANGES))
+
     private const val LABEL_CODE_REVIEW = "AI code review"
     private const val LABEL_REVIEW_OK = "Review ok?"
 
@@ -102,7 +112,7 @@ object DefaultWorkflows {
     private const val ARTIFACT_IMPACT_ANALYSIS = TEMPLATE_IMPACT_ANALYSIS
     private const val ARTIFACT_USER_STORY = "user-story"
 
-    /** The task list artefact of `plan-task-list` and the Spec Kit tasks phase. */
+    /** The task list artefact of `plan-task-list` and `write-task-list`. */
     private const val ARTIFACT_TASKS = "tasks"
 
     /** Branch of the review decisions: taken unless the AI review requested changes. */
@@ -129,16 +139,6 @@ object DefaultWorkflows {
     fun all(projectId: ProjectId, now: Instant): List<WorkflowDefinition> =
         listOf(issueToReviewedMr(projectId, now), ciCodeReview(projectId, now), changeRequest(projectId, now), referenceClaudeCode(projectId, now))
 
-    /** The Spec Kit templates of the seeded workflows (ADR 0036). */
-    val SPEC_KIT_TEMPLATES = setOf(TEMPLATE_SPECIFY, TEMPLATE_PLAN, TEMPLATE_TASKS)
-
-    /** A seeded workflow that needs Spec Kit (ADR 0036): seeded only into projects with Spec Kit on. */
-    fun usesSpecKit(definition: WorkflowDefinition): Boolean =
-        definition.nodes.filterIsInstance<WorkflowNode.Task>().any { it.task.templateKey in SPEC_KIT_TEMPLATES }
-
-    /** The SDLC workflows for a project with ([specKit]) or without Spec Kit (ADR 0036). */
-    fun sdlc(projectId: ProjectId, now: Instant, specKit: Boolean): List<WorkflowDefinition> =
-        all(projectId, now).filter { specKit || !usesSpecKit(it) }
 
     /**
      * Starter of a project without repositories (ADR 0034): the `llm-task` template (its prompt is edited in the designer,
@@ -179,7 +179,8 @@ object DefaultWorkflows {
     )
 
     /**
-     * Jira issue -> Spec Kit -> implementation -> CI -> AI review -> merge gate. The `changes` branch of the review
+     * Jira issue -> specification, plan and task list written into the repository (ADR 0063) -> implementation -> delivery
+     * (branch and merge request) -> CI -> AI review -> merge gate. The `changes` branch of the review
      * returns to `implement`, whose prompt carries the latest `review` artefact (findings and verdict), so the rework
      * is not a blind re-run; a gate's `revise` comment reaches only the step it sends the run back to.
      */
@@ -187,7 +188,7 @@ object DefaultWorkflows {
         id = WorkflowDefinitionId.new(),
         projectId = projectId,
         name = ISSUE_TO_REVIEWED_MR,
-        description = "Jira issue -> Spec Kit specification -> clarification -> plan -> tasks -> implementation (MR via push options) -> CI tests -> AI review -> merge gate -> issue transition.",
+        description = "Jira issue -> specification -> clarification -> plan -> task list -> implementation -> delivery (branch and MR via push options) -> CI tests -> AI review -> merge gate -> issue transition.",
         version = 1,
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
@@ -213,18 +214,19 @@ object DefaultWorkflows {
             WorkflowNode.Task("plan", "Plan", Point(1996.0, 40.0), task = step(TEMPLATE_PLAN, AGENT_OPENCODE, INPUT_PARAMETER, "techHints")),
             WorkflowNode.Task("tasks", "Tasks", Point(2332.0, 40.0), task = step(TEMPLATE_TASKS, AGENT_OPENCODE)),
             WorkflowNode.Task("implement", "Implement", Point(2668.0, 40.0), maxVisits = 3, task = step(TEMPLATE_IMPLEMENT, AGENT_OPENCODE)),
-            WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(3004.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
-            WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(3370.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
-            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3340.0, 40.0), maxVisits = 3, task = step(TEMPLATE_CODE_REVIEW, AGENT_REVIEWER)),
+            deliver(Point(3004.0, 40.0)),
+            WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(3340.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
+            WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(3706.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
+            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3676.0, 40.0), maxVisits = 3, task = step(TEMPLATE_CODE_REVIEW, AGENT_REVIEWER)),
             WorkflowNode.Decision(
-                NODE_REVIEW_OK, LABEL_REVIEW_OK, Point(3676.0, 40.0),
+                NODE_REVIEW_OK, LABEL_REVIEW_OK, Point(4012.0, 40.0),
                 decision = DecisionSpec(
                     branches = listOf(REVIEW_APPROVED),
                     defaultBranch = "changes",
                 ),
             ),
             WorkflowNode.HumanGate(
-                NODE_MERGE_GATE, "Merge?", Point(4012.0, 40.0),
+                NODE_MERGE_GATE, "Merge?", Point(4348.0, 40.0),
                 gate = GateSpec(
                     question = "{{issue.key}} passed AI review (verdict {{review.verdict}}, score {{review.score}}). Merge request: {{mr.url}}. Merge?",
                     showArtifacts = listOf("review", "diff"),
@@ -232,8 +234,8 @@ object DefaultWorkflows {
                     checklist = MERGE_DONE,
                 ),
             ),
-            WorkflowNode.Action("transition", "Move issue to In Review", Point(4348.0, 40.0), action = ActionBinding(ActionType.TRANSITION_ISSUE)),
-            WorkflowNode.End("done", "Done", Point(4684.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
+            WorkflowNode.Action("transition", "Move issue to In Review", Point(4684.0, 40.0), action = ActionBinding(ActionType.TRANSITION_ISSUE)),
+            WorkflowNode.End("done", "Done", Point(5020.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
         ),
         edges = listOf(
             WorkflowEdge("e1", "start", WorkflowNode.PORT_OUT, NODE_FETCH_ISSUE),
@@ -246,7 +248,8 @@ object DefaultWorkflows {
             WorkflowEdge("e8", NODE_SPEC_GATE, GateSpec.REVISE, "specify", "revise"),
             WorkflowEdge("e9", "plan", WorkflowNode.PORT_SUCCESS, "tasks"),
             WorkflowEdge("e10", "tasks", WorkflowNode.PORT_SUCCESS, "implement"),
-            WorkflowEdge("e11", "implement", WorkflowNode.PORT_SUCCESS, NODE_CI_TESTS),
+            WorkflowEdge("e11", "implement", WorkflowNode.PORT_SUCCESS, NODE_DELIVER),
+            WorkflowEdge("e20", NODE_DELIVER, WorkflowNode.PORT_SUCCESS, NODE_CI_TESTS),
             WorkflowEdge("e12", NODE_CI_TESTS, WorkflowNode.PORT_SUCCESS, NODE_CODE_REVIEW),
             WorkflowEdge("e13", NODE_CI_TESTS, WorkflowNode.PORT_FAIL, NODE_TESTS_FAILED),
             WorkflowEdge("e14", NODE_CODE_REVIEW, WorkflowNode.PORT_SUCCESS, NODE_REVIEW_OK),
@@ -264,7 +267,7 @@ object DefaultWorkflows {
 
     /**
      * ADR 0059 §5, the yardstick: fetch the issue -> one Claude Code session (`agent-task` with the agent `claude-code`)
-     * implements it end to end, pushes and opens the merge request -> a person reviews it (four-eyes, revise sends the
+     * implements it end to end -> Deliver changes pushes it and opens the merge request (ADR 0063) -> a person reviews it (four-eyes, revise sends the
      * comment back to the same step). Run the same issues through it and through the cheaper workflows and compare the
      * cost of an accepted result (agent insights).
      */
@@ -272,7 +275,7 @@ object DefaultWorkflows {
         id = WorkflowDefinitionId.new(),
         projectId = projectId,
         name = REFERENCE_CLAUDE_CODE,
-        description = "Yardstick (ADR 0059): Jira issue -> one Claude Code session implements it end to end and opens the merge request -> review by a person. " +
+        description = "Yardstick (ADR 0059): Jira issue -> one Claude Code session implements it end to end -> delivery opens the merge request -> review by a person. " +
             "Compare its cost of an accepted result with the cheaper workflows on the same issues.",
         version = 1,
         nodes = listOf(
@@ -284,13 +287,13 @@ object DefaultWorkflows {
                     TEMPLATE_AGENT_TASK,
                     TaskOverrides(
                         agentKey = AGENT_CLAUDE_CODE,
-                        config = mapOf("push" to true, "mergeRequest" to true),
                         parameterBindings = mapOf("task" to ParameterBinding.value(REFERENCE_TASK), INPUT_PARAMETER to ParameterBinding.START),
                     ),
                 ),
             ),
+            deliver(Point(988.0, 40.0)),
             WorkflowNode.HumanGate(
-                NODE_MERGE_GATE, "Merge?", Point(988.0, 40.0),
+                NODE_MERGE_GATE, "Merge?", Point(1324.0, 40.0),
                 gate = GateSpec(
                     question = "Claude Code implemented {{issue.key}}. Merge request: {{mr.url}}. Merge, ask for a revision (your comment goes back to the session) or reject?",
                     showArtifacts = listOf("result", "diff"),
@@ -298,13 +301,14 @@ object DefaultWorkflows {
                     checklist = MERGE_DONE,
                 ),
             ),
-            WorkflowNode.End("done", "Done", Point(1324.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
-            WorkflowNode.End("rejected", "Rejected", Point(1324.0, 244.0), end = EndSpec(RunOutcome.FAILURE)),
+            WorkflowNode.End("done", "Done", Point(1660.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
+            WorkflowNode.End("rejected", "Rejected", Point(1660.0, 244.0), end = EndSpec(RunOutcome.FAILURE)),
         ),
         edges = listOf(
             WorkflowEdge("e1", "start", WorkflowNode.PORT_OUT, NODE_FETCH_ISSUE),
             WorkflowEdge("e2", NODE_FETCH_ISSUE, WorkflowNode.PORT_SUCCESS, "implement"),
-            WorkflowEdge("e3", "implement", WorkflowNode.PORT_SUCCESS, NODE_MERGE_GATE),
+            WorkflowEdge("e3", "implement", WorkflowNode.PORT_SUCCESS, NODE_DELIVER),
+            WorkflowEdge("e7", NODE_DELIVER, WorkflowNode.PORT_SUCCESS, NODE_MERGE_GATE),
             WorkflowEdge("e4", NODE_MERGE_GATE, GateSpec.APPROVE, "done"),
             WorkflowEdge("e5", NODE_MERGE_GATE, GateSpec.REVISE, "implement", "revise"),
             WorkflowEdge("e6", NODE_MERGE_GATE, GateSpec.REJECT, "rejected"),
@@ -356,7 +360,7 @@ object DefaultWorkflows {
         id = WorkflowDefinitionId.new(),
         projectId = projectId,
         name = CHANGE_REQUEST,
-        description = "Delta change: Jira issue -> impact analysis (approved by the owner) -> user story -> task list with verification per task (approved) -> implementation -> CI tests -> AI review -> merge gate (four-eyes).",
+        description = "Delta change: Jira issue -> impact analysis (approved by the owner) -> user story -> task list with verification per task (approved) -> implementation -> delivery (branch and MR) -> CI tests -> AI review -> merge gate (four-eyes).",
         version = 1,
         nodes = listOf(
             WorkflowNode.Start("start", "Start", Point(40.0, 40.0)),
@@ -390,18 +394,19 @@ object DefaultWorkflows {
                 ),
             ),
             WorkflowNode.Task("implement", "Implement task list", Point(2332.0, 40.0), maxVisits = 3, task = step(TEMPLATE_IMPLEMENT_TASK_LIST, AGENT_OPENCODE)),
-            WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(2668.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
-            WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(3034.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
-            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3004.0, 40.0), maxVisits = 3, task = step(TEMPLATE_CODE_REVIEW, AGENT_REVIEWER)),
+            deliver(Point(2668.0, 40.0)),
+            WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(3004.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
+            WorkflowNode.End(NODE_TESTS_FAILED, "Tests failed", Point(3370.0, 262.0), end = EndSpec(RunOutcome.FAILURE)),
+            WorkflowNode.Task(NODE_CODE_REVIEW, LABEL_CODE_REVIEW, Point(3340.0, 40.0), maxVisits = 3, task = step(TEMPLATE_CODE_REVIEW, AGENT_REVIEWER)),
             WorkflowNode.Decision(
-                "verdict", LABEL_REVIEW_OK, Point(3340.0, 40.0),
+                "verdict", LABEL_REVIEW_OK, Point(3676.0, 40.0),
                 decision = DecisionSpec(
                     branches = listOf(REVIEW_APPROVED),
                     defaultBranch = "changes",
                 ),
             ),
             WorkflowNode.HumanGate(
-                NODE_MERGE_GATE, "Merge?", Point(3676.0, 40.0),
+                NODE_MERGE_GATE, "Merge?", Point(4012.0, 40.0),
                 gate = GateSpec(
                     question = "{{issue.key}} passed AI review (verdict {{review.verdict}}, score {{review.score}}). Merge request: {{mr.url}}. Merge?",
                     showArtifacts = listOf("review", "diff"),
@@ -409,7 +414,7 @@ object DefaultWorkflows {
                     checklist = MERGE_DONE,
                 ),
             ),
-            WorkflowNode.End("done", "Done", Point(4012.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
+            WorkflowNode.End("done", "Done", Point(4348.0, 40.0), end = EndSpec(RunOutcome.SUCCESS)),
         ),
         edges = listOf(
             WorkflowEdge("e1", "start", WorkflowNode.PORT_OUT, NODE_FETCH_ISSUE),
@@ -421,7 +426,8 @@ object DefaultWorkflows {
             WorkflowEdge("e7", NODE_PLAN_TASKS, WorkflowNode.PORT_SUCCESS, NODE_TASK_LIST_GATE),
             WorkflowEdge("e8", NODE_TASK_LIST_GATE, GateSpec.APPROVE, "implement"),
             WorkflowEdge("e9", NODE_TASK_LIST_GATE, GateSpec.REVISE, NODE_PLAN_TASKS, "revise"),
-            WorkflowEdge("e10", "implement", WorkflowNode.PORT_SUCCESS, NODE_CI_TESTS),
+            WorkflowEdge("e10", "implement", WorkflowNode.PORT_SUCCESS, NODE_DELIVER),
+            WorkflowEdge("e18", NODE_DELIVER, WorkflowNode.PORT_SUCCESS, NODE_CI_TESTS),
             WorkflowEdge("e11", NODE_CI_TESTS, WorkflowNode.PORT_SUCCESS, NODE_CODE_REVIEW),
             WorkflowEdge("e12", NODE_CI_TESTS, WorkflowNode.PORT_FAIL, NODE_TESTS_FAILED),
             WorkflowEdge("e13", NODE_CODE_REVIEW, WorkflowNode.PORT_SUCCESS, "verdict"),

@@ -83,6 +83,28 @@ object ActionCatalog {
             mapOf("maxRuns" to 20, "pipelineRefs" to "develop,main"), ControlNodeCatalog.actionConfigSchema(ActionType.PROJECT_DIGEST),
             emptyList(), listOf("digest"),
         ),
+        ActionDescriptor(
+            ActionType.DELIVER_CHANGES, "Deliver changes",
+            "Commits what the agents changed in the run directory, pushes a branch (never the default branch) and opens a merge " +
+                "request (ADR 0063). The only step with push rights: a project repository token with PUSH_BRANCH, else the " +
+                "runner pool's token. Delivers every project repository of the workflow's sources that has changes, or the " +
+                "listed ones. Produces mr and diff.",
+            mapOf(MERGE_REQUEST to true), ControlNodeCatalog.actionConfigSchema(ActionType.DELIVER_CHANGES), emptyList(), listOf("mr", "diff"),
+        ),
+    )
+
+    /** ADR 0063: config keys of `DELIVER_CHANGES` (the former git keys of a coding step). */
+    const val BRANCH_TEMPLATE = "branchTemplate"
+    const val COMMIT_SUBJECT_TEMPLATE = "commitSubjectTemplate"
+    const val MERGE_REQUEST = "mergeRequest"
+    const val MERGE_REQUEST_TITLE_TEMPLATE = "mergeRequestTitleTemplate"
+    const val MERGE_REQUEST_DESCRIPTION_TEMPLATE = "mergeRequestDescriptionTemplate"
+    const val MERGE_REQUEST_DRAFT = "mergeRequestDraft"
+    const val REPOSITORIES = "repositories"
+
+    /** ADR 0063: the git keys a coding step had and `DELIVER_CHANGES` now carries. */
+    val DELIVERY_KEYS = listOf(
+        BRANCH_TEMPLATE, COMMIT_SUBJECT_TEMPLATE, MERGE_REQUEST, MERGE_REQUEST_TITLE_TEMPLATE, MERGE_REQUEST_DESCRIPTION_TEMPLATE, MERGE_REQUEST_DRAFT,
     )
 
     private val byType = all.associateBy { it.type }

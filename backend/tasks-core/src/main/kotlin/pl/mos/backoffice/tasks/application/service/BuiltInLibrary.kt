@@ -49,10 +49,23 @@ object BuiltInLibrary {
     const val BASE_CODING_AGENT = "base-coding-agent"
 
     const val FETCH_ISSUE = "fetch-issue"
-    const val SPEC_KIT_SPECIFY = "spec-kit-specify"
     const val CLARIFY_SPEC = "clarify-spec"
+
+    /** ADR 0063: a coding agent writes the specification, the plan and the task list into the repository (`specs/<feature>/`). */
+    const val WRITE_SPEC = "write-spec"
+    const val WRITE_PLAN = "write-plan"
+    const val WRITE_TASK_LIST = "write-task-list"
+
+    /**
+     * ADR 0063: the former Spec Kit templates, deprecated: each extends its replacement unchanged, so steps and templates
+     * that still name them resolve (V309 moved the stored steps to the replacements).
+     */
+    const val SPEC_KIT_SPECIFY = "spec-kit-specify"
     const val SPEC_KIT_PLAN = "spec-kit-plan"
     const val SPEC_KIT_TASKS = "spec-kit-tasks"
+
+    /** ADR 0063: the replacement of each former Spec Kit template. */
+    val SPEC_KIT_REPLACEMENTS: Map<String, String> = mapOf(SPEC_KIT_SPECIFY to WRITE_SPEC, SPEC_KIT_PLAN to WRITE_PLAN, SPEC_KIT_TASKS to WRITE_TASK_LIST)
     const val IMPLEMENT_OPENCODE = "implement-opencode"
     const val IMPLEMENT_CLAUDE_CODE = "implement-claude-code"
     const val CODE_REVIEW = "code-review"
@@ -68,7 +81,7 @@ object BuiltInLibrary {
     /** Generic LLM task of projects without repositories (ADR 0034): the task is the parameter `task` (ADR 0058). */
     const val LLM_TASK = "llm-task"
 
-    /** Generic coding-agent task: any task (parameter `task`), run by an agent in the project's repository (no push by default). */
+    /** Generic coding-agent task: any task (parameter `task`), run by an agent in the workflow's sources (agents never push). */
     const val AGENT_TASK = "agent-task"
 
     /** ADR 0044: clones the step's repositories and sources into the run workspace and runs setupCommand; no agent. */
@@ -112,7 +125,7 @@ object BuiltInLibrary {
     private const val ARTIFACT_USE_CASE = "use-case"
     private const val ARTIFACT_IMPACT_ANALYSIS = IMPACT_ANALYSIS
     private const val ARTIFACT_WORK_LOG = "work-log"
-    private const val TAG_SPEC_KIT = "spec-kit"
+    private const val TAG_SPEC = "spec"
 
     /** Title of the task every generated task list must end with (poc/WORKFLOW.md of the reference framework). */
     const val FINAL_TASK_TITLE = "reformat, lint, and test"
@@ -121,7 +134,8 @@ object BuiltInLibrary {
     val sdlcSkillKeys = listOf(DEFINITION_OF_READY_DONE, USER_STORY_FORMAT, USE_CASE_FORMAT, ADR_FORMAT, BUILD_GUARDRAILS)
 
     val templateKeys = listOf(
-        BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, SPEC_KIT_SPECIFY, CLARIFY_SPEC, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
+        BASE_AGENT, BASE_LLM, BASE_CODING_AGENT, WRITE_SPEC, CLARIFY_SPEC, WRITE_PLAN, WRITE_TASK_LIST,
+        SPEC_KIT_SPECIFY, SPEC_KIT_PLAN, SPEC_KIT_TASKS,
         IMPLEMENT_OPENCODE, IMPLEMENT_CLAUDE_CODE, CODE_REVIEW, ANALYSE_ISSUE, LLM_TASK, AGENT_TASK, PREPARE_WORKSPACE,
     ) + sdlcTemplateKeys
 
@@ -175,13 +189,15 @@ object BuiltInLibrary {
             tags = listOf("base", "agent", DEPRECATED_TAG),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", category = TemplateCategory.SPECIFICATION,
+            key = WRITE_SPEC, name = "Write specification", category = TemplateCategory.SPECIFICATION,
             requiresSkills = listOf(SPEC_WRITING),
-            description = "Runs the Spec Kit SPECIFY phase in the repository and returns the feature specification. " +
-                "The instructions start with the subject line and the issue text, which become the feature description.",
-            instructions = SPECIFY_INSTRUCTIONS,
-            config = mapOf("phase" to "SPECIFY"),
-            consumes = listOf("issue"), produces = listOf("spec"), tags = listOf(TAG_SPEC_KIT),
+            description = "A coding agent writes the feature specification for the issue into the repository " +
+                "(specs/<feature>/spec.md): scenarios, testable requirements, entities, scope and open questions, never the design. " +
+                "Returns it as the spec artefact.",
+            instructions = WRITE_SPEC_INSTRUCTIONS,
+            config = CODING_CONFIG,
+            outputFiles = listOf(SPEC_FILE),
+            consumes = listOf("issue"), produces = listOf("spec"), tags = listOf(TAG_SPEC),
             parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
@@ -194,33 +210,40 @@ object BuiltInLibrary {
             parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_PLAN, name = "Spec Kit: plan", category = TemplateCategory.PLANNING,
+            key = WRITE_PLAN, name = "Write plan", category = TemplateCategory.PLANNING,
             requiresSkills = listOf(SPEC_WRITING),
-            description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification Spec Kit reads from the repository. " +
-                "The optional parameter techHints passes stack hints.",
-            instructions = PLAN_INSTRUCTIONS,
-            config = mapOf("phase" to "PLAN"),
-            consumes = listOf("spec"), produces = listOf("plan"), tags = listOf(TAG_SPEC_KIT),
+            description = "A coding agent writes the implementation plan next to the specification (specs/<feature>/plan.md): technical " +
+                "context, approach, changes by component, data model and contracts, verification, risks. The optional parameter techHints " +
+                "passes stack hints. Returns it as the plan artefact.",
+            instructions = WRITE_PLAN_INSTRUCTIONS,
+            config = CODING_CONFIG,
+            outputFiles = listOf(PLAN_FILE),
+            consumes = listOf("spec"), produces = listOf("plan"), tags = listOf(TAG_SPEC),
             parameters = listOf(INPUT_PARAMETER, TECH_HINTS_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
-            key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", category = TemplateCategory.PLANNING,
+            key = WRITE_TASK_LIST, name = "Write task list", category = TemplateCategory.PLANNING,
             requiresSkills = listOf(SPEC_WRITING),
-            description = "Runs the Spec Kit TASKS phase: an ordered, dependency-aware task list from the plan Spec Kit reads from the repository.",
-            instructions = TASKS_INSTRUCTIONS,
-            config = mapOf("phase" to "TASKS"),
-            consumes = listOf("plan"), produces = listOf("tasks"), tags = listOf(TAG_SPEC_KIT),
+            description = "A coding agent breaks the plan into an ordered, dependency-aware task list next to it (specs/<feature>/tasks.md), " +
+                "each task small, testable and traced to a requirement. Returns it as the tasks artefact.",
+            instructions = WRITE_TASK_LIST_INSTRUCTIONS,
+            config = CODING_CONFIG,
+            outputFiles = listOf(TASKS_FILE),
+            consumes = listOf("plan"), produces = listOf("tasks"), tags = listOf(TAG_SPEC),
             parameters = listOf(INPUT_PARAMETER),
         )),
+        deprecatedSpecKit(now, SPEC_KIT_SPECIFY, "Spec Kit: specify", WRITE_SPEC),
+        deprecatedSpecKit(now, SPEC_KIT_PLAN, "Spec Kit: plan", WRITE_PLAN),
+        deprecatedSpecKit(now, SPEC_KIT_TASKS, "Spec Kit: tasks", WRITE_TASK_LIST),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_OPENCODE, name = "Implement", category = TemplateCategory.IMPLEMENTATION,
             requiresSkills = listOf(BUILD_GUARDRAILS),
-            description = "Implements the task list (or the issue) in a runner job with the step's coding agent (OpenCode when the step " +
-                "names none); on a rework it gets the latest review findings. " +
-                "The runner runs verifyCommand when set (none by default), commits, pushes a feature branch and opens a merge request.",
+            description = "Implements the task list (or the issue) in the run directory with the step's coding agent (OpenCode when the step " +
+                "names none); on a rework it gets the latest review findings. The runner runs verifyCommand when set (none by default). " +
+                "Nothing is pushed: a Deliver changes action after it commits, pushes and opens the merge request (ADR 0063).",
             instructions = IMPLEMENT_INSTRUCTIONS,
-            config = IMPLEMENT_CONFIG,
-            produces = listOf("diff", "mr"), tags = listOf("implement", "opencode"),
+            config = CODING_CONFIG + mapOf("verifyCommand" to null),
+            produces = listOf("diff"), tags = listOf("implement", "opencode"),
             parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
@@ -259,25 +282,22 @@ object BuiltInLibrary {
         )),
         template(now, TaskTemplate.Content(
             key = AGENT_TASK, name = "Agent task", category = TemplateCategory.GENERAL,
-            description = "Generic coding-agent work in the project's repository: write the task into the parameter task in the designer. " +
-                "The issue, the input material and revision comments are added to it. Choose a coding agent on the step, " +
-                "no push by default: set push to true for a branch and a merge request. In a project without repositories it runs in an empty " +
+            description = "Generic coding-agent work in the workflow's sources: write the task into the parameter task in the designer. " +
+                "The issue, the input material and revision comments are added to it. Choose a coding agent on the step; " +
+                "add a Deliver changes action after it for a branch and a merge request. In a project without repositories it runs in an empty " +
                 "workspace and its final answer becomes the result artefact.",
             instructions = AGENT_TASK_INSTRUCTIONS,
-            config = IMPLEMENT_CONFIG + mapOf("push" to false, "codingAgent" to true, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
+            config = CODING_CONFIG + mapOf("verifyCommand" to null, "repositoryOptional" to true),
             produces = listOf("result"), tags = listOf("agent", "generic"),
             parameters = listOf(taskParameter(AGENT_TASK_DEFAULT), INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = PREPARE_WORKSPACE, name = "Prepare workspace", category = TemplateCategory.OPERATIONS,
             description = "Rarely needed (ADR 0060): the run directory is prepared automatically before the first coding step (the " +
-                "workflow's setup command). This step clones its repositories into the run directory and runs the workflow setup and " +
-                "the step's setupCommand at a chosen point. Starts no agent and never pushes.",
+                "workflow's setup command). This step clones the workflow's sources into the run directory and runs the workflow setup " +
+                "at a chosen point. Starts no agent and never pushes.",
             instructions = PREPARE_WORKSPACE_INSTRUCTIONS,
-            config = mapOf(
-                "prepareOnly" to true, "push" to false, "mergeRequest" to false,
-                "repositoryOptional" to true, "setupCommand" to null,
-            ),
+            config = mapOf("prepareOnly" to true, "repositoryOptional" to true),
             tags = listOf("workspace"),
         )),
     ) + sdlcTemplates(now)
@@ -337,7 +357,8 @@ object BuiltInLibrary {
             description = "Executes the task list in order with TDD, runs every test_command, stops on the first red verification (the work log's RESULT " +
                 "line is the verifyCommand, so a stop fails the step), keeps a work log and lists what it noticed out of scope without fixing it.",
             instructions = IMPLEMENT_TASKS_INSTRUCTIONS, instructionsMode = InstructionsMode.REPLACE,
-            config = mapOf("collectArtifacts" to listOf(WORK_LOG_FILE), "verifyCommand" to WORK_LOG_VERIFY_COMMAND),
+            config = mapOf("verifyCommand" to WORK_LOG_VERIFY_COMMAND),
+            outputFiles = listOf(WORK_LOG_FILE),
             consumes = listOf("tasks"), produces = listOf(ARTIFACT_WORK_LOG), tags = listOf("sdlc", "implement"),
         )),
         template(now, TaskTemplate.Content(
@@ -378,15 +399,24 @@ object BuiltInLibrary {
         help = "What the agent should do in this step; the issue, the input material and the feedback are added to it.",
     )
 
-    /** Runner config of the implementers; the keys are the ones `RunnerTaskSupport` reads. */
-    val IMPLEMENT_CONFIG: Map<String, Any?> = mapOf(
-        "verifyCommand" to null,
-        "branchTemplate" to "feature/{{issue.key | lower}}",
-        "push" to true,
-        "mergeRequest" to true,
-        "mergeRequestTitleTemplate" to "{{issue.key}}: {{issue.summary}}",
-        "mergeRequestDraft" to false,
-    )
+    /**
+     * ADR 0061/0063: the config of work in the repository: it needs a coding agent. Agents never push; delivering is the
+     * Deliver changes action of the workflow.
+     */
+    val CODING_CONFIG: Map<String, Any?> = mapOf("codingAgent" to true)
+
+    /** ADR 0063: the output files of the specification templates (named like the file: spec, plan, tasks). */
+    const val SPEC_FILE = "specs/**/spec.md"
+    const val PLAN_FILE = "specs/**/plan.md"
+    const val TASKS_FILE = "specs/**/tasks.md"
+
+    /** ADR 0063: a former Spec Kit template as a deprecated template that extends its [replacement] unchanged. */
+    private fun deprecatedSpecKit(now: Instant, key: String, name: String, replacement: String) = template(now, TaskTemplate.Content(
+        key = key, name = "$name (deprecated)", extendsKey = replacement,
+        description = "Deprecated (ADR 0063): Back Office no longer runs Spec Kit; this is $replacement, which writes the same document " +
+            "into the repository. Use $replacement for new steps.",
+        tags = listOf(TAG_SPEC, DEPRECATED_TAG),
+    ))
 
     // ----- produced names -----------------------------------------------------------------------------
 
@@ -397,10 +427,7 @@ object BuiltInLibrary {
     val WHOLE_ANSWER_ARTIFACTS: Map<String, String> = mapOf(ANALYSE_ISSUE to "analysis", IMPACT_ANALYSIS to ARTIFACT_IMPACT_ANALYSIS)
 
     /** Names a coding agent job produces itself (runner artefacts), whatever the template declares. */
-    private val AGENT_JOB_OUTPUTS = setOf("diff", "mr", "result")
-
-    /** Names a Spec Kit job (coding agent with a `phase`) produces itself. */
-    private val SPEC_KIT_OUTPUTS = setOf("spec", "plan", "tasks", "analysis", "diff", "mr")
+    private val AGENT_JOB_OUTPUTS = setOf("diff", "result")
 
     /** State names an LLM step may produce when its schema has the field (`confidence` through the confidence field). */
     private val LLM_STATE_NAMES = setOf("confidence")
@@ -408,8 +435,8 @@ object BuiltInLibrary {
     /**
      * Why a resolved template's `produces` names would not appear at run time: every name must be a top-level field of
      * the output schema, the confidence field, `review` of a reviewer, a declared whole-answer artefact, an artefact the
-     * runner collects (`collectArtifacts`, named like the file without its extension) or an output of the coding agent job
-     * (ADR 0056: what runs follows from the [agent] and the Spec Kit `phase`).
+     * runner collects (ADR 0063 [outputFiles], named like the file without its extension) or an output of the coding agent
+     * job (ADR 0056: what runs follows from the [agent]).
      * Empty when every name is backed. Used by the seed tests so a renamed field cannot silently drop an artefact.
      */
     fun producedNameProblems(
@@ -418,13 +445,12 @@ object BuiltInLibrary {
         produces: List<String>,
         outputSchema: String?,
         confidenceField: String?,
-        config: Map<String, Any?>,
+        outputFiles: List<String>,
     ): List<String> {
         if (agent == null) return emptyList()
         val schemaFields = schemaProperties(outputSchema)
-        val collected = collectedNames(config)
-        val specKit = (config["phase"] as? String)?.isNotBlank() == true
-        val jobOutputs = if (specKit) SPEC_KIT_OUTPUTS else AGENT_JOB_OUTPUTS
+        val collected = collectedNames(outputFiles)
+        val jobOutputs = AGENT_JOB_OUTPUTS
         val withoutSchema = produces.filterNot { it == "review" || it in LLM_STATE_NAMES }
         return produces.mapNotNull { name ->
             val backed = when {
@@ -437,19 +463,17 @@ object BuiltInLibrary {
                 // ADR 0057: a coding agent with an output schema answers in structured-answer.json, backed like a model answer
                 else -> name in jobOutputs || name in collected || name in schemaFields || (name in LLM_STATE_NAMES && name == confidenceField)
             }
-            if (backed) null else "$key: produces \"$name\", but neither its output schema, its collectArtifacts nor its agent (${agent.key}) provides it"
+            if (backed) null else "$key: produces \"$name\", but neither its output schema, its output files nor its agent (${agent.key}) provides it"
         }
     }
 
-    /** Names of the collected files: `work-log.md` -> `work-log`; glob patterns name nothing in advance. */
-    private fun collectedNames(config: Map<String, Any?>): Set<String> {
-        val raw = config["collectArtifacts"]
-        val patterns = when (raw) {
-            is List<*> -> raw.mapNotNull { it?.toString() }
-            is String -> raw.split(",").map { it.trim() }
-            else -> emptyList()
-        }
-        return patterns.filterNot { '*' in it || '?' in it }.map { it.substringAfterLast('/').substringBeforeLast('.') }.toSet()
+    /**
+     * Names of the output files: `work-log.md` -> `work-log`, `specs/` + `**` + `/spec.md` -> `spec`; a file name with a
+     * wildcard names nothing in advance.
+     */
+    private fun collectedNames(outputFiles: List<String>): Set<String> {
+        val names = outputFiles.map { it.trim().substringAfterLast('/') }
+        return names.filterNot { '*' in it || '?' in it || it.isEmpty() }.map { it.substringBeforeLast('.') }.toSet()
     }
 
     /** Top-level property names of a JSON schema (the keys of the root object's `properties`); empty for no schema. */
@@ -594,45 +618,97 @@ object BuiltInLibrary {
     """.trimIndent()
 
     /**
-     * Starts with the subject line and the issue text: Spec Kit takes its feature description (and the feature name from
-     * the first line) from them. The issue is placed here, so the platform adds no second copy.
+     * ADR 0063: the specification as a careful engineer writes it, into the repository (the issue follows as a data
+     * section). The folder name ties the three documents of one feature together.
      */
-    val SPECIFY_INSTRUCTIONS = """
-        {{issue.key}}: {{issue.summary}}
-        {{#issue.description}}
+    val WRITE_SPEC_INSTRUCTIONS = """
+        Write the feature specification for the issue below: the document a careful engineer writes before
+        anyone designs or codes. It says what the change must achieve and why, never how.
 
-        {{issue.description}}
-        {{/issue.description}}
-        {{#issue.acceptanceCriteria}}
+        Where: `specs/<feature>/spec.md` in the primary repository, where `<feature>` is the issue key in
+        lower case followed by two to four words of the summary, joined by dashes (for example
+        `specs/abc-123-export-invoices/spec.md`; without an issue, a short slug of the request). When the
+        folder of this issue already exists (a revision), update its `spec.md` instead of starting another.
 
-        Acceptance criteria:
-        {{issue.acceptanceCriteria}}
-        {{/issue.acceptanceCriteria}}
+        Read before you write: the README, the existing specifications under `specs/` and the code the issue
+        touches, so the specification uses the project's own terms and does not contradict what exists.
 
-        ## Instructions
-        Phase SPECIFY of Spec Kit: write the feature specification for the issue above with the specify
-        command. The specification describes what and why, never how: user scenarios, functional
-        requirements, acceptance scenarios and open questions marked `[NEEDS CLARIFICATION: <question>]`.
-        Do not design the solution and do not write code. Apply the skill $SPEC_WRITING.
+        Sections:
+        1. Summary: the problem and the intended outcome in three to five sentences.
+        2. User scenarios: who does what and why, numbered, each with Given / When / Then acceptance
+           scenarios for the main flow and the important alternative and error flows.
+        3. Functional requirements: `FR-001`, `FR-002`, ... each one testable and written as
+           "The system must ...".
+        4. Non-functional requirements the issue implies (performance, security, accessibility,
+           compatibility), each measurable; leave the section out when there are none.
+        5. Key entities: the domain concepts the change introduces or changes, with their essential
+           attributes and rules (no tables, no classes).
+        6. Out of scope: what the change explicitly does not do.
+        7. Assumptions and open questions: every gap marked `[NEEDS CLARIFICATION: <question>]` where it
+           matters and listed here. Never invent a business rule the issue does not state.
+        8. Acceptance checklist: the items a reviewer checks to accept the work, each traced to a
+           requirement or scenario.
+
+        Do not design the solution, do not change code or other files and do not commit: a delivery step
+        of the workflow commits the work. Apply the skill $SPEC_WRITING. Finish with a short summary: the
+        path of the file, the number of requirements and the open questions.
     """.trimIndent()
 
-    /** Spec Kit reads the specification from the repository: only the hints and the feedback travel in the message. */
-    val PLAN_INSTRUCTIONS = """
-        {{issue.key}}: technical plan
+    /** ADR 0063: the plan next to the specification (consumed as a data section and read from the repository). */
+    val WRITE_PLAN_INSTRUCTIONS = """
+        Write the implementation plan for the feature specified in this repository: the document a careful
+        engineer writes before coding, from which another engineer could implement the feature.
 
-        Phase PLAN of Spec Kit: create the implementation plan (architecture decisions, data model, API
-        contracts, verification strategy) with the plan command. Spec Kit reads the specification of this
-        feature from the repository; do not ask for it to be pasted. Respect the project constitution; when
-        it conflicts with the specification, follow the constitution and list the conflict as an open
-        question in the plan. Respect the technical hints when this message gives them.
+        Where: `plan.md` next to the specification of this feature (`specs/<feature>/spec.md`; when there
+        are several folders, the one whose name starts with the issue key in lower case). When `plan.md`
+        exists (a revision), update it. Do not change the specification: when it is wrong or incomplete,
+        say so under open questions.
+
+        Read first: the specification, the repository's README and build files and the code the feature
+        touches. Respect the project constitution and rules of your environment and the technical hints
+        when this message gives them; when a hint conflicts with the constitution, follow the constitution
+        and list the conflict under open questions.
+
+        Sections:
+        1. Technical context: language, frameworks, storage, test tools and constraints as they are in this
+           repository.
+        2. Approach: the design in a few paragraphs and the alternatives you rejected, with the reason.
+        3. Changes by component: the modules, packages and files to add or change and what each change does.
+        4. Data model and contracts: new or changed entities, migrations, API endpoints, events or messages,
+           with their shapes.
+        5. Verification: the tests per requirement (unit, integration, end to end) and the commands that run
+           them in this repository.
+        6. Risks and rollout: what can break, compatibility, migration of existing data.
+        7. Open questions: decisions the specification leaves open, each with a recommended answer.
+
+        Trace every requirement of the specification (`FR-xxx`) to a change and a test; a requirement
+        without both is an open question. Do not change code and do not commit. Finish with a short
+        summary: the path of the file and the open questions.
     """.trimIndent()
 
-    val TASKS_INSTRUCTIONS = """
-        {{issue.key}}: task list
+    /** ADR 0063: the task list next to the plan. */
+    val WRITE_TASK_LIST_INSTRUCTIONS = """
+        Break the implementation plan of this feature into an ordered task list that an engineer or a
+        coding agent executes one task at a time.
 
-        Phase TASKS of Spec Kit: break the plan of this feature, which Spec Kit reads from the repository,
-        into an ordered task list with the tasks command. Each task is small enough to verify on its own,
-        names the files it touches and the test that proves it, and marks tasks that can run in parallel.
+        Where: `tasks.md` next to the plan (`specs/<feature>/plan.md`, the folder of this issue). When
+        `tasks.md` exists (a revision), update it and keep the tasks the feedback does not question.
+
+        Read first: `spec.md` and `plan.md` of the feature and the code they name.
+
+        Write the tasks as a markdown checklist grouped in phases (setup, then tests and code per user
+        scenario, then integration, then polish). Every task:
+        - is one line `- [ ] T001 <title>` with a running id, followed by its details;
+        - names the files it touches and the requirement (`FR-xxx`) or scenario it serves;
+        - is small enough to verify on its own and says how: the test to write first and the command that
+          proves it;
+        - is marked `[P]` when it can run in parallel with its neighbours (other files, no dependency).
+
+        Order the tasks so each one builds on the previous ones and leaves the build green; tests come
+        before the code they prove. The last task reformats, lints and runs the whole test suite. Add no
+        task for work the specification and the plan do not ask for. Do not change code and do not
+        commit. Finish with a short summary: the path of the file, the number of tasks and anything that
+        blocks a task.
     """.trimIndent()
 
     /** The issue comes as a data section after the instructions; the task list and the latest review are placed here. */
@@ -839,7 +915,7 @@ object BuiltInLibrary {
         1. Read its description and verification criteria. Write the test that proves the task first
            and see it fail (TDD), then make the smallest change that makes it pass.
         2. Run the task's `test_command`. When it passes, record the task in the work log and continue
-           with the next task. Do not commit: the runner commits the whole result once you finish.
+           with the next task. Do not commit: a delivery step of the workflow commits the whole result.
         3. When `test_command` or the verification stays red after a reasonable fix attempt, STOP: do
            not continue with later tasks and do not disable, skip or delete tests. Record in the work log
            which task failed, the command, the tail of its output and what you tried.
@@ -1202,12 +1278,12 @@ object BuiltInLibrary {
     }
 
     // Descriptions say when to use the skill (agents pick skills by them); no ": " so the SKILL.md frontmatter stays valid YAML.
-    const val SPEC_WRITING_DESCRIPTION = "Use when you write or revise a feature specification (the Spec Kit specify phase). " +
-        "The Spec Kit spec template decides the structure, these rules decide the content."
+    const val SPEC_WRITING_DESCRIPTION = "Use when you write or revise a feature specification, plan or task list. " +
+        "The task decides the structure, these rules decide the content."
     const val KOTLIN_HEXAGONAL_DESCRIPTION = "Example for the Back Office stack. Use when you change a Kotlin service built as core and adapters " +
         "modules with ArchUnit-enforced layers; copy and adapt it for other projects."
     const val CONVENTIONAL_COMMITS_DESCRIPTION = "Use when you write a commit message, a merge request title or a branch name yourself. " +
-        "In Back Office runner steps the runner commits and pushes, so agents never commit."
+        "In Back Office the workflow's Deliver changes step commits and pushes, so agents never commit."
     const val SECURITY_REVIEW_DESCRIPTION = "Use when you review a diff or a merge request. The security checks to run before anything else; a hit is a BLOCKER."
     const val ANGULAR_NG_ZORRO_DESCRIPTION = "Example for the Back Office stack. Use when you change an Angular frontend with standalone components, " +
         "signals and NG-ZORRO; copy and adapt it for other projects."
@@ -1231,13 +1307,13 @@ object BuiltInLibrary {
 
         # Spec writing
 
-        Follow the sections and numbering of the Spec Kit template (`spec-template.md`); where the template
-        and these rules differ, the template wins. These rules are about the content.
+        Follow the sections and numbering the task gives (a project template under `specs/` wins when the
+        repository has one). These rules are about the content.
 
         1. Describe what and why. The how belongs to the plan; if you catch yourself naming classes or
            tables, move that sentence out.
         2. Start with the user scenarios: who does what, what they see, what changes for them.
-        3. Number functional requirements the way the template does (FR-001, FR-002, ...); each is
+        3. Number functional requirements FR-001, FR-002, ...; each is
            testable, so a reviewer can say pass or fail without interpretation.
         4. Acceptance scenarios use Given / When / Then and cover the unhappy paths (invalid input,
            permissions, concurrency, empty states).
@@ -1291,9 +1367,9 @@ object BuiltInLibrary {
 
         # Conventional commits
 
-        In a Back Office runner step you do not commit: the runner commits your working tree once and takes
-        the subject from the task. Use these rules when the task asks you to write a commit message, a merge
-        request title or a branch name.
+        In a Back Office agent step you do not commit: the workflow's Deliver changes step commits the run
+        directory once and takes the subject from its template. Use these rules when the task asks you to
+        write a commit message, a merge request title or a branch name.
 
         1. Format: `type(scope): summary` in the imperative mood, at most 72 characters, no trailing period.
         2. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `perf`.
@@ -1304,7 +1380,7 @@ object BuiltInLibrary {
         7. One logical change per commit; a commit must compile and pass tests on its own.
         8. Never commit generated files, secrets, IDE settings or build output.
         9. Do not amend or rewrite commits that were already pushed.
-        10. Branch names follow the step's `branchTemplate` (default `feature/<issue-key-lowercase>`).
+        10. Branch names follow the delivery's `branchTemplate` (default `feature/<issue-key-lowercase>`).
     """.trimIndent()
 
     val SECURITY_REVIEW_MD = """
@@ -1410,7 +1486,7 @@ object BuiltInLibrary {
         ## When information is missing
         5. Do not fill a business gap by extrapolation, analogy with another feature or "common sense".
            An incomplete artefact with an explicit question beats a complete one built on a guess.
-        6. One marker per context: `[NEEDS CLARIFICATION: <question>]` in a Spec Kit specification,
+        6. One marker per context: `[NEEDS CLARIFICATION: <question>]` in a feature specification,
            `[?] <question>` everywhere else. Name an owner or a date only when the input gives them;
            never invent a person, a role or a deadline.
         7. `TODO: <what> - <why not now>` marks work left in an artefact and `TBD: <what> - <what decides

@@ -110,10 +110,10 @@ class FakeTaskCatalog : TaskCatalog {
     /** The seeded templates the default workflows refer to, all LLM-backed so tests do not need a runner or Jira. */
     fun seedDefaults() {
         llm("fetch-issue", "fetch {{input.issueKey}}", produces = listOf("issue"))
-        llm("spec-kit-specify", "specify {{input.issueKey}}\n{{feedback}}", produces = listOf("spec"), category = TemplateCategory.SPECIFICATION)
+        llm("write-spec", "specify {{input.issueKey}}\n{{feedback}}", produces = listOf("spec"), category = TemplateCategory.SPECIFICATION)
         llm("clarify-spec", "clarify {{artifacts.spec}}", outputSchema = CLARIFY_SCHEMA, confidenceField = "confidence", produces = listOf("confidence", "clarifications"), consumes = listOf("spec"), category = TemplateCategory.SPECIFICATION)
-        llm("spec-kit-plan", "plan {{artifacts.spec}}", produces = listOf("plan"), category = TemplateCategory.PLANNING)
-        llm("spec-kit-tasks", "tasks {{artifacts.plan}}", produces = listOf("tasks"), category = TemplateCategory.PLANNING)
+        llm("write-plan", "plan {{artifacts.spec}}", produces = listOf("plan"), category = TemplateCategory.PLANNING)
+        llm("write-task-list", "tasks {{artifacts.plan}}", produces = listOf("tasks"), category = TemplateCategory.PLANNING)
         llm("implement-opencode", "implement {{artifacts.tasks}}\n{{feedback}}", produces = listOf("diff"), category = TemplateCategory.IMPLEMENTATION)
         llm("code-review", "review this diff:\n{{artifacts.diff}}", system = "You are a reviewer.", outputSchema = REVIEW_SCHEMA, produces = listOf("review"), consumes = listOf("diff"), category = TemplateCategory.REVIEW)
         llm("transition-issue", "transition {{issue.key}}")

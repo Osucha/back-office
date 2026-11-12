@@ -162,9 +162,8 @@ możliwości, rodzaj tokenu, wygaśnięcie, ostatnie sprawdzenie). Administrator
 i nie mogą ich używać ani zmieniać; są używane tylko przy zatwierdzeniu lub rozpoczęciu uruchomienia przez ich
 właściciela ([Połączenia osobiste](integrations-jira.md#jira-personal-connections)).
 
-**Ustawienia platformy** → **Funkcje** → **Zezwalaj na Spec Kit** (domyślnie włączone) pozwala projektom
-włączać Spec Kit; po wyłączeniu żaden projekt nie może uruchamiać kroków Spec Kit
-([Spec Kit](projects.md#spec-kit)).
+Dawnego ustawienia **Ustawienia platformy** → **Funkcje** → **Zezwalaj na Spec Kit** już nie ma: Back Office nie
+uruchamia już Spec Kit (ADR 0063, [Spec Kit (usunięty)](projects.md#spec-kit)).
 
 - **Podgląd**: `integrations.view` (każdy członek). **Dodaj połączenie** (**Add connection**), edycja,
   **Zastąp token** (**Replace token**), **Testuj** (**Test**), **Testuj przed zapisem** (**Test before

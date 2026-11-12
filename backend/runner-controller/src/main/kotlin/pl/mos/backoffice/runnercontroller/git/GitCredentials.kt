@@ -13,11 +13,12 @@ enum class GitAccess {
     NONE, READ, PUSH_MR;
 
     companion object {
-        private val PUSHING_MODES = setOf("IMPLEMENT", "SPEC_KIT")
+        /** IMPLEMENT / SPEC_KIT pushed before ADR 0063 (legacy specs); DELIVER is the only pushing mode since. */
+        private val PUSHING_MODES = setOf("IMPLEMENT", "SPEC_KIT", "DELIVER")
 
         /**
-         * The level of [spec]: `gitAccess` when present, else derived as Back Office derives it (specs from a
-         * Back Office before ADR 0031): no repository -> NONE, IMPLEMENT/SPEC_KIT with `push` -> PUSH_MR, else READ.
+         * The level of [spec]: `gitAccess` when present, else derived as Back Office derived it (specs from a
+         * Back Office before ADR 0031): no repository -> NONE, a pushing mode with `push` -> PUSH_MR, else READ.
          * A job without a repository URL never gets a credential, whatever it asks for.
          */
         fun of(spec: JsonNode): GitAccess {

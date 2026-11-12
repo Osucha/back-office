@@ -77,7 +77,7 @@ const STYLES: Record<string, { color: string; icon?: string; spin?: boolean }> =
   BUILT_IN: { color: 'default', icon: 'lock' },
   ABSTRACT: { color: 'default', icon: 'block' },
   LLM: { color: 'purple' },
-  SPEC_KIT: { color: 'blue' },
+  DELIVER_CHANGES: { color: 'geekblue' },
   IMPLEMENT: { color: 'cyan' },
   FETCH_ISSUE: { color: 'default' },
   NOTIFY: { color: 'default' },

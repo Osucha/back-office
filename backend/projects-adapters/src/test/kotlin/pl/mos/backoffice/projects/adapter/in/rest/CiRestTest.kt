@@ -243,7 +243,7 @@ class CiRestTest {
             .andExpect(jsonPath("$.tasks[?(@.key == 'code-review')].category").value("REVIEW"))
             .andExpect(jsonPath("$.tasks[?(@.key == 'code-review')].needsCodingAgent").value(false))
             .andExpect(jsonPath("$.tasks[?(@.key == 'code-review')].agent").doesNotExist())
-            .andExpect(jsonPath("$.actions.length()").value(5))
+            .andExpect(jsonPath("$.actions.length()").value(6))
             .andExpect(jsonPath("$.actions[?(@.type == 'COMMENT_ISSUE')].externalWrite").value(true))
             .andExpect(jsonPath("$.actions[?(@.type == 'FETCH_ISSUE')].runInputs[0].type").value("ISSUE_KEY"))
             .andExpect(jsonPath("$.stateFields[?(@.path == 'review.verdict')]").isNotEmpty)
@@ -251,8 +251,10 @@ class CiRestTest {
         mvc.perform(get("/api/v1/workflows/task-config-schemas"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.modelAnswer.properties.maxInputChars.type").value("integer"))
-            .andExpect(jsonPath("$.codingAgent.properties.phase.enum[0]").value("SPECIFY"))
-            .andExpect(jsonPath("$.codingAgent.properties.push.type").value("boolean"))
+            .andExpect(jsonPath("$.codingAgent.properties.phase").doesNotExist())
+            .andExpect(jsonPath("$.codingAgent.properties.verifyCommand").exists())
+            .andExpect(jsonPath("$.codingAgent.properties.push").doesNotExist())
+            .andExpect(jsonPath("$.codingAgent.properties.codingAgent.type").value("boolean"))
             .andExpect(jsonPath("$.codingAgent.properties.agent").doesNotExist())
         mvc.perform(post("/api/v1/workflows/expressions/validate").contentType(MediaType.APPLICATION_JSON).content("""{"expression":"review.verdict != 'REQUEST_CHANGES'"}"""))
             .andExpect(status().isOk).andExpect(jsonPath("$.valid").value(true))
@@ -262,7 +264,7 @@ class CiRestTest {
         // seeded workflows round-trip through the REST shape and can be duplicated
         val list = json.readValue(mvc.perform(get("/api/v1/projects/$projectId/workflows")).andExpect(status().isOk).andReturn().response.contentAsString, List::class.java)
         val issueToMr = list.map { it as Map<*, *> }.first { it["name"] == "Issue to reviewed MR" }
-        assertThat((issueToMr["nodes"] as List<*>).size).isEqualTo(16)
+        assertThat((issueToMr["nodes"] as List<*>).size).describedAs("ADR 0063: with the delivery").isEqualTo(17)
         assertThat(list.map { (it as Map<*, *>)["name"] }).contains("Change request (delta)")
         val mergeGate = (issueToMr["nodes"] as List<*>).map { it as Map<*, *> }.first { it["id"] == "merge-gate" }["gate"] as Map<*, *>
         assertThat((mergeGate["approvers"] as Map<*, *>)["accountable"]).isEqualTo("owner")

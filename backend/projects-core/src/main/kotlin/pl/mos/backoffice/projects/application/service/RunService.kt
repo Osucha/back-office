@@ -68,10 +68,8 @@ class RunService(
     private val clock: Clock,
     /** Refuses runs whose Jira steps have no usable connection (ADR 0030 amendment); null = not checked. */
     private val jiraSteps: JiraStepCheck? = null,
-    /** Refuses runs whose runner steps have no usable repository (ADR 0034); null = not checked. */
+    /** Refuses runs whose sources, coding steps or deliveries cannot work (ADR 0034, 0063); null = not checked. */
     private val repositorySteps: RepositoryStepCheck? = null,
-    /** Refuses runs with Spec Kit steps when Spec Kit is off for the project or the platform (ADR 0036); null = not checked. */
-    private val specKitSteps: pl.mos.backoffice.projects.application.service.tasks.SpecKitStepCheck? = null,
     /** ADR 0050: refuses runs whose step has no model the starting user can use; null = not checked. */
     private val modelSteps: pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck? = null,
     /** ADR 0052: who a schedule or a "Start workflow" step starts runs for; null = such starts are refused. */
@@ -136,16 +134,13 @@ class RunService(
         if (definition.draft) throw InvalidStateException("workflow ${definition.name} is a draft with validation errors; fix them and save it before starting runs")
         requireRunnable(definition)
         val project = projects.findById(definition.projectId) ?: throw NotFoundException("Project", definition.projectId)
-        specKitSteps?.runBlockers(project, definition.nodes)?.takeIf { it.isNotEmpty() }?.let { blockers ->
-            throw InvalidStateException("workflow ${definition.name} cannot start: " + blockers.joinToString("; "))
-        }
         jiraSteps?.runBlockers(project, definition.nodes, actor)?.takeIf { it.isNotEmpty() }?.let { blockers ->
             throw InvalidStateException(
                 "workflow ${definition.name} cannot start: " + blockers.joinToString("; ") +
                     " (manual: ${JiraStepCheck.CONNECTIONS_GUIDE})",
             )
         }
-        repositorySteps?.runBlockers(project, definition.nodes)?.takeIf { it.isNotEmpty() }?.let { blockers ->
+        repositorySteps?.runBlockers(project, definition.sources, definition.nodes)?.takeIf { it.isNotEmpty() }?.let { blockers ->
             throw InvalidStateException("workflow ${definition.name} cannot start: " + blockers.joinToString("; ") + " (manual: $REPOSITORIES_GUIDE)")
         }
         modelSteps?.runBlockers(project, definition.nodes, actor.userId)?.takeIf { it.isNotEmpty() }?.let { blockers ->

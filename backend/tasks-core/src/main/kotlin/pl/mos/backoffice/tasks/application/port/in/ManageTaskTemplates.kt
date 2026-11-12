@@ -32,7 +32,7 @@ interface ManageTaskTemplates {
 
     /**
      * ADR 0061: whether [template] (one the caller already read) needs a coding agent: its merged config over the lineage
-     * has a Spec Kit phase, `push: true` or `prepareOnly: true`.
+     * has `codingAgent: true` or `prepareOnly: true`.
      */
     fun needsCodingAgent(template: TaskTemplate): Boolean
 }

@@ -48,6 +48,11 @@ data class TaskTemplate(
     val parameterValues: Map<String, Any?> = emptyMap(),
     /** ADR 0060: skills the work needs; a step whose agent lacks one gets a warning (inherited, unioned). */
     val requiresSkills: List<String> = emptyList(),
+    /**
+     * ADR 0063: globs of files (relative to the repository) the agent leaves that come back as artefacts, named like the
+     * file without extension (the former config key `collectArtifacts`); inherited, unioned.
+     */
+    val outputFiles: List<String> = emptyList(),
 ) {
     init {
         Keys.require(key)
@@ -81,12 +86,13 @@ data class TaskTemplate(
         val parameters: List<TemplateParameter> = emptyList(),
         val parameterValues: Map<String, Any?> = emptyMap(),
         val requiresSkills: List<String> = emptyList(),
+        val outputFiles: List<String> = emptyList(),
     )
 
     val content: Content
         get() = Content(
             key, name, description, abstract, extendsKey, category, scope, instructions, instructionsMode,
-            config, outputSchema, confidenceField, produces, consumes, tags, parameters, parameterValues, requiresSkills,
+            config, outputSchema, confidenceField, produces, consumes, tags, parameters, parameterValues, requiresSkills, outputFiles,
         )
 
     /** Replaces the editable content and bumps [version]; a null key keeps the current one. */
@@ -125,6 +131,7 @@ data class TaskTemplate(
             parameters = c.parameters,
             parameterValues = c.parameterValues,
             requiresSkills = c.requiresSkills.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
+            outputFiles = c.outputFiles.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
         )
     }
 }

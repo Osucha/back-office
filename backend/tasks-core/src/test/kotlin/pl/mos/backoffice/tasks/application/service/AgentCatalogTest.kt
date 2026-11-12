@@ -76,7 +76,7 @@ class AgentCatalogTest {
     fun `ADR 0061 - step needs name the step's agent or the fallback, the required skills and the kind of work`() {
         lib.skill("adr-format")
         lib.template("adr", requiresSkills = listOf("adr-format", "ghost"))
-        lib.template("pusher", config = mapOf("push" to true))
+        lib.template("pusher", config = mapOf("codingAgent" to true))
         lib.template("cycle", extendsKey = "cycle")
 
         val adr = catalog.stepNeeds("adr", null, pl.mos.backoffice.shared.tasks.TaskOverrides(agentKey = "claude-code"))!!
@@ -86,7 +86,6 @@ class AgentCatalogTest {
         val pusher = catalog.stepNeeds("pusher", null)!!
         assertThat(pusher.agentKey).isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(pusher.needsCodingAgent).isTrue()
-        assertThat(pusher.pushes).isTrue()
         assertThat(catalog.stepNeeds("cycle", null)).isNull()
         assertThat(catalog.stepNeeds("unknown", null)).isNull()
 

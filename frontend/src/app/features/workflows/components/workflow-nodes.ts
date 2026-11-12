@@ -16,6 +16,13 @@ import { humanize } from '../../../core/ui/status-tag.component';
 import { capabilityLabels, pinnedConnection } from '../../connections/public-api';
 import { NODE_KIND_META, portHandleId, type CanvasNodeData } from '../data/graph-model';
 import { hasStepOverrides } from '../data/step-bindings';
+import {
+  DELIVER_CHANGES,
+  type DeliverySummary,
+  deliverySummary,
+  deliverySummaryTitle,
+  mergeRequestLabel,
+} from '../data/deliver-changes';
 
 export const INPUT_HANDLE_ID = 'in';
 
@@ -462,6 +469,19 @@ export class EndNodeComponent extends WorkflowNodeBase {}
         background: var(--bo-you-soft);
         color: var(--bo-you-ink);
       }
+      .mr {
+        flex: none;
+        font-size: 10.5px;
+        line-height: 16px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--bo-ci-soft);
+        color: var(--bo-ci-ink);
+      }
+      .mr.off {
+        background: var(--bo-surface-3);
+        color: var(--bo-ink-2);
+      }
       .jira {
         flex: none;
         font-size: 10.5px;
@@ -511,7 +531,12 @@ export class TaskNodeComponent extends WorkflowNodeBase {
         @if (d.requiredCapabilities?.length) {
           <span class="jira" [title]="jiraTitle()">Jira</span>
         }
-        @if (hint(); as h) {
+        @if (delivery(); as dl) {
+          <span class="hint" data-delivery-branch [title]="deliveryTitle()">{{ dl.branch }}</span>
+          <span class="mr" data-delivery-mr [class.off]="dl.mergeRequest === 'OFF'">{{
+            mrLabel(dl.mergeRequest)
+          }}</span>
+        } @else if (hint(); as h) {
           <span class="hint" [title]="h">{{ h }}</span>
         }
       </div>
@@ -578,6 +603,16 @@ export class ActionNodeComponent extends WorkflowNodeBase {
       ? $localize`:@@workflows.node.jiraPinned:Jira connection needs: ${needs}:needs: (pinned connection)`
       : $localize`:@@workflows.node.jiraNeeds:Jira connection needs: ${needs}:needs:`;
   });
+  /** ADR 0063: the branch and the merge request of a "Deliver changes" node; null for other actions. */
+  readonly delivery = computed<DeliverySummary | null>(() => {
+    const action = this.data()?.node.action;
+    return action?.type === DELIVER_CHANGES ? deliverySummary(action.config) : null;
+  });
+  readonly deliveryTitle = computed(() => {
+    const d = this.delivery();
+    return d ? deliverySummaryTitle(d) : '';
+  });
+  readonly mrLabel = mergeRequestLabel;
   /** The first plain config value ("toStatus: In Review"), as a hint of what the action does. */
   readonly hint = computed(() => {
     const config = this.data()?.node.action?.config ?? {};

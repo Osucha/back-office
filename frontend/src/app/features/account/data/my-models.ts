@@ -39,8 +39,6 @@ export function harnessName(harness: string): string {
       return 'Claude Code';
     case 'OPENCODE':
       return 'OpenCode';
-    case 'SPEC_KIT':
-      return 'Spec Kit';
     default:
       return harness;
   }

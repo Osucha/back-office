@@ -14,7 +14,7 @@ runs that workflow for each piece of work:
 - **Agents** do the writing and coding. Short steps are a single model call inside Back Office; coding
   steps run as agent jobs in a sandbox on a runner (see [How agent jobs run](agent-execution.md#lifecycle)).
 - **Your CI** runs tests and reports back with the `backoffice-ci` script. Back Office never calls your
-  Git server's API; the agent pushes a branch, your pipeline runs (see [GitLab CI and other CI](integrations-gitlab-ci.md#ci-overview)).
+  Git server's API; a **Deliver changes** step pushes the agents' branch, your pipeline runs (see [GitLab CI and other CI](integrations-gitlab-ci.md#ci-overview)).
 - **People** decide at **gates**: approve, send back for revision, or reject. Everything that needs you
   lands in one queue, **Your turn**.
 

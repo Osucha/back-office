@@ -602,9 +602,5 @@
   "admin.users.total": "{count, plural, one {# użytkownik} few {# użytkownicy} many {# użytkowników} other {# użytkownika}}",
   "admin.users.totalHidden": "{$users} · ukryte przez filtry: {$hidden}",
   "admin.users.you": "Ty",
-  "admin.nav.connections": "Połączenia",
-  "admin.platformSettings.features.title": "Funkcje",
-  "admin.platformSettings.features.intro": " Opcjonalne narzędzia, które projekty mogą włączyć dla siebie. ",
-  "admin.platformSettings.features.specKit": "Zezwalaj na Spec Kit",
-  "admin.platformSettings.features.specKitHelp": "Projekty mogą włączyć Spec Kit (kroki specify, plan i tasks, konstytucja). Po wyłączeniu żaden projekt nie może uruchamiać kroków Spec Kit, niezależnie od własnego ustawienia; ustawienia i konstytucje projektów zostają zachowane."
+  "admin.nav.connections": "Połączenia"
 }

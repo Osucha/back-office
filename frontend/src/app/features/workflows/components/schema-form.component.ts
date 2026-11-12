@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { NzCheckboxModule } from 'ng-zorro-antd/checkbox';
 import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTagModule } from 'ng-zorro-antd/tag';
+import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import {
   coerceValue,
   extraKeys,
@@ -29,12 +31,14 @@ function invalidJson(err: unknown): string {
   selector: 'app-schema-form',
   imports: [
     FormsModule,
+    NzCheckboxModule,
     NzFormModule,
     NzInputModule,
     NzInputNumberModule,
     NzSelectModule,
     NzSwitchModule,
     NzTagModule,
+    HelpTipComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -43,117 +47,138 @@ function invalidJson(err: unknown): string {
     }
     <form nz-form nzLayout="vertical" (submit)="$event.preventDefault()">
       @for (f of fields(); track f.key) {
-        <nz-form-item>
-          <nz-form-label
-            [nzTooltipTitle]="f.description ?? ''"
-            [nzRequired]="f.required"
-            [nzFor]="idFor(f)"
-            >{{ f.label }}</nz-form-label
-          >
-          <nz-form-control
-            [nzValidateStatus]="errors()[f.key] ? 'error' : ''"
-            [nzErrorTip]="errors()[f.key] || ''"
-          >
-            @switch (f.kind) {
-              @case ('textarea') {
-                <textarea
-                  nz-input
-                  class="mono-textarea"
-                  [id]="idFor(f)"
-                  [name]="f.key"
-                  [ngModel]="asString(config()[f.key])"
-                  (ngModelChange)="set(f, $event)"
-                  [nzAutosize]="{ minRows: 3, maxRows: 16 }"
-                  [placeholder]="f.default !== undefined ? defaultHint(f.default) : ''"
-                ></textarea>
+        @if (f.kind === 'checkbox') {
+          <nz-form-item [attr.data-checkbox]="f.key">
+            <nz-form-control>
+              <label
+                nz-checkbox
+                [id]="idFor(f)"
+                [name]="f.key"
+                [ngModel]="!!(config()[f.key] ?? f.default ?? false)"
+                (ngModelChange)="set(f, $event)"
+                >{{ f.label }}</label
+              >
+              @if (f.description) {
+                <bo-help-tip [text]="f.description" />
               }
-              @case ('select') {
-                <nz-select
-                  [id]="idFor(f)"
-                  [name]="f.key"
-                  [ngModel]="config()[f.key] ?? null"
-                  (ngModelChange)="set(f, $event)"
-                  [nzAllowClear]="!f.required"
-                  nzPlaceHolder="Select"
-                  i18n-nzPlaceHolder="@@workflows.schemaForm.select"
-                >
-                  @for (o of f.options ?? []; track o.label) {
-                    <nz-option [nzValue]="o.value" [nzLabel]="o.label" />
-                  }
-                </nz-select>
-              }
-              @case ('switch') {
-                <nz-switch
-                  [id]="idFor(f)"
-                  [name]="f.key"
-                  [ngModel]="!!(config()[f.key] ?? f.default ?? false)"
-                  (ngModelChange)="set(f, $event)"
-                />
-                @if (config()[f.key] === undefined && f.default !== undefined) {
-                  <span class="muted" style="margin-left: 8px" i18n="@@workflows.schemaForm.default"
-                    >default: {{ f.default }}</span
+            </nz-form-control>
+          </nz-form-item>
+        } @else {
+          <nz-form-item>
+            <nz-form-label
+              [nzTooltipTitle]="f.description ?? ''"
+              [nzRequired]="f.required"
+              [nzFor]="idFor(f)"
+              >{{ f.label }}</nz-form-label
+            >
+            <nz-form-control
+              [nzValidateStatus]="errors()[f.key] ? 'error' : ''"
+              [nzErrorTip]="errors()[f.key] || ''"
+            >
+              @switch (f.kind) {
+                @case ('textarea') {
+                  <textarea
+                    nz-input
+                    class="mono-textarea"
+                    [id]="idFor(f)"
+                    [name]="f.key"
+                    [ngModel]="asString(config()[f.key])"
+                    (ngModelChange)="set(f, $event)"
+                    [nzAutosize]="{ minRows: 3, maxRows: 16 }"
+                    [placeholder]="f.default !== undefined ? defaultHint(f.default) : ''"
+                  ></textarea>
+                }
+                @case ('select') {
+                  <nz-select
+                    [id]="idFor(f)"
+                    [name]="f.key"
+                    [ngModel]="config()[f.key] ?? null"
+                    (ngModelChange)="set(f, $event)"
+                    [nzAllowClear]="!f.required"
+                    nzPlaceHolder="Select"
+                    i18n-nzPlaceHolder="@@workflows.schemaForm.select"
                   >
+                    @for (o of f.options ?? []; track o.label) {
+                      <nz-option [nzValue]="o.value" [nzLabel]="o.label" />
+                    }
+                  </nz-select>
                 }
-              }
-              @case ('number') {
-                <nz-input-number
-                  [id]="idFor(f)"
-                  [name]="f.key"
-                  [ngModel]="config()[f.key] ?? null"
-                  (ngModelChange)="set(f, $event)"
-                  [nzMin]="f.min ?? NEG_INF"
-                  [nzMax]="f.max ?? POS_INF"
-                  [nzStep]="f.integer ? 1 : 0.1"
-                  [nzPrecision]="f.integer ? 0 : null"
-                  style="width: 200px"
-                />
-              }
-              @case ('tags') {
-                <nz-select
-                  [id]="idFor(f)"
-                  [name]="f.key"
-                  [nzMode]="f.options ? 'multiple' : 'tags'"
-                  [ngModel]="asArray(config()[f.key])"
-                  (ngModelChange)="set(f, $event)"
-                  [nzTokenSeparators]="[',']"
-                  nzPlaceHolder="Type and press enter"
-                  i18n-nzPlaceHolder="@@workflows.schemaForm.typeEnter"
-                >
-                  @for (o of f.options ?? []; track o.label) {
-                    <nz-option [nzValue]="o.value" [nzLabel]="o.label" />
+                @case ('switch') {
+                  <nz-switch
+                    [id]="idFor(f)"
+                    [name]="f.key"
+                    [ngModel]="!!(config()[f.key] ?? f.default ?? false)"
+                    (ngModelChange)="set(f, $event)"
+                  />
+                  @if (config()[f.key] === undefined && f.default !== undefined) {
+                    <span
+                      class="muted"
+                      style="margin-left: 8px"
+                      i18n="@@workflows.schemaForm.default"
+                      >default: {{ f.default }}</span
+                    >
                   }
-                </nz-select>
-              }
-              @case ('json') {
-                <textarea
-                  nz-input
-                  class="mono-textarea"
-                  [id]="idFor(f)"
-                  [name]="f.key"
-                  [ngModel]="jsonDraft()[f.key] || asJson(config()[f.key])"
-                  (ngModelChange)="setJson(f, $event)"
-                  [nzAutosize]="{ minRows: 3, maxRows: 16 }"
-                  placeholder="JSON"
-                ></textarea>
-                @if (jsonErrors()[f.key]) {
-                  <div class="danger">{{ jsonErrors()[f.key] }}</div>
+                }
+                @case ('number') {
+                  <nz-input-number
+                    [id]="idFor(f)"
+                    [name]="f.key"
+                    [ngModel]="config()[f.key] ?? null"
+                    (ngModelChange)="set(f, $event)"
+                    [nzMin]="f.min ?? NEG_INF"
+                    [nzMax]="f.max ?? POS_INF"
+                    [nzStep]="f.integer ? 1 : 0.1"
+                    [nzPrecision]="f.integer ? 0 : null"
+                    style="width: 200px"
+                  />
+                }
+                @case ('tags') {
+                  <nz-select
+                    [id]="idFor(f)"
+                    [name]="f.key"
+                    [nzMode]="f.options ? 'multiple' : 'tags'"
+                    [ngModel]="asArray(config()[f.key])"
+                    (ngModelChange)="set(f, $event)"
+                    [nzTokenSeparators]="[',']"
+                    nzPlaceHolder="Type and press enter"
+                    i18n-nzPlaceHolder="@@workflows.schemaForm.typeEnter"
+                  >
+                    @for (o of f.options ?? []; track o.label) {
+                      <nz-option [nzValue]="o.value" [nzLabel]="o.label" />
+                    }
+                  </nz-select>
+                }
+                @case ('json') {
+                  <textarea
+                    nz-input
+                    class="mono-textarea"
+                    [id]="idFor(f)"
+                    [name]="f.key"
+                    [ngModel]="jsonDraft()[f.key] || asJson(config()[f.key])"
+                    (ngModelChange)="setJson(f, $event)"
+                    [nzAutosize]="{ minRows: 3, maxRows: 16 }"
+                    placeholder="JSON"
+                  ></textarea>
+                  @if (jsonErrors()[f.key]) {
+                    <div class="danger">{{ jsonErrors()[f.key] }}</div>
+                  }
+                }
+                @default {
+                  <input
+                    nz-input
+                    [id]="idFor(f)"
+                    [name]="f.key"
+                    [ngModel]="asString(config()[f.key])"
+                    (ngModelChange)="set(f, $event)"
+                    [placeholder]="
+                      f.default !== undefined ? defaultHint(f.default) : (f.placeholder ?? '')
+                    "
+                  />
                 }
               }
-              @default {
-                <input
-                  nz-input
-                  [id]="idFor(f)"
-                  [name]="f.key"
-                  [ngModel]="asString(config()[f.key])"
-                  (ngModelChange)="set(f, $event)"
-                  [placeholder]="
-                    f.default !== undefined ? defaultHint(f.default) : (f.placeholder ?? '')
-                  "
-                />
-              }
-            }
-          </nz-form-control>
-        </nz-form-item>
+            </nz-form-control>
+          </nz-form-item>
+        }
       }
 
       @if (extra().length) {

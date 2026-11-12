@@ -133,27 +133,21 @@ interface NodeExecutor {
 }
 
 /**
- * ADR 0056: how a task step runs, following from its agent and its config: a model answer in-process, the Spec Kit job
- * (coding agent and a `phase`) or the agent job (coding agent otherwise, the former IMPLEMENT).
+ * ADR 0056: how a task step runs, following from its agent: a model answer in-process or the agent job (a coding agent,
+ * the former IMPLEMENT). ADR 0063: the Spec Kit job is gone.
  */
 enum class TaskRunKind {
-    MODEL_ANSWER, SPEC_KIT, AGENT_JOB;
+    MODEL_ANSWER, AGENT_JOB;
 
     /** The step runs in the runner sandbox with a repository workspace. */
     val runner: Boolean get() = this != MODEL_ANSWER
 
     companion object {
-        const val PHASE = "phase"
-
-        fun of(task: ResolvedTask): TaskRunKind = when {
-            task.agent.modelAnswer -> MODEL_ANSWER
-            !task.config[PHASE]?.toString().isNullOrBlank() -> SPEC_KIT
-            else -> AGENT_JOB
-        }
+        fun of(task: ResolvedTask): TaskRunKind = if (task.agent.modelAnswer) MODEL_ANSWER else AGENT_JOB
     }
 }
 
-/** Strategy executing one [TaskRunKind] (model answer in-process, Spec Kit and agent jobs in the runner). */
+/** Strategy executing one [TaskRunKind] (model answer in-process, agent jobs in the runner). */
 interface TaskExecutorStrategy {
     val runKind: TaskRunKind
     fun execute(context: NodeContext, task: ResolvedTask): NodeResult
@@ -175,10 +169,14 @@ data class ActionStep(
     val runInputs: List<RunInputField> = emptyList(),
 )
 
-/** Strategy executing one [ActionType] (Jira reads and writes, starting workflows, the project digest). */
+/** Strategy executing one [ActionType] (Jira reads and writes, starting workflows, the project digest, delivery). */
 interface ActionStrategy {
     val type: ActionType
     fun execute(context: NodeContext, step: ActionStep): NodeResult
+
+    /** ADR 0063: maps the result of the runner job [jobId] that [execute] submitted (runner-backed actions only). */
+    fun resume(context: NodeContext, step: ActionStep, jobId: RunnerJobId): NodeResult =
+        NodeResult.failure("action $type does not wait for runner jobs")
 
     /** Writes exactly the approved [write] prepared by [execute] (write actions only, ADR 0033). */
     fun commit(context: NodeContext, step: ActionStep, write: PendingWrite): NodeResult =

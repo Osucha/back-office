@@ -1,6 +1,6 @@
 # Mój komputer jako runner
 
-Kroki agentowe (Spec Kit, implementacja, benchmarki kodowania) działają w piaskownicach [floty runnerów](runner-fleet.md).
+Kroki agentowe (specyfikacja, implementacja, benchmarki kodowania) i dostarczenia działają w piaskownicach [floty runnerów](runner-fleet.md).
 Kroki Twoich **projektów prywatnych** ([Moja praca](my-work.md#private-projects)) możesz zamiast tego uruchamiać na
 **własnym komputerze**, podobnie jak GitLab runner: mały kontroler w Dockerze na Twoim komputerze pyta Back Office o
 pracę i uruchamia każdy krok w osobnym kontenerze-piaskownicy. Opcjonalnie Claude Code w tych krokach używa **Twojego

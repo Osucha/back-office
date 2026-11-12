@@ -206,9 +206,12 @@ class EnvironmentFilesTests(unittest.TestCase):
     def test_only_coding_modes_of_a_harness_get_files(self):
         for job in (ep.parse_spec(spec(mode="PROMPT", agent="CLAUDE_CODE", instructions=DOC, mcpServers=SERVERS)),):
             self.assertEqual(ep.prepare_agent_files(job, self.ws, {}, self.logs.append), ep.AgentFiles())
-        for mode in ("SPEC_KIT", "EVAL_CODING"):
+        for mode in ("IMPLEMENT", "EVAL_CODING"):
             files = ep.prepare_agent_files(ep.parse_spec(spec(mode=mode, instructions=DOC)), self.ws, {}, self.logs.append)
             self.assertIsNotNone(files.instructions, mode)
+        # ADR 0063: a DELIVER job runs no agent
+        deliver = ep.parse_spec({"mode": "DELIVER", "repositories": [], "instructions": DOC, "agentHome": "writer"})
+        self.assertEqual(ep.prepare_agent_files(deliver, self.ws, {}, self.logs.append), ep.AgentFiles())
         self.assertFalse((self.ws / ".claude-config").exists())
 
 
@@ -348,16 +351,23 @@ class MainFlowTests(unittest.TestCase):
             self.assertEqual(len(self.answers(result)), 1)
             self.assertIn("[spec] WARN mcpServers[0] ignored", stdout)
 
-    def test_collected_but_never_pushed(self):
+    def test_collected_but_never_delivered(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             tmp_path = Path(tmp)
             origin = make_origin(tmp_path, "src")
-            repo = {"key": "src", "url": str(origin), "baseBranch": "main", "access": "PUSH_MR", "path": "src",
-                    "primary": True, "pushBranch": "feature/answer"}
+            repo = {"key": "src", "url": str(origin), "baseBranch": "main", "access": "READ", "path": "src", "primary": True}
+            run_dir = {"name": WS_NAME, "key": "main"}
             write = self.stub("import pathlib; pathlib.Path('structured-answer.json').write_text('{}'); pathlib.Path('a.kt').write_text('x')")
-            result, _ = self.run_main(tmp_path, self.job(write, repositories=[repo], runId="11111111-2222-4333-8444-555555555555"))
+            result, _ = self.run_main(tmp_path, self.job(write, repositories=[repo], runId="11111111-2222-4333-8444-555555555555",
+                                                         workspace=run_dir))
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertEqual(len(self.answers(result)), 1)
+            self.assertNotIn("structured-answer.json", result["diff"])
+            # ADR 0063: the delivery commits the change, never the answer
+            deliver = {"mode": "DELIVER", "workspace": run_dir, "runId": "11111111-2222-4333-8444-555555555555",
+                       "repositories": [dict(repo, access="PUSH_MR", pushBranch="feature/answer")]}
+            delivered, _ = self.run_main(tmp_path, deliver)
+            self.assertEqual(delivered["status"], "SUCCEEDED", delivered)
             files = git(origin, "ls-tree", "--name-only", "feature/answer").split()
             self.assertIn("a.kt", files)
             self.assertNotIn("structured-answer.json", files)

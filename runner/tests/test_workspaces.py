@@ -1,5 +1,5 @@
 """Run workspaces and agent sessions (ADR 0044): parsing, reuse of clones between jobs of one run, prepare-only jobs,
-uncommitted work handed on, `.git` rewritten on reuse, session ids per role. Run with:
+uncommitted work handed on, `.git` rewritten on reuse, session ids per role, the delivery (ADR 0063). Run with:
 python3 -m unittest discover -s runner/tests"""
 
 from __future__ import annotations
@@ -100,7 +100,8 @@ class AgentSessionTests(unittest.TestCase):
 
 @unittest.skipUnless(HAS_GIT, "git not installed")
 class WorkspaceMainFlowTests(unittest.TestCase):
-    """Three jobs of one run in one workspace directory: prepare, a read-only step, a pushing step."""
+    """Four jobs of one run in one workspace directory: prepare, a read-only step, an implementing step (never pushes)
+    and the delivery (ADR 0063)."""
 
     def stub(self, code: str) -> str:
         return f'"{sys.executable}" -c "{code}"'
@@ -159,19 +160,40 @@ class WorkspaceMainFlowTests(unittest.TestCase):
             hook = src / ".git" / "hooks" / "post-checkout"
             hook.write_text("#!/bin/sh\necho planted\n")
 
-            # 3. a pushing step continues on the same tree and pushes everything to the run branch
+            # 3. an implementing step continues on the same tree; even with PUSH_MR in its spec it never pushes (ADR 0063)
             code = self.stub("import pathlib; print('notes', pathlib.Path('NOTES.md').read_text()); pathlib.Path('cart.kt').write_text('fun cart() = 2')")
-            result, _ = self.run_main(tmp_path, self.job("PUSH_MR", code, workspace=workspace(sessionRole="implementer")))
+            result, stdout = self.run_main(tmp_path, self.job("PUSH_MR", code, workspace=workspace(sessionRole="implementer")))
             self.assertEqual(result["status"], "SUCCEEDED", result)
             self.assertIn("notes check cart", result["summary"])
+            self.assertIn("an agent job never commits or pushes (ADR 0063)", stdout)
+            self.assertFalse({r["key"]: r for r in result["repositories"]}["src"]["pushed"])
+            self.assertEqual(git(self.origin, "for-each-ref", "--format=%(refname)", "refs/heads").split(), ["refs/heads/main"])
+            self.assertIn("+fun cart() = 2", result["diff"])
+            self.assertIn("NOTES.md", result["diff"])
+            self.assertNotIn("alias.st", git(src, "config", "--list"))
+            self.assertFalse(hook.exists())
+            self.assertEqual(git(src, "config", "remote.origin.pushurl").strip(), ep.DISABLED_PUSH_URL)
+
+            # 4. the delivery commits everything the steps left and pushes it to the run branch (no agent runs)
+            git(src, "config", "alias.st", "status")
+            hook.write_text("#!/bin/sh\necho planted\n")
+            deliver = dict(self.job("PUSH_MR", "unused", workspace=workspace()), mode="DELIVER", commitSubject="WS-1: cart")
+            result, stdout = self.run_main(tmp_path, deliver)
+            self.assertEqual(result["status"], "SUCCEEDED", result)
+            self.assertNotIn("notes", result["summary"])
             pushed = {r["key"]: r for r in result["repositories"]}["src"]
             self.assertTrue(pushed["pushed"], result)
+            self.assertEqual(pushed["branch"], "feature/ws-1")
             files = git(self.origin, "ls-tree", "--name-only", "feature/ws-1").split()
             self.assertIn("cart.kt", files)
             self.assertIn("NOTES.md", files)
+            self.assertIn("prepared.txt", files)
+            self.assertEqual(git(self.origin, "log", "-1", "--format=%s", "feature/ws-1").strip(), "WS-1: cart")
+            self.assertIn("reused from an earlier step", stdout)
             self.assertNotIn("alias.st", git(src, "config", "--list"))
             self.assertFalse(hook.exists())
             self.assertNotIn("pushurl", git(src, "config", "--list"))
+            self.assertEqual(git(src, "status", "--porcelain"), "")
 
     @unittest.skipIf(os.name == "nt", "Windows cannot rmtree the read-only git objects of the earlier clone (Linux sandboxes can)")
     def test_without_a_workspace_a_job_clones_afresh(self):
