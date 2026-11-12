@@ -1,7 +1,10 @@
 import type { Agent } from '../../../core/api/types';
 import {
   ACCESS_MODES,
+  AGENT_DIRECTORIES,
   AGENT_KINDS,
+  AGENT_SESSIONS,
+  accessDirectory,
   accessMode,
   accessPaths,
   accessProblem,
@@ -9,6 +12,7 @@ import {
   agentDraft,
   agentPayload,
   agentSavable,
+  agentSession,
   customizeAgentForProject,
   emptyAgent,
   harnessOf,
@@ -18,12 +22,14 @@ import {
   mcpServerProblem,
   patchMcpServer,
   removeMcpServer,
+  withAccessDirectory,
   withAccessMode,
   withAccessPaths,
 } from './agent-form';
 
 describe('agent form (ADR 0056/0057)', () => {
   const saved: Agent = {
+    session: 'PER_STEP',
     id: 'a1',
     key: 'cheap-coder',
     name: 'Cheap coder',
@@ -67,6 +73,7 @@ describe('agent form (ADR 0056/0057)', () => {
       rules: ['agent-ground-rules'],
       skills: ['spec-writing'],
       mcpServers: [{ name: 'docs', url: 'https://mcp.example.com/docs' }],
+      session: 'PER_STEP',
       tags: ['budget'],
     });
     expect(d.tags).not.toBe(saved.tags);
@@ -143,18 +150,53 @@ describe('agent form (ADR 0056/0057)', () => {
     const docs = withAccessPaths(paths, [' docs/** ', '', 'docs/**', 'README.md']);
     expect(accessPaths(docs)).toEqual(['docs/**', 'README.md']);
     expect(agentSavable(docs)).toBe(true);
-    expect(agentPayload(docs).access).toEqual({ mode: 'PATHS', paths: ['docs/**', 'README.md'] });
+    expect(agentPayload(docs).access).toEqual({
+      mode: 'PATHS',
+      directory: 'RUN',
+      paths: ['docs/**', 'README.md'],
+    });
     // switching mode keeps the paths for a switch back, but sends none
     const readOnly = withAccessMode(docs, 'READ_ONLY');
     expect(readOnly.access?.paths).toHaveLength(4);
-    expect(agentPayload(readOnly).access).toEqual({ mode: 'READ_ONLY' });
+    expect(agentPayload(readOnly).access).toEqual({ mode: 'READ_ONLY', directory: 'RUN' });
     expect(agentPayload({ ...docs, harness: null }).access).toBeUndefined();
     expect(agentPayload(coder).access).toBeUndefined();
-    expect(agentDraft({ ...saved, access: { mode: 'READ_ONLY' } }).access).toEqual({
+    expect(
+      agentDraft({ ...saved, access: { directory: 'RUN', mode: 'READ_ONLY' } }).access,
+    ).toEqual({
       mode: 'READ_ONLY',
+      directory: 'RUN',
       paths: [],
     });
     expect(ACCESS_MODES).toEqual(['FULL', 'READ_ONLY', 'PATHS']);
+  });
+
+  it('edits the directory and the session of a coding agent (ADR 0062)', () => {
+    const coder = { ...emptyAgent(), name: 'Isolated', harness: 'CLAUDE_CODE' as const };
+    expect(agentSession(coder)).toBe('PER_STEP');
+    expect(accessDirectory(coder)).toBe('RUN');
+    const separate = withAccessDirectory(coder, 'SEPARATE');
+    expect(accessDirectory(separate)).toBe('SEPARATE');
+    // the mode stays, the directory is kept when the mode changes
+    expect(accessMode(separate)).toBe('FULL');
+    expect(accessDirectory(withAccessMode(separate, 'READ_ONLY'))).toBe('SEPARATE');
+    const perRun = { ...separate, session: 'PER_RUN' as const };
+    expect(agentPayload(perRun)).toMatchObject({
+      session: 'PER_RUN',
+      access: { mode: 'FULL', directory: 'SEPARATE' },
+    });
+    // a model answer has no session to continue and no directory
+    const model = agentPayload({ ...perRun, harness: null });
+    expect(model.session).toBe('PER_STEP');
+    expect(model.access).toBeUndefined();
+    // a saved agent without the fields reads the defaults
+    const draft = agentDraft({ ...saved, session: undefined as never });
+    expect(draft.session).toBe('PER_STEP');
+    expect(
+      agentDraft({ ...saved, access: { mode: 'PATHS', paths: ['a'] } as never }).access?.directory,
+    ).toBe('RUN');
+    expect(AGENT_SESSIONS).toEqual(['PER_STEP', 'PER_RUN', 'FRESH']);
+    expect(AGENT_DIRECTORIES).toEqual(['RUN', 'SEPARATE']);
   });
 
   it('edits the MCP server rows', () => {

@@ -26,7 +26,6 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import pl.mos.backoffice.shared.testing.TestAgents
 import java.util.UUID
@@ -108,7 +107,7 @@ class ActionNodeExecutorTest {
     }
 
     private fun task(agent: pl.mos.backoffice.shared.tasks.AgentSnapshot, config: Map<String, Any?> = emptyMap()) = ResolvedTask(
-        "t", "T", agent, null, TaskPrompt(null, "x"), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf("t"), listOf("success", "failure"),
+        "t", "T", agent, null, ("x"), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf("t"), listOf("success", "failure"),
     )
 
     @Test

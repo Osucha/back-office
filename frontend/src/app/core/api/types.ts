@@ -137,8 +137,8 @@ export type Scope = S['Scope'];
 export type ScopeType = Scope['type'];
 /** ADR 0055: what kind of work a template does (groups the library list and the palette). */
 export type TemplateCategory = S['TemplateCategory'];
-export type TaskPrompt = S['TaskPrompt'];
-export type PromptMode = TaskPrompt['mode'];
+/** ADR 0062: how a template's instructions combine with its parent's. */
+export type InstructionsMode = S['TaskTemplateInput']['instructionsMode'];
 export type TaskTemplateInput = S['TaskTemplateInput'];
 export type TaskTemplate = S['TaskTemplate'];
 export type ResolvedTask = S['ResolvedTask'];
@@ -150,6 +150,10 @@ export type AgentInput = S['AgentInput'];
 export type Agent = S['Agent'];
 export type AgentAccess = S['AgentAccess'];
 export type AgentAccessMode = AgentAccess['mode'];
+/** ADR 0062: whether a coding agent works in the run directory or a separate one. */
+export type AgentDirectory = AgentAccess['directory'];
+/** ADR 0062: how a coding agent's conversation carries over (per step, per run, always fresh). */
+export type AgentSession = AgentInput['session'];
 export type AgentRef = S['AgentRef'];
 /** ADR 0061: the agents of a workflow draft with their environment and deterministic findings. */
 export type AgentAudit = S['AgentAudit'];
@@ -163,6 +167,9 @@ export type AgentMcpServer = S['AgentMcpServer'];
 /** ADR 0058: a typed parameter of a template, read in prompts as {{params.<name>}}. */
 export type TemplateParameter = S['TemplateParameter'];
 export type TemplateParameterType = TemplateParameter['type'];
+/** ADR 0062: where a step takes a parameter's value from (VALUE, START, ARTIFACT). */
+export type ParameterBinding = S['ParameterBinding'];
+export type ParameterSource = ParameterBinding['source'];
 /** ADR 0058: a parameter with the value a step uses and where it comes from. */
 export type ResolvedParameter = S['ResolvedParameter'];
 export type SkillInput = S['SkillInput'];

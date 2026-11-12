@@ -25,7 +25,10 @@ import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.platform.WorkRequest
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentDirectory
 import pl.mos.backoffice.shared.runner.AgentRunner
+import pl.mos.backoffice.shared.runner.AgentSession
 import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.RepoResult
 import pl.mos.backoffice.shared.runner.RunnerDiffStat
@@ -36,7 +39,6 @@ import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
 import java.time.Duration
@@ -67,7 +69,7 @@ class MultiRepositoryJobTest {
     }
 
     private fun task(config: Map<String, Any?>) = ResolvedTask(
-        key = "t", name = "T", agent = TestAgents.OPENCODE, modelProfileId = null, prompt = TaskPrompt(null, "Do {{issue.key}} in {{repos}}"),
+        key = "t", name = "T", agent = TestAgents.OPENCODE, modelProfileId = null, instructions = ("Do {{issue.key}} in {{repos}}"),
         skills = emptyList(), config = config, outputSchema = null, confidenceField = null,
         produces = emptyList(), consumes = emptyList(), category = null, lineage = listOf("t"), ports = listOf("success", "failure"),
     )
@@ -152,11 +154,14 @@ class MultiRepositoryJobTest {
     }
 
     @Test
-    fun `session NEW keeps the run directory without a session, SEPARATE gets a throwaway directory (ADR 0060)`() {
-        assertThat(submit(mapOf(RunDirectory.SESSION to "NEW")).workspace!!.let { it.key to it.sessionRole }).isEqualTo(RunnerWorkspace.RUN_KEY to null)
-        val separate = submit(mapOf(RunDirectory.DIRECTORY to "SEPARATE", RunDirectory.SESSION to "OWN"))
-        assertThat(separate.workspace).isNull()
-        assertThat(separate.prompt).doesNotContain("Run directory")
+    fun `a FRESH agent keeps the run directory without a session, a SEPARATE agent gets a throwaway directory (ADR 0062)`() {
+        val fresh = task(emptyMap()).let { it.copy(agent = it.agent.copy(session = AgentSession.FRESH)) }
+        support.run(context(), fresh, RunnerMode.IMPLEMENT, null, "x")
+        assertThat(runner.specs.last().workspace!!.let { it.key to it.sessionRole }).isEqualTo(RunnerWorkspace.RUN_KEY to null)
+        val alone = task(mapOf("directory" to "RUN")).let { it.copy(agent = it.agent.copy(access = AgentAccess(directory = AgentDirectory.SEPARATE))) }
+        support.run(context(), alone, RunnerMode.IMPLEMENT, null, "x")
+        assertThat(runner.specs.last().workspace).isNull()
+        assertThat(runner.specs.last().prompt).doesNotContain("Run directory")
     }
 
     @Test
@@ -176,11 +181,10 @@ class MultiRepositoryJobTest {
     }
 
     @Test
-    fun `an invalid directory setting fails the step before any job is submitted`() {
+    fun `a prepare step on an agent with a SEPARATE directory fails the step before any job is submitted`() {
         val before = runner.specs.size
-        assertThat(support.run(context(), task(mapOf(RunDirectory.DIRECTORY to "ELSEWHERE")), RunnerMode.IMPLEMENT, null, "x").error).contains("directory")
-        assertThat(support.run(context(), task(mapOf(RunDirectory.DIRECTORY to "SEPARATE", RunDirectory.PREPARE_ONLY to true)), RunnerMode.IMPLEMENT, null, "x").error)
-            .contains("prepare step")
+        val alone = task(mapOf(RunDirectory.PREPARE_ONLY to true)).let { it.copy(agent = it.agent.copy(access = AgentAccess(directory = AgentDirectory.SEPARATE))) }
+        assertThat(support.run(context(), alone, RunnerMode.IMPLEMENT, null, "x").error).contains("directory").contains("prepare step")
         assertThat(runner.specs).hasSize(before)
     }
 

@@ -14,7 +14,8 @@ const writer: TaskTemplate = {
   scope: { type: 'GLOBAL' },
   builtIn: false,
   version: 1,
-  runInputs: [{ name: 'audience', label: 'Audience', type: 'TEXT', required: true }],
+  instructions: 'Write the brief.',
+  instructionsMode: 'APPEND',
 };
 const baseAgent: TaskTemplate = {
   id: 't0',
@@ -24,10 +25,11 @@ const baseAgent: TaskTemplate = {
   scope: { type: 'GLOBAL' },
   builtIn: true,
   version: 1,
-  runInputs: [{ name: 'input', label: 'Input material', type: 'MULTILINE', required: false }],
+  instructions: 'Work carefully.',
+  instructionsMode: 'APPEND',
 };
 
-describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
+describe('TemplateEditorDrawerComponent', () => {
   let http: HttpTestingController;
 
   beforeEach(async () => {
@@ -48,39 +50,40 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     return { fixture, drawer: fixture.componentInstance };
   }
 
-  it('adds and removes run inputs and sends them with the save payload', () => {
-    const { drawer } = create(null);
+  it('edits one instructions field and sends no prompt, run inputs or sandbox (ADR 0062)', () => {
+    const { fixture, drawer } = create(null);
     let payload: TaskTemplateInput | null = null;
     drawer.saved.subscribe((p) => (payload = p));
-    drawer.patch({ key: 'brief', name: 'Brief' });
+    drawer.patch({ name: 'Brief', instructions: 'Write a one-page brief.' });
+    fixture.detectChanges();
 
-    drawer.addRunInput();
-    drawer.addRunInput();
-    expect(drawer.draft().runInputs?.length).toBe(2);
-    drawer.patchRunInput(0, { name: 'topic', label: 'Topic', type: 'MULTILINE', required: true });
-    drawer.removeRunInput(1);
+    expect(document.querySelector('#tt-instructions')).not.toBeNull();
+    for (const gone of ['#tt-sys', '#tt-user', '[data-run-input]', 'app-sandbox-policy-editor'])
+      expect(document.querySelector(gone)).toBeNull();
+    // no parent: no append / replace choice
+    expect(document.querySelector('[data-instructions-mode]')).toBeNull();
     drawer.submit();
-
-    expect(payload!.runInputs).toEqual([
-      { name: 'topic', label: 'Topic', type: 'MULTILINE', required: true, help: null },
-    ]);
+    expect(payload!.instructions).toBe('Write a one-page brief.');
+    expect(payload!.instructionsMode).toBe('APPEND');
+    for (const key of ['prompt', 'runInputs', 'sandboxPolicy']) expect(key in payload!).toBe(false);
   });
 
-  it('blocks saving while a run input has no label or a duplicate name', () => {
-    const { drawer } = create(null);
-    drawer.patch({ key: 'brief', name: 'Brief' });
-    drawer.addRunInput();
-    expect(drawer.canSave()).toBe(false);
-    expect(drawer.saveBlocker()).toContain('label');
-    drawer.patchRunInput(0, { label: 'Topic' });
-    expect(drawer.canSave()).toBe(true);
-    drawer.addRunInput();
-    drawer.patchRunInput(1, { name: 'field-1', label: 'Again' });
-    expect(drawer.canSave()).toBe(false);
-    expect(drawer.saveBlocker()).toContain('field-1');
+  it('offers append or replace over the parent only when there is one (ADR 0062)', () => {
+    const { fixture, drawer } = create(writer);
+    let payload: TaskTemplateInput | null = null;
+    drawer.saved.subscribe((p) => (payload = p));
+    fixture.detectChanges();
+    expect(document.querySelector('[data-instructions-mode]')).not.toBeNull();
+    expect(drawer.draft().instructions).toBe('Write the brief.');
+    drawer.patch({ instructionsMode: 'REPLACE' });
+    drawer.submit();
+    expect(payload!.instructionsMode).toBe('REPLACE');
+    drawer.patch({ extendsKey: null });
+    fixture.detectChanges();
+    expect(document.querySelector('[data-instructions-mode]')).toBeNull();
   });
 
-  it('lists the inherited fields of the resolved view with the template they come from', async () => {
+  it('shows the merged instructions in the preview (ADR 0062)', async () => {
     const { fixture, drawer } = create(writer);
     await new Promise((r) => setTimeout(r, 200));
     http
@@ -88,17 +91,30 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
       .flush({
         key: 'writer',
         lineage: ['writer', 'base-agent'],
-        runInputs: [
-          { name: 'input', label: 'Input material', type: 'MULTILINE', required: false },
-          { name: 'audience', label: 'Audience', type: 'TEXT', required: true },
-        ],
+        instructions: 'Work carefully.\n\nWrite the brief.',
       });
     fixture.detectChanges();
 
-    expect(drawer.previewRunInputs().map((f) => [f.name, f.from])).toEqual([
-      ['input', 'base-agent'],
-      ['audience', 'writer'],
-    ]);
+    expect(drawer.preview()?.instructions).toBe('Work carefully.\n\nWrite the brief.');
+    expect(document.querySelector('[data-preview-instructions]')?.textContent).toContain(
+      'Write the brief.',
+    );
+  });
+
+  it('declares an issue key parameter (ADR 0062)', () => {
+    const { drawer } = create(null);
+    let payload: TaskTemplateInput | null = null;
+    drawer.saved.subscribe((p) => (payload = p));
+    drawer.patch({ name: 'Fix' });
+    expect(drawer.parameterTypes.map((t) => t.value)).toContain('ISSUE_KEY');
+    expect(drawer.parameterTypes.find((t) => t.value === 'ISSUE_KEY')?.label).toBe(
+      'Jira issue key',
+    );
+    drawer.addParameter();
+    drawer.patchParameter(0, { name: 'issue', label: 'Issue', type: 'ISSUE_KEY', default: 'BO-1' });
+    expect(drawer.canSave()).toBe(true);
+    drawer.submit();
+    expect(payload!.parameters?.[0]).toMatchObject({ type: 'ISSUE_KEY', default: 'BO-1' });
   });
 
   it('renders the configuration with the keys of both kinds of steps (ADR 0061)', async () => {
@@ -332,7 +348,7 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     expect(preset!.scope).toEqual({ type: 'GLOBAL', projectId: null });
   });
 
-  it('keeps the run input controls disabled in a read-only drawer', async () => {
+  it('keeps the instructions read-only in a read-only drawer', async () => {
     const { fixture } = create(writer);
     fixture.componentRef.setInput('readonly', true);
     fixture.detectChanges();
@@ -340,11 +356,9 @@ describe('TemplateEditorDrawerComponent run inputs (ADR 0053)', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const row = document.querySelector('[data-run-input="0"]') as HTMLElement;
-    expect(row).not.toBeNull();
-    const inputs = Array.from(row.querySelectorAll('input')) as HTMLInputElement[];
-    expect(inputs.length).toBeGreaterThan(0);
-    expect(inputs.every((i) => i.disabled)).toBe(true);
-    expect(document.querySelector('.ri-add')).toBeNull();
+    const field = document.querySelector('#tt-instructions') as HTMLTextAreaElement;
+    expect(field).not.toBeNull();
+    expect(field.disabled || field.readOnly).toBe(true);
+    expect(document.querySelector('.pa-add')).toBeNull();
   });
 });

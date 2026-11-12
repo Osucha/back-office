@@ -14,9 +14,27 @@ const T = (over: Partial<TaskTemplate>): TaskTemplate =>
 
 describe('library filters', () => {
   const agents: Agent[] = [
-    { key: 'model-answer', name: 'Model answer', scope: { type: 'GLOBAL' }, harness: null },
-    { key: 'opencode', name: 'OpenCode', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
-    { key: 'claude-code', name: 'Claude Code', scope: { type: 'GLOBAL' }, harness: 'CLAUDE_CODE' },
+    {
+      session: 'PER_STEP',
+      key: 'model-answer',
+      name: 'Model answer',
+      scope: { type: 'GLOBAL' },
+      harness: null,
+    },
+    {
+      session: 'PER_STEP',
+      key: 'opencode',
+      name: 'OpenCode',
+      scope: { type: 'GLOBAL' },
+      harness: 'OPENCODE',
+    },
+    {
+      session: 'PER_STEP',
+      key: 'claude-code',
+      name: 'Claude Code',
+      scope: { type: 'GLOBAL' },
+      harness: 'CLAUDE_CODE',
+    },
   ];
 
   it('hides deprecated templates unless asked to show them', () => {

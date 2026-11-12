@@ -19,6 +19,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.tasks.ParameterBinding
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.time.Instant
 
@@ -68,11 +69,15 @@ object DefaultWorkflows {
     const val AGENT_ANALYST = "analyst"
     const val AGENT_REVIEWER = "reviewer"
 
-    /** ADR 0061: a task step of [templateKey] run by agent [agentKey]. */
-    private fun step(templateKey: String, agentKey: String) = TaskBinding(templateKey, TaskOverrides(agentKey = agentKey))
+    /** ADR 0061: a task step of [templateKey] run by agent [agentKey]; ADR 0062: [startParameters] bound to the run start. */
+    private fun step(templateKey: String, agentKey: String, vararg startParameters: String = arrayOf(INPUT_PARAMETER)) =
+        TaskBinding(templateKey, TaskOverrides(agentKey = agentKey, parameterBindings = startParameters.associateWith { ParameterBinding.START }))
 
-    /** ADR 0059: the task of the reference workflow's step (parameter `task` of `agent-task`; the issue is in its system prompt). */
-    const val REFERENCE_TASK = "Implement the issue above end to end. Read the repository first: its structure, conventions, build and tests. " +
+    /** ADR 0062: the input material parameter of the built-ins, bound to the run start so the start form asks for it as before. */
+    const val INPUT_PARAMETER = "input"
+
+    /** ADR 0059: the task of the reference workflow's step (parameter `task` of `agent-task`; ADR 0062: the issue follows it as a data section). */
+    const val REFERENCE_TASK = "Implement the issue below end to end. Read the repository first: its structure, conventions, build and tests. " +
         "Then implement the change the issue asks for, add or update the tests that prove it and run the build and the tests until they pass. " +
         "Finish with a summary: what you changed (files), how you verified it, the assumptions you made and what is left open."
 
@@ -205,7 +210,7 @@ object DefaultWorkflows {
                     checklist = SPEC_READY,
                 ),
             ),
-            WorkflowNode.Task("plan", "Plan", Point(1996.0, 40.0), task = step(TEMPLATE_PLAN, AGENT_OPENCODE)),
+            WorkflowNode.Task("plan", "Plan", Point(1996.0, 40.0), task = step(TEMPLATE_PLAN, AGENT_OPENCODE, INPUT_PARAMETER, "techHints")),
             WorkflowNode.Task("tasks", "Tasks", Point(2332.0, 40.0), task = step(TEMPLATE_TASKS, AGENT_OPENCODE)),
             WorkflowNode.Task("implement", "Implement", Point(2668.0, 40.0), maxVisits = 3, task = step(TEMPLATE_IMPLEMENT, AGENT_OPENCODE)),
             WorkflowNode.WaitForCi(NODE_CI_TESTS, "Wait for CI tests", Point(3004.0, 40.0), ci = CiWaitSpec(signal = "tests", timeoutSeconds = 7200)),
@@ -280,7 +285,7 @@ object DefaultWorkflows {
                     TaskOverrides(
                         agentKey = AGENT_CLAUDE_CODE,
                         config = mapOf("push" to true, "mergeRequest" to true),
-                        parameters = mapOf("task" to REFERENCE_TASK),
+                        parameterBindings = mapOf("task" to ParameterBinding.value(REFERENCE_TASK), INPUT_PARAMETER to ParameterBinding.START),
                     ),
                 ),
             ),

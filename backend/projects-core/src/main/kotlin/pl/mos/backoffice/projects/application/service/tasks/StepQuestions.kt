@@ -7,8 +7,6 @@ import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.domain.model.AgentQuestion
 import pl.mos.backoffice.projects.domain.model.AgentQuestions
 import pl.mos.backoffice.projects.domain.service.RunDirectory
-import pl.mos.backoffice.projects.domain.service.TemplateRenderer
-import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.prompt.UntrustedText
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentText
 import pl.mos.backoffice.shared.tasks.ResolvedTask
@@ -62,16 +60,6 @@ object StepQuestions {
     }
 
     /**
-     * The section the step's prompt ends with after the owner answered: "## Answers of the owner" with `{{answers}}`
-     * (agent questions are agent output: rendered as a data block); null before any answer.
-     */
-    fun answersSection(context: NodeContext, renderer: TemplateRenderer, model: Map<String, Any?>, blocks: PromptDataBlocks): String? {
-        RunStateKeys.answersOf(context.state, context.node.id) ?: return null
-        val rendered = renderer.renderPrompt(ANSWERS_TEMPLATE, model, blocks)
-        return rendered.text
-    }
-
-    /**
      * Applies the limit to a [result] that carries questions: within it the result waits for the answers (round set);
      * over it the questions go to the step log and the step fails. Results without questions pass unchanged.
      */
@@ -90,7 +78,10 @@ object StepQuestions {
         return result.copy(port = null, questionRound = answered + 1, maxQuestionRounds = settings.maxRounds, artifacts = emptyList(), stateUpdates = emptyMap())
     }
 
-    /** `{{answers}}` in the prompt: what [answersSection] renders. */
+    /**
+     * The section after the owner answered (ADR 0062: a standard section of [TaskMessage]): `{{answers}}` is agent output
+     * and the owner's text, rendered as a data block.
+     */
     const val ANSWERS_TEMPLATE = "## Answers of the owner\nYou asked the owner earlier in this step; these are the answers. Continue the step with them.\n\n{{answers}}"
 
     private fun clean(text: String?): String? = text?.let { UntrustedText.sanitize(it, AgentQuestions.MAX_CHARS).trim() }?.takeIf { it.isNotEmpty() }

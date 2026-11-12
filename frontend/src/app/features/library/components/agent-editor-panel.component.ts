@@ -21,8 +21,10 @@ import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type {
   Agent,
   AgentAccessMode,
+  AgentDirectory,
   AgentInput,
   AgentMcpServer,
+  AgentSession,
   ModelProfile,
   Project,
   Rule,
@@ -33,8 +35,10 @@ import { IdentityService } from '../../../core/auth/identity.service';
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import {
   agentAccessModeLabel,
+  agentDirectoryLabel,
   agentKindDescription,
   agentKindLabel,
+  agentSessionLabel,
 } from '../../../core/ui/agents';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ActionBarComponent } from '../../../core/ui/relay/action-bar.component';
@@ -42,20 +46,25 @@ import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component
 import { SidePanelComponent } from '../../../core/ui/relay/side-panel.component';
 import {
   ACCESS_MODES,
+  AGENT_DIRECTORIES,
   AGENT_KINDS,
+  AGENT_SESSIONS,
   type AgentKindValue,
+  accessDirectory,
   accessMode,
   accessProblem,
   addMcpServer,
   agentDraft,
   agentPayload,
   agentSavable,
+  agentSession,
   emptyAgent,
   harnessOf,
   kindValue,
   mcpServerProblem,
   patchMcpServer,
   removeMcpServer,
+  withAccessDirectory,
   withAccessMode,
   withAccessPaths,
 } from '../data/agent-form';
@@ -324,6 +333,51 @@ function visibleOptions(
               }
             </nz-form-control>
           </nz-form-item>
+          <nz-form-item data-agent-directory>
+            <nz-form-label [nzTooltipTitle]="text.directoryHelp" i18n="@@library.agents.directory"
+              >Directory</nz-form-label
+            >
+            <nz-form-control>
+              <nz-radio-group
+                name="accessDirectory"
+                nzSize="small"
+                [ngModel]="directory()"
+                (ngModelChange)="setDirectory($event)"
+              >
+                @for (d of directories; track d.value) {
+                  <label nz-radio-button [nzValue]="d.value" [attr.data-directory]="d.value">{{
+                    d.label
+                  }}</label>
+                }
+              </nz-radio-group>
+            </nz-form-control>
+          </nz-form-item>
+          <nz-form-item data-agent-session>
+            <nz-form-label [nzTooltipTitle]="sessionHelp" i18n="@@library.agents.session"
+              >Session</nz-form-label
+            >
+            <ng-template #sessionHelp
+              ><span i18n="@@library.agents.session.help">
+                Per step: repeated executions of one step (e.g. rework) continue its conversation.
+                One per run: all steps of this agent in a run are one conversation. Always fresh:
+                every execution starts anew. In a separate directory nothing is continued.
+              </span></ng-template
+            >
+            <nz-form-control>
+              <nz-radio-group
+                name="session"
+                nzSize="small"
+                [ngModel]="session()"
+                (ngModelChange)="patch({ session: $event })"
+              >
+                @for (x of sessions; track x.value) {
+                  <label nz-radio-button [nzValue]="x.value" [attr.data-session]="x.value">{{
+                    x.label
+                  }}</label>
+                }
+              </nz-radio-group>
+            </nz-form-control>
+          </nz-form-item>
         }
         <nz-form-item data-mcp-servers>
           <nz-form-label
@@ -583,6 +637,7 @@ export class AgentEditorPanelComponent {
     mcpModelAnswer: $localize`:@@library.agents.mcp.modelAnswer:Only coding agents use MCP servers; a model answer has no tools.`,
     accessHelp: $localize`:@@library.agents.access.help:What the agent may change in the repositories of its steps. After the agent finished, Back Office reverts every other change and lists it in the step's log.`,
     accessPathsRequired: $localize`:@@library.agents.access.pathsRequired:Name at least one path, e.g. docs/**`,
+    directoryHelp: $localize`:@@library.agents.directory.help:Run directory: the coding steps of a run work here one after another and see what earlier steps left. Separate directory: a fresh copy of only the step's repositories, thrown away after the step; for an agent that must not see the rest.`,
     shadow: $localize`:@@library.agents.shadowNote:This project copy replaces the global agent with the same key in this project's steps.`,
   };
 
@@ -592,6 +647,12 @@ export class AgentEditorPanelComponent {
     help: agentKindDescription(h),
   }));
   readonly accessModes = ACCESS_MODES.map((m) => ({ value: m, label: agentAccessModeLabel(m) }));
+  /** ADR 0062: the directory and the session of a coding agent. */
+  readonly directories = AGENT_DIRECTORIES.map((d) => ({
+    value: d,
+    label: agentDirectoryLabel(d),
+  }));
+  readonly sessions = AGENT_SESSIONS.map((x) => ({ value: x, label: agentSessionLabel(x) }));
 
   readonly scopeProjects = computed(() => editableProjects(this.identity, this.projects()));
   readonly canEditDraft = computed(() => {
@@ -603,6 +664,8 @@ export class AgentEditorPanelComponent {
   });
   readonly kind = computed<AgentKindValue>(() => kindValue(this.draft().harness));
   readonly access = computed<AgentAccessMode>(() => accessMode(this.draft()));
+  readonly directory = computed<AgentDirectory>(() => accessDirectory(this.draft()));
+  readonly session = computed<AgentSession>(() => agentSession(this.draft()));
   readonly accessError = computed(() => accessProblem(this.draft()));
   readonly dirty = computed(
     () => this.open() && this.canEditDraft() && JSON.stringify(this.draft()) !== this.initialJson(),
@@ -687,6 +750,10 @@ export class AgentEditorPanelComponent {
 
   setAccessPaths(paths: string[]): void {
     this.draft.update((d) => withAccessPaths(d, paths));
+  }
+
+  setDirectory(directory: AgentDirectory): void {
+    this.draft.update((d) => withAccessDirectory(d, directory));
   }
 
   setScope(type: 'GLOBAL' | 'PROJECT'): void {

@@ -10,8 +10,9 @@ import pl.mos.backoffice.shared.tasks.TaskCatalog
 import java.util.UUID
 
 /**
- * The run start form of a workflow (ADR 0053): library tasks and actions (ADR 0056) declare run inputs, a workflow asks
- * for the union of the inputs of its task and action steps. The START node declares nothing of its own.
+ * The run start form of a workflow (ADR 0053/0062): task steps contribute the parameters they bind `START`, actions (ADR
+ * 0056) their run inputs; a workflow asks
+ * for the union of them. The START node declares nothing of its own.
  */
 object RunInputs {
 
@@ -64,6 +65,12 @@ object RunInputs {
                         "parameters.${field.name}",
                         "run input \"${field.label}\" (${field.name}) must be an issue key such as ABC-123",
                     )
+                // ADR 0062: a START-bound parameter checks its type (number, true/false, one of the options)
+                !value.isNullOrBlank() && field.parameter?.valueProblem(value.trim()) != null ->
+                    ValidationException.FieldError(
+                        "parameters.${field.name}",
+                        "run input \"${field.label}\" (${field.name}): ${field.parameter?.valueProblem(value.trim())}",
+                    )
                 else -> null
             }
         }
@@ -94,7 +101,8 @@ object RunInputs {
     }
 
     /**
-     * The run inputs the template of [node] declares, or none when the template is unknown or cannot be resolved. When
+     * The run start fields of task step [node] (ADR 0062: the parameters it binds `START`), or none when the template is
+     * unknown or cannot be resolved. When
      * the step reads the issue key from another parameter (`config.issueKeyFrom` other than `input`), its `ISSUE_KEY`
      * fields are optional.
      */

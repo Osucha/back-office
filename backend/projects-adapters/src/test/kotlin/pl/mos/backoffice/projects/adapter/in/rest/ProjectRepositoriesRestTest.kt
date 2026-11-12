@@ -19,7 +19,6 @@ import pl.mos.backoffice.projects.adapter.FakeTaskCatalog
 import pl.mos.backoffice.projects.adapter.ProjectsTestApplication
 import pl.mos.backoffice.projects.adapter.ProjectsTestBeans
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
@@ -107,7 +106,7 @@ class ProjectRepositoriesRestTest {
     fun `a coding step in a project without repositories is a validation error, an LLM step is fine`() {
         tasks.register(
             ResolvedTask(
-                "rest-implement", "Implement", TestAgents.OPENCODE, null, TaskPrompt(null, "x"), emptyList(), emptyMap(), null, null,
+                "rest-implement", "Implement", TestAgents.OPENCODE, null, ("x"), emptyList(), emptyMap(), null, null,
                 emptyList(), emptyList(), null, listOf("rest-implement"), listOf("success", "failure"),
             ),
         )

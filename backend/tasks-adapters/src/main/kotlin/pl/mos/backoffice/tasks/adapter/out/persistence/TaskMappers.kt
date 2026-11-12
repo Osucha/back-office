@@ -4,16 +4,15 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentAccessMode
+import pl.mos.backoffice.shared.runner.AgentDirectory
+import pl.mos.backoffice.shared.runner.AgentSession
 import pl.mos.backoffice.shared.runner.AgentMcpServer
 import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.AgentId
-import pl.mos.backoffice.tasks.domain.model.Prompt
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.RuleId
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -39,16 +38,14 @@ class TaskMappers(private val json: JsonMapper) {
         category = t.category,
         scopeType = scopeType(t.scope),
         projectId = t.scope.projectId,
-        promptSystem = t.prompt.system,
-        promptUser = t.prompt.user,
-        promptMode = t.prompt.mode,
+        instructions = t.instructions,
+        instructionsMode = t.instructionsMode,
         config = json.writeValueAsString(t.config),
         outputSchema = t.outputSchema,
         confidenceField = t.confidenceField,
         produces = json.writeValueAsString(t.produces),
         consumes = json.writeValueAsString(t.consumes),
         tags = json.writeValueAsString(t.tags),
-        runInputs = json.writeValueAsString(t.runInputs.map(::runInputMap)),
         parameters = json.writeValueAsString(t.parameters.map(::parameterMap)),
         parameterValues = json.writeValueAsString(t.parameterValues),
         requiresSkills = json.writeValueAsString(t.requiresSkills),
@@ -70,14 +67,14 @@ class TaskMappers(private val json: JsonMapper) {
         extendsKey = e.extendsKey,
         category = e.category,
         scope = Scope.of(e.projectId),
-        prompt = Prompt(e.promptSystem, e.promptUser, e.promptMode),
+        instructions = e.instructions,
+        instructionsMode = e.instructionsMode,
         config = readMap(e.config),
         outputSchema = e.outputSchema,
         confidenceField = e.confidenceField,
         produces = readStrings(e.produces),
         consumes = readStrings(e.consumes),
         tags = readStrings(e.tags),
-        runInputs = readList(e.runInputs).mapNotNull(::runInput),
         builtIn = e.builtIn,
         version = e.version,
         createdAt = e.createdAt,
@@ -88,37 +85,12 @@ class TaskMappers(private val json: JsonMapper) {
         requiresSkills = readStrings(e.requiresSkills),
     )
 
-    private fun runInputMap(f: RunInputField) =
-        mapOf("name" to f.name, "label" to f.label, "type" to f.type.name, "required" to f.required, "help" to f.help)
-
-    /**
-     * One stored run input, or null for an entry that is not an object or no longer forms a valid field (no name, a
-     * name or label the domain refuses): one bad entry must not break every workflow that resolves the template. An
-     * unknown type reads as TEXT.
-     */
-    private fun runInput(raw: Any?): RunInputField? {
-        val m = raw as? Map<*, *> ?: return null
-        val name = m["name"] as? String ?: return null
-        val label = m["label"] as? String ?: return null
-        return try {
-            RunInputField(
-                name = name,
-                label = label,
-                type = RunInputType.entries.firstOrNull { it.name == m["type"]?.toString() } ?: RunInputType.TEXT,
-                required = (m["required"] as? Boolean) ?: false,
-                help = m["help"] as? String,
-            )
-        } catch (_: ValidationException) {
-            null
-        }
-    }
-
     private fun parameterMap(p: TemplateParameter) = mapOf(
         "name" to p.name, "label" to p.label, "type" to p.type.name, "required" to p.required,
         "default" to p.default, "options" to p.options, "help" to p.help,
     )
 
-    /** ADR 0058: one stored parameter, or null for an entry that no longer forms a valid one (like [runInput]). */
+    /** ADR 0058: one stored parameter, or null for an entry that no longer forms a valid one: one bad entry must not break every workflow that resolves the template. */
     private fun parameter(raw: Any?): TemplateParameter? {
         val m = raw as? Map<*, *> ?: return null
         val name = m["name"] as? String ?: return null
@@ -229,7 +201,8 @@ class TaskMappers(private val json: JsonMapper) {
         rules = json.writeValueAsString(a.rules),
         skills = json.writeValueAsString(a.skills),
         mcpServers = json.writeValueAsString(a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) }),
-        access = json.writeValueAsString(mapOf("mode" to a.access.mode.name, "paths" to a.access.paths)),
+        access = json.writeValueAsString(mapOf("mode" to a.access.mode.name, "paths" to a.access.paths, "directory" to a.access.directory.name)),
+        session = a.session.name,
         modelProfileId = a.modelProfileId?.value,
         tags = json.writeValueAsString(a.tags),
         builtIn = a.builtIn,
@@ -252,6 +225,7 @@ class TaskMappers(private val json: JsonMapper) {
         skills = readStrings(e.skills),
         mcpServers = readList(e.mcpServers).mapNotNull(::mcpServer),
         access = access(e.access),
+        session = AgentSession.entries.firstOrNull { it.name == e.session } ?: AgentSession.PER_STEP,
         modelProfileId = e.modelProfileId?.let(::ModelProfileId),
         tags = readStrings(e.tags),
         builtIn = e.builtIn,
@@ -268,7 +242,9 @@ class TaskMappers(private val json: JsonMapper) {
         val map = runCatching { readMap(text) }.getOrNull() ?: return AgentAccess.FULL
         val mode = AgentAccessMode.entries.firstOrNull { it.name == map["mode"]?.toString() } ?: return AgentAccess.READ_ONLY
         val paths = (map["paths"] as? List<*>)?.mapNotNull { it?.toString() }.orEmpty()
-        return runCatching { AgentAccess(mode, if (mode == AgentAccessMode.PATHS) paths else emptyList()) }.getOrElse { AgentAccess.READ_ONLY }
+        // ADR 0062: no directory = RUN (rows before it); an unknown one reads as SEPARATE, the agent sees less
+        val directory = map["directory"]?.toString()?.let { d -> AgentDirectory.entries.firstOrNull { it.name == d } ?: AgentDirectory.SEPARATE } ?: AgentDirectory.RUN
+        return runCatching { AgentAccess(mode, if (mode == AgentAccessMode.PATHS) paths else emptyList(), directory) }.getOrElse { AgentAccess(AgentAccessMode.READ_ONLY, directory = directory) }
     }
 
     // ----- helpers ------------------------------------------------------------------------------------

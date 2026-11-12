@@ -11,16 +11,16 @@ import type { RunInputField } from '../../../../core/api/types';
 import { WorkflowsApi } from '../../../../core/api/workflows.service';
 
 /**
- * START node panel (ADR 0053): the run inputs a run of this workflow asks for, the union of what its task
- * steps declare in the task library. Read-only: START declares no fields of its own (decision L1).
+ * START node panel (ADR 0053/0062): the run inputs a run of this workflow asks for, the parameters its task steps
+ * bind to the start and the run inputs of its action nodes. Read-only: START declares no fields of its own.
  */
 @Component({
   selector: 'app-start-run-inputs',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <p class="muted small" i18n="@@workflows.props.runInputs.help">
-      The start form asks for the run inputs the task steps declare in the task library (saved
-      version). Edit them on the tasks, not here.
+    <p class="muted small" i18n="@@workflows.props.runInputs.startHelp">
+      The start form asks for the parameters the steps take from the start and for the run inputs of
+      the actions (saved version). Change them on the steps, not here.
     </p>
     @if (!workflowId()) {
       <p class="muted small" i18n="@@workflows.props.runInputs.unsaved">

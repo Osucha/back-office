@@ -7,6 +7,8 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.tasks.ParameterBinding
+import pl.mos.backoffice.shared.tasks.ParameterBindingSource
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
@@ -17,8 +19,7 @@ import pl.mos.backoffice.shared.tasks.ParameterSource
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.shared.runner.AgentMcpServer
-import pl.mos.backoffice.tasks.domain.model.Prompt
-import pl.mos.backoffice.tasks.domain.model.PromptMode
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.support.Library
 import java.util.UUID
@@ -30,26 +31,26 @@ class TaskResolverTest {
 
     @Test
     fun `a project template shadows the global one with the same key for that project only`() {
-        lib.template("review", prompt = Prompt(system = "global"))
-        lib.template("review", prompt = Prompt(system = "mine"), scope = Scope.Project(lib.projectId))
+        lib.template("review", instructions = "global")
+        lib.template("review", instructions = "mine", scope = Scope.Project(lib.projectId))
 
-        assertThat(resolver.resolve("review", null)!!.prompt.system).isEqualTo("global")
-        assertThat(resolver.resolve("review", lib.projectId)!!.prompt.system).isEqualTo("mine")
-        assertThat(resolver.resolve("review", UUID.randomUUID())!!.prompt.system).describedAs("other projects see the global one").isEqualTo("global")
+        assertThat(resolver.resolve("review", null)!!.instructions).isEqualTo("global")
+        assertThat(resolver.resolve("review", lib.projectId)!!.instructions).isEqualTo("mine")
+        assertThat(resolver.resolve("review", UUID.randomUUID())!!.instructions).describedAs("other projects see the global one").isEqualTo("global")
         assertThat(resolver.resolve("unknown", lib.projectId)).isNull()
     }
 
     @Test
     fun `a project template may extend the global template it shadows by its own key`() {
-        lib.template("review", prompt = Prompt(system = "global rules"), produces = listOf("review"))
-        lib.template("review", extendsKey = "review", prompt = Prompt(system = "project extras"), scope = Scope.Project(lib.projectId))
+        lib.template("review", instructions = "global rules", produces = listOf("review"))
+        lib.template("review", extendsKey = "review", instructions = "project extras", scope = Scope.Project(lib.projectId))
 
         val task = resolver.resolve("review", lib.projectId)!!
 
         assertThat(task.lineage).containsExactly("review", "review")
-        assertThat(task.prompt.system).isEqualTo("global rules\n\nproject extras")
+        assertThat(task.instructions).isEqualTo("global rules\n\nproject extras")
         assertThat(task.produces).containsExactly("review")
-        assertThat(resolver.resolve("review", null)!!.prompt.system).isEqualTo("global rules")
+        assertThat(resolver.resolve("review", null)!!.instructions).isEqualTo("global rules")
     }
 
     @Test
@@ -60,17 +61,16 @@ class TaskResolverTest {
 
     @Test
     fun `a three level chain merges root to leaf and reports the lineage leaf first`() {
-        lib.template("root", abstract = true, prompt = Prompt(system = "root system", user = "root user"), tags = listOf("aa"))
-        lib.template("middle", extendsKey = "root", prompt = Prompt(system = "middle system"), produces = listOf("diff"), tags = listOf("bb"))
-        lib.template("leaf", extendsKey = "middle", prompt = Prompt(user = "leaf user"), produces = listOf("mr"), tags = listOf("aa", "cc"), name = "Leaf")
+        lib.template("root", abstract = true, instructions = "root", tags = listOf("aa"))
+        lib.template("middle", extendsKey = "root", instructions = "middle", produces = listOf("diff"), tags = listOf("bb"))
+        lib.template("leaf", extendsKey = "middle", instructions = "leaf", produces = listOf("mr"), tags = listOf("aa", "cc"), name = "Leaf")
 
         val task = resolver.resolve("leaf", null, on("opencode"))!!
 
         assertThat(task.lineage).containsExactly("leaf", "middle", "root")
         assertThat(task.name).isEqualTo("Leaf")
         assertThat(task.agent).isEqualTo(AgentSnapshot("opencode", "OpenCode", AgentHarness.OPENCODE))
-        assertThat(task.prompt.system).isEqualTo("root system\n\nmiddle system")
-        assertThat(task.prompt.user).isEqualTo("root user\n\nleaf user")
+        assertThat(task.instructions).isEqualTo("root\n\nmiddle\n\nleaf")
         assertThat(task.produces).containsExactly("diff", "mr")
         assertThat(resolver.preview("leaf", null)!!.tags).containsExactly("aa", "bb", "cc")
     }
@@ -206,18 +206,15 @@ class TaskResolverTest {
     }
 
     @Test
-    fun `REPLACE drops the parent prompt while APPEND joins with a blank line, per field`() {
-        lib.template("root", abstract = true, prompt = Prompt(system = "parent system", user = "parent user"))
-        lib.template("append", extendsKey = "root", prompt = Prompt(system = "child system", mode = PromptMode.APPEND))
-        lib.template("replace", extendsKey = "root", prompt = Prompt(system = "child system", mode = PromptMode.REPLACE))
+    fun `ADR 0062 - REPLACE drops the parent instructions while APPEND joins with a blank line`() {
+        lib.template("root", abstract = true, instructions = "parent")
+        lib.template("append", extendsKey = "root", instructions = "child", instructionsMode = InstructionsMode.APPEND)
+        lib.template("replace", extendsKey = "root", instructions = "child", instructionsMode = InstructionsMode.REPLACE)
+        lib.template("silent", extendsKey = "root", instructionsMode = InstructionsMode.REPLACE)
 
-        val appended = resolver.resolve("append", null)!!.prompt
-        assertThat(appended.system).isEqualTo("parent system\n\nchild system")
-        assertThat(appended.user).isEqualTo("parent user")
-
-        val replaced = resolver.resolve("replace", null)!!.prompt
-        assertThat(replaced.system).isEqualTo("child system")
-        assertThat(replaced.user).describedAs("REPLACE only affects fields the child sets").isEqualTo("parent user")
+        assertThat(resolver.resolve("append", null)!!.instructions).isEqualTo("parent\n\nchild")
+        assertThat(resolver.resolve("replace", null)!!.instructions).isEqualTo("child")
+        assertThat(resolver.resolve("silent", null)!!.instructions).describedAs("a child without instructions keeps the parent's").isEqualTo("parent")
     }
 
     @Test
@@ -288,17 +285,17 @@ class TaskResolverTest {
         listOf("aa", "bb", "xx").forEach { lib.skill(it) }
         val model = ModelProfileId.new()
         lib.agent("skilled", skills = listOf("aa", "bb"))
-        lib.template("task", prompt = Prompt(system = "sys", user = "usr"), config = mapOf("k" to 1, "n" to mapOf("xx" to 1)))
+        lib.template("task", instructions = "usr", config = mapOf("k" to 1, "n" to mapOf("xx" to 1)))
 
         val overrides = TaskOverrides(
-            agentKey = "skilled", modelProfileId = model, systemPromptAppend = "more sys", promptReplace = "new usr", promptAppend = "and more",
+            agentKey = "skilled", modelProfileId = model, instructionsReplace = "new usr", instructionsAppend = "and more",
             config = mapOf("k" to 2, "n" to mapOf("y" to 2)),
         )
         val task = resolver.resolve("task", null, overrides)!!
 
         assertThat(task.modelProfileId).isEqualTo(model)
-        assertThat(task.prompt.system).isEqualTo("sys\n\nmore sys")
-        assertThat(task.prompt.user).isEqualTo("new usr\n\nand more")
+        assertThat(task.instructions).describedAs("the step's replacement first, then its notes").isEqualTo("new usr\n\nand more")
+        assertThat(resolver.resolve("task", null, TaskOverrides(instructionsAppend = "note"))!!.instructions).isEqualTo("usr\n\nnote")
         assertThat(task.skills.map { it.key }).containsExactly("aa", "bb")
         assertThat(task.config).isEqualTo(mapOf("k" to 2, "n" to mapOf("xx" to 1, "y" to 2)))
     }
@@ -336,12 +333,12 @@ class TaskResolverTest {
 
     @Test
     fun `an abstract leaf previews but does not resolve for execution`() {
-        lib.template("base", abstract = true, prompt = Prompt(system = "base"))
+        lib.template("base", abstract = true, instructions = "base")
 
         val preview = resolver.preview("base", null)!!
         assertThat(preview.abstract).isTrue()
         assertThat(preview.agent).isEqualTo(AgentSnapshot("model-answer", "Model answer"))
-        assertThat(preview.prompt.system).isEqualTo("base")
+        assertThat(preview.instructions).isEqualTo("base")
         assertThat(preview.executable).isFalse()
 
         assertThatThrownBy { resolver.resolve("base", null) }
@@ -456,36 +453,75 @@ class TaskResolverTest {
 
     @Test
     fun `ancestors are shadowed per project as well`() {
-        lib.template("base", abstract = true, prompt = Prompt(system = "global base"))
-        lib.template("base", abstract = true, prompt = Prompt(system = "project base"), scope = Scope.Project(lib.projectId))
-        lib.template("child", extendsKey = "base", prompt = Prompt(system = "child"))
+        lib.template("base", abstract = true, instructions = "global base")
+        lib.template("base", abstract = true, instructions = "project base", scope = Scope.Project(lib.projectId))
+        lib.template("child", extendsKey = "base", instructions = "child")
 
-        assertThat(resolver.resolve("child", null)!!.prompt.system).isEqualTo("global base\n\nchild")
-        assertThat(resolver.resolve("child", lib.projectId)!!.prompt.system).isEqualTo("project base\n\nchild")
+        assertThat(resolver.resolve("child", null)!!.instructions).isEqualTo("global base\n\nchild")
+        assertThat(resolver.resolve("child", lib.projectId)!!.instructions).isEqualTo("project base\n\nchild")
     }
 
     @Test
-    fun `run inputs are unioned root to leaf by name and the child field wins in place`() {
-        lib.template("root", abstract = true, runInputs = listOf(RunInputField("input", "Input material", RunInputType.MULTILINE), RunInputField("hints", "Hints")))
-        lib.template("middle", abstract = true, extendsKey = "root", runInputs = listOf(RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true)))
-        lib.template("leaf", extendsKey = "middle", runInputs = listOf(RunInputField("input", "Story text", RunInputType.MULTILINE, required = true, help = "paste the story")))
-
-        val leaf = resolver.resolve("leaf", null)!!
-
-        assertThat(leaf.runInputs).containsExactly(
-            RunInputField("input", "Story text", RunInputType.MULTILINE, required = true, help = "paste the story"),
-            RunInputField("hints", "Hints"),
-            RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true),
+    fun `ADR 0062 - parameters bound START are the step's run start fields and take their value in the run`() {
+        lib.template(
+            "root", abstract = true,
+            parameters = listOf(
+                TemplateParameter("input", "Input material", TemplateParameterType.MULTILINE, help = "paste it"),
+                TemplateParameter("ticket", "Ticket", TemplateParameterType.ISSUE_KEY, required = true),
+                TemplateParameter("level", "Level", TemplateParameterType.CHOICE, options = listOf("low", "high"), default = "low"),
+            ),
         )
-        assertThat(resolver.preview("middle", null)!!.runInputs.map { it.name }).containsExactly("input", "hints", "issueKey")
+        lib.template("leaf", extendsKey = "root", parameterValues = mapOf("level" to "high"))
+        val bindings = mapOf("input" to ParameterBinding.START, "ticket" to ParameterBinding.START, "level" to ParameterBinding.START)
+
+        val preview = resolver.preview("leaf", null, TaskOverrides(parameterBindings = bindings))!!
+
+        assertThat(preview.check.ok).describedAs("a required parameter bound START is asked at start, no problem").isTrue()
+        assertThat(preview.runInputs).containsExactly(
+            RunInputField("input", "Input material", RunInputType.MULTILINE, help = "paste it", parameter = preview.parameters[0].definition),
+            RunInputField("ticket", "Ticket", RunInputType.ISSUE_KEY, required = true, parameter = preview.parameters[1].definition),
+            RunInputField("level", "Level", RunInputType.TEXT, help = "One of: low, high.", parameter = preview.parameters[2].definition),
+        )
+        assertThat(preview.parameters.map { Triple(it.name, it.value, it.source) }).containsExactly(
+            Triple("input", null, ParameterSource.STEP), Triple("ticket", null, ParameterSource.STEP), Triple("level", null, ParameterSource.STEP),
+        )
+        assertThat(preview.parameters[2].fallback).describedAs("the preset value, else the default, when the run has none").isEqualTo("high")
+        assertThat(preview.parameters.all { it.boundAtRun }).isTrue()
+        assertThat(resolver.preview("leaf", null)!!.runInputs).describedAs("unbound: no start field").isEmpty()
     }
 
     @Test
-    fun `a template without run inputs inherits its parent fields unchanged`() {
-        lib.template("root", abstract = true, runInputs = listOf(RunInputField("input", "Input material")))
-        lib.template("leaf", extendsKey = "root")
+    fun `ADR 0062 - ARTIFACT bindings need a name and bindings of undeclared parameters are warnings unless they set a value`() {
+        lib.template("tt", parameters = listOf(TemplateParameter("spec", "Spec", required = true), TemplateParameter("note", "Note")))
 
-        assertThat(resolver.resolve("leaf", null)!!.runInputs).containsExactly(RunInputField("input", "Input material"))
+        val ok = resolver.preview("tt", null, TaskOverrides(parameterBindings = mapOf("spec" to ParameterBinding.artifact("spec"))))!!
+        assertThat(ok.check.ok).isTrue()
+        assertThat(ok.parameters.first().binding).isEqualTo(ParameterBinding.artifact("spec"))
+
+        val bad = resolver.preview(
+            "tt", null,
+            TaskOverrides(
+                parameterBindings = mapOf(
+                    "spec" to ParameterBinding(ParameterBindingSource.ARTIFACT),
+                    "ghost" to ParameterBinding.START,
+                    "other" to ParameterBinding.value("x"),
+                    "empty" to ParameterBinding.value(" "),
+                ),
+            ),
+        )!!
+        assertThat(bad.check.problems).containsExactlyInAnyOrder(
+            "parameter spec: an ARTIFACT binding needs the name of the artefact",
+            "the step sets parameter other, which template tt does not declare",
+        )
+        assertThat(bad.check.warnings.single()).contains("the step binds parameter ghost (START), which template tt does not declare")
+    }
+
+    @Test
+    fun `ADR 0062 - an ISSUE_KEY parameter takes only issue keys`() {
+        lib.template("tt", parameters = listOf(TemplateParameter("key", "Key", TemplateParameterType.ISSUE_KEY)))
+
+        assertThat(resolver.preview("tt", null, values(mapOf("key" to "ABC-12")))!!.check.ok).isTrue()
+        assertThat(resolver.preview("tt", null, values(mapOf("key" to "nope")))!!.check.problems.single()).contains("is not an issue key")
     }
 
     // ----- ADR 0058: parameters -----------------------------------------------------------------------
@@ -507,7 +543,7 @@ class TaskResolverTest {
             parameterValues = mapOf("depth" to "3"),
         )
 
-        val preview = resolver.preview("leaf", null, TaskOverrides(parameters = mapOf("tone" to "loud")))!!
+        val preview = resolver.preview("leaf", null, values(mapOf("tone" to "loud")))!!
         assertThat(preview.parameters.map { Triple(it.name, it.value, it.source) }).containsExactly(
             Triple("task", "default task", ParameterSource.DEFAULT),
             Triple("tone", "loud", ParameterSource.STEP),
@@ -532,7 +568,7 @@ class TaskResolverTest {
             parameterValues = mapOf("ghost" to "x"),
         )
 
-        val preview = resolver.preview("tt", null, TaskOverrides(parameters = mapOf("count" to "many", "flag" to "maybe", "pick" to "c", "other" to 1)))!!
+        val preview = resolver.preview("tt", null, values(mapOf("count" to "many", "flag" to "maybe", "pick" to "c", "other" to 1)))!!
         assertThat(preview.check.problems).containsExactlyInAnyOrder(
             "template tt sets parameter ghost, which no template of the lineage declares",
             "the step sets parameter other, which template tt does not declare",
@@ -555,10 +591,10 @@ class TaskResolverTest {
             ),
             parameterValues = mapOf("count" to 2),
         )
-        val task = resolver.resolve("tt", null, TaskOverrides(parameters = mapOf("count" to " ", "flag" to "TRUE")))!!
+        val task = resolver.resolve("tt", null, values(mapOf("count" to " ", "flag" to "TRUE")))!!
         assertThat(task.parameterValues).isEqualTo(mapOf("count" to 2, "flag" to "TRUE"))
         assertThat(resolver.preview("tt", null)!!.needsParameters).describedAs("the template sets the required one: a ready block").isFalse()
-        assertThat(resolver.resolve("tt", null, TaskOverrides(parameters = mapOf("count" to "4.5")))!!.parameterValues["count"]).isEqualTo("4.5")
+        assertThat(resolver.resolve("tt", null, values(mapOf("count" to "4.5")))!!.parameterValues["count"]).isEqualTo("4.5")
     }
 
     @Test
@@ -586,6 +622,9 @@ class TaskResolverTest {
         val stepModel = ModelProfileId.new()
         assertThat(resolver.resolve("tt", null, TaskOverrides(agentKey = "mcp", modelProfileId = stepModel))!!.modelProfileId).isEqualTo(stepModel)
     }
+
+    /** ADR 0062: the step binds [values] as VALUE bindings. */
+    private fun values(values: Map<String, Any?>) = TaskOverrides(parameterBindings = values.mapValues { ParameterBinding.value(it.value) })
 
     /** ADR 0061: the step names the agent. */
     private fun on(agentKey: String) = TaskOverrides(agentKey = agentKey)

@@ -28,7 +28,6 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import java.util.UUID
 
 /** ADR 0052 step 2: an agent proposes, the owner picks at a gate, the step starts one run per picked proposal. */

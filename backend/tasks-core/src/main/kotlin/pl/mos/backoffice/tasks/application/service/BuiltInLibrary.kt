@@ -3,14 +3,11 @@ package pl.mos.backoffice.tasks.application.service
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
-import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.tasks.domain.model.Agent
-import pl.mos.backoffice.tasks.domain.model.Prompt
-import pl.mos.backoffice.tasks.domain.model.PromptMode
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
@@ -29,12 +26,14 @@ import java.time.Instant
  * parameter `task`. ADR 0061: templates name no agent and no model; the skills they require guide the designer's choice
  * of the step's agent.
  *
- * Prompts use the executor placeholders `{{issue.*}}`, `{{artifacts.*}}`, `{{params.*}}` (ADR 0058),
- * `{{runInputText}}` (ADR 0053: the run inputs the task declares; templates that ask for `input` render them as a "Run
- * input" section of their system prompt), `{{input.ci.*}}` and `{{feedback}}` (docs/architecture/03-pipelines-and-agents.md),
- * and sections `{{#path}}...{{/path}}` so that empty values (no issue, no review yet, no feedback) leave no empty
- * headings behind. `{{feedback}}` holds only the revision comments given for the step that renders it. The project
- * constitution is part of the agent's environment and no longer placed by templates.
+ * ADR 0062: every template has one instruction text: what to do and how the result is judged, without role sentences
+ * (the agent carries the role) and without the data the platform adds as standard sections (the issue, the consumed
+ * artefacts, parameter values bound at run start, the feedback and the owner's answers). Instructions may still place
+ * data themselves with the executor placeholders `{{issue.*}}`, `{{artifacts.*}}`, `{{params.*}}` (ADR 0058),
+ * `{{input.ci.*}}` and `{{feedback}}` (docs/architecture/03-pipelines-and-agents.md), and sections
+ * `{{#path}}...{{/path}}` so that empty values (no review yet, no feedback) leave no empty headings behind; the platform
+ * then adds no second copy. The former run input `input` is the parameter [INPUT_PARAMETER] (steps bind it `START`).
+ * The project constitution is part of the agent's environment and no longer placed by templates.
  */
 object BuiltInLibrary {
 
@@ -74,6 +73,9 @@ object BuiltInLibrary {
 
     /** ADR 0044: clones the step's repositories and sources into the run workspace and runs setupCommand; no agent. */
     const val PREPARE_WORKSPACE = "prepare-workspace"
+
+    /** ADR 0062: the parameter of the built-ins that holds the input material (the former run input `input`). */
+    const val INPUT_PARAMETER_NAME = "input"
 
     /** ADR 0058: the parameter of `llm-task` and `agent-task` that holds the task. */
     const val TASK_PARAMETER = "task"
@@ -157,10 +159,10 @@ object BuiltInLibrary {
         template(now, TaskTemplate.Content(
             key = BASE_AGENT, name = "Base agent", abstract = true,
             description = "Deprecated (ADR 0057, 0058): the platform preamble and the agent's rules replace it; the built-in templates no longer " +
-                "extend it. Kept for templates that extend it: it asks for the run input material and shows it in the system prompt.",
-            prompt = Prompt(system = RUN_INPUT_SECTION),
+                "extend it. Kept for templates that extend it: it declares the parameter input (the input material; bind it to the run " +
+                "start to ask for it).",
             tags = listOf("base", DEPRECATED_TAG),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = BASE_LLM, name = "Base LLM step", abstract = true, extendsKey = BASE_AGENT,
@@ -176,45 +178,39 @@ object BuiltInLibrary {
             key = SPEC_KIT_SPECIFY, name = "Spec Kit: specify", category = TemplateCategory.SPECIFICATION,
             requiresSkills = listOf(SPEC_WRITING),
             description = "Runs the Spec Kit SPECIFY phase in the repository and returns the feature specification. " +
-                "The user prompt starts with the subject line and the issue text, which become the feature description.",
-            prompt = Prompt(system = RUN_INPUT_SECTION, user = SPECIFY_USER),
+                "The instructions start with the subject line and the issue text, which become the feature description.",
+            instructions = SPECIFY_INSTRUCTIONS,
             config = mapOf("phase" to "SPECIFY"),
             consumes = listOf("issue"), produces = listOf("spec"), tags = listOf(TAG_SPEC_KIT),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = CLARIFY_SPEC, name = "Clarify specification", category = TemplateCategory.SPECIFICATION,
             requiresSkills = listOf(DEFINITION_OF_READY_DONE),
             description = "Reads the specification as the implementer would and reports confidence plus the questions (markdown) that would block a clean implementation.",
-            prompt = Prompt(system = withRunInput(CLARIFY_SYSTEM), user = CLARIFY_USER),
+            instructions = CLARIFY_INSTRUCTIONS,
             outputSchema = CLARIFY_SCHEMA, confidenceField = "confidence",
             consumes = listOf("spec"), produces = listOf("confidence", "clarifications"), tags = listOf("spec", "gate"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_PLAN, name = "Spec Kit: plan", category = TemplateCategory.PLANNING,
             requiresSkills = listOf(SPEC_WRITING),
             description = "Runs the Spec Kit PLAN phase: architecture, data model and contracts derived from the specification Spec Kit reads from the repository. " +
-                "Optional run input techHints passes stack hints.",
-            prompt = Prompt(system = RUN_INPUT_SECTION, user = PLAN_USER),
+                "The optional parameter techHints passes stack hints.",
+            instructions = PLAN_INSTRUCTIONS,
             config = mapOf("phase" to "PLAN"),
             consumes = listOf("spec"), produces = listOf("plan"), tags = listOf(TAG_SPEC_KIT),
-            runInputs = listOf(
-                INPUT_MATERIAL,
-                RunInputField(
-                    "techHints", "Technical hints", RunInputType.MULTILINE,
-                    help = "Stack, libraries or constraints the plan should respect (optional).",
-                ),
-            ),
+            parameters = listOf(INPUT_PARAMETER, TECH_HINTS_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = SPEC_KIT_TASKS, name = "Spec Kit: tasks", category = TemplateCategory.PLANNING,
             requiresSkills = listOf(SPEC_WRITING),
             description = "Runs the Spec Kit TASKS phase: an ordered, dependency-aware task list from the plan Spec Kit reads from the repository.",
-            prompt = Prompt(system = RUN_INPUT_SECTION, user = TASKS_USER),
+            instructions = TASKS_INSTRUCTIONS,
             config = mapOf("phase" to "TASKS"),
             consumes = listOf("plan"), produces = listOf("tasks"), tags = listOf(TAG_SPEC_KIT),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_OPENCODE, name = "Implement", category = TemplateCategory.IMPLEMENTATION,
@@ -222,10 +218,10 @@ object BuiltInLibrary {
             description = "Implements the task list (or the issue) in a runner job with the step's coding agent (OpenCode when the step " +
                 "names none); on a rework it gets the latest review findings. " +
                 "The runner runs verifyCommand when set (none by default), commits, pushes a feature branch and opens a merge request.",
-            prompt = Prompt(system = RUN_INPUT_SECTION, user = IMPLEMENT_USER),
+            instructions = IMPLEMENT_INSTRUCTIONS,
             config = IMPLEMENT_CONFIG,
             produces = listOf("diff", "mr"), tags = listOf("implement", "opencode"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_CLAUDE_CODE, name = "Implement with Claude Code", extendsKey = IMPLEMENT_OPENCODE,
@@ -238,48 +234,46 @@ object BuiltInLibrary {
             requiresSkills = listOf(SECURITY_REVIEW_CHECKLIST),
             description = "Strict review of a diff: findings with severity, a verdict and a 0..100 score. Uses the issue, or in a CI run the merge request " +
                 "title and description, as context. The diff comes last, so a cut at maxInputChars never removes the instructions.",
-            prompt = Prompt(system = withRunInput(REVIEW_SYSTEM), user = REVIEW_USER),
+            instructions = REVIEW_INSTRUCTIONS,
             outputSchema = REVIEW_SCHEMA,
             consumes = listOf("diff"), produces = listOf("review"), tags = listOf("review"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = ANALYSE_ISSUE, name = "Analyse issue", category = TemplateCategory.ANALYSIS,
             description = "Deprecated (ADR 0054): use impact-analysis. Reads the issue and produces a structured analysis (stored as JSON): " +
                 "scope, affected areas, risks and open questions.",
-            prompt = Prompt(system = withRunInput(ANALYSE_SYSTEM), user = ANALYSE_USER),
+            instructions = ANALYSE_INSTRUCTIONS,
             outputSchema = ANALYSE_SCHEMA,
             consumes = listOf("issue"), produces = listOf("analysis"), tags = listOf("analysis", DEPRECATED_TAG),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = LLM_TASK, name = "LLM task", category = TemplateCategory.GENERAL,
             description = "Generic LLM work without a repository (ADR 0034): write the task into the parameter task in the designer; " +
-                "the run input material is what it works on and revision comments come back as feedback (both in the system prompt). " +
-                "Produces the result artefact.",
-            prompt = Prompt(system = LLM_TASK_SYSTEM, user = TASK_PARAMETER_PROMPT),
+                "the input material (parameter input, bind it to the run start) is what it works on and revision comments come back as " +
+                "feedback. Produces the result artefact.",
+            instructions = TASK_PARAMETER_INSTRUCTIONS,
             produces = listOf("result"), tags = listOf("llm", "generic"),
-            runInputs = listOf(INPUT_MATERIAL),
-            parameters = listOf(taskParameter(LLM_TASK_USER)),
+            parameters = listOf(taskParameter(LLM_TASK_DEFAULT), INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = AGENT_TASK, name = "Agent task", category = TemplateCategory.GENERAL,
             description = "Generic coding-agent work in the project's repository: write the task into the parameter task in the designer. " +
-                "The issue, the run input material and revision comments are in the system prompt. Choose a coding agent on the step, " +
+                "The issue, the input material and revision comments are added to it. Choose a coding agent on the step, " +
                 "no push by default: set push to true for a branch and a merge request. In a project without repositories it runs in an empty " +
                 "workspace and its final answer becomes the result artefact.",
-            prompt = Prompt(system = AGENT_TASK_SYSTEM, user = TASK_PARAMETER_PROMPT),
+            instructions = AGENT_TASK_INSTRUCTIONS,
             config = IMPLEMENT_CONFIG + mapOf("push" to false, "codingAgent" to true, "branchTemplate" to "agent/{{issue.key | lower}}", "repositoryOptional" to true),
             produces = listOf("result"), tags = listOf("agent", "generic"),
-            runInputs = listOf(INPUT_MATERIAL),
-            parameters = listOf(taskParameter(AGENT_TASK_USER)),
+            parameters = listOf(taskParameter(AGENT_TASK_DEFAULT), INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = PREPARE_WORKSPACE, name = "Prepare workspace", category = TemplateCategory.OPERATIONS,
             description = "Rarely needed (ADR 0060): the run directory is prepared automatically before the first coding step (the " +
                 "workflow's setup command). This step clones its repositories into the run directory and runs the workflow setup and " +
                 "the step's setupCommand at a chosen point. Starts no agent and never pushes.",
-            prompt = Prompt(user = PREPARE_WORKSPACE_USER),
+            instructions = PREPARE_WORKSPACE_INSTRUCTIONS,
             config = mapOf(
                 "prepareOnly" to true, "push" to false, "mergeRequest" to false,
                 "repositoryOptional" to true, "setupCommand" to null,
@@ -294,55 +288,55 @@ object BuiltInLibrary {
             key = WRITE_USER_STORY, name = "Write user story", category = TemplateCategory.SPECIFICATION,
             requiresSkills = listOf(USER_STORY_FORMAT),
             description = "Turns the issue into a user story with falsifiable acceptance criteria, explicit open questions and a confidence score.",
-            prompt = Prompt(system = withRunInput(WRITE_US_SYSTEM), user = WRITE_US_USER),
+            instructions = WRITE_US_INSTRUCTIONS,
             outputSchema = WRITE_US_SCHEMA, confidenceField = "confidence",
             consumes = listOf("issue"), produces = listOf(ARTIFACT_USER_STORY, "confidence"), tags = listOf("sdlc", "requirements"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = WRITE_USE_CASE, name = "Write use case", category = TemplateCategory.SPECIFICATION,
             requiresSkills = listOf(USE_CASE_FORMAT),
             description = "Expands the user story into a use case: actors, triggers, main and alternative flows, business rules, postconditions and permissions.",
-            prompt = Prompt(system = withRunInput(WRITE_UC_SYSTEM), user = WRITE_UC_USER),
+            instructions = WRITE_UC_INSTRUCTIONS,
             outputSchema = WRITE_UC_SCHEMA, confidenceField = "confidence",
             consumes = listOf(ARTIFACT_USER_STORY), produces = listOf(ARTIFACT_USE_CASE, "confidence"), tags = listOf("sdlc", "analysis"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = WRITE_ADR, name = "Write ADR", category = TemplateCategory.PLANNING,
             requiresSkills = listOf(ADR_FORMAT),
             description = "Drafts an Architecture Decision Record with at least two options, a decision, its rationale and honest consequences " +
                 "(status Proposed; number and date stay placeholders for people to fill in).",
-            prompt = Prompt(system = withRunInput(WRITE_ADR_SYSTEM), user = WRITE_ADR_USER),
+            instructions = WRITE_ADR_INSTRUCTIONS,
             outputSchema = WRITE_ADR_SCHEMA, confidenceField = "confidence",
             consumes = listOf("issue"), produces = listOf("adr", "confidence"), tags = listOf("sdlc", "architecture"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = IMPACT_ANALYSIS, name = "Change request impact analysis", category = TemplateCategory.ANALYSIS,
             requiresSkills = listOf(USER_STORY_FORMAT),
             description = "Analyses a change request: description, business justification, impact on artefacts and components, new stories, effect on the " +
                 "specification, estimate, options and a recommendation (stored as JSON; plan-task-list reads it).",
-            prompt = Prompt(system = withRunInput(IMPACT_SYSTEM), user = IMPACT_USER),
+            instructions = IMPACT_INSTRUCTIONS,
             outputSchema = IMPACT_SCHEMA, confidenceField = "confidence",
             consumes = listOf("issue"), produces = listOf(ARTIFACT_IMPACT_ANALYSIS, "confidence"), tags = listOf("sdlc", "change-request"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = PLAN_TASK_LIST, name = "Plan task list", category = TemplateCategory.PLANNING,
             requiresSkills = listOf(BUILD_GUARDRAILS, DEFINITION_OF_READY_DONE),
             description = "Breaks the work (plan or approved impact analysis, user story) into an ordered task list (title, description, verification, " +
                 "test_command, completed) that ends with the mandatory \"$FINAL_TASK_TITLE\" task.",
-            prompt = Prompt(system = withRunInput(PLAN_TASKS_SYSTEM), user = PLAN_TASKS_USER),
+            instructions = PLAN_TASKS_INSTRUCTIONS,
             outputSchema = PLAN_TASKS_SCHEMA,
             consumes = listOf("plan", "issue", ARTIFACT_IMPACT_ANALYSIS, ARTIFACT_USER_STORY), produces = listOf("tasks"), tags = listOf("sdlc", "planning"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
         template(now, TaskTemplate.Content(
             key = IMPLEMENT_TASK_LIST, name = "Implement task list", extendsKey = IMPLEMENT_OPENCODE,
             description = "Executes the task list in order with TDD, runs every test_command, stops on the first red verification (the work log's RESULT " +
                 "line is the verifyCommand, so a stop fails the step), keeps a work log and lists what it noticed out of scope without fixing it.",
-            prompt = Prompt(user = IMPLEMENT_TASKS_USER, mode = PromptMode.REPLACE),
+            instructions = IMPLEMENT_TASKS_INSTRUCTIONS, instructionsMode = InstructionsMode.REPLACE,
             config = mapOf("collectArtifacts" to listOf(WORK_LOG_FILE), "verifyCommand" to WORK_LOG_VERIFY_COMMAND),
             consumes = listOf("tasks"), produces = listOf(ARTIFACT_WORK_LOG), tags = listOf("sdlc", "implement"),
         )),
@@ -351,10 +345,10 @@ object BuiltInLibrary {
             requiresSkills = listOf(SECURITY_REVIEW_CHECKLIST, DEFINITION_OF_READY_DONE),
             description = "Reviews the diff against the user story, specification and task list: a requirement coverage matrix (kept in the review; " +
                 "a MISSING requirement requests changes), scope creep and defects, with a verdict and a score.",
-            prompt = Prompt(system = withRunInput(REVIEW_SPEC_SYSTEM), user = REVIEW_SPEC_USER),
+            instructions = REVIEW_SPEC_INSTRUCTIONS,
             outputSchema = REVIEW_SPEC_SCHEMA,
             consumes = listOf("diff", ARTIFACT_USER_STORY, "tasks"), produces = listOf("review"), tags = listOf("sdlc", "review"),
-            runInputs = listOf(INPUT_MATERIAL),
+            parameters = listOf(INPUT_PARAMETER),
         )),
     )
 
@@ -375,17 +369,14 @@ object BuiltInLibrary {
 
     private fun template(now: Instant, content: TaskTemplate.Content) = TaskTemplate.create(content, now, builtIn = true, actor = Actor.SYSTEM)
 
-    /** ADR 0058: the user prompt of `llm-task` and `agent-task`: the step's task. */
-    const val TASK_PARAMETER_PROMPT = "{{params.$TASK_PARAMETER}}"
+    /** ADR 0058/0062: the instructions of `llm-task`: the step's task (the platform adds the data sections). */
+    const val TASK_PARAMETER_INSTRUCTIONS = "{{params.$TASK_PARAMETER}}"
 
     /** ADR 0058: the parameter `task` of `llm-task` and `agent-task`, with the former placeholder task as its default. */
     private fun taskParameter(default: String) = TemplateParameter(
         TASK_PARAMETER, "Task", TemplateParameterType.MULTILINE, required = false, default = default,
-        help = "What the agent should do in this step; the run input material and the feedback are added to its context.",
+        help = "What the agent should do in this step; the issue, the input material and the feedback are added to it.",
     )
-
-    /** [system] followed by the "Run input" section (the run input material the template asks for, ADR 0053). */
-    private fun withRunInput(system: String): String = system.trimEnd() + "\n" + RUN_INPUT_SECTION
 
     /** Runner config of the implementers; the keys are the ones `RunnerTaskSupport` reads. */
     val IMPLEMENT_CONFIG: Map<String, Any?> = mapOf(
@@ -529,34 +520,12 @@ object BuiltInLibrary {
         }
     }
 
-    // ----- shared prompt sections ---------------------------------------------------------------------
+    // ----- shared instruction sections ----------------------------------------------------------------
 
-    /** The issue, or nothing when the run has none (no bare ": " line). */
-    val ISSUE_SECTION = """
-        {{#issue.key}}
-        ## Issue
-        {{issue.key}}: {{issue.summary}}
-        {{#issue.description}}
-
-        {{issue.description}}
-        {{/issue.description}}
-        {{#issue.acceptanceCriteria}}
-
-        Acceptance criteria:
-        {{issue.acceptanceCriteria}}
-        {{/issue.acceptanceCriteria}}
-        {{/issue.key}}
-    """.trimIndent()
-
-    /** Revision comments given for this step (never those of other steps); nothing on the first attempt. */
-    val FEEDBACK_SECTION = """
-        {{#feedback}}
-        ## Feedback on the previous attempt of this step (address every point)
-        {{feedback}}
-        {{/feedback}}
-    """.trimIndent()
-
-    /** The latest review (findings, coverage, verdict) when the run has one: what a rework must fix. */
+    /**
+     * The latest review (findings, coverage, verdict) when the run has one: what a rework must fix. Not a standard data
+     * section (the implementers do not consume the review: the first execution has none), so they place it themselves.
+     */
     val REVIEW_SECTION = """
         {{#artifacts.review}}
         ## Latest review findings
@@ -564,90 +533,71 @@ object BuiltInLibrary {
         {{/artifacts.review}}
     """.trimIndent()
 
-    // ----- run inputs (ADR 0053) -----------------------------------------------------------------------
+    /** Merge request context of a CI-triggered run (no issue there); not a standard data section. */
+    val MERGE_REQUEST_SECTION = """
+        {{#input.ci.mergeRequest.title}}
+        ## Merge request
+        {{input.ci.mergeRequest.title}}
+        {{#input.ci.mergeRequest.description}}
 
-    /** The free-text box of the start dialog: material an agent step works on. */
-    val INPUT_MATERIAL = RunInputField(
-        "input", "Input material", RunInputType.MULTILINE,
+        {{input.ci.mergeRequest.description}}
+        {{/input.ci.mergeRequest.description}}
+        {{/input.ci.mergeRequest.title}}
+    """.trimIndent()
+
+    // ----- parameters (ADR 0058, 0062) ------------------------------------------------------------------
+
+    /**
+     * ADR 0062: the free-text material of the run start form (formerly the run input `input` of ADR 0053), now a
+     * parameter: a step that binds it `START` asks for it when a run starts, and the platform adds its value to the
+     * message as a data section.
+     */
+    val INPUT_PARAMETER = TemplateParameter(
+        INPUT_PARAMETER_NAME, "Input material", TemplateParameterType.MULTILINE,
         help = "Text the agent steps should read: a request, notes, a pasted document (optional).",
     )
 
-    /** The run's Jira issue key, read by the Jira actions (ADR 0056: their run input); mapped to the run's issue key. */
-    val ISSUE_KEY_INPUT = RunInputField("issueKey", "Jira issue key", RunInputType.ISSUE_KEY, required = true, help = "For example ABC-123.")
+    /** ADR 0062: the former run input `techHints` of `spec-kit-plan`. */
+    val TECH_HINTS_PARAMETER = TemplateParameter(
+        "techHints", "Technical hints", TemplateParameterType.MULTILINE,
+        help = "Stack, libraries or constraints the plan should respect (optional).",
+    )
 
-    // ----- prompts ------------------------------------------------------------------------------------
-
-    /**
-     * ADR 0053: the run input material the person who started the run entered, as a section of a template's system
-     * prompt (nothing when no value was entered). ADR 0058: templates that ask for `input` carry it themselves.
-     */
-    val RUN_INPUT_SECTION = """
-        {{#runInputText}}
-
-        ## Run input
-        What the person who started the run entered for this step:
-
-        {{runInputText}}
-        {{/runInputText}}
-    """.trimIndent()
-
-    /** Material and reviewer feedback live in the system prompt, so the task (parameter or replaced prompt) keeps them. */
-    val LLM_TASK_SYSTEM = """
-        You are a careful assistant working for the owner of this project inside Back Office. A person reviews
-        your result before it is used. Be accurate and concise; when something is unknown, say so instead of
-        guessing. The task is the user message.
-        {{#runInputText}}
-
-        ## Run input
-        {{runInputText}}
-        {{/runInputText}}
-        {{#feedback}}
-
-        ## Feedback of the reviewer on your previous result
-        {{feedback}}
-        {{/feedback}}
-    """.trimIndent()
-
-    val AGENT_TASK_SYSTEM = """
-        You are a coding agent working for the owner of this project inside Back Office, in a sandbox with a
-        clone of the project's repository (or an empty workspace when the project has none). A person reviews
-        what you produce before it is used. The task is the user message: do exactly that, in this repository,
-        and finish with a short summary of what you did and found. Change files only when the task asks for
-        changes; when something is unknown, say so instead of guessing. Do not commit or push: when this step
-        pushes, the runner commits and pushes your working tree. Follow your rules.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n" + """
-        {{#runInputText}}
-
-        ## Run input
-        {{runInputText}}
-        {{/runInputText}}
-        {{#feedback}}
-
-        ## Feedback of the reviewer on your previous result
-        {{feedback}}
-        {{/feedback}}
-    """.trimIndent()
+    // ----- instructions (ADR 0062) ----------------------------------------------------------------------
+    //
+    // One text per template: what to do and how the result is judged. The agent carries the role (ADR 0057), the
+    // platform adds the issue, the consumed artefacts, the parameter values bound at run start, the reviewer's
+    // feedback and the owner's answers as data sections when an instruction does not place them itself (a template that
+    // writes `{{issue.key}}` or `{{artifacts.spec}}` gets no second copy). Optional material a template wants framed in
+    // its own words (the latest review of a rework, a revised task list) stays in its instructions as a section.
 
     /** Never sent to an agent (prepareOnly); the runner derives nothing from it. */
-    val PREPARE_WORKSPACE_USER = "Prepare the workspace of this run."
+    val PREPARE_WORKSPACE_INSTRUCTIONS = "Prepare the workspace of this run."
 
     /** The default task of agent-task (parameter `task`): harmless (read-only) until a designer sets another. */
-    val AGENT_TASK_USER = """
+    val AGENT_TASK_DEFAULT = """
         Describe the repository: its structure, how to build and test it, and anything that looks unfinished
         (without a repository: say so in one sentence).
     """.trimIndent()
 
     /** The default task of llm-task (parameter `task`); designers set their own per step. */
-    val LLM_TASK_USER = """
+    val LLM_TASK_DEFAULT = """
         Summarise the input material in at most five bullet points and list open questions.
     """.trimIndent()
 
+    /** The step's task first; what a generic coding step must not do on its own follows it. */
+    val AGENT_TASK_INSTRUCTIONS = """
+        {{params.$TASK_PARAMETER}}
+
+        Do exactly this task in the repository (or in the empty workspace when the project has none). Change files
+        only when the task asks for changes. Finish with a short summary of what you did and what you found.
+    """.trimIndent()
+
     /**
-     * Starts with the subject line and the issue text (the runner job's feature description and commit subject are
-     * taken from them), then the instructions; feedback last.
+     * Starts with the subject line and the issue text: Spec Kit takes its feature description (and the feature name from
+     * the first line) from them. The issue is placed here, so the platform adds no second copy.
      */
-    val SPECIFY_USER = """
+    val SPECIFY_INSTRUCTIONS = """
         {{issue.key}}: {{issue.summary}}
         {{#issue.description}}
 
@@ -663,35 +613,31 @@ object BuiltInLibrary {
         Phase SPECIFY of Spec Kit: write the feature specification for the issue above with the specify
         command. The specification describes what and why, never how: user scenarios, functional
         requirements, acceptance scenarios and open questions marked `[NEEDS CLARIFICATION: <question>]`.
-        Do not design the solution and do not write code. Apply the skill $SPEC_WRITING and follow your rules.
+        Do not design the solution and do not write code. Apply the skill $SPEC_WRITING.
+    """.trimIndent()
 
-    """.trimIndent() + "\n" + FEEDBACK_SECTION
-
-    /** Spec Kit reads the specification from the repository: only feedback and optional tech hints travel in the prompt. */
-    val PLAN_USER = """
+    /** Spec Kit reads the specification from the repository: only the hints and the feedback travel in the message. */
+    val PLAN_INSTRUCTIONS = """
         {{issue.key}}: technical plan
 
         Phase PLAN of Spec Kit: create the implementation plan (architecture decisions, data model, API
         contracts, verification strategy) with the plan command. Spec Kit reads the specification of this
         feature from the repository; do not ask for it to be pasted. Respect the project constitution; when
         it conflicts with the specification, follow the constitution and list the conflict as an open
-        question in the plan. Follow your rules.
-        Technical hints from the owner, when given, are in the run input of the system prompt.
+        question in the plan. Respect the technical hints when this message gives them.
+    """.trimIndent()
 
-    """.trimIndent() + "\n" + FEEDBACK_SECTION
-
-    val TASKS_USER = """
+    val TASKS_INSTRUCTIONS = """
         {{issue.key}}: task list
 
         Phase TASKS of Spec Kit: break the plan of this feature, which Spec Kit reads from the repository,
         into an ordered task list with the tasks command. Each task is small enough to verify on its own,
         names the files it touches and the test that proves it, and marks tasks that can run in parallel.
-        Follow your rules.
+    """.trimIndent()
 
-    """.trimIndent() + "\n" + FEEDBACK_SECTION
-
-    val IMPLEMENT_USER = """
-        {{#issue.key}}Implement {{issue.key}}: {{issue.summary}}{{/issue.key}}{{^issue.key}}Implement the requested change{{/issue.key}}
+    /** The issue comes as a data section after the instructions; the task list and the latest review are placed here. */
+    val IMPLEMENT_INSTRUCTIONS = """
+        Implement the change the issue below asks for; without an issue, the change this message describes.
 
         How to work:
         1. Work through the task list below in order when there is one; otherwise make the smallest set of
@@ -701,55 +647,35 @@ object BuiltInLibrary {
         3. Verify before you finish: run the repository's own build and tests (see its README or build
            files) and fix what fails. The runner then runs this step's `verifyCommand` when the owner set
            one (the built-in default sets none) and fails the step when it exits non-zero.
-        4. Do not commit or push: the runner commits your working tree and pushes the branch.
-        5. Follow your rules.
 
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
         {{#artifacts.tasks}}
         ## Task list
         {{artifacts.tasks}}
         {{/artifacts.tasks}}
 
-    """.trimIndent() + "\n" + REVIEW_SECTION + "\n\n" + FEEDBACK_SECTION
+    """.trimIndent() + "\n" + REVIEW_SECTION
 
-    val CLARIFY_SYSTEM = """
-        You now act as the implementer who will receive this specification next. Your job is to find
-        out whether it can be implemented without guessing. Read it critically: ambiguous behaviour,
-        missing acceptance criteria, undefined terms, conflicting requirements, unstated non-functional
-        needs and anything an implementer would have to decide alone.
+    val CLARIFY_INSTRUCTIONS = """
+        Read the specification below as the implementer who receives it next and find out whether it can be
+        implemented without guessing. Look critically for ambiguous behaviour, missing acceptance criteria,
+        undefined terms, conflicting requirements, unstated non-functional needs and anything an implementer
+        would have to decide alone.
 
         Confidence is a number from 0 to 1: 1.0 means every decision is settled by the text; 0.5 means
         an implementer would make several product decisions on their own; below 0.3 means the spec is
         not actionable. Ask only questions whose answer changes the implementation, at most ten, most
         important first, each with a suggested default answer the owner can accept as it is.
+
+        Answer with `confidence`, a one-paragraph `summary` and `clarifications`: a markdown numbered list
+        (most important first) in which every item gives the question, why it matters and the suggested
+        default answer. Write "No open questions." when nothing blocks the implementation.
     """.trimIndent()
 
-    val CLARIFY_USER = """
-        Read the specification below as its implementer and return only the JSON described by the schema:
-        `confidence`, a one-paragraph `summary` and `clarifications`, a markdown numbered list (most
-        important first) in which every item gives the question, why it matters and a suggested default
-        answer. Write "No open questions." when nothing blocks the implementation.
-
-        ## Specification
-        {{artifacts.spec}}
-    """.trimIndent()
-
-    val CLARIFY_SCHEMA = """
-        {
-          "type": "object",
-          "required": ["confidence", "clarifications", "summary"],
-          "properties": {
-            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-            "clarifications": { "type": "string" },
-            "summary": { "type": "string" }
-          }
-        }
-    """.trimIndent()
-
-    val REVIEW_SYSTEM = """
-        You are a strict senior reviewer. You review the diff only, in the context of the project
-        constitution and the specification when given. You are looking for defects, not for things to
-        say: an empty findings list with a short summary is a valid and welcome result.
+    /** Context first and the diff last (the platform places the consumed diff after everything else). */
+    val REVIEW_INSTRUCTIONS = """
+        Review the diff at the end of this message, in the context of the project constitution, the issue
+        and the specification when given. Look for defects, not for things to say: an empty findings list
+        with a short summary is a valid and welcome result. Run the security checklist first.
 
         Severity definitions:
         - BLOCKER: data loss, security vulnerability, broken build or tests, violates the constitution.
@@ -767,35 +693,214 @@ object BuiltInLibrary {
         4. Score is 0..100: start from 100, subtract 40 per BLOCKER, 15 per MAJOR, 5 per MINOR, 1 per NIT,
            never below 0. Verdict: REQUEST_CHANGES with any BLOCKER or more than two MAJORs, APPROVE
            when the score is at least 80, otherwise COMMENT.
-    """.trimIndent()
+        5. When the diff ends with "[truncated]", review the part you see and say in the summary that the
+           diff was cut.
 
-    /** Merge request context of a CI-triggered run (no issue there). */
-    val MERGE_REQUEST_SECTION = """
-        {{#input.ci.mergeRequest.title}}
-        ## Merge request
-        {{input.ci.mergeRequest.title}}
-        {{#input.ci.mergeRequest.description}}
-
-        {{input.ci.mergeRequest.description}}
-        {{/input.ci.mergeRequest.description}}
-        {{/input.ci.mergeRequest.title}}
-    """.trimIndent()
-
-    /** Instructions first and the diff last: a prompt cut at maxInputChars loses diff lines, never the instructions. */
-    val REVIEW_USER = """
-        Review the diff at the end of this message with the rules of the system prompt and the security
-        checklist, and return only the JSON described by the schema. The context comes first and the diff
-        last; when the diff ends with "[truncated]", review the part you see and say in the summary that
-        the diff was cut.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n" + MERGE_REQUEST_SECTION + "\n" + """
+    """.trimIndent() + "\n" + MERGE_REQUEST_SECTION + "\n" + """
         {{#artifacts.spec}}
         ## Specification
         {{artifacts.spec}}
         {{/artifacts.spec}}
+    """.trimIndent()
 
-        ## Diff to review
-        {{artifacts.diff}}
+    val ANALYSE_INSTRUCTIONS = """
+        Analyse the issue below before any work starts, so the owner can decide whether to run the pipeline
+        on it. Be concrete: name the modules and files that will likely change, the interfaces that will
+        be touched, and the risks that would make you stop and ask. Estimate size on a T-shirt scale
+        (XS, S, M, L, XL) and say what drives the estimate. When there is no issue, say so in the summary
+        and leave the lists empty.
+    """.trimIndent()
+
+    // ----- SDLC instructions (ADR 0019) -----------------------------------------------------------------
+
+    val WRITE_US_INSTRUCTIONS = """
+        Write one user story for the issue below. The story is a contract: a tester must be able to accept
+        or reject the implementation from the acceptance criteria alone.
+
+        Work in this order:
+        1. Identify the specific role, the goal and the business benefit. If the issue covers more than
+           one goal, write the story for the first one and list the others under open questions as
+           proposed separate stories.
+        2. Write the story in the user-story-format skill: story sentence, functional description,
+           numbered acceptance criteria under "System:", constraints and assumptions, open questions.
+           Keep the ID placeholder `US-<AREA>-<NN>` unless the issue gives the ID.
+        3. Write criteria for both sides: what the system allows and what it requires, validates or
+           blocks. Every criterion must be falsifiable by a counter-example.
+        4. Check the Definition of Ready for a user story item by item before you answer.
+
+        Never invent a business rule the issue does not state. Put every gap into openQuestions (name who
+        can answer only when the issue says so) and mark it `[?]` in the story. Confidence (0..1) is 1.0
+        only when no open question changes the scope; lower it by at least 0.1 for each such question.
+        `$ARTIFACT_USER_STORY` is the complete markdown document.
+    """.trimIndent()
+
+    val WRITE_UC_INSTRUCTIONS = """
+        Expand the user story below into a use case. The use case describes what the actors do and see,
+        step by step; it adds flows, never scope, and it does not repeat the acceptance criteria.
+
+        Follow the use-case-format skill: metadata with the linked story, actors, triggers and
+        preconditions, main flow A, alternative flows A1, A2, ... with titles and self-contained steps,
+        business rules RB-01..., postconditions and permissions stated positively. External systems
+        appear as actors; their mechanisms (protocols, retries, tables) do not appear at all. Keep the ID
+        placeholder `UC-<AREA>-<NN>` unless the story gives the ID.
+
+        Before answering, check that main flow + alternatives + rules let a tester derive a test for
+        every acceptance criterion of the story. A criterion you cannot cover is an open question, not
+        a reason to extend the scope. Confidence (0..1) reflects how many behaviours you had to leave
+        as `[?]`. `$ARTIFACT_USE_CASE` is the complete markdown document.
+    """.trimIndent()
+
+    /** The analysis is optional material (not consumed), framed here when the run has one. */
+    val WRITE_ADR_INSTRUCTIONS = """
+        Draft an Architecture Decision Record for the decision the issue below asks for. Follow the
+        adr-format skill: title with the number left as `NNNN`, status Proposed with the date left as
+        `YYYY-MM-DD` (people assign both), context without the decision, at least two options (A, B, ...)
+        with pros and cons each, the decision, the rationale by weighted criteria, positive and negative
+        consequences and related ADRs.
+
+        Ground every statement in the project constitution, the issue and the analysis when given. An
+        option you cannot evaluate for lack of facts stays in the record with the missing facts listed
+        as open questions. Never mark the ADR Accepted and never change any status: acceptance belongs to
+        people. `adr` is the complete markdown document.
+
+        {{#artifacts.analysis}}
+        ## Analysis
+        {{artifacts.analysis}}
+        {{/artifacts.analysis}}
+    """.trimIndent()
+
+    val IMPACT_INSTRUCTIONS = """
+        Analyse the change request (CR) below before anyone approves it. A CR is a change of agreed scope,
+        not a bug. Your analysis lets the owner decide approve, reject or defer.
+
+        Cover, in this order:
+        1. Description: what the requester wants changed, in their language, two to five sentences.
+        2. Business justification: why it is needed and what happens if it is not done.
+        3. Impact on artefacts: every user story, use case, ADR or design section that changes, with
+           the kind of change (modify criteria, add alternative flow, new endpoint, new column).
+        4. Impact on components: backend, frontend and infrastructure parts that change; "none" is a
+           valid answer and must be stated explicitly.
+        5. New user stories or use cases the change needs, as one-line "As a ..." sentences.
+        6. Effect on the specification: none, an annex, or a new version.
+        7. Estimate in person-days for analysis, backend, frontend and tests, with what drives it.
+        8. Options (at least one, usually two) with pros, cons and cost, and your recommendation.
+
+        Name only artefacts and components you can see in the issue, the constitution or the
+        repository description; everything else is an open question. Confidence (0..1) is how complete
+        the impact list is.
+    """.trimIndent()
+
+    /**
+     * The planner gets whatever the run has (the approved impact analysis of a change request, a plan, the user story) as
+     * data sections; on a revision its previous task list is framed here.
+     */
+    val PLAN_TASKS_INSTRUCTIONS = """
+        Turn the work below (the issue, the approved impact analysis, the plan and the user story, whichever
+        this message gives) into a task list that an autonomous coding agent executes one task at a time,
+        with a reviewer checking each task. Every task has:
+
+        - `title`: short summary of the task; the work log and the review refer to it.
+        - `description`: what to implement, with the files, classes or modules involved.
+        - `verification`: the criteria the reviewer uses to judge the task, derived from the
+          acceptance criteria, the plan or the approved impact analysis; observable and checkable.
+        - `test_command`: one shell command run after the task; exit code 0 means pass. Keep it
+          focused on the task (a single test class, a module build); it must at least compile the code
+          when no test exists yet.
+        - `completed`: always `false`.
+
+        Rules:
+        1. Order tasks so each one builds on the previous ones and leaves the build green.
+        2. Tests come first: when a task adds behaviour, its description names the test to write
+           before the code.
+        3. One logical change per task; a task that touches unrelated areas is two tasks.
+        4. The last task is always titled "$FINAL_TASK_TITLE": it reformats and lints the code and runs
+           the entire test suite; its test_command runs the full suite. Set `finalTaskTitle` to exactly
+           that title.
+        5. Do not add tasks for work the issue, the plan and the impact analysis do not ask for.
+        6. The agent works in a sandbox: no Docker daemon (Testcontainers and `docker` commands cannot
+           run there), network only to package registries and the repository host. A `test_command` must
+           run there; when a check needs Docker or the real CI (integration tests, image builds, the
+           pipeline itself), give a sandbox-runnable command (unit tests, compile, lint) and name the
+           CI-only part in `verification` as "confirmed by CI".
+        {{#feedback}}
+        {{#artifacts.tasks}}
+
+        ## Your previous task list (revise it: keep what the feedback does not question)
+        {{artifacts.tasks}}
+        {{/artifacts.tasks}}
+        {{/feedback}}
+    """.trimIndent()
+
+    /** Replaces the instructions of `implement-opencode`; the task list (consumed) comes as a data section. */
+    val IMPLEMENT_TASKS_INSTRUCTIONS = """
+        Execute the task list of this message in the repository, strictly in order, one task at a time.
+
+        For every task:
+        1. Read its description and verification criteria. Write the test that proves the task first
+           and see it fail (TDD), then make the smallest change that makes it pass.
+        2. Run the task's `test_command`. When it passes, record the task in the work log and continue
+           with the next task. Do not commit: the runner commits the whole result once you finish.
+        3. When `test_command` or the verification stays red after a reasonable fix attempt, STOP: do
+           not continue with later tasks and do not disable, skip or delete tests. Record in the work log
+           which task failed, the command, the tail of its output and what you tried.
+
+        Work log: keep it in `$WORK_LOG_FILE` at the repository root; the runner collects it as the
+        `$ARTIFACT_WORK_LOG` artefact and keeps it out of the commit. For every task append its title, what
+        changed (files), the test_command and its result, and the decisions you made. Then add a section
+        "Noticed out of scope": problems you saw outside the tasks (bugs, stale docs, risky code), with
+        file paths; do NOT fix them. The last line of the work log is exactly `$WORK_LOG_GREEN` when every
+        task passed, including the final "$FINAL_TASK_TITLE" task that runs the full suite;
+        `$WORK_LOG_PARTIAL` when every check this sandbox can run passed and only checks that need what
+        the sandbox does not have are left (it has no Docker daemon, so Testcontainers tests and image
+        builds run only in CI): then list those checks under "Left to CI" with the commands CI runs; and
+        `RESULT: STOPPED at <task title>` otherwise. Never use PARTIAL to hide a failure you could see
+        here. This step's verifyCommand checks that line, so a STOP fails the step; after PARTIAL the
+        workflow waits for the real pipeline and sends you its failures.
+
+        When the latest review findings are given below, first fix every BLOCKER and MAJOR finding and
+        every MISSING requirement (as extra tasks before the final one), then run the final task again;
+        answer the other findings in the work log. Apply the skill $DEFINITION_OF_READY_DONE.
+
+    """.trimIndent() + "\n" + REVIEW_SECTION
+
+    /** The agreed requirements come as data sections (the specification framed here), the diff last. */
+    val REVIEW_SPEC_INSTRUCTIONS = """
+        Review the diff at the end of this message against what was agreed: the user story (acceptance
+        criteria), the specification and the task list. Your first question is "does the change do what
+        was agreed, all of it and nothing else?", your second is "is it correct and safe?".
+
+        1. For every acceptance criterion or verification item, add a row to `coverage` with MET,
+           PARTIAL, MISSING or NOT_APPLICABLE and quote the file and line that proves it. A criterion
+           without evidence in the diff is MISSING, not MET. The owner sees this matrix in the review.
+        2. Report changes that no criterion or task asks for as MAJOR findings titled "Out of scope".
+        3. Then review for defects with the severities of the code review: BLOCKER, MAJOR, MINOR, NIT.
+           Every finding points at a file (and line when possible) and says what to change.
+        4. A MISSING criterion is also a MAJOR finding titled "Missing: <criterion>"; a violated
+           constitution rule or security checklist item is a BLOCKER.
+        5. Score 0..100: start from 100, subtract 40 per BLOCKER, 15 per MAJOR, 5 per MINOR, 1 per NIT.
+           Verdict: REQUEST_CHANGES with any BLOCKER or MISSING criterion, APPROVE when the score is at
+           least 80, otherwise COMMENT. Back Office applies the same rule to your findings and coverage.
+        6. When the diff ends with "[truncated]", review the part you see, mark criteria you could not
+           check as PARTIAL and say in the summary that the diff was cut.
+
+        {{#artifacts.spec}}
+        ## Specification
+        {{artifacts.spec}}
+        {{/artifacts.spec}}
+    """.trimIndent()
+
+    // ----- answer schemas -------------------------------------------------------------------------------
+
+    val CLARIFY_SCHEMA = """
+        {
+          "type": "object",
+          "required": ["confidence", "clarifications", "summary"],
+          "properties": {
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "clarifications": { "type": "string" },
+            "summary": { "type": "string" }
+          }
+        }
     """.trimIndent()
 
     val REVIEW_SCHEMA = """
@@ -825,19 +930,6 @@ object BuiltInLibrary {
         }
     """.trimIndent()
 
-    val ANALYSE_SYSTEM = """
-        You analyse an issue before any work starts so the owner can decide whether to run the pipeline
-        on it. Be concrete: name the modules and files that will likely change, the interfaces that will
-        be touched, and the risks that would make you stop and ask. Estimate size on a T-shirt scale
-        (XS, S, M, L, XL) and say what drives the estimate.
-    """.trimIndent()
-
-    val ANALYSE_USER = """
-        Analyse the issue below and return only the JSON described by the schema. When there is no issue,
-        say so in the summary and leave the lists empty.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION
-
     val ANALYSE_SCHEMA = """
         {
           "type": "object",
@@ -851,8 +943,6 @@ object BuiltInLibrary {
           }
         }
     """.trimIndent()
-
-    // ----- SDLC prompts (ADR 0019) ---------------------------------------------------------------------
 
     private const val OPEN_QUESTIONS_SCHEMA = """
             "openQuestions": {
@@ -868,32 +958,6 @@ object BuiltInLibrary {
               }
             }"""
 
-    val WRITE_US_SYSTEM = """
-        You are a business analyst writing one user story for the issue below. The story is a contract:
-        a tester must be able to accept or reject the implementation from the acceptance criteria alone.
-
-        Work in this order:
-        1. Identify the specific role, the goal and the business benefit. If the issue covers more than
-           one goal, write the story for the first one and list the others under open questions as
-           proposed separate stories.
-        2. Write the story in the user-story-format skill: story sentence, functional description,
-           numbered acceptance criteria under "System:", constraints and assumptions, open questions.
-           Keep the ID placeholder `US-<AREA>-<NN>` unless the issue gives the ID.
-        3. Write criteria for both sides: what the system allows and what it requires, validates or
-           blocks. Every criterion must be falsifiable by a counter-example.
-        4. Check the Definition of Ready for a user story item by item before you answer.
-
-        Never invent a business rule the issue does not state. Put every gap into openQuestions (name who
-        can answer only when the issue says so) and mark it `[?]` in the story. Confidence (0..1) is 1.0
-        only when no open question changes the scope; lower it by at least 0.1 for each such question.
-    """.trimIndent()
-
-    val WRITE_US_USER = """
-        Write the user story for the issue below and return only the JSON described by the schema;
-        `$ARTIFACT_USER_STORY` is the complete markdown document.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + FEEDBACK_SECTION
-
     val WRITE_US_SCHEMA = """
         {
           "type": "object",
@@ -905,33 +969,6 @@ object BuiltInLibrary {
           }
         }
     """.trimIndent()
-
-    val WRITE_UC_SYSTEM = """
-        You are a business analyst expanding an accepted user story into a use case. The use case
-        describes what the actors do and see, step by step; it adds flows, never scope, and it does not
-        repeat the acceptance criteria.
-
-        Follow the use-case-format skill: metadata with the linked story, actors, triggers and
-        preconditions, main flow A, alternative flows A1, A2, ... with titles and self-contained steps,
-        business rules RB-01..., postconditions and permissions stated positively. External systems
-        appear as actors; their mechanisms (protocols, retries, tables) do not appear at all. Keep the ID
-        placeholder `UC-<AREA>-<NN>` unless the story gives the ID.
-
-        Before answering, check that main flow + alternatives + rules let a tester derive a test for
-        every acceptance criterion of the story. A criterion you cannot cover is an open question, not
-        a reason to extend the scope. Confidence (0..1) reflects how many behaviours you had to leave
-        as `[?]`.
-    """.trimIndent()
-
-    val WRITE_UC_USER = """
-        Expand the user story below into a use case and return only the JSON described by the schema;
-        `$ARTIFACT_USE_CASE` is the complete markdown document.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
-        ## User story
-        {{artifacts.user-story}}
-
-    """.trimIndent() + "\n" + FEEDBACK_SECTION
 
     val WRITE_UC_SCHEMA = """
         {
@@ -945,31 +982,6 @@ object BuiltInLibrary {
         }
     """.trimIndent()
 
-    val WRITE_ADR_SYSTEM = """
-        You are the architect drafting an Architecture Decision Record for the decision the issue asks
-        for. Follow the adr-format skill: title with the number left as `NNNN`, status Proposed with the
-        date left as `YYYY-MM-DD` (people assign both), context without the decision, at least two options
-        (A, B, ...) with pros and cons each, the decision, the rationale by weighted criteria, positive and
-        negative consequences and related ADRs.
-
-        Ground every statement in the project constitution, the issue and the analysis when given. An
-        option you cannot evaluate for lack of facts stays in the record with the missing facts listed
-        as open questions. Never mark the ADR Accepted and never change any status: acceptance belongs to
-        people.
-    """.trimIndent()
-
-    val WRITE_ADR_USER = """
-        Draft the ADR for the issue below and return only the JSON described by the schema; `adr` is the
-        complete markdown document.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
-        {{#artifacts.analysis}}
-        ## Analysis
-        {{artifacts.analysis}}
-        {{/artifacts.analysis}}
-
-    """.trimIndent() + "\n" + FEEDBACK_SECTION
-
     val WRITE_ADR_SCHEMA = """
         {
           "type": "object",
@@ -982,32 +994,6 @@ object BuiltInLibrary {
           }
         }
     """.trimIndent()
-
-    val IMPACT_SYSTEM = """
-        You analyse a change request (CR) before anyone approves it. A CR is a change of agreed scope,
-        not a bug. Your analysis lets the owner decide approve, reject or defer.
-
-        Cover, in this order:
-        1. Description: what the requester wants changed, in their language, two to five sentences.
-        2. Business justification: why it is needed and what happens if it is not done.
-        3. Impact on artefacts: every user story, use case, ADR or design section that changes, with
-           the kind of change (modify criteria, add alternative flow, new endpoint, new column).
-        4. Impact on components: backend, frontend and infrastructure parts that change; "none" is a
-           valid answer and must be stated explicitly.
-        5. New user stories or use cases the change needs, as one-line "As a ..." sentences.
-        6. Effect on the specification: none, an annex, or a new version.
-        7. Estimate in person-days for analysis, backend, frontend and tests, with what drives it.
-        8. Options (at least one, usually two) with pros, cons and cost, and your recommendation.
-
-        Name only artefacts and components you can see in the issue, the constitution or the
-        repository description; everything else is an open question. Confidence (0..1) is how complete
-        the impact list is.
-    """.trimIndent()
-
-    val IMPACT_USER = """
-        Analyse the change request below and return only the JSON described by the schema.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + FEEDBACK_SECTION
 
     val IMPACT_SCHEMA = """
         {
@@ -1065,64 +1051,6 @@ object BuiltInLibrary {
         }
     """.trimIndent()
 
-    val PLAN_TASKS_SYSTEM = """
-        You turn the work below into a task list that an autonomous coding agent executes one task at
-        a time, with a reviewer checking each task. Every task has:
-
-        - `title`: short summary of the task; the work log and the review refer to it.
-        - `description`: what to implement, with the files, classes or modules involved.
-        - `verification`: the criteria the reviewer uses to judge the task, derived from the
-          acceptance criteria, the plan or the approved impact analysis; observable and checkable.
-        - `test_command`: one shell command run after the task; exit code 0 means pass. Keep it
-          focused on the task (a single test class, a module build); it must at least compile the code
-          when no test exists yet.
-        - `completed`: always `false`.
-
-        Rules:
-        1. Order tasks so each one builds on the previous ones and leaves the build green.
-        2. Tests come first: when a task adds behaviour, its description names the test to write
-           before the code.
-        3. One logical change per task; a task that touches unrelated areas is two tasks.
-        4. The last task is always titled "$FINAL_TASK_TITLE": it reformats and lints the code and runs
-           the entire test suite; its test_command runs the full suite. Set `finalTaskTitle` to exactly
-           that title.
-        5. Do not add tasks for work the issue, the plan and the impact analysis do not ask for.
-        6. The agent works in a sandbox: no Docker daemon (Testcontainers and `docker` commands cannot
-           run there), network only to package registries and the repository host. A `test_command` must
-           run there; when a check needs Docker or the real CI (integration tests, image builds, the
-           pipeline itself), give a sandbox-runnable command (unit tests, compile, lint) and name the
-           CI-only part in `verification` as "confirmed by CI".
-    """.trimIndent()
-
-    /** The planner gets whatever the run has: the approved impact analysis (change requests), a plan, the user story. */
-    val PLAN_TASKS_USER = """
-        Break the work below into the task list and return only the JSON described by the schema.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
-        {{#artifacts.impact-analysis}}
-        ## Approved impact analysis
-        {{artifacts.impact-analysis}}
-        {{/artifacts.impact-analysis}}
-        {{#artifacts.plan}}
-
-        ## Plan
-        {{artifacts.plan}}
-        {{/artifacts.plan}}
-        {{#artifacts.user-story}}
-
-        ## User story
-        {{artifacts.user-story}}
-        {{/artifacts.user-story}}
-        {{#feedback}}
-        {{#artifacts.tasks}}
-
-        ## Your previous task list (revise it: keep what the feedback does not question)
-        {{artifacts.tasks}}
-        {{/artifacts.tasks}}
-        {{/feedback}}
-
-    """.trimIndent() + "\n" + FEEDBACK_SECTION
-
     val PLAN_TASKS_SCHEMA = """
         {
           "type": "object",
@@ -1146,88 +1074,6 @@ object BuiltInLibrary {
             "summary": { "type": "string" }
           }
         }
-    """.trimIndent()
-
-    val IMPLEMENT_TASKS_USER = """
-        {{#issue.key}}Implement the task list of {{issue.key}}: {{issue.summary}}{{/issue.key}}{{^issue.key}}Implement the task list{{/issue.key}}
-
-        Execute the task list below in this repository, strictly in order, one task at a time.
-
-        For every task:
-        1. Read its description and verification criteria. Write the test that proves the task first
-           and see it fail (TDD), then make the smallest change that makes it pass.
-        2. Run the task's `test_command`. When it passes, record the task in the work log and continue
-           with the next task. Do not commit: the runner commits the whole result once you finish.
-        3. When `test_command` or the verification stays red after a reasonable fix attempt, STOP: do
-           not continue with later tasks and do not disable, skip or delete tests. Record in the work log
-           which task failed, the command, the tail of its output and what you tried.
-
-        Work log: keep it in `$WORK_LOG_FILE` at the repository root; the runner collects it as the
-        `$ARTIFACT_WORK_LOG` artefact and keeps it out of the commit. For every task append its title, what
-        changed (files), the test_command and its result, and the decisions you made. Then add a section
-        "Noticed out of scope": problems you saw outside the tasks (bugs, stale docs, risky code), with
-        file paths; do NOT fix them. The last line of the work log is exactly `$WORK_LOG_GREEN` when every
-        task passed, including the final "$FINAL_TASK_TITLE" task that runs the full suite;
-        `$WORK_LOG_PARTIAL` when every check this sandbox can run passed and only checks that need what
-        the sandbox does not have are left (it has no Docker daemon, so Testcontainers tests and image
-        builds run only in CI): then list those checks under "Left to CI" with the commands CI runs; and
-        `RESULT: STOPPED at <task title>` otherwise. Never use PARTIAL to hide a failure you could see
-        here. This step's verifyCommand checks that line, so a STOP fails the step; after PARTIAL the
-        workflow waits for the real pipeline and sends you its failures.
-
-        When the latest review findings are given below, first fix every BLOCKER and MAJOR finding and
-        every MISSING requirement (as extra tasks before the final one), then run the final task again;
-        answer the other findings in the work log.
-
-        Apply the skill $DEFINITION_OF_READY_DONE and follow your rules.
-
-        ## Task list
-        {{artifacts.tasks}}
-
-    """.trimIndent() + "\n" + REVIEW_SECTION + "\n\n" + FEEDBACK_SECTION
-
-    val REVIEW_SPEC_SYSTEM = """
-        You review a diff against what was agreed: the user story (acceptance criteria), the
-        specification and the task list. Your first question is "does the change do what was agreed,
-        all of it and nothing else?", your second is "is it correct and safe?".
-
-        1. For every acceptance criterion or verification item, add a row to `coverage` with MET,
-           PARTIAL, MISSING or NOT_APPLICABLE and quote the file and line that proves it. A criterion
-           without evidence in the diff is MISSING, not MET. The owner sees this matrix in the review.
-        2. Report changes that no criterion or task asks for as MAJOR findings titled "Out of scope".
-        3. Then review for defects with the severities of the code review: BLOCKER, MAJOR, MINOR, NIT.
-           Every finding points at a file (and line when possible) and says what to change.
-        4. A MISSING criterion is also a MAJOR finding titled "Missing: <criterion>"; a violated
-           constitution rule or security checklist item is a BLOCKER.
-        5. Score 0..100: start from 100, subtract 40 per BLOCKER, 15 per MAJOR, 5 per MINOR, 1 per NIT.
-           Verdict: REQUEST_CHANGES with any BLOCKER or MISSING criterion, APPROVE when the score is at
-           least 80, otherwise COMMENT. Back Office applies the same rule to your findings and coverage.
-    """.trimIndent()
-
-    val REVIEW_SPEC_USER = """
-        Review the diff at the end of this message against the agreed requirements below and return only
-        the JSON described by the schema. The diff comes last; when it ends with "[truncated]", review the
-        part you see, mark criteria you could not check as PARTIAL and say in the summary that the diff
-        was cut.
-
-    """.trimIndent() + "\n" + ISSUE_SECTION + "\n\n" + """
-        {{#artifacts.user-story}}
-        ## User story
-        {{artifacts.user-story}}
-        {{/artifacts.user-story}}
-        {{#artifacts.spec}}
-
-        ## Specification
-        {{artifacts.spec}}
-        {{/artifacts.spec}}
-        {{#artifacts.tasks}}
-
-        ## Task list
-        {{artifacts.tasks}}
-        {{/artifacts.tasks}}
-
-        ## Diff to review
-        {{artifacts.diff}}
     """.trimIndent()
 
     val REVIEW_SPEC_SCHEMA = """

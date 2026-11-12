@@ -1,18 +1,26 @@
 /**
  * ADR 0056/0057: the agent editor as pure functions (tested in agent-form.spec.ts). An agent is
  * who works and how: a harness (none = one model answer), optionally a model (none = the defaults
- * for the step), instructions, rules, skills and - for coding agents - remote MCP servers.
+ * for the step), instructions, rules, skills and - for coding agents - remote MCP servers, access
+ * (what it may change, which directory) and the session (ADR 0062).
  */
 import type {
   Agent,
+  AgentAccess,
   AgentAccessMode,
+  AgentDirectory,
   AgentHarness,
   AgentInput,
   AgentMcpServer,
+  AgentSession,
 } from '../../../core/api/types';
 
 /** ADR 0060: the access modes the editor offers, in display order. */
 export const ACCESS_MODES: readonly AgentAccessMode[] = ['FULL', 'READ_ONLY', 'PATHS'];
+/** ADR 0062: the sessions of a coding agent, in display order (the first is the default). */
+export const AGENT_SESSIONS: readonly AgentSession[] = ['PER_STEP', 'PER_RUN', 'FRESH'];
+/** ADR 0062: where a coding agent works, in display order (the first is the default). */
+export const AGENT_DIRECTORIES: readonly AgentDirectory[] = ['RUN', 'SEPARATE'];
 
 /** The kinds the editor offers, in display order (`null` = model answer). */
 export const AGENT_KINDS: ReadonlyArray<AgentHarness | null> = [null, 'OPENCODE', 'CLAUDE_CODE'];
@@ -45,6 +53,7 @@ export function emptyAgent(): AgentInput {
     rules: [],
     skills: [],
     mcpServers: [],
+    session: 'PER_STEP',
     tags: [],
   };
 }
@@ -61,7 +70,16 @@ export function agentDraft(a: Agent): AgentInput {
     rules: [...(a.rules ?? [])],
     skills: [...(a.skills ?? [])],
     mcpServers: (a.mcpServers ?? []).map((s) => ({ name: s.name, url: s.url })),
-    ...(a.access ? { access: { mode: a.access.mode, paths: [...(a.access.paths ?? [])] } } : {}),
+    ...(a.access
+      ? {
+          access: {
+            mode: a.access.mode ?? 'FULL',
+            directory: a.access.directory ?? 'RUN',
+            paths: [...(a.access.paths ?? [])],
+          },
+        }
+      : {}),
+    session: a.session ?? 'PER_STEP',
     tags: [...(a.tags ?? [])],
   };
 }
@@ -71,14 +89,42 @@ export function accessMode(d: Pick<AgentInput, 'access'>): AgentAccessMode {
   return d.access?.mode ?? 'FULL';
 }
 
+/** ADR 0062: the directory of a draft (the run directory when not set). */
+export function accessDirectory(d: Pick<AgentInput, 'access'>): AgentDirectory {
+  return d.access?.directory ?? 'RUN';
+}
+
+/** The draft's access with some fields changed (the paths are kept while editing). */
+function withAccess(d: AgentInput, change: Partial<AgentAccess>): AgentInput {
+  return {
+    ...d,
+    access: {
+      mode: accessMode(d),
+      directory: accessDirectory(d),
+      paths: [...(d.access?.paths ?? [])],
+      ...change,
+    },
+  };
+}
+
 /** ADR 0060: the draft with another access mode; the paths are kept while editing. */
 export function withAccessMode(d: AgentInput, mode: AgentAccessMode): AgentInput {
-  return { ...d, access: { mode, paths: [...(d.access?.paths ?? [])] } };
+  return withAccess(d, { mode });
 }
 
 /** ADR 0060: the draft with the path globs of a PATHS access. */
 export function withAccessPaths(d: AgentInput, paths: readonly string[]): AgentInput {
-  return { ...d, access: { mode: accessMode(d), paths: [...paths] } };
+  return withAccess(d, { paths: [...paths] });
+}
+
+/** ADR 0062: the draft working in the run directory or a separate one. */
+export function withAccessDirectory(d: AgentInput, directory: AgentDirectory): AgentInput {
+  return withAccess(d, { directory });
+}
+
+/** ADR 0062: the session of a draft (per step when not set). */
+export function agentSession(d: Pick<AgentInput, 'session'>): AgentSession {
+  return d.session ?? 'PER_STEP';
 }
 
 /** ADR 0060: the path globs that count (trimmed, not empty, once). */
@@ -136,19 +182,26 @@ export function agentSavable(d: AgentInput): boolean {
 
 /**
  * What the editor sends: trimmed MCP servers, and none for a model answer (it has no tools, so
- * servers kept from an earlier coding kind would only confuse).
+ * servers kept from an earlier coding kind would only confuse). Access and session only matter
+ * for coding agents; a model answer gets the defaults.
  */
 export function agentPayload(d: AgentInput): AgentInput {
   const { access, ...rest } = d;
   const mode = accessMode(d);
+  const directory = accessDirectory(d);
   return {
     ...rest,
     mcpServers: d.harness
       ? (d.mcpServers ?? []).map((s) => ({ name: s.name.trim(), url: s.url.trim() }))
       : [],
+    // ADR 0062: the conversation of a coding agent; a model answer has none to continue
+    session: d.harness ? agentSession(d) : 'PER_STEP',
     // ADR 0060: only coding agents change files; the paths only with PATHS
     ...(d.harness && access
-      ? { access: mode === 'PATHS' ? { mode, paths: accessPaths(d) } : { mode } }
+      ? {
+          access:
+            mode === 'PATHS' ? { mode, directory, paths: accessPaths(d) } : { mode, directory },
+        }
       : {}),
   };
 }

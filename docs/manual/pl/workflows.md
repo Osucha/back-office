@@ -112,9 +112,9 @@ niepołączony port `failure`, `fail` lub `timeout`, kończy się niepowodzeniem
 <a id="task-nodes"></a>
 ### Węzły zadań
 
-Krok zadania łączy trzy rzeczy: **szablon** (co zrobić), **agenta** (kto pracuje i jak) oraz wartości
-**parametrów** szablonu ([Biblioteka zadań](task-library.md#agents)). Szablon nie wskazuje agenta ani modelu: wybiera
-je krok (ADR 0061).
+Krok zadania łączy trzy rzeczy: **szablon** (co zrobić), **agenta** (kto pracuje i jak) oraz to, skąd **parametry**
+szablonu biorą wartości ([Biblioteka zadań](task-library.md#agents)). Szablon nie wskazuje agenta ani modelu:
+wybiera je krok (ADR 0061).
 
 Wybierz **Szablon** (przestarzałe szablony nie są proponowane; krok, który już go używa, ma znacznik
 **Przestarzały**, **Deprecated**; szablony ze znacznikiem **wymaga parametrów**, **needs parameters**, oczekują
@@ -136,14 +136,32 @@ pole **Agent** pokazuje wtedy **Domyślnie: OpenCode** albo **Domyślnie: Model 
 agentów wbudowanych są po angielsku). Agent kroku nigdy nie jest wybierany po cichu w czasie wykonania: wykonuje ten,
 którego pokazuje pole.
 
+**Polecenie dla tego kroku** (**Instructions for this step**, ADR 0062): szablon mówi, co zrobić; tu dodajesz coś
+tylko dla tego kroku.
+
+- **Dopisz** (**Append**): uwagi dodawane po poleceniu szablonu, na przykład na czym skupić się w tym workflowie.
+- **Zastąp (zaawansowane)** (**Replace (advanced)**, zwinięte): tekst używany zamiast polecenia szablonu w tym
+  kroku, tylko gdy krok ma inne zadanie. Platforma nadal dodaje zgłoszenie, wcześniejsze wyniki, dane podane przy
+  starcie, uwagi i odpowiedzi ([Polecenie i to, co dostaje agent](task-library.md#instructions)).
+
 **Parametry** (**Parameters**; widoczne, gdy szablon je ma) pokazują [parametry](task-library.md#parameters)
-szablonu jako formularz: pola tekstowe, liczby, przełącznik dla **Tak / nie**, listę dla **Wyboru**. Puste oznacza
-wartość szablonu albo domyślną, pokazaną na szaro. Wymagany parametr bez żadnej wartości to błąd walidacji: workflow
-da się zapisać tylko jako wersję roboczą, a uruchomienie nie wystartuje.
+szablonu. Dla każdego **Skąd pochodzi wartość** (**Where the value comes from**):
+
+| Źródło | Znaczenie |
+|---|---|
+| **Wartość** (**Value**) | Wartość ustawiona tutaj: pole tekstowe, liczba, przełącznik dla **Tak / nie**, lista dla **Wyboru**. Puste oznacza wartość szablonu albo domyślną, pokazaną na szaro (**Domyślnie: ...**, **Dziedziczone: ...**). |
+| **Zapytaj przy starcie** (**Ask at start**) | „Formularz startu pyta o nią, z tą etykietą i typem.” Pole bierze etykietę, typ, **Wymagany** i pomoc parametru. Dla parametru **Klucz zgłoszenia Jira**: „Formularz startu pyta o nią; wartość jest kluczem zgłoszenia uruchomienia.” |
+| **Wynik wcześniejszego kroku** (**Result of an earlier step**) | Treść artefaktu, który wytwarza wcześniejszy krok: wybierz jego nazwę (na przykład `spec`) spośród artefaktów deklarowanych przez wcześniejsze kroki albo ją wpisz. Bez nazwy krok pokazuje „Parametr {name} potrzebuje nazwy artefaktu, który odczytuje”. |
+
+Wymagany parametr bez żadnej wartości („Wymagane: ustaw wartość, zapytaj przy starcie albo użyj wyniku”) i wartość,
+która nie pasuje do typu lub opcji parametru, to błędy walidacji: workflow da się zapisać tylko jako wersję roboczą,
+a uruchomienie nie wystartuje. Gdy przebieg nie ma wartości dla parametru pytanego przy starcie albo powiązanego
+z wynikiem, obowiązuje wartość szablonu albo domyślna.
 
 **Co dostaje ten krok** (**What this step gets**, zwinięte) pokazuje szablon z nadpisaniami tego kroku: agenta,
-profil modelu, prompt systemowy i użytkownika, reguły i umiejętności (te agenta), konfigurację i dane wejściowe
-przebiegu, dokładnie to, co otrzymuje model lub agent kodujący, zanim przebieg wypełni wartości. **Ostrzeżenia**
+profil modelu, **Polecenie** (z uwagami tego kroku), reguły i umiejętności (te agenta), konfigurację i to, o co krok
+ma w sekcji **Pytane przy starcie** (**Asked at start**), dokładnie to, co otrzymuje model lub agent kodujący, zanim
+przebieg wypełni wartości. **Ostrzeżenia**
 (**Warnings**) w tym miejscu nie zatrzymują kroku, na przykład umiejętność wymagana przez szablon (**Wymagane
 umiejętności**, **Required skills**), której agent kroku nie ma.
 **Nadpisania** (**Overrides**) zmieniają szablon tylko dla tego węzła:
@@ -151,13 +169,13 @@ umiejętności**, **Required skills**), której agent kroku nie ma.
 | Nadpisanie | Skutek |
 |---|---|
 | **Agent** | Kto wykonuje ten krok: **Odpowiedź modelu**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** albo inny agent z Twojej biblioteki ([Agenci](task-library.md#agents)); wybierany wstępnie jak wyżej. Puste: **OpenCode**, gdy szablon wymaga agenta kodującego, w przeciwnym razie **Odpowiedź modelu**. Z agentem przychodzą jego instrukcje, reguły, umiejętności, serwery MCP i dostęp. Krok pokazuje problem, gdy agent nie pasuje do szablonu (szablon wymagający agenta kodującego z agentem odpowiedzi modelu: „Szablon wymaga agenta kodującego: ten krok nie zadziała z agentem odpowiedzi modelu.”; albo agent z dostępem **Tylko odczyt** w kroku, który wypycha). |
-| **Katalog** (**Directory**) | Tylko agenci kodujący: **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) albo **Osobny katalog** (**Separate directory**) ([Katalog przebiegu](#run-directory)). |
-| **Sesja agenta** (**Agent session**) | Tylko agenci kodujący: **Własna (powtórzenia kontynuują)** (**Own (repeats continue)**, domyślnie), **Nowa za każdym razem** (**New each time**) albo **Kontynuuj sesję kroku …** (**Continue the session of step …**) ([Sesje agenta](#continue-session)). |
 | **Agent może zadawać pytania** (**Agent may ask questions**), **Rundy pytań** (**Question rounds**) | Domyślnie włączone, 2 rundy: agent może zatrzymać się z pytaniami, a przebieg czeka na Twoje odpowiedzi ([Agent zadaje pytania](#agent-questions)). |
 | **Profil modelu** (**Model profile**) | Model dla tego węzła. Puste: model agenta, w przeciwnym razie domyślne dla jego rodzaju (projekt, osoba uruchamiająca, platforma). |
-| **Prompt użytkownika** (**User prompt**) | **Dziedziczony** (**Inherited**), **Dopisz** (**Append**; dodawany po prompcie szablonu) lub **Zastąp** (**Replace**). |
-| **Dopisek do promptu systemowego** (**System prompt append**) | Dodawany do promptu systemowego szablonu. |
 | **Konfiguracja** (**Config**) | Ustawienia dla agenta kroku, takie jak polecenie weryfikacji, nazwa gałęzi czy opcje merge requestu; scalane z konfiguracją szablonu. |
+
+Katalog i sesja nie są już ustawieniami kroku (ADR 0062): należą do agenta (**Katalog**, **Sesja**; [Katalog
+przebiegu i sesje agentów](#run-directory)). Sandbox ustawia się w projekcie ([Polityka
+sandboxa](projects.md#sandbox-policy)), nigdy w kroku ani w szablonie.
 
 Krok nie dodaje już ani nie pomija umiejętności swojego agenta (ADR 0060): środowisko agenta ustawia się raz, na
 agencie. Kroki zapisane z taką zmianą działają z umiejętnościami agenta; gdy krok potrzebuje innych umiejętności,
@@ -176,6 +194,21 @@ zapisany krok bez własnego agenta dostał agenta, którego wskazywał jego szab
 modelu szablonu, gdy krok nie miał własnego, a agent nie ma własnego modelu; tak samo zaktualizowano wersje
 workflowów w bibliotece i przebiegi, które jeszcze czekają. Te kroki działają tak jak wcześniej, a pole **Agent**
 pokazuje teraz agenta wprost.
+
+**Workflowy zapisane przed ADR 0062.** Aktualizacja (migracja bazy V308) przepisała zapisane kroki, wersje
+workflowów w bibliotece i niezakończone przebiegi:
+
+- dawne **Dopisek do promptu systemowego** i dopisek do **Promptu użytkownika** kroku stały się **Polecenie dla
+  tego kroku** → **Dopisz** (połączone pustą linią), dawne **Zastąp** stało się **Zastąp (zaawansowane)**;
+- dawne wartości parametrów kroku stały się źródłami **Wartość**;
+- każda dawna dana wejściowa uruchomienia szablonu kroku stała się parametrem z **Zapytaj przy starcie** w tym
+  kroku, więc formularz startu pyta o te same pola co wcześniej;
+- ustawienia kroku **Katalog** i **Sesja agenta** (z „kontynuuj sesję kroku”) zostały usunięte: należą teraz do
+  agenta. Kroki, które współdzieliły rolę agenta (sprzed ADR 0060), nadal współdzielą sesję.
+
+W bibliotece prompt systemowy i prompt użytkownika każdego szablonu połączono w jego **Polecenie** (najpierw
+systemowy, pusta linia pomiędzy), a jego dane wejściowe uruchomienia stały się parametrami. Wbudowane szablony
+przepisano jako polecenia bez zdań o roli.
 
 <a id="agent-audit"></a>
 ### Agenci w tym workflowie
@@ -252,7 +285,7 @@ zapisujące w Jirze. Ich ustawienia opisuje rozdział [Akcje Jiry w workflowach]
 
 Dawniej były to szablony zadań (`fetch-issue`, `notify-jira`, `transition-issue`, `start-workflow`,
 `project-digest`). Zapisane workflowy, które ich używają, działają dalej: taki krok jest odczytywany jako akcja
-z wartościami domyślnymi dawnego szablonu i konfiguracją kroku (prompt **Zastąp** kroku **Notify Jira** staje się
+z wartościami domyślnymi dawnego szablonu i konfiguracją kroku (zastąpiony prompt kroku **Notify Jira** staje się
 komentarzem), a następny zapis utrwala akcję.
 
 Dwie akcje to operacje Back Office (ADR 0052):
@@ -270,8 +303,8 @@ Dwie akcje to operacje Back Office (ADR 0052):
   najnowsze pipeline'y **Gałęzi pipeline'ów** (**Pipeline branches**) z nieudanymi jobami (wymaga tokenu
   repozytorium z CI_READ). Krok agenta po nim czyta `{{artifacts.digest}}`.
 
-Prompty są szablonami: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}` (wszystkie komentarze
-z poprawek), `{{project.constitution}}`, `{{mr.url}}`. Brakująca wartość jest wstawiana jako pusta
+Polecenia i ustawienia tekstowe są szablonami: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}`
+(komentarze z poprawek tego kroku), `{{project.constitution}}`, `{{mr.url}}`. Brakująca wartość jest wstawiana jako pusta
 i dodaje ostrzeżenie do logu uruchomienia. Ponieważ węzły odwołują się do szablonów po kluczu, zmiana
 szablonu zmienia każdy workflow, który go używa, od jego następnego uruchomienia (zob.
 [Biblioteka zadań](task-library.md#templates)).
@@ -322,7 +355,7 @@ gałęzi i każde dostaje własny merge request.
 
 **Katalogi.** Każde repozytorium jest klonowane do osobnego katalogu nazwanego jego kluczem:
 `/workspace/service`, `/workspace/docs`, … (w [katalogu przebiegu](#run-directory) albo we własnym katalogu kroku,
-gdy pracuje on w **Osobnym katalogu**). Agent zaczyna w głównym repozytorium kroku (w głównym
+gdy jego agent pracuje w **Osobnym katalogu**). Agent zaczyna w głównym repozytorium kroku (w głównym
 repozytorium projektu, jeśli krok go używa, w przeciwnym razie w pierwszym z listy) i dostaje informację,
 jakie repozytoria istnieją, gdzie są, jakie mają przeznaczenie i gałąź bazową oraz czy może je zmieniać.
 
@@ -363,13 +396,15 @@ kontynuują nawzajem swoją pracę.
 a ponownie tylko po zmianie. Puste = bez przygotowania. Własne `setupCommand` kroku w **Konfiguracji** nadal wykonuje
 się przed tym krokiem.
 
-**Katalog kroku.** Krok kodujący (wykonywany przez agenta kodującego) ma w **Nadpisaniach** pole **Katalog**
-(**Directory**):
+**Katalog agenta.** To, czy krok kodujący pracuje w katalogu przebiegu, jest ustawieniem jego agenta, **Katalog**
+(**Directory**; [Dostęp agenta](task-library.md#agent-access), ADR 0062):
 
 | Wybór | Znaczenie |
 |---|---|
 | **Katalog przebiegu (wspólny)** (**Run directory (shared)**, domyślnie) | Krok pracuje w katalogu przebiegu. Jego repozytoria są tam klonowane raz; późniejsze kroki używają tych klonów i wszystkiego, co w nich zostało. |
 | **Osobny katalog** (**Separate directory**) | Świeża kopia tylko repozytoriów tego kroku, usuwana po kroku. Do izolacji: agent, który nie może widzieć reszty pracy przebiegu (albo, z innymi **Repozytoriami**, w ogóle kodu). Taki krok zawsze zaczyna nową sesję agenta. |
+
+Aby wykonać jeden krok w izolacji, wybierz dla niego agenta z **Osobnym katalogiem**.
 
 **Agenci na zmianę.** Na przykład *implementacja* (push włączony) → *weryfikacja* (push wyłączony) → decyzja →
 z powrotem do *implementacji*. Każdy agent kontynuuje własną sesję i widzi, co zostawił drugi: weryfikujący czyta
@@ -387,7 +422,7 @@ uruchomieniu zostaje na 24 godziny, żeby **Ponów** (**Retry**) kontynuował w 
 zaczyna pusty (wypchnięta gałąź uruchomienia zostaje).
 
 **Uwaga na zaufanie.** Wszystkie kroki przebiegu mogą czytać i zmieniać wszystko w katalogu przebiegu, także domy
-i historię sesji innych agentów. Do niezależnej weryfikacji użyj kroku z **Osobnym katalogiem**.
+i historię sesji innych agentów. Do niezależnej weryfikacji użyj agenta z **Osobnym katalogiem**.
 
 **Gdzie są pliki agenta.** Każdy agent przebiegu ma w katalogu przebiegu swój **dom** (agent home), poza każdym
 repozytorium: dokument środowiska, umiejętności, konfigurację MCP i sesje ([Środowisko agenta](task-library.md#environment)).
@@ -406,22 +441,27 @@ agenta; nie jest potrzebne, pierwszy krok kodujący też przygotowuje katalog pr
 <a id="continue-session"></a>
 ### Sesje agenta
 
-Krok kodujący ma w **Nadpisaniach** pole **Sesja agenta** (**Agent session**):
+Sesja to rozmowa agenta kodującego, więc jest ustawieniem agenta, **Sesja** (**Session**, ADR 0062), w **Biblioteka**
+→ **Zadania** → **Agenci**:
 
-- **Własna (powtórzenia kontynuują)** (**Own (repeats continue)**, domyślnie): pierwsze wykonanie kroku zaczyna
-  sesję; gdy krok wykonuje się ponownie w tym samym przebiegu (poprawki po przeglądzie, **Popraw** (**Revise**) na
-  bramce, odpowiedzi na jego pytania), agent kontynuuje własną rozmowę i pamięta, co zrobił.
-- **Nowa za każdym razem** (**New each time**): każde wykonanie zaczyna nową rozmowę.
-- **Kontynuuj sesję kroku …** (**Continue the session of step …**): wybierz wcześniejszy krok kodujący. Ten krok
-  kontynuuje sesję agenta tamtego kroku, na przykład *implementacja*, potem *popraw to, co znalazł przegląd*, a agent
-  zachowuje kontekst bez ponownego czytania repozytorium (ADR 0057).
+- **Na krok (powtórzenia kontynuują)** (**Per step (repeats continue)**, domyślnie): pierwsze wykonanie kroku
+  zaczyna sesję; gdy krok wykonuje się ponownie w tym samym przebiegu (poprawki po przeglądzie, **Popraw**
+  (**Revise**) na bramce, odpowiedzi na jego pytania), agent kontynuuje własną rozmowę i pamięta, co zrobił.
+- **Jedna na przebieg** (**One per run**): wszystkie kroki tego agenta w przebiegu to jedna rozmowa, na przykład
+  *implementacja*, potem *popraw to, co znalazł przegląd*, a agent zachowuje kontekst bez ponownego czytania
+  repozytorium (ADR 0057).
+- **Zawsze od nowa** (**Always fresh**): każde wykonanie zaczyna nową rozmowę.
 
-Kontynuowana sesja wymaga **tego samego agenta**: sesja jest przechowywana w domu agenta. Lista wyboru wyszarza kroki
-innego agenta i kroki z **Osobnym katalogiem**. Agent wznawia rozmowę (Claude Code `--resume`, OpenCode `--continue`)
-i widzi pliki, które zostawił. Jego reguły i instrukcje są w środowisku, nie w prompcie, więc nie dostaje ich drugi
-raz. Projektant, a potem jeszcze start uruchomienia, odrzucają krok, którego **Kontynuuj sesję kroku …** wskazuje
-krok, który nie istnieje albo nie jest krokiem agenta kodującego; w widoku **JSON** ustawienia to `config.session`
-(`OWN`, `NEW`, `CONTINUE`) z `config.continueSession: <id węzła>` oraz `config.directory` (`RUN`, `SEPARATE`).
+Sesja jest przechowywana w domu agenta, więc dzielą ją tylko kroki **tego samego agenta**; agent z **Osobnym
+katalogiem** nigdy nie kontynuuje sesji. Agent wznawia rozmowę (Claude Code `--resume`, OpenCode `--continue`)
+i widzi pliki, które zostawił. Jego reguły i instrukcje są w środowisku, nie w wiadomości zadania, więc nie dostaje
+ich drugi raz. W widoku **JSON** agenta ustawienia to `session` (`PER_STEP`, `PER_RUN`, `FRESH`)
+i `access.directory` (`RUN`, `SEPARATE`).
+
+Do ADR 0062 sesja była ustawieniem kroku (**Sesja agenta**, **Agent session**: **Własna**, **Nowa za każdym
+razem** albo **Kontynuuj sesję kroku …**, klucze `config.session` i `config.continueSession`), podobnie
+`config.directory`. Aktualizacja usunęła je z zapisanych kroków, a kroki, które nadal je mają, są czytane bez nich.
+Aby kilka kroków było jedną rozmową, ustaw ich agentowi **Jedna na przebieg**.
 
 <a id="agent-questions"></a>
 ### Agent zadaje pytania
@@ -552,11 +592,15 @@ musi być włączony.
 
 1. Otwórz projekt, kartę **Workflowy**, i kliknij **Uruchom** obok workflowu. Możesz też nacisnąć
    `Ctrl K`, wybrać **Uruchom…** (**Start run…**) i wskazać workflow.
-2. Wypełnij formularz. Jego pola to **dane wejściowe uruchomienia** (**run inputs**), które kroki workflowu
-   deklarują w bibliotece zadań (zob. [Dane wejściowe uruchomienia](task-library.md#run-inputs)): pole
-   wieloliniowe na dłuższy tekst, na przykład **Materiał wejściowy** (**Input material**), i pole jednoliniowe
-   na krótkie wartości. Pola oznaczone `*` są wymagane; każde pole przyjmuje najwyżej 20 000 znaków. Pole
-   **Klucz zgłoszenia Jira** (na przykład `SHOP-123`) pojawia się tylko wtedy, gdy workflow ma krok Jira.
+2. Wypełnij formularz. Jego pola to parametry, o które kroki zadań workflowu pytają przy starcie (**Zapytaj przy starcie**; etykieta, typ,
+   **Wymagany** i pomoc pochodzą z parametru; zob. [Skąd pochodzi wartość](task-library.md#parameter-sources)),
+   oraz dane wejściowe uruchomienia jego węzłów akcji, na przykład **Klucz zgłoszenia Jira** akcji **Pobierz
+   zgłoszenie**. Ta sama nazwa w kilku krokach to jedno pole: wymagane, gdy wymaga go którykolwiek krok, wygrywa
+   pierwsza etykieta. Pole wieloliniowe przyjmuje dłuższy tekst, na przykład **Materiał wejściowy** (**Input
+   material**), pole jednoliniowe krótkie wartości; parametr liczbowy, tak / nie albo wyboru to pole jednoliniowe,
+   którego wartość jest sprawdzana względem parametru (pole wyboru podaje opcje w pomocy). Pola oznaczone `*` są
+   wymagane; każde pole przyjmuje najwyżej 20 000 znaków. Pole **Klucz zgłoszenia Jira** (na przykład `SHOP-123`)
+   jest kluczem zgłoszenia uruchomienia.
 3. Opcjonalnie: otwórz **Zaawansowane (JSON)** (**Advanced (JSON)**), aby dodać dodatkowe parametry jako
    obiekt JSON, na przykład `{"depth": 2}`. Służy do wartości, których żaden krok nie deklaruje; klucz
    zgłoszenia i pola formularza ustawiasz w formularzu.
@@ -569,8 +613,9 @@ nazywa pole. Krok Jira, który czyta klucz z innego pola (**issueKeyFrom**), nie
 Starty z CI, z obserwatora zgłoszeń
 Jira, z Twojego osobistego przyjmowania pracy i przez narzędzie MCP `start_workflow` nie są sprawdzane.
 
-W projektancie węzeł **Start** pokazuje dane wejściowe uruchomienia workflowu tylko do odczytu; zmieniasz je
-w zadaniach biblioteki.
+W projektancie węzeł **Start** pokazuje formularz startu tylko do odczytu („Formularz startu pyta o parametry,
+które kroki biorą ze startu, i o dane wejściowe akcji (wersja zapisana). Zmieniaj je w krokach, nie tutaj.”): aby
+dodać pole, ustaw parametrowi kroku **Zapytaj przy starcie**.
 
 Inne sposoby uruchomienia: Twój pipeline przez punkt wejścia CI (zob. [Projekty](projects.md#project-ci)),
 REST API (`POST /api/v1/workflows/:id/runs`) i narzędzie MCP `start_workflow` z IDE (zob.

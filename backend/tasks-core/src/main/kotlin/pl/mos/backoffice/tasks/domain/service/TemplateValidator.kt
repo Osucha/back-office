@@ -10,7 +10,7 @@ import java.util.UUID
 /**
  * Structural checks of a template against the rest of the library, run before a template is saved:
  * key format, parent existence and no self-extension, the agent (ADR 0056) exists when one is named,
- * `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`, run input names are unique, parameter
+ * `outputSchema` is well-formed JSON, `confidenceField` needs an `outputSchema`, parameter
  * declarations are consistent and preset values name declared parameters with fitting values (ADR 0058). Rules and
  * skills belong to agents (ADR 0057). All problems are collected into one
  * `ValidationException`.
@@ -45,10 +45,6 @@ class TemplateValidator(private val lookup: LibraryLookup) {
         }
 
         errors += parameterProblems(template, ancestors)
-        // blank names and labels are refused by RunInputField itself
-        template.runInputs.groupBy { it.name }.filterValues { it.size > 1 }.keys.forEach { name ->
-            errors += FieldError("runInputs", "run input names must be unique; $name is declared more than once")
-        }
         return errors
     }
 

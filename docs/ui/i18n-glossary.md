@@ -43,7 +43,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | agent insights | wskaźniki agentów | ADR 0059 route title "Wskaźniki agentów"; page title "Agenci: koszt i skuteczność" (Agents: cost and effectiveness); Insights switcher "Dostarczanie / Agenci" (Delivery / Agents); sections "Według agenta i modelu" (Per agent and model), "Według szablonu" (Per template); palette "Porównaj agentów" (Compare agents) |
 | agent job | zadanie agenta (pl. zadania agentów) | runner fleet |
 | agent questions | pytania agenta | ADR 0060: step settings "Agent może zadawać pytania" (Agent may ask questions), "Rundy pytań" (Question rounds); inbox panel "Agent pyta" (The agent asks), "Dlaczego:" (Why:), buttons "Odpowiedz i kontynuuj" (Answer and continue) / "Anuluj krok" (Cancel the step), "Runda 1 z 2" (Round 1 of 2); turn card and notification "Agent ma pytania" (The agent has questions), "Odpowiedz na pytania" (Answer the questions), "Zobacz pytania" (View the questions); baton "czeka na Twoje odpowiedzi" (waiting for your answers); the prompt section "Answers of the owner" stays English |
-| agent session | sesja agenta | ADR 0057/0060 step setting "Sesja agenta": "Własna (powtórzenia kontynuują)" (Own (repeats continue)) / "Nowa za każdym razem" (New each time) / "Kontynuuj sesję kroku …" (Continue the session of step …), "Wybierz krok" (Pick the step); "Nowa sesja" (New session) is gone |
+| agent session | sesja agenta | ADR 0062: an agent field (no longer a step setting), label "Sesja" (Session), agent list column "Sesja": "Na krok (powtórzenia kontynuują)" (Per step (repeats continue)) / "Jedna na przebieg" (One per run) / "Zawsze od nowa" (Always fresh). The ADR 0060 step setting "Sesja agenta" with "Własna (powtórzenia kontynuują)" / "Nowa za każdym razem" / "Kontynuuj sesję kroku …" is gone; "sesja agenta" stays the term in prose and the manual |
 | agents in this workflow | agenci w tym workflowie | ADR 0061 designer toolbar button and panel title "Agenci w tym workflowie" (Agents in this workflow), badge "{count} problem / problemy / problemów"; intro "Reguły, umiejętności i uwagi dla każdego agenta"; rows "Kroki" (Steps), "Reguły" (Rules), "Umiejętności" (Skills), "Wymagane umiejętności" (Required skills), "brak" (none); scope "Globalny" / "Ten projekt" (Global / This project); empty "Ten workflow nie ma jeszcze kroków z zadaniami."; see also audit finding, coherence check |
 | alert (budget) | alert | "alert budżetu", "Alert przy (%)" |
 | allowed projects (connection) | dozwolone projekty | field label "Dozwolone projekty" (Jira project keys a connection may touch); not the network allowlist |
@@ -108,7 +108,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | delivery (insights) | dostarczanie | Insights switcher "Dostarczanie / Agenci" (Delivery / Agents) |
 | density (comfortable / compact) | gęstość (wygodna / kompaktowa) | preference values "Wygodna" / "Kompaktowa" |
 | designer (workflow) | projektant workflowów | |
-| directory (step) | katalog | ADR 0060 step setting "Katalog" (Directory): "Katalog przebiegu (wspólny)" (Run directory (shared)) / "Osobny katalog" (Separate directory); run fact "Katalog: osobny" |
+| directory (agent) | katalog | ADR 0062: an agent field next to "Dostęp" (Access), label "Katalog" (Directory): "Katalog przebiegu (wspólny)" (Run directory (shared)) / "Osobny katalog" (Separate directory). No longer a step setting (ADR 0060), and the run fact "Katalog: osobny" is gone |
 | discard (unsaved edits) | porzuć zmiany | not "odrzuć" (= reject a gate) |
 | display name | wyświetlana nazwa | users and model profiles |
 | done | gotowe | baton holder |
@@ -151,6 +151,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | inbox | skrzynka | the page itself is "Twoja kolej" |
 | insights | wskaźniki | |
 | instructions (agent) | instrukcje | ADR 0057 agent field "Instrukcje" (Instructions): the agent's role and way of working |
+| instructions (template, step) | polecenie | ADR 0062: the template's one text, section and field "Polecenie" (Instructions), placeholder "Co zrobić i kiedy wynik jest wystarczająco dobry"; over a parent "Dopisz do rodzica" / "Zastąp rodzica" (Append to parent / Replace parent). Step section "Polecenie dla tego kroku" (Instructions for this step) with "Dopisz" (Append) and "Zastąp (zaawansowane)" (Replace (advanced)), label "Polecenie zamiast polecenia szablonu"; "Co dostaje ten krok" row and preview tab "Polecenie"; run facts "Polecenie: zastąpione w węźle / rozszerzone w węźle". Not "instrukcje" (= the agent's) and not "prompt" (replaces "Prompt systemowy" and "Prompt użytkownika", both gone); not "polecenie przygotowania" (setup command) |
 | integration | integracja | |
 | interface (task) | interfejs (zadania) | |
 | invite / invited | zaproś / zaproszony | |
@@ -190,7 +191,8 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | platform administrator / member / evaluator / library curator / auditor | administrator platformy / członek / ewaluator / kurator biblioteki / audytor | built-in platform roles; UI names "Administrator platformy", "Członek", "Ewaluator", "Kurator biblioteki", "Audytor" |
 | project manager | kierownik projektów (pl. kierownicy projektów) | built-in platform role `project-manager` (ADR 0028): "Kierownik projektów", "Projekty tworzą kierownicy projektów" |
 | palette (designer) | paleta | not the command palette |
-| parameter (template) / parameter values | parametr (pl. parametry) / wartości parametrów | ADR 0058: "Parametry", "Wartości parametrów", "Dodaj parametr", "Wymagany"; badge "wymaga parametrów" (needs parameters, lower case like a tag); types "Jedna linia" (Single line), "Tekst wieloliniowy" (Multi-line text), "Liczba" (Number), "Tak / nie" (Yes / no), "Wybór" (Choice); not "parametry uruchomienia" (run parameters, a different thing) |
+| parameter (template) / parameter values | parametr (pl. parametry) / wartości parametrów | ADR 0058: "Parametry", "Wartości parametrów", "Dodaj parametr", "Wymagany"; badge "wymaga parametrów" (needs parameters, lower case like a tag); types "Jedna linia" (Single line), "Tekst wieloliniowy" (Multi-line text), "Liczba" (Number), "Tak / nie" (Yes / no), "Wybór" (Choice), "Klucz zgłoszenia Jira" (Jira issue key, ADR 0062); not "parametry uruchomienia" (run parameters, a different thing) |
+| parameter source (step) | skąd pochodzi wartość | ADR 0062 step "Parametry": "Skąd pochodzi wartość" (Where the value comes from): "Wartość" (Value) / "Zapytaj przy starcie" (Ask at start) / "Wynik wcześniejszego kroku" (Result of an earlier step), placeholder "Nazwa artefaktu, np. spec"; "Co dostaje ten krok" row "Pytane przy starcie" (Asked at start). Templates no longer declare "Dane wejściowe uruchomienia" (run inputs, the former template tab "Dane wejściowe" is gone); the term stays only for the Start node's list of the start form fields |
 | Pareto frontier | front Pareto | |
 | pass rate | odsetek zaliczonych | |
 | pending | oczekuje | |
@@ -209,7 +211,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | prefix (token) | prefiks | |
 | preset (template) | preset | ADR 0058: a template that only sets parameter values; button "Utwórz preset" (Create preset) |
 | project | projekt | |
-| prompt | prompt | |
+| prompt | prompt | the text sent to a model in general (evaluation "zadanie typu prompt", provenance digests); a template's text is "polecenie" since ADR 0062 |
 | provenance | pochodzenie | run tab "Pochodzenie" |
 | provider (LLM, identity) | dostawca (LLM, tożsamości) | |
 | queued | w kolejce | |
@@ -240,7 +242,7 @@ UI labels must match: the manual writes "**Uruchom** (**Start run**)").
 | run success rate | skuteczność uruchomień | insights |
 | runner | runner (pl. runnery, gen. runnerów) | |
 | sample project key (connection check) | przykładowy klucz projektu | "Przykładowy klucz projektu do sprawdzenia"; "Testuj w projekcie Jira" |
-| sandbox | sandbox (gen. sandboxa) | "Polityka sandboxa" |
+| sandbox | sandbox (gen. sandboxa) | "Polityka sandboxa"; set on the project only (ADR 0062): the template editor's "Zaawansowane: artefakty, schemat wyjścia" has no "Sandbox" any more ("Sandbox ustawia się w projekcie.") |
 | save / save changes | zapisz / zapisz zmiany | "Wszystkie zmiany zapisane", "Niezapisane zmiany" |
 | scope | zakres | library item scope; Atlassian token scopes ("zakresy tokenu", "zakresy szczegółowe" = granular scopes) |
 | system connection (project) | połączenie systemowe | Project → Connections "Połączenie systemowe", "Kolejne połączenia dla kroków tego projektu" (ADR 0035) |

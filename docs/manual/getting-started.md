@@ -36,7 +36,7 @@ the result or sends it back (see [Projects without a repository](projects.md#no-
 | Run | One execution of a workflow, usually for one Jira issue. | **Runs**, `/runs/:id` |
 | Node | One block of a workflow; a run visits nodes one at a time. | Designer canvas, run **Timeline** |
 | Gate | A node where the run stops until an approver picks an option. | **Your turn**, the gate side panel |
-| Task template | What to do: a reusable task (prompt with parameters, config, required skills) that a task node points to; the node chooses the agent. | **Library** → **Templates** |
+| Task template | What to do: a reusable task (instructions with parameters, config, required skills) that a task node points to; the node chooses the agent and where each parameter's value comes from. | **Library** → **Templates** |
 | Agent | Who works and how: a single model answer or a coding agent (OpenCode, Claude Code), optionally with its own model, with instructions, rules, skills and MCP servers. | **Library** → **Agents** |
 | Model profile | A model with its options and prices, picked by agents, workflow steps and benchmarks. | **Models** |
 | Agent job | A coding task that runs in a sandbox on a runner. | Run **Timeline**; administrators see **Agent jobs** |

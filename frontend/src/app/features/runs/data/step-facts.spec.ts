@@ -50,8 +50,7 @@ describe('stepFacts', () => {
     expect(facts.map((f) => f.label)).toEqual([
       'Template',
       'Model override',
-      'Directory',
-      'Prompt',
+      'Instructions',
       'Reached from',
       'Left through',
       'Attempt',
@@ -60,8 +59,9 @@ describe('stepFacts', () => {
     ]);
     const v = labels(facts);
     expect(v['Template']).toBe('implement');
-    expect(v['Directory']).toBe('separate');
-    expect(v['Prompt']).toBe('extended on the node');
+    // ADR 0062: the directory is the agent's; a legacy prompt override reads as instructions
+    expect(v['Directory']).toBeUndefined();
+    expect(v['Instructions']).toBe('extended on the node');
     expect(v['Reached from']).toBe('Start → next');
     expect(v['Left through']).toBe('SUCCESS → Review');
     expect(v['Attempt']).toBe('2');

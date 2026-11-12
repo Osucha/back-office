@@ -35,7 +35,7 @@ The agent's harness reports `budget-exceeded` and the job fails. The problem bod
 - `PROJECT` / `PLATFORM`: the month's hard limit is reached. `GET /api/v1/budgets` shows spend and limit.
   Raise the limit (`PUT /api/v1/projects/{id}/budget`, `project.manage`; platform: `PUT /api/v1/admin/budget`,
   `admin.settings.manage`) or set `hardStop: false`, then retry the node.
-- `JOB`: the job's own `maxCostUsd` / `maxTokens` (sandbox policy of the template or project) is used up.
+- `JOB`: the job's own `maxCostUsd` / `maxTokens` (the project sandbox policy; ADR 0062: templates have none) is used up.
   Raise it in the policy if the task legitimately needs more.
 
 The pre-check uses an estimate (prompt size + up to 4096 output tokens), so a call can be refused slightly

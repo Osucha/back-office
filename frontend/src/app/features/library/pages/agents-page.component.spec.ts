@@ -11,6 +11,7 @@ import { AgentsPageComponent } from './agents-page.component';
 
 const agents: Agent[] = [
   {
+    session: 'PER_STEP',
     id: 'a0',
     key: 'model-answer',
     name: 'Model answer',
@@ -19,6 +20,7 @@ const agents: Agent[] = [
     builtIn: true,
   },
   {
+    session: 'PER_RUN',
     id: 'a1',
     key: 'cheap-coder',
     name: 'Cheap coder',
@@ -29,7 +31,7 @@ const agents: Agent[] = [
     rules: ['agent-ground-rules', 'ask-dont-guess'],
     skills: ['spec-writing'],
     tags: ['budget'],
-    access: { mode: 'PATHS', paths: ['docs/**'] },
+    access: { directory: 'SEPARATE', mode: 'PATHS', paths: ['docs/**'] },
     builtIn: false,
   },
 ];
@@ -85,6 +87,31 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
       fixture.nativeElement.querySelectorAll('td [data-access]') as NodeListOf<HTMLElement>,
     ).map((e) => e.textContent?.trim());
     expect(access).toEqual(['Only docs/**']);
+    // ADR 0062: the session and a separate directory of coding agents
+    const sessions = Array.from(
+      fixture.nativeElement.querySelectorAll('td [data-session]') as NodeListOf<HTMLElement>,
+    ).map((e) => e.textContent?.trim());
+    expect(sessions).toEqual(['One per run']);
+    expect(fixture.nativeElement.querySelector('td [data-directory]')?.textContent).toContain(
+      'Separate directory',
+    );
+  });
+
+  it('sets the directory and the session of a coding agent (ADR 0062)', () => {
+    const { fixture, page, ed } = create();
+    page.create();
+    fixture.detectChanges();
+    ed.patch({ name: 'Isolated' });
+    ed.setKind('CLAUDE_CODE');
+    fixture.detectChanges();
+    expect(ed.session()).toBe('PER_STEP');
+    expect(ed.directory()).toBe('RUN');
+    ed.setDirectory('SEPARATE');
+    ed.patch({ session: 'FRESH' });
+    ed.save();
+    const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
+    expect(req.request.body.session).toBe('FRESH');
+    expect(req.request.body.access).toEqual({ mode: 'FULL', directory: 'SEPARATE' });
   });
 
   it('limits what a coding agent may change (ADR 0060)', () => {
@@ -98,7 +125,11 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
     expect(ed.canSave()).toBe(true);
     ed.save();
     const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/v1/agents');
-    expect(req.request.body.access).toEqual({ mode: 'PATHS', paths: ['docs/**'] });
+    expect(req.request.body.access).toEqual({
+      mode: 'PATHS',
+      directory: 'RUN',
+      paths: ['docs/**'],
+    });
   });
 
   it('edits the environment: rules and skills of the scope, MCP servers only for coding agents (ADR 0057)', () => {
@@ -183,6 +214,7 @@ describe('AgentsPageComponent (ADR 0056/0057)', () => {
       rules: [],
       skills: [],
       mcpServers: [],
+      session: 'PER_STEP',
       tags: [],
     });
     req.flush({ ...req.request.body, id: 'a2', key: 'reviewer' });

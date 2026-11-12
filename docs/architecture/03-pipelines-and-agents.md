@@ -141,13 +141,31 @@ else the agent's, then the defaults (`ModelResolver`; the model plan reports the
 the source `TEMPLATE` is no longer produced).
 Since ADR 0057 every task step gets one **environment document** rendered by `AgentEnvironment`: the platform preamble
 for its kind of agent, the agent's instructions, the project constitution, then the rules (automatic, then the
-agent's); see [07-task-library.md](07-task-library.md#agents-adr-0056-0057). The task prompt carries the task only. The deterministic integrations are `ACTION` nodes (`action.type`,
+agent's); see [07-task-library.md](07-task-library.md#agents-adr-0056-0057). The task prompt carries the task only.
+
+**The task message (ADR 0062).** A template has one text, `instructions` (no system and user prompt any more).
+`TaskMessage` composes what the agent gets as its task: the step's merged instructions (template lineage with
+`instructionsMode` APPEND/REPLACE, then the step's `instructionsAppend` or `instructionsReplace`; `Task: {{node.name}}`
+when there are none), then the **standard data sections**, each only when it has content and the instructions do not
+place it with its own placeholder: the issue (`{{issue.*}}`), the artefacts the task consumes (`{{artifacts.<name>}}`,
+headings such as "Specification", "Latest review"), the parameter values bound `START` that the instructions do not
+read (`{{params.<name>}}`, under the parameter's label; none when the instructions use the ADR 0053 `{{runInputText}}` /
+`{{runInput}}`), the reviewer's feedback (`{{feedback}}`) and the owner's answers (`{{answers}}`, ADR 0060); a consumed
+`diff` comes last, so a message cut at its size limit loses diff lines, never the instructions. Everything is rendered
+in one `renderPrompt` pass, so untrusted values are data blocks (ADR 0029) wherever they are placed. The system part
+is the platform's: the environment document, the skills (model answer) and the answer format (output schema,
+questions). A model answer gets the message as its user message, a coding agent as its prompt (with the answer
+section and the repositories list after it). Why one text: the frame (who you are, which rules) is the agent's since
+ADR 0057, coding agents glued both fields into one prompt anyway, and what was left in template system prompts were
+role sentences duplicating the agent and data sections every template had to remember.
+
+The deterministic integrations are `ACTION` nodes (`action.type`,
 `action.config`; palette `actions` with config schema, defaults, run inputs, ports `success`/`failure` and required
 connection capabilities), not tasks.
 
 | Way of running | When | Implementation | Inputs / outputs |
 |---|---|---|---|
-| model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; system prompt = environment document, then the template's system prompt, then the skills in a `<skills>` section (PROMPT jobs of ADR 0050 get the same as `systemPrompt`); template rendered with `issue`, `artifacts.*`, `feedback`, `params.*`, `project.*`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
+| model answer (former `LLM`) | agent without a harness | one structured call through `LlmGateway`; system prompt = environment document, then the skills in a `<skills>` section, then the data-block notice; the gateway adds the answer schema (PROMPT jobs of ADR 0050 get the same as `systemPrompt`); user message = the task message (ADR 0062), rendered with `issue`, `artifacts.*`, `feedback`, `answers`, `params.*`, `project.*`, `input.ci.*`; `outputSchema` → `structured`; `confidenceField` → `confidence`; every key in `produces` that matches a structured field or the whole content becomes an artefact | consumes/produces per template |
 | Spec Kit job (former `SPEC_KIT`) | coding agent (OpenCode, Claude Code) and the config key `phase` | runner Job, `mode = SPEC_KIT`, phase from config; environment document in `spec.instructions`, the agent's MCP servers in `spec.mcpServers`; skills written to the agent's home (ADR 0060); artefacts `spec`/`plan`/`tasks`/`analysis`; repositories per [Step repositories](#step-repositories) | produces the phase artefact |
 | agent job (former `IMPLEMENT`) | coding agent otherwise | runner Job, `mode = IMPLEMENT`, the agent's harness; `spec.instructions`, `spec.mcpServers` as above; `verifyCommand`, `branchTemplate`, `push`, `mergeRequest` push options; repositories per [Step repositories](#step-repositories); result `diff` becomes artefact `diff`, the primary repository's `mergeRequestUrl` (else the first pushed) → `mr`, per-repository results → `NodeExecution.repositories`; with an `outputSchema` the structured answer below | produces `diff`, `mr`; without a push the final answer is the `result` artefact |
 
@@ -179,20 +197,21 @@ as the artefact `structured-answer`, keeps it out of the commit and removes a st
 `StructuredAnswers` parses it and applies the same schema check, confidence field and produced artefacts as a model
 answer. A missing or invalid answer fails the step with the reasons.
 
-**Run directory and sessions (ADR 0060, replacing the run workspaces of ADR 0044).** Every run has one run directory:
-the coding steps whose config `directory` is `RUN` (default) work in it one after another (the runner workspace
-with key `run`, ADR 0044 leasing and volumes unchanged); `SEPARATE` gives a step a throwaway directory with only its
-repositories and no session. `WorkflowDefinition.setupCommand` runs once per run directory before the first coding
-step (again when it changes). `RunDirectory` reads the step config: `session` `OWN` (default; the step's own session
-role, so repeated executions such as rework loops or answered questions continue it), `NEW` (no session role) or
-`CONTINUE` with `continueSession: <node id>` (the session role of that step, ADR 0057). The designer validation and
-the check before a run (`RepositoryStepCheck`) refuse a reference to a step that does not exist or is not a coding
-agent step, a step of another agent (the session lives in the agent's home) and a `SEPARATE` target. Claude Code
-resumes with `--resume`, OpenCode with `--continue`. Because the rules live in the environment document and not in
-the prompt, a continued session does not receive them again. Compatibility: the stored step key `workspace` is
-dropped when workflows are read; `sessionRole` without `session` is the step's own session role, so steps that
-shared one keep sharing their session; `prepareOnly` steps (`prepare-workspace`, deprecated) prepare the run
-directory. Migration `V121__run_directory_and_agent_questions.sql` moved a project workspace's `setupCommand` to the
+**Run directory and sessions (ADR 0060, 0062; replacing the run workspaces of ADR 0044).** Every run has one run
+directory: the coding steps whose agent has `access.directory` `RUN` (default) work in it one after another (the
+runner workspace with key `run`, ADR 0044 leasing and volumes unchanged); an agent with `SEPARATE` gets a throwaway
+directory with only the step's repositories and no session. `WorkflowDefinition.setupCommand` runs once per run
+directory before the first coding step (again when it changes). Since ADR 0062 the session is the agent's too
+(`Agent.session`), and `RunDirectory` derives the session role from it: `PER_STEP` (default; the step's own role
+`s-<node id>`, so repeated executions such as rework loops or answered questions continue it), `PER_RUN` (the agent's
+role `a-<agent key>`: all steps of this agent in a run are one conversation) or `FRESH` (no role, every execution
+starts anew); a `SEPARATE` agent and a prepare step have no role. Claude Code resumes with `--resume`, OpenCode with
+`--continue`. Because the rules live in the environment document and not in the prompt, a continued session does not
+receive them again. Compatibility: the stored step keys `workspace` (ADR 0044) and `session`, `continueSession`,
+`directory` (ADR 0060 step settings) are dropped when workflows are read (V308 removed them from stored steps); a
+legacy `sessionRole` is the step's session role while the agent keeps `PER_STEP`, so steps that shared one keep
+sharing their session; `prepareOnly` steps (`prepare-workspace`, deprecated) prepare the run directory and need an
+agent with directory `RUN`. Migration `V121__run_directory_and_agent_questions.sql` moved a project workspace's `setupCommand` to the
 workflows whose steps named it and its sources to the `repositories` of those steps that had none, then dropped
 `project_workspace`.
 
@@ -231,35 +250,60 @@ Decisions are audited as `RUN_AGENT_QUESTIONS_ANSWERED`.
 
 A stored `TASK` node naming a former action template (`fetch-issue`, `notify-jira`, `transition-issue`,
 `start-workflow`, `project-digest`) is read as the `ACTION` node with the former template defaults, the step's
-`config` and its `promptReplace` as the comment message; the next save writes the new form.
+`config` and its replacement text (`instructionsReplace`, formerly `promptReplace`) as the comment message; the next
+save writes the new form.
 
 Model answer, action, decision, gate and CI-wait nodes need no repository; a project without repositories (ADR 0034)
 runs workflows made of these. The built-in `llm-task` template (run by a model answer agent, `model-answer` in the
 default workflow) is the generic step of such
-workflows: its task is the template parameter `task` set per node (ADR 0058; the user prompt is `{{params.task}}`,
-and a stored `promptReplace` still wins); its run input `input` ("Input material") and the revision feedback
-(`{{feedback}}`, filled on a second visit) are part of the template's system prompt, so changing the task keeps
-them.
+workflows: its task is the template parameter `task` set per node (ADR 0058; its instructions are `{{params.task}}`,
+and a stored replacement still wins); the issue, its parameter `input` ("Input material", bound `START` in the
+default workflows) and the revision feedback are standard data sections of the task message (ADR 0062), so changing
+the task keeps them.
 
-### Run inputs
+<a id="run-inputs"></a>
+### Parameters and the run start form (ADR 0053, 0062)
 
-Library tasks declare the run inputs they ask for (`runInputs`, [ADR 0053](../adr/0053-run-inputs-declared-by-tasks.md),
-[Task Library](07-task-library.md)). A workflow's start form is the union of the run inputs of its task steps
-(`GET /workflows/{id}/run-inputs`: required when any step requires it, the first label wins); the START node
-declares nothing and shows the list read-only. The values travel as run `parameters` by name; the value of an
-`ISSUE_KEY` field also becomes the run's `issueKey` unless the request gives one.
+Templates declare only **parameters** (`TemplateParameter`: `TEXT`, `MULTILINE`, `NUMBER`, `BOOLEAN`, `CHOICE`,
+`ISSUE_KEY`); since ADR 0062 they no longer declare run inputs (the ADR 0053 `runInputs` of a template). A task step
+binds each parameter in `TaskOverrides.parameterBindings` (a `ParameterBinding` per name):
+
+| Source | Value at run time |
+|---|---|
+| `VALUE` | a fixed value set in the designer (the former step `parameters`) |
+| `START` | the run parameter of that name, asked in the run start form; label, type, required and help come from the parameter |
+| `ARTIFACT` | the content of the latest artefact of the named earlier step output (`artifact`) |
+
+An unbound parameter (or a `START` / `ARTIFACT` binding the run leaves empty) takes the preset value (`parameterValues`
+of the nearest template) or the default (`ResolvedParameter.fallback`). `StepParameters` computes the values per run;
+the values bound at run time (`START`, `ARTIFACT`) come from outside the design and are untrusted: the template model
+lists them under `TemplateRenderer.UNTRUSTED_PARAMS`, so `{{params.<name>}}` renders them as data blocks (ADR 0029),
+while design-time values are trusted like the instructions. An `ARTIFACT` value is also guard-checked like a consumed
+artefact.
+
+A workflow's start form (`GET /workflows/{id}/run-inputs`) is the union of the parameters its task steps bind `START`
+(`TemplateParameter.asRunInput`: `MULTILINE` a text area, `ISSUE_KEY` an issue key, every other type a single line
+whose value the start checks against the declaration; a `CHOICE` names its options in the help) and the run inputs of
+its action nodes (ADR 0056); the same name across steps is one field (required when any requires it, the first label
+wins). The START node declares nothing and shows the list read-only. The values travel as run `parameters` by name;
+a `START`-bound `ISSUE_KEY` parameter is the run's `issueKey` unless the request gives one (and reads the run's issue
+key when the run parameter is empty).
 
 - **Checked starters:** `POST /workflows/{id}/runs` (the start dialog and API-token calls) refuses a missing or blank
-  required input, any declared input longer than 20 000 characters and an `ISSUE_KEY` value that is not shaped like
-  `ABC-123`, with a validation problem naming the field. A step whose `issueKeyFrom` names another parameter makes
-  its `ISSUE_KEY` input optional.
+  required input, any declared input longer than 20 000 characters, an `ISSUE_KEY` value that is not shaped like
+  `ABC-123` and a value that does not fit a `START`-bound parameter's type (number, true/false, one of the options),
+  with a validation problem naming the field. A step whose `issueKeyFrom` names another parameter makes its
+  `ISSUE_KEY` input optional.
   The personal intake, the Jira intake watcher, CI and the MCP `start_workflow` tool are not checked.
-- **Prompts:** the template model has `runInput` (the current task's declared inputs that have a value, as
-  `{name, label, value}`) and `runInputText` (the same as `Label: value` paragraphs). Both are untrusted roots, so
-  prompts get them as data blocks. The built-in templates that ask for `input` (including `llm-task`, `agent-task` and the deprecated `base-agent`) render a "Run input" section from
-  `runInputText`. `{{parameters.*}}` keeps working for custom templates.
-- **Design time:** `WorkflowValidator` warns when a step reads `issueKeyFrom` from a run parameter no task declares,
-  and when two tasks declare the same input with different labels.
+- **Prompts:** the parameters a step binds `START` and the instructions do not read become standard data sections of
+  the task message under their labels. The ADR 0053 roots `runInput` (`{name, label, value}`) and `runInputText`
+  (`Label: value` paragraphs) are still in the template model, now filled from the `START` bindings; instructions that
+  use them get no extra sections. `{{parameters.*}}` keeps working for custom templates.
+- **Design time:** the resolver (`TaskResolver`) reports a required parameter that has no value and is not bound at
+  run time, an `ARTIFACT` binding without an artefact name and a `VALUE` for an undeclared parameter (a `START` /
+  `ARTIFACT` binding of an undeclared one is a warning and ignored); `WorkflowValidator` warns when a step reads
+  `issueKeyFrom` from a run parameter no step binds `START`, and when two steps bind the same name with different
+  labels.
 
 The seeded `code-review` template is a model answer task with `consumes: [diff]`, `produces: [review]` and a
 schema for `{summary, findings[], verdict, score}`; the verdict policy (blocker → REQUEST_CHANGES,

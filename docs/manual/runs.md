@@ -50,15 +50,16 @@ relay track with labels, durations and costs; click a segment to select that ste
 |---|---|
 | **Timeline** | Left: every step in order, with attempt number, the port it left through, who produced it, duration, cost and errors. Right: the selected step (or **Whole run**) with its summary, confidence and facts, and the tabs **Artefacts (N)**, **Logs** and, after a code review, **Review**. |
 | **Canvas replay** | The workflow version the run started with, with the path the run took. |
-| **Input** | The run input: issue key, parameters (the values of the start form's run inputs and any extra parameters) and, for CI-started runs, the CI context. |
+| **Input** | The run input: issue key, parameters (the values of the start form's fields and any extra parameters) and, for CI-started runs, the CI context. |
 | **Provenance** | The signed attestations of the run (see [Provenance](runs.md#provenance)). |
 
 - **Who did a task step.** Every task step records the agent and the model it ran with. The timeline shows them
   under the step as *template · agent · model*, for example `implement-opencode · Claude Code · Claude Sonnet`, and
   the step's facts have the row **Agent** (with the agent's kind when its name does not say it). Steps that ran
   before agents were recorded show only the template. These records feed
-  [Agents: cost and effectiveness](costs-insights.md#agent-insights). A step that worked outside the
-  [run directory](workflows.md#run-directory) has the row **Directory**: *separate*.
+  [Agents: cost and effectiveness](costs-insights.md#agent-insights). A step whose node added notes to the
+  template's instructions has the row **Instructions**: *extended on the node*; one that replaced them,
+  *replaced on the node*.
 - **Agent questions.** A step whose agent stopped with questions shows **waiting for your answers**; the run page
   says so with **Answer the questions** (or **View the questions** when someone else answers). See
   [Answering an agent's questions](your-turn.md#agent-questions).

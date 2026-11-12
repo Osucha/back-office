@@ -9,6 +9,7 @@ import { ProjectAgentsPanelComponent } from './project-agents-panel.component';
 
 const agents: Agent[] = [
   {
+    session: 'PER_STEP',
     id: 'g1',
     key: 'coder',
     name: 'Coder',
@@ -18,14 +19,22 @@ const agents: Agent[] = [
     rules: ['ask'],
     skills: ['kotlin', 'spec'],
   },
-  { id: 'g2', key: 'reviewer', name: 'Reviewer', scope: { type: 'GLOBAL' }, harness: null },
   {
+    session: 'PER_STEP',
+    id: 'g2',
+    key: 'reviewer',
+    name: 'Reviewer',
+    scope: { type: 'GLOBAL' },
+    harness: null,
+  },
+  {
+    session: 'PER_STEP',
     id: 'p1a',
     key: 'coder',
     name: 'Coder (SHOP)',
     scope: { type: 'PROJECT', projectId: 'p-1' },
     harness: 'CLAUDE_CODE',
-    access: { mode: 'READ_ONLY' },
+    access: { directory: 'RUN', mode: 'READ_ONLY' },
   },
 ];
 

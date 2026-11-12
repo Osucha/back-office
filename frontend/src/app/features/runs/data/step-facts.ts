@@ -74,21 +74,19 @@ function taskFacts(
       value: o.modelProfileId,
       mono: true,
     });
-  // ADR 0060: a step outside the run directory
-  if (String(o?.config?.['directory'] ?? '').toUpperCase() === 'SEPARATE')
+  // ADR 0062: the step's instructions (the former prompt overrides read the same way)
+  const legacy = (o ?? {}) as Record<string, unknown>;
+  const has = (...keys: string[]) =>
+    keys.some((k) => typeof legacy[k] === 'string' && !!(legacy[k] as string).trim());
+  if (has('instructionsReplace', 'promptReplace'))
     out.push({
-      label: $localize`:@@runs.detail.fact.directory:Directory`,
-      value: $localize`:@@runs.detail.fact.directorySeparate:separate`,
+      label: $localize`:@@runs.detail.fact.instructions:Instructions`,
+      value: $localize`:@@runs.detail.fact.instructionsReplaced:replaced on the node`,
     });
-  if (o?.promptReplace)
+  else if (has('instructionsAppend', 'promptAppend', 'systemPromptAppend'))
     out.push({
-      label: $localize`:@@runs.detail.fact.prompt:Prompt`,
-      value: $localize`:@@runs.detail.fact.promptReplaced:replaced on the node`,
-    });
-  else if (o?.promptAppend)
-    out.push({
-      label: $localize`:@@runs.detail.fact.promptExtended:Prompt`,
-      value: $localize`:@@runs.detail.fact.promptExtendedValue:extended on the node`,
+      label: $localize`:@@runs.detail.fact.instructions:Instructions`,
+      value: $localize`:@@runs.detail.fact.instructionsExtended:extended on the node`,
     });
   return out;
 }

@@ -1,5 +1,7 @@
 package pl.mos.backoffice.tasks.application.service
 
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentSession
 import pl.mos.backoffice.tasks.domain.model.Agent
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Skill
@@ -12,7 +14,7 @@ import java.security.MessageDigest
  *
  * The canonical form survives a database round trip: map keys are sorted (jsonb reorders them), `null` values in
  * config maps are dropped (the JSON mapper does not write them), whole numbers compare equal whatever their type,
- * and an empty prompt or schema equals a missing one. Without that a template whose shipped config holds
+ * and empty instructions or an empty schema equal missing ones. Without that a template whose shipped config holds
  * `verifyCommand: null` would look changed on every start.
  */
 object BuiltInChecksum {
@@ -22,10 +24,9 @@ object BuiltInChecksum {
             mapOf(
                 "name" to t.name, "description" to t.description, "abstract" to t.abstract, "extendsKey" to t.extendsKey,
                 "category" to t.category?.name,
-                "promptSystem" to t.prompt.system, "promptUser" to t.prompt.user, "promptMode" to t.prompt.mode.name,
+                "instructions" to t.instructions, "instructionsMode" to t.instructionsMode.name,
                 "config" to t.config, "outputSchema" to t.outputSchema,
                 "confidenceField" to t.confidenceField, "produces" to t.produces, "consumes" to t.consumes, "tags" to t.tags,
-                "runInputs" to t.runInputs.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "help" to it.help) },
                 "parameters" to t.parameters.map { mapOf("name" to it.name, "label" to it.label, "type" to it.type.name, "required" to it.required, "default" to it.default, "options" to it.options, "help" to it.help) },
                 "parameterValues" to t.parameterValues,
                 // ADR 0060: only when set, so the checksums of templates without it stay
@@ -46,7 +47,9 @@ object BuiltInChecksum {
                 "name" to a.name, "description" to a.description, "harness" to a.harness?.name, "modelProfileId" to a.modelProfileId?.value?.toString(), "tags" to a.tags,
                 "instructions" to a.instructions, "rules" to a.rules, "skills" to a.skills, "mcpServers" to a.mcpServers.map { mapOf("name" to it.name, "url" to it.url) },
                 // ADR 0060: only when not FULL, so the checksums of other agents stay
-                "access" to a.access.takeUnless { it.full }?.let { mapOf("mode" to it.mode.name, "paths" to it.paths) },
+                "access" to a.access.takeUnless { it == AgentAccess.FULL }?.let { mapOf("mode" to it.mode.name, "paths" to it.paths, "directory" to it.directory.name.takeIf { _ -> it.separate }) },
+                // ADR 0062: only when not the default
+                "session" to a.session.name.takeUnless { a.session == AgentSession.PER_STEP },
             ),
         ),
     )

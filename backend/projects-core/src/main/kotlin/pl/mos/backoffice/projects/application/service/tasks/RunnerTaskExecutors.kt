@@ -80,8 +80,8 @@ fun specKitOff(projectOn: Boolean): String =
  * mirrors the primary entry for older runners and `gitAccess` is the highest access. The result is mapped per
  * repository ([RepositoryResult]); results of older runners (no `repositories`) describe the primary entry.
  *
- * Run directory (ADR 0060): a `RUN` step (default) works in the run directory shared by the coding steps of the run
- * (runner workspace `run`, the workflow's setup command, the session role from `session`), a `SEPARATE` step in a
+ * Run directory (ADR 0060/0062): an agent with directory `RUN` (default) works in the run directory shared by the coding steps of the run
+ * (runner workspace `run`, the workflow's setup command, the session role from the agent's `session`), a `SEPARATE` one in a
  * throwaway directory. The spec names the agent's home (`agentHome`) and its access when not FULL; a step that allows
  * questions collects `agent-questions.json`, whose questions pause the run ([StepQuestions]).
  *
@@ -108,6 +108,7 @@ class RunnerTaskSupport(
     private val json: JsonCodec? = null,
 ) {
     private val environment = AgentEnvironment(renderer)
+    private val taskMessage = TaskMessage(renderer)
 
     private data class Plan(
         val spec: RunnerJobSpec,
@@ -150,7 +151,7 @@ class RunnerTaskSupport(
         val project = context.project
         // ADR 0060: the run directory (or a separate one) and the agent session of the step; a prepare step never pushes
         val config = task.config
-        val directory = RunDirectory.of(config, runnerStep = true)
+        val directory = RunDirectory.of(config, task.agent, runnerStep = true)
         if (!directory.valid) throw RepositoryPlanException("directory of step ${node.id}: " + directory.errors.joinToString("; "))
         if (logWarnings) directory.warnings.forEach { context.warn("directory: $it") }
         val push = !directory.prepareOnly && config.boolean("push", default = true)
@@ -171,29 +172,29 @@ class RunnerTaskSupport(
         if (primary == null && repos.isNotEmpty()) throw RepositoryPlanException("step ${node.id} has no primary repository")
         if (primary == null && !StepRepositories.repositoryOptional(config)) throw RepositoryPlanException("step ${node.id} has no repository")
         val profile = modelResolver.forCodingAgent(task, project, ActingUser.startedBy(context.run)?.userId)
-        val model = templateModel.build(context, repos, task.runInputs, task.parameterValues)
+        val model = templateModel.build(context, repos, task)
         val blocks = PromptDataBlocks.random()
         // ADR 0057: the environment goes to the harness's own files (spec.instructions), not into the prompt
         val environmentDocument = environment.document(task, project, model, blocks, questions = questionsOpen)
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("agent instructions: $it") } }
-        val system = task.prompt.system?.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks).text }
-        val user = renderer.renderPrompt(task.prompt.user?.takeIf { it.isNotBlank() } ?: defaultPrompt, model, blocks)
+        // ADR 0062: the instructions and the standard data sections (the owner's answers among them); a template without
+        // instructions gets the executor's default text
+        val message = taskMessage.render(task.takeUnless { it.instructions.isNullOrBlank() } ?: task.copy(instructions = defaultPrompt), model, blocks)
             .also { r -> if (logWarnings) r.warnings.forEach { context.log("template: $it") } }
         // the notice comes last: the runner derives the commit message (and Spec Kit the feature name) from the first line
         // ADR 0060: every RUN step of the run shares the run directory, set up once with the workflow's setup command
         val workspace = if (directory.runDirectory) {
             RunnerWorkspace(
                 RunnerWorkspace.RUN_KEY, RunnerWorkspace.nameFor(context.run.id.value, RunnerWorkspace.RUN_KEY),
-                RunDirectory.sessionRole(node.id, config, context.run.definitionSnapshot.nodes), directory.prepareOnly,
+                RunDirectory.sessionRole(node.id, directory, task.agent.key), directory.prepareOnly,
                 setupCommand = context.run.definitionSnapshot.setupCommand?.takeIf { it.isNotBlank() },
             )
         } else {
             null
         }
         val answerSchema = task.outputSchema?.takeIf { it.isNotBlank() }
-        val answers = StepQuestions.answersSection(context, renderer, model, blocks)
         val prompt = listOfNotNull(
-            system, user.text, answers, answerSchema?.let(::answerSection), repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) },
+            message.text, answerSchema?.let(::answerSection), repos.takeIf { it.isNotEmpty() }?.let { repositoriesSection(it, blocks) },
             workspace?.let(::workspaceSection), agentNotice(blocks),
         ).joinToString("\n\n")
         val fallbackBranch = "run/${context.run.id.short}"
@@ -277,7 +278,7 @@ class RunnerTaskSupport(
             // ADR 0047: the commit subject and the Spec Kit argument never contain the system prompt or the notices
             commitSubject = UntrustedText.sanitize(renderer.renderText(config.string("commitSubjectTemplate") ?: DEFAULT_COMMIT_SUBJECT, model), MAX_COMMIT_SUBJECT)
                 .lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotBlank() && !it.startsWith(":") },
-            featureDescription = user.text.takeIf { mode == RunnerMode.SPEC_KIT && it.isNotBlank() },
+            featureDescription = message.text.takeIf { mode == RunnerMode.SPEC_KIT && it.isNotBlank() },
             credentials = credentials.map { it.first } + tools.map { it.second },
             agentTools = tools.map { it.first },
             instructions = environmentDocument.text.takeIf { it.isNotBlank() },

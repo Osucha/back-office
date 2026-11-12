@@ -1,7 +1,6 @@
 package pl.mos.backoffice.tasks.support
 
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.TemplateCategory
@@ -9,7 +8,8 @@ import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.tasks.application.service.BuiltInLibrary
 import pl.mos.backoffice.tasks.application.service.RepositoryLookup
 import pl.mos.backoffice.tasks.domain.model.Agent
-import pl.mos.backoffice.tasks.domain.model.Prompt
+import pl.mos.backoffice.shared.runner.AgentSession
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.tasks.domain.model.Rule
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
@@ -42,8 +42,9 @@ class Library(builtInAgents: Boolean = true) {
         skills: List<String> = emptyList(),
         instructions: String = "",
         access: AgentAccess = AgentAccess.FULL,
+        session: AgentSession = AgentSession.PER_STEP,
     ): Agent =
-        agents.save(Agent.create(Agent.Content(key = key, name = name, scope = scope, harness = harness, rules = rules, skills = skills, instructions = instructions, access = access), now))
+        agents.save(Agent.create(Agent.Content(key = key, name = name, scope = scope, harness = harness, rules = rules, skills = skills, instructions = instructions, access = access, session = session), now))
 
     fun skill(key: String, scope: Scope = Scope.Global, content: String = "# $key"): Skill =
         skills.save(Skill.create(Skill.Content(key = key, name = key, content = content, scope = scope), now))
@@ -57,7 +58,8 @@ class Library(builtInAgents: Boolean = true) {
         abstract: Boolean = false,
         scope: Scope = Scope.Global,
         category: TemplateCategory? = null,
-        prompt: Prompt = Prompt.EMPTY,
+        instructions: String? = null,
+        instructionsMode: InstructionsMode = InstructionsMode.APPEND,
         config: Map<String, Any?> = emptyMap(),
         outputSchema: String? = null,
         confidenceField: String? = null,
@@ -65,7 +67,6 @@ class Library(builtInAgents: Boolean = true) {
         consumes: List<String> = emptyList(),
         tags: List<String> = emptyList(),
         name: String = key,
-        runInputs: List<RunInputField> = emptyList(),
         parameters: List<TemplateParameter> = emptyList(),
         parameterValues: Map<String, Any?> = emptyMap(),
         requiresSkills: List<String> = emptyList(),
@@ -73,8 +74,8 @@ class Library(builtInAgents: Boolean = true) {
         TaskTemplate.create(
             TaskTemplate.Content(
                 key = key, name = name, abstract = abstract, extendsKey = extendsKey, category = category,
-                scope = scope, prompt = prompt, config = config, outputSchema = outputSchema,
-                confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags, runInputs = runInputs,
+                scope = scope, instructions = instructions, instructionsMode = instructionsMode, config = config, outputSchema = outputSchema,
+                confidenceField = confidenceField, produces = produces, consumes = consumes, tags = tags,
                 parameters = parameters, parameterValues = parameterValues, requiresSkills = requiresSkills,
             ),
             now,

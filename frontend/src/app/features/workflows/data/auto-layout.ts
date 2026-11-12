@@ -18,6 +18,7 @@
  */
 import type { WorkflowDefinitionInput, WorkflowNode } from '../../../core/api/types';
 import { portsFor, visiblePortsFor, type PaletteIndex } from './graph-model';
+import { hasStepOverrides } from './step-bindings';
 
 export interface Size {
   width: number;
@@ -67,14 +68,7 @@ export function estimateNodeSize(
     case 'TASK': {
       const tpl = node.task?.templateKey ? palette?.tasks.get(node.task.templateKey) : undefined;
       const o = node.task?.overrides;
-      const overridden = !!(
-        o &&
-        (o.modelProfileId ||
-          o.promptAppend ||
-          o.promptReplace ||
-          o.systemPromptAppend ||
-          (o.config && Object.keys(o.config).length))
-      );
+      const overridden = hasStepOverrides(o);
       // A library template shows its category row; without the palette assume one: too much
       // room is harmless, too little makes cards overlap.
       if (!palette?.tasks.size || tpl || overridden) body += 1.25;

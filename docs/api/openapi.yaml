@@ -1167,8 +1167,10 @@ paths:
       tags: [workflows]
       operationId: getWorkflowRunInputs
       description: >-
-        ADR 0053: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its
-        task steps (required when any step requires it, the first label wins). Needs project.view, like reading the workflow.
+        ADR 0053/0062: the effective run inputs of the workflow for the start dialog: the parameters its task steps bind
+        `START` (field name = parameter name; label, type, required and help from the parameter) and the run inputs of
+        its action nodes; the same name across steps is one field (required when any requires it, the first label wins).
+        Needs project.view, like reading the workflow.
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RunInputField' } } } } }
         '404': { $ref: '#/components/responses/Problem' }
@@ -2787,19 +2789,19 @@ components:
       properties:
         agentKey: { type: string, nullable: true, description: 'ADR 0056: the agent that runs this step instead of the template''s' }
         modelProfileId: { type: string, format: uuid, nullable: true }
-        systemPromptAppend: { type: string, nullable: true }
-        promptAppend: { type: string, nullable: true }
-        promptReplace: { type: string, nullable: true }
-        parameters: { type: object, additionalProperties: true, description: 'ADR 0058: values of the template''s parameters for this step (win over template values and defaults)' }
+        instructionsAppend: { type: string, nullable: true, description: 'ADR 0062: notes added after the template''s instructions for this step (legacy systemPromptAppend / promptAppend read as this)' }
+        instructionsReplace: { type: string, nullable: true, description: 'ADR 0062: replaces the template''s instructions for this step (legacy promptReplace)' }
+        parameterBindings:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ParameterBinding' }
+          description: 'ADR 0062: per parameter name, where its value comes from; unbound = the preset value or the default (legacy `parameters` values read as VALUE bindings)'
         config:
           type: object
           additionalProperties: true
           description: >-
-            Template config overrides. ADR 0060 keys of coding agent steps: `directory` RUN (default, the run
-            directory) or SEPARATE (a fresh directory with only the step's repositories); `session` OWN (default,
-            repeated executions continue the step's own session), NEW, or CONTINUE with `continueSession: <node id>`
-            (share the session of an earlier step of the same agent). All agent steps: `allowQuestions` (default
-            true) and `maxQuestionRounds` (default 2). `workspace` and `sessionRole` of ADR 0044 are read compatibly.
+            Template config overrides. Agent steps: `allowQuestions` (default true) and `maxQuestionRounds` (default 2).
+            ADR 0062: session and directory are the agent's; the keys `session`, `continueSession`, `directory` are
+            ignored; legacy `sessionRole` keeps a shared session.
     DecisionBranch:
       type: object
       required: [id, label, expression]
@@ -3589,6 +3591,7 @@ components:
       properties:
         mode: { type: string, enum: [FULL, READ_ONLY, PATHS], default: FULL }
         paths: { type: array, items: { type: string }, description: PATHS only }
+        directory: { type: string, enum: [RUN, SEPARATE], default: RUN, description: 'ADR 0062: RUN the run directory; SEPARATE a fresh directory with only the step''s repositories, no session continuation (the agent does not see what other steps left)' }
     AgentAuditFinding:
       type: object
       required: [kind, severity, message]
@@ -3656,6 +3659,11 @@ components:
         skills: { type: array, items: { type: string }, description: 'ADR 0057: keys of skills the agent loads when it needs them' }
         mcpServers: { type: array, items: { $ref: '#/components/schemas/AgentMcpServer' } }
         access: { $ref: '#/components/schemas/AgentAccess' }
+        session:
+          type: string
+          enum: [PER_STEP, PER_RUN, FRESH]
+          default: PER_STEP
+          description: 'ADR 0062 (coding agents): PER_STEP the repeats of one step continue its conversation; PER_RUN all steps of this agent in a run are one conversation; FRESH every execution starts anew'
         tags: { type: array, items: { type: string } }
     Agent:
       allOf:
@@ -3677,12 +3685,14 @@ components:
       type: string
       description: 'ADR 0055: what kind of work a template does; groups the library list and the designer palette. Inherited, child wins.'
       enum: [ANALYSIS, SPECIFICATION, PLANNING, IMPLEMENTATION, REVIEW, JIRA, OPERATIONS, GENERAL]
-    TaskPrompt:
+    ParameterBinding:
       type: object
+      description: 'ADR 0062: VALUE a fixed value; START asked in the run start form (label, type, required from the parameter); ARTIFACT the content of an artefact of an earlier step'
+      required: [source]
       properties:
-        system: { type: string, nullable: true }
-        user: { type: string, nullable: true }
-        mode: { type: string, enum: [APPEND, REPLACE], default: APPEND }
+        source: { type: string, enum: [VALUE, START, ARTIFACT] }
+        value: { nullable: true, description: VALUE only }
+        artifact: { type: string, nullable: true, description: 'ARTIFACT only: the artefact name' }
     TaskTemplateInput:
       type: object
       required: [name, scope]
@@ -3701,7 +3711,8 @@ components:
         extendsKey: { type: string, nullable: true }
         category: { allOf: [ { $ref: '#/components/schemas/TemplateCategory' } ], nullable: true, description: empty means inherited }
         scope: { $ref: '#/components/schemas/Scope' }
-        prompt: { $ref: '#/components/schemas/TaskPrompt' }
+        instructions: { type: string, nullable: true, description: 'ADR 0062: what to do and the acceptance criteria; placeholders allowed; the platform adds the standard data sections the instructions do not place themselves' }
+        instructionsMode: { type: string, enum: [APPEND, REPLACE], default: APPEND, description: 'over the parent''s instructions (presets)' }
         parameters: { type: array, items: { $ref: '#/components/schemas/TemplateParameter' }, description: 'ADR 0058: parameters the prompt reads as {{params.<name>}}; inherited, child wins by name' }
         parameterValues: { type: object, additionalProperties: true, description: 'ADR 0058: values for parameters of the lineage (a preset); child wins, the step wins over all' }
         requiresSkills: { type: array, items: { type: string }, description: 'ADR 0060: skills the work needs; a step whose agent lacks one gets a warning (inherited, unioned)' }
@@ -3711,8 +3722,6 @@ components:
         produces: { type: array, items: { type: string } }
         consumes: { type: array, items: { type: string } }
         tags: { type: array, items: { type: string } }
-        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: 'Run inputs this task asks for when a run starts (ADR 0053); inherited child-wins by name' }
-        sandboxPolicy: { $ref: '#/components/schemas/SandboxPolicy' }
     RunInputField:
       type: object
       description: A field of the run start form declared by a library task (ADR 0053).
@@ -3730,7 +3739,7 @@ components:
       properties:
         name: { type: string, pattern: '^[A-Za-z][A-Za-z0-9_]{0,63}$', description: 'read in prompts as {{params.<name>}}' }
         label: { type: string, maxLength: 200 }
-        type: { type: string, enum: [TEXT, MULTILINE, NUMBER, BOOLEAN, CHOICE] }
+        type: { type: string, enum: [TEXT, MULTILINE, NUMBER, BOOLEAN, CHOICE, ISSUE_KEY], description: 'ISSUE_KEY: a Jira issue key; bound START it becomes the run''s issue key (ADR 0062)' }
         required: { type: boolean }
         default: { nullable: true, description: 'string, number or boolean by type; null = no default' }
         options: { type: array, items: { type: string }, description: CHOICE only }
@@ -3761,7 +3770,7 @@ components:
         name: { type: string }
         agent: { $ref: '#/components/schemas/AgentRef' }
         modelProfileId: { type: string, format: uuid, nullable: true }
-        prompt: { type: object, properties: { system: { type: string, nullable: true }, user: { type: string, nullable: true } } }
+        instructions: { type: string, nullable: true, description: 'ADR 0062: the merged instructions (step append/replace applied)' }
         skills: { type: array, items: { type: object, properties: { key: { type: string }, name: { type: string } } } }
         config: { type: object, additionalProperties: true }
         outputSchema: { type: string, nullable: true }
@@ -3775,7 +3784,7 @@ components:
           items: { type: object, properties: { key: { type: string }, name: { type: string }, automatic: { type: boolean } } }
         lineage: { type: array, items: { type: string } }
         ports: { type: array, items: { type: string } }
-        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: merged run inputs of the lineage (ADR 0053) }
+        runInputs: { type: array, items: { $ref: '#/components/schemas/RunInputField' }, description: 'ADR 0062: the parameters this step binds START, as run start form fields' }
         parameters: { type: array, items: { $ref: '#/components/schemas/ResolvedParameter' }, description: 'ADR 0058: parameters with the value the step uses' }
         abstract: { type: boolean }
         check: { type: object, description: 'skills, rules, agents and parameter values that are missing or wrong, and an agent that cannot do the work (ADR 0056-0058); warnings do not block (ADR 0060: required skills the agent lacks)', properties: { ok: { type: boolean }, problems: { type: array, items: { type: string } }, warnings: { type: array, items: { type: string } } } }

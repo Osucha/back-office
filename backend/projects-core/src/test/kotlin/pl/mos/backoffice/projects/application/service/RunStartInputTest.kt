@@ -30,7 +30,6 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
@@ -55,7 +54,7 @@ class RunStartInputTest {
                 else -> emptyList()
             }
             return ResolvedTask(
-                key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(),
+                key, key, TestAgents.MODEL_ANSWER, null, null, emptyList(), emptyMap(), null, null, emptyList(), emptyList(),
                 null, listOf(key), listOf("success", "failure"), runInputs = inputs,
             )
         }

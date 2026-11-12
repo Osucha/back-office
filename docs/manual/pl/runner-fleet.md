@@ -113,9 +113,9 @@ Zwymiaruj pulę węzłów dla sandboxów na `maxReplicas × maxConcurrent` podó
 <a id="sandbox-policies"></a>
 ## Polityki sandboxów
 
-Każde zadanie działa według efektywnej polityki wyznaczanej z pięciu poziomów, **wyłącznie przez
-zawężanie**: ustawienia domyślne platformy → pułap puli → projekt → szablon zadania → węzeł workflowu.
-Niższy poziom może ograniczyć, ale nigdy nie rozszerzyć.
+Każde zadanie działa według efektywnej polityki wyznaczanej z trzech poziomów, **wyłącznie przez
+zawężanie**: ustawienia domyślne platformy → pułap puli → projekt. Niższy poziom może ograniczyć, ale nigdy nie
+rozszerzyć; limit czasu kroku może zadanie tylko skrócić.
 
 | Pole | Jak łączą się poziomy |
 |---|---|
@@ -130,8 +130,8 @@ Niższy poziom może ograniczyć, ale nigdy nie rozszerzyć.
 **Poziom projektu**: otwórz projekt → zakładka **Sandbox**. **Polityka projektu** (**Project policy**)
 edytuje poziom projektu (wymaga `project.manage`; pozostali widzą ją tylko do odczytu); **Efektywna dla tego
 projektu** (**Effective for this project**) pokazuje, co zadanie dostaje dzisiaj i który poziom ustawił każde
-pole. Naciśnij **Zapisz politykę sandboxa** (**Save sandbox policy**). Szablony i węzły zawężają ją dalej
-w bibliotece zadań i w projektancie.
+pole. Naciśnij **Zapisz politykę sandboxa** (**Save sandbox policy**). Szablony i kroki workflowu nie mają
+ustawień sandboxa (ADR 0062).
 
 **Poziom platformy**: właściwości serwera `backoffice.runner.platform-policy.*` (izolacja przez
 `RUNNER_PLATFORM_ISOLATION`, domyślnie STANDARD) oraz `RUNNER_EXTRA_ALLOWED_MODELS` dla modeli, które może

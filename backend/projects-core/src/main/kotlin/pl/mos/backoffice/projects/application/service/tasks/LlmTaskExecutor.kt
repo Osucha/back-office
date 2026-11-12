@@ -33,6 +33,7 @@ import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.prompt.InjectionSignal
 import pl.mos.backoffice.shared.prompt.PromptDataBlocks
+import pl.mos.backoffice.shared.tasks.ParameterBindingSource
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
@@ -40,8 +41,9 @@ import pl.mos.backoffice.shared.usage.UsageKind
 /**
  * Model answer (ADR 0056): one structured model call in-process (docs/architecture/03-pipelines-and-agents.md). ADR 0057:
  * the system prompt is the agent's environment document ([AgentEnvironment]: platform preamble, agent instructions,
- * project constitution, rules), then the template's system prompt, then a `<skills>` section; the user prompt is
- * rendered with the template model; `outputSchema` asks for structured output. What the answer becomes (confidence,
+ * project constitution, rules), then a `<skills>` section (ADR 0062: the template contributes no system part; the answer
+ * format follows: the gateway adds the output schema); the user message is [TaskMessage]: the instructions and the
+ * standard data sections; `outputSchema` asks for structured output. What the answer becomes (confidence,
  * artefacts per produced name, the review) is [StructuredAnswers], shared with coding agents that answer in a schema.
  * Tasks that produce `review` are assessed by [ReviewVerdictPolicy] and stored as the run review; a `coverage`
  * matrix in the answer (`review-against-spec`) is kept in the review artefact and a MISSING requirement requests
@@ -75,19 +77,19 @@ class LlmTaskExecutor(
 
     private val answers = StructuredAnswers(json, verdictPolicy, guard)
     private val environment = AgentEnvironment(renderer)
+    private val message = TaskMessage(renderer)
 
     override fun execute(context: NodeContext, task: ResolvedTask): NodeResult {
         val profile = modelResolver.forLlmCall(task, context.project, ActingUser.startedBy(context.run)?.userId)
-        val model = templateModel.build(context, runInputs = task.runInputs, parameters = task.parameterValues)
+        val model = templateModel.build(context, emptyList(), task)
         val maxChars = (task.config["maxInputChars"] as? Number)?.toInt() ?: task.config["maxInputChars"]?.toString()?.toIntOrNull() ?: DEFAULT_MAX_INPUT_CHARS
         val blocks = PromptDataBlocks.random()
         val guardMode = InjectionGuardMode.of(task.config["injectionGuard"])
 
-        val user = renderer.renderPrompt(task.prompt.user?.takeIf { it.isNotBlank() } ?: DEFAULT_USER_PROMPT, model, blocks, maxChars)
+        // ADR 0062: the instructions and the standard data sections (the owner's answers among them, ADR 0060)
+        val user = message.render(task, model, blocks, maxChars)
         user.warnings.forEach { context.log("template: $it") }
-        // ADR 0060: after the owner answered the agent's questions, the answers close the prompt
-        val ownerAnswers = StepQuestions.answersSection(context, renderer, model, blocks)
-        val userText = truncated(context, listOfNotNull(user.text, ownerAnswers).joinToString("\n\n"), maxChars)
+        val userText = truncated(context, user.text, maxChars)
         val signals = guard.scan(untrustedInputs(context, task, model))
         reportSignals(context, task, signals, guardMode)
 
@@ -215,6 +217,11 @@ class LlmTaskExecutor(
                 inputs += UntrustedInput("issue.$key", if (value is List<*>) value.joinToString("\n") else value.toString())
             }
         }
+        // ADR 0062: a parameter bound to an artefact carries agent output like a consumed artefact
+        val params = model["params"] as? Map<String, Any?>
+        task.parameters.filter { it.binding?.source == ParameterBindingSource.ARTIFACT }.forEach { p ->
+            params?.get(p.name)?.toString()?.takeIf { it.isNotBlank() }?.let { inputs += UntrustedInput("params.${p.name}", it) }
+        }
         context.run.input.ci?.mergeRequest?.let { mr ->
             mr.title?.let { inputs += UntrustedInput("mergeRequest.title", it) }
             mr.description?.let { inputs += UntrustedInput("mergeRequest.description", it) }
@@ -249,17 +256,14 @@ class LlmTaskExecutor(
     )
 
     /**
-     * ADR 0057: the environment document (platform preamble, agent instructions, constitution, rules), then the
-     * template's system prompt, then the skills, then the data-block notice.
+     * ADR 0057: the environment document (platform preamble, agent instructions, constitution, rules), then (ADR 0062: no
+     * template part any more) the skills, then the data-block notice.
      */
     private fun systemPrompt(task: ResolvedTask, context: NodeContext, model: Map<String, Any?>, blocks: PromptDataBlocks): String {
         val env = environment.document(task, context.project, model, blocks, questions = StepQuestions.open(task, context))
         env.warnings.forEach { context.log("agent instructions: $it") }
-        val template = task.prompt.system?.takeIf { it.isNotBlank() }?.let { renderer.renderPrompt(it, model, blocks) }
-        template?.warnings?.forEach { context.log("system template: $it") }
         return buildString {
             append(env.text)
-            template?.text?.trim()?.takeIf { it.isNotEmpty() }?.let { append("\n\n# This step\n").append(it) }
             if (task.skills.isNotEmpty()) {
                 append("\n\n<skills>\n")
                 task.skills.forEach { skill ->
@@ -268,7 +272,7 @@ class LlmTaskExecutor(
                 }
                 append("</skills>")
             }
-            // last, so no template, environment or skill text comes after (and weakens) it
+            // last, so no environment or skill text comes after (and weakens) it; the gateway appends the answer schema (ADR 0062: the answer format)
             append("\n\n").append(blocks.systemNotice())
         }
     }
@@ -278,8 +282,6 @@ class LlmTaskExecutor(
         const val MAX_REPAIR_ECHO_CHARS = 20_000
         const val OPERATION_INJECTION = "PROMPT_INJECTION_SUSPECTED"
         const val ENTITY_RUN = "WorkflowRun"
-        const val DEFAULT_USER_PROMPT = "Task: {{node.name}}\n\n{{#issue.key}}Issue {{issue.key}}: {{issue.summary}}\n\n{{#issue.description}}{{issue.description}}\n\n{{/issue.description}}{{/issue.key}}" +
-            "{{#feedback}}Revision feedback:\n{{feedback}}{{/feedback}}"
         val STATE_NAMES = StructuredAnswers.STATE_NAMES
 
         /** One line of a review for the step summary. */

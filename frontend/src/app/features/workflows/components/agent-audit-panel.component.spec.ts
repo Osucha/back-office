@@ -9,6 +9,7 @@ import { AgentAuditPanelComponent, coherenceError } from './agent-audit-panel.co
 
 const agents: Agent[] = [
   {
+    session: 'PER_STEP',
     id: 'g-oc',
     key: 'opencode',
     name: 'OpenCode',
@@ -17,6 +18,7 @@ const agents: Agent[] = [
     skills: [],
   },
   {
+    session: 'PER_STEP',
     id: 'p-coder',
     key: 'coder',
     name: 'Coder',

@@ -62,7 +62,8 @@ Zadania i ich stany są widoczne w **Administracja** (**Administration**) → **
 pierwszy krok kodujący przebiegu. Back Office wydaje zadania przebiegu tylko temu runnerowi i po jednym naraz; runner
 używa ponownie swoich wcześniejszych klonów po zapisaniu od nowa ich `.git/config`. Każdy agent trzyma swoje
 środowisko, umiejętności, konfigurację MCP i sesje we własnym domu `/workspace/.agents/<klucz agenta>/`, poza każdym
-repozytorium. Krok z **Osobnym katalogiem** (**Separate directory**) dostaje zamiast tego jednorazowy `/workspace`.
+repozytorium. Krok, którego agent ma **Osobny katalog** (**Separate directory**), dostaje zamiast tego jednorazowy
+`/workspace`.
 Każdy runner-controller co minutę zgłasza swoje katalogi przebiegów i usuwa te, które Back Office zwolnił (gdy
 przebieg się kończy; 24 godziny po niepowodzeniu).
 
@@ -80,7 +81,7 @@ spoza dostępu, zanim wykona weryfikację, commit i push; cofnięte ścieżki s�
 | **Wysoka** (`HIGH`) | Kata Containers (RuntimeClass `kata`): mikro-VM na każdy pod | Kubernetes | niezaufane repozytoria, kod klientów |
 | **Deweloperska** (`DEV`) | runc (zwykłe kontenery) | tylko backend Docker na laptopie | development |
 
-- Wygrywa najsilniejszy poziom wskazany gdziekolwiek (platforma → pułap puli → projekt → szablon → węzeł).
+- Wygrywa najsilniejszy poziom wskazany gdziekolwiek (platforma → pułap puli → projekt).
   Domyślny poziom platformy to `RUNNER_PLATFORM_ISOLATION` (`STANDARD`; `DEV` tylko w profilu local).
 - Na Kubernetesie **DEV jest podnoszony do STANDARD**. W backendzie Docker STANDARD i HIGH **nie są
   egzekwowane** (tylko runc); informują o tym notatki zadania.
@@ -109,7 +110,7 @@ konta usługowego, brak service links, requests = limits dla CPU, pamięci i eph
 - Każda decyzja jest logowana; odrzucone hosty pojawiają się w zadaniu jako **Zablokowany ruch wychodzący**
   (**Egress denied**), a skrót pełnego logu trafia do atestacji.
 
-Dodawaj host na najwęższym poziomie, który go potrzebuje (szablon lub zakładka **Sandbox** projektu); musi on
+Dodawaj host na najwęższym poziomie, który go potrzebuje (zakładka **Sandbox** projektu); musi on
 być też objęty pułapem puli i polityką platformy, w przeciwnym razie zostanie odfiltrowany przy zawężaniu.
 Zobacz [runner-fleet.md](runner-fleet.md#sandbox-policies).
 
@@ -152,7 +153,7 @@ rzeczywiste zużycie.
 
 | Zakres | Gdzie ustawiany | Skutek po wyczerpaniu |
 |---|---|---|
-| Zadanie | `maxCostUsd`, `maxTokens` w polityce sandboxa (szablon, projekt lub węzeł) | `402` dla tego zadania |
+| Zadanie | `maxCostUsd`, `maxTokens` w polityce sandboxa projektu | `402` dla tego zadania |
 | Projekt, miesięcznie | zakładka **Budżet** (**Budget**) projektu (`project.manage`) z **Twardą blokadą** (**Hard stop**) | `402` dla każdego wywołania agenta w projekcie |
 | Platforma, miesięcznie | **Ustawienia platformy** (**Platform settings**) → budżet (`admin.settings.manage`) z **Twardą blokadą** | `402` dla każdego wywołania agenta |
 

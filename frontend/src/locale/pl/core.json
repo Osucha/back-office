@@ -572,5 +572,11 @@
   "core.baton.waitingForAnswers": "czeka na Twoje odpowiedzi",
   "core.agent.needsCoding": "Wymaga agenta kodującego",
   "core.agent.needsAny": "Dowolny agent",
-  "core.helpTip.label": "Pomoc"
+  "core.helpTip.label": "Pomoc",
+  "core.agent.session.perStep": "Na krok (powtórzenia kontynuują)",
+  "core.agent.session.perRun": "Jedna na przebieg",
+  "core.agent.session.fresh": "Zawsze od nowa",
+  "core.agent.directory.run": "Katalog przebiegu (wspólny)",
+  "core.agent.directory.separate": "Osobny katalog",
+  "core.parameter.type.issueKey": "Klucz zgłoszenia Jira"
 }

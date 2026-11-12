@@ -9,14 +9,14 @@ import pl.mos.backoffice.shared.tasks.ParameterSource
 import pl.mos.backoffice.shared.tasks.ResolvedParameter
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RuleSnapshot
-import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
+import pl.mos.backoffice.shared.tasks.ParameterBinding
+import pl.mos.backoffice.shared.tasks.ParameterBindingSource
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.tasks.domain.model.Scope
-import pl.mos.backoffice.tasks.domain.model.PromptMode
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import java.util.UUID
 
@@ -44,7 +44,7 @@ data class TaskResolution(
     val description: String,
     val agent: AgentSnapshot,
     val modelProfileId: ModelProfileId?,
-    val prompt: TaskPrompt,
+    val instructions: String?,
     val skills: List<SkillSnapshot>,
     val config: Map<String, Any?>,
     val outputSchema: String?,
@@ -60,8 +60,8 @@ data class TaskResolution(
     val check: ResolutionCheck,
     /** Version of the leaf template. */
     val version: Int? = null,
-    /** Run inputs merged root to leaf, child-wins by name (ADR 0053). */
-    val runInputs: List<RunInputField> = emptyList(),
+    /** ADR 0062: the parameters the step binds `START`, as run start form fields. */
+    val runInputs: List<pl.mos.backoffice.shared.tasks.RunInputField> = emptyList(),
     /** ADR 0055/0057: automatic rules (global, then project) first, then the agent's. */
     val rules: List<RuleSnapshot> = emptyList(),
     /** ADR 0058: parameter declarations of the lineage with the value the step uses. */
@@ -98,7 +98,7 @@ data class TaskResolution(
             name = name,
             agent = agent,
             modelProfileId = modelProfileId,
-            prompt = prompt,
+            instructions = instructions,
             skills = skills,
             config = config,
             outputSchema = outputSchema,
@@ -121,17 +121,18 @@ data class TaskResolution(
  *
  * 1. project shadowing for the leaf and every ancestor,
  * 2. `extends` chain of at most [MAX_DEPTH] templates, cycles rejected,
- * 3. root-to-leaf merge (scalars child-wins; prompts append/replace; config deep-merged
- *    with `null` deleting; list fields unioned; run inputs and parameters unioned by name, child wins; parameter
- *    values nearest wins),
+ * 3. root-to-leaf merge (scalars child-wins; ADR 0062: instructions append/replace; config deep-merged
+ *    with `null` deleting; list fields unioned; parameters unioned by name, child wins; parameter values nearest wins),
  * 4. node overrides; ADR 0061: the step chooses the agent (none: `opencode` when the merged config needs a coding
  *    agent, else the model answer) and the model (none: the agent's, else the defaults),
  * 5. ADR 0057: the agent's environment: the agent's skills (ADR 0060: no step adds or removes any);
  *    rules are the automatic ones (global, then the project's) and then the agent's (ADR 0055: a skill key that names a
  *    rule, as skills turned rules did, counts as that rule); every one must exist,
  * 6. the agent looked up and checked against the work (Spec Kit phase, push or prepareOnly need a coding agent),
- * 7. ADR 0058: parameter values: the step's, else the nearest template's, else the default; unknown names, values of
- *    the wrong type and required parameters without a value are problems,
+ * 7. ADR 0058/0062: parameter values: the step's binding (a VALUE now; START and ARTIFACT when the step runs), else the
+ *    nearest template's value, else the default; unknown names, values of the wrong type, ARTIFACT bindings without a
+ *    name and required parameters without a value (and not bound at run time) are problems; the parameters bound START
+ *    are the step's run start form fields,
  * 8. abstract leaves preview but do not execute.
  *
  * A legacy config key `agent` (`CLAUDE_CODE`, `OPENCODE`) on a step reads as its agent key; on a template it is
@@ -184,8 +185,8 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val rules = environment.rules
         val problems = environment.problems.toMutableList()
         problems += compatibilityProblems(agent, merged.config)
-        val parameters = Parameters.resolve(merged.parameters, merged.parameterValues, overrides.parameters, leaf.key)
-        problems += parameters.second
+        val parameters = Parameters.resolve(merged.parameters, merged.parameterValues, overrides.parameterBindings, leaf.key)
+        problems += parameters.problems
         // ADR 0060: the agent's environment is set once; a step whose agent lacks a skill the work needs is warned
         val warnings = if (environment.found) {
             merged.requiresSkills.filter { key -> skills.none { it.key == key } }
@@ -201,7 +202,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
             description = leaf.description,
             agent = agent,
             modelProfileId = overrides.modelProfileId ?: agent.modelProfileId,
-            prompt = TaskPrompt(merged.system, merged.user),
+            instructions = merged.instructions,
             skills = skills,
             config = merged.config,
             outputSchema = merged.outputSchema,
@@ -214,10 +215,10 @@ class TaskResolver(private val lookup: LibraryLookup) {
             tags = merged.tags,
             abstract = leaf.abstract,
             projectId = projectId,
-            check = ResolutionCheck.of(problems, warnings),
-            runInputs = merged.runInputs,
+            check = ResolutionCheck.of(problems, warnings + parameters.warnings),
+            runInputs = parameters.parameters.filter { it.binding?.source == ParameterBindingSource.START }.map { it.definition.asRunInput() },
             rules = rules,
-            parameters = parameters.first,
+            parameters = parameters.parameters,
             requiresSkills = merged.requiresSkills,
         )
     }
@@ -306,8 +307,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
     /** Accumulator of the root-to-leaf merge; [agentKey] is the step's (ADR 0061: templates name no agent). */
     private data class Merged(
         val agentKey: String? = null,
-        val system: String? = null,
-        val user: String? = null,
+        val instructions: String? = null,
         val config: Map<String, Any?> = emptyMap(),
         val outputSchema: String? = null,
         val confidenceField: String? = null,
@@ -315,7 +315,6 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val consumes: List<String> = emptyList(),
         val category: TemplateCategory? = null,
         val tags: List<String> = emptyList(),
-        val runInputs: List<RunInputField> = emptyList(),
         val parameters: List<TemplateParameter> = emptyList(),
         /** Parameter values of the lineage: name to (value, template key that set it); the nearest template wins. */
         val parameterValues: Map<String, Pair<Any?, String>> = emptyMap(),
@@ -323,8 +322,7 @@ class TaskResolver(private val lookup: LibraryLookup) {
         val requiresSkills: List<String> = emptyList(),
     ) {
         fun merge(t: TaskTemplate): Merged = Merged(
-            system = combine(system, t.prompt.system, t.prompt.mode),
-            user = combine(user, t.prompt.user, t.prompt.mode),
+            instructions = combine(instructions, t.instructions, t.instructionsMode),
             config = ConfigMerge.deepMerge(config, withoutLegacyAgent(t.config)),
             outputSchema = t.outputSchema ?: outputSchema,
             confidenceField = t.confidenceField ?: confidenceField,
@@ -332,16 +330,19 @@ class TaskResolver(private val lookup: LibraryLookup) {
             consumes = (consumes + t.consumes).distinct(),
             category = t.category ?: category,
             tags = (tags + t.tags).distinct(),
-            runInputs = byName(runInputs, t.runInputs) { it.name },
             parameters = byName(parameters, t.parameters) { it.name },
             parameterValues = parameterValues + t.parameterValues.filterValues(Parameters::present).mapValues { (_, v) -> v to t.key },
             requiresSkills = (requiresSkills + t.requiresSkills).distinct(),
         )
 
+        /** ADR 0062: the step's replace first, then its notes. */
         fun applyOverrides(o: TaskOverrides): Merged = copy(
             agentKey = o.agentKey?.takeIf { it.isNotBlank() } ?: legacyAgentKey(o.config) ?: agentKey,
-            system = combine(system, o.systemPromptAppend, PromptMode.APPEND),
-            user = combine(combine(user, o.promptReplace, PromptMode.REPLACE), o.promptAppend, PromptMode.APPEND),
+            instructions = combine(
+                combine(instructions, o.instructionsReplace?.takeIf { it.isNotBlank() }, InstructionsMode.REPLACE),
+                o.instructionsAppend?.takeIf { it.isNotBlank() },
+                InstructionsMode.APPEND,
+            ),
             config = ConfigMerge.deepMerge(config, withoutLegacyAgent(o.config)),
         )
 
@@ -351,35 +352,58 @@ class TaskResolver(private val lookup: LibraryLookup) {
             return parent.map { byName[name(it)] ?: it } + child.filter { entry -> parent.none { name(it) == name(entry) } }
         }
 
-        private fun combine(parent: String?, child: String?, mode: PromptMode): String? = when {
+        private fun combine(parent: String?, child: String?, mode: InstructionsMode): String? = when {
             child == null -> parent
-            mode == PromptMode.REPLACE || parent.isNullOrBlank() -> child
+            mode == InstructionsMode.REPLACE || parent.isNullOrBlank() -> child
             else -> parent.trimEnd() + "\n\n" + child.trimStart()
         }
     }
+
+    /** ADR 0058/0062: the resolved parameters, the problems of the values and the warnings of the bindings. */
+    internal data class ParameterResolution(val parameters: List<ResolvedParameter>, val problems: List<String>, val warnings: List<String>)
 
     /** ADR 0058: the value of every declared parameter and the problems of the values. */
     internal object Parameters {
         /** A value counts when it is not null and not a blank string (an empty field in the designer is no value). */
         fun present(value: Any?): Boolean = value != null && !(value is String && value.isBlank())
 
+        /**
+         * ADR 0062: a `VALUE` binding with a value wins over the lineage's value and the default; a `START` or `ARTIFACT`
+         * binding leaves the value to the run (null here, with the lineage's value or the default as its fallback). A
+         * required parameter needs a value unless it is bound at run time; a binding of an undeclared parameter is a
+         * problem when it sets a value and a warning (ignored) otherwise.
+         */
         fun resolve(
             declared: List<TemplateParameter>,
             lineageValues: Map<String, Pair<Any?, String>>,
-            stepValues: Map<String, Any?>,
+            bindings: Map<String, ParameterBinding>,
             leafKey: String,
-        ): Pair<List<ResolvedParameter>, List<String>> {
+        ): ParameterResolution {
             val problems = mutableListOf<String>()
+            val warnings = mutableListOf<String>()
             val names = declared.map { it.name }.toSet()
             lineageValues.filterKeys { it !in names }.forEach { (name, set) ->
                 problems += "template ${set.second} sets parameter $name, which no template of the lineage declares"
             }
-            stepValues.filter { (name, value) -> name !in names && present(value) }.keys.forEach { name ->
-                problems += "the step sets parameter $name, which template $leafKey does not declare"
+            bindings.filterKeys { it !in names }.forEach { (name, binding) ->
+                when {
+                    binding.source == ParameterBindingSource.VALUE && present(binding.value) ->
+                        problems += "the step sets parameter $name, which template $leafKey does not declare"
+                    binding.source != ParameterBindingSource.VALUE ->
+                        warnings += "the step binds parameter $name (${binding.source}), which template $leafKey does not declare; the binding is ignored"
+                }
             }
             val resolved = declared.map { p ->
-                val step = stepValues[p.name]?.takeIf(::present)
+                val binding = bindings[p.name]
                 val template = lineageValues[p.name]?.first
+                val fallback = template ?: p.default.takeIf(::present)
+                if (binding != null && binding.source != ParameterBindingSource.VALUE) {
+                    if (binding.source == ParameterBindingSource.ARTIFACT && binding.artifact.isNullOrBlank()) {
+                        problems += "parameter ${p.name}: an ARTIFACT binding needs the name of the artefact"
+                    }
+                    return@map ResolvedParameter(p, null, ParameterSource.STEP, binding, fallback)
+                }
+                val step = binding?.value?.takeIf(::present)
                 val (value, source) = when {
                     step != null -> step to ParameterSource.STEP
                     template != null -> template to ParameterSource.TEMPLATE
@@ -388,9 +412,9 @@ class TaskResolver(private val lookup: LibraryLookup) {
                 }
                 p.valueProblem(value)?.let { problems += "parameter ${p.name}: $it" }
                 if (p.required && value == null) problems += "parameter ${p.name} (${p.label}) needs a value"
-                ResolvedParameter(p, value, source)
+                ResolvedParameter(p, value, source, binding?.takeIf { step != null })
             }
-            return resolved to problems
+            return ParameterResolution(resolved, problems, warnings)
         }
     }
 

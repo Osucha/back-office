@@ -106,8 +106,8 @@ scales replicas on the pool's queue (`/api/v1/runner/v2/pools/<pool>/queue`). Si
 <a id="sandbox-policies"></a>
 ## Sandbox policies
 
-Every job runs under an effective policy resolved from five levels, **narrowing only**: platform defaults
-→ pool ceiling → project → task template → workflow node. A lower level can restrict but never widen.
+Every job runs under an effective policy resolved from three levels, **narrowing only**: platform defaults
+→ pool ceiling → project. A lower level can restrict but never widen; a step's timeout can only shorten the job.
 
 | Field | How levels combine |
 |---|---|
@@ -121,8 +121,8 @@ Every job runs under an effective policy resolved from five levels, **narrowing 
 
 **Project level**: open the project → **Sandbox** tab. **Project policy** edits the project's level (needs
 `project.manage`; others see it read-only); **Effective for this project** shows what a job gets today and
-which level set each field. Press **Save sandbox policy**. Templates and nodes narrow further in the task
-library and the designer.
+which level set each field. Press **Save sandbox policy**. Templates and workflow steps have no sandbox
+settings (ADR 0062).
 
 **Platform level**: server properties `backoffice.runner.platform-policy.*` (isolation via
 `RUNNER_PLATFORM_ISOLATION`, default STANDARD) and `RUNNER_EXTRA_ALLOWED_MODELS` for models every job may

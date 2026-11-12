@@ -38,7 +38,6 @@ import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
 import java.time.Duration
@@ -65,7 +64,7 @@ class GitAccessDerivationTest {
     }
 
     private fun task(agent: AgentSnapshot, config: Map<String, Any?>) = ResolvedTask(
-        key = "t", name = "T", agent = agent, modelProfileId = null, prompt = TaskPrompt(null, "Do {{issue.key}}"),
+        key = "t", name = "T", agent = agent, modelProfileId = null, instructions = ("Do {{issue.key}}"),
         skills = emptyList(), config = config, outputSchema = null, confidenceField = null,
         produces = emptyList(), consumes = emptyList(), category = null, lineage = listOf("t"), ports = listOf("success", "failure"),
     )

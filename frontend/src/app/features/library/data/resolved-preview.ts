@@ -1,13 +1,12 @@
 /**
  * Pure mapping of a `ResolvedTask` into what the template editor preview shows: lineage
- * breadcrumb, effective prompts, the skills and rules of the agent (ADR 0057), the parameters with
- * their values (ADR 0058) and the check of missing or wrong references.
+ * breadcrumb, the merged instructions (ADR 0062), the skills and rules of the agent (ADR 0057), the
+ * parameters with their values (ADR 0058) and the check of missing or wrong references.
  */
 import type {
   AgentRef,
   ResolvedParameter,
   ResolvedTask,
-  RunInputField,
   TaskTemplate,
   TaskTemplateInput,
 } from '../../../core/api/types';
@@ -17,8 +16,8 @@ export interface ResolvedPreview {
   /** ADR 0056: the agent that runs the task (harness null = model answer). */
   agent: AgentRef | null;
   modelProfileId: string | null;
-  systemPrompt: string;
-  userPrompt: string;
+  /** ADR 0062: the instructions merged over the lineage (presets append or replace). */
+  instructions: string;
   skills: Array<{ key: string; name: string }>;
   /** ADR 0055: the rules the step gets, automatic ones first. */
   rules: Array<{ key: string; name: string; automatic: boolean }>;
@@ -27,8 +26,6 @@ export interface ResolvedPreview {
   ports: string[];
   produces: string[];
   consumes: string[];
-  /** ADR 0053: the run inputs merged over the lineage. */
-  runInputs: RunInputField[];
   /** ADR 0058: the parameters of the lineage with the value a step gets without its own. */
   parameters: ResolvedParameter[];
   config: Record<string, unknown>;
@@ -45,8 +42,7 @@ export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview |
     lineage: r.lineage?.length ? r.lineage : r.key ? [r.key] : [],
     agent: r.agent ?? null,
     modelProfileId: r.modelProfileId ?? null,
-    systemPrompt: r.prompt?.system ?? '',
-    userPrompt: r.prompt?.user ?? '',
+    instructions: r.instructions ?? '',
     skills: (r.skills ?? []).map((s) => ({ key: s.key ?? '', name: s.name ?? s.key ?? '' })),
     rules: (r.rules ?? []).map((x) => ({
       key: x.key ?? '',
@@ -57,7 +53,6 @@ export function toPreview(r: ResolvedTask | null | undefined): ResolvedPreview |
     ports: r.ports ?? [],
     produces: r.produces ?? [],
     consumes: r.consumes ?? [],
-    runInputs: r.runInputs ?? [],
     parameters: r.parameters ?? [],
     config: r.config ?? {},
     abstract: !!r.abstract,
@@ -113,7 +108,8 @@ export function emptyTemplate(): TaskTemplateInput {
     extendsKey: null,
     category: null,
     scope: { type: 'GLOBAL', projectId: null },
-    prompt: { system: '', user: '', mode: 'APPEND' },
+    instructions: '',
+    instructionsMode: 'APPEND',
     parameters: [],
     parameterValues: {},
     requiresSkills: [],
@@ -123,7 +119,6 @@ export function emptyTemplate(): TaskTemplateInput {
     produces: [],
     consumes: [],
     tags: [],
-    runInputs: [],
   };
 }
 
@@ -137,11 +132,8 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     extendsKey: t.extendsKey ?? null,
     category: t.category ?? null,
     scope: t.scope ?? { type: 'GLOBAL', projectId: null },
-    prompt: {
-      system: t.prompt?.system ?? '',
-      user: t.prompt?.user ?? '',
-      mode: t.prompt?.mode ?? 'APPEND',
-    },
+    instructions: t.instructions ?? '',
+    instructionsMode: t.instructionsMode ?? 'APPEND',
     parameters: (t.parameters ?? []).map((p) => ({ ...p })),
     parameterValues: { ...(t.parameterValues ?? {}) },
     requiresSkills: [...(t.requiresSkills ?? [])],
@@ -151,10 +143,6 @@ export function toTemplateInput(t: TaskTemplateInput & Record<string, unknown>):
     produces: t.produces ?? [],
     consumes: t.consumes ?? [],
     tags: t.tags ?? [],
-    runInputs: t.runInputs ?? [],
-    ...(t.sandboxPolicy && Object.keys(t.sandboxPolicy).length
-      ? { sandboxPolicy: t.sandboxPolicy }
-      : {}),
   };
 }
 
@@ -180,7 +168,6 @@ export function customizeForProject(
     key: t.key,
     name: t.name,
     extendsKey: t.key ?? null,
-    prompt: { system: '', user: '', mode: 'APPEND' },
     scope: { type: 'PROJECT', projectId },
   };
 }

@@ -67,14 +67,26 @@ describe('template config (ADR 0054, 0061)', () => {
 
   it('finds agents by key and scope (project first)', () => {
     const agents: Agent[] = [
-      { key: 'coder', name: 'Global coder', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
       {
+        session: 'PER_STEP',
+        key: 'coder',
+        name: 'Global coder',
+        scope: { type: 'GLOBAL' },
+        harness: 'OPENCODE',
+      },
+      {
+        session: 'PER_STEP',
         key: 'coder',
         name: 'P1 coder',
         scope: { type: 'PROJECT', projectId: 'p1' },
         harness: 'CLAUDE_CODE',
       },
-      { key: 'p2-only', name: 'P2', scope: { type: 'PROJECT', projectId: 'p2' } },
+      {
+        session: 'PER_STEP',
+        key: 'p2-only',
+        name: 'P2',
+        scope: { type: 'PROJECT', projectId: 'p2' },
+      },
     ];
     expect(agentByKey(agents, 'coder')?.name).toBe('Global coder');
     expect(agentByKey(agents, 'coder', p1)?.name).toBe('P1 coder');

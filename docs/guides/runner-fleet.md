@@ -74,7 +74,8 @@ released ones. Docker volumes have no size limit: watch the disk of a personal r
 ## 3. Sandbox policies
 
 The policy of a job is resolved **narrowing only**: platform (`backoffice.runner.platform-policy.*`) →
-pool ceiling → project → task template / workflow node. A lower level can restrict but never widen:
+pool ceiling → project. A lower level can restrict but never widen (since ADR 0062 there is no template or node
+level: the sandbox is the project's; the job itself only caps the timeout):
 
 | Field | Rule |
 |---|---|
@@ -98,7 +99,7 @@ Every agent job shows its effective policy and sources in *Administration → Ru
 |---|---|---|
 | Platform month | `PUT /api/v1/admin/budget` | `admin.settings.manage` |
 | Project month | `PUT /api/v1/projects/{projectId}/budget` | `project.manage` (read: `project.usage.view`) |
-| Per job | `maxCostUsd`, `maxTokens` in the sandbox policy | template / project |
+| Per job | `maxCostUsd`, `maxTokens` in the sandbox policy | project (`project.manage`) |
 
 `{ "monthlyLimitUsd": 500, "alertAtPercent": 80, "hardStop": true }`. `GET /api/v1/budgets` lists the
 budgets you may see with the month's spend, a linear forecast and the state (`OK`, `ALERT`, `EXCEEDED`,

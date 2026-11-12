@@ -32,7 +32,6 @@ import type {
   Project,
   ResolvedParameter,
   ResolvedTask,
-  RunInputField,
   Skill,
   TaskConfigSchemas,
   TaskTemplate,
@@ -65,7 +64,6 @@ import { templateConfigSchema, templateNeedsCodingAgent } from '../data/template
 import { ReadonlyFormDirective } from '../../../core/forms/readonly-form.directive';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ActionBarComponent } from '../../../core/ui/relay/action-bar.component';
-import { SandboxPolicyEditorComponent } from '../../fleet/public-api';
 import {
   emptyTemplate,
   parentCandidates,
@@ -75,14 +73,6 @@ import {
   toTemplateInput,
   type ResolvedPreview,
 } from '../data/resolved-preview';
-import {
-  addRunInput,
-  moveRunInput,
-  patchRunInput,
-  removeRunInput,
-  runInputProblem,
-  withOrigins,
-} from '../data/run-inputs-editor';
 
 function invalidJson(e: unknown): string {
   return $localize`:@@library.templateEditor.invalidJson:Invalid JSON: ${(e as Error).message}:error:`;
@@ -111,7 +101,6 @@ function invalidJson(e: unknown): string {
     JsonViewComponent,
     NzInputNumberModule,
     ParameterValuesFormComponent,
-    SandboxPolicyEditorComponent,
     SchemaFormComponent,
     HelpTipComponent,
   ],
@@ -249,7 +238,7 @@ function invalidJson(e: unknown): string {
             <div class="grid">
               <nz-form-item>
                 <nz-form-label
-                  nzTooltipTitle="The template this one starts from: it inherits its prompts, parameters and configuration and changes only what you set here."
+                  nzTooltipTitle="The template this one starts from: it inherits its instructions, parameters and configuration and changes only what you set here."
                   i18n-nzTooltipTitle="@@library.templateEditor.extends.extra"
                   nzFor="tt-extends"
                   i18n="@@library.templateEditor.extends"
@@ -350,76 +339,73 @@ function invalidJson(e: unknown): string {
               </nz-form-control>
             </nz-form-item>
 
-            <h3 class="sec" i18n="@@library.templateEditor.prompt">Prompt</h3>
-            <nz-form-item>
-              <nz-form-control>
-                <nz-radio-group
-                  name="promptMode"
-                  [ngModel]="draft().prompt?.mode ?? 'APPEND'"
-                  (ngModelChange)="patchPrompt({ mode: $event })"
-                  nzSize="small"
-                >
-                  <label
-                    nz-radio-button
-                    nzValue="APPEND"
-                    i18n="@@library.templateEditor.appendParent"
-                    >Append to parent</label
+            <h3 class="sec" i18n="@@library.templateEditor.instructionsSection">Instructions</h3>
+            @if (draft().extendsKey) {
+              <nz-form-item data-instructions-mode>
+                <nz-form-control>
+                  <nz-radio-group
+                    name="instructionsMode"
+                    [ngModel]="draft().instructionsMode"
+                    (ngModelChange)="patch({ instructionsMode: $event })"
+                    nzSize="small"
                   >
-                  <label
-                    nz-radio-button
-                    nzValue="REPLACE"
-                    i18n="@@library.templateEditor.replaceParent"
-                    >Replace parent</label
-                  >
-                </nz-radio-group>
-              </nz-form-control>
-            </nz-form-item>
-            <nz-form-item>
-              <nz-form-label nzFor="tt-sys" i18n="@@library.templateEditor.systemPrompt"
-                >System prompt</nz-form-label
-              >
-              <nz-form-control>
-                <textarea
-                  nz-input
-                  id="tt-sys"
-                  name="system"
-                  class="mono-textarea"
-                  [ngModel]="draft().prompt?.system ?? ''"
-                  (ngModelChange)="patchPrompt({ system: $event })"
-                  [nzAutosize]="{ minRows: 4, maxRows: 18 }"
-                ></textarea>
-              </nz-form-control>
-            </nz-form-item>
-            <nz-form-item>
+                    <label
+                      nz-radio-button
+                      nzValue="APPEND"
+                      i18n="@@library.templateEditor.appendParent"
+                      >Append to parent</label
+                    >
+                    <label
+                      nz-radio-button
+                      nzValue="REPLACE"
+                      i18n="@@library.templateEditor.replaceParent"
+                      >Replace parent</label
+                    >
+                  </nz-radio-group>
+                </nz-form-control>
+              </nz-form-item>
+            }
+            <nz-form-item data-instructions>
               <nz-form-label
-                nzTooltipTitle="Template variables: issue, artifacts.*, feedback, params.*, project.*, input.ci.*"
-                i18n-nzTooltipTitle="@@library.templateEditor.userPrompt.extra"
-                nzFor="tt-user"
-                i18n="@@library.templateEditor.userPrompt"
-                >User prompt</nz-form-label
+                [nzTooltipTitle]="instructionsHelp"
+                nzFor="tt-instructions"
+                i18n="@@library.templateEditor.instructions"
+                >Instructions</nz-form-label
               >
               <nz-form-control>
                 <textarea
                   nz-input
-                  id="tt-user"
-                  name="user"
+                  id="tt-instructions"
+                  name="instructions"
                   class="mono-textarea"
-                  [ngModel]="draft().prompt?.user ?? ''"
-                  (ngModelChange)="patchPrompt({ user: $event })"
-                  [nzAutosize]="{ minRows: 4, maxRows: 18 }"
+                  [ngModel]="draft().instructions ?? ''"
+                  (ngModelChange)="patch({ instructions: $event })"
+                  [nzAutosize]="{ minRows: 10, maxRows: 30 }"
+                  placeholder="What to do and when the result is good enough"
+                  i18n-placeholder="@@library.templateEditor.instructions.placeholder"
                 ></textarea>
               </nz-form-control>
             </nz-form-item>
+            <ng-template #instructionsHelp
+              ><span i18n="@@library.templateEditor.instructions.help">
+                What to do and the acceptance criteria. The platform adds the issue, the results of
+                earlier steps, the start inputs, the reviewer's feedback and the owner's answers
+                itself, unless you place them with their placeholders: {{ placeholders.issue }},
+                {{ placeholders.artifacts }}, {{ placeholders.params }},
+                {{ placeholders.feedback }}, {{ placeholders.answers }}.
+              </span></ng-template
+            >
 
             <h3 class="sec">
               <span i18n="@@library.templateEditor.parameters">Parameters</span>
               <bo-help-tip [text]="parametersHelp" />
             </h3>
             <ng-template #parametersHelp
-              ><span i18n="@@library.templateEditor.parameters.help">
-                Fields a workflow step fills in when it uses this template. Prompts and text
-                settings read them as {{ paramsExample }}. A parameter with the name of an inherited
-                one replaces it.
+              ><span i18n="@@library.templateEditor.parameters.sourcesHelp">
+                Inputs of the work. A workflow step gives each a value, asks for it when the run
+                starts or takes the result of an earlier step. The instructions and text settings
+                read them as {{ paramsExample }}. A parameter with the name of an inherited one
+                replaces it.
               </span></ng-template
             >
             @for (p of draft().parameters ?? []; track $index; let i = $index) {
@@ -615,122 +601,6 @@ function invalidJson(e: unknown): string {
             }
 
             <h3 class="sec">
-              <span i18n="@@library.templates.runInputs.title">Run inputs</span>
-              <bo-help-tip [text]="runInputsHelp" />
-            </h3>
-            <ng-template #runInputsHelp
-              ><span i18n="@@library.templates.runInputs.help">
-                Fields of the start form this task asks for. A workflow asks for the fields of all
-                its steps; a field with the name of an inherited one replaces it. The values reach
-                the prompt as the Run input list; an issue key field is also the run's issue key.
-              </span></ng-template
-            >
-            @for (f of draft().runInputs ?? []; track $index; let i = $index) {
-              <div class="run-input-row" [attr.data-run-input]="i">
-                <input
-                  nz-input
-                  class="mono"
-                  [name]="'ri-name-' + i"
-                  [ngModel]="f.name"
-                  (ngModelChange)="patchRunInput(i, { name: $event })"
-                  placeholder="name"
-                  i18n-placeholder="@@library.templates.runInputs.name"
-                  aria-label="Name"
-                  i18n-aria-label="@@library.templates.runInputs.nameLabel"
-                />
-                <input
-                  nz-input
-                  [name]="'ri-label-' + i"
-                  [ngModel]="f.label"
-                  (ngModelChange)="patchRunInput(i, { label: $event })"
-                  placeholder="Label shown in the start form"
-                  i18n-placeholder="@@library.templates.runInputs.label"
-                  aria-label="Label"
-                  i18n-aria-label="@@library.templates.runInputs.labelLabel"
-                />
-                <nz-select
-                  [name]="'ri-type-' + i"
-                  [ngModel]="f.type"
-                  (ngModelChange)="patchRunInput(i, { type: $event })"
-                  aria-label="Type"
-                  i18n-aria-label="@@library.templates.runInputs.typeLabel"
-                >
-                  @for (t of runInputTypes; track t.value) {
-                    <nz-option [nzValue]="t.value" [nzLabel]="t.label" />
-                  }
-                </nz-select>
-                <label class="ri-required">
-                  <nz-switch
-                    nzSize="small"
-                    [name]="'ri-required-' + i"
-                    [ngModel]="f.required"
-                    (ngModelChange)="patchRunInput(i, { required: $event })"
-                  />
-                  <span i18n="@@library.templates.runInputs.required">Required</span>
-                </label>
-                <input
-                  nz-input
-                  class="ri-help"
-                  [name]="'ri-help-' + i"
-                  [ngModel]="f.help ?? ''"
-                  (ngModelChange)="patchRunInput(i, { help: $event || null })"
-                  placeholder="Help text (optional)"
-                  i18n-placeholder="@@library.templates.runInputs.helpText"
-                  aria-label="Help text"
-                  i18n-aria-label="@@library.templates.runInputs.helpLabel"
-                />
-                @if (!readonly()) {
-                  <span class="ri-actions">
-                    <button
-                      nz-button
-                      nzSize="small"
-                      type="button"
-                      [disabled]="i === 0"
-                      (click)="moveRunInput(i, -1)"
-                      aria-label="Move up"
-                      i18n-aria-label="@@library.templates.runInputs.up"
-                    >
-                      <nz-icon nzType="arrow-up" />
-                    </button>
-                    <button
-                      nz-button
-                      nzSize="small"
-                      type="button"
-                      [disabled]="i === (draft().runInputs ?? []).length - 1"
-                      (click)="moveRunInput(i, 1)"
-                      aria-label="Move down"
-                      i18n-aria-label="@@library.templates.runInputs.down"
-                    >
-                      <nz-icon nzType="arrow-down" />
-                    </button>
-                    <button
-                      nz-button
-                      nzSize="small"
-                      nzDanger
-                      type="button"
-                      (click)="removeRunInput(i)"
-                      aria-label="Remove"
-                      i18n-aria-label="@@library.templates.runInputs.remove"
-                    >
-                      <nz-icon nzType="delete" />
-                    </button>
-                  </span>
-                }
-              </div>
-            }
-            @if (!readonly()) {
-              <button
-                nz-button
-                nzType="dashed"
-                type="button"
-                class="ri-add"
-                (click)="addRunInput()"
-                i18n="@@library.templates.runInputs.add"
-              >
-                Add run input
-              </button>
-            }
-            <h3 class="sec">
               <span i18n="@@library.templateEditor.configuration">Configuration</span>
               <bo-help-tip [text]="configHelp" />
               @if (configSchema() && !readonly()) {
@@ -790,17 +660,17 @@ function invalidJson(e: unknown): string {
 
             <nz-collapse nzGhost class="advanced">
               <nz-collapse-panel
-                nzHeader="Advanced: artefacts, output schema, sandbox"
-                i18n-nzHeader="@@library.templateEditor.advanced"
+                nzHeader="Advanced: artefacts, output schema"
+                i18n-nzHeader="@@library.templateEditor.advancedNoSandbox"
                 [nzExtra]="advancedTip"
               >
                 <ng-template #advancedTip>
                   <bo-help-tip [text]="advancedHelp" (click)="$event.stopPropagation()" />
                 </ng-template>
                 <ng-template #advancedHelp
-                  ><span i18n="@@library.templateEditor.advanced.help">
-                    Most templates need nothing here. These settings matter for base templates,
-                    decisions on the model answer and coding agents with special sandbox needs.
+                  ><span i18n="@@library.templateEditor.advancedNoSandbox.help">
+                    Most templates need nothing here. These settings matter for base templates and
+                    decisions on the model answer. The sandbox is set on the project.
                   </span></ng-template
                 >
                 @if (template()?.id && template()?.key) {
@@ -941,30 +811,6 @@ function invalidJson(e: unknown): string {
                     }
                   </nz-form-control>
                 </nz-form-item>
-                <h3 class="sec">
-                  <span i18n="@@library.templateEditor.sandbox">Sandbox</span>
-                  <bo-help-tip [text]="sandboxHelp" />
-                </h3>
-                <ng-template #sandboxHelp
-                  ><span i18n="@@library.templateEditor.sandbox.help">
-                    Narrows the project's sandbox policy for jobs of this template (stronger
-                    isolation, fewer hosts and tools, lower caps). Empty fields inherit. The
-                    platform, pool and project ceilings are checked when the job is resolved.
-                  </span></ng-template
-                >
-                @defer (on viewport) {
-                  <app-sandbox-policy-editor
-                    [policy]="draft().sandboxPolicy ?? null"
-                    [readonly]="readonly()"
-                    ceilingLabel="The project"
-                    i18n-ceilingLabel="@@library.templateEditor.ceilingLabel"
-                    (policyChange)="
-                      patch({ sandboxPolicy: $any(isEmpty($event) ? undefined : $event) })
-                    "
-                  />
-                } @placeholder {
-                  <div class="sandbox-ph" aria-hidden="true"></div>
-                }
               </nz-collapse-panel>
             </nz-collapse>
           </form>
@@ -1070,14 +916,10 @@ function invalidJson(e: unknown): string {
                 </ng-template>
               }
               <nz-tabs nzSize="small" style="margin-top: 8px">
-                <nz-tab
-                  nzTitle="System prompt"
-                  i18n-nzTitle="@@library.templateEditor.systemPrompt"
-                >
-                  <pre class="prompt" tabindex="0">{{ pv.systemPrompt || text.empty }}</pre>
-                </nz-tab>
-                <nz-tab nzTitle="User prompt" i18n-nzTitle="@@library.templateEditor.userPrompt">
-                  <pre class="prompt" tabindex="0">{{ pv.userPrompt || text.empty }}</pre>
+                <nz-tab nzTitle="Instructions" i18n-nzTitle="@@library.templateEditor.instructions">
+                  <pre class="prompt" tabindex="0" data-preview-instructions>{{
+                    pv.instructions || text.empty
+                  }}</pre>
                 </nz-tab>
                 <nz-tab nzTitle="Skills" i18n-nzTitle="@@library.templateEditor.skills">
                   @if (!pv.skills.length) {
@@ -1118,32 +960,6 @@ function invalidJson(e: unknown): string {
                       >
                     }
                   </div>
-                </nz-tab>
-                <nz-tab nzTitle="Run inputs" i18n-nzTitle="@@library.templates.runInputs.tab">
-                  @if (!previewRunInputs().length) {
-                    <p class="muted small" i18n="@@library.templates.runInputs.none">
-                      This task asks for no run input.
-                    </p>
-                  }
-                  <ul class="ri-resolved">
-                    @for (f of previewRunInputs(); track f.name) {
-                      <li [attr.data-resolved-input]="f.name">
-                        <span class="mono">{{ f.name }}</span>
-                        <span>{{ f.label }}</span>
-                        <nz-tag>{{ typeLabel(f.type) }}</nz-tag>
-                        @if (f.required) {
-                          <nz-tag nzColor="red" i18n="@@library.templates.runInputs.requiredTag"
-                            >required</nz-tag
-                          >
-                        }
-                        @if (f.from && f.from !== template()?.key) {
-                          <span class="muted small" i18n="@@library.templates.runInputs.inherited"
-                            >inherited from {{ templateName(f.from) }}</span
-                          >
-                        }
-                      </li>
-                    }
-                  </ul>
                 </nz-tab>
                 <nz-tab nzTitle="Parameters" i18n-nzTitle="@@library.templateEditor.parameters">
                   @if (!pv.parameters.length) {
@@ -1251,19 +1067,6 @@ function invalidJson(e: unknown): string {
         gap: 4px;
         align-items: center;
         margin-top: -12px;
-      }
-      .sandbox-ph {
-        height: 320px;
-      }
-      .run-input-row {
-        display: grid;
-        grid-template-columns: 140px 1fr 150px auto;
-        gap: 6px 8px;
-        align-items: center;
-        margin-bottom: 10px;
-      }
-      .run-input-row .ri-help {
-        grid-column: 1 / 4;
       }
       .ri-required,
       .ri-actions {
@@ -1551,8 +1354,16 @@ export class TemplateEditorDrawerComponent {
     needsCoding: neededAgentLabel(true),
     needsCodingHint: $localize`:@@library.templateEditor.needsCoding.hint:Its configuration (Spec Kit phase, push or prepare only) needs a coding agent. The workflow step chooses the agent.`,
   };
-  /** ADR 0058: how prompts read a parameter (help of the parameters section). */
+  /** ADR 0058: how the instructions read a parameter (help of the parameters section). */
   readonly paramsExample = '{{params.<name>}}'; // i18n-ignore
+  /** ADR 0062: the placeholders of the standard data sections (help of the instructions). */
+  readonly placeholders = {
+    issue: '{{issue.*}}', // i18n-ignore
+    artifacts: '{{artifacts.<name>}}', // i18n-ignore
+    params: '{{params.<name>}}', // i18n-ignore
+    feedback: '{{feedback}}', // i18n-ignore
+    answers: '{{answers}}', // i18n-ignore
+  };
   readonly parameterTypeLabel = parameterTypeLabel;
   readonly parameterTypes = PARAMETER_TYPES.map((t) => ({
     value: t,
@@ -1678,7 +1489,6 @@ export class TemplateEditorDrawerComponent {
       !!d.name.trim() &&
       !this.configError() &&
       !this.schemaError() &&
-      !this.runInputBlocker() &&
       !this.parameterBlocker() &&
       !this.parameterValueBlocker() &&
       (d.scope.type !== 'PROJECT' || !!d.scope.projectId)
@@ -1694,7 +1504,7 @@ export class TemplateEditorDrawerComponent {
       return $localize`:@@library.templateEditor.blocker.schema:Output schema is not valid JSON`;
     if (d.scope.type === 'PROJECT' && !d.scope.projectId)
       return $localize`:@@library.templateEditor.blocker.project:Pick the project`;
-    return this.runInputBlocker() ?? this.parameterBlocker() ?? this.parameterValueBlocker();
+    return this.parameterBlocker() ?? this.parameterValueBlocker();
   });
   readonly parents = computed(() => {
     const self = this.template()?.key ?? null;
@@ -1708,39 +1518,6 @@ export class TemplateEditorDrawerComponent {
     const seen = new Set<string>();
     return [...global, ...list].filter((t) => !seen.has(t.key ?? '') && seen.add(t.key ?? ''));
   });
-  /** ADR 0053: the resolved run inputs and the template each comes from. */
-  readonly previewRunInputs = computed(() => {
-    const pv = this.preview();
-    return pv ? withOrigins(pv.runInputs, pv.lineage, this.templates()) : [];
-  });
-  readonly runInputTypes: Array<{ value: RunInputField['type']; label: string }> = [
-    { value: 'TEXT', label: $localize`:@@library.templates.runInputs.type.text:Single line` },
-    {
-      value: 'MULTILINE',
-      label: $localize`:@@library.templates.runInputs.type.multiline:Multi-line text`,
-    },
-    {
-      value: 'ISSUE_KEY',
-      label: $localize`:@@library.templates.runInputs.type.issueKey:Jira issue key`,
-    },
-  ];
-  private readonly runInputBlocker = computed(() => {
-    const p = runInputProblem(this.draft().runInputs ?? []);
-    if (!p) return null;
-    switch (p.kind) {
-      case 'blankName':
-        return $localize`:@@library.templates.runInputs.blocker.name:Every run input needs a name`;
-      case 'blankLabel':
-        return $localize`:@@library.templates.runInputs.blocker.label:Run input ${p.name}:name: needs a label`;
-      case 'duplicate':
-        return $localize`:@@library.templates.runInputs.blocker.duplicate:Run input name ${p.name}:name: is used twice`;
-      case 'badName':
-        return $localize`:@@library.templates.runInputs.blocker.badName:Run input name ${p.name}:name: must start with a letter and use only letters, digits, - and _ (at most 64)`;
-      case 'tooLong':
-        return $localize`:@@library.templates.runInputs.blocker.tooLong:Run input ${p.name}:name: has a label over 200 or a help text over 1000 characters`;
-    }
-  });
-
   constructor() {
     // ADR 0054/0056: static; without it the configuration stays a JSON text area.
     this.api
@@ -1826,39 +1603,8 @@ export class TemplateEditorDrawerComponent {
     return s.type === 'PROJECT' ? (s.projectId ?? null) : null;
   });
 
-  isEmpty(o: object | null | undefined): boolean {
-    return !o || !Object.keys(o).length;
-  }
-
   patch(changes: Partial<TaskTemplateInput>): void {
     this.draft.update((d) => ({ ...d, ...changes }));
-  }
-
-  patchPrompt(changes: Partial<NonNullable<TaskTemplateInput['prompt']>>): void {
-    this.draft.update((d) => ({
-      ...d,
-      prompt: { system: '', user: '', mode: 'APPEND', ...d.prompt, ...changes },
-    }));
-  }
-
-  addRunInput(): void {
-    this.patch({ runInputs: addRunInput(this.draft().runInputs ?? []) });
-  }
-
-  removeRunInput(index: number): void {
-    this.patch({ runInputs: removeRunInput(this.draft().runInputs ?? [], index) });
-  }
-
-  moveRunInput(index: number, delta: number): void {
-    this.patch({ runInputs: [...moveRunInput(this.draft().runInputs ?? [], index, delta)] });
-  }
-
-  patchRunInput(index: number, changes: Partial<RunInputField>): void {
-    this.patch({ runInputs: patchRunInput(this.draft().runInputs ?? [], index, changes) });
-  }
-
-  typeLabel(type: RunInputField['type']): string {
-    return this.runInputTypes.find((t) => t.value === type)?.label ?? type;
   }
 
   setScope(type: 'GLOBAL' | 'PROJECT'): void {

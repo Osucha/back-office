@@ -32,8 +32,8 @@ See [How agent jobs run](agent-execution.md#lifecycle).
 **Agent questions**: Questions an agent stops a step with when it cannot do it well without your answers; the run
 waits until you answer or cancel the step. See [Answering an agent's questions](your-turn.md#agent-questions).
 
-**Agent session**: The conversation of a coding agent. By default a step keeps its own session (its repeats
-continue it); it can also start a new one each time or continue the session of an earlier step of the same agent.
+**Agent session**: The conversation of a coding agent, set on the agent (**Session**): **Per step (repeats
+continue)** (default), **One per run** (all steps of the agent in a run are one conversation) or **Always fresh**.
 See [Agent sessions](workflows.md#continue-session).
 
 **Agents in this workflow**: The designer's panel that lists, per agent a workflow draft uses, its steps, rules,
@@ -120,6 +120,11 @@ Claude Code. An agent without one gives a model answer. See [Agents](task-librar
 
 **Human wait**: The time runs spend waiting at gates; the headline figure of Insights. See [Insights](costs-insights.md#insights).
 
+**Instructions**: The one text of a template that says what to do and how the result is judged. The platform adds
+the issue, consumed artefacts, values given at start, feedback and answers as data sections unless the instructions
+place them; a workflow step can append notes or replace the text (**Instructions for this step**). See
+[Instructions and what the agent receives](task-library.md#instructions).
+
 **Isolation level**: How strongly a sandbox separates the agent from the machine: Dev, Standard (gVisor) or High (Kata
 microVM). See [How agent jobs run](agent-execution.md#isolation-levels).
 
@@ -155,9 +160,11 @@ benchmarks pick profiles; templates do not. See [Model profiles](evaluation.md#m
 **Node**: One block of a workflow: Start, Task, Action, Decision, Human gate, Wait for CI, End or Note. See
 [Node kinds](workflows.md#nodes).
 
-**Parameter (template parameter)**: A typed field of a template (single line, multi-line text, number, yes / no,
-choice) that a workflow step fills in; prompts read it as `{{params.<name>}}`. A required one without a value blocks
-the step; such templates are marked **needs parameters**. See [Parameters](task-library.md#parameters).
+**Parameter (template parameter)**: A typed input of a template (single line, multi-line text, number, yes / no,
+choice, Jira issue key); the instructions read it as `{{params.<name>}}`. The workflow step chooses where its value
+comes from: **Value**, **Ask at start** or **Result of an earlier step**; without one, the preset value or the
+default. A required one without a value blocks the step; such templates are marked **needs parameters**. See
+[Parameters](task-library.md#parameters).
 
 **PAT (personal access token)**: A token (`bo_pat_…`) that acts as you, with your permissions or fewer, for scripts and your IDE. See
 [Personal access tokens](account.md#tokens).
@@ -206,7 +213,7 @@ See [Runner fleet](runner-fleet.md#pools).
 **Sandbox**: The isolated container or microVM an agent job runs in, with limited resources, network and tools. See
 [How agent jobs run](agent-execution.md#lifecycle).
 
-**Sandbox policy**: The limits of a sandbox, set in layers (platform, pool, project, template, node), each only narrowing.
+**Sandbox policy**: The limits of a sandbox, set in layers (platform, pool, project), each only narrowing.
 See [Sandbox policy](projects.md#sandbox-policy).
 
 **Shadowing**: A project template, skill, rule or agent with the same key as a global one replaces it for that project. See
@@ -223,7 +230,7 @@ list it. See [Skills](task-library.md#skills).
 
 **Suite (task suite)**: The set of prompt tasks and coding jobs models are measured on. See [Task suites](evaluation.md#suites).
 
-**Task template**: A reusable description of what to do, and only that: category, prompts with parameters, config,
+**Task template**: A reusable description of what to do, and only that: category, instructions with parameters, config,
 outputs and the skills the work needs; it may be based on one parent. It names no agent and no model (the step does);
 rules and skills belong to the agent.
 See [Templates](task-library.md#templates).

@@ -16,7 +16,7 @@ insights and the attestation catch-up query the tables of other contexts read-on
 | Platform (monthly) | `admin.settings.manage` | `monthlyLimitUsd`, `alertAtPercent` (default 80), `hardStop` |
 | Project (monthly) | `project.manage` | same |
 | Run | task template / workflow | `maxCostUsd` per run |
-| Job | task template `sandboxPolicy` / LLM step | `maxCostUsd`, `maxTokens` |
+| Job | project sandbox policy (ADR 0062: no template policy) / LLM step | `maxCostUsd`, `maxTokens` |
 
 Enforcement at the LLM gateway before every provider call (estimate) and after (actual); state in
 `budget_state(scope, period, spent_usd, version)`. Crossing the alert threshold emits `BudgetAlert` and a
@@ -166,7 +166,7 @@ default workflow "Reference: one Claude Code session" ([03-pipelines-and-agents.
   `verification {command, exitCode}`, `gateDecisions [{approvalId, nodeId, option, comment, checkedItems, decidedBy
   {kind, userId, displayName}, decidedAt}]` (decided before the job ended), `timestamps`.
   Known gaps: `template.version` is null (not recorded at run time yet); `imageDigest` / `egressLogDigest` are only
-  filled by runner v2 completions; the system and user prompt are one digest (the runner receives them joined).
+  filled by runner v2 completions; the task message is one digest (ADR 0062: a template has one instruction text; the runner receives one prompt).
 - Endpoints: `GET /api/v1/runs/{runId}/attestations` (`project.view`, summaries), `GET /api/v1/attestations/{id}`
   (`project.view`, the envelope as `application/vnd.in-toto+json`), `POST /api/v1/attestations/verify` (any
   authenticated caller), public keys at `GET /.well-known/back-office/keys` (JWK set `OKP`/`Ed25519`, `status` active or

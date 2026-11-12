@@ -37,10 +37,10 @@ import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
+import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
@@ -59,8 +59,8 @@ class FeedbackAndReworkTest {
     private val models = TemplateModelBuilder()
     private val renderer = TemplateRenderer()
 
-    private fun task(key: String = "step", produces: List<String> = listOf("result"), prompt: TaskPrompt = TaskPrompt(null, "x"), schema: String? = null) = ResolvedTask(
-        key = key, name = key, agent = TestAgents.MODEL_ANSWER, modelProfileId = null, prompt = prompt, skills = emptyList(), config = emptyMap(),
+    private fun task(key: String = "step", produces: List<String> = listOf("result"), instructions: String? = "x", schema: String? = null) = ResolvedTask(
+        key = key, name = key, agent = TestAgents.MODEL_ANSWER, modelProfileId = null, instructions = instructions, skills = emptyList(), config = emptyMap(),
         outputSchema = schema, confidenceField = null, produces = produces, consumes = emptyList(), category = null, lineage = listOf(key),
         ports = listOf("success", "failure"),
     )
@@ -159,32 +159,33 @@ class FeedbackAndReworkTest {
 
     // ------------------------------------------------------------------------------------------ rework after the AI review
 
-    /** The rework part of the built-in implement prompts (BuiltInLibrary.REVIEW_SECTION and FEEDBACK_SECTION). */
-    private val reworkTemplate = """
-        Implement {{issue.key}}
+    /** ADR 0062: the rework part of the built-in implement instructions (BuiltInLibrary.REVIEW_SECTION); the feedback is a standard section. */
+    private val reworkInstructions = """
+        Implement the change.
         {{#artifacts.review}}
         ## Latest review findings
         {{artifacts.review}}
         {{/artifacts.review}}
-        {{#feedback}}
-        ## Feedback on the previous attempt of this step (address every point)
-        {{feedback}}
-        {{/feedback}}
     """.trimIndent()
 
     @Test
     fun `the implementer's rework prompt carries the latest review findings, the first attempt has no empty section`() {
+        val message = TaskMessage(renderer)
+        val step = task("implement", instructions = reworkInstructions)
         val state = mapOf<String, Any?>(RunStateKeys.ISSUE to mapOf("key" to "SHOP-1", "summary" to "Cart"))
-        val first = renderer.render(reworkTemplate, models.build(context("implement", state))).text
-        assertThat(first.trim()).isEqualTo("Implement SHOP-1")
+        val blocks = PromptDataBlocks.random()
+        val first = message.render(step, models.build(context("implement", state)), blocks).text
+        assertThat(first).startsWith("Implement the change.").contains("## Issue").contains("SHOP-1")
+            .doesNotContain("## Latest review findings").doesNotContain("## Feedback on the previous attempt")
 
         val report = ReviewReport(Verdict.REQUEST_CHANGES, 60, "Null handling is missing.", listOf(Finding(Severity.BLOCKER, "src/Cart.kt", 12, "NPE on empty cart", "Guard the empty list")))
         val reviewed = Fixtures.runningRun(project, definition).addArtifact(
             Artifact(ArtifactId.new(), "code-review", "review", ArtifactKind.REVIEW, "text/markdown", report.toMarkdown(), createdAt = now),
         )
-        val rework = renderer.render(reworkTemplate, models.build(context("implement", state, reviewed))).text
+        val rework = message.render(step, models.build(context("implement", state, reviewed)), blocks).text
         assertThat(rework).contains("## Latest review findings").contains("NPE on empty cart").contains("src/Cart.kt").contains("REQUEST_CHANGES")
         assertThat(rework).doesNotContain("## Feedback on the previous attempt")
+        assertThat(rework.indexOf("## Latest review findings")).describedAs("the instructions' own section before the standard ones").isLessThan(rework.indexOf("## Issue"))
     }
 
     // ------------------------------------------------------------------------------------------ MISSING requirement

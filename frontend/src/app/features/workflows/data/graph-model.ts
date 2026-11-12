@@ -20,7 +20,6 @@ import type {
 import { SLUG_PATTERN } from '../../../core/forms/patterns';
 import { actionTitle } from '../../../core/ui/agents';
 import { defaultStepAgentKey } from './agent-choice';
-import { continuesFromName } from './step-session';
 
 export const NODE_ID_PATTERN = SLUG_PATTERN;
 export { SLUG_PATTERN };
@@ -421,8 +420,6 @@ export interface CanvasNodeData {
   agent: AgentRef | null;
   /** ADR 0055: the template's category (GENERAL when it has none); null without a template. */
   category: string | null;
-  /** ADR 0057: the name of the step whose agent session this TASK node continues; null = none. */
-  continuesFrom?: string | null;
   /** ADR 0056: the translated title of an ACTION node's action; null for other kinds. */
   actionTitle?: string | null;
   /** Connection capabilities the action needs (Jira actions, ADR 0030/0056). */
@@ -460,8 +457,6 @@ export function buildNodeData(
     connectedPorts?: ReadonlySet<string>;
     /** ADR 0056: the agents of the project, to name a step's own agent. */
     agents?: readonly AgentRef[] | null;
-    /** ADR 0057: node names by id, to name the step whose session a node continues. */
-    nodeNames?: ReadonlyMap<string, string> | null;
   } = {},
 ): CanvasNodeData {
   const meta = NODE_KIND_META[node.kind];
@@ -497,7 +492,6 @@ export function buildNodeData(
     templateName: template?.name ?? null,
     agent,
     category: template ? (template.category ?? 'GENERAL') : null,
-    continuesFrom: continuesFromName(node, opts.nodeNames),
     actionTitle:
       node.kind === 'ACTION' && node.action?.type
         ? actionTitle(node.action.type, action?.title)

@@ -172,16 +172,37 @@ data class RunnerSkill(val key: String, val name: String, val content: String)
 enum class AgentAccessMode { FULL, READ_ONLY, PATHS }
 
 /**
+ * ADR 0062: where a coding agent works: [RUN] the run directory every step of the run shares (default); [SEPARATE] a
+ * fresh directory with only the step's repositories, thrown away after the step (no session continuation).
+ */
+enum class AgentDirectory { RUN, SEPARATE }
+
+/**
+ * ADR 0062: which executions of a coding agent continue one conversation: [PER_STEP] the repeats of one step (default,
+ * ADR 0060 `OWN`), [PER_RUN] every step of this agent in a run, [FRESH] none (every execution starts anew).
+ */
+enum class AgentSession { PER_STEP, PER_RUN, FRESH }
+
+/**
  * ADR 0060: what a coding agent may change: [AgentAccessMode.FULL] anything, [AgentAccessMode.READ_ONLY] nothing,
  * [AgentAccessMode.PATHS] only files matching [paths] (globs relative to a repository root, e.g. `docs/` and everything below it as a double-star glob). Enforced by
  * the harness's tool rules and by the runner, which reverts other changes after the agent finished.
  */
-data class AgentAccess(val mode: AgentAccessMode = AgentAccessMode.FULL, val paths: List<String> = emptyList()) {
+data class AgentAccess(
+    val mode: AgentAccessMode = AgentAccessMode.FULL,
+    val paths: List<String> = emptyList(),
+    /** ADR 0062: the run directory (default) or a fresh directory with only the step's repositories. */
+    val directory: AgentDirectory = AgentDirectory.RUN,
+) {
     init {
         problems().firstOrNull()?.let { throw ValidationException(it, "access.paths") }
     }
 
+    /** May change everything (the runner enforces nothing); says nothing about [directory]. */
     val full: Boolean get() = mode == AgentAccessMode.FULL
+
+    /** ADR 0062: works in a fresh directory, does not see what other steps left. */
+    val separate: Boolean get() = directory == AgentDirectory.SEPARATE
 
     /** Why the access is inconsistent; empty when it is fine. */
     private fun problems(): List<String> = buildList {

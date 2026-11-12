@@ -559,6 +559,13 @@ like a template/prompt/schema), `enum` -> select, `boolean` -> switch, `integer|
 JSON object. `x-order` controls field order. Without a schema the property panel falls back to a JSON
 textarea for `overrides.config`.
 
+A task step's panel (ADR 0062) also has **Instructions for this step** (`overrides.instructionsAppend`, and
+`instructionsReplace` in a collapsed **Replace (advanced)**) and the parameter bindings
+(`step-parameter-bindings.component.ts` over the pure helpers in `data/step-bindings.ts`: per parameter a source
+**Value** / **Ask at start** / **Result of an earlier step**, written to `overrides.parameterBindings`). Session and
+directory are agent fields (`agent-editor-panel.component.ts`, `data/agent-form.ts`); the step no longer edits them,
+and the template editor no longer has run inputs (`run-inputs-editor.ts` was removed) or a sandbox section.
+
 ## Task Library pages
 
 `/library/templates`, `/library/interfaces`, `/library/skills` share `LibraryNavComponent` and follow
@@ -567,7 +574,7 @@ project instead).
 
 - Templates (`templates-page` + `template-editor-drawer`): the draft is a `TaskTemplateInput` signal;
   the right side shows the **resolved preview** from `GET /task-templates/resolve/{key}?projectId=`
-  mapped by `data/resolved-preview.ts` (`toPreview`: lineage breadcrumb, effective prompts, skills,
+  mapped by `data/resolved-preview.ts` (`toPreview`: lineage breadcrumb, the merged instructions (ADR 0062), skills,
   interface check with problems in red; `draftSkillDelta`: unsaved skill changes; `parentCandidates`:
   excludes the template and its descendants from the "extends" select). The preview reflects the saved
   version and refreshes after each save (`savedVersion`). `?key=` deep-links a template (used by the

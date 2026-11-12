@@ -874,11 +874,9 @@ export class WorkflowCanvasComponent {
     }
     const seen = new Set<string>();
     let membershipChanged = false;
-    const nodeNames = new Map(def.nodes.map((n) => [n.id, n.name || n.id]));
     for (const n of def.nodes) {
       seen.add(n.id);
       const data = buildNodeData(n, {
-        nodeNames,
         palette: paletteIndex,
         executions,
         currentNodeId,

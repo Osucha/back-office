@@ -36,7 +36,6 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.shared.usage.Pricing
@@ -98,13 +97,13 @@ class FakeModelCatalog : ModelCatalog {
 
 /**
  * In-memory stand-in for the Task Library: templates are registered by key with a prompt and executor.
- * Overrides are applied the way the real resolver does (append/replace prompts, config merge, model).
+ * Overrides are applied the way the real resolver does (replace and append instructions, config merge, model).
  */
 class FakeTaskCatalog : TaskCatalog {
     val templates = ConcurrentHashMap<String, ResolvedTask>()
 
     fun llm(key: String, user: String, system: String? = null, outputSchema: String? = null, confidenceField: String? = null, produces: List<String> = emptyList(), consumes: List<String> = emptyList(), category: TemplateCategory? = null, ports: List<String> = listOf("success", "failure")) =
-        register(ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(system, user), emptyList(), emptyMap(), outputSchema, confidenceField, produces, consumes, category, listOf(key), ports))
+        register(ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, listOfNotNull(system, user).joinToString("\n\n"), emptyList(), emptyMap(), outputSchema, confidenceField, produces, consumes, category, listOf(key), ports))
 
     fun register(task: ResolvedTask): ResolvedTask = task.also { templates[it.key] = it }
 
@@ -122,11 +121,9 @@ class FakeTaskCatalog : TaskCatalog {
 
     override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? {
         val base = templates[key] ?: return null
-        val system = listOfNotNull(base.prompt.system, overrides.systemPromptAppend).joinToString("\n\n").ifBlank { null }
-        val user = overrides.promptReplace ?: listOfNotNull(base.prompt.user, overrides.promptAppend).joinToString("\n\n").ifBlank { null }
         return base.copy(
             modelProfileId = overrides.modelProfileId ?: base.modelProfileId,
-            prompt = TaskPrompt(system, user),
+            instructions = listOfNotNull(overrides.instructionsReplace ?: base.instructions, overrides.instructionsAppend).joinToString("\n\n").ifBlank { null },
             config = base.config + overrides.config,
         )
     }

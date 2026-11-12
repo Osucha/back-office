@@ -7,7 +7,9 @@ import pl.mos.backoffice.projects.domain.model.Trigger
 import pl.mos.backoffice.projects.domain.model.TriggerType
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.tasks.ParameterBindingSource
 import pl.mos.backoffice.shared.tasks.RunInputField
+import pl.mos.backoffice.shared.tasks.TemplateParameter
 
 data class ValidationIssue(val nodeId: String? = null, val edgeId: String? = null, val field: String? = null, val message: String)
 
@@ -17,14 +19,15 @@ data class WorkflowValidationResult(val errors: List<ValidationIssue>, val warni
 
 /**
  * What the validator needs to know about a task template: its output ports, whether it is abstract,
- * whether it can push to the repository (runner-backed `IMPLEMENT` / `SPEC_KIT` with `push` not false), the run
- * inputs it declares and, for Jira reads, the template's `issueKeyFrom` setting (ADR 0053).
+ * whether it can push to the repository (runner-backed `IMPLEMENT` / `SPEC_KIT` with `push` not false), ADR 0062: the
+ * parameters it declares (a step binding one `START` asks for it at run start) and, for Jira reads, the template's
+ * `issueKeyFrom` setting (ADR 0053).
  */
 data class TaskTemplateInfo(
     val ports: List<String>,
     val abstract: Boolean = false,
     val pushCapable: Boolean = false,
-    val runInputs: List<RunInputField> = emptyList(),
+    val parameters: List<TemplateParameter> = emptyList(),
     val issueKeyFrom: String? = null,
 )
 
@@ -123,7 +126,7 @@ class WorkflowValidator {
                 warnings += ValidationIssue(
                     nodeId = step.node.id, field = "${step.section}.config.$ISSUE_KEY_FROM",
                     message = "this step reads the issue key from the run parameter $from, but no task of this workflow declares it as a run " +
-                        "input, so the start form has no field for it; declare it in the task library or use issueKeyFrom input",
+                        "input, so the start form has no field for it; bind a parameter of that name to the run start or use issueKeyFrom input",
                 )
             }
         }
@@ -150,12 +153,19 @@ class WorkflowValidator {
     private fun stepInputs(node: WorkflowNode, taskPorts: TaskPortsProvider): StepInputs? = when (node) {
         is WorkflowNode.Task -> node.task.templateKey.takeIf { it.isNotBlank() }?.let { key ->
             val info = taskPorts.lookup(key)
-            StepInputs(node, "task", info?.runInputs.orEmpty(), node.task.overrides.config[ISSUE_KEY_FROM]?.toString() ?: info?.issueKeyFrom)
+            StepInputs(node, "task", startFields(node, info), node.task.overrides.config[ISSUE_KEY_FROM]?.toString() ?: info?.issueKeyFrom)
         }
         is WorkflowNode.Action -> StepInputs(
             node, "action", ActionCatalog.runInputs(node.action), ActionCatalog.effectiveConfig(node.action)[ISSUE_KEY_FROM]?.toString(),
         )
         else -> null
+    }
+
+    /** ADR 0062: the start form fields of a task step: the declared parameters it binds `START`. */
+    private fun startFields(node: WorkflowNode.Task, info: TaskTemplateInfo?): List<RunInputField> {
+        val declared = info?.parameters.orEmpty().associateBy { it.name }
+        return node.task.overrides.parameterBindings.filterValues { it.source == ParameterBindingSource.START }.keys
+            .mapNotNull { declared[it]?.asRunInput() }
     }
 
     /**

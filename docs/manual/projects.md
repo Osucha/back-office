@@ -107,8 +107,8 @@ analysis, translation, reviews of documents. Create the project with an empty **
 gets the starter workflow **LLM task with review**:
 
 1. **Start** → **LLM task** (template `llm-task`): write what the model should do in the node's parameter
-   **Task** (under **Parameters**; empty means the default: summarise the input material). The run input **Input material** is given to the model as material (data,
-   not instructions).
+   **Task** (under **Parameters**; empty means the default: summarise the input material). The parameter **Input
+   material**, asked at start, is given to the model as material (data, not instructions).
 2. → **Result ok?** (a gate): **approve** finishes the run with success, **revise** sends your comment back to
    the task, **reject** finishes the run with failure.
 
@@ -282,9 +282,10 @@ Deleting the project deletes its connections.
 <a id="sandbox-policy"></a>
 ## Sandbox policy
 
-Coding agents run in a sandbox whose limits are set in layers: platform, runner pool, project, then task
-template and workflow node. Each layer can only narrow what the layers above allow. The **Sandbox** tab
-sets the project layer and shows the result. Details are in
+Coding agents run in a sandbox whose limits are set in layers: platform, runner pool, project. Each layer can only
+narrow what the layers above allow. The **Sandbox** tab sets the project layer and shows the result. Templates and
+workflow steps have no sandbox settings (ADR 0062): the sandbox is a property of the project, so every job of the
+project gets the same limits (a step's timeout can only shorten the job). Details are in
 [How agent jobs run](agent-execution.md#isolation-levels) and [Runner fleet](runner-fleet.md#sandbox-policies).
 
 | Section | What you set |

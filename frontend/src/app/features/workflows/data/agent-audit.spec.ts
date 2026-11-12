@@ -124,6 +124,7 @@ describe('agent audit view (ADR 0061)', () => {
 
 describe('add a missing skill to the agent (ADR 0061)', () => {
   const draftOf = (a: Agent): AgentInput => ({
+    session: 'PER_STEP',
     name: a.name,
     scope: a.scope,
     skills: [...(a.skills ?? [])],
@@ -135,10 +136,17 @@ describe('add a missing skill to the agent (ADR 0061)', () => {
   });
 
   it('copies a global agent into the project with the skill added', () => {
-    const global: Agent = { id: 'g', key: 'opencode', name: 'OpenCode', scope: { type: 'GLOBAL' } };
+    const global: Agent = {
+      session: 'PER_STEP',
+      id: 'g',
+      key: 'opencode',
+      name: 'OpenCode',
+      scope: { type: 'GLOBAL' },
+    };
     expect(addSkillPlan(global, 'kotlin', 'p1', draftOf, copyOf)).toEqual({
       kind: 'copy',
       input: {
+        session: 'PER_STEP',
         name: 'OpenCode',
         key: 'opencode',
         scope: { type: 'PROJECT', projectId: 'p1' },
@@ -149,6 +157,7 @@ describe('add a missing skill to the agent (ADR 0061)', () => {
 
   it('adds the skill to a project agent once', () => {
     const own: Agent = {
+      session: 'PER_STEP',
       id: 'p',
       key: 'coder',
       name: 'Coder',
@@ -162,15 +171,20 @@ describe('add a missing skill to the agent (ADR 0061)', () => {
     expect(addSkillPlan({ ...own, skills: [] }, 'kotlin', 'p1', draftOf, copyOf)).toEqual({
       kind: 'update',
       agentId: 'p',
-      input: { name: 'Coder', scope: own.scope, skills: ['kotlin'] },
+      input: { session: 'PER_STEP', name: 'Coder', scope: own.scope, skills: ['kotlin'] },
     });
   });
 
   it('does nothing without a saved agent', () => {
     expect(addSkillPlan(null, 'kotlin', 'p1', draftOf, copyOf).kind).toBe('none');
     expect(
-      addSkillPlan({ key: 'x', name: 'X', scope: { type: 'GLOBAL' } }, 'k', 'p1', draftOf, copyOf)
-        .kind,
+      addSkillPlan(
+        { session: 'PER_STEP', key: 'x', name: 'X', scope: { type: 'GLOBAL' } },
+        'k',
+        'p1',
+        draftOf,
+        copyOf,
+      ).kind,
     ).toBe('none');
   });
 });

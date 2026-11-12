@@ -291,7 +291,7 @@ describe('validateLocally', () => {
   });
 });
 
-describe('validateLocally: parameters and sessions (ADR 0057/0058)', () => {
+describe('validateLocally: parameters (ADR 0058/0062)', () => {
   const palette = indexPalette({
     tasks: [
       {
@@ -309,19 +309,28 @@ describe('validateLocally: parameters and sessions (ADR 0057/0058)', () => {
       .errors.filter((e) => e.field?.startsWith('task.overrides'))
       .map((e) => [e.nodeId, e.field]);
 
-  it('asks for a required parameter without a value', () => {
-    expect(messages([task('a')])).toEqual([['a', 'task.overrides.parameters.task']]);
-    expect(messages([task('a', { parameters: { task: 'Do it' } })])).toEqual([]);
+  it('asks for a required parameter without a value or a source', () => {
+    expect(messages([task('a')])).toEqual([['a', 'task.overrides.parameterBindings.task']]);
+    expect(
+      messages([task('a', { parameterBindings: { task: { source: 'VALUE', value: 'Do it' } } })]),
+    ).toEqual([]);
+    expect(messages([task('a', { parameters: { task: 'legacy' } })])).toEqual([]);
+    expect(messages([task('a', { parameterBindings: { task: { source: 'START' } } })])).toEqual([]);
   });
 
-  it('refuses to continue the session of a missing or non-task step', () => {
-    const ok = { parameters: { task: 'x' } };
+  it('asks for the artefact of an artefact binding', () => {
     expect(
-      messages([task('a', ok), task('b', { ...ok, config: { continueSession: 'a' } })]),
+      messages([
+        task('a', { parameterBindings: { task: { source: 'ARTIFACT', artifact: 'spec' } } }),
+      ]),
     ).toEqual([]);
-    expect(messages([task('b', { ...ok, config: { continueSession: 'gone' } })])).toEqual([
-      ['b', 'task.overrides.config.continueSession'],
-    ]);
-    expect(messages([task('b', { ...ok, config: { continueSession: 'b' } })])).toHaveLength(1);
+    expect(
+      messages([task('a', { parameterBindings: { task: { source: 'ARTIFACT', artifact: '' } } })]),
+    ).toEqual([['a', 'task.overrides.parameterBindings.task']]);
+  });
+
+  it('ignores the step session keys (the agent decides, ADR 0062)', () => {
+    const ok = { parameterBindings: { task: { source: 'START' } } };
+    expect(messages([task('b', { ...ok, config: { continueSession: 'gone' } })])).toEqual([]);
   });
 });

@@ -12,7 +12,7 @@
         { "slug": "projects", "title": "Projects", "anchors": ["create-project", "who-creates", "repositories", "sources", "no-repository", "project-agents", "members", "project-ci", "spec-kit", "project-connections", "sandbox-policy", "project-budget"] },
         { "slug": "workflows", "title": "Designing workflows", "anchors": ["designer", "default-workflows", "nodes", "task-nodes", "actions", "step-repositories", "run-directory", "continue-session", "agent-questions", "agent-audit", "coherence-check", "decisions", "gates-config", "write-confirmations", "start-run"] },
         { "slug": "runs", "title": "Runs", "anchors": ["run-list", "run-detail", "repository-results", "retry-cancel", "provenance", "ci-executions"] },
-        { "slug": "task-library", "title": "Task library", "anchors": ["templates", "parameters", "required-skills", "skills", "rules", "agents", "environment", "precedence", "agent-mcp", "agent-access", "sources"] },
+        { "slug": "task-library", "title": "Task library", "anchors": ["templates", "instructions", "parameters", "parameter-sources", "required-skills", "skills", "rules", "agents", "environment", "precedence", "agent-mcp", "agent-access", "sources"] },
         { "slug": "workflow-library", "title": "Workflow library", "anchors": ["library-workflows", "publish", "adopt", "update-detach", "metrics"] },
         { "slug": "evaluation", "title": "Models and evaluation", "anchors": ["models", "suites", "benchmarks"] },
         { "slug": "costs-insights", "title": "Costs, budgets and insights", "anchors": ["costs", "api-cost", "cost-per-accepted", "budgets", "insights", "agent-insights"] },

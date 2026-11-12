@@ -76,6 +76,7 @@ import { AgentAuditPanelComponent } from '../components/agent-audit-panel.compon
 import { HelpTipComponent } from '../../../core/ui/help-tip.component';
 import { auditView } from '../data/agent-audit';
 import { pickAgent } from '../data/agent-choice';
+import { templateProduces } from '../data/step-bindings';
 import { NodePropertyPanelComponent } from '../components/node-property-panel.component';
 import { TriggersEditorComponent } from '../components/triggers-editor.component';
 import { type StepModelUse, stepModelUseKey } from '../data/model-step';
@@ -523,6 +524,8 @@ const MAX_HISTORY = 50;
                     [node]="n"
                     [allIds]="nodeIds()"
                     [nodes]="def().nodes"
+                    [edges]="def().edges"
+                    [templateProduces]="templateProduces()"
                     [palette]="palette()"
                     [deprecatedKeys]="deprecatedKeys()"
                     [issues]="issuesFor(n.id)"
@@ -1156,6 +1159,8 @@ export class WorkflowDesignerPageComponent {
   readonly paletteLoading = signal(false);
   /** ADR 0054: keys of templates tagged deprecated (hidden in the palette, tagged on their steps). */
   readonly deprecatedKeys = signal<ReadonlySet<string>>(new Set());
+  /** ADR 0062: what each template produces (artefacts a parameter of a later step may read). */
+  readonly templateProduces = signal<ReadonlyMap<string, readonly string[]>>(new Map());
   readonly profiles = signal<ModelProfile[]>([]);
   /** Model options per step use (ADR 0050), loaded when a node needs them; null = the request failed. */
   readonly modelOptions = signal<Record<string, ModelOption[] | null>>({});
@@ -1595,7 +1600,10 @@ export class WorkflowDesignerPageComponent {
       .listAgents(projectId)
       .subscribe({ next: (a) => this.agents.set(a), error: () => undefined });
     this.library.listTemplates({ projectId }).subscribe({
-      next: (list) => this.deprecatedKeys.set(deprecatedKeys(list)),
+      next: (list) => {
+        this.deprecatedKeys.set(deprecatedKeys(list));
+        this.templateProduces.set(templateProduces(list));
+      },
       error: () => undefined,
     });
     this.library

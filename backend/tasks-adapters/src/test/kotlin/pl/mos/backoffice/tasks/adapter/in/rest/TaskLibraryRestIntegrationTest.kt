@@ -140,7 +140,7 @@ class TaskLibraryRestIntegrationTest {
         val key = "tpl-$suffix"
         val created = post(
             "/api/v1/task-templates",
-            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","agentKey":"ignored","modelProfileId":"${UUID.randomUUID()}","prompt":{"system":"more","mode":"APPEND"},"config":{"depth":{"max":3},"push":true},"parameters":[{"name":"depth","label":"Depth","type":"NUMBER","required":true,"default":2}],"parameterValues":{"depth":3},"tags":["t"]"""),
+            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","agentKey":"ignored","modelProfileId":"${UUID.randomUUID()}","instructions":"more","instructionsMode":"APPEND","config":{"depth":{"max":3},"push":true},"parameters":[{"name":"depth","label":"Depth","type":"NUMBER","required":true,"default":2}],"parameterValues":{"depth":3},"tags":["t"]"""),
         ).exchange()
         assertThat(created).hasStatus(HttpStatus.CREATED)
         val id = idOf(created.response.contentAsString)
@@ -153,6 +153,8 @@ class TaskLibraryRestIntegrationTest {
             { assertThat(it).extractingPath("$.config.depth.max").isEqualTo(3) },
             { assertThat(it).extractingPath("$.parameters[0].type").isEqualTo("NUMBER") },
             { assertThat(it).extractingPath("$.parameterValues.depth").isEqualTo(3) },
+            { assertThat(it).extractingPath("$.instructions").isEqualTo("more") },
+            { assertThat(it).extractingPath("$.instructionsMode").isEqualTo("APPEND") },
         )
         assertThat(post("/api/v1/task-templates", templateBody("badparam-$suffix", extra = ""","parameterValues":{"ghost":1}"""))).hasStatus(HttpStatus.BAD_REQUEST)
         assertThat(post("/api/v1/task-templates", templateBody("badname-$suffix", extra = ""","parameters":[{"name":"1x","label":"x","type":"TEXT","required":false}]"""))).hasStatus(HttpStatus.BAD_REQUEST)
@@ -197,8 +199,9 @@ class TaskLibraryRestIntegrationTest {
             { assertThat(it).extractingPath("$.ports").asArray().containsExactly("success", "failure") },
             { assertThat(it).extractingPath("$.abstract").isEqualTo(false) },
             { assertThat(it).extractingPath("$.check.ok").isEqualTo(true) },
-            { assertThat(it).extractingPath("$.prompt.system").asString().contains("{{runInputText}}").doesNotContain("project.constitution") },
-            { assertThat(it).extractingPath("$.parameters").asArray().isEmpty() },
+            { assertThat(it).extractingPath("$.instructions").asString().contains("verifyCommand").doesNotContain("{{runInputText}}").doesNotContain("project.constitution") },
+            { assertThat(it).extractingPath("$.parameters[*].name").asArray().containsExactly("input") },
+            { assertThat(it).extractingPath("$.runInputs").asArray().describedAs("ADR 0062: nothing bound START").isEmpty() },
         )
         assertThat(mvc.get().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.BASE_AGENT}")).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.abstract").isEqualTo(true) },
@@ -213,7 +216,7 @@ class TaskLibraryRestIntegrationTest {
         assertThat(
             mvc.post().uri("/api/v1/task-templates/resolve/${BuiltInLibrary.AGENT_TASK}").contentType(MediaType.APPLICATION_JSON).content(overrides),
         ).hasStatusOk().bodyJson().satisfies(
-            { assertThat(it).extractingPath("$.prompt.user").asString().contains("Only analyse, change nothing.") },
+            { assertThat(it).extractingPath("$.instructions").asString().describedAs("legacy promptReplace reads as the replacement").isEqualTo("Only analyse, change nothing.") },
             { assertThat(it).extractingPath("$.agent.key").isEqualTo("opencode") },
             { assertThat(it).extractingPath("$.agent.harness").isEqualTo("OPENCODE") },
             { assertThat(it).extractingPath("$.config.push").isEqualTo(false) },
@@ -225,24 +228,32 @@ class TaskLibraryRestIntegrationTest {
     }
 
     @Test
-    fun `run inputs round-trip through create, update and read and are inherited in the resolved view`() {
+    fun `ADR 0062 - a step that binds parameters START gets them as run start fields, legacy run inputs are ignored`() {
         val key = "inputs-$suffix"
         val created = post(
             "/api/v1/task-templates",
-            templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","runInputs":[{"name":"audience","label":"Audience","type":"TEXT","required":true,"help":"who reads it"}]"""),
+            templateBody(
+                key,
+                extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","runInputs":[{"name":"ignored","label":"Ignored"}],""" +
+                    """"parameters":[{"name":"audience","label":"Audience","type":"CHOICE","required":true,"options":["devs","ops"],"help":"who reads it"}]""",
+            ),
         ).exchange()
         assertThat(created).hasStatus(HttpStatus.CREATED)
         val id = idOf(created.response.contentAsString)
-        assertThat(created).bodyJson().extractingPath("$.runInputs[0].name").isEqualTo("audience")
+        assertThat(created).bodyJson().extractingPath("$").asMap().doesNotContainKeys("runInputs", "prompt")
 
-        assertThat(put("/api/v1/task-templates/$id", templateBody(key, extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","runInputs":[{"name":"audience","label":"Readers","type":"MULTILINE","required":false}]""")))
-            .hasStatusOk().bodyJson().extractingPath("$.runInputs[0].label").isEqualTo("Readers")
-        assertThat(mvc.get().uri("/api/v1/task-templates/$id")).hasStatusOk().bodyJson().satisfies(
-            { assertThat(it).extractingPath("$.runInputs[0].type").isEqualTo("MULTILINE") },
-            { assertThat(it).extractingPath("$.runInputs[0].required").isEqualTo(false) },
+        val bindings = """{"parameterBindings":{"audience":{"source":"START"},"input":{"source":"START"}}}"""
+        assertThat(mvc.post().uri("/api/v1/task-templates/resolve/$key").contentType(MediaType.APPLICATION_JSON).content(bindings)).hasStatusOk().bodyJson().satisfies(
+            { assertThat(it).extractingPath("$.runInputs[*].name").asArray().containsExactly("input", "audience") },
+            { assertThat(it).extractingPath("$.runInputs[1].type").isEqualTo("TEXT") },
+            { assertThat(it).extractingPath("$.runInputs[1].required").isEqualTo(true) },
+            { assertThat(it).extractingPath("$.runInputs[1].help").isEqualTo("who reads it One of: devs, ops.") },
+            { assertThat(it).extractingPath("$.check.ok").isEqualTo(true) },
         )
-        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/$key")).hasStatusOk().bodyJson()
-            .extractingPath("$.runInputs[*].name").asArray().containsExactly("input", "audience")
+        assertThat(mvc.get().uri("/api/v1/task-templates/resolve/$key")).hasStatusOk().bodyJson().satisfies(
+            { assertThat(it).extractingPath("$.runInputs").asArray().isEmpty() },
+            { assertThat(it).extractingPath("$.check.ok").describedAs("the required parameter has no value without a binding").isEqualTo(false) },
+        )
 
         assertThat(mvc.delete().uri("/api/v1/task-templates/$id")).hasStatus(HttpStatus.NO_CONTENT)
     }
@@ -263,7 +274,7 @@ class TaskLibraryRestIntegrationTest {
             templateBody(
                 BuiltInLibrary.CODE_REVIEW,
                 scope = """{"type":"PROJECT","projectId":"$projectId"}""",
-                extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","category":"REVIEW","consumes":["diff"],"produces":["review"],"prompt":{"user":"Review strictly"},"config":{"maxChunkLines":500}""",
+                extra = ""","extendsKey":"${BuiltInLibrary.BASE_AGENT}","category":"REVIEW","consumes":["diff"],"produces":["review"],"instructions":"Review strictly","config":{"maxChunkLines":500}""",
             ),
         ).exchange()
         assertThat(shadow).hasStatus(HttpStatus.CREATED)
@@ -271,7 +282,7 @@ class TaskLibraryRestIntegrationTest {
         assertThat(post("/api/v1/task-templates/resolve/${BuiltInLibrary.CODE_REVIEW}?projectId=$projectId", """{"agentKey":"strict-$suffix"}""")).hasStatusOk().bodyJson().satisfies(
             { assertThat(it).extractingPath("$.name").isEqualTo("Name ${BuiltInLibrary.CODE_REVIEW}") },
             { assertThat(it).extractingPath("$.lineage").asArray().containsExactly(BuiltInLibrary.CODE_REVIEW, BuiltInLibrary.BASE_AGENT) },
-            { assertThat(it).extractingPath("$.prompt.user").isEqualTo("Review strictly") },
+            { assertThat(it).extractingPath("$.instructions").isEqualTo("Review strictly") },
             { assertThat(it).extractingPath("$.skills[*].key").asArray().containsExactly("mine-$suffix") },
             { assertThat(it).extractingPath("$.rules[*].key").asArray().containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS, BuiltInLibrary.KOTLIN_HEXAGONAL) },
             { assertThat(it).extractingPath("$.config.maxChunkLines").isEqualTo(500) },
@@ -369,12 +380,12 @@ class TaskLibraryRestIntegrationTest {
             { assertThat(it).extractingPath("$.updatedBy.kind").isEqualTo("USER") },
         )
         val id = idOf(created.response.contentAsString)
-        assertThat(put("/api/v1/task-templates/$id", templateBody(key, extra = ""","prompt":{"system":"abc"}"""))).hasStatusOk()
+        assertThat(put("/api/v1/task-templates/$id", templateBody(key, extra = ""","instructions":"abc""""))).hasStatusOk()
         assertThat(mvc.delete().uri("/api/v1/task-templates/$id")).hasStatus(HttpStatus.NO_CONTENT)
 
         val mine = audit.entries.filter { it.entityId == id.toString() }
         assertThat(mine.map { it.operation }).containsExactly("TEMPLATE_CREATE", "TEMPLATE_UPDATE", "TEMPLATE_DELETE")
-        assertThat(mine[1].details["systemPromptLength"]).isEqualTo(mapOf("old" to 0, "new" to 3))
+        assertThat(mine[1].details["instructionsLength"]).isEqualTo(mapOf("old" to 0, "new" to 3))
     }
 
     @Test

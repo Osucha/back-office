@@ -110,8 +110,10 @@ tool deny lists are united. Violations are reported as `FAILED` with reason `pol
 
 ## Sandbox policy
 
-Resolved per job from: platform defaults → runner pool defaults → project settings → task template →
-workflow node overrides (narrowing only: a lower level can restrict but never widen the platform ceiling).
+Resolved per job from: platform defaults → runner pool defaults → project settings (narrowing only: a lower level
+can restrict but never widen the platform ceiling). The job's own layer (`RunnerJobSpec.policy`, level `TEMPLATE` in
+`SandboxPolicyResolver`) only carries the step's timeout: since ADR 0062 templates have no sandbox policy (it was an API
+field that was never stored) and nodes never had one, so the sandbox is set on the project.
 
 ```yaml
 sandboxPolicy:
@@ -376,12 +378,14 @@ ADR 0060 replaced the named run workspaces of ADR 0044 (project workspaces, thei
 the step keys `workspace` / `sessionRole`) with one **run directory** per run; the runner mechanics below are the ADR
 0044 ones with the single workspace key `run`.
 
-- Projects context: `RunDirectory` reads a coding step's config `directory` (`RUN` default, `SEPARATE`), `session`
-  (`OWN` default, `NEW`, `CONTINUE` with `continueSession`) and `prepareOnly`. A `RUN` step gets
+- Projects context: `RunDirectory` reads the step's agent (ADR 0062: `Agent.access.directory` `RUN` default or
+  `SEPARATE`, `Agent.session` `PER_STEP` default, `PER_RUN` or `FRESH`; until then the step config keys `directory`,
+  `session`, `continueSession`, now dropped on read) and the step's `prepareOnly`. A `RUN` step gets
   `RunnerJobSpec.workspace {name, key = run, sessionRole, prepareOnly, setupCommand}` with `name = bo-ws-<run id
   hex>-run` and `setupCommand` = `WorkflowDefinition.setupCommand`; a `SEPARATE` step gets no `workspace` (a throwaway
-  `/workspace`, no session). The session role is the step's own (`OWN`, derived from its node id, or its legacy
-  `sessionRole`), the continued step's (`CONTINUE`), or none (`NEW`, `SEPARATE`, prepare steps). The engine runs one
+  `/workspace`, no session). The session role is the step's own `s-<node id>` (`PER_STEP`, or its legacy
+  `sessionRole`), the agent's `a-<agent key>` (`PER_RUN`: every step of the agent in the run continues one
+  conversation), or none (`FRESH`, `SEPARATE`, prepare steps). The engine runs one
   node at a time, so the run directory has one writer at a time.
 - Control plane: `runner_workspace` (V54: pool, runner, active job, release time) and `agent_job.workspace_name`.
   `JobLifecycle.routeJob` binds the workspace and prefers its pool; `lockQueued(pool, runner)` skips jobs whose
@@ -414,9 +418,9 @@ the step keys `workspace` / `sessionRole`) with one **run directory** per run; t
   (`/workspace/.backoffice-agent/`, `CLAUDE_CONFIG_DIR=/workspace/.claude-config`,
   `XDG_DATA_HOME=/workspace/.bo/opencode/<role>`, skills in the repository's git-excluded `.claude/skills` /
   `.opencode/skills`).
-- Continued sessions (ADR 0057, 0060): `session: CONTINUE` with `continueSession: <node id>` runs under the earlier
-  step's session role; the check before a run refuses a missing step, a step that is not a coding agent step, a
-  `SEPARATE` step and a step of another agent (the session lives in the agent's home).
+- Continued sessions (ADR 0057, 0060, 0062): the ADR 0060 step setting `CONTINUE` with `continueSession` is gone;
+  an agent with `session: PER_RUN` shares one conversation across its steps of a run instead (the session lives in the
+  agent's home, so only steps of the same agent can share it). A prepare step needs an agent with directory `RUN`.
 - **Access** (`RunnerJobSpec.access {mode READ_ONLY | PATHS, paths}`, absent = FULL; covered by the spec digest): the
   runner snapshots every repository of the job right before the agent (`GIT_INDEX_FILE=<temp> git add --all && git
   write-tree`, without touching index, HEAD or refs); after the agent (also after a timeout) it collects the

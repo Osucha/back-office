@@ -32,13 +32,17 @@ class TemplateRenderer {
     /**
      * Renders a prompt: values under the untrusted roots (issue, artefacts, merge request, CI data, review
      * output, run input...) become data blocks of [blocks] (short identifiers stay inline, sanitised); trusted
-     * values (project, node, run, human feedback and decisions) are inserted as written. [maxValueChars] caps
+     * values (project, node, run, human feedback and decisions) are inserted as written. ADR 0062: so are the parameters
+     * (`params`) the design sets; those the run sets (named in the model under [UNTRUSTED_PARAMS]) become data blocks.
+     * [maxValueChars] caps
      * every single value.
      */
-    fun renderPrompt(template: String, model: Map<String, Any?>, blocks: PromptDataBlocks, maxValueChars: Int = UntrustedText.DEFAULT_MAX_CHARS): RenderedTemplate =
-        render(template, model) { path, text ->
-            if (isUntrusted(path)) blocks.inlineOrWrap(path, text, maxValueChars) else UntrustedText.sanitize(text, maxValueChars)
+    fun renderPrompt(template: String, model: Map<String, Any?>, blocks: PromptDataBlocks, maxValueChars: Int = UntrustedText.DEFAULT_MAX_CHARS): RenderedTemplate {
+        val untrustedParams = untrustedParams(model)
+        return render(template, model) { path, text ->
+            if (isUntrusted(path) || isUntrustedParam(path, untrustedParams)) blocks.inlineOrWrap(path, text, maxValueChars) else UntrustedText.sanitize(text, maxValueChars)
         }
+    }
 
     private fun render(template: String, model: Map<String, Any?>, format: ((String, String) -> String)?): RenderedTemplate {
         val warnings = mutableListOf<String>()
@@ -131,6 +135,24 @@ class TemplateRenderer {
         val UNTRUSTED_ROOTS = setOf("issue", "artifacts", "mr", "review", "ci", "input", "parameters", "runInput", "runInputText", "branch", "lastError", "answers")
 
         fun isUntrusted(path: String): Boolean = path.substringBefore('.').trim() in UNTRUSTED_ROOTS
+
+        /**
+         * ADR 0062: the key of the template model that names the parameters (`params.<name>`) whose values come from the
+         * run (bound START or ARTIFACT); a set of names, not itself a value prompts read.
+         */
+        const val UNTRUSTED_PARAMS = "_untrustedParams"
+
+        private const val PARAMS_ROOT = "params"
+
+        private fun untrustedParams(model: Map<String, Any?>): Set<String> =
+            (model[UNTRUSTED_PARAMS] as? Collection<*>)?.mapNotNull { it?.toString() }?.toSet().orEmpty()
+
+        /** `params.<name>` (or a path below it) of a parameter in [names]. */
+        fun isUntrustedParam(path: String, names: Set<String>): Boolean {
+            if (names.isEmpty()) return false
+            val parts = path.trim().split('.')
+            return parts.size >= 2 && parts[0] == PARAMS_ROOT && parts[1] in names
+        }
 
         private val PLACEHOLDER = Regex("\\{\\{\\s*([^{}]*?)\\s*}}")
 

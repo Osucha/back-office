@@ -32,7 +32,6 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
@@ -48,7 +47,7 @@ class RunStartJiraTest {
     private val connections = ConnectionFakes.InMemoryConnections()
     private val catalog = object : TaskCatalog {
         override fun resolve(key: String, projectId: java.util.UUID?, overrides: TaskOverrides): ResolvedTask {
-            return ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
+            return ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, null, emptyList(), overrides.config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = emptyList<pl.mos.backoffice.shared.tasks.TaskSummary>()
     }

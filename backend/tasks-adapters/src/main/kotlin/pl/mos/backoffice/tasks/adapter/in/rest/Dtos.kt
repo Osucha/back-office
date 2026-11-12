@@ -8,11 +8,14 @@ import pl.mos.backoffice.shared.runner.AgentAccessMode
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.runner.AgentDirectory
+import pl.mos.backoffice.shared.runner.AgentSession
+import pl.mos.backoffice.shared.tasks.ParameterBindingSource
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.ParameterSource
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.shared.tasks.TemplateCategory
-import pl.mos.backoffice.tasks.domain.model.PromptMode
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import java.time.Instant
 import java.util.UUID
 
@@ -32,20 +35,19 @@ data class ActorRefDto(val kind: PrincipalKind, val userId: UUID?, val displayNa
 /** `Scope` schema: `PROJECT` requires `projectId`, `GLOBAL` ignores it. */
 data class ScopeDto(val type: ScopeTypeDto, val projectId: UUID? = null)
 
-/** `RunInputField` schema (ADR 0053). */
+/** `RunInputField` schema (ADR 0053/0062): a field of the run start form; here the parameters a step binds `START`. */
 data class RunInputFieldDto(
-    @field:NotBlank @field:Pattern(regexp = "^[A-Za-z][A-Za-z0-9_-]{0,63}$") val name: String,
-    @field:NotBlank @field:Size(max = 200) val label: String,
+    val name: String,
+    val label: String,
     val type: RunInputType = RunInputType.TEXT,
     val required: Boolean = false,
-    @field:Size(max = 1000) val help: String? = null,
+    val help: String? = null,
 )
-
-data class TaskPromptDto(val system: String? = null, val user: String? = null, val mode: PromptMode = PromptMode.APPEND)
 
 /**
  * ADR 0055: [key] omitted on create is derived from the name; omitted on update it stays. ADR 0061: no agent and no
- * model (the step chooses them); such fields sent by older clients are ignored.
+ * model (the step chooses them); ADR 0062: no prompt, run inputs or sandbox policy (one [instructions] text); such
+ * fields sent by older clients are ignored.
  */
 data class TaskTemplateInputDto(
     @field:Pattern(regexp = KEY_PATTERN) val key: String? = null,
@@ -55,14 +57,14 @@ data class TaskTemplateInputDto(
     val extendsKey: String? = null,
     val category: TemplateCategory? = null,
     val scope: ScopeDto,
-    val prompt: TaskPromptDto = TaskPromptDto(),
+    @field:Size(max = 100_000) val instructions: String? = null,
+    val instructionsMode: InstructionsMode = InstructionsMode.APPEND,
     val config: Map<String, Any?> = emptyMap(),
     val outputSchema: String? = null,
     val confidenceField: String? = null,
     val produces: List<String> = emptyList(),
     val consumes: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
-    @field:Valid val runInputs: List<RunInputFieldDto> = emptyList(),
     @field:Valid val parameters: List<TemplateParameterDto> = emptyList(),
     val parameterValues: Map<String, Any?> = emptyMap(),
     val requiresSkills: List<String> = emptyList(),
@@ -77,14 +79,14 @@ data class TaskTemplateDto(
     val extendsKey: String?,
     val category: TemplateCategory?,
     val scope: ScopeDto,
-    val prompt: TaskPromptDto,
+    val instructions: String?,
+    val instructionsMode: InstructionsMode,
     val config: Map<String, Any?>,
     val outputSchema: String?,
     val confidenceField: String?,
     val produces: List<String>,
     val consumes: List<String>,
     val tags: List<String>,
-    val runInputs: List<RunInputFieldDto>,
     val parameters: List<TemplateParameterDto>,
     val parameterValues: Map<String, Any?>,
     val requiresSkills: List<String> = emptyList(),
@@ -97,23 +99,31 @@ data class TaskTemplateDto(
     val updatedBy: ActorRefDto? = null,
 )
 
-data class ResolvedPromptDto(val system: String?, val user: String?)
-
 data class ResolvedSkillDto(val key: String, val name: String)
 
 data class ResolvedRuleDto(val key: String, val name: String, val automatic: Boolean)
 
 data class ResolutionCheckDto(val ok: Boolean, val problems: List<String>, val warnings: List<String> = emptyList())
 
-/** `TaskOverrides` schema: a workflow step's overrides of its template (ADR 0054, POST resolve). */
+/** `ParameterBinding` schema (ADR 0062). */
+data class ParameterBindingDto(val source: ParameterBindingSource, val value: Any? = null, val artifact: String? = null)
+
+/**
+ * `TaskOverrides` schema: a workflow step's overrides of its template (ADR 0054, POST resolve). ADR 0062: the legacy
+ * fields `systemPromptAppend` / `promptAppend` (read as [instructionsAppend]), `promptReplace` (as [instructionsReplace])
+ * and `parameters` (as VALUE bindings) are read for older clients.
+ */
 data class TaskOverridesDto(
     val agentKey: String? = null,
     val modelProfileId: UUID? = null,
+    val instructionsAppend: String? = null,
+    val instructionsReplace: String? = null,
+    val config: Map<String, Any?> = emptyMap(),
+    val parameterBindings: Map<String, ParameterBindingDto> = emptyMap(),
     val systemPromptAppend: String? = null,
     val promptAppend: String? = null,
     val promptReplace: String? = null,
-    val config: Map<String, Any?> = emptyMap(),
-    val parameters: Map<String, Any?> = emptyMap(),
+    val parameters: Map<String, Any?>? = null,
 )
 
 /** `AgentRef` schema (ADR 0056): who runs a step; no harness = model answer. */
@@ -132,7 +142,7 @@ data class ResolvedTaskDto(
     val name: String,
     val agent: AgentRefDto,
     val modelProfileId: UUID?,
-    val prompt: ResolvedPromptDto,
+    val instructions: String?,
     val skills: List<ResolvedSkillDto>,
     val config: Map<String, Any?>,
     val outputSchema: String?,
@@ -185,6 +195,8 @@ data class AgentInputDto(
     val skills: List<String> = emptyList(),
     @field:Valid @field:Size(max = 10) val mcpServers: List<AgentMcpServerDto> = emptyList(),
     val access: AgentAccessDto? = null,
+    /** ADR 0062: default PER_STEP. */
+    val session: AgentSession = AgentSession.PER_STEP,
     val tags: List<String> = emptyList(),
 )
 
@@ -201,6 +213,7 @@ data class AgentDto(
     val skills: List<String>,
     val mcpServers: List<AgentMcpServerDto>,
     val access: AgentAccessDto = AgentAccessDto(),
+    val session: AgentSession = AgentSession.PER_STEP,
     val tags: List<String>,
     val builtIn: Boolean,
     val createdAt: Instant,
@@ -264,8 +277,9 @@ data class AgentMcpServerDto(
     @field:NotBlank @field:Size(max = 500) val url: String,
 )
 
-/** `AgentAccess` schema (ADR 0060): FULL (default), READ_ONLY, or PATHS with globs the agent may change. */
+/** `AgentAccess` schema (ADR 0060): FULL (default), READ_ONLY, or PATHS with globs the agent may change; ADR 0062: the directory. */
 data class AgentAccessDto(
     val mode: AgentAccessMode = AgentAccessMode.FULL,
     @field:Size(max = 50) val paths: List<String> = emptyList(),
+    val directory: AgentDirectory = AgentDirectory.RUN,
 )

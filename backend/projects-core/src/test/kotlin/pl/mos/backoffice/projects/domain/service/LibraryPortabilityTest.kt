@@ -19,7 +19,7 @@ class LibraryPortabilityTest {
     private val connection = "6f1c1d0e-0000-4000-8000-000000000001"
 
     private fun task(config: Map<String, Any?>, x: Double = 0.0) =
-        WorkflowNode.Task("notify", "Notify", Point(x, 0.0), task = TaskBinding("notify-jira", TaskOverrides(promptAppend = "be brief", config = config)))
+        WorkflowNode.Task("notify", "Notify", Point(x, 0.0), task = TaskBinding("notify-jira", TaskOverrides(instructionsAppend = "be brief", config = config)))
 
     private fun gate(users: List<UUID>, x: Double = 0.0) =
         WorkflowNode.HumanGate("gate", "Approve", Point(x, 0.0), gate = GateSpec("Ok?", approvers = GateApprovers(projectRoles = listOf("owner"), users = users, accountable = "owner")))
@@ -37,7 +37,7 @@ class LibraryPortabilityTest {
         val config = (t as WorkflowNode.Task).task.overrides.config
         assertThat(config).containsOnlyKeys("messageTemplate", "approvers")
         assertThat(config["approvers"]).isEqualTo(mapOf("projectRoles" to listOf("owner"), "users" to emptyList<Any>()))
-        assertThat(t.task.overrides.promptAppend).isEqualTo("be brief")
+        assertThat(t.task.overrides.instructionsAppend).isEqualTo("be brief")
         assertThat((g as WorkflowNode.HumanGate).gate.approvers).isEqualTo(GateApprovers(listOf("owner"), emptyList(), "owner"))
     }
 

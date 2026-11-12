@@ -244,7 +244,7 @@ class BackOfficeMcpTools(
                     "key" to it.key, "name" to it.name, "description" to it.description,
                     "needsCodingAgent" to (resolved?.needsCodingAgent ?: false), "requiresSkills" to resolved?.requiresSkills.orEmpty(),
                     "category" to it.category?.name, "tags" to it.tags, "version" to it.version,
-                    // ADR 0058: parameters the step sets in overrides.parameters; needsParameters = not a ready block
+                    // ADR 0058/0062: parameters the step binds in overrides.parameterBindings; needsParameters = not a ready block
                     "parameters" to resolved?.parameters?.map { p -> parameter(p.definition) + ("value" to p.value) + ("source" to p.source.name) }.orEmpty(),
                     "needsParameters" to (resolved?.needsParameters ?: false),
                 )
@@ -637,8 +637,9 @@ class BackOfficeMcpTools(
 
         const val DEFINITION_FORMAT = "Shape (as WorkflowDefinitionInput in the Back Office API): {name, description, enabled, setupCommand, " +
             "triggers: [{type: MANUAL|API|CI|JIRA_TRANSITION, status}], nodes: [{id (slug), kind: START|END|TASK|ACTION|DECISION|HUMAN_GATE|WAIT_FOR_CI|NOTE, " +
-            "name, position: {x, y}, maxVisits, and the section of its kind: task: {templateKey, overrides: {agentKey, modelProfileId, systemPromptAppend, " +
-            "promptAppend, promptReplace, parameters, config (ADR 0060: directory RUN|SEPARATE, session OWN|NEW|CONTINUE with continueSession, allowQuestions, maxQuestionRounds)}}, action: {type: FETCH_ISSUE|COMMENT_ISSUE|TRANSITION_ISSUE|START_WORKFLOW|" +
+            "name, position: {x, y}, maxVisits, and the section of its kind: task: {templateKey, overrides: {agentKey, modelProfileId, instructionsAppend, " +
+            "instructionsReplace, parameterBindings: {<parameter name>: {source: VALUE|START|ARTIFACT, value (VALUE), artifact (ARTIFACT)}}, " +
+            "config (allowQuestions, maxQuestionRounds; session and directory are the agent's)}}, action: {type: FETCH_ISSUE|COMMENT_ISSUE|TRANSITION_ISSUE|START_WORKFLOW|" +
             "PROJECT_DIGEST, config}, decision: {branches: [{id, label, expression}], defaultBranch}, " +
             "gate: {question, options (default approve, revise, reject; each option is an output port), showArtifacts, timeoutSeconds, " +
             "approvers: {projectRoles, users, accountable, forbidSelfApproval}, checklist: [{id, text, required}]}, ci: {signal, timeoutSeconds}, " +

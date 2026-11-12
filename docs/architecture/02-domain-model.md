@@ -12,7 +12,7 @@ Identifiers are UUIDs wrapped in typed value classes (`ProjectId`, `WorkflowRunI
 | `LlmRequest` / `LlmResult` / `TokenUsage` | value objects | one chat call and its outcome; `responseSchema` asks for structured output |
 | `UsageRecord`, `UsageContext`, `Pricing` | ledger | cost accounting; `UsageKind = PIPELINE_STEP, CODE_REVIEW, BENCHMARK_ATTEMPT, MODEL_TEST` |
 | `LlmGateway`, `UsageLedger`, `ModelCatalog`, `AgentRunner`, `TaskCatalog`, `Clock`, `EventPublisher` | ports | see 01-overview for who implements what |
-| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `AgentSnapshot`, `SkillSnapshot`, `RuleSnapshot`, `TemplateCategory`, `RunInputField` | value objects | what the Task Library hands to the workflow engine; `AgentSnapshot(key, name, harness?, modelProfileId?, instructions, rules, skills, mcpServers)` is who runs the step and how (no harness = model answer, ADR 0056, 0057); `TemplateParameter`, `ResolvedParameter(definition, value, source)` (ADR 0058) |
+| `ResolvedTask`, `TaskOverrides`, `TaskSummary`, `AgentSnapshot`, `SkillSnapshot`, `RuleSnapshot`, `TemplateCategory`, `RunInputField` | value objects | what the Task Library hands to the workflow engine; `AgentSnapshot(key, name, harness?, modelProfileId?, instructions, rules, skills, mcpServers, access, session)` is who runs the step and how (no harness = model answer, ADR 0056, 0057; `session` and `access.directory` ADR 0062); `TemplateParameter`, `ResolvedParameter(definition, value, source, binding?, fallback?)` (ADR 0058, 0062), `ParameterBinding(source VALUE/START/ARTIFACT, value?, artifact?)` (ADR 0062); `ResolvedTask.instructions` is the merged instruction text (ADR 0062) |
 | `RunnerJobSpec`, `RunnerResult`, `RunnerSkill`, `RunnerMergeRequest` | value objects | runner protocol |
 
 ## Context: Task Library (`tasks-core`)
@@ -21,10 +21,10 @@ See [07-task-library.md](07-task-library.md) for semantics.
 
 | Aggregate | Fields |
 |---|---|
-| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, scope: Scope(GLOBAL | PROJECT(projectId)), prompt: Prompt(system?, user?, mode: APPEND/REPLACE), parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, runInputs, requiresSkills, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058; `requiresSkills` ADR 0060: a step whose agent lacks one gets a warning; ADR 0061: no `agentKey` and no `modelProfileId`, the template is only the work; derived, read-only `needsCodingAgent` = the merged config has a Spec Kit `phase`, `push` or `prepareOnly`) |
+| `TaskTemplate` | `id, key, name, description, abstract, extendsKey?, category: TemplateCategory?, scope: Scope(GLOBAL | PROJECT(projectId)), instructions?, instructionsMode: APPEND/REPLACE, parameters: List<TemplateParameter>, parameterValues: Map, config: Map, outputSchema?, confidenceField?, produces, consumes, tags, requiresSkills, builtIn, version, timestamps` (no skills or rules since ADR 0057; parameters ADR 0058; `requiresSkills` ADR 0060: a step whose agent lacks one gets a warning; ADR 0061: no `agentKey` and no `modelProfileId`, the template is only the work; derived, read-only `needsCodingAgent` = the merged config has a Spec Kit `phase`, `push` or `prepareOnly`; ADR 0062: one `instructions` text instead of the system and user prompt, no `runInputs` (a step binds parameters to the run start), no sandbox policy) |
 | `Skill` | `id, key, name, description, content, scope, tags, builtIn, timestamps` |
 | `Rule` | `id, key, name, description, content, scope, automatic, tags, builtIn, timestamps` (ADR 0055) |
-| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, mcpServers: List<AgentMcpServer(name, url)>, access: AgentAccess(mode FULL/READ_ONLY/PATHS, paths), tags, builtIn, timestamps` (ADR 0056, 0057; access ADR 0060) |
+| `Agent` | `id, key, name, description, scope, harness: AgentHarness? (OPENCODE/CLAUDE_CODE; none = model answer), modelProfileId?, instructions, rules, skills, mcpServers: List<AgentMcpServer(name, url)>, access: AgentAccess(mode FULL/READ_ONLY/PATHS, paths, directory RUN/SEPARATE), session: AgentSession(PER_STEP/PER_RUN/FRESH), tags, builtIn, timestamps` (ADR 0056, 0057; access ADR 0060; directory and session ADR 0062) |
 
 Template keys are unique across scopes; skills, rules and agents by `(key, scope)` (ADR 0055). Domain service
 `TaskResolver` produces `ResolvedTask` (with the resolved agent: the step's, else `opencode` when the work needs a
@@ -65,8 +65,10 @@ revokedAt?`. The plaintext is returned once on creation and never stored.
 
 `WorkflowNode`: `id, kind: NodeKind, name, position: Point(x, y), timeoutSeconds?` plus one of:
 `task: TaskBinding(templateKey, overrides: TaskOverrides)` (overrides include `agentKey`, ADR 0056, the only place
-an agent is chosen since ADR 0061, `modelProfileId`, `parameters`,
-ADR 0058, and the coding agent config `directory` RUN/SEPARATE, `session` OWN/NEW/CONTINUE with `continueSession`, `allowQuestions`, `maxQuestionRounds`, ADR 0057, 0060; no skill changes since ADR 0060),
+an agent is chosen since ADR 0061, `modelProfileId`, `instructionsAppend` / `instructionsReplace` and
+`parameterBindings: Map<String, ParameterBinding>` (VALUE/START/ARTIFACT), ADR 0062, and the agent step config
+`allowQuestions`, `maxQuestionRounds`, ADR 0060; no skill changes since ADR 0060; the step keys `directory`, `session`,
+`continueSession` moved to the agent with ADR 0062),
 `action` (`type`: FETCH_ISSUE/COMMENT_ISSUE/TRANSITION_ISSUE/START_WORKFLOW/PROJECT_DIGEST, `config`) (node
 kind `ACTION`, ADR 0056; a stored `TASK` node naming a former action template is read as one),
 `decision: Decision(branches: List<Branch(id,

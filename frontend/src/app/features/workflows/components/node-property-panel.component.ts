@@ -55,6 +55,7 @@ import type {
   ProjectRepository,
   ResolvedTask,
   TaskOverrides,
+  WorkflowEdge,
   WorkflowNode,
   WorkflowPalette,
 } from '../../../core/api/types';
@@ -93,8 +94,6 @@ import {
   stepModelUseKey,
 } from '../data/model-step';
 
-type PromptMode = 'none' | 'append' | 'replace';
-
 /** ADR 0054: one POST resolve of a step (template key, the step's overrides, project). */
 interface StepResolveRequest {
   key: string;
@@ -107,15 +106,14 @@ interface StepResolveRequest {
  * (the page owns the definition). Kind-specific sections per NodeKind.
  */
 import { StartRunInputsComponent } from './designer/start-run-inputs.component';
-import { ParameterValuesFormComponent } from '../../../core/ui/parameter-values-form.component';
-import { withParameterValue } from '../../../core/ui/template-parameters';
+import { CODING_STEP_KEYS, QUESTION_KEYS, stepParameterFields } from '../data/step-session';
 import {
-  CODING_STEP_KEYS,
-  QUESTION_KEYS,
-  type SessionCandidate,
-  sessionCandidates,
-  stepParameterFields,
-} from '../data/step-session';
+  type StepInstructions,
+  earlierArtifacts,
+  stepInstructions,
+  withInstructions,
+} from '../data/step-bindings';
+import { StepParameterBindingsComponent } from './step-parameter-bindings.component';
 @Component({
   selector: 'app-node-property-panel',
   imports: [
@@ -144,7 +142,7 @@ import {
     ModelSelectComponent,
     StartRunInputsComponent,
     JsonViewComponent,
-    ParameterValuesFormComponent,
+    StepParameterBindingsComponent,
     HelpTipComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -343,6 +341,71 @@ import {
                 }
               }
 
+              <nz-divider [nzText]="instructionsTitle" nzOrientation="left" nzPlain />
+              <ng-template #instructionsTitle
+                ><span i18n="@@workflows.props.instructions">Instructions for this step</span>
+                <bo-help-tip [text]="instructionsHelp"
+              /></ng-template>
+              <ng-template #instructionsHelp
+                ><span i18n="@@workflows.props.instructions.help">
+                  The template says what to do. Add notes for this step here; replace its
+                  instructions only when this step needs a different task.
+                </span></ng-template
+              >
+              <nz-form-item data-step-instructions>
+                <nz-form-label
+                  nzFor="pp-instr-append"
+                  nzTooltipTitle="Added after the template's instructions, e.g. what to focus on in this workflow."
+                  i18n-nzTooltipTitle="@@workflows.props.instructions.append.help"
+                  i18n="@@workflows.props.instructions.append"
+                  >Append</nz-form-label
+                >
+                <nz-form-control>
+                  <textarea
+                    nz-input
+                    id="pp-instr-append"
+                    class="mono-textarea"
+                    name="instructionsAppend"
+                    [ngModel]="instructions().append"
+                    (ngModelChange)="setInstructions({ append: $event })"
+                    [nzAutosize]="{ minRows: 3, maxRows: 12 }"
+                    placeholder="Notes for this step"
+                    i18n-placeholder="@@workflows.props.instructions.appendPlaceholder"
+                    [readOnly]="readonly()"
+                  ></textarea>
+                </nz-form-control>
+              </nz-form-item>
+              <nz-collapse nzGhost class="replace" data-step-instructions-replace>
+                <nz-collapse-panel
+                  nzHeader="Replace (advanced)"
+                  i18n-nzHeader="@@workflows.props.instructions.replace"
+                  [nzActive]="replaceOpen()"
+                  (nzActiveChange)="replaceOpen.set($event)"
+                >
+                  <nz-form-item>
+                    <nz-form-label
+                      nzFor="pp-instr-replace"
+                      nzTooltipTitle="Used instead of the template's instructions for this step. The platform still adds the issue, earlier results, start inputs, feedback and answers."
+                      i18n-nzTooltipTitle="@@workflows.props.instructions.replace.help"
+                      i18n="@@workflows.props.instructions.replaceLabel"
+                      >Instructions instead of the template's</nz-form-label
+                    >
+                    <nz-form-control>
+                      <textarea
+                        nz-input
+                        id="pp-instr-replace"
+                        class="mono-textarea"
+                        name="instructionsReplace"
+                        [ngModel]="instructions().replace"
+                        (ngModelChange)="setInstructions({ replace: $event })"
+                        [nzAutosize]="{ minRows: 4, maxRows: 16 }"
+                        [readOnly]="readonly()"
+                      ></textarea>
+                    </nz-form-control>
+                  </nz-form-item>
+                </nz-collapse-panel>
+              </nz-collapse>
+
               @if (parameterFields().length) {
                 <nz-divider [nzText]="parametersTitle" nzOrientation="left" nzPlain />
                 <ng-template #parametersTitle
@@ -350,17 +413,20 @@ import {
                   <bo-help-tip [text]="parametersHelp"
                 /></ng-template>
                 <ng-template #parametersHelp
-                  ><span i18n="@@workflows.props.parameters.help">
-                    Values of the template's parameters for this step. Empty: the template's value
-                    or the default (shown greyed out).
+                  ><span i18n="@@workflows.props.parameters.bindingHelp">
+                    Where each parameter of the template takes its value from: a value set here, a
+                    field of the run start form, or the result of an earlier step. Empty value: the
+                    template's value or the default (shown greyed out).
                   </span></ng-template
                 >
                 <div data-step-parameters>
-                  <app-parameter-values-form
+                  <app-step-parameter-bindings
                     [fields]="parameterFields()"
+                    [overrides]="n.task?.overrides ?? null"
+                    [artifacts]="earlierArtifacts()"
                     [readonly]="readonly()"
                     idPrefix="pp-param"
-                    (valueChange)="setParameter($event.name, $event.value)"
+                    (overridesChange)="setOverrides($event)"
                   />
                 </div>
               }
@@ -393,15 +459,11 @@ import {
                       <dl class="gets" data-step-gets>
                         <dt i18n="@@workflows.props.stepGets.model">Model profile</dt>
                         <dd>{{ profileName(v.modelProfileId) }}</dd>
-                        <dt i18n="@@workflows.props.stepGets.system">System prompt</dt>
+                        <dt i18n="@@workflows.props.stepGets.instructions">Instructions</dt>
                         <dd>
-                          <pre class="prompt" tabindex="0">{{
-                            v.prompt?.system || text.empty
+                          <pre class="prompt" tabindex="0" data-step-gets-instructions>{{
+                            v.instructions || text.empty
                           }}</pre>
-                        </dd>
-                        <dt i18n="@@workflows.props.stepGets.user">User prompt</dt>
-                        <dd>
-                          <pre class="prompt" tabindex="0">{{ v.prompt?.user || text.empty }}</pre>
                         </dd>
                         <dt i18n="@@workflows.props.stepGets.skills">Skills</dt>
                         <dd class="chips">
@@ -450,7 +512,7 @@ import {
                         <dd>
                           <app-json-view [value]="v.config ?? {}" maxHeight="240px" />
                         </dd>
-                        <dt i18n="@@workflows.props.stepGets.runInputs">Run inputs</dt>
+                        <dt i18n="@@workflows.props.stepGets.askedAtStart">Asked at start</dt>
                         <dd>
                           @for (f of v.runInputs ?? []; track f.name) {
                             <div class="run-input">
@@ -463,8 +525,10 @@ import {
                               }
                             </div>
                           } @empty {
-                            <span class="muted small" i18n="@@workflows.props.stepGets.noRunInputs"
-                              >This step asks for no run input.</span
+                            <span
+                              class="muted small"
+                              i18n="@@workflows.props.stepGets.noAskedAtStart"
+                              >This step asks nothing at start.</span
                             >
                           }
                         </dd>
@@ -532,10 +596,7 @@ import {
               </nz-form-item>
               @if (effectiveAgent()) {
                 <app-step-agent-section
-                  [nodeId]="n.id"
                   [config]="n.task?.overrides?.config ?? null"
-                  [coding]="runnerStep()"
-                  [candidates]="sessionCandidates()"
                   [readonly]="readonly()"
                   (configChange)="patchOverrides({ config: $event })"
                 />
@@ -580,71 +641,6 @@ import {
                       }
                     </nz-select>
                   }
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label i18n="@@workflows.props.userPrompt">User prompt</nz-form-label>
-                <nz-form-control>
-                  <nz-radio-group
-                    [ngModel]="promptMode()"
-                    (ngModelChange)="setPromptMode($event)"
-                    name="promptMode"
-                    nzSize="small"
-                    [disabled]="readonly()"
-                  >
-                    <label nz-radio-button nzValue="none" i18n="@@workflows.props.inherited"
-                      >Inherited</label
-                    >
-                    <label nz-radio-button nzValue="append" i18n="@@workflows.props.append"
-                      >Append</label
-                    >
-                    <label nz-radio-button nzValue="replace" i18n="@@workflows.props.replace"
-                      >Replace</label
-                    >
-                  </nz-radio-group>
-                  @if (promptMode() === 'append') {
-                    <textarea
-                      nz-input
-                      class="mono-textarea"
-                      name="promptAppend"
-                      [ngModel]="n.task?.overrides?.promptAppend ?? ''"
-                      (ngModelChange)="patchOverrides({ promptAppend: $event || null })"
-                      [nzAutosize]="{ minRows: 3, maxRows: 12 }"
-                      placeholder="Appended after the template user prompt"
-                      i18n-placeholder="@@workflows.props.appendPlaceholder"
-                      [readOnly]="readonly()"
-                    ></textarea>
-                  }
-                  @if (promptMode() === 'replace') {
-                    <textarea
-                      nz-input
-                      class="mono-textarea"
-                      name="promptReplace"
-                      [ngModel]="n.task?.overrides?.promptReplace ?? ''"
-                      (ngModelChange)="patchOverrides({ promptReplace: $event || null })"
-                      [nzAutosize]="{ minRows: 3, maxRows: 12 }"
-                      placeholder="Replaces the template user prompt"
-                      i18n-placeholder="@@workflows.props.replacePlaceholder"
-                      [readOnly]="readonly()"
-                    ></textarea>
-                  }
-                </nz-form-control>
-              </nz-form-item>
-              <nz-form-item>
-                <nz-form-label nzFor="pp-sys" i18n="@@workflows.props.systemAppend"
-                  >System prompt append</nz-form-label
-                >
-                <nz-form-control>
-                  <textarea
-                    nz-input
-                    id="pp-sys"
-                    class="mono-textarea"
-                    name="systemPromptAppend"
-                    [ngModel]="n.task?.overrides?.systemPromptAppend ?? ''"
-                    (ngModelChange)="patchOverrides({ systemPromptAppend: $event || null })"
-                    [nzAutosize]="{ minRows: 2, maxRows: 8 }"
-                    [readOnly]="readonly()"
-                  ></textarea>
                 </nz-form-control>
               </nz-form-item>
               <nz-divider
@@ -1372,8 +1368,12 @@ export class NodePropertyPanelComponent {
 
   readonly node = input<WorkflowNode | null>(null);
   readonly allIds = input<string[]>([]);
-  /** ADR 0057: the nodes of the workflow (a coding step may continue the session of another). */
+  /** The nodes of the workflow (ADR 0062: the artefacts of earlier steps a parameter may read). */
   readonly nodes = input<readonly WorkflowNode[]>([]);
+  /** The edges of the workflow (which nodes come before the step). */
+  readonly edges = input<readonly WorkflowEdge[]>([]);
+  /** ADR 0062: what each template key produces (its lineage included), from the library. */
+  readonly templateProduces = input<ReadonlyMap<string, readonly string[]>>(new Map());
   readonly palette = input<WorkflowPalette | null>(null);
   /** ADR 0054: keys of deprecated templates (not offered; a step using one is tagged). */
   readonly deprecatedKeys = input<ReadonlySet<string>>(new Set());
@@ -1570,34 +1570,42 @@ export class NodePropertyPanelComponent {
     const base = $localize`:@@workflows.props.agent.whoRuns:Who runs this step. Empty: OpenCode when the template needs a coding agent, else Model answer.`;
     return a ? `${base} ${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}` : base;
   });
-  // ---------------------------------------------------------------- ADR 0057/0058: session, parameters
+  // ---------------------------------------------------------------- ADR 0058/0062: instructions, parameters
 
-  /** ADR 0060: the other coding agent steps of the workflow (another agent or a separate directory: disabled). */
-  readonly sessionCandidates = computed<SessionCandidate[]>(() => {
-    const n = this.node();
-    if (!n) return [];
-    const tasks = this.palette()?.tasks ?? [];
-    return sessionCandidates(this.nodes(), n.id, this.effectiveAgent()?.key, (other) =>
-      effectiveStepAgent(
-        tasks.find((t) => t.key === other.task?.templateKey) ??
-          (other.task?.templateKey ? {} : null),
-        other.task?.overrides?.agentKey,
-        this.agents(),
-      ),
-    );
-  });
-  /** ADR 0058: the step's parameters with its own values and the inherited ones. */
+  /** The step's parameters with its own values and the inherited ones. */
   readonly parameterFields = computed(() => {
     const n = this.node();
     if (n?.kind !== 'TASK' || !n.task?.templateKey) return [];
     return stepParameterFields(this.paletteTask(), this.resolved(), n.task.overrides);
   });
+  /** ADR 0062: the artefacts the steps before this one produce (offered for "Result of an earlier step"). */
+  readonly earlierArtifacts = computed(() => {
+    const n = this.node();
+    if (!n) return [];
+    const produces = this.templateProduces();
+    const actions = this.palette()?.actions ?? [];
+    return earlierArtifacts(this.nodes(), this.edges(), n.id, (other) =>
+      other.kind === 'ACTION'
+        ? actions.find((a) => a.type === other.action?.type)?.produces
+        : produces.get(other.task?.templateKey ?? ''),
+    );
+  });
+  /** ADR 0062: the step's instructions (legacy prompt overrides read as append / replace). */
+  readonly instructions = computed<StepInstructions>(() =>
+    stepInstructions(this.node()?.task?.overrides),
+  );
+  /** "Replace (advanced)" is expanded; opened for a step that replaces the instructions. */
+  readonly replaceOpen = signal(false);
 
-  /** A step value of a parameter; empty = the template's value or the default. */
-  setParameter(name: string, value: unknown): void {
-    this.patchOverrides({
-      parameters: withParameterValue(this.node()?.task?.overrides?.parameters, name, value),
-    });
+  setInstructions(change: Partial<StepInstructions>): void {
+    this.setOverrides(withInstructions(this.node()?.task?.overrides, change));
+  }
+
+  /** Replaces the step's overrides (bindings and instructions write the whole object). */
+  setOverrides(overrides: TaskOverrides): void {
+    const n = this.node();
+    if (!n) return;
+    this.patch({ task: { templateKey: n.task?.templateKey ?? '', overrides } });
   }
 
   templateOptionLabel(t: PaletteTask): string {
@@ -1650,14 +1658,6 @@ export class NodePropertyPanelComponent {
     for (const k of own) delete rest[k];
     return rest;
   });
-  readonly promptMode = computed<PromptMode>(() => {
-    const o = this.node()?.task?.overrides;
-    if (o?.promptReplace) return 'replace';
-    if (o?.promptAppend) return 'append';
-    return this.promptModeDraft();
-  });
-  private readonly promptModeDraft = signal<PromptMode>('none');
-
   readonly idDraft = signal('');
   readonly idError = signal<string | null>(null);
   readonly configDraft = signal('');
@@ -1730,7 +1730,7 @@ export class NodePropertyPanelComponent {
         const config = n?.kind === 'ACTION' ? n.action?.config : n?.task?.overrides?.config;
         this.configDraft.set(JSON.stringify(config ?? {}, null, 2));
         this.configError.set(null);
-        this.promptModeDraft.set('none');
+        this.replaceOpen.set(!!stepInstructions(n?.task?.overrides).replace.trim());
         this.resolve$.next(n?.kind === 'TASK' ? (n.task?.templateKey ?? null) : null);
       });
     });
@@ -1839,13 +1839,6 @@ export class NodePropertyPanelComponent {
     };
     for (const k of SECTION_CONFIG_KEYS) if (k in current) next[k] = current[k];
     this.patchActionConfig(next);
-  }
-
-  setPromptMode(mode: PromptMode): void {
-    this.promptModeDraft.set(mode);
-    if (mode === 'none') this.patchOverrides({ promptAppend: null, promptReplace: null });
-    else if (mode === 'append') this.patchOverrides({ promptReplace: null });
-    else this.patchOverrides({ promptAppend: null });
   }
 
   onConfigJson(text: string): void {

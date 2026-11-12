@@ -57,8 +57,8 @@ Jobs and their states are visible in **Administration** → **Runner fleet** →
 [run directory](workflows.md#run-directory): a Docker volume or a PersistentVolumeClaim of the runner that ran the
 run's first coding step. Back Office leases the run's jobs only to that runner and one at a time; the runner reuses
 its earlier clones after rewriting their `.git/config`. Each agent keeps its environment, skills, MCP configuration
-and sessions in its own home `/workspace/.agents/<agent key>/`, outside every repository. A step with **Separate
-directory** gets a throwaway `/workspace` instead. Each runner-controller reports its run directories every minute
+and sessions in its own home `/workspace/.agents/<agent key>/`, outside every repository. A step whose agent has
+**Separate directory** gets a throwaway `/workspace` instead. Each runner-controller reports its run directories every minute
 and deletes the ones Back Office released (when the run ends; 24 hours after a failure).
 
 **Access of the agent.** When the step's agent has a restricted [access](task-library.md#agent-access) (**Read
@@ -75,7 +75,7 @@ in the job log and the step summary (`[Back Office runner] reverted N change(s) 
 | **HIGH** | Kata Containers (RuntimeClass `kata`): a micro-VM per pod | Kubernetes | untrusted repositories, customer code |
 | **DEV** | runc (plain containers) | Docker backend on a laptop only | development |
 
-- The strongest level named anywhere wins (platform → pool ceiling → project → template → node). The
+- The strongest level named anywhere wins (platform → pool ceiling → project). The
   platform default is `RUNNER_PLATFORM_ISOLATION` (`STANDARD`; `DEV` only in the local profile).
 - On Kubernetes **DEV is raised to STANDARD**. On the Docker backend STANDARD and HIGH are **not
   enforced** (runc only); the job notes say so.
@@ -104,7 +104,7 @@ limits for CPU, memory and ephemeral storage, pid limit, `/workspace` and `/tmp`
 - Every decision is logged; refused hosts appear as **Egress denied** on the job, and a digest of the full
   log goes into the attestation.
 
-Add a host at the narrowest level that needs it (template or project **Sandbox** tab); it must also be
+Add a host at the narrowest level that needs it (the project's **Sandbox** tab); it must also be
 covered by the pool ceiling and the platform policy, or it is narrowed away. See
 [runner-fleet.md](runner-fleet.md#sandbox-policies).
 
@@ -145,7 +145,7 @@ tokens + up to 4096 output tokens at catalogue prices), and books the real usage
 
 | Scope | Set in | Effect when exhausted |
 |---|---|---|
-| Job | `maxCostUsd`, `maxTokens` in the sandbox policy (template, project or node) | `402` for this job |
+| Job | `maxCostUsd`, `maxTokens` in the project's sandbox policy | `402` for this job |
 | Project, per month | project **Budget** tab (`project.manage`) with **hard stop** | `402` for every agent call of the project |
 | Platform, per month | **Platform settings** → budget (`admin.settings.manage`) with **hard stop** | `402` for every agent call |
 

@@ -12,7 +12,6 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import java.util.UUID
 
@@ -38,7 +37,7 @@ class RunInputsTest {
             val declared = inputs[key] ?: return null
             val extra = (overrides.config["extra"] as? String)?.let { listOf(RunInputField(it, it.uppercase())) }.orEmpty()
             return ResolvedTask(
-                key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null, emptyList(), emptyList(),
+                key, key, TestAgents.MODEL_ANSWER, null, null, emptyList(), overrides.config, null, null, emptyList(), emptyList(),
                 null, listOf(key), listOf("success", "failure"), runInputs = declared + extra,
             )
         }
@@ -98,5 +97,26 @@ class RunInputsTest {
         assertThat(RunInputs.effective(workflow(task("f", "fetch", fromInput)), catalog)).containsExactly(issue)
         // another step that reads the run's key still requires it
         assertThat(RunInputs.effective(workflow(task("f", "fetch", elsewhere), task("g", "fetch")), catalog)).containsExactly(issue)
+    }
+
+    @Test
+    fun `ADR 0062 - a START parameter is checked against its type and an ISSUE_KEY one becomes the run issue key`() {
+        val count = pl.mos.backoffice.shared.tasks.TemplateParameter("count", "Count", pl.mos.backoffice.shared.tasks.TemplateParameterType.NUMBER).asRunInput()
+        val level = pl.mos.backoffice.shared.tasks.TemplateParameter(
+            "level", "Level", pl.mos.backoffice.shared.tasks.TemplateParameterType.CHOICE, options = listOf("low", "high"),
+        ).asRunInput()
+        val ticket = pl.mos.backoffice.shared.tasks.TemplateParameter(
+            "ticket", "Ticket", pl.mos.backoffice.shared.tasks.TemplateParameterType.ISSUE_KEY, required = true,
+        ).asRunInput()
+        val fields = listOf(count, level, ticket)
+
+        val ok = RunInputs.check(fields, pl.mos.backoffice.projects.domain.model.RunInput(null, mapOf("count" to "3", "level" to "high", "ticket" to "OPS-9")))
+        assertThat(ok.issueKey).isEqualTo("OPS-9")
+
+        val error = org.assertj.core.api.Assertions.catchThrowableOfType(ValidationException::class.java) {
+            RunInputs.check(fields, pl.mos.backoffice.projects.domain.model.RunInput(null, mapOf("count" to "many", "level" to "mid", "ticket" to "nope")))
+        }
+        assertThat(error.errors.map { it.field }).containsExactlyInAnyOrder("parameters.count", "parameters.level", "parameters.ticket")
+        assertThat(error.errors.first { it.field == "parameters.level" }.message).contains("is not one of low, high")
     }
 }

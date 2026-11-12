@@ -3532,7 +3532,7 @@ export interface paths {
       };
       cookie?: never;
     };
-    /** @description ADR 0053: the effective run inputs of the workflow for the start dialog, the union of the run inputs of all its task steps (required when any step requires it, the first label wins). Needs project.view, like reading the workflow. */
+    /** @description ADR 0053/0062: the effective run inputs of the workflow for the start dialog: the parameters its task steps bind `START` (field name = parameter name; label, type, required and help from the parameter) and the run inputs of its action nodes; the same name across steps is one field (required when any requires it, the first label wins). Needs project.view, like reading the workflow. */
     get: operations['getWorkflowRunInputs'];
     put?: never;
     post?: never;
@@ -3721,6 +3721,12 @@ export interface components {
     /** @description ADR 0060: what a coding agent may change. FULL (default) anything; READ_ONLY nothing; PATHS only files matching `paths` (globs relative to a repository root, e.g. docs/**). Enforced by the harness's tool rules and by the runner, which reverts other changes after the agent finished and reports them. */
     AgentAccess: {
       /**
+       * @description ADR 0062: RUN the run directory; SEPARATE a fresh directory with only the step's repositories, no session continuation (the agent does not see what other steps left)
+       * @default RUN
+       * @enum {string}
+       */
+      directory: 'RUN' | 'SEPARATE';
+      /**
        * @default FULL
        * @enum {string}
        */
@@ -3795,6 +3801,12 @@ export interface components {
       /** @description ADR 0057: keys of rules always in the agent's context (after the automatic ones) */
       rules?: string[];
       scope: components['schemas']['Scope'];
+      /**
+       * @description ADR 0062 (coding agents): PER_STEP the repeats of one step continue its conversation; PER_RUN all steps of this agent in a run are one conversation; FRESH every execution starts anew
+       * @default PER_STEP
+       * @enum {string}
+       */
+      session: 'PER_STEP' | 'PER_RUN' | 'FRESH';
       /** @description ADR 0057: keys of skills the agent loads when it needs them */
       skills?: string[];
       tags?: string[];
@@ -5636,6 +5648,15 @@ export interface components {
       /** @description ADR 0061: skills the work needs (merged over the lineage) */
       requiresSkills?: string[];
     };
+    /** @description ADR 0062: VALUE a fixed value; START asked in the run start form (label, type, required from the parameter); ARTIFACT the content of an artefact of an earlier step */
+    ParameterBinding: {
+      /** @description ARTIFACT only: the artefact name */
+      artifact?: string | null;
+      /** @enum {string} */
+      source: 'VALUE' | 'START' | 'ARTIFACT';
+      /** @description VALUE only */
+      value?: unknown;
+    };
     PasswordChangeRequest: {
       /**
        * Format: password
@@ -6031,6 +6052,8 @@ export interface components {
         [key: string]: unknown;
       };
       consumes?: string[];
+      /** @description ADR 0062: the merged instructions (step append/replace applied) */
+      instructions?: string | null;
       key?: string;
       lineage?: string[];
       /** Format: uuid */
@@ -6041,17 +6064,13 @@ export interface components {
       parameters?: components['schemas']['ResolvedParameter'][];
       ports?: string[];
       produces?: string[];
-      prompt?: {
-        system?: string | null;
-        user?: string | null;
-      };
       /** @description ADR 0055: the rules the step gets, automatic ones (global, then project) first */
       rules?: {
         automatic?: boolean;
         key?: string;
         name?: string;
       }[];
-      /** @description merged run inputs of the lineage (ADR 0053) */
+      /** @description ADR 0062: the parameters this step binds START, as run start form fields */
       runInputs?: components['schemas']['RunInputField'][];
       skills?: {
         key?: string;
@@ -6653,28 +6672,20 @@ export interface components {
     TaskOverrides: {
       /** @description ADR 0056: the agent that runs this step instead of the template's */
       agentKey?: string | null;
-      /** @description Template config overrides. ADR 0060 keys of coding agent steps: `directory` RUN (default, the run directory) or SEPARATE (a fresh directory with only the step's repositories); `session` OWN (default, repeated executions continue the step's own session), NEW, or CONTINUE with `continueSession: <node id>` (share the session of an earlier step of the same agent). All agent steps: `allowQuestions` (default true) and `maxQuestionRounds` (default 2). `workspace` and `sessionRole` of ADR 0044 are read compatibly. */
+      /** @description Template config overrides. Agent steps: `allowQuestions` (default true) and `maxQuestionRounds` (default 2). ADR 0062: session and directory are the agent's; the keys `session`, `continueSession`, `directory` are ignored; legacy `sessionRole` keeps a shared session. */
       config?: {
         [key: string]: unknown;
       };
+      /** @description ADR 0062: notes added after the template's instructions for this step (legacy systemPromptAppend / promptAppend read as this) */
+      instructionsAppend?: string | null;
+      /** @description ADR 0062: replaces the template's instructions for this step (legacy promptReplace) */
+      instructionsReplace?: string | null;
       /** Format: uuid */
       modelProfileId?: string | null;
-      /** @description ADR 0058: values of the template's parameters for this step (win over template values and defaults) */
-      parameters?: {
-        [key: string]: unknown;
+      /** @description ADR 0062: per parameter name, where its value comes from; unbound = the preset value or the default (legacy `parameters` values read as VALUE bindings) */
+      parameterBindings?: {
+        [key: string]: components['schemas']['ParameterBinding'];
       };
-      promptAppend?: string | null;
-      promptReplace?: string | null;
-      systemPromptAppend?: string | null;
-    };
-    TaskPrompt: {
-      /**
-       * @default APPEND
-       * @enum {string}
-       */
-      mode: 'APPEND' | 'REPLACE';
-      system?: string | null;
-      user?: string | null;
     };
     TaskSuite: components['schemas']['TaskSuiteSummary'] & {
       tasks?: components['schemas']['EvalTask'][];
@@ -6704,7 +6715,7 @@ export interface components {
       createdAt?: string;
       /** Format: uuid */
       id?: string;
-      /** @description ADR 0061: the merged config needs a coding agent (Spec Kit phase, push, prepareOnly); else any agent */
+      /** @description ADR 0061: the merged config needs a coding agent (codingAgent: true, Spec Kit phase, push, prepareOnly); else any agent */
       readonly needsCodingAgent?: boolean;
       /** Format: date-time */
       updatedAt?: string;
@@ -6724,6 +6735,14 @@ export interface components {
       consumes?: string[];
       description?: string;
       extendsKey?: string | null;
+      /** @description ADR 0062: what to do and the acceptance criteria; placeholders allowed; the platform adds the standard data sections the instructions do not place themselves */
+      instructions?: string | null;
+      /**
+       * @description over the parent's instructions (presets)
+       * @default APPEND
+       * @enum {string}
+       */
+      instructionsMode: 'APPEND' | 'REPLACE';
       /** @description ADR 0055: technical identifier that workflow steps and other templates refer to. Omitted on create, it is derived from the name (unique across scopes); omitted on update, it stays. Given on create of a project template together with the same extendsKey, the template customises the global one of that key for the project. */
       key?: string | null;
       name: string;
@@ -6736,12 +6755,8 @@ export interface components {
         [key: string]: unknown;
       };
       produces?: string[];
-      prompt?: components['schemas']['TaskPrompt'];
       /** @description ADR 0060: skills the work needs; a step whose agent lacks one gets a warning (inherited, unioned) */
       requiresSkills?: string[];
-      /** @description Run inputs this task asks for when a run starts (ADR 0053); inherited child-wins by name */
-      runInputs?: components['schemas']['RunInputField'][];
-      sandboxPolicy?: components['schemas']['SandboxPolicy'];
       scope: components['schemas']['Scope'];
       tags?: string[];
     };
@@ -6775,8 +6790,11 @@ export interface components {
       /** @description CHOICE only */
       options?: string[];
       required: boolean;
-      /** @enum {string} */
-      type: 'TEXT' | 'MULTILINE' | 'NUMBER' | 'BOOLEAN' | 'CHOICE';
+      /**
+       * @description ISSUE_KEY: a Jira issue key; bound START it becomes the run's issue key (ADR 0062)
+       * @enum {string}
+       */
+      type: 'TEXT' | 'MULTILINE' | 'NUMBER' | 'BOOLEAN' | 'CHOICE' | 'ISSUE_KEY';
     };
     TokenUsage: {
       /** Format: int64 */

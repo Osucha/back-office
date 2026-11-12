@@ -39,7 +39,6 @@ import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
@@ -63,7 +62,7 @@ class WorkflowLibraryServiceTest {
     private val catalog = mockk<TaskCatalog> {
         every { resolve(any(), any(), any()) } answers {
             val key = firstArg<String>()
-            if (key == "missing") null else ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, TaskPrompt(null, null), emptyList(), emptyMap(), null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
+            if (key == "missing") null else ResolvedTask(key, key, TestAgents.MODEL_ANSWER, null, null, emptyList(), emptyMap(), null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         every { palette(any()) } answers {
             val projectId = firstArg<java.util.UUID?>()
@@ -109,7 +108,7 @@ class WorkflowLibraryServiceTest {
         description = "One LLM step",
         nodes = listOf(
             WorkflowNode.Start("start"),
-            WorkflowNode.Task("summary", "Summary", task = TaskBinding(template, TaskOverrides(promptReplace = prompt, config = config))),
+            WorkflowNode.Task("summary", "Summary", task = TaskBinding(template, TaskOverrides(instructionsReplace = prompt, config = config))),
             WorkflowNode.End("done", "Done", end = EndSpec(RunOutcome.SUCCESS)),
         ),
         edges = listOf(WorkflowEdge("e1", "start", "out", "summary"), WorkflowEdge("e2", "summary", "success", "done")),
@@ -172,7 +171,7 @@ class WorkflowLibraryServiceTest {
         assertThat(updated.library!!.modified).isFalse()
         assertThat(updated.version).isEqualTo(edited.version + 1)
         val task = updated.nodes[1] as WorkflowNode.Task
-        assertThat(task.task.overrides.promptReplace).isEqualTo("Summarise with risks")
+        assertThat(task.task.overrides.instructionsReplace).isEqualTo("Summarise with risks")
         assertThat(task.task.overrides.config["repositories"]).isEqualTo(blogRepos["repositories"])
 
         val detached = service.detach(copy.id)

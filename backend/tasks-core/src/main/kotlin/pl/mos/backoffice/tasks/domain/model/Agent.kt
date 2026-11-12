@@ -5,6 +5,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentMcpServer
+import pl.mos.backoffice.shared.runner.AgentSession
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import java.time.Instant
@@ -16,6 +17,8 @@ import java.time.Instant
  * one model answer (no tools, no repository); with `OPENCODE` or `CLAUDE_CODE` it is a coding agent session in the runner
  * sandbox. Without a [modelProfileId] the step uses the defaults for its kind. Uniqueness is by `(key, scope)`; a project
  * agent shadows the global one with the same key. That every rule and skill exists is checked by the service on save.
+ * ADR 0062: [session] (which executions continue one conversation) and the directory in [access] are the agent's, not
+ * the step's.
  */
 data class Agent(
     val id: AgentId,
@@ -36,6 +39,8 @@ data class Agent(
     val mcpServers: List<AgentMcpServer> = emptyList(),
     /** ADR 0060: what the agent may change (coding agents). */
     val access: AgentAccess = AgentAccess.FULL,
+    /** ADR 0062: which executions of the agent continue one conversation (coding agents). */
+    val session: AgentSession = AgentSession.PER_STEP,
 ) {
     init {
         Keys.require(key)
@@ -48,7 +53,7 @@ data class Agent(
     }
 
     /** What a resolved task carries. */
-    val snapshot: AgentSnapshot get() = AgentSnapshot(key, name, harness, modelProfileId, instructions, rules, skills, mcpServers, access)
+    val snapshot: AgentSnapshot get() = AgentSnapshot(key, name, harness, modelProfileId, instructions, rules, skills, mcpServers, access, session)
 
     /** Editable fields; a null [key] is derived from the name on create and kept on update. */
     data class Content(
@@ -64,15 +69,16 @@ data class Agent(
         val skills: List<String> = emptyList(),
         val mcpServers: List<AgentMcpServer> = emptyList(),
         val access: AgentAccess = AgentAccess.FULL,
+        val session: AgentSession = AgentSession.PER_STEP,
     )
 
     val content: Content
-        get() = Content(key, name, description, scope, harness, modelProfileId, tags, instructions, rules, skills, mcpServers, access)
+        get() = Content(key, name, description, scope, harness, modelProfileId, tags, instructions, rules, skills, mcpServers, access, session)
 
     fun update(c: Content, now: Instant, actor: Actor? = null): Agent = copy(
         key = c.key ?: key, name = c.name, description = c.description, scope = c.scope, harness = c.harness,
         modelProfileId = c.modelProfileId, tags = c.tags.distinct(), instructions = c.instructions, rules = c.rules.distinct(),
-        skills = c.skills.distinct(), mcpServers = c.mcpServers, access = c.access, updatedAt = now, updatedBy = actor,
+        skills = c.skills.distinct(), mcpServers = c.mcpServers, access = c.access, session = c.session, updatedAt = now, updatedBy = actor,
     )
 
     companion object {
@@ -97,6 +103,7 @@ data class Agent(
             skills = c.skills.distinct(),
             mcpServers = c.mcpServers,
             access = c.access,
+            session = c.session,
         )
     }
 }

@@ -107,9 +107,9 @@ validation warns about other unconnected ports.
 <a id="task-nodes"></a>
 ### Task nodes
 
-A task step joins three things: a **template** (what to do), an **agent** (who works and how) and the values of the
-template's **parameters** ([Task library](task-library.md#agents)). The template names no agent and no model: the
-step chooses them (ADR 0061).
+A task step joins three things: a **template** (what to do), an **agent** (who works and how) and where the
+template's **parameters** take their values from ([Task library](task-library.md#agents)). The template names no
+agent and no model: the step chooses them (ADR 0061).
 
 Pick the **Template** (deprecated templates are not offered; a step that already uses one shows the tag
 **Deprecated**; templates tagged **needs parameters** expect values in the step). Under it you see the template's
@@ -129,27 +129,44 @@ without an agent runs with **OpenCode** when its template needs a coding agent, 
 **Agent** field then shows **Default: OpenCode** or **Default: Model answer**. A step's agent is never chosen behind
 your back at run time: what the field shows is what runs.
 
-**Parameters** (shown when the template has any) lists the template's [parameters](task-library.md#parameters)
-as a form: text fields, numbers, a switch for **Yes / no**, a list for **Choice**. Empty means the template's value
-or the default, shown greyed out. A required parameter without any value is a validation error: the workflow can
-be saved only as a draft and the run does not start.
+**Instructions for this step** (ADR 0062): the template says what to do; here you add to it for this step only.
+
+- **Append**: notes added after the template's instructions, for example what to focus on in this workflow.
+- **Replace (advanced)** (collapsed): text used instead of the template's instructions in this step, only when the
+  step needs a different task. The platform still adds the issue, earlier results, the values given at start, the
+  feedback and the answers ([Instructions and what the agent receives](task-library.md#instructions)).
+
+**Parameters** (shown when the template has any) lists the template's [parameters](task-library.md#parameters).
+For each, **Where the value comes from**:
+
+| Source | Meaning |
+|---|---|
+| **Value** | A value set here: a text field, a number, a switch for **Yes / no**, a list for **Choice**. Empty means the template's value or the default, shown greyed out (**Default: ...**, **Inherited: ...**). |
+| **Ask at start** | "The run start form asks for it, with this label and type." The field takes the parameter's label, type, **Required** and help. For a **Jira issue key** parameter: "The run start form asks for it; the value is the run's issue key." |
+| **Result of an earlier step** | The content of an artefact an earlier step produces: pick its name (for example `spec`) from the artefacts earlier steps declare, or type it. Without a name the step shows "Parameter {name} needs the name of the artefact it reads". |
+
+A required parameter without any value ("Required: set a value, ask at start or use a result") and a value that does
+not fit the parameter's type or options are validation errors: the workflow can be saved only as a draft and the run
+does not start. When a run has no value for a parameter asked at start or bound to a result, the template's value or
+the default applies.
 
 **What this step gets** (collapsed) shows the template with this step's overrides applied: the agent, the model
-profile, the system and user prompt, rules and skills (those of the agent), configuration and run inputs, exactly
-what the model or coding agent receives before the run fills in the values. **Warnings** there do not stop the step,
-for example a skill the template requires (**Required skills**) that the step's agent does not have.
+profile, the **Instructions** (with this step's notes), rules and skills (those of the agent), configuration and
+what is **Asked at start**, exactly what the model or coding agent receives before the run fills in the values.
+**Warnings** there do not stop the step, for example a skill the template requires (**Required skills**) that the
+step's agent does not have.
 **Overrides** change the template for this node only:
 
 | Override | Effect |
 |---|---|
 | **Agent** | Who runs this step: **Model answer**, **Analyst**, **Reviewer**, **OpenCode**, **Claude Code** or another agent of your library ([Agents](task-library.md#agents)); pre-selected as above. Empty: **OpenCode** when the template needs a coding agent, else **Model answer**. With the agent come its instructions, rules, skills, MCP servers and access. The step shows a problem when the agent does not fit the template (a template that needs a coding agent with a model answer agent: "The template needs a coding agent: this step cannot run with a model answer agent."; or an agent with access **Read only** on a step that pushes). |
-| **Directory** | Coding agents only: **Run directory (shared)** (default) or **Separate directory** ([The run directory](#run-directory)). |
-| **Agent session** | Coding agents only: **Own (repeats continue)** (default), **New each time** or **Continue the session of step …** ([Agent sessions](#continue-session)). |
 | **Agent may ask questions**, **Question rounds** | On by default, 2 rounds: the agent may stop with questions and the run waits for your answers ([Agents asking questions](#agent-questions)). |
 | **Model profile** | Model for this node. Empty: the agent's model, else the defaults for its kind (project, starting user, platform). |
-| **User prompt** | **Inherited**, **Append** (added after the template prompt) or **Replace**. |
-| **System prompt append** | Added to the template's system prompt. |
 | **Config** | Settings for the step's agent such as the verify command, branch name or merge request options; merged over the template's config. |
+
+The directory and the session are not step settings any more (ADR 0062): they belong to the agent (**Directory**,
+**Session**; [The run directory and agent sessions](#run-directory)). The sandbox is set on the project
+([Sandbox policy](projects.md#sandbox-policy)), never on a step or a template.
 
 A step no longer adds or drops skills of its agent (ADR 0060): the agent's environment is set once, on the agent.
 Steps saved with such a change run with the agent's skills; when a step needs other skills, choose or create an
@@ -168,6 +185,21 @@ stored step without an agent of its own got the agent its template (or the neare
 template's model profile when the step had none and the agent has no model of its own; library workflow versions
 and runs still waiting were updated the same way. Nothing changes in how those steps run, and the **Agent** field
 now shows the agent explicitly.
+
+**Workflows stored before ADR 0062.** The upgrade (database migration V308) rewrote stored steps, library workflow
+versions and runs that had not finished:
+
+- the step's former **System prompt append** and **User prompt** append became **Instructions for this step** →
+  **Append** (joined by a blank line), a former **Replace** became **Replace (advanced)**;
+- the step's former parameter values became **Value** sources;
+- every former run input of the step's template became a parameter bound to **Ask at start** on that step, so the
+  start form asks for the same fields as before;
+- the step settings **Directory** and **Agent session** (with "continue the session of step") were removed: they
+  are the agent's now. Steps that shared an agent role (from before ADR 0060) keep sharing their session.
+
+In the library, each template's system and user prompt were joined into its **Instructions** (system first, a blank
+line between), and its run inputs became parameters. The built-in templates were rewritten as instructions without
+role sentences.
 
 <a id="agent-audit"></a>
 ### Agents in this workflow
@@ -241,7 +273,7 @@ in [Jira actions in workflows](integrations-jira.md#jira-tasks).
 
 These used to be task templates (`fetch-issue`, `notify-jira`, `transition-issue`, `start-workflow`,
 `project-digest`). Stored workflows that use them keep working: such a step is read as the action with the former
-template's defaults and the step's configuration (a **Replace** prompt of a **Notify Jira** step becomes the
+template's defaults and the step's configuration (a replaced prompt of a **Notify Jira** step becomes the
 comment), and the next save writes the action.
 
 Two actions are Back Office operations (ADR 0052):
@@ -258,7 +290,8 @@ Two actions are Back Office operations (ADR 0052):
   **Pipeline branches** with their failed jobs (needs a repository token with CI_READ). An agent step after it reads
   `{{artifacts.digest}}`.
 
-Prompts are templates: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}` (all revision comments),
+Instructions and text settings are templates: `{{issue.summary}}`, `{{artifacts.spec}}`, `{{feedback}}` (this
+step's revision comments),
 `{{project.constitution}}`, `{{mr.url}}`. A missing value renders empty and adds a warning to the run log.
 Because nodes refer to templates by key, changing a template changes every workflow that uses it on its
 next run (see [Task library](task-library.md#templates)).
@@ -303,8 +336,8 @@ branch and never force-push. A person (or your Git server's approval rules) merg
 several repositories, the same branch name is used in each and each gets its own merge request.
 
 **Folders.** Each repository is cloned into its own folder named after its key: `/workspace/service`,
-`/workspace/docs`, ... (in the [run directory](#run-directory), or in the step's own directory when it works in a
-**Separate directory**). The agent starts in the step's main repository (the project's primary one if the step
+`/workspace/docs`, ... (in the [run directory](#run-directory), or in the step's own directory when its agent works
+in a **Separate directory**). The agent starts in the step's main repository (the project's primary one if the step
 uses it, otherwise the first in the list) and is told which repositories exist, where they are, their purpose,
 base branch and whether it may change them.
 
@@ -342,12 +375,15 @@ not define or name anything: *implement* → *verify* → back to *implement* si
 once in the run directory before the first coding step, and again only when you change it. Empty = no setup. A step's
 own `setupCommand` in **Config** still runs before that step.
 
-**Directory of a step.** A coding step (one a coding agent runs) has **Directory** under **Overrides**:
+**Directory of the agent.** Whether a coding step works in the run directory is a setting of its agent, **Directory**
+([Access of an agent](task-library.md#agent-access), ADR 0062):
 
 | Choice | Meaning |
 |---|---|
 | **Run directory (shared)** (default) | The step works in the run directory. Its repositories are cloned there once; later steps reuse the clones and everything left in them. |
 | **Separate directory** | A fresh copy of only this step's repositories, thrown away after the step. Use it for isolation: an agent that must not see the rest of the run's work (or, with **Repositories** set to other repositories, not the code at all). Such a step always starts a new agent session. |
+
+To run one step in isolation, choose an agent with **Separate directory** for it.
 
 **Agents taking turns.** For example *implement* (push on) → *verify* (push off) → a decision → back to *implement*.
 Each agent continues its own session and sees what the other left: the reviewer reads the implementer's uncommitted
@@ -364,7 +400,7 @@ for 24 hours so **Retry** continues in it. A run directory used after that start
 still there).
 
 **Mind the trust.** All steps of a run can read and change everything in the run directory, including the other
-agents' homes and session history. For an independent check use a step with **Separate directory**.
+agents' homes and session history. For an independent check use an agent with **Separate directory**.
 
 **Where an agent's own files live.** Each agent of a run has a **home** in the run directory, outside every
 repository: its environment document, its skills, its MCP configuration and its sessions
@@ -383,23 +419,26 @@ setup without an agent; it is not needed, the first coding step prepares the run
 <a id="continue-session"></a>
 ### Agent sessions
 
-A coding step has **Agent session** under **Overrides**:
+A session is a coding agent's conversation, so it is a setting of the agent, **Session** (ADR 0062), in
+**Library** → **Tasks** → **Agents**:
 
-- **Own (repeats continue)** (default): the first execution of the step starts a session; when the step runs again
+- **Per step (repeats continue)** (default): the first execution of a step starts a session; when the step runs again
   in the same run (rework after a review, a gate's **Revise**, answers to its questions), the agent continues its own
   conversation and remembers what it did.
-- **New each time**: every execution starts a fresh conversation.
-- **Continue the session of step …**: pick an earlier coding step. This step continues that step's agent session,
-  for example *implement*, then *fix what the review found*, with the agent keeping its context without re-reading
-  the repository (ADR 0057).
+- **One per run**: all steps of this agent in a run are one conversation, for example *implement*, then *fix what the
+  review found*, with the agent keeping its context without re-reading the repository (ADR 0057).
+- **Always fresh**: every execution starts a fresh conversation.
 
-A continued session needs the **same agent**: the session is kept in the agent's home. The picker greys out steps of
-another agent and steps with **Separate directory**. The agent resumes its conversation (Claude Code `--resume`,
-OpenCode `--continue`) and sees the files it left. Its rules and instructions are in its environment, not in the
-prompt, so it does not get them a second time. The designer, and again the run start, refuse a step whose **Continue
-the session of step …** names a step that does not exist or is not a coding agent step; in the **JSON** view the
-settings are `config.session` (`OWN`, `NEW`, `CONTINUE`) with `config.continueSession: <node id>`, and
-`config.directory` (`RUN`, `SEPARATE`).
+The session is kept in the agent's home, so only steps of the **same agent** share it; an agent with **Separate
+directory** never continues a session. The agent resumes its conversation (Claude Code `--resume`, OpenCode
+`--continue`) and sees the files it left. Its rules and instructions are in its environment, not in the task
+message, so it does not get them a second time. In the **JSON** view of an agent the settings are `session`
+(`PER_STEP`, `PER_RUN`, `FRESH`) and `access.directory` (`RUN`, `SEPARATE`).
+
+Until ADR 0062 the session was a setting of the step (**Agent session**: **Own**, **New each time** or **Continue the
+session of step …**, keys `config.session` and `config.continueSession`) and so was `config.directory`. The upgrade
+removed them from stored steps, and steps that still carry them are read without them. To keep several steps in one
+conversation, give their agent **One per run**.
 
 <a id="agent-questions"></a>
 ### Agents asking questions
@@ -519,10 +558,14 @@ must be enabled.
 
 1. Open the project, tab **Workflows**, and click **Start run** next to the workflow. Or press `Ctrl K`,
    choose **Start run…** and pick a workflow.
-2. Fill in the form. Its fields are the **run inputs** the workflow's steps declare in the task library
-   (see [Run inputs](task-library.md#run-inputs)): a text area for longer text such as **Input material**, a
-   single line for short values. Fields marked `*` are required; every field takes at most 20 000 characters.
-   A **Jira issue key** field (for example `SHOP-123`) appears only when the workflow has a Jira step.
+2. Fill in the form. Its fields are the parameters the workflow's task steps **Ask at start** (label, type,
+   **Required** and help from the parameter; see [Where the value comes from](task-library.md#parameter-sources))
+   and the run inputs of its action nodes, for example the **Jira issue key** of **Fetch issue**. The same name in
+   several steps is one field: required when any step requires it, the first label wins. A text area takes longer
+   text such as **Input material**, a single line short values; a number, yes / no or choice parameter is a single
+   line whose value is checked against the parameter (a choice field lists its options in the help). Fields marked
+   `*` are required; every field takes at most 20 000 characters. A **Jira issue key** field (for example
+   `SHOP-123`) is the run's issue key.
 3. Optional: open **Advanced (JSON)** to add extra parameters as a JSON object, for example `{"depth": 2}`.
    It is for values no step declares; the issue key and the form's fields are set in the form.
 4. Click **Start run**. The run page opens.
@@ -533,8 +576,9 @@ missing required input, or an issue key not shaped like `ABC-123`, is refused wi
 A Jira step that reads the key from another field (**issueKeyFrom**) does not make the issue key required. Starts by CI, the Jira intake watcher, your
 personal intake and the MCP tool `start_workflow` are not checked.
 
-In the designer, the **Start** node lists the workflow's run inputs read-only; change them on the tasks in
-the task library.
+In the designer, the **Start** node lists the start form read-only ("The start form asks for the parameters the
+steps take from the start and for the run inputs of the actions (saved version). Change them on the steps, not
+here."): to add a field, set a parameter of a step to **Ask at start**.
 
 Other ways to start a run: your pipeline through a CI entrypoint (see [Projects](projects.md#project-ci)),
 the REST API (`POST /api/v1/workflows/:id/runs`), and the MCP tool `start_workflow` from your IDE (see

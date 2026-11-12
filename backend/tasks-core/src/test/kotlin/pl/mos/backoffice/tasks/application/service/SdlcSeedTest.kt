@@ -51,7 +51,7 @@ class SdlcSeedTest {
             preview.outputSchema?.let { assertThat(JsonSyntax.problem(it)).describedAs("$key schema").isNull() }
             assertThat(preview.rules.map { it.key }).describedAs("$key gets the ground rules from its agent")
                 .contains(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
-            assertThat(preview.prompt.system.orEmpty()).describedAs("ADR 0057: the environment carries the constitution").doesNotContain("project.constitution")
+            assertThat(preview.instructions.orEmpty()).describedAs("ADR 0057: the environment carries the constitution").doesNotContain("project.constitution")
         }
     }
 
@@ -79,7 +79,7 @@ class SdlcSeedTest {
         // the schema field is named like the produced artefact, so the story is stored as markdown, not as the whole JSON
         assertThat(BuiltInLibrary.schemaProperties(task.outputSchema)).contains("user-story", "openQuestions", "confidence")
         assertThat(task.produces).contains("user-story")
-        assertThat(task.prompt.system).contains("US-<AREA>-<NN>")
+        assertThat(task.instructions).contains("US-<AREA>-<NN>")
         assertThat(task.outputSchema).contains("\"required\": [\"question\", \"whyItMatters\"]")
     }
 
@@ -90,7 +90,7 @@ class SdlcSeedTest {
         assertThat(BuiltInLibrary.schemaProperties(useCase.outputSchema)).contains("use-case")
         assertThat(useCase.produces).contains("use-case")
         val adr = lib.lookup.resolver.resolve(BuiltInLibrary.WRITE_ADR, null)!!
-        assertThat(adr.prompt.system).contains("`NNNN`").contains("`YYYY-MM-DD`").contains("Never mark the ADR Accepted")
+        assertThat(adr.instructions).contains("`NNNN`").contains("`YYYY-MM-DD`").contains("Never mark the ADR Accepted")
         val dod = lib.skills.findByKeyAndScope(BuiltInLibrary.DEFINITION_OF_READY_DONE, Scope.Global)!!.content
         assertThat(dod).contains("an agent never sets them").contains("DoD (people only)")
     }
@@ -112,11 +112,12 @@ class SdlcSeedTest {
         assertThat(task.produces).containsExactly("tasks")
         assertThat(task.outputSchema).contains("\"title\"", "\"description\"", "\"verification\"", "\"test_command\"", "\"completed\"")
             .contains("\"enum\": [false]").contains("\"finalTaskTitle\": { \"type\": \"string\", \"enum\": [\"reformat, lint, and test\"] }")
-        assertThat(task.prompt.system).contains("reformat, lint, and test")
+        assertThat(task.instructions).contains("reformat, lint, and test")
         // the approved impact analysis of a change request reaches the planner
-        assertThat(task.prompt.user).contains("{{artifacts.impact-analysis}}").contains("{{artifacts.plan}}").contains("{{artifacts.user-story}}")
+        assertThat(task.consumes).contains("impact-analysis", "plan", "user-story")
+        assertThat(task.instructions).describedAs("ADR 0062: consumed artefacts are standard data sections").doesNotContain("{{artifacts.plan}}")
         // a revision starts from the previous task list, not from scratch
-        assertThat(task.prompt.user).contains("{{#feedback}}\n{{#artifacts.tasks}}", "Your previous task list", "{{artifacts.tasks}}")
+        assertThat(task.instructions).contains("{{#feedback}}\n{{#artifacts.tasks}}", "Your previous task list", "{{artifacts.tasks}}")
         assertThat(task.consumes).contains("impact-analysis")
     }
 
@@ -133,7 +134,7 @@ class SdlcSeedTest {
         // a STOP fails the step: the verification command checks the RESULT line of the work log
         assertThat(task.config["verifyCommand"]).isEqualTo(BuiltInLibrary.WORK_LOG_VERIFY_COMMAND)
         assertThat(BuiltInLibrary.WORK_LOG_VERIFY_COMMAND).contains("work-log.md").contains(BuiltInLibrary.WORK_LOG_GREEN)
-        assertThat(task.prompt.user).contains("test_command").contains("STOP").contains("Noticed out of scope").contains(BuiltInLibrary.WORK_LOG_GREEN)
+        assertThat(task.instructions).contains("test_command").contains("STOP").contains("Noticed out of scope").contains(BuiltInLibrary.WORK_LOG_GREEN)
             .contains("{{artifacts.review}}").contains("Do not commit").doesNotContain("Work through the task list in order when")
             .doesNotContain("commit with the task title")
         assertThat(task.skills.map { it.key }).describedAs("the OpenCode agent's").doesNotContain(BuiltInLibrary.CONVENTIONAL_COMMITS)
@@ -148,8 +149,9 @@ class SdlcSeedTest {
         assertThat(task.produces).containsExactly("review")
         assertThat(task.outputSchema).contains("\"findings\"", "\"verdict\"", "\"score\"", "\"coverage\"", "MISSING")
         assertThat(task.config).doesNotContainKey("maxChunkLines")
-        val user = task.prompt.user!!
-        assertThat(user.indexOf("return only")).isLessThan(user.indexOf("{{artifacts.diff}}"))
+        val user = task.instructions!!
+        assertThat(user).contains("the diff at the end of this message").doesNotContain("{{artifacts.diff}}")
+        assertThat(task.consumes).describedAs("the platform places the consumed diff last").contains("diff")
     }
 
     @Test

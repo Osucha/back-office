@@ -34,9 +34,22 @@ describe('stepModelUse (ADR 0050, 0056)', () => {
 
 describe('effectiveStepAgent (ADR 0056)', () => {
   const agents: Agent[] = [
-    { key: 'claude-code', name: 'Claude Code', scope: { type: 'GLOBAL' }, harness: 'CLAUDE_CODE' },
-    { key: 'coder', name: 'Global coder', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
     {
+      session: 'PER_STEP',
+      key: 'claude-code',
+      name: 'Claude Code',
+      scope: { type: 'GLOBAL' },
+      harness: 'CLAUDE_CODE',
+    },
+    {
+      session: 'PER_STEP',
+      key: 'coder',
+      name: 'Global coder',
+      scope: { type: 'GLOBAL' },
+      harness: 'OPENCODE',
+    },
+    {
+      session: 'PER_STEP',
       key: 'coder',
       name: 'Project coder',
       scope: { type: 'PROJECT', projectId: 'p1' },
@@ -45,8 +58,14 @@ describe('effectiveStepAgent (ADR 0056)', () => {
   ];
   const all: Agent[] = [
     ...agents,
-    { key: 'model-answer', name: 'Model answer', scope: { type: 'GLOBAL' } },
-    { key: 'opencode', name: 'OpenCode', scope: { type: 'GLOBAL' }, harness: 'OPENCODE' },
+    { session: 'PER_STEP', key: 'model-answer', name: 'Model answer', scope: { type: 'GLOBAL' } },
+    {
+      session: 'PER_STEP',
+      key: 'opencode',
+      name: 'OpenCode',
+      scope: { type: 'GLOBAL' },
+      harness: 'OPENCODE',
+    },
   ];
   const task = { needsCodingAgent: false };
 

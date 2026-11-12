@@ -81,7 +81,7 @@ wywołania agentów przez bramę modeli, kroki workflowów, przeglądy i benchma
 |---|---|---|
 | Platformy | **Administracja** (**Administration**) → **Ustawienia platformy** (**Platform settings**), **Budżet platformy** (**Platform budget**) | `admin.settings.manage` |
 | Projektu | Karta projektu **Budżet** (**Budget**) | `project.manage` (**Właściciel**, **Maintainer** projektu) |
-| Na zadanie agenta | **Maks. koszt (USD)** i **Maks. liczba tokenów** w polityce sandboxa | projekt, szablon zadania |
+| Na zadanie agenta | **Maks. koszt (USD)** i **Maks. liczba tokenów** w polityce sandboxa projektu (karta projektu **Sandbox**) | `project.manage` (**Właściciel**, **Maintainer** projektu) |
 
 Budżet platformy to pułap nad wszystkimi projektami; budżety projektów obowiązują w jego ramach, a agentów
 zatrzymuje najpierw ten bardziej restrykcyjny.

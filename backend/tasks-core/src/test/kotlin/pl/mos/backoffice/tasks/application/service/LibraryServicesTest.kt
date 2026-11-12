@@ -6,16 +6,15 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
-import pl.mos.backoffice.tasks.domain.model.Prompt
+
 import pl.mos.backoffice.tasks.domain.model.Rule
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
@@ -109,15 +108,15 @@ class LibraryServicesTest {
 
     @Test
     fun `a project template with the key of a global one and extending it customises that template for the project`() {
-        templates.create(content("review").copy(prompt = Prompt(system = "global rules"), category = TemplateCategory.REVIEW))
+        templates.create(content("review").copy(instructions = "global rules", category = TemplateCategory.REVIEW))
         val shadow = templates.create(
-            TaskTemplate.Content(key = "review", name = "Our review", extendsKey = "review", scope = Scope.Project(lib.projectId), prompt = Prompt(system = "ours")),
+            TaskTemplate.Content(key = "review", name = "Our review", extendsKey = "review", scope = Scope.Project(lib.projectId), instructions = "ours"),
         )
         assertThat(shadow.key).isEqualTo("review")
 
         val resolved = templates.resolve("review", lib.projectId)
         assertThat(resolved.name).isEqualTo("Our review")
-        assertThat(resolved.prompt.system).isEqualTo("global rules\n\nours")
+        assertThat(resolved.instructions).isEqualTo("global rules\n\nours")
         assertThat(resolved.category).describedAs("inherited from the global template").isEqualTo(TemplateCategory.REVIEW)
         assertThat(templates.resolve("review").name).isEqualTo("review")
     }
@@ -140,7 +139,7 @@ class LibraryServicesTest {
     fun `templates validate on save, bump version on update and refuse built-in or extended deletion`() {
         assertThatThrownBy { templates.create(content("child", extendsKey = "ghost")) }.isInstanceOf(ValidationException::class.java)
 
-        val base = templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "base")))
+        val base = templates.create(content("base", abstract = true).copy(instructions = "base"))
         assertThat(base.version).isEqualTo(1)
         assertThatThrownBy { templates.create(content("base")) }.isInstanceOf(InvalidStateException::class.java)
 
@@ -159,27 +158,19 @@ class LibraryServicesTest {
     }
 
     @Test
-    fun `run inputs are saved, returned, audited on change and inherited in the resolved view`() {
-        val input = RunInputField("input", "Input material", RunInputType.MULTILINE)
-        val issue = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true, help = "e.g. ABC-1")
-        val base = templates.create(content("base", abstract = true).copy(runInputs = listOf(input)))
-        val child = templates.create(content("child", extendsKey = "base").copy(runInputs = listOf(issue)))
-        assertThat(templates.get(base.id).runInputs).containsExactly(input)
-        assertThat(audit.entries.last().details["runInputs"]).isEqualTo(listOf("issueKey:ISSUE_KEY:required:Jira issue:help=10"))
+    fun `ADR 0062 - instructions and their mode are saved, audited by length and merged in the resolved view`() {
+        val base = templates.create(content("base", abstract = true).copy(instructions = "base work"))
+        val child = templates.create(content("child", extendsKey = "base").copy(instructions = "child work"))
+        assertThat(audit.entries.last().details).containsEntry("instructionsLength", 10).containsEntry("instructionsMode", "APPEND")
 
-        val updated = templates.update(child.id, child.content.copy(runInputs = listOf(issue.copy(required = false))))
+        val updated = templates.update(child.id, child.content.copy(instructionsMode = InstructionsMode.REPLACE))
 
-        assertThat(templates.get(child.id).runInputs).containsExactly(issue.copy(required = false))
+        assertThat(templates.get(child.id).instructionsMode).isEqualTo(InstructionsMode.REPLACE)
         assertThat(updated.version).isEqualTo(2)
-        val change = audit.entries.last()
-        assertThat(change.operation).isEqualTo("TEMPLATE_UPDATE")
-        // a real old/new pair of the field summaries, no computed flag in the change map
-        assertThat(change.details).containsEntry(
-            "runInputs", mapOf("old" to listOf("issueKey:ISSUE_KEY:required:Jira issue:help=10"), "new" to listOf("issueKey:ISSUE_KEY:optional:Jira issue:help=10")),
-        )
-        assertThat(change.details).doesNotContainKey("runInputsChanged")
-        assertThat(templates.resolve("child").runInputs).containsExactly(input, issue.copy(required = false))
-        assertThat(catalog.resolve("child", null)!!.runInputs).containsExactly(input, issue.copy(required = false))
+        assertThat(audit.entries.last().details).containsEntry("instructionsMode", mapOf("old" to "APPEND", "new" to "REPLACE"))
+        assertThat(templates.resolve("child").instructions).isEqualTo("child work")
+        assertThat(catalog.resolve("child", null)!!.instructions).isEqualTo("child work")
+        assertThat(templates.get(base.id).instructions).isEqualTo("base work")
     }
 
     @Test
@@ -209,12 +200,12 @@ class LibraryServicesTest {
     fun `resolve previews abstract and broken templates and is 404 for unknown keys`() {
         val gone = lib.rule("gone")
         lib.agent("fading", rules = listOf("gone"))
-        templates.create(content("base", abstract = true).copy(prompt = Prompt(system = "hello")))
+        templates.create(content("base", abstract = true).copy(instructions = "hello"))
         templates.create(content("half", extendsKey = "base"))
         lib.rules.delete(gone.id)
 
         assertThat(templates.resolve("base").abstract).isTrue()
-        assertThat(templates.resolve("base").prompt.system).isEqualTo("hello")
+        assertThat(templates.resolve("base").instructions).isEqualTo("hello")
         val half = templates.resolveStep("half", null, TaskOverrides(agentKey = "fading"))
         assertThat(half.check.ok).isFalse()
         assertThat(half.check.problems).containsExactly("rule gone of agent fading does not exist")
@@ -224,19 +215,18 @@ class LibraryServicesTest {
 
     @Test
     fun `resolveStep shows what a workflow step gets with its overrides applied`() {
-        templates.create(content("step").copy(prompt = Prompt(system = "rules", user = "do the work"), config = mapOf("agent" to "OPENCODE", "push" to true)))
+        templates.create(content("step").copy(instructions = "do the work", config = mapOf("agent" to "OPENCODE", "push" to true)))
 
         val step = templates.resolveStep(
             "step", null,
-            TaskOverrides(systemPromptAppend = "be brief", promptReplace = "only analyse", config = mapOf("agent" to "CLAUDE_CODE")),
+            TaskOverrides(instructionsAppend = "be brief", instructionsReplace = "only analyse", config = mapOf("agent" to "CLAUDE_CODE")),
         )
 
-        assertThat(step.prompt.system).contains("rules", "be brief")
-        assertThat(step.prompt.user).isEqualTo("only analyse")
+        assertThat(step.instructions).isEqualTo("only analyse\n\nbe brief")
         assertThat(step.config).doesNotContainKey("agent").containsEntry("push", true)
         assertThat(step.agent.key).describedAs("the legacy step key agent").isEqualTo(AgentSnapshot.CLAUDE_CODE)
         assertThat(templates.resolve("step").agent.key).isEqualTo(AgentSnapshot.OPENCODE)
-        assertThat(templates.resolve("step").prompt.user).isEqualTo("do the work")
+        assertThat(templates.resolve("step").instructions).isEqualTo("do the work")
         assertThatThrownBy { templates.resolveStep("nope", null, TaskOverrides.NONE) }.isInstanceOf(NotFoundException::class.java)
     }
 

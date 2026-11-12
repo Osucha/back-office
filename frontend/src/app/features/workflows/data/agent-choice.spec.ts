@@ -6,11 +6,39 @@ const p1 = { type: 'PROJECT' as const, projectId: 'p1' };
 
 describe('agent pre-selection (ADR 0061)', () => {
   const agents: Agent[] = [
-    { key: 'model-answer', name: 'Model answer', scope: global, builtIn: true },
-    { key: 'analyst', name: 'Analyst', scope: global, builtIn: true, skills: ['jira'] },
-    { key: 'reviewer', name: 'Reviewer', scope: global, builtIn: true, skills: ['code-review'] },
-    { key: 'opencode', name: 'OpenCode', scope: global, builtIn: true, harness: 'OPENCODE' },
     {
+      session: 'PER_STEP',
+      key: 'model-answer',
+      name: 'Model answer',
+      scope: global,
+      builtIn: true,
+    },
+    {
+      session: 'PER_STEP',
+      key: 'analyst',
+      name: 'Analyst',
+      scope: global,
+      builtIn: true,
+      skills: ['jira'],
+    },
+    {
+      session: 'PER_STEP',
+      key: 'reviewer',
+      name: 'Reviewer',
+      scope: global,
+      builtIn: true,
+      skills: ['code-review'],
+    },
+    {
+      session: 'PER_STEP',
+      key: 'opencode',
+      name: 'OpenCode',
+      scope: global,
+      builtIn: true,
+      harness: 'OPENCODE',
+    },
+    {
+      session: 'PER_STEP',
       key: 'claude-code',
       name: 'Claude Code',
       scope: global,
@@ -18,6 +46,7 @@ describe('agent pre-selection (ADR 0061)', () => {
       harness: 'CLAUDE_CODE',
     },
     {
+      session: 'PER_STEP',
       key: 'kotlin-coder',
       name: 'Kotlin coder',
       scope: global,
@@ -59,9 +88,31 @@ describe('agent pre-selection (ADR 0061)', () => {
 
   it('breaks ties built-in first, then by name', () => {
     const tied: Agent[] = [
-      { key: 'zed', name: 'Zed', scope: global, harness: 'OPENCODE', skills: ['x'] },
-      { key: 'bob', name: 'Bob', scope: global, harness: 'OPENCODE', skills: ['x'] },
-      { key: 'ann', name: 'Ann', scope: global, harness: 'OPENCODE', builtIn: true, skills: ['x'] },
+      {
+        session: 'PER_STEP',
+        key: 'zed',
+        name: 'Zed',
+        scope: global,
+        harness: 'OPENCODE',
+        skills: ['x'],
+      },
+      {
+        session: 'PER_STEP',
+        key: 'bob',
+        name: 'Bob',
+        scope: global,
+        harness: 'OPENCODE',
+        skills: ['x'],
+      },
+      {
+        session: 'PER_STEP',
+        key: 'ann',
+        name: 'Ann',
+        scope: global,
+        harness: 'OPENCODE',
+        builtIn: true,
+        skills: ['x'],
+      },
     ];
     expect(pickAgent({ needsCodingAgent: true, requiresSkills: ['x'] }, tied)?.key).toBe('ann');
     expect(
@@ -73,6 +124,7 @@ describe('agent pre-selection (ADR 0061)', () => {
     const withCopy: Agent[] = [
       ...agents,
       {
+        session: 'PER_STEP',
         key: 'opencode',
         name: 'OpenCode (P1)',
         scope: p1,

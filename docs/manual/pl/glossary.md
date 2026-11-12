@@ -89,10 +89,11 @@ szablon nie wymaga agenta kodującego. Zob. [Agenci](task-library.md#agents).
 **Pałeczka** (baton): Kto w tej chwili trzyma daną pracę: agent, ty, ci, gotowe, zablokowane lub bezczynne. Wyświetlana
 jako znacznik z symbolem i słowem. Zob. [Pałeczka](getting-started.md#baton).
 
-**Parametr, parametr szablonu** (parameter, template parameter): Typowane pole szablonu (jedna linia, tekst
-wieloliniowy, liczba, tak / nie, wybór), które wypełnia krok workflowu; prompty czytają je jako `{{params.<nazwa>}}`.
-Wymagany parametr bez wartości blokuje krok; takie szablony mają znacznik **wymaga parametrów**. Zob.
-[Parametry](task-library.md#parameters).
+**Parametr, parametr szablonu** (parameter, template parameter): Typowana dana wejściowa szablonu (jedna linia,
+tekst wieloliniowy, liczba, tak / nie, wybór, klucz zgłoszenia Jira); polecenie czyta ją jako `{{params.<nazwa>}}`.
+Krok workflowu wybiera, skąd pochodzi wartość: **Wartość**, **Zapytaj przy starcie** albo **Wynik wcześniejszego
+kroku**; bez wyboru obowiązuje wartość presetu albo domyślna. Wymagany parametr bez wartości blokuje krok; takie
+szablony mają znacznik **wymaga parametrów**. Zob. [Parametry](task-library.md#parameters).
 
 **PAT, osobisty token dostępu** (personal access token): Token (`bo_pat_…`), który działa w Twoim imieniu, z Twoimi lub
 węższymi uprawnieniami, dla skryptów i IDE. Zob. [Osobiste tokeny dostępu](account.md#tokens).
@@ -100,7 +101,12 @@ węższymi uprawnieniami, dla skryptów i IDE. Zob. [Osobiste tokeny dostępu](a
 **Pewność** (confidence): Liczba od 0 do 1, którą zadanie zgłasza na temat własnego wyniku. Korzystają z niej decyzje,
 na przykład by pominąć bramkę, gdy agent jest pewny. Zob. [Decyzje](workflows.md#decisions).
 
-**Polityka sandboxa** (sandbox policy): Limity sandboxa, ustawiane warstwami (platforma, pula, projekt, szablon, węzeł),
+**Polecenie** (instructions): Jeden tekst szablonu, który mówi, co zrobić i jak ocenić wynik. Platforma dodaje
+zgłoszenie, konsumowane artefakty, dane podane przy starcie, uwagi i odpowiedzi jako sekcje danych, chyba że
+polecenie umieszcza je samo; krok workflowu może dopisać uwagi albo zastąpić tekst (**Polecenie dla tego kroku**).
+Zob. [Polecenie i to, co dostaje agent](task-library.md#instructions).
+
+**Polityka sandboxa** (sandbox policy): Limity sandboxa, ustawiane warstwami (platforma, pula, projekt),
 z których każda może tylko zawężać. Zob. [Polityka sandboxa](projects.md#sandbox-policy).
 
 **Port** (port): Nazwane wyjście węzła. Port, przez który węzeł wychodzi, decyduje, dokąd uruchomienie przejdzie dalej.
@@ -163,9 +169,9 @@ i wykonuje każde w sandboxie. Zob. [Flota runnerów](runner-fleet.md#pools).
 **Sandbox** (sandbox): Izolowany kontener lub mikromaszyna wirtualna, w której działa zadanie agenta, z ograniczonymi
 zasobami, siecią i narzędziami. Zob. [Jak działają zadania agentów](agent-execution.md#lifecycle).
 
-**Sesja agenta** (agent session): Rozmowa agenta kodującego. Domyślnie krok ma własną sesję (jego powtórzenia ją
-kontynuują); może też za każdym razem zaczynać nową albo kontynuować sesję wcześniejszego kroku tego samego agenta.
-Zob. [Sesje agenta](workflows.md#continue-session).
+**Sesja agenta** (agent session): Rozmowa agenta kodującego, ustawiana na agencie (**Sesja**): **Na krok
+(powtórzenia kontynuują)** (domyślnie), **Jedna na przebieg** (wszystkie kroki agenta w przebiegu to jedna rozmowa)
+albo **Zawsze od nowa**. Zob. [Sesje agenta](workflows.md#continue-session).
 
 **Sprawdzenie spójności** (coherence check): **Sprawdź spójność** w panelu [Agenci w tym
 workflowie](workflows.md#coherence-check): na żądanie model czyta całe środowisko agenta i wypisuje sprzeczności,
@@ -178,7 +184,7 @@ aby zwolnić uruchomienie czekające na CI. Zob. [Węzły oczekiwania na CI](wor
 obowiązują w każdym kroku swojego zakresu. Reguły należą do repozytorium, projektu i agenta, nigdy do szablonu. Zob.
 [Reguły](task-library.md#rules).
 
-**Szablon zadania** (task template): Opis tego, co zrobić, wielokrotnego użytku: kategoria, prompty z parametrami,
+**Szablon zadania** (task template): Opis tego, co zrobić, wielokrotnego użytku: kategoria, polecenie z parametrami,
 konfiguracja, wyniki i umiejętności, których wymaga praca; może mieć jednego rodzica. Nie wskazuje agenta ani modelu
 (robi to krok); reguły i umiejętności należą do agenta. Zob. [Szablony](task-library.md#templates).
 

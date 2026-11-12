@@ -2,8 +2,11 @@ package pl.mos.backoffice.tasks.adapter.out.persistence
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentAccessMode
+import pl.mos.backoffice.shared.runner.AgentDirectory
+import pl.mos.backoffice.shared.runner.AgentSession
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.tasks.domain.model.Agent
@@ -21,50 +24,41 @@ class TaskMappersTest {
     private val mappers = TaskMappers(JsonMapper.builder().build())
 
     @Test
-    fun `template run inputs survive domain to entity to domain, every type and a missing help`() {
-        val inputs = listOf(
-            RunInputField("input", "Input material", RunInputType.MULTILINE, required = false, help = "anything the agent should read"),
-            RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true, help = null),
-            RunInputField("branch", "Branch", RunInputType.TEXT),
-        )
+    fun `ADR 0062 - template instructions and their mode survive domain to entity to domain`() {
         val template = TaskTemplate.create(
-            TaskTemplate.Content(key = "story-writer", name = "Story writer", runInputs = inputs),
+            TaskTemplate.Content(key = "story-writer", name = "Story writer", instructions = "Write the story.", instructionsMode = InstructionsMode.REPLACE),
             Instant.parse("2026-10-24T10:00:00Z"),
         )
 
         val entity = mappers.toEntity(template)
-        val back = mappers.toDomain(entity)
-
-        assertThat(back.runInputs).isEqualTo(inputs)
-        assertThat(back).isEqualTo(template)
+        assertThat(entity.instructions).isEqualTo("Write the story.")
+        assertThat(entity.instructionsMode).isEqualTo(InstructionsMode.REPLACE)
+        assertThat(mappers.toDomain(entity)).isEqualTo(template)
     }
 
     @Test
-    fun `a row without run inputs reads as an empty list`() {
-        val template = TaskTemplate.create(TaskTemplate.Content(key = "plain", name = "Plain"), Instant.parse("2026-10-24T10:00:00Z"))
-
-        val entity = mappers.toEntity(template)
-
-        assertThat(entity.runInputs).isEqualTo("[]")
-        assertThat(mappers.toDomain(entity).runInputs).isEmpty()
-    }
-
-    @Test
-    fun `malformed stored run inputs are skipped instead of breaking the template`() {
-        val template = TaskTemplate.create(TaskTemplate.Content(key = "plain", name = "Plain"), Instant.parse("2026-10-24T10:00:00Z"))
-        val stored = mappers.toEntity(template)
-        val broken = TaskTemplateEntity(
-            id = stored.id, key = stored.key, name = stored.name, createdAt = stored.createdAt, updatedAt = stored.updatedAt,
-            runInputs = """["text", {"label": "No name"}, {"name": "has space", "label": "Bad"}, {"name": "audience", "label": "Audience", "type": "FANCY"},
-                {"name": "issueKey", "label": "Issue", "type": "ISSUE_KEY", "required": true}]""",
+    fun `ADR 0062 - an agent's session and directory survive the entity, old rows read PER_STEP and RUN, unknown ones safely`() {
+        val agent = Agent.create(
+            Agent.Content(
+                key = "loner", name = "Loner", harness = AgentHarness.OPENCODE,
+                access = AgentAccess(AgentAccessMode.READ_ONLY, directory = AgentDirectory.SEPARATE), session = AgentSession.FRESH,
+            ),
+            Instant.parse("2026-10-24T10:00:00Z"),
         )
+        val entity = mappers.toEntity(agent)
+        assertThat(entity.session).isEqualTo("FRESH")
+        assertThat(mappers.toDomain(entity)).isEqualTo(agent)
 
-        val inputs = mappers.toDomain(broken).runInputs
-
-        assertThat(inputs).containsExactly(
-            RunInputField("audience", "Audience", RunInputType.TEXT),
-            RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY, required = true),
+        fun read(access: String, session: String) = mappers.toDomain(
+            AgentEntity(id = entity.id, key = entity.key, name = entity.name, createdAt = entity.createdAt, updatedAt = entity.updatedAt, access = access, session = session),
         )
+        val old = read("""{"mode": "FULL"}""", "PER_STEP")
+        assertThat(old.access).isEqualTo(AgentAccess.FULL)
+        assertThat(old.session).isEqualTo(AgentSession.PER_STEP)
+        val odd = read("""{"mode": "FULL", "directory": "ELSEWHERE"}""", "SOMETIMES")
+        assertThat(odd.access.directory).describedAs("an unknown directory sees less").isEqualTo(AgentDirectory.SEPARATE)
+        assertThat(odd.session).isEqualTo(AgentSession.PER_STEP)
+        assertThat(read("""{"mode": "ODD", "directory": "SEPARATE"}""", "PER_RUN").access).isEqualTo(AgentAccess.READ_ONLY)
     }
 
     @Test

@@ -5,6 +5,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentAccess
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentMcpServer
+import pl.mos.backoffice.shared.runner.AgentSession
 import java.util.UUID
 
 /**
@@ -23,8 +24,10 @@ data class AgentSnapshot(
     val rules: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
     val mcpServers: List<AgentMcpServer> = emptyList(),
-    /** ADR 0060: what the agent may change (coding agents; irrelevant for a model answer). */
+    /** ADR 0060: what the agent may change (coding agents; irrelevant for a model answer); ADR 0062: and its directory. */
     val access: AgentAccess = AgentAccess.FULL,
+    /** ADR 0062: which executions of the agent continue one conversation (coding agents). */
+    val session: AgentSession = AgentSession.PER_STEP,
 ) {
     val modelAnswer: Boolean get() = harness == null
 
@@ -57,14 +60,13 @@ data class RuleSnapshot(val key: String, val name: String, val content: String, 
 /** ADR 0055: what kind of work a template does; groups the library and the designer palette. Inherited, child wins. */
 enum class TemplateCategory { ANALYSIS, SPECIFICATION, PLANNING, IMPLEMENTATION, REVIEW, JIRA, OPERATIONS, GENERAL }
 
-data class TaskPrompt(val system: String?, val user: String?)
-
 /** How the run start form shows a [RunInputField]; `ISSUE_KEY` values become the run's issue key (ADR 0053). */
 enum class RunInputType { TEXT, MULTILINE, ISSUE_KEY }
 
 /**
- * A field of the run start form declared by a library task (ADR 0053). [name] is the key of the value in the run
- * parameters; a workflow's form is the union of the fields of its task steps.
+ * A field of the run start form (ADR 0053). [name] is the key of the value in the run parameters; a workflow's form is
+ * the union of the fields of its steps. ADR 0062: task steps contribute the parameters they bind `START` ([parameter]
+ * is then that declaration, whose type the run start checks); action nodes their own run inputs.
  */
 data class RunInputField(
     val name: String,
@@ -72,6 +74,8 @@ data class RunInputField(
     val type: RunInputType = RunInputType.TEXT,
     val required: Boolean = false,
     val help: String? = null,
+    /** ADR 0062: the template parameter this field asks for; null for the run inputs of actions. */
+    val parameter: TemplateParameter? = null,
 ) {
     init {
         if (name.isBlank()) throw ValidationException("run input name must not be blank", "runInputs.name")
@@ -91,13 +95,17 @@ data class RunInputField(
     }
 }
 
-/** ADR 0058: how the designer shows a [TemplateParameter] and which values it accepts. */
-enum class TemplateParameterType { TEXT, MULTILINE, NUMBER, BOOLEAN, CHOICE }
+/**
+ * ADR 0058: how the designer shows a [TemplateParameter] and which values it accepts. ADR 0062: `ISSUE_KEY` is a Jira
+ * issue key; bound `START` it becomes the run's issue key.
+ */
+enum class TemplateParameterType { TEXT, MULTILINE, NUMBER, BOOLEAN, CHOICE, ISSUE_KEY }
 
 /**
- * ADR 0058: a parameter of a template, set when the workflow is designed (run inputs are asked when a run starts).
- * Prompts and text config read it as `{{params.<name>}}`. Declarations are inherited, child wins by name. Structural
- * rules ([name], [label], [help]) are checked here; [problems] lists the type rules the template validator reports.
+ * ADR 0058: a parameter of a template. Instructions and text config read it as `{{params.<name>}}`. Declarations are
+ * inherited, child wins by name. ADR 0062: the step binds where its value comes from ([ParameterBinding]): a fixed value,
+ * the run start form or an artefact. Structural rules ([name], [label], [help]) are checked here; [problems] lists the
+ * type rules the template validator reports.
  */
 data class TemplateParameter(
     val name: String,
@@ -135,7 +143,32 @@ data class TemplateParameter(
         type == TemplateParameterType.NUMBER && value !is Number && value.toString().trim().toBigDecimalOrNull() == null -> "\"$value\" is not a number"
         type == TemplateParameterType.BOOLEAN && value !is Boolean && value.toString().lowercase() !in BOOLEAN_TEXT -> "\"$value\" is not true or false"
         type == TemplateParameterType.CHOICE && value.toString() !in options -> "\"$value\" is not one of ${options.joinToString()}"
+        type == TemplateParameterType.ISSUE_KEY && !ISSUE_KEY.matches(value.toString().trim()) -> "\"$value\" is not an issue key such as ABC-123"
         else -> null
+    }
+
+    /**
+     * ADR 0062: this parameter as a field of the run start form (bound `START`): MULTILINE and ISSUE_KEY keep their type,
+     * the other types are a single line whose value the run start checks against the declaration ([RunInputField.parameter]).
+     */
+    fun asRunInput(): RunInputField = RunInputField(
+        name = name,
+        label = label,
+        type = when (type) {
+            TemplateParameterType.MULTILINE -> RunInputType.MULTILINE
+            TemplateParameterType.ISSUE_KEY -> RunInputType.ISSUE_KEY
+            else -> RunInputType.TEXT
+        },
+        required = required,
+        help = startHelp(),
+        parameter = this,
+    )
+
+    /** The help of the start form field; a CHOICE names its options when the help leaves room. */
+    private fun startHelp(): String? {
+        if (type != TemplateParameterType.CHOICE || options.isEmpty()) return help
+        val withOptions = listOfNotNull(help?.trim()?.takeIf { it.isNotEmpty() }, "One of: ${options.joinToString()}.").joinToString(" ")
+        return if (withOptions.length <= RunInputField.MAX_HELP_LENGTH) withOptions else help
     }
 
     companion object {
@@ -143,34 +176,87 @@ data class TemplateParameter(
         const val MAX_LABEL_LENGTH = 200
         const val MAX_HELP_LENGTH = 1_000
         private val BOOLEAN_TEXT = setOf("true", "false")
+
+        /** A Jira issue key: project key, dash, number (`ABC-123`); upper or lower case. */
+        val ISSUE_KEY: Regex = Regex("^[A-Z][A-Z0-9_]{0,19}-[0-9]{1,10}$", RegexOption.IGNORE_CASE)
     }
 }
 
-/** ADR 0058: where the value of a parameter comes from. */
+/** ADR 0062: where a step takes the value of a parameter from. */
+enum class ParameterBindingSource { VALUE, START, ARTIFACT }
+
+/**
+ * ADR 0062: how a step binds one parameter of its template: [ParameterBindingSource.VALUE] a fixed [value] (the former
+ * step `parameters`), [ParameterBindingSource.START] the run start form (field = the parameter), or
+ * [ParameterBindingSource.ARTIFACT] the content of the latest artefact named [artifact] of the run.
+ */
+data class ParameterBinding(
+    val source: ParameterBindingSource,
+    val value: Any? = null,
+    val artifact: String? = null,
+) {
+    companion object {
+        val START = ParameterBinding(ParameterBindingSource.START)
+
+        fun value(value: Any?) = ParameterBinding(ParameterBindingSource.VALUE, value = value)
+
+        fun artifact(name: String) = ParameterBinding(ParameterBindingSource.ARTIFACT, artifact = name)
+    }
+}
+
+/** ADR 0058: where the value of a parameter comes from (ADR 0062: a `START` or `ARTIFACT` binding is the step's). */
 enum class ParameterSource { STEP, TEMPLATE, DEFAULT, NONE }
 
-/** ADR 0058: a parameter with the value the step uses. */
-data class ResolvedParameter(val definition: TemplateParameter, val value: Any?, val source: ParameterSource) {
+/**
+ * ADR 0058: a parameter with the value the step uses. ADR 0062: a step that binds it `START` or `ARTIFACT` has its
+ * [binding]; its value is read when the step runs ([value] is then null) and [fallback] (the preset value, else the
+ * default) applies when the run has none.
+ */
+data class ResolvedParameter(
+    val definition: TemplateParameter,
+    val value: Any?,
+    val source: ParameterSource,
+    val binding: ParameterBinding? = null,
+    val fallback: Any? = null,
+) {
     val name: String get() = definition.name
+
+    /** ADR 0062: the value comes from the run (start form or artefact), not from the design. */
+    val boundAtRun: Boolean get() = binding != null && binding.source != ParameterBindingSource.VALUE
 }
 
 /**
  * Node-level customisation of a task template inside a workflow. Applied last, after the template's
- * inheritance chain has been merged.
+ * inheritance chain has been merged. ADR 0062: [instructionsReplace] replaces the template's instructions,
+ * [instructionsAppend] adds notes after them; [parameterBindings] say where each parameter's value comes from.
  */
 data class TaskOverrides(
     /** ADR 0061: the agent that runs this step; none = `opencode` when the work needs a coding agent, else the model answer. */
     val agentKey: String? = null,
     val modelProfileId: ModelProfileId? = null,
-    val systemPromptAppend: String? = null,
-    val promptAppend: String? = null,
-    val promptReplace: String? = null,
+    val instructionsAppend: String? = null,
+    val instructionsReplace: String? = null,
     val config: Map<String, Any?> = emptyMap(),
-    /** ADR 0058: values of the template's parameters for this step (win over template values and defaults). */
-    val parameters: Map<String, Any?> = emptyMap(),
+    /** ADR 0062: per parameter name, where its value comes from; unbound = the preset value or the default. */
+    val parameterBindings: Map<String, ParameterBinding> = emptyMap(),
 ) {
     companion object {
         val NONE = TaskOverrides()
+
+        /**
+         * ADR 0062: the step's notes from the current [instructionsAppend] and the legacy `systemPromptAppend` /
+         * `promptAppend` texts, joined by a blank line in that order; null when all are blank.
+         */
+        fun joinedAppend(vararg texts: String?): String? =
+            texts.mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }.distinct().joinToString("\n\n").ifEmpty { null }
+
+        /**
+         * ADR 0062: [bindings] with the legacy step `parameters` values as VALUE bindings for the names [bindings] does not
+         * bind (blank values are no value and are dropped).
+         */
+        fun withLegacyValues(bindings: Map<String, ParameterBinding>, legacy: Map<String, Any?>?): Map<String, ParameterBinding> =
+            legacy.orEmpty().filter { (name, value) -> name !in bindings && value != null && !(value is String && value.isBlank()) }
+                .mapValues { (_, value) -> ParameterBinding.value(value) } + bindings
     }
 }
 
@@ -185,7 +271,8 @@ data class ResolvedTask(
     val agent: AgentSnapshot,
     /** ADR 0061: the step's model, else the agent's; null = the defaults (ModelResolver). */
     val modelProfileId: ModelProfileId?,
-    val prompt: TaskPrompt,
+    /** ADR 0062: the merged instructions of the lineage with the step's replace and append applied; null = none. */
+    val instructions: String?,
     val skills: List<SkillSnapshot>,
     val config: Map<String, Any?>,
     /** JSON schema of a structured answer (model answer agents). */
@@ -204,14 +291,17 @@ data class ResolvedTask(
     val ports: List<String>,
     /** Version of the concrete (leaf) template, recorded in provenance attestations. */
     val version: Int? = null,
-    /** Run start form fields this task asks for, merged over the lineage (ADR 0053). */
+    /** ADR 0062: the run start form fields of this step: the parameters it binds `START`. */
     val runInputs: List<RunInputField> = emptyList(),
     /** ADR 0055/0057: rules always in the task's context; automatic ones (global, then project) first, then the agent's. */
     val rules: List<RuleSnapshot> = emptyList(),
     /** ADR 0058: the merged parameter declarations of the lineage with the value the step uses. */
     val parameters: List<ResolvedParameter> = emptyList(),
 ) {
-    /** ADR 0058: `params` of the template model: parameter name to the value the step uses (null = none). */
+    /**
+     * ADR 0058: `params` of the template model: parameter name to the value the design sets (null = none). ADR 0062:
+     * parameters bound `START` or `ARTIFACT` have their value only in a run (`StepParameters` in the Projects context).
+     */
     val parameterValues: Map<String, Any?> get() = parameters.associate { it.name to it.value }
 }
 

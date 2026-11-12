@@ -6,6 +6,7 @@ import type { Agent, WorkflowNode, WorkflowPalette } from '../../../core/api/typ
 import { By } from '@angular/platform-browser';
 import { NodePropertyPanelComponent } from './node-property-panel.component';
 import { StepAgentSectionComponent } from './step-agent-section.component';
+import { StepParameterBindingsComponent } from './step-parameter-bindings.component';
 
 const palette: WorkflowPalette = {
   tasks: [
@@ -46,15 +47,28 @@ const palette: WorkflowPalette = {
   ],
 };
 const agents: Agent[] = [
-  { key: 'model-answer', name: 'Model answer', harness: null, scope: { type: 'GLOBAL' } },
   {
+    session: 'PER_STEP',
+    key: 'model-answer',
+    name: 'Model answer',
+    harness: null,
+    scope: { type: 'GLOBAL' },
+  },
+  {
+    session: 'PER_STEP',
     key: 'claude-code',
     name: 'Claude Code',
     harness: 'CLAUDE_CODE',
     scope: { type: 'GLOBAL' },
     skills: ['kotlin'],
   },
-  { key: 'opencode', name: 'OpenCode', harness: 'OPENCODE', scope: { type: 'GLOBAL' } },
+  {
+    session: 'PER_STEP',
+    key: 'opencode',
+    name: 'OpenCode',
+    harness: 'OPENCODE',
+    scope: { type: 'GLOBAL' },
+  },
 ];
 
 const node = (templateKey: string, overrides = {}): WorkflowNode =>
@@ -92,7 +106,7 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   it('resolves what the step gets with its overrides, again when they change', async () => {
-    const { fixture, panel } = create(node('code-review', { promptAppend: 'Be strict' }));
+    const { fixture, panel } = create(node('code-review', { instructionsAppend: 'Be strict' }));
     expect(panel.templateDeprecated()).toBe(false);
     panel.stepGetsOpen.set(true);
     fixture.detectChanges();
@@ -101,16 +115,23 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     let req = http.expectOne(
       (r) => r.method === 'POST' && r.url === '/api/v1/task-templates/resolve/code-review',
     );
-    expect(req.request.body).toEqual({ promptAppend: 'Be strict' });
+    expect(req.request.body).toEqual({ instructionsAppend: 'Be strict' });
     expect(req.request.params.get('projectId')).toBe('p1');
-    req.flush({ key: 'code-review', prompt: { system: 'S', user: 'U\n\nBe strict' } });
-    expect(panel.stepView()?.prompt?.user).toContain('Be strict');
+    req.flush({ key: 'code-review', instructions: 'Review.\n\nBe strict' });
+    expect(panel.stepView()?.instructions).toContain('Be strict');
+    fixture.detectChanges();
+    expect(document.querySelector('[data-step-gets-instructions]')?.textContent).toContain(
+      'Be strict',
+    );
 
-    fixture.componentRef.setInput('node', node('code-review', { promptReplace: 'Only this' }));
+    fixture.componentRef.setInput(
+      'node',
+      node('code-review', { instructionsReplace: 'Only this' }),
+    );
     fixture.detectChanges();
     await wait(350);
     req = http.expectOne((r) => r.method === 'POST');
-    expect(req.request.body).toEqual({ promptReplace: 'Only this' });
+    expect(req.request.body).toEqual({ instructionsReplace: 'Only this' });
     req.flush(null, { status: 404, statusText: 'Not found' });
     expect(panel.stepView()).toBeNull();
     expect(panel.stepError()).toBeTruthy();
@@ -229,98 +250,155 @@ describe('NodePropertyPanelComponent (ADR 0054)', () => {
     expect(changed!.action?.config).toEqual({ message: 'raw' });
   });
 
-  it('edits the parameters of a step, showing a required one without a value (ADR 0058)', () => {
+  it('binds the parameters of a step: value, start or an earlier result (ADR 0058/0062)', () => {
     const { fixture, panel } = create(node('llm-task'));
     let changed: WorkflowNode | null = null;
     panel.nodeChange.subscribe((n) => (changed = n));
+    const bindings = () =>
+      fixture.debugElement.query(By.directive(StepParameterBindingsComponent))
+        .componentInstance as StepParameterBindingsComponent;
+    const apply = () => {
+      fixture.componentRef.setInput('node', changed!);
+      fixture.detectChanges();
+    };
 
     expect(panel.parameterFields().map((f) => [f.param.name, f.missing, f.inherited])).toEqual([
       ['task', true, null],
       ['tone', false, 'formal'],
     ]);
     expect(document.querySelector('[data-step-parameters]')?.textContent).toContain('Task');
+    // unbound: the default as placeholder
+    expect(bindings().placeholder(panel.parameterFields()[1])).toBe('Default: formal');
+    expect(bindings().errorOf(panel.parameterFields()[0])).toContain('Required');
 
-    panel.setParameter('task', 'Summarise the issue');
-    expect(changed!.task?.overrides?.parameters).toEqual({ task: 'Summarise the issue' });
-    fixture.componentRef.setInput('node', changed!);
-    fixture.detectChanges();
-    expect(panel.parameterFields()[0].missing).toBe(false);
-
-    panel.setParameter('task', null);
-    expect('parameters' in (changed!.task?.overrides ?? {})).toBe(false);
-  });
-
-  it('sets the directory, the session of the same agent and the questions of a coding step (ADR 0060)', () => {
-    const nodes: WorkflowNode[] = [
-      { ...node('implement', { agentKey: 'claude-code' }), id: 'spec', name: 'Write spec' },
-      { ...node('implement-oc'), id: 'oc', name: 'OpenCode step' },
-      { ...node('code-review'), id: 'answer', name: 'Answer' },
-      {
-        ...node('implement', { agentKey: 'claude-code', config: { push: true } }),
-        id: 'impl',
-        name: 'Implement',
-      },
-    ];
-    const { fixture, panel } = create(nodes[3]);
-    fixture.componentRef.setInput('nodes', nodes);
-    fixture.detectChanges();
-    let changed: WorkflowNode | null = null;
-    panel.nodeChange.subscribe((n) => (changed = n));
-    const section = () =>
-      fixture.debugElement.query(By.directive(StepAgentSectionComponent))
-        .componentInstance as StepAgentSectionComponent;
-    const apply = () => {
-      fixture.componentRef.setInput('node', changed!);
-      fixture.detectChanges();
-    };
-
-    expect(panel.runnerStep()).toBe(true);
-    expect(section().directory()).toBe('RUN');
-    expect(section().sessionMode()).toBe('OWN');
-    expect(panel.sessionCandidates()).toEqual([
-      { id: 'spec', name: 'Write spec', agent: 'Claude Code', blocked: null },
-      { id: 'oc', name: 'OpenCode step', agent: 'OpenCode', blocked: 'OTHER_AGENT' },
-    ]);
-    expect(section().optionLabel(panel.sessionCandidates()[1])).toContain('another agent');
-    expect(document.querySelector('[data-agent-session]')).not.toBeNull();
-    expect(document.querySelector('[data-step-directory]')).not.toBeNull();
-
-    section().setSessionMode('CONTINUE');
-    expect(section().sessionMode()).toBe('CONTINUE');
-    expect(section().sessionProblem()).toContain('Pick the step');
-    section().setContinue('spec');
-    expect(changed!.task?.overrides?.config).toEqual({
-      push: true,
-      session: 'CONTINUE',
-      continueSession: 'spec',
+    const [task, tone] = panel.parameterFields();
+    bindings().setValue(task, 'Summarise the issue');
+    expect(changed!.task?.overrides?.parameterBindings).toEqual({
+      task: { source: 'VALUE', value: 'Summarise the issue' },
     });
     apply();
-    expect(section().continued()).toBe('spec');
-    expect(section().sessionProblem()).toBeNull();
+    expect(panel.parameterFields()[0].missing).toBe(false);
+
+    bindings().setSource(panel.parameterFields()[0], 'START');
+    expect(changed!.task?.overrides?.parameterBindings).toEqual({ task: { source: 'START' } });
+    apply();
+    expect(bindings().sourceOf('task')).toBe('START');
+    expect(document.querySelector('[data-binding-start]')).not.toBeNull();
+
+    bindings().setSource(tone, 'ARTIFACT');
+    bindings().setArtifact(tone, ['spec']);
+    expect(changed!.task?.overrides?.parameterBindings).toEqual({
+      task: { source: 'START' },
+      tone: { source: 'ARTIFACT', artifact: 'spec' },
+    });
+    apply();
+    expect(bindings().artifactOf('tone')).toEqual(['spec']);
+    // a second pick replaces the first
+    bindings().setArtifact(tone, ['spec', 'plan']);
+    expect(changed!.task?.overrides?.parameterBindings?.['tone']).toEqual({
+      source: 'ARTIFACT',
+      artifact: 'plan',
+    });
+
+    bindings().setSource(panel.parameterFields()[0], 'VALUE');
+    apply();
+    bindings().setSource(panel.parameterFields()[1], 'VALUE');
+    expect('parameterBindings' in (changed!.task?.overrides ?? {})).toBe(false);
+  });
+
+  it('reads legacy step values and offers the artefacts of earlier steps (ADR 0062)', () => {
+    const nodes: WorkflowNode[] = [
+      { ...node('code-review'), id: 'spec', name: 'Spec' },
+      {
+        id: 'fetch',
+        kind: 'ACTION',
+        name: 'Fetch',
+        position: { x: 0, y: 0 },
+        action: { type: 'COMMENT_ISSUE', config: {} },
+      } as WorkflowNode,
+      { ...node('llm-task', { parameters: { task: 'Old value' } }), id: 'ask', name: 'Ask' },
+      { ...node('implement'), id: 'later', name: 'Later' },
+    ];
+    const { fixture, panel } = create(nodes[2]);
+    fixture.componentRef.setInput('nodes', nodes);
+    fixture.componentRef.setInput('edges', [
+      { id: 'e1', from: 'spec', fromPort: 'success', to: 'fetch' },
+      { id: 'e2', from: 'fetch', fromPort: 'success', to: 'ask' },
+      { id: 'e3', from: 'ask', fromPort: 'success', to: 'later' },
+    ]);
+    fixture.componentRef.setInput(
+      'templateProduces',
+      new Map([
+        ['code-review', ['review']],
+        ['implement', ['diff']],
+      ]),
+    );
+    fixture.componentRef.setInput('palette', {
+      ...palette,
+      actions: [{ ...palette.actions![0], produces: ['comment'] }],
+    });
+    fixture.detectChanges();
+
+    expect(panel.parameterFields()[0].value).toBe('Old value');
+    expect(panel.earlierArtifacts()).toEqual(['review', 'comment']);
+  });
+
+  it('edits the instructions of a step: append, replace collapsed, legacy read (ADR 0062)', () => {
+    const { fixture, panel } = create(
+      node('code-review', { systemPromptAppend: 'Old notes', modelProfileId: 'm1' }),
+    );
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+
+    expect(panel.instructions()).toEqual({ append: 'Old notes', replace: '' });
+    expect(panel.replaceOpen()).toBe(false);
+    expect(document.querySelector('#pp-sys')).toBeNull();
+    expect(document.querySelector('[name="promptAppend"]')).toBeNull();
+    expect(document.querySelector('#pp-instr-append')).not.toBeNull();
+    expect(document.querySelector('[data-step-instructions-replace]')).not.toBeNull();
+
+    panel.setInstructions({ append: 'Focus on security' });
+    expect(changed!.task?.overrides).toEqual({
+      modelProfileId: 'm1',
+      instructionsAppend: 'Focus on security',
+    });
+    panel.setInstructions({ replace: 'Only this' });
+    expect(changed!.task?.overrides).toEqual({
+      modelProfileId: 'm1',
+      instructionsAppend: 'Old notes',
+      instructionsReplace: 'Only this',
+    });
+
+    fixture.componentRef.setInput('node', node('code-review', { instructionsReplace: 'X' }));
+    fixture.detectChanges();
+    expect(panel.replaceOpen()).toBe(true);
+  });
+
+  it('keeps only the questions on an agent step: no directory or session (ADR 0062)', () => {
+    const { fixture, panel } = create(
+      node('implement', {
+        agentKey: 'claude-code',
+        config: { push: true, directory: 'SEPARATE', session: 'NEW' },
+      }),
+    );
+    let changed: WorkflowNode | null = null;
+    panel.nodeChange.subscribe((n) => (changed = n));
+    const section = fixture.debugElement.query(By.directive(StepAgentSectionComponent))
+      .componentInstance as StepAgentSectionComponent;
+
+    expect(panel.runnerStep()).toBe(true);
+    expect(document.querySelector('[data-agent-session]')).toBeNull();
+    expect(document.querySelector('[data-step-directory]')).toBeNull();
+    expect(document.querySelector('[data-step-questions]')).not.toBeNull();
+    // the ignored keys stay out of the form and are kept as they are
     expect(panel.formConfig()).toEqual({ push: true });
-
-    section().setContinue('oc');
-    apply();
-    expect(section().sessionProblem()).toContain('another agent');
-
-    section().setSessionMode('NEW');
-    expect(changed!.task?.overrides?.config).toEqual({ push: true, session: 'NEW' });
-    apply();
-
-    // a separate directory drops the session settings
-    section().setDirectory('SEPARATE');
-    expect(changed!.task?.overrides?.config).toEqual({ push: true, directory: 'SEPARATE' });
-    apply();
-    expect(section().sessionProblem()).toBeNull();
-
-    section().setQuestions({ allow: false });
+    section.setQuestions({ allow: false });
     expect(changed!.task?.overrides?.config).toEqual({
       push: true,
       directory: 'SEPARATE',
+      session: 'NEW',
       allowQuestions: false,
     });
-    apply();
-    expect(panel.formConfig()).toEqual({ push: true });
   });
 
   it('offers only the questions to a model answer step (ADR 0060)', () => {

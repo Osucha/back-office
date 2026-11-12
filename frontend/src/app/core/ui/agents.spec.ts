@@ -35,11 +35,13 @@ describe('agent and action labels (ADR 0056)', () => {
 
   it('names the access of a coding agent (ADR 0060)', () => {
     expect(agentAccessText(undefined)).toBe('Full');
-    expect(agentAccessText({ mode: 'READ_ONLY' })).toBe('Read only');
-    expect(agentAccessText({ mode: 'PATHS', paths: ['docs/**', 'README.md'] })).toBe(
-      'Only docs/**, README.md',
+    expect(agentAccessText({ directory: 'RUN', mode: 'READ_ONLY' })).toBe('Read only');
+    expect(
+      agentAccessText({ directory: 'RUN', mode: 'PATHS', paths: ['docs/**', 'README.md'] }),
+    ).toBe('Only docs/**, README.md');
+    expect(agentAccessText({ directory: 'RUN', mode: 'PATHS', paths: [] })).toBe(
+      'Only these paths',
     );
-    expect(agentAccessText({ mode: 'PATHS', paths: [] })).toBe('Only these paths');
   });
 
   it('derives the kind of worker a config needs (ADR 0061)', () => {

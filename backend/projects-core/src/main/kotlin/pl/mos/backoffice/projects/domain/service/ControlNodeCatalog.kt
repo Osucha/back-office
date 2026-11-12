@@ -157,21 +157,10 @@ object ControlNodeCatalog {
     private const val APPROVAL_FIELD = "approval"
 
     /**
-     * ADR 0060: the directory and the agent session of a coding step, and prepare-only. `x-editor: directory` tells the
-     * designer to render its directory section instead of generic fields.
+     * ADR 0060: prepare-only (ADR 0062: the directory and the session are the agent's). `x-editor: directory` tells the
+     * designer to render it in its directory section instead of as a generic field.
      */
     private fun directorySettings(): Map<String, Any?> = mapOf(
-        RunDirectory.DIRECTORY to enum(
-            "RUN: the run directory the coding steps of a run share (what earlier steps left, uncommitted work included). " +
-                "SEPARATE: a fresh directory with only this step's repositories, thrown away after the step (no session continuation)",
-            RunDirectory.Directory.entries.map { it.name }, RunDirectory.Directory.RUN.name,
-        ) + DIRECTORY_EDITOR,
-        RunDirectory.SESSION to enum(
-            "OWN: repeated executions of this step (rework loops) continue its own agent session. NEW: every execution starts fresh. " +
-                "CONTINUE: share the session of the step in continueSession (same agent)",
-            RunDirectory.Session.entries.map { it.name }, RunDirectory.Session.OWN.name,
-        ) + DIRECTORY_EDITOR,
-        RunDirectory.CONTINUE_SESSION to (string("Node id of the earlier coding step whose agent session this step continues (session CONTINUE; same agent)") + DIRECTORY_EDITOR),
         RunDirectory.PREPARE_ONLY to (boolean("Only prepare the run directory: clone and run its setup, no agent, no push", false) + DIRECTORY_EDITOR),
     )
 

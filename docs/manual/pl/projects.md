@@ -111,8 +111,8 @@ językowymi: pisanie, analizy, tłumaczenia, przeglądy dokumentów. Utwórz pro
 **Repozytoria**. Dostanie on workflow startowy **LLM task with review**:
 
 1. **Start** → **Zadanie LLM** (szablon `llm-task`): opisz, co model ma zrobić, w parametrze
-   **Task** węzła (w sekcji **Parametry**; puste oznacza zadanie domyślne: podsumuj materiał wejściowy). Dana wejściowa **Materiał wejściowy** (**Input
-   material**) trafia do modelu jako materiał (dane, nie polecenia).
+   **Task** węzła (w sekcji **Parametry**; puste oznacza zadanie domyślne: podsumuj materiał wejściowy). Parametr **Materiał wejściowy** (**Input
+   material**), o który węzeł pyta przy starcie, trafia do modelu jako materiał (dane, nie polecenia).
 2. → **Result ok?** (bramka): **approve** kończy uruchomienie sukcesem, **revise** odsyła Twój komentarz do
    zadania, **reject** kończy uruchomienie porażką.
 
@@ -297,8 +297,10 @@ Usunięcie projektu usuwa jego połączenia.
 ## Polityka sandboxa
 
 Agenci programistyczni działają w sandboxie, którego limity ustawia się warstwami: platforma, pula
-runnerów, projekt, a następnie szablon zadania i węzeł workflowu. Każda warstwa może jedynie zawęzić to,
-na co pozwalają warstwy wyżej. Karta **Sandbox** ustawia warstwę projektu i pokazuje wynik. Szczegóły:
+runnerów, projekt. Każda warstwa może jedynie zawęzić to, na co pozwalają warstwy wyżej. Karta **Sandbox**
+ustawia warstwę projektu i pokazuje wynik. Szablony i kroki workflowu nie mają ustawień sandboxa (ADR 0062):
+sandbox jest cechą projektu, więc każde zadanie projektu dostaje te same limity (limit czasu kroku może zadanie
+tylko skrócić). Szczegóły:
 [Jak działają zadania agentów](agent-execution.md#isolation-levels) i [Flota runnerów](runner-fleet.md#sandbox-policies).
 
 | Sekcja | Co ustawiasz |

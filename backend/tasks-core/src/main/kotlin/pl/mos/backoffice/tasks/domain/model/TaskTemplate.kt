@@ -2,32 +2,22 @@ package pl.mos.backoffice.tasks.domain.model
 
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import java.time.Instant
 
-/** How a template's prompt combines with its parent's: appended after a blank line, or replacing it. */
-enum class PromptMode { APPEND, REPLACE }
-
-/** System and user prompt fragments of a template. `mode` applies to both fields, per field only when the field is set. */
-data class Prompt(
-    val system: String? = null,
-    val user: String? = null,
-    val mode: PromptMode = PromptMode.APPEND,
-) {
-    companion object {
-        val EMPTY = Prompt()
-    }
-}
+/** ADR 0062: how a template's instructions combine with its parent's: appended after a blank line, or replacing them. */
+enum class InstructionsMode { APPEND, REPLACE }
 
 /**
- * A task definition ("class"): what an agent does and how it is prompted. Templates form single-parent
- * inheritance chains through [extendsKey] and are merged by the `TaskResolver` into a `ResolvedTask`. Structural
- * rules that need other templates or agents are checked by `TemplateValidator`; this class only guards its
- * own invariants. ADR 0055: [category] groups templates (inherited, child wins). ADR 0057: rules and skills are the
- * agent's, not the template's. ADR 0061: the template is only the work; the step chooses the agent and the model. ADR 0058: [parameters] the prompts read as `{{params.<name>}}` (inherited, child wins by
- * name) and [parameterValues] for parameters of the lineage (a preset).
+ * A task definition ("class"): the work an agent does. Templates form single-parent inheritance chains through
+ * [extendsKey] and are merged by the `TaskResolver` into a `ResolvedTask`. Structural rules that need other templates or
+ * agents are checked by `TemplateValidator`; this class only guards its own invariants. ADR 0055: [category] groups
+ * templates (inherited, child wins). ADR 0057: rules and skills are the agent's, not the template's. ADR 0061: the
+ * template is only the work; the step chooses the agent and the model. ADR 0058: [parameters] the instructions read as
+ * `{{params.<name>}}` (inherited, child wins by name) and [parameterValues] for parameters of the lineage (a preset).
+ * ADR 0062: one [instructions] text (what to do and the acceptance criteria) combined with the parent's by
+ * [instructionsMode]; the platform adds the standard data sections; no run inputs (a step binds parameters `START`).
  */
 data class TaskTemplate(
     val id: TaskTemplateId,
@@ -38,15 +28,14 @@ data class TaskTemplate(
     val extendsKey: String?,
     val category: TemplateCategory?,
     val scope: Scope,
-    val prompt: Prompt,
+    val instructions: String?,
+    val instructionsMode: InstructionsMode,
     val config: Map<String, Any?>,
     val outputSchema: String?,
     val confidenceField: String?,
     val produces: List<String>,
     val consumes: List<String>,
     val tags: List<String>,
-    /** Run start form fields this task asks for (ADR 0053); merged child-wins by name over the lineage. */
-    val runInputs: List<RunInputField>,
     val builtIn: Boolean,
     val version: Int,
     val createdAt: Instant,
@@ -64,6 +53,9 @@ data class TaskTemplate(
         Keys.require(key)
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
         if (version < 1) throw ValidationException("must be positive", "version")
+        if ((instructions?.length ?: 0) > MAX_INSTRUCTIONS_LENGTH) {
+            throw ValidationException("is longer than $MAX_INSTRUCTIONS_LENGTH characters", "instructions")
+        }
     }
 
     /**
@@ -78,14 +70,14 @@ data class TaskTemplate(
         val extendsKey: String? = null,
         val category: TemplateCategory? = null,
         val scope: Scope = Scope.Global,
-        val prompt: Prompt = Prompt.EMPTY,
+        val instructions: String? = null,
+        val instructionsMode: InstructionsMode = InstructionsMode.APPEND,
         val config: Map<String, Any?> = emptyMap(),
         val outputSchema: String? = null,
         val confidenceField: String? = null,
         val produces: List<String> = emptyList(),
         val consumes: List<String> = emptyList(),
         val tags: List<String> = emptyList(),
-        val runInputs: List<RunInputField> = emptyList(),
         val parameters: List<TemplateParameter> = emptyList(),
         val parameterValues: Map<String, Any?> = emptyMap(),
         val requiresSkills: List<String> = emptyList(),
@@ -93,8 +85,8 @@ data class TaskTemplate(
 
     val content: Content
         get() = Content(
-            key, name, description, abstract, extendsKey, category, scope, prompt,
-            config, outputSchema, confidenceField, produces, consumes, tags, runInputs, parameters, parameterValues, requiresSkills,
+            key, name, description, abstract, extendsKey, category, scope, instructions, instructionsMode,
+            config, outputSchema, confidenceField, produces, consumes, tags, parameters, parameterValues, requiresSkills,
         )
 
     /** Replaces the editable content and bumps [version]; a null key keeps the current one. */
@@ -102,6 +94,9 @@ data class TaskTemplate(
         from(content.copy(key = content.key ?: key), id, builtIn, version + 1, createdAt, now, actor)
 
     companion object {
+        /** Bounds what every step of the template carries in its message. */
+        const val MAX_INSTRUCTIONS_LENGTH = 100_000
+
         fun create(content: Content, now: Instant, builtIn: Boolean = false, actor: Actor? = null): TaskTemplate =
             from(content, TaskTemplateId.new(), builtIn, 1, now, now, actor)
 
@@ -114,14 +109,14 @@ data class TaskTemplate(
             extendsKey = c.extendsKey?.takeIf { it.isNotBlank() },
             category = c.category,
             scope = c.scope,
-            prompt = c.prompt,
+            instructions = c.instructions?.takeIf { it.isNotBlank() },
+            instructionsMode = c.instructionsMode,
             config = c.config,
             outputSchema = c.outputSchema?.takeIf { it.isNotBlank() },
             confidenceField = c.confidenceField?.takeIf { it.isNotBlank() },
             produces = c.produces.distinct(),
             consumes = c.consumes.distinct(),
             tags = c.tags.distinct(),
-            runInputs = c.runInputs,
             builtIn = builtIn,
             version = version,
             createdAt = createdAt,

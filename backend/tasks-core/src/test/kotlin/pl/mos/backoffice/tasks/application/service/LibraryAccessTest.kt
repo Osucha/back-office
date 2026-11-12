@@ -10,7 +10,7 @@ import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.domain.model.Rule
-import pl.mos.backoffice.tasks.domain.model.Prompt
+
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
@@ -94,17 +94,17 @@ class LibraryAccessTest {
     fun `template changes are audited with a field diff and no entry when nothing changed`() {
         val gate = FakeAuthorizationGate.permitting("library.manage")
         lib.skill("s1")
-        val created = templates(gate).create(content("audited").copy(prompt = Prompt(system = "12345")))
-        val updated = templates(gate).update(created.id, created.content.copy(prompt = Prompt(system = "1234567"), parameters = listOf(pl.mos.backoffice.shared.tasks.TemplateParameter("s1", "S1")), extendsKey = null))
+        val created = templates(gate).create(content("audited").copy(instructions = "12345"))
+        val updated = templates(gate).update(created.id, created.content.copy(instructions = "1234567", parameters = listOf(pl.mos.backoffice.shared.tasks.TemplateParameter("s1", "S1")), extendsKey = null))
         templates(gate).update(updated.id, updated.content)
 
         assertThat(audit.operations()).containsExactly("TEMPLATE_CREATE", "TEMPLATE_UPDATE")
         val create = audit.entries[0]
         assertThat(create.entityType).isEqualTo("TaskTemplate")
         assertThat(create.entityId).isEqualTo(created.id.toString())
-        assertThat(create.details).containsEntry("key", "audited").containsEntry("systemPromptLength", 5)
+        assertThat(create.details).containsEntry("key", "audited").containsEntry("instructionsLength", 5)
         val diff = audit.entries[1].details
-        assertThat(diff["systemPromptLength"]).isEqualTo(mapOf("old" to 5, "new" to 7))
+        assertThat(diff["instructionsLength"]).isEqualTo(mapOf("old" to 5, "new" to 7))
         assertThat(diff["parameters"]).isEqualTo(mapOf("old" to emptyList<String>(), "new" to listOf("s1:TEXT:false")))
         assertThat(diff).doesNotContainKeys("name", "extendsKey", "category").containsEntry("version", 2)
     }

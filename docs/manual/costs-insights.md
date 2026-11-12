@@ -80,7 +80,7 @@ model gateway, workflow steps, reviews and benchmarks.
 |---|---|---|
 | Platform | **Administration** → **Platform settings**, **Platform budget** | `admin.settings.manage` |
 | Project | Project tab **Budget** | `project.manage` (project **Owner**, **Maintainer**) |
-| Per agent job | **Max cost (USD)** and **Max tokens** in a sandbox policy | project, task template |
+| Per agent job | **Max cost (USD)** and **Max tokens** in the project's sandbox policy (project tab **Sandbox**) | `project.manage` (project **Owner**, **Maintainer**) |
 
 The platform budget is a ceiling over every project; project budgets apply inside it, and the stricter
 one stops agents first.

@@ -61,7 +61,8 @@ All calls use HTTP Basic authentication with the connection's account e-mail and
 to the site URL (`https://acme.atlassian.net`); a scoped token to the Atlassian API gateway
 `https://api.atlassian.com/ex/jira/<cloud id>` ([scoped tokens](#jira-scoped-token)). Links to issues always use
 the site URL. (Code: `projects-adapters/.../adapter/out/jira/JiraIssueTracker.kt`.) The issue key of a run comes
-from the run input (**Start run** with an issue key, the MCP tool `start_workflow`, a CI variable) or from the
+from the run input (**Start run** with an issue key, which is the **Jira issue key** field of **Fetch issue** or a
+**Jira issue key** parameter a step asks at start; the MCP tool `start_workflow`; a CI variable) or from the
 intake watcher.
 
 **Limits**

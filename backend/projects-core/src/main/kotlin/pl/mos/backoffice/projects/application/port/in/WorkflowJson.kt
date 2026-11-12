@@ -25,6 +25,8 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.tasks.ParameterBinding
+import pl.mos.backoffice.shared.tasks.ParameterBindingSource
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.util.UUID
 
@@ -39,23 +41,39 @@ import java.util.UUID
  * ADR 0060 compatibility on read: the step config key `workspace` (ADR 0044 run workspaces) is dropped, every coding step
  * works in the run directory; `addSkills` / `removeSkills` are ignored. A legacy `sessionRole` stays in the config and is
  * read when the run plans the step (RunDirectory): steps sharing it keep sharing their session.
+ * ADR 0062 compatibility on read (V308 rewrote the stored steps; library imports and MCP clients may still send them):
+ * `systemPromptAppend` / `promptAppend` read as `instructionsAppend`, `promptReplace` as `instructionsReplace`, step
+ * `parameters` as VALUE `parameterBindings`; the config keys `session`, `continueSession` and `directory` are dropped.
+ * Only the current fields are written.
  */
 
 data class PointJson(val x: Double = 0.0, val y: Double = 0.0)
 data class CanvasJson(val zoom: Double = 1.0, val x: Double = 0.0, val y: Double = 0.0)
+/** ADR 0062: `ParameterBinding` (VALUE, START or ARTIFACT). */
+data class ParameterBindingJson(val source: String = "", val value: Any? = null, val artifact: String? = null)
+
 data class TaskOverridesJson(
     val agentKey: String? = null,
     val modelProfileId: UUID? = null,
+    /** ADR 0062: notes after the template's instructions. */
+    val instructionsAppend: String? = null,
+    /** ADR 0062: replaces the template's instructions. */
+    val instructionsReplace: String? = null,
+    val config: Map<String, Any?> = emptyMap(),
+    /** ADR 0062: per parameter, where its value comes from; null = none. */
+    val parameterBindings: Map<String, ParameterBindingJson>? = null,
+    /** ADR 0062: read as [instructionsAppend], never written. */
     val systemPromptAppend: String? = null,
+    /** ADR 0062: read as [instructionsAppend], never written. */
     val promptAppend: String? = null,
+    /** ADR 0062: read as [instructionsReplace], never written. */
     val promptReplace: String? = null,
+    /** ADR 0058 step values; ADR 0062: read as VALUE bindings, never written. */
+    val parameters: Map<String, Any?>? = null,
     /** ADR 0060: removed (the environment is the agent's); read and ignored, never written. */
     val addSkills: List<String>? = null,
     /** ADR 0060: removed; read and ignored, never written. */
     val removeSkills: List<String>? = null,
-    val config: Map<String, Any?> = emptyMap(),
-    /** ADR 0058: the step's parameter values; absent in workflows stored before it. */
-    val parameters: Map<String, Any?> = emptyMap(),
 )
 data class TaskSectionJson(val templateKey: String = "", val overrides: TaskOverridesJson = TaskOverridesJson())
 /** ADR 0056: the `action` section of an ACTION node. */
@@ -185,22 +203,43 @@ object WorkflowJson {
         note = (n as? WorkflowNode.Note)?.let { NoteSectionJson(it.note.text) },
     )
 
-    /** The step's overrides; a legacy config key `agent` naming a harness becomes [TaskOverrides.agentKey] unless one is set. */
+    /**
+     * The step's overrides; a legacy config key `agent` naming a harness becomes [TaskOverrides.agentKey] unless one is
+     * set. ADR 0062 compatibility: `systemPromptAppend` / `promptAppend` read as the append, `promptReplace` as the
+     * replacement, `parameters` values as VALUE bindings; the config keys `session`, `continueSession` and `directory` are
+     * dropped (they are the agent's now).
+     */
     fun toDomain(o: TaskOverridesJson): TaskOverrides {
         val legacy = legacyAgentKey(o.config)
+        val bindings = o.parameterBindings.orEmpty().mapValues { (name, b) -> toDomain(name, b) }
         return TaskOverrides(
             agentKey = o.agentKey?.trim()?.takeIf { it.isNotEmpty() } ?: legacy,
             modelProfileId = o.modelProfileId?.let(::ModelProfileId),
-            systemPromptAppend = o.systemPromptAppend?.takeIf { it.isNotBlank() },
-            promptAppend = o.promptAppend?.takeIf { it.isNotBlank() },
-            promptReplace = o.promptReplace?.takeIf { it.isNotBlank() },
-            config = (if (legacy != null) o.config - LEGACY_AGENT_KEY else o.config) - LEGACY_WORKSPACE_KEY,
-            parameters = o.parameters,
+            instructionsAppend = TaskOverrides.joinedAppend(o.instructionsAppend, o.systemPromptAppend, o.promptAppend),
+            instructionsReplace = o.instructionsReplace?.takeIf { it.isNotBlank() } ?: o.promptReplace?.takeIf { it.isNotBlank() },
+            config = (if (legacy != null) o.config - LEGACY_AGENT_KEY else o.config) - LEGACY_WORKSPACE_KEY - LEGACY_AGENT_STEP_KEYS,
+            parameterBindings = TaskOverrides.withLegacyValues(bindings, o.parameters),
         )
     }
 
+    /** ADR 0062: one binding; an unknown source is a validation error. */
+    private fun toDomain(name: String, b: ParameterBindingJson): ParameterBinding {
+        val source = ParameterBindingSource.entries.firstOrNull { it.name.equals(b.source.trim(), ignoreCase = true) }
+            ?: throw ValidationException("must be one of ${ParameterBindingSource.entries.joinToString()}", "task.overrides.parameterBindings.$name.source")
+        return when (source) {
+            ParameterBindingSource.VALUE -> ParameterBinding.value(b.value)
+            ParameterBindingSource.START -> ParameterBinding.START
+            ParameterBindingSource.ARTIFACT -> ParameterBinding(source, artifact = b.artifact?.trim()?.takeIf { it.isNotEmpty() })
+        }
+    }
+
     fun toJson(o: TaskOverrides) = TaskOverridesJson(
-        o.agentKey, o.modelProfileId?.value, o.systemPromptAppend, o.promptAppend, o.promptReplace, config = o.config, parameters = o.parameters,
+        agentKey = o.agentKey,
+        modelProfileId = o.modelProfileId?.value,
+        instructionsAppend = o.instructionsAppend,
+        instructionsReplace = o.instructionsReplace,
+        config = o.config,
+        parameterBindings = o.parameterBindings.takeIf { it.isNotEmpty() }?.mapValues { (_, b) -> ParameterBindingJson(b.source.name, b.value, b.artifact) },
     )
 
     /** The former config key that chose the coding agent harness of a step. */
@@ -209,15 +248,19 @@ object WorkflowJson {
     /** ADR 0044 run workspace of a step; ADR 0060: dropped, the run directory replaces it. */
     const val LEGACY_WORKSPACE_KEY = "workspace"
 
+    /** ADR 0060 step keys that ADR 0062 moved to the agent (`Agent.session`, `Agent.access.directory`); dropped on read. */
+    val LEGACY_AGENT_STEP_KEYS = setOf("session", "continueSession", "directory")
+
     private fun legacyAgentKey(config: Map<String, Any?>): String? =
         (config[LEGACY_AGENT_KEY] as? String)?.let { value -> AgentHarness.entries.firstOrNull { it.name == value } }?.let { AgentSnapshot.keyOf(it) }
 
     /**
      * ADR 0056: a step of a former action template as its action: the step's config (the template defaults apply at run
-     * time) and, for a comment, the step's `promptReplace` as the message when the config has none.
+     * time) and, for a comment, the step's replacement text (`instructionsReplace`, formerly `promptReplace`) as the
+     * message when the config has none.
      */
     private fun formerActionTemplate(type: ActionType, overrides: TaskOverridesJson): ActionBinding {
-        val message = overrides.promptReplace?.takeIf { it.isNotBlank() }
+        val message = overrides.instructionsReplace?.takeIf { it.isNotBlank() } ?: overrides.promptReplace?.takeIf { it.isNotBlank() }
         val config = if (type == ActionType.COMMENT_ISSUE && message != null && overrides.config[ActionCatalog.MESSAGE_TEMPLATE] == null) {
             overrides.config + (ActionCatalog.MESSAGE_TEMPLATE to message)
         } else {

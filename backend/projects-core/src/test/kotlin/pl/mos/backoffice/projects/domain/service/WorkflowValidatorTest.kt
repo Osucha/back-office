@@ -19,8 +19,9 @@ import pl.mos.backoffice.projects.domain.model.Trigger
 import pl.mos.backoffice.projects.domain.model.TriggerType
 import pl.mos.backoffice.projects.domain.model.WorkflowEdge
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
-import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.tasks.ParameterBinding
+import pl.mos.backoffice.shared.tasks.TemplateParameter
+import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 
 class WorkflowValidatorTest {
@@ -81,7 +82,8 @@ class WorkflowValidatorTest {
         assertThat(step.task.templateKey).isEqualTo("agent-task")
         assertThat(step.task.overrides.agentKey).isEqualTo("claude-code")
         assertThat(step.task.overrides.config).containsEntry("push", true).containsEntry("mergeRequest", true)
-        assertThat(step.task.overrides.parameters["task"].toString()).contains("end to end").contains("tests")
+        assertThat(step.task.overrides.parameterBindings.getValue("task").value.toString()).contains("end to end").contains("tests")
+        assertThat(step.task.overrides.parameterBindings["input"]).describedAs("ADR 0062: the start form asks for the input material").isEqualTo(ParameterBinding.START)
         val gate = reference.nodes.filterIsInstance<WorkflowNode.HumanGate>().single()
         assertThat(gate.gate.approvers.forbidSelfApproval).isTrue()
         assertThat(reference.edges.filter { it.from == gate.id }.map { it.fromPort to it.to })
@@ -308,16 +310,21 @@ class WorkflowValidatorTest {
         assertThat(WorkflowValidator.expressionRoots("review.verdict != 'REQUEST_CHANGES'")).containsExactly("review")
     }
 
-    // ---- run inputs (ADR 0053)
+    // ---- run inputs (ADR 0053; ADR 0062: the parameters a step binds START)
 
-    private val issueField = RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true)
+    /** A step of [key] that binds every parameter of its template START. */
+    private fun bound(id: String, key: String) = WorkflowNode.Task(
+        id, id, task = TaskBinding(key, TaskOverrides(parameterBindings = inputs.lookup(key)!!.parameters.associate { it.name to ParameterBinding.START })),
+    )
+
+    private val issueField = TemplateParameter("issueKey", "Jira issue", TemplateParameterType.ISSUE_KEY, required = true)
     private val inputs = TaskPortsProvider { key ->
         when (key) {
-            "fetch-issue" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(issueField))
-            "fetch-from-param" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(issueField), issueKeyFrom = "story")
-            "story-writer" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(RunInputField("story", "Story key", RunInputType.ISSUE_KEY)))
-            "notes" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(RunInputField("input", "Notes", RunInputType.MULTILINE)))
-            "material" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, runInputs = listOf(RunInputField("input", "Input material", RunInputType.MULTILINE)))
+            "fetch-issue" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, parameters = listOf(issueField))
+            "fetch-from-param" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, parameters = listOf(issueField), issueKeyFrom = "story")
+            "story-writer" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, parameters = listOf(TemplateParameter("story", "Story key", TemplateParameterType.ISSUE_KEY)))
+            "notes" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, parameters = listOf(TemplateParameter("input", "Notes", TemplateParameterType.MULTILINE)))
+            "material" -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS, parameters = listOf(TemplateParameter("input", "Input material", TemplateParameterType.MULTILINE)))
             else -> TaskTemplateInfo(WorkflowNode.DEFAULT_TASK_PORTS)
         }
     }
@@ -343,20 +350,20 @@ class WorkflowValidatorTest {
 
     @Test
     fun `issueKeyFrom input, a declared parameter or the template default declared elsewhere do not warn`() {
-        val (plain, plainEdges) = chain(task("fetch", "fetch-issue"))
+        val (plain, plainEdges) = chain(bound("fetch", "fetch-issue"))
         assertThat(validator.validate("wf", plain, plainEdges, inputs).warnings.filter { it.field == "task.config.issueKeyFrom" }).isEmpty()
 
-        val (declared, declaredEdges) = chain(task("write", "story-writer"), task("fetch", "fetch-from-param"))
+        val (declared, declaredEdges) = chain(bound("write", "story-writer"), bound("fetch", "fetch-from-param"))
         assertThat(validator.validate("wf", declared, declaredEdges, inputs).warnings.filter { it.field == "task.config.issueKeyFrom" }).isEmpty()
 
-        val (undeclared, undeclaredEdges) = chain(task("fetch", "fetch-from-param"))
+        val (undeclared, undeclaredEdges) = chain(bound("fetch", "fetch-from-param"))
         assertThat(validator.validate("wf", undeclared, undeclaredEdges, inputs).warnings.map { it.nodeId to it.field })
             .contains("fetch" to "task.config.issueKeyFrom")
     }
 
     @Test
     fun `two tasks declaring the same run input with different labels is a warning naming both`() {
-        val (nodes, edges) = chain(task("a", "material"), task("b", "notes"), task("c", "material"))
+        val (nodes, edges) = chain(bound("a", "material"), bound("b", "notes"), bound("c", "material"))
 
         val result = validator.validate("wf", nodes, edges, inputs)
 
@@ -364,5 +371,12 @@ class WorkflowValidatorTest {
         val warning = result.warnings.single { it.field == "runInputs.input" }
         assertThat(warning.nodeId).isEqualTo("b")
         assertThat(warning.message).contains("Input material").contains("Notes").contains("first label wins")
+    }
+
+    @Test
+    fun `ADR 0062 - a parameter the step does not bind START is no start field`() {
+        val (nodes, edges) = chain(bound("a", "material"), task("b", "notes"))
+
+        assertThat(validator.validate("wf", nodes, edges, inputs).warnings.filter { it.field == "runInputs.input" }).isEmpty()
     }
 }

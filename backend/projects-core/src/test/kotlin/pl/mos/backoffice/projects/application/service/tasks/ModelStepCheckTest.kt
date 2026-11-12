@@ -26,7 +26,6 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import pl.mos.backoffice.shared.usage.Pricing
 import java.util.UUID
@@ -49,7 +48,7 @@ class ModelStepCheckTest {
                 else -> TestAgents.MODEL_ANSWER
             }
             return ResolvedTask(
-                key, key, executor, overrides.modelProfileId ?: executor.modelProfileId, TaskPrompt(null, null), emptyList(),
+                key, key, executor, overrides.modelProfileId ?: executor.modelProfileId, null, emptyList(),
                 overrides.config, null, null, if (key == "code-review") listOf("review") else emptyList(), emptyList(), null, listOf(key),
                 WorkflowNode.DEFAULT_TASK_PORTS,
             )

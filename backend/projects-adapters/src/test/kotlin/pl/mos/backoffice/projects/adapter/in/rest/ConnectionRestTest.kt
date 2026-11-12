@@ -31,7 +31,6 @@ import pl.mos.backoffice.projects.adapter.ProjectsTestApplication
 import pl.mos.backoffice.projects.adapter.ProjectsTestBeans
 import pl.mos.backoffice.projects.domain.model.JiraPermission
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get as httpGet

@@ -5,14 +5,13 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.application.service.ModelResolver.Companion.producesReview
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 
 /** ADR 0055: a review step (for the project's review model) is one that produces a review or is in the REVIEW category. */
 class ModelResolverReviewTest {
 
     private fun task(produces: List<String> = emptyList(), category: TemplateCategory? = null) = ResolvedTask(
-        key = "t", name = "t", agent = TestAgents.MODEL_ANSWER, modelProfileId = null, prompt = TaskPrompt(null, null), skills = emptyList(),
+        key = "t", name = "t", agent = TestAgents.MODEL_ANSWER, modelProfileId = null, instructions = null, skills = emptyList(),
         config = emptyMap(), outputSchema = null, confidenceField = null, produces = produces, consumes = emptyList(), category = category,
         lineage = listOf("t"), ports = listOf("success", "failure"),
     )

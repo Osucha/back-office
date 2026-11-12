@@ -22,12 +22,12 @@ describe('TaskLibraryApi (ADR 0054)', () => {
   it('resolveStep() posts the overrides of a step', () => {
     let key = '';
     api
-      .resolveStep('code-review', { promptAppend: 'Be strict' }, 'p1')
+      .resolveStep('code-review', { instructionsAppend: 'Be strict' }, 'p1')
       .subscribe((r) => (key = r.key ?? ''));
     const req = http.expectOne((r) => r.url === '/api/v1/task-templates/resolve/code-review');
     expect(req.request.method).toBe('POST');
     expect(req.request.params.get('projectId')).toBe('p1');
-    expect(req.request.body).toEqual({ promptAppend: 'Be strict' });
+    expect(req.request.body).toEqual({ instructionsAppend: 'Be strict' });
     expect(req.request.context.get(SKIP_ERROR_TOAST)).toBe(true);
     req.flush({ key: 'code-review' } satisfies ResolvedTask);
     expect(key).toBe('code-review');
@@ -65,6 +65,7 @@ describe('TaskLibraryApi (ADR 0054)', () => {
 
   it('agents: list with a project, create, update and delete (ADR 0056)', () => {
     const input: AgentInput = {
+      session: 'PER_STEP',
       name: 'Cheap coder',
       scope: { type: 'GLOBAL' },
       harness: 'OPENCODE',

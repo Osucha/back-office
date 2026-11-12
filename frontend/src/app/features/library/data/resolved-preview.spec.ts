@@ -16,7 +16,7 @@ describe('toPreview', () => {
       key: 'code-review',
       agent: { key: 'model-answer', name: 'Model answer', harness: null },
       lineage: ['base-agent', 'code-review'],
-      prompt: { system: 'sys', user: 'usr' },
+      instructions: 'Review the diff.',
       skills: [{ key: 'a', name: 'A' }, { key: 'b' }],
       category: 'REVIEW',
       rules: [
@@ -35,7 +35,7 @@ describe('toPreview', () => {
     };
     const p = toPreview(r)!;
     expect(p.lineage).toEqual(['base-agent', 'code-review']);
-    expect(p.systemPrompt).toBe('sys');
+    expect(p.instructions).toBe('Review the diff.');
     expect(p.skills).toEqual([
       { key: 'a', name: 'A' },
       { key: 'b', name: 'b' },
@@ -113,12 +113,18 @@ describe('toTemplateInput', () => {
       scope: { type: 'GLOBAL' },
       builtIn: true,
       version: 3,
-      prompt: { user: 'u', mode: 'REPLACE' },
+      instructions: 'u',
+      instructionsMode: 'REPLACE',
     };
     const input = toTemplateInput(t as TaskTemplate & Record<string, unknown>);
     expect('id' in input).toBe(false);
     expect('builtIn' in input).toBe(false);
-    expect(input.prompt).toEqual({ system: '', user: 'u', mode: 'REPLACE' });
+    expect(input.instructions).toBe('u');
+    expect(input.instructionsMode).toBe('REPLACE');
+    // ADR 0062: no run inputs and no sandbox policy on templates
+    expect('runInputs' in input).toBe(false);
+    expect('sandboxPolicy' in input).toBe(false);
+    expect('prompt' in input).toBe(false);
     expect(input.parameters).toEqual([]);
     expect(input.parameterValues).toEqual({});
     expect(input.requiresSkills).toEqual([]);

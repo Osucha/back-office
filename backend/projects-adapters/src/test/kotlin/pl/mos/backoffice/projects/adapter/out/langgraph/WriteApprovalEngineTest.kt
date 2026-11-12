@@ -51,7 +51,6 @@ import pl.mos.backoffice.projects.domain.model.ArtifactId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.projects.adapter.ConcurrentRecordingAuditPort
 import java.util.UUID
 

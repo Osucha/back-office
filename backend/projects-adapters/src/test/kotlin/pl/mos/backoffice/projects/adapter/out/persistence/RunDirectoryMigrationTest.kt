@@ -10,6 +10,7 @@ import pl.mos.backoffice.projects.application.port.`in`.WorkflowJson
 import pl.mos.backoffice.projects.application.port.`in`.WorkflowNodeJson
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.service.RunDirectory
+import pl.mos.backoffice.shared.testing.TestAgents
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 import java.sql.Connection
@@ -143,8 +144,8 @@ class RunDirectoryMigrationTest {
             val (changeSetup, changeNodes) = read(bo.getValue("change"))
             assertThat(changeSetup).isNull()
             assertThat(config(changeNodes, "implement")).doesNotContainKeys("workspace", "repositories")
-            assertThat(RunDirectory.sessionRole("implement", config(changeNodes, "implement"), changeNodes)).isEqualTo("implementer")
-            assertThat(RunDirectory.sessionRole("advise", config(changeNodes, "advise"), changeNodes)).isEqualTo("advisor")
+            assertThat(RunDirectory.sessionRole("implement", RunDirectory.of(config(changeNodes, "implement"), TestAgents.OPENCODE, runnerStep = true), "opencode")).isEqualTo("implementer")
+            assertThat(RunDirectory.sessionRole("advise", RunDirectory.of(config(changeNodes, "advise"), TestAgents.OPENCODE, runnerStep = true), "opencode")).isEqualTo("advisor")
 
             // a workspace with a setup command and several sources
             val (setup, nodes) = read(multi)

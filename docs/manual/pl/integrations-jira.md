@@ -65,7 +65,9 @@ klasyczny jest wysyłany do URL-a witryny (`https://acme.atlassian.net`), token 
 `https://api.atlassian.com/ex/jira/<identyfikator chmury>` ([tokeny z zakresami](#jira-scoped-token)). Linki do
 zgłoszeń zawsze używają URL-a witryny (kod: `projects-adapters/.../adapter/out/jira/JiraIssueTracker.kt`). Klucz zgłoszenia
 uruchomienia pochodzi z danych wejściowych (**Rozpocznij uruchomienie** (**Start run**) z kluczem
-zgłoszenia, narzędzie MCP `start_workflow`, zmienna CI) albo od monitora zgłoszeń.
+zgłoszenia, czyli polem **Klucz zgłoszenia Jira** akcji **Pobierz zgłoszenie** albo parametrem typu **Klucz
+zgłoszenia Jira**, o który krok pyta przy starcie; narzędzie MCP `start_workflow`; zmienna CI) albo od monitora
+zgłoszeń.
 
 **Ograniczenia**
 

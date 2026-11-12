@@ -45,6 +45,7 @@ class AgentService(
             "modelProfileId" to saved.modelProfileId?.toString(), "instructionsLength" to saved.instructions.length,
             "rules" to saved.rules, "skills" to saved.skills, "mcpServers" to saved.mcpServers.map { "${it.name}=${it.url}" },
             "access" to saved.access.mode.name, "accessPaths" to saved.access.paths,
+            "directory" to saved.access.directory.name, "session" to saved.session.name,
         )))
         return saved
     }
@@ -74,6 +75,8 @@ class AgentService(
             "mcpServers" to (existing.mcpServers.map { "${it.name}=${it.url}" } to saved.mcpServers.map { "${it.name}=${it.url}" }),
             "access" to (existing.access.mode.name to saved.access.mode.name),
             "accessPaths" to (existing.access.paths to saved.access.paths),
+            "directory" to (existing.access.directory.name to saved.access.directory.name),
+            "session" to (existing.session.name to saved.session.name),
         )
         if (changes.isNotEmpty()) audit.record(entry("AGENT_UPDATE", saved, changes))
         return saved

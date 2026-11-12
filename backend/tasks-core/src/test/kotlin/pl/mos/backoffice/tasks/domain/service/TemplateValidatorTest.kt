@@ -4,8 +4,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.tasks.RunInputField
-import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TemplateParameter
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.tasks.domain.model.Scope
@@ -26,11 +24,10 @@ class TemplateValidatorTest {
         outputSchema: String? = null,
         confidenceField: String? = null,
         scope: Scope = Scope.Global,
-        runInputs: List<RunInputField> = emptyList(),
     ) = TaskTemplate.create(
         TaskTemplate.Content(
             key = key, name = key, extendsKey = extendsKey, abstract = abstract,
-            parameters = parameters, parameterValues = parameterValues, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope, runInputs = runInputs,
+            parameters = parameters, parameterValues = parameterValues, outputSchema = outputSchema, confidenceField = confidenceField, scope = scope,
         ),
         lib.now,
     )
@@ -139,17 +136,9 @@ class TemplateValidatorTest {
     }
 
     @Test
-    fun `run input names must be unique within a template`() {
-        val problems = validator.problems(candidate(runInputs = listOf(RunInputField("input", "Input"), RunInputField("input", "Again", RunInputType.MULTILINE))))
-
-        assertThat(problems.map { it.field }).containsExactly("runInputs")
-        assertThat(problems.single().message).contains("input").contains("unique")
-        assertThat(fields(candidate(runInputs = listOf(RunInputField("input", "Input"), RunInputField("issueKey", "Issue", RunInputType.ISSUE_KEY))))).isEmpty()
-    }
-
-    @Test
-    fun `run input names and labels must not be blank`() {
-        assertThatThrownBy { candidate(runInputs = listOf(RunInputField(" ", "Input"))) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("name")
-        assertThatThrownBy { candidate(runInputs = listOf(RunInputField("input", " "))) }.isInstanceOf(ValidationException::class.java).hasMessageContaining("label")
+    fun `ADR 0062 - an ISSUE_KEY parameter is a valid declaration and its preset value must be an issue key`() {
+        val key = TemplateParameter("ticket", "Ticket", TemplateParameterType.ISSUE_KEY)
+        assertThat(fields(candidate(parameters = listOf(key), parameterValues = mapOf("ticket" to "ABC-1")))).isEmpty()
+        assertThat(fields(candidate(parameters = listOf(key), parameterValues = mapOf("ticket" to "not a key")))).containsExactly("parameterValues")
     }
 }

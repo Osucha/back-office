@@ -30,13 +30,14 @@ Code: `shared-kernel` `pl.mos.backoffice.shared.prompt` (`UntrustedText`, `Promp
 | Source | Reaches |
 |---|---|
 | Jira issue fields (summary, description, acceptance criteria, labels) | model answer steps, coding agents, Jira comments (`COMMENT_ISSUE` action), gate questions |
-| Merge-request diff, title and description, CI variables (`backoffice-ci.sh`) | the CI review, run input / parameters |
+| Merge-request diff, title and description, CI variables (`backoffice-ci.sh`) | the CI review, run parameters |
 | Repository content (code, comments, README, fixtures, `.claude/`, `.git/config`, hooks) | the coding agent, the runner's git commands |
-| Artefacts of earlier coding agent / model answer steps | the next step's prompt, gate questions, MCP |
+| Artefacts of earlier coding agent / model answer steps | the next step's message (as consumed artefacts or as parameters bound `ARTIFACT`, ADR 0062), gate questions, MCP |
+| Values typed into the run start form (parameters bound `START`, ADR 0062; the action run inputs) | the task message of every step that binds them, as standard data sections or `{{params.<name>}}` |
 | Questions an agent asks (ADR 0060: `agent-questions.json`, `{"agentQuestions": [...]}`) | the approval panel and notifications (sanitised, at most 10 questions of 2 000 characters), the step's next prompt next to the owner's answers |
-| Other agents' homes in the run directory (ADR 0060: environment, skills, sessions under `/workspace/.agents/`) | every coding step of the run can read and change them; use `directory: SEPARATE` for an independent step |
+| Other agents' homes in the run directory (ADR 0060: environment, skills, sessions under `/workspace/.agents/`) | every coding step of the run can read and change them; use an agent with `access.directory: SEPARATE` (ADR 0062) for an independent step |
 | Benchmark task attempt outputs | the judge model |
-| Agents (instructions, rules, skills, MCP servers), templates, constitutions (curators, project managers) | the environment document and system prompts (semi-trusted: authenticated, audited, reviewed by people) |
+| Agents (instructions, rules, skills, MCP servers), templates, constitutions (curators, project managers) | the environment document and the task instructions (semi-trusted: authenticated, audited, reviewed by people) |
 | Remote MCP servers an agent lists (ADR 0057) | tool results inside the coding agent session; reachable only through the sandbox egress policy, no credentials |
 | Everything Back Office returns through MCP | the user's IDE agent, which holds the user's token |
 
@@ -96,7 +97,10 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 - `TemplateRenderer.renderPrompt(template, model, blocks)`: values under the untrusted roots `issue`,
   `artifacts`, `mr`, `review`, `ci`, `input`, `parameters`, `branch`, `lastError` become data blocks; trusted roots
   (`project`, `node`, `run`, `feedback`, `decision`, `confidence`, `lastOutcome`, and `params`, the template parameter
-  values set in the designer, ADR 0058) are inserted sanitised. Rendering is one pass: inserted values are never
+  values set in the designer, ADR 0058) are inserted sanitised. ADR 0062: parameters whose value the run sets (bound
+  `START` from the start form or `ARTIFACT` from an earlier step's output) are listed under
+  `TemplateRenderer.UNTRUSTED_PARAMS` and rendered as data blocks like the untrusted roots (`StepParameters.untrusted`);
+  an `ARTIFACT` value is also guard-checked like a consumed artefact. Rendering is one pass: inserted values are never
   scanned for placeholders again.
 - `AgentEnvironment` (ADR 0057): the environment document (platform preamble, the agent's instructions rendered
   through `renderPrompt`, constitution, rules) is trusted text written by curators and project managers. A model
@@ -111,11 +115,16 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 - Coherence check (ADR 0061): on request only, a model reads the agent's environment (and the repository's
   `AGENTS.md` / `CLAUDE.md` when readable) and returns findings with quotes. The answer is shown to the person who
   asked and never fed into a run, so an injected instruction in a source can at most distort the report.
-- `LlmTaskExecutor` (every step the agent **model answer** runs, including the code review): user and system prompt
-  through `renderPrompt`, the notice is appended last to the system prompt (after the environment document, the
-  template's system prompt and the skills).
+- `TaskMessage` (ADR 0062): the task message of every step (the template's instructions, then the standard data
+  sections it does not place itself: the issue, the consumed artefacts, the parameters bound at run start, the
+  feedback, the owner's answers, a consumed diff last) is rendered in one `renderPrompt` pass, so a value is a data
+  block whether the instructions or a standard section place it. Templates have no system prompt any more: the
+  system part is only platform and agent text (the environment document, the skills, the answer format), so no
+  template text sits next to the notices.
+- `LlmTaskExecutor` (every step the agent **model answer** runs, including the code review): the task message as the
+  user message, the notice appended last to the system prompt (after the environment document and the skills).
 - `RunnerTaskSupport` (every step a coding agent runs: Spec Kit phases and agent jobs, OpenCode or Claude Code, ADR
-  0056): the job prompt (the task only; the rules are in the environment document) is rendered the same way and ends with the
+  0056): the job prompt (the task message of ADR 0062; the rules are in the environment document) is rendered the same way and ends with the
   agent notice (repository content is data too; never reveal credentials, change git remotes/config/hooks,
   push, or edit CI configuration unless asked). The notice is last because the runner derives the commit
   subject from the first line (it strips data-block tags).
@@ -219,7 +228,7 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
   `existingSecret` / `hostSecrets` (push-level fallbacks) or with `allowPushCredentialForRead: true` hand push
   rights to more jobs than necessary; the controller warns at start. The runner's READ guard (`pushurl`,
   refused push) is defence in depth, the read-only token is the control.
-- Agents, rules, skills, templates and constitutions are trusted text in the environment and system prompts; a
+- Agents, rules, skills, templates and constitutions are trusted text in the environment and the task instructions; a
   malicious curator can weaken the prompts (not the deterministic guards) or point an agent at an MCP server the
   egress policy allows. Changes are audited.
 - An IDE agent with an opted-in token and a client that auto-approves destructive tools can still be steered.

@@ -5,7 +5,14 @@
  * come from the backend in English; the UI translates them by type and falls back to the backend
  * text for a type it does not know yet.
  */
-import type { ActionType, AgentAccess, AgentAccessMode, AgentHarness } from '../api/types';
+import type {
+  ActionType,
+  AgentAccess,
+  AgentAccessMode,
+  AgentDirectory,
+  AgentHarness,
+  AgentSession,
+} from '../api/types';
 
 /** The kind of an agent: its harness, or `null` for a model answer. */
 export type AgentKind = AgentHarness | null;
@@ -43,6 +50,25 @@ export function agentAccessModeLabel(mode: AgentAccessMode | null | undefined): 
     default:
       return $localize`:@@core.agent.access.full:Full`;
   }
+}
+
+/** ADR 0062: the session of a coding agent in words. */
+export function agentSessionLabel(session: AgentSession | null | undefined): string {
+  switch (session) {
+    case 'PER_RUN':
+      return $localize`:@@core.agent.session.perRun:One per run`;
+    case 'FRESH':
+      return $localize`:@@core.agent.session.fresh:Always fresh`;
+    default:
+      return $localize`:@@core.agent.session.perStep:Per step (repeats continue)`;
+  }
+}
+
+/** ADR 0062: the directory of a coding agent in words. */
+export function agentDirectoryLabel(directory: AgentDirectory | null | undefined): string {
+  return directory === 'SEPARATE'
+    ? $localize`:@@core.agent.directory.separate:Separate directory`
+    : $localize`:@@core.agent.directory.run:Run directory (shared)`;
 }
 
 /** ADR 0060: what a coding agent may change, short: "Full", "Read only", "Only docs/**, README.md". */

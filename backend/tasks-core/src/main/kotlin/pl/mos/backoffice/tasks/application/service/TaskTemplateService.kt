@@ -126,7 +126,7 @@ class TaskTemplateService(
         const val ENTITY_TYPE = "TaskTemplate"
         private const val KEY_PREFIX = "task"
 
-        /** What a `TEMPLATE_CREATE` entry carries: identity and structure, prompt sizes instead of prompt text. */
+        /** What a `TEMPLATE_CREATE` entry carries: identity and structure, the instructions size instead of their text. */
         fun snapshot(t: TaskTemplate): Map<String, Any?> = mapOf(
             "key" to t.key,
             "scope" to t.scope.describe(),
@@ -134,17 +134,11 @@ class TaskTemplateService(
             "extendsKey" to t.extendsKey,
             "category" to t.category?.name,
             "parameters" to t.parameters.map { it.name },
-            "systemPromptLength" to (t.prompt.system?.length ?: 0),
-            "userPromptLength" to (t.prompt.user?.length ?: 0),
-            "runInputs" to runInputSummary(t),
+            "instructionsLength" to (t.instructions?.length ?: 0),
+            "instructionsMode" to t.instructionsMode.name,
         )
 
-        /** Run inputs for the audit log: `name:TYPE:required|optional:label:help=<length>` per field, help by length like prompts. */
-        private fun runInputSummary(t: TaskTemplate): List<String> = t.runInputs.map {
-            "${it.name}:${it.type.name}:${if (it.required) "required" else "optional"}:${it.label}:help=${it.help?.length ?: 0}"
-        }
-
-        /** `{field: {old, new}}` for everything an owner can edit; prompts and schemas by length, not content. */
+        /** `{field: {old, new}}` for everything an owner can edit; instructions and schemas by length, not content. */
         fun diff(old: TaskTemplate, new: TaskTemplate): Map<String, Any?> = AuditableChanges.changed(
             "key" to (old.key to new.key),
             "name" to (old.name to new.name),
@@ -153,11 +147,9 @@ class TaskTemplateService(
             "abstract" to (old.abstract to new.abstract),
             "extendsKey" to (old.extendsKey to new.extendsKey),
             "category" to (old.category?.name to new.category?.name),
-            "promptMode" to (old.prompt.mode.name to new.prompt.mode.name),
-            "systemPromptLength" to ((old.prompt.system?.length ?: 0) to (new.prompt.system?.length ?: 0)),
-            "userPromptLength" to ((old.prompt.user?.length ?: 0) to (new.prompt.user?.length ?: 0)),
-            "systemPromptChanged" to (false to (old.prompt.system != new.prompt.system)),
-            "userPromptChanged" to (false to (old.prompt.user != new.prompt.user)),
+            "instructionsMode" to (old.instructionsMode.name to new.instructionsMode.name),
+            "instructionsLength" to ((old.instructions?.length ?: 0) to (new.instructions?.length ?: 0)),
+            "instructionsChanged" to (false to (old.instructions != new.instructions)),
             "parameters" to (old.parameters.map { "${it.name}:${it.type.name}:${it.required}" } to new.parameters.map { "${it.name}:${it.type.name}:${it.required}" }),
             "parameterValuesChanged" to (false to (old.parameterValues != new.parameterValues)),
             "configKeys" to (old.config.keys.sorted() to new.config.keys.sorted()),
@@ -167,7 +159,6 @@ class TaskTemplateService(
             "produces" to (old.produces to new.produces),
             "consumes" to (old.consumes to new.consumes),
             "tags" to (old.tags to new.tags),
-            "runInputs" to (runInputSummary(old) to runInputSummary(new)),
             "requiresSkills" to (old.requiresSkills to new.requiresSkills),
         )
     }

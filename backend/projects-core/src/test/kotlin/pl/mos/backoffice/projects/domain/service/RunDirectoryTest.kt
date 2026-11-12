@@ -2,24 +2,28 @@ package pl.mos.backoffice.projects.domain.service
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import pl.mos.backoffice.projects.domain.model.TaskBinding
-import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.runner.AgentAccess
+import pl.mos.backoffice.shared.runner.AgentAccessMode
+import pl.mos.backoffice.shared.runner.AgentDirectory
+import pl.mos.backoffice.shared.runner.AgentSession
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
-import pl.mos.backoffice.shared.tasks.TaskOverrides
+import pl.mos.backoffice.shared.testing.TestAgents
 
-/** ADR 0060: the directory, the session and the questions settings of a step. */
+/** ADR 0060/0062: the directory and the session of a step come from its agent; prepare-only and questions from the step. */
 class RunDirectoryTest {
 
-    private fun step(id: String, config: Map<String, Any?>) = WorkflowNode.Task(id, id, task = TaskBinding("t", TaskOverrides(config = config)))
+    private val coder = TestAgents.OPENCODE
+    private fun agent(session: AgentSession = AgentSession.PER_STEP, directory: AgentDirectory = AgentDirectory.RUN) =
+        coder.copy(session = session, access = AgentAccess(directory = directory))
 
     @Test
     fun `defaults - the run directory and the step's own session`() {
-        val setting = RunDirectory.of(emptyMap(), runnerStep = true)
-        assertThat(setting.directory).isEqualTo(RunDirectory.Directory.RUN)
-        assertThat(setting.session).isEqualTo(RunDirectory.Session.OWN)
+        val setting = RunDirectory.of(emptyMap(), coder, runnerStep = true)
+        assertThat(setting.directory).isEqualTo(AgentDirectory.RUN)
+        assertThat(setting.session).isEqualTo(AgentSession.PER_STEP)
         assertThat(setting.valid).isTrue()
         assertThat(setting.warnings).isEmpty()
-        assertThat(RunDirectory.sessionRole("implement", emptyMap(), emptyList())).isEqualTo("s-implement")
+        assertThat(RunDirectory.sessionRole("implement", setting, coder.key)).isEqualTo("s-implement")
     }
 
     @Test
@@ -37,56 +41,44 @@ class RunDirectoryTest {
     }
 
     @Test
-    fun `CONTINUE takes the role of the step it continues, through a chain, NEW and SEPARATE have none`() {
-        val nodes = listOf(
-            step("implement", emptyMap()),
-            step("fix", mapOf(RunDirectory.CONTINUE_SESSION to "implement")),
-            step("polish", mapOf(RunDirectory.SESSION to "continue", RunDirectory.CONTINUE_SESSION to "fix")),
-            step("fresh", mapOf(RunDirectory.SESSION to "NEW")),
-            step("after-fresh", mapOf(RunDirectory.CONTINUE_SESSION to "fresh")),
-        )
-        assertThat(RunDirectory.sessionRole("polish", nodes[2].task.overrides.config, nodes)).isEqualTo("s-implement")
-        assertThat(RunDirectory.sessionRole("fresh", nodes[3].task.overrides.config, nodes)).isNull()
-        assertThat(RunDirectory.sessionRole("after-fresh", nodes[4].task.overrides.config, nodes)).isNull()
-        assertThat(RunDirectory.sessionRole("x", mapOf(RunDirectory.DIRECTORY to "SEPARATE"), nodes)).isNull()
-        assertThat(RunDirectory.sessionRole("x", mapOf(RunDirectory.PREPARE_ONLY to true), nodes)).isNull()
-        assertThat(RunDirectory.sessionRole("x", mapOf(RunDirectory.CONTINUE_SESSION to "missing"), nodes)).isNull()
-        assertThat(RunDirectory.sessionRole("x", mapOf(RunDirectory.CONTINUE_SESSION to "x"), nodes)).isNull()
+    fun `PER_RUN shares the agent's role across steps, FRESH and SEPARATE have none`() {
+        val perRun = RunDirectory.of(emptyMap(), agent(AgentSession.PER_RUN), runnerStep = true)
+        assertThat(RunDirectory.sessionRole("implement", perRun, "claude-code")).isEqualTo("a-claude-code")
+        assertThat(RunDirectory.sessionRole("fix", perRun, "claude-code")).describedAs("another step, the same conversation").isEqualTo("a-claude-code")
+        assertThat(RunDirectory.agentRole("a-very-long-agent-key-of-the-project"))
+            .matches(RunnerWorkspace.KEY_PATTERN.pattern).hasSizeLessThanOrEqualTo(20).startsWith("a-")
+            .isEqualTo(RunDirectory.agentRole("a-very-long-agent-key-of-the-project"))
+
+        assertThat(RunDirectory.sessionRole("x", RunDirectory.of(emptyMap(), agent(AgentSession.FRESH), runnerStep = true), coder.key)).isNull()
+        val separate = RunDirectory.of(emptyMap(), agent(AgentSession.PER_RUN, AgentDirectory.SEPARATE), runnerStep = true)
+        assertThat(separate.runDirectory).isFalse()
+        assertThat(RunDirectory.sessionRole("x", separate, coder.key)).isNull()
+        val prepare = RunDirectory.of(mapOf(RunDirectory.PREPARE_ONLY to true), coder, runnerStep = true)
+        assertThat(prepare.prepareOnly).isTrue()
+        assertThat(RunDirectory.sessionRole("x", prepare, coder.key)).isNull()
     }
 
     @Test
-    fun `a legacy sessionRole is the step's own role unless session is set`() {
-        assertThat(RunDirectory.sessionRole("review", mapOf(RunDirectory.LEGACY_SESSION_ROLE to "advisor"), emptyList())).isEqualTo("advisor")
-        assertThat(RunDirectory.sessionRole("review", mapOf(RunDirectory.LEGACY_SESSION_ROLE to "advisor", RunDirectory.SESSION to "NEW"), emptyList())).isNull()
-        val invalid = RunDirectory.of(mapOf(RunDirectory.LEGACY_SESSION_ROLE to "Not A Role"), runnerStep = true)
+    fun `a legacy sessionRole is the step's role while the agent keeps PER_STEP`() {
+        val legacy = mapOf(RunDirectory.LEGACY_SESSION_ROLE to "advisor")
+        assertThat(RunDirectory.sessionRole("review", RunDirectory.of(legacy, coder, runnerStep = true), coder.key)).isEqualTo("advisor")
+        assertThat(RunDirectory.sessionRole("review", RunDirectory.of(legacy, agent(AgentSession.PER_RUN), runnerStep = true), coder.key)).isEqualTo("a-opencode")
+        assertThat(RunDirectory.sessionRole("review", RunDirectory.of(legacy, agent(AgentSession.FRESH), runnerStep = true), coder.key)).isNull()
+        val invalid = RunDirectory.of(mapOf(RunDirectory.LEGACY_SESSION_ROLE to "Not A Role"), coder, runnerStep = true)
         assertThat(invalid.legacyRole).isNull()
         assertThat(invalid.warnings.single()).contains("ignored")
     }
 
     @Test
-    fun `SEPARATE forces a new session with a warning and refuses a prepare step`() {
-        val separate = RunDirectory.of(mapOf(RunDirectory.DIRECTORY to "separate", RunDirectory.SESSION to "OWN"), runnerStep = true)
-        assertThat(separate.directory).isEqualTo(RunDirectory.Directory.SEPARATE)
-        assertThat(separate.session).isEqualTo(RunDirectory.Session.NEW)
-        assertThat(separate.warnings.single()).contains("always starts a new session")
-        assertThat(RunDirectory.of(mapOf(RunDirectory.DIRECTORY to "SEPARATE"), runnerStep = true).warnings).isEmpty()
-        assertThat(RunDirectory.of(mapOf(RunDirectory.DIRECTORY to "SEPARATE", RunDirectory.PREPARE_ONLY to true), runnerStep = true).errors.single())
-            .contains("prepare step")
-    }
-
-    @Test
-    fun `invalid values and contradicting keys`() {
-        assertThat(RunDirectory.of(mapOf(RunDirectory.DIRECTORY to "HOME"), runnerStep = true).errors.single()).contains("RUN or SEPARATE")
-        assertThat(RunDirectory.of(mapOf(RunDirectory.SESSION to "SHARED"), runnerStep = true).errors.single()).contains("OWN, NEW or CONTINUE")
-        assertThat(RunDirectory.of(mapOf(RunDirectory.SESSION to "CONTINUE"), runnerStep = true).errors.single()).contains("needs continueSession")
-        val ignored = RunDirectory.of(mapOf(RunDirectory.SESSION to "NEW", RunDirectory.CONTINUE_SESSION to "a"), runnerStep = true)
-        assertThat(ignored.continueFrom).isNull()
-        assertThat(ignored.warnings.single()).contains("continueSession is ignored")
-        val prepare = RunDirectory.of(mapOf(RunDirectory.PREPARE_ONLY to "true", RunDirectory.SESSION to "OWN"), runnerStep = true)
-        assertThat(prepare.prepareOnly).isTrue()
-        assertThat(prepare.warnings.single()).contains("prepare step starts no agent")
-        assertThat(RunDirectory.of(mapOf(RunDirectory.SESSION to "OWN"), runnerStep = false).warnings.single()).contains("only coding agent steps")
-        assertThat(RunDirectory.of(emptyMap(), runnerStep = false).warnings).isEmpty()
+    fun `a prepare step needs an agent with the run directory, model answers have no directory`() {
+        val separate = agent(directory = AgentDirectory.SEPARATE).copy(access = AgentAccess(AgentAccessMode.READ_ONLY, directory = AgentDirectory.SEPARATE))
+        assertThat(RunDirectory.of(mapOf(RunDirectory.PREPARE_ONLY to true), separate, runnerStep = true).errors.single())
+            .contains("prepare step").contains("SEPARATE")
+        assertThat(RunDirectory.of(emptyMap(), separate, runnerStep = true).valid).isTrue()
+        assertThat(RunDirectory.of(mapOf(RunDirectory.PREPARE_ONLY to "true"), TestAgents.MODEL_ANSWER, runnerStep = false).warnings.single())
+            .contains("only coding agent steps")
+        assertThat(RunDirectory.of(mapOf("session" to "NEW", "directory" to "SEPARATE"), TestAgents.MODEL_ANSWER, runnerStep = false).warnings)
+            .describedAs("the former step keys are no settings any more").isEmpty()
     }
 
     @Test

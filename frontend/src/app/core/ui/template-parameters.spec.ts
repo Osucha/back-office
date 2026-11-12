@@ -37,7 +37,10 @@ describe('template parameters (ADR 0058)', () => {
       'Number',
       'Yes / no',
       'Choice',
+      'Jira issue key',
     ]);
+    expect(valueFitsType({ type: 'ISSUE_KEY' }, 'BO-1')).toBe(true);
+    expect(valueFitsType({ type: 'ISSUE_KEY' }, 1)).toBe(false);
   });
 
   it('checks values against the type', () => {

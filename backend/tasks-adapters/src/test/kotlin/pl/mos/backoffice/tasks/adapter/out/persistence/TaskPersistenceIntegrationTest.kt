@@ -18,8 +18,7 @@ import pl.mos.backoffice.tasks.PostgresTestSupport
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
-import pl.mos.backoffice.tasks.domain.model.Prompt
-import pl.mos.backoffice.tasks.domain.model.PromptMode
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.model.Skill
 import pl.mos.backoffice.tasks.domain.model.Rule
@@ -70,12 +69,12 @@ class TaskPersistenceIntegrationTest {
     }
 
     @Test
-    fun `template round trips every column including json config, scope and prompt mode, and answers the reference queries`() {
+    fun `template round trips every column including json config, scope and instructions mode, and answers the reference queries`() {
         val skill = skills.save(Skill.create(Skill.Content(key = "sk-$suffix", name = "S", content = "# s", tags = listOf("t")), now))
         val content = TaskTemplate.Content(
             key = "tpl-$suffix", name = "Template", description = "desc", abstract = false, extendsKey = "base-$suffix",
             category = TemplateCategory.IMPLEMENTATION, scope = Scope.Project(projectId),
-            prompt = Prompt("sys", "usr", PromptMode.REPLACE),
+            instructions = "usr", instructionsMode = InstructionsMode.REPLACE,
             parameters = listOf(pl.mos.backoffice.shared.tasks.TemplateParameter("task", "Task", default = "x")), parameterValues = mapOf("task" to "y"),
             config = mapOf("verifyCommand" to null, "push" to true, "mergeRequest" to mapOf("create" to true, "labels" to listOf("ai", 1))),
             outputSchema = """{"type":"object"}""", confidenceField = "confidence", produces = listOf("diff"), consumes = listOf("tasks"), tags = listOf("x", "y"),
@@ -88,7 +87,8 @@ class TaskPersistenceIntegrationTest {
         assertThat(loaded.config).containsEntry("verifyCommand", null)
         assertThat(loaded.config["mergeRequest"]).isEqualTo(mapOf("create" to true, "labels" to listOf("ai", 1)))
         assertThat(loaded.scope).isEqualTo(Scope.Project(projectId))
-        assertThat(loaded.prompt.mode).isEqualTo(PromptMode.REPLACE)
+        assertThat(loaded.instructionsMode).isEqualTo(InstructionsMode.REPLACE)
+        assertThat(loaded.instructions).isEqualTo("usr")
         assertThat(loaded.updatedBy).isEqualTo(actor)
         assertThat(loaded.category).isEqualTo(TemplateCategory.IMPLEMENTATION)
         assertThat(loaded.parameters.single().default).isEqualTo("x")
@@ -129,11 +129,20 @@ class TaskPersistenceIntegrationTest {
     fun `agent round trips, is looked up per scope and answers the key query, and V304 inserted the built-in agents`() {
         val model = pl.mos.backoffice.shared.ModelProfileId.new()
         val global = agents.save(Agent.create(Agent.Content(key = "ag-$suffix", name = "G", description = "d", harness = AgentHarness.CLAUDE_CODE, modelProfileId = model, tags = listOf("a")), now, builtIn = true, actor = Actor.SYSTEM))
-        val mine = agents.save(Agent.create(Agent.Content(key = "ag-$suffix", name = "P", scope = Scope.Project(projectId)), now))
+        val mine = agents.save(
+            Agent.create(
+                Agent.Content(
+                    key = "ag-$suffix", name = "P", scope = Scope.Project(projectId),
+                    access = pl.mos.backoffice.shared.runner.AgentAccess(directory = pl.mos.backoffice.shared.runner.AgentDirectory.SEPARATE),
+                    session = pl.mos.backoffice.shared.runner.AgentSession.PER_RUN,
+                ),
+                now,
+            ),
+        )
 
         assertThat(agents.findById(global.id)).isEqualTo(global)
         assertThat(agents.findByKeyAndScope("ag-$suffix", Scope.Global)).isEqualTo(global)
-        assertThat(agents.findByKeyAndScope("ag-$suffix", Scope.Project(projectId))).isEqualTo(mine)
+        assertThat(agents.findByKeyAndScope("ag-$suffix", Scope.Project(projectId))).describedAs("ADR 0062: session and directory round trip").isEqualTo(mine)
         assertThat(agents.findVisible(null)).contains(global).doesNotContain(mine)
         assertThat(agents.findVisible(projectId)).contains(global, mine)
         assertThat(agents.existsByKey("ag-$suffix")).isTrue()
@@ -166,30 +175,29 @@ class TaskPersistenceIntegrationTest {
     fun `the TaskCatalog bean resolves through the database with shadowing and overrides`() {
         val rule = rules.save(Rule.create(Rule.Content(key = "cat-ru-$suffix", name = "R", content = "Rule text"), now))
         val skill = skills.save(Skill.create(Skill.Content(key = "cat-sk-$suffix", name = "S", content = "# s"), now))
-        val base = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-base-$suffix", name = "Base", abstract = true, prompt = Prompt(system = "base"), config = mapOf("a" to 1)), now))
+        val base = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-base-$suffix", name = "Base", abstract = true, instructions = "base", config = mapOf("a" to 1)), now))
         val catAgent = agents.save(
             pl.mos.backoffice.tasks.domain.model.Agent.create(
                 pl.mos.backoffice.tasks.domain.model.Agent.Content(key = "cat-ag-$suffix", name = "Cat agent", rules = listOf(rule.key), skills = listOf(skill.key)),
                 now,
             ),
         )
-        val leaf = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-leaf-$suffix", name = "Leaf", extendsKey = base.key, category = TemplateCategory.REVIEW, prompt = Prompt(system = "leaf"), produces = listOf("out"), requiresSkills = listOf(skill.key)), now))
-        val shadow = templates.save(TaskTemplate.create(TaskTemplate.Content(key = leaf.key, name = "Mine", extendsKey = base.key, scope = Scope.Project(projectId), prompt = Prompt(system = "mine", mode = PromptMode.REPLACE)), now))
+        val leaf = templates.save(TaskTemplate.create(TaskTemplate.Content(key = "cat-leaf-$suffix", name = "Leaf", extendsKey = base.key, category = TemplateCategory.REVIEW, instructions = "leaf", produces = listOf("out"), requiresSkills = listOf(skill.key)), now))
+        val shadow = templates.save(TaskTemplate.create(TaskTemplate.Content(key = leaf.key, name = "Mine", extendsKey = base.key, scope = Scope.Project(projectId), instructions = "mine", instructionsMode = InstructionsMode.REPLACE), now))
 
         val global = catalog.resolve(leaf.key, null, TaskOverrides(agentKey = catAgent.key))!!
         assertThat(global.lineage).containsExactly(leaf.key, base.key)
         assertThat(global.agent.key).isEqualTo(catAgent.key)
-        assertThat(global.prompt.system).isEqualTo("base\n\nleaf")
+        assertThat(global.instructions).isEqualTo("base\n\nleaf")
         assertThat(global.skills.map { it.key }).containsExactly(skill.key)
         assertThat(global.ports).containsExactly("success", "failure")
         assertThat(global.category).isEqualTo(TemplateCategory.REVIEW)
         assertThat(global.rules.map { it.key to it.content }).contains(rule.key to "Rule text")
 
-        val mine = catalog.resolve(leaf.key, projectId, TaskOverrides(agentKey = AgentSnapshot.OPENCODE, config = mapOf("a" to null, "b" to 2), promptAppend = "go"))!!
+        val mine = catalog.resolve(leaf.key, projectId, TaskOverrides(agentKey = AgentSnapshot.OPENCODE, config = mapOf("a" to null, "b" to 2), instructionsAppend = "go"))!!
         assertThat(mine.name).isEqualTo("Mine")
         assertThat(mine.agent.harness).describedAs("the built-in agent V304 inserted").isEqualTo(AgentHarness.OPENCODE)
-        assertThat(mine.prompt.system).isEqualTo("mine")
-        assertThat(mine.prompt.user).isEqualTo("go")
+        assertThat(mine.instructions).isEqualTo("mine\n\ngo")
         assertThat(mine.config).isEqualTo(mapOf("b" to 2))
         assertThat(catalog.resolve("missing-$suffix", null)).isNull()
 

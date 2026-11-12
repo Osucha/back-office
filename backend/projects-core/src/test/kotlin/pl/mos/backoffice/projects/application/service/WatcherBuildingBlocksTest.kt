@@ -40,7 +40,6 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.usage.PageOf
 import java.time.Duration
 

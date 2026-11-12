@@ -27,7 +27,6 @@ import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 /**

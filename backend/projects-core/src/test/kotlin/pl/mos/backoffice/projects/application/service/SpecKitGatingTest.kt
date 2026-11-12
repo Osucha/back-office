@@ -40,7 +40,6 @@ import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
@@ -54,7 +53,7 @@ class SpecKitGatingTest {
         override fun resolve(key: String, projectId: java.util.UUID?, overrides: TaskOverrides): ResolvedTask {
             val executor = if (key.startsWith("spec-kit") || key == "my-spec") TestAgents.OPENCODE else TestAgents.MODEL_ANSWER
             val config = if (executor == TestAgents.OPENCODE) mapOf("phase" to "SPECIFY") + overrides.config else overrides.config
-            return ResolvedTask(key, key, executor, null, TaskPrompt(null, null), emptyList(), config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
+            return ResolvedTask(key, key, executor, null, null, emptyList(), config, null, null, emptyList(), emptyList(), null, listOf(key), listOf("success", "failure"))
         }
         override fun palette(projectId: java.util.UUID?) = listOf(
             TaskSummary("spec-kit-specify", "Spec Kit: specify", "", null, false, null, listOf("success", "failure")),

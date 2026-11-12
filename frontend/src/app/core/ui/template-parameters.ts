@@ -2,7 +2,8 @@
  * ADR 0058: template parameters as pure functions (tested in template-parameters.spec.ts), shared
  * by the template editor (declarations, preset values) and the workflow designer (step values).
  *
- * A template declares typed parameters (`TEXT`, `MULTILINE`, `NUMBER`, `BOOLEAN`, `CHOICE`);
+ * A template declares typed parameters (`TEXT`, `MULTILINE`, `NUMBER`, `BOOLEAN`, `CHOICE`,
+ * `ISSUE_KEY`, ADR 0062);
  * prompts read them as `{{params.<name>}}`. Declarations are inherited, child wins by name. The
  * value a step uses is the step's, else the nearest template's (`parameterValues`), else the
  * default. A template is a ready block when every required parameter has a value without the step.
@@ -21,6 +22,7 @@ export const PARAMETER_TYPES: readonly TemplateParameterType[] = [
   'NUMBER',
   'BOOLEAN',
   'CHOICE',
+  'ISSUE_KEY',
 ];
 
 export type ParameterValues = Record<string, unknown>;
@@ -38,6 +40,8 @@ export function parameterTypeLabel(type: TemplateParameterType | string): string
       return $localize`:@@core.parameter.type.boolean:Yes / no`;
     case 'CHOICE':
       return $localize`:@@core.parameter.type.choice:Choice`;
+    case 'ISSUE_KEY':
+      return $localize`:@@core.parameter.type.issueKey:Jira issue key`;
     default:
       return type;
   }
@@ -53,6 +57,7 @@ export function valueFitsType(p: Pick<TemplateParameter, 'type' | 'options'>, v:
   switch (p.type) {
     case 'TEXT':
     case 'MULTILINE':
+    case 'ISSUE_KEY':
       return typeof v === 'string';
     case 'NUMBER':
       return typeof v === 'number' && Number.isFinite(v);

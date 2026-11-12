@@ -21,7 +21,6 @@ import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.TestAgents
 import java.math.BigDecimal
 
@@ -40,7 +39,7 @@ class StepQuestionsTest {
     }
 
     private fun task(config: Map<String, Any?> = emptyMap()) = ResolvedTask(
-        "t", "T", TestAgents.MODEL_ANSWER, null, TaskPrompt(null, "x"), emptyList(), config, null, null,
+        "t", "T", TestAgents.MODEL_ANSWER, null, ("x"), emptyList(), config, null, null,
         emptyList(), emptyList(), null, listOf("t"), listOf("success", "failure"),
     )
 

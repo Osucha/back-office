@@ -8,7 +8,7 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
-import pl.mos.backoffice.tasks.domain.model.Prompt
+
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.support.Library
 import java.util.UUID
@@ -78,10 +78,10 @@ class SeedTaskLibraryServiceTest {
     fun `untouched built-ins of an older seed are upgraded completely, edited ones are left alone`() {
         service.seed()
         val review = lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!
-        val oldReview = review.copy(prompt = Prompt(system = "old system", user = "old user"), config = mapOf("maxChunkLines" to 1500), requiresSkills = emptyList())
+        val oldReview = review.copy(instructions = "old instructions", config = mapOf("maxChunkLines" to 1500), requiresSkills = emptyList())
         lib.templates.save(oldReview)
         val analyse = lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!
-        lib.templates.save(analyse.copy(prompt = Prompt(user = "owner's prompt"), version = 2, updatedBy = alice))
+        lib.templates.save(analyse.copy(instructions = "owner's prompt", version = 2, updatedBy = alice))
         val skill = lib.skills.findByKeyAndScope(BuiltInLibrary.USER_STORY_FORMAT, Scope.Global)!!
         lib.skills.save(skill.copy(content = "---\nname: user-story-format\ndescription: old\n---\n# old", description = "old"))
         val editedSkill = lib.skills.findByKeyAndScope(BuiltInLibrary.ADR_FORMAT, Scope.Global)!!
@@ -99,11 +99,10 @@ class SeedTaskLibraryServiceTest {
         val upgraded = lib.templates.findByKeyAndScope(BuiltInLibrary.CODE_REVIEW, Scope.Global)!!
         assertThat(upgraded.id).isEqualTo(review.id)
         assertThat(upgraded.version).isEqualTo(1)
-        assertThat(upgraded.prompt.user).isEqualTo(BuiltInLibrary.REVIEW_USER)
-        assertThat(upgraded.prompt.system).startsWith(BuiltInLibrary.REVIEW_SYSTEM).contains("{{runInputText}}")
+        assertThat(upgraded.instructions).isEqualTo(BuiltInLibrary.REVIEW_INSTRUCTIONS)
         assertThat(upgraded.config).describedAs("a removed config key goes away").doesNotContainKey("maxChunkLines")
         assertThat(upgraded.requiresSkills).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST)
-        assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!.prompt.user).isEqualTo("owner's prompt")
+        assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.ANALYSE_ISSUE, Scope.Global)!!.instructions).isEqualTo("owner's prompt")
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.USER_STORY_FORMAT, Scope.Global)!!.content).isEqualTo(BuiltInLibrary.USER_STORY_FORMAT_MD)
         assertThat(lib.skills.findByKeyAndScope(BuiltInLibrary.ADR_FORMAT, Scope.Global)!!.content).isEqualTo("# my ADR rules")
         val upgradedRule = lib.rules.findByKeyAndScope(BuiltInLibrary.ASK_DONT_GUESS, Scope.Global)!!
@@ -154,7 +153,7 @@ class SeedTaskLibraryServiceTest {
         lib.templates.rows.values.toList().forEach { t ->
             // what the JSON column gives back: no null values, keys in another order, whole numbers as Long
             val roundTripped = t.config.filterValues { it != null }.entries.reversed().associate { (k, v) -> k to if (v is Int) v.toLong() else v }
-            lib.templates.save(t.copy(config = roundTripped, prompt = Prompt(t.prompt.system ?: "", t.prompt.user, t.prompt.mode)))
+            lib.templates.save(t.copy(config = roundTripped))
         }
         assertThat(lib.templates.findByKeyAndScope(BuiltInLibrary.IMPLEMENT_OPENCODE, Scope.Global)!!.config).doesNotContainKey("verifyCommand")
 
@@ -227,10 +226,10 @@ class SeedTaskLibraryServiceTest {
         assertThat(task.produces).containsExactly("diff", "mr")
         assertThat(task.skills.map { it.key }).containsExactlyElementsOf(BuiltInLibrary.agentSkills.getValue(AgentSnapshot.CLAUDE_CODE))
         assertThat(task.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
-        assertThat(task.prompt.system).describedAs("the preamble is the environment's now").doesNotContain("project.constitution").doesNotContain("Honesty")
-            .contains("{{runInputText}}")
-        assertThat(task.prompt.user).contains("{{issue.key}}").contains("{{artifacts.review}}").contains("verifyCommand").contains("Do not commit or push")
-            .contains("Follow your rules.")
+        assertThat(task.instructions).describedAs("the preamble is the environment's now").doesNotContain("project.constitution").doesNotContain("Honesty")
+            .doesNotContain("{{runInputText}}").doesNotContain("{{issue.")
+        assertThat(task.instructions).contains("{{artifacts.review}}").contains("{{artifacts.tasks}}").contains("verifyCommand")
+            .doesNotContain("Follow your rules")
             .doesNotContain("conventional commits")
     }
 
@@ -242,11 +241,11 @@ class SeedTaskLibraryServiceTest {
         assertThat(clarify.agent.modelAnswer).isTrue()
         assertThat(clarify.confidenceField).isEqualTo("confidence")
         assertThat(BuiltInLibrary.schemaProperties(clarify.outputSchema)).containsExactlyInAnyOrder("confidence", "clarifications", "summary")
-        assertThat(clarify.prompt.user).contains("why it matters").contains("suggested default")
+        assertThat(clarify.instructions).contains("why it matters").contains("suggested default")
         assertThat(clarify.produces).containsExactly("confidence", "clarifications")
         assertThat(clarify.lineage).containsExactly(BuiltInLibrary.CLARIFY_SPEC)
         assertThat(clarify.agent.key).isEqualTo(BuiltInLibrary.ANALYST)
-        assertThat(clarify.prompt.system).contains("implementer").doesNotContain("no repository")
+        assertThat(clarify.instructions).contains("implementer").doesNotContain("no repository")
 
         val review = lib.lookup.resolver.resolve(BuiltInLibrary.CODE_REVIEW, null, TaskOverrides(agentKey = BuiltInLibrary.REVIEWER))!!
         assertThat(lib.lookup.resolver.preview(BuiltInLibrary.CODE_REVIEW, null, TaskOverrides(agentKey = BuiltInLibrary.REVIEWER))!!.check.warnings).describedAs("the reviewer has the required skill").isEmpty()
@@ -257,24 +256,23 @@ class SeedTaskLibraryServiceTest {
         assertThat(review.skills.map { it.key }).containsExactly(BuiltInLibrary.SECURITY_REVIEW_CHECKLIST, BuiltInLibrary.DEFINITION_OF_READY_DONE)
         assertThat(review.rules.map { it.key }).containsExactly(BuiltInLibrary.AGENT_GROUND_RULES, BuiltInLibrary.ASK_DONT_GUESS)
         assertThat(review.category).isEqualTo(TemplateCategory.REVIEW)
-        assertThat(review.prompt.system).contains("MINOR").contains("NIT")
+        assertThat(review.instructions).contains("MINOR").contains("NIT")
         assertThat(review.config).doesNotContainKey("maxChunkLines")
-        val user = review.prompt.user!!
-        assertThat(user.indexOf("return only the JSON")).describedAs("instructions come before the data").isLessThan(user.indexOf("{{artifacts.diff}}"))
-        assertThat(user).contains("{{input.ci.mergeRequest.title}}").contains("{{#issue.key}}")
-        assertThat(user.trimEnd()).endsWith("{{artifacts.diff}}")
+        val user = review.instructions!!
+        assertThat(user).describedAs("ADR 0062: the consumed diff and the issue are standard sections, the diff last").doesNotContain("{{artifacts.diff}}")
+        assertThat(user).contains("{{input.ci.mergeRequest.title}}").doesNotContain("{{#issue.key}}").contains("at the end of this message")
 
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.config["phase"]).isEqualTo("PLAN")
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
-        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.agent.key).describedAs("ADR 0061: no push, so any agent; the step names one").isEqualTo(AgentSnapshot.MODEL_ANSWER)
+        assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.agent.key).describedAs("ADR 0061: work in the repository (codingAgent), no push").isEqualTo(AgentSnapshot.OPENCODE)
         assertThat(lib.lookup.resolver.resolve(BuiltInLibrary.PREPARE_WORKSPACE, null)!!.agent.key).isEqualTo(AgentSnapshot.OPENCODE)
         val llmTask = lib.lookup.resolver.resolve(BuiltInLibrary.LLM_TASK, null)!!
         assertThat(llmTask.agent.key).isEqualTo(AgentSnapshot.MODEL_ANSWER)
         // ADR 0058: the task is the parameter task, its default the former placeholder
-        assertThat(llmTask.prompt.user).isEqualTo("{{params.task}}")
-        assertThat(llmTask.parameterValues).isEqualTo(mapOf("task" to BuiltInLibrary.LLM_TASK_USER))
-        val agentTask = lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null, pl.mos.backoffice.shared.tasks.TaskOverrides(parameters = mapOf("task" to "Fix it")))!!
-        assertThat(agentTask.parameterValues).isEqualTo(mapOf("task" to "Fix it"))
+        assertThat(llmTask.instructions).isEqualTo("{{params.task}}")
+        assertThat(llmTask.parameterValues).isEqualTo(mapOf("task" to BuiltInLibrary.LLM_TASK_DEFAULT, "input" to null))
+        val agentTask = lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null, pl.mos.backoffice.shared.tasks.TaskOverrides(parameterBindings = mapOf("task" to pl.mos.backoffice.shared.tasks.ParameterBinding.value("Fix it"))))!!
+        assertThat(agentTask.parameterValues).isEqualTo(mapOf("task" to "Fix it", "input" to null))
         assertThat(lib.lookup.resolver.preview(BuiltInLibrary.AGENT_TASK, null)!!.needsParameters).describedAs("a ready block").isFalse()
     }
 
@@ -282,20 +280,19 @@ class SeedTaskLibraryServiceTest {
     fun `Spec Kit prompts start with the subject and the issue and do not paste artefacts Spec Kit reads from disk`() {
         service.seed()
 
-        val specify = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_SPECIFY, null)!!.prompt.user!!
+        val specify = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_SPECIFY, null)!!.instructions!!
         assertThat(specify.lines().first()).isEqualTo("{{issue.key}}: {{issue.summary}}")
         assertThat(specify).contains("{{issue.acceptanceCriteria}}").contains("Apply the skill ${BuiltInLibrary.SPEC_WRITING}")
         assertThat(specify.indexOf("{{issue.description}}")).isLessThan(specify.indexOf("Phase SPECIFY"))
         assertThat(specify).doesNotContain("You are an engineering agent")
 
         val resolvedPlan = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_PLAN, null)!!
-        val plan = resolvedPlan.prompt.user!!
-        val tasks = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_TASKS, null)!!.prompt.user!!
-        assertThat(plan).doesNotContain("{{artifacts.spec}}").contains("{{feedback}}")
-        // ADR 0053: the technical hints are a declared run input, rendered in the inherited "Run input" section
-        assertThat(resolvedPlan.runInputs.map { it.name }).contains("techHints")
-        assertThat(resolvedPlan.prompt.system).contains("{{runInputText}}")
-        assertThat(tasks).doesNotContain("{{artifacts.plan}}").contains("{{feedback}}")
+        val plan = resolvedPlan.instructions!!
+        val tasks = lib.lookup.resolver.resolve(BuiltInLibrary.SPEC_KIT_TASKS, null)!!.instructions!!
+        assertThat(plan).doesNotContain("{{artifacts.spec}}").describedAs("ADR 0062: the feedback is a standard section").doesNotContain("{{feedback}}")
+        // ADR 0062: the technical hints are a parameter; a step binding it START asks for it and gets it as a data section
+        assertThat(resolvedPlan.parameters.map { it.name }).contains("techHints")
+        assertThat(tasks).doesNotContain("{{artifacts.plan}}").doesNotContain("{{feedback}}")
     }
 
     @Test
@@ -305,7 +302,7 @@ class SeedTaskLibraryServiceTest {
         listOf(BuiltInLibrary.SPEC_KIT_SPECIFY, BuiltInLibrary.SPEC_KIT_PLAN, BuiltInLibrary.SPEC_KIT_TASKS, BuiltInLibrary.IMPLEMENT_OPENCODE,
             BuiltInLibrary.IMPLEMENT_CLAUDE_CODE, BuiltInLibrary.IMPLEMENT_TASK_LIST, BuiltInLibrary.AGENT_TASK).forEach { key ->
             val task = lib.lookup.resolver.resolve(key, null)!!
-            val prompt = (task.prompt.system ?: "") + "\n" + (task.prompt.user ?: "")
+            val prompt = task.instructions.orEmpty()
             listOf(BuiltInLibrary.SPEC_WRITING, BuiltInLibrary.DEFINITION_OF_READY_DONE).filter { prompt.contains("skill $it") }
                 .forEach { k -> assertThat(task.skills.map { it.key }).describedAs("$key applies $k, which its agent has").contains(k) }
         }
@@ -316,8 +313,8 @@ class SeedTaskLibraryServiceTest {
         listOf(BuiltInLibrary.KOTLIN_HEXAGONAL, BuiltInLibrary.ANGULAR_NG_ZORRO).forEach {
             assertThat(lib.rules.findByKeyAndScope(it, Scope.Global)!!.description).describedAs(it).startsWith("Example for the Back Office stack")
         }
-        val agent = lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.prompt.system!!
-        assertThat(agent).doesNotContain("\n{{issue.key}}: {{issue.summary}}\n\n{{issue.description}}").contains("{{#issue.key}}")
+        val agent = lib.lookup.resolver.resolve(BuiltInLibrary.AGENT_TASK, null)!!.instructions!!
+        assertThat(agent).describedAs("ADR 0062: the issue is a standard section, only when there is one").doesNotContain("{{issue.").startsWith("{{params.task}}")
     }
 
     @Test

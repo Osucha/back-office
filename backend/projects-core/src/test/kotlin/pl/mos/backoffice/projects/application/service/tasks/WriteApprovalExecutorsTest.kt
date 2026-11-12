@@ -22,7 +22,6 @@ import pl.mos.backoffice.projects.domain.service.ConnectionSelector
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 

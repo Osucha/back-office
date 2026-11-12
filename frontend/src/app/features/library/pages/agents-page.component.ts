@@ -22,7 +22,13 @@ import { TaskLibraryApi } from '../../../core/api/task-library.service';
 import type { Agent, AgentInput, ModelProfile, Project } from '../../../core/api/types';
 import { icu } from '../../../core/i18n/icu';
 import { IdentityService } from '../../../core/auth/identity.service';
-import { agentAccessText, agentKindDescription, agentKindLabel } from '../../../core/ui/agents';
+import {
+  agentAccessText,
+  agentDirectoryLabel,
+  agentKindDescription,
+  agentKindLabel,
+  agentSessionLabel,
+} from '../../../core/ui/agents';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { BreadcrumbService } from '../../../core/ui/relay/breadcrumb.service';
 import { EmptyComponent } from '../../../core/ui/relay/empty.component';
@@ -176,6 +182,7 @@ import { filterAgents } from '../data/library-filters';
                 Model
               </th>
               <th nzWidth="150px" i18n="@@library.agents.col.access">Access</th>
+              <th nzWidth="150px" i18n="@@library.agents.col.session">Session</th>
               <th nzWidth="160px" i18n="@@library.agents.col.environment">Environment</th>
               <th
                 nzShowSort
@@ -252,6 +259,18 @@ import { filterAgents } from '../data/library-filters';
                 <td>
                   @if (a.harness) {
                     <span class="ink-2" data-access>{{ accessText(a.access) }}</span>
+                    @if (a.access?.directory === 'SEPARATE') {
+                      <div class="quiet" data-directory>
+                        {{ directoryText(a.access?.directory) }}
+                      </div>
+                    }
+                  } @else {
+                    <span class="quiet">—</span>
+                  }
+                </td>
+                <td>
+                  @if (a.harness) {
+                    <span class="ink-2" data-session>{{ sessionText(a.session) }}</span>
                   } @else {
                     <span class="quiet">—</span>
                   }
@@ -352,6 +371,9 @@ export class AgentsPageComponent {
 
   readonly kindLabel = agentKindLabel;
   readonly accessText = agentAccessText;
+  /** ADR 0062: the session and the directory of a coding agent. */
+  readonly sessionText = agentSessionLabel;
+  readonly directoryText = agentDirectoryLabel;
   readonly kindDescription = agentKindDescription;
 
   readonly canCreate = computed(() => canCreateInLibrary(this.identity));

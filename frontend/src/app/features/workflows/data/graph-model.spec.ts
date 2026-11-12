@@ -382,20 +382,3 @@ describe('templates and normalisation', () => {
     expect(d.triggers).toEqual([]);
   });
 });
-
-describe('buildNodeData: session marker (ADR 0057)', () => {
-  it('names the step whose session a TASK node continues', () => {
-    const impl: WorkflowNode = {
-      id: 'impl',
-      kind: 'TASK',
-      name: 'Implement',
-      position: { x: 0, y: 0 },
-      maxVisits: 3,
-      task: { templateKey: 'x', overrides: { config: { continueSession: 'spec' } } },
-    } as WorkflowNode;
-    expect(
-      buildNodeData(impl, { nodeNames: new Map([['spec', 'Write spec']]) }).continuesFrom,
-    ).toBe('Write spec');
-    expect(buildNodeData({ ...impl, task: { templateKey: 'x' } }).continuesFrom).toBeNull();
-  });
-});

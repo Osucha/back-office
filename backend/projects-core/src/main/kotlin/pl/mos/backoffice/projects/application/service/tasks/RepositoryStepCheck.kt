@@ -13,7 +13,7 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 
 /**
- * Checks the repositories, the directory and the session of the steps of a workflow (ADR 0034, 0060) for the designer
+ * Checks the repositories, the directory (ADR 0062: the agent's) and the questions of the steps of a workflow (ADR 0034, 0060) for the designer
  * validation ([designIssues]: errors and warnings on `task.config.*`) and before a run starts ([runBlockers]: the
  * project may have lost a repository after the workflow was saved). The rules are [StepRepositories] and
  * [RunDirectory]; this class resolves the tasks.
@@ -33,12 +33,9 @@ class RepositoryStepCheck(
         steps(project, nodes, resolved).forEach { (node, plan, directory, questions) ->
             plan.errors.forEach { errors += ValidationIssue(nodeId = node.id, field = StepRepositories.FIELD, message = it) }
             plan.warnings.forEach { warnings += ValidationIssue(nodeId = node.id, field = StepRepositories.FIELD, message = it) }
-            directory.errors.forEach { errors += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_DIRECTORY, message = it) }
-            directory.warnings.forEach { warnings += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_DIRECTORY, message = it) }
+            directory.errors.forEach { errors += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_PREPARE_ONLY, message = it) }
+            directory.warnings.forEach { warnings += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_PREPARE_ONLY, message = it) }
             questions.forEach { errors += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_QUESTIONS, message = it) }
-        }
-        continuationProblems(nodes, resolved).forEach { (node, problem) ->
-            errors += ValidationIssue(nodeId = node.id, field = RunDirectory.FIELD_CONTINUE, message = problem)
         }
         return Issues(errors, warnings)
     }
@@ -47,7 +44,7 @@ class RepositoryStepCheck(
         val resolved = resolveAll(project, nodes)
         return steps(project, nodes, resolved).flatMap { (node, plan, directory, questions) ->
             (plan.errors + directory.errors + questions).map { "step \"${node.name}\" (${node.id}): $it" }
-        } + continuationProblems(nodes, resolved).map { (node, problem) -> "step \"${node.name}\" (${node.id}): $problem" }
+        }
     }
 
     private data class Step(val node: WorkflowNode.Task, val plan: StepRepositoryPlan, val directory: RunDirectory.Setting, val questions: List<String>)
@@ -61,54 +58,8 @@ class RepositoryStepCheck(
     private fun steps(project: Project, nodes: List<WorkflowNode>, resolved: Map<String, ResolvedTask>): List<Step> =
         nodes.filterIsInstance<WorkflowNode.Task>().mapNotNull { node ->
             val task = resolved[node.id] ?: return@mapNotNull null
-            Step(node, plan(project, task, librarySources.resolver()), RunDirectory.of(task.config, runnerStep(task)), RunDirectory.questions(task.config).errors)
+            Step(node, plan(project, task, librarySources.resolver()), RunDirectory.of(task.config, task.agent, runnerStep(task)), RunDirectory.questions(task.config).errors)
         }
-
-    /**
-     * ADR 0057/0060: problems of a session continuation that block a run: a model answer step has no session, a step
-     * cannot continue itself, the named step must exist, be a coding agent step that starts an agent session in the run
-     * directory (not NEW, not SEPARATE, not a prepare step) and run the same agent (its home holds the session), and the
-     * continuations must not form a cycle.
-     */
-    private fun continuationProblems(nodes: List<WorkflowNode>, resolved: Map<String, ResolvedTask>): List<Pair<WorkflowNode.Task, String>> {
-        val tasks = nodes.filterIsInstance<WorkflowNode.Task>()
-        val byId = nodes.associateBy { it.id }
-        return tasks.mapNotNull { node ->
-            val task = resolved[node.id] ?: return@mapNotNull null
-            if (!runnerStep(task)) {
-                val asked = task.config[RunDirectory.CONTINUE_SESSION]?.toString()?.isNotBlank() == true
-                return@mapNotNull if (asked) node to "a model answer has no agent session to continue; remove continueSession" else null
-            }
-            val setting = RunDirectory.of(task.config, runnerStep = true)
-            val target = setting.continueFrom ?: return@mapNotNull null
-            val earlier = resolved[target]
-            val earlierSetting = earlier?.let { RunDirectory.of(it.config, runnerStep(it)) }
-            val problem = when {
-                target == node.id -> "a step cannot continue its own session"
-                byId[target] == null -> "continueSession names step $target, which does not exist"
-                earlier == null || !runnerStep(earlier) -> "continueSession names step $target, which is not a coding agent step"
-                earlierSetting?.prepareOnly == true -> "continueSession names step $target, a prepare step that starts no agent session"
-                earlierSetting?.runDirectory == false -> "continueSession names step $target, which works in a SEPARATE directory: its session is thrown away"
-                earlierSetting?.session == RunDirectory.Session.NEW -> "continueSession names step $target, which starts a new session every time (session NEW)"
-                earlier.agent.key != task.agent.key ->
-                    "step $target runs agent ${earlier.agent.key} and this step ${task.agent.key}: a session continues only with the same agent (its home holds the session)"
-                cyclic(node.id, tasks, resolved) -> "continueSession forms a cycle"
-                else -> null
-            }
-            problem?.let { node to it }
-        }
-    }
-
-    private fun cyclic(start: String, tasks: List<WorkflowNode.Task>, resolved: Map<String, ResolvedTask>): Boolean {
-        val targets = tasks.associate { node -> node.id to resolved[node.id]?.let { RunDirectory.of(it.config, runnerStep(it)).continueFrom } }
-        val seen = mutableSetOf(start)
-        var current = targets[start]
-        while (current != null) {
-            if (!seen.add(current)) return true
-            current = targets[current]
-        }
-        return false
-    }
 
     companion object {
         /** ADR 0056: a coding agent step runs in a sandbox with a git workspace. */

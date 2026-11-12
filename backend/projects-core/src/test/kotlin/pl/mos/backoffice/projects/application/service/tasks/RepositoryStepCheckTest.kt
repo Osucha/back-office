@@ -13,7 +13,6 @@ import pl.mos.backoffice.projects.domain.service.StepRepositories
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.tasks.TaskPrompt
 import pl.mos.backoffice.shared.tasks.TaskSummary
 import java.util.UUID
 
@@ -28,7 +27,7 @@ class RepositoryStepCheckTest {
                 else -> TestAgents.MODEL_ANSWER
             }
             return ResolvedTask(
-                key, key, executor, null, TaskPrompt(null, null), emptyList(), overrides.config, null, null,
+                key, key, executor, null, null, emptyList(), overrides.config, null, null,
                 emptyList(), emptyList(), null, listOf(key), WorkflowNode.DEFAULT_TASK_PORTS,
             )
         }

@@ -55,15 +55,16 @@ segment, aby zaznaczyć dany krok.
 |---|---|
 | **Oś czasu** (**Timeline**) | Po lewej: wszystkie kroki po kolei, z numerem próby, portem, przez który krok wyszedł, autorem wyniku, czasem trwania, kosztem i błędami. Po prawej: zaznaczony krok (lub **Całe uruchomienie**, **Whole run**) z podsumowaniem, pewnością i faktami oraz kartami **Artefakty (N)** (**Artefacts (N)**), **Logi** (**Logs**) i, po przeglądzie kodu, **Przegląd** (**Review**). |
 | **Odtworzenie na kanwie** (**Canvas replay**) | Wersja workflowu, z którą wystartowało uruchomienie, ze ścieżką, którą przeszło. |
-| **Wejście** (**Input**) | Wejście uruchomienia: klucz zgłoszenia, parametry (wartości danych wejściowych z formularza startu i ewentualne dodatkowe parametry) i, dla uruchomień z CI, kontekst CI. |
+| **Wejście** (**Input**) | Wejście uruchomienia: klucz zgłoszenia, parametry (wartości pól formularza startu i ewentualne dodatkowe parametry) i, dla uruchomień z CI, kontekst CI. |
 | **Pochodzenie** (**Provenance**) | Podpisane atestacje uruchomienia (zob. [Pochodzenie](runs.md#provenance)). |
 
 - **Kto wykonał krok zadania.** Każdy krok zadania zapisuje agenta i model, z którym działał. Oś czasu pokazuje je
   pod krokiem jako *szablon · agent · model*, na przykład `implement-opencode · Claude Code · Claude Sonnet`, a fakty
   kroku mają wiersz **Agent** (z rodzajem agenta, gdy jego nazwa go nie mówi). Kroki wykonane, zanim zaczęto
   zapisywać agentów, pokazują tylko szablon. Te zapisy zasilają
-  [Agenci: koszt i skuteczność](costs-insights.md#agent-insights). Krok, który pracował poza
-  [katalogiem przebiegu](workflows.md#run-directory), ma wiersz **Katalog** (**Directory**): *osobny*.
+  [Agenci: koszt i skuteczność](costs-insights.md#agent-insights). Krok, którego węzeł dopisał uwagi do polecenia
+  szablonu, ma wiersz **Polecenie** (**Instructions**): *rozszerzone w węźle*; taki, który je zastąpił, *zastąpione
+  w węźle*.
 - **Pytania agenta.** Krok, którego agent zatrzymał się z pytaniami, pokazuje **czeka na Twoje odpowiedzi**; strona
   uruchomienia mówi o tym i daje **Odpowiedz na pytania** (**Answer the questions**) albo **Zobacz pytania** (**View the
   questions**), gdy odpowiada ktoś inny. Zob. [Odpowiadanie na pytania agenta](your-turn.md#agent-questions).

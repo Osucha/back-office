@@ -231,7 +231,7 @@ class WorkflowService(
                 val pushes = TaskRunKind.of(task).runner && task.config["push"]?.toString()?.lowercase() != "false"
                 TaskTemplateInfo(
                     task.ports.ifEmpty { WorkflowNode.DEFAULT_TASK_PORTS }, pushCapable = pushes,
-                    runInputs = task.runInputs, issueKeyFrom = task.config["issueKeyFrom"]?.toString(),
+                    parameters = task.parameters.map { it.definition }, issueKeyFrom = task.config["issueKeyFrom"]?.toString(),
                 )
             }
         } catch (e: ValidationException) {

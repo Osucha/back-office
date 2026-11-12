@@ -28,7 +28,7 @@ class RunInputFieldTest {
     @Test
     fun `a resolved task declares no run inputs unless given`() {
         val task = ResolvedTask(
-            key = "k", name = "K", agent = TestAgents.MODEL_ANSWER, modelProfileId = null as ModelProfileId?, prompt = TaskPrompt(null, null),
+            key = "k", name = "K", agent = TestAgents.MODEL_ANSWER, modelProfileId = null as ModelProfileId?, instructions = null,
             skills = emptyList(), config = emptyMap(), outputSchema = null, confidenceField = null, produces = emptyList(), consumes = emptyList(),
             category = null, lineage = listOf("k"), ports = listOf("success"),
         )

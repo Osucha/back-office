@@ -7,10 +7,12 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.RuleSnapshot
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
+import pl.mos.backoffice.shared.tasks.ParameterBinding
+import pl.mos.backoffice.shared.tasks.ParameterBindingSource
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.tasks.domain.model.Agent
-import pl.mos.backoffice.shared.tasks.TaskPrompt
+import pl.mos.backoffice.tasks.domain.model.InstructionsMode
 import pl.mos.backoffice.shared.tasks.TemplateCategory
 import pl.mos.backoffice.shared.tasks.TemplateParameterType
 import pl.mos.backoffice.tasks.domain.model.Rule
@@ -28,26 +30,29 @@ class RestMappersTest {
     private val input = RunInputFieldDto("input", "Input material", RunInputType.MULTILINE, required = false, help = null)
 
     @Test
-    fun `template run inputs go from the request to the domain and back to the response`() {
-        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL), runInputs = listOf(issue, input), config = mapOf("push" to true))
-
-        val content = RestMappers.templateContent(dto)
-        assertThat(content.runInputs).containsExactly(
-            RunInputField("issueKey", "Jira issue", RunInputType.ISSUE_KEY, required = true, help = "e.g. ABC-1"),
-            RunInputField("input", "Input material", RunInputType.MULTILINE),
+    fun `ADR 0062 - template instructions and their mode go from the request to the domain and back to the response`() {
+        val dto = TaskTemplateInputDto(
+            key = "writer", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL), instructions = "Write it.", instructionsMode = InstructionsMode.REPLACE,
+            config = mapOf("push" to true),
         )
 
+        val content = RestMappers.templateContent(dto)
+        assertThat(content.instructions).isEqualTo("Write it.")
+        assertThat(content.instructionsMode).isEqualTo(InstructionsMode.REPLACE)
+
         val response = RestMappers.template(TaskTemplate.create(content, now))
-        assertThat(response.runInputs).containsExactly(issue, input)
+        assertThat(response.instructions).isEqualTo("Write it.")
+        assertThat(response.instructionsMode).isEqualTo(InstructionsMode.REPLACE)
         assertThat(response.needsCodingAgent).describedAs("unknown to the mapper: the use case derives it").isFalse()
         assertThat(RestMappers.template(TaskTemplate.create(content, now), needsCodingAgent = true).needsCodingAgent).isTrue()
     }
 
     @Test
-    fun `a request without run inputs declares none`() {
-        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL))
+    fun `a request without instructions appends nothing`() {
+        val dto = TaskTemplateInputDto(key = "writer", name = "Writer", scope = ScopeDto(ScopeTypeDto.GLOBAL), instructions = " ")
 
-        assertThat(RestMappers.templateContent(dto).runInputs).isEmpty()
+        assertThat(TaskTemplate.create(RestMappers.templateContent(dto), now).instructions).isNull()
+        assertThat(RestMappers.templateContent(dto).instructionsMode).isEqualTo(InstructionsMode.APPEND)
     }
 
     @Test
@@ -89,13 +94,13 @@ class RestMappersTest {
     }
 
     @Test
-    fun `the resolved view carries the merged run inputs, category, rules and the check`() {
+    fun `the resolved view carries the START fields, category, rules and the check`() {
         val resolution = TaskResolution(
             key = "writer", name = "Writer", description = "", agent = AgentSnapshot.DEFAULT, modelProfileId = null,
-            prompt = TaskPrompt(null, null), skills = emptyList(), config = emptyMap(), outputSchema = null, confidenceField = null,
+            instructions = null, skills = emptyList(), config = emptyMap(), outputSchema = null, confidenceField = null,
             produces = emptyList(), consumes = emptyList(), category = TemplateCategory.REVIEW, lineage = listOf("writer", "base-agent"),
             ports = listOf("success", "failure"), tags = emptyList(), abstract = false, projectId = null, check = ResolutionCheck.of(listOf("rule x does not exist")),
-            runInputs = listOf(RunInputField("input", "Input material", RunInputType.MULTILINE)),
+            runInputs = listOf(RunInputField("input", "Input material", RunInputType.MULTILINE, parameter = pl.mos.backoffice.shared.tasks.TemplateParameter("input", "Input material", TemplateParameterType.MULTILINE))),
             rules = listOf(RuleSnapshot("auto", "Auto", "text", automatic = true), RuleSnapshot("listed", "Listed", "text")),
         )
 
@@ -150,7 +155,21 @@ class RestMappersTest {
 
     @Test
     fun `ADR 0058 - step parameters and resolved parameters map with value and source`() {
-        assertThat(RestMappers.overrides(TaskOverridesDto(parameters = mapOf("task" to "x"))).parameters).isEqualTo(mapOf("task" to "x"))
+        assertThat(RestMappers.overrides(TaskOverridesDto(parameters = mapOf("task" to "x"))).parameterBindings).describedAs("legacy values read as VALUE bindings")
+            .isEqualTo(mapOf("task" to ParameterBinding.value("x")))
+        val overrides = RestMappers.overrides(
+            TaskOverridesDto(
+                parameterBindings = mapOf("task" to ParameterBindingDto(ParameterBindingSource.START), "spec" to ParameterBindingDto(ParameterBindingSource.ARTIFACT, artifact = " spec ")),
+                parameters = mapOf("task" to "ignored", "tone" to "dry"),
+                systemPromptAppend = "legacy system", promptAppend = "legacy user", instructionsAppend = "notes", promptReplace = "old replace",
+            ),
+        )
+        assertThat(overrides.parameterBindings).isEqualTo(
+            mapOf("tone" to ParameterBinding.value("dry"), "task" to ParameterBinding.START, "spec" to ParameterBinding.artifact("spec")),
+        )
+        assertThat(overrides.instructionsAppend).isEqualTo("notes\n\nlegacy system\n\nlegacy user")
+        assertThat(overrides.instructionsReplace).isEqualTo("old replace")
+        assertThat(RestMappers.overrides(TaskOverridesDto(instructionsReplace = "new", promptReplace = "old")).instructionsReplace).isEqualTo("new")
         val resolved = RestMappers.resolvedParameter(
             pl.mos.backoffice.shared.tasks.ResolvedParameter(
                 pl.mos.backoffice.shared.tasks.TemplateParameter("task", "Task", TemplateParameterType.MULTILINE, default = "d"), "d",
@@ -160,4 +179,21 @@ class RestMappersTest {
         assertThat(resolved).isEqualTo(ResolvedParameterDto("task", "Task", TemplateParameterType.MULTILINE, false, "d", emptyList(), null, "d", pl.mos.backoffice.shared.tasks.ParameterSource.DEFAULT))
     }
 
+    @Test
+    fun `ADR 0062 - an agent's session and directory map both ways and default to PER_STEP and RUN`() {
+        val dto = AgentInputDto(
+            name = "Loner", scope = ScopeDto(ScopeTypeDto.GLOBAL), harness = AgentHarness.CLAUDE_CODE,
+            access = AgentAccessDto(directory = pl.mos.backoffice.shared.runner.AgentDirectory.SEPARATE), session = pl.mos.backoffice.shared.runner.AgentSession.PER_RUN,
+        )
+        val content = RestMappers.agentContent(dto)
+        assertThat(content.access.directory).isEqualTo(pl.mos.backoffice.shared.runner.AgentDirectory.SEPARATE)
+        assertThat(content.session).isEqualTo(pl.mos.backoffice.shared.runner.AgentSession.PER_RUN)
+        val out = RestMappers.agent(Agent.create(content.copy(key = "loner"), now))
+        assertThat(out.access.directory).isEqualTo(pl.mos.backoffice.shared.runner.AgentDirectory.SEPARATE)
+        assertThat(out.session).isEqualTo(pl.mos.backoffice.shared.runner.AgentSession.PER_RUN)
+
+        val plain = RestMappers.agentContent(AgentInputDto(name = "Plain", scope = ScopeDto(ScopeTypeDto.GLOBAL)))
+        assertThat(plain.session).isEqualTo(pl.mos.backoffice.shared.runner.AgentSession.PER_STEP)
+        assertThat(plain.access.directory).isEqualTo(pl.mos.backoffice.shared.runner.AgentDirectory.RUN)
+    }
 }

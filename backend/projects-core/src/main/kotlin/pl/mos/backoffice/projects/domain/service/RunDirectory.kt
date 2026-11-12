@@ -1,49 +1,38 @@
 package pl.mos.backoffice.projects.domain.service
 
-import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.shared.runner.AgentDirectory
+import pl.mos.backoffice.shared.runner.AgentSession
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
+import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import java.security.MessageDigest
 
 /**
- * ADR 0060: where a coding step works and which agent session it continues, from its config.
+ * ADR 0060/0062: where a coding step works and which agent session it continues. ADR 0062 moved both to the agent:
  *
- * - `directory`: `RUN` (default) the run directory every RUN step of a run shares (the runner workspace
+ * - `Agent.access.directory`: `RUN` (default) the run directory every RUN step of a run shares (the runner workspace
  *   [RunnerWorkspace.RUN_KEY]); `SEPARATE` a fresh directory with only the step's repositories, thrown away after the
  *   step (no session continuation).
- * - `session`: `OWN` (default) repeated executions of the step continue its own session; `NEW` every execution starts
- *   fresh; `CONTINUE` with `continueSession: <node id>` shares the session of that earlier step (same agent, checked by
- *   the workflow validation). A `SEPARATE` step always starts a new session.
- * - `prepareOnly`: clone and run the setup in the run directory, no agent (the deprecated `prepare-workspace`).
+ * - `Agent.session`: `PER_STEP` (default) the repeats of one step continue its conversation (session role `s-<node id>`);
+ *   `PER_RUN` all steps of the agent in a run are one conversation (`a-<agent key>`); `FRESH` every execution starts anew.
+ * - the step's `prepareOnly`: clone and run the setup in the run directory, no agent (the deprecated `prepare-workspace`).
  *
- * Compatibility: a `continueSession` without `session` reads as `CONTINUE` (ADR 0057); a legacy `sessionRole` (ADR
- * 0044) without `session` is the step's own session role, so steps that shared a role keep sharing their session (the
- * agent check of ADR 0060 would need the library at read time; sharing by role is what they did before). The legacy
- * `workspace` key is dropped when the workflow is read (WorkflowJson).
+ * Compatibility: a legacy step `sessionRole` (ADR 0044) is the step's session role while the agent keeps the default
+ * `PER_STEP`, so steps that shared a role keep sharing their session; the former step keys `directory`, `session` and
+ * `continueSession` are dropped when the workflow is read (WorkflowJson).
  */
 object RunDirectory {
-    const val DIRECTORY = "directory"
-    const val SESSION = "session"
-    const val CONTINUE_SESSION = "continueSession"
     const val PREPARE_ONLY = "prepareOnly"
 
     /** ADR 0044: read compatibly, never offered for new steps. */
     const val LEGACY_SESSION_ROLE = "sessionRole"
 
-    const val FIELD_DIRECTORY = "task.config.directory"
-    const val FIELD_SESSION = "task.config.session"
-    const val FIELD_CONTINUE = "task.config.continueSession"
-
-    enum class Directory { RUN, SEPARATE }
-
-    enum class Session { OWN, NEW, CONTINUE }
+    const val FIELD_PREPARE_ONLY = "task.config.prepareOnly"
 
     data class Setting(
-        val directory: Directory = Directory.RUN,
-        val session: Session = Session.OWN,
-        /** The node whose session a [Session.CONTINUE] step shares. */
-        val continueFrom: String? = null,
+        val directory: AgentDirectory = AgentDirectory.RUN,
+        val session: AgentSession = AgentSession.PER_STEP,
         val prepareOnly: Boolean = false,
-        /** ADR 0044 `sessionRole` of a step without `session`: its own session role. */
+        /** ADR 0044 `sessionRole` of the step, honoured while the agent keeps [AgentSession.PER_STEP]. */
         val legacyRole: String? = null,
         val errors: List<String> = emptyList(),
         val warnings: List<String> = emptyList(),
@@ -51,75 +40,44 @@ object RunDirectory {
         val valid: Boolean get() = errors.isEmpty()
 
         /** Whether the step works in the shared run directory. */
-        val runDirectory: Boolean get() = directory == Directory.RUN
+        val runDirectory: Boolean get() = directory == AgentDirectory.RUN
     }
 
-    /** The setting of one step from its (effective) [config]; [runnerStep] = a coding agent step. */
-    fun of(config: Map<String, Any?>, runnerStep: Boolean): Setting {
-        val directoryText = text(config[DIRECTORY])
-        val sessionText = text(config[SESSION])
-        val target = text(config[CONTINUE_SESSION])
+    /** The setting of one step from its (effective) [config] and its [agent]; [runnerStep] = a coding agent step. */
+    fun of(config: Map<String, Any?>, agent: AgentSnapshot, runnerStep: Boolean): Setting {
         val prepareOnly = flag(config[PREPARE_ONLY])
-        val legacyRole = text(config[LEGACY_SESSION_ROLE])
         if (!runnerStep) {
-            val set = listOfNotNull(directoryText?.let { DIRECTORY }, sessionText?.let { SESSION }, target?.let { CONTINUE_SESSION }, PREPARE_ONLY.takeIf { prepareOnly })
-            val warnings = if (set.isEmpty()) emptyList() else listOf("only coding agent steps use ${set.joinToString()}; a model answer has no directory and no session")
+            val warnings = if (prepareOnly) listOf("only coding agent steps use $PREPARE_ONLY; a model answer has no directory") else emptyList()
             return Setting(warnings = warnings)
         }
         val errors = mutableListOf<String>()
         val warnings = mutableListOf<String>()
-        val directory = directoryText?.let { value ->
-            Directory.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: run { errors += "directory \"$value\": RUN or SEPARATE"; null }
-        } ?: Directory.RUN
-        val explicit = sessionText?.let { value ->
-            Session.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: run { errors += "session \"$value\": OWN, NEW or CONTINUE"; null }
+        val directory = agent.access.directory
+        val role = text(config[LEGACY_SESSION_ROLE])
+        if (directory == AgentDirectory.SEPARATE && prepareOnly) {
+            errors += "a prepare step prepares the run directory, but agent ${agent.key} works in a SEPARATE directory: choose an agent with directory RUN"
         }
-        var session = explicit ?: if (target != null) Session.CONTINUE else Session.OWN
-        if (session == Session.CONTINUE && target == null) errors += "session CONTINUE needs continueSession: the node id of the step whose session it continues"
-        if (target != null && explicit != null && explicit != Session.CONTINUE) warnings += "continueSession is ignored: session is $explicit"
-        val role = legacyRole?.takeIf { sessionText == null && target == null }
         if (role != null && !RunnerWorkspace.KEY_PATTERN.matches(role)) warnings += "sessionRole \"$role\" is not a valid session role and is ignored"
-        if (directory == Directory.SEPARATE) {
-            if (prepareOnly) errors += "a prepare step prepares the run directory; it cannot work in a SEPARATE directory"
-            if (explicit != null && explicit != Session.NEW || target != null) {
-                warnings += "a SEPARATE step always starts a new session (its directory is thrown away); session ${explicit ?: Session.CONTINUE} is ignored"
-            }
-            session = Session.NEW
-        }
-        if (prepareOnly && (explicit != null || target != null)) warnings += "a prepare step starts no agent: its session settings are ignored"
         return Setting(
             directory = directory,
-            session = session,
-            continueFrom = target.takeIf { session == Session.CONTINUE },
+            session = agent.session,
             prepareOnly = prepareOnly,
-            legacyRole = role?.takeIf { RunnerWorkspace.KEY_PATTERN.matches(it) },
+            legacyRole = role?.takeIf { RunnerWorkspace.KEY_PATTERN.matches(it) && agent.session == AgentSession.PER_STEP },
             errors = errors,
             warnings = warnings,
         )
     }
 
     /**
-     * The session role step [nodeId] runs under ([config]: its effective config; [nodes]: the workflow's nodes, whose
-     * step configs give the roles of the steps it continues): OWN its own role ([ownRole], or its legacy `sessionRole`),
-     * CONTINUE the role of the step it continues, NEW / SEPARATE / prepare steps none. Null also when the continued step
-     * has no session to share (the validation reports that).
+     * The session role step [nodeId] runs under with [setting] and agent [agentKey]: none for a prepare step, a
+     * SEPARATE directory or a FRESH agent; the legacy `sessionRole`, else the step's own role ([ownRole]) for PER_STEP;
+     * the agent's role in the run ([agentRole]) for PER_RUN.
      */
-    fun sessionRole(nodeId: String, config: Map<String, Any?>, nodes: List<WorkflowNode>): String? {
-        val tasks = nodes.filterIsInstance<WorkflowNode.Task>().associateBy { it.id }
-        return roleOf(nodeId, of(config, runnerStep = true), tasks, mutableSetOf())
-    }
-
-    private fun roleOf(nodeId: String, setting: Setting, tasks: Map<String, WorkflowNode.Task>, seen: MutableSet<String>): String? {
-        if (!seen.add(nodeId) || setting.prepareOnly || !setting.runDirectory) return null
-        return when (setting.session) {
-            Session.NEW -> null
-            Session.OWN -> setting.legacyRole ?: ownRole(nodeId)
-            Session.CONTINUE -> {
-                val target = setting.continueFrom?.takeIf { it != nodeId } ?: return null
-                val node = tasks[target] ?: return null
-                roleOf(target, of(node.task.overrides.config, runnerStep = true), tasks, seen)
-            }
-        }
+    fun sessionRole(nodeId: String, setting: Setting, agentKey: String): String? = when {
+        setting.prepareOnly || !setting.runDirectory -> null
+        setting.session == AgentSession.FRESH -> null
+        setting.session == AgentSession.PER_RUN -> agentRole(agentKey)
+        else -> setting.legacyRole ?: ownRole(nodeId)
     }
 
     /**
@@ -127,14 +85,19 @@ object RunDirectory {
      * longer than [RunnerWorkspace.KEY_PATTERN] allows (20 characters) it is cut and a short hash of the node id keeps
      * it unique and deterministic.
      */
-    fun ownRole(nodeId: String): String {
-        val cleaned = nodeId.lowercase().replace(Regex("[^a-z0-9-]+"), "-").replace(Regex("-{2,}"), "-").trim('-')
-        val candidate = "$ROLE_PREFIX$cleaned"
+    fun ownRole(nodeId: String): String = role(STEP_PREFIX, nodeId)
+
+    /** ADR 0062: the session role every step of agent [agentKey] shares in a run (`PER_RUN`): `a-` and the key, like [ownRole]. */
+    fun agentRole(agentKey: String): String = role(AGENT_PREFIX, agentKey)
+
+    private fun role(prefix: String, value: String): String {
+        val cleaned = value.lowercase().replace(Regex("[^a-z0-9-]+"), "-").replace(Regex("-{2,}"), "-").trim('-')
+        val candidate = "$prefix$cleaned"
         if (cleaned.isNotEmpty() && candidate.length <= MAX_ROLE && RunnerWorkspace.KEY_PATTERN.matches(candidate)) return candidate
-        val hash = shortHash(nodeId)
-        val room = MAX_ROLE - ROLE_PREFIX.length - hash.length - 1
+        val hash = shortHash(value)
+        val room = MAX_ROLE - prefix.length - hash.length - 1
         val head = cleaned.take(room).trimEnd('-')
-        return if (head.isEmpty()) "$ROLE_PREFIX$hash" else "$ROLE_PREFIX$head-$hash"
+        return if (head.isEmpty()) "$prefix$hash" else "$prefix$head-$hash"
     }
 
     /** ADR 0060: `allowQuestions` (default true) and `maxQuestionRounds` (default [DEFAULT_MAX_QUESTION_ROUNDS]) of an agent step. */
@@ -167,7 +130,8 @@ object RunDirectory {
 
     private fun text(value: Any?): String? = value?.toString()?.trim()?.takeIf { it.isNotEmpty() }
 
-    private const val ROLE_PREFIX = "s-"
+    private const val STEP_PREFIX = "s-"
+    private const val AGENT_PREFIX = "a-"
     private const val MAX_ROLE = 20
     private const val HASH_BYTES = 3
 }

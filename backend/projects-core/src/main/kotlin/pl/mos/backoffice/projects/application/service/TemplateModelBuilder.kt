@@ -5,7 +5,10 @@ import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.domain.model.Project
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
+import pl.mos.backoffice.projects.domain.service.StepParameters
 import pl.mos.backoffice.projects.domain.service.StepRepository
+import pl.mos.backoffice.projects.domain.service.TemplateRenderer
+import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 
@@ -17,7 +20,7 @@ import pl.mos.backoffice.shared.tasks.RunInputType
  * primary repository and may be null, as may `defaultBranch` / `repositoryUrl`), `repos` (the repositories of the
  * current step: key, url, path, access, purpose, baseBranch, primary), `repositoryResults` (key -> latest result),
  * `mr`, `review`, `ci` (last signal), `decision`, `input` (incl. `input.ci`), `parameters`, `run.id`, `node`,
- * `branch`, `confidence`, `lastOutcome`, `params` (ADR 0058: the task's parameter values, set by the workflow designer, trusted like the prompt) and `runInput` (ADR 0053: the current task's declared run inputs that have a
+ * `branch`, `confidence`, `lastOutcome`, `params` (ADR 0058/0062: the task's parameter values; those the design sets are trusted like the instructions, those the run sets are listed under [TemplateRenderer.UNTRUSTED_PARAMS]) and `runInput` (ADR 0053/0062: the parameters the step binds START that have a
  * value, as `{name, label, value}` in declaration order; an `ISSUE_KEY` field falls back to the run's issue key) with
  * `runInputText`, the same list as `Label: value` paragraphs for prompts (sections cannot iterate lists).
  */
@@ -31,6 +34,16 @@ class TemplateModelBuilder {
     ): Map<String, Any?> =
         build(context.run, context.project, context.node, context.attempt, context.state, stepRepositories, runInputs, parameters)
 
+    /**
+     * ADR 0062: the model of a task step: its run start fields ([ResolvedTask.runInputs], the parameters it binds `START`)
+     * and its parameter values in the run ([StepParameters]); the values the run sets are marked untrusted.
+     */
+    fun build(context: NodeContext, stepRepositories: List<StepRepository>, task: ResolvedTask): Map<String, Any?> =
+        build(
+            context.run, context.project, context.node, context.attempt, context.state, stepRepositories, task.runInputs,
+            StepParameters.values(task, context.run), StepParameters.untrusted(task),
+        )
+
     @Suppress("UNCHECKED_CAST")
     fun build(
         run: WorkflowRun,
@@ -42,6 +55,8 @@ class TemplateModelBuilder {
         runInputs: List<RunInputField> = emptyList(),
         /** ADR 0058: the resolved parameter values of the step's task, read as `{{params.<name>}}`. */
         parameters: Map<String, Any?> = emptyMap(),
+        /** ADR 0062: names of [parameters] whose values the run set (start form, artefact): data blocks in prompts. */
+        untrustedParameters: Set<String> = emptySet(),
     ): Map<String, Any?> {
         val primary = project.primaryRepository
         val artifactContents = run.artifacts.sortedBy { it.createdAt }.associate { it.name to it.content }
@@ -80,6 +95,7 @@ class TemplateModelBuilder {
             "input" to mapOf("issueKey" to run.input.issueKey, "parameters" to run.input.parameters, "ci" to (run.input.ci?.toMap() ?: emptyMap<String, Any?>())),
             "parameters" to run.input.parameters,
             "params" to parameters,
+            TemplateRenderer.UNTRUSTED_PARAMS to untrustedParameters,
             "runInput" to declaredInputs,
             "runInputText" to declaredInputs.joinToString("\n\n") { "${it["label"]}: ${it["value"]}" },
             "run" to mapOf("id" to run.id.toString(), "short" to run.id.short, "workflow" to run.workflowName, "trigger" to run.trigger.type.name),
