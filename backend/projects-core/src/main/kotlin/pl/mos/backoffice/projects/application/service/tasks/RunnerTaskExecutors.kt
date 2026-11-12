@@ -24,6 +24,7 @@ import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.projects.domain.service.WorkflowSources
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.RunnerJobId
+import pl.mos.backoffice.shared.llm.ApiPricing
 import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.prompt.UntrustedText
@@ -270,8 +271,8 @@ class RunnerTaskSupport(
         result.access?.reverted?.takeIf { it.isNotEmpty() }?.let { reverted ->
             context.warn("reverted ${reverted.size} change(s) outside the agent's access: " + reverted.joinToString { it.describe() })
         }
-        // ADR 0042: what the step costs at API prices, whoever pays; the harness figure first, else the profile's pricing
-        val apiCost = result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
+        // ADR 0042/0065: what the step costs at API prices, whoever pays; the harness figure first, else the tokens at API prices
+        val apiCost = ApiPricing.costOf(result.reportedCostUsd, result.usage) { modelResolver.apiPricing(plan.profile) }
         val cost = if (result.subscription) {
             // ADR 0040: paid by the user's own subscription, so nothing is spent; the API-equivalent cost is kept
             context.log("the agent used your own Claude login on your personal runner (cost at API prices ${apiCost.rounded().amount.toPlainString()} USD; paid by the subscription)")
@@ -365,7 +366,7 @@ class RunnerTaskSupport(
         val updates = HashMap<String, Any?>()
         confidence?.let { updates[RunStateKeys.CONFIDENCE] = it }
         val artifacts = mutableListOf<NewArtifact>()
-        val apiCost = result.reportedCostUsd?.let { Money(it).rounded() } ?: plan.profile.pricing.costOf(result.usage)
+        val apiCost = ApiPricing.costOf(result.reportedCostUsd, result.usage) { modelResolver.apiPricing(plan.profile) }
         val review = if (task.produces.contains("review")) {
             answers.review(context, structured, result.summary.orEmpty(), emptyList(), emptyList(), plan.profile.ref, result.usage, apiCost)
         } else {

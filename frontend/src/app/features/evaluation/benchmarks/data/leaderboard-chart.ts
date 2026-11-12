@@ -9,10 +9,13 @@ import {
 import { formatMoney } from '../../../../core/ui/pipes/money.pipe';
 import { icu } from '../../../../core/i18n/icu';
 import { fixed } from '../../../../core/i18n/numbers';
+import { boardMeanCost, comparesOnApi } from './board-cost';
 
 export interface ScatterPoint {
-  /** [meanCost, meanScore] */
+  /** [meanCost, meanScore]; the cost at API prices for a subscription candidate (ADR 0065) */
   value: [number, number];
+  /** ADR 0065: the cost is the estimate at API prices (the candidate ran on a subscription). */
+  api: boolean;
   name: string;
   modelProfileId: string;
   provider: string;
@@ -22,7 +25,7 @@ export interface ScatterPoint {
 }
 
 /**
- * One point per model: x = mean cost per attempt (USD), y = mean score (0-100), coloured by
+ * One point per model: x = mean cost per attempt (USD; at API prices for subscription candidates, ADR 0065), y = mean score (0-100), coloured by
  * provider from the Relay tokens (`tokens` defaults to the light theme; pages pass
  * `chartTokensSignal()()` so the chart follows light and dark).
  * Rows without a score (no successful attempt yet) are skipped.
@@ -34,7 +37,8 @@ export function leaderboardToScatter(
   return (rows ?? [])
     .filter((r) => r.meanScore !== null && r.meanScore !== undefined)
     .map((r) => ({
-      value: [r.meanCost?.amount ?? 0, r.meanScore!] as [number, number],
+      value: [boardMeanCost(r), r.meanScore!] as [number, number],
+      api: comparesOnApi(r),
       name:
         r.candidate?.label ??
         r.modelDisplayName ??
@@ -102,7 +106,9 @@ export function scatterOption(
           `<strong>${escapeHtml(d.name)}</strong><br/>` +
           $localize`:@@evaluation.chart.tooltip.score:score ${score}:score:` +
           '<br/>' +
-          $localize`:@@evaluation.chart.tooltip.cost:mean cost ${cost}:cost:` +
+          (d.api
+            ? $localize`:@@evaluation.chart.tooltip.apiCost:mean cost ${cost}:cost: at API prices (subscription)`
+            : $localize`:@@evaluation.chart.tooltip.cost:mean cost ${cost}:cost:`) +
           pass +
           '<br/>' +
           attempts

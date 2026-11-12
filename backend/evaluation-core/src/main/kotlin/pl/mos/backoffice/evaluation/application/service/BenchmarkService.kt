@@ -280,7 +280,9 @@ class BenchmarkService(
     override fun leaderboard(id: BenchmarkId): Leaderboard {
         gate.require(EvaluationPermissions.EVALUATION_VIEW)
         val benchmark = load(id)
-        return LeaderboardCalculator.leaderboard(id, benchmarks.findAttempts(id), benchmark.codingHarness, leaderboardCandidates(benchmark))
+        // ADR 0065: candidates whose model runs on a subscription (a deleted profile counts as an API model)
+        val subscription = benchmark.modelProfileIds.filter { profiles.findById(it)?.viaClaudeCodeLogin == true }.toSet()
+        return LeaderboardCalculator.leaderboard(id, benchmarks.findAttempts(id), benchmark.codingHarness, leaderboardCandidates(benchmark), subscription)
     }
 
     /** ADR 0059: per candidate the tasks it can and cannot do (none for a benchmark of models or without its suite). */
@@ -381,6 +383,7 @@ class BenchmarkService(
             suiteName = suite?.name,
             progress = BenchmarkProgressCounts.of(attempts),
             totalCost = totalCost(attempts),
+            totalApiCost = totalApiCost(attempts),
             models = models,
             judge = profiles.findById(benchmark.judgeModelProfileId),
             candidateRefs = candidateRefs(benchmark, tasks, models),
@@ -388,4 +391,7 @@ class BenchmarkService(
     }
 
     private fun totalCost(attempts: List<Attempt>): Money = Money.sum(attempts.map { it.cost + it.judgeCost })
+
+    /** ADR 0065: candidates and judge at API prices. */
+    private fun totalApiCost(attempts: List<Attempt>): Money = Money.sum(attempts.map { it.apiCost + it.judgeApiCost })
 }

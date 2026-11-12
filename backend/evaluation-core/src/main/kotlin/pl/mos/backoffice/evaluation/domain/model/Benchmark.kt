@@ -243,8 +243,18 @@ data class Attempt(
     val cost: Money = Money.ZERO,
     val judgeCost: Money = Money.ZERO,
     val durationMs: Long? = null,
-    /** ADR 0046: the candidate's own time (model answer or agent job), without the judge, queueing or retries. */
+    /**
+     * ADR 0046/0065: the candidate's own time (model answer or agent job, from the start of the job on its runner), without
+     * the judge, queueing or retries.
+     */
     val candidateLatencyMs: Long? = null,
+    /**
+     * ADR 0065: the candidate's work at API list prices; equal to [cost] through the gateway, the harness's estimate (or
+     * the tokens at API prices) on a subscription, where [cost] is 0.
+     */
+    val apiCost: Money = cost,
+    /** ADR 0065: the judge's verdicts at API list prices (a judge on a subscription: its estimate; [judgeCost] is 0). */
+    val judgeApiCost: Money = judgeCost,
     val runnerJobId: RunnerJobId? = null,
     val error: String? = null,
     val createdAt: Instant,
@@ -269,16 +279,27 @@ data class Attempt(
 
     fun withRunnerJob(jobId: RunnerJobId): Attempt = copy(runnerJobId = jobId)
 
-    fun judging(output: String?, verification: AttemptVerification?, usage: TokenUsage, cost: Money, candidateLatencyMs: Long? = this.candidateLatencyMs): Attempt =
-        copy(status = AttemptStatus.JUDGING, output = output, verification = verification, usage = usage, cost = cost, candidateLatencyMs = candidateLatencyMs)
+    /** The candidate answered; [apiCost] (ADR 0065) defaults to [cost], the figure of a gateway call. */
+    fun judging(
+        output: String?,
+        verification: AttemptVerification?,
+        usage: TokenUsage,
+        cost: Money,
+        candidateLatencyMs: Long? = this.candidateLatencyMs,
+        apiCost: Money = cost,
+    ): Attempt = copy(
+        status = AttemptStatus.JUDGING, output = output, verification = verification, usage = usage, cost = cost,
+        candidateLatencyMs = candidateLatencyMs, apiCost = apiCost,
+    )
 
-    fun succeed(score: Double, passed: Boolean, verdict: JudgeVerdict, judgeCost: Money, now: Instant): Attempt = copy(
+    fun succeed(score: Double, passed: Boolean, verdict: JudgeVerdict, judgeCost: Money, now: Instant, judgeApiCost: Money = judgeCost): Attempt = copy(
         status = AttemptStatus.SUCCEEDED,
         score = score,
         passed = passed,
         judgeRationale = verdict.rationale,
         judgeCriteria = verdict.criteria,
         judgeCost = judgeCost,
+        judgeApiCost = judgeApiCost,
         finishedAt = now,
         durationMs = durationSince(now),
     )

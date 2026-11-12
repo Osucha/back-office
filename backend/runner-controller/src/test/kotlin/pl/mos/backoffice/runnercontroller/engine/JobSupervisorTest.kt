@@ -55,7 +55,13 @@ class FakeBackend : SandboxBackend {
         return SandboxHandle(request.jobId, "bo-job-${request.jobId}", kind)
     }
 
-    override fun observe(handle: SandboxHandle) = state[handle.jobId] ?: SandboxObservation(SandboxPhase.GONE)
+    /** ADR 0065: runs before every observation (a test blocks it to simulate a stalled docker call). */
+    @Volatile var beforeObserve: (() -> Unit)? = null
+
+    override fun observe(handle: SandboxHandle): SandboxObservation {
+        beforeObserve?.invoke()
+        return state[handle.jobId] ?: SandboxObservation(SandboxPhase.GONE)
+    }
     override fun delete(handle: SandboxHandle) {
         deleted += handle.jobId
         state.remove(handle.jobId)
@@ -485,6 +491,93 @@ class JobSupervisorTest {
         val completion = bo.completionOf(jobId)!!
         assertThat(completion.get("status").asString()).isEqualTo("TIMED_OUT")
         assertThat(completion.get("reason").asString()).isEqualTo("DeadlineExceeded")
+    }
+
+    /** A supervisor on a clock the test moves, registered and bootstrapped. */
+    private fun supervisorWithClock(clockOffset: java.util.concurrent.atomic.AtomicLong, properties: ControllerProperties = props): JobSupervisor {
+        val s = JobSupervisor(properties, client, backend, registry, PolicyResolver(PolicyDefaults(image = "back-office/runner:dev")), json, meters,
+            now = { java.time.Instant.now().plusSeconds(clockOffset.get()) })
+        val store = FileCredentialStore(Files.createTempDirectory("rc").resolve("creds.json"), json)
+        RunnerRegistrar(client, store, holder).ensureRegistered(bo.registrationToken, "t", "dev", null, RunnerCapabilities(emptyList(), emptyList(), 2))
+        s.bootstrap()
+        return s
+    }
+
+    private fun completions(jobId: String) = bo.calls.count { it.path.endsWith("/jobs/$jobId/complete") }
+
+    private fun heartbeats(jobId: String) = bo.calls.count { it.path.endsWith("/jobs/$jobId/heartbeat") }
+
+    @Test
+    fun `ADR 0065 - the watchdog ends a job past its deadline while the monitor is stuck in a docker call, and only once`() {
+        val clockOffset = java.util.concurrent.atomic.AtomicLong(0)
+        val s = supervisorWithClock(clockOffset)
+        val jobId = bo.enqueue(spec, policy)
+        client.lease(pl.mos.backoffice.runnercontroller.protocol.LeaseRequest(1, 1, 1)).forEach { s.accept(it) }
+        backend.state[jobId] = SandboxObservation(SandboxPhase.RUNNING, exitCode = null, node = "node-1")
+        s.tick()
+        assertThat(s.running[jobId]!!.lastObservation!!.node).isEqualTo("node-1")
+
+        // the next observation hangs (a stalled docker inspect)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        backend.beforeObserve = {
+            entered.countDown()
+            release.await(30, java.util.concurrent.TimeUnit.SECONDS)
+        }
+        val monitor = Thread { s.tick() }.apply { start() }
+        assertThat(entered.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue()
+
+        clockOffset.set(3600 + 121)
+        s.watchdog()
+        val completion = bo.completionOf(jobId)!!
+        assertThat(completion.get("status").asString()).isEqualTo("TIMED_OUT")
+        assertThat(completion.get("reason").asString()).isEqualTo("DeadlineExceeded")
+        assertThat(backend.deleted).contains(jobId)
+        assertThat(s.running).doesNotContainKey(jobId)
+
+        // the monitor's observation returns late: the job is not finished a second time
+        backend.state[jobId] = SandboxObservation(SandboxPhase.SUCCEEDED, exitCode = 0)
+        release.countDown()
+        monitor.join(10_000)
+        s.watchdog()
+        assertThat(completions(jobId)).isEqualTo(1)
+        backend.beforeObserve = null
+    }
+
+    @Test
+    fun `ADR 0065 - the watchdog sends due heartbeats with the last observation while the monitor is stuck`() {
+        val clockOffset = java.util.concurrent.atomic.AtomicLong(0)
+        val s = supervisorWithClock(clockOffset, props.copy(heartbeatSeconds = 15))
+        val jobId = bo.enqueue(spec, policy)
+        client.lease(pl.mos.backoffice.runnercontroller.protocol.LeaseRequest(1, 1, 1)).forEach { s.accept(it) }
+        backend.state[jobId] = SandboxObservation(SandboxPhase.RUNNING, node = "node-7")
+        s.tick()
+        assertThat(heartbeats(jobId)).isEqualTo(1)
+
+        // not due yet: nothing sent
+        s.watchdog()
+        assertThat(heartbeats(jobId)).isEqualTo(1)
+
+        // due: sent by the watchdog without observing the sandbox again
+        backend.beforeObserve = { throw IllegalStateException("the watchdog must not observe") }
+        clockOffset.set(20)
+        s.watchdog()
+        assertThat(heartbeats(jobId)).isEqualTo(2)
+        assertThat(bo.calls.last { it.path.endsWith("/heartbeat") }.body).contains("\"phase\":\"RUNNING\"").contains("node-7")
+        assertThat(completions(jobId)).isZero()
+        backend.beforeObserve = null
+    }
+
+    @Test
+    fun `ADR 0065 - a slow monitor pass is reported with the slowest job and call`() {
+        val s = supervisorWithClock(java.util.concurrent.atomic.AtomicLong(0), props.copy(slowMonitorPassSeconds = 0))
+        val jobId = bo.enqueue(spec, policy)
+        client.lease(pl.mos.backoffice.runnercontroller.protocol.LeaseRequest(1, 1, 1)).forEach { s.accept(it) }
+        backend.state[jobId] = SandboxObservation(SandboxPhase.RUNNING)
+        backend.beforeObserve = { Thread.sleep(300) }
+        s.tick()
+        backend.beforeObserve = null
+        assertThat(s.lastSlowPass).contains("job $jobId").contains("observe")
     }
 
     @Test

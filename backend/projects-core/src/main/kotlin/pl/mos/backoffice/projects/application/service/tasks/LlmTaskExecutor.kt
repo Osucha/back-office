@@ -21,6 +21,7 @@ import pl.mos.backoffice.projects.domain.service.UntrustedInput
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
+import pl.mos.backoffice.shared.llm.ApiPricing
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.LlmMessage
 import pl.mos.backoffice.shared.llm.LlmRequest
@@ -105,12 +106,15 @@ class LlmTaskExecutor(
         val structured = answer.structured
         val usage = answer.usage
         val cost = profile.pricing.costOf(usage)
+        // ADR 0042/0065: at API prices; a login model spends nothing and is worth Claude Code's estimate, else its tokens at API prices
+        val apiCost = if (profile.runtime != ModelRuntime.CLAUDE_CODE_LOGIN) cost
+        else ApiPricing.costOf(answer.reportedCostUsd, usage) { modelResolver.apiPricing(profile) }
 
         // ADR 0060: an answer that is only {"agentQuestions": [...]} asks the owner instead of answering
         if (StepQuestions.allowed(task)) {
             StepQuestions.fromModelAnswer(result.content, structured, json)?.let { questions ->
                 context.log("the agent asks ${questions.size} question(s) instead of answering")
-                return NodeResult(port = null, usage = usage, cost = cost, questions = questions, agent = StepAgentRecord.of(task.agent, profile))
+                return NodeResult(port = null, usage = usage, cost = cost, apiCost = apiCost, questions = questions, agent = StepAgentRecord.of(task.agent, profile))
             }
         }
 
@@ -136,6 +140,7 @@ class LlmTaskExecutor(
             confidence = confidence,
             usage = usage,
             cost = cost,
+            apiCost = apiCost,
             artifacts = artifacts,
             review = review,
             stateUpdates = updates,
@@ -143,8 +148,17 @@ class LlmTaskExecutor(
         )
     }
 
-    /** The model answer used by the step: [invalid] lists the problems of a review answer that stayed invalid after the repair. */
-    private data class Answer(val result: LlmResult, val structured: Map<String, Any?>?, val usage: TokenUsage, val invalid: List<String>)
+    /**
+     * The model answer used by the step: [invalid] lists the problems of a review answer that stayed invalid after the repair.
+     * [reportedCostUsd] (ADR 0065): the harness's estimate of every call made (null when one of them has none).
+     */
+    private data class Answer(
+        val result: LlmResult,
+        val structured: Map<String, Any?>?,
+        val usage: TokenUsage,
+        val invalid: List<String>,
+        val reportedCostUsd: java.math.BigDecimal? = result.reportedCostUsd,
+    )
 
     private fun truncated(context: NodeContext, text: String, maxChars: Int): String {
         if (text.length <= maxChars) return text
@@ -167,11 +181,12 @@ class LlmTaskExecutor(
         context.log("review answer invalid (${problems.joinToString("; ")}); asking the model once to repair it")
         val repaired = llmGateway.chatAs(profile.runtime, ref, repairRequest(request, result, problems), ownLogin)
         val usage = result.usage + repaired.usage
+        val reported = result.reportedCostUsd?.let { first -> repaired.reportedCostUsd?.let { first + it } }
         val repairedStructured = structuredOf(repaired, task)
         val invalid = guard.validateReviewAnswer(repairedStructured)
-        if (invalid.isEmpty()) return Answer(repaired, repairedStructured, usage, invalid)
+        if (invalid.isEmpty()) return Answer(repaired, repairedStructured, usage, invalid, reported)
         context.log("review answer still invalid after the repair, failing closed: ${invalid.joinToString("; ")}")
-        return Answer(result, structured, usage, invalid)
+        return Answer(result, structured, usage, invalid, reported)
     }
 
     /** The step's confidence; forced to 0 when the inputs carry injection markers and the guard blocks. */

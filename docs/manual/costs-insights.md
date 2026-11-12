@@ -47,7 +47,9 @@ prices**: the same work at the providers' list prices. The two are equal for wor
 differ for steps a subscription paid for, such as Claude Code with your own login on a
 [personal runner](personal-runner.md#credentials): there the cost is 0 and the cost at API prices is Claude Code's
 estimate. Wherever they differ the UI shows `$0.00 · API $0.05`, and workflow metrics have the card **At API prices per
-successful run**. Use it to compare tasks and workflows whoever pays; budgets and the costs page count only money spent.
+successful run**. Benchmarks have it too, per attempt, for the judge and on the leaderboard, and compare subscription
+candidates on it ([Reading the results](evaluation.md#reading-results)). Use it to compare tasks, workflows and
+candidates whoever pays; budgets and the costs page count only money spent.
 
 <a id="cost-per-accepted"></a>
 ### Cost of an accepted result
@@ -61,7 +63,7 @@ cheap; this number shows it.
 |---|---|---|---|
 | Task step | an execution that succeeded, is the last execution of its step in its run, and the run ended successfully | the cost of all executions / accepted executions | [Insights → Agents](#agent-insights) |
 | Workflow | a successful run (it reached a success end, its gates approved) | the cost of every run / successful runs | **Cost per accepted result** in the workflow metrics ([Measuring workflows](workflow-library.md#metrics)) and in the library list |
-| Benchmark | a passed attempt | the candidate's total cost / passed attempts | the leaderboard column **Cost per accepted result** ([Benchmarks](evaluation.md#benchmarks)) |
+| Benchmark | a passed attempt | the candidate's total cost (failed and timed-out attempts included; at API prices for a subscription) / passed attempts | the leaderboard column **Cost per accepted result** ([Benchmarks](evaluation.md#benchmarks)) |
 
 So a step that failed and was retried, or that a gate sent back for a revision, is paid by the execution that was
 finally accepted; a run that failed is paid by the runs that succeeded.

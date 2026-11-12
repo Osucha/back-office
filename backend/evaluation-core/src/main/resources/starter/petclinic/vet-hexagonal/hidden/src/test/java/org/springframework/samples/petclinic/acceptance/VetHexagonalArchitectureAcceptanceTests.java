@@ -11,6 +11,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -23,6 +24,7 @@ import com.tngtech.archunit.core.importer.ImportOption;
  * in the packages named by the task. Every rule refuses to pass on an empty selection, so
  * the original structure (everything in {@code vet}) fails.
  */
+@Timeout(120)
 class VetHexagonalArchitectureAcceptanceTests {
 
 	private static final String VET = "org.springframework.samples.petclinic.vet";

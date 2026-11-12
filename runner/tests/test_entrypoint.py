@@ -566,6 +566,37 @@ class ClaudeUsageParsingTests(unittest.TestCase):
         self.assertEqual(out.errors, ["max turns"])
         self.assertEqual(out.usage.input_tokens, 5)
 
+    @staticmethod
+    def assistant(message_id, inp, out, cache_read=0, cache_write=0, text="x"):
+        usage = {"input_tokens": inp, "output_tokens": out, "cache_read_input_tokens": cache_read, "cache_creation_input_tokens": cache_write}
+        return json.dumps({"type": "assistant", "message": {"id": message_id, "role": "assistant", "usage": usage, "content": [{"type": "text", "text": text}]}})
+
+    def test_killed_agent_keeps_usage_of_its_messages(self):
+        # ADR 0065 §3: no `result` event (killed at its timeout); each message id counts once, its last value wins
+        out = ep.AgentOutcome()
+        for line in (self.assistant("msg_1", 100, 5, 1000, 200), self.assistant("msg_1", 100, 40, 1000, 200),
+                     self.assistant("msg_2", 50, 10, 2000, 0)):
+            ep.parse_claude_line(line, out)
+        self.assertEqual((out.usage.input_tokens, out.usage.output_tokens, out.usage.cache_read_tokens, out.usage.cache_write_tokens),
+                         (150, 50, 3000, 200))
+        self.assertTrue(out.usage.seen)
+        self.assertIsNone(out.usage.cost_usd)  # Back Office prices the tokens
+
+    def test_result_totals_replace_the_message_fallback(self):
+        out = ep.AgentOutcome()
+        ep.parse_claude_line(self.assistant("msg_1", 100, 40), out)
+        ep.parse_claude_line(self.LINES[-1], out)
+        ep.parse_claude_line(self.assistant("msg_9", 7, 7), out)  # a late message no longer changes the totals
+        self.assertEqual((out.usage.input_tokens, out.usage.output_tokens), (120000, 9000))
+        self.assertAlmostEqual(out.usage.cost_usd, 1.23)
+
+    def test_messages_without_id_or_usage(self):
+        out = ep.AgentOutcome()
+        ep.parse_claude_line(json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 3, "output_tokens": 1}, "content": []}}), out)
+        ep.parse_claude_line(json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 4, "output_tokens": 2}, "content": []}}), out)
+        ep.parse_claude_line(json.dumps({"type": "assistant", "message": {"id": "m", "usage": "bad", "content": []}}), out)
+        self.assertEqual((out.usage.input_tokens, out.usage.output_tokens), (7, 3))
+
 
 class ArtifactTests(unittest.TestCase):
     def test_naming_and_media_types(self):
@@ -651,6 +682,60 @@ class ResultBuildingTests(unittest.TestCase):
         r = ep.build_result(agent_exit=-15, timed_out=True, outcome=self.make_outcome(), verify_command="x", verify=None, branch=None, commit_sha=None, diff_stat=None, artifacts=[])
         self.assertEqual(r["status"], "TIMED_OUT")
         self.assertIn("timeoutSeconds", r["error"])
+        # ADR 0065 §3: a timed-out attempt keeps the usage reported up to the kill
+        self.assertEqual(r["usage"], {"inputTokens": 10, "outputTokens": 5, "cacheReadTokens": 1, "cacheWriteTokens": 0, "costUsd": 0.01})
+
+    def test_timed_out_claude_agent_posts_message_usage(self):
+        out = ep.AgentOutcome()
+        ep.parse_claude_line(ClaudeUsageParsingTests.assistant("msg_1", 300, 20, 5000, 100), out)
+        r = ep.build_result(agent_exit=-9, timed_out=True, outcome=out, verify_command=None, verify=None, branch=None, commit_sha=None, diff_stat=None, artifacts=[])
+        self.assertEqual(r["status"], "TIMED_OUT")
+        self.assertEqual(r["usage"], {"inputTokens": 300, "outputTokens": 20, "cacheReadTokens": 5000, "cacheWriteTokens": 100, "costUsd": None})
+
+
+class VerifyTimeoutTests(unittest.TestCase):
+    """ADR 0065 §5: the verify command fits into what is left of the job's timeout."""
+
+    def test_configured_timeout_when_budget_is_ample(self):
+        self.assertEqual(ep.verify_timeout_seconds({}, 3600, 100), 900.0)
+        self.assertEqual(ep.verify_timeout_seconds({"RUNNER_VERIFY_TIMEOUT": "300"}, 3600, 100), 300.0)
+
+    def test_remaining_budget_minus_reserve(self):
+        # 1800 s job, agent took 1500 s: 300 s left, 60 s reserved for the diff and the result
+        self.assertEqual(ep.verify_timeout_seconds({}, 1800, 1500), 1800 - 1500 - ep.RESULT_RESERVE_SECONDS)
+
+    def test_never_below_minimum(self):
+        self.assertEqual(ep.verify_timeout_seconds({}, 1800, 1790), ep.MIN_VERIFY_TIMEOUT_SECONDS)
+        self.assertEqual(ep.verify_timeout_seconds({"RUNNER_VERIFY_TIMEOUT": "10"}, 3600, 0), ep.MIN_VERIFY_TIMEOUT_SECONDS)
+
+    def test_invalid_configuration_falls_back_to_default(self):
+        self.assertEqual(ep.verify_timeout_seconds({"RUNNER_VERIFY_TIMEOUT": "soon"}, 7200, 0), 900.0)
+        self.assertEqual(ep.verify_timeout_seconds({"RUNNER_VERIFY_TIMEOUT": "-5"}, 7200, 0), 900.0)
+
+    def make_run(self, elapsed, logs, timed_out=False):
+        return types.SimpleNamespace(timed_out=timed_out, env={"RUNNER_VERIFY_TIMEOUT": "900"}, started=ep.time.monotonic() - elapsed,
+                                     sink=mock.Mock(), log=logs.append, verify_res=None, verify_command="mvn test")
+
+    def test_run_verify_uses_the_remaining_budget(self):
+        logs = []
+        run = self.make_run(1500, logs)
+        spec = types.SimpleNamespace(verify_command="mvn test", acceptance=None, timeout_seconds=1800, repository=None)
+        with mock.patch.object(ep, "run_process", return_value=ep.ProcessResult(0, False, "ok", 1.0)) as rp, \
+                mock.patch.object(ep, "_untrusted_env", return_value={}), mock.patch.object(ep, "_kill_strays"):
+            ep._run_verify(run, spec, Path("."))
+        timeout = rp.call_args.kwargs["timeout"]
+        self.assertGreater(timeout, 230)
+        self.assertLessEqual(timeout, 240)
+        self.assertTrue(any("[verify] mvn test (timeout 2" in l for l in logs), logs)
+
+    def test_run_verify_skipped_when_agent_timed_out(self):
+        logs = []
+        run = self.make_run(1800, logs, timed_out=True)
+        spec = types.SimpleNamespace(verify_command="mvn test", acceptance=None, timeout_seconds=1800, repository=None)
+        with mock.patch.object(ep, "run_process") as rp:
+            ep._run_verify(run, spec, Path("."))
+        rp.assert_not_called()
+        self.assertIsNone(run.verify_res)
 
     def test_fatal_error_before_agent(self):
         r = ep.build_result(agent_exit=None, timed_out=False, outcome=ep.AgentOutcome(), verify_command=None, verify=None, branch=None, commit_sha=None, diff_stat=None, artifacts=[], error="git clone failed")

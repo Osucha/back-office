@@ -152,5 +152,34 @@ describe('scatterOption', () => {
     expect(html).toContain('score 88.0');
     expect(html).toContain('$0.4200');
     expect(html).toContain('pass rate 90%');
+    expect(html).not.toContain('API');
+  });
+});
+
+describe('subscription candidates (ADR 0065)', () => {
+  const sub: LeaderboardRow = {
+    modelProfileId: 's',
+    modelDisplayName: 'Login Opus',
+    provider: 'ANTHROPIC',
+    attempts: 6,
+    meanScore: 80,
+    subscription: true,
+    meanCost: { amount: 0, currency: 'USD' },
+    meanApiCost: { amount: 1.14, currency: 'USD' },
+  };
+
+  it('places them at their cost at API prices', () => {
+    const [p] = leaderboardToScatter([sub]);
+    expect(p.value).toEqual([1.14, 80]);
+    expect(p.api).toBe(true);
+    expect(leaderboardToScatter(ROWS)[0].api).toBe(false);
+  });
+
+  it('says so in the tooltip', () => {
+    const option = scatterOption([sub]) as {
+      tooltip: { formatter: (p: { data: unknown }) => string };
+    };
+    const html = option.tooltip.formatter({ data: leaderboardToScatter([sub])[0] });
+    expect(html).toContain('at API prices (subscription)');
   });
 });

@@ -73,16 +73,19 @@ class AgentJobService(
         // large results live in object storage; the inline copy is then trimmed (no diff / artefact contents)
         val posted = stored?.blobKey?.let { key -> archive.read(key) } ?: stored?.inline
         if (posted != null) {
+            // ADR 0065: the job's start on its runner, so consumers measure the agent's own time without queueing
+            val started = posted.copy(startedAt = posted.startedAt ?: job.startedAt)
             // the platform's view wins where it is stricter (e.g. cancelled or timed out after the agent reported)
             val status = job.status.toRunnerStatus()
-            return if (status == posted.status || posted.status != RunnerJobStatus.SUCCEEDED) posted
-            else posted.copy(status = status, error = posted.error ?: job.reason)
+            return if (status == started.status || started.status != RunnerJobStatus.SUCCEEDED) started
+            else started.copy(status = status, error = started.error ?: job.reason)
         }
         return RunnerResult(
             status = job.status.toRunnerStatus(), summary = null, branch = null, commitSha = null, diffStat = null, verification = null,
-            artifacts = emptyList(), usage = TokenUsage.ZERO, reportedCostUsd = null,
+            artifacts = emptyList(), usage = TokenUsage.ZERO, reportedCostUsd = job.costUsd,
             error = job.reason ?: "agent job ${job.status.name.lowercase()} without a result",
             finishedAt = job.finishedAt ?: lifecycle.now(),
+            startedAt = job.startedAt,
         )
     }
 

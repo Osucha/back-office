@@ -110,12 +110,19 @@ for you. Such a profile:
   judge's verdict as
   a single answer: Back Office sends a short job to your personal runner, where Claude Code answers without tools;
 - works only in your private projects and your own benchmarks;
-- costs nothing in Back Office (the subscription pays), but uses up the subscription's usage limits, and each
+- spends nothing through Back Office: its spent cost is 0 (the subscription pays), and budgets and the
+  [costs page](costs-insights.md) count nothing for it. It uses up the subscription's usage limits, and each
   answer takes a few seconds longer than an API call (the runner starts Claude Code for it).
+
+Benchmarks still show what the same work would cost at API prices: Claude Code's own estimate, or, without one
+(a job killed before its end), the tokens priced like the API profile of the same Claude family (Opus, Sonnet,
+Haiku). The leaderboard compares such a candidate on these API figures, marked **API**, so you can set it
+against API candidates and other subscription models ([Reading the results](#reading-results)). The figure is an
+estimate at list prices, not an invoice.
 
 **Test profile** and **Check models** do not call the model for it: they check that your personal runner
 exists, uses your login and is online. Claude Code adds its own instructions and start-up time, so compare such
-a candidate with API models on scores, not on response times.
+a candidate with API models on scores and cost, with care on response times.
 
 A subscription token (`sk-ant-oat...`, from `claude setup-token`) is not an API key: an Anthropic provider
 connection refuses it.
@@ -144,7 +151,9 @@ repository. Starter tasks you have not edited are updated to the current version
      example acceptance tests) are written only for the verify command and removed afterwards,
      `protectedPaths` (git pathspecs such as `src/test/**`) must stay unchanged, and `requireChanges` fails
      a run that changed nothing.
-4. Under **Execution**, set **Timeout (seconds)** and **Weight** (relative weight in suite aggregates).
+4. Under **Execution**, set **Timeout (seconds)** and **Weight** (relative weight in suite aggregates). The
+   timeout covers the agent and the verify command: the runner gives the verify command what is left of it, so
+   keep the tests fast enough to finish in time (the starter PetClinic tasks limit how long tests may run).
 5. Check the **Preview** tab, then click **Add task**.
 
 Use **Edit suite** and **Delete suite** from the suite page's menu; **Benchmark this suite** starts a new
@@ -235,26 +244,35 @@ once with "skipped, ... failed: ..." instead of each calling the provider; when 
 waiting attempts end. When coding attempts wait because no runner is online where the benchmark sends them,
 its page says so.
 
+<a id="reading-results"></a>
 ### Reading the results
 
 The benchmark page has the tabs **Leaderboard** and **Attempts · N**; its header lists the **Candidates**.
+
+Every cost has two amounts, as in workflows ([Costs](costs-insights.md)): what was spent through Back Office, and
+the same work at API list prices. They differ only for candidates that ran on a subscription
+([Claude Code with your own login](#claude-code-login)): spent `$0`, shown as `$0 · API $1.14`. Such candidates are
+compared on the API figures: **Cost per accepted result** and **Score / $** then show the API amount marked
+**API**, and the chart places them at their API cost.
 
 | Leaderboard column | Meaning |
 |---|---|
 | **Candidate** | One row per candidate, `agent · model`, for example `Claude Code · Claude Sonnet`. |
 | **Score** | Mean judge score over successful attempts. |
 | **Pass rate** | Share of attempts that passed (coding: verification and acceptance checks green and a score of 70 or more; prompt: score of 70 or more). Failed and timed-out attempts count as not passed. |
-| **Mean cost**, **Total** | Candidate cost per attempt and overall. |
-| **Cost per accepted result** | **Total** / passed attempts: the failed attempts are paid by the passed ones ([Cost of an accepted result](costs-insights.md#cost-per-accepted)). Empty without a passed attempt. The number to compare candidates on. |
-| **Score / $** | Mean score per dollar of mean cost. |
-| **Time p50 / p95** | The candidate's own response time (the model's answer, or the agent job from submission to result), without the judge, queueing or retries, over succeeded attempts: half of them were faster than p50, 95% faster than p95. Below 20 attempts p95 is simply the slowest one; the tooltip says how many attempts the times come from. |
+| **Mean cost**, **Total** | Candidate cost per attempt and overall, failed and timed-out attempts included; `· API $x` when the cost at API prices differs. |
+| **Cost per accepted result** | **Total** / passed attempts: failed and timed-out attempts are paid by the passed ones ([Cost of an accepted result](costs-insights.md#cost-per-accepted)). Empty without a passed attempt. The number to compare candidates on; at API prices (marked **API**) for subscription candidates. |
+| **Score / $** | Mean score per dollar of mean cost; per dollar at API prices (marked **API**) for subscription candidates. |
+| **Time p50 / p95** | The candidate's own time (the model's answer, or the agent job from its start to its result), without queueing for a runner, the judge or retries, over succeeded attempts: half of them were faster than p50, 95% faster than p95. Below 20 attempts p95 is simply the slowest one; the tooltip says how many attempts the times come from. |
 | **Stability** | Standard deviation of the score across repetitions; lower is steadier. |
 | **Not applicable** | Tasks of the benchmark this candidate cannot do (a coding task for a model answer agent, a prompt task for a coding agent); shown only when there are any. |
 
 **Score vs cost** plots every candidate; a candidate that another one beats on both score and cost is dominated.
 The breakdowns **Overall**, **By category**, **By difficulty** and **By task** repeat the table per slice.
 In **Attempts**, search tasks or candidates, filter by task and model, and open an attempt to read its agent and
-model, the output, the judge's criteria and reasoning, and the verification output. Read the worst attempt of
+model, the output, the judge's criteria and reasoning, and the verification output. Each attempt shows its
+**Cost** (with the API amount), the **Judge** cost, its **Own time** (the candidate's own time, without queueing)
+and its **Duration** (from submission to result, waiting for a runner and the judge included). Read the worst attempt of
 each candidate before concluding anything: a low score is often a rubric problem.
 
 ### Applying the result

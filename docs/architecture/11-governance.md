@@ -126,7 +126,7 @@ an agent record.
 |---|---|---|
 | Step (`/insights/agents`) | succeeded, last execution of its node in the run, run successful | cost of every execution ÷ accepted |
 | Workflow (`/insights/workflows`, `costPerSuccessfulRun`) | successful run | cost of every run in scope ÷ successful runs |
-| Benchmark (`LeaderboardRow.costPerAccepted`) | passed attempt | candidate's total cost ÷ passed attempts |
+| Benchmark (`LeaderboardRow.costPerAccepted`, at API prices `apiCostPerAccepted`, ADR 0065) | passed attempt | candidate's total cost ÷ passed attempts |
 
 Human time is not converted to money (Back Office knows the wait, not the work); the wait is shown next to the cost.
 A merge in GitLab is not tracked; a successful run (gates approved) is the accepted result. The yardstick is the

@@ -69,6 +69,12 @@ deleted before leasing) and jobs still running when the shutdown grace period en
 - **Monitoring**: one thread every 2 s observes each sandbox, sends heartbeats every `heartbeatSeconds`,
   enforces the deadline (policy timeout + 120 s) itself, maps terminal states and reports completions
   (retried until Back Office accepts; 4xx other than 408/429 is final, e.g. 409 = already closed).
+- **Deadline watchdog** (ADR 0065): a second thread (`deadline-watchdog`, every `watchdogIntervalMillis`, 5 s) checks
+  the deadlines from memory and ends overdue jobs (sandbox deleted, `TIMED_OUT`), and sends the heartbeats that are due
+  with the last observation, so a stalled `docker` call on the monitor thread neither loses the lease nor keeps a job
+  past its deadline. A per-job `finished` flag ends a job once, whichever thread gets there first. A monitor pass longer
+  than `slowMonitorPassSeconds` (60) is logged as a warning naming the slowest job and call. `DockerCli` reads each
+  call's output on threads of its own; `docker inspect` times out after 30 s, other calls after 120 s.
 - **Heartbeat answers**: `cancelRequested` → sandbox deleted, `CANCELLED`; 409/404 → lease lost, sandbox
   deleted, nothing reported.
 - **Graceful shutdown** (SIGTERM): stop leasing, let running jobs finish for `shutdownGraceSeconds`

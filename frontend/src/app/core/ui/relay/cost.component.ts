@@ -26,7 +26,7 @@ import { formatCost, formatUsage } from './format';
       <span
         class="tick api"
         nz-tooltip
-        [nzTooltipTitle]="apiTip"
+        [nzTooltipTitle]="apiHint() || apiTip"
         tabindex="0"
         [attr.aria-label]="apiAria()"
         >&nbsp;· API {{ api }}</span
@@ -58,6 +58,8 @@ export class CostComponent {
   readonly usage = input<TokenUsage | null | undefined>(null);
   /** ADR 0042: the cost at API prices; shown only when it differs from [value]. */
   readonly apiValue = input<Money | number | null | undefined>(null);
+  /** Tooltip of the API amount when the default (workflow steps) does not fit, e.g. benchmarks (ADR 0065). */
+  readonly apiHint = input<string | null>(null);
 
   readonly text = computed(() => formatCost(this.value()));
   readonly apiText = computed(() => {

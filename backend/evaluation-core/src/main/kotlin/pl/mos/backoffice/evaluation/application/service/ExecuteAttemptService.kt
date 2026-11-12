@@ -29,6 +29,7 @@ import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
+import pl.mos.backoffice.shared.llm.ApiPricing
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.LlmRequest
 import pl.mos.backoffice.shared.llm.LlmResult
@@ -146,26 +147,39 @@ class ExecuteAttemptService(
         environment: AgentEnvironmentSnapshot? = null,
     ): Attempt {
         // a retry after the judge failed keeps the answer it already has (ADR 0046): the candidate is not asked twice
-        val judging = attempt.output?.let { benchmarks.saveAttempt(attempt.judging(it, null, attempt.usage, attempt.cost)) } ?: run {
+        val judging = attempt.output?.let { benchmarks.saveAttempt(attempt.judging(it, null, attempt.usage, attempt.cost, apiCost = attempt.apiCost)) } ?: run {
             val system = environment?.let(::candidateSystemPrompt) ?: JudgePrompts.CANDIDATE_SYSTEM_PROMPT
             val candidateResult = gateway.chatAs(candidate.runtime, candidate.ref, LlmRequest.of(system, task.prompt, context), ownLogin)
+            val (cost, apiCost) = answerCosts(candidate, candidateResult)
             benchmarks.saveAttempt(
                 attempt.judging(
                     output = candidateResult.content,
                     verification = null,
                     usage = candidateResult.usage,
-                    cost = candidate.pricing.costOf(candidateResult.usage),
+                    cost = cost,
+                    // ADR 0065: from the start of the model call (a login model: of its job on the runner), queueing excluded
                     candidateLatencyMs = candidateResult.latency.toMillis(),
+                    apiCost = apiCost,
                 ),
             )
         }
         val answer = judging.output.orEmpty()
         val blocks = PromptDataBlocks.random()
         val signals = InjectionDetector.scan(answer, "candidate_output")
-        val (judged, judgeCost) = judge(judge, JudgePrompts.promptTaskJudgeMessage(task, answer, blocks), blocks, context)
-        val verdict = JudgePrompts.guard(judged, signals)
+        val judged = judge(judge, JudgePrompts.promptTaskJudgeMessage(task, answer, blocks), blocks, context)
+        val verdict = JudgePrompts.guard(judged.verdict, signals)
         val combined = ScoreCombiner.prompt(verdict.score)
-        return judging.succeed(combined.score, combined.passed, verdict, judgeCost, clock.now())
+        return judging.succeed(combined.score, combined.passed, verdict, judged.cost, clock.now(), judged.apiCost)
+    }
+
+    /**
+     * ADR 0065: spent cost and cost at API prices of one model answer. Through the gateway both are the profile's pricing
+     * of the tokens; a Claude Code login model spends nothing and is worth its harness's estimate, else its tokens at
+     * the API prices of its Claude family ([ModelProfileRepository.apiPricingOf]).
+     */
+    private fun answerCosts(profile: ModelProfile, result: LlmResult): Pair<Money, Money> {
+        if (!profile.viaClaudeCodeLogin) return profile.pricing.costOf(result.usage).let { it to it }
+        return Money.ZERO to ApiPricing.costOf(result.reportedCostUsd, result.usage) { profiles.apiPricingOf(profile) }
     }
 
     private fun runCodingJob(
@@ -225,21 +239,25 @@ class ExecuteAttemptService(
         val withJob = attempt
         val result = runner.result(existing) ?: return null
         val usage = result.usage
+        // ADR 0065: the work at API prices: the harness's estimate, else the tokens at the API prices of the model's family
+        val apiCost = ApiPricing.costOf(result.reportedCostUsd, usage) { profiles.apiPricingOf(candidate) }
         // ADR 0040/0048: with its user's own login Claude Code's figure is an estimate; nothing is billed
-        val cost = if (result.subscription) Money.ZERO else result.reportedCostUsd?.let { Money(it).rounded() } ?: candidate.pricing.costOf(usage)
+        val cost = if (result.subscription) Money.ZERO else apiCost
         val verification = result.verification?.let { AttemptVerification(it.command, it.exitCode, it.outputTail) }
         val output = renderCodingOutput(result)
+        // ADR 0065: the agent's time from the start of its job on the runner to its result, queueing for a runner excluded
+        // (results without a start: from submitting the job, the attempt's start)
+        val agentMs = (result.startedAt ?: withJob.startedAt)?.let { java.time.Duration.between(it, result.finishedAt).toMillis() }?.takeIf { it >= 0 }
 
+        // ADR 0065: failed and timed-out attempts keep the usage and cost the runner reported up to the end
         if (result.status == RunnerJobStatus.TIMED_OUT) {
-            return withJob.judging(output, verification, usage, cost).timeOut(result.error ?: "runner job timed out after ${task.timeout}", clock.now())
+            return withJob.judging(output, verification, usage, cost, agentMs, apiCost).timeOut(result.error ?: "runner job timed out after ${task.timeout}", clock.now())
         }
         if (result.status != RunnerJobStatus.SUCCEEDED && verification == null) {
-            return withJob.judging(output, verification, usage, cost).fail(result.error ?: "runner job ${result.status}", clock.now())
+            return withJob.judging(output, verification, usage, cost, agentMs, apiCost).fail(result.error ?: "runner job ${result.status}", clock.now())
         }
 
-        // the agent's time: from submitting the job (the attempt's start) to its result, queueing for a runner included
-        val agentMs = withJob.startedAt?.let { java.time.Duration.between(it, result.finishedAt).toMillis() }?.takeIf { it >= 0 }
-        val judging = benchmarks.saveAttempt(withJob.judging(output, verification, usage, cost, agentMs)).also(onProgress)
+        val judging = benchmarks.saveAttempt(withJob.judging(output, verification, usage, cost, agentMs, apiCost)).also(onProgress)
         val diffStat = result.diffStat?.let { "${it.files} files changed, ${it.insertions} insertions(+), ${it.deletions} deletions(-)" }
         val artifacts = result.artifacts.takeIf { it.isNotEmpty() }?.joinToString("\n\n") { a ->
             "### ${a.name}\n${a.content.take(MAX_ARTIFACT_CHARS)}"
@@ -247,14 +265,17 @@ class ExecuteAttemptService(
         val blocks = PromptDataBlocks.random()
         val signals = InjectionDetector.scan(result.summary, "agent_summary") + InjectionDetector.scan(artifacts, "artifacts") +
             InjectionDetector.scan(verification?.outputTail, "verification_output")
-        val (judged, judgeCost) = judge(judge, JudgePrompts.codingTaskJudgeMessage(task, result.summary, diffStat, verification, artifacts, blocks, result.diff), blocks, context)
-        val verdict = JudgePrompts.guard(judged, signals)
+        val judged = judge(judge, JudgePrompts.codingTaskJudgeMessage(task, result.summary, diffStat, verification, artifacts, blocks, result.diff), blocks, context)
+        val verdict = JudgePrompts.guard(judged.verdict, signals)
         val passed = verification?.passed == true
         val combined = ScoreCombiner.coding(passed, verdict.score, weights)
-        return judging.succeed(combined.score, combined.passed, verdict, judgeCost, clock.now())
+        return judging.succeed(combined.score, combined.passed, verdict, judged.cost, clock.now(), judged.apiCost)
     }
 
-    private fun judge(judge: ModelProfile, message: String, blocks: PromptDataBlocks, context: UsageContext): Pair<JudgeVerdict, Money> {
+    /** The judge's verdict, its spent cost and (ADR 0065) its cost at API prices. */
+    private data class Judged(val verdict: JudgeVerdict, val cost: Money, val apiCost: Money)
+
+    private fun judge(judge: ModelProfile, message: String, blocks: PromptDataBlocks, context: UsageContext): Judged {
         // the verdict is a short JSON; a cap keeps a talkative (or reasoning) judge from writing pages and timing out
         val cap = judge.ref.options.maxOutputTokens?.coerceAtMost(JUDGE_MAX_OUTPUT_TOKENS) ?: JUDGE_MAX_OUTPUT_TOKENS
         val result: LlmResult = gateway.chatAs(
@@ -264,7 +285,8 @@ class ExecuteAttemptService(
                 .copy(optionsOverride = judge.ref.options.copy(maxOutputTokens = cap)),
             ownLogin,
         )
-        return JudgePrompts.parseVerdict(result.structured, result.content) to judge.pricing.costOf(result.usage)
+        val (cost, apiCost) = answerCosts(judge, result)
+        return Judged(JudgePrompts.parseVerdict(result.structured, result.content), cost, apiCost)
     }
 
     /**

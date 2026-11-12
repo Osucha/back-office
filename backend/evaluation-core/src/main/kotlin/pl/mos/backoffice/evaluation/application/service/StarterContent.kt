@@ -34,6 +34,18 @@ object StarterContent {
     const val PETCLINIC_COMMIT = "500158f732419217507c7656904b8e6aa1bcc0d6"
     const val STARTER_SUITE_NAME = "Starter: SDLC tasks"
 
+    /** ADR 0065: the specification task (before it: "Write a Spec Kit spec from a two-line ticket", retired by ADR 0063). */
+    const val SPEC_TASK_NAME = "Write a specification from a two-line ticket"
+
+    /**
+     * ADR 0065: the PetClinic verify command; `-Dsurefire.timeout` ends a test fork that hangs (an implementation that
+     * blocks forever) so the job reports a failed verification instead of running into its deadline.
+     */
+    const val PETCLINIC_VERIFY_COMMAND = "./mvnw -B -Dsurefire.timeout=900 test"
+
+    /** ADR 0065: verify commands of earlier starter versions; a coding task still using one has an earlier repository. */
+    internal val EARLIER_VERIFY_COMMANDS: Set<String> = setOf("./mvnw -B test")
+
     fun starterSuite(now: Instant): TaskSuite = TaskSuite.create(
         name = STARTER_SUITE_NAME,
         description = "Twelve example tasks across analysis, specification, review, architecture and coding. " +
@@ -78,7 +90,9 @@ object StarterContent {
     internal val EARLIER_VERSIONS: Map<String, String> = mapOf(
         "f5beb699a9c219293ba60cec3995d678" to "Root-cause a failing test from a stack trace",
         "b48a7b1b7d4ff30ca795a74efcf034ea" to "Compare two integration approaches",
-        "ccba165d2ac9c0e15161552d01d52b6d" to "Write a Spec Kit spec from a two-line ticket",
+        "ccba165d2ac9c0e15161552d01d52b6d" to SPEC_TASK_NAME,
+        // ADR 0065: "Write a Spec Kit spec from a two-line ticket" as seeded before ADR 0063 retired Spec Kit
+        "49c08ab9dd842414fa6481ff241eb458" to SPEC_TASK_NAME,
         "50e43de64d863d97643a6f64031431bf" to "Acceptance criteria and edge cases for a payment retry",
         "d1220d0daa47f43bbefc86b8d241155f" to "Review a Kotlin diff with planted bugs",
         "6addb35e3978797ef3154b17ac5a47c7" to "Propose module boundaries for a monolith",
@@ -98,16 +112,38 @@ object StarterContent {
 
     /**
      * ADR 0047: starter tasks still in an earlier version get the current content (keeping their id and weight); tasks
-     * the owner edited stay. Null when nothing is to change.
+     * the owner edited stay. ADR 0065: [contentHash] does not cover the repository, so a coding task whose text is
+     * current but whose repository is an earlier starter one ([earlierRepository]) gets the current repository (verify
+     * command and hidden acceptance tests). Null when nothing is to change.
      */
     fun upgradeUntouchedTasks(suite: TaskSuite, now: Instant, earlier: Map<String, String> = EARLIER_VERSIONS): TaskSuite? {
         val current = starterSuite(now).tasks.associateBy { it.name }
         var changed = false
         val tasks = suite.tasks.map { task ->
             val fresh = earlier[contentHash(task)]?.let { current[it] }
-            if (fresh == null) task else fresh.copy(id = task.id, weight = task.weight).also { changed = true }
+            val sameText = current[task.name]?.takeIf { earlierRepository(task, it) }
+            when {
+                fresh != null -> fresh.copy(id = task.id, weight = task.weight).also { changed = true }
+                sameText != null -> task.copy(repository = sameText.repository).also { changed = true }
+                else -> task
+            }
         }
         return if (changed) suite.copy(tasks = tasks, updatedAt = now) else null
+    }
+
+    /**
+     * ADR 0065: [task] is the current starter coding task [fresh] (same text) with the repository of an earlier starter
+     * version: the same repository, commit, setup command, hidden files and protected paths, and an earlier verify
+     * command ([EARLIER_VERIFY_COMMANDS]). A repository the owner changed in any of these respects stays.
+     */
+    internal fun earlierRepository(task: EvalTask, fresh: EvalTask): Boolean {
+        val old = task.repository ?: return false
+        val new = fresh.repository ?: return false
+        return task.kind == TaskKind.CODING_JOB && old != new && contentHash(task) == contentHash(fresh) &&
+            old.verifyCommand in EARLIER_VERIFY_COMMANDS &&
+            old.url == new.url && old.baseRef == new.baseRef && old.setupCommand == new.setupCommand &&
+            old.acceptance?.files?.keys == new.acceptance?.files?.keys &&
+            old.acceptance?.protectedPaths == new.acceptance?.protectedPaths
     }
 
     // ----- ANALYSIS -----------------------------------------------------------------------------
@@ -261,13 +297,12 @@ object StarterContent {
 
     private fun specFromTicket() = EvalTask(
         id = EvalTaskId.new(),
-        name = "Write a Spec Kit spec from a two-line ticket",
+        name = SPEC_TASK_NAME,
         category = TaskCategory.SPECIFICATION,
         difficulty = Difficulty.MEDIUM,
         kind = TaskKind.PROMPT,
         instructions = """
-            Turn the ticket in the context into a Spec Kit feature specification (spec.md) following the Spec Kit
-            spec template:
+            Turn the ticket in the context into a feature specification (spec.md) with this structure:
             - a header (Feature Specification: <name>, Status: Draft, Input: the ticket);
             - User Scenarios & Testing: prioritised user stories (P1, P2, ...), each with why it has that
               priority, how it can be tested independently, and acceptance scenarios in Given/When/Then; then
@@ -288,7 +323,7 @@ object StarterContent {
             Product: B2C web shop, customers log in with email, carts today live in the browser session only.
         """.trimIndent(),
         rubric = """
-            - Structure (0-10): 10 = follows the Spec Kit template as instructed: prioritised user stories with independent test and Given/When/Then acceptance scenarios, Edge Cases, FR-001-style "System MUST" requirements, Key Entities, SC-001-style success criteria, Out of Scope. Missing Success Criteria or user stories without priorities: <= 6. Own section scheme instead of the template (for example "Overview / Non-functional requirements / Open questions" only): <= 4.
+            - Structure (0-10): 10 = follows the structure the instructions ask for: prioritised user stories with independent test and Given/When/Then acceptance scenarios, Edge Cases, FR-001-style "System MUST" requirements, Key Entities, SC-001-style success criteria, Out of Scope. Missing Success Criteria or user stories without priorities: <= 6. Own section scheme instead of the asked structure (for example "Overview / Non-functional requirements / Open questions" only): <= 4.
             - Requirement quality (0-10): 10 = each FR is testable and implementation-agnostic and together they cover: save the cart for a logged-in customer, restore it on another device after login, expiry after 30 days with the reference point defined (since saving or since last change), a defined behaviour when the restoring device already has a different cart (merge, replace or ask, or a NEEDS CLARIFICATION on exactly that), and prices and availability re-checked on restore. Missing the device-conflict rule: <= 5. Any framework, database, cache, cookie or endpoint name in a requirement: <= 5. Vague verbs ("should be fast", "user-friendly"): -2.
             - Open questions (0-10): 10 = at least three inline [NEEDS CLARIFICATION: question] markers on genuine product decisions placed where they block a requirement (for example: merge vs replace on conflict, one or several saved carts, whether expiry is notified, price changes and out-of-stock items on restore, guests). Fewer than three: <= 5. Markers only in a separate list, or questions an engineer could decide alone: <= 6.
             - Scope and success criteria (0-10): 10 = success criteria are measurable outcomes for users or the business (for example share of restores that show the same items, time for a customer to get the cart back) with no technical metrics, and Out of Scope keeps the feature small (sharing carts, wish lists, guest carts across devices). Invented features presented as requirements (named carts, sharing, reminders by email): <= 5. Success criteria that are technical (API latency, database size): <= 5.
@@ -608,11 +643,12 @@ object StarterContent {
      * Spring PetClinic, the reference Spring Boot application, pinned to one commit so every benchmark works on the same
      * code: Java 17 (built on the runner's JDK 21), Maven wrapper, H2 in tests, about 90 green tests in about a minute.
      * The verify command runs the whole build: the repository's tests plus the hidden acceptance tests.
+     * ADR 0065: Maven ends a hanging test fork after 15 minutes; the hidden tests have a per-test timeout of 120 s.
      */
     private fun codingRepository(acceptance: TaskAcceptance) = TaskRepository(
         url = PETCLINIC_REPO_URL,
         baseRef = PETCLINIC_COMMIT,
-        verifyCommand = "./mvnw -B test",
+        verifyCommand = PETCLINIC_VERIFY_COMMAND,
         acceptance = acceptance,
     )
 

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTabsModule } from 'ng-zorro-antd/tabs';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import type { AttemptDetail } from '../../../../core/api/types';
 import { MarkdownViewerComponent } from '../../../../core/ui/markdown-viewer.component';
 import { formatDuration } from '../../../../core/ui/pipes/duration.pipe';
@@ -23,6 +24,7 @@ import { categoryLabel } from '../../suites/data/suite-view';
   imports: [
     NzTabsModule,
     NzTableModule,
+    NzTooltipModule,
     BatonComponent,
     CostComponent,
     GlyphComponent,
@@ -81,10 +83,47 @@ import { categoryLabel } from '../../suites/data/suite-view';
           </div>
           <div>
             <dt i18n="@@evaluation.attempt.cost">Cost</dt>
-            <dd><bo-cost [value]="a.cost" [usage]="a.usage" /></dd>
+            <dd>
+              <bo-cost
+                [value]="a.cost"
+                [apiValue]="a.apiCost"
+                [apiHint]="text.apiHint"
+                [usage]="a.usage"
+              />
+            </dd>
           </div>
           <div>
-            <dt i18n="@@evaluation.attempt.duration">Duration</dt>
+            <dt i18n="@@evaluation.attempt.judgeCost">Judge cost</dt>
+            <dd>
+              <bo-cost [value]="a.judgeCost" [apiValue]="a.judgeApiCost" [apiHint]="text.apiHint" />
+            </dd>
+          </div>
+          <div>
+            <dt>
+              <span
+                class="help"
+                nz-tooltip
+                nzTooltipTitle="From the start of the candidate's job or model call to its result, without queueing for a runner"
+                i18n-nzTooltipTitle="@@evaluation.attempt.candidateTimeTooltip"
+                tabindex="0"
+                i18n="@@evaluation.attempt.candidateTime"
+                >Candidate's own time</span
+              >
+            </dt>
+            <dd class="mono">{{ duration(a.candidateLatencyMs) }}</dd>
+          </div>
+          <div>
+            <dt>
+              <span
+                class="help"
+                nz-tooltip
+                nzTooltipTitle="From submission to the result, queueing for a runner and the judge included"
+                i18n-nzTooltipTitle="@@evaluation.benchmark.col.durationTooltip"
+                tabindex="0"
+                i18n="@@evaluation.attempt.duration"
+                >Duration</span
+              >
+            </dt>
             <dd class="mono">{{ duration(a.durationMs) }}</dd>
           </div>
           <div>
@@ -242,6 +281,10 @@ import { categoryLabel } from '../../suites/data/suite-view';
       .when {
         margin: 0 0 12px;
       }
+      .help {
+        border-bottom: 1px dotted var(--bo-ink-3);
+        cursor: help;
+      }
       .word {
         display: inline-flex;
         align-items: center;
@@ -302,7 +345,10 @@ export class AttemptDetailModalComponent {
     { param: 'criteriaSort' },
   );
   readonly criteria = computed(() => this.criteriaSort.apply(this.attempt()?.judgeCriteria ?? []));
-  readonly text = { attempt: $localize`:@@evaluation.attempt.title:Attempt` };
+  readonly text = {
+    attempt: $localize`:@@evaluation.attempt.title:Attempt`,
+    apiHint: $localize`:@@evaluation.board.apiHint:Estimated at API list prices; paid by the subscription (Claude Code with your own login).`,
+  };
   readonly fixed = fixed;
   readonly duration = formatDuration;
   readonly abs = absoluteTime;

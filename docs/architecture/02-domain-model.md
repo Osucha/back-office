@@ -220,7 +220,8 @@ them out on `GET /api/v1/events`.
 List<BenchmarkCandidate>` (agent key, name, harness, model profile; empty = a benchmark of models, `legacy`), each
 `Attempt` the agent it ran as (`agentKey`, `agentName`, `harness`), and a leaderboard row is one candidate
 (`CandidateRef`) with `notApplicable` and `costPerAccepted`. Agents are read through the shared-kernel `TaskCatalog`
-port.
+port. ADR 0065: an `Attempt` carries `apiCost` / `judgeApiCost` (the work at API prices) next to `cost` / `judgeCost`,
+and a leaderboard row the API figures and `subscription`.
 
 ## State machines
 

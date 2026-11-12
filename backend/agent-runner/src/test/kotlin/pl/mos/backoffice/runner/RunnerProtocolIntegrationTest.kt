@@ -206,6 +206,8 @@ class RunnerProtocolIntegrationTest {
         val stored = runner.result(jobId)!!
         assertThat(stored.status).isEqualTo(RunnerJobStatus.SUCCEEDED)
         assertThat(stored.diff).isEqualTo("diff --git a/x b/x")
+        // ADR 0065: the start on the runner (the first RUNNING heartbeat), so consumers exclude queueing
+        assertThat(stored.startedAt).isNotNull().isBeforeOrEqualTo(stored.finishedAt)
         assertThat(runner.verify(jobToken)).isNull() // token expires with the terminal state
         val enqueued = workQueue.requests.single { it.dedupeKey == "RUN_ADVANCE:${spec.usageContext.runId}" }
         assertThat(enqueued.kind).isEqualTo(WorkKinds.RUN_ADVANCE)

@@ -163,6 +163,9 @@ class BenchmarkAttemptEntity(
     @Column(name = "cache_write_tokens", nullable = false) val cacheWriteTokens: Long = 0,
     @Column(nullable = false, precision = 18, scale = 6) val cost: BigDecimal = BigDecimal.ZERO,
     @Column(name = "judge_cost", nullable = false, precision = 18, scale = 6) val judgeCost: BigDecimal = BigDecimal.ZERO,
+    /** ADR 0065: the candidate and the judge at API prices. */
+    @Column(name = "api_cost", nullable = false, precision = 18, scale = 6) val apiCost: BigDecimal = BigDecimal.ZERO,
+    @Column(name = "judge_api_cost", nullable = false, precision = 18, scale = 6) val judgeApiCost: BigDecimal = BigDecimal.ZERO,
     @Column(nullable = false, length = 3) val currency: String = "USD",
     @Column(name = "duration_ms") val durationMs: Long? = null,
     @Column(name = "candidate_latency_ms") val candidateLatencyMs: Long? = null,

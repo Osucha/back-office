@@ -24,6 +24,8 @@ COPY --from=build /workspace/runner-controller/build/libs/runner-controller.jar 
 USER 10001
 EXPOSE 8090
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+UseZGC" \
-    RUNNER_CONTROLLER_BACK_OFFICE_CREDENTIAL_FILE=/tmp/runner-credentials.json
+    RUNNER_TOKEN_FILE=/tmp/runner-credentials.json
+# RUNNER_TOKEN_FILE (not the relaxed-binding name) so that `docker run -e RUNNER_TOKEN_FILE=...` of a personal runner
+# keeps its registration in the mounted data directory across container upgrades (ADR 0065)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s CMD wget -qO- http://localhost:8090/actuator/health/liveness || exit 1
 ENTRYPOINT ["java", "-jar", "/app/runner-controller.jar"]

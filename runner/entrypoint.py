@@ -78,7 +78,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 # --------------------------------------------------------------------------------------------
 # Constants
@@ -90,6 +90,12 @@ SUMMARY_MAX_BYTES = 20 * 1024
 ARTIFACT_MAX_BYTES = 2 * 1024 * 1024
 DIFF_MAX_BYTES = 2 * 1024 * 1024
 VERIFY_TAIL_BYTES = 8 * 1024
+# ADR 0065 §5: the verify command fits into what is left of spec.timeoutSeconds, minus this reserve for collecting
+# the diff and artefacts and posting the result (before the controller's deadline), at least MIN_VERIFY_TIMEOUT_SECONDS
+# and at most RUNNER_VERIFY_TIMEOUT (default DEFAULT_VERIFY_TIMEOUT_SECONDS).
+DEFAULT_VERIFY_TIMEOUT_SECONDS = 900.0
+MIN_VERIFY_TIMEOUT_SECONDS = 60.0
+RESULT_RESERVE_SECONDS = 60.0
 RUN_TRAILER = "Back-Office-Run"
 CLAUDE_DIR = ".claude"  # Claude Code project directory (skills, commands, settings)
 JSON_MEDIA_TYPE = "application/json"
@@ -2434,6 +2440,10 @@ class AgentOutcome:
     json_lines: int = 0
     # Tool calls the permission policy refused (Claude Code `permission_denials`, OpenCode rejected tools).
     denials: List[Dict[str, str]] = field(default_factory=list)
+    # ADR 0065 §3, Claude Code: usage of each assistant message by message id (last value wins), summed into `usage`
+    # until the final `result` event replaces it with its totals (an agent killed at its timeout sends none).
+    message_usage: Dict[str, "TokenCounts"] = field(default_factory=dict)
+    final_usage: bool = False
 
     def summary(self) -> str:
         if self.final_result:
@@ -2621,7 +2631,8 @@ def parse_claude_line(line: str, outcome: AgentOutcome) -> Optional[str]:
 def _claude_result(ev: Dict[str, Any], outcome: AgentOutcome) -> str:
     usage = _dict_field(ev, "usage")
     cost = ev.get("total_cost_usd")
-    # `result` is authoritative and cumulative: replace instead of adding.
+    # `result` is authoritative and cumulative: replace the per-message fallback instead of adding.
+    outcome.final_usage = True
     outcome.usage = Usage()
     outcome.usage.add(
         _as_int(usage.get("input_tokens")),
@@ -2655,8 +2666,28 @@ def _claude_errors(ev: Dict[str, Any], outcome: AgentOutcome) -> None:
         outcome.errors.append(str(ev.get("subtype") or "error"))
 
 
+def _claude_message_usage(message: Dict[str, Any], outcome: AgentOutcome) -> None:
+    """Fallback usage from the assistant message events (ADR 0065 §3): Claude Code streams one event per content
+    block, each carrying the message's usage so far, so a message id counts once with its last value. Ignored once
+    the `result` event delivered the totals."""
+    if outcome.final_usage:
+        return
+    usage = message.get("usage")
+    tokens = _tokens_from_usage(usage) if isinstance(usage, dict) else None
+    if tokens is None:
+        return
+    key = str(message.get("id") or f"#anonymous-{len(outcome.message_usage)}")
+    outcome.message_usage[key] = tokens
+    total = Usage()
+    for counts in outcome.message_usage.values():
+        total.add(*counts)
+    outcome.usage = total
+
+
 def _claude_assistant(ev: Dict[str, Any], outcome: AgentOutcome) -> Optional[str]:
-    content = _dict_field(ev, "message").get("content")
+    message = _dict_field(ev, "message")
+    _claude_message_usage(message, outcome)
+    content = message.get("content")
     out = [human for human in (_claude_block(b, outcome) for b in (content if isinstance(content, list) else [])) if human is not None]
     return "\n".join(out) if out else None
 
@@ -4542,6 +4573,19 @@ def _hold_to_access(run: _Run, spec: JobSpec, work_dir: Path, restore_git: Calla
     run.access_report["reverted"] = enforce_access(run.access_repos, access, run.log)
 
 
+def verify_timeout_seconds(env: Mapping[str, str], timeout_seconds: float, elapsed: float) -> float:
+    """ADR 0065 §5: min(RUNNER_VERIFY_TIMEOUT or 900 s, what is left of the job's timeout minus RESULT_RESERVE_SECONDS),
+    never below MIN_VERIFY_TIMEOUT_SECONDS, so the result is posted before the controller's deadline."""
+    try:
+        configured = float(env.get("RUNNER_VERIFY_TIMEOUT") or DEFAULT_VERIFY_TIMEOUT_SECONDS)
+    except (TypeError, ValueError):
+        configured = DEFAULT_VERIFY_TIMEOUT_SECONDS
+    if configured <= 0:
+        configured = DEFAULT_VERIFY_TIMEOUT_SECONDS
+    remaining = float(timeout_seconds) - elapsed - RESULT_RESERVE_SECONDS
+    return max(MIN_VERIFY_TIMEOUT_SECONDS, min(configured, remaining))
+
+
 def _run_verify(run: _Run, spec: JobSpec, repo_dir: Path, git: Optional["Git"] = None) -> None:
     if run.timed_out or (not spec.verify_command and spec.acceptance is None):
         return
@@ -4556,7 +4600,8 @@ def _run_verify(run: _Run, spec: JobSpec, repo_dir: Path, git: Optional["Git"] =
     try:
         if spec.verify_command:
             run.sink.progress(f"running verifyCommand: {spec.verify_command}")
-            verify_timeout = float(run.env.get("RUNNER_VERIFY_TIMEOUT") or 900)
+            verify_timeout = verify_timeout_seconds(run.env, spec.timeout_seconds, time.monotonic() - run.started)
+            run.log(f"[verify] {spec.verify_command} (timeout {int(verify_timeout)}s)")
             run.verify_res = run_process([spec.verify_command], repo_dir, _untrusted_env(run, spec), timeout=verify_timeout, on_line=lambda l: run.log(f"[verify] {l}"), shell=True)
             run.log(f"[verify] exited {run.verify_res.exit_code} timed_out={run.verify_res.timed_out}")
             # verifyCommand is repository code, i.e. untrusted as well.

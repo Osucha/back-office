@@ -72,6 +72,8 @@ interface ManageBenchmarks {
         val models: List<ModelProfile>,
         val judge: ModelProfile?,
         val candidateRefs: List<CandidateRef> = emptyList(),
+        /** ADR 0065: candidates and judge at API prices (equal to [totalCost] when nothing ran on a subscription). */
+        val totalApiCost: Money = totalCost,
     )
 }
 

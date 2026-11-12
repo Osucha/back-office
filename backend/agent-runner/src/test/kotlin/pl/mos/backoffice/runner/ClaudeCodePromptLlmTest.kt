@@ -71,6 +71,21 @@ class ClaudeCodePromptLlmTest {
         assertThat(answer.structured).containsEntry("verdict", "APPROVE").containsEntry("score", 90)
         assertThat(answer.usage).isEqualTo(TokenUsage(120, 30))
         assertThat(answer.modelRef).isEqualTo(opus)
+        assertThat(answer.reportedCostUsd).isNull()
+    }
+
+    @Test
+    fun `ADR 0065 - the answer carries Claude Code's estimate and the job's own time, without queueing`() {
+        val id = RunnerJobId.new()
+        val finished = Instant.parse("2026-11-12T10:00:00Z")
+        every { runner.start(any()) } returns id
+        every { runner.await(id, any()) } returns result(RunnerJobStatus.SUCCEEDED, "Fine.")
+            .copy(reportedCostUsd = java.math.BigDecimal("0.031"), finishedAt = finished, startedAt = finished.minusSeconds(42))
+
+        val answer = llm.chat(opus, request())
+
+        assertThat(answer.reportedCostUsd).isEqualByComparingTo("0.031")
+        assertThat(answer.latency).isEqualTo(java.time.Duration.ofSeconds(42))
     }
 
     @Test

@@ -412,6 +412,8 @@ data class RunnerResult(
     val subscription: Boolean = false,
     /** ADR 0060: what the runner enforced when the agent's access was not FULL; null otherwise (and from older runners). */
     val access: RunnerAccessReport? = null,
+    /** ADR 0065: when the job started on its runner (queueing excluded); null when unknown (never started, older results). */
+    val startedAt: Instant? = null,
 ) {
     val succeeded: Boolean get() = status == RunnerJobStatus.SUCCEEDED
 }

@@ -30,6 +30,16 @@ data class LeaderboardRow(
     val notApplicable: Int = 0,
     /** ADR 0059: [totalCost] / passed attempts; null without a passed attempt. */
     val costPerAccepted: Money? = null,
+    /** ADR 0065: the candidate's cost per attempt at API prices (equal to [meanCost] when nothing ran on a subscription). */
+    val meanApiCost: Money = meanCost,
+    /** ADR 0065: the candidate's cost at API prices, failed and timed-out attempts included. */
+    val totalApiCost: Money = totalCost,
+    /** ADR 0065: [totalApiCost] / passed attempts; null without a passed attempt. */
+    val apiCostPerAccepted: Money? = costPerAccepted,
+    /** ADR 0065: mean score per dollar of [meanApiCost]. */
+    val scorePerApiDollar: Double? = scorePerDollar,
+    /** ADR 0065: the candidate's model runs on a subscription (Claude Code login): compare it on the API figures. */
+    val subscription: Boolean = false,
 )
 
 data class TaskLeaderboard(val taskId: EvalTaskId, val taskName: String, val rows: List<LeaderboardRow>)

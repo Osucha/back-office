@@ -70,6 +70,11 @@ data class LlmResult(
     val latency: Duration,
     val modelRef: ModelRef,
     val providerResponseId: String? = null,
+    /**
+     * ADR 0065: what the answer would have cost at API list prices as its harness estimated it (Claude Code
+     * `total_cost_usd` of a login model's answer); null for gateway calls, whose cost is the profile's pricing.
+     */
+    val reportedCostUsd: java.math.BigDecimal? = null,
 )
 
 /**

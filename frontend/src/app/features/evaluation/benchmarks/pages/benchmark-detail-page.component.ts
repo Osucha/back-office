@@ -63,6 +63,12 @@ import { AttemptDetailModalComponent } from '../components/attempt-detail-modal.
 import { AttemptStripComponent } from '../components/attempt-strip.component';
 import { attemptCounts, benchmarkBaton, filterAttemptsByHolder } from '../data/benchmark-view';
 import { scatterOption } from '../data/leaderboard-chart';
+import {
+  boardCostPerAccepted,
+  boardMeanCost,
+  boardScorePerDollar,
+  comparesOnApi,
+} from '../data/board-cost';
 import { candidateCount, candidateKey } from '../data/candidates';
 import { agentKindLabel } from '../../../../core/ui/agents';
 import { categoryLabel } from '../../suites/data/suite-view';
@@ -144,6 +150,7 @@ const PROVIDERS: Record<string, string> = {
               [actor]="b.createdBy"
               [at]="b.createdAt"
               [cost]="b.totalCost"
+              [apiCost]="b.totalApiCost"
             />
             <span class="sep" aria-hidden="true">·</span>
             <a
@@ -246,7 +253,13 @@ const PROVIDERS: Record<string, string> = {
           </div>
           <div>
             <dt i18n="@@evaluation.benchmark.totalCost">Total cost</dt>
-            <dd><bo-cost [value]="b.totalCost" /></dd>
+            <dd>
+              <bo-cost
+                [value]="b.totalCost"
+                [apiValue]="b.totalApiCost"
+                [apiHint]="text.apiHint"
+              />
+            </dd>
           </div>
         </dl>
 
@@ -419,7 +432,7 @@ const PROVIDERS: Record<string, string> = {
               <bo-skeleton
                 variant="table"
                 [rows]="8"
-                [columns]="7"
+                [columns]="10"
                 label="Loading attempts"
                 i18n-label="@@evaluation.benchmark.attempts.loading"
               />
@@ -503,7 +516,7 @@ const PROVIDERS: Record<string, string> = {
                       nzShowSort
                       [boSort]="attemptSort"
                       boSortKey="cost"
-                      nzWidth="100px"
+                      nzWidth="150px"
                       nzAlign="right"
                       i18n="@@evaluation.benchmark.col.cost"
                     >
@@ -512,9 +525,38 @@ const PROVIDERS: Record<string, string> = {
                     <th
                       nzShowSort
                       [boSort]="attemptSort"
+                      boSortKey="judgeCost"
+                      nzWidth="96px"
+                      nzAlign="right"
+                      nz-tooltip
+                      nzTooltipTitle="What the judge's verdict cost"
+                      i18n-nzTooltipTitle="@@evaluation.benchmark.col.judgeCostTooltip"
+                      i18n="@@evaluation.benchmark.col.judgeCost"
+                    >
+                      Judge
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
+                      boSortKey="candidateTime"
+                      nzWidth="110px"
+                      nzAlign="right"
+                      nz-tooltip
+                      nzTooltipTitle="The candidate's own time: from the start of its job or model call to its result, without queueing"
+                      i18n-nzTooltipTitle="@@evaluation.benchmark.col.candidateTimeTooltip"
+                      i18n="@@evaluation.benchmark.col.candidateTime"
+                    >
+                      Own time
+                    </th>
+                    <th
+                      nzShowSort
+                      [boSort]="attemptSort"
                       boSortKey="duration"
                       nzWidth="100px"
                       nzAlign="right"
+                      nz-tooltip
+                      nzTooltipTitle="From submission to the result, queueing for a runner and the judge included"
+                      i18n-nzTooltipTitle="@@evaluation.benchmark.col.durationTooltip"
                       i18n="@@evaluation.benchmark.col.duration"
                     >
                       Duration
@@ -591,7 +633,20 @@ const PROVIDERS: Record<string, string> = {
             <span class="quiet">-</span>
           }
         </td>
-        <td nzAlign="right"><bo-cost [value]="a.cost" [usage]="a.usage" /></td>
+        <td nzAlign="right">
+          <bo-cost
+            [value]="a.cost"
+            [apiValue]="a.apiCost"
+            [apiHint]="text.apiHint"
+            [usage]="a.usage"
+          />
+        </td>
+        <td nzAlign="right">
+          <bo-cost [value]="a.judgeCost" [apiValue]="a.judgeApiCost" [apiHint]="text.apiHint" />
+        </td>
+        <td nzAlign="right">
+          <span class="mono-cell">{{ duration(a.candidateLatencyMs) }}</span>
+        </td>
         <td nzAlign="right">
           <span class="mono-cell">{{ duration(a.durationMs) }}</span>
         </td>
@@ -637,7 +692,7 @@ const PROVIDERS: Record<string, string> = {
               nzShowSort
               [boSort]="boardSort"
               boSortKey="meanCost"
-              nzWidth="106px"
+              nzWidth="150px"
               nzAlign="right"
               i18n="@@evaluation.board.meanCost"
             >
@@ -647,7 +702,7 @@ const PROVIDERS: Record<string, string> = {
               nzShowSort
               [boSort]="boardSort"
               boSortKey="total"
-              nzWidth="96px"
+              nzWidth="150px"
               nzAlign="right"
               i18n="@@evaluation.board.total"
             >
@@ -657,11 +712,11 @@ const PROVIDERS: Record<string, string> = {
               nzShowSort
               [boSort]="boardSort"
               boSortKey="perAccepted"
-              nzWidth="130px"
+              nzWidth="150px"
               nzAlign="right"
               nz-tooltip
-              nzTooltipTitle="Total cost / passed attempts: failed attempts are paid by the passed ones"
-              i18n-nzTooltipTitle="@@evaluation.board.costPerAcceptedTooltip"
+              nzTooltipTitle="Total cost / passed attempts: failed and timed-out attempts are paid by the passed ones. Marked API: estimated at API list prices, paid by the subscription"
+              i18n-nzTooltipTitle="@@evaluation.board.costPerAcceptedApiTooltip"
               i18n="@@evaluation.board.costPerAccepted"
             >
               Cost per accepted result
@@ -670,11 +725,11 @@ const PROVIDERS: Record<string, string> = {
               nzShowSort
               [boSort]="boardSort"
               boSortKey="perDollar"
-              nzWidth="96px"
+              nzWidth="110px"
               nzAlign="right"
               nz-tooltip
-              nzTooltipTitle="Mean score per dollar of mean cost"
-              i18n-nzTooltipTitle="@@evaluation.board.scorePerDollarTooltip"
+              nzTooltipTitle="Mean score per dollar of mean cost. Marked API: per dollar at API list prices"
+              i18n-nzTooltipTitle="@@evaluation.board.scorePerApiDollarTooltip"
               i18n="@@evaluation.board.scorePerDollar"
             >
               Score / $
@@ -686,8 +741,8 @@ const PROVIDERS: Record<string, string> = {
               nzWidth="136px"
               nzAlign="right"
               nz-tooltip
-              nzTooltipTitle="The candidate's own response time (model answer or agent job), without the judge, queueing or retries, over succeeded attempts: median / 95th percentile (the longest one below 20 attempts)"
-              i18n-nzTooltipTitle="@@evaluation.board.latencyTooltip"
+              nzTooltipTitle="The candidate's own time from the start of its job or model call to its result, without queueing for a runner, the judge or retries, over succeeded attempts: median / 95th percentile (the longest one below 20 attempts)"
+              i18n-nzTooltipTitle="@@evaluation.board.ownTimeTooltip"
               i18n="@@evaluation.board.latency"
             >
               Time p50 / p95
@@ -758,21 +813,36 @@ const PROVIDERS: Record<string, string> = {
                     : '-'
                 }}</span>
               </td>
-              <td nzAlign="right"><bo-cost [value]="r.meanCost" /></td>
-              <td nzAlign="right"><bo-cost [value]="r.totalCost" /></td>
               <td nzAlign="right">
-                @if (r.costPerAccepted) {
-                  <strong><bo-cost [value]="r.costPerAccepted" /></strong>
+                <bo-cost [value]="r.meanCost" [apiValue]="r.meanApiCost" [apiHint]="text.apiHint" />
+              </td>
+              <td nzAlign="right">
+                <bo-cost
+                  [value]="r.totalCost"
+                  [apiValue]="r.totalApiCost"
+                  [apiHint]="text.apiHint"
+                />
+              </td>
+              <td nzAlign="right">
+                @if (perAccepted(r); as cost) {
+                  <strong><bo-cost [value]="cost" /></strong>
+                  @if (onApi(r)) {
+                    <ng-container *ngTemplateOutlet="apiMark" />
+                  }
                 } @else {
                   <span class="mono-cell quiet">-</span>
                 }
               </td>
               <td nzAlign="right">
-                <span class="mono-cell">{{
-                  r.scorePerDollar !== null && r.scorePerDollar !== undefined
-                    ? fixed(r.scorePerDollar, 0)
-                    : '-'
-                }}</span>
+                @let v = perDollar(r);
+                @if (v !== null) {
+                  <span class="mono-cell">{{ fixed(v, 0) }}</span>
+                  @if (onApi(r)) {
+                    <ng-container *ngTemplateOutlet="apiMark" />
+                  }
+                } @else {
+                  <span class="mono-cell">-</span>
+                }
               </td>
               <td nzAlign="right">
                 <span class="mono-cell" [attr.title]="latencyNote(r)"
@@ -793,6 +863,18 @@ const PROVIDERS: Record<string, string> = {
           }
         </tbody>
       </nz-table>
+    </ng-template>
+
+    <ng-template #apiMark>
+      <span
+        class="api-mark"
+        nz-tooltip
+        [nzTooltipTitle]="text.apiHint"
+        tabindex="0"
+        [attr.aria-label]="text.apiHint"
+        i18n="@@evaluation.board.apiMark"
+        >API</span
+      >
     </ng-template>
 
     <app-attempt-detail-modal
@@ -958,6 +1040,14 @@ const PROVIDERS: Record<string, string> = {
       tr.first .score-bar span {
         background: var(--bo-accent);
       }
+      .api-mark {
+        margin-left: 4px;
+        font-family: var(--bo-font-mono);
+        font-size: 11px;
+        color: var(--bo-ink-3);
+        white-space: nowrap;
+        cursor: help;
+      }
       .counts {
         display: flex;
         flex-wrap: wrap;
@@ -1019,7 +1109,11 @@ export class BenchmarkDetailPageComponent {
     noAttemptMatch: $localize`:@@evaluation.benchmark.attempts.noMatch:No attempt matches these filters.`,
     noAttempts: $localize`:@@evaluation.benchmark.attempts.empty:No attempts yet.`,
     clearFilters: $localize`:@@evaluation.clearFiltersAction:Clear filters`,
+    apiHint: $localize`:@@evaluation.board.apiHint:Estimated at API list prices; paid by the subscription (Claude Code with your own login).`,
   };
+  readonly onApi = comparesOnApi;
+  readonly perAccepted = boardCostPerAccepted;
+  readonly perDollar = boardScorePerDollar;
   readonly attemptsTab = computed(() => {
     const n = this.attempts().length;
     return $localize`:@@evaluation.benchmark.tab.attempts:Attempts · ${n}:count:`;
@@ -1089,7 +1183,9 @@ export class BenchmarkDetailPageComponent {
     rep: (a) => a.repetition,
     score: (a) => a.score,
     passed: (a) => a.passed,
-    cost: (a) => a.cost?.amount,
+    cost: (a) => a.apiCost?.amount ?? a.cost?.amount,
+    judgeCost: (a) => a.judgeApiCost?.amount ?? a.judgeCost?.amount,
+    candidateTime: (a) => a.candidateLatencyMs,
     duration: (a) => a.durationMs,
   });
   readonly attemptRows = computed(() => this.attemptSort.apply(this.filteredAttempts()));
@@ -1099,10 +1195,10 @@ export class BenchmarkDetailPageComponent {
       model: (r) => r.candidate?.label ?? r.modelDisplayName,
       score: (r) => r.meanScore,
       passRate: (r) => r.passRate,
-      meanCost: (r) => r.meanCost?.amount,
-      total: (r) => r.totalCost?.amount,
-      perAccepted: (r) => r.costPerAccepted?.amount,
-      perDollar: (r) => r.scorePerDollar,
+      meanCost: (r) => boardMeanCost(r),
+      total: (r) => (comparesOnApi(r) ? r.totalApiCost : r.totalCost)?.amount,
+      perAccepted: (r) => boardCostPerAccepted(r)?.amount,
+      perDollar: (r) => boardScorePerDollar(r),
       latency: (r) => r.p50LatencyMs,
       stability: (r) => r.stability,
     },

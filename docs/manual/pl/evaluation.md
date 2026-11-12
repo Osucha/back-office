@@ -122,12 +122,20 @@ login)** i **Claude Haiku (my login)**. Taki profil:
   oceniającego jako jedną odpowiedź: Back Office wysyła krótkie zadanie na Twój osobisty runner, gdzie Claude Code
   odpowiada bez narzędzi;
 - działa tylko w Twoich prywatnych projektach i własnych benchmarkach;
-- nic nie kosztuje w Back Office (płaci subskrypcja), ale zużywa jej limity, a każda odpowiedź trwa kilka sekund
-  dłużej niż wywołanie API (runner uruchamia do niej Claude Code).
+- nie wydaje nic przez Back Office: jego koszt wydany to 0 (płaci subskrypcja), a budżety i
+  [strona kosztów](costs-insights.md) nic dla niego nie liczą. Zużywa limity subskrypcji, a każda odpowiedź trwa
+  kilka sekund dłużej niż wywołanie API (runner uruchamia do niej Claude Code).
+
+Benchmarki mimo to pokazują, ile ta sama praca kosztowałaby w cenach API: szacunek samego Claude Code, a bez niego
+(zadanie przerwane przed końcem) tokeny wycenione jak profil API tej samej rodziny Claude (Opus, Sonnet, Haiku).
+Ranking porównuje takiego kandydata według tych kwot API, oznaczonych **API**, więc da się go zestawić z kandydatami
+API i innymi modelami z subskrypcji ([Odczytywanie wyników](#reading-results)). To szacunek w cenach
+katalogowych, nie faktura.
 
 **Testuj profil** (**Test profile**) i **Sprawdź modele** (**Check models**) nie wywołują dla niego modelu:
 sprawdzają, czy Twój osobisty runner istnieje, używa Twojego logowania i jest dostępny. Claude Code dodaje
-własne instrukcje i czas uruchomienia, więc porównuj taki model z modelami API po ocenach, nie po czasach.
+własne instrukcje i czas uruchomienia, więc porównuj taki model z modelami API po ocenach i koszcie, a ostrożnie
+po czasach.
 
 Token subskrypcji (`sk-ant-oat...`, z `claude setup-token`) nie jest kluczem API: połączenie z dostawcą
 Anthropic go odrzuca.
@@ -162,7 +170,9 @@ startowe, których nie edytowałeś, są przy następnym uruchomieniu aktualizow
      i potem usuwane, `protectedPaths` (wzorce ścieżek git, np. `src/test/**`) muszą pozostać niezmienione,
      a `requireChanges` oblewa przebieg, który niczego nie zmienił.
 4. W sekcji **Wykonanie** (**Execution**) ustaw **Limit czasu (sekundy)** (**Timeout (seconds)**)
-   i **Wagę** (**Weight**; względna waga w agregatach zestawu).
+   i **Wagę** (**Weight**; względna waga w agregatach zestawu). Limit czasu obejmuje agenta i polecenie
+   weryfikacji: runner daje poleceniu weryfikacji to, co z niego zostało, więc testy muszą zdążyć się wykonać
+   (startowe zadania PetClinic ograniczają czas testów).
 5. Sprawdź kartę **Podgląd** (**Preview**), a potem kliknij **Dodaj zadanie**.
 
 Z menu strony zestawu użyj **Edytuj zestaw** (**Edit suite**) i **Usuń zestaw** (**Delete suite**);
@@ -262,20 +272,27 @@ razu z komunikatem „skipped, ... failed: ...”, zamiast każda wywoływać do
 oceniający, kończą się wszystkie czekające próby. Gdy próby kodujące czekają, bo w miejscu, do którego
 benchmark je wysyła, żaden runner nie jest online, strona benchmarku o tym informuje.
 
+<a id="reading-results"></a>
 ### Odczytywanie wyników
 
 Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**Attempts · N**); jej nagłówek wymienia
 **Kandydatów** (**Candidates**).
+
+Każdy koszt ma dwie kwoty, jak w workflowach ([Koszty](costs-insights.md)): to, co wydano przez Back Office, i tę
+samą pracę w cenach katalogowych API. Różnią się tylko dla kandydatów działających na subskrypcji
+([Claude Code z Twoim własnym logowaniem](#claude-code-login)): wydano `$0`, widać `$0 · API $1.14`. Takich
+kandydatów porównuje się według kwot API: **Koszt zaakceptowanego wyniku** i **Wynik / $** pokazują wtedy kwotę API
+oznaczoną **API**, a wykres umieszcza ich według kosztu w cenach API.
 
 | Kolumna rankingu | Znaczenie |
 |---|---|
 | **Kandydat** (**Candidate**) | Jeden wiersz na kandydata, `agent · model`, na przykład `Claude Code · Claude Sonnet`. |
 | **Wynik** (**Score**) | Średnia ocena z udanych prób. |
 | **Odsetek zaliczonych** (**Pass rate**) | Udział zaliczonych prób (programistyczne: weryfikacja i testy akceptacyjne przechodzą, a ocena wynosi co najmniej 70; prompt: ocena 70 lub więcej). Próby nieudane i przekraczające czas liczą się jako niezaliczone. |
-| **Średni koszt** (**Mean cost**), **Łącznie** (**Total**) | Koszt kandydata na próbę i ogółem. |
-| **Koszt zaakceptowanego wyniku** (**Cost per accepted result**) | **Łącznie** / zaliczone próby: nieudane próby opłacają te zaliczone ([Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted)). Puste bez zaliczonej próby. Według tej liczby porównuj kandydatów. |
-| **Wynik / $** (**Score / $**) | Średni wynik na dolara średniego kosztu. |
-| **Czas p50 / p95** (**Time p50 / p95**) | Czas odpowiedzi samego kandydata (odpowiedź modelu albo zadanie agenta od zlecenia do wyniku), bez modelu oceniającego, kolejki i ponowień, z udanych prób: połowa była szybsza niż p50, 95% szybsze niż p95. Poniżej 20 prób p95 to po prostu najwolniejsza próba; podpowiedź mówi, z ilu prób policzono czasy. |
+| **Średni koszt** (**Mean cost**), **Łącznie** (**Total**) | Koszt kandydata na próbę i ogółem, łącznie z próbami nieudanymi i przerwanymi po czasie; `· API $x`, gdy koszt w cenach API jest inny. |
+| **Koszt zaakceptowanego wyniku** (**Cost per accepted result**) | **Łącznie** / zaliczone próby: próby nieudane i przerwane po czasie opłacają te zaliczone ([Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted)). Puste bez zaliczonej próby. Według tej liczby porównuj kandydatów; dla kandydatów z subskrypcją w cenach API (oznaczone **API**). |
+| **Wynik / $** (**Score / $**) | Średni wynik na dolara średniego kosztu; dla kandydatów z subskrypcją na dolara w cenach API (oznaczone **API**). |
+| **Czas p50 / p95** (**Time p50 / p95**) | Czas samego kandydata (odpowiedź modelu albo zadanie agenta od jego startu do wyniku), bez czekania na runnera, modelu oceniającego i ponowień, z udanych prób: połowa była szybsza niż p50, 95% szybsze niż p95. Poniżej 20 prób p95 to po prostu najwolniejsza próba; podpowiedź mówi, z ilu prób policzono czasy. |
 | **Stabilność** (**Stability**) | Odchylenie standardowe wyniku między powtórzeniami; im niższe, tym stabilniej. |
 | **Nie dotyczy** (**Not applicable**) | Zadania benchmarku, których ten kandydat nie może wykonać (zadanie programistyczne dla agenta odpowiedzi modelu, zadanie z promptem dla agenta programistycznego); kolumna jest widoczna tylko wtedy, gdy takie są. |
 
@@ -283,7 +300,10 @@ Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**At
 zarówno wynikiem, jak i kosztem, jest zdominowany. Przekroje **Ogółem** (**Overall**), **Wg kategorii**
 (**By category**), **Wg trudności** (**By difficulty**) i **Wg zadania** (**By task**) powtarzają tabelę
 dla każdego wycinka. Na karcie **Próby** szukaj zadań lub kandydatów, filtruj po zadaniu i modelu i otwórz próbę,
-aby przeczytać jej agenta i model, wynik, kryteria i uzasadnienie modelu oceniającego oraz wynik weryfikacji. Zanim
+aby przeczytać jej agenta i model, wynik, kryteria i uzasadnienie modelu oceniającego oraz wynik weryfikacji. Każda
+próba pokazuje **Koszt** (**Cost**, z kwotą API), koszt **Oceny** (**Judge**), **Czas własny** (**Own time**; czas
+samego kandydata, bez kolejki) i **Czas trwania** (**Duration**; od zlecenia do wyniku, łącznie z czekaniem na
+runnera i oceną). Zanim
 wyciągniesz wnioski, przeczytaj najgorszą próbę każdego kandydata: niska ocena to często problem z kryteriami oceny.
 
 ### Wykorzystanie wyniku

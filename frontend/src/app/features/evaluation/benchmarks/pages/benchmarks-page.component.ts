@@ -267,7 +267,7 @@ import {
                 nzShowSort
                 [boSort]="sort"
                 boSortKey="cost"
-                nzWidth="106px"
+                nzWidth="170px"
                 nzAlign="right"
                 i18n="@@evaluation.benchmarks.col.cost"
               >
@@ -315,7 +315,13 @@ import {
                   <span class="mono-cell">{{ candidateCount(b) }}</span>
                 </td>
                 <td><app-attempt-strip [progress]="b.progress" [status]="b.status" /></td>
-                <td nzAlign="right"><bo-cost [value]="b.totalCost" /></td>
+                <td nzAlign="right">
+                  <bo-cost
+                    [value]="b.totalCost"
+                    [apiValue]="b.totalApiCost"
+                    [apiHint]="apiHint"
+                  />
+                </td>
                 <td>
                   <bo-provenance [actor]="b.createdBy" [at]="b.createdAt" />
                 </td>
@@ -798,6 +804,8 @@ export class BenchmarksPageComponent {
     allTasks: $localize`:@@evaluation.benchmarks.form.allTasks:All tasks`,
     pickSuite: $localize`:@@evaluation.benchmarks.form.pickSuite:Pick a suite first`,
   };
+  /** ADR 0065: what "· API $x" next to the spent cost means for a benchmark. */
+  readonly apiHint = $localize`:@@evaluation.board.apiHint:Estimated at API list prices; paid by the subscription (Claude Code with your own login).`;
 
   readonly filtered = computed(() => {
     const v = this.f.values();

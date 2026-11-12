@@ -148,6 +148,7 @@ object RestMappers {
         status = d.benchmark.status,
         progress = ProgressDto(d.progress.total, d.progress.done, d.progress.failed),
         totalCost = money(d.totalCost),
+        totalApiCost = money(d.totalApiCost),
         createdAt = d.benchmark.createdAt,
         startedAt = d.benchmark.startedAt,
         finishedAt = d.benchmark.finishedAt,
@@ -161,7 +162,7 @@ object RestMappers {
         return BenchmarkDto(
             id = s.id, name = s.name, suiteId = s.suiteId, suiteName = s.suiteName, modelProfileIds = s.modelProfileIds,
             judgeModelProfileId = s.judgeModelProfileId, repetitions = s.repetitions, codingHarness = s.codingHarness, taskIds = s.taskIds,
-            status = s.status, progress = s.progress, totalCost = s.totalCost, createdAt = s.createdAt, startedAt = s.startedAt, finishedAt = s.finishedAt,
+            status = s.status, progress = s.progress, totalCost = s.totalCost, totalApiCost = s.totalApiCost, createdAt = s.createdAt, startedAt = s.startedAt, finishedAt = s.finishedAt,
             createdBy = s.createdBy,
             runnerTarget = s.runnerTarget,
             candidates = s.candidates,
@@ -177,6 +178,7 @@ object RestMappers {
         modelProfileId = a.modelProfileId.value, modelDisplayName = a.modelDisplayName, repetition = a.repetition, status = a.status, kind = a.kind,
         score = a.score, passed = a.passed, usage = usage(a.usage), cost = money(a.cost), durationMs = a.durationMs,
         startedAt = a.startedAt, finishedAt = a.finishedAt, candidate = candidateRef(a.candidate(codingHarness)),
+        apiCost = money(a.apiCost), judgeCost = money(a.judgeCost), judgeApiCost = money(a.judgeApiCost), candidateLatencyMs = a.candidateLatencyMs,
     )
 
     fun attemptDetail(a: Attempt, codingHarness: AgentHarness = AgentHarness.OPENCODE) = AttemptDetailDto(
@@ -187,6 +189,7 @@ object RestMappers {
         judgeCriteria = a.judgeCriteria.map { JudgeCriterionDto(it.name, it.score, it.comment) },
         verification = a.verification?.let { VerificationDto(it.command, it.exitCode, it.outputTail) },
         runnerJobId = a.runnerJobId?.value, error = a.error, candidate = candidateRef(a.candidate(codingHarness)),
+        apiCost = money(a.apiCost), judgeApiCost = money(a.judgeApiCost), candidateLatencyMs = a.candidateLatencyMs,
     )
 
     fun row(r: LeaderboardRow) = LeaderboardRowDto(
@@ -194,6 +197,8 @@ object RestMappers {
         meanScore = r.meanScore, passRate = r.passRate, meanCost = money(r.meanCost), totalCost = money(r.totalCost),
         scorePerDollar = r.scorePerDollar, p50LatencyMs = r.p50LatencyMs, p95LatencyMs = r.p95LatencyMs, latencySamples = r.latencySamples, stability = r.stability,
         candidate = candidateRef(r.candidate), notApplicable = r.notApplicable, costPerAccepted = r.costPerAccepted?.let(::money),
+        meanApiCost = money(r.meanApiCost), totalApiCost = money(r.totalApiCost), apiCostPerAccepted = r.apiCostPerAccepted?.let(::money),
+        scorePerApiDollar = r.scorePerApiDollar, subscription = r.subscription,
     )
 
     fun leaderboard(l: Leaderboard) = LeaderboardDto(

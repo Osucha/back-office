@@ -11,7 +11,9 @@ import pl.mos.backoffice.evaluation.domain.model.ModelDefault
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 import pl.mos.backoffice.evaluation.domain.model.TaskSuite
 import pl.mos.backoffice.evaluation.domain.model.TaskSuiteId
+import pl.mos.backoffice.shared.llm.ApiPricing
 import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.usage.Pricing
 import pl.mos.backoffice.shared.ModelProfileId
 import java.util.UUID
 
@@ -22,6 +24,14 @@ interface ModelProfileRepository {
     fun findAll(enabled: Boolean? = null): List<ModelProfile>
     fun delete(id: ModelProfileId)
     fun count(): Long
+
+    /**
+     * ADR 0065: what [profile]'s tokens are worth at API prices: for a Claude Code login profile the pricing of the
+     * enabled API profile of the same Claude family ([ApiPricing]), else its own pricing.
+     */
+    fun apiPricingOf(profile: ModelProfile): Pricing =
+        if (!profile.viaClaudeCodeLogin) profile.pricing
+        else ApiPricing.of(profile.toSnapshot(), findAll(enabled = true).map { it.toSnapshot() })
 }
 
 /** ADR 0050 step 2: default models; [ownerUserId] null = the platform defaults. */

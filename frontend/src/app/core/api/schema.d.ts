@@ -4060,8 +4060,15 @@ export interface components {
       userId: string;
     };
     Attempt: {
+      /** @description ADR 0065: the candidate's work at API prices (subscription: the harness estimate); also for failed and timed-out attempts */
+      apiCost?: components['schemas']['Money'];
       /** @description ADR 0059: the agent and model of this attempt */
       candidate?: components['schemas']['BenchmarkCandidateRef'] | null;
+      /**
+       * Format: int64
+       * @description ADR 0065: the candidate's own time: from the start of its job (or model call) to its result, without queueing
+       */
+      candidateLatencyMs?: number | null;
       category?: components['schemas']['TaskCategory'];
       cost?: components['schemas']['Money'];
       difficulty?: components['schemas']['Difficulty'];
@@ -4071,6 +4078,9 @@ export interface components {
       finishedAt?: string | null;
       /** Format: uuid */
       id?: string;
+      /** @description ADR 0065: the judge's verdicts at API prices */
+      judgeApiCost?: components['schemas']['Money'];
+      judgeCost?: components['schemas']['Money'];
       /** @enum {string} */
       kind?: 'PROMPT' | 'CODING_JOB';
       modelDisplayName?: string;
@@ -4233,6 +4243,8 @@ export interface components {
       startedAt?: string | null;
       status?: components['schemas']['BenchmarkStatus'];
       suiteName?: string;
+      /** @description ADR 0065: the same work (candidates and judge) at API prices; equals totalCost when nothing ran on a subscription */
+      totalApiCost?: components['schemas']['Money'];
       totalCost?: components['schemas']['Money'];
     };
     BudgetInput: {
@@ -5228,12 +5240,16 @@ export interface components {
     };
     /** @description ADR 0059: one row per candidate (agent and model) */
     LeaderboardRow: {
+      /** @description ADR 0065: totalApiCost / passed attempts; null without a passed attempt */
+      apiCostPerAccepted?: components['schemas']['Money'] | null;
       attempts?: number;
       candidate?: components['schemas']['BenchmarkCandidateRef'];
       /** @description ADR 0059: total cost / passed attempts; null without a passed attempt */
       costPerAccepted?: components['schemas']['Money'] | null;
       /** @description succeeded attempts the latencies are computed from */
       latencySamples?: number;
+      /** @description ADR 0065: candidate cost per attempt at API prices */
+      meanApiCost?: components['schemas']['Money'];
       meanCost?: components['schemas']['Money'];
       meanScore?: number | null;
       modelDisplayName?: string;
@@ -5243,15 +5259,21 @@ export interface components {
       notApplicable?: number;
       /**
        * Format: int64
-       * @description ADR 0046: median of the candidate's own time (model answer or agent job) in succeeded attempts
+       * @description ADR 0046/0065: median of the candidate's own time (model answer or agent job, from its start, without queueing) in succeeded attempts
        */
       p50LatencyMs?: number | null;
       /** Format: int64 */
       p95LatencyMs?: number | null;
       passRate?: number | null;
       provider?: components['schemas']['Provider'];
+      /** @description ADR 0065: mean score per dollar of meanApiCost */
+      scorePerApiDollar?: number | null;
       scorePerDollar?: number | null;
       stability?: number | null;
+      /** @description ADR 0065: the candidate ran on a subscription (Claude Code login): nothing was spent, compare it on the API figures */
+      subscription?: boolean;
+      /** @description ADR 0065: candidate cost at API prices, failed and timed-out attempts included */
+      totalApiCost?: components['schemas']['Money'];
       totalCost?: components['schemas']['Money'];
     };
     LeaseRequest: {

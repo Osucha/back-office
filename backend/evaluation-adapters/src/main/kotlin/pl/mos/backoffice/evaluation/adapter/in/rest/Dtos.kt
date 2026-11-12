@@ -215,6 +215,8 @@ data class BenchmarkSummaryDto(
     val status: BenchmarkStatus,
     val progress: ProgressDto,
     val totalCost: MoneyDto,
+    /** ADR 0065: candidates and judge at API prices. */
+    val totalApiCost: MoneyDto,
     val createdAt: Instant,
     val startedAt: Instant?,
     val finishedAt: Instant?,
@@ -236,6 +238,8 @@ data class BenchmarkDto(
     val status: BenchmarkStatus,
     val progress: ProgressDto,
     val totalCost: MoneyDto,
+    /** ADR 0065: candidates and judge at API prices. */
+    val totalApiCost: MoneyDto,
     val createdAt: Instant,
     val startedAt: Instant?,
     val finishedAt: Instant?,
@@ -267,6 +271,13 @@ data class AttemptDto(
     val finishedAt: Instant?,
     /** ADR 0059: the agent and model of this attempt. */
     val candidate: BenchmarkCandidateRefDto? = null,
+    /** ADR 0065: the candidate's work at API prices. */
+    val apiCost: MoneyDto,
+    val judgeCost: MoneyDto,
+    /** ADR 0065: the judge's verdicts at API prices. */
+    val judgeApiCost: MoneyDto,
+    /** ADR 0065: the candidate's own time, queueing excluded. */
+    val candidateLatencyMs: Long?,
 )
 
 data class JudgeCriterionDto(val name: String, val score: Double, val comment: String?)
@@ -299,6 +310,12 @@ data class AttemptDetailDto(
     val error: String?,
     /** ADR 0059: the agent and model of this attempt. */
     val candidate: BenchmarkCandidateRefDto? = null,
+    /** ADR 0065: the candidate's work at API prices. */
+    val apiCost: MoneyDto,
+    /** ADR 0065: the judge's verdicts at API prices. */
+    val judgeApiCost: MoneyDto,
+    /** ADR 0065: the candidate's own time, queueing excluded. */
+    val candidateLatencyMs: Long?,
 )
 
 data class LeaderboardRowDto(
@@ -321,6 +338,12 @@ data class LeaderboardRowDto(
     val notApplicable: Int = 0,
     /** ADR 0059: total cost / passed attempts; null without a passed attempt. */
     val costPerAccepted: MoneyDto? = null,
+    /** ADR 0065: the cost figures at API prices; [subscription] = the candidate's model runs on a Claude Code login. */
+    val meanApiCost: MoneyDto,
+    val totalApiCost: MoneyDto,
+    val apiCostPerAccepted: MoneyDto?,
+    val scorePerApiDollar: Double?,
+    val subscription: Boolean,
 )
 
 data class TaskLeaderboardDto(val taskId: UUID, val taskName: String, val rows: List<LeaderboardRowDto>)

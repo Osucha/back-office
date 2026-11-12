@@ -92,6 +92,23 @@ reported figure wins and the computed one is stored as `estimatedCost` for compa
 The `Costs` page groups the ledger by model, project, benchmark and day. The same figures are exported
 as OpenTelemetry attributes so Langfuse shows them per trace when enabled.
 
+**Two amounts per attempt (ADR 0065, as ADR 0042 for workflow steps).** `cost` / `judgeCost` is what Back Office
+spent (0 on a subscription); `apiCost` / `judgeApiCost` is the same work at API list prices. Through the gateway both
+are the profile's pricing of the tokens. A Claude Code login model (a coding job with `RunnerResult.subscription`, a
+single answer through `OwnLoginLlm`, also as judge) is worth the harness's estimate (`RunnerResult.reportedCostUsd`,
+`LlmResult.reportedCostUsd`: Claude Code's `total_cost_usd`); without one (a job killed before its final event) its
+tokens are priced like the enabled API profile of the same Claude family (`opus`, `sonnet`, `haiku` in the model id or
+name; the most expensive, then the highest model id: `ApiPricing`, behind `ModelProfileRepository.apiPricingOf`), else
+the profile's own pricing. Failed and timed-out coding attempts keep the usage and both amounts the runner reported.
+`Benchmark.totalApiCost` sums `apiCost + judgeApiCost`; budgets and the ledger keep counting spent money only. V209
+adds the columns and fills them for older attempts from the runner jobs' `agent_job.cost_usd` (the coding candidate's
+`runner_job_id`, a login candidate's first prompt job, a login judge's other jobs of the attempt), else the spent cost.
+
+**The candidate's own time (ADR 0046/0065).** `candidateLatencyMs` runs from the start of the candidate's job on its
+runner (`RunnerResult.startedAt`, the job's first RUNNING heartbeat) or of its model call to the result; waiting for a
+runner slot is excluded (a result without a start falls back to the attempt's start). A login model's answer measures
+its PROMPT job the same way.
+
 ## Leaderboard metrics
 
 | Metric | Definition |
@@ -102,7 +119,11 @@ as OpenTelemetry attributes so Langfuse shows them per trace when enabled.
 | `costPerAccepted` | ADR 0059: `totalCost / passed attempts` (failed attempts are paid by the passed ones); null without a passed attempt |
 | `notApplicable` | ADR 0059: tasks of the benchmark the candidate cannot do (a coding task for a model answer agent and the reverse) |
 | `scorePerDollar` | `meanScore / meanCost` |
-| `p50Latency`, `p95Latency` | wall-clock per attempt |
+| `meanApiCost`, `totalApiCost` | ADR 0065: the candidate's `apiCost` per attempt and in total, failed and timed-out attempts included |
+| `apiCostPerAccepted` | ADR 0065: `totalApiCost / passed attempts`; null without a passed attempt |
+| `scorePerApiDollar` | ADR 0065: `meanScore / meanApiCost` |
+| `subscription` | ADR 0065: the candidate's model is a Claude Code login model (spent cost 0): compare it on the API figures |
+| `p50Latency`, `p95Latency` | the candidate's own time (`candidateLatencyMs`, queueing excluded) over succeeded attempts |
 | `stability` | standard deviation of score across repetitions |
 
 Rows are per candidate (`LeaderboardRow.candidate`, label `agent · model`). Breakdowns: by category, by

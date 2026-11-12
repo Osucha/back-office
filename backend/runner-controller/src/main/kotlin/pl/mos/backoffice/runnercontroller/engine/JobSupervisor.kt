@@ -52,7 +52,11 @@ import kotlin.concurrent.withLock
 /** `spec.llmCredentials` of an assignment whose Claude Code uses the personal runner owner's own login (ADR 0040). */
 private const val LOCAL_LOGIN = "LOCAL_LOGIN"
 
-/** A job this controller runs. Mutated only on the monitor thread (after [JobSupervisor.accept] put it in). */
+/**
+ * A job this controller runs. Observed on the monitor thread; ADR 0065: the deadline watchdog reads it too (deadline,
+ * last heartbeat and observation) and may end it, so the shared fields are volatile and [finished] makes ending it
+ * happen once, whichever thread gets there first.
+ */
 class RunningJob(
     val jobId: String,
     val handle: SandboxHandle,
@@ -63,11 +67,17 @@ class RunningJob(
     /** ADR 0044: the run workspace the sandbox uses (never deleted while it runs). */
     val workspace: String? = null,
 ) {
-    var phase: HeartbeatPhase = HeartbeatPhase.STARTING
-    var lastHeartbeat: Instant = Instant.EPOCH
+    @Volatile var phase: HeartbeatPhase = HeartbeatPhase.STARTING
+    @Volatile var lastHeartbeat: Instant = Instant.EPOCH
     var startRecorded = false
-    var lastObservation: SandboxObservation? = null
-    var cancelRequested = false
+    @Volatile var lastObservation: SandboxObservation? = null
+    @Volatile var cancelRequested = false
+
+    /** ADR 0065: set by the one thread that ends the job (completion, deadline, cancellation, lost lease). */
+    val finished = AtomicBoolean(false)
+
+    /** ADR 0065: a heartbeat is being sent (monitor or watchdog); the other thread skips it. */
+    internal val heartbeating = AtomicBoolean(false)
 }
 
 /**
@@ -75,6 +85,11 @@ class RunningJob(
  * watch + heartbeat -> complete -> delete. Leasing runs on its own thread with long polls and asks only for
  * as many jobs as there are free slots; one monitor thread observes sandboxes, sends heartbeats every
  * `heartbeatSeconds`, enforces deadlines and reports completions.
+ *
+ * ADR 0065: observing a sandbox calls `docker` (or the Kubernetes API), which can stall; a separate `deadline-watchdog`
+ * thread therefore checks the deadlines from memory and sends the heartbeats the monitor misses (with the last known
+ * observation), so a slow backend neither loses the lease nor keeps a job past its deadline. A monitor pass longer
+ * than `slowMonitorPassSeconds` is logged with the slowest job and call.
  */
 /**
  * `runner-controller.extra-ca-file` (RUNNER_EXTRA_CA_FILE): PEM certificates only, at most 512 KiB. Null when not
@@ -130,7 +145,12 @@ class JobSupervisor(
     val poolId: String get() = config.poolId ?: "default"
 
     private var monitor: ScheduledExecutorService? = null
+    private var watchdog: ScheduledExecutorService? = null
     private var leaseThread: Thread? = null
+
+    /** ADR 0065: the last monitor pass that took longer than `slowMonitorPassSeconds` (for tests and diagnostics). */
+    @Volatile var lastSlowPass: String? = null
+        private set
 
     private val startTimer = Timer.builder("backoffice.sandbox.start")
         .description("Time from launching a sandbox until its agent container runs")
@@ -166,6 +186,10 @@ class JobSupervisor(
                 it.scheduleWithFixedDelay({ safeSyncWorkspaces() }, props.workspaceSyncSeconds, props.workspaceSyncSeconds, TimeUnit.SECONDS)
             }
         }
+        // ADR 0065: deadlines and heartbeats on a thread of their own, independent of slow sandbox calls
+        watchdog = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "deadline-watchdog").apply { isDaemon = true } }.also {
+            it.scheduleWithFixedDelay({ safeWatchdog() }, props.watchdogIntervalMillis, props.watchdogIntervalMillis, TimeUnit.MILLISECONDS)
+        }
         leaseThread = Thread.ofPlatform().name("lease-loop").daemon(true).start { leaseLoop() }
         log.info("runner-controller started: pool={} backend={} maxConcurrent={}", poolId, backend.kind, props.maxConcurrent)
     }
@@ -184,8 +208,11 @@ class JobSupervisor(
             Thread.sleep(200)
         }
         monitor?.shutdown()
+        watchdog?.shutdown()
         monitor?.awaitTermination(30, TimeUnit.SECONDS)
+        watchdog?.awaitTermination(30, TimeUnit.SECONDS)
         running.values.toList().forEach { job ->
+            if (!job.finished.compareAndSet(false, true)) return@forEach
             log.warn("job {} still running after the grace period; handing it back", job.jobId)
             runCatching { backend.delete(job.handle) }
             egress.forget(job.jobId)
@@ -487,21 +514,88 @@ class JobSupervisor(
         }
     }
 
-    /** One monitor pass over every running job (public for tests). */
-    fun tick() {
-        retryPendingCompletions()
-        running.values.toList().forEach { job ->
+    /** The slowest call of a monitor pass (ADR 0065). */
+    private class SlowestCall {
+        var jobId: String? = null
+        var call: String = ""
+        var nanos: Long = -1
+
+        fun <T> timed(jobId: String?, call: String, block: () -> T): T {
+            val started = System.nanoTime()
             try {
-                monitorJob(job)
-            } catch (e: RuntimeException) {
-                log.warn("job {}: monitoring failed: {}", job.jobId, e.message)
+                return block()
+            } finally {
+                val took = System.nanoTime() - started
+                if (took > nanos) {
+                    nanos = took
+                    this.jobId = jobId
+                    this.call = call
+                }
             }
         }
     }
 
-    private fun monitorJob(job: RunningJob) {
+    /** One monitor pass over every running job (public for tests). */
+    fun tick() {
+        val started = System.nanoTime()
+        val slowest = SlowestCall()
+        slowest.timed(null, "retry completions") { retryPendingCompletions() }
+        running.values.toList().forEach { job ->
+            try {
+                monitorJob(job, slowest)
+            } catch (e: RuntimeException) {
+                log.warn("job {}: monitoring failed: {}", job.jobId, e.message)
+            }
+        }
+        val took = Duration.ofNanos(System.nanoTime() - started)
+        if (took.seconds >= props.slowMonitorPassSeconds) {
+            val detail = "monitor pass over ${running.size} job(s) took ${took.toMillis()} ms; slowest: " +
+                (slowest.jobId?.let { "job $it " } ?: "") + "${slowest.call} (${Duration.ofNanos(slowest.nanos).toMillis()} ms)"
+            lastSlowPass = detail
+            log.warn("{}", detail)
+        }
+    }
+
+    private fun safeWatchdog() {
+        try {
+            watchdog()
+        } catch (e: Throwable) {
+            log.error("deadline watchdog failed", e)
+        }
+    }
+
+    /**
+     * ADR 0065: one watchdog pass (public for tests): ends the jobs past their deadline (TIMED_OUT, sandbox deleted) and
+     * sends the heartbeats that are due, with the last observation, whatever the monitor thread is doing. Reads no
+     * sandbox state; only ending a job calls the backend.
+     */
+    fun watchdog() {
+        running.values.toList().forEach { job ->
+            if (job.finished.get()) return@forEach
+            try {
+                val t = now()
+                when {
+                    t.isAfter(job.deadline) -> {
+                        log.warn("job {} exceeded its deadline {} (watchdog); deleting the sandbox", job.jobId, job.deadline)
+                        val obs = job.lastObservation
+                        finish(job, SandboxOutcome(AgentJobStatus.TIMED_OUT, obs?.exitCode, CompletionMapper.REASON_DEADLINE), obs)
+                    }
+                    heartbeatDue(job, t) -> heartbeat(job, job.lastObservation)
+                }
+            } catch (e: RuntimeException) {
+                log.warn("job {}: watchdog failed: {}", job.jobId, e.message)
+            }
+        }
+    }
+
+    private fun heartbeatDue(job: RunningJob, t: Instant) = Duration.between(job.lastHeartbeat, t).seconds >= props.heartbeatSeconds
+
+    private fun monitorJob(job: RunningJob, slowest: SlowestCall = SlowestCall()) {
+        if (job.finished.get()) return
+        val obs = slowest.timed(job.jobId, "observe") { backend.observe(job.handle) }
+        // ADR 0065: the time after the (possibly slow) observation; the watchdog may have ended the job meanwhile
         val t = now()
-        val obs = backend.observe(job.handle)
+        if (job.finished.get()) return
         job.lastObservation = obs
         if (obs.phase == SandboxPhase.RUNNING && obs.bundleDelivered) {
             if (!job.startRecorded) {
@@ -515,27 +609,40 @@ class JobSupervisor(
             Duration.ofSeconds(props.imagePullGraceSeconds), Duration.ofSeconds(props.startTimeoutSeconds),
         )
         when {
-            outcome != null -> finish(job, outcome, obs)
+            outcome != null -> slowest.timed(job.jobId, "finish ${outcome.status}") { finish(job, outcome, obs) }
             t.isAfter(job.deadline) -> {
                 log.warn("job {} exceeded its deadline {}; deleting the sandbox", job.jobId, job.deadline)
-                finish(job, SandboxOutcome(AgentJobStatus.TIMED_OUT, obs.exitCode, CompletionMapper.REASON_DEADLINE), obs)
+                slowest.timed(job.jobId, "finish TIMED_OUT") {
+                    finish(job, SandboxOutcome(AgentJobStatus.TIMED_OUT, obs.exitCode, CompletionMapper.REASON_DEADLINE), obs)
+                }
             }
-            Duration.between(job.lastHeartbeat, t).seconds >= props.heartbeatSeconds -> heartbeat(job, obs)
+            heartbeatDue(job, t) -> slowest.timed(job.jobId, "heartbeat") { heartbeat(job, obs) }
         }
     }
 
-    private fun heartbeat(job: RunningJob, obs: SandboxObservation) {
+    /** Sends a heartbeat unless the job ended or the other thread is sending one; [obs] = the last known observation. */
+    private fun heartbeat(job: RunningJob, obs: SandboxObservation?) {
+        if (job.finished.get() || !job.heartbeating.compareAndSet(false, true)) return
+        try {
+            sendHeartbeat(job, obs)
+        } finally {
+            job.heartbeating.set(false)
+        }
+    }
+
+    private fun sendHeartbeat(job: RunningJob, obs: SandboxObservation?) {
         job.lastHeartbeat = now()
         try {
-            val response = client.heartbeat(job.jobId, JobHeartbeat(job.phase, job.handle.name, obs.node))
+            val response = client.heartbeat(job.jobId, JobHeartbeat(job.phase, job.handle.name, obs?.node))
             response.leaseExpiresAt?.let { job.leaseExpiresAt = it }
             if (response.cancelRequested && !job.cancelRequested) {
                 job.cancelRequested = true
                 log.info("job {}: cancellation requested", job.jobId)
-                finish(job, SandboxOutcome(AgentJobStatus.CANCELLED, obs.exitCode, "cancel-requested"), obs)
+                finish(job, SandboxOutcome(AgentJobStatus.CANCELLED, obs?.exitCode, "cancel-requested"), obs)
             }
         } catch (e: BackOfficeHttpException) {
             if (e.status == 409 || e.status == 404 || e.status == 410) {
+                if (!job.finished.compareAndSet(false, true)) return
                 log.warn("job {}: lease lost (HTTP {}); deleting the sandbox", job.jobId, e.status)
                 runCatching { backend.delete(job.handle) }
                 egress.forget(job.jobId)
@@ -548,7 +655,9 @@ class JobSupervisor(
         }
     }
 
+    /** Ends [job] once (ADR 0065: the monitor and the watchdog may both get here; the first one wins). */
     private fun finish(job: RunningJob, outcome: SandboxOutcome, obs: SandboxObservation?) {
+        if (!job.finished.compareAndSet(false, true)) return
         runCatching { egress.record(backend.egressDecisions(job.handle)) }
             .onFailure { log.warn("job {}: cannot read egress decisions: {}", job.jobId, it.message) }
         egress.unregister(job.jobId)

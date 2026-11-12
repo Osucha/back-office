@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.samples.petclinic.system.ratelimit.Decision;
 import org.springframework.samples.petclinic.system.ratelimit.RateLimiter;
 
@@ -27,6 +28,7 @@ import org.springframework.samples.petclinic.system.ratelimit.RateLimiter;
  * through {@link MutableClock}; durations are compared with a tolerance of one
  * millisecond so both exact and floating point implementations pass.
  */
+@Timeout(120)
 class RateLimiterAcceptanceTests {
 
 	private final MutableClock clock = new MutableClock();

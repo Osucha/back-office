@@ -52,8 +52,12 @@ class ClaudeCodePromptLlm(
             content = content,
             structured = request.responseSchema?.let { jsonObjectIn(content) },
             usage = result.usage,
-            latency = Duration.ofNanos(System.nanoTime() - started),
+            // ADR 0065: the answer's own time, from the start of its job on the runner; waiting for a runner slot is excluded
+            latency = result.startedAt?.let { Duration.between(it, result.finishedAt) }?.takeUnless { it.isNegative }
+                ?: Duration.ofNanos(System.nanoTime() - started),
             modelRef = model,
+            // ADR 0065: Claude Code's estimate at API prices; the login spends nothing
+            reportedCostUsd = result.reportedCostUsd,
         )
     }
 

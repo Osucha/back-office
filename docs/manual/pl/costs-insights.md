@@ -46,8 +46,10 @@ Obok kosztu (pieniędzy wydanych przez Back Office) każdy krok, przebieg i metr
 API**: tę samą pracę w cennikach dostawców. Dla pracy przez bramę LLM obie wartości są równe. Różnią się dla kroków
 opłaconych przez subskrypcję, np. Claude Code z Twoim własnym logowaniem na [osobistym runnerze](personal-runner.md#credentials):
 wtedy koszt to 0, a koszt w cenach API to szacunek Claude Code. Tam, gdzie się różnią, UI pokazuje `$0.00 · API $0.05`,
-a metryki workflowów mają kartę **W cenach API na udany przebieg**. Służy do porównywania zadań i workflowów niezależnie
-od tego, kto płaci; budżety i strona kosztów liczą tylko wydane pieniądze.
+a metryki workflowów mają kartę **W cenach API na udany przebieg**. Benchmarki też go mają: na próbę, dla oceny i w
+rankingu, i na nim porównują kandydatów z subskrypcją ([Odczytywanie wyników](evaluation.md#reading-results)). Służy do
+porównywania zadań, workflowów i kandydatów niezależnie od tego, kto płaci; budżety i strona kosztów liczą tylko
+wydane pieniądze.
 
 <a id="cost-per-accepted"></a>
 ### Koszt zaakceptowanego wyniku
@@ -61,7 +63,7 @@ który w połowie przypadków zawodzi, nie jest tani; ta liczba to pokazuje.
 |---|---|---|---|
 | Krok zadania | wykonanie, które się udało, jest ostatnim wykonaniem swojego kroku w uruchomieniu, a uruchomienie zakończyło się sukcesem | koszt wszystkich wykonań / zaakceptowane wykonania | [Wskaźniki → Agenci](#agent-insights) |
 | Workflow | udane uruchomienie (dotarło do udanego końca, jego bramki zostały zatwierdzone) | koszt wszystkich uruchomień / udane uruchomienia | **Koszt zaakceptowanego wyniku** (**Cost per accepted result**) w metrykach workflowu ([Mierzenie workflowów](workflow-library.md#metrics)) i na liście biblioteki |
-| Benchmark | zaliczona próba | łączny koszt kandydata / zaliczone próby | kolumna rankingu **Koszt zaakceptowanego wyniku** (**Cost per accepted result**, [Benchmarki](evaluation.md#benchmarks)) |
+| Benchmark | zaliczona próba | łączny koszt kandydata (łącznie z próbami nieudanymi i przerwanymi po czasie; w cenach API przy subskrypcji) / zaliczone próby | kolumna rankingu **Koszt zaakceptowanego wyniku** (**Cost per accepted result**, [Benchmarki](evaluation.md#benchmarks)) |
 
 Krok, który zawiódł i został ponowiony albo który bramka odesłała do poprawy, opłaca więc wykonanie, które ostatecznie
 zaakceptowano; nieudane uruchomienie opłacają uruchomienia udane.

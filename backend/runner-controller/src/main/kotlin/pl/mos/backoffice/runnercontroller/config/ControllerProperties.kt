@@ -23,6 +23,13 @@ data class ControllerProperties(
     val lease: Lease = Lease(),
     val heartbeatSeconds: Long = 15,
     val monitorIntervalMillis: Long = 2000,
+    /**
+     * ADR 0065: how often the deadline watchdog (a thread of its own, no `docker` calls unless it ends a job) checks the
+     * running jobs' deadlines and sends the heartbeats a slow monitor pass would miss.
+     */
+    val watchdogIntervalMillis: Long = 5000,
+    /** ADR 0065: a monitor pass longer than this is logged as a warning naming the slowest job and call. */
+    val slowMonitorPassSeconds: Long = 60,
     /** ADR 0044: how often the held run workspaces are reported to Back Office (released ones are deleted). */
     val workspaceSyncSeconds: Long = 60,
     /** On shutdown: stop leasing, let running jobs finish for this long, then hand the rest back (LOST). */

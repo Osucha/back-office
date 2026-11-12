@@ -46,6 +46,47 @@ class LeaderboardCalculatorTest {
     }
 
     @Test
+    fun `ADR 0065 - API figures cover failed and timed-out attempts, a subscription candidate is flagged`() {
+        val attempts = listOf(
+            Fixtures.attempt(benchmarkId, analysis, a, score = 80.0, passed = true, cost = Money.ZERO).copy(apiCost = Money.usd("0.30")),
+            Fixtures.attempt(benchmarkId, review, a, score = 40.0, passed = false, cost = Money.ZERO).copy(apiCost = Money.usd("0.50")),
+            Fixtures.attempt(benchmarkId, review, a, repetition = 2, status = AttemptStatus.TIMED_OUT, score = null, passed = null, cost = Money.ZERO)
+                .copy(apiCost = Money.usd("0.40")),
+            Fixtures.attempt(benchmarkId, analysis, b, score = 90.0, passed = true, cost = Money.usd("0.10")),
+        )
+
+        val rows = LeaderboardCalculator.rows(attempts, subscriptionModels = setOf(a.id)).associateBy { it.modelProfileId }
+
+        val sub = rows.getValue(a.id)
+        assertThat(sub.subscription).isTrue()
+        assertThat(sub.totalCost).isEqualByComparingTo(Money.ZERO)
+        assertThat(sub.costPerAccepted!!).isEqualByComparingTo(Money.ZERO)
+        assertThat(sub.scorePerDollar).isNull()
+        assertThat(sub.totalApiCost).isEqualTo(Money.usd("1.20"))
+        assertThat(sub.meanApiCost).isEqualTo(Money.usd("0.40"))
+        // one passed attempt pays for the rejected and the timed-out one
+        assertThat(sub.apiCostPerAccepted).isEqualTo(Money.usd("1.20"))
+        // mean score 60 (succeeded only) per 0.40 USD
+        assertThat(sub.scorePerApiDollar).isCloseTo(150.0, within(1e-6))
+
+        val api = rows.getValue(b.id)
+        assertThat(api.subscription).isFalse()
+        assertThat(api.totalApiCost).describedAs("an API attempt: apiCost = cost").isEqualTo(Money.usd("0.10"))
+        assertThat(api.apiCostPerAccepted).isEqualTo(api.costPerAccepted)
+        assertThat(api.scorePerApiDollar).isEqualTo(api.scorePerDollar)
+    }
+
+    @Test
+    fun `ADR 0065 - without a passed attempt there is no API cost per accepted result`() {
+        val row = LeaderboardCalculator.rows(
+            listOf(Fixtures.attempt(benchmarkId, analysis, a, score = 20.0, passed = false).copy(apiCost = Money.usd("0.20"))),
+        ).single()
+        assertThat(row.apiCostPerAccepted).isNull()
+        assertThat(row.totalApiCost).isEqualTo(Money.usd("0.20"))
+        assertThat(row.subscription).isFalse()
+    }
+
+    @Test
     fun `stability is the standard deviation of scores across repetitions averaged over tasks`() {
         val attempts = listOf(
             Fixtures.attempt(benchmarkId, analysis, a, repetition = 1, score = 70.0),
