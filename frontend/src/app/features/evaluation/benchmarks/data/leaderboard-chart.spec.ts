@@ -1,157 +1,173 @@
 import type { LeaderboardRow } from '../../../../core/api/types';
-import { leaderboardToScatter, paretoFrontier, scatterOption } from './leaderboard-chart';
+import {
+  costAxisName,
+  frontCaption,
+  leaderboardToScatter,
+  paretoFrontier,
+  scatterOption,
+  unplotted,
+  type ScatterPoint,
+} from './leaderboard-chart';
 import { chartTokens } from '../../../../core/ui/relay/chart-tokens';
+
+const usd = (amount: number) => ({ amount, currency: 'USD' });
 
 const ROWS: LeaderboardRow[] = [
   {
     modelProfileId: 'a',
     modelDisplayName: 'Opus',
     provider: 'ANTHROPIC',
-    attempts: 12,
+    attempts: 10,
     meanScore: 88,
     passRate: 0.9,
-    meanCost: { amount: 0.42, currency: 'USD' },
+    meanCost: usd(0.42),
+    costPerAccepted: usd(0.5),
   },
   {
     modelProfileId: 'b',
     modelDisplayName: 'Mini',
-    provider: 'OPENAI',
-    attempts: 12,
+    provider: 'ANTHROPIC',
+    attempts: 10,
     meanScore: 71,
     passRate: 0.6,
-    meanCost: { amount: 0.05, currency: 'USD' },
+    meanCost: usd(0.05),
+    costPerAccepted: usd(0.08),
   },
   {
     modelProfileId: 'c',
     modelDisplayName: 'Dominated',
-    provider: 'MISTRAL',
-    attempts: 12,
+    provider: 'ANTHROPIC',
+    attempts: 10,
     meanScore: 65,
     passRate: 0.5,
-    meanCost: { amount: 0.3, currency: 'USD' },
+    meanCost: usd(0.3),
+    costPerAccepted: usd(0.6),
   },
   {
     modelProfileId: 'd',
-    modelDisplayName: 'Not run',
-    provider: 'GOOGLE',
-    attempts: 0,
-    meanScore: null,
-    passRate: null,
-    meanCost: { amount: 0, currency: 'USD' },
+    modelDisplayName: 'Haiku',
+    provider: 'ANTHROPIC',
+    attempts: 10,
+    meanScore: 40,
+    passRate: 0,
+    meanCost: usd(0.01),
+    costPerAccepted: null,
   },
 ];
 
+const dark = chartTokens(
+  (name) =>
+    ({
+      '--bo-you': '#ffb23e',
+      '--bo-ci': '#3cc9b8',
+      '--bo-accent': '#8fa2ff',
+      '--bo-surface': '#1a1c1f',
+      '--bo-ink-3': '#8a9098',
+    })[name] ?? '',
+);
+
+type Option = {
+  series: Array<{ type: string; data: unknown[]; lineStyle?: { color: string } }>;
+  yAxis: { min: number; max: number; interval: number };
+  xAxis: {
+    max: number;
+    interval: number;
+    name: string;
+    axisLabel: { formatter: (v: number) => string };
+  };
+  tooltip: { backgroundColor: string; formatter: (p: { data: unknown }) => string };
+};
+
 describe('leaderboardToScatter', () => {
-  it('maps rows to [cost, score] points, skipping rows without a score', () => {
+  it('plots cost per accepted result against the score and leaves out rows without an accepted result', () => {
     const points = leaderboardToScatter(ROWS);
-    expect(points.length).toBe(3);
-    expect(points[0]).toMatchObject({
-      name: 'Opus',
-      value: [0.42, 88],
-      provider: 'ANTHROPIC',
-      passRate: 0.9,
-      attempts: 12,
-    });
-    expect(points[0].itemStyle.color).toBeTruthy();
+    expect(points.map((p) => p.name)).toEqual(['Opus', 'Mini', 'Dominated']);
+    expect(points[0]).toMatchObject({ value: [0.5, 88], passed: 9, attempts: 10, meanCost: 0.42 });
+    expect(unplotted(ROWS).map((r) => r.modelDisplayName)).toEqual(['Haiku']);
+  });
+
+  it('labels points with the given short name', () => {
+    const [p] = leaderboardToScatter(ROWS, (r) => `short ${r.modelDisplayName}`);
+    expect(p.name).toBe('short Opus');
   });
 
   it('handles missing input', () => {
     expect(leaderboardToScatter(undefined)).toEqual([]);
-    expect(leaderboardToScatter(null)).toEqual([]);
-  });
-
-  it('defaults cost to 0 and falls back to the id as label', () => {
-    const [p] = leaderboardToScatter([{ modelProfileId: 'x', meanScore: 50 }]);
-    expect(p.value).toEqual([0, 50]);
-    expect(p.name).toBe('x');
-  });
-});
-
-describe('leaderboard chart colours', () => {
-  const dark = chartTokens(
-    (name) =>
-      ({
-        '--bo-you': '#ffb23e',
-        '--bo-ci': '#3cc9b8',
-        '--bo-accent': '#8fa2ff',
-        '--bo-surface': '#1a1c1f',
-        '--bo-ink-3': '#8a9098',
-      })[name] ?? '',
-  );
-
-  it('colours points by provider from the theme tokens', () => {
-    const points = leaderboardToScatter(ROWS, dark);
-    expect(points.find((p) => p.provider === 'ANTHROPIC')!.itemStyle.color).toBe('#ffb23e');
-    expect(points.find((p) => p.provider === 'OPENAI')!.itemStyle.color).toBe('#3cc9b8');
-    expect(points[0].itemStyle.borderColor).toBe('#1a1c1f');
-  });
-
-  it('draws the frontier and the tooltip with the theme tokens', () => {
-    const option = scatterOption(ROWS, dark) as {
-      series: Array<{ type: string; lineStyle?: { color: string } }>;
-      tooltip: { backgroundColor: string };
-    };
-    expect(option.series.find((s) => s.type === 'line')!.lineStyle!.color).toBe('#8a9098');
-    expect(option.tooltip.backgroundColor).toBe('#1a1c1f');
-  });
-
-  it('defaults to the light tokens', () => {
-    const [p] = leaderboardToScatter(ROWS);
-    expect(p.itemStyle.color).toBe(chartTokens().holder.you);
+    expect(unplotted(null)).toEqual([]);
   });
 });
 
 describe('paretoFrontier', () => {
   it('keeps only non-dominated points sorted by cost', () => {
-    const frontier = paretoFrontier(leaderboardToScatter(ROWS));
-    expect(frontier.map((p) => p.name)).toEqual(['Mini', 'Opus']);
+    expect(paretoFrontier(leaderboardToScatter(ROWS)).map((p) => p.name)).toEqual(['Mini', 'Opus']);
   });
 
   it('keeps equal points', () => {
-    const points = leaderboardToScatter([
-      {
-        modelProfileId: '1',
-        modelDisplayName: 'A',
-        meanScore: 50,
-        meanCost: { amount: 1, currency: 'USD' },
-      },
-      {
-        modelProfileId: '2',
-        modelDisplayName: 'B',
-        meanScore: 50,
-        meanCost: { amount: 1, currency: 'USD' },
-      },
-    ]);
-    expect(paretoFrontier(points).length).toBe(2);
+    const rows: LeaderboardRow[] = ['A', 'B'].map((n) => ({
+      modelDisplayName: n,
+      meanScore: 50,
+      costPerAccepted: usd(1),
+    }));
+    expect(paretoFrontier(leaderboardToScatter(rows)).length).toBe(2);
   });
 });
 
 describe('scatterOption', () => {
-  it('builds a scatter series with one point per model and a frontier line', () => {
-    const option = scatterOption(ROWS) as {
-      series: Array<{ type: string; data: unknown[] }>;
-      xAxis: { max: number };
-    };
-    const scatter = option.series.find((s) => s.type === 'scatter')!;
+  it('draws the front in the accent and other points neutral for one provider', () => {
+    const option = scatterOption(ROWS, dark) as unknown as Option;
+    const points = option.series.find((s) => s.type === 'scatter')!.data as ScatterPoint[];
+    expect(points.filter((p) => p.frontier).map((p) => p.name)).toEqual(['Opus', 'Mini']);
+    expect(points.find((p) => p.name === 'Mini')!.itemStyle.color).toBe('#8fa2ff');
+    expect(points.find((p) => p.name === 'Dominated')!.itemStyle.color).toBe('#8a9098');
     const line = option.series.find((s) => s.type === 'line')!;
-    expect(scatter.data.length).toBe(3);
+    expect(line.lineStyle!.color).toBe('#8fa2ff');
     expect(line.data).toEqual([
-      [0.05, 71],
-      [0.42, 88],
+      [0.08, 71],
+      [0.5, 88],
     ]);
-    expect(option.xAxis.max).toBeCloseTo(0.42 * 1.15);
+    expect(option.tooltip.backgroundColor).toBe('#1a1c1f');
   });
 
-  it('formats tooltips with score, cost and pass rate', () => {
-    const option = scatterOption(ROWS) as {
-      tooltip: { formatter: (p: { data: unknown }) => string };
-    };
+  it('colours by provider with an accent ring on the front when providers differ', () => {
+    const rows = ROWS.map(
+      (r, i) => ({ ...r, provider: i ? 'ANTHROPIC' : 'OPENAI' }) as LeaderboardRow,
+    );
+    const option = scatterOption(rows, dark) as unknown as Option;
+    const points = option.series.find((s) => s.type === 'scatter')!.data as ScatterPoint[];
+    expect(points.find((p) => p.name === 'Opus')!.itemStyle).toMatchObject({
+      color: '#3cc9b8',
+      borderColor: '#8fa2ff',
+    });
+    expect(points.find((p) => p.name === 'Dominated')!.itemStyle.color).toBe('#ffb23e');
+  });
+
+  it('uses round money ticks and moves labels of points near the right edge to the left', () => {
+    const option = scatterOption(ROWS) as unknown as Option;
+    expect(option.xAxis.max).toBe(0.8);
+    expect(option.xAxis.interval).toBe(0.2);
+    expect(option.xAxis.axisLabel.formatter(0.2)).toBe('$0.20');
+    const points = option.series.find((s) => s.type === 'scatter')!.data as ScatterPoint[];
+    expect(points.find((p) => p.name === 'Mini')!.corner).toBe('lowerRight');
+    expect(points.find((p) => p.name === 'Opus')!.label!.align).toBe('left');
+    expect(points.find((p) => p.name === 'Dominated')!.corner).toBe('upperLeft');
+    expect(option.yAxis).toMatchObject({ min: 60, max: 100, interval: 10 });
+  });
+
+  it('formats small axes with three decimals', () => {
+    const option = scatterOption([
+      { modelDisplayName: 'A', meanScore: 80, costPerAccepted: usd(0.04) },
+    ]) as unknown as Option;
+    expect(option.xAxis.axisLabel.formatter(0.01)).toBe('$0.010');
+  });
+
+  it('formats tooltips with score, cost per accepted result and accepted attempts', () => {
+    const option = scatterOption(ROWS) as unknown as Option;
     const [point] = leaderboardToScatter(ROWS);
     const html = option.tooltip.formatter({ data: point });
     expect(html).toContain('Opus');
     expect(html).toContain('score 88.0');
-    expect(html).toContain('$0.4200');
-    expect(html).toContain('pass rate 90%');
+    expect(html).toContain('$0.50 per accepted result');
+    expect(html).toContain('9 of 10 attempts accepted');
     expect(html).not.toContain('API');
   });
 });
@@ -163,23 +179,37 @@ describe('subscription candidates (ADR 0065)', () => {
     provider: 'ANTHROPIC',
     attempts: 6,
     meanScore: 80,
+    passRate: 0.5,
     subscription: true,
-    meanCost: { amount: 0, currency: 'USD' },
-    meanApiCost: { amount: 1.14, currency: 'USD' },
+    meanCost: usd(0),
+    totalCost: usd(0),
+    costPerAccepted: usd(0),
+    meanApiCost: usd(1.14),
+    apiCostPerAccepted: usd(2.28),
   };
 
-  it('places them at their cost at API prices', () => {
+  it('places them at their cost per accepted result at API prices', () => {
     const [p] = leaderboardToScatter([sub]);
-    expect(p.value).toEqual([1.14, 80]);
+    expect(p.value).toEqual([2.28, 80]);
     expect(p.api).toBe(true);
     expect(leaderboardToScatter(ROWS)[0].api).toBe(false);
   });
 
-  it('says so in the tooltip', () => {
-    const option = scatterOption([sub]) as {
-      tooltip: { formatter: (p: { data: unknown }) => string };
-    };
+  it('says so in the tooltip and the axis title', () => {
+    const option = scatterOption([sub]) as unknown as Option;
     const html = option.tooltip.formatter({ data: leaderboardToScatter([sub])[0] });
-    expect(html).toContain('at API prices (subscription)');
+    expect(html).toContain('per accepted result at API prices');
+    expect(option.xAxis.name).toBe('cost per accepted result (API prices)');
+    expect(costAxisName([{ api: true }, { api: false }])).toContain('subscriptions');
+    expect(costAxisName([{ api: false }])).toBe('cost per accepted result');
+  });
+});
+
+describe('frontCaption', () => {
+  it('mentions the dashed line only for a front of two or more points', () => {
+    expect(frontCaption(2, false)).toContain('dashed line');
+    expect(frontCaption(1, false)).not.toContain('dashed');
+    expect(frontCaption(1, true)).toContain('ring');
+    expect(frontCaption(0, false)).toBe('');
   });
 });

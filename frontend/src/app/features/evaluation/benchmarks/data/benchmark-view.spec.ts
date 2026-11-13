@@ -1,8 +1,11 @@
 import type { Attempt } from '../../../../core/api/types';
+import { icu } from '../../../../core/i18n/icu';
 import {
-  attemptCounts,
+  attemptResult,
+  attemptResultLabel,
+  attemptStatusBaton,
+  attemptSummary,
   benchmarkBaton,
-  filterAttemptsByHolder,
   progressSegments,
   progressText,
 } from './benchmark-view';
@@ -47,21 +50,62 @@ describe('benchmark view', () => {
     expect(progressText({ total: 0 }, 'DRAFT')).toBe('not started');
   });
 
-  it('counts attempts per status and filters them by holder', () => {
+  it('drops the failed count from the progress text when the legend says it in words', () => {
+    expect(progressText({ total: 120, done: 104, failed: 6 }, 'RUNNING', false)).toBe(
+      '104 / 120 attempts',
+    );
+  });
+
+  it('summarises attempts in one vocabulary with plurals', () => {
     const attempts = [
       { status: 'SUCCEEDED' },
       { status: 'SUCCEEDED' },
       { status: 'RUNNING' },
+      { status: 'JUDGING' },
       { status: 'TIMED_OUT' },
+      { status: 'FAILED' },
       { status: 'PENDING' },
     ] as Attempt[];
-    expect(attemptCounts(attempts)).toEqual([
-      { holder: 'agent', label: 'running', count: 1 },
-      { holder: 'done', label: 'done', count: 2 },
-      { holder: 'blocked', label: 'timed out', count: 1 },
-      { holder: 'idle', label: 'pending', count: 1 },
+    expect(attemptSummary(attempts).map((p) => [p.holder, p.text])).toEqual([
+      ['done', '2 done'],
+      ['blocked', '1 timed out'],
+      ['blocked', '1 error'],
+      ['agent', '2 running'],
+      ['idle', '1 waiting'],
     ]);
-    expect(filterAttemptsByHolder(attempts, ['blocked']).length).toBe(1);
-    expect(filterAttemptsByHolder(attempts, []).length).toBe(5);
+    expect(attemptSummary([])).toEqual([]);
+  });
+
+  it('uses the Polish plural forms', () => {
+    const pl = (n: number) =>
+      icu(
+        '{count, plural, one {# przekroczenie czasu} few {# przekroczenia czasu} many {# przekroczeń czasu} other {# przekroczenia czasu}}',
+        { count: n },
+        'pl',
+      );
+    expect([1, 2, 5, 22].map(pl)).toEqual([
+      '1 przekroczenie czasu',
+      '2 przekroczenia czasu',
+      '5 przekroczeń czasu',
+      '22 przekroczenia czasu',
+    ]);
+  });
+
+  it('tags only exceptions and calls a timeout a timeout', () => {
+    expect(attemptStatusBaton('SUCCEEDED')).toBeNull();
+    expect(attemptStatusBaton('TIMED_OUT')).toEqual({ holder: 'blocked', label: 'timed out' });
+    expect(attemptStatusBaton('FAILED')).toEqual({ holder: 'blocked', label: 'error' });
+    expect(attemptStatusBaton('RUNNING')?.live).toBe(true);
+    expect(attemptStatusBaton('PENDING')?.holder).toBe('idle');
+  });
+
+  it('classifies attempt results for the filter', () => {
+    expect(attemptResult({ status: 'SUCCEEDED', passed: true })).toBe('accepted');
+    expect(attemptResult({ status: 'SUCCEEDED', passed: false })).toBe('notAccepted');
+    expect(attemptResult({ status: 'SUCCEEDED', passed: null })).toBe('notAccepted');
+    expect(attemptResult({ status: 'TIMED_OUT', passed: false })).toBe('timedOut');
+    expect(attemptResult({ status: 'FAILED' })).toBe('failed');
+    expect(attemptResult({ status: 'RUNNING' })).toBeNull();
+    expect(attemptResultLabel('notAccepted')).toBe('not accepted');
   });
 });

@@ -73,7 +73,7 @@ export interface TableSort<T> extends SortControl {
  */
 export function tableSort<T>(
   columns: Record<string, SortAccessor<T>>,
-  options: { param?: string } = {},
+  options: { param?: string; default?: { key: string; order: SortOrder } } = {},
 ): TableSort<T> {
   const param = options.param ?? 'sort';
   const keys = Object.keys(columns);
@@ -84,7 +84,8 @@ export function tableSort<T>(
     ? toSignal(route.queryParamMap, { initialValue: route.snapshot.queryParamMap })
     : null;
   const raw = computed(() => (params ? params().get(param) : local()));
-  const state = computed(() => parseSort(raw(), keys));
+  // [options.default]: the order the rows come in when the URL names none, shown on its header
+  const state = computed(() => parseSort(raw(), keys) ?? options.default ?? null);
 
   return {
     state,

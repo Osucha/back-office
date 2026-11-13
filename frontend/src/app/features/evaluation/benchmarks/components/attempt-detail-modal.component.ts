@@ -4,7 +4,6 @@ import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import type { AttemptDetail } from '../../../../core/api/types';
 import { MarkdownViewerComponent } from '../../../../core/ui/markdown-viewer.component';
-import { formatDuration } from '../../../../core/ui/pipes/duration.pipe';
 import { batonOf } from '../../../../core/ui/relay/baton';
 import { BatonComponent } from '../../../../core/ui/relay/baton.component';
 import { CostComponent } from '../../../../core/ui/relay/cost.component';
@@ -17,6 +16,7 @@ import { tableSort } from '../../../../core/ui/relay/table-sort';
 import { humanize } from '../../../../core/ui/status-tag.component';
 import { fixed } from '../../../../core/i18n/numbers';
 import { categoryLabel } from '../../suites/data/suite-view';
+import { benchmarkDuration, benchmarkMoney } from '../data/benchmark-format';
 
 /** One benchmark attempt in the side panel: baton, score, cost, output, judge and verification. */
 @Component({
@@ -89,13 +89,19 @@ import { categoryLabel } from '../../suites/data/suite-view';
                 [apiValue]="a.apiCost"
                 [apiHint]="text.apiHint"
                 [usage]="a.usage"
+                [format]="money"
               />
             </dd>
           </div>
           <div>
             <dt i18n="@@evaluation.attempt.judgeCost">Judge cost</dt>
             <dd>
-              <bo-cost [value]="a.judgeCost" [apiValue]="a.judgeApiCost" [apiHint]="text.apiHint" />
+              <bo-cost
+                [value]="a.judgeCost"
+                [apiValue]="a.judgeApiCost"
+                [apiHint]="text.apiHint"
+                [format]="money"
+              />
             </dd>
           </div>
           <div>
@@ -350,6 +356,7 @@ export class AttemptDetailModalComponent {
     apiHint: $localize`:@@evaluation.board.apiHint:Estimated at API list prices; paid by the subscription (Claude Code with your own login).`,
   };
   readonly fixed = fixed;
-  readonly duration = formatDuration;
+  readonly duration = benchmarkDuration;
+  readonly money = benchmarkMoney;
   readonly abs = absoluteTime;
 }

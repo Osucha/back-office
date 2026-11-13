@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { BenchmarkStatus, BenchmarkSummary } from '../../../../core/api/types';
 import { GlyphComponent } from '../../../../core/ui/relay/glyph.component';
-import { progressSegments, progressText } from '../data/benchmark-view';
+import { progressSegments, progressText, type SummaryPart } from '../data/benchmark-view';
 
 /**
  * Attempt progress of a benchmark as a strip of baton-coloured segments (succeeded, failed, to go)
@@ -26,11 +26,20 @@ import { progressSegments, progressText } from '../data/benchmark-view';
     </div>
     @if (legend()) {
       <div class="legend" aria-hidden="true">
-        @for (s of segments(); track s.holder) {
-          <span class="item"
-            ><bo-glyph [holder]="s.holder" [live]="s.holder === 'agent'" [size]="11" />
-            {{ s.count }} {{ s.label }}</span
-          >
+        @if (summary(); as parts) {
+          @for (p of parts; track $index) {
+            <span class="item"
+              ><bo-glyph [holder]="p.holder" [live]="p.holder === 'agent'" [size]="11" />
+              {{ p.text }}</span
+            >
+          }
+        } @else {
+          @for (s of segments(); track s.holder) {
+            <span class="item"
+              ><bo-glyph [holder]="s.holder" [live]="s.holder === 'agent'" [size]="11" />
+              {{ s.count }} {{ s.label }}</span
+            >
+          }
         }
         <span class="total">{{ text() }}</span>
       </div>
@@ -86,7 +95,7 @@ import { progressSegments, progressText } from '../data/benchmark-view';
       .text,
       .total {
         font-family: var(--bo-font-mono);
-        font-size: 11.5px;
+        font-size: 12px;
         color: var(--bo-ink-2);
         white-space: nowrap;
         font-variant-numeric: tabular-nums;
@@ -113,11 +122,14 @@ export class AttemptStripComponent {
   readonly progress = input<BenchmarkSummary['progress'] | null | undefined>(null);
   readonly status = input<BenchmarkStatus | null | undefined>(null);
   readonly legend = input(false);
+  /** The legend in words from the attempts (detail page); null: from the progress counts. */
+  readonly summary = input<SummaryPart[] | null>(null);
 
   readonly segments = computed(() => progressSegments(this.progress(), this.status()));
-  readonly text = computed(() => progressText(this.progress(), this.status()));
+  readonly text = computed(() => progressText(this.progress(), this.status(), !this.summary()));
   readonly aria = computed(() => {
-    const parts = this.segments().map((s) => `${s.count} ${s.label}`);
+    const parts =
+      this.summary()?.map((p) => p.text) ?? this.segments().map((s) => `${s.count} ${s.label}`);
     const list = parts.length ? parts.join(', ') : this.text();
     return $localize`:@@evaluation.strip.aria:Attempts: ${list}:list:`;
   });

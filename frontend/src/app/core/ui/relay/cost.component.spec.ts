@@ -24,4 +24,15 @@ describe('bo-cost', () => {
     const legacy = render({ amount: 0.5, currency: 'USD' }, null);
     expect(legacy.querySelectorAll('.tick')).toHaveLength(1);
   });
+
+  it('formats both amounts with the page format when one is given', () => {
+    const fixture = TestBed.createComponent(CostComponent);
+    fixture.componentRef.setInput('value', 0);
+    fixture.componentRef.setInput('apiValue', 1.5);
+    fixture.componentRef.setInput('format', (v: unknown) => `<${String(v)}>`);
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('<0>');
+    expect(text).toContain('<1.5>');
+  });
 });

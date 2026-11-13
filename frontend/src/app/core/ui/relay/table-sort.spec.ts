@@ -59,6 +59,21 @@ describe('table sort', () => {
     expect(sort.state()).toBeNull();
   });
 
+  it('shows a default order on its header until another one is chosen', () => {
+    const sort = TestBed.runInInjectionContext(() =>
+      tableSort<(typeof rows)[number]>(
+        { name: (r) => r.name, score: (r) => r.score },
+        { default: { key: 'score', order: 'descend' } },
+      ),
+    );
+    expect(sort.order('score')).toBe('descend');
+    expect(sort.apply(rows)[0].name).toBe('Ewa');
+    sort.set('name', 'ascend');
+    expect(sort.order('score')).toBeNull();
+    sort.set('name', null);
+    expect(sort.order('score')).toBe('descend');
+  });
+
   it('gives a server-paged table the value of the API sort parameter', () => {
     const sort = TestBed.runInInjectionContext(() => serverSort(['cost', 'createdAt']));
     expect(sort.query()).toBeNull();

@@ -10,7 +10,7 @@ import type {
   BenchmarkSummary,
 } from '../../../../core/api/types';
 import { icu } from '../../../../core/i18n/icu';
-import { batonOf, type Baton, type BatonHolder } from '../../../../core/ui/relay/baton';
+import type { Baton, BatonHolder } from '../../../../core/ui/relay/baton';
 
 export function benchmarkBaton(status: BenchmarkStatus | null | undefined): Baton {
   switch (status) {
@@ -88,6 +88,7 @@ export function progressSegments(
 export function progressText(
   progress: BenchmarkSummary['progress'] | null | undefined,
   status: BenchmarkStatus | null | undefined,
+  withFailed = true,
 ): string {
   const total = progress?.total ?? 0;
   if (!total)
@@ -106,7 +107,7 @@ export function progressText(
           $localize`:@@evaluation.progress.attemptsOf:{done} / {count, plural, one {# attempt} other {# attempts}}`,
           { done, count: total },
         );
-  return failed
+  return failed && withFailed
     ? head +
         ' · ' +
         icu($localize`:@@evaluation.progress.failedCount:{count, plural, other {# failed}}`, {
@@ -115,40 +116,113 @@ export function progressText(
     : head;
 }
 
-export interface HolderCount {
-  holder: BatonHolder;
-  label: string;
-  count: number;
-}
-
-/** Attempts per status word ("3 running", "2 failed"), in baton order, for the legend. */
-export function attemptCounts(attempts: readonly Pick<Attempt, 'status'>[]): HolderCount[] {
-  const order: AttemptStatus[] = [
-    'RUNNING',
-    'JUDGING',
-    'SUCCEEDED',
-    'FAILED',
-    'TIMED_OUT',
-    'PENDING',
-  ];
-  const counts = new Map<AttemptStatus, number>();
-  for (const a of attempts) {
-    const s = (a.status ?? 'PENDING') as AttemptStatus;
-    counts.set(s, (counts.get(s) ?? 0) + 1);
+/**
+ * The state of an attempt as the attempts tab shows it: only exceptions get a tag ("timed out", "error", "running",
+ * "judging", "waiting"); a succeeded attempt gets none (null).
+ */
+export function attemptStatusBaton(status: AttemptStatus | null | undefined): Baton | null {
+  switch (status) {
+    case 'SUCCEEDED':
+      return null;
+    case 'TIMED_OUT':
+      return {
+        holder: 'blocked',
+        label: $localize`:@@evaluation.attempt.state.timedOut:timed out`,
+      };
+    case 'FAILED':
+      return { holder: 'blocked', label: $localize`:@@evaluation.attempt.state.failed:error` };
+    case 'RUNNING':
+      return {
+        holder: 'agent',
+        label: $localize`:@@evaluation.attempt.state.running:running`,
+        live: true,
+      };
+    case 'JUDGING':
+      return {
+        holder: 'agent',
+        label: $localize`:@@evaluation.attempt.state.judging:judging`,
+        live: true,
+      };
+    case 'PENDING':
+    default:
+      return { holder: 'idle', label: $localize`:@@evaluation.attempt.state.pending:waiting` };
   }
-  return order
-    .filter((s) => counts.get(s))
-    .map((s) => {
-      const b = batonOf.attempt(s);
-      return { holder: b.holder, label: b.label, count: counts.get(s)! };
-    });
 }
 
-/** Attempts whose holder is one of `holders` (all when empty). */
-export function filterAttemptsByHolder<T extends Pick<Attempt, 'status'>>(
-  attempts: readonly T[],
-  holders: readonly string[],
-): T[] {
-  if (!holders.length) return [...attempts];
-  return attempts.filter((a) => holders.includes(batonOf.attempt(a.status).holder));
+/** The outcome filter of the attempts tab. */
+export type AttemptResult = 'accepted' | 'notAccepted' | 'timedOut' | 'failed';
+
+export const ATTEMPT_RESULTS: readonly AttemptResult[] = [
+  'accepted',
+  'notAccepted',
+  'timedOut',
+  'failed',
+];
+
+/** Accepted (passed), not accepted (finished and scored below the bar), timed out, error; null while running. */
+export function attemptResult(a: Pick<Attempt, 'status' | 'passed'>): AttemptResult | null {
+  if (a.status === 'TIMED_OUT') return 'timedOut';
+  if (a.status === 'FAILED') return 'failed';
+  if (a.passed === true) return 'accepted';
+  if (a.status === 'SUCCEEDED') return 'notAccepted';
+  return null;
+}
+
+export function attemptResultLabel(r: AttemptResult): string {
+  switch (r) {
+    case 'accepted':
+      return $localize`:@@evaluation.attempt.result.accepted:accepted`;
+    case 'notAccepted':
+      return $localize`:@@evaluation.attempt.result.notAccepted:not accepted`;
+    case 'timedOut':
+      return $localize`:@@evaluation.attempt.state.timedOut:timed out`;
+    case 'failed':
+      return $localize`:@@evaluation.attempt.state.failed:error`;
+  }
+}
+
+export interface SummaryPart {
+  holder: BatonHolder;
+  count: number;
+  /** "34 done", "2 timed out" with the plural of the UI language. */
+  text: string;
+}
+
+/**
+ * Attempts in words for the progress line and the attempts tab, in one vocabulary: done, timed out, errors, running
+ * (judging included), waiting. Empty kinds are left out.
+ */
+export function attemptSummary(attempts: readonly Pick<Attempt, 'status'>[]): SummaryPart[] {
+  const count = (...s: AttemptStatus[]) =>
+    attempts.filter((a) => s.includes((a.status ?? 'PENDING') as AttemptStatus)).length;
+  const parts: SummaryPart[] = [
+    {
+      holder: 'done',
+      count: count('SUCCEEDED'),
+      text: $localize`:@@evaluation.summary.done:{count, plural, one {# done} other {# done}}`,
+    },
+    {
+      holder: 'blocked',
+      count: count('TIMED_OUT'),
+      text: $localize`:@@evaluation.summary.timedOut:{count, plural, one {# timed out} other {# timed out}}`,
+    },
+    {
+      holder: 'blocked',
+      count: count('FAILED'),
+      text: $localize`:@@evaluation.summary.failed:{count, plural, one {# error} other {# errors}}`,
+    },
+    {
+      holder: 'agent',
+      count: count('RUNNING', 'JUDGING'),
+      text: $localize`:@@evaluation.summary.running:{count, plural, one {# running} other {# running}}`,
+    },
+    {
+      holder: 'idle',
+      count: count('PENDING'),
+      text: $localize`:@@evaluation.summary.pending:{count, plural, one {# waiting} other {# waiting}}`,
+    },
+  ];
+  return parts
+    .filter((p) => p.count > 0)
+    .map((p) => ({ ...p, text: icu(p.text, { count: p.count }) }));
 }

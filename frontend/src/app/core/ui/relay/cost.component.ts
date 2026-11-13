@@ -60,11 +60,15 @@ export class CostComponent {
   readonly apiValue = input<Money | number | null | undefined>(null);
   /** Tooltip of the API amount when the default (workflow steps) does not fit, e.g. benchmarks (ADR 0065). */
   readonly apiHint = input<string | null>(null);
+  /** The money format when the page has its own (benchmarks: two decimals, three under $0.10); default [formatCost]. */
+  readonly format = input<((v: Money | number | null | undefined) => string) | null>(null);
 
-  readonly text = computed(() => formatCost(this.value()));
+  readonly text = computed(() => (this.format() ?? formatCost)(this.value()));
   readonly apiText = computed(() => {
     const api = amountOf(this.apiValue());
-    return api !== null && api !== (amountOf(this.value()) ?? 0) ? formatCost(api) : null;
+    return api !== null && api !== (amountOf(this.value()) ?? 0)
+      ? (this.format() ?? formatCost)(api)
+      : null;
   });
   readonly apiTip = $localize`:@@core.cost.apiTip:The same work at API list prices. It differs from the cost when a subscription paid for steps (Claude Code with your own login).`;
   readonly apiAria = computed(
