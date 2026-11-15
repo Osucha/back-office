@@ -18,7 +18,8 @@ Decisions: ADR 0023 (backbone), ADR 0024 (execution plane).
                                                       │ HTTPS (outbound from the fleet only)
                 ┌──────────── execution plane cluster(s) ───────────────────────────────────┐
                 │ runner-controller (N per pool, KEDA)  ──▶  Agent Sandbox CRDs            │
-                │      SandboxWarmPool ─▶ Sandbox pod: [smokescreen sidecar][agent runner]  │
+                │      SandboxWarmPool ─▶ Sandbox pod [agent runner] ─▶ egress proxy        │
+                │      (Deployment bo-egress-<pool>, Smokescreen) ─▶ allowed domains        │
                 │      RuntimeClass gvisor | kata · NetworkPolicy default-deny              │
                 └───────────────────────────────────────────────────────────────────────────┘
 ```
@@ -41,8 +42,9 @@ Decisions: ADR 0023 (backbone), ADR 0024 (execution plane).
 | `id` uuid, `kind` text, `dedupe_key` text unique where status in (READY, LEASED) | e.g. `RUN_ADVANCE:<runId>` — at most one live item per run |
 | `payload` jsonb, `priority` smallint, `run_after` timestamptz | |
 | `status` READY / LEASED / DONE / DEAD, `attempts` int, `max_attempts` int | |
+| `generation` int | bumped when a request is merged into a LEASED item (see below) |
 | `lease_owner` text, `lease_until` timestamptz, `last_error` text | |
-| `created_at`, `updated_at` | index `(status, run_after, priority)` |
+| `created_at`, `updated_at`, `finished_at` | index `(status, run_after, priority)`; `finished_at` drives the cleanup of DONE items |
 
 - Claim: `UPDATE work_item SET status='LEASED', lease_owner=:me, lease_until=now()+:lease WHERE id IN (SELECT id FROM work_item WHERE status='READY' AND run_after<=now() AND kind = ANY(:kinds) ORDER BY priority DESC, run_after LIMIT :n FOR UPDATE SKIP LOCKED) RETURNING *`.
 - Heartbeat extends `lease_until` every lease/3; expired leases are reclaimed by any worker.
@@ -103,7 +105,7 @@ Identity's access version subscribes to topic `identity-access-version`.
 | Data | Where | Retention (defaults, configurable) |
 |---|---|---|
 | Artefacts ≤ 64 kB | PostgreSQL | with the run |
-| Artefacts > 64 kB, diffs, runner logs, uploads | object storage `runs/<runId>/…`, `jobs/<jobId>/…` | 180 days (logs 30) |
+| Artefacts > 64 kB, diffs, runner logs, uploads | object storage `runs/<runId>/…`, `agent-jobs/<jobId>/…` | 180 days (logs 30) |
 | `event_log` | PostgreSQL | 24 h |
 | `work_item` DONE | PostgreSQL | 7 days |
 | Audit log | PostgreSQL, monthly partitions `audit_log_pYYYY_MM` + `audit_log_default` (V404, kept 3 months ahead by the identity retention job) | 2 years, then export (`backoffice.retention.audit.*`) |
@@ -114,19 +116,25 @@ Identity's access version subscribes to topic `identity-access-version`.
 
 - **Traces**: OpenTelemetry (Micrometer bridge) for HTTP, JDBC, LLM calls (`gen_ai.*`), work items, runner
   protocol; trace id in logs and in audit rows next to the correlation id.
-- **Metrics** (Prometheus scrape or OTLP): `backoffice_work_items{kind,status}`, `backoffice_work_latency_seconds`,
-  `backoffice_runs_active{holder}`, `backoffice_gate_wait_seconds`, `backoffice_runner_jobs{pool,status}`,
-  `backoffice_sandbox_start_seconds`, `backoffice_llm_tokens_total{provider,model,kind}`,
-  `backoffice_llm_cost_usd_total`, `backoffice_budget_utilisation{scope}`, `backoffice_sse_subscribers`,
-  JVM/HTTP/Hikari defaults.
-  Implemented by platform-runtime / projects: `backoffice_work_items{kind,status}` (READY/LEASED/DEAD, refreshed
-  every 15 s), `backoffice_work_oldest_ready_age_seconds`, `backoffice_work_latency_seconds{kind}` (due -> leased),
-  `backoffice_work_duration_seconds{kind,outcome}`, `backoffice_event_listener_connected`,
-  `backoffice_event_listener_reconnects_total`, `backoffice_events_delivered_total`, `backoffice_runs_active{holder}`;
-  `backoffice_sse_subscribers` is reported in the operations overview (`sseSubscribers`) rather than as a meter.
-  `backoffice_gate_wait_seconds` is not implemented yet.
+- **Metrics** (Prometheus scrape or OTLP), besides the JVM/HTTP/Hikari defaults:
+  - platform-runtime: `backoffice_work_items{kind,status}` (READY/LEASED/DEAD, refreshed every 15 s),
+    `backoffice_work_oldest_ready_age_seconds`, `backoffice_work_latency_seconds{kind}` (due -> leased),
+    `backoffice_work_duration_seconds{kind,outcome}`, `backoffice_event_listener_connected`,
+    `backoffice_event_listener_reconnects_total`, `backoffice_events_delivered_total`;
+  - projects: `backoffice_runs_active{holder}`, `backoffice_sse_subscribers` (connected event streams);
+  - LLM gateway (gateway calls and the sandbox LLM proxy): `backoffice_llm_tokens_total{provider,model,type}`
+    (`type` = input, output, cache_read, cache_write), `backoffice_llm_cost_usd_total{provider,model}`;
+  - agent-runner: `backoffice_runner_jobs{pool,status}` (unfinished agent jobs per pool, refreshed every 30 s;
+    `pool="none"` before a job has one);
+  - runner-controller: `backoffice_runner_jobs_completed_total{status}`, `backoffice_sandbox_start_seconds`,
+    `backoffice_runner_assignments_rejected_total{reason}`, `backoffice_runner_active_jobs`,
+    `backoffice_runner_free_slots`.
+
+  There is no metric for budget utilisation or gate wait time; budgets are shown on the budget pages.
 - **Logs**: JSON (ECS format) to stdout; the `AUDIT` logger stays a separate stream.
-- **Dashboards and alerts**: Grafana dashboards and PrometheusRules shipped in `deploy/observability/`.
+- **Dashboards and alerts**: Grafana dashboards in `deploy/observability/dashboards/` (copied into the chart's
+  `files/dashboards/`); the ServiceMonitor, PrometheusRule and dashboard ConfigMaps in
+  `deploy/helm/back-office/templates/observability.yaml`.
 
 ## SLOs (starting point)
 

@@ -68,7 +68,7 @@ claude mcp add --transport http back-office https://backoffice.example.com/mcp -
 ```
 
    Add `--scope user` to make the server available in every project instead of only the current one.
-3. In Claude Code run `/mcp`: `back-office` should be **connected** and list eight tools.
+3. In Claude Code run `/mcp`: `back-office` should be **connected** and list 18 tools ([MCP tools](#mcp-tools)).
 4. Ask, for example, "What is waiting for me in Back Office?".
 
 Claude Code stores the header in its own configuration (`~/.claude.json`); rotate by running

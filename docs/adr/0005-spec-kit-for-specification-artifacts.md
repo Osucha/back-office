@@ -1,6 +1,6 @@
 # 0005 - GitHub Spec Kit as the specification workflow and artefact format
 
-Status: accepted - 2026-09-26; Spec Kit made optional per project by ADR 0036 (2026-10-09)
+Status: accepted - 2026-09-26; superseded by [0063](0063-delivery-is-an-action-sources-no-spec-kit.md) (Spec Kit removed)
 
 ## Context
 Pipelines need a "create and validate documentation/idea" phase whose output later drives

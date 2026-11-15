@@ -51,7 +51,9 @@ their session.
 4. Copy the token from **Token created** now: it is shown once and stored only as a SHA-256 hash. Press
    **Done**.
 5. Map the entrypoints in the **CI entrypoints** card: **Add**, key `code-review`, the review workflow,
-   mode **BLOCKING** or **ADVISORY**, then **Save entrypoints** (needs `project.manage`).
+   mode **BLOCKING** or **ADVISORY**, then **Save entrypoints** (needs `project.manage`). When the project has
+   repositories, the **Repository** column limits an entrypoint to the CI jobs of one repository (default **Any
+   repository**); **Diff** (on by default) uploads the merge request or branch diff as the run's `diff` artefact.
 
 Creation and revocation are audited (`CI_TOKEN_CREATE`, `CI_TOKEN_REVOKE`). Create one token per repository
 or per CI system so you can revoke one without breaking the others; the **Last used** column tells you
@@ -101,7 +103,7 @@ that hosts Back Office, or copy it:
 
 ```yaml
 include:
-  - project: 'mos/back-office'
+  - project: 'your-group/back-office'   # the GitLab project that holds Back Office
     ref: main
     file: '/ci-templates/backoffice.gitlab-ci.yml'
 

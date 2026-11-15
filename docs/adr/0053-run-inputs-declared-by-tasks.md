@@ -1,6 +1,6 @@
 # 0053 — Run inputs declared by library tasks; the start dialog is a form built from them
 
-- Status: proposed
+- Status: accepted, superseded by 0062 (parameters bound at run start)
 - Date: 2026-10-24
 - Deciders: owner
 - Related: ADR 0029 (prompt-injection defences), 0033 (Jira intake), 0049 (workflow authoring through MCP);

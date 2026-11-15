@@ -565,7 +565,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (pod) (increase(backoffice_events_listen_reconnects_total{namespace=~\"$namespace\"}[15m]))",
+          "expr": "sum by (pod) (increase(backoffice_event_listener_reconnects_total{namespace=~\"$namespace\"}[15m]))",
           "legendFormat": "{{pod}}",
           "refId": "A"
         }

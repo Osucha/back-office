@@ -15,7 +15,8 @@ you, every new one shows up in **My work** with a notification, and nothing star
 3. A **rule** says which issues are yours (JQL), how often to check and which workflow to propose.
 4. Every issue that appears in the rule's results for the first time becomes a **proposal**: issue key, summary,
    type, status. Click **Start** to run the proposed workflow, the swap button to start another workflow, or
-   **Dismiss**. A dismissed proposal can be restored and started later.
+   **Dismiss**. The page has the tabs **New**, **Started** (with **Open run**), **Dismissed** and **Rules**; on
+   **Dismissed** a proposal can be started directly or brought back to **New** with **Restore**.
 
 A run you start from a proposal is yours, exactly as if you had clicked **Start run** in the project: it receives the
 issue key, and Jira steps set to act as the person who started the run use your personal connection.
@@ -31,7 +32,7 @@ is marked **private**, and members cannot be added. Platform administrators can 
 <a id="rules"></a>
 ## Rules
 
-**My work → Rules → New rule**:
+**My work** → **New rule** (a button in the page header, on every tab; the **Rules** tab lists your rules):
 
 | Field | Meaning |
 |---|---|

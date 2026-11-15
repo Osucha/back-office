@@ -161,7 +161,7 @@ The former **Platform settings** → **Features** → **Allow Spec Kit** is gone
 - **Test before saving** in the add and edit dialogs checks the account against Jira without storing
   anything; **Test** checks a saved connection. Both show missing and excess Jira permissions
   ([Test a connection](integrations-jira.md#jira-test)).
-- The list marks tokens that are **expiring soon** (30 days) or **expired**. From 14 days before expiry,
+- The list marks tokens with the chip **token expires {date}** (30 days before the date) or **token expired**. From 14 days before expiry,
   administrators get a **Your turn** card and, once per expiry date, a desktop notification
   **Connection expiring** (on by default for administrators); see
   [Token expiry and rotation](integrations-jira.md#jira-token-expiry).

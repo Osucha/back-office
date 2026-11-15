@@ -174,9 +174,9 @@ and the delivery's `branchTemplate`, `commitSubjectTemplate` and merge-request t
 | `answers` | ADR 0060: the owner's answers to this step's agent questions; appended to the prompt automatically under "Answers of the owner" after an answer, empty before |
 | `project.{key,name,constitution,defaultBranch,repositoryUrl}` | the project; `defaultBranch` / `repositoryUrl` are the primary repository's (empty when there is none, kept for compatibility) |
 | `project.repositories`, `project.repository` | all repositories of the project (`key`, `url`, `defaultBranch`, `purpose`, `description`, `primary`) / the primary one (may be null) |
-| `repos` | this step's repositories: `key`, `url`, `path`, `access`, `purpose`, `baseBranch`, `primary` |
+| `repos` | the workflow's sources (ADR 0063; agents get them read-only, only **Deliver changes** pushes): `key`, `url`, `path`, `access`, `purpose`, `baseBranch`, `primary` |
 | `repositoryResults.<key>` | the latest result per repository in this run: `branch`, `commitSha`, `mergeRequestUrl`, `pushed` |
-| `mr.{url,branch,targetBranch}` | the merge request of the run (empty before a step pushed and opened one) |
+| `mr.{url,branch,targetBranch}` | the merge request of the run (empty before a **Deliver changes** node pushed and opened one) |
 | `review` | the run review (e.g. `review.score`) |
 | `ci` | the last CI signal (e.g. `ci.message`) |
 | `decision` | the last human decision (e.g. `decision.comment`) |
@@ -203,7 +203,7 @@ evaluated read-only in a sandbox (no method calls, no type references) against `
 | `confidence` | last numeric confidence produced by a task, or `null` |
 | `lastOutcome` | `SUCCESS` / `FAILURE` of the previous node |
 | `review` | `verdict`, `score`, `summary`, `blockers`, `majors`, `findings` (counts) |
-| `mr` | `url`, `branch`, `targetBranch` after an implementation task pushed |
+| `mr` | `url`, `branch`, `targetBranch` after a **Deliver changes** node pushed |
 | `ci` | last CI signal: `signal`, `status`, `message` |
 | `decision` | last human decision: `option`, `comment` |
 | `feedback` | list of revision comments |
@@ -404,7 +404,7 @@ duplicated or deleted), together with the CI entrypoint `code-review`; the creat
 
 A project created **without a repository** gets instead one starter workflow, **LLM task with review**
 (`MANUAL`, `API`): `start -> llm-task` (template `llm-task`; write the task into the node's parameter **Task**,
-`overrides.parameters.task`; the run parameter `input` is given to the model as data, revision comments as
+stored as a **Value** binding in `overrides.parameterBindings.task`; the run parameter `input` is given to the model as data, revision comments as
 `{{feedback}}`)
 `-> review` ("Result ok?"): `approve -> done` (`END SUCCESS`), `revise -> llm-task`, `reject -> rejected`
 (`END FAILURE`). No CI entrypoint is created. When the project gets its first repository, the
@@ -538,7 +538,7 @@ and warnings as `{nodeId, edgeId, field, message}`. Start a run with
 | `nothing to deliver: the workflow's sources hold no project repository` | a **Deliver changes** node in a workflow whose sources are only library sources (or a project without repositories); add a project repository to the sources ([Deliver changes](#deliver-changes)) |
 | a delivery succeeds with "nothing to deliver: no repository has changes" | the agents changed nothing, or worked in a **Separate directory**; check the implementing step's `diff` |
 | `push refused: ...` on a delivery | the branch template renders to the default branch, `HEAD` or `refs/...`; change **Branch** on the **Deliver changes** node |
-| Runner tasks fail immediately | `docs/runbooks/runner-job-failed.md` and `GET /api/v1/settings/integrations` (runner mode) |
+| Runner tasks fail or stay queued | `docs/runbooks/agent-jobs.md` and *Administration → Runner fleet → Agent jobs* (status and reason of the job) |
 | `Parameter x needs a value` | a required template parameter has no value on the step, in the template chain or as a default: set it under **Parameters** or use a preset ([task-library.md](task-library.md#2-a-template-with-parameters)) |
 | `Parameter x needs the name of the artefact it reads` | a parameter bound **Result of an earlier step** has no artefact name; type the name an earlier step produces ([The run start form](#start-form)) |
 | a step fails with `the agent asked more than N rounds of questions` | the agent kept asking after `maxQuestionRounds`; answer more completely, raise **Question rounds** or clarify the instructions ([Agent questions](#agent-questions)) |

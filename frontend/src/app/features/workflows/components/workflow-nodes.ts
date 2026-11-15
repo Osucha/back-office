@@ -496,7 +496,7 @@ export class EndNodeComponent extends WorkflowNodeBase {}
 })
 export class TaskNodeComponent extends WorkflowNodeBase {
   readonly categoryLabel = categoryLabel;
-  /** ADR 0056: "OpenCode: Coding agent in the runner sandbox ..." (step's own or template's). */
+  /** ADR 0056: "OpenCode: Coding agent in the runner sandbox ..." (the step's own or, ADR 0061, the default one). */
   readonly agentTitle = computed(() => {
     const d = this.data();
     const a = d?.agent;
@@ -504,7 +504,7 @@ export class TaskNodeComponent extends WorkflowNodeBase {
     const kind = `${agentKindLabel(a.harness)}: ${agentKindDescription(a.harness)}`;
     return d?.node.task?.overrides?.agentKey
       ? $localize`:@@workflows.node.agentOwn:Agent of this step. ${kind}:kind:`
-      : $localize`:@@workflows.node.agentTemplate:Agent of the template. ${kind}:kind:`;
+      : $localize`:@@workflows.node.agentTemplate:Default agent: this step names none. ${kind}:kind:`;
   });
   /** ADR 0062: the step changes its template (agent, model, instructions, bindings, config). */
   readonly hasOverrides = computed(() => hasStepOverrides(this.data()?.node.task?.overrides));

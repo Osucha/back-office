@@ -56,7 +56,10 @@ używać tych endpointów ze swoją sesją.
    i przechowywany wyłącznie jako skrót SHA-256. Naciśnij **Gotowe** (**Done**).
 5. Zmapuj punkty wejścia na karcie **Punkty wejścia CI** (**CI entrypoints**): **Dodaj** (**Add**), klucz
    `code-review`, workflow przeglądu, tryb **BLOCKING** lub **ADVISORY**, a następnie **Zapisz punkty wejścia**
-   (**Save entrypoints**) (wymaga `project.manage`).
+   (**Save entrypoints**) (wymaga `project.manage`). Gdy projekt ma repozytoria, kolumna **Repozytorium**
+   (**Repository**) ogranicza punkt wejścia do zadań CI jednego repozytorium (domyślnie **Dowolne repozytorium**,
+   **Any repository**); **Diff** (domyślnie włączony) przesyła diff merge requestu lub gałęzi jako artefakt `diff`
+   przebiegu.
 
 Utworzenie i unieważnienie trafiają do dziennika audytu (`CI_TOKEN_CREATE`, `CI_TOKEN_REVOKE`). Twórz jeden
 token na repozytorium lub na system CI, aby móc unieważnić jeden bez psucia pozostałych; kolumna
@@ -108,7 +111,7 @@ w którym znajduje się Back Office, lub skopiuj:
 
 ```yaml
 include:
-  - project: 'mos/back-office'
+  - project: 'your-group/back-office'   # projekt GitLaba, w którym jest Back Office
     ref: main
     file: '/ci-templates/backoffice.gitlab-ci.yml'
 

@@ -1,9 +1,14 @@
 # Git access for agents
 
 Coding agents clone the project's repositories and change them in the run directory; a **Deliver changes** step
-then commits the work, pushes a branch and, on GitLab, opens a merge request (ADR 0063). Both happen in a sandbox
-with git tokens that live **only in the runner cluster**. The Back Office
-control plane has no git credential and never calls an SCM API. This chapter covers the least-privilege
+then commits the work, pushes a branch and, on GitLab, opens a merge request with git push options (ADR 0063). Both
+happen in a sandbox on a runner. The git tokens are either kept by the project, encrypted, and handed to the runner
+for each job ([Repository access tokens in the project](#git-project-tokens)), or installed in the runner pool (the
+older way, now the fallback). Back Office itself calls the GitLab API only to read, with the project's tokens: to
+test a repository token (its scopes and expiry, its role in the project, the default branch's protection) and, for a
+**Wait for CI** node with **Watch pipeline**, to read the latest pipeline of the run's branch and the logs of its
+failed jobs with the CI_READ token ([Wait for CI](workflows.md#nodes)). It never writes through the API: branches
+and merge requests come only from the delivery's git push. This chapter covers the least-privilege
 setup (a read-only token and a push token per repository), creating the tokens on GitLab or GitHub,
 protecting the default branch so that no agent token can merge, installing the tokens into the runner pool,
 and rotating them.
@@ -40,7 +45,9 @@ Authentication: an inline git credential helper answers with user name `oauth2` 
 the file `/var/run/backoffice/git/token`. It is used only for clone, fetch, ls-remote and (delivery jobs, PUSH_MR)
 push; the token is never written into `.git/config`, the environment of the agent or the logs.
 
-Nothing calls the GitLab or GitHub API, so no token needs an API scope.
+The runner and the sandbox never call the GitLab or GitHub API, so the clone and push tokens need no API scope.
+Only reading pipelines needs `read_api`: a CI_READ token for **Watch pipeline** (read by Back Office) and for the
+**GitLab (read-only)** connector (used by the agent), see [Repository access tokens](#git-project-tokens).
 
 **Several repositories.** A project can have several repositories, and a workflow can clone several of them
 ([Sources of a workflow](workflows.md#workflow-sources)). The runner then does the steps above for each
@@ -275,7 +282,9 @@ connector `gitlab-read`.
 <a id="git-install"></a>
 ## Install the tokens in the runner pool
 
-The tokens go into the cluster where the pool's runner-controller runs, never into Back Office.
+Pool tokens are the fallback for repositories without a fitting [project token](#git-project-tokens) (deprecated;
+the job log says which one was used). They go into the cluster where the pool's runner-controller runs, not into
+Back Office.
 
 **Kubernetes (chart `back-office-runner`)**
 
@@ -365,8 +374,10 @@ only:
 | `tools` (a public repository) | `NONE` | none | cloned anonymously |
 
 How the sandbox is laid out: every repository is cloned into `/workspace/<path>` (by default its key). The agent,
-`setupCommand`, `verifyCommand` and skills run in the **primary** repository; the others are next to
-it (`../docs`) and the agent may edit them. Its prompt ends with a short **Repositories** list (key, path,
+the step's **Verify command** and skills run in the **primary** repository; the others are next to
+it (`../docs`) and the agent may edit them. The **Setup command** belongs to the workflow, not to a step or a
+repository: it runs once in the run directory before the first coding step
+([The run directory](workflows.md#run-directory)). Its prompt ends with a short **Repositories** list (key, path,
 access, purpose). A job without any repository starts in an empty `/workspace`.
 
 Install the tokens exactly as for one repository ([Install](#git-install)): one `repoSecrets` entry per

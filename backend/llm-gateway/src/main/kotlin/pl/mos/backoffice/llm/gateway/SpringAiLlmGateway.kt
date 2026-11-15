@@ -74,6 +74,8 @@ class SpringAiLlmGateway(
     private val budgetPrecheck: (UsageContext, java.math.BigDecimal, Long) -> Unit = { _, _, _ -> },
     /** ADR 0046: request limits of provider connections. */
     private val quota: ConnectionQuota = ConnectionQuota.NONE,
+    /** `backoffice_llm_tokens_total` / `backoffice_llm_cost_usd_total` (Grafana "LLM usage & cost"). */
+    private val metrics: LlmMetrics = LlmMetrics.NOOP,
 ) : LlmGateway {
 
     private val log = LoggerFactory.getLogger(SpringAiLlmGateway::class.java)
@@ -153,6 +155,7 @@ class SpringAiLlmGateway(
                     permit.complete(totalUsage.inputTokens + totalUsage.outputTokens + totalUsage.cacheWriteTokens)
                     val cost = catalog.findPricing(model)?.costOf(totalUsage) ?: Money.ZERO
                     record(model, totalUsage, cost, latency, request.usageContext, startedAt)
+                    metrics.record(model, totalUsage, cost)
                     observation.highCardinalityKeyValue("backoffice.cost_usd", cost.amount.toPlainString())
                     log.debug(
                         "llm call provider={} model={} kind={} input={} output={} cacheRead={} latencyMs={} cost={}",

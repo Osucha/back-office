@@ -6,10 +6,10 @@
 # Include it in the target repository:
 #
 #   include:
-#     - project: 'mos/back-office'          # project that hosts this file
+#     - project: '<group>/<project>'        # project that hosts this file
 #       ref: main
 #       file: '/ci-templates/backoffice.gitlab-ci.yml'
-#   # or: - remote: 'https://gitlab.example.com/mos/back-office/-/raw/main/ci-templates/backoffice.gitlab-ci.yml'
+#   # or: - remote: 'https://gitlab.example.com/<group>/<project>/-/raw/main/ci-templates/backoffice.gitlab-ci.yml'
 #
 #   variables:
 #     BACKOFFICE_TESTS_JOB: "test"          # your test job; the signal jobs run after it

@@ -1,6 +1,6 @@
 # 0014 - Workflows are graphs edited on a canvas; decisions are first-class nodes
 
-Status: accepted - 2026-09-26. Supersedes the "ordered step list" decision in [0010](0010-angular-ng-zorro-frontend.md).
+Status: accepted - 2026-09-26. Supersedes the "ordered step list" decision in [0010](0010-angular-ng-zorro-frontend.md). Partly superseded by [0041](0041-workflow-drafts-and-project-short-code.md) (drafts) and [0056](0056-agents-run-tasks-actions-are-nodes.md) (`ACTION` nodes).
 
 ## Context
 The owner wants project processes configured like n8n: a board with blocks (tasks, mostly agentic) and

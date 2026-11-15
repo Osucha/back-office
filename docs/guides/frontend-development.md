@@ -20,7 +20,7 @@ layout, or building/deploying the web image. It assumes Node 22.12+ and npm 10.
 | i18n | `@angular/localize`, runtime translations (English source, Polish), per-area files in `src/locale/`, gate `npm run i18n:check` (see "Internationalisation") |
 | Auth | OIDC through the backend (BFF, `BO_SESSION` cookie); `IdentityService`, guards, `*boCan` directives |
 | Guardrails | `dependency-cruiser` 17 (`npm run lint:deps`, part of `npm run build`) |
-| Runtime | nginx (unprivileged image) serving the SPA and proxying `/api`, the OIDC endpoints, `/v3/api-docs`, `/swagger-ui` |
+| Runtime | nginx (unprivileged image) serving the SPA and proxying `/api`, the OIDC endpoints, `/ci/backoffice-ci.sh`, `/mcp`, `/.well-known/back-office/`, `/blobs/`, `/v3/api-docs`, `/swagger-ui` |
 
 ## Repository layout
 
@@ -87,14 +87,17 @@ frontend/
 
 Features: `auth` (login, forbidden), `account`, `admin` (users, groups, roles, grants, platform settings,
 audit), `dashboard` (the Home page), `inbox`, `projects` (incl. CI and Members tabs), `workflows` (canvas designer +
-shared canvas), `runs`, `ci` (executions), `library` (templates / interfaces / skills), `models`,
-`evaluation/suites`, `evaluation/benchmarks`, `costs`, `settings`, `connections` (ADR 0030, ADR 0035:
+shared canvas), `runs`, `ci` (executions), `library` (templates, skills, rules, agents, connectors, library
+workflows, sources), `models`, `evaluation/suites`, `evaluation/benchmarks`, `costs`, `settings`, `my-work`
+(personal work and private projects), `insights`, `budgets`, `fleet` (runner fleet), `operations`, `help` (the
+in-app manual), `connections` (ADR 0030, ADR 0035:
 Administration → Connections incl. personal-connection metadata, the project Connections tab with the system
 connection and list, My account → Connections (personal), the designer's Jira connection section with "Act as").
 
-Navigation (`layout/navigation.ts`): Home, Your turn (`/inbox`), Projects, Runs, CI, Library (Templates /
-Interfaces / Skills), Models, Evaluation (Suites / Benchmarks), Costs, and at the bottom Administration
-(Users, Groups, Roles, Grants, Platform settings, Audit log) and Settings. Each entry carries the same
+Navigation (`layout/navigation.ts`): Home, Your turn (`/inbox`), My work, Projects, Runs, Insights, CI, Library
+(Templates / Skills / Rules / Agents / Connectors / Workflows / Sources), Models, Evaluation (Suites / Benchmarks),
+Costs, and at the bottom Administration (Users, Groups, Roles, Grants, Platform settings, Connections, Runner fleet,
+Operations, Audit log) and Settings. `/library/interfaces` redirects to the templates (ADR 0055). Each entry carries the same
 access rule as its route; `visibleNavigation()` drops entries the user may not open and groups left
 without children; a group links to its first visible child (`navTarget`). `/` and `/dashboard`
 redirect to `/home`. The shell is described under "Relay design language" below.
@@ -137,10 +140,13 @@ enum arrays used by selectors (`RUN_STATUSES`, `NODE_KINDS`, `ACTION_TYPES`, ...
 treats properties with a `default:` as non-optional, so for example `WorkflowDefinitionInput.enabled`
 and `WorkflowNode.maxVisits` are required; build objects accordingly (`normalizeDefinition()` fills them).
 
-Services per tag: `auth` + `tokens` (`AuthApi`: me, preferences, config, logout, session, personal tokens), `admin` + `audit` + lookups (`AdminApi`), `members` (`MembersApi`), `projects` (+ CI entrypoints, tokens, snippet), `workflows` (+ palette, validate,
-expression validate, duplicate, start run), `runs` (+ manual signals), `ci` (executions), `task-library`
-(interfaces, templates, resolve, skills), `approvals`, `model-profiles`, `task-suites`, `benchmarks`,
-`usage`, `settings`, `dashboard`.
+Services (`core/api/*.service.ts`): `auth` (`AuthApi`: me, preferences, config, logout, session, personal
+tokens), `local-auth` (`LocalAuthApi`), `admin` (`AdminApi`: users, groups, roles, grants, audit, lookups), `members`
+(`MembersApi`), `projects` (+ CI entrypoints, tokens, snippet), `workflows` (+ palette, validate, expression validate,
+duplicate, start run), `workflow-library`, `runs` (+ manual signals), `ci` (executions), `task-library` (templates,
+resolve, skills, rules, agents), `connectors`, `library-sources`, `approvals`, `model-profiles`, `llm-providers`,
+`task-suites`, `benchmarks`, `usage`, `budgets`, `insights`, `provenance`, `fleet`, `operations`, `my-work`,
+`jira-intake`, `connection-reminders`, `settings`, `dashboard`.
 
 When the contract changes:
 
@@ -568,24 +574,24 @@ and the template editor no longer has run inputs (`run-inputs-editor.ts` was rem
 
 ## Task Library pages
 
-`/library/templates`, `/library/interfaces`, `/library/skills` share `LibraryNavComponent` and follow
-the same shape: table + drawer editor, built-in badge, delete disabled for built-ins (shadow them per
-project instead).
+`/library/templates`, `/library/skills`, `/library/rules`, `/library/agents`, `/library/connectors`,
+`/library/workflows` and `/library/sources` share `LibraryNavComponent`. Templates, skills and rules follow the
+same shape: table + drawer editor, built-in badge, delete disabled for built-ins (shadow them per project
+instead). There is no interfaces page any more (ADR 0055); `/library/interfaces` redirects to the templates.
 
 - Templates (`templates-page` + `template-editor-drawer`): the draft is a `TaskTemplateInput` signal;
   the right side shows the **resolved preview** from `GET /task-templates/resolve/{key}?projectId=`
   mapped by `data/resolved-preview.ts` (`toPreview`: lineage breadcrumb, the merged instructions (ADR 0062), skills,
-  interface check with problems in red; `draftSkillDelta`: unsaved skill changes; `parentCandidates`:
+  the check of missing or wrong references with problems in red; `draftSkillDelta`: unsaved skill changes; `parentCandidates`:
   excludes the template and its descendants from the "extends" select). The preview reflects the saved
   version and refreshes after each save (`savedVersion`). `?key=` deep-links a template (used by the
   designer property panel). The "extend" row action pre-fills a PROJECT-scoped child with the same key.
-- Interfaces: inputs/outputs slot tables (`name`, `kind`, `required`, `description`) and ports tags.
 - Skills: markdown editor with a live preview (frontmatter stripped) and scope selector.
 
 Permissions (`data/library-access.ts`): GLOBAL items need `library.manage`, PROJECT items
 `library.project.manage` on their project (the scope selector offers only scopes the user may write).
 Items the user may not change open read-only (`[boReadonly]`, no save or delete); "extend" is offered
-with `library.project.manage` in some project; interfaces are global only. The template drawer asks
+with `library.project.manage` in some project. The template drawer asks
 before discarding edits (also on navigation, through the page's `unsavedChangesGuard`).
 
 ## Project CI tab
@@ -618,7 +624,7 @@ needs `run.cancel`, retry `run.start`, the manual signal `run.signal` on the run
 |---|---|---|---|
 | Runner fleet: pools, pool editor with the **policy ceiling**, "Add runner" (`?addRunner=<poolId>`: registration token shown once, chart values, `helm install` for `back-office-runner`), runners (revoke with consequences), agent jobs (filter bar, `?job=` side panel with effective policy and denied egress, cancel) | `/admin/fleet/pools`, `/pools/new`, `/pools/:poolId`, `/runners`, `/jobs` (`features/fleet`) | tag `fleet` (`FleetApi`) | view `fleet.view` (or `fleet.manage`), change `fleet.manage` |
 | Operations: replicas, work items per status, oldest ready age, DEAD items with retry, SSE subscribers; refresh every 10 s, paused while the tab is hidden | `/admin/operations` (`features/operations`) | tag `operations` | `admin.settings.manage` |
-| Sandbox policy editor `app-sandbox-policy-editor` (isolation, resources, timeout, host allowlist chips, tools allow/deny/ask, secrets, environment, caps, pool selector; shows the ceiling and marks what cannot be widened; rules in `fleet/data/policy.ts` mirror doc 10) | project tab "Sandbox" (`GET/PUT /projects/{id}/sandbox-policy`, effective view with "set by" badges), pool editor (ceiling), template editor section "Sandbox" (`sandboxPolicy`) | | `project.manage` / `fleet.manage` / library rules |
+| Sandbox policy editor `app-sandbox-policy-editor` (isolation, resources, timeout, host allowlist chips, tools allow/deny/ask, secrets, environment, caps, pool selector; shows the ceiling and marks what cannot be widened; rules in `fleet/data/policy.ts` mirror doc 10) | project tab "Sandbox" (`GET/PUT /projects/{id}/sandbox-policy`, effective view with "set by" badges), pool editor (ceiling); the template editor has no sandbox section (the sandbox is set on the project) | | `project.manage` / `fleet.manage` / library rules |
 | Budgets (`features/budgets`): editor with spend, alert marker and forecast; project tab "Budget", platform budget on `/admin/settings?section=budget`, state in the Costs header, `budget` turn cards (ALERT/EXCEEDED for budgets the user can raise, `core/state/turn-queue.ts`) | | tag `budgets` (`BudgetsApi`) | `project.manage`, `admin.settings.manage` |
 | Insights: human wait headline, lead time, CI wait, success, cost; bottleneck gate (`?node=` opens it in the designer when the API returns `workflowId`); weekly chart (lazy ECharts); success by template / model; gate decisions | `/insights` (rail after Runs) | `GET /insights/delivery` | `project.view` in some project |
 | Provenance tab on run detail: attestations, decoded statement with key facts (`runs/data/provenance-statement.ts`), download `.intoto.jsonl`, Verify | `runs/components/provenance-panel` | tag `provenance` | run visibility |
@@ -906,7 +912,7 @@ docker run --rm -p 8080:8080 -e API_UPSTREAM=http://back-office-api:8080 back-of
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `API_UPSTREAM` | `http://back-office-api:8080` | where nginx proxies `/api/`, `/oauth2/`, `/login/oauth2/`, `/logout`, `/ci/backoffice-ci.sh`, `/v3/api-docs`, `/swagger-ui` |
+| `API_UPSTREAM` | `http://back-office-api:8080` | where nginx proxies `/api/`, `/oauth2/`, `/login/oauth2/`, `/logout`, `/ci/backoffice-ci.sh`, `/mcp`, `/.well-known/back-office/`, `/blobs/`, `/v3/api-docs`, `/swagger-ui` |
 | `NGINX_PORT` | `8080` | listen port (the image runs as uid 101, so keep it above 1024) |
 
 nginx specifics: history fallback to `index.html` (no-store), hashed assets cached for a year,
@@ -972,7 +978,7 @@ visual review, `node e2e/relay-shots.mjs` screenshots the Relay routes in light 
 | Task config form shows only a JSON textarea | the template's `configSchema` in `GET /workflows/palette` lacks `properties` or uses unsupported types |
 | Canvas nodes render but handles are missing / edges float | a custom node must render `<handle>` inside the node element; keep `NodeShellComponent` as the wrapper. Handles are positioned from the host element size, so nodes need a fixed width |
 | Palette is empty | `GET /workflows/palette?projectId=` failed or returned no concrete templates; abstract templates never appear |
-| Designer says valid locally but Save fails with 400 | server rules are stricter (template resolution, interface check); the Problem `detail` is shown and `POST /workflows/validate` issues are shown on the nodes |
+| Designer says valid locally but Save fails with 400 | server rules are stricter (template resolution, reference check); the Problem `detail` is shown and `POST /workflows/validate` issues are shown on the nodes |
 | Browser smoke run fails | `npm run e2e:smoke` needs a running UI and Edge; API errors are tolerated (reported as "API PROBLEMS"), JS errors fail the run; `report.json` has the details |
 | `npm ci` fails with `edgesOut` | `.npmrc` missing `legacy-peer-deps=true` |
 | Build budget error | `angular.json` budgets; check that ECharts stays in the lazy chunk (import only from `core/charts/echarts.ts` via `provideEchartsCore`) |

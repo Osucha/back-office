@@ -1,6 +1,6 @@
 # 0058 — Templates with parameters: ready blocks, presets, flat built-ins
 
-- Status: accepted
+- Status: accepted; partly superseded by 0062 (parameter bindings, run inputs become parameters)
 - Date: 2026-11-06
 - Deciders: owner
 - Related: ADR 0015 (task library), 0053 (run inputs), 0056 (stage 3 of its direction), 0057 (the agent is the environment)

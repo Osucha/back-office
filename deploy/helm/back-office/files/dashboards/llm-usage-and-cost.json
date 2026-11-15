@@ -139,8 +139,8 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Highest budget utilisation",
-      "description": "",
+      "title": "Cache reads today",
+      "description": "Share of prompt tokens served from the provider cache (input + cache read).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -157,7 +157,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(backoffice_budget_utilisation{namespace=~\"$namespace\"})",
+          "expr": "sum(increase(backoffice_llm_tokens_total{namespace=~\"$namespace\",type=\"cache_read\"}[1d])) / clamp_min(sum(increase(backoffice_llm_tokens_total{namespace=~\"$namespace\",type=~\"input|cache_read\"}[1d])), 1)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -183,7 +183,7 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Budgets over 80 %",
+      "title": "Output tokens today",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -201,7 +201,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count(backoffice_budget_utilisation{namespace=~\"$namespace\"} >= 0.8) or vector(0)",
+          "expr": "sum(increase(backoffice_llm_tokens_total{namespace=~\"$namespace\",type=\"output\"}[1d]))",
           "legendFormat": "",
           "refId": "A"
         }
@@ -269,8 +269,8 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Tokens by kind",
-      "description": "",
+      "title": "Tokens by type",
+      "description": "input, output, cache_read, cache_write",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -287,8 +287,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (kind) (rate(backoffice_llm_tokens_total{namespace=~\"$namespace\"}[5m])) * 60",
-          "legendFormat": "{{kind}}",
+          "expr": "sum by (type) (rate(backoffice_llm_tokens_total{namespace=~\"$namespace\"}[5m])) * 60",
+          "legendFormat": "{{type}}",
           "refId": "A"
         }
       ],
@@ -353,7 +353,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Budget utilisation by scope",
+      "title": "Cost per hour by model",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -371,14 +371,14 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (scope) (backoffice_budget_utilisation{namespace=~\"$namespace\"})",
-          "legendFormat": "{{scope}}",
+          "expr": "sum by (provider, model) (rate(backoffice_llm_cost_usd_total{namespace=~\"$namespace\"}[1h])) * 3600",
+          "legendFormat": "{{provider}}/{{model}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit"
+          "unit": "currencyUSD"
         },
         "overrides": []
       },

@@ -700,7 +700,7 @@ const TABS = [
           @if (planBlocked()) {
             <div class="danger small" role="alert" i18n="@@projects.start.blocked">
               Runs of this workflow cannot start until every step has a model you can use: change
-              the step, the template or the project default.
+              the step, its agent or the project default.
             </div>
           }
         } @else {

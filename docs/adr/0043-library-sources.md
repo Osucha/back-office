@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-10-17
 - Deciders: owner
-- Related: ADR 0034 (project repositories, step repositories), 0035 (task library), 0037 (workflow library);
+- Related: ADR 0034 (project repositories, step repositories), 0015 (task library), 0037 (workflow library);
   docs/manual/task-library.md#sources, docs/manual/projects.md#sources, docs/manual/workflows.md#step-repositories
 
 ## Context

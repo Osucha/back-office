@@ -1,6 +1,6 @@
 # 0044 — Run workspaces and resumed agent sessions
 
-- Status: accepted
+- Status: accepted; superseded by 0060 (one run directory per run)
 - Date: 2026-10-17
 - Deciders: owner
 - Related: ADR 0024 (runner fleet), 0031 (git least privilege), 0034 (step repositories), 0040 (personal runners),

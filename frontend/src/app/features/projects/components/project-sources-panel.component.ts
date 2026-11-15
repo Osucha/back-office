@@ -26,9 +26,8 @@ import { purposeLabel, shortRepoUrl } from '../../../core/ui/repositories';
       /></ng-template>
       <ng-template #sourcesHelp
         ><span i18n="@@projects.sources.library.intro">
-          Shared by all projects: standards, templates and reference material. Steps attach them
-          read-only in the designer (section Repositories of a step); the job gets them in
-          /workspace/lib-&lt;key&gt;.
+          Shared by all projects: standards, templates and reference material. A workflow adds them
+          read-only in the designer (its Sources); the run gets them in /workspace/lib-&lt;key&gt;.
         </span></ng-template
       >
       @if (!loaded()) {

@@ -1,6 +1,7 @@
 # 0057 — The agent is the environment; sessions continue; coding agents answer in a schema
 
-- Status: accepted
+- Status: accepted; partly superseded by 0060, 0061, 0062, 0064 (run directory, no agent on templates, one
+  instruction, connectors instead of MCP servers)
 - Date: 2026-11-06
 - Deciders: owner
 - Related: ADR 0044 (run workspaces and sessions), 0050 (model availability, PROMPT jobs), 0051 (agent tools), 0055

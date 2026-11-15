@@ -86,23 +86,20 @@ relay track with labels, durations and costs; click a segment to select that ste
 
 A workflow can have several repositories among its [sources](workflows.md#workflow-sources). The run page shows
 what happened in each, in the selected step's facts and, for **Whole run**, as the latest result per repository over
-all steps:
+all steps. Under **Repositories** each repository is a card:
 
-| Column | Meaning |
+| On the card | Meaning |
 |---|---|
-| **Repository** | The key, its purpose (**Source code**, **Documentation**, **Other**) and a mark for the primary repository. |
-| **Access** | **Read** for coding steps (agents never push), **Push and merge request** for a [Deliver changes](workflows.md#deliver-changes) step. |
-| **Branch** | The branch the delivery pushed (or the one the agent worked on, for **Read**). |
-| **Commit** | The commit after the step, short form; for delivered repositories the pushed commit. |
-| **Changes** | Diff stat: files changed, lines added and removed (for a coding step, the uncommitted work against the base). |
+| Key and chips | The repository key (its URL on hover), its purpose (**Source code**, **Documentation**, **Standards**, **Templates**, **Other**), **primary** for the primary repository, and the access: **Read** for coding steps (agents never push), **Push and merge request** for a [Deliver changes](workflows.md#deliver-changes) step. |
+| State (right) | **pushed** when the delivery pushed the branch to that repository; **not pushed** for a delivery that did not push; **read only** for coding steps, which never push; **failed** when something went wrong there (the card is outlined in red). |
+| Branch, commit, changes | The branch the delivery pushed (or the one the agent worked on), the commit after the step in short form (for delivered repositories the pushed commit), and the lines added and removed (`+12 −3`; the number of files on hover); for a coding step, the uncommitted work against the base. |
 | **Merge request** | Link to the merge request the delivery opened, if any. |
-| **Pushed** | Yes only when the delivery pushed the branch to that repository. Coding steps never push. |
-| **Error** | Why cloning, committing or pushing failed in that repository, if it did. |
+| Error text | Why cloning, committing or pushing failed in that repository, if it did. |
 
 A **Deliver changes** step also has the facts **Action**, **Branch**, **Merge request** and **Repositories**. The
 merge request in the run header (and the one decisions and gates refer to) is the primary repository's merge request,
-or the first one opened when the primary was not delivered. Steps run by older runners show one row, for the primary
-repository. A failed push to one repository does not undo pushes to the others; check the **Error** column and the
+or the first one opened when the primary was not delivered. Steps run by older runners show one card, for the primary
+repository. A failed push to one repository does not undo pushes to the others; check the error on each card and the
 step's **Logs**.
 
 <a id="retry-cancel"></a>

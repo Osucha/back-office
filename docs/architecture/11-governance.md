@@ -15,7 +15,6 @@ insights and the attestation catch-up query the tables of other contexts read-on
 |---|---|---|
 | Platform (monthly) | `admin.settings.manage` | `monthlyLimitUsd`, `alertAtPercent` (default 80), `hardStop` |
 | Project (monthly) | `project.manage` | same |
-| Run | task template / workflow | `maxCostUsd` per run |
 | Job | project sandbox policy (ADR 0062: no template policy) / LLM step | `maxCostUsd`, `maxTokens` |
 
 Enforcement at the LLM gateway before every provider call (estimate) and after (actual); state in
@@ -155,7 +154,7 @@ default workflow "Reference: one Claude Code session" ([03-pipelines-and-agents.
   the delivery. Subjects: `git+<repo>@<commitSha>` (`sha256` of the commit id plus `gitCommit`), one per
   pushed repository of the job (ADR 0034; jobs from older runners: the single repository), and
   `diff:<runId>/<nodeId>/<attempt>` (`sha256` of the diff). Job evidence (spec and result) is read from `agent_job`
-  (runner v2) or `runner_job` (v1) schema-agnostically (`JdbcJobEvidenceSource`); prompts and skills are reduced to
+  schema-agnostically (`JdbcJobEvidenceSource`); prompts and skills are reduced to
   SHA-256.
 - `RUN` attestation: one per finished run; subjects = all job subjects (every pushed repository of every job) (or a digest of the artefact manifest when no
   job produced code); predicate with the path of nodes, the gate decisions, the job attestation ids and totals.

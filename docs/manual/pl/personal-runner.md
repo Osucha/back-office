@@ -13,7 +13,7 @@ własnego logowania do Claude** zamiast bramy LLM Back Office.
   przebiegach **uruchomionych przez Ciebie** (także przyciskiem **Start** w Mojej pracy). Kroki projektów zespołowych i
   innych osób nigdy tam nie trafiają.
 - Gdy masz osobisty runner, kroki Twoich projektów prywatnych **czekają na niego**: przy wyłączonym komputerze stoją w
-  kolejce (do limitu czasu kolejki, domyślnie 24 h) i ruszają, gdy komputer wróci. Usuń osobisty runner, żeby znów
+  kolejce (do limitu czasu kolejki, domyślnie 24 h) i ruszają, gdy komputer wróci. **Usuń mój osobisty runner** (**Remove my personal runner**; w **Moje konto → Mój komputer jako runner**), żeby znów
   korzystać ze wspólnej floty.
 - Możesz podłączyć kilka komputerów; następny krok bierze dowolny dostępny.
 - Administratorzy widzą Twoją pulę w **Administracja → Flota runnerów** (z właścicielem) i mogą ją odwołać.
@@ -66,7 +66,7 @@ pod adresem `backoffice.runner.api-url` (`RUNNER_API_URL`); dla Back Office uruc
 
 Runner przy każdym zapytaniu o pracę podaje Back Office, jakich agentów kodujących ma i czy Twoje logowanie jest
 ustawione (ADR 0050). Gdy pierwszy raz zgłosi Twoje logowanie, dostajesz profile modeli **Claude Opus (my login)**,
-**Claude Sonnet (my login)** i **Claude Haiku (my login)**; **Konto** (**Account**) → **Moje modele** (**My models**)
+**Claude Sonnet (my login)** i **Claude Haiku (my login)**; **Moje konto** (**My account**) → **Moje modele** (**My models**)
 pokazuje stan runnera i modele, których możesz użyć. Runner dostępny bez logowania sprawia, że te modele są
 niedostępne (mówią o tym listy wyboru modeli i start uruchomienia), zamiast że zadanie nie powiedzie się później.
 

@@ -60,10 +60,10 @@ get no token. GitHub: repository or environment secrets.
 
 ```yaml
 include:
-  - project: 'mos/back-office'        # the project hosting this repository
+  - project: 'your-group/back-office'       # the project hosting this repository
     ref: main
     file: '/ci-templates/backoffice.gitlab-ci.yml'
-  # or: - remote: 'https://gitlab.example.com/mos/back-office/-/raw/main/ci-templates/backoffice.gitlab-ci.yml'
+  # or: - remote: 'https://gitlab.example.com/your-group/back-office/-/raw/main/ci-templates/backoffice.gitlab-ci.yml'
 
 variables:
   BACKOFFICE_TESTS_JOB: "test"        # informational; see the signal jobs below
@@ -299,7 +299,7 @@ sh backoffice-ci.sh signal tests --status success --run <runId>
   (see [provider-errors](../runbooks/provider-errors.md)) or a workflow validation error on the run page.
 - **Signal reports "no run is waiting"** - the run already moved on, the signal name differs from the
   `WAIT_FOR_CI` node's, or HEAD has no trailer and the branch does not match; pass `--run <id>`.
-- **Merge request not created by the runner** - see [runner-job-failed](../runbooks/runner-job-failed.md)
+- **Merge request not created by the runner** - see [agent-jobs](../runbooks/agent-jobs.md#delivering-changes-failed-git-push-merge-request)
   (push options need GitLab; the runner's push token - runner chart `gitCredentials.repoSecrets[].push`,
   compose `BO_GIT_TOKEN_PUSH` - needs `write_repository`; only a **Deliver changes** step pushes (git access `PUSH_MR`), with **Open a merge request** on).
 - **`apk: not found` in the template jobs** - a custom `BACKOFFICE_IMAGE` without `apk`; use an image

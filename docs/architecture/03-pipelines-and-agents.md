@@ -22,6 +22,7 @@ Where things execute (ADR 0013):
 | `START` | entry; exactly one per workflow | `out` |
 | `END` | terminal; `outcome: SUCCESS | FAILURE` decides run outcome and CI gate result | none |
 | `TASK` | executes a task template (`templateKey` + overrides) | template ports, by default `success`, `failure` |
+| `ACTION` | runs a deterministic integration (`action.type` + `config`, no model; see "How task and action nodes run") | `success`, `failure` |
 | `DECISION` | routes on expressions over the run state | one port per branch (+ optional `default`) |
 | `HUMAN_GATE` | pauses; the owner picks an option in the inbox | one port per option (default `approve`, `revise`, `reject`) |
 | `WAIT_FOR_CI` | pauses until CI signals `signal` for this run | `success`, `fail`, `timeout` |
@@ -109,8 +110,9 @@ WorkflowDefinition ──compile──► StateGraph<WorkflowState>
   edge n.port → m             ──► conditional edge on "n": state.lastPort == port → "m"
   END(outcome)                ──► terminal node that records the outcome, then END
   HUMAN_GATE, WAIT_FOR_CI     ──► interruptBefore("n"); resume with GraphInput.resume({decision|ci})
-  TASK n (runner-backed)      ──► "n::await", interruptBefore; the job's continuation resumes it
-  ACTION n (external write)   ──► "n::confirm", interruptBefore; resumed by the write decision
+  TASK / ACTION n             ──► "n::await", interruptBefore; a runner job's continuation resumes it
+  TASK / ACTION n             ──► "n::confirm", interruptBefore; resumed by the write decision
+  TASK n                      ──► "n::questions", interruptBefore; resumed by the answers (ADR 0060)
   START                       ──► START → first successor
 ```
 
@@ -127,9 +129,12 @@ the node's `approvers` (gate approver rules, default owner and maintainer); `run
 works as for gates. Audit: `RUN_WRITE_DECIDED`, `EXTERNAL_WRITE`. With `approval: NOT_REQUIRED` the step
 writes at once and the validator warns.
 
-Checkpoints go to PostgreSQL (`PostgresSaverV2`). Graphs are cached per `(workflowId, version)`.
-Recovery on restart resumes `RUNNING` runs from their checkpoint; runner-backed nodes re-attach to
-Jobs by name (`run-<runId8>-<nodeId>-<attempt>`).
+Checkpoints go to PostgreSQL (`SequencedPostgresSaver`, a `PostgresSaverV2` that orders checkpoints by an
+insertion sequence instead of the database clock). Graphs are cached per `(workflowId, version)`.
+Every advance of a run is a `RUN_ADVANCE` work item, so any worker continues a run from its checkpoint after a crash;
+a recovery scan re-enqueues `RUNNING` runs left without an item. A runner-backed node waits at `<id>::await` for
+its agent job's completion; submitting the job is idempotent on the job label, so a re-run node re-attaches to the
+same agent job instead of starting a second one (the sandbox is named after the job id, `bo-job-<jobId>`).
 
 ## How task and action nodes run
 

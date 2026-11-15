@@ -9,7 +9,7 @@ compares **candidates**: an agent of the task library (harness, instructions, ru
 benchmark only the platform MCP connectors, ADR 0064)
 with a model (ADR 0059). This guide walks through the Model Evaluation context end to end: catalogue entries, task
 suites, tasks of both kinds, starting a benchmark, reading the leaderboard and applying the result to
-pipeline steps. Concepts are described in
+workflow steps. Concepts are described in
 [04-model-evaluation.md](../architecture/04-model-evaluation.md); the API is in
 [openapi.yaml](../api/openapi.yaml) (tags `model-profiles`, `task-suites`, `benchmarks`, `usage`).
 
@@ -154,15 +154,16 @@ POST /api/v1/task-suites/{suiteId}/tasks
 }
 ```
 
-Requirements for the repository: the runner image can clone it (public, or credentials in the runner
-integrations secret), `verifyCommand` is green on `baseRef`, and it finishes well inside
+Requirements for the repository: the runner can clone it (public, or a read token on the runner side:
+`gitCredentials` of the runner chart, `GIT_TOKEN_READ` in the compose stack), `verifyCommand` is green on `baseRef`, and it finishes well inside
 `timeoutSeconds` (the agent needs most of the budget). `baseRef` may be a branch, a tag or a commit; pin a commit
 so every benchmark sees the same code. The seeded coding tasks run against Spring PetClinic
 (`https://github.com/spring-projects/spring-petclinic`, pinned commit, `./mvnw -B -Dsurefire.timeout=900 test`, about one minute warm) with hidden acceptance tests
 (`repository.acceptance`, ADR 0047); suites seeded earlier with the placeholder `gitlab.example.com` repository, and
 starter tasks nobody edited, get the current tasks at the next start.
-`POST /benchmarks/{id}/start` is refused with 409 when coding tasks are selected and no runner is
-available (`backoffice.runner.mode=DISABLED`).
+`POST /benchmarks/{id}/start` is refused with 409 when coding tasks are selected and the benchmark's execution
+target does not exist: no shared runner pool (`runnerTarget: SHARED`), or no personal runner (`runnerTarget:
+PERSONAL`).
 
 ## 4. Create and start a benchmark
 
@@ -225,14 +226,21 @@ One row per candidate (`candidate`: agent and model, `label` `"<agent> · <model
 | `candidate` | the agent and model of the row (ADR 0059) |
 | `meanScore` | mean judge score over succeeded attempts |
 | `passRate` | share of attempts with `passed = true` (coding: tests green; prompt: score >= 70); failed and timed-out attempts count as not passed |
-| `meanCost`, `totalCost` | candidate cost per attempt / overall (judge cost is on the attempt detail as `judgeCost` and in the benchmark total) |
+| `meanCost`, `totalCost` | candidate cost spent through Back Office per attempt / overall (0 on a subscription; judge cost is on the attempt detail as `judgeCost` and in the benchmark total) |
 | `costPerAccepted` | `totalCost / passed attempts`: the cost of an accepted result, failed attempts paid by the passed ones; null without a passed attempt (ADR 0059) |
+| `meanApiCost`, `totalApiCost` | the same work at API list prices per attempt / overall, failed and timed-out attempts included (ADR 0065); on a subscription the harness's estimate |
+| `apiCostPerAccepted` | `totalApiCost / passed attempts`; null without a passed attempt |
+| `scorePerApiDollar` | `meanScore / meanApiCost` |
+| `subscription` | the candidate ran on a subscription (Claude Code login): nothing was spent, compare it on the API figures |
 | `notApplicable` | tasks of the benchmark the candidate cannot do (a coding task for a model answer agent and the reverse) |
 | `scorePerDollar` | `meanScore / meanCost`, the efficiency number |
-| `p50LatencyMs`, `p95LatencyMs` | wall clock per attempt, including runner time for coding tasks |
+| `p50LatencyMs`, `p95LatencyMs` | the candidate's own time in succeeded attempts: from the start of its job (or model call) to its result, without queueing for a runner (ADR 0065); `latencySamples` counts them |
 | `stability` | standard deviation of score across repetitions, averaged over tasks; null without repetitions |
 
-`byCategory`, `byDifficulty` and `byTask` repeat the rows for each slice. The UI plots score against
+`byCategory`, `byDifficulty` and `byTask` repeat the rows for each slice. The benchmark page shows one block
+per kind of work (model answers, coding agents): each starts with a verdict (the cheapest accepted result and,
+when it differs, the best score) and ranks its candidates by cost per accepted result; candidates are compared
+only within their block, on the API figures whenever one of them ran on a subscription. It plots score against
 cost so the Pareto frontier is visible; the same reading works from the JSON: a candidate that is not on
 the frontier is dominated by another one that is both better and cheaper.
 
@@ -241,11 +249,11 @@ Drill into surprises with `GET /benchmarks/{id}/attempts?modelProfileId=…` and
 output, runner job id, error). Read the judge rationale for the worst attempt of each candidate before
 concluding anything; a low score is as often a rubric problem as a model problem.
 
-## 6. Apply the result to pipeline steps
+## 6. Apply the result to workflow steps
 
-Pipeline steps refer to models by `modelProfileId` (`StepDefinition.modelProfileId`, falling back to
-`Project.defaults.modelProfileId`; the review step uses `defaults.reviewModelProfileId`). Typical
-outcome of a benchmark:
+A task node of a workflow runs its agent with a model: the node's **Model profile** (`overrides.modelProfileId`),
+else the agent's model, else the defaults (project, starting user, platform; review tasks use the project's
+review default), see [designing-a-workflow.md](designing-a-workflow.md). Typical outcome of a benchmark:
 
 1. Set the cheapest model that clears your bar (for example passRate >= 0.9 and meanScore >= 80 in
    `SPECIFICATION`) as the project default for model answer steps (and choose it on the agents of the specification steps).
@@ -266,8 +274,9 @@ outcome of a benchmark:
   for prompt tasks because the judge reads the task, the rubric and the output. Budget:
   `tasks x applicable candidates x repetitions x (candidate + judge)`.
 - Coding attempts are expensive: an agent loop reads a lot of the repository. Expect 0.5-5 USD per
-  attempt on frontier models and cap `timeoutSeconds`. Claude Code reports its own cost, which the
-  ledger books as `cost`; the price-list computation is kept as `estimatedCost` for comparison.
+  attempt on frontier models and cap `timeoutSeconds`. Every attempt carries two amounts (ADR 0065): `cost` (spent
+  through Back Office; 0 on a subscription) and `apiCost` (the same work at API list prices; on a subscription
+  Claude Code's own estimate). Budgets, the ledger and the Costs page count spent money only.
 - Cost is only as good as the pricing on the profile. Placeholder prices (0/0) make a model look free.
 - Cache-read tokens are priced separately when the profile has `cacheReadPerMTok`; otherwise they are
   priced as input.
@@ -308,10 +317,10 @@ backoffice:
 
 | Symptom | Look at |
 |---|---|
-| `POST /start` returns 409 | Benchmark not `DRAFT`, a model or the judge is disabled, or coding tasks selected without a runner (`backoffice.runner.mode`) |
+| `POST /start` returns 409 | Benchmark not `DRAFT`, a model or the judge is disabled, or coding tasks selected while the execution target has no runner (no shared pool in Administration > Runner fleet, or no personal runner) |
 | Attempts `FAILED` with `HTTP 401/403/429/5xx` | [provider-errors runbook](../runbooks/provider-errors.md) |
 | Attempts `FAILED` with `structured output could not be parsed` | Judge model does not follow JSON instructions; pick a stronger judge or lower its reasoning cost (see runbook) |
-| Coding attempts `FAILED` before verification | Runner logs (`runnerJobId` on the attempt detail); usually clone failure, missing toolchain or `setupCommand` error; see [runner-job-failed](../runbooks/runner-job-failed.md) |
+| Coding attempts `FAILED` before verification | Runner logs (`runnerJobId` on the attempt detail); usually clone failure, missing toolchain or `setupCommand` error; see [agent-jobs](../runbooks/agent-jobs.md) |
 | Coding attempts `TIMED_OUT` | Raise `timeoutSeconds` or shrink the task; check that `verifyCommand` alone fits the budget |
 | Benchmark stuck `RUNNING` with `PENDING` attempts after a restart | `backoffice.evaluation.recover-on-startup` must be true; check the startup log line `re-queued benchmark attempts` |
 | Scores look random | Check `stability`; rewrite the rubric with per-criterion definitions and a reference answer |

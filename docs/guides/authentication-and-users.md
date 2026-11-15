@@ -34,7 +34,7 @@ Scripts ── Authorization: Bearer bo_pat_... ──▶ API        CI ── A
 
 | Property (env var) | Default | Meaning |
 |---|---|---|
-| `oidc.issuer-uri` (`OIDC_ISSUER_URI`) | blank | Issuer of the provider. **Blank = OIDC login off** (only bearer tokens work). Local profile: `http://localhost:8180/realms/back-office` |
+| `oidc.issuer-uri` (`OIDC_ISSUER_URI`) | blank | Issuer of the provider. **Blank = OIDC login off** (local accounts and bearer tokens only). Blank in the local profile too; set `http://localhost:8180/realms/back-office` for the compose Keycloak (profile `keycloak`) |
 | `oidc.client-id` / `oidc.client-secret` (`OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET`) | `back-office` / blank | Confidential client for the authorization-code flow |
 | `oidc.scopes` | `openid,profile,email` | Requested scopes |
 | `oidc.provider-name`, `oidc.account-url` | `Keycloak`, derived | Shown on the login page; account page for password/MFA (derived for Keycloak issuers) |
@@ -44,12 +44,12 @@ Scripts ── Authorization: Bearer bo_pat_... ──▶ API        CI ── A
 | `groups-claim` | `groups` | Claim holding group names (for group synchronisation) |
 | `sync-groups` | `false` | Default of the setting "synchronise groups from the identity provider" |
 | `personal-token-max-days` | `90` | Default maximum lifetime of personal tokens (hard limit 365) |
-| `session.idle-timeout` | `PT30M` | Session ends after this much inactivity |
-| `session.absolute-timeout` | `PT12H` | Session ends this long after login, active or not |
+| `session.idle-timeout` | `PT24H` | Session ends after this much inactivity |
+| `session.absolute-timeout` | `PT24H` | Session ends this long after login, active or not |
 | `cookie-secure` (`BACKOFFICE_COOKIE_SECURE`) | `true` | `Secure` flag of `BO_SESSION`; `false` only for plain-HTTP development (the `local` profile) |
 | `local.enabled` (`BACKOFFICE_AUTH_LOCAL_ENABLED`) | `true` | Local accounts on/off. Hard switch: the platform setting "local login" can only narrow it |
 | `local.secret-key` (`BACKOFFICE_AUTH_LOCAL_SECRET_KEY`) | blank (`local` profile: a fixed dev key) | Base64 of 32 bytes (`openssl rand -base64 32`). Encrypts TOTP secrets, keys recovery-code hashes, signs MFA step tokens. **Required while local login is enabled** - the API does not start without it. The Helm chart generates one |
-| `local.bootstrap-admin-email` / `-password` (`BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD`) | blank (`local` profile: `owner@example.com` / `ChangeMe-Local-123`) | First platform admin **without an identity provider**; created only when no user exists, must change the password at the first login |
+| `local.bootstrap-admin-email` / `-password` (`BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD`) | blank (`local` profile: `admin@example.com` / `ChangeMe-Local-123`) | First platform admin **without an identity provider**; created only when no user exists, must change the password at the first login |
 | `local.reset-link-validity` | `PT24H` | Lifetime of set-password and reset links |
 | `local.lockout.max-failures` / `local.lockout.lock-duration` | `5` / `PT15M` | Defaults of the platform lockout setting |
 | `local.throttle.max-attempts` / `local.throttle.window` | `20` / `PT5M` | Per source IP (and per API replica): sign-in attempts before `429` |
@@ -60,7 +60,7 @@ builds `https://` redirect URIs and marks cookies `Secure`.
 
 The registration mode, allowed domains, group synchronisation, token lifetime, local login, "MFA required
 for local accounts", the password policy and the lockout can later be changed in **Administration →
-Settings** (`PUT /api/v1/admin/settings`); saved settings win over the properties. Switching local login off
+Platform settings** (`PUT /api/v1/admin/settings`); saved settings win over the properties. Switching local login off
 is refused (`409`) while no identity provider is configured - nobody could sign in any more.
 
 ## 1. The first administrator
@@ -75,12 +75,13 @@ There is no other way to become the first administrator. The bootstrap list is o
 login: if an administrator later removes the role, the next login does not bring it back. Once you have a
 second administrator you may remove your address from the list.
 
-Locally (`--spring.profiles.active=local`) `admin@example.com` / `admin` from the development realm
-(`deploy/keycloak/realm-back-office.json`) is the bootstrap admin and registration is `OPEN`.
+Locally (`--spring.profiles.active=local`) `admin@example.com` is the bootstrap admin and registration is
+`OPEN`. Only when you start the compose Keycloak (profile `keycloak`) and set `OIDC_ISSUER_URI` can you sign in
+as `admin@example.com` / `admin` from the development realm (`deploy/keycloak/realm-back-office.json`).
 
 **Without an identity provider** set `BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL` and
 `BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD` instead (see section 11.7). On a fresh database the local
-profile creates `owner@example.com` / `ChangeMe-Local-123` this way.
+profile creates `admin@example.com` / `ChangeMe-Local-123` this way (the default sign-in locally).
 
 ## 2. Inviting users
 
@@ -115,13 +116,13 @@ catalogue). A **role** is a named bundle of permissions with a scope:
 | Role | Scope | Permissions |
 |---|---|---|
 | `platform-admin` | PLATFORM | all platform permissions incl. `admin.projects.all` |
-| `member` (SYSTEM default) | PLATFORM | `library.view`, `models.view`, `evaluation.view`, `tokens.personal`, `integrations.view` |
+| `member` (SYSTEM default) | PLATFORM | `library.view`, `models.view`, `evaluation.view`, `tokens.personal`, `integrations.view`, `connections.personal` (own Jira connections), `projects.create.personal` (private projects), `fleet.personal` (own computer as a personal runner) |
 | `project-manager` | PLATFORM | `member` + `projects.create`, `usage.view` (ADR 0028: managers create projects) |
 | `evaluator` | PLATFORM | `member` + `evaluation.run` |
 | `library-curator` | PLATFORM | `member` + `library.manage` |
 | `auditor` | PLATFORM | `admin.users.view`, `admin.audit.view`, `usage.view`, `library.view`, `models.view`, `evaluation.view` |
 | `owner` | PROJECT | every project permission except `ci.*` (incl. `run.assign`: reassign a waiting gate) |
-| `maintainer` | PROJECT | `owner` without `project.members.manage` (so a maintainer can edit the project but not delete it) |
+| `maintainer` | PROJECT | `owner` without `project.members.manage` and `project.connections.manage` (so a maintainer can edit the project but not delete it or manage its credentials) |
 | `developer` | PROJECT | `project.view`, `workflow.edit`, `run.start`, `run.cancel`, `run.signal`, `project.usage.view` |
 | `approver` | PROJECT | `project.view`, `run.approve`, `project.usage.view` |
 | `viewer` | PROJECT | `project.view` |
@@ -223,8 +224,10 @@ keyset paging (`nextCursor`). Recorded:
 - reading the audit log itself (`AUDIT_VIEW`).
 
 Every response carries `X-Correlation-Id`; search the log (and the application logs, MDC `correlationId`)
-by it when a user reports a problem. Each entry is also logged on the `AUDIT` logger. The table grows
-without bound: archive/partition by month (`(event_time, id)` key) as an operational task.
+by it when a user reports a problem. Each entry is also logged on the `AUDIT` logger. The table is
+partitioned by month and maintained automatically: partitions are created ahead, 24 months stay online, and
+dropping older partitions is off until you enable it (`BACKOFFICE_RETENTION_AUDIT_*`, see
+[configuration.md](configuration.md#object-storage-and-data-retention)).
 
 ## 10. Connecting another OIDC provider
 

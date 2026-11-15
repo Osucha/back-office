@@ -16,7 +16,7 @@ lub logowanie.
 | `error=email-not-verified` | dostawca wysłał `email_verified=false` | zweryfikuj adres u dostawcy (Keycloak: użytkownik → **Email verified**) |
 | `error=email-missing` | brak claimu `email` | zażądaj zakresu `email`; Entra ID: dodaj opcjonalny claim `email` ([integrations-identity.md](integrations-identity.md#entra)) |
 | `error=identity-conflict` | e-mail jest już powiązany z inną tożsamością u dostawcy (użytkownik utworzony ponownie, zmiana dostawcy) | DBA czyści powiązanie: `issuer`, `subject` na null, status `INVITED` (`docs/runbooks/cannot-log-in.md`) |
-| `error=deactivated` | konto dezaktywowane | **Użytkownicy** → użytkownik → **Aktywuj** (**Activate**) |
+| `error=deactivated` | konto dezaktywowane | **Użytkownicy** → użytkownik → **Aktywuj użytkownika** (**Activate user**) |
 | Pętla przekierowań po logowaniu u dostawcy | ciasteczko `BO_SESSION` jest odrzucane: TLS terminowany na ingressie bez `X-Forwarded-Proto: https` albo UI i API w różnych witrynach (sites) | przekazuj nagłówki forwarded; serwuj UI, `/api`, `/oauth2`, `/login` z jednego originu; `BACKOFFICE_AUTH_COOKIE_SECURE=false` tylko do developmentu po zwykłym HTTP |
 | Dostawca zgłasza „Invalid parameter: redirect_uri” | redirect URI nie jest zarejestrowany dokładnie (schemat, host, port) | zarejestruj `<public URL>/login/oauth2/code/oidc` |
 | `error=invalid-id-token` | rozjazd zegarów ponad 60 s lub niezgodność issuera (`iss` w tokenach różni się od skonfigurowanego issuera) | włącz NTP; ustaw identyczny URL issuera dla API i przeglądarki |
@@ -39,7 +39,7 @@ Pełny runbook: `docs/runbooks/cannot-log-in.md`.
 | Objaw (przyczyna w zadaniu) | Przyczyna | Rozwiązanie |
 |---|---|---|
 | `QUEUED`, `no online runner in pool <id>` | żaden kontroler puli nie zgłosił się w ciągu ostatnich 90 s | sprawdź pod i logi kontrolera, wychodzący HTTPS do Back Office oraz to, czy runner nie został unieważniony |
-| `QUEUED`, `no runner pool can run this job` | etykiety puli, lista projektów lub dozwolone obrazy nie pasują do polityki zadania | popraw pulę albo politykę szablonu/projektu; zadania są ponownie kierowane co 10 s |
+| `QUEUED`, `no runner pool can run this job` | etykiety puli, lista projektów lub dozwolone obrazy nie pasują do polityki zadania | popraw pulę albo politykę sandboxa projektu; zadania są ponownie kierowane co 10 s |
 | `QUEUED`, brak przyczyny | pula lub runner wykorzystuje pełną pojemność | zwiększ **Maks. liczbę równoległych zadań** (**Max concurrent jobs**) lub `maxConcurrent`, dodaj repliki |
 | `registration failed: 401` w logu kontrolera | token rejestracyjny został już użyty, wygasł (24 h) lub dotyczy innej puli | **Dodaj runner** (**Add runner**) → nowy token |
 | Runner online, zadania od razu kończą się błędem `policy-violation: ...` | obrazu nie ma w **Dozwolonych obrazach** (**Allowed images**), brak RuntimeClass, obniżony pułap | popraw pulę lub zainstaluj RuntimeClass |
@@ -52,7 +52,7 @@ Pełny runbook: `docs/runbooks/cannot-log-in.md`.
 | `FAILED` / `lease-not-acknowledged` | 5 dzierżaw bez heartbeatu | kontroler nie może uruchamiać sandboxów: RuntimeClass, obraz, RBAC |
 | `budget-exceeded: ...` | osiągnięto twardy limit zadania, projektu lub platformy | podnieś limit lub wyłącz twardą blokadę, ponów ([agent-execution.md](agent-execution.md#budgets-in-sandbox)) |
 | Log agenta: `model-not-allowed` (403) | agent poprosił o model inny niż model zadania (model działający w tle Claude Code) | `RUNNER_EXTRA_ALLOWED_MODELS=anthropic/claude-haiku-*` |
-| **Zablokowany ruch wychodzący** (**Egress denied**) zawiera host potrzebny do builda | hosta nie ma na efektywnej liście dozwolonych | dodaj go do polityki projektu lub szablonu, w granicach pułapu puli |
+| **Zablokowany ruch wychodzący** (**Egress denied**) zawiera host potrzebny do builda | hosta nie ma na efektywnej liście dozwolonych | dodaj go do polityki sandboxa projektu, w granicach pułapu puli |
 | Agent nie ma narzędzia, które powinien mieć ([konektor](task-library.md#connectors)) | agent nie wskazuje klucza, klucza nie zdefiniowano ani w projekcie, ani na platformie (log kroku: `connector <key> is defined neither in this project nor on the platform; skipped`, **Nieznany konektor** w panelu Agenci w tym workflowie), brakuje sekretu serwera MCP albo sandbox nie dopuszcza jego hosta (**Zablokowany ruch wychodzący**) | wskaż klucz w agencie, dodaj konektor, ustaw sekret, dopuść **Host do dopuszczenia** w polityce sandboxa |
 | **Testuj** przy konektorze się udaje, ale agent nie osiąga serwera | test działa z Back Office, nie z sandboxa | dopuść host konektora w polityce sandboxa projektu, w granicach pułapu puli i polityki platformy |
 | `connector gitlab-read needs a read-only token with CI_READ` | repozytorium nie ma zweryfikowanego tokenu tylko do odczytu z `CI_READ` | dodaj go na karcie projektu **Źródła** (rola Reporter, `read_api`, `read_repository`) i przetestuj ([integrations-git.md](integrations-git.md#git-agent-tools)) |
@@ -60,7 +60,7 @@ Pełny runbook: `docs/runbooks/cannot-log-in.md`.
 | `the receiving end does not support push options` | repozytorium nie jest na GitLabie | wyłącz **Otwórz merge request** w węźle **Dostarcz zmiany** |
 | Wypchnięto, ale brak URL-a merge requestu | rola tokenu poniżej Developer, brak gałęzi docelowej, MR już istniał | popraw rolę lub gałąź |
 
-Runbooki: `docs/runbooks/agent-jobs.md`, `docs/runbooks/runner-job-failed.md`.
+Runbook: `docs/runbooks/agent-jobs.md` (także błędy dostarczania: git push, merge request).
 
 <a id="runs"></a>
 ## Uruchomienia, które stoją w miejscu

@@ -50,8 +50,10 @@ odczyt** albo **Tylko te ścieżki**. Runner cofa inne zmiany, gdy agent skończ
 Claude Code. Agent bez harnessu daje odpowiedź modelu. Zob. [Agenci](task-library.md#agents).
 
 **Kandydat** (candidate): To, co porównuje benchmark: agent z modelem (własnym modelem agenta, gdy żaden nie jest
-wybrany), pokazywany jako `agent · model`. Zadania z promptem trafiają do agentów odpowiedzi modelu, zadania
-programistyczne do agentów programistycznych. Zob. [Benchmarki](evaluation.md#benchmarks).
+wybrany). Zadania z promptem trafiają do agentów odpowiedzi modelu, zadania programistyczne do agentów
+programistycznych; ranking ocenia każdy rodzaj pracy w osobnym bloku i nazywa kandydata jego modelem, z agentem
+pod nim, gdy blok łączy różnych agentów. Zob. [Benchmarki](evaluation.md#benchmarks)
+i [Odczytywanie wyników](evaluation.md#reading-results).
 
 **Katalog przebiegu** (run directory): Jeden katalog przebiegu, w którym jego kroki kodujące pracują jeden po
 drugim i widzą, co zostawiły wcześniejsze kroki; usuwany po zakończeniu przebiegu. Zob. [Katalog
@@ -155,6 +157,10 @@ blokującym lub doradczym. Zob. [CI: punkty wejścia i tokeny](projects.md#proje
 go dobrze; przebieg czeka, aż odpowiesz albo anulujesz krok. Zob. [Odpowiadanie na pytania
 agenta](your-turn.md#agent-questions).
 
+**Reguła** (rule): Coś, czego agent musi zawsze przestrzegać; jest zawsze w jego kontekście, a reguły automatyczne
+obowiązują w każdym kroku swojego zakresu. Reguły należą do repozytorium, projektu i agenta, nigdy do szablonu. Zob.
+[Reguły](task-library.md#rules).
+
 **Rejestr, rejestr zużycia** (ledger, usage ledger): Zapis każdego wywołania modelu i zadania agenta z tokenami
 i kosztem. Zob. [Koszty](costs-insights.md#costs).
 
@@ -193,21 +199,17 @@ niejasności i powtórzenia z cytatami. Jedno wywołanie modelu, wliczane do zu�
 **Sygnał CI** (CI signal): Komunikat, który pipeline wysyła poleceniem `backoffice-ci signal <name> --status success|fail`,
 aby zwolnić uruchomienie czekające na CI. Zob. [Węzły oczekiwania na CI](workflows.md#nodes).
 
-**Reguła** (rule): Coś, czego agent musi zawsze przestrzegać; jest zawsze w jego kontekście, a reguły automatyczne
-obowiązują w każdym kroku swojego zakresu. Reguły należą do repozytorium, projektu i agenta, nigdy do szablonu. Zob.
-[Reguły](task-library.md#rules).
-
 **Szablon zadania** (task template): Opis tego, co zrobić, wielokrotnego użytku: kategoria, polecenie z parametrami,
 konfiguracja, wyniki i umiejętności, których wymaga praca; może mieć jednego rodzica. Nie wskazuje agenta ani modelu
 (robi to krok); reguły i umiejętności należą do agenta. Zob. [Szablony](task-library.md#templates).
+
+**Ścieżka sztafety** (relay track): Pasek segmentów, po jednym na każdy odwiedzony krok, pokolorowanych według tego, kto
+trzymał dany krok. Zob. [Pałeczka](getting-started.md#baton).
 
 **Środowisko agenta** (environment of the agent): Dokument, który każdy krok dostaje przed swoim zadaniem:
 preambuła platformy, instrukcje agenta, konstytucja projektu i reguły. Odpowiedź modelu dostaje go w prompcie
 systemowym, OpenCode jako `AGENTS.md`, a Claude Code jako swój `CLAUDE.md` użytkownika, oba poza repozytorium. Zob.
 [Środowisko agenta](task-library.md#environment).
-
-**Ścieżka sztafety** (relay track): Pasek segmentów, po jednym na każdy odwiedzony krok, pokolorowanych według tego, kto
-trzymał dany krok. Zob. [Pałeczka](getting-started.md#baton).
 
 **Token CI** (CI token): Token projektu (`bo_ci_…`), który pozwala pipeline'owi uruchamiać workflowy i wysyłać sygnały
 w jednym projekcie. Zob. [CI: punkty wejścia i tokeny](projects.md#project-ci).
@@ -259,7 +261,8 @@ w Jirze. Zob. [Uruchamianie workflowu](workflows.md#start-run).
 
 **Zaakceptowany wynik** (accepted result): Praca, która liczy się jako wykonana. Wykonanie kroku zadania, które się
 udało, jest ostatnim wykonaniem swojego kroku w uruchomieniu, a uruchomienie zakończyło się sukcesem; udane
-uruchomienie; zaliczona próba benchmarku. Zob. [Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted).
+uruchomienie; zaakceptowana próba benchmarku (wynik co najmniej 70, w zadaniu programistycznym także zielona
+weryfikacja). Zob. [Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted).
 
 **Zadanie agenta** (agent job): Zadanie programistyczne wykonywane w sandboxie na runnerze, z własnym tokenem
 zadania, limitami i logami; nigdy nie wypycha. Dostarczenie ([Dostarcz zmiany](workflows.md#deliver-changes)) też

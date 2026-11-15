@@ -1,6 +1,6 @@
 # 0016 - OIDC login through a backend-for-frontend with server-side sessions
 
-Status: accepted - 2026-09-27. Supersedes [0009](0009-single-owner-api-key-auth.md). Amended by [0021](0021-local-accounts.md): local accounts are allowed alongside OIDC.
+Status: accepted - 2026-09-27. Supersedes [0009](0009-single-owner-api-key-auth.md). Amended by [0021](0021-local-accounts.md): local accounts are allowed alongside OIDC. Partly superseded by [0039](0039-chart-without-bundled-keycloak.md) (no Keycloak in the chart).
 
 ## Context
 Back Office becomes a platform for many users. It needs login, logout, session expiry, single sign-on

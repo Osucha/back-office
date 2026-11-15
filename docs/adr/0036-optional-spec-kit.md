@@ -1,6 +1,6 @@
 # 0036 — Spec Kit is optional, per project, with a platform switch
 
-- Status: accepted
+- Status: accepted; superseded by 0063 (Spec Kit removed)
 - Date: 2026-10-09
 - Deciders: owner
 - Related: ADR 0005 (Spec Kit for specification artefacts), 0024 (sandboxed runner fleet), 0034 (optional

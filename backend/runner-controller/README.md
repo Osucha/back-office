@@ -27,6 +27,8 @@ Back Office  ◀── register / config / lease (long poll) / heartbeat / compl
 | `sandbox/k8s/` | `AgentSandboxBackend` (v1beta1 CRDs), `KubernetesJobBackend`, `PodSpecRenderer`, `EgressInfrastructure` (proxy Deployment, NetworkPolicies) |
 | `sandbox/docker/` | `DockerBackend` (internal network + proxy container + runner container) |
 | `engine/` | `JobSupervisor` (lease loop, monitor, heartbeats, deadlines, completion, orphans, graceful shutdown), `RunnerRegistrar` |
+| `git/` | `GitCredentials` (least-privilege selection of the read or push git credential per repository, ADR 0031), `JobRepositories` |
+| `config/` | `ControllerProperties` (`runner-controller.*`) and the Spring wiring |
 | `egress-proxy/` | Go wrapper around Smokescreen (per-job roles from `Proxy-Authorization`, ACL pulled from the controller) and its Dockerfile |
 
 ## Build and test
@@ -43,15 +45,8 @@ docker build -t back-office/egress-proxy:dev runner-controller/egress-proxy
 docker build -f runner-controller/Dockerfile -t back-office/runner-controller:dev .
 ```
 
-Tests:
-
-- `CanonicalJsonTest`, `AssignmentVerifierTest`: canonical form, tampered spec/policy/job id/lease, unknown and foreign keys, expiry;
-- `PolicyResolverTest`: clamping, isolation, image allowlist, egress hosts vs ceiling;
-- `EgressAclTest`: Smokescreen ACL YAML, credential hashing, decision digest;
-- `PodSpecRendererTest`, `CompletionMappingTest`: pod hardening and status → completion;
-- `KubernetesJobBackendTest`, `AgentSandboxBackendTest`: fabric8 `KubernetesMockServer` in CRUD mode (CRDs registered) — Job, Secret, proxy Deployment, NetworkPolicies, SandboxTemplate/WarmPool/Claim, cold Sandbox, warm bundle delivery, capability detection;
-- `JobSupervisorTest`: against `FakeBackOffice` (JDK HttpServer, real Ed25519 signatures) — registration, happy path, verification failures, policy violations, cancel, lost lease, deadline, orphans, free slots, graceful shutdown;
-- `DockerEndToEndTest`: DOCKER backend with the real runner image (STUB agent) and the real egress proxy against `FakeBackOffice` — LLM call through the gateway with the job token, non-allowlisted host refused by the proxy, no direct route, read-only rootfs, callbacks and upload with the job token, completion with `egressDenied` and `egressLogDigest`, cleanup.
+Tests live in `src/test` (unit tests, fabric8 `KubernetesMockServer` tests of the Kubernetes backends, and a
+Docker end-to-end test that runs the real runner and egress proxy images against a fake Back Office).
 
 ## Run
 

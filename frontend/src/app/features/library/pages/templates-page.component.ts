@@ -90,7 +90,7 @@ import { customizeForProject } from '../data/resolved-preview';
         help="templates"
         title="Library"
         i18n-title="@@library.templates.header.title"
-        subtitle="A template is what to do: a prompt with parameters, run inputs and an output. The agent decides who works and how; a template can be customised per project."
+        subtitle="A template is what to do: instructions with parameters, the output files it returns and the skills it requires. The agent decides who works and how; a template can be customised per project."
         i18n-subtitle="@@library.templates.header.subtitle"
         [menu]="[{ label: text.reload, icon: 'reload', run: reload }]"
       >

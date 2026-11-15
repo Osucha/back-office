@@ -16,6 +16,8 @@ dependencies {
     implementation(libs.springdoc)
     // ADR 0051: HPKE (RFC 9180) to seal project repository tokens to a runner-controller's key
     implementation(libs.bouncycastle.prov)
+    // backoffice_runner_jobs{pool,status} (AgentJobMetrics)
+    implementation(libs.micrometer.core)
 
     runtimeOnly(libs.postgresql)
     annotationProcessor(libs.spring.boot.configuration.processor)

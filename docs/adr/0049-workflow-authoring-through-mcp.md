@@ -1,9 +1,9 @@
 # 0049 — Workflow authoring through the MCP server
 
-- Status: accepted
+- Status: accepted; partly superseded by 0060 (workspace tools removed)
 - Date: 2026-10-21
 - Deciders: owner
-- Related: ADR 0025 (MCP server), 0029 (prompt injection, gate decisions via MCP), 0019 (workflows);
+- Related: ADR 0025 (MCP server), 0029 (prompt injection, gate decisions via MCP), 0014 (graph workflows);
   docs/architecture/11-governance.md, docs/manual/integrations-ide.md
 
 ## Context

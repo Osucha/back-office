@@ -100,7 +100,7 @@ the close button). The steps, in order:
 
 | Element | What it does |
 |---|---|
-| Rail (left) | Project switcher on top, then **Home**, **Your turn**, **Projects**, **Runs**, **Insights**, **CI**, **Library**, **Models**, **Evaluation**, **Costs**; **Administration** and **Settings** at the bottom. Entries you have no permission for are hidden. |
+| Rail (left) | Project switcher on top, then **Home**, **Your turn**, **My work**, **Projects**, **Runs**, **Insights**, **CI**, **Library**, **Models**, **Evaluation**, **Costs**; **Administration** and **Settings** at the bottom. Entries you have no permission for are hidden. |
 | Top bar | Breadcrumb, search, the amber counter of gates you can decide (hidden at zero), the live-updates indicator, the **Activity** button, and the avatar menu (account, theme, density, sign out). |
 | Command palette | `Ctrl K` (or `⌘ K`, or `/`): search projects, workflows, runs by issue key or id, templates, and actions such as **Start run…**, **Create project**, **Toggle theme**. |
 | Keyboard shortcuts | `?` lists the shortcuts of the current page. Lists use `j` / `k` to move and `Enter` to open. |

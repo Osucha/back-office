@@ -180,7 +180,7 @@ uruchamia już Spec Kit (ADR 0063, [Spec Kit (usunięty)](projects.md#spec-kit))
 - **Testuj przed zapisem** w oknach dodawania i edycji sprawdza konto w Jirze, niczego nie zapisując;
   **Testuj** sprawdza zapisane połączenie. Oba pokazują brakujące i nadmiarowe uprawnienia Jiry
   ([Przetestuj połączenie](integrations-jira.md#jira-test)).
-- Lista oznacza tokeny, które **wkrótce wygasną** (30 dni) lub **wygasły**. Od 14 dni przed wygaśnięciem
+- Lista oznacza tokeny znacznikiem **token wygasa {data}** (**token expires {date}**; 30 dni przed datą) albo **token wygasł** (**token expired**). Od 14 dni przed wygaśnięciem
   administratorzy dostają kartę w **Twoja kolej**, a raz na każdą datę wygaśnięcia także powiadomienie na
   pulpicie **Wygasające połączenie** (domyślnie włączone dla administratorów); zob.
   [Wygaśnięcie i rotacja tokenu](integrations-jira.md#jira-token-expiry).

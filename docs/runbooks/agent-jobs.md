@@ -63,3 +63,49 @@ host are always allowed.
   controller's `reason` (`OOMKilled`, `DeadlineExceeded`, `ImagePullBackOff`) and the job's log events.
 - `heartbeat → 409`: the job is no longer leased by that runner (re-queued or finished); the controller must
   stop the sandbox. This is expected after a LOST re-queue.
+
+## Delivering changes failed (git push, merge request)
+
+Only a **Deliver changes** step pushes (a `DELIVER` job, ADR 0063); agent jobs clone read-only and log
+`[git] access READ: clone only`. To get an agent's work onto a branch, add a **Deliver changes** node after the
+step. The job's log (*Agent jobs*, or `GET /api/v1/runs/{id}/logs?stepId=<step>`) shows the git lines.
+
+### Push rejected or refused
+
+- Push rejected by the server: the project's repository token with PUSH_BRANCH is used first
+  ([integrations-git](../manual/integrations-git.md#git-project-tokens)); otherwise the git tokens live on the
+  runner side, not in the control plane - in Kubernetes the runner chart's `gitCredentials.repoSecrets[].push`
+  Secret of the repository (legacy: `existingSecret` / `hostSecrets`; sandbox namespace, key `token`), in compose
+  `BO_GIT_TOKEN_PUSH` (`GIT_TOKEN_PUSH` in `.env`). It needs scope `write_repository` and role Developer; the
+  job branch must not be protected.
+- `policy-violation: git credential: READ job ... has only a push credential` / `PUSH_MR job ... has no push
+  credential` (ADR 0031): the pool has no read (or push) Secret for that repository. Add it to
+  `gitCredentials.repoSecrets` ([integrations-git](../manual/integrations-git.md#git-install));
+  `allowPushCredentialForRead` is only a temporary exception.
+- `push refused: ...` before cloning: the branch renders to the default branch, `HEAD` or `refs/...`; change
+  **Branch** on the **Deliver changes** node.
+- "nothing to deliver": the work tree had no changes (or the agents worked in a **Separate directory**, whose
+  changes are thrown away); check the implementing step's `diff`.
+- A spec with `mode: SPEC_KIT` (an older Back Office) fails on a current runner; upgrade Back Office.
+
+### Push options rejected, or the merge request was not created
+
+With **Open a merge request** on, the runner pushes with `git push -o merge_request.create
+-o merge_request.target=<branch> -o merge_request.title=<title> [-o merge_request.description=...]
+[-o merge_request.draft]` (ADR 0013, 0063).
+
+- `... the receiving end does not support push options`: the remote is not GitLab (or a git server without
+  `receive.advertisePushOptions`). Only GitLab creates merge requests this way; on other hosts turn **Open a merge
+  request** off (the branch is still pushed) and open the pull request from your CI (`gh pr create`).
+- `push options must not have new line characters`: cannot happen with a current runner (it collapses
+  title/description to one line and caps them at 255/1000 characters); the runner image is stale, rebuild it.
+- Push succeeded but no merge request URL (`WARN push options sent but no merge request URL found`): GitLab prints
+  the MR URL as `remote:   https://host/group/repo/-/merge_requests/N` and the runner parses that line. It is missing
+  when the MR already existed for the branch (some GitLab versions print nothing then), when the token's user cannot
+  create MRs on the target project (Developer role needed), or when the target branch does not exist. Check the
+  branch on GitLab and the job's `remote:` log lines; the run state `mr` stays empty, and downstream `WAIT_FOR_CI`
+  nodes still work because the CI matches the run by the commit trailer, not by the MR.
+- MR opened against the wrong target: the target is the delivered repository's default branch (`baseBranch`);
+  check the repository's **Default branch** in the project.
+- Commits without the `Back-Office-Run` trailer (so `backoffice-ci signal` cannot find the run): someone amended or
+  squashed the delivery's commit; the CI falls back to matching by branch, or pass `--run <id>` explicitly.

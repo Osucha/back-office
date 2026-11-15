@@ -2,7 +2,7 @@
 
 The Task Library is a bounded context (`tasks-core`, `tasks-adapters`) that owns what agents do and
 how they are instructed, independent of any single workflow (ADR 0015). Projects use it through the
-`TaskCatalog` port; benchmarks may reference templates in a later iteration.
+`TaskCatalog` port; benchmarks read the library's agents through the same port (their candidates are agents).
 
 ## Concepts
 
@@ -84,8 +84,11 @@ rule's key replaces it for that project; a non-automatic project copy of a globa
 that project. Rules are part of the agent's **environment document** (see [Agents](#agents-adr-0056-0057)), not of
 the task prompt: a model answer gets them in the system prompt, a coding agent in its `AGENTS.md` / user `CLAUDE.md`.
 The former `RulesPrompt` (a `<rules>` block at the start of a coding prompt) was removed, so a continued session does
-not receive the rules twice. Skills, by contrast, reach runner steps as `.claude/skills/<key>/SKILL.md` and
-`.opencode/skills/<key>/SKILL.md`, which the agent opens on demand.
+not receive the rules twice. Skills, by contrast, reach runner steps as files in the agent home,
+`<agent home>/skills/<key>/SKILL.md` (Claude Code `$CLAUDE_CONFIG_DIR/skills`, OpenCode `$OPENCODE_CONFIG_DIR/skills`,
+ADR 0060), written anew on every job, which the agent opens on demand. Only a job without an agent home (an older
+Back Office) gets them in the repository as `.claude/skills/<key>/SKILL.md` and `.opencode/skills/<key>/SKILL.md`
+(git-excluded).
 
 ### Agents (ADR 0056, 0057)
 
@@ -345,8 +348,8 @@ other modules are touched only when they exist.
 Agents (five, `GLOBAL`, `builtIn`): see the table under [Agents](#agents-adr-0056-0057). Built-in agents nobody
 edited are upgraded by the seed like templates.
 
-Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-one in total, the fourteen below plus the
-seven SDLC templates). Since ADR 0058 they are flat: only `implement-task-list` and the deprecated
+Templates (all `GLOBAL`, `builtIn`, stamped `updatedBy = system`; twenty-four in total, the seventeen below
+(counting the three deprecated `spec-kit-*` templates) plus the seven SDLC templates). Since ADR 0058 they are flat: only `implement-task-list` and the deprecated
 `implement-claude-code` extend `implement-opencode`; how to work (preamble, ground rules, format skills) comes from
 the agent. Every concrete template has a category. Since ADR 0061 no template names an agent; the column gives the
 `requiresSkills`, whether the work needs a coding agent, and the agent the default workflows choose on such a step

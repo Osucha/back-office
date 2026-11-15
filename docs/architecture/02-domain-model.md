@@ -162,16 +162,17 @@ before any job exists. Table `connector` (V123; partial unique indexes on `key` 
 | Field | Notes |
 |---|---|
 | `id` (LangGraph thread id), `projectId`, `projectKey`, `workflowId`, `workflowVersion`, `definitionSnapshot` | |
-| `trigger: Trigger(type: MANUAL/API/CI/JIRA, ciExecutionId?)` | |
+| `trigger: RunTrigger(type: MANUAL/API/CI/JIRA/SCHEDULE, ciExecutionId?)` | |
 | `input: RunInput(issueKey?, parameters, ci: CiContext?)` | |
 | `status: PENDING → RUNNING ⇄ WAITING → SUCCEEDED / FAILED / CANCELLED` | |
 | `outcome: SUCCESS / FAILURE?` | from the END node reached (FAILURE on unhandled failure) |
 | `waitingOn: WaitingOn(kind: HUMAN_GATE/WAIT_FOR_CI/WRITE_CONFIRMATION/AGENT_QUESTIONS, nodeId, approvalId?, signal?)?` | `AGENT_QUESTIONS`: a step's agent stopped with questions (ADR 0060) |
-| `nodes: List<NodeExecution>` | `id, nodeId, nodeName, kind, templateKey?, agent: StepAgentRecord?, attempt, status (RUNNING/WAITING/SUCCEEDED/FAILED/SKIPPED), port (taken output port), startedAt, finishedAt, summary, confidence, runnerJobId, usage, cost, error, artifactIds, repositories: List<RepositoryResult>`; `agent` (ADR 0059) = who did a `TASK` step: `agentKey, agentName, harness?, modelProfileId?, modelLabel?`, null for other kinds and for executions before ADR 0059 |
+| `nodes: List<NodeExecution>` | `id, nodeId, nodeName, kind, templateKey?, agent: StepAgentRecord?, attempt, status (RUNNING/WAITING/SUCCEEDED/FAILED/SKIPPED), port (taken output port), startedAt, finishedAt, summary, confidence, runnerJobId, usage, cost, apiCost (the cost at API list prices; equals cost unless a subscription paid), error, artifactIds, repositories: List<RepositoryResult>`; `agent` (ADR 0059) = who did a `TASK` step: `agentKey, agentName, harness?, modelProfileId?, modelLabel?`, null for other kinds and for executions before ADR 0059 |
 | `artifacts: List<Artifact>` | `id, nodeId, name, kind (SPEC/PLAN/TASKS/ANALYSIS/DIFF/REVIEW/LOG/JSON/MARKDOWN), mediaType, content, createdAt` |
 | `mergeRequest: MergeRequestSnapshot(url, branch, targetBranch)?`, `review: ReviewReport?` | `mergeRequest` = the primary repository's merge request of a `DELIVER_CHANGES` step, else the first one opened |
 | `repositories: List<RepositoryResult>` | latest result per repository over all runner steps (ADR 0034): `key, url, purpose, access, primary, branch?, commitSha?, diffStat?, mergeRequestUrl?, pushed, error?` |
-| `cost`, `createdAt`, `startedAt`, `finishedAt`, `failure: RunFailure(nodeId, message, retryable)?` | |
+| `cost`, `apiCost`, `createdAt`, `startedAt`, `finishedAt`, `failure: RunFailure(nodeId, message, retryable)?` | `apiCost` = sum of the steps' cost at API list prices |
+| `startedBy: Actor?`, `extraVisits: Map<nodeId, Int>` | who started the run; attempts granted on top of `maxVisits` by a person retrying |
 
 Invariants: one node RUNNING at a time; `WAITING` implies `waitingOn`; terminal runs immutable except
 cost roll-up; `maxVisits` enforced per node.
@@ -230,5 +231,7 @@ WorkflowRun:   PENDING -> RUNNING -> WAITING -> RUNNING -> SUCCEEDED (outcome SU
                               \-> FAILED (outcome FAILURE)   \-> CANCELLED (reject / cancel)
 CiExecution:   QUEUED -> RUNNING -> SUCCEEDED | FAILED     (gateResult derived)
 Benchmark:     DRAFT -> RUNNING -> COMPLETED | FAILED | CANCELLED
-RunnerJob:     CREATED -> RUNNING -> SUCCEEDED | FAILED | TIMED_OUT
+AgentJob:      QUEUED -> LEASED -> STARTING -> RUNNING -> SUCCEEDED | FAILED | TIMED_OUT | CANCELLED
+                  (STARTING/RUNNING -> LOST when the heartbeats stop; LEASED without heartbeat -> back to QUEUED;
+                   QUEUED -> CANCELLED or TIMED_OUT past the queue deadline; see 10-agent-execution.md)
 ```

@@ -12,7 +12,7 @@ login** instead of the Back Office LLM gateway.
 - You get one **personal runner pool**. It runs only the steps of **your private projects** in runs **you** started
   (also with **Start** in My work). Steps of team projects, and of anyone else, never go there.
 - Once you have a personal runner, your private projects' steps **wait for it**: if your computer is off, they stay
-  queued (up to the queue timeout, 24 h by default) and start when it comes back. Remove the personal runner to use
+  queued (up to the queue timeout, 24 h by default) and start when it comes back. **Remove my personal runner** (in **My account → My computer as a runner**) to use
   the shared fleet again.
 - You can connect several computers; any online one takes the next step.
 - Administrators see your pool in **Administration → Runner fleet** (marked with an owner) and can revoke it.
@@ -68,7 +68,7 @@ switch to your own login (the variable must be passed to the container).
 
 The runner tells Back Office with every request for work which coding agents it has and whether your login is set
 (ADR 0050). When it reports your login for the first time, you get the model profiles **Claude Opus (my login)**,
-**Claude Sonnet (my login)** and **Claude Haiku (my login)**; **Account** → **My models** shows the runner's state
+**Claude Sonnet (my login)** and **Claude Haiku (my login)**; **My account** → **My models** shows the runner's state
 and the models you can use. A runner that is online without the login makes those models unusable (the model
 pickers and the start of a run say so) instead of failing the job later.
 

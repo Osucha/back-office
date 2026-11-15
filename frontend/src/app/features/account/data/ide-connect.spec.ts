@@ -24,8 +24,27 @@ describe('connect your IDE', () => {
     expect(vs.inputs[0].password).toBe(true);
   });
 
-  it('lists the tools of doc 11', () => {
-    expect(MCP_TOOLS.map((t) => t.name)).toContain('decide_gate');
-    expect(MCP_TOOLS).toHaveLength(8);
+  it('lists every tool of the MCP server (BackOfficeMcpTools)', () => {
+    expect(MCP_TOOLS.map((t) => t.name)).toEqual([
+      'list_my_turns',
+      'get_run',
+      'get_artifact',
+      'start_workflow',
+      'decide_gate',
+      'search_task_library',
+      'get_project_context',
+      'get_delivery_insights',
+      'get_agent_insights',
+      'list_projects',
+      'get_workflow_palette',
+      'get_workflow',
+      'validate_workflow',
+      'create_workflow',
+      'update_workflow',
+      'create_project',
+      'get_model_options',
+      'get_model_plan',
+    ]);
+    expect(MCP_TOOLS.every((t) => t.does.length > 0)).toBe(true);
   });
 });

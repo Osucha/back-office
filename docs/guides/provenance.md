@@ -29,7 +29,7 @@ node docs/guides/verify-attestation.mjs attestation.intoto.json keys.json
 # predicateType: https://back-office.dev/attestations/agent-run/v1
 # subject: git+https://git.example.com/shop.git@4f2a9c1e0b7d sha256:cc1b… gitCommit:4f2a9c1e0b7d
 # subject: diff:8d36e132-…/impl/2 sha256:d546…
-# run: 8d36e132-… AGENT_JOB workflow=Issue to MR v3
+# run: 8d36e132-… AGENT_JOB workflow=Issue to reviewed MR v3
 # model: anthropic/claude-opus-5 effort=HIGH
 ```
 

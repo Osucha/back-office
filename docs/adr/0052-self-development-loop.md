@@ -1,6 +1,7 @@
 # 0052 — Back Office develops itself: pipeline in the loop, workflows that start workflows, a watcher and a session
 
-- Status: accepted (steps 1 to 4 implemented)
+- Status: accepted (steps 1 to 4 implemented); partly superseded by 0056 (START_WORKFLOW and PROJECT_DIGEST are
+  action nodes)
 - Date: 2026-10-23
 - Deciders: owner
 - Related: ADR 0029 (prompt injection), 0033 (approval before write), 0044 (run workspaces), 0049 (MCP), 0050

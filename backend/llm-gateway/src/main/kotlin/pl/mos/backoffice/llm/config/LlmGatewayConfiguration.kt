@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.config
 
+import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.observation.ObservationRegistry
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -10,6 +11,7 @@ import pl.mos.backoffice.llm.budget.application.port.`in`.EnforceBudgets
 import pl.mos.backoffice.llm.budget.domain.BudgetExceededException
 import pl.mos.backoffice.llm.gateway.ChatModelFactory
 import pl.mos.backoffice.llm.gateway.ChatOptionsMapper
+import pl.mos.backoffice.llm.gateway.LlmMetrics
 import pl.mos.backoffice.llm.gateway.ProviderRegistry
 import pl.mos.backoffice.llm.gateway.ProviderSettings
 import pl.mos.backoffice.llm.gateway.SpringAiChatModelFactory
@@ -115,6 +117,10 @@ class LlmGatewayConfiguration {
     @Bean
     fun llmPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { LlmPermissions.definitions }
 
+    /** Token and cost counters of the gateway and the sandbox proxy; recorded only when a meter registry exists. */
+    @Bean
+    fun llmMetrics(meters: ObjectProvider<MeterRegistry>): LlmMetrics = LlmMetrics(meters.getIfAvailable())
+
     @Bean
     fun llmGateway(
         registry: ProviderRegistry,
@@ -129,6 +135,7 @@ class LlmGatewayConfiguration {
         budgets: ObjectProvider<EnforceBudgets>,
         gate: AuthorizationGate,
         quota: ConnectionQuota,
+        metrics: LlmMetrics,
     ): LlmGateway = SpringAiLlmGateway(
         registry = registry,
         factory = factory,
@@ -142,6 +149,7 @@ class LlmGatewayConfiguration {
         rateLimiter = rateLimiter,
         budgetPrecheck = budgetPrecheck(budgets.getIfAvailable(), gate),
         quota = quota,
+        metrics = metrics,
     )
 
     /** In-process calls stop at the same hard limits as the sandbox proxy (ADR 0025). */

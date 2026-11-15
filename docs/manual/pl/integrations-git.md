@@ -1,9 +1,15 @@
 # Dostęp agentów do gita
 
 Agenci kodujący klonują repozytoria projektu i zmieniają je w katalogu przebiegu; krok **Dostarcz zmiany** potem
-zatwierdza pracę (commit), wypycha gałąź, a na GitLabie otwiera merge request (ADR 0063). Oba dzieją się w sandboxie
-za pomocą tokenów gita, które znajdują się **wyłącznie w klastrze runnerów**.
-Płaszczyzna sterowania Back Office nie ma żadnych poświadczeń gita i nigdy nie wywołuje API SCM. Ten rozdział
+zatwierdza pracę (commit), wypycha gałąź, a na GitLabie otwiera merge request przez push options gita (ADR 0063).
+Oba dzieją się w sandboxie na runnerze. Tokeny gita przechowuje projekt, zaszyfrowane, i przekazuje runnerowi dla
+każdego zadania ([Tokeny dostępu do repozytoriów w projekcie](#git-project-tokens)), albo są zainstalowane w puli
+runnerów (starszy sposób, teraz zapasowy). Sam Back Office wywołuje API GitLaba tylko do odczytu, tokenami projektu:
+żeby sprawdzić token repozytorium (jego zakresy i datę wygaśnięcia, rolę w projekcie, ochronę gałęzi domyślnej)
+oraz, dla węzła **Oczekiwanie na CI** (**Wait for CI**) z włączonym **Obserwuj pipeline** (**Watch pipeline**), żeby
+odczytać ostatni pipeline gałęzi przebiegu i logi jego nieudanych jobów tokenem CI_READ
+([Oczekiwanie na CI](workflows.md#nodes)). Nigdy nie zapisuje przez API: gałęzie i merge requesty powstają tylko
+przez git push dostarczenia. Ten rozdział
 opisuje konfigurację najmniejszych uprawnień (token tylko do odczytu i token do wypychania dla każdego
 repozytorium), tworzenie tokenów w GitLabie lub GitHubie, ochronę gałęzi domyślnej tak, aby żaden token
 agenta nie mógł scalić zmian, instalację tokenów w puli runnerów i ich rotację.
@@ -40,7 +46,10 @@ Uwierzytelnianie: wbudowany credential helper gita odpowiada nazwą użytkownika
 z pliku `/var/run/backoffice/git/token`. Jest używany tylko przy clone, fetch, ls-remote oraz (w zadaniach
 dostarczenia, PUSH_MR) push; token nigdy nie jest zapisywany w `.git/config`, w środowisku agenta ani w logach.
 
-Nic nie wywołuje API GitLaba ani GitHuba, więc żaden token nie potrzebuje zakresu API.
+Runner i sandbox nigdy nie wywołują API GitLaba ani GitHuba, więc tokeny do klonowania i wypychania nie potrzebują
+zakresu API. `read_api` jest potrzebny tylko do odczytu pipeline'ów: token CI_READ dla **Obserwuj pipeline** (czyta
+Back Office) i dla konektora **GitLab (tylko odczyt)** (używa go agent), zob.
+[Tokeny dostępu do repozytoriów](#git-project-tokens).
 
 **Kilka repozytoriów.** Projekt może mieć kilka repozytoriów, a workflow może klonować kilka z nich
 ([Źródła workflowu](workflows.md#workflow-sources)). Runner wykonuje wtedy powyższe czynności dla każdego
@@ -281,7 +290,8 @@ dała każdemu projektowi, którego kroki go używały, konektor `gitlab-read`.
 <a id="git-install"></a>
 ## Zainstaluj tokeny w puli runnerów
 
-Tokeny trafiają do klastra, w którym działa runner-controller puli, nigdy do Back Office.
+Tokeny puli są zapasowe dla repozytoriów bez pasującego [tokenu projektu](#git-project-tokens) (przestarzałe; log
+zadania mówi, którego użyto). Trafiają do klastra, w którym działa runner-controller puli, nie do Back Office.
 
 **Kubernetes (chart `back-office-runner`)**
 
@@ -373,8 +383,10 @@ repozytorium i tego poziomu:
 | `tools` (publiczne repozytorium) | `NONE` | żaden | klonowane anonimowo |
 
 Układ sandboxa: każde repozytorium jest klonowane do `/workspace/<path>` (domyślnie jego klucz). Agent,
-`setupCommand`, `verifyCommand` i skille działają w repozytorium **głównym** (primary); pozostałe
-leżą obok (`../docs`) i agent może je edytować. Prompt agenta kończy się krótką listą **Repositories** (klucz,
+**Polecenie weryfikacji** (**Verify command**) kroku i skille działają w repozytorium **głównym** (primary); pozostałe
+leżą obok (`../docs`) i agent może je edytować. **Polecenie przygotowania** (**Setup command**) należy do workflowu,
+nie do kroku ani repozytorium: wykonuje się raz w katalogu przebiegu przed pierwszym krokiem kodującym
+([Katalog przebiegu](workflows.md#run-directory)). Prompt agenta kończy się krótką listą **Repositories** (klucz,
 ścieżka, dostęp, cel). Zadanie bez repozytoriów startuje w pustym `/workspace`.
 
 Tokeny instalujesz tak samo jak dla jednego repozytorium ([Instalacja](#git-install)): jeden wpis `repoSecrets`

@@ -197,4 +197,4 @@ or run benchmarks off-hours.
 | `POST /api/v1/model-profiles/{id}/test` | credentials and model id with the smallest possible call |
 | Provider dashboard | rate-limit tier, spend cap, model availability |
 | [running-a-benchmark.md](../guides/running-a-benchmark.md) | rubric, judge and concurrency guidance for benchmarks |
-| [runner-job-failed.md](runner-job-failed.md) | coding attempts that fail inside the agent runner rather than at the provider |
+| [agent-jobs.md](agent-jobs.md) | coding attempts that fail inside the agent runner rather than at the provider |

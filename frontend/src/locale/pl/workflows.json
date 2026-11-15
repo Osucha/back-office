@@ -354,7 +354,7 @@
   "workflows.props.actionConfigJson": "Konfiguracja akcji (JSON)",
   "workflows.props.actionConfigJson.extra": "Brakujące klucze przyjmują wartości domyślne akcji.",
   "workflows.node.agentOwn": "Agent tego kroku. {$kind}",
-  "workflows.node.agentTemplate": "Agent szablonu. {$kind}",
+  "workflows.node.agentTemplate": "Agent domyślny: ten krok nie wskazuje agenta. {$kind}",
   "workflows.node.noAction": "brak akcji",
   "workflows.node.noModel": "bez modelu",
   "workflows.kind.action": "Akcja",

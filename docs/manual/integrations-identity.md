@@ -36,7 +36,7 @@ keeps the tokens server-side and gives the browser only the session cookie `BO_S
 | Registration | `BACKOFFICE_AUTH_REGISTRATION` (`BACKOFFICE_REGISTRATION`) | `auth.registration` | `INVITE_ONLY` |
 | Allowed e-mail domains | `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS` (`BACKOFFICE_ALLOWED_EMAIL_DOMAINS`) | `auth.allowedEmailDomains` | empty |
 | First administrators | `BACKOFFICE_AUTH_BOOTSTRAP_ADMINS` (`BACKOFFICE_BOOTSTRAP_ADMINS`) | `auth.bootstrapAdmins` | empty |
-| Session idle / absolute timeout | `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` / `_ABSOLUTE_TIMEOUT` | `auth.session.idleTimeout` / `absoluteTimeout` | `PT30M` / `PT12H` |
+| Session idle / absolute timeout | `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` / `_ABSOLUTE_TIMEOUT` (`BACKOFFICE_SESSION_IDLE_TIMEOUT` / `_ABSOLUTE_TIMEOUT`) | `auth.session.idleTimeout` / `absoluteTimeout` | `PT24H` / `PT24H` |
 
 Registration, domains, group sync and token lifetime are only defaults: once saved in **Administration** →
 **Platform settings** the saved values win ([administration.md](administration.md#platform-settings)).

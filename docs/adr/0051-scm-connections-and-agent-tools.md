@@ -1,6 +1,7 @@
 # 0051 — SCM connections on project repositories, sealed credential delivery and agent tools
 
-- Status: accepted (steps 1 to 4 implemented; 5 planned)
+- Status: accepted (steps 1 to 4 implemented; step 5 not built); partly superseded by 0063, 0064 (push only in the
+  Deliver changes action; agent tools are connectors)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0013 (no SCM API), 0024 (sandboxed runner fleet), 0029 (prompt-injection defences), 0030

@@ -75,10 +75,16 @@ the same model are separate leaderboard rows and never mixed up.
 
 ## Execution
 
-`RunBenchmark` use case builds the attempt matrix and hands attempts to `BenchmarkExecutor`
-(adapter) which runs them with bounded concurrency per provider (default 2) to respect rate limits.
-Attempts are persisted before execution so progress survives restarts; on startup `PENDING` and
-`RUNNING` attempts of a `RUNNING` benchmark are re-queued (coding jobs re-attach by Job name).
+`ManageBenchmarks` builds the attempt matrix when a benchmark starts and hands the attempts to the
+`AttemptExecutor` port. Its adapter (`AttemptExecutorAdapter`) turns every attempt into a `BENCHMARK_ATTEMPT` work item
+(dedupe key `BENCHMARK_ATTEMPT:<attemptId>`) in the PostgreSQL work queue, written in the caller's transaction; a
+worker runs it through `ExecuteAttempt`. Rate limits are kept by the distributed provider rate limiter of the LLM
+gateway (benchmark calls are batch priority and leave a reserve for interactive work); a retryable provider error puts
+the attempt back to `PENDING` and re-queues it with backoff (`backoffice.evaluation.retry`). The old
+`backoffice.evaluation.concurrency-per-provider` setting is deprecated and ignored. A `CODING_JOB` attempt submits its
+agent job and returns; the job's completion enqueues the attempt again, so no worker waits on a coding job.
+Attempts are persisted before execution so progress survives restarts; on startup `RecoverBenchmarks` re-queues
+`PENDING` and `RUNNING` attempts of a `RUNNING` benchmark.
 
 Progress is pushed over SSE (`BenchmarkProgress` events).
 
@@ -107,7 +113,7 @@ adds the columns and fills them for older attempts from the runner jobs' `agent_
 **The candidate's own time (ADR 0046/0065).** `candidateLatencyMs` runs from the start of the candidate's job on its
 runner (`RunnerResult.startedAt`, the job's first RUNNING heartbeat) or of its model call to the result; waiting for a
 runner slot is excluded (a result without a start falls back to the attempt's start). A login model's answer measures
-its PROMPT job the same way.
+its PROMPT job the same way. V210 recomputes the time of older attempts from their runner jobs where those are known.
 
 ## Leaderboard metrics
 
@@ -123,7 +129,7 @@ its PROMPT job the same way.
 | `apiCostPerAccepted` | ADR 0065: `totalApiCost / passed attempts`; null without a passed attempt |
 | `scorePerApiDollar` | ADR 0065: `meanScore / meanApiCost` |
 | `subscription` | ADR 0065: the candidate's model is a Claude Code login model (spent cost 0): compare it on the API figures |
-| `p50Latency`, `p95Latency` | the candidate's own time (`candidateLatencyMs`, queueing excluded) over succeeded attempts |
+| `p50LatencyMs`, `p95LatencyMs` | the candidate's own time (`candidateLatencyMs`, queueing excluded) over succeeded attempts |
 | `stability` | standard deviation of score across repetitions |
 
 Rows are per candidate (`LeaderboardRow.candidate`, label `agent · model`). Breakdowns: by category, by
@@ -139,6 +145,6 @@ The application ships a starter suite (`Starter: SDLC tasks`) with 12 tasks:
 - SPECIFICATION: write a feature specification from a two-line ticket (MEDIUM), write acceptance criteria and edge cases for a payment retry (HARD)
 - REVIEW: review a 200-line Kotlin diff with 3 planted bugs (MEDIUM)
 - ARCHITECTURE: propose module boundaries for a described monolith (HARD), write an ADR (MEDIUM)
-- CODING (`CODING_JOB` on a small public Kotlin sample repo): add a validated REST endpoint (EASY), fix a concurrency bug with a failing test (HARD), refactor to hexagonal ports with tests green (EXPERT), add a Flyway migration and JPA mapping (MEDIUM), implement a rate limiter with tests (HARD)
+- CODING (`CODING_JOB` on Spring PetClinic, Java/Maven, pinned to one commit; verified with `./mvnw -B -Dsurefire.timeout=900 test`): add a validated JSON endpoint for owners (EASY), record which vet handled a visit (MEDIUM), prevent lost updates on owner edits (HARD), refactor the vet module to ports and adapters (EXPERT), rate-limit owner form submissions (HARD)
 
 They are examples; the owner is expected to replace them with real tickets and real repositories.

@@ -63,7 +63,7 @@ or Sigstore policy-controller:
 
 ```bash
 cosign verify registry.example.com/back-office/api@sha256:... \
-  --certificate-identity-regexp '^https://gitlab.example.com/mos/back-office//' \
+  --certificate-identity-regexp '^https://gitlab.example.com/your-group/back-office//' \
   --certificate-oidc-issuer https://gitlab.example.com
 cosign verify-attestation --type cyclonedx <same flags> registry.example.com/back-office/api@sha256:...
 ```
@@ -90,7 +90,7 @@ cosign verify-attestation --type cyclonedx <same flags> registry.example.com/bac
 | Kubernetes | EKS 1.33+ with managed or self-managed EC2 node groups / Karpenter | **Not** EKS Auto Mode or Fargate for sandbox nodes: they cannot run a custom container runtime (Auto Mode nodes are immutable Bottlerocket; Fargate has no RuntimeClass support). The control plane can run anywhere. |
 | NetworkPolicy | VPC CNI with `enableNetworkPolicy=true` (or Calico/Cilium) | verify with `check-runner-cluster.sh` |
 | PostgreSQL | RDS for PostgreSQL 17 (or Aurora PostgreSQL), Multi-AZ, PITR | RDS Proxy **pins** sessions that `LISTEN` ([pinning docs](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-pinning.html)): use the instance/cluster endpoint for `externalDatabase.host`; the proxy may serve only the Hikari pools |
-| Object storage | S3, SSE-KMS, versioning, lifecycle rules for `jobs/` (30 d) and `runs/` (180 d) | credentials via **IRSA** (`api.serviceAccount.annotations.eks.amazonaws.com/role-arn`) or EKS Pod Identity; leave `storage.s3.accessKey` empty |
+| Object storage | S3, SSE-KMS, versioning, lifecycle rules for `agent-jobs/` (30 d) and `runs/` (180 d) | credentials via **IRSA** (`api.serviceAccount.annotations.eks.amazonaws.com/role-arn`) or EKS Pod Identity; leave `storage.s3.accessKey` empty |
 | Secrets | Secrets Manager + External Secrets Operator (`externalSecrets.enabled`) | one JSON secret per target, keys = env names |
 | Ingress | AWS Load Balancer Controller, ALB `target-type: ip`, `idle_timeout.timeout_seconds=3600` | NetworkPolicy peer = VPC CIDR (ALB is not a pod) |
 | gVisor | **no managed option.** Launch template user data (or a custom AMI / Karpenter `EC2NodeClass` userData) that installs `runsc` + `containerd-shim-runsc-v1` and adds `[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc] runtime_type = "io.containerd.runsc.v1"`; label/taint the nodes; the runner chart creates the RuntimeClass (`runtimeClasses.create=true`, handler `runsc`). Worked example: [gVisor on EKS with Karpenter](https://jicowan.medium.com/running-gvisor-on-eks-with-karpenter-39e8d914e1c3). Bottlerocket would need a custom variant. | |

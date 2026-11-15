@@ -95,7 +95,8 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
 ### 2. Prompt construction
 
 - `TemplateRenderer.renderPrompt(template, model, blocks)`: values under the untrusted roots `issue`,
-  `artifacts`, `mr`, `review`, `ci`, `input`, `parameters`, `branch`, `lastError` become data blocks; trusted roots
+  `artifacts`, `mr`, `review`, `ci`, `input`, `parameters`, `runInput`, `runInputText`, `branch`, `lastError`,
+  `answers` become data blocks; trusted roots
   (`project`, `node`, `run`, `feedback`, `decision`, `confidence`, `lastOutcome`, and `params`, the template parameter
   values set in the designer, ADR 0058) are inserted sanitised. ADR 0062: parameters whose value the run sets (bound
   `START` from the start form or `ARTIFACT` from an earlier step's output) are listed under
@@ -139,7 +140,8 @@ feedback (authenticated, audited), the task-suite definition of a benchmark (rub
    non-empty title, detail, integer line; `verdict` enum; `score` 0..100; REQUEST_CHANGES needs at least one
    finding). Invalid → one repair turn with the list of problems → still invalid → BLOCKER finding "Needs human
    review: the AI review answer was invalid" (fail closed).
-3. The verdict is computed by `ReviewVerdictPolicy` from the findings (any BLOCKER or more than two MAJOR →
+3. The verdict is computed by `ReviewVerdictPolicy` from the findings and the requirement coverage (any
+   BLOCKER, any `MISSING` requirement of a review against the specification, or more than two MAJOR →
    REQUEST_CHANGES). The model's own `verdict` field is only checked for consistency.
 4. Injection signals, per `config.injectionGuard` of the review template:
    - `BLOCK` (default): one BLOCKER finding per signal, title prefix `Needs human review: `, file and line of the

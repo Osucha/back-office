@@ -75,11 +75,12 @@ spec:
             description: "p95 is {{ "{{" }} $value | humanizeDuration {{ "}}" }}. Check CPU throttling, Hikari pending connections and slow queries."
         - alert: BackOfficeWorkQueueStalled
           # the oldest READY item waits longer than 5 minutes: workers down, not scaling, or all busy
-          expr: max by (kind) (backoffice_work_oldest_ready_seconds{ {{- $sel }}}) > {{ $m.prometheusRule.thresholds.oldestReadySeconds }}
+          # (the gauge has no kind label: the backlog per kind is backoffice_work_items{status="READY"})
+          expr: max(backoffice_work_oldest_ready_age_seconds{ {{- $sel }}}) > {{ $m.prometheusRule.thresholds.oldestReadySeconds }}
           for: 5m
           labels: { severity: critical }
           annotations:
-            summary: "Work items of kind {{ "{{" }} $labels.kind {{ "}}" }} wait more than 5 minutes"
+            summary: "The oldest ready work item waits more than {{ $m.prometheusRule.thresholds.oldestReadySeconds }} s"
             description: Workers are not picking up work. See docs/runbooks/scaling.md (KEDA not scaling).
         - alert: BackOfficeDeadWorkItems
           expr: max by (kind) (backoffice_work_items{ {{- $sel }},status="DEAD"}) > 0
@@ -99,22 +100,9 @@ spec:
           annotations:
             summary: "Runner pool {{ "{{" }} $labels.pool {{ "}}" }} has queued jobs and no runner working on them"
             description: Check the runner-controller of the pool (docs/guides/runner-fleet-install.md, docs/runbooks/scaling.md).
-        - alert: BackOfficeBudgetExceeded
-          expr: max by (scope) (backoffice_budget_utilisation{ {{- $sel }}}) >= 1
-          for: 1m
-          labels: { severity: warning }
-          annotations:
-            summary: "Budget {{ "{{" }} $labels.scope {{ "}}" }} exhausted - the LLM gateway refuses new calls"
-            description: An owner must raise the limit or stop the work (ADR 0025).
-        - alert: BackOfficeBudgetNearlyExceeded
-          expr: max by (scope) (backoffice_budget_utilisation{ {{- $sel }}}) >= {{ $m.prometheusRule.thresholds.budgetWarn }} < 1
-          for: 5m
-          labels: { severity: info }
-          annotations:
-            summary: "Budget {{ "{{" }} $labels.scope {{ "}}" }} at {{ "{{" }} $value | humanizePercentage {{ "}}" }}"
         - alert: BackOfficeEventListenerReconnecting
           # LISTEN/NOTIFY connection of the api replicas keeps dropping: SSE events are delayed
-          expr: sum by (pod) (increase(backoffice_events_listen_reconnects_total{ {{- $sel }}}[15m])) > {{ $m.prometheusRule.thresholds.listenReconnects15m }}
+          expr: sum by (pod) (increase(backoffice_event_listener_reconnects_total{ {{- $sel }}}[15m])) > {{ $m.prometheusRule.thresholds.listenReconnects15m }}
           for: 0m
           labels: { severity: warning }
           annotations:

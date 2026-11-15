@@ -706,7 +706,6 @@ metrics:
       apiErrorRatio: 0.02
       apiP95Seconds: 0.3
       oldestReadySeconds: 300
-      budgetWarn: 0.8
       listenReconnects15m: 3
     extraRules: []
   # ConfigMaps picked up by the Grafana sidecar (kube-prometheus-stack: label grafana_dashboard=1).

@@ -259,7 +259,7 @@ się w dzienniku audytu, API, interfejsie ani logach.
    może dotykać, na przykład `SHOP`, `WEB`. Puste pole oznacza dowolny projekt widoczny dla konta. Gdy są
    ustawione, połączenie nie zostanie wybrane dla zgłoszenia z innego projektu Jiry, a krok, który mimo to
    spróbuje, zostanie odrzucony.
-10. **Klucz projektu do testu** (**Project key for the test**) (tylko gdy **Dozwolone projekty** są puste):
+10. **Przykładowy klucz projektu do sprawdzenia** (**Sample project key for the check**) (tylko gdy **Dozwolone projekty** są puste):
    przykładowy klucz projektu Jiry używany do sprawdzenia uprawnień.
 11. **Data wygaśnięcia tokenu** (**Token expiry date**): data wygaśnięcia wybrana w Atlassian. Back Office
     przypomni o niej 14 dni wcześniej ([Wygaśnięcie tokenu](#jira-token-expiry)).
@@ -323,8 +323,8 @@ Pozwala krokom workflowu komentować i przenosić zgłoszenia **jako Ty** w Jirz
 <a id="jira-token-expiry"></a>
 ### Wygaśnięcie i rotacja tokenu
 
-Lista oznacza token jako **wkrótce wygaśnie** (**expiring soon**) 30 dni przed datą wygaśnięcia i jako
-**wygasł** (**expired**) po niej. Dodatkowo Back Office przypomina osobom, które mogą zmienić połączenie,
+Lista oznacza token znacznikiem **token wygasa {data}** (**token expires {date}**) 30 dni przed datą wygaśnięcia i znacznikiem
+**token wygasł** (**token expired**) po niej. Dodatkowo Back Office przypomina osobom, które mogą zmienić połączenie,
 gdy token wygasa w ciągu **14 dni** lub już wygasł:
 
 - karta w **Twoja kolej**: „Token Jiry połączenia <nazwa> wygasa za 5 dni” albo „Token Jiry połączenia <nazwa> wygasł”,
@@ -340,7 +340,7 @@ gdy token wygasa w ciągu **14 dni** lub już wygasł:
 Bez **Daty wygaśnięcia tokenu** w połączeniu nie ma przypomnień. Rotuj token przed tą datą, a natychmiast,
 jeśli wycieknie:
 
-1. Zaloguj się do Atlassian jako konto połączenia i utwórz nowy token klasyczny ([kroki](#jira-token)).
+1. Zaloguj się do Atlassian jako konto połączenia i utwórz nowy token tego samego rodzaju co połączenie (z zakresami, zalecany, z tymi samymi zakresami; albo klasyczny) ([kroki](#jira-token)).
 2. W Back Office otwórz połączenie, wybierz **Zastąp token** (**Replace token**), wklej nowy token, ustaw
    nową **Datę wygaśnięcia tokenu** i zapisz. Połączenie jest testowane ponownie; następny krok Jiry używa
    już nowego tokenu. Restart nie jest potrzebny.
@@ -453,7 +453,7 @@ konta, zanim jakikolwiek krok będzie mógł wybrać to połączenie.
 Test:
 
 1. wywołuje `GET /rest/api/3/myself`, aby sprawdzić e-mail i token, i pokazuje wyświetlaną nazwę konta;
-2. dla każdego z **Dozwolonych projektów** (a gdy ich nie ma, dla **Klucza projektu do testu**) pyta Jirę,
+2. dla każdego z **Dozwolonych projektów** (a gdy ich nie ma, dla **Przykładowego klucza projektu do sprawdzenia**) pyta Jirę,
    które z tych uprawnień ma konto: Browse Projects, Add Comments, Transition Issues, Edit Issues, Delete
    Issues, Assign Issues, Create Issues, Administer Projects, Manage Watchers;
 3. porównuje odpowiedź z możliwościami i pokazuje etykiety dla każdego projektu Jiry: **przyznane**
@@ -464,7 +464,7 @@ Test:
 | **OK** | konto ma dokładnie to, czego potrzebują możliwości | nic |
 | Uprawnienia **brakujące** (status: błąd) | możliwość nie może działać, na przykład **Komentowanie zgłoszeń** bez Add Comments; kroki, które jej potrzebują, zakończą się błędem | dodaj uprawnienie do roli projektowej konta w tym projekcie Jiry albo odznacz możliwość |
 | Uprawnienia **nadmiarowe** (status: ostrzeżenie, „ma więcej uprawnień niż potrzeba”) | konto może więcej, niż potrzebują możliwości, na przykład „to konto może też usuwać zgłoszenia / administrować projektem” | użyj dedykowanego konta tylko z wymienionymi uprawnieniami; do tego czasu połączenie działa |
-| Brak projektu do sprawdzenia (ostrzeżenie) | brak **Dozwolonych projektów** i **Klucza projektu do testu** | wpisz jedno z nich, inaczej uprawnień nie da się sprawdzić |
+| Brak projektu do sprawdzenia (ostrzeżenie) | brak **Dozwolonych projektów** i **Przykładowego klucza projektu do sprawdzenia** | wpisz jedno z nich, inaczej uprawnień nie da się sprawdzić |
 
 | Komunikat | Znaczenie | Rozwiązanie |
 |---|---|---|
@@ -778,10 +778,10 @@ administratora organizacji Atlassian i administratora Jiry:
    bezpieczeństwa (issue security levels), konto musi mieć prawo je widzieć.
 4. **Utwórz token API jako to konto.** Zaloguj się jako `backoffice-jira-reader@acme.com`, otwórz
    id.atlassian.com → **Security** → **API tokens** (https://id.atlassian.com/manage-profile/security/api-tokens)
-   → **Create API token** (klasyczny, nie **with scopes**), nadaj nazwę, na przykład `back-office-reader`,
+   → **Create API token with scopes** (zalecany; aplikacja Jira i zakresy **Odczytu zgłoszeń**, zob. [Token API z zakresami](#jira-scoped-token)) albo, na tym dedykowanym koncie, klasyczny **Create API token**; nadaj nazwę, na przykład `back-office-reader`,
    wybierz datę wygaśnięcia, skopiuj token (wyświetlany tylko raz) i zanotuj datę.
 5. **Dodaj połączenie w Back Office.** Projekt → **Połączenia** (albo **Administracja** → **Połączenia**
-   dla wszystkich projektów) → **Dodaj połączenie**: typ **Jira**, URL witryny, e-mail konta, token,
+   dla wszystkich projektów) → **Dodaj połączenie**: typ **Jira**, URL witryny, e-mail konta, rodzaj tokenu i token (dla tokenu z zakresami także jego zakresy),
    tylko możliwość **Odczyt zgłoszeń**, **Dozwolone projekty** = klucz projektu Jira (na przykład `SHOP`),
    **Data wygaśnięcia tokenu**. Kliknij **Testuj przed zapisem**: musi pokazać **Browse Projects** jako
    przyznane i brak uprawnień nadmiarowych. Następnie **Zapisz**.

@@ -1,6 +1,6 @@
 # 0010 - Angular 21 with NG-ZORRO, standalone components and signals
 
-Status: accepted - 2026-09-26
+Status: accepted - 2026-09-26; partly superseded by [0014](0014-graph-workflows-with-canvas-designer.md) (canvas designer instead of the step list)
 
 ## Context
 Required by the owner. The UI is data-dense (tables, timelines, a designer, charts).

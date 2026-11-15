@@ -8,8 +8,10 @@ reported a signal and the run still waits.
 
 ## How a run is supposed to move
 
-`RunService.start` saves the run as `RUNNING` and hands it to `LangGraphWorkflowEngine`. The engine
-runs the compiled graph on a virtual thread; every node reports to `RecordRunProgress` (`NodeStarted`,
+`RunService.start` saves the run as `RUNNING` and hands it to `LangGraphWorkflowEngine`. The engine never
+executes anything itself: start, resume, retry and recovery each enqueue a `RUN_ADVANCE` work item (dedupe key
+`RUN_ADVANCE:<runId>`, [work-queue.md](work-queue.md)), and the worker holding that item's lease invokes the
+compiled graph on its own thread until the graph interrupts or ends. Every node reports to `RecordRunProgress` (`NodeStarted`,
 `NodeCompleted`, `NodeFailed` events, `workflow_run.nodes` JSON with the `port` taken) and LangGraph
 writes a checkpoint to the `lg4jcheckpoint` table after each node. Before a `HUMAN_GATE` the graph
 stops, the engine creates an `approval_request` row and the run becomes `WAITING` with
@@ -19,54 +21,67 @@ waits the same way with `waiting_kind = AGENT_QUESTIONS` and an `approval_reques
 the run becomes `WAITING` with `waiting_kind = WAIT_FOR_CI` and `waiting_signal = <name>`;
 `POST /api/v1/ci/signals` (from `backoffice-ci signal`) or `POST /api/v1/runs/{id}/signals` resumes it.
 A scheduled sweep (`WaitTimeoutSweep`, every minute) resumes waits whose `timeoutSeconds` elapsed
-through the node's `timeout` port. On restart `RunRecovery` resumes every `RUNNING` run from its
-checkpoint; `WAITING` runs need nothing.
+through the node's `timeout` port. A runner-backed step (an agent step, **Deliver changes**) submits an agent
+job and stops at its `<node>::await` node; the run stays `RUNNING` but holds no work item, and the job's end
+enqueues the `RUN_ADVANCE` that continues it. `RunRecovery` (worker role, ShedLock `workflow-recovery`) scans at
+startup and every 10 minutes (`backoffice.pipelines.recovery-scan-delay`) and enqueues a `RECOVER` advance for
+every `RUNNING` run; it merges into a live item, so it only matters for runs left without one. `WAITING` runs
+need nothing.
 
 ## Symptoms, checks, fixes
 
-### 1. `RUNNING`, current node is a runner task (`write-spec`, `implement-*`, a **Deliver changes** node)
+### 1. `RUNNING`, current node is a runner task (an agent step, a **Deliver changes** node)
 
 Check:
 
 - `GET /api/v1/runs/{id}` -> `nodes[last].runnerJobId`, `startedAt`.
-- `SELECT status, started_at, external_ref FROM runner_job WHERE id = '<runnerJobId>'`.
-- `SELECT at, message FROM runner_job_event WHERE job_id = '<runnerJobId>' ORDER BY at DESC LIMIT 20`.
+- *Administration → Runner fleet → Agent jobs* (or `GET /api/v1/admin/agent-jobs`): status, pool, runner and reason
+  of that job.
+- `SELECT status, reason, queued_at, started_at, finished_at FROM agent_job WHERE id = '<runnerJobId>'`.
+- `SELECT at, message FROM agent_job_event WHERE job_id = '<runnerJobId>' ORDER BY at DESC LIMIT 20`.
 
 Fix:
 
-- Job `RUNNING` and events still arriving: the agent is working; runner tasks can take an hour.
-  The node waits until `timeoutSeconds` (node) or `backoffice.runner.default-timeout`, plus two minutes.
-- Job `RUNNING`, no events for a long time: follow `runner-job-failed.md`. Deleting the Kubernetes
-  Job (or `docker rm -f <label>`) makes `await` observe the failure within 5 s and the node fails.
-- Job row missing or `CREATED` forever: the launch failed silently; look for
-  `could not start runner job` in the API log; cancel the run and retry after fixing the runner.
+- Job `QUEUED`: no runner leased it; see "A job stays QUEUED" in [agent-jobs.md](agent-jobs.md).
+- Job `RUNNING` and events still arriving: the agent is working; runner tasks can take an hour. The sandbox is
+  bounded by the effective policy's `timeoutSeconds` (platform default 3600 s).
+- Job `RUNNING`, no events for a long time, or `LOST`: follow [agent-jobs.md](agent-jobs.md). Cancelling the run
+  cancels its agent job too.
+- Job finished (`SUCCEEDED`, `FAILED`, `TIMED_OUT`, `CANCELLED`, `LOST`) but the run did not move: the job's end
+  enqueues a `RUN_ADVANCE` item; look for it (`dedupe_key = 'RUN_ADVANCE:<runId>'`) and for a `DEAD` one in
+  [work-queue.md](work-queue.md). The recovery scan re-drives the run within 10 minutes.
 
 ### 2. `RUNNING`, current node is an in-app node (`LLM` task, `DECISION`, `fetch-issue`, ...)
 
 Check the API log for the run id:
 
 ```
-grep '<runId>' api.log | grep -E 'engine error|crashed|integration failure'
+grep '<runId>' api.log | grep -E 'engine error|integration failure'
 ```
 
 Fix:
 
-- `engine error` / `workflow task crashed`: the run should already be `FAILED`; if it is still
+- `engine error`: the run should already be `FAILED`; if it is still
   `RUNNING` the failure happened while persisting. `POST /api/v1/runs/{id}/cancel`, then start a new run.
 - Provider timeouts: `backoffice.llm.default-timeout` bounds every call; a hung call fails the node
   when it expires and an unconnected `failure` port marks the run `FAILED` for retry.
 
-### 3. `RUNNING` after an API restart
+### 3. `RUNNING` after a restart or a crashed worker
 
-Check the startup log for `recovering in-flight workflow runs count=N` and, per run, `recovering run id=`.
+When a worker dies, its lease on the `RUN_ADVANCE` item expires (60 s) and another worker continues the run
+from the last LangGraph checkpoint; the node that was running in-app runs again. A runner-backed node is not
+re-run: its agent job keeps running in the fleet and its end continues the run.
+
+Check the work item of the run (`SELECT status, attempts, last_error FROM work_item WHERE dedupe_key =
+'RUN_ADVANCE:<runId>' ORDER BY created_at DESC`) and the log line `recovery scan: re-driving RUNNING workflow
+runs count=N`.
 
 Fix:
 
-- `backoffice.pipelines.recover-on-startup=false`: enable it, or cancel and rerun.
-- `Resume request without a valid checkpoint`: the run crashed before its first checkpoint.
-  Cancel it and start again.
-- Recovery re-executes the interrupted node. Runner tasks re-attach to the existing job by label
-  (`run-<runId8>-<node>-<attempt>`); in-app nodes run again.
+- No live item and no recovery log: `backoffice.pipelines.recover-on-startup` (`PIPELINE_RECOVER_ON_STARTUP`) is
+  `false`, which turns off the startup and the periodic scan; enable it, or cancel and rerun.
+- Item `DEAD`: see [work-queue.md](work-queue.md) section 2; fix the cause and retry the item.
+- No worker online: see [work-queue.md](work-queue.md) section 1.
 
 ### 4. `WAITING` for CI but the signal was sent
 
@@ -105,8 +120,8 @@ Fix:
 
 - `OPEN` row exists: the UI filter hides it; `GET /api/v1/approvals?status=OPEN` lists it, decide through
   `POST /api/v1/approvals/{id}/decide`.
-- `DECIDED` but run still waiting: the resume thread died (log `workflow task crashed`). Restarting
-  the API does **not** resume waiting runs (they wait by design). Deciding again is rejected (409); use
+- `DECIDED` but run still waiting: the resume (`RUN_ADVANCE` item with the decision) did not apply; check
+  the item as in section 3. Restarting the API does **not** resume waiting runs (they wait by design). Deciding again is rejected (409); use
   `POST /api/v1/runs/{id}/cancel` and rerun, or resume manually: re-open the approval
   (`UPDATE approval_request SET status='OPEN', decision=NULL ...`), set
   `UPDATE workflow_run SET status='WAITING', waiting_kind='HUMAN_GATE', open_approval_id=...` and decide again.
@@ -141,4 +156,4 @@ Checkpoints in `lg4jthread` / `lg4jcheckpoint` can stay; they are keyed by run i
 - `GET /api/v1/runs/{id}/logs` for node-level log lines (template warnings, branch evaluations, runner messages).
 - `docs/architecture/03-pipelines-and-agents.md` for the compilation, routing and recovery rules.
 - `docs/guides/ci-integration.md` for the signal matching rules seen from the CI side.
-- `docs/runbooks/runner-job-failed.md` when the stuck node is runner-backed.
+- `docs/runbooks/agent-jobs.md` when the stuck node is runner-backed.

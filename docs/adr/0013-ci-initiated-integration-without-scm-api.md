@@ -1,6 +1,6 @@
 # 0013 - CI-initiated integration: the platform never calls the SCM API
 
-Status: accepted - 2026-09-26. Supersedes the GitLab parts of [0011](0011-code-review-as-ci-job-calling-api.md).
+Status: accepted - 2026-09-26. Supersedes the GitLab parts of [0011](0011-code-review-as-ci-job-calling-api.md). Partly superseded by [0051](0051-scm-connections-and-agent-tools.md) (project SCM tokens, read-only SCM API calls).
 
 ## Context
 The owner does not want Back Office to connect to GitLab. Everything that touches a repository must be

@@ -564,7 +564,7 @@ export class AgentsPageComponent {
     if (a.builtIn || !a.id) return;
     const ok = await this.confirm.danger(
       $localize`:@@library.agents.deleteConfirm.title:Delete agent "${a.name}:name:"?`,
-      $localize`:@@library.agents.deleteConfirm.content:Refused while a template uses the agent: choose another agent in those templates first.`,
+      $localize`:@@library.agents.deleteConfirm.content:Workflow steps that name this agent will no longer find it: choose another agent in those steps first.`,
       $localize`:@@library.agents.delete:Delete agent`,
     );
     if (!ok) return;

@@ -194,8 +194,8 @@ attempt progress and cost.
 agents (**Claude Code**, **OpenCode** or your own; they run with their environment in the job: instructions, rules,
 skills and connectors, as in a workflow step, see [The agent's environment](task-library.md#environment); a
 benchmark has no project, so only platform MCP connectors apply). Any
-other pair, a coding task for a model answer agent or a prompt task for a coding agent, makes no attempt and is
-counted as **Not applicable**. To compare agents on both kinds of tasks, add one candidate of each kind.
+other pair, a coding task for a model answer agent or a prompt task for a coding agent, makes no attempt; the
+leaderboard ranks each kind of work in its own block ([Reading the results](#reading-results)). To compare agents on both kinds of tasks, add one candidate of each kind.
 
 ### Steps: run a benchmark
 
@@ -247,33 +247,53 @@ its page says so.
 <a id="reading-results"></a>
 ### Reading the results
 
-The benchmark page has the tabs **Leaderboard** and **Attempts · N**; its header lists the **Candidates**.
+The benchmark page has the tabs **Leaderboard** and **Attempts · N**. Under the title a meta line lists the facts of
+the benchmark: the number of candidates, the judge (`judged by ...`), the repetitions, where coding tasks run (on
+shared runners or on your personal runner) and the total cost; a second line names who created it and links to the
+suite. What all model names repeat is said there once and left out of the tables: a common suffix such as
+`(my login)` (then `models from your Claude login (subscription)`) and a common first word such as `Claude`
+(`Opus`, `Sonnet`).
 
 Every cost has two amounts, as in workflows ([Costs](costs-insights.md)): what was spent through Back Office, and
 the same work at API list prices. They differ only for candidates that ran on a subscription
 ([Claude Code with your own login](#claude-code-login)): spent `$0`, shown as `$0 · API $1.14`. Such candidates are
-compared on the API figures: **Cost per accepted result** and **Score / $** then show the API amount marked
-**API**, and the chart places them at their API cost.
+compared on the API figures: **Cost / accepted** then shows the API amount marked **API**, and the chart places them
+at their API cost. When every candidate ran on a subscription, the page shows only the API figures and says so once
+(`total cost ≈ $x (API prices; subscription, nothing spent)`).
+
+**Leaderboard** shows one block per kind of work: **Model answer** (model answer agents on prompt tasks) and
+**Coding agent** (coding agents on coding tasks, the agents in brackets), each with its number of tasks. Candidates
+are ranked, charted and compared only within their block. Each block starts with a verdict line,
+`Cheapest accepted result: <model> · <cost> · x/n accepted · Best score: <model> · <score>` (the best score is named
+only when another candidate has it), followed by a table and a chart.
 
 | Leaderboard column | Meaning |
 |---|---|
-| **Candidate** | One row per candidate, `agent · model`, for example `Claude Code · Claude Sonnet`. |
+| **#** | Rank by **Cost / accepted**, cheapest first; `—` without an accepted result. The rank stays when you sort by another column. |
+| **Model** | The candidate's model; when the block mixes agents (Claude Code and OpenCode), the agent and the number of attempts below it. |
 | **Score** | Mean judge score over successful attempts. |
-| **Pass rate** | Share of attempts that passed (coding: verification and acceptance checks green and a score of 70 or more; prompt: score of 70 or more). Failed and timed-out attempts count as not passed. |
-| **Mean cost**, **Total** | Candidate cost per attempt and overall, failed and timed-out attempts included; `· API $x` when the cost at API prices differs. |
-| **Cost per accepted result** | **Total** / passed attempts: failed and timed-out attempts are paid by the passed ones ([Cost of an accepted result](costs-insights.md#cost-per-accepted)). Empty without a passed attempt. The number to compare candidates on; at API prices (marked **API**) for subscription candidates. |
-| **Score / $** | Mean score per dollar of mean cost; per dollar at API prices (marked **API**) for subscription candidates. |
-| **Time p50 / p95** | The candidate's own time (the model's answer, or the agent job from its start to its result), without queueing for a runner, the judge or retries, over succeeded attempts: half of them were faster than p50, 95% faster than p95. Below 20 attempts p95 is simply the slowest one; the tooltip says how many attempts the times come from. |
-| **Stability** | Standard deviation of the score across repetitions; lower is steadier. |
-| **Not applicable** | Tasks of the benchmark this candidate cannot do (a coding task for a model answer agent, a prompt task for a coding agent); shown only when there are any. |
+| **Accepted** | Accepted attempts of all attempts, `x/n`, failed and timed-out attempts included. A model answer is accepted with a score of 70 or more; a coding attempt also needs its verification (the tests) to pass. |
+| **Cost / accepted** | Cost per accepted result: total cost / accepted attempts, so failed and timed-out attempts are paid by the accepted ones ([Cost of an accepted result](costs-insights.md#cost-per-accepted)). Empty without an accepted attempt. The default sort and the number to compare candidates on; at API prices (marked **API**) for subscription candidates. |
+| **Mean cost per attempt** | The candidate's cost per attempt, failed and timed-out attempts included; `· API $x` when the cost at API prices differs. |
+| **Time p50** | The candidate's own time (the model's answer, or the agent job from its start to its result), without queueing for a runner, the judge or retries, over succeeded attempts: the median. The tooltip shows p95 and how many attempts the times come from (below 20 attempts p95 is simply the slowest one). |
+| **Stability** | Standard deviation of the score across repetitions; lower is steadier. Shown only with 2 or more repetitions. |
 
-**Score vs cost** plots every candidate; a candidate that another one beats on both score and cost is dominated.
-The breakdowns **Overall**, **By category**, **By difficulty** and **By task** repeat the table per slice.
-In **Attempts**, search tasks or candidates, filter by task and model, and open an attempt to read its agent and
-model, the output, the judge's criteria and reasoning, and the verification output. Each attempt shows its
-**Cost** (with the API amount), the **Judge** cost, its **Own time** (the candidate's own time, without queueing)
-and its **Duration** (from submission to result, waiting for a runner and the judge included). Read the worst attempt of
-each candidate before concluding anything: a low score is often a rubric problem.
+A row with fewer than half of its attempts accepted is dimmed: cheap, but unreliable.
+
+The chart under the table plots mean score against cost per accepted result (subscriptions at API prices); top left
+is better. The Pareto front (no other candidate is both cheaper and better) is marked in blue, its points joined by a
+dashed line. Candidates without an accepted result cannot be placed; they are named under the chart.
+The breakdowns **Overall**, **By category**, **By difficulty** and **By task** repeat the table per slice and kind of
+work.
+
+In **Attempts**, search tasks or candidates and filter by kind of work, candidate, result (accepted, not accepted,
+timed out, error) and task. The table shows the **Task**, the **Candidate**, **Rep** (with 2 or more repetitions), the
+**Score** with a mark for accepted or not accepted, the candidate's **Cost** (with the API amount) and its **Own time**
+(without queueing). The status column shows an icon only for exceptions: timed-out, failed, running and waiting
+attempts. Open an attempt to read its agent and model, the output, the judge's criteria and reasoning, the
+verification output, the **Judge cost** and the **Duration** (from submission to result, waiting for a runner and the
+judge included). Read the worst attempt of each candidate before concluding anything: a low score is often a rubric
+problem.
 
 ### Applying the result
 

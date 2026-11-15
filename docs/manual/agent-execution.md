@@ -45,7 +45,9 @@ Back Office (api)                runner-controller (pool P)              sandbox
    allowed images, resources and timeout are clamped, isolation only gets stricter. Violations end the job
    `FAILED` with `policy-violation: ...`.
 4. **Run.** The sandbox gets the job bundle (spec, policy, job token, proxy URL) as files, clones the
-   repository, runs the agent, verifies, commits, pushes and posts its result.
+   repositories (or continues in the run directory), runs the agent, verifies and posts its result with the diff.
+   An agent job never commits or pushes; a [Deliver changes](workflows.md#deliver-changes) job runs no agent and
+   commits and pushes the run directory instead.
 5. **Complete.** The controller reports how the sandbox ended; Back Office combines it with the agent's
    own result (a sandbox that exited 0 without posting a successful result is `FAILED`), revokes the job
    token, continues the workflow and signs the attestation.
@@ -63,7 +65,8 @@ and deletes the ones Back Office released (when the run ends; 24 hours after a f
 
 **Access of the agent.** When the step's agent has a restricted [access](task-library.md#agent-access) (**Read
 only**, **Only these paths**), the runner snapshots the repositories right before the agent starts and, after it
-finished, reverts every change outside the access before verifying, committing and pushing; the reverted paths are
+finished, reverts every change outside the access before verifying and reporting the diff (so a later **Deliver
+changes** step never sees them); the reverted paths are
 in the job log and the step summary (`[Back Office runner] reverted N change(s) ...`).
 
 <a id="isolation-levels"></a>
@@ -169,8 +172,8 @@ off) and retry the node. Because of the estimate a call can be refused slightly 
 - **Cancel**: cancelling the run (or **Cancel job** on the agent job, `fleet.manage`) sets `cancelRequested`;
   the controller sees it in the next heartbeat answer, deletes the sandbox and reports `CANCELLED`.
 - **LOST**: the controller stopped heartbeating (node failure, crash, network). The job is re-queued once
-  with a new token, unless it was running a job that pushes: then it ends `LOST`, because a second run
-  could push twice. Retry the node when the fleet is healthy.
+  with a new token, unless it was a delivery job (**Deliver changes**, the only job that pushes): then it ends
+  `LOST`, because a second run could push twice. Retry the node when the fleet is healthy.
 - **Controller restart or shutdown**: on start a controller deletes sandboxes it no longer tracks and
   reports them `LOST` (`controller-restarted`); on shutdown it stops leasing, lets jobs finish for up to
   5 minutes, then hands the rest back (`runner-shutdown`).
@@ -206,7 +209,7 @@ fooled and puts deterministic checks around it (architecture: `docs/architecture
 | Prompts | Text from issues, diffs, CI, artefacts and repositories is passed as clearly marked data blocks; invisible and direction-changing Unicode characters are removed |
 | AI code review | The answer must follow the review format or it is repaired once, otherwise the review fails closed. If the diff, the issue or the merge-request title contains text aimed at the AI, the review gets a **Needs human review** finding (file and line), the verdict is **REQUEST_CHANGES** and a blocking CI gate fails |
 | Confidence | A step whose input contains such text reports confidence 0, so "confident?" decisions go to the human gate |
-| Coding agent | It only gets a gateway token. It cannot read the git token, post the job result or push: the runner commits and pushes after the agent, only to the job's branch, never to the default branch, and removes git hooks and configuration the agent planted |
+| Coding agent | It only gets a gateway token. It cannot post the job result or push: its job gets at most a read-only git token with pushing disabled, and neither the agent nor the runner commits or pushes in an agent job. Only a later **Deliver changes** job (no agent runs in it) commits and pushes, only to the run's branch, never to the default branch, and removes git hooks and configuration the agent planted |
 | Benchmarks | An attempt that tries to talk to the judge is capped at 40 points and not passed |
 | MCP | An IDE agent can decide gates only with a token created with **Allow gate decisions via MCP**, and create or change workflows only with **Allow workflow edits via MCP** ([integrations-ide.md](integrations-ide.md#pat)) |
 

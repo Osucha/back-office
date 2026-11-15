@@ -15,7 +15,7 @@ and the API logs (`kubectl -n back-office logs deploy/back-office-api`).
 | `error=email-not-verified` | the provider sent `email_verified=false` | verify the address at the provider (Keycloak: user → **Email verified**) |
 | `error=email-missing` | no `email` claim | request scope `email`; Entra ID: add the optional `email` claim ([integrations-identity.md](integrations-identity.md#entra)) |
 | `error=identity-conflict` | the e-mail is already bound to another provider identity (user recreated, provider switched) | a DBA clears the binding: `issuer`, `subject` to null, status `INVITED` (`docs/runbooks/cannot-log-in.md`) |
-| `error=deactivated` | account deactivated | **Users** → user → **Activate** |
+| `error=deactivated` | account deactivated | **Users** → user → **Activate user** |
 | Redirect loop after the provider login | `BO_SESSION` cookie dropped: TLS terminated at the ingress without `X-Forwarded-Proto: https`, or UI and API on different sites | send forwarded headers; serve UI, `/api`, `/oauth2`, `/login` from one origin; `BACKOFFICE_AUTH_COOKIE_SECURE=false` only for plain-HTTP development |
 | Provider says "Invalid parameter: redirect_uri" | redirect URI not registered exactly (scheme, host, port) | register `<public URL>/login/oauth2/code/oidc` |
 | `error=invalid-id-token` | clock skew over 60 s, or issuer mismatch (`iss` in tokens differs from the configured issuer) | enable NTP; make the issuer URL identical for API and browser |
@@ -38,7 +38,7 @@ Full runbook: `docs/runbooks/cannot-log-in.md`.
 | Symptom (job reason) | Cause | Fix |
 |---|---|---|
 | `QUEUED`, `no online runner in pool <id>` | no controller of the pool called in the last 90 s | check the controller pod and logs, outbound HTTPS to Back Office, that the runner was not revoked |
-| `QUEUED`, `no runner pool can run this job` | pool labels, project list or allowed images do not fit the job's policy | fix the pool or the template/project policy; jobs are re-routed every 10 s |
+| `QUEUED`, `no runner pool can run this job` | pool labels, project list or allowed images do not fit the job's policy | fix the pool or the project sandbox policy; jobs are re-routed every 10 s |
 | `QUEUED`, no reason | pool or runner at capacity | raise **Max concurrent jobs** or `maxConcurrent`, add replicas |
 | `registration failed: 401` in the controller log | registration token used, expired (24 h) or for another pool | **Add runner** → new token |
 | Runner online, jobs fail at once with `policy-violation: ...` | image not in **Allowed images**, RuntimeClass missing, ceiling lowered | fix the pool or install the RuntimeClass |
@@ -51,7 +51,7 @@ Full runbook: `docs/runbooks/cannot-log-in.md`.
 | `FAILED` / `lease-not-acknowledged` | leased 5 times without a heartbeat | controller cannot start sandboxes: RuntimeClass, image, RBAC |
 | `budget-exceeded: ...` | job, project or platform hard limit reached | raise the limit or switch hard stop off, retry ([agent-execution.md](agent-execution.md#budgets-in-sandbox)) |
 | Agent log: `model-not-allowed` (403) | agent asked for a model other than the job's (Claude Code background model) | `RUNNER_EXTRA_ALLOWED_MODELS=anthropic/claude-haiku-*` |
-| **Egress denied** lists a host the build needs | host not in the effective allowlist | add it to the project or template policy, within the pool ceiling |
+| **Egress denied** lists a host the build needs | host not in the effective allowlist | add it to the project sandbox policy, within the pool ceiling |
 | An agent does not have a tool it should ([connector](task-library.md#connectors)) | the agent does not list the key, the key is defined neither in the project nor on the platform (step log: `connector <key> is defined neither in this project nor on the platform; skipped`, **Unknown connector** in Agents in this workflow), the MCP server's secret is missing, or the sandbox does not allow its host (**Egress denied**) | list the key on the agent, add the connector, set the secret, allow the **Host to allow** in the sandbox policy |
 | **Test** on a connector passes, but the agent cannot reach the server | the test runs from Back Office, not from the sandbox | allow the connector's host in the project's sandbox policy, within the pool ceiling and the platform policy |
 | `connector gitlab-read needs a read-only token with CI_READ` | the repository has no verified read-only token with `CI_READ` | add one on the project's **Sources** tab (role Reporter, `read_api`, `read_repository`) and test it ([integrations-git.md](integrations-git.md#git-agent-tools)) |
@@ -59,7 +59,7 @@ Full runbook: `docs/runbooks/cannot-log-in.md`.
 | `the receiving end does not support push options` | repository is not on GitLab | turn **Open a merge request** off on the **Deliver changes** node |
 | Pushed, but no merge request URL | token role below Developer, target branch missing, MR already existed | fix the role or branch |
 
-Runbooks: `docs/runbooks/agent-jobs.md`, `docs/runbooks/runner-job-failed.md`.
+Runbook: `docs/runbooks/agent-jobs.md` (including delivery failures: git push, merge request).
 
 <a id="runs"></a>
 ## Runs that do not move

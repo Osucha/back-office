@@ -477,8 +477,13 @@ the step keys `workspace` / `sessionRole`) with one **run directory** per run; t
 | `POST /runner/v2/jobs/{id}/heartbeat` | controller | extends the lease, reports phase; response carries `cancelRequested` |
 | `POST /runner/v2/jobs/{id}/uploads` | sandbox (job token) | presigned object-storage URL for large artefacts and logs |
 | `POST /internal/runner/jobs/{id}/events` / `result` | sandbox (job token) | streamed events and the agent's result (unchanged shapes, plus `digests` and `policy`) |
+| `POST /internal/runner/jobs/{id}/agent-token` | sandbox (job token) | issues the gateway-only agent token for the coding agent, once per lease (ADR 0029) |
 | `POST /runner/v2/jobs/{id}/complete` | controller | terminal status from the platform's point of view (exit code, OOM, deadline, egress log digest) |
 | `GET /runner/v2/config` | controller | pool policy ceiling, allowed images, gateway URLs, signing public key |
+| `PUT /runner/v2/key` | controller | its X25519 public key that released tokens are sealed to; idempotent (ADR 0051) |
+| `POST /runner/v2/jobs/{id}/credentials` | controller (lease holder) | the repository and connector tokens named in the signed spec, HPKE-sealed to the runner's key, once per lease (ADR 0051) |
+| `POST /runner/v2/workspaces/sync` | controller | reports the run workspaces it holds; the answer names the ones to delete (ADR 0044) |
+| `GET /runner/v2/pools/{id}/queue` | controller / KEDA metrics API scaler | queued and running jobs of the pool, for autoscaling |
 
 Assignments are signed (Ed25519, same key as attestations) over `jobId|specDigest|leaseExpiresAt`; see
 "Assignment verification".
@@ -522,7 +527,9 @@ What the Back Office side does exactly; operator guide in `docs/guides/runner-fl
   `pg_try_advisory_xact_lock`): an expired `LEASED` job is re-queued (up to `max-unacknowledged-leases`, then
   `FAILED`); an expired `STARTING`/`RUNNING` job is re-queued once unless it was `RUNNING` with
   `repository.push=true` or a `PUSH_MR` entry in `repositories` (it may have pushed) - otherwise it ends `LOST` (terminal; reported to the engine
-  as `FAILED`). `QUEUED` past `queue-timeout` (24 h) ends `TIMED_OUT` with `queue-timeout`.
+  as `FAILED`). Within `restart-grace` (5 min) after a Back Office process starts, the scan leaves expired
+  `STARTING`/`RUNNING` jobs alone (neither re-queued nor lost): their heartbeats could not arrive while Back Office was down, and a heartbeat
+  renews even an expired lease. `QUEUED` past `queue-timeout` (24 h) ends `TIMED_OUT` with `queue-timeout`.
 - **Completion.** The controller's status wins, except that `SUCCEEDED` needs a successful agent result
   (no result → `FAILED` "sandbox exited without posting a result"; a failed result → `FAILED`). The
   terminal transition revokes the job token and enqueues the continuation (shared `WorkQueue`, same
@@ -620,12 +627,13 @@ deletes those it does not run and reports them `LOST` / `controller-restarted`.
   (`prctl(PR_SET_DUMPABLE, 0)`), exchanges the job token for a gateway-only agent token
   (`POST /api/v1/internal/runner/jobs/{id}/agent-token`) and starts the agent with that token only; provider
   keys, `GIT_TOKEN`, `RUNNER_CALLBACK_TOKEN`, `RUNNER_GIT_TOKEN_FILE` are removed. Git credentials reach only
-  the git processes that need them (clone/fetch before the agent, push after it) through an inline helper that
+  the git processes that need them (clone/fetch before the agent; the push of a `DELIVER` job) through an inline helper that
   answers only for the repository host (per repository for multi-repository jobs, ADR 0034). After the agent and after `verifyCommand` the entrypoint kills stray
-  processes of the sandbox user, restores `.git/config`, empties `.git/hooks`, diffs with
-  `--no-ext-diff --no-textconv` against the base pinned at clone time and pushes `HEAD:refs/heads/<branch>` to
-  the spec's repository URL (never the default branch, never forced), only for `gitAccess: PUSH_MR` and only
-  with whitelisted push options (never a merge, ADR 0031). `RunnerResult.security` records what was enforced
+  processes of the sandbox user, restores `.git/config`, empties `.git/hooks` and diffs with
+  `--no-ext-diff --no-textconv` against the base pinned at clone time; an agent job never commits or pushes. Only a
+  `DELIVER` job (no agent) commits and pushes `HEAD:refs/heads/<pushBranch>` of its `PUSH_MR` repositories to the
+  spec's repository URL (never the default branch, never forced) with whitelisted push options (never a merge,
+  ADR 0031), see "Repositories and workspace" above. `RunnerResult.security` records what was enforced
   (including `gitAccess`) (older controllers with read-only Secret mounts leave the files readable: reported there and logged).
 - Large artefacts (over 2 MB), the full diff when it exceeds 2 MB, and the complete runner log are uploaded
   through `POST /api/v1/runner/v2/jobs/{id}/uploads` (job token) and a presigned `PUT`, and referenced as

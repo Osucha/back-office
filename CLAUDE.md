@@ -11,7 +11,7 @@ Read `docs/README.md` first. Architecture is hexagonal and enforced by ArchUnit;
   event outbox, roles; ADR 0023), `blob-storage` (S3-compatible / filesystem BlobStore), `app`,
   plus the separately deployed `runner-controller` (execution plane, ADR 0024; talks to Back Office only over HTTP).
 - `frontend/` Angular 21 + NG-ZORRO, standalone components, signals. API types generated from `docs/api/openapi.yaml`.
-- `runner/` container image and `entrypoint.py` for coding agents (OpenCode, Claude Code, Spec Kit).
+- `runner/` container image and `entrypoint.py` for coding agents (OpenCode, Claude Code).
 - `deploy/helm/back-office` Helm chart; `deploy/compose` local docker-compose; `ci-templates/` GitLab CI code-review gate.
 
 ## Commands

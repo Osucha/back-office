@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-10-20
 - Deciders: owner
-- Related: ADR 0019 (evaluation), 0024 (runner fleet), 0036 (Spec Kit per project), 0046 (benchmark execution);
+- Related: ADR 0001 (evaluation context), 0024 (runner fleet), 0036 (Spec Kit per project), 0046 (benchmark execution);
   docs/manual/evaluation.md, docs/manual/task-library.md
 
 ## Context

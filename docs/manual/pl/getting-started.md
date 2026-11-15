@@ -103,7 +103,7 @@ Kroki w kolejności:
 
 | Element | Do czego służy |
 |---|---|
-| Pasek boczny (po lewej) | Na górze przełącznik projektów, potem **Strona główna**, **Twoja kolej**, **Projekty**, **Uruchomienia**, **Wskaźniki** (**Insights**), **CI**, **Biblioteka**, **Modele**, **Ewaluacja** (**Evaluation**), **Koszty**; na dole **Administracja** i **Ustawienia**. Pozycje, do których nie masz uprawnień, są ukryte. |
+| Pasek boczny (po lewej) | Na górze przełącznik projektów, potem **Strona główna**, **Twoja kolej**, **Moja praca** (**My work**), **Projekty**, **Uruchomienia**, **Wskaźniki** (**Insights**), **CI**, **Biblioteka**, **Modele**, **Ewaluacja** (**Evaluation**), **Koszty**; na dole **Administracja** i **Ustawienia**. Pozycje, do których nie masz uprawnień, są ukryte. |
 | Górny pasek | Ścieżka nawigacji, wyszukiwarka, bursztynowy licznik bramek, które możesz rozstrzygnąć (ukryty przy zerze), wskaźnik aktualizacji na żywo, przycisk **Aktywność** (**Activity**) i menu awatara (konto, motyw, gęstość, wylogowanie). |
 | Paleta poleceń | `Ctrl K` (albo `⌘ K` lub `/`): wyszukiwanie projektów, workflowów, uruchomień po kluczu zgłoszenia lub id, szablonów oraz akcji, takich jak **Uruchom…** (**Start run…**), **Utwórz projekt**, **Przełącz motyw** (**Toggle theme**). |
 | Skróty klawiszowe | `?` wyświetla skróty bieżącej strony. Na listach `j` / `k` przesuwają zaznaczenie, a `Enter` otwiera element. |

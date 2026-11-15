@@ -6,14 +6,22 @@ Background: ADR 0023, docs/architecture/09-scale-and-operations.md. Code: `backe
 ## How it is supposed to work
 
 - Background work is a row in `work_item` (`kind`, `dedupe_key`, `payload`, `status`, `attempts`,
-  `max_attempts`, `lease_owner`, `lease_until`, `generation`, `last_error`). Kinds: `RUN_ADVANCE` (drive one
-  workflow run, key `RUN_ADVANCE:<runId>`), `BENCHMARK_ATTEMPT` (key `BENCHMARK_ATTEMPT:<attemptId>`), later
-  `CI_EXECUTION_COMPLETE`, `RETENTION`.
+  `max_attempts`, `lease_owner`, `lease_until`, `generation`, `last_error`). Kinds (`WorkKinds` in
+  `shared-kernel`):
+
+  | Kind | What one item does | Dedupe key |
+  |---|---|---|
+  | `RUN_ADVANCE` | drives one workflow run until it interrupts or ends | `RUN_ADVANCE:<runId>` |
+  | `BENCHMARK_ATTEMPT` | executes one benchmark attempt | `BENCHMARK_ATTEMPT:<attemptId>` |
+  | `JIRA_INTAKE_POLL` | one poll of a project's Jira intake watcher (enqueued by the scan, ShedLock `jira-intake-scan`, every 30 s) | `JIRA_INTAKE_POLL:<projectId>` |
+  | `PERSONAL_INTAKE_POLL` | one poll of a personal intake rule (ShedLock `personal-intake-scan`, every 30 s) | `PERSONAL_INTAKE_POLL:<ruleId>` |
+  | `CI_EXECUTION_COMPLETE`, `RETENTION` | reserved names; nothing enqueues them and no handler exists (retention runs as a ShedLock job, section 6) | - |
 - Every replica with the `worker` role (`backoffice.role`, default `api,worker`) claims READY items with
   `FOR UPDATE SKIP LOCKED`, leases them for `backoffice.platform.worker.lease` (60 s) and heartbeats every
   lease/3. Inserts wake workers with `NOTIFY backoffice_work`; workers also poll every 2 s.
 - Outcomes: DONE; READY again after a backoff (`Retry`, handler exception: 5 s * 2^(attempt-1), max 5 min);
-  DEAD after `max_attempts` (RUN_ADVANCE 10, BENCHMARK_ATTEMPT retry budget + 3).
+  DEAD after `max_attempts` (RUN_ADVANCE 10, BENCHMARK_ATTEMPT retry budget + 3, the intake polls 1 - the next
+  scan enqueues a fresh poll).
 - A second request with the same dedupe key while an item is live merges its payload and bumps
   `generation`; if the item was LEASED it runs again after the current run (the signal is never lost).
 - A run waiting for a runner job holds **no** work item: the runner control plane enqueues the continuation

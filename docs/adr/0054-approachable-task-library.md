@@ -1,9 +1,9 @@
 # 0054 — An approachable task library; CI checks that depend on time only block the way to main
 
-- Status: accepted
+- Status: accepted; partly superseded by 0055, 0056 (interfaces and executors removed)
 - Date: 2026-10-25
 - Deciders: owner
-- Related: ADR 0016 (task library), 0034 (step repositories), 0052 (self-development loop), 0053 (run inputs);
+- Related: ADR 0015 (task library), 0034 (step repositories), 0052 (self-development loop), 0053 (run inputs);
   docs/architecture/07-task-library.md, docs/manual/task-library.md, docs/manual/workflows.md, .gitlab-ci.yml
 
 ## Context

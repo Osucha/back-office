@@ -93,24 +93,21 @@ segment, aby zaznaczyć dany krok.
 Workflow może mieć kilka repozytoriów wśród swoich [źródeł](workflows.md#workflow-sources). Strona uruchomienia
 pokazuje, co stało się w każdym z nich:
 w faktach zaznaczonego kroku, a dla **Całego uruchomienia** jako najnowszy wynik każdego repozytorium ze
-wszystkich kroków:
+wszystkich kroków. Pod nagłówkiem **Repozytoria** (**Repositories**) każde repozytorium jest kartą:
 
-| Kolumna | Znaczenie |
+| Na karcie | Znaczenie |
 |---|---|
-| **Repozytorium** (**Repository**) | Klucz, przeznaczenie (**Kod źródłowy**, **Dokumentacja**, **Inne**) i oznaczenie głównego repozytorium. |
-| **Dostęp** (**Access**) | **Odczyt** (**Read**) dla kroków kodujących (agenci nigdy nie wypychają), **Wypchnięcie i merge request** (**Push and merge request**) dla kroku [Dostarcz zmiany](workflows.md#deliver-changes). |
-| **Gałąź** (**Branch**) | Gałąź wypchnięta przez dostarczenie (albo, przy **Odczycie**, gałąź, na której pracował agent). |
-| **Commit** | Commit po kroku, w skrócie; dla dostarczonych repozytoriów wypchnięty commit. |
-| **Zmiany** (**Changes**) | Statystyka diffu: zmienione pliki, dodane i usunięte wiersze (dla kroku kodującego niezacommitowana praca względem gałęzi bazowej). |
+| Klucz i znaczniki | Klucz repozytorium (URL po najechaniu), przeznaczenie (**Kod źródłowy**, **Dokumentacja**, **Standardy**, **Szablony**, **Inne**), **główne** (**primary**) dla głównego repozytorium i dostęp: **Odczyt** (**Read**) dla kroków kodujących (agenci nigdy nie wypychają), **Wypchnięcie i merge request** (**Push and merge request**) dla kroku [Dostarcz zmiany](workflows.md#deliver-changes). |
+| Stan (po prawej) | **wypchnięte** (**pushed**), gdy dostarczenie wypchnęło gałąź do tego repozytorium; **niewypchnięte** (**not pushed**) dla dostarczenia, które nie wypchnęło; **tylko odczyt** (**read only**) dla kroków kodujących, które nigdy nie wypychają; **błąd** (**failed**), gdy coś się tam nie powiodło (karta ma czerwoną ramkę). |
+| Gałąź, commit, zmiany | Gałąź wypchnięta przez dostarczenie (albo gałąź, na której pracował agent), commit po kroku w skrócie (dla dostarczonych repozytoriów wypchnięty commit) oraz dodane i usunięte wiersze (`+12 −3`; liczba plików po najechaniu); dla kroku kodującego niezacommitowana praca względem gałęzi bazowej. |
 | **Merge request** | Link do merge requestu otwartego przez dostarczenie, jeśli powstał. |
-| **Wypchnięto** (**Pushed**) | Tak tylko wtedy, gdy dostarczenie wypchnęło gałąź do tego repozytorium. Kroki kodujące nigdy nie wypychają. |
-| **Błąd** (**Error**) | Dlaczego klonowanie, commit lub wypchnięcie w tym repozytorium się nie powiodło, jeśli tak się stało. |
+| Tekst błędu | Dlaczego klonowanie, commit lub wypchnięcie w tym repozytorium się nie powiodło, jeśli tak się stało. |
 
 Krok **Dostarcz zmiany** ma też fakty **Akcja** (**Action**), **Gałąź** (**Branch**), **Merge request**
 i **Repozytoria** (**Repositories**). Merge request w nagłówku uruchomienia (i ten, do którego odwołują się decyzje
 i bramki) to merge request głównego repozytorium albo pierwszy otwarty, jeśli głównego nie dostarczono. Kroki wykonane przez
-starsze runnery pokazują jeden wiersz, dla głównego repozytorium. Nieudane wypchnięcie do jednego
-repozytorium nie cofa wypchnięć do pozostałych; sprawdź kolumnę **Błąd** i **Logi** kroku.
+starsze runnery pokazują jedną kartę, dla głównego repozytorium. Nieudane wypchnięcie do jednego
+repozytorium nie cofa wypchnięć do pozostałych; sprawdź błąd na każdej karcie i **Logi** kroku.
 
 <a id="retry-cancel"></a>
 ## Ponawianie, anulowanie i ręczne wysyłanie sygnału

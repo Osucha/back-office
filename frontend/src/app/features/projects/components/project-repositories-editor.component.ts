@@ -41,9 +41,9 @@ import {
   template: `
     <div class="intro">
       <span class="muted" i18n="@@projects.repos.intro"
-        >The agent runner clones these repositories into /workspace/&lt;key&gt; and pushes only
-        branches with a merge request. Back Office never calls the SCM API; CI calls Back
-        Office.</span
+        >Each workflow chooses in its Sources which of these repositories the agent runner clones
+        into /workspace/&lt;key&gt;. Agents only read them; a Deliver changes step pushes a branch
+        and opens a merge request. Back Office never calls the SCM API; CI calls Back Office.</span
       >
       <bo-help-link topic="project.repositories" />
     </div>
@@ -58,7 +58,7 @@ import {
       </p>
     } @else if (!hasPrimary()) {
       <p class="hint" i18n="@@projects.repos.noPrimary">
-        No primary repository: every coding step must name the repositories it uses.
+        No primary repository: every workflow must list its repositories in its Sources.
       </p>
     }
     @if (array().hasError('manyPrimaries')) {

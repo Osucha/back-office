@@ -58,9 +58,10 @@ feature branches do not receive protected variables).
 | `GET /ci/backoffice-ci.sh` | none | the client script |
 
 Tokens: `POST /api/v1/projects/{id}/ci-tokens` returns the plaintext once (`bo_ci_` + 40 random chars);
-the platform stores `SHA-256(token)`, `name`, `createdAt`, `lastUsedAt`, `revokedAt`. Authentication is a
-Spring Security filter that resolves `Authorization: Bearer bo_ci_...` to `ROLE_CI` with the project id
-as principal; controllers check that the entrypoint or run belongs to that project.
+the platform stores `SHA-256(token)`, `name`, `createdAt`, `lastUsedAt`, `revokedAt`. The identity
+authentication filter resolves `Authorization: Bearer bo_ci_...` to a principal of kind `CI_TOKEN` holding only
+the project permissions `ci.execute` and `ci.signal` on the token's project; the use cases check them like any
+other permission, so the token cannot touch another project.
 
 Idempotency: an execution for the same `(project, entrypoint, commitSha, mergeRequest.iid)` within 24 h is
 returned instead of created, unless `--var force=true`.

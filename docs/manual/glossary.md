@@ -4,8 +4,13 @@ The terms used in Back Office and in this manual, in alphabetical order. Each en
 that explains it.
 
 **Accepted result**: Work that counts as done. A task step execution that succeeded, is the last execution of its step
-in its run, and the run ended successfully; a successful run; a passed benchmark attempt. See
+in its run, and the run ended successfully; a successful run; an accepted benchmark attempt (a score of 70 or more,
+for a coding task also passing verification). See
 [Cost of an accepted result](costs-insights.md#cost-per-accepted).
+
+**Access (of an agent)**: What a coding agent may change in the repositories of its steps: **Full**, **Read only** or
+**Only these paths**. The runner reverts other changes after the agent finished. See
+[Access of an agent](task-library.md#agent-access).
 
 **Accountable role**: The single project role that answers for a gate's decision (the "A" of RACI). Shown on the turn card and
 in the gate panel. See [Gate settings](workflows.md#gates-config).
@@ -17,10 +22,6 @@ issue, Start workflow or Project digest. See [Action nodes](workflows.md#actions
 connectors. Without a harness it gives a single model answer inside Back Office (**Model answer**); with OpenCode or
 Claude Code it is a coding agent session in an agent job. The workflow step chooses its agent (templates name none),
 so two agents can be compared on the same task. See [Agents](task-library.md#agents).
-
-**Access (of an agent)**: What a coding agent may change in the repositories of its steps: **Full**, **Read only** or
-**Only these paths**. The runner reverts other changes after the agent finished. See
-[Access of an agent](task-library.md#agent-access).
 
 **Agent home**: The folder of one agent in the run directory, outside every repository (`/workspace/.agents/<agent
 key>/`): its environment, skills, MCP configuration and sessions. See
@@ -64,9 +65,10 @@ See [Benchmarks](evaluation.md#benchmarks).
 **Budget**: A monthly spending limit for the platform or a project, with an alert threshold and an optional hard
 stop. See [Budgets](costs-insights.md#budgets).
 
-**Candidate**: What a benchmark compares: an agent with a model (the agent's own model when none is picked), shown as
-`agent · model`. Prompt tasks go to model answer agents, coding tasks to coding agents. See
-[Benchmarks](evaluation.md#benchmarks).
+**Candidate**: What a benchmark compares: an agent with a model (the agent's own model when none is picked). Prompt
+tasks go to model answer agents, coding tasks to coding agents; the leaderboard ranks each kind of work in its own
+block and names a candidate by its model, with the agent below it when a block mixes agents. See
+[Benchmarks](evaluation.md#benchmarks) and [Reading the results](evaluation.md#reading-results).
 
 **Ceiling**: The most a sandbox policy layer may allow, set by the layers above it (platform, pool). Lower layers can
 only narrow it. See [Sandbox policy](projects.md#sandbox-policy).
@@ -83,12 +85,12 @@ waiting for CI. See [Wait for CI nodes](workflows.md#nodes).
 **CI token**: A project token (`bo_ci_…`) that lets your pipeline start runs and send signals for one project. See
 [CI: entrypoints and tokens](projects.md#project-ci).
 
-**Confidence**: A number from 0 to 1 a task reports about its own result. Decisions use it, for example to skip a gate
-when the agent is sure. See [Decisions](workflows.md#decisions).
-
 **Coherence check**: **Check coherence** in [Agents in this workflow](workflows.md#coherence-check): on request, a
 model reads an agent's whole environment and lists contradictions, ambiguities and redundancies with quotes. One
 model call, booked as usage.
+
+**Confidence**: A number from 0 to 1 a task reports about its own result. Decisions use it, for example to skip a gate
+when the agent is sure. See [Decisions](workflows.md#decisions).
 
 **Connector**: A tool coding agents use while they work: an MCP server with its credentials, or read-only GitLab
 (`glab` with the project's read-only token). Platform connectors (**Library** → **Connectors**) serve every project; a
@@ -100,8 +102,9 @@ over every other source when they disagree. See [Creating a project](projects.md
 [When sources disagree](task-library.md#precedence).
 
 **Cost per accepted result (cost of an accepted result)**: Everything spent, failures and rework included, divided by
-the accepted results; the headline number for comparing agents, workflows and benchmark candidates. See
-[Cost of an accepted result](costs-insights.md#cost-per-accepted).
+the accepted results; the headline number for comparing agents, workflows and benchmark candidates. On the
+benchmark leaderboard it is the column **Cost / accepted** (the default sort), at API prices for candidates on a
+subscription. See [Cost of an accepted result](costs-insights.md#cost-per-accepted).
 
 **Decision node**: A node that routes the run by conditions over the run state. See [Decisions](workflows.md#decisions).
 
@@ -210,10 +213,16 @@ are compared with. See [The default workflows](workflows.md#default-workflows).
 sources are empty). Workflows list the repositories their runs clone in their **Sources**; only **Deliver changes**
 pushes to them. See [Repositories](projects.md#repositories) and [Sources of a workflow](workflows.md#workflow-sources).
 
+**Required skills**: The skills a template's work needs. They guide the designer's choice of the step's agent and
+warn when the agent lacks one; they never add a skill at run time. See [Required skills](task-library.md#required-skills).
+
 **Resolved task**: What the agent finally receives: a template merged with its parents, project overrides and node
 overrides. See [Templates](task-library.md#templates).
 
 **Rubric**: The criteria the judge scores an answer by. See [Task suites](evaluation.md#suites).
+
+**Rule**: Something an agent must always follow, always in its context; automatic rules apply to every step of
+their scope. Rules belong to the repository, the project and the agent, never to a template. See [Rules](task-library.md#rules).
 
 **Run**: One execution of a workflow, usually for one issue. See [Runs](runs.md#run-list).
 
@@ -231,12 +240,6 @@ See [Sandbox policy](projects.md#sandbox-policy).
 
 **Shadowing**: A project template, skill, rule or agent with the same key as a global one replaces it for that project. See
 [Templates](task-library.md#templates).
-
-**Required skills**: The skills a template's work needs. They guide the designer's choice of the step's agent and
-warn when the agent lacks one; they never add a skill at run time. See [Required skills](task-library.md#required-skills).
-
-**Rule**: Something an agent must always follow, always in its context; automatic rules apply to every step of
-their scope. Rules belong to the repository, the project and the agent, never to a template. See [Rules](task-library.md#rules).
 
 **Skill**: Knowledge or a procedure (`SKILL.md`) an agent opens when the task needs it; given to the agents that
 list it. See [Skills](task-library.md#skills).

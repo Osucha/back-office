@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
 import pl.mos.backoffice.llm.budget.application.port.`in`.EnforceBudgets
 import pl.mos.backoffice.llm.budget.domain.BudgetExceededException
+import pl.mos.backoffice.llm.gateway.LlmMetrics
 import pl.mos.backoffice.llm.gateway.ProviderRegistry
 import pl.mos.backoffice.llm.gateway.ProviderSettings
 import pl.mos.backoffice.llm.ratelimit.CallPriority
@@ -54,6 +55,8 @@ class LlmProxy(
     private val clock: Clock,
     /** ADR 0046: request limits of provider connections; agents' calls count against them too. */
     private val quota: ConnectionQuota = ConnectionQuota.NONE,
+    /** The same token and cost counters as the in-process gateway. */
+    private val metrics: LlmMetrics = LlmMetrics.NOOP,
 ) {
     private val log = LoggerFactory.getLogger(LlmProxy::class.java)
 
@@ -275,6 +278,7 @@ class LlmProxy(
         if (!usage.seen || tokens.totalTokens == 0L) return
         try {
             val cost = pricing?.costOf(tokens) ?: Money.ZERO
+            metrics.record(modelRef, tokens, cost)
             gate.asSystem("LLM proxy usage booking") {
                 ledger.record(
                     UsageRecord(

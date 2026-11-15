@@ -200,7 +200,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(backoffice_work_oldest_ready_seconds{namespace=~\"$namespace\"})",
+          "expr": "max(backoffice_work_oldest_ready_age_seconds{namespace=~\"$namespace\"})",
           "legendFormat": "",
           "refId": "A"
         }
@@ -350,57 +350,6 @@
       }
     },
     {
-      "id": 8,
-      "type": "timeseries",
-      "title": "Gate wait time p50 / p95",
-      "description": "Human wait time at gates - the bottleneck the platform exists to shrink",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 12,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(backoffice_gate_wait_seconds_bucket{namespace=~\"$namespace\"}[1h])))",
-          "legendFormat": "p50",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(backoffice_gate_wait_seconds_bucket{namespace=~\"$namespace\"}[1h])))",
-          "legendFormat": "p95",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
       "id": 9,
       "type": "timeseries",
       "title": "Worker replicas",
@@ -410,8 +359,8 @@
         "uid": "${datasource}"
       },
       "gridPos": {
-        "x": 0,
-        "y": 20,
+        "x": 12,
+        "y": 12,
         "w": 12,
         "h": 8
       },

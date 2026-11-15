@@ -60,7 +60,7 @@ import {
         help="librarySources"
         title="Library"
         i18n-title="@@library.sources.header.title"
-        subtitle="Sources steps can attach: repositories of standards to follow, templates and reference material, the same for every project."
+        subtitle="Sources a workflow can add: repositories of standards to follow, templates and reference material, the same for every project."
         i18n-subtitle="@@library.sources.header.subtitle"
       >
         @if (canManage()) {
@@ -76,7 +76,7 @@ import {
         <bo-empty
           title="No sources yet"
           i18n-title="@@library.sources.empty.title"
-          detail="Add a git repository with your standards or templates; steps of every project can then attach it read-only."
+          detail="Add a git repository with your standards or templates; workflows of every project can then add it to their Sources, read-only."
           i18n-detail="@@library.sources.empty.detail"
         />
       } @else {
@@ -154,7 +154,7 @@ import {
                 >Key</nz-form-label
               >
               <nz-form-control
-                nzExtra="Steps use it; the job clones the source into /workspace/lib-&lt;key&gt;. Cannot change later."
+                nzExtra="Workflows name it in their Sources; the run clones the source into /workspace/lib-&lt;key&gt;. Cannot change later."
                 i18n-nzExtra="@@library.sources.form.keyHint"
               >
                 <input

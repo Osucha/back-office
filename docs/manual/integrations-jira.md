@@ -249,7 +249,7 @@ logs.
 9. **Allowed projects** (optional): the Jira project keys this connection may touch, for example `SHOP`,
    `WEB`. Empty means any project the account can see. When set, the connection is not chosen for an issue
    of another Jira project, and a step that tries is refused.
-10. **Project key for the test** (only when **Allowed projects** is empty): a sample Jira project key used
+10. **Sample project key for the check** (only when **Allowed projects** is empty): a sample Jira project key used
    to check permissions.
 11. **Token expiry date**: the expiry date you chose at Atlassian. Back Office reminds you 14 days before
     it ([Token expiry](#jira-token-expiry)).
@@ -310,7 +310,7 @@ lets workflow steps comment on or move issues **as you**, in Jira, instead of as
 <a id="jira-token-expiry"></a>
 ### Token expiry and rotation
 
-The list marks a token **expiring soon** 30 days before its expiry date and **expired** after it. In
+The list marks a token with the chip **token expires {date}** 30 days before its expiry date and **token expired** after it. In
 addition, Back Office reminds the people who can change the connection when its token expires within
 **14 days** or has expired:
 
@@ -327,8 +327,8 @@ addition, Back Office reminds the people who can change the connection when its 
 Without a **Token expiry date** on the connection there is no reminder. Rotate before the date, and
 immediately if a token leaks:
 
-1. Sign in to Atlassian as the connection's account and create a new classic token
-   ([steps](#jira-token)).
+1. Sign in to Atlassian as the connection's account and create a new token of the same kind as the connection's
+   (scoped, recommended, with the same scopes; or classic) ([steps](#jira-token)).
 2. In Back Office open the connection, choose **Replace token**, paste the new token, set the new **Token
    expiry date** and save. The connection is tested again; the next Jira step uses the new token. No
    restart is needed.
@@ -435,7 +435,7 @@ the token. Use it to check a new account's permissions before the connection can
 The test:
 
 1. calls `GET /rest/api/3/myself` to prove the e-mail and token, and shows the account's display name;
-2. for each of the **Allowed projects** (else the **Project key for the test**) asks Jira which of these
+2. for each of the **Allowed projects** (else the **Sample project key for the check**) asks Jira which of these
    permissions the account holds: Browse Projects, Add Comments, Transition Issues, Edit Issues, Delete
    Issues, Assign Issues, Create Issues, Administer Projects, Manage Watchers;
 3. compares the answer with the capabilities and shows chips per Jira project: **granted**, **missing** and
@@ -446,7 +446,7 @@ The test:
 | **OK** | the account has exactly what the capabilities need | nothing |
 | **Missing** permissions (status failed) | a capability cannot work, for example **Comment on issues** without Add Comments; the steps that need it will fail | add the permission to the account's project role in that Jira project, or untick the capability |
 | **Excess** permissions (status warning, "over-privileged") | the account can do more than the capabilities need, for example "this account can also delete issues / administer the project" | use a dedicated account with only the listed permissions; the connection keeps working meanwhile |
-| No project to check (warning) | no **Allowed projects** and no **Project key for the test** | enter one of them, otherwise permissions cannot be checked |
+| No project to check (warning) | no **Allowed projects** and no **Sample project key for the check** | enter one of them, otherwise permissions cannot be checked |
 
 | Message | Meaning | Fix |
 |---|---|---|
@@ -748,11 +748,12 @@ organisation administrator and a Jira administrator:
    security levels, the account must be allowed to see them.
 4. **Create the API token as that account.** Sign in as `backoffice-jira-reader@acme.com`, open
    id.atlassian.com → **Security** → **API tokens** (https://id.atlassian.com/manage-profile/security/api-tokens)
-   → **Create API token** (the classic one, not **with scopes**), name it for example
-   `back-office-reader`, choose the expiry date, copy the token (shown once) and note the date.
+   → **Create API token with scopes** (recommended; the app Jira and the scopes of **Read issues**, see
+   [Scoped API token](#jira-scoped-token)) or, on this dedicated account, a classic **Create API token**. Name it
+   for example `back-office-reader`, choose the expiry date, copy the token (shown once) and note the date.
 5. **Add the connection in Back Office.** Project → **Connections** (or **Administration** →
    **Connections** for all projects) → **Add connection**: type **Jira**, the site URL, the account
-   e-mail, the token, capability **Read issues** only, **Allowed projects** = the Jira project key (for
+   e-mail, the token kind and the token (for a scoped token also its scopes), capability **Read issues** only, **Allowed projects** = the Jira project key (for
    example `SHOP`), **Token expiry date**. Click **Test before saving**: it must show **Browse Projects**
    as granted and no excess permissions. Then **Save**.
 

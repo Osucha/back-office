@@ -1,6 +1,6 @@
 # 0056 — Agents run tasks, actions are nodes, no executor
 
-- Status: accepted (stage 1 implemented; stages 2 to 4 are the accepted direction, each gets its own record when built)
+- Status: accepted (stages 2 to 4 built in 0057, 0058, 0059); partly superseded by 0061 (no agent on templates)
 - Date: 2026-11-06
 - Deciders: owner
 - Related: ADR 0015 (task library), 0034 (generic LLM and agent tasks), 0044 (run workspaces and sessions), 0046/0047

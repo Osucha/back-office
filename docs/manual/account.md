@@ -7,11 +7,14 @@ a section index on the left; `?section=` in the URL jumps to a section.
 | Section | What you do there |
 |---|---|
 | **Profile** | See your name, e-mail, groups and this session. |
-| **Preferences** | Theme, density, rows per page, default project. |
+| **Preferences** | Theme, density, **Language / Język** (English or Polish), rows per page, default project. |
 | **Notifications** | Desktop notifications and sounds (see [Desktop notifications](#notifications)). |
 | **Security** | Sign-in method, password, two-factor authentication, recent sign-ins. |
 | **Personal access tokens** | Create and revoke tokens for scripts and your IDE. |
+| **Connections** | Your personal Jira connections (see [Connections](#connections)). |
 | **Connect your IDE** | Set up the MCP server in Claude Code, Cursor or VS Code. |
+| **My computer as a runner** | Run agent jobs on your own computer, with your own Claude login (see [My computer as a runner](personal-runner.md)). |
+| **My models** | What your private projects and personal benchmarks can use right now, including the state of your personal runner. |
 | **My access** | Your platform permissions and your projects with roles. |
 
 **Sign out** is in the page header and in the avatar menu.
@@ -66,6 +69,7 @@ nothing is announced only by a notification or only by a sound.
 | **Budget alert** | A budget you can raise reached its alert threshold or its limit. | on |
 | **CI failed** | A CI execution or review gate in one of your projects failed. | off |
 | **Connection expiring** | The token of a Jira connection you can manage expires within 14 days or has expired; once per expiry date ([Token expiry](integrations-jira.md#jira-token-expiry)). | on for administrators (`admin.connections.manage`), off for everyone else |
+| **New Jira tasks** | One of your rules in [My work](my-work.md) found Jira issues you have not decided on yet; the notification lists their keys and opens **My work**. | on |
 | **Only when the tab is not in view** | Nothing pops up while you are looking at Back Office (another tab, another window or a minimised browser count as "not in view"). | on |
 | **Play a sound** / **Volume** | Each type has its own short tone: a rising two-note handoff for *your turn*, a light three-note rise when a run lands, a soft falling pair when something failed, a muted double tap for budgets. Previews play even when the sound is off. | on, 60 % |
 | **Quiet hours** | No notifications and no sounds between two times of day (your computer's clock); can span midnight, e.g. 22:00 to 07:00. | off |

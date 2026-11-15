@@ -46,6 +46,7 @@ export function vscodeConfig(url: string): string {
   );
 }
 
+/** Every `@McpTool` of `BackOfficeMcpTools` (governance-adapters), in the order the server declares them. */
 export const MCP_TOOLS: { name: string; does: string }[] = [
   {
     name: 'list_my_turns',
@@ -61,11 +62,11 @@ export const MCP_TOOLS: { name: string; does: string }[] = [
   },
   {
     name: 'start_workflow',
-    does: $localize`:@@account.ide.toolStartWorkflow:Start a workflow run for an issue key`,
+    does: $localize`:@@account.ide.toolStartWorkflow:Start a workflow run, optionally for an issue key and with run parameters`,
   },
   {
     name: 'decide_gate',
-    does: $localize`:@@account.ide.toolDecideGate:Approve, revise or reject with a comment (checklist ids required to approve)`,
+    does: $localize`:@@account.ide.toolDecideGate:Approve, revise or reject with a comment (approving needs the checklist ids; token with gate decisions via MCP)`,
   },
   {
     name: 'search_task_library',
@@ -73,10 +74,50 @@ export const MCP_TOOLS: { name: string; does: string }[] = [
   },
   {
     name: 'get_project_context',
-    does: $localize`:@@account.ide.toolGetProjectContext:Constitution, CI entrypoints and recent runs of a project`,
+    does: $localize`:@@account.ide.toolGetProjectContext:Constitution, repository, CI entrypoints, workflows and recent runs of a project`,
   },
   {
     name: 'get_delivery_insights',
-    does: $localize`:@@account.ide.toolGetDeliveryInsights:The delivery insights of a project`,
+    does: $localize`:@@account.ide.toolGetDeliveryInsights:Delivery insights of one project or of all your projects`,
+  },
+  {
+    name: 'get_agent_insights',
+    does: $localize`:@@account.ide.toolGetAgentInsights:Agent insights: accepted results and cost per agent, model and template`,
+  },
+  {
+    name: 'list_projects',
+    does: $localize`:@@account.ide.toolListProjects:Projects you can see`,
+  },
+  {
+    name: 'get_workflow_palette',
+    does: $localize`:@@account.ide.toolGetWorkflowPalette:What a workflow of a project can be built from: nodes, actions and task templates`,
+  },
+  {
+    name: 'get_workflow',
+    does: $localize`:@@account.ide.toolGetWorkflow:One workflow with its full definition`,
+  },
+  {
+    name: 'validate_workflow',
+    does: $localize`:@@account.ide.toolValidateWorkflow:Check a workflow definition without saving it`,
+  },
+  {
+    name: 'create_workflow',
+    does: $localize`:@@account.ide.toolCreateWorkflow:Create a workflow in a project (token with workflow edits via MCP)`,
+  },
+  {
+    name: 'update_workflow',
+    does: $localize`:@@account.ide.toolUpdateWorkflow:Save a new version of a workflow (token with workflow edits via MCP)`,
+  },
+  {
+    name: 'create_project',
+    does: $localize`:@@account.ide.toolCreateProject:Create a project with at most one repository, optionally personal (token with workflow edits via MCP)`,
+  },
+  {
+    name: 'get_model_options',
+    does: $localize`:@@account.ide.toolGetModelOptions:Models a step of a project may use, usable ones first`,
+  },
+  {
+    name: 'get_model_plan',
+    does: $localize`:@@account.ide.toolGetModelPlan:The model of every step of a workflow and whether you can use it`,
   },
 ];

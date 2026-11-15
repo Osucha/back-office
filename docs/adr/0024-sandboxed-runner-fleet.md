@@ -1,6 +1,6 @@
 # 0024 - Agent execution: pull-based runner fleet, Agent Sandbox with gVisor/Kata, brokered credentials
 
-Status: accepted - 2026-09-28. Supersedes the execution model of [0006](0006-coding-agents-in-kubernetes-jobs.md).
+Status: accepted - 2026-09-28. Supersedes the execution model of [0006](0006-coding-agents-in-kubernetes-jobs.md). Partly superseded by [0062](0062-one-instruction-parameter-sources.md) (sandbox policy only on the project).
 
 ## Context
 Coding agents run model-written code, read prompt-injectable inputs (issues, diffs, repositories) and

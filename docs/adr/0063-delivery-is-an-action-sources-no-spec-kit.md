@@ -1,6 +1,6 @@
 # 0063 — Delivering changes is an action; sources belong to the workflow; no Spec Kit
 
-- Status: accepted
+- Status: accepted; partly superseded by 0064 (agentTools)
 - Date: 2026-11-12
 - Deciders: owner
 - Related: ADR 0031 (git access), 0034 (repositories of a step), 0036 (optional Spec Kit), 0043 (library sources),

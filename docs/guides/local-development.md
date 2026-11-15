@@ -89,13 +89,17 @@ The `local` profile (see `application.yml`):
 - signs in with local accounts; the bootstrap administrator is `admin@example.com` / `ChangeMe-Local-123`.
   OIDC is off unless `OIDC_ISSUER_URI` is set (Keycloak: `http://localhost:8180/realms/back-office`, client
   `back-office` / `back-office-dev-secret`); bootstrap OIDC admin `admin@example.com`, non-Secure cookie,
-- sets `RUNNER_MODE=DOCKER`,
+  registration `OPEN`,
+- keeps `RUNNER_MODE=FLEET` (agents run on a runner-controller), points sandboxes at
+  `RUNNER_API_URL=http://host.docker.internal:8080` and lowers the isolation ceiling to `DEV`,
+- migrates the database on start (Flyway) and uses development keys for local accounts and connection secrets,
 - starts the compose services without a profile (`postgres`, `minio`) automatically
   (spring-boot-docker-compose, `start_only`),
 - logs `pl.mos.backoffice` at DEBUG.
 
-There is no API key any more. If your checkout's `local` profile does not set the identity values yet,
-or you use another provider, export them (full list in [configuration.md](configuration.md#authentication-and-sessions)):
+There is no API key. The `local` profile needs no exports to start; to sign in through Keycloak, use object
+storage in MinIO or another identity provider, export the values (full list in
+[configuration.md](configuration.md#authentication-and-sessions)):
 
 ```bash
 export BACKOFFICE_AUTH_OIDC_ISSUER_URI=http://localhost:8180/realms/back-office
@@ -106,7 +110,8 @@ export BACKOFFICE_AUTH_COOKIE_SECURE=false                    # http://localhost
 export BACKOFFICE_PUBLIC_URL=http://localhost:4200             # post-logout redirect goes back to the dev UI
 export RUNNER_TOKEN_SECRET=dev-runner-token-secret              # no API key to derive it from any more
 export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/backoffice   # only with POSTGRES_PORT=5433
-# object storage and signing key (iteration 5)
+# object storage in MinIO (default: filesystem under the temp directory) and signing key
+export BACKOFFICE_STORAGE_TYPE=s3
 export BACKOFFICE_STORAGE_S3_ENDPOINT=http://localhost:9000 BACKOFFICE_STORAGE_S3_BUCKET=back-office
 export BACKOFFICE_STORAGE_S3_PATH_STYLE=true BACKOFFICE_STORAGE_S3_ACCESS_KEY=backoffice BACKOFFICE_STORAGE_S3_SECRET_KEY=backoffice-dev-secret
 eval "$(deploy/scripts/gen-signing-key.sh | sed "s/^/export /")"    # a throw-away Ed25519 key per shell
@@ -150,20 +155,20 @@ redirect URI and the post-logout redirect are registered for `localhost`.
 
 ### First login and inviting the others
 
-1. Open `http://localhost:4200`. The UI calls `/api/v1/me`, gets `401` and sends you to Keycloak.
-2. Log in as `admin@example.com` / `admin`. Keycloak redirects to `/login/oauth2/code/oidc`, the API
-   creates your user (`ACTIVE`) and, because the e-mail is in `BACKOFFICE_AUTH_BOOTSTRAP_ADMINS`,
-   grants `platform-admin`. You land on the page you asked for.
+1. Open `http://localhost:4200`. The UI calls `/api/v1/me`, gets `401` and shows the sign-in page.
+2. Sign in with the local account `admin@example.com` / `ChangeMe-Local-123` and set a new password (forced at
+   the first sign-in). The bootstrap administrator has `platform-admin`. With Keycloak configured
+   (`OIDC_ISSUER_URI`, compose profile `keycloak`) you can sign in through it instead, as `admin@example.com` /
+   `admin`; the e-mail is in the bootstrap admins, so that account gets `platform-admin` too.
 3. **Administration > Users > Invite**: invite `dev@example.com`, `approver@example.com` and
-   `viewer@example.com` (optionally with groups). With the default `INVITE_ONLY` registration nobody
-   else can log in. Back Office sends no e-mail: copy the sign-in link the UI shows.
+   `viewer@example.com` (optionally with groups). Back Office sends no e-mail: copy the sign-in link the UI shows.
+   The `local` profile sets registration to `OPEN` (everyone who can sign in gets an account with the
+   `member` defaults); outside it the default is `INVITE_ONLY`, where only invited e-mails and
+   `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS` can sign in.
 4. Open a project **> Members** and add the invited users with the project roles `developer`,
    `approver`, `viewer`.
-5. Log out (header menu). The API ends the session and the browser is sent through Keycloak's logout
-   back to the UI. Log in as `dev@example.com` / `dev` in a private window to see the developer's view.
-
-Shortcut for a single-person setup: `BACKOFFICE_AUTH_REGISTRATION=OPEN` (everyone who can log in to the
-realm gets an account with the `member` defaults) or `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS=example.com`.
+5. Log out (header menu). The API ends the session (with Keycloak the browser goes through its logout back to
+   the UI). Sign in as another user in a private window to see that user's view.
 
 ## 4. Running tests
 
@@ -188,7 +193,7 @@ Testcontainers needs a reachable Docker daemon; on Windows/macOS Docker Desktop 
 
 ```bash
 docker build -t back-office/api:dev    backend/
-docker build -t back-office/web:dev    frontend/
+docker build -t back-office/web:dev    -f frontend/Dockerfile .     # context = repository root (openapi.yaml, manual)
 docker build -t back-office/runner:dev runner/
 ```
 
@@ -199,13 +204,14 @@ docker build -t back-office/runner-controller:dev -f backend/runner-controller/D
 
 Or all at once together with a full local stack that mirrors the Kubernetes topology - `api` (role api,
 migrates on start), `worker` (role worker), `web`, MinIO, `egress-proxy` and `runner-controller` with the
-DOCKER backend (web on `http://localhost:8080`, API on `:8081`, Keycloak on `:8180`):
+DOCKER backend (web on `http://localhost:8080`, API on `:8081`; Keycloak on `:8180` only with the profile
+`keycloak` added):
 
 ```bash
 docker compose -f deploy/compose/docker-compose.yml --profile full up -d --build
 ```
 
-Open the UI on `http://localhost:8080` (the realm allows that redirect URI too). Inside the API
+Open the UI on `http://localhost:8080` (the realm allows that redirect URI too). With Keycloak, inside the API
 container `localhost` is the container itself, so the API runs in the network namespace of the small
 `api-netns` socat container that forwards `localhost:8180` to Keycloak: browser and API see the same
 issuer `http://localhost:8180/realms/back-office` (details at the top of `docker-compose.yml`).
@@ -221,8 +227,8 @@ instead.
 Security: the `full` profile mounts `/var/run/docker.sock` into the **runner-controller** (not into api
 or worker) so it can start sandbox containers. Anyone who can reach that container controls your Docker
 daemon - keep it on a laptop. The DOCKER backend has no gVisor/Kata boundary (isolation `DEV` = runc);
-sandbox containers sit on the internal network `back-office_sandbox` without a route out and reach
-anything only through the egress proxy, which enforces each job's allowlist (pulled from the controller).
+each sandbox container sits on its own internal network `bo-job-<job>` without a route out and reaches
+anything only through its per-job proxy container `bo-egress-<job>`, which enforces the job's allowlist.
 
 ### Optional: the Helm charts on kind
 
@@ -235,16 +241,23 @@ helm install runners deploy/helm/back-office-runner -n back-office-runners --cre
   -f deploy/helm/back-office-runner/values-dev.yaml --set registration.token=bo_rrt_...
 ```
 
-`values-dev.yaml` uses `mode: combined`, the bundled PostgreSQL, MinIO and Keycloak; the runner values
+`values-dev.yaml` uses `mode: combined`, the bundled PostgreSQL and MinIO (the chart deploys no identity
+provider: local accounts, or point it at your own OIDC issuer); the runner values
 use the `K8S_JOB` backend with runc (kind has no gVisor).
 
 ## 6. Running the runner locally
 
-Agents always run through the runner fleet (same model as production): the compose
-`runner-controller` + `egress-proxy` services (section 5). With the API on the host set
-`RUNNER_BACKOFFICE_URL=http://host.docker.internal:8080` for the controller. Git credentials for
-clone/push: `GIT_TOKEN_READ` and `GIT_TOKEN_PUSH` (and optionally `GIT_USER_NAME` / `GIT_USER_EMAIL`) in
-`deploy/compose/.env`, passed to the controller as `BO_GIT_TOKEN_READ` / `BO_GIT_TOKEN_PUSH` / `RUNNER_GIT_USER_*`.
+Agents always run through the runner fleet (same model as production). The supported local setup is the
+compose stack (section 0 or `--profile full`, section 5): its `runner-controller` registers with the bundled
+API by itself. Git credentials for clone/push: `GIT_TOKEN_READ` and `GIT_TOKEN_PUSH` (and optionally
+`GIT_USER_NAME` / `GIT_USER_EMAIL`) in `deploy/compose/.env`, passed to the controller as `BO_GIT_TOKEN_READ` /
+`BO_GIT_TOKEN_PUSH` / `RUNNER_GIT_USER_*`.
+
+An API started with `./gradlew :app:bootRun` is not wired to the compose `runner-controller`: that service
+waits for the compose `api` to be healthy, and the host API has no local fleet token (`RUNNER_LOCAL_FLEET_TOKEN`
+is blank outside the compose stack), so there is no pool `default` to register with. With a host API, run agents
+of your private projects on a personal runner (**My account > My computer as a runner**, see
+[the manual](../manual/personal-runner.md)), or stop `bootRun` and use the compose stack.
 
 To exercise the runner by hand without the API, follow [runner/README.md](../../runner/README.md):
 build a `RunnerJobSpec`, base64 it into `RUNNER_SPEC`, omit `RUNNER_CALLBACK_URL` and use
@@ -299,8 +312,7 @@ API runs on the host the endpoint is `http://localhost:3000/api/public/otel/v1/t
 - **Docker on Windows** - use Docker Desktop with the WSL 2 backend; make sure the daemon is running
   (`docker version` shows a Server section). Named-pipe errors like `open //./pipe/dockerDesktopLinuxEngine`
   mean Docker Desktop is not started. Compose bind mounts of `/var/run/docker.sock` work through
-  Docker Desktop's Linux VM. With a host-run API point the runner-controller at
-  `RUNNER_BACKOFFICE_URL=http://host.docker.internal:8080`.
+  Docker Desktop's Linux VM.
 - **Testcontainers cannot connect** - `DOCKER_HOST` mismatch or Docker Desktop's "Expose daemon on
   tcp://localhost:2375" not needed: Testcontainers uses the named pipe on Windows automatically. Check
   `~/.testcontainers.properties` for a stale `docker.host`.
@@ -310,7 +322,7 @@ API runs on the host the endpoint is `http://localhost:3000/api/public/otel/v1/t
 
   | Symptom | Cause and fix |
   |---|---|
-  | API fails at start with `Unable to resolve Configuration with the provided Issuer` | Keycloak not up yet or wrong issuer. `curl http://localhost:8180/realms/back-office/.well-known/openid-configuration` must answer and show exactly the configured issuer. |
+  | Signing in through Keycloak fails, the API log shows `Unable to resolve Configuration with the provided Issuer` | Keycloak not up yet or wrong issuer (the API discovers the issuer at the first OIDC sign-in, not at start, and retries on the next one). `curl http://localhost:8180/realms/back-office/.well-known/openid-configuration` must answer and show exactly the configured issuer. |
   | Keycloak page "Invalid parameter: redirect_uri" | You opened the UI on another host/port than `localhost:4200` / `localhost:8080`. Use those, or add the URI to the client in the realm. |
   | Back on `/login?error=not-invited` | `INVITE_ONLY` and the e-mail was neither invited nor in `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS` / bootstrap admins. Invite it as admin. |
   | Login succeeds, next request is `401` again | The `BO_SESSION` cookie was not stored: `BACKOFFICE_AUTH_COOKIE_SECURE=true` on plain http, or the UI opened on `127.0.0.1`. |
@@ -328,7 +340,7 @@ API runs on the host the endpoint is `http://localhost:3000/api/public/otel/v1/t
   used or for another pool; create a new one. Delete `/var/lib/back-office-compose-runner/runner-token` on the Docker
   host (`docker run --rm -v /var/lib/back-office-compose-runner:/d alpine rm /d/runner-token`) to force a new registration.
 - **Agent cannot download dependencies** - the host is not in the job's `sandboxPolicy.network.allow`
-  (or the pool ceiling); `docker logs back-office-egress-proxy` shows every decision.
+  (or the pool ceiling); the job's proxy container (`docker logs bo-egress-<job>`) shows every decision.
 - **Uploads fail with `NoSuchBucket`** - `minio-init` did not run (`docker compose ... up minio-init`).
 - **Agent fails with `ProviderAuthError` / 401** - sandboxes never get provider keys; they call the LLM
   gateway with the job token. Check that the API has the provider key and that the model is the job's

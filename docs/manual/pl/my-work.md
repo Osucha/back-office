@@ -16,7 +16,9 @@ klikniesz **Start**.
 3. **Reguła** mówi, które zgłoszenia są Twoje (JQL), jak często sprawdzać i jaki workflow proponować.
 4. Każde zgłoszenie, które pierwszy raz pojawi się w wynikach reguły, staje się **propozycją**: klucz, podsumowanie,
    typ, status. Kliknij **Start**, żeby uruchomić proponowany workflow, przycisk zamiany, żeby uruchomić inny, albo
-   **Pomiń**. Pominiętą propozycję można przywrócić i uruchomić później.
+   **Pomiń** (**Dismiss**). Strona ma karty **Nowe** (**New**), **Uruchomione** (**Started**; z **Otwórz
+   uruchomienie**, **Open run**), **Pominięte** (**Dismissed**) i **Reguły** (**Rules**); na karcie **Pominięte**
+   propozycję można od razu uruchomić albo przywrócić do **Nowych** przyciskiem **Przywróć** (**Restore**).
 
 Uruchomienie z propozycji jest Twoje, tak jakbyś kliknął **Uruchom** w projekcie: dostaje klucz zgłoszenia, a kroki
 Jira ustawione na działanie jako osoba uruchamiająca używają Twojego osobistego połączenia.
@@ -33,7 +35,7 @@ nadal go widzą, jak każdy projekt.
 <a id="rules"></a>
 ## Reguły
 
-**Moja praca → Reguły → Nowa reguła**:
+**Moja praca** (**My work**) → **Nowa reguła** (**New rule**; przycisk w nagłówku strony, na każdej karcie; karta **Reguły** wymienia Twoje reguły):
 
 | Pole | Znaczenie |
 |---|---|

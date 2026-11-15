@@ -36,7 +36,7 @@ tokeny po stronie serwera i przekazuje przeglądarce tylko ciasteczko sesji `BO_
 | Rejestracja | `BACKOFFICE_AUTH_REGISTRATION` (`BACKOFFICE_REGISTRATION`) | `auth.registration` | `INVITE_ONLY` |
 | Dozwolone domeny e-mail | `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS` (`BACKOFFICE_ALLOWED_EMAIL_DOMAINS`) | `auth.allowedEmailDomains` | puste |
 | Pierwsi administratorzy | `BACKOFFICE_AUTH_BOOTSTRAP_ADMINS` (`BACKOFFICE_BOOTSTRAP_ADMINS`) | `auth.bootstrapAdmins` | puste |
-| Limit bezczynności / bezwzględny limit sesji | `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` / `_ABSOLUTE_TIMEOUT` | `auth.session.idleTimeout` / `absoluteTimeout` | `PT30M` / `PT12H` |
+| Limit bezczynności / bezwzględny limit sesji | `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` / `_ABSOLUTE_TIMEOUT` (`BACKOFFICE_SESSION_IDLE_TIMEOUT` / `_ABSOLUTE_TIMEOUT`) | `auth.session.idleTimeout` / `absoluteTimeout` | `PT24H` / `PT24H` |
 
 Rejestracja, domeny, synchronizacja grup i czas życia tokenów to tylko wartości domyślne: po zapisaniu
 w **Administracja** (**Administration**) → **Ustawienia platformy** (**Platform settings**) wygrywają

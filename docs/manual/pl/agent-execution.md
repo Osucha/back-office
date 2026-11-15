@@ -48,8 +48,9 @@ Back Office (api)                runner-controller (pool P)              sandbox
    obrazów puli, zasoby i limit czasu są przycinane, a izolacja może jedynie się zaostrzyć. Naruszenia
    kończą zadanie stanem `FAILED` z `policy-violation: ...`.
 4. **Wykonanie.** Sandbox dostaje pakiet zadania (spec, politykę, token zadania, URL proxy) jako pliki,
-   klonuje repozytorium, uruchamia agenta, weryfikuje wynik, tworzy commit, wypycha zmiany i przesyła swój
-   wynik.
+   klonuje repozytoria (albo kontynuuje w katalogu przebiegu), uruchamia agenta, weryfikuje wynik i przesyła swój
+   wynik z diffem. Zadanie agenta nigdy nie tworzy commita ani nie wypycha zmian; robi to zadanie
+   [Dostarcz zmiany](workflows.md#deliver-changes), w którym nie działa żaden agent.
 5. **Zakończenie.** Kontroler raportuje, jak zakończył się sandbox; Back Office łączy to z wynikiem samego
    agenta (sandbox, który zakończył się kodem 0, nie przesławszy pomyślnego wyniku, ma stan `FAILED`),
    unieważnia token zadania, kontynuuje workflow i podpisuje atestację.
@@ -69,7 +70,7 @@ przebieg się kończy; 24 godziny po niepowodzeniu).
 
 **Dostęp agenta.** Gdy agent kroku ma ograniczony [dostęp](task-library.md#agent-access) (**Tylko odczyt**, **Tylko
 te ścieżki**), runner tuż przed startem agenta zapisuje stan repozytoriów, a gdy agent skończy, cofa każdą zmianę
-spoza dostępu, zanim wykona weryfikację, commit i push; cofnięte ścieżki są w logu zadania i w podsumowaniu kroku
+spoza dostępu, zanim wykona weryfikację i zgłosi diff (więc późniejszy krok **Dostarcz zmiany** ich nie widzi); cofnięte ścieżki są w logu zadania i w podsumowaniu kroku
 (`[Back Office runner] reverted N change(s) ...`).
 
 <a id="isolation-levels"></a>
@@ -178,7 +179,7 @@ limitu. Szczegóły: [costs-insights.md](costs-insights.md#budgets).
   `fleet.manage`) ustawia `cancelRequested`; kontroler widzi to w odpowiedzi na kolejny heartbeat, usuwa
   sandbox i raportuje `CANCELLED`.
 - **LOST**: kontroler przestał wysyłać heartbeaty (awaria węzła, crash, sieć). Zadanie jest jednokrotnie
-  ponownie umieszczane w kolejce z nowym tokenem, chyba że wykonywało zadanie wypychające zmiany: wtedy
+  ponownie umieszczane w kolejce z nowym tokenem, chyba że było to zadanie dostarczenia (**Dostarcz zmiany**, jedyne, które wypycha zmiany): wtedy
   kończy się stanem `LOST`, bo drugie wykonanie mogłoby wypchnąć zmiany dwukrotnie. Ponów węzeł, gdy flota
   będzie sprawna.
 - **Restart lub zamknięcie kontrolera**: przy starcie kontroler usuwa sandboxy, których już nie śledzi,
@@ -219,7 +220,7 @@ każdy model da się oszukać, i otacza go deterministycznymi kontrolami (archit
 | Prompty | Tekst ze zgłoszeń, diffów, CI, artefaktów i repozytoriów trafia do modelu jako wyraźnie oznaczone bloki danych; niewidoczne i zmieniające kierunek tekstu znaki Unicode są usuwane |
 | Przegląd kodu AI | Odpowiedź musi mieć format przeglądu, inaczej jest raz naprawiana, a potem przegląd kończy się bezpiecznie (fail closed). Jeśli diff, zgłoszenie lub tytuł merge requestu zawiera tekst skierowany do AI, przegląd dostaje uwagę **Needs human review** (plik i linia), werdykt to **REQUEST_CHANGES**, a blokująca bramka CI kończy się niepowodzeniem |
 | Pewność (confidence) | Krok, którego wejście zawiera taki tekst, zgłasza pewność 0, więc decyzje „czy pewne?” trafiają do bramki człowieka |
-| Agent kodujący | Dostaje tylko token bramy. Nie może odczytać tokenu gita, przesłać wyniku zadania ani wypchnąć zmian: runner commituje i wypycha po zakończeniu agenta, tylko na gałąź zadania, nigdy na gałąź domyślną, i usuwa hooki oraz konfigurację gita podrzucone przez agenta |
+| Agent kodujący | Dostaje tylko token bramy. Nie może przesłać wyniku zadania ani wypchnąć zmian: jego zadanie dostaje najwyżej token gita tylko do odczytu z wyłączonym wypychaniem, a w zadaniu agenta ani agent, ani runner nie tworzy commita i nie wypycha. Commituje i wypycha tylko późniejsze zadanie **Dostarcz zmiany** (bez agenta), tylko na gałąź przebiegu, nigdy na gałąź domyślną, i usuwa hooki oraz konfigurację gita podrzucone przez agenta |
 | Benchmarki | Próba, która usiłuje przekonać sędziego, dostaje najwyżej 40 punktów i nie jest zaliczona |
 | MCP | Agent w IDE może rozstrzygać bramki tylko tokenem utworzonym z opcją **Zezwól na decyzje bramek przez MCP** (**Allow gate decisions via MCP**), a tworzyć i zmieniać workflowy tylko z opcją **Zezwól na edycję workflowów przez MCP** (**Allow workflow edits via MCP**) ([integrations-ide.md](integrations-ide.md#pat)) |
 

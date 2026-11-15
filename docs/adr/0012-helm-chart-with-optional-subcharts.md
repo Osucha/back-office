@@ -1,6 +1,6 @@
 # 0012 - One Helm chart with conditional PostgreSQL and Langfuse dependencies
 
-Status: accepted - 2026-09-26
+Status: accepted - 2026-09-26; partly superseded by [0039](0039-chart-without-bundled-keycloak.md) (no bundled Keycloak)
 
 ## Context
 Deployment must be a single `helm install` for a small cluster, but production may bring its own

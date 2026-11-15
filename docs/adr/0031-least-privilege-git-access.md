@@ -1,6 +1,6 @@
 # 0031 — Least-privilege git access: READ and PUSH_MR credentials per job, never merge
 
-- Status: accepted
+- Status: accepted; partly superseded by 0063 (agents never push; only Deliver changes does)
 - Date: 2026-10-08
 - Deciders: owner
 - Related: ADR 0013 (no SCM API, CI-initiated integration), 0024 (sandboxed runner fleet), 0029 (prompt-injection

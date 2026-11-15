@@ -14,6 +14,7 @@ import pl.mos.backoffice.llm.budget.adapter.BudgetTrackingUsageLedger
 import pl.mos.backoffice.llm.budget.adapter.JdbcBudgetStore
 import pl.mos.backoffice.llm.budget.application.service.BudgetService
 import pl.mos.backoffice.llm.config.LlmProperties
+import pl.mos.backoffice.llm.gateway.LlmMetrics
 import pl.mos.backoffice.llm.gateway.ProviderRegistry
 import pl.mos.backoffice.llm.ledger.JpaUsageLedger
 import pl.mos.backoffice.llm.ratelimit.ProviderRateLimiter
@@ -66,7 +67,11 @@ class ProxyConfiguration {
         json: JsonMapper,
         clock: Clock,
         quota: ConnectionQuota,
-    ) = LlmProxy(registry, properties, llm.openaiCompatible.baseUrl, rateLimiter, budgets, ledger, catalog.getIfAvailable(), gate, json, clock, quota)
+        metrics: ObjectProvider<LlmMetrics>,
+    ) = LlmProxy(
+        registry, properties, llm.openaiCompatible.baseUrl, rateLimiter, budgets, ledger, catalog.getIfAvailable(), gate, json, clock, quota,
+        metrics.getIfAvailable { LlmMetrics.NOOP },
+    )
 
     @Bean
     fun jobTokenFilter(verifier: ObjectProvider<JobTokenVerifier>): FilterRegistrationBean<JobTokenFilter> =

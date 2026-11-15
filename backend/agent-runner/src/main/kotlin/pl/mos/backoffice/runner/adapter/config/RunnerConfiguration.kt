@@ -1,5 +1,7 @@
 package pl.mos.backoffice.runner.adapter.config
 
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
@@ -20,6 +22,7 @@ import pl.mos.backoffice.runner.adapter.`in`.web.RunnerTokenFilter
 import pl.mos.backoffice.runner.adapter.out.BlobResultArchive
 import pl.mos.backoffice.runner.adapter.out.InProcessLeaseSignal
 import pl.mos.backoffice.runner.adapter.out.SpringTransactions
+import pl.mos.backoffice.runner.adapter.out.metrics.AgentJobMetrics
 import pl.mos.backoffice.runner.adapter.out.persistence.JdbcFleetStores
 import pl.mos.backoffice.runner.adapter.out.persistence.JdbcRunWorkspaceStore
 import pl.mos.backoffice.runner.application.port.`in`.MaintainAgentJobs
@@ -189,6 +192,11 @@ class RunnerConfiguration {
 
     @Bean
     fun runnerPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { RunnerPermissions.definitions }
+
+    /** `backoffice_runner_jobs{pool,status}` for the "Runner fleet" dashboard and the pool-without-runners alert. */
+    @Bean
+    fun agentJobMetrics(meters: ObjectProvider<MeterRegistry>, db: NamedParameterJdbcTemplate) =
+        AgentJobMetrics(meters.getIfAvailable { SimpleMeterRegistry() }, db)
 
     @Bean
     fun leaseScanScheduler(maintenance: MaintainAgentJobs, gate: AuthorizationGate, props: RunnerProperties) = LeaseScanScheduler(maintenance, gate, props)

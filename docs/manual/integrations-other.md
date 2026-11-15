@@ -22,7 +22,7 @@ artefacts above 64 kB, diffs, runner logs, agent results above 64 kB, and upload
 |---|---|---|
 | Type | `BACKOFFICE_STORAGE_TYPE` | `storage.type` (`s3`) |
 | Endpoint (blank = AWS) | `BACKOFFICE_STORAGE_S3_ENDPOINT` | `storage.s3.endpoint` (derived with `minio.enabled`) |
-| Endpoint written into presigned URLs | `BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT` | `api.extraEnv` |
+| Endpoint written into presigned URLs | `BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT` | `storage.s3.presignEndpoint` (empty = the endpoint) |
 | Region | `BACKOFFICE_STORAGE_S3_REGION` | `storage.s3.region` (`us-east-1`; R2 `auto`) |
 | Bucket (must exist) | `BACKOFFICE_STORAGE_S3_BUCKET` | `storage.s3.bucket` |
 | Path-style addressing | `BACKOFFICE_STORAGE_S3_PATH_STYLE` | `storage.s3.pathStyle` (`true` for MinIO, Ceph, most gateways) |
@@ -47,10 +47,10 @@ artefacts above 64 kB, diffs, runner logs, agent results above 64 kB, and upload
 
 **Sandbox reachability.** Agents upload through presigned URLs pointing at the S3 endpoint (or the
 presign endpoint). Their egress proxy must allow that host: add it to the runner-controller's always-allowed
-hosts (`runner-controller.egress.always-allow`, for example `extraEnv` `RUNNER_CONTROLLER_EGRESS_ALWAYSALLOW_0=minio.example.com`
-in the runner chart), and to `egressProxy.allowedCidrs` when it has a private address
+hosts (`runner-controller.egress.always-allow`; in the runner chart the value `egressProxy.alwaysAllowHosts`, for
+example `["minio.example.com"]`), and to `egressProxy.allowedCidrs` when it has a private address
 ([agent-execution.md](agent-execution.md#network)). When the API reaches an in-cluster MinIO under an
-internal name, set `BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT` to the public name.
+internal name, set `storage.s3.presignEndpoint` (`BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT`) to the public name.
 
 **Test**: `/actuator/health` has a `blobStore` component (`HeadBucket` with a 3 s timeout, or "root writable"
 for filesystem); `kubectl -n back-office logs deploy/back-office-api | grep blob` shows failures.
@@ -58,8 +58,7 @@ for filesystem); `kubectl -n back-office logs deploy/back-office-api | grep blob
 **Rotate static keys**: create a second key for the same user/policy, update the Secret, restart api and
 worker, delete the old key.
 
-**Limits**: the Helm chart has no value for the presign endpoint or the filesystem signing key yet; set
-them through `api.extraEnv`. Without `BACKOFFICE_STORAGE_FILESYSTEM_SIGNING_KEY` filesystem links stop
+**Limits**: the Helm chart has no value for the filesystem signing key yet; set it through `api.extraEnv`. Without `BACKOFFICE_STORAGE_FILESYSTEM_SIGNING_KEY` filesystem links stop
 working after a restart. Retention of blob content is described in `docs/guides/configuration.md`.
 
 <a id="signing"></a>

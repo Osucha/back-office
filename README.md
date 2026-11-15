@@ -22,7 +22,7 @@ Two capabilities are first class:
 | Durable agent workflows with human and CI gates | [LangGraph4j 1.9](https://github.com/langgraph4j/langgraph4j) | State-graph engine with Postgres checkpoints and native `interruptBefore`; no extra workflow server. |
 | Workflow canvas | [ngx-vflow](https://github.com/artem-mangilev/ngx-vflow) | Angular-native n8n-style canvas for the designer. |
 | Spec-driven development | Built-in templates `write-spec`, `write-plan`, `write-task-list` (ADR 0063) | A coding agent writes `specs/<feature>/spec.md`, `plan.md` and `tasks.md` into the repository, in the shape GitHub Spec Kit made common; no wrapper around one tool (an agent can still use Spec Kit itself when the repository or its skills bring it). |
-| Coding agents | [OpenCode](https://opencode.ai) (provider-agnostic) and Claude Code inside a Kubernetes Job | Same harness for every model makes benchmarks fair and keeps agents sandboxed. |
+| Coding agents | [OpenCode](https://opencode.ai) (provider-agnostic) and Claude Code in sandboxes of a pull-based runner fleet (ADR 0024) | Same harness for every model makes benchmarks fair and keeps agents sandboxed; runner-controllers lease jobs over HTTP and start one isolated sandbox per job. |
 | LLM tracing & cost analytics | [Langfuse](https://langfuse.com) (optional, self-hosted) via OpenTelemetry | Every model call is traced with tokens and cost; the app keeps its own usage ledger too. |
 | Issue tracking / CI | Jira REST; any CI through the served `backoffice-ci.sh` | Agents never push; the workflow's **Deliver changes** step commits, pushes the branch and opens the merge request with git push options (ADR 0063); CI jobs call this API with project tokens. |
 
@@ -32,10 +32,11 @@ Two capabilities are first class:
 backend/    Kotlin · Spring Boot 4.1 · hexagonal architecture (Gradle multi-module)
 frontend/   Angular 21 · NG-ZORRO (Ant Design)
 runner/     Container image for coding agents and deliveries (OpenCode, Claude Code, git)
-deploy/     Helm chart `back-office` (app + PostgreSQL, optional Langfuse)
+deploy/     helm/back-office (app + PostgreSQL, optional Langfuse), helm/back-office-runner (runner fleet),
+            compose/ (local stack, start.cmd / start.sh), observability, keycloak and helper scripts
 ci/            backoffice-ci.sh - the CI client served by the API (ADR 0013) and its tests
 ci-templates/  GitLab CI template: MR review gate and CI signals through backoffice-ci.sh
-docs/       Architecture, ADRs, API contract, guides and runbooks
+docs/       Architecture, ADRs, API contract, guides, runbooks and the in-app user manual
 ```
 
 ## Documentation
@@ -52,19 +53,26 @@ Start at [docs/README.md](docs/README.md). The most useful entry points:
 
 ## Quick start (local)
 
-```bash
-# 1. database
-docker compose -f deploy/compose/docker-compose.yml up -d postgres
+To use the application, start the whole stack in Docker (database, object storage, api, worker, web and a
+runner fleet): double-click `deploy/compose/start.cmd` on Windows or run `sh deploy/compose/start.sh`. The first
+start builds the images. It opens http://localhost:8080; sign in with `admin@example.com` / `ChangeMe-Local-123`
+(as printed by the script) and set your own password. `deploy/compose/stop.cmd` stops it.
 
-# 2. backend (JDK 21)
-cd backend && ./gradlew :app:bootRun
+To develop, run the parts yourself:
+
+```bash
+# 1. database and object storage
+docker compose -f deploy/compose/docker-compose.yml up -d postgres minio minio-init
+
+# 2. backend (JDK 21); the local profile migrates the database and enables local sign-in
+cd backend && ./gradlew :app:bootRun --args="--spring.profiles.active=local"
 
 # 3. frontend
-cd frontend && npm install && npm start      # http://localhost:4200, proxies /api to :8080
+cd frontend && npm ci && npm start      # http://localhost:4200, proxies /api to :8080
 ```
 
-Set at least `BACKOFFICE_API_KEY` and one provider key (for example `ANTHROPIC_API_KEY`).
-All configuration is described in [docs/guides/configuration.md](docs/guides/configuration.md).
+Both ways are described in [docs/guides/local-development.md](docs/guides/local-development.md) (provider keys,
+runner, tests). All configuration is in [docs/guides/configuration.md](docs/guides/configuration.md).
 
 ## Licence
 

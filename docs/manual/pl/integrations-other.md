@@ -22,7 +22,7 @@ z sandboxów (artefakty i logi powyżej 2 MB, wysyłane przez presigned URL-e `P
 |---|---|---|
 | Typ | `BACKOFFICE_STORAGE_TYPE` | `storage.type` (`s3`) |
 | Endpoint (puste = AWS) | `BACKOFFICE_STORAGE_S3_ENDPOINT` | `storage.s3.endpoint` (wyliczany przy `minio.enabled`) |
-| Endpoint wpisywany do presigned URL-i | `BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT` | `api.extraEnv` |
+| Endpoint wpisywany do presigned URL-i | `BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT` | `storage.s3.presignEndpoint` (puste = endpoint) |
 | Region | `BACKOFFICE_STORAGE_S3_REGION` | `storage.s3.region` (`us-east-1`; R2 `auto`) |
 | Bucket (musi istnieć) | `BACKOFFICE_STORAGE_S3_BUCKET` | `storage.s3.bucket` |
 | Adresowanie path-style | `BACKOFFICE_STORAGE_S3_PATH_STYLE` | `storage.s3.pathStyle` (`true` dla MinIO, Ceph i większości bram) |
@@ -47,11 +47,11 @@ z sandboxów (artefakty i logi powyżej 2 MB, wysyłane przez presigned URL-e `P
 
 **Osiągalność z sandboxów.** Agenci przesyłają pliki przez presigned URL-e wskazujące na endpoint S3 (lub
 endpoint presign). Ich proxy ruchu wychodzącego musi zezwalać na ten host: dodaj go do zawsze dozwolonych
-hostów runner-controllera (`runner-controller.egress.always-allow`, na przykład `extraEnv`
-`RUNNER_CONTROLLER_EGRESS_ALWAYSALLOW_0=minio.example.com` w charcie runnera) oraz do
+hostów runner-controllera (`runner-controller.egress.always-allow`; w charcie runnera wartość
+`egressProxy.alwaysAllowHosts`, na przykład `["minio.example.com"]`) oraz do
 `egressProxy.allowedCidrs`, jeśli ma adres prywatny ([agent-execution.md](agent-execution.md#network)). Gdy API
-łączy się z MinIO w klastrze pod nazwą wewnętrzną, ustaw `BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT` na nazwę
-publiczną.
+łączy się z MinIO w klastrze pod nazwą wewnętrzną, ustaw `storage.s3.presignEndpoint`
+(`BACKOFFICE_STORAGE_S3_PRESIGN_ENDPOINT`) na nazwę publiczną.
 
 **Test**: `/actuator/health` zawiera komponent `blobStore` (`HeadBucket` z limitem czasu 3 s albo „root
 writable” dla systemu plików); `kubectl -n back-office logs deploy/back-office-api | grep blob` pokazuje błędy.
@@ -59,8 +59,8 @@ writable” dla systemu plików); `kubectl -n back-office logs deploy/back-offic
 **Rotacja kluczy statycznych**: utwórz drugi klucz dla tego samego użytkownika/polityki, zaktualizuj Secret,
 zrestartuj api i workera, usuń stary klucz.
 
-**Ograniczenia**: chart Helm nie ma jeszcze wartości dla endpointu presign ani klucza podpisującego linki
-systemu plików; ustaw je przez `api.extraEnv`. Bez `BACKOFFICE_STORAGE_FILESYSTEM_SIGNING_KEY` linki systemu
+**Ograniczenia**: chart Helm nie ma jeszcze wartości dla klucza podpisującego linki systemu plików; ustaw go
+przez `api.extraEnv`. Bez `BACKOFFICE_STORAGE_FILESYSTEM_SIGNING_KEY` linki systemu
 plików przestają działać po restarcie. Retencję treści blobów opisuje `docs/guides/configuration.md`.
 
 <a id="signing"></a>

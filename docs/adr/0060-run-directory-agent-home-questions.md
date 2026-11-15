@@ -1,6 +1,6 @@
 # 0060 — One run directory, an agent home, agent access, agents ask questions
 
-- Status: accepted
+- Status: accepted; partly superseded by 0062 (directory and session on the agent)
 - Date: 2026-11-11
 - Deciders: owner
 - Related: ADR 0031 (git access), 0044 (run workspaces and sessions; replaced here), 0052 (side session), 0056-0059

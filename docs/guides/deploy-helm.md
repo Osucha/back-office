@@ -176,7 +176,7 @@ sessions, and deactivating a user deletes their sessions immediately.
 ```yaml
 mode: split
 api:
-  image: { repository: registry.example.com/mos/back-office/api, tag: "a1b2c3d4" }
+  image: { repository: registry.example.com/your-group/back-office/api, tag: "a1b2c3d4" }
   autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6 }
   resources:
     requests: { cpu: 500m, memory: 1Gi }
@@ -184,7 +184,7 @@ api:
 worker:
   autoscaling: { type: keda, minReplicas: 1, maxReplicas: 10 }
 web:
-  image: { repository: registry.example.com/mos/back-office/web, tag: "a1b2c3d4" }
+  image: { repository: registry.example.com/your-group/back-office/web, tag: "a1b2c3d4" }
 storage:
   s3: { endpoint: https://s3.example.com, region: eu-1, bucket: back-office, pathStyle: true, existingSecret: back-office-storage }
 signing:
@@ -492,7 +492,7 @@ Without an Ingress use `web.service.type=NodePort`/`LoadBalancer` or port-forwar
 | Worker | - | 3-30 x 1 CPU / 1.5 Gi (KEDA on the work queue) |
 | Web | 50m / 64-128 Mi (default) | 2 replicas |
 | Sandboxes | runner fleet chart ([runner-fleet-install.md](runner-fleet-install.md)) | 2 vCPU / 4 Gi per sandbox by default policy |
-| PostgreSQL | `resourcesPreset: small`, 8-20 Gi | `medium`, 50 Gi; artefacts and log events are stored in the database |
+| PostgreSQL | `resourcesPreset: small`, 8-20 Gi | `medium`, 50 Gi; runner job events and artefacts up to 64 kB are stored in the database, larger artefacts, diffs and logs in object storage |
 | Langfuse | ClickHouse alone wants 2 CPU / 4 Gi | see Langfuse sizing docs |
 
 Any number of replicas is safe (ADR 0023): a run is advanced only by the worker holding its lease;
@@ -514,7 +514,8 @@ kubectl -n back-office get job back-office-migrate -o jsonpath="{.status.succeed
 kubectl -n back-office get scaledobject back-office-worker                                  # READY True
 ```
 
-Then open the UI, log in with a bootstrap admin e-mail (you are redirected to the IdP and back), go to *Settings* and confirm the providers and integrations show
+Then open the UI and sign in as the bootstrap administrator: by default with the local account
+(`auth.local.bootstrapAdminEmail`, section 2d), or through the IdP when you configured OIDC. Go to *Settings* and confirm the providers and integrations show
 `configured: true`. With a runner pool installed ([runner-fleet-install.md](runner-fleet-install.md)),
 start a workflow of a test project against a throw-away repository: a sandbox appears in the fleet's
 sandbox namespace and its events stream into the run page. Finally
@@ -546,8 +547,9 @@ Secrets you created by hand are not removed by Helm.
 - **`auth.oidc.issuerUri is required` / `auth.oidc.clientSecret or auth.oidc.existingSecret is required`** -
   configure the OIDC client (section 2a), or keep `auth.local.enabled=true` for local accounts only
   (section 2d).
-- **API crashes with `Unable to resolve Configuration with the provided Issuer`** - the pod cannot reach
-  the issuer or the discovery document announces another `issuer`. Test from inside:
+- **OIDC sign-in fails, the API log shows `Unable to resolve Configuration with the provided Issuer`** - the
+  API discovers the issuer at the first OIDC sign-in (not at start; a failed discovery is retried on the next
+  sign-in). The pod cannot reach the issuer or the discovery document announces another `issuer`. Test from inside:
   `kubectl exec deploy/back-office-api -- wget -qO- <issuer>/.well-known/openid-configuration`.
 - **IdP error "invalid redirect_uri"** - the registered redirect URI differs from
   `<BACKOFFICE_PUBLIC_URL>/login/oauth2/code/oidc` (scheme, host, trailing slash) or the API builds
@@ -570,7 +572,7 @@ Secrets you created by hand are not removed by Helm.
   [runbooks/scaling.md](../runbooks/scaling.md#keda-does-not-scale).
 - **Agent steps stay QUEUED** - no runner pool is online: [runner-fleet-install.md](runner-fleet-install.md).
 - **Runner push rejected / no merge request created** - the push token of the runner cluster
-  (`gitCredentials.repoSecrets[].push`) needs `write_repository` on the target project; see [runner-job-failed](../runbooks/runner-job-failed.md).
+  (`gitCredentials.repoSecrets[].push`) needs `write_repository` on the target project; see [agent-jobs](../runbooks/agent-jobs.md#delivering-changes-failed-git-push-merge-request).
   Jira `403`: the connection's account must see the project (**Test** on the connection shows missing
   permissions).
 - **API / worker `CrashLoopBackOff` mentioning `BACKOFFICE_SECRETS_KEY` or an unknown key id** - connections
@@ -582,4 +584,4 @@ Secrets you created by hand are not removed by Helm.
   (`kubectl get crd | grep clickhouse`).
 - **Ingress returns 404 for `/api`** - the web pod proxies `/api` to `API_UPSTREAM`; check
   `kubectl exec deploy/back-office-web -- env | grep API_UPSTREAM` resolves to `http://back-office-api:8080`.
-- Runbooks: [scaling](../runbooks/scaling.md), [upgrade](../runbooks/upgrade.md), [runner-job-failed](../runbooks/runner-job-failed.md), [stuck-pipeline-run](../runbooks/stuck-pipeline-run.md), [provider-errors](../runbooks/provider-errors.md).
+- Runbooks: [scaling](../runbooks/scaling.md), [upgrade](../runbooks/upgrade.md), [agent-jobs](../runbooks/agent-jobs.md), [stuck-pipeline-run](../runbooks/stuck-pipeline-run.md), [provider-errors](../runbooks/provider-errors.md).

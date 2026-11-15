@@ -1,6 +1,6 @@
 # 0015 - Task Library: templates with inheritance, interfaces and Agent Skills as a bounded context
 
-Status: accepted - 2026-09-26
+Status: accepted - 2026-09-26; partly superseded by [0055](0055-library-groups-rules-no-interfaces.md), [0056](0056-agents-run-tasks-actions-are-nodes.md), [0057](0057-agent-is-the-environment.md), [0061](0061-template-is-only-the-work.md), [0062](0062-one-instruction-parameter-sources.md) (only the context, scopes and `extends` remain)
 
 ## Context
 Agent tasks differ by kind of work and by project (prompts, skills, models, verification commands). The

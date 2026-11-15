@@ -215,8 +215,8 @@ zadania programistyczne do agentów programistycznych (**Claude Code**, **OpenCo
 środowiskiem w zadaniu runnera: instrukcjami, regułami, umiejętnościami i konektorami, jak w kroku workflowu, zob.
 [Środowisko agenta](task-library.md#environment); benchmark nie ma projektu, więc działają tylko konektory MCP
 platformy). Każda inna para, zadanie programistyczne dla agenta odpowiedzi
-modelu albo zadanie z promptem dla agenta programistycznego, nie tworzy próby i jest liczona jako **Nie dotyczy**
-(**Not applicable**). Żeby porównać agentów na obu rodzajach zadań, dodaj po jednym kandydacie każdego rodzaju.
+modelu albo zadanie z promptem dla agenta programistycznego, nie tworzy próby; ranking
+ocenia każdy rodzaj pracy w osobnym bloku ([Odczytywanie wyników](#reading-results)). Żeby porównać agentów na obu rodzajach zadań, dodaj po jednym kandydacie każdego rodzaju.
 
 ### Kroki: uruchamianie benchmarku
 
@@ -275,36 +275,57 @@ benchmark je wysyła, żaden runner nie jest online, strona benchmarku o tym inf
 <a id="reading-results"></a>
 ### Odczytywanie wyników
 
-Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**Attempts · N**); jej nagłówek wymienia
-**Kandydatów** (**Candidates**).
+Strona benchmarku ma karty **Ranking** (**Leaderboard**) i **Próby · N** (**Attempts · N**). Pod tytułem linia
+faktów podaje liczbę kandydatów, model oceniający (`ocenia ...`), liczbę powtórzeń, gdzie działają zadania
+kodujące (na współdzielonych runnerach albo na Twoim osobistym runnerze) i łączny koszt; druga linia mówi, kto
+utworzył benchmark, i prowadzi do zestawu (**Otwórz zestaw**, **Open the suite**). To, co powtarzają wszystkie nazwy
+modeli, jest podane tam raz i pominięte w tabelach: wspólny przyrostek, np. `(my login)` (wtedy
+`modele z Twojego loginu Claude (subskrypcja)`), i wspólne pierwsze słowo, np. `Claude` (`Opus`, `Sonnet`).
 
 Każdy koszt ma dwie kwoty, jak w workflowach ([Koszty](costs-insights.md)): to, co wydano przez Back Office, i tę
 samą pracę w cenach katalogowych API. Różnią się tylko dla kandydatów działających na subskrypcji
 ([Claude Code z Twoim własnym logowaniem](#claude-code-login)): wydano `$0`, widać `$0 · API $1.14`. Takich
-kandydatów porównuje się według kwot API: **Koszt zaakceptowanego wyniku** i **Wynik / $** pokazują wtedy kwotę API
-oznaczoną **API**, a wykres umieszcza ich według kosztu w cenach API.
+kandydatów porównuje się według kwot API: **Koszt / zaakcept.** (**Cost / accepted**) pokazuje wtedy kwotę API
+oznaczoną **API**, a wykres umieszcza ich według kosztu w cenach API. Gdy wszyscy kandydaci działali na
+subskrypcji, strona pokazuje tylko kwoty API i mówi to raz
+(`koszt łącznie ≈ $x (ceny API; subskrypcja — nic nie wydano)`).
+
+**Ranking** pokazuje jeden blok na rodzaj pracy: **Odpowiedź modelu** (**Model answer**; agenci odpowiedzi modelu
+w zadaniach z promptem) i **Agent kodujący** (**Coding agent**; agenci kodujący w zadaniach programistycznych,
+agenci w nawiasie), każdy z liczbą zadań. Kandydaci są szeregowani, pokazywani na wykresie i porównywani tylko
+w swoim bloku. Każdy blok zaczyna się linią werdyktu,
+`Najtańszy zaakceptowany wynik: <model> · <koszt> · x/n zaakceptowanych · Najwyższy wynik: <model> · <wynik>`
+(najwyższy wynik jest podany tylko wtedy, gdy ma go inny kandydat), po niej są tabela i wykres.
 
 | Kolumna rankingu | Znaczenie |
 |---|---|
-| **Kandydat** (**Candidate**) | Jeden wiersz na kandydata, `agent · model`, na przykład `Claude Code · Claude Sonnet`. |
+| **#** | Miejsce według **Kosztu / zaakcept.**, od najtańszego; `—` bez zaakceptowanego wyniku. Miejsce zostaje, gdy sortujesz po innej kolumnie. |
+| **Model** | Model kandydata; gdy blok łączy różnych agentów (Claude Code i OpenCode), pod nim agent i liczba prób. |
 | **Wynik** (**Score**) | Średnia ocena z udanych prób. |
-| **Odsetek zaliczonych** (**Pass rate**) | Udział zaliczonych prób (programistyczne: weryfikacja i testy akceptacyjne przechodzą, a ocena wynosi co najmniej 70; prompt: ocena 70 lub więcej). Próby nieudane i przekraczające czas liczą się jako niezaliczone. |
-| **Średni koszt** (**Mean cost**), **Łącznie** (**Total**) | Koszt kandydata na próbę i ogółem, łącznie z próbami nieudanymi i przerwanymi po czasie; `· API $x`, gdy koszt w cenach API jest inny. |
-| **Koszt zaakceptowanego wyniku** (**Cost per accepted result**) | **Łącznie** / zaliczone próby: próby nieudane i przerwane po czasie opłacają te zaliczone ([Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted)). Puste bez zaliczonej próby. Według tej liczby porównuj kandydatów; dla kandydatów z subskrypcją w cenach API (oznaczone **API**). |
-| **Wynik / $** (**Score / $**) | Średni wynik na dolara średniego kosztu; dla kandydatów z subskrypcją na dolara w cenach API (oznaczone **API**). |
-| **Czas p50 / p95** (**Time p50 / p95**) | Czas samego kandydata (odpowiedź modelu albo zadanie agenta od jego startu do wyniku), bez czekania na runnera, modelu oceniającego i ponowień, z udanych prób: połowa była szybsza niż p50, 95% szybsze niż p95. Poniżej 20 prób p95 to po prostu najwolniejsza próba; podpowiedź mówi, z ilu prób policzono czasy. |
-| **Stabilność** (**Stability**) | Odchylenie standardowe wyniku między powtórzeniami; im niższe, tym stabilniej. |
-| **Nie dotyczy** (**Not applicable**) | Zadania benchmarku, których ten kandydat nie może wykonać (zadanie programistyczne dla agenta odpowiedzi modelu, zadanie z promptem dla agenta programistycznego); kolumna jest widoczna tylko wtedy, gdy takie są. |
+| **Zaakceptowane** (**Accepted**) | Zaakceptowane próby spośród wszystkich, `x/n`, łącznie z nieudanymi i przerwanymi po czasie. Odpowiedź modelu jest zaakceptowana przy wyniku co najmniej 70; próba kodująca wymaga też zielonej weryfikacji (testów). |
+| **Koszt / zaakcept.** (**Cost / accepted**) | Koszt zaakceptowanego wyniku: łączny koszt / zaakceptowane próby, więc próby nieudane i przerwane po czasie opłacają te zaakceptowane ([Koszt zaakceptowanego wyniku](costs-insights.md#cost-per-accepted)). Puste bez zaakceptowanej próby. Domyślne sortowanie i liczba, według której porównuj kandydatów; dla kandydatów z subskrypcją w cenach API (oznaczone **API**). |
+| **Średni koszt próby** (**Mean cost per attempt**) | Koszt kandydata na próbę, łącznie z próbami nieudanymi i przerwanymi po czasie; `· API $x`, gdy koszt w cenach API jest inny. |
+| **Czas p50** (**Time p50**) | Czas samego kandydata (odpowiedź modelu albo zadanie agenta od jego startu do wyniku), bez czekania na runnera, modelu oceniającego i ponowień, z udanych prób: mediana. Podpowiedź pokazuje p95 i z ilu prób policzono czasy (poniżej 20 prób p95 to po prostu najwolniejsza próba). |
+| **Stabilność** (**Stability**) | Odchylenie standardowe wyniku między powtórzeniami; im niższe, tym stabilniej. Widoczna tylko przy 2 lub więcej powtórzeniach. |
 
-**Wynik a koszt** (**Score vs cost**) pokazuje na wykresie każdego kandydata; kandydat, którego inny bije
-zarówno wynikiem, jak i kosztem, jest zdominowany. Przekroje **Ogółem** (**Overall**), **Wg kategorii**
-(**By category**), **Wg trudności** (**By difficulty**) i **Wg zadania** (**By task**) powtarzają tabelę
-dla każdego wycinka. Na karcie **Próby** szukaj zadań lub kandydatów, filtruj po zadaniu i modelu i otwórz próbę,
-aby przeczytać jej agenta i model, wynik, kryteria i uzasadnienie modelu oceniającego oraz wynik weryfikacji. Każda
-próba pokazuje **Koszt** (**Cost**, z kwotą API), koszt **Oceny** (**Judge**), **Czas własny** (**Own time**; czas
-samego kandydata, bez kolejki) i **Czas trwania** (**Duration**; od zlecenia do wyniku, łącznie z czekaniem na
-runnera i oceną). Zanim
-wyciągniesz wnioski, przeczytaj najgorszą próbę każdego kandydata: niska ocena to często problem z kryteriami oceny.
+Wiersz, w którym zaakceptowano mniej niż połowę prób, jest wyszarzony: tani, ale zawodny.
+
+Wykres pod tabelą pokazuje średni wynik względem kosztu zaakceptowanego wyniku (subskrypcje w cenach API); lewy
+górny róg jest lepszy. Front Pareto (żaden inny kandydat nie jest zarazem tańszy i lepszy) jest zaznaczony na
+niebiesko, a jego punkty łączy linia przerywana. Kandydatów bez zaakceptowanego wyniku nie da się umieścić na
+wykresie; ich nazwy są pod wykresem. Przekroje **Ogółem** (**Overall**), **Wg kategorii** (**By category**),
+**Wg trudności** (**By difficulty**) i **Wg zadania** (**By task**) powtarzają tabelę dla każdego wycinka i rodzaju
+pracy.
+
+Na karcie **Próby** szukaj zadań lub kandydatów i filtruj po rodzaju pracy, kandydacie, wyniku (zaakceptowane,
+niezaakceptowane, przekroczony czas, błąd) i zadaniu. Tabela pokazuje **Zadanie** (**Task**), **Kandydata**
+(**Candidate**), **Powt.** (**Rep**; przy 2 lub więcej powtórzeniach), **Wynik** (**Score**) ze znakiem
+zaakceptowania lub jego braku, **Koszt** (**Cost**) kandydata (z kwotą API) i jego **Czas własny** (**Own time**;
+bez kolejki). Kolumna stanu pokazuje ikonę tylko dla wyjątków: prób z przekroczonym czasem, z błędem, w toku
+i czekających. Otwórz próbę, aby przeczytać jej agenta i model, wynik, kryteria i uzasadnienie modelu oceniającego,
+wynik weryfikacji, **Koszt oceny** (**Judge cost**) i **Czas trwania** (**Duration**; od zlecenia do wyniku,
+łącznie z czekaniem na runnera i oceną). Zanim wyciągniesz wnioski, przeczytaj najgorszą próbę każdego kandydata:
+niska ocena to często problem z kryteriami oceny.
 
 ### Wykorzystanie wyniku
 

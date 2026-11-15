@@ -7,11 +7,14 @@ uprawnień. To jedna przewijana strona ze spisem sekcji po lewej; `?section=` w 
 | Sekcja | Co tam robisz |
 |---|---|
 | **Profil** (**Profile**) | Sprawdzasz imię i nazwisko, e-mail, grupy i bieżącą sesję. |
-| **Preferencje** (**Preferences**) | Motyw, gęstość, liczba wierszy na stronę, domyślny projekt. |
+| **Preferencje** (**Preferences**) | Motyw, gęstość, **Język / Language** (polski lub angielski), liczba wierszy na stronę, domyślny projekt. |
 | **Powiadomienia** (**Notifications**) | Powiadomienia na pulpicie i dźwięki (zob. [Powiadomienia na pulpicie](#notifications)). |
 | **Bezpieczeństwo** (**Security**) | Metoda logowania, hasło, uwierzytelnianie dwuskładnikowe, ostatnie logowania. |
 | **Osobiste tokeny dostępu** (**Personal access tokens**) | Tworzysz i unieważniasz tokeny dla skryptów i IDE. |
+| **Połączenia** (**Connections**) | Twoje osobiste połączenia z Jirą (zob. [Połączenia](#connections)). |
 | **Podłącz IDE** (**Connect your IDE**) | Konfigurujesz serwer MCP w Claude Code, Cursorze lub VS Code. |
+| **Mój komputer jako runner** (**My computer as a runner**) | Uruchamiasz zadania agentów na własnym komputerze, z własnym logowaniem Claude (zob. [Mój komputer jako runner](personal-runner.md)). |
+| **Moje modele** (**My models**) | Czego Twoje prywatne projekty i osobiste benchmarki mogą teraz używać, łącznie ze stanem osobistego runnera. |
 | **Moje uprawnienia** (**My access**) | Twoje uprawnienia platformowe oraz projekty z rolami. |
 
 **Wyloguj** (**Sign out**) znajduje się w nagłówku strony i w menu awatara.
@@ -70,6 +73,7 @@ nie jest sygnalizowane wyłącznie powiadomieniem ani wyłącznie dźwiękiem.
 | **Alert budżetu** (**Budget alert**) | Budżet, który możesz podnieść, osiągnął próg alertu albo limit. | wł. |
 | **Błąd CI** (**CI failed**) | Wykonanie CI albo bramka przeglądu w jednym z Twoich projektów nie przeszła. | wył. |
 | **Wygasające połączenie** (**Connection expiring**) | Token połączenia Jiry, którym możesz zarządzać, wygasa w ciągu 14 dni lub już wygasł; raz na każdą datę wygaśnięcia ([Wygaśnięcie tokenu](integrations-jira.md#jira-token-expiry)). | wł. dla administratorów (`admin.connections.manage`), wył. dla pozostałych |
+| **Nowe zadania Jira** (**New Jira tasks**) | Jedna z Twoich reguł w [Mojej pracy](my-work.md) znalazła zgłoszenia Jira, o których jeszcze nie zdecydowałeś; powiadomienie podaje ich klucze i otwiera **Moją pracę**. | wł. |
 | **Tylko gdy karta nie jest na widoku** (**Only when the tab is not in view**) | Nic nie wyskakuje, gdy patrzysz na Back Office (inna karta, inne okno albo zminimalizowana przeglądarka to „nie na widoku”). | wł. |
 | **Odtwarzaj dźwięk** (**Play a sound**) / **Głośność** (**Volume**) | Każdy typ ma własny krótki ton: wznoszące się dwa dźwięki „przekazania pałeczki” dla *Twojej kolei*, lekkie trzy wznoszące się dźwięki, gdy uruchomienie się zakończy, miękka opadająca para, gdy coś się nie udało, przytłumione podwójne stuknięcie dla budżetów. Odsłuch działa także przy wyłączonym dźwięku. | wł., 60 % |
 | **Godziny ciszy** (**Quiet hours**) | Bez powiadomień i dźwięków między dwiema godzinami (zegar Twojego komputera); mogą obejmować północ, np. od 22:00 do 07:00. | wył. |

@@ -1,6 +1,7 @@
 package pl.mos.backoffice.llm.gateway
 
 import com.anthropic.models.messages.OutputConfig
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -164,6 +165,30 @@ class SpringAiLlmGatewayTest {
         assertThat(options.temperature).isEqualTo(0.7)
         assertThat(result.usage).isEqualTo(TokenUsage(inputTokens = 60, outputTokens = 20, cacheReadTokens = 40))
         assertThat(registry.baseUrl(Provider.OPENAI_COMPATIBLE)).isEqualTo("https://openrouter.example/v1")
+    }
+
+    @Test
+    fun `every call increments the token and cost counters by provider, model and token type`() {
+        val meters = SimpleMeterRegistry()
+        val metered = SpringAiLlmGateway(
+            registry, { p, _ -> fake(p) }, ChatOptionsMapper(4096, true), StructuredOutputParser(JsonMapper.builder().build()),
+            catalog, ledger, Clock.fixed(Instant.parse("2026-09-26T12:00:00Z")), properties, metrics = LlmMetrics(meters),
+        )
+        fake(Provider.OPENAI_COMPATIBLE).reply("a", usage = DefaultUsage(100, 20, 120, null, 40L, 0L)).reply("b", usage = DefaultUsage(10, 5))
+        val model = ModelRef(Provider.OPENAI_COMPATIBLE, "llama-4")
+
+        metered.chat(model, LlmRequest.of(null, "one", context))
+        metered.chat(model, LlmRequest.of(null, "two", context))
+
+        fun tokens(type: String) = meters.find(LlmMetrics.TOKENS).tags("provider", "openai_compatible", "model", "llama-4", "type", type).counter()?.count()
+        assertThat(tokens("input")).isEqualTo(70.0)
+        assertThat(tokens("output")).isEqualTo(25.0)
+        assertThat(tokens("cache_read")).isEqualTo(40.0)
+        assertThat(tokens("cache_write")).describedAs("zero counts register no series").isNull()
+        // (60 * 2 + 20 * 10 + 40 * 0.2 + 10 * 2 + 5 * 10) / 1e6 USD
+        assertThat(meters.find(LlmMetrics.COST_USD).tags("provider", "openai_compatible", "model", "llama-4").counter()!!.count())
+            .isCloseTo(0.000398, org.assertj.core.data.Offset.offset(1e-9))
+        assertThat(meters.meters.flatMap { m -> m.id.tags.map { it.key } }.toSet()).containsExactlyInAnyOrder("provider", "model", "type")
     }
 
     @Test

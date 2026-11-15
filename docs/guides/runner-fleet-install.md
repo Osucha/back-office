@@ -2,7 +2,7 @@
 
 ## When to use this guide
 
-You want coding agents (`IMPLEMENT` steps, coding benchmark attempts) and deliveries (`DELIVER` jobs of **Deliver changes**) to run: you install a
+You want coding agents (coding steps of workflows, coding benchmark attempts) and deliveries (`DELIVER` jobs of **Deliver changes**) to run: you install a
 **runner pool** - the `back-office-runner` chart - in a Kubernetes cluster (the control-plane cluster, a
 dedicated agents cluster, or a customer's on-prem cluster). The pool pulls jobs from Back Office over
 HTTPS; Back Office never gets credentials for that cluster (ADR 0024,
@@ -128,8 +128,8 @@ RESULT: prerequisites met
 5. **Verify**: the controller logs `registered as runner ...`, the Secret `<fullname>-token` exists in the
    release (controller) namespace, not the sandbox namespace (key `runnerToken`; another namespace only
    when `RUNNER_TOKEN_SECRET_NAMESPACE` is set), the
-   pool shows the runner *online* in Administration → Runner fleet, and a test workflow with an
-   `IMPLEMENT` step creates a `SandboxClaim` (or Job) in `back-office-runners-sandboxes`:
+   pool shows the runner *online* in Administration → Runner fleet, and a test workflow with a
+   coding step (a task run by a coding agent, runner mode `IMPLEMENT`) creates a `SandboxClaim` (or Job) in `back-office-runners-sandboxes`:
 
    ```bash
    kubectl -n back-office-runners logs deploy/runners-back-office-runner | head
@@ -190,4 +190,4 @@ fleet afterwards.
   `deployments`, image pull); `kubectl -n <ns>-sandboxes get deploy,events`.
 - **KEDA ScaledObject `False`/fallback** - the token Secret is missing (controller never registered) or
   Back Office is unreachable from the KEDA operator's namespace.
-- Runbooks: [scaling](../runbooks/scaling.md), [runner-job-failed](../runbooks/runner-job-failed.md).
+- Runbooks: [scaling](../runbooks/scaling.md), [agent-jobs](../runbooks/agent-jobs.md).

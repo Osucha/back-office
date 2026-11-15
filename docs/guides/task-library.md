@@ -34,7 +34,9 @@ skills) and named it. Library imports ignore template skills and rules with a wa
 
 Until ADR 0056 a template had an `executor` (`LLM`, `SPEC_KIT` (gone since ADR 0063), `IMPLEMENT`, `FETCH_ISSUE`, `NOTIFY`,
 `TRANSITION_ISSUE`, `START_WORKFLOW`, `PROJECT_DIGEST`). It is gone: who runs a step is its agent (section 6), and
-the five deterministic integrations are `ACTION` nodes of the workflow designer, not library entries (section 8).
+the deterministic integrations are `ACTION` nodes of the workflow designer, not library entries (section 8). There
+are six action types: `FETCH_ISSUE`, `COMMENT_ISSUE`, `TRANSITION_ISSUE`, `START_WORKFLOW`, `PROJECT_DIGEST` and
+`DELIVER_CHANGES` (ADR 0063).
 
 Until ADR 0055 there were also task interfaces (`/api/v1/task-interfaces`, `implements`). No workflow ever
 referred to one and they only duplicated `consumes`/`produces`, so they were removed; what they gave, a grouping,
@@ -605,7 +607,7 @@ base: copy them into a project rule for your stack and make that one automatic, 
 | `write-use-case` | `analyst` | expand an accepted story into flows A, A1.., rules RB-xx, postconditions, permissions | artefact `use-case` |
 | `write-adr` | `analyst` | draft a decision record (status Proposed, at least two options) | artefact `adr` (markdown) |
 | `plan-task-list` | `analyst` | break the plan / story into tasks for an autonomous agent | artefact `tasks`: `[{title, description, verification, test_command, completed: false}]`, always ending with "reformat, lint, and test" |
-| `implement-task-list` | `opencode` | execute that list with TDD, stop on the first red `test_command` (the runner commits once; the work log ends with `RESULT: GREEN` or `RESULT: STOPPED at <task>`, which `verifyCommand` checks) | `diff`, `mr`, artefact `work-log` with a "Noticed out of scope" section |
+| `implement-task-list` | `opencode` | execute that list with TDD, stop on the first red `test_command` (the agent never commits or pushes: a **Deliver changes** action after the step does, ADR 0063; the work log ends with `RESULT: GREEN` or `RESULT: STOPPED at <task>`, which `verifyCommand` checks) | `diff`, artefact `work-log` with a "Noticed out of scope" section |
 | `review-against-spec` | `reviewer` | review the diff against story, spec and task list | `review` with per-requirement coverage (MET/PARTIAL/MISSING) plus findings |
 
 The skills these templates need (`definition-of-ready-done`, `user-story-format`, `use-case-format`, `adr-format`,

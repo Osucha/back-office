@@ -1,6 +1,6 @@
 # 0034 — Optional multi-repository projects: zero or more repositories per project, per-step repository access
 
-- Status: accepted
+- Status: accepted; partly superseded by 0063 (repositories are the workflow's sources, not the step's)
 - Date: 2026-10-08
 - Deciders: owner
 - Related: ADR 0013 (no SCM API, CI-initiated integration), 0014 (graph workflows), 0024 (sandboxed runner

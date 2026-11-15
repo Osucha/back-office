@@ -66,8 +66,8 @@ KEDA metrics-api scaler.
 
 ### Run directories (ADR 0044, 0060)
 
-The coding steps of a run share its run directory: `/workspace` is kept between the steps of one run (a step with
-`directory: SEPARATE` gets a throwaway one). On Docker (also personal runners)
+The coding steps of a run share its run directory: `/workspace` is kept between the steps of one run (a step whose
+agent has `directory: SEPARATE` gets a throwaway one; directory and session are agent settings, ADR 0062). On Docker (also personal runners)
 that is a named volume `bo-ws-...`; on Kubernetes a ReadWriteOnce PVC in the sandbox namespace (chart value
 `workspaces.storageClass`, empty = the cluster default; the controller needs `create` / `delete` on
 persistentvolumeclaims, which the chart grants). The controller reports its workspaces every minute and deletes the

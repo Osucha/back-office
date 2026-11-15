@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-11-05
 - Deciders: owner
-- Related: ADR 0015 (task library: templates, interfaces, skills), 0016, 0053 (run inputs), 0054 (approachable task
+- Related: ADR 0015 (task library: templates, interfaces, skills), 0053 (run inputs), 0054 (approachable task
   library); docs/architecture/07-task-library.md, docs/manual/task-library.md, docs/api/openapi.yaml
 
 ## Context

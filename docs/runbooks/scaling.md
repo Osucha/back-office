@@ -101,4 +101,4 @@ failed over (expected once per failover). SSE clients recover through `Last-Even
   latency), *Runner fleet* (queued/running per pool, sandbox start time).
 - `kubectl top pods -n back-office`, CPU throttling (`container_cpu_cfs_throttled_seconds_total`): api pods
   have no CPU limit by default for this reason.
-- Related: [stuck-pipeline-run](stuck-pipeline-run.md), [runner-job-failed](runner-job-failed.md), [upgrade](upgrade.md).
+- Related: [stuck-pipeline-run](stuck-pipeline-run.md), [agent-jobs](agent-jobs.md), [upgrade](upgrade.md).

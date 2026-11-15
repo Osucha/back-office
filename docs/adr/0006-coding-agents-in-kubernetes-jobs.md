@@ -1,6 +1,6 @@
 # 0006 - Coding agents run as Kubernetes Jobs in a shared runner image
 
-Status: execution model superseded by [0024](0024-sandboxed-runner-fleet.md) on 2026-09-28 (the runner image stays)
+Status: accepted - 2026-09-26; partly superseded by [0024](0024-sandboxed-runner-fleet.md) (execution model; the runner image stays)
 
 ## Context
 Implementation steps and coding benchmarks need a sandbox with git, toolchains and an agent harness.

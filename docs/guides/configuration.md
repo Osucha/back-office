@@ -19,7 +19,11 @@ computes it from other values (release name, namespace, ingress host).
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:4200` | Comma separated browser origins. Not needed when the web pod proxies `/api` (same origin) | no | `api.config.corsAllowedOrigins` (defaults to public URL) |
 | `BACKOFFICE_PUBLIC_URL` | `http://localhost:8080` | External URL of the UI: run links printed by the CI client, Jira comments, notifications, and the `post_logout_redirect_uri` of the OIDC logout (must match a post-logout redirect URI registered at the provider) | no | `api.config.publicUrl` (derived from `ingress.host` when empty) |
 | `LOG_LEVEL` | `INFO` | Level of `pl.mos.backoffice` loggers | no | `api.config.logLevel` |
-| `SPRING_PROFILES_ACTIVE` | _(none)_ | `local` enables dev defaults (compose Keycloak as issuer, bootstrap admin `admin@example.com`, non-Secure cookie, compose auto-start, DEBUG logs). Never set in Kubernetes | no | - (`api.extraEnv`) |
+| `LOG_FORMAT` | `ecs` | Structured console log format (JSON, ECS) outside the `local` profile; `local` keeps plain console logs | no | - (`api.extraEnv`) |
+| `SPRING_PROFILES_ACTIVE` | _(none)_ | `local` enables dev defaults (local accounts with bootstrap admin `admin@example.com` / `ChangeMe-Local-123`, no OIDC issuer unless `OIDC_ISSUER_URI` is set, registration `OPEN`, non-Secure cookie, Flyway on start, dev keys for local accounts and connection secrets, isolation ceiling `DEV`, compose auto-start, DEBUG logs). Never set in Kubernetes | no | - (`api.extraEnv`) |
+| `BACKOFFICE_MCP_ENABLED` | `true` | MCP server at `/mcp` (personal access tokens only, ADR 0025) | no | - (`api.extraEnv`) |
+| `BACKOFFICE_PROVENANCE_ENABLED` | `true` | Signed provenance attestations of finished runs and agent jobs ([provenance.md](provenance.md)) | no | - (`api.extraEnv`) |
+| `BACKOFFICE_PROVENANCE_SWEEP_INTERVAL` | `PT5M` | Catch-up sweep that attests finished runs of the last 7 days still lacking an attestation | no | - (`worker.extraEnv`) |
 | `JAVA_TOOL_OPTIONS` | set in Dockerfile | JVM flags (`MaxRAMPercentage=75`, ZGC) | no | `api.javaToolOptions` |
 
 The API keys of iterations 1-2 (`BACKOFFICE_API_KEY`, `BACKOFFICE_CI_API_KEY`, header `X-Api-Key`)
@@ -33,15 +37,15 @@ Properties `backoffice.auth.*` (Spring relaxed binding: `backoffice.auth.oidc.is
 
 | Variable | Default | Description | Secret | Helm value |
 |---|---|---|---|---|
-| `BACKOFFICE_AUTH_OIDC_ISSUER_URI` | _(empty = local accounts only, no OIDC login; required for OIDC; `local` profile: the compose Keycloak `http://localhost:8180/realms/back-office`)_ | OIDC issuer. The API fetches `<issuer>/.well-known/openid-configuration` lazily at the first sign-in (not at startup, so the API starts while the provider is still booting; a failed discovery is retried at the next sign-in), and the `iss` of ID tokens must equal it: it must be reachable from the API **and** be the URL the browser is redirected to | no | `auth.oidc.issuerUri` (empty by default: the chart starts with local accounts and does not deploy an identity provider, ADR 0039) |
+| `BACKOFFICE_AUTH_OIDC_ISSUER_URI` | _(empty = local accounts only, no OIDC login; required for OIDC; `local` profile: empty too, set `OIDC_ISSUER_URI=http://localhost:8180/realms/back-office` for the compose Keycloak)_ | OIDC issuer. The API fetches `<issuer>/.well-known/openid-configuration` lazily at the first sign-in (not at startup, so the API starts while the provider is still booting; a failed discovery is retried at the next sign-in), and the `iss` of ID tokens must equal it: it must be reachable from the API **and** be the URL the browser is redirected to | no | `auth.oidc.issuerUri` (empty by default: the chart starts with local accounts and does not deploy an identity provider, ADR 0039) |
 | `BACKOFFICE_AUTH_OIDC_CLIENT_ID` | `back-office` | Confidential client registered at the provider (authorization code + PKCE) | no | `auth.oidc.clientId` |
 | `BACKOFFICE_AUTH_OIDC_CLIENT_SECRET` | _(required for OIDC; `local`: `back-office-dev-secret`)_ | Client secret | yes | `auth.oidc.existingSecret` + `existingSecretKey` (default `client-secret`), or `auth.oidc.clientSecret` -> Secret `<fullname>-app` |
 | `BACKOFFICE_AUTH_OIDC_SCOPES` | `openid,profile,email` | Requested scopes, comma separated (add `groups` or similar where the provider needs a scope for the groups claim) | no | `auth.oidc.scopes` |
-| `BACKOFFICE_AUTH_REGISTRATION` | `INVITE_ONLY` | `INVITE_ONLY`: only invited e-mails, allowed domains and bootstrap admins get an account on first login; `OPEN`: everyone the provider authenticates | no | `auth.registration` |
+| `BACKOFFICE_AUTH_REGISTRATION` | `INVITE_ONLY` (`local` profile: `OPEN`) | `INVITE_ONLY`: only invited e-mails, allowed domains and bootstrap admins get an account on first login; `OPEN`: everyone the provider authenticates. Default of the platform setting until it is saved in the admin UI | no | `auth.registration` |
 | `BACKOFFICE_AUTH_ALLOWED_EMAIL_DOMAINS` | _(empty)_ | Comma separated domains accepted without invitation in `INVITE_ONLY` mode | no | `auth.allowedEmailDomains` (list or string) |
-| `BACKOFFICE_AUTH_BOOTSTRAP_ADMINS` | _(empty)_ | Comma separated e-mails that receive `platform-admin` on first login - the only way to get the first administrator | no | `auth.bootstrapAdmins` (list or string) |
-| `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` | `PT30M` | Session idle timeout (ISO-8601); shown in the UI countdown | no | `auth.session.idleTimeout` |
-| `BACKOFFICE_AUTH_SESSION_ABSOLUTE_TIMEOUT` | `PT12H` | Maximum session age since login | no | `auth.session.absoluteTimeout` |
+| `BACKOFFICE_AUTH_BOOTSTRAP_ADMINS` | _(empty; `local` profile: `admin@example.com`)_ | Comma separated e-mails that receive `platform-admin` on first login - the only way to get the first administrator | no | `auth.bootstrapAdmins` (list or string) |
+| `BACKOFFICE_AUTH_SESSION_IDLE_TIMEOUT` | `PT24H` | Session idle timeout (ISO-8601); shown in the UI countdown | no | `auth.session.idleTimeout` |
+| `BACKOFFICE_AUTH_SESSION_ABSOLUTE_TIMEOUT` | `PT24H` | Maximum session age since login | no | `auth.session.absoluteTimeout` |
 | `BACKOFFICE_AUTH_COOKIE_SECURE` | `true` (`local`: `false`) | `Secure` flag of `BO_SESSION`. `false` only on plain-http dev setups | no | `auth.cookieSecure` |
 | `BACKOFFICE_AUTH_GROUPS_CLAIM` | `groups` | ID token / userinfo claim with the user's group names (mapped to Back Office groups) | no | `auth.groupsClaim` |
 | `BACKOFFICE_AUTH_SYNC_GROUPS` | `false` | Default of the platform setting "synchronise groups from the identity provider" | no | - (`api.config.extra`) |
@@ -56,7 +60,7 @@ Properties `backoffice.auth.local.*`; `application.yml` maps them to these varia
 |---|---|---|---|---|
 | `BACKOFFICE_AUTH_LOCAL_ENABLED` | `true` | Local login on/off (hard switch; the platform setting "local login" can only narrow it). With OIDC off **and** local off only bearer tokens authenticate | no | `auth.local.enabled` |
 | `BACKOFFICE_AUTH_LOCAL_SECRET_KEY` | _(required while local login is enabled; `local` profile: a fixed dev key)_ | Base64 of 32 bytes (`openssl rand -base64 32`): AES-GCM key of TOTP secrets, HMAC key of recovery codes and MFA step tokens. Startup fails with a clear message when missing or not 32 bytes. Changing it invalidates enrolled authenticators and recovery codes | yes | generated into `<fullname>-app` (kept across upgrades), or `auth.local.secretKey` |
-| `BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL` | _(empty; `local` profile: `owner@example.com`)_ | First platform admin without an identity provider; created only when the database has no user | no | `auth.local.bootstrapAdminEmail` |
+| `BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_EMAIL` | _(empty; `local` profile: `admin@example.com`)_ | First platform admin without an identity provider; created only when the database has no user (`local` profile: an existing OIDC-only platform admin with this e-mail gets the password once) | no | `auth.local.bootstrapAdminEmail` |
 | `BACKOFFICE_AUTH_LOCAL_BOOTSTRAP_ADMIN_PASSWORD` | _(empty; `local` profile: `ChangeMe-Local-123`)_ | Its initial password (must satisfy the policy; changed at the first login) | yes | `auth.local.bootstrapAdminPassword` -> `<fullname>-app` |
 | `BACKOFFICE_AUTH_LOCAL_RESET_LINK_VALIDITY` | `PT24H` | Lifetime of set-password / reset links | no | `auth.local.resetLinkValidity` |
 | `BACKOFFICE_AUTH_LOCAL_LOCKOUT_MAX_FAILURES` | `5` | Default of the platform setting: consecutive failures before a lockout | no | `auth.local.lockout.maxFailures` |
@@ -193,7 +197,9 @@ Kubernetes.
 | Variable | Default | Description | Secret | Helm value |
 |---|---|---|---|---|
 | `BACKOFFICE_ROLE` | `api,worker` | Comma list: `api` (HTTP, SSE, auth, CI and runner v2 endpoints, LLM gateway, MCP), `worker` (work queue, schedulers, outbox relay), `migrate` (Flyway, then exit). `api,worker` for single-process installs | no | derived: `api` / `worker` in `mode: split`, `api,worker` in `mode: combined`, `migrate` in the hook Job and init container |
-| `SPRING_FLYWAY_ENABLED` | `false` | Only the `migrate` role migrates; it forces Flyway on regardless of this variable | no | derived: `false` on app pods, `true` for `migrate` |
+| `SPRING_FLYWAY_ENABLED` / `BACKOFFICE_FLYWAY_ENABLED` | `false` (`local` profile: `true`) | Flyway at start of this process (`spring.flyway.enabled` reads `BACKOFFICE_FLYWAY_ENABLED`; `SPRING_FLYWAY_ENABLED` overrides it). Only the `migrate` role migrates in Kubernetes; it forces Flyway on regardless of this variable | no | derived: `SPRING_FLYWAY_ENABLED=false` on app pods, `true` for `migrate` |
+| `WORKER_CONCURRENCY` | `16` | Work items a worker process handles in parallel | no | - (`worker.extraEnv`) |
+| `WORKER_LEASE` | `PT60S` | Lease of a claimed work item; heartbeats extend it every lease/3 | no | - (`worker.extraEnv`) |
 | `POD_NAME` / `POD_NAMESPACE` | - | Downward API; lease owner id and telemetry resource attributes | no | derived |
 
 ## Agent runner (execution plane, ADR 0024)
@@ -209,6 +215,13 @@ over `/api/v1/runner/v2/**`. The variables of the push model (`RUNNER_IMAGE`, `R
 | `RUNNER_MODE` | `FLEET` | Shown on the integrations page only; runner-controllers always pull jobs (the embedded `DOCKER` mode of a host-run API is gone) | no | `runner.mode` (`FLEET`) |
 | `RUNNER_DEFAULT_TIMEOUT` | `PT60M` | Timeout when a step/attempt has none | no | `runner.defaultTimeout` |
 | `RUNNER_TOKEN_SECRET` | _(required)_ | HMAC secret of per-job tokens (`bo_job_`: LLM gateway, events, results) | yes | `secrets.runnerTokenSecret` (generated) |
+| `RUNNER_API_URL` | _(blank = `BACKOFFICE_PUBLIC_URL`; `local` profile: `http://host.docker.internal:8080`)_ | URL under which sandboxes reach the API and its LLM gateway | no | - (`api.extraEnv`) |
+| `RUNNER_LEASE_DURATION` | `PT60S` | Lease of a job taken by a runner-controller | no | - (`api.extraEnv`) |
+| `RUNNER_QUEUE_TIMEOUT` | `PT24H` | A job no runner leased within this time ends `TIMED_OUT` | no | - (`api.extraEnv`) |
+| `RUNNER_EXTRA_ALLOWED_MODELS` | _(empty)_ | Models added to every job's LLM gateway allowlist besides the job's own model (comma list) | no | - (`api.extraEnv`) |
+| `RUNNER_PLATFORM_ISOLATION` | `STANDARD` (`local` profile and compose: `DEV`) | Platform ceiling of sandbox isolation; `DEV` (runc) only for local Docker runners | no | - (`api.extraEnv`) |
+| `RUNNER_PERSONAL_CONTROLLER_IMAGE` / `RUNNER_PERSONAL_RUNNER_IMAGE` / `RUNNER_PERSONAL_EGRESS_PROXY_IMAGE` | `back-office/runner-controller:dev` / `back-office/runner:dev` / `back-office/egress-proxy:dev` | Images in the `docker run` command of personal runners shown under My account (ADR 0040) | no | - (`api.extraEnv`) |
+| `RUNNER_LOCAL_FLEET_TOKEN` | _(empty = off; compose: `bo_rrt_local-compose-stack-only`)_ | Laptop stacks only (ADR 0046): the API creates the shared pool `default` and accepts this registration token from the bundled runner-controller | yes | - (never in Kubernetes) |
 
 **runner-controller** (chart `deploy/helm/back-office-runner`, compose service `runner-controller`):
 
@@ -345,8 +358,9 @@ has no git variable and sends each job only its access level `NONE | READ | PUSH
 merge requests are opened with git push options and the project's CI calls Back Office with project CI
 tokens (see [ci-integration.md](ci-integration.md)).
 
-Jira: Jira Cloud only (REST API v3, basic auth with a classic API token; scoped API tokens, which need the
-`api.atlassian.com` gateway URL, and Jira Data Center personal access tokens are not supported). Jira
+Jira: Jira Cloud only (REST API v3, basic auth with the account e-mail and an API token). Both classic API
+tokens (sent to the site URL) and scoped API tokens (sent through the `api.atlassian.com` gateway with the site's
+cloud id, ADR 0035) are supported; Jira Data Center personal access tokens are not. Jira
 credentials are **connections** managed in the UI (ADR 0030, [Connection secrets](#connection-secrets-adr-0030),
 [manual](../manual/integrations-jira.md#jira-connections)), each with only the capabilities it needs (read,
 comment, transition) and backed by a Jira account with exactly those project permissions.
@@ -401,7 +415,7 @@ exceeded/near, LISTEN reconnects, Hikari pending) and `metrics.dashboards` (Conf
 | `PIPELINE_EXECUTOR_THREADS` | `16` | Virtual-thread executor size for graph execution | no | `api.config.pipelineExecutorThreads` |
 | `PIPELINE_RECOVER_ON_STARTUP` | `true` | Resume `RUNNING` runs from checkpoints after a restart | no | `api.config.pipelineRecoverOnStartup` |
 | `EVAL_CONCURRENCY_PER_PROVIDER` | `2` | Parallel benchmark attempts per provider | no | `api.config.evalConcurrencyPerProvider` |
-| `EVAL_SEED_STARTER_CONTENT` | `true` | Seed model profiles with pricing and sample task suites on first start | no | `api.config.evalSeedStarterContent` |
+| `EVAL_SEED_STARTER_CONTENT` | `true` | Create the starter task suite when there is none (and refresh untouched starter tasks). Model profiles are not seeded: they are created from the models the connected providers offer (ADR 0045) | no | `api.config.evalSeedStarterContent` |
 
 ## Helm secrets layout
 
@@ -422,7 +436,8 @@ through `envFrom`; the migrate role gets only the database password.
   OPENAI_COMPATIBLE_API_KEY, OPENAI_COMPATIBLE_BASE_URL, OLLAMA_BASE_URL
 
 <fullname>-integrations       (secrets.integrations.*)   -> api, worker
-  JIRA_API_TOKEN (legacy, ADR 0030; GIT_* only for the embedded DOCKER runner of a laptop)
+  JIRA_API_TOKEN (legacy, ADR 0030; the chart fails when secrets.integrations.gitToken is set:
+  git tokens belong to the runner chart)
 
 <fullname>-storage            (storage.s3.* / minio.enabled)  -> api, worker, bundled MinIO
   BACKOFFICE_STORAGE_S3_ACCESS_KEY, BACKOFFICE_STORAGE_S3_SECRET_KEY   (absent with IRSA / Workload Identity)
@@ -447,24 +462,6 @@ the corresponding `existingSecret` names - or `externalSecrets.enabled=true`: th
 `ExternalSecret`s (external-secrets.io/v1, `dataFrom.extract` of one remote secret per target:
 `externalSecrets.app/providerKeys/integrations/database/storage/signing.remoteKey`) instead of its own
 Secrets. Key names inside your Secrets must match the variable names above exactly.
-
-## Names awaiting the backend implementation
-
-The chart and compose use these names from the iteration-5 design; the backend branches implement them.
-If a name changes there, change it here, in `deploy/helm/**/templates` and in `deploy/compose`:
-`BACKOFFICE_ROLE`, `SPRING_FLYWAY_ENABLED`, `BACKOFFICE_DATASOURCE_DIRECT_URL`, `RUNNER_MODE=FLEET`,
-`BACKOFFICE_STORAGE_TYPE`, `BACKOFFICE_STORAGE_S3_ENDPOINT|REGION|BUCKET|PATH_STYLE|ACCESS_KEY|SECRET_KEY|SSE`,
-`BACKOFFICE_STORAGE_FILESYSTEM_ROOT`, `BACKOFFICE_SIGNING_KEYS_<n>_ID|PRIVATE_KEY_PKCS8_BASE64|PUBLIC_KEY_X509_BASE64|ACTIVE`,
-`BACKOFFICE_SIGNING_ALLOW_EPHEMERAL`, runner-controller `RUNNER_BACKOFFICE_URL`, `RUNNER_REGISTRATION_TOKEN`,
-`RUNNER_TOKEN_SECRET_NAME`, `RUNNER_TOKEN_SECRET_NAMESPACE`, `RUNNER_TOKEN_FILE`, `RUNNER_BACKEND`,
-`RUNNER_RUNTIME_CLASS_STANDARD`, `RUNNER_RUNTIME_CLASS_HIGH`, `RUNNER_NAMESPACE`, `RUNNER_MAX_CONCURRENT`,
-`RUNNER_WARM_POOL_SIZE`, `RUNNER_EGRESS_PROXY_IMAGE`, `RUNNER_EGRESS_PROXY_PORT`, `RUNNER_CONTROLLER_URL`,
-`PORT`, `SPRING_APPLICATION_JSON` (runner-controller maps); metrics `backoffice_work_items`,
-`backoffice_work_oldest_ready_seconds`, `backoffice_work_latency_seconds`, `backoffice_runs_active`,
-`backoffice_gate_wait_seconds`, `backoffice_runner_jobs`, `backoffice_runner_jobs_completed_total`,
-`backoffice_sandbox_start_seconds`, `backoffice_llm_tokens_total`, `backoffice_llm_cost_usd_total`,
-`backoffice_budget_utilisation`, `backoffice_sse_subscribers`, `backoffice_events_listen_reconnects_total`;
-the runner-controller's actuator probes on `:8090`.
 
 ## Where to look when it fails
 

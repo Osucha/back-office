@@ -118,6 +118,8 @@ import pl.mos.backoffice.shared.usage.UsageLedger
 import javax.sql.DataSource
 import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.binder.MeterBinder
+import pl.mos.backoffice.projects.adapter.`in`.sse.EventStreamController
 import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.security.SecretVault
@@ -486,6 +488,14 @@ class ProjectsConfiguration {
             Gauge.builder("backoffice.runs.active") { engine.activeRuns().toDouble() }
                 .description("Workflow runs being advanced by this replica").tag("holder", HOLDER).register(registry)
         }
+    }
+
+    /** `backoffice_sse_subscribers`: browsers connected to this replica's event stream ("Platform overview" dashboard). */
+    @Bean
+    fun sseSubscribersMetric(stream: ObjectProvider<EventStreamController>): MeterBinder = MeterBinder { registry ->
+        // the controller is looked up on each scrape, so binding never forces it to be created early
+        Gauge.builder("backoffice.sse.subscribers", stream) { it.ifAvailable?.connectedClients()?.toDouble() ?: 0.0 }
+            .description("Clients connected to GET /api/v1/events on this replica").register(registry)
     }
 
     private companion object {

@@ -33,8 +33,8 @@ Browser ──full page logoutUrl (Keycloak end_session)─▶ Keycloak ─302�
 | Aspect | Rule |
 |---|---|
 | Session | Server-side (Spring Session JDBC, table `SPRING_SESSION`), cookie `BO_SESSION`, `HttpOnly`, `Secure` (except local), `SameSite=Lax`, path `/`. |
-| Idle timeout | `backoffice.auth.session.idle-timeout` (default `PT30M`), returned as `idleTimeoutSeconds` in `/me` for the UI countdown. |
-| Absolute timeout | `backoffice.auth.session.absolute-timeout` (default `PT12H`) measured from login (`authTime` session attribute). |
+| Idle timeout | `backoffice.auth.session.idle-timeout` (default `PT24H`), returned as `idleTimeoutSeconds` in `/me` for the UI countdown. |
+| Absolute timeout | `backoffice.auth.session.absolute-timeout` (default `PT24H`) measured from login (`authTime` session attribute). |
 | CSRF | Cookie `XSRF-TOKEN` (readable by JS) + header `X-XSRF-TOKEN` on unsafe methods (Spring Security SPA mode; Angular reads it natively). Bearer-token requests (PAT, CI token) are exempt. |
 | API 401 | JSON problem detail, never a redirect. The UI shows a non-blocking "Session expired: log in again / stay" notification. |
 | Account check | On every request the session's user is re-read through a cache (TTL 30 s, evicted on change): a deactivated user loses access immediately; all their sessions are deleted on deactivation. |
@@ -247,6 +247,7 @@ Decisions record `decidedBy` (actor), ticked checklist items and the comment; th
 | Runner registration token | `bo_rrt_` | single use, 24 h: registers one runner-controller in one pool | operator with `fleet.manage`; for their own personal pool, the user with `fleet.personal` (ADR 0040) |
 | Runner token | `bo_rt_` | runner protocol v2 (`/runner/v2/**`) for the jobs of its pool and its own leases; revocable | issued at registration |
 | Job token | `bo_job_` | one agent job: sandbox callbacks, uploads, the LLM proxy (`/llm/**`) with the job's model allowlist; expires with the lease / terminal state | issued at lease time |
+| Agent token | `bo_job_` | the same job, LLM proxy (`/llm/**`) only: sandbox callbacks are refused, so the coding agent cannot post or forge the job's result; one per lease, invalidated by a new lease or the end of the job (ADR 0029) | the runner entrypoint with its job token (`POST /api/v1/internal/runner/jobs/{id}/agent-token`) and handed to the coding agent |
 
 All are sent as `Authorization: Bearer ...` (the LLM proxy also accepts `x-api-key`), stored as SHA-256 and
 shown once. PATs and CI tokens are verified by the identity filter; `bo_rt_` / `bo_job_` by the filters of
