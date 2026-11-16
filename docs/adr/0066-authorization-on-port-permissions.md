@@ -1,6 +1,6 @@
 # 0066 — Authorization on port-permissions
 
-- Status: partly superseded by 0067 (runner principal)
+- Status: partly superseded by 0067 (runner principal); stage 3 done in 0068
 - Date: 2026-11-16
 - Deciders: owner
 - Related: ADR 0017 (deny-by-default authorisation), 0029 (token capabilities), 0028 (gate approvers);
@@ -34,7 +34,8 @@ The move is done in three stages:
 1. Typed permissions, the guard and the architecture rule, without any change of behaviour (this record).
 2. System operations without privileges: system ports, `requireSystem()` in every `@SystemOperation`, the system
    principal holding no permissions, the runner as a `MACHINE` principal.
-3. Effective permissions cached in the session with invalidation, and the snapshot in `/me`.
+3. Effective permissions cached in the session with invalidation, and the snapshot in `/me` (done in ADR 0068: versions
+   per user, the snapshot in the in-memory cache instead of the session, `accessVersion` in `/me`).
 
 ## Alternatives considered
 

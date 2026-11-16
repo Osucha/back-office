@@ -19,6 +19,7 @@ import pl.mos.backoffice.identity.adapter.config.IdentityProperties
 import pl.mos.backoffice.identity.adapter.config.IdentityWebValues
 import pl.mos.backoffice.identity.adapter.config.LazyOidcClientRegistrationRepository
 import pl.mos.backoffice.identity.adapter.`in`.web.SessionAttributes
+import pl.mos.backoffice.identity.adapter.out.security.CurrentUserAuthentication
 import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAccessGuard
 import pl.mos.backoffice.identity.application.port.`in`.GetLoginOptions
 import pl.mos.backoffice.identity.application.port.`in`.GetMe
@@ -66,6 +67,7 @@ class MeController(
             idleTimeoutSeconds = properties.session.idleTimeout.seconds,
             absoluteExpiresAt = authTime?.let { Instant.ofEpochMilli(it).plus(properties.session.absoluteTimeout) },
             authenticatedAt = authTime?.let(Instant::ofEpochMilli),
+            accessVersion = (SecurityContextHolder.getContext().authentication as? CurrentUserAuthentication)?.accessVersion,
         )
     }
 

@@ -78,7 +78,7 @@ class ProjectMembershipService(
                 details = mapOf("principalType" to saved.principalType.name, "principalId" to saved.principalId.toString(), "role" to saved.roleKey),
             ),
         )
-        accessVersion.increment()
+        accessVersion.principalChanged(saved.principalType, saved.principalId)
         return view(saved)
     }
 
@@ -96,7 +96,7 @@ class ProjectMembershipService(
                     mapOf("principalType" to membership.principalType.name, "principalId" to membership.principalId.toString()),
             ),
         )
-        accessVersion.increment()
+        accessVersion.principalChanged(membership.principalType, membership.principalId)
         return view(saved)
     }
 
@@ -111,7 +111,7 @@ class ProjectMembershipService(
                 details = mapOf("principalType" to membership.principalType.name, "principalId" to membership.principalId.toString(), "role" to membership.roleKey),
             ),
         )
-        accessVersion.increment()
+        accessVersion.principalChanged(membership.principalType, membership.principalId)
     }
 
     // not a use case, no check of its own (ADR 0067): called by the Projects context when a project is created
@@ -128,14 +128,14 @@ class ProjectMembershipService(
                 details = mapOf("principalType" to "USER", "principalId" to userId.toString(), "role" to BuiltInRoles.OWNER, "reason" to "project-created"),
             ),
         )
-        accessVersion.increment()
+        accessVersion.userChanged(UserId(userId))
     }
 
     // not a use case, no check of its own (ADR 0067): called by the Projects context when a project key changes
     override fun projectRenamed(projectId: UUID, projectKey: String) {
         val changed = memberships.findByProject(projectId).filter { it.projectKey != projectKey }
         changed.forEach { memberships.save(it.copy(projectKey = projectKey)) }
-        if (changed.isNotEmpty()) accessVersion.increment()
+        if (changed.isNotEmpty()) accessVersion.everyoneChanged()
     }
 
     // not a use case, no check of its own (ADR 0067): called by the Projects context when a project is deleted
@@ -148,7 +148,7 @@ class ProjectMembershipService(
                 details = mapOf("reason" to "project-deleted", "removed" to removed),
             ),
         )
-        accessVersion.increment()
+        accessVersion.everyoneChanged()
     }
 
     private fun load(projectId: UUID, id: MembershipId): ProjectMembership =

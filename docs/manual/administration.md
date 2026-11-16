@@ -104,7 +104,8 @@ How a permission is decided:
 Project permissions come from project memberships (users or groups with a project role); the creator of a
 project becomes its `owner`, and the last owner cannot be removed. Check the outcome on the user's
 **Effective permissions**. Every change is audited (`GRANT_CHANGE`, `ROLE_ASSIGN`, `ROLE_UNASSIGN`) and
-takes effect on the user's next request.
+takes effect on the user's next request. A browser tab the user already has open follows on its own: menus and
+buttons change at their next action, without reloading the page.
 
 <a id="project-managers"></a>
 ## Project managers

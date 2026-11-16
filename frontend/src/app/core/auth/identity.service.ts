@@ -28,7 +28,8 @@ export type IdentityStatus = 'unknown' | 'authenticated' | 'unauthenticated' | '
  * The signed-in user and their effective permissions from `GET /api/v1/me`. Single source of truth
  * for guards, the menu, the `*boCan` directives and every permission-aware button. Loaded once by
  * `provideAppInitializer`; reloaded after changes that affect the caller's own access (creating a
- * project, changing memberships).
+ * project, changing memberships) and, through `accessVersionInterceptor`, when an API response
+ * announces a newer access version or answers 403 (ADR 0068: an administrator changed it).
  */
 @Injectable({ providedIn: 'root' })
 export class IdentityService {

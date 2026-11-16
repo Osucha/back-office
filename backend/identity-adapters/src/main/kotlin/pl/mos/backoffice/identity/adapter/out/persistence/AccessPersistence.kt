@@ -2,11 +2,9 @@ package pl.mos.backoffice.identity.adapter.out.persistence
 
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.simple.JdbcClient
-import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcSupport.instant
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcSupport.strings
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcSupport.uuid
-import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.GrantRepository
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.application.port.out.PlatformSettingsRepository
@@ -35,7 +33,6 @@ import tools.jackson.databind.json.JsonMapper
 import java.sql.ResultSet
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicLong
 
 class JdbcRoleRepository(private val jdbc: JdbcClient) : RoleRepository {
 
@@ -282,43 +279,6 @@ class JdbcPlatformSettingsRepository(private val jdbc: JdbcClient, private val c
                 rejectContainingEmail = map["rejectContainingEmail"] as? Boolean ?: defaults.rejectContainingEmail,
             )
         }.getOrDefault(PasswordPolicy())
-    }
-}
-
-/**
- * Global access version: incremented in the caller's transaction (so other instances see it after commit)
- * and locally at once (so this instance invalidates its cache immediately). Reads hit the database at most
- * every [refreshMillis] ms.
- */
-class JdbcAccessVersion(private val jdbc: JdbcClient, private val refreshMillis: Long = 2_000, private val signals: ClusterSignals? = null) : AccessVersion {
-
-    private val local = AtomicLong(0)
-    @Volatile private var readAt = 0L
-
-    init {
-        // another replica changed access: re-read the version at the next request instead of after refreshMillis
-        signals?.subscribe(TOPIC) { readAt = 0L }
-    }
-
-    override fun current(): Long {
-        val now = System.currentTimeMillis()
-        if (now - readAt > refreshMillis) {
-            runCatching { jdbc.sql("SELECT version FROM identity_access_version WHERE id = 1").query(Long::class.javaObjectType).single() }
-                .onSuccess { db -> local.accumulateAndGet(db) { a, b -> maxOf(a, b) } }
-            readAt = now
-        }
-        return local.get()
-    }
-
-    override fun increment() {
-        jdbc.sql("UPDATE identity_access_version SET version = version + 1 WHERE id = 1").update()
-        local.incrementAndGet()
-        signals?.publish(TOPIC, "")
-    }
-
-    companion object {
-        /** Cluster signal topic (`backoffice_cache`) announcing an access change. */
-        const val TOPIC = "identity-access-version"
     }
 }
 

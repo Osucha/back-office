@@ -71,7 +71,9 @@ paths:
     get:
       tags: [auth]
       operationId: getMe
-      description: Current identity with effective permissions. 401 when there is no session.
+      description: >-
+        Current identity with effective permissions. 401 when there is no session. `accessVersion` equals the
+        `X-Access-Version` header that every authenticated API response carries (ADR 0068).
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
         '401': { $ref: '#/components/responses/Problem' }
@@ -3927,6 +3929,13 @@ components:
         idleTimeoutSeconds: { type: integer }
         absoluteExpiresAt: { type: string, format: date-time }
         authenticatedAt: { type: string, format: date-time }
+        accessVersion:
+          type: integer
+          format: int64
+          description: >-
+            Version of the caller's access the permissions above belong to (ADR 0068). It only grows. Every authenticated
+            API response carries the caller's current version in the `X-Access-Version` header; a client holding a
+            smaller value reloads `/me`.
     UserPreferences:
       type: object
       properties:

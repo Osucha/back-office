@@ -128,7 +128,7 @@ class PlatformSettingsService(
         repository.save(after)
         if (changes.isNotEmpty()) {
             audit.record(AuditEntry(IdentityAudit.SETTINGS_UPDATE, IdentityAudit.ENTITY_SETTINGS, "platform", details = changes))
-            accessVersion.increment()
+            accessVersion.everyoneChanged()
         }
         return after
     }
@@ -206,7 +206,7 @@ class PersonalTokenService(
                 ),
             ),
         )
-        accessVersion.increment()
+        accessVersion.userChanged(token.userId)
         return CreatedToken(token, generated.plaintext)
     }
 
@@ -217,7 +217,7 @@ class PersonalTokenService(
         if (token.revokedAt != null) return
         tokens.save(token.revoke(clock.now()))
         audit.record(AuditEntry(IdentityAudit.PAT_REVOKE, IdentityAudit.ENTITY_TOKEN, token.id.toString(), details = mapOf("name" to token.name, "prefix" to token.prefix)))
-        accessVersion.increment()
+        accessVersion.userChanged(token.userId)
     }
 }
 

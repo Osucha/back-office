@@ -20,7 +20,7 @@ class CorsConfig(private val props: SecurityProperties) {
             allowedOrigins = props.corsAllowedOrigins
             allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
-            exposedHeaders = listOf("Location", "X-Correlation-Id")
+            exposedHeaders = listOf("Location", "X-Correlation-Id", "X-Access-Version")
             allowCredentials = true
             maxAge = 3600
         }

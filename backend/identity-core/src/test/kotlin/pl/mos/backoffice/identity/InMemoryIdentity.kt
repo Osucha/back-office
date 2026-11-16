@@ -55,7 +55,11 @@ class InMemoryIdentity(val now: Instant = Instant.parse("2026-09-27T10:00:00Z"))
     val tokenMap = linkedMapOf<TokenId, PersonalAccessToken>()
     var storedSettings: PlatformSettings? = null
     val projectKeyMap = mutableMapOf<UUID, String>()
+    /** Number of access-version bumps, per user or for everyone. */
     var version = 0L
+    /** Users whose own access version was bumped, in order; [everyoneBumps] counts global bumps. */
+    val userBumps = mutableListOf<UserId>()
+    var everyoneBumps = 0
     val terminatedSessions = mutableListOf<UserId>()
     val touched = mutableListOf<TokenId>()
 
@@ -201,8 +205,13 @@ class InMemoryIdentity(val now: Instant = Instant.parse("2026-09-27T10:00:00Z"))
     }
 
     val accessVersion = object : AccessVersion {
-        override fun current() = version
-        override fun increment() {
+        override fun current(userId: UserId) = everyoneBumps.toLong() + userBumps.count { it == userId }
+        override fun userChanged(userId: UserId) {
+            userBumps += userId
+            version++
+        }
+        override fun everyoneChanged() {
+            everyoneBumps++
             version++
         }
     }

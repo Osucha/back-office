@@ -116,7 +116,7 @@ class UserAdminService(
         added.forEach { memberAdded(it) }
         // a local user sets the first password through a one-time link the administrator hands over
         val link = if (authMode.allowsLocal && local != null) local.issueLink(user, me.actor) else null
-        accessVersion.increment()
+        accessVersion.userChanged(user.id)
         return assembler.details(user, link?.token)
     }
 
@@ -145,7 +145,7 @@ class UserAdminService(
         val saved = users.save(user.copy(displayName = newName, groupIds = newGroups))
         if (newRoles != currentRoles) grants.save(grants.find(GrantLevel.USER, id.value).copy(roles = newRoles))
         audit.record(AuditEntry(IdentityAudit.USER_UPDATE, IdentityAudit.ENTITY_USER, id.toString(), details = changes))
-        accessVersion.increment()
+        accessVersion.userChanged(id)
         return details(saved)
     }
 
@@ -160,7 +160,7 @@ class UserAdminService(
                 details = AuditableChanges.changed("status" to (user.status.name to saved.status.name)),
             ),
         )
-        accessVersion.increment()
+        accessVersion.userChanged(id)
         return details(saved)
     }
 
@@ -182,7 +182,7 @@ class UserAdminService(
                     mapOf("revokedTokens" to revoked, "terminatedSessions" to terminated),
             ),
         )
-        accessVersion.increment()
+        accessVersion.userChanged(id)
         return details(saved)
     }
 
@@ -197,7 +197,7 @@ class UserAdminService(
         load(userId)
         val terminated = sessions.terminateAll(userId)
         audit.record(AuditEntry(IdentityAudit.SESSIONS_TERMINATE, IdentityAudit.ENTITY_USER, userId.toString(), details = mapOf("terminatedSessions" to terminated)))
-        accessVersion.increment()
+        accessVersion.userChanged(userId)
         return terminated
     }
 

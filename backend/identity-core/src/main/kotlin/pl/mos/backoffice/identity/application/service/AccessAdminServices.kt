@@ -80,7 +80,7 @@ class GroupAdminService(
                 ),
             ),
         )
-        accessVersion.increment()
+        accessVersion.everyoneChanged()
         return view(group)
     }
 
@@ -114,7 +114,7 @@ class GroupAdminService(
         val saved = groups.save(updated)
         if (newRoles != currentRoles) grants.save(grants.find(GrantLevel.GROUP, id.value).copy(roles = newRoles))
         audit.record(AuditEntry(IdentityAudit.GROUP_UPDATE, IdentityAudit.ENTITY_GROUP, id.toString(), details = changes))
-        accessVersion.increment()
+        accessVersion.everyoneChanged()
         return view(saved)
     }
 
@@ -129,7 +129,7 @@ class GroupAdminService(
         grants.deleteTarget(GrantLevel.GROUP, id.value)
         groups.delete(id)
         audit.record(AuditEntry(IdentityAudit.GROUP_DELETE, IdentityAudit.ENTITY_GROUP, id.toString(), details = mapOf("name" to group.name)))
-        accessVersion.increment()
+        accessVersion.everyoneChanged()
     }
 
     private fun load(id: GroupId): Group = groups.findById(id) ?: throw NotFoundException("group", id)
@@ -174,7 +174,7 @@ class RoleAdminService(
                 details = mapOf("name" to role.name, "scope" to role.scope.name, "permissions" to role.permissions.sorted()),
             ),
         )
-        accessVersion.increment()
+        accessVersion.everyoneChanged()
         return saved
     }
 
@@ -193,7 +193,7 @@ class RoleAdminService(
         if (changes.isEmpty()) return existing
         val saved = roles.save(updated)
         audit.record(AuditEntry(IdentityAudit.ROLE_UPDATE, IdentityAudit.ENTITY_ROLE, key, details = changes))
-        accessVersion.increment()
+        accessVersion.everyoneChanged()
         return saved
     }
 
@@ -206,7 +206,7 @@ class RoleAdminService(
         }
         roles.delete(key)
         audit.record(AuditEntry(IdentityAudit.ROLE_DELETE, IdentityAudit.ENTITY_ROLE, key, details = mapOf("name" to existing.name)))
-        accessVersion.increment()
+        accessVersion.everyoneChanged()
     }
 }
 
@@ -275,7 +275,7 @@ class GrantAdminService(
         (previous.roles - set.roles).sorted().forEach {
             audit.record(AuditEntry(IdentityAudit.ROLE_UNASSIGN, IdentityAudit.ENTITY_GRANT, entityId, details = base + ("role" to it)))
         }
-        accessVersion.increment()
+        if (set.level == GrantLevel.USER) accessVersion.userChanged(UserId(set.targetId!!)) else accessVersion.everyoneChanged()
         return GrantSetView(grants.find(set.level, set.targetId), targetName)
     }
 
@@ -360,6 +360,6 @@ class SeedIdentityService(
                 )
             }
         }
-        if (changed) accessVersion.increment()
+        if (changed) accessVersion.everyoneChanged()
     }
 }

@@ -1769,7 +1769,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Current identity with effective permissions. 401 when there is no session. */
+    /** @description Current identity with effective permissions. 401 when there is no session. `accessVersion` equals the `X-Access-Version` header that every authenticated API response carries (ADR 0068). */
     get: operations['getMe'];
     put?: never;
     post?: never;
@@ -5505,6 +5505,11 @@ export interface components {
     Me: {
       /** Format: date-time */
       absoluteExpiresAt?: string;
+      /**
+       * Format: int64
+       * @description Version of the caller's access the permissions above belong to (ADR 0068). It only grows. Every authenticated API response carries the caller's current version in the `X-Access-Version` header; a client holding a smaller value reloads `/me`.
+       */
+      accessVersion?: number;
       /** @description holder of admin.projects.all */
       allProjects?: boolean;
       /** Format: date-time */

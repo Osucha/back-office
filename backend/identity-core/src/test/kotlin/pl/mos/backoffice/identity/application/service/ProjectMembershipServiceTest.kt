@@ -92,6 +92,18 @@ class ProjectMembershipServiceTest {
         service(gate).remove(project, ownership.id)
         assertThat(audit.operations()).containsExactly("MEMBER_ROLE_CHANGE", "MEMBER_REMOVE")
         assertThat(db.version).isEqualTo(2)
+        // memberships of one user bump only that user's version (ADR 0068)
+        assertThat(db.userBumps).containsExactly(owner.id, owner.id)
+        assertThat(db.everyoneBumps).isZero()
+    }
+
+    @Test
+    fun `a group membership bumps everyone's access version`() {
+        db.member(project, "PRJ", PrincipalType.USER, db.user("owner@example.com").id.value, BuiltInRoles.OWNER)
+        val group = db.group("Devs")
+        service(manager()).add(project, AddMember(PrincipalType.GROUP, group.id.value, "developer"))
+        assertThat(db.everyoneBumps).isEqualTo(1)
+        assertThat(db.userBumps).isEmpty()
     }
 
     @Test

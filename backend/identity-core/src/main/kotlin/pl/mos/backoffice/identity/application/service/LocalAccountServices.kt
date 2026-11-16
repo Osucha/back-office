@@ -350,7 +350,7 @@ class PasswordResetService(
         val terminated = sessions.terminateAll(userId)
         if (terminated > 0) {
             local.audit.record(AuditEntry(IdentityAudit.SESSIONS_TERMINATE, IdentityAudit.ENTITY_USER, userId.toString(), details = mapOf("terminatedSessions" to terminated, "reason" to "password-reset")))
-            accessVersion.increment()
+            accessVersion.userChanged(userId)
         }
         return link
     }
@@ -379,7 +379,7 @@ class PasswordResetService(
                 actor = local.actorOf(user),
             ),
         )
-        if (active.status != user.status) accessVersion.increment()
+        if (active.status != user.status) accessVersion.userChanged(user.id)
         return local.afterPassword(active, credential)
     }
 
@@ -482,7 +482,7 @@ class LocalAccountAdminService(
             ),
         )
         val link = if (mode.allowsLocal && !hasPassword) local.issueLink(saved, me.actor) else null
-        accessVersion.increment()
+        accessVersion.userChanged(userId)
         return assembler.details(saved, link?.token)
     }
 
@@ -588,7 +588,7 @@ class BootstrapLocalAdminService(
                 details = mapOf("level" to "USER", "role" to BuiltInRoles.PLATFORM_ADMIN, "reason" to "bootstrap-local-admin"), actor = Actor.SYSTEM,
             ),
         )
-        accessVersion.increment()
+        accessVersion.userChanged(user.id)
         return user
     }
 
@@ -612,7 +612,7 @@ class BootstrapLocalAdminService(
                 details = mapOf("authMode" to (user.authMode.name to mode.name), "reason" to "bootstrap-local-admin"), actor = Actor.SYSTEM,
             ),
         )
-        accessVersion.increment()
+        accessVersion.userChanged(user.id)
         return saved
     }
 }

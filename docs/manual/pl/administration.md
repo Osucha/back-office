@@ -116,7 +116,8 @@ Jak rozstrzygane jest uprawnienie:
 Uprawnienia projektowe pochodzą z członkostw w projektach (użytkownicy lub grupy z rolą projektową); twórca
 projektu zostaje jego `owner`, a ostatniego właściciela nie można usunąć. Wynik sprawdzisz w **Uprawnieniach
 efektywnych** użytkownika. Każda zmiana trafia do dziennika audytu (`GRANT_CHANGE`, `ROLE_ASSIGN`,
-`ROLE_UNASSIGN`) i obowiązuje od następnego żądania użytkownika.
+`ROLE_UNASSIGN`) i obowiązuje od następnego żądania użytkownika. Otwarta już karta przeglądarki użytkownika
+nadąża sama: menu i przyciski zmieniają się przy jego następnej akcji, bez przeładowania strony.
 
 <a id="project-managers"></a>
 ## Kierownicy projektów

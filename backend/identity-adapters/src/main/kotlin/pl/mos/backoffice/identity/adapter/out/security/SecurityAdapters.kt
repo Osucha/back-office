@@ -26,8 +26,14 @@ enum class AuthenticationSource { SESSION, PERSONAL_TOKEN, CI_TOKEN }
 /**
  * The per-request authentication: a [CurrentUser] with its effective permissions. It is built by the
  * principal filter for every request and never stored in the session (the session holds only the user id).
+ * [accessVersion] is the version of the user's access the permissions were resolved under (ADR 0068; null for CI
+ * tokens): `GET /me` returns it and every API response carries it as `X-Access-Version`.
  */
-class CurrentUserAuthentication(val currentUser: CurrentUser, val source: AuthenticationSource) : AbstractAuthenticationToken(emptyList()) {
+class CurrentUserAuthentication(
+    val currentUser: CurrentUser,
+    val source: AuthenticationSource,
+    val accessVersion: Long? = null,
+) : AbstractAuthenticationToken(emptyList()) {
     init {
         isAuthenticated = true
     }
@@ -70,9 +76,14 @@ class SecurityContextAccessGuard(catalog: PermissionCatalog) : CurrentUserAccess
     fun actorOrNull(): Actor? = currentUserOrNull()?.actor
 }
 
+/** A user's effective permissions and the access version they were resolved under. */
+data class ResolvedUser(val user: CurrentUser, val accessVersion: Long)
+
 /**
- * Effective permissions of session users, cached for [ttl] and keyed by (user, access version): every access
- * change increments the version, so the next request sees the change (ADR 0017, principle 6).
+ * Effective permissions of users (session and personal-token owners), cached in memory for [ttl] and keyed by
+ * (user, the user's access version, ADR 0068): a change of that user's access or of everyone's moves the version, so
+ * the next request resolves again (ADR 0017, principle 6), while changes of other users leave the entry alone. The
+ * version is read before resolving: a change made meanwhile moves it again and the next request resolves once more.
  */
 class CurrentUserCache(
     private val loader: LoadCurrentUser,
@@ -82,10 +93,12 @@ class CurrentUserCache(
     private val cache: Cache<Pair<UserId, Long>, Optional<CurrentUser>> =
         Caffeine.newBuilder().expireAfterWrite(ttl).maximumSize(10_000).build()
 
-    fun get(userId: UserId): CurrentUser? =
-        cache.get(userId to version.current()) { Optional.ofNullable(loader.forUser(userId)) }.orElse(null)
+    fun resolve(userId: UserId): ResolvedUser? {
+        val current = version.current(userId)
+        return cache.get(userId to current) { Optional.ofNullable(loader.forUser(userId)) }.orElse(null)?.let { ResolvedUser(it, current) }
+    }
 
-    fun invalidateAll() = cache.invalidateAll()
+    fun get(userId: UserId): CurrentUser? = resolve(userId)?.user
 }
 
 /**

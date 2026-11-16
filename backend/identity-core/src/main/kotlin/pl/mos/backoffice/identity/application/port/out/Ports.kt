@@ -1,5 +1,6 @@
 package pl.mos.backoffice.identity.application.port.out
 
+import com.osucha.portpermissions.PermissionVersions
 import pl.mos.backoffice.identity.domain.model.GrantLevel
 import pl.mos.backoffice.identity.domain.model.GrantSet
 import pl.mos.backoffice.identity.domain.model.Group
@@ -141,12 +142,26 @@ interface SessionTerminator {
 }
 
 /**
- * A global counter incremented by every access change (users, groups, roles, grants, memberships, tokens).
- * The adapter keys its effective-permission cache by it, so a change takes effect on the next request.
+ * Versions of the users' access (ADR 0068), the library's [PermissionVersions] keyed by user id. A user's version
+ * is the sum of a counter of their own and a global one, so it moves on whenever either moves; the adapter keys its
+ * effective-permission cache by it, so a change takes effect on the next request. Bump in the transaction of the
+ * change: [userChanged] when the access of exactly one user changes (their grants, groups, memberships, status,
+ * tokens), [everyoneChanged] when it may change for many (roles, groups and their grants, the SYSTEM grant, group
+ * memberships of projects, settings, project renames and deletions).
  */
-interface AccessVersion {
-    fun current(): Long
-    fun increment()
+interface AccessVersion : PermissionVersions {
+    /** The current access version of [userId]; it only grows. */
+    fun current(userId: UserId): Long
+
+    fun userChanged(userId: UserId)
+
+    fun everyoneChanged()
+
+    /** A project membership of [principalType] [principalId] changed: one user, or every member of a group. */
+    fun principalChanged(principalType: PrincipalType, principalId: UUID) =
+        if (principalType == PrincipalType.USER) userChanged(UserId(principalId)) else everyoneChanged()
+
+    override fun current(principalId: String): Long = current(UserId.of(principalId))
 }
 
 data class AuditQuery(

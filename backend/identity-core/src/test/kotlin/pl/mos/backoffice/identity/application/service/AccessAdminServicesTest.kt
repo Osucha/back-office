@@ -140,6 +140,30 @@ class AccessAdminServicesTest {
     }
 
     @Test
+    fun `a user grant bumps that user's access version, group, role and SYSTEM changes bump everyone's (ADR 0068)`() {
+        seed().seed()
+        val alice = db.user("alice@example.com")
+        val bob = db.user("bob@example.com")
+        val group = db.group("Devs", members = setOf(alice.id))
+        val start = db.everyoneBumps
+        val gate = FakeAccessGuard.permitting("admin.roles.manage", "admin.users.manage")
+
+        grants(gate).replace(GrantSet(GrantLevel.USER, alice.id.value, setOf("auditor"), emptyList()))
+        assertThat(db.userBumps).containsExactly(alice.id)
+        assertThat(db.everyoneBumps).isEqualTo(start)
+        assertThat(db.accessVersion.current(bob.id)).isEqualTo(start.toLong())
+        assertThat(db.accessVersion.current(alice.id)).isEqualTo(start + 1L)
+
+        grants(gate).replace(GrantSet(GrantLevel.GROUP, group.id.value, setOf("auditor"), emptyList()))
+        grants(gate).replace(GrantSet.system(roles = setOf("member", "auditor")))
+        roles(gate).update("auditor", RoleCommand("auditor", "Auditor", null, PermissionScope.PLATFORM, setOf("usage.view")))
+        assertThat(db.userBumps).containsExactly(alice.id)
+        assertThat(db.everyoneBumps).isEqualTo(start + 3)
+        // the sum moves for every user, so nobody keeps a stale snapshot
+        assertThat(db.accessVersion.current(bob.id)).isEqualTo(start + 3L)
+    }
+
+    @Test
     fun `effective permissions show the System, Group, User breakdown and project roles`() {
         seed().seed()
         val group = db.group("Curators")

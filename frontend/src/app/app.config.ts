@@ -24,6 +24,7 @@ import { provideEchartsCore } from 'ngx-echarts';
 
 import { routes } from './app.routes';
 import { IdentityService } from './core/auth/identity.service';
+import { accessVersionInterceptor } from './core/http/access-version.interceptor';
 import { httpErrorInterceptor } from './core/http/http-error.interceptor';
 import { HoverPreloadingStrategy } from './core/routing/hover-preloading';
 import { loadNzLocale } from './core/ui/nz-locale';
@@ -46,7 +47,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(
       withFetch(),
       withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' }),
-      withInterceptors([httpErrorInterceptor]),
+      withInterceptors([httpErrorInterceptor, accessVersionInterceptor]),
     ),
     // Who is signed in is known before the first route is resolved (guards need it). NG-ZORRO's
     // English locale loads in parallel (ng-zorro-antd/i18n + date-fns stay out of the initial

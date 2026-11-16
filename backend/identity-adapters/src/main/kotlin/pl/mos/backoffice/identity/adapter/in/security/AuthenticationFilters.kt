@@ -76,6 +76,7 @@ class PrincipalFilter(
             val authentication = guard.asSystem(REASON) { authenticateBearer(bearer) }
                 ?: return problems.unauthorized(response, "The bearer token is invalid, expired or revoked", "invalid-token")
             authenticate(authentication)
+            authentication.accessVersion?.let { announceVersion(response, it) }
             return chain.doFilter(request, response)
         }
 
@@ -98,14 +99,15 @@ class PrincipalFilter(
             anonymous()
             return chain.doFilter(request, response)
         }
-        val user = guard.asSystem(REASON) { cache.get(id) }
-        if (user == null) {
+        val resolved = guard.asSystem(REASON) { cache.resolve(id) }
+        if (resolved == null) {
             // deactivated or deleted since login: the session is gone for good
             invalidate(request)
             anonymous()
             return chain.doFilter(request, response)
         }
-        authenticate(CurrentUserAuthentication(user, AuthenticationSource.SESSION))
+        authenticate(CurrentUserAuthentication(resolved.user, AuthenticationSource.SESSION, resolved.accessVersion))
+        announceVersion(response, resolved.accessVersion)
         val restriction = (session.getAttribute(SessionAttributes.RESTRICTION) as? String)?.let { runCatching { SessionRestriction.valueOf(it) }.getOrNull() }
         if (restriction != null && !RestrictedSession.allows(restriction, path)) {
             SecurityContextHolder.clearContext()
@@ -117,8 +119,8 @@ class PrincipalFilter(
     private fun authenticateBearer(token: String): CurrentUserAuthentication? {
         if (token.startsWith(TokenCodec.PAT_PREFIX)) {
             val pat = loader.verifyPersonalToken(token) ?: return null
-            val owner = cache.get(pat.userId) ?: return null
-            return CurrentUserAuthentication(loader.forPersonalToken(owner, pat), AuthenticationSource.PERSONAL_TOKEN)
+            val owner = cache.resolve(pat.userId) ?: return null
+            return CurrentUserAuthentication(loader.forPersonalToken(owner.user, pat), AuthenticationSource.PERSONAL_TOKEN, owner.accessVersion)
         }
         val verifier = ciVerifier.getIfAvailable() ?: return null
         val identity = verifier.verify(token) ?: return null
@@ -133,6 +135,9 @@ class PrincipalFilter(
 
     private fun anonymous() = SecurityContextHolder.setContext(SecurityContextHolder.createEmptyContext())
 
+    // ADR 0068: the version the permissions of this request were resolved under; the SPA reloads /me when it moves
+    private fun announceVersion(response: HttpServletResponse, version: Long) = response.setHeader(ACCESS_VERSION_HEADER, version.toString())
+
     private fun invalidate(request: HttpServletRequest) {
         runCatching { request.getSession(false)?.invalidate() }
     }
@@ -141,6 +146,7 @@ class PrincipalFilter(
         const val RUNNER_PATH = "/api/v1/internal/runner/"
         const val REASON = "authentication: resolving the request principal"
         const val SESSION_INFO_PATH = "/api/v1/auth/session"
+        const val ACCESS_VERSION_HEADER = "X-Access-Version"
     }
 }
 

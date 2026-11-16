@@ -154,13 +154,16 @@ interface RunWorkspaceStore {
     /** Workspaces of run [runId] not yet released are released at [at]. */
     fun scheduleRelease(runId: UUID, at: Instant)
 
-    /** Rows named [names] plus the unreleased rows of [runnerId], locked for the sync. */
-    fun lockForSync(runnerId: UUID, names: Collection<String>): List<RunWorkspace>
+    /**
+     * Rows named [names] in the runner's pool [poolId] plus the unreleased rows of [runnerId], locked for the sync. Rows
+     * of another pool or without a pool are not returned: to the runner their volumes are unknown (it deletes them).
+     */
+    fun lockForSync(runnerId: UUID, poolId: String, names: Collection<String>): List<RunWorkspace>
 
     fun markReleased(names: Collection<String>, now: Instant)
 
-    /** Moves [names] to [runnerId]: their runner is gone and this runner of the same pool holds the volumes. */
-    fun adopt(names: Collection<String>, runnerId: UUID)
+    /** Moves [names] of pool [poolId] to [runnerId]: their runner is gone and this runner of that pool holds the volumes. */
+    fun adopt(names: Collection<String>, runnerId: UUID, poolId: String)
 
     /** Drops the runner of [names] (their volume is gone): the next job starts an empty workspace anywhere in the pool. */
     fun forget(names: Collection<String>)

@@ -69,12 +69,12 @@ class JdbcRunWorkspaceStore(private val db: NamedParameterJdbcTemplate) : RunWor
         )
     }
 
-    override fun lockForSync(runnerId: UUID, names: Collection<String>): List<RunWorkspace> {
-        val params = mapOf("runner" to runnerId, "names" to names.ifEmpty { listOf("") })
+    override fun lockForSync(runnerId: UUID, poolId: String, names: Collection<String>): List<RunWorkspace> {
+        val params = mapOf("runner" to runnerId, "pool" to poolId, "names" to names.ifEmpty { listOf("") })
         return query(
             """
             SELECT * FROM runner_workspace
-             WHERE name IN (:names) OR (runner_id = :runner AND released_at IS NULL)
+             WHERE (name IN (:names) AND pool_id = :pool) OR (runner_id = :runner AND released_at IS NULL)
              ORDER BY name
                FOR UPDATE
             """.trimIndent(),
@@ -90,11 +90,14 @@ class JdbcRunWorkspaceStore(private val db: NamedParameterJdbcTemplate) : RunWor
         )
     }
 
-    override fun adopt(names: Collection<String>, runnerId: UUID) {
+    override fun adopt(names: Collection<String>, runnerId: UUID, poolId: String) {
         if (names.isEmpty()) return
         db.update(
-            "UPDATE runner_workspace SET runner_id = :runner WHERE name IN (:names) AND released_at IS NULL AND active_job_id IS NULL",
-            mapOf("names" to names, "runner" to runnerId),
+            """
+            UPDATE runner_workspace SET runner_id = :runner
+             WHERE name IN (:names) AND pool_id = :pool AND released_at IS NULL AND active_job_id IS NULL
+            """.trimIndent(),
+            mapOf("names" to names, "runner" to runnerId, "pool" to poolId),
         )
     }
 

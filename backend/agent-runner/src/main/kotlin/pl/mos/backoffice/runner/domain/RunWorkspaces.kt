@@ -83,8 +83,10 @@ object WorkspaceSync {
         return WorkspaceSyncDecision(delete, release, forget, adopt)
     }
 
+    // only a workspace of the runner's own pool; a row without a pool (never routed, or from before V57 and not
+    // attributable) is adopted by nobody
     private fun adoptable(row: RunWorkspace, poolId: String?, departed: Set<UUID>): Boolean =
-        poolId != null && (row.poolId == null || row.poolId == poolId) && (row.runnerId == null || row.runnerId in departed)
+        poolId != null && row.poolId == poolId && (row.runnerId == null || row.runnerId in departed)
 
     private fun due(row: RunWorkspace, now: Instant): Boolean =
         row.activeJobId == null && row.releaseAfter != null && !row.releaseAfter.isAfter(now)

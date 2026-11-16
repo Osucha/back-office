@@ -1,4 +1,4 @@
-package pl.mos.backoffice.llm.budget.adapter
+package pl.mos.backoffice.llm.budget.adapter.`in`.rest
 
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable

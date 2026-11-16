@@ -90,7 +90,7 @@ class ResolveLoginService(
             audit.record(AuditEntry(IdentityAudit.USER_PROVISION, IdentityAudit.ENTITY_USER, user.id.toString(), details = mapOf("email" to user.email), actor = actor))
         }
         if (firstLogin && user.email in options.normalisedBootstrapAdmins && grantBootstrapAdmin(user)) accessChanged = true
-        if (accessChanged) accessVersion.increment()
+        if (accessChanged) accessVersion.userChanged(user.id)
         audit.record(
             AuditEntry(
                 IdentityAudit.LOGIN_SUCCESS, IdentityAudit.ENTITY_USER, user.id.toString(),

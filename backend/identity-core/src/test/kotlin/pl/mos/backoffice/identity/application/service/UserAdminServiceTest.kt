@@ -49,6 +49,9 @@ class UserAdminServiceTest {
         assertThat(gate.checked).containsExactly("admin.users.manage")
         assertThat(audit.operations()).containsExactly("USER_INVITE")
         assertThat(db.version).isEqualTo(1)
+        // only the invited user's permissions changed: nobody else's cache entry is dropped (ADR 0068)
+        assertThat(db.userBumps).containsExactly(details.user.id)
+        assertThat(db.everyoneBumps).isZero()
 
         assertThatThrownBy { service(gate).invite(ManageUsers.InviteUser("new.user@example.com")) }.isInstanceOf(InvalidStateException::class.java)
         assertThatThrownBy { service(gate).invite(ManageUsers.InviteUser("not-an-email")) }.isInstanceOf(ValidationException::class.java)
@@ -132,6 +135,7 @@ class UserAdminServiceTest {
         assertThat(entry.operation).isEqualTo("USER_DEACTIVATE")
         assertThat(entry.details).containsEntry("revokedTokens", 1).containsEntry("terminatedSessions", 2)
         assertThat(db.version).isEqualTo(1)
+        assertThat(db.userBumps).containsExactly(user.id)
 
         val activated = service(FakeAccessGuard.permitting("admin.users.manage")).activate(user.id)
         assertThat(activated.user.status).isEqualTo(UserStatus.ACTIVE)

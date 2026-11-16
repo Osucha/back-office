@@ -98,6 +98,42 @@ class IdentityRestIntegrationTest {
     }
 
     @Test
+    fun `API responses carry the caller's access version, which moves after a grant change of that caller only (ADR 0068)`() {
+        val admin = admin()
+        val (session, user) = member()
+        val (otherSession, _) = member()
+        val token = identity.pat(user)
+
+        fun versionOf(request: org.springframework.test.web.servlet.assertj.MockMvcTester.MockMvcRequestBuilder): Long {
+            val result = request.exchange()
+            assertThat(result).hasStatusOk()
+            return result.response.getHeader("X-Access-Version")!!.toLong()
+        }
+        val me = mvc.get().uri("/api/v1/me").cookie(session).exchange()
+        val before = me.response.getHeader("X-Access-Version")!!.toLong()
+        assertThat(json.readTree(me.response.contentAsString).get("accessVersion").asLong()).isEqualTo(before)
+        // a personal token resolves through its owner and carries the owner's version
+        assertThat(versionOf(mvc.get().uri("/api/v1/me").header("Authorization", "Bearer $token"))).isEqualTo(before)
+        val otherBefore = versionOf(mvc.get().uri("/api/v1/me").cookie(otherSession))
+
+        assertThat(put("/api/v1/admin/grants", """{"level":"USER","targetId":"${user.id}","grants":[{"permission":"usage.view","effect":"ALLOW"}]}""", admin))
+            .hasStatusOk()
+
+        val after = mvc.get().uri("/api/v1/me").cookie(session).exchange()
+        val afterVersion = after.response.getHeader("X-Access-Version")!!.toLong()
+        assertThat(afterVersion).isGreaterThan(before)
+        assertThat(json.readTree(after.response.contentAsString).get("accessVersion").asLong()).isEqualTo(afterVersion)
+        assertThat(after.response.contentAsString).contains("usage.view")
+        assertThat(versionOf(mvc.get().uri("/api/v1/me").header("Authorization", "Bearer $token"))).isEqualTo(afterVersion)
+        // somebody else's grant leaves this user's version (and cached permissions) alone
+        assertThat(versionOf(mvc.get().uri("/api/v1/me").cookie(otherSession))).isEqualTo(otherBefore)
+        // anonymous and CI-token responses carry no version
+        assertThat(mvc.get().uri("/api/v1/auth/config").exchange().response.getHeader("X-Access-Version")).isNull()
+        assertThat(mvc.get().uri("/api/v1/projects/${TestIdentity.CI_PROJECT}/members").header("Authorization", "Bearer ${TestIdentity.CI_TOKEN}").exchange()
+            .response.getHeader("X-Access-Version")).isNull()
+    }
+
+    @Test
     fun `personal tokens authenticate as bearer, are narrowed to their subset and fail when invalid or revoked`() {
         val (session, user) = member()
         val created = post("/api/v1/tokens", """{"name":"cli","expiresInDays":7,"permissions":["library.view"]}""", session).exchange()

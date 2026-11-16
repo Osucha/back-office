@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -46,6 +47,7 @@ class RunWorkspaceIntegrationTest {
     @Autowired lateinit var pools: ManageRunnerPools
     @Autowired lateinit var runner: AgentJobService
     @Autowired lateinit var runners: pl.mos.backoffice.runner.application.port.`in`.ManageRunners
+    @Autowired lateinit var jdbc: JdbcTemplate
 
     private lateinit var poolId: String
     private lateinit var selector: Map<String, String>
@@ -77,9 +79,9 @@ class RunWorkspaceIntegrationTest {
     private fun register(name: String): String = registerWithId(name).first
 
     /** Runner token and runner id. */
-    private fun registerWithId(name: String): Pair<String, UUID> {
-        val issued = pools.issueRegistrationToken(poolId)
-        val body = """{"registrationToken":"${issued.token}","name":"$name-$poolId","version":"2.0.0",
+    private fun registerWithId(name: String, pool: String = poolId): Pair<String, UUID> {
+        val issued = pools.issueRegistrationToken(pool)
+        val body = """{"registrationToken":"${issued.token}","name":"$name-$pool","version":"2.0.0",
             "capabilities":{"backends":["DOCKER"],"runtimeClasses":[],"maxConcurrent":3}}"""
         val response = mvc.perform(post("/api/v1/runner/v2/register").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated).andReturn().response.contentAsString
@@ -172,6 +174,87 @@ class RunWorkspaceIntegrationTest {
         val continued = lease(fresh)
         assertThat(continued.map { it["jobId"] }).containsExactly(retry.value.toString())
         assertThat(workspaceOf(continued[0])).isEqualTo(workspaceName)
+    }
+
+    private fun workspaceRow(): Map<String, Any?> =
+        jdbc.queryForMap("SELECT pool_id, runner_id FROM runner_workspace WHERE name = ?", workspaceName)
+
+    /** A workspace whose runner was revoked after a job; the volume stays on that computer. */
+    private fun orphanedWorkspace(): UUID {
+        val (old, oldId) = registerWithId("laptop")
+        val first = submit("implementer")
+        assertThat(lease(old).map { it["jobId"] }).containsExactly(first.value.toString())
+        complete(old, first.value)
+        runners.revoke(oldId)
+        return oldId
+    }
+
+    @Test
+    fun `a runner of another pool holding the volume does not adopt the workspace`() {
+        val oldId = orphanedWorkspace()
+        val otherPool = "ws-" + UUID.randomUUID().toString().take(8)
+        pools.create(RunnerPoolInput(id = otherPool, name = "Other $otherPool", labels = mapOf("suite" to otherPool), maxConcurrentJobs = 5))
+        val (stranger, _) = registerWithId("stranger", otherPool)
+
+        assertThat(sync(stranger, workspaceName)).containsExactly(workspaceName)
+        assertThat(workspaceRow()["runner_id"]).isEqualTo(oldId)
+        assertThat(workspaceRow()["pool_id"]).isEqualTo(poolId)
+        // a runner of the workspace pool still adopts it
+        val (fresh, freshId) = registerWithId("laptop-again")
+        assertThat(sync(fresh, workspaceName)).isEmpty()
+        assertThat(workspaceRow()["runner_id"]).isEqualTo(freshId)
+    }
+
+    @Test
+    fun `a workspace without a pool is adopted by no runner`() {
+        val oldId = orphanedWorkspace()
+        jdbc.update("UPDATE runner_workspace SET pool_id = NULL WHERE name = ?", workspaceName)
+        val (fresh, _) = registerWithId("laptop-again")
+
+        assertThat(sync(fresh, workspaceName)).containsExactly(workspaceName)
+        assertThat(workspaceRow()["runner_id"]).isEqualTo(oldId)
+        assertThat(workspaceRow()["pool_id"]).isNull()
+    }
+
+    @Test
+    fun `V57 gives rows without a pool the pool of their runner or of their jobs, and leaves ambiguous ones alone`() {
+        orphanedWorkspace()
+        val byJobs = RunnerWorkspace.nameFor(UUID.randomUUID(), RunnerWorkspace.RUN_KEY)
+        val ambiguous = RunnerWorkspace.nameFor(UUID.randomUUID(), RunnerWorkspace.RUN_KEY)
+        val otherPool = "ws-" + UUID.randomUUID().toString().take(8)
+        pools.create(RunnerPoolInput(id = otherPool, name = "Other $otherPool", labels = mapOf("suite" to otherPool), maxConcurrentJobs = 5))
+        for (name in listOf(byJobs, ambiguous)) {
+            jdbc.update(
+                "INSERT INTO runner_workspace (name, run_id, workspace_key, created_at, last_used_at) VALUES (?, ?, ?, now(), now())",
+                name, UUID.randomUUID(), RunnerWorkspace.RUN_KEY,
+            )
+        }
+        // borrow the job row of the orphaned workspace as a template for jobs of the other two
+        val template = jdbc.queryForObject("SELECT id FROM agent_job WHERE workspace_name = ? LIMIT 1", UUID::class.java, workspaceName)!!
+        fun copyJob(workspace: String, pool: String) = UUID.randomUUID().let { id ->
+            jdbc.update(
+                """
+                INSERT INTO agent_job SELECT (jsonb_populate_record(a, jsonb_build_object('id', ?::uuid, 'label', ?::text,
+                    'workspace_name', ?::text, 'pool_id', ?::text, 'token_hash', null, 'agent_token_hash', null))).*
+                  FROM agent_job a WHERE a.id = ?
+                """.trimIndent(),
+                id, "job-$id", workspace, pool, template,
+            )
+        }
+        copyJob(byJobs, poolId)
+        copyJob(byJobs, poolId)
+        copyJob(ambiguous, poolId)
+        copyJob(ambiguous, otherPool)
+        jdbc.update("UPDATE runner_workspace SET pool_id = NULL WHERE name IN (?, ?, ?)", workspaceName, byJobs, ambiguous)
+
+        val sql = javaClass.classLoader.getResource("db/migration/V57__workspace_pool_backfill.sql")!!.readText()
+        sql.split(";").map { it.lines().filterNot { line -> line.trim().startsWith("--") }.joinToString(" ").trim() }
+            .filter { it.isNotEmpty() }.forEach { jdbc.update(it) }
+
+        fun poolOf(name: String) = jdbc.queryForObject("SELECT pool_id FROM runner_workspace WHERE name = ?", String::class.java, name)
+        assertThat(poolOf(workspaceName)).isEqualTo(poolId)
+        assertThat(poolOf(byJobs)).isEqualTo(poolId)
+        assertThat(poolOf(ambiguous)).isNull()
     }
 
     @Test

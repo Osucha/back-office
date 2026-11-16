@@ -10,8 +10,9 @@ class WorkspaceSyncTest {
     private val me = UUID.randomUUID()
     private val other = UUID.randomUUID()
 
-    private fun row(name: String, runner: UUID? = me, active: UUID? = null, releaseAfter: Instant? = null, released: Instant? = null) =
-        RunWorkspace(name, UUID.randomUUID(), "main", "pool", runner, active, now, now, releaseAfter, released)
+    private fun row(
+        name: String, runner: UUID? = me, active: UUID? = null, releaseAfter: Instant? = null, released: Instant? = null, pool: String? = "pool",
+    ) = RunWorkspace(name, UUID.randomUUID(), "main", pool, runner, active, now, now, releaseAfter, released)
 
     @Test
     fun `unknown, released and foreign volumes are deleted, live ones kept`() {
@@ -34,6 +35,20 @@ class WorkspaceSyncTest {
         val due = WorkspaceSync.decide(me, listOf("orphan"), listOf(row("orphan", runner = other, releaseAfter = now)), now, "pool", setOf(other))
         assertThat(due.release).containsExactly("orphan")
         assertThat(due.delete).containsExactly("orphan")
+    }
+
+    @Test
+    fun `only a runner of the workspace pool adopts it, a row without a pool is adopted by nobody`() {
+        val rows = listOf(
+            row("own", runner = other), row("own-unbound", runner = null),
+            row("foreign", runner = other, pool = "another-pool"), row("foreign-unbound", runner = null, pool = "another-pool"),
+            row("no-pool", runner = other, pool = null), row("no-pool-unbound", runner = null, pool = null),
+        )
+        val d = WorkspaceSync.decide(me, rows.map { it.name }, rows, now, "pool", setOf(other))
+        assertThat(d.adopt).containsExactlyInAnyOrder("own", "own-unbound")
+        assertThat(d.delete).containsExactlyInAnyOrder("foreign", "foreign-unbound", "no-pool", "no-pool-unbound")
+        // a runner without a known pool adopts nothing
+        assertThat(WorkspaceSync.decide(me, rows.map { it.name }, rows, now, null, setOf(other)).adopt).isEmpty()
     }
 
     @Test

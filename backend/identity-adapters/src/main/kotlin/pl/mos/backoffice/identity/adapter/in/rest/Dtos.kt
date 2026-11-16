@@ -74,6 +74,8 @@ data class MeDto(
     val idleTimeoutSeconds: Long,
     val absoluteExpiresAt: Instant?,
     val authenticatedAt: Instant?,
+    /** ADR 0068: the version the permissions above belong to; equals the `X-Access-Version` header of the same request. */
+    val accessVersion: Long? = null,
 )
 
 data class AuthMethodsDto(val local: Boolean, val oidc: Boolean)
