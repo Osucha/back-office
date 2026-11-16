@@ -5,7 +5,7 @@ import pl.mos.backoffice.projects.application.port.`in`.RunQueries
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.service.GateApprovalPolicy
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 
 /**
@@ -16,7 +16,7 @@ import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 @Component
 class ApprovalViews(
     private val runs: RunQueries,
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
     private val directory: ProjectAccessDirectory,
     private val mapper: RestMapper,
 ) {
@@ -24,7 +24,7 @@ class ApprovalViews(
 
     fun toDtos(approvals: List<ApprovalRequest>): List<ApprovalRequestDto> {
         if (approvals.isEmpty()) return emptyList()
-        val caller = gate.currentUser()
+        val caller = principal.currentUser()
         val names = runCatching { directory.displayNames(approvals.flatMap { it.assignees }.toSet()) }.getOrDefault(emptyMap())
         return approvals.map { approval ->
             val artifacts = if (approval.context.artifactIds.isEmpty()) emptyList() else runCatching { runs.artifacts(approval.runId) }.getOrDefault(emptyList())

@@ -27,7 +27,7 @@ import java.time.Instant
 
 /**
  * The MCP server (ADR 0025) through the Spring AI / MCP Java SDK client over streamable HTTP: a personal access
- * token authenticates, tools run through the same use cases (and `AuthorizationGate`) as REST, anything but a
+ * token authenticates, tools run through the same use cases (and `AccessGuard` checks) as REST, anything but a
  * PAT is rejected with 401 before the transport.
  */
 @SpringBootTest(

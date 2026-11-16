@@ -48,7 +48,7 @@ import pl.mos.backoffice.shared.tasks.SkillSnapshot
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskSummary
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
 import java.util.UUID
@@ -66,7 +66,7 @@ class CandidateBenchmarkTest {
     private val runner = mockk<AgentRunner>(relaxed = true)
     private val gateway = mockk<LlmGateway>()
     private val clock = Clock.fixed(Fixtures.now)
-    private val gate = FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_VIEW, EvaluationPermissions.EVALUATION_RUN)
+    private val gate = FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_VIEW, EvaluationPermissions.EVALUATION_RUN)
 
     private val judge = Fixtures.profile("Judge", modelId = "claude-fable-5-1")
     private val sonnet = Fixtures.profile("Sonnet")
@@ -93,7 +93,7 @@ class CandidateBenchmarkTest {
     }
 
     private fun service(withAgents: Boolean = true) =
-        BenchmarkService(benchmarks, suites, profiles, { submitted += it }, runner, clock, gate, RecordingAuditPort(), if (withAgents) catalog else null)
+        BenchmarkService(benchmarks, suites, profiles, { submitted += it }, runner, clock, gate, gate, RecordingAuditPort(), if (withAgents) catalog else null)
 
     private val asked = mutableListOf<Pair<List<String>, UUID?>>()
     private val connectorCatalog = ConnectorCatalog { keys, projectId ->

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.budget.adapter
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -10,7 +11,6 @@ import pl.mos.backoffice.llm.budget.domain.BudgetConfig
 import pl.mos.backoffice.llm.budget.domain.BudgetScope
 import pl.mos.backoffice.llm.budget.domain.BudgetState
 import pl.mos.backoffice.llm.budget.domain.JobSpend
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.shared.usage.UsageGroupBy
 import pl.mos.backoffice.shared.usage.UsageLedger
@@ -130,7 +130,7 @@ class JdbcBudgetStore(private val db: NamedParameterJdbcTemplate) : BudgetStore 
 class BudgetTrackingUsageLedger(
     private val delegate: UsageLedger,
     private val budgets: EnforceBudgets,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val tx: TransactionTemplate,
 ) : UsageLedger by delegate {
 
@@ -139,7 +139,7 @@ class BudgetTrackingUsageLedger(
     override fun record(record: UsageRecord) {
         delegate.record(record)
         try {
-            tx.executeWithoutResult { gate.asSystem("budget bookkeeping") { budgets.recordSpend(record.context, record.cost.amount) } }
+            tx.executeWithoutResult { guard.asSystem("budget bookkeeping") { budgets.recordSpend(record.context, record.cost.amount) } }
         } catch (e: RuntimeException) {
             log.warn("budget state not updated for usage record {}: {}", record.id, e.toString())
         }

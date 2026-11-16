@@ -27,7 +27,8 @@ import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.security.PermissionScope
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.security.permissionScope
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
@@ -51,27 +52,28 @@ class EvaluationAccessTest {
     private val clock = Clock.fixed(Fixtures.now)
     private val audit = RecordingAuditPort()
 
-    private fun models(gate: FakeAuthorizationGate) = ModelProfileService(profiles, benchmarks, gateway, clock, gate, audit)
-    private fun suites(gate: FakeAuthorizationGate) = TaskSuiteService(suites, benchmarks, clock, gate, audit)
-    private fun benchmarks(gate: FakeAuthorizationGate) = BenchmarkService(benchmarks, suites, profiles, { submitted += it }, runner, clock, gate, audit)
+    private fun models(gate: FakeAccessGuard) = ModelProfileService(profiles, benchmarks, gateway, clock, gate, gate, audit)
+    private fun suites(gate: FakeAccessGuard) = TaskSuiteService(suites, benchmarks, clock, gate, gate, audit)
+    private fun benchmarks(gate: FakeAccessGuard) = BenchmarkService(benchmarks, suites, profiles, { submitted += it }, runner, clock, gate, gate, audit)
 
     private val a = Fixtures.profile("A")
     private val command = ProfileCommand("C", a.ref, Pricing(BigDecimal("3"), BigDecimal("15")))
 
     @Test
     fun `the permission catalogue declares four platform permissions`() {
-        assertThat(EvaluationPermissions.definitions.map { it.key })
+        val definitions = EvaluationPermissions.contribution.sets.flatMap { it.permissions }
+        assertThat(definitions.map { it.key })
             .containsExactlyInAnyOrder("models.view", "models.manage", "evaluation.view", "evaluation.run")
-        assertThat(EvaluationPermissions.definitions).allSatisfy {
-            assertThat(it.scope).isEqualTo(PermissionScope.PLATFORM)
-            assertThat(it.module).isEqualTo("evaluation")
+        assertThat(definitions).allSatisfy {
+            assertThat(it.permissionScope).isEqualTo(PermissionScope.PLATFORM)
         }
+        assertThat(EvaluationPermissions.contribution.module).isEqualTo("evaluation")
     }
 
     @Test
     fun `model profiles are read with models view and changed with models manage, with an audited pricing diff`() {
-        val manager = FakeAuthorizationGate.permitting("models.manage")
-        val viewer = FakeAuthorizationGate.permitting("models.view")
+        val manager = FakeAccessGuard.permitting("models.manage")
+        val viewer = FakeAccessGuard.permitting("models.view")
 
         val created = models(manager).create(command)
         assertThat(manager.checked).containsExactly("models.manage")
@@ -81,7 +83,7 @@ class EvaluationAccessTest {
         assertThat(models(viewer).list().map { it.displayName }).containsExactly("C")
         assertThat(models(viewer).get(created.id).displayName).isEqualTo("C")
         assertThat(viewer.checked).containsOnly("models.view")
-        assertThat(ProviderService(gateway, emptyMap(), FakeAuthorizationGate.denyAll()).runCatching { list() }.exceptionOrNull())
+        assertThat(ProviderService(gateway, emptyMap(), FakeAccessGuard.denyAll()).runCatching { list() }.exceptionOrNull())
             .isInstanceOf(InsufficientPermissionException::class.java)
 
         assertThatThrownBy { models(viewer).create(command) }.isInstanceOf(InsufficientPermissionException::class.java)
@@ -101,7 +103,7 @@ class EvaluationAccessTest {
 
     @Test
     fun `a model test needs models manage and is audited with its outcome`() {
-        val manager = FakeAuthorizationGate.permitting("models.manage")
+        val manager = FakeAccessGuard.permitting("models.manage")
         val profile = models(manager).create(command)
         every { gateway.chat(profile.ref, any()) } returns LlmResult("OK", null, TokenUsage(1, 1), latency = Duration.ofMillis(5), modelRef = profile.ref)
 
@@ -118,15 +120,15 @@ class EvaluationAccessTest {
     fun `providers are listed with models view`() {
         every { gateway.isConfigured(any<Provider>()) } returns false
         every { gateway.isConfigured(any<ModelRef>()) } returns false
-        val viewer = FakeAuthorizationGate.permitting("models.view")
+        val viewer = FakeAccessGuard.permitting("models.view")
         assertThat(ProviderService(gateway, emptyMap(), viewer).list().map { it.provider }).containsExactlyElementsOf(Provider.entries)
         assertThat(viewer.checked).containsExactly("models.view")
     }
 
     @Test
     fun `suites and tasks are read with evaluation view and changed with evaluation run, all audited`() {
-        val runnerUser = FakeAuthorizationGate.permitting("evaluation.run")
-        val viewer = FakeAuthorizationGate.permitting("evaluation.view")
+        val runnerUser = FakeAccessGuard.permitting("evaluation.run")
+        val viewer = FakeAccessGuard.permitting("evaluation.view")
         val task = TaskCommand("t", TaskCategory.ANALYSIS, Difficulty.EASY, TaskKind.PROMPT, "do it", rubric = "0-10")
 
         val suite = suites(runnerUser).create(SuiteCommand("S"))
@@ -157,8 +159,8 @@ class EvaluationAccessTest {
         listOf(a, Fixtures.profile("Judge")).forEach { profiles.save(it) }
         val judge = profiles.findAll().first { it.displayName == "Judge" }
         val suite = suites.save(Fixtures.suite(Fixtures.promptTask("t1")))
-        val runnerUser = FakeAuthorizationGate.permitting("evaluation.run")
-        val viewer = FakeAuthorizationGate.permitting("evaluation.view")
+        val runnerUser = FakeAccessGuard.permitting("evaluation.run")
+        val viewer = FakeAccessGuard.permitting("evaluation.view")
         val cmd = ManageBenchmarks.BenchmarkCommand("B", suite.id, listOf(a.id), judge.id)
 
         val draft = benchmarks(runnerUser).create(cmd)
@@ -179,8 +181,8 @@ class EvaluationAccessTest {
         assertThatThrownBy { benchmarks(viewer).cancel(id) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { benchmarks(viewer).delete(id) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { benchmarks(runnerUser).get(id) }.describedAs("run does not imply view").isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { benchmarks(FakeAuthorizationGate.denyAll()).leaderboard(id) }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThat(benchmarks(FakeAuthorizationGate.denyAll()).runningBenchmarks()).describedAs("dashboard tile degrades to 0").isZero()
+        assertThatThrownBy { benchmarks(FakeAccessGuard.denyAll()).leaderboard(id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThat(benchmarks(FakeAccessGuard.denyAll()).runningBenchmarks()).describedAs("dashboard tile degrades to 0").isZero()
 
         benchmarks(runnerUser).cancel(id)
         benchmarks(runnerUser).delete(id)
@@ -191,6 +193,6 @@ class EvaluationAccessTest {
 
     @Test
     fun `recovery after a restart runs as the system without a user`() {
-        assertThat(benchmarks(FakeAuthorizationGate.denyAll()).recover()).isZero()
+        assertThat(benchmarks(FakeAccessGuard.denyAll()).recover()).isZero()
     }
 }

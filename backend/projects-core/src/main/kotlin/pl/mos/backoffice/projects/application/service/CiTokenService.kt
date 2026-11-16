@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageCiTokens
 import pl.mos.backoffice.projects.application.port.`in`.ManageCiTokens.CreatedToken
 import pl.mos.backoffice.projects.application.port.`in`.VerifyCiToken
@@ -15,9 +17,8 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.CiTokenIdentity
-import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 
 /**
  * Implements [ManageCiTokens] (`project.ci.manage`) and [VerifyCiToken] (docs/architecture/05-integrations.md):
@@ -28,13 +29,15 @@ class CiTokenService(
     private val tokens: ProjectCiTokenRepository,
     private val projects: ProjectRepository,
     private val hasher: TokenHasher,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : ManageCiTokens, VerifyCiToken {
 
     override fun create(projectId: ProjectId, name: String): CreatedToken {
-        val actor = gate.require(ProjectsPermissions.PROJECT_CI_MANAGE, projectId.value).actor
+        guard.require(ProjectsPermissions.PROJECT_CI_MANAGE, projectId.value)
+        val actor = principal.currentUser().actor
         projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         if (name.isBlank()) throw ValidationException("must not be blank", "name")
         val plaintext = hasher.generate(ProjectCiToken.PREFIX, ProjectCiToken.RANDOM_LENGTH)
@@ -54,13 +57,13 @@ class CiTokenService(
     }
 
     override fun list(projectId: ProjectId): List<ProjectCiToken> {
-        gate.require(ProjectsPermissions.PROJECT_CI_MANAGE, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_CI_MANAGE, projectId.value)
         projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         return tokens.findByProjectId(projectId).sortedByDescending { it.createdAt }
     }
 
     override fun revoke(projectId: ProjectId, tokenId: ProjectCiTokenId) {
-        gate.require(ProjectsPermissions.PROJECT_CI_MANAGE, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_CI_MANAGE, projectId.value)
         val token = tokens.findById(tokenId)?.takeIf { it.projectId == projectId } ?: throw NotFoundException("CiToken", tokenId)
         if (token.revoked) return
         tokens.save(token.revoke(clock.now()))

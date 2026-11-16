@@ -26,7 +26,7 @@ import pl.mos.backoffice.shared.prompt.InjectionDetector
 import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.IntegrationException
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.llm.ApiPricing

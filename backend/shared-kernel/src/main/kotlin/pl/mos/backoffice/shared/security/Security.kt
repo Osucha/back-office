@@ -1,5 +1,9 @@
 package pl.mos.backoffice.shared.security
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.Permission
+import com.osucha.portpermissions.ScopeFilter
+import com.osucha.portpermissions.ScopedPermission
 import java.util.UUID
 
 /** Who is calling (ADR 0017). */
@@ -36,23 +40,11 @@ data class Actor(val kind: PrincipalKind, val userId: UUID?, val displayName: St
     }
 }
 
-/** Which projects a query may return for a given permission. */
-sealed interface ProjectFilter {
-    fun allows(projectId: UUID): Boolean
-
-    data object All : ProjectFilter {
-        override fun allows(projectId: UUID) = true
-    }
-
-    data class Only(val projectIds: Set<UUID>) : ProjectFilter {
-        override fun allows(projectId: UUID) = projectId in projectIds
-    }
-}
-
 /**
  * The authenticated principal with its **effective** permissions, resolved per request (never frozen in a
- * token). Platform-scoped permissions are plain strings (`admin.users.manage`); project-scoped permissions
- * are held per project (`run.approve` on project X).
+ * token). Platform-scoped permissions are plain keys (`admin.users.manage`); project-scoped permissions
+ * are held per project (`run.approve` on project X). Use cases check them through the [AccessGuard]
+ * (port-permissions, ADR 0066); [effectivePermissions] is the same access as the library snapshot.
  */
 data class CurrentUser(
     val kind: PrincipalKind,
@@ -80,9 +72,14 @@ data class CurrentUser(
     fun can(permission: String, projectId: UUID): Boolean =
         allProjects || projectPermissions[projectId]?.contains(permission) == true
 
-    fun projectsWith(permission: String): ProjectFilter =
-        if (allProjects) ProjectFilter.All
-        else ProjectFilter.Only(projectPermissions.filterValues { permission in it }.keys)
+    fun can(permission: Permission): Boolean = can(permission.key)
+
+    fun can(permission: ScopedPermission<UUID>, projectId: UUID): Boolean = can(permission.key, projectId)
+
+    /** The projects on which this principal holds [permission], for list queries. */
+    fun projectsWith(permission: ScopedPermission<UUID>): ScopeFilter<UUID> =
+        if (allProjects) ScopeFilter.All
+        else ScopeFilter.Only(projectPermissions.filterValues { permission.key in it }.keys)
 
     val actor: Actor get() = Actor(kind, userId?.value, displayName)
 
@@ -97,66 +94,6 @@ data class CurrentUser(
             allProjects = true,
         )
     }
-}
-
-/**
- * Deny-by-default authorisation check used **inside every use case** (ADR 0017). Every public method of a
- * `*Service` in `application.service` must call one of the `require*` methods, or be annotated with
- * [PublicOperation] or [SystemOperation]; ArchUnit enforces it.
- */
-interface AuthorizationGate {
-    fun currentUser(): CurrentUser
-
-    /** Platform-scoped check. Throws `InsufficientPermissionException`. */
-    fun require(permission: String): CurrentUser
-
-    /** Project-scoped check. Throws `InsufficientPermissionException`. */
-    fun require(permission: String, projectId: UUID): CurrentUser
-
-    /** Filter for list queries: which projects the caller may see for [permission]. */
-    fun projectFilter(permission: String): ProjectFilter = currentUser().projectsWith(permission)
-
-    /** Runs [block] as [CurrentUser.SYSTEM] (engine threads, schedulers, startup seeding). */
-    fun <T> asSystem(reason: String, block: () -> T): T
-}
-
-/** The operation is intentionally available to any authenticated caller (e.g. "who am I"). */
-@Target(AnnotationTarget.FUNCTION)
-@Retention(AnnotationRetention.RUNTIME)
-annotation class PublicOperation(val reason: String)
-
-/**
- * The operation is invoked only by internal adapters on behalf of the platform (workflow engine callbacks,
- * runner callbacks, schedulers, seeding). It must not be exposed through a controller.
- */
-@Target(AnnotationTarget.FUNCTION)
-@Retention(AnnotationRetention.RUNTIME)
-annotation class SystemOperation(val reason: String)
-
-enum class PermissionScope { PLATFORM, PROJECT }
-
-/** One entry of the permission catalogue. Keys follow `resource.action`. */
-data class PermissionDefinition(
-    val key: String,
-    val scope: PermissionScope,
-    val module: String,
-    val description: String,
-) {
-    init {
-        require(KEY.matches(key)) { "permission key must match ${KEY.pattern}: $key" }
-    }
-
-    companion object {
-        val KEY = Regex("^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$")
-    }
-}
-
-/**
- * Each module contributes its permissions as a bean; the identity context collects them. Code is the source
- * of truth, the database stores only grants (ADR 0017).
- */
-fun interface PermissionCatalogContribution {
-    fun permissions(): List<PermissionDefinition>
 }
 
 /** Port implemented by the identity context so that other contexts can provision access. */

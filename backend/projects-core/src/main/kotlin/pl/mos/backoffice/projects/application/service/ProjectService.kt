@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects.ProjectCommand
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects.ProjectStats
@@ -29,9 +31,8 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
-import pl.mos.backoffice.shared.security.PublicOperation
 import pl.mos.backoffice.shared.usage.UsageLedger
 import pl.mos.backoffice.shared.usage.UsageQuery
 import java.time.Duration
@@ -53,7 +54,8 @@ class ProjectService(
     private val usageLedger: UsageLedger,
     private val snippetRenderer: CiSnippetRenderer,
     private val publicUrl: String,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val provisioner: ProjectAccessProvisioner,
     private val audit: AuditPort,
     private val clock: Clock,
@@ -61,11 +63,12 @@ class ProjectService(
 
     override fun create(command: ProjectCommand): Project {
         // ADR 0038: every member may create a private project; a team project needs projects.create (ADR 0028)
-        val actor = if (command.personal && !gate.currentUser().can(ProjectsPermissions.PROJECTS_CREATE)) {
-            gate.require(ProjectsPermissions.PROJECTS_CREATE_PERSONAL).actor
+        if (command.personal && !principal.currentUser().can(ProjectsPermissions.PROJECTS_CREATE)) {
+            guard.require(ProjectsPermissions.PROJECTS_CREATE_PERSONAL)
         } else {
-            gate.require(ProjectsPermissions.PROJECTS_CREATE).actor
+            guard.require(ProjectsPermissions.PROJECTS_CREATE)
         }
+        val actor = principal.currentUser().actor
         val requested = normalisedKey(command.key)
         if (requested != null && projects.findByKey(requested) != null) throw ValidationException("project key $requested already exists", "key")
         val key = requested ?: Project.suggestKey(command.name) { projects.findByKey(it) != null }
@@ -126,7 +129,8 @@ class ProjectService(
     }
 
     override fun update(id: ProjectId, command: ProjectCommand): Project {
-        val actor = gate.require(ProjectsPermissions.PROJECT_MANAGE, id.value).actor
+        guard.require(ProjectsPermissions.PROJECT_MANAGE, id.value)
+        val actor = principal.currentUser().actor
         val existing = load(id)
         val newKey = normalisedKey(command.key)?.takeIf { it != existing.key }
         if (newKey != null && projects.findByKey(newKey) != null) throw ValidationException("project key $newKey already exists", "key")
@@ -170,14 +174,15 @@ class ProjectService(
     }
 
     override fun missingDefaultWorkflows(id: ProjectId): List<String> {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, id.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, id.value)
         val project = load(id)
         if (project.repositories.isEmpty()) return emptyList()
         return missingDefaults(project, clock.now()).map { it.name }
     }
 
     override fun addDefaultWorkflows(id: ProjectId): List<WorkflowDefinition> {
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, id.value).actor
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, id.value)
+        val actor = principal.currentUser().actor
         val project = load(id)
         if (project.repositories.isEmpty()) throw InvalidStateException("the default workflows need a repository; add one to the project first")
         val seeded = missingDefaults(project, clock.now()).map { workflows.save(it.copy(updatedBy = actor)) }
@@ -198,8 +203,8 @@ class ProjectService(
     override fun delete(id: ProjectId) {
         // Irreversible (runs, approvals, CI history): owners only, i.e. project.manage AND project.members.manage,
         // the same rule the UI applies to the Delete button. A maintainer can edit but not delete.
-        gate.require(ProjectsPermissions.PROJECT_MANAGE, id.value)
-        gate.require(ProjectsPermissions.PROJECT_MEMBERS_MANAGE, id.value)
+        guard.require(ProjectsPermissions.PROJECT_MANAGE, id.value)
+        guard.require(ProjectsPermissions.PROJECT_MEMBERS_MANAGE, id.value)
         val project = load(id)
         val active = runs.countByProjectAndStatus(id, ACTIVE)
         if (active > 0) throw InvalidStateException("project $id has $active active runs; cancel them first")
@@ -214,15 +219,15 @@ class ProjectService(
     }
 
     override fun get(id: ProjectId): Project {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, id.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, id.value)
         return load(id)
     }
 
     @PublicOperation("lists only the projects the caller holds project.view on")
-    override fun list(): List<Project> = projects.findAll(gate.projectFilter(ProjectsPermissions.PROJECT_VIEW)).sortedBy { it.key }
+    override fun list(): List<Project> = projects.findAll(guard.scopesWith(ProjectsPermissions.PROJECT_VIEW)).sortedBy { it.key }
 
     override fun stats(id: ProjectId): ProjectStats {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, id.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, id.value)
         val now = clock.now()
         val cost = try {
             usageLedger.totalCost(UsageQuery(from = now.minus(Duration.ofDays(30)), to = now, projectId = id.value))
@@ -239,12 +244,12 @@ class ProjectService(
     }
 
     override fun entrypoints(id: ProjectId): List<CiEntrypoint> {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, id.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, id.value)
         return load(id).ciEntrypoints
     }
 
     override fun replaceEntrypoints(id: ProjectId, entrypoints: List<CiEntrypoint>): List<CiEntrypoint> {
-        gate.require(ProjectsPermissions.PROJECT_MANAGE, id.value)
+        guard.require(ProjectsPermissions.PROJECT_MANAGE, id.value)
         val project = load(id)
         val own = workflows.findByProjectId(id).associateBy { it.id }
         entrypoints.forEach { entrypoint ->
@@ -260,7 +265,7 @@ class ProjectService(
     }
 
     override fun ciSnippet(id: ProjectId): CiSnippet {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, id.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, id.value)
         val project = load(id)
         return snippetRenderer.render(project, workflows.findByProjectId(id), publicUrl)
     }

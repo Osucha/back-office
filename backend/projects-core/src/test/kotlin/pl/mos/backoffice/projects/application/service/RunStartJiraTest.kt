@@ -32,7 +32,7 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 /** ADR 0030 amendment: a missing Jira connection does not block saving, but a run refuses to start; Jira intake runs (ADR 0033). */
@@ -53,9 +53,9 @@ class RunStartJiraTest {
     }
     private val checks = JiraStepCheck(JiraConnectionAccess(connections, LegacyConnectionSource.NONE, ConnectionSelector(), ConnectionFakes.FakeTrackers()))
     private val audit = RecordingAuditPort()
-    private val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_START, projects = setOf(project.id.value))
+    private val gate = FakeAccessGuard.permitting(ProjectsPermissions.RUN_START, projects = setOf(project.id.value))
     private val service = RunService(
-        runs, workflows, projects, mockk<RunLogRepository>(), engine, mockk<RecordRunProgress>(), WorkflowValidator(), EventPublisher.NOOP, gate, audit, Clock.fixed(now), checks,
+        runs, workflows, projects, mockk<RunLogRepository>(), engine, mockk<RecordRunProgress>(), WorkflowValidator(), EventPublisher.NOOP, gate, gate, audit, Clock.fixed(now), checks,
     )
 
     @Test

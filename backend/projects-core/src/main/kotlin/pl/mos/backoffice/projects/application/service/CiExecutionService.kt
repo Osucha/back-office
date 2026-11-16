@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.CiExecutionQueries
 import pl.mos.backoffice.projects.application.port.`in`.CompleteCiExecution
 import pl.mos.backoffice.projects.application.port.`in`.StartCiExecution
@@ -23,10 +26,8 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.projects.domain.service.RepositoryUrls
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Duration
@@ -62,13 +63,14 @@ class CiExecutionService(
     private val projects: ProjectRepository,
     private val runService: RunService,
     private val events: EventPublisher,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : StartCiExecution, CiExecutionQueries {
 
     override fun start(projectId: ProjectId, command: CiExecutionCommand): CiExecution {
-        gate.require(ProjectsPermissions.CI_EXECUTE, projectId.value)
+        guard.require(ProjectsPermissions.CI_EXECUTE, projectId.value)
         val project = projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         val entrypoint = project.entrypoint(command.entrypoint) ?: throw NotFoundException("CiEntrypoint", command.entrypoint)
         // ADR 0034: which project repository the CI job runs in (unknown URL -> 400 listing the repositories)
@@ -134,14 +136,14 @@ class CiExecutionService(
     override fun get(id: CiExecutionId): CiExecution {
         val execution = executions.findById(id) ?: throw NotFoundException("CiExecution", id)
         // the CI job polls with its token (ci.execute on its own project); people need project.view
-        val permission = if (gate.currentUser().kind == PrincipalKind.CI_TOKEN) ProjectsPermissions.CI_EXECUTE else ProjectsPermissions.PROJECT_VIEW
-        gate.require(permission, execution.projectId.value)
+        val permission = if (principal.currentUser().kind == PrincipalKind.CI_TOKEN) ProjectsPermissions.CI_EXECUTE else ProjectsPermissions.PROJECT_VIEW
+        guard.require(permission, execution.projectId.value)
         return execution
     }
 
     @PublicOperation("lists only CI executions of projects the caller holds project.view on")
     override fun list(projectId: ProjectId?, page: Int, size: Int, sort: SortSpec?): PageOf<CiExecution> =
-        executions.find(projectId, gate.projectFilter(ProjectsPermissions.PROJECT_VIEW), page, size, sort)
+        executions.find(projectId, guard.scopesWith(ProjectsPermissions.PROJECT_VIEW), page, size, sort)
 
     private fun truncate(diff: String): String {
         val bytes = diff.toByteArray(Charsets.UTF_8)

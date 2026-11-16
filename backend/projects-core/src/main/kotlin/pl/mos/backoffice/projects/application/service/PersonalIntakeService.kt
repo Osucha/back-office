@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalIntake
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalIntake.ProposalView
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalIntake.RuleCommand
@@ -34,9 +36,8 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.platform.WorkKinds
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.platform.WorkRequest
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
-import pl.mos.backoffice.shared.security.SystemOperation
 import java.util.UUID
 
 /**
@@ -54,19 +55,22 @@ class PersonalIntakeService(
     private val jira: JiraConnectionAccess,
     private val queue: WorkQueue,
     private val events: EventPublisher,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : ManagePersonalIntake, PollPersonalIntake {
 
     override fun rules(): List<RuleView> {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val counts = intake.newCounts(userId(me))
         return intake.rulesOf(userId(me)).sortedBy { it.name.lowercase() }.map { view(it, counts[it.id] ?: 0) }
     }
 
     override fun create(command: RuleCommand): RuleView {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val owner = userId(me)
         if (intake.rulesOf(owner).size >= PersonalIntakeRule.MAX_RULES_PER_USER) {
             throw ValidationException("at most ${PersonalIntakeRule.MAX_RULES_PER_USER} rules per person", "name")
@@ -87,7 +91,8 @@ class PersonalIntakeService(
     }
 
     override fun update(id: IntakeRuleId, command: RuleCommand): RuleView {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val existing = ownRule(me, id)
         requireUsable(me, command)
         val saved = intake.saveRule(
@@ -108,14 +113,16 @@ class PersonalIntakeService(
     }
 
     override fun delete(id: IntakeRuleId) {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val existing = ownRule(me, id)
         intake.deleteRule(id)
         audit.record(AuditEntry("INTAKE_RULE_DELETE", RULE, id.toString(), details = mapOf("name" to existing.name)))
     }
 
     override fun pollNow(id: IntakeRuleId): RuleView {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val saved = intake.saveRule(ownRule(me, id).pollNow(clock.now()))
         audit.record(AuditEntry("INTAKE_RULE_POLL_NOW", RULE, id.toString()))
         enqueue(id)
@@ -123,14 +130,16 @@ class PersonalIntakeService(
     }
 
     override fun proposals(state: ProposalState): List<ProposalView> {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         if (state == ProposalState.BASELINE) throw ValidationException("must be NEW, STARTED or DISMISSED", "state")
         val rules = intake.rulesOf(userId(me)).associateBy { it.id }
         return intake.proposalsOf(userId(me), state).map { proposalView(it, rules[it.ruleId]) }
     }
 
     override fun start(id: IntakeProposalId, workflowId: WorkflowDefinitionId?): ProposalView {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val proposal = ownProposal(me, id)
         val rule = intake.findRule(proposal.ruleId)
         val chosen = workflowId ?: rule?.workflowId ?: throw ValidationException("choose a workflow", "workflowId")
@@ -150,14 +159,16 @@ class PersonalIntakeService(
     }
 
     override fun dismiss(id: IntakeProposalId): ProposalView {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val saved = intake.saveProposal(ownProposal(me, id).dismissed(clock.now()))
         audit.record(AuditEntry("INTAKE_PROPOSAL_DISMISS", PROPOSAL, id.toString(), details = mapOf("issueKey" to saved.issueKey)))
         return proposalView(saved, intake.findRule(saved.ruleId))
     }
 
     override fun restore(id: IntakeProposalId): ProposalView {
-        val me = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val me = principal.currentUser()
         val saved = intake.saveProposal(ownProposal(me, id).restored())
         audit.record(AuditEntry("INTAKE_PROPOSAL_RESTORE", PROPOSAL, id.toString(), details = mapOf("issueKey" to saved.issueKey)))
         return proposalView(saved, intake.findRule(saved.ruleId))

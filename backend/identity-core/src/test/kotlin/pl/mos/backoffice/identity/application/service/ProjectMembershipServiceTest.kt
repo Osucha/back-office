@@ -12,7 +12,7 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -22,10 +22,10 @@ class ProjectMembershipServiceTest {
     private val audit = RecordingAuditPort()
     private val project = UUID.randomUUID()
 
-    private fun service(gate: FakeAuthorizationGate) =
-        ProjectMembershipService(db.memberships, db.users, db.groups, db.roles, db.projectKeys, audit, db.accessVersion, db.clock, gate)
+    private fun service(gate: FakeAccessGuard) =
+        ProjectMembershipService(db.memberships, db.users, db.groups, db.roles, db.projectKeys, audit, db.accessVersion, db.clock, gate, gate)
 
-    private fun manager() = FakeAuthorizationGate.permitting("project.members.manage", projects = setOf(project))
+    private fun manager() = FakeAccessGuard.permitting("project.members.manage", projects = setOf(project))
 
     @Test
     fun `a private project has only its owner, adding members is refused (ADR 0038)`() {
@@ -36,7 +36,8 @@ class ProjectMembershipServiceTest {
             override fun keyOf(projectId: UUID): String? = null
             override fun isPersonal(projectId: UUID): Boolean = projectId == project
         })
-        val private = ProjectMembershipService(db.memberships, db.users, db.groups, db.roles, keys, audit, db.accessVersion, db.clock, manager())
+        val managerGuard = manager()
+        val private = ProjectMembershipService(db.memberships, db.users, db.groups, db.roles, keys, audit, db.accessVersion, db.clock, managerGuard, managerGuard)
         assertThatThrownBy { private.add(project, AddMember(PrincipalType.USER, dev.id.value, "developer")) }
             .isInstanceOf(InvalidStateException::class.java).hasMessageContaining("private project")
         assertThat(db.memberships.findByProject(project)).hasSize(1)
@@ -45,13 +46,13 @@ class ProjectMembershipServiceTest {
     @Test
     fun `the creator of a project becomes its owner`() {
         val creator = db.user("owner@example.com")
-        service(FakeAuthorizationGate.denyAll()).grantCreator(project, "PRJ", Actor(PrincipalKind.USER, creator.id.value, "Owner"))
+        service(FakeAccessGuard.denyAll()).grantCreator(project, "PRJ", Actor(PrincipalKind.USER, creator.id.value, "Owner"))
         val owner = db.memberships.findByProject(project).single()
         assertThat(owner.roleKey).isEqualTo(BuiltInRoles.OWNER)
         assertThat(owner.projectKey).isEqualTo("PRJ")
         assertThat(audit.operations()).containsExactly("MEMBER_ADD")
         // idempotent
-        service(FakeAuthorizationGate.denyAll()).grantCreator(project, "PRJ", Actor(PrincipalKind.USER, creator.id.value, "Owner"))
+        service(FakeAccessGuard.denyAll()).grantCreator(project, "PRJ", Actor(PrincipalKind.USER, creator.id.value, "Owner"))
         assertThat(db.memberships.findByProject(project)).hasSize(1)
     }
 
@@ -61,7 +62,7 @@ class ProjectMembershipServiceTest {
         db.member(project, "PRJ", PrincipalType.USER, owner.id.value, BuiltInRoles.OWNER)
         val dev = db.user("dev@example.com")
 
-        assertThatThrownBy { service(FakeAuthorizationGate.permitting("project.members.manage", projects = setOf(UUID.randomUUID()))).add(project, AddMember(PrincipalType.USER, dev.id.value, "developer")) }
+        assertThatThrownBy { service(FakeAccessGuard.permitting("project.members.manage", projects = setOf(UUID.randomUUID()))).add(project, AddMember(PrincipalType.USER, dev.id.value, "developer")) }
             .isInstanceOf(InsufficientPermissionException::class.java)
 
         val gate = manager()
@@ -97,11 +98,11 @@ class ProjectMembershipServiceTest {
     fun `listing needs project view and deleting a project removes its memberships`() {
         val owner = db.user("owner@example.com")
         db.member(project, "PRJ", PrincipalType.USER, owner.id.value, BuiltInRoles.OWNER)
-        val gate = FakeAuthorizationGate.permitting("project.view", projects = setOf(project))
+        val gate = FakeAccessGuard.permitting("project.view", projects = setOf(project))
         assertThat(service(gate).list(project).single().principalName).isEqualTo("owner")
         assertThat(gate.checked).containsExactly("project.view@$project")
 
-        service(FakeAuthorizationGate.denyAll()).projectDeleted(project)
+        service(FakeAccessGuard.denyAll()).projectDeleted(project)
         assertThat(db.memberships.findByProject(project)).isEmpty()
         assertThat(audit.operations()).containsExactly("MEMBER_REMOVE")
     }
@@ -109,12 +110,14 @@ class ProjectMembershipServiceTest {
     @Test
     fun `directory lookup is allowed to user viewers and to project member managers only`() {
         db.user("alice@example.com")
-        val directory = DirectoryService(db.users, db.groups, FakeAuthorizationGate.permitting("admin.users.view"))
+        val viewer = FakeAccessGuard.permitting("admin.users.view")
+        val directory = DirectoryService(db.users, db.groups, viewer, viewer)
         assertThat(directory.users("ali")).hasSize(1)
         val managerGate = manager()
-        assertThat(DirectoryService(db.users, db.groups, managerGate).users("ali")).hasSize(1)
+        assertThat(DirectoryService(db.users, db.groups, managerGate, managerGate).users("ali")).hasSize(1)
         assertThat(managerGate.checked).containsExactly("project.members.manage@$project")
-        assertThatThrownBy { DirectoryService(db.users, db.groups, FakeAuthorizationGate.denyAll()).users("ali") }
+        val nobody = FakeAccessGuard.denyAll()
+        assertThatThrownBy { DirectoryService(db.users, db.groups, nobody, nobody).users("ali") }
             .isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { directory.users("a") }.isInstanceOf(ValidationException::class.java)
     }

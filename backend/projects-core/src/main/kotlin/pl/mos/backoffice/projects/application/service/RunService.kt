@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.CancelRun
 import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
 import pl.mos.backoffice.projects.application.port.`in`.RetryRun
@@ -37,11 +40,9 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
@@ -63,7 +64,8 @@ class RunService(
     private val progress: RecordRunProgress,
     private val validator: WorkflowValidator,
     private val events: EventPublisher,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
     /** Refuses runs whose Jira steps have no usable connection (ADR 0030 amendment); null = not checked. */
@@ -80,13 +82,15 @@ class RunService(
 
     override fun start(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource): WorkflowRun {
         val definition = loadDefinition(workflowId)
-        val actor = gate.require(ProjectsPermissions.RUN_START, definition.projectId.value).actor
+        guard.require(ProjectsPermissions.RUN_START, definition.projectId.value)
+        val actor = principal.currentUser().actor
         return launch(definition, RunTrigger(source), input, emptyList(), actor)
     }
 
     override fun startChecked(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource): WorkflowRun {
         val definition = loadDefinition(workflowId)
-        val actor = gate.require(ProjectsPermissions.RUN_START, definition.projectId.value).actor
+        guard.require(ProjectsPermissions.RUN_START, definition.projectId.value)
+        val actor = principal.currentUser().actor
         val checked = runInputs?.let { RunInputs.check(RunInputs.effective(definition, it), input) } ?: input
         return launch(definition, RunTrigger(source), checked, emptyList(), actor)
     }
@@ -97,7 +101,8 @@ class RunService(
      */
     fun startForCi(workflowId: WorkflowDefinitionId, input: RunInput, executionId: CiExecutionId, initialArtifacts: List<NewArtifact>): WorkflowRun {
         val definition = loadDefinition(workflowId)
-        val actor = gate.require(ProjectsPermissions.CI_EXECUTE, definition.projectId.value).actor
+        guard.require(ProjectsPermissions.CI_EXECUTE, definition.projectId.value)
+        val actor = principal.currentUser().actor
         return launch(definition, RunTrigger(TriggerSource.CI, executionId), input, initialArtifacts, actor)
     }
 
@@ -169,7 +174,7 @@ class RunService(
 
     override fun cancel(runId: WorkflowRunId): WorkflowRun {
         val run = load(runId)
-        gate.require(ProjectsPermissions.RUN_CANCEL, run.projectId.value)
+        guard.require(ProjectsPermissions.RUN_CANCEL, run.projectId.value)
         if (run.status.terminal) throw InvalidStateException("run $runId is already ${run.status}")
         engine.cancel(runId)
         val cancelled = progress.finished(runId, RunStatus.CANCELLED)
@@ -179,10 +184,10 @@ class RunService(
 
     override fun retry(runId: WorkflowRunId, comment: String?): WorkflowRun {
         val run = load(runId)
-        gate.require(ProjectsPermissions.RUN_START, run.projectId.value)
+        guard.require(ProjectsPermissions.RUN_START, run.projectId.value)
         if (run.status != RunStatus.FAILED) throw InvalidStateException("run $runId is ${run.status}; only FAILED runs can be retried")
         val fromNode = run.retryNodeId() ?: throw InvalidStateException("run $runId has no node to retry from")
-        val user = gate.currentUser()
+        val user = principal.currentUser()
         val retried = runs.save(run.retry(clock.now()))
         val note = comment?.trim()?.takeIf { it.isNotEmpty() }?.take(MAX_RETRY_COMMENT)
         val granted = retried.extraVisits.mapValues { (node, n) -> n - (run.extraVisits[node] ?: 0) }.filterValues { it > 0 }
@@ -199,29 +204,29 @@ class RunService(
 
     override fun get(runId: WorkflowRunId): WorkflowRun {
         val run = load(runId)
-        gate.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
         return run
     }
 
     @PublicOperation("lists only runs of projects the caller holds project.view on")
     override fun list(filter: RunFilter, page: Int, size: Int): PageOf<WorkflowRun> =
-        runs.find(filter, gate.projectFilter(ProjectsPermissions.PROJECT_VIEW), page, size)
+        runs.find(filter, guard.scopesWith(ProjectsPermissions.PROJECT_VIEW), page, size)
 
     override fun artifacts(runId: WorkflowRunId): List<Artifact> {
         val run = load(runId)
-        gate.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
         return run.artifacts.sortedBy { it.createdAt }
     }
 
     override fun artifact(runId: WorkflowRunId, artifactId: ArtifactId): Artifact {
         val run = load(runId)
-        gate.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
         return run.artifact(artifactId) ?: throw NotFoundException("Artifact", artifactId)
     }
 
     override fun logs(runId: WorkflowRunId, nodeId: String?, after: Instant?): List<RunLogLine> {
         val run = load(runId)
-        gate.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, run.projectId.value)
         return logs.find(runId, nodeId, after)
     }
 

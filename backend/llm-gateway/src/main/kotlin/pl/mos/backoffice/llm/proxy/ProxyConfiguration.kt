@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.proxy
 
+import com.osucha.portpermissions.AccessGuard
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean
@@ -24,7 +25,7 @@ import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.BudgetRefusals
 import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.platform.JobTokenVerifier
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.usage.UsageLedger
 import tools.jackson.databind.json.JsonMapper
 import pl.mos.backoffice.llm.connections.ConnectionQuota
@@ -35,8 +36,8 @@ import pl.mos.backoffice.llm.connections.ConnectionQuota
 class ProxyConfiguration {
 
     @Bean
-    fun budgetService(db: NamedParameterJdbcTemplate, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>, events: ObjectProvider<EventPublisher>, clock: Clock) =
-        BudgetService(JdbcBudgetStore(db), gate, audit.getIfAvailable { AuditPort.NOOP }, events.getIfAvailable { EventPublisher.NOOP }, clock)
+    fun budgetService(db: NamedParameterJdbcTemplate, guard: AccessGuard, principal: CurrentPrincipal, audit: ObjectProvider<AuditPort>, events: ObjectProvider<EventPublisher>, clock: Clock) =
+        BudgetService(JdbcBudgetStore(db), guard, principal, audit.getIfAvailable { AuditPort.NOOP }, events.getIfAvailable { EventPublisher.NOOP }, clock)
 
     /** Lets the execution plane tag a job that ended after a hard budget stop (shared-kernel port). */
     @Bean
@@ -48,9 +49,9 @@ class ProxyConfiguration {
     /** Every ledger write also moves the budget state; this is the `UsageLedger` other modules get. */
     @Bean
     @Primary
-    fun budgetTrackingUsageLedger(jpa: JpaUsageLedger, budgets: BudgetService, gate: AuthorizationGate, transactionManager: PlatformTransactionManager): UsageLedger =
+    fun budgetTrackingUsageLedger(jpa: JpaUsageLedger, budgets: BudgetService, guard: AccessGuard, transactionManager: PlatformTransactionManager): UsageLedger =
         BudgetTrackingUsageLedger(
-            jpa, budgets, gate,
+            jpa, budgets, guard,
             TransactionTemplate(transactionManager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW },
         )
 
@@ -63,13 +64,13 @@ class ProxyConfiguration {
         budgets: BudgetService,
         ledger: UsageLedger,
         catalog: ObjectProvider<ModelCatalog>,
-        gate: AuthorizationGate,
+        guard: AccessGuard,
         json: JsonMapper,
         clock: Clock,
         quota: ConnectionQuota,
         metrics: ObjectProvider<LlmMetrics>,
     ) = LlmProxy(
-        registry, properties, llm.openaiCompatible.baseUrl, rateLimiter, budgets, ledger, catalog.getIfAvailable(), gate, json, clock, quota,
+        registry, properties, llm.openaiCompatible.baseUrl, rateLimiter, budgets, ledger, catalog.getIfAvailable(), guard, json, clock, quota,
         metrics.getIfAvailable { LlmMetrics.NOOP },
     )
 

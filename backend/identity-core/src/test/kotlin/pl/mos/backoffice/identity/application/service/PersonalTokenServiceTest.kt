@@ -16,7 +16,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.CiTokenIdentity
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.TokenCapabilities
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
 import java.util.UUID
@@ -27,17 +27,17 @@ class PersonalTokenServiceTest {
     private val audit = RecordingAuditPort()
     private val project = UUID.randomUUID()
 
-    private fun service(gate: FakeAuthorizationGate, maxDays: Int = 90) = PersonalTokenService(
+    private fun service(gate: FakeAccessGuard, maxDays: Int = 90) = PersonalTokenService(
         db.tokens, db.settingsProvider(IdentityOptions(defaultSettings = PlatformSettings(personalTokenMaxDays = maxDays))), db.catalogSupport,
-        audit, db.accessVersion, db.clock, gate,
+        audit, db.accessVersion, db.clock, gate, gate,
     )
 
     private val loader get() = LoadCurrentUserService(db.users, db.tokens, db.access, db.clock)
 
     @Test
     fun `creating a token needs tokens personal, stores only the hash and audits PAT_CREATE`() {
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).create(CreateToken("x", 30)) }.isInstanceOf(InsufficientPermissionException::class.java)
-        val gate = FakeAuthorizationGate.permitting("tokens.personal")
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).create(CreateToken("x", 30)) }.isInstanceOf(InsufficientPermissionException::class.java)
+        val gate = FakeAccessGuard.permitting("tokens.personal")
         val created = service(gate).create(CreateToken("  laptop  ", 30))
         assertThat(created.plaintext).startsWith("bo_pat_")
         assertThat(created.token.hash).isNotEqualTo(created.plaintext)
@@ -51,7 +51,7 @@ class PersonalTokenServiceTest {
 
     @Test
     fun `expiry is bounded by the platform setting`() {
-        val gate = FakeAuthorizationGate.permitting("tokens.personal")
+        val gate = FakeAccessGuard.permitting("tokens.personal")
         assertThatThrownBy { service(gate, maxDays = 30).create(CreateToken("x", 31)) }.isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { service(gate).create(CreateToken("x", 0)) }.isInstanceOf(ValidationException::class.java)
         service(gate, maxDays = 365).create(CreateToken("x", 365))
@@ -59,37 +59,37 @@ class PersonalTokenServiceTest {
 
     @Test
     fun `the permission subset must be held by the owner`() {
-        val gate = FakeAuthorizationGate.permitting("tokens.personal", "library.view")
+        val gate = FakeAccessGuard.permitting("tokens.personal", "library.view")
         service(gate).create(CreateToken("x", 10, setOf("library.view")))
         assertThatThrownBy { service(gate).create(CreateToken("x", 10, setOf("library.manage"))) }
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("library.manage")
         assertThatThrownBy { service(gate).create(CreateToken("x", 10, setOf("no.such-permission"))) }.isInstanceOf(ValidationException::class.java)
         // project permissions held on some project are allowed
-        val onProject = FakeAuthorizationGate(FakeAuthorizationGate.user(platform = setOf("tokens.personal"), projects = mapOf(project to setOf("run.start"))))
+        val onProject = FakeAccessGuard(FakeAccessGuard.user(platform = setOf("tokens.personal"), projects = mapOf(project to setOf("run.start"))))
         service(onProject).create(CreateToken("x", 10, setOf("run.start")))
     }
 
     @Test
     fun `a personal token cannot mint another token`() {
-        val gate = FakeAuthorizationGate(FakeAuthorizationGate.user(platform = setOf("tokens.personal")).copy(kind = PrincipalKind.PERSONAL_TOKEN))
+        val gate = FakeAccessGuard(FakeAccessGuard.user(platform = setOf("tokens.personal")).copy(kind = PrincipalKind.PERSONAL_TOKEN))
         assertThatThrownBy { service(gate).create(CreateToken("x", 10)) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 
     @Test
     fun `revoking is always allowed for own tokens and not found for others`() {
-        val created = service(FakeAuthorizationGate.permitting("tokens.personal")).create(CreateToken("x", 10))
-        assertThatThrownBy { service(FakeAuthorizationGate(FakeAuthorizationGate.user().copy(userId = pl.mos.backoffice.shared.security.UserId.new()))).revoke(created.token.id) }
+        val created = service(FakeAccessGuard.permitting("tokens.personal")).create(CreateToken("x", 10))
+        assertThatThrownBy { service(FakeAccessGuard(FakeAccessGuard.user().copy(userId = pl.mos.backoffice.shared.security.UserId.new()))).revoke(created.token.id) }
             .isInstanceOf(NotFoundException::class.java)
-        service(FakeAuthorizationGate.denyAll()).revoke(created.token.id)
+        service(FakeAccessGuard.denyAll()).revoke(created.token.id)
         assertThat(db.tokenMap.values.single().revokedAt).isNotNull()
         assertThat(audit.operations()).containsExactly("PAT_CREATE", "PAT_REVOKE")
     }
 
     @Test
     fun `only tokens created with an MCP option carry its capability, each option independently (ADR 0029, ADR 0049)`() {
-        val owner = db.user("alice@example.com", id = FakeAuthorizationGate.TEST_USER_ID)
+        val owner = db.user("alice@example.com", id = FakeAccessGuard.TEST_USER_ID)
         db.assign(GrantLevel.SYSTEM, null, BuiltInRoles.MEMBER)
-        val gate = FakeAuthorizationGate(loader.forUser(owner.id)!!)
+        val gate = FakeAccessGuard(loader.forUser(owner.id)!!)
         val plain = service(gate).create(CreateToken("ide", 10))
         val opted = service(gate).create(CreateToken("ide-gates", 10, setOf("library.view"), allowMcpGateDecisions = true))
         assertThat(audit.entries.last().details)
@@ -114,10 +114,10 @@ class PersonalTokenServiceTest {
 
     @Test
     fun `a token resolves to the owner's permissions narrowed to its subset and stops working when expired or revoked`() {
-        val owner = db.user("alice@example.com", id = FakeAuthorizationGate.TEST_USER_ID)
+        val owner = db.user("alice@example.com", id = FakeAccessGuard.TEST_USER_ID)
         db.assign(GrantLevel.SYSTEM, null, BuiltInRoles.MEMBER)
         db.member(project, "PRJ", PrincipalType.USER, owner.id.value, "developer")
-        val gate = FakeAuthorizationGate(loader.forUser(owner.id)!!)
+        val gate = FakeAccessGuard(loader.forUser(owner.id)!!)
         val narrow = service(gate).create(CreateToken("narrow", 10, setOf("library.view", "run.start")))
         val full = service(gate).create(CreateToken("full", 10))
 

@@ -8,6 +8,7 @@ import pl.mos.backoffice.identity.application.port.`in`.LoginOptions
 import pl.mos.backoffice.identity.application.port.`in`.ManagePersonalTokens
 import pl.mos.backoffice.identity.application.port.`in`.ManagePlatformSettings
 import pl.mos.backoffice.identity.application.port.`in`.MeView
+import pl.mos.backoffice.identity.application.port.`in`.CatalogEntry
 import pl.mos.backoffice.identity.application.port.`in`.PermissionCatalogQuery
 import pl.mos.backoffice.identity.application.port.`in`.SearchAuditLog
 import pl.mos.backoffice.identity.application.port.`in`.UpdateMyPreferences
@@ -16,7 +17,6 @@ import pl.mos.backoffice.identity.application.port.out.AuditLogReader
 import pl.mos.backoffice.identity.application.port.out.AuditQuery
 import pl.mos.backoffice.identity.application.port.out.AuditRecordPage
 import pl.mos.backoffice.identity.application.port.out.GroupRepository
-import pl.mos.backoffice.identity.application.port.out.PermissionCatalog
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.application.port.out.PlatformSettingsRepository
 import pl.mos.backoffice.identity.application.port.out.ProjectMembershipRepository
@@ -38,11 +38,13 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
-import pl.mos.backoffice.shared.security.PermissionDefinition
+import pl.mos.backoffice.shared.security.PermissionModules
+import pl.mos.backoffice.shared.security.permissionScope
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.PublicOperation
+import com.osucha.portpermissions.PublicOperation
 import java.time.Duration
 
 class MeService(
@@ -51,12 +53,12 @@ class MeService(
     private val memberships: ProjectMembershipRepository,
     private val projectKeys: ProjectKeys,
     private val audit: AuditPort,
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
 ) : GetMe, UpdateMyPreferences {
 
     @PublicOperation("every authenticated caller may read who they are")
     override fun me(): MeView {
-        val current = gate.currentUser()
+        val current = principal.currentUser()
         val user = profileOf(current)
         val known = memberships.findForUser(user.id, user.groupIds).associate { it.projectId to it.projectKey }
         return MeView(
@@ -69,7 +71,7 @@ class MeService(
 
     @PublicOperation("every user may change their own UI preferences")
     override fun update(preferences: UserPreferences): UserPreferences {
-        val user = profileOf(gate.currentUser())
+        val user = profileOf(principal.currentUser())
         if (user.preferences == preferences) return preferences
         users.save(user.copy(preferences = preferences))
         audit.record(
@@ -96,17 +98,17 @@ class PlatformSettingsService(
     private val settings: SettingsProvider,
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val options: IdentityOptions = IdentityOptions(),
 ) : ManagePlatformSettings, GetRegistrationMode, GetLoginOptions {
 
     override fun get(): PlatformSettings {
-        gate.require(IdentityPermissions.SETTINGS_MANAGE)
+        guard.require(IdentityPermissions.SETTINGS_MANAGE)
         return settings.current()
     }
 
     override fun update(settings: PlatformSettings): PlatformSettings {
-        gate.require(IdentityPermissions.SETTINGS_MANAGE)
+        guard.require(IdentityPermissions.SETTINGS_MANAGE)
         val before = this.settings.current()
         val after = settings.normalised()
         val changes = AuditableChanges.changed(
@@ -153,19 +155,22 @@ class PersonalTokenService(
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
 ) : ManagePersonalTokens {
 
     override fun list(): List<PersonalAccessToken> {
-        val me = gate.require(IdentityPermissions.TOKENS_PERSONAL)
+        guard.require(IdentityPermissions.TOKENS_PERSONAL)
+        val me = principal.currentUser()
         val userId = me.userId ?: return emptyList()
         return tokens.findByUser(userId).sortedByDescending { it.createdAt }
     }
 
     override fun create(command: ManagePersonalTokens.CreateToken): CreatedToken {
-        val me = gate.require(IdentityPermissions.TOKENS_PERSONAL)
+        guard.require(IdentityPermissions.TOKENS_PERSONAL)
+        val me = principal.currentUser()
         // a token must not mint tokens (it would outlive its own expiry); CI tokens have no owner
-        if (me.kind != PrincipalKind.USER || me.userId == null) throw InsufficientPermissionException(IdentityPermissions.TOKENS_PERSONAL)
+        if (me.kind != PrincipalKind.USER || me.userId == null) throw InsufficientPermissionException(IdentityPermissions.TOKENS_PERSONAL.key)
         val name = command.name.trim()
         if (name.isEmpty() || name.length > 100) throw ValidationException("name must have 1 to 100 characters", "name")
         val maxDays = minOf(settings.current().personalTokenMaxDays, PlatformSettings.MAX_TOKEN_DAYS)
@@ -207,7 +212,7 @@ class PersonalTokenService(
 
     @PublicOperation("users can always revoke their own tokens, even after losing tokens.personal")
     override fun revoke(id: TokenId) {
-        val me = gate.currentUser()
+        val me = principal.currentUser()
         val token = tokens.findById(id)?.takeIf { it.userId == me.userId } ?: throw NotFoundException("personal token", id)
         if (token.revokedAt != null) return
         tokens.save(token.revoke(clock.now()))
@@ -216,19 +221,20 @@ class PersonalTokenService(
     }
 }
 
-class PermissionCatalogService(private val catalog: PermissionCatalog) : PermissionCatalogQuery {
+class PermissionCatalogService(private val modules: PermissionModules) : PermissionCatalogQuery {
     @PublicOperation("the catalogue is code, not data; token and role pickers need it")
-    override fun catalog(): List<PermissionDefinition> = catalog.definitions().sortedWith(compareBy({ it.module }, { it.key }))
+    override fun catalog(): List<CatalogEntry> =
+        modules.definitions().map { CatalogEntry(it.key, it.permissionScope, modules.moduleOf(it), it.description) }
 }
 
 class AuditSearchService(
     private val reader: AuditLogReader,
     private val audit: AuditPort,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
 ) : SearchAuditLog {
 
     override fun search(query: AuditQuery): AuditRecordPage {
-        gate.require(IdentityPermissions.AUDIT_VIEW)
+        guard.require(IdentityPermissions.AUDIT_VIEW)
         val bounded = query.copy(size = query.size.coerceIn(1, 200))
         val page = reader.search(bounded)
         val filter = mapOf(

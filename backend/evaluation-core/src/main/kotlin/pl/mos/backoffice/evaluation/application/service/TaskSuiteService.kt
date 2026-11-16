@@ -17,7 +17,8 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 
 /**
  * Task suite use cases. Tasks are edited through their suite (aggregate root). Reads need
@@ -27,19 +28,22 @@ class TaskSuiteService(
     private val suites: TaskSuiteRepository,
     private val benchmarks: BenchmarkRepository,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : ManageTaskSuites {
 
     override fun create(command: SuiteCommand): TaskSuite {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val saved = suites.save(TaskSuite.create(command.name, command.description, command.codingScoreWeights, now = clock.now(), actor = user.actor))
         audit.record(suiteEntry("SUITE_CREATE", saved, mapOf("name" to saved.name)))
         return saved
     }
 
     override fun update(id: TaskSuiteId, command: SuiteCommand): TaskSuite {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val existing = load(id)
         val saved = suites.save(existing.update(command.name, command.description, command.codingScoreWeights, clock.now(), user.actor))
         val changes = AuditableChanges.changed(
@@ -52,17 +56,17 @@ class TaskSuiteService(
     }
 
     override fun get(id: TaskSuiteId): TaskSuite {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         return load(id)
     }
 
     override fun list(): List<TaskSuite> {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         return suites.findAll().sortedBy { it.name.lowercase() }
     }
 
     override fun delete(id: TaskSuiteId) {
-        gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
         val existing = load(id)
         if (benchmarks.existsForSuiteWithStatus(id, BenchmarkStatus.RUNNING)) {
             throw InvalidStateException("task suite $id has a running benchmark")
@@ -72,7 +76,8 @@ class TaskSuiteService(
     }
 
     override fun addTask(suiteId: TaskSuiteId, command: TaskCommand): EvalTask {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val task = toTask(EvalTaskId.new(), command)
         suites.save(load(suiteId).addTask(task, clock.now(), user.actor))
         audit.record(taskEntry("EVAL_TASK_CREATE", suiteId, task, mapOf("name" to task.name, "kind" to task.kind.name, "category" to task.category.name)))
@@ -80,7 +85,8 @@ class TaskSuiteService(
     }
 
     override fun updateTask(suiteId: TaskSuiteId, taskId: EvalTaskId, command: TaskCommand): EvalTask {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val suite = load(suiteId)
         val existing = suite.task(taskId)
         val task = toTask(taskId, command)
@@ -101,7 +107,8 @@ class TaskSuiteService(
     }
 
     override fun deleteTask(suiteId: TaskSuiteId, taskId: EvalTaskId) {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val suite = load(suiteId)
         val existing = suite.task(taskId)
         suites.save(suite.removeTask(taskId, clock.now(), user.actor))

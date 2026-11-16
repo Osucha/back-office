@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.CompleteCiExecution
 import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
 import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress.NodeCompletion
@@ -44,7 +45,6 @@ import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.llm.TokenUsage
-import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.runner.AgentRunner
 import java.time.Duration
 import java.time.Instant

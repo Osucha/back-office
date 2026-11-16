@@ -2,6 +2,7 @@ package pl.mos.backoffice.identity.adapter.out.security
 
 import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.osucha.portpermissions.PermissionCatalog
 import org.springframework.security.authentication.AbstractAuthenticationToken
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException
 import org.springframework.security.core.context.SecurityContextHolder
@@ -9,21 +10,15 @@ import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.session.Session
 import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
 import pl.mos.backoffice.identity.application.port.out.AccessVersion
-import pl.mos.backoffice.identity.application.port.out.PermissionCatalog
 import pl.mos.backoffice.identity.application.port.out.SessionSummary
 import pl.mos.backoffice.identity.application.port.out.SessionTerminator
-import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.CurrentUser
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
-import pl.mos.backoffice.shared.security.PermissionDefinition
-import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.security.CurrentUserAccessGuard
 import pl.mos.backoffice.shared.security.UserId
 import java.security.MessageDigest
 import java.time.Duration
 import java.util.Optional
-import java.util.UUID
 
 /** How the request was authenticated. */
 enum class AuthenticationSource { SESSION, PERSONAL_TOKEN, CI_TOKEN }
@@ -43,11 +38,11 @@ class CurrentUserAuthentication(val currentUser: CurrentUser, val source: Authen
 }
 
 /**
- * The shared [AuthorizationGate] (ADR 0017) over the Spring Security context. `asSystem` uses a thread-local
- * override, so it works on any thread (engine, schedulers, seeding) with or without an HTTP request.
- * The SYSTEM principal passes every check.
+ * The shared `AccessGuard` and `CurrentPrincipal` (ADR 0017, ADR 0066) over the Spring Security context.
+ * `asSystem` uses a thread-local override, so it works on any thread (engine, schedulers, seeding) with or
+ * without an HTTP request. The SYSTEM principal passes every check.
  */
-class SecurityContextAuthorizationGate : AuthorizationGate {
+class SecurityContextAccessGuard(catalog: PermissionCatalog) : CurrentUserAccessGuard(catalog) {
 
     private val override = ThreadLocal<CurrentUser?>()
 
@@ -57,18 +52,6 @@ class SecurityContextAuthorizationGate : AuthorizationGate {
 
     override fun currentUser(): CurrentUser =
         currentUserOrNull() ?: throw AuthenticationCredentialsNotFoundException("authentication required")
-
-    override fun require(permission: String): CurrentUser {
-        val user = currentUser()
-        if (user.kind != PrincipalKind.SYSTEM && !user.can(permission)) throw InsufficientPermissionException(permission)
-        return user
-    }
-
-    override fun require(permission: String, projectId: UUID): CurrentUser {
-        val user = currentUser()
-        if (user.kind != PrincipalKind.SYSTEM && !user.can(permission, projectId)) throw InsufficientPermissionException(permission, projectId)
-        return user
-    }
 
     override fun <T> asSystem(reason: String, block: () -> T): T = runAs(CurrentUser.SYSTEM, block)
 
@@ -102,18 +85,6 @@ class CurrentUserCache(
         cache.get(userId to version.current()) { Optional.ofNullable(loader.forUser(userId)) }.orElse(null)
 
     fun invalidateAll() = cache.invalidateAll()
-}
-
-/** Collects every module's [PermissionCatalogContribution]; duplicate keys with different definitions fail startup. */
-class PermissionCatalogCollector(contributions: List<PermissionCatalogContribution>) : PermissionCatalog {
-
-    private val definitions: List<PermissionDefinition> = contributions.flatMap { it.permissions() }.let { all ->
-        val conflicts = all.groupBy { it.key }.filterValues { defs -> defs.map { it.scope to it.module }.distinct().size > 1 }
-        check(conflicts.isEmpty()) { "permission keys contributed with different scopes or modules: ${conflicts.keys}" }
-        all.distinctBy { it.key }.sortedBy { it.key }
-    }
-
-    override fun definitions(): List<PermissionDefinition> = definitions
 }
 
 /**

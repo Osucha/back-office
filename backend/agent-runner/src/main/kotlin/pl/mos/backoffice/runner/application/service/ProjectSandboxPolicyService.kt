@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.runner.application.port.`in`.ManageProjectSandboxPolicy
 import pl.mos.backoffice.runner.application.port.`in`.SandboxPolicyView
 import pl.mos.backoffice.runner.application.port.out.ProjectPolicyStore
@@ -14,8 +15,8 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.runner.SandboxPolicy
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.util.UUID
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 
 /**
  * The project level of the sandbox policy (`GET/PUT /projects/{projectId}/sandbox-policy`). The view shows
@@ -27,17 +28,19 @@ class ProjectSandboxPolicyService(
     private val pools: RunnerPoolStore,
     private val lifecycle: JobLifecycle,
     private val tx: Transactions,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : ManageProjectSandboxPolicy {
 
     override fun get(projectId: UUID): SandboxPolicyView {
-        gate.require(RunnerPermissions.PROJECT_VIEW, projectId)
+        guard.require(RunnerPermissions.PROJECT_VIEW, projectId)
         return view(projectId, policies.findPolicy(projectId) ?: SandboxPolicy.DEFAULT)
     }
 
     override fun update(projectId: UUID, policy: SandboxPolicy): SandboxPolicyView {
-        val user = gate.require(RunnerPermissions.PROJECT_MANAGE, projectId)
+        guard.require(RunnerPermissions.PROJECT_MANAGE, projectId)
+        val user = principal.currentUser()
         val errors = lifecycle.resolver.validate(policy)
         if (errors.isNotEmpty()) throw ValidationException(errors.map { ValidationException.FieldError("policy", it) })
         tx.inTransaction {

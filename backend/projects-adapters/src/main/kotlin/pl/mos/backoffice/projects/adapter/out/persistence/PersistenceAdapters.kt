@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.out.persistence
 
+import com.osucha.portpermissions.ScopeFilter
 import jakarta.persistence.criteria.CriteriaBuilder
 import jakarta.persistence.criteria.Expression
 import jakarta.persistence.criteria.Root
@@ -39,7 +40,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
-import pl.mos.backoffice.shared.security.ProjectFilter
+import pl.mos.backoffice.shared.security.isNothing
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.shared.usage.SortSpec
 import java.math.BigDecimal
@@ -47,14 +48,17 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Criteria helpers for list queries filtered by the caller's projects (ADR 0017): `ProjectFilter.All`
- * adds nothing, `Only(ids)` becomes `project_id IN (ids)`; an empty `Only` short-circuits to an empty
- * result without touching the database.
+ * Criteria helpers for list queries filtered by the caller's projects (ADR 0017, ADR 0066): `ScopeFilter.All`
+ * adds nothing, `Only(ids)` becomes `project_id IN (ids)`, `AllExcept(ids)` becomes `project_id NOT IN (ids)`;
+ * an empty `Only` short-circuits to an empty result without touching the database.
  */
 internal object ProjectSpecs {
-    fun <T : Any> visibleTo(filter: ProjectFilter): Specification<T> = when (filter) {
-        ProjectFilter.All -> Specification.unrestricted()
-        is ProjectFilter.Only -> Specification { root, _, _ -> root.get<UUID>("projectId").`in`(filter.projectIds) }
+    fun <T : Any> visibleTo(filter: ScopeFilter<UUID>): Specification<T> = when (filter) {
+        ScopeFilter.All -> Specification.unrestricted()
+        is ScopeFilter.Only -> Specification { root, _, _ -> root.get<UUID>("projectId").`in`(filter.ids) }
+        is ScopeFilter.AllExcept ->
+            if (filter.excluded.isEmpty()) Specification.unrestricted()
+            else Specification { root, _, cb -> cb.not(root.get<UUID>("projectId").`in`(filter.excluded)) }
     }
 
     fun <T : Any> eq(field: String, value: Any?): Specification<T> = Specification { root, _, cb -> cb.equal(root.get<Any>(field), value) }
@@ -63,7 +67,7 @@ internal object ProjectSpecs {
 
     fun <T : Any> after(field: String, since: Instant): Specification<T> = Specification { root, _, cb -> cb.greaterThan(root.get(field), since) }
 
-    fun nothingVisible(filter: ProjectFilter): Boolean = filter is ProjectFilter.Only && filter.projectIds.isEmpty()
+    fun nothingVisible(filter: ScopeFilter<UUID>): Boolean = filter.isNothing
 
     /**
      * Column sorting of a list (ADR 0046) inside the query, so JSON attributes can be sorted too: [key] in the asked
@@ -98,9 +102,10 @@ class ProjectPersistenceAdapter(private val repo: ProjectJpaRepository, private 
     override fun save(project: Project): Project = mapper.toDomain(repo.save(mapper.toEntity(project)))
     override fun findById(id: ProjectId): Project? = repo.findById(id.value).orElse(null)?.let(mapper::toDomain)
     override fun findByKey(key: String): Project? = repo.findByKey(key)?.let(mapper::toDomain)
-    override fun findAll(projects: ProjectFilter): List<Project> = when (projects) {
-        ProjectFilter.All -> repo.findAll()
-        is ProjectFilter.Only -> if (projects.projectIds.isEmpty()) emptyList() else repo.findAllById(projects.projectIds)
+    override fun findAll(projects: ScopeFilter<UUID>): List<Project> = when (projects) {
+        ScopeFilter.All -> repo.findAll()
+        is ScopeFilter.Only -> if (projects.ids.isEmpty()) emptyList() else repo.findAllById(projects.ids)
+        is ScopeFilter.AllExcept -> repo.findAll().filter { it.id !in projects.excluded }
     }.map(mapper::toDomain)
     override fun delete(id: ProjectId) = repo.deleteById(id.value)
 }
@@ -209,7 +214,7 @@ class WorkflowRunPersistenceAdapter(
     override fun findById(id: WorkflowRunId): WorkflowRun? =
         runs.findById(id.value).orElse(null)?.let { mapper.toDomain(it, artifacts.load(it.id)) }
 
-    override fun find(filter: RunFilter, projects: ProjectFilter, page: Int, size: Int): PageOf<WorkflowRun> {
+    override fun find(filter: RunFilter, projects: ScopeFilter<UUID>, page: Int, size: Int): PageOf<WorkflowRun> {
         if (ProjectSpecs.nothingVisible(projects)) return PageOf(emptyList(), page, size, 0)
         val sort = filter.sort
         val pageable = if (sort == null) PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")) else PageRequest.of(page, size)
@@ -239,17 +244,17 @@ class WorkflowRunPersistenceAdapter(
         (if (projectId == null) runs.findByStatusOrderByCreatedAtDesc(RunStatus.WAITING.name) else runs.findByProjectIdAndStatusOrderByCreatedAtDesc(projectId.value, RunStatus.WAITING.name))
             .map { mapper.toDomain(it, artifacts.load(it.id)) }
 
-    override fun findRecent(limit: Int, projects: ProjectFilter): List<WorkflowRun> {
+    override fun findRecent(limit: Int, projects: ScopeFilter<UUID>): List<WorkflowRun> {
         if (ProjectSpecs.nothingVisible(projects)) return emptyList()
         return runs.findAll(ProjectSpecs.visibleTo(projects), PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))).content.map { mapper.toDomain(it, emptyList()) }
     }
 
-    override fun countByStatus(statuses: Set<RunStatus>, projects: ProjectFilter): Int {
+    override fun countByStatus(statuses: Set<RunStatus>, projects: ScopeFilter<UUID>): Int {
         if (ProjectSpecs.nothingVisible(projects)) return 0
         return runs.count(ProjectSpecs.visibleTo<WorkflowRunEntity>(projects).and(ProjectSpecs.within("status", statuses.map { it.name }))).toInt()
     }
 
-    override fun countWaitingForCi(projects: ProjectFilter): Int {
+    override fun countWaitingForCi(projects: ScopeFilter<UUID>): Int {
         if (ProjectSpecs.nothingVisible(projects)) return 0
         return runs.count(
             ProjectSpecs.visibleTo<WorkflowRunEntity>(projects)
@@ -261,7 +266,7 @@ class WorkflowRunPersistenceAdapter(
     override fun countByProjectAndStatus(projectId: ProjectId, statuses: Set<RunStatus>): Int =
         runs.countByProjectIdAndStatusIn(projectId.value, statuses.map { it.name }).toInt()
 
-    override fun countFinishedSince(status: RunStatus, since: Instant, projects: ProjectFilter): Int {
+    override fun countFinishedSince(status: RunStatus, since: Instant, projects: ScopeFilter<UUID>): Int {
         if (ProjectSpecs.nothingVisible(projects)) return 0
         return runs.count(
             ProjectSpecs.visibleTo<WorkflowRunEntity>(projects).and(ProjectSpecs.eq("status", status.name)).and(ProjectSpecs.after("finishedAt", since)),
@@ -288,7 +293,7 @@ class ApprovalRequestPersistenceAdapter(
 ) : ApprovalRequestRepository {
     override fun save(request: ApprovalRequest): ApprovalRequest = mapper.toDomain(repo.save(mapper.toEntity(request)))
     override fun findById(id: ApprovalRequestId): ApprovalRequest? = repo.findById(id.value).orElse(null)?.let(mapper::toDomain)
-    override fun findByStatus(status: ApprovalStatus, projects: ProjectFilter, limit: Int?): List<ApprovalRequest> {
+    override fun findByStatus(status: ApprovalStatus, projects: ScopeFilter<UUID>, limit: Int?): List<ApprovalRequest> {
         if (ProjectSpecs.nothingVisible(projects)) return emptyList()
         val spec = ProjectSpecs.visibleTo<ApprovalRequestEntity>(projects).and(ProjectSpecs.eq("status", status.name))
         val sort = Sort.by(Sort.Direction.DESC, "createdAt")
@@ -296,7 +301,7 @@ class ApprovalRequestPersistenceAdapter(
         return rows.map(mapper::toDomain)
     }
     override fun findOpenByRunId(runId: WorkflowRunId): ApprovalRequest? = repo.findFirstByRunIdAndStatus(runId.value, ApprovalStatus.OPEN.name)?.let(mapper::toDomain)
-    override fun countOpen(projects: ProjectFilter): Int {
+    override fun countOpen(projects: ScopeFilter<UUID>): Int {
         if (ProjectSpecs.nothingVisible(projects)) return 0
         return repo.count(ProjectSpecs.visibleTo<ApprovalRequestEntity>(projects).and(ProjectSpecs.eq("status", ApprovalStatus.OPEN.name))).toInt()
     }
@@ -312,7 +317,7 @@ class CiExecutionPersistenceAdapter(private val repo: CiExecutionJpaRepository, 
     override fun findByRunId(runId: WorkflowRunId): CiExecution? = repo.findFirstByRunId(runId.value)?.let(mapper::toDomain)
     override fun findRecentByKey(idempotencyKey: String, since: Instant): CiExecution? =
         repo.findFirstByIdempotencyKeyAndCreatedAtAfterOrderByCreatedAtDesc(idempotencyKey, since)?.let(mapper::toDomain)
-    override fun find(projectId: ProjectId?, projects: ProjectFilter, page: Int, size: Int, sort: SortSpec?): PageOf<CiExecution> {
+    override fun find(projectId: ProjectId?, projects: ScopeFilter<UUID>, page: Int, size: Int, sort: SortSpec?): PageOf<CiExecution> {
         if (ProjectSpecs.nothingVisible(projects)) return PageOf(emptyList(), page, size, 0)
         val pageable = if (sort == null) PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")) else PageRequest.of(page, size)
         var spec = ProjectSpecs.visibleTo<CiExecutionEntity>(projects)
@@ -331,7 +336,7 @@ class CiExecutionPersistenceAdapter(private val repo: CiExecutionJpaRepository, 
         "cost" -> ProjectSpecs.sorted(sort, text = false) { root, _ -> root.get<BigDecimal>("costAmount") }
         else -> ProjectSpecs.sorted(sort, text = false) { root, _ -> root.get<Instant>("createdAt") }
     }
-    override fun findRecent(limit: Int, projects: ProjectFilter): List<CiExecution> {
+    override fun findRecent(limit: Int, projects: ScopeFilter<UUID>): List<CiExecution> {
         if (ProjectSpecs.nothingVisible(projects)) return emptyList()
         return repo.findAll(ProjectSpecs.visibleTo(projects), PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))).content.map(mapper::toDomain)
     }

@@ -46,16 +46,17 @@ import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.ModelAvailability
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.runner.AgentRunner
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModulePermissions
 import tools.jackson.databind.json.JsonMapper
 
 /**
  * Instantiates the Model Evaluation use cases from their ports. Beans provided to other modules:
  * `ManageModelProfiles`, `ListProviders`, `ManageTaskSuites`, `ManageBenchmarks`, `RecoverBenchmarks`,
  * `EvaluationDashboardQuery` (one transactional bean), `SeedStarterContent`, `ExecuteAttempt`,
- * `AttemptExecutor`, the evaluation `PermissionCatalogContribution` and, from the persistence package,
- * `ModelCatalog`. Requires `LlmGateway`, `AgentRunner`, `Clock`, `EventPublisher`, `AuthorizationGate`,
+ * `AttemptExecutor`, the evaluation `ModulePermissions` and, from the persistence package,
+ * `ModelCatalog`. Requires `LlmGateway`, `AgentRunner`, `Clock`, `EventPublisher`, `AccessGuard`, `CurrentPrincipal`,
  * `AuditPort` and a Jackson 3 `JsonMapper` from the application.
  */
 @Configuration
@@ -67,14 +68,14 @@ class EvaluationConfiguration {
 
     /** The evaluation permissions for the identity context's catalogue (ADR 0017). */
     @Bean
-    fun evaluationPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { EvaluationPermissions.definitions }
+    fun evaluationPermissionCatalog(): ModulePermissions = EvaluationPermissions.contribution
 
     /** ADR 0050 step 2: platform and personal default models; also the shared `ModelDefaults` port Projects resolve with. */
     @Bean
     fun modelDefaultsService(
-        defaults: ModelDefaultRepository, profiles: ModelProfileRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+        defaults: ModelDefaultRepository, profiles: ModelProfileRepository, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
         availability: ModelAvailability,
-    ) = ModelDefaultsService(defaults, profiles, gate, audit, clock, availability)
+    ) = ModelDefaultsService(defaults, profiles, guard, principal, audit, clock, availability)
 
     /** ADR 0050 step 3: Claude Code login profiles for a user whose personal runner reported their login. */
     @Bean
@@ -88,23 +89,23 @@ class EvaluationConfiguration {
 
     @Bean
     fun manageModelProfiles(
-        profiles: ModelProfileRepository, benchmarks: BenchmarkRepository, gateway: LlmGateway, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
+        profiles: ModelProfileRepository, benchmarks: BenchmarkRepository, gateway: LlmGateway, clock: Clock, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort,
         runner: AgentRunner,
-    ): ManageModelProfiles = TransactionalManageModelProfiles(ModelProfileService(profiles, benchmarks, gateway, clock, gate, audit, runner))
+    ): ManageModelProfiles = TransactionalManageModelProfiles(ModelProfileService(profiles, benchmarks, gateway, clock, guard, principal, audit, runner))
 
     @Bean
-    fun listProviders(gateway: LlmGateway, environment: Environment, gate: AuthorizationGate): ListProviders = ProviderService(
+    fun listProviders(gateway: LlmGateway, environment: Environment, guard: AccessGuard): ListProviders = ProviderService(
         gateway,
         mapOf(
             Provider.OLLAMA to environment.getProperty("spring.ai.ollama.base-url"),
             Provider.OPENAI_COMPATIBLE to environment.getProperty("backoffice.llm.openai-compatible.base-url"),
         ),
-        gate,
+        guard,
     )
 
     @Bean
-    fun manageTaskSuites(suites: TaskSuiteRepository, benchmarks: BenchmarkRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort): ManageTaskSuites =
-        TransactionalManageTaskSuites(TaskSuiteService(suites, benchmarks, clock, gate, audit))
+    fun manageTaskSuites(suites: TaskSuiteRepository, benchmarks: BenchmarkRepository, clock: Clock, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort): ManageTaskSuites =
+        TransactionalManageTaskSuites(TaskSuiteService(suites, benchmarks, clock, guard, principal, audit))
 
     /** One bean serving `ManageBenchmarks`, `RecoverBenchmarks` and `EvaluationDashboardQuery`. */
     @Bean
@@ -115,10 +116,11 @@ class EvaluationConfiguration {
         executor: AttemptExecutor,
         runner: AgentRunner,
         clock: Clock,
-        gate: AuthorizationGate,
+        guard: AccessGuard,
+        principal: CurrentPrincipal,
         audit: AuditPort,
         agents: ObjectProvider<TaskCatalog>,
-    ): TransactionalBenchmarks = TransactionalBenchmarks(BenchmarkService(benchmarks, suites, profiles, executor, runner, clock, gate, audit, agents.getIfAvailable()))
+    ): TransactionalBenchmarks = TransactionalBenchmarks(BenchmarkService(benchmarks, suites, profiles, executor, runner, clock, guard, principal, audit, agents.getIfAvailable()))
 
     @Bean
     fun executeAttempt(

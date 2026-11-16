@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake.IntakeCommand
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake.JiraIntakeView
@@ -30,8 +32,7 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.platform.WorkKinds
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.platform.WorkRequest
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import java.time.Duration
 
 /**
@@ -53,19 +54,21 @@ class JiraIntakeService(
     private val jira: JiraConnectionAccess,
     private val planner: JiraIntakePlanner,
     private val queue: WorkQueue,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : ManageJiraIntake, PollJiraIntake {
 
     override fun get(projectId: ProjectId): JiraIntakeView {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         val project = loadProject(projectId)
         return view(project, intakes.find(projectId) ?: JiraIntake(projectId))
     }
 
     override fun update(projectId: ProjectId, command: IntakeCommand): JiraIntakeView {
-        val actor = gate.require(ProjectsPermissions.PROJECT_MANAGE, projectId.value).actor
+        guard.require(ProjectsPermissions.PROJECT_MANAGE, projectId.value)
+        val actor = principal.currentUser().actor
         val project = loadProject(projectId)
         if (command.workflowId != null) {
             val workflow = workflows.findById(command.workflowId)
@@ -91,7 +94,7 @@ class JiraIntakeService(
     }
 
     override fun pollNow(projectId: ProjectId): JiraIntakeView {
-        gate.require(ProjectsPermissions.PROJECT_MANAGE, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_MANAGE, projectId.value)
         val project = loadProject(projectId)
         val intake = intakes.find(projectId)?.takeIf { it.enabled } ?: throw ValidationException("the Jira intake watcher is not enabled", "enabled")
         val saved = intakes.save(intake.pollNow(clock.now()))

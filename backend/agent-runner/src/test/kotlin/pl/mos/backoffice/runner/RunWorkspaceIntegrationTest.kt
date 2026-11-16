@@ -24,7 +24,7 @@ import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.runner.SandboxPolicy
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import tools.jackson.databind.json.JsonMapper
@@ -42,7 +42,7 @@ class RunWorkspaceIntegrationTest {
 
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var json: JsonMapper
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
     @Autowired lateinit var pools: ManageRunnerPools
     @Autowired lateinit var runner: AgentJobService
     @Autowired lateinit var runners: pl.mos.backoffice.runner.application.port.`in`.ManageRunners
@@ -55,7 +55,7 @@ class RunWorkspaceIntegrationTest {
 
     @BeforeEach
     fun pool() {
-        gate.user = FakeAuthorizationGate.user(platform = setOf(RunnerPermissions.FLEET_MANAGE, RunnerPermissions.FLEET_VIEW))
+        gate.user = FakeAccessGuard.user(platform = setOf(RunnerPermissions.FLEET_MANAGE.key, RunnerPermissions.FLEET_VIEW.key))
         poolId = "ws-" + UUID.randomUUID().toString().take(8)
         selector = mapOf("suite" to poolId)
         pools.create(RunnerPoolInput(id = poolId, name = "Workspaces $poolId", labels = selector, maxConcurrentJobs = 5))

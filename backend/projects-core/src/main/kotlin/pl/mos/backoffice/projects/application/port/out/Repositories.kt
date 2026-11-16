@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.port.out
 
+import com.osucha.portpermissions.ScopeFilter
+import java.util.UUID
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.ApprovalRequestId
 import pl.mos.backoffice.projects.domain.model.ApprovalStatus
@@ -17,7 +19,6 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
-import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Instant
@@ -26,8 +27,8 @@ interface ProjectRepository {
     fun save(project: Project): Project
     fun findById(id: ProjectId): Project?
     fun findByKey(key: String): Project?
-    /** Projects visible through [projects] (`ProjectFilter.All` for internal callers). */
-    fun findAll(projects: ProjectFilter): List<Project>
+    /** Projects visible through [projects] (`ScopeFilter.All` for internal callers). */
+    fun findAll(projects: ScopeFilter<UUID>): List<Project>
     fun delete(id: ProjectId)
 }
 
@@ -90,15 +91,15 @@ data class RunFilter(
 interface WorkflowRunRepository {
     fun save(run: WorkflowRun): WorkflowRun
     fun findById(id: WorkflowRunId): WorkflowRun?
-    fun find(filter: RunFilter, projects: ProjectFilter, page: Int, size: Int): PageOf<WorkflowRun>
+    fun find(filter: RunFilter, projects: ScopeFilter<UUID>, page: Int, size: Int): PageOf<WorkflowRun>
     fun findByStatus(statuses: Set<RunStatus>): List<WorkflowRun>
     /** `WAITING` runs of a project, newest first (used for CI signal matching and timeouts). */
     fun findWaiting(projectId: ProjectId?): List<WorkflowRun>
-    fun findRecent(limit: Int, projects: ProjectFilter): List<WorkflowRun>
-    fun countByStatus(statuses: Set<RunStatus>, projects: ProjectFilter): Int
-    fun countWaitingForCi(projects: ProjectFilter): Int
+    fun findRecent(limit: Int, projects: ScopeFilter<UUID>): List<WorkflowRun>
+    fun countByStatus(statuses: Set<RunStatus>, projects: ScopeFilter<UUID>): Int
+    fun countWaitingForCi(projects: ScopeFilter<UUID>): Int
     fun countByProjectAndStatus(projectId: ProjectId, statuses: Set<RunStatus>): Int
-    fun countFinishedSince(status: RunStatus, since: Instant, projects: ProjectFilter): Int
+    fun countFinishedSince(status: RunStatus, since: Instant, projects: ScopeFilter<UUID>): Int
     fun existsActiveByWorkflow(workflowId: WorkflowDefinitionId): Boolean
     fun deleteByProjectId(projectId: ProjectId)
 }
@@ -106,9 +107,9 @@ interface WorkflowRunRepository {
 interface ApprovalRequestRepository {
     fun save(request: ApprovalRequest): ApprovalRequest
     fun findById(id: ApprovalRequestId): ApprovalRequest?
-    fun findByStatus(status: ApprovalStatus, projects: ProjectFilter, limit: Int? = null): List<ApprovalRequest>
+    fun findByStatus(status: ApprovalStatus, projects: ScopeFilter<UUID>, limit: Int? = null): List<ApprovalRequest>
     fun findOpenByRunId(runId: WorkflowRunId): ApprovalRequest?
-    fun countOpen(projects: ProjectFilter): Int
+    fun countOpen(projects: ScopeFilter<UUID>): Int
     fun countOpenByProject(projectId: ProjectId): Int
     fun deleteByProjectId(projectId: ProjectId)
 }
@@ -120,8 +121,8 @@ interface CiExecutionRepository {
     /** Newest execution with the same idempotency key created after [since]. */
     fun findRecentByKey(idempotencyKey: String, since: Instant): CiExecution?
     /** Newest first unless [sort] names a column (ADR 0046). */
-    fun find(projectId: ProjectId?, projects: ProjectFilter, page: Int, size: Int, sort: SortSpec? = null): PageOf<CiExecution>
-    fun findRecent(limit: Int, projects: ProjectFilter): List<CiExecution>
+    fun find(projectId: ProjectId?, projects: ScopeFilter<UUID>, page: Int, size: Int, sort: SortSpec? = null): PageOf<CiExecution>
+    fun findRecent(limit: Int, projects: ScopeFilter<UUID>): List<CiExecution>
     fun countByProjectSince(projectId: ProjectId, since: Instant): Int
     fun deleteByProjectId(projectId: ProjectId)
 }

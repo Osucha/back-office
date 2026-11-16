@@ -17,7 +17,7 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.UserId
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
@@ -43,27 +43,27 @@ object Fixtures {
         startedBy: Actor? = null,
     ): WorkflowRun = WorkflowRun.create(project, definition, RunTrigger(TriggerSource.MANUAL), input, now, startedBy = startedBy).start(now)
 
-    /** The test user of [FakeAuthorizationGate] as an actor stamp. */
-    val alice: Actor = Actor(PrincipalKind.USER, FakeAuthorizationGate.TEST_USER_ID.value, "Alice Test")
+    /** The test user of [FakeAccessGuard] as an actor stamp. */
+    val alice: Actor = Actor(PrincipalKind.USER, FakeAccessGuard.TEST_USER_ID.value, "Alice Test")
 
     /** Another person, e.g. the one who started a run. */
     val bob: Actor = Actor(PrincipalKind.USER, UUID.fromString("00000000-0000-0000-0000-0000000000b0"), "Bob Other")
 
     /** A gate for the project's CI token: exactly `ci.execute` and `ci.signal` on [projectId]. */
-    fun ciGate(projectId: ProjectId, projectKey: String = "SHOP") = FakeAuthorizationGate(
+    fun ciGate(projectId: ProjectId, projectKey: String = "SHOP") = FakeAccessGuard(
         CurrentUser(
             kind = PrincipalKind.CI_TOKEN,
             userId = null,
             login = "ci:$projectKey",
             displayName = "CI token gitlab ($projectKey)",
             platformPermissions = emptySet(),
-            projectPermissions = mapOf(projectId.value to setOf(ProjectsPermissions.CI_EXECUTE, ProjectsPermissions.CI_SIGNAL)),
+            projectPermissions = mapOf(projectId.value to setOf(ProjectsPermissions.CI_EXECUTE.key, ProjectsPermissions.CI_SIGNAL.key)),
         ),
     )
 
     /** A user holding [permissions] and the project [roles] on [projectId]. */
-    fun userWithRoles(projectId: ProjectId, permissions: Set<String>, roles: Set<String>, userId: UserId = FakeAuthorizationGate.TEST_USER_ID) =
-        FakeAuthorizationGate.user(projects = mapOf(projectId.value to permissions)).copy(userId = userId, projectRoles = mapOf(projectId.value to roles))
+    fun userWithRoles(projectId: ProjectId, permissions: Set<String>, roles: Set<String>, userId: UserId = FakeAccessGuard.TEST_USER_ID) =
+        FakeAccessGuard.user(projects = mapOf(projectId.value to permissions)).copy(userId = userId, projectRoles = mapOf(projectId.value to roles))
 
     /** Deterministic stand-in for the adapters' SHA-256 hasher. */
     class TestHasher : TokenHasher {

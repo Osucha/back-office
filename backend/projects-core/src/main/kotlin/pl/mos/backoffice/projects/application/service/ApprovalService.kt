@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
 import pl.mos.backoffice.projects.application.port.`in`.ApprovalQueries
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval.DecisionCommand
@@ -29,8 +31,7 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditResult
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PublicOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 
 /**
  * Implements [DecideApproval] and [ApprovalQueries]. Deciding needs `run.approve` on the project and must
@@ -44,7 +45,8 @@ class ApprovalService(
     private val runs: WorkflowRunRepository,
     private val engine: WorkflowEngine,
     private val events: EventPublisher,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
     /** Personal connections of approvers (ADR 0035); NONE = nobody has one (tests without connections). */
@@ -53,7 +55,8 @@ class ApprovalService(
 
     override fun decide(approvalId: ApprovalRequestId, command: DecisionCommand): ApprovalRequest {
         val approval = load(approvalId)
-        val user = gate.require(ProjectsPermissions.RUN_APPROVE, approval.projectId.value)
+        guard.require(ProjectsPermissions.RUN_APPROVE, approval.projectId.value)
+        val user = principal.currentUser()
         val check = GateApprovalPolicy.check(approval, user)
         if (!check.allowed) {
             audit.record(
@@ -113,7 +116,8 @@ class ApprovalService(
 
     override fun writeIdentity(approvalId: ApprovalRequestId): WriteIdentityOptions {
         val approval = load(approvalId)
-        val user = gate.require(ProjectsPermissions.PROJECT_VIEW, approval.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, approval.projectId.value)
+        val user = principal.currentUser()
         val write = approval.write ?: throw InvalidStateException("approval $approvalId is not a write confirmation")
         val personal = if (write.personalAllowed) personalConnection(write, user.userId?.value) else null
         val problem = when {
@@ -169,13 +173,13 @@ class ApprovalService(
 
     override fun get(approvalId: ApprovalRequestId): ApprovalRequest {
         val approval = load(approvalId)
-        gate.require(ProjectsPermissions.PROJECT_VIEW, approval.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, approval.projectId.value)
         return approval
     }
 
     @PublicOperation("lists only approvals of projects the caller holds project.view on")
     override fun list(status: ApprovalStatus): List<ApprovalRequest> =
-        approvals.findByStatus(status, gate.projectFilter(ProjectsPermissions.PROJECT_VIEW)).sortedByDescending { it.createdAt }
+        approvals.findByStatus(status, guard.scopesWith(ProjectsPermissions.PROJECT_VIEW)).sortedByDescending { it.createdAt }
 
     private fun load(approvalId: ApprovalRequestId): ApprovalRequest =
         approvals.findById(approvalId) ?: throw NotFoundException("Approval", approvalId)

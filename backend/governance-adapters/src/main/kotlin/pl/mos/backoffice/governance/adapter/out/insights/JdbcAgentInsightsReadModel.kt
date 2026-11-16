@@ -1,17 +1,18 @@
 package pl.mos.backoffice.governance.adapter.out.insights
 
+import com.osucha.portpermissions.ScopeFilter
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
 import pl.mos.backoffice.governance.application.port.out.AgentInsightsReadModel
 import pl.mos.backoffice.governance.domain.model.StepAgent
 import pl.mos.backoffice.governance.domain.model.TaskStepExecution
 import pl.mos.backoffice.shared.Money
-import pl.mos.backoffice.shared.security.ProjectFilter
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
+import pl.mos.backoffice.shared.security.isNothing
 
 /**
  * ADR 0059: the TASK step executions of the runs **created** in `[from, to)` of the visible projects, read from the
@@ -22,9 +23,9 @@ import java.util.UUID
 @Transactional(readOnly = true)
 class JdbcAgentInsightsReadModel(private val jdbc: JdbcClient) : AgentInsightsReadModel {
 
-    override fun taskSteps(projects: ProjectFilter, from: Instant, to: Instant): List<TaskStepExecution> {
-        if (projects is ProjectFilter.Only && projects.projectIds.isEmpty()) return emptyList()
-        val projectClause = if (projects is ProjectFilter.Only) "AND r.project_id IN (:projectIds)" else ""
+    override fun taskSteps(projects: ScopeFilter<UUID>, from: Instant, to: Instant): List<TaskStepExecution> {
+        if (projects.isNothing) return emptyList()
+        val projectClause = projects.projectClause("r")
         val started = JdbcDeliveryInsightsReadModel.ts("n.doc->'startedAt'")
         val finished = JdbcDeliveryInsightsReadModel.ts("n.doc->'finishedAt'")
         var spec = jdbc.sql(
@@ -44,7 +45,7 @@ class JdbcAgentInsightsReadModel(private val jdbc: JdbcClient) : AgentInsightsRe
              ORDER BY r.created_at, r.id, n.idx
             """.trimIndent(),
         ).param("from", OffsetDateTime.ofInstant(from, ZoneOffset.UTC)).param("to", OffsetDateTime.ofInstant(to, ZoneOffset.UTC))
-        if (projects is ProjectFilter.Only) spec = spec.param("projectIds", projects.projectIds.toList())
+        spec = spec.bindProjects(projects)
         return spec.query { rs, _ ->
             val agentKey = rs.getString("agent_key")
             TaskStepExecution(

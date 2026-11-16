@@ -1,5 +1,6 @@
 package pl.mos.backoffice.governance.adapter.out.insights
 
+import com.osucha.portpermissions.ScopeFilter
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
 import pl.mos.backoffice.governance.application.port.out.WorkflowInsightsReadModel
@@ -14,7 +15,6 @@ import pl.mos.backoffice.governance.domain.model.WorkflowMetrics
 import pl.mos.backoffice.governance.domain.model.WorkflowRunCounts
 import pl.mos.backoffice.governance.domain.model.WorkflowScope
 import pl.mos.backoffice.shared.Money
-import pl.mos.backoffice.shared.security.ProjectFilter
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.sql.ResultSet
@@ -23,6 +23,7 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
+import pl.mos.backoffice.shared.security.isNothing
 
 /**
  * Workflow metrics (ADR 0037) computed with SQL over the tables of other contexts (a read model; nothing is written):
@@ -38,10 +39,10 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
         jdbc.sql("SELECT project_id FROM workflow_definition WHERE id = :id").param("id", workflowId).query(UUID::class.java).optional().orElse(null)
             ?: jdbc.sql("SELECT project_id FROM workflow_run WHERE workflow_id = :id LIMIT 1").param("id", workflowId).query(UUID::class.java).optional().orElse(null)
 
-    override fun compute(scope: WorkflowScope, projects: ProjectFilter, from: Instant, to: Instant): WorkflowInsights {
+    override fun compute(scope: WorkflowScope, projects: ScopeFilter<UUID>, from: Instant, to: Instant): WorkflowInsights {
         val libraryId = (scope as? WorkflowScope.Library)?.libraryWorkflowId
         val workflowId = (scope as? WorkflowScope.Workflow)?.workflowId
-        if (projects is ProjectFilter.Only && projects.projectIds.isEmpty()) {
+        if (projects.isNothing) {
             return WorkflowInsights(from, to, libraryId, workflowId, WorkflowMetrics.EMPTY, emptyList(), emptyList(), emptyList(), emptyList())
         }
         val q = Scope(projects, from, to, scope)
@@ -59,8 +60,8 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
         return WorkflowInsights(from, to, libraryId, workflowId, totals, byVersion, byProject, nodes(q), weekly(q))
     }
 
-    override fun libraryHeadlines(projects: ProjectFilter, from: Instant, to: Instant): Map<UUID, WorkflowMetrics> {
-        if (projects is ProjectFilter.Only && projects.projectIds.isEmpty()) return emptyMap()
+    override fun libraryHeadlines(projects: ScopeFilter<UUID>, from: Instant, to: Instant): Map<UUID, WorkflowMetrics> {
+        if (projects.isNothing) return emptyMap()
         return metrics(Scope(projects, from, to, null), "library_workflow_id::text").map { (k, v) -> UUID.fromString(k) to v.first }.toMap()
     }
 
@@ -167,7 +168,7 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
      * - `execs`: one row per node execution (with its position `idx` in the run);
      * - `facts`: one row per run with its result, duration, waits, rework, ledger cost and tokens.
      */
-    private inner class Scope(private val projects: ProjectFilter, from: Instant, to: Instant, private val scope: WorkflowScope?) {
+    private inner class Scope(private val projects: ScopeFilter<UUID>, from: Instant, to: Instant, private val scope: WorkflowScope?) {
         private val fromParam = OffsetDateTime.ofInstant(from, ZoneOffset.UTC)
         private val toParam = OffsetDateTime.ofInstant(to, ZoneOffset.UTC)
 
@@ -177,7 +178,7 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
             null -> "AND r.library_workflow_id IS NOT NULL"
         }
 
-        private val projectClause: String = if (projects is ProjectFilter.Only) "AND r.project_id IN (:projectIds)" else ""
+        private val projectClause: String = projects.projectClause("r")
 
         fun <T : Any> query(sql: String, mapper: (ResultSet, Int) -> T): List<T> {
             val text = """
@@ -232,7 +233,7 @@ class JdbcWorkflowInsightsReadModel(private val jdbc: JdbcClient) : WorkflowInsi
                 is WorkflowScope.Workflow -> spec = spec.param("scopeId", scope.workflowId)
                 null -> Unit
             }
-            if (projects is ProjectFilter.Only) spec = spec.param("projectIds", projects.projectIds.toList())
+            spec = spec.bindProjects(projects)
             return spec.query(mapper).list()
         }
     }

@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.TaskConfigSchemas
 import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
@@ -47,9 +50,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.projects.domain.service.RunInputs
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskCatalog
@@ -66,7 +67,8 @@ class WorkflowService(
     private val validator: WorkflowValidator,
     private val taskCatalog: TaskCatalog,
     private val expressions: ExpressionEvaluator,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
     /** Checks that Jira steps have a connection (ADR 0030); null = not checked (tests without connections). */
@@ -88,7 +90,8 @@ class WorkflowService(
     private val modelSteps = availability?.let { ModelStepCheck(taskCatalog, it, defaults) }
 
     override fun create(projectId: ProjectId, command: WorkflowCommand): WorkflowDefinition {
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value).actor
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value)
+        val actor = principal.currentUser().actor
         projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         // a workflow with errors is kept as a draft (no runs, no publishing) instead of being refused
         val draft = !check(projectId, command).valid
@@ -121,7 +124,8 @@ class WorkflowService(
 
     override fun update(id: WorkflowDefinitionId, command: WorkflowCommand): WorkflowDefinition {
         val existing = load(id)
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value).actor
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value)
+        val actor = principal.currentUser().actor
         val draft = !check(existing.projectId, command).valid
         val next = existing.newVersion(command.name, command.description, command.nodes, command.edges, command.triggers, command.enabled, command.canvas, clock.now(), actor, command.setupCommand, command.sources)
             .copy(draft = draft)
@@ -145,7 +149,7 @@ class WorkflowService(
 
     override fun delete(id: WorkflowDefinitionId) {
         val existing = load(id)
-        gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value)
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value)
         if (runs.existsActiveByWorkflow(id)) throw InvalidStateException("workflow $id has active runs; cancel them first")
         workflows.delete(id)
         audit.record(AuditEntry("WORKFLOW_DELETE", ENTITY, id.toString(), projectId = existing.projectId.value, details = mapOf("name" to existing.name, "version" to existing.version)))
@@ -153,18 +157,19 @@ class WorkflowService(
 
     override fun get(id: WorkflowDefinitionId): WorkflowDefinition {
         val definition = load(id)
-        gate.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
         return definition
     }
 
     override fun listByProject(projectId: ProjectId): List<WorkflowDefinition> {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         return workflows.findByProjectId(projectId).sortedBy { it.name }
     }
 
     override fun duplicate(id: WorkflowDefinitionId): WorkflowDefinition {
         val source = load(id)
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, source.projectId.value).actor
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, source.projectId.value)
+        val actor = principal.currentUser().actor
         val now = clock.now()
         val names = workflows.findByProjectId(source.projectId).map { it.name }.toSet()
         var name = "${source.name} (copy)"
@@ -178,12 +183,12 @@ class WorkflowService(
     }
 
     override fun validate(projectId: ProjectId, command: WorkflowCommand): WorkflowValidationResult {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         return check(projectId, command)
     }
 
     override fun palette(projectId: ProjectId): Palette {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         val tasks = runCatching { taskCatalog.palette(projectId.value) }.getOrDefault(emptyList())
             .map { t ->
@@ -246,7 +251,8 @@ class WorkflowService(
 
     override fun modelPlan(id: WorkflowDefinitionId): List<ManageWorkflows.StepModelPlan> {
         val definition = workflows.findById(id) ?: throw NotFoundException("WorkflowDefinition", id)
-        val user = gate.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
+        val user = principal.currentUser()
         val project = projects.findById(definition.projectId) ?: throw NotFoundException("Project", definition.projectId)
         val check = modelSteps ?: return emptyList()
         return check.plan(project, definition.nodes, user.userId?.value).map {
@@ -256,18 +262,19 @@ class WorkflowService(
 
     override fun runInputs(id: WorkflowDefinitionId): List<RunInputField> {
         val definition = workflows.findById(id) ?: throw NotFoundException("WorkflowDefinition", id)
-        gate.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, definition.projectId.value)
         return RunInputs.effective(definition, taskCatalog)
     }
 
     override fun modelOptions(projectId: ProjectId, stepKind: StepKind, harness: AgentHarness?): List<ModelOption> {
-        val user = gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        val user = principal.currentUser()
         val project = projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         return availability?.options(ModelUse(stepKind, harness, project.personal, user.userId?.value)).orEmpty()
     }
 
     override fun auditAgents(projectId: ProjectId, nodes: List<WorkflowNode>): AgentAuditReport {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         val project = projectId.value
         // a step whose template is unknown or whose chain is broken is the validator's finding, not the audit's
         val steps = nodes.filterIsInstance<WorkflowNode.Task>().filter { it.task.templateKey.isNotBlank() }.mapNotNull { node ->
@@ -279,7 +286,7 @@ class WorkflowService(
     }
 
     /** The user the designer validates for; null outside a request (system work). */
-    private fun currentUserId() = runCatching { gate.currentUser().userId?.value }.getOrNull()
+    private fun currentUserId() = runCatching { principal.currentUser().userId?.value }.getOrNull()
 
     /** ADR 0063: the workflow's sources, the coding steps and the deliveries ([RepositoryStepCheck]). */
     private fun repositoryIssues(projectId: ProjectId, sources: List<pl.mos.backoffice.projects.domain.model.WorkflowSource>, nodes: List<WorkflowNode>): Pair<List<ValidationIssue>, List<ValidationIssue>> {

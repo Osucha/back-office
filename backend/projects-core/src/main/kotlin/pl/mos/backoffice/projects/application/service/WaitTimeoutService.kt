@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ExpireWaits
 import pl.mos.backoffice.projects.application.port.out.ApprovalRequestRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowEngine
@@ -9,7 +10,6 @@ import pl.mos.backoffice.projects.domain.model.NodeExecutionStatus
 import pl.mos.backoffice.projects.domain.model.WaitKind
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.security.SystemOperation
 import java.time.Duration
 
 /**

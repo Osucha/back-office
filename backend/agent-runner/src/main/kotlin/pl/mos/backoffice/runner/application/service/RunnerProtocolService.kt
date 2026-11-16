@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.runner.application.port.`in`.JobHeartbeatAck
 import pl.mos.backoffice.runner.application.port.`in`.JobHeartbeatInput
 import pl.mos.backoffice.runner.application.port.`in`.LeasedJob
@@ -39,7 +40,6 @@ import pl.mos.backoffice.shared.runner.RepositoryTokenSource
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.SystemOperation
 import java.util.UUID
 
 /** An unknown, used or expired registration token, or a revoked runner. Mapped to 401. */

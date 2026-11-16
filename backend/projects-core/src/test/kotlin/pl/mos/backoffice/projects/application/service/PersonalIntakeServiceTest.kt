@@ -33,7 +33,7 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.platform.WorkRequest
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
 import java.time.Instant
@@ -46,7 +46,7 @@ class PersonalIntakeServiceTest {
     private val clock = object : Clock {
         override fun now(): Instant = now
     }
-    private val me = FakeAuthorizationGate.TEST_USER_ID.value
+    private val me = FakeAccessGuard.TEST_USER_ID.value
     private val project = Fixtures.project().copy(personal = true)
     private val workflow = Fixtures.issueWorkflow(project)
     private val projects = mockk<ProjectRepository> { every { findById(project.id) } returns project }
@@ -68,13 +68,13 @@ class PersonalIntakeServiceTest {
     private val queued = mutableListOf<WorkRequest>()
     private val events = mutableListOf<DomainEvent>()
     private val audit = RecordingAuditPort()
-    private val gate = FakeAuthorizationGate(
-        FakeAuthorizationGate.user(
-            platform = setOf(ProjectsPermissions.CONNECTIONS_PERSONAL),
-            projects = mapOf(project.id.value to setOf(ProjectsPermissions.RUN_START, ProjectsPermissions.PROJECT_VIEW)),
+    private val gate = FakeAccessGuard(
+        FakeAccessGuard.user(
+            platform = setOf(ProjectsPermissions.CONNECTIONS_PERSONAL.key),
+            projects = mapOf(project.id.value to setOf(ProjectsPermissions.RUN_START.key, ProjectsPermissions.PROJECT_VIEW.key)),
         ),
     )
-    private val service = PersonalIntakeService(repo, connections, workflows, projects, startRun, access, { queued += it }, { events += it }, gate, audit, clock)
+    private val service = PersonalIntakeService(repo, connections, workflows, projects, startRun, access, { queued += it }, { events += it }, gate, gate, audit, clock)
 
     private val command = RuleCommand("My issues", mine.id, "assignee = currentUser() AND statusCategory != Done", 5, workflow.id)
 
@@ -161,12 +161,12 @@ class PersonalIntakeServiceTest {
         trackers.headlinesResult = listOf(issue("SHOP-1"))
         service.poll(rule.id)
         val proposal = service.proposals().single().proposal.id
-        val stranger = PersonalIntakeService(
-            repo, connections, workflows, projects, startRun, access, { }, { }, FakeAuthorizationGate.permitting(ProjectsPermissions.CONNECTIONS_PERSONAL).also {
+        val stranger = (FakeAccessGuard.permitting(ProjectsPermissions.CONNECTIONS_PERSONAL).also {
                 it.user = it.user.copy(userId = pl.mos.backoffice.shared.security.UserId(UUID.randomUUID()))
-            },
+            }).let { g -> PersonalIntakeService(
+            repo, connections, workflows, projects, startRun, access, { }, { }, g, g,
             audit, clock,
-        )
+        ) }
         assertThat(stranger.rules()).isEmpty()
         assertThat(stranger.proposals()).isEmpty()
         assertThatThrownBy { stranger.start(proposal) }.isInstanceOf(NotFoundException::class.java)

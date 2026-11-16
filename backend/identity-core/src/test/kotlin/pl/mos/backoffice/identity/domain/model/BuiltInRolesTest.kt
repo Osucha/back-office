@@ -11,7 +11,7 @@ class BuiltInRolesTest {
     @Test
     fun `owners manage project connections, maintainers and developers do not`() {
         assertThat(role(BuiltInRoles.OWNER).permissions).contains("project.connections.manage")
-        assertThat(role(BuiltInRoles.MAINTAINER).permissions).doesNotContain("project.connections.manage", IdentityPermissions.PROJECT_MEMBERS_MANAGE)
+        assertThat(role(BuiltInRoles.MAINTAINER).permissions).doesNotContain("project.connections.manage", IdentityPermissions.PROJECT_MEMBERS_MANAGE.key)
         assertThat(role(BuiltInRoles.MAINTAINER).permissions).contains("project.manage", "workflow.edit")
         assertThat(role(BuiltInRoles.DEVELOPER).permissions).doesNotContain("project.connections.manage")
     }

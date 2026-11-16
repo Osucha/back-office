@@ -1,5 +1,8 @@
 package pl.mos.backoffice.governance.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.governance.application.port.`in`.ProvenanceQueries
 import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
 import pl.mos.backoffice.governance.application.port.out.AttestationRepository
@@ -26,9 +29,6 @@ import pl.mos.backoffice.shared.platform.EnvelopeSigner
 import pl.mos.backoffice.shared.provenance.ProvenanceNode
 import pl.mos.backoffice.shared.provenance.RunProvenance
 import pl.mos.backoffice.shared.provenance.RunProvenanceSource
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.usage.UsageGroupBy
 import pl.mos.backoffice.shared.usage.UsageLedger
@@ -161,19 +161,19 @@ class ProvenanceQueryService(
     private val repository: AttestationRepository,
     private val signer: EnvelopeSigner,
     private val json: JsonCodec,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
 ) : ProvenanceQueries {
 
     override fun listForRun(runId: UUID): List<Attestation> {
         val attestations = repository.findByRunId(runId)
         val projectId = attestations.firstOrNull()?.projectId ?: source.find(runId)?.projectId ?: throw NotFoundException("Run", runId)
-        gate.require(GovernancePermissions.PROJECT_VIEW, projectId)
+        guard.require(GovernancePermissions.PROJECT_VIEW, projectId)
         return attestations.sortedWith(compareBy({ it.kind != AttestationKind.AGENT_JOB }, { it.createdAt }))
     }
 
     override fun get(attestationId: UUID): Attestation {
         val attestation = repository.findById(attestationId) ?: throw NotFoundException("Attestation", attestationId)
-        gate.require(GovernancePermissions.PROJECT_VIEW, attestation.projectId)
+        guard.require(GovernancePermissions.PROJECT_VIEW, attestation.projectId)
         return attestation
     }
 

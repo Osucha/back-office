@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.out.scheduling
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -16,7 +17,6 @@ import pl.mos.backoffice.shared.platform.WorkKinds
 import pl.mos.backoffice.shared.platform.WorkOutcome
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.platform.WorkRequest
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.time.Duration
 
 /**
@@ -29,7 +29,7 @@ import java.time.Duration
 class JiraIntakeScheduler(
     private val poll: PollJiraIntake,
     private val queue: WorkQueue,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val lock: ObjectProvider<ClusterLock>,
 ) {
     private val log = LoggerFactory.getLogger(JiraIntakeScheduler::class.java)
@@ -38,7 +38,7 @@ class JiraIntakeScheduler(
     fun scan() {
         try {
             lock.getIfAvailable { ClusterLock.LOCAL }.runExclusively(LOCK, Duration.ofMinutes(2), Duration.ofSeconds(10)) {
-                val due = gate.asSystem("jira intake scan") { poll.due() }
+                val due = guard.asSystem("jira intake scan") { poll.due() }
                 due.forEach { projectId ->
                     queue.enqueue(
                         WorkRequest(WorkKinds.JIRA_INTAKE_POLL, mapOf(JiraIntakeService.PROJECT_ID to projectId.toString()), dedupeKey = JiraIntakeService.dedupeKey(projectId), maxAttempts = 1),
@@ -58,7 +58,7 @@ class JiraIntakeScheduler(
 
 /** [WorkHandler] of `JIRA_INTAKE_POLL`: one poll of one project's watcher on the worker holding the item. */
 @Component
-class JiraIntakePollHandler(private val poll: PollJiraIntake, private val gate: AuthorizationGate) : WorkHandler {
+class JiraIntakePollHandler(private val poll: PollJiraIntake, private val guard: AccessGuard) : WorkHandler {
     private val log = LoggerFactory.getLogger(JiraIntakePollHandler::class.java)
 
     override val kind: String = WorkKinds.JIRA_INTAKE_POLL
@@ -66,7 +66,7 @@ class JiraIntakePollHandler(private val poll: PollJiraIntake, private val gate: 
     override fun handle(item: WorkItem): WorkOutcome {
         val projectId = item.payload[JiraIntakeService.PROJECT_ID]?.toString()?.let { runCatching { ProjectId.of(it) }.getOrNull() }
             ?: return WorkOutcome.Dead("JIRA_INTAKE_POLL without a valid projectId")
-        val started = gate.asSystem("jira intake poll") { poll.poll(projectId) }
+        val started = guard.asSystem("jira intake poll") { poll.poll(projectId) }
         if (started > 0) log.info("jira intake started runs project={} count={}", projectId, started)
         return WorkOutcome.Done
     }
@@ -80,7 +80,7 @@ class JiraIntakePollHandler(private val poll: PollJiraIntake, private val gate: 
 @ConditionalOnProperty(prefix = "backoffice.platform", name = ["worker-enabled"], havingValue = "true", matchIfMissing = true)
 class ConnectionExpiryReminderJob(
     private val reminders: RemindExpiringConnections,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val lock: ObjectProvider<ClusterLock>,
 ) {
     private val log = LoggerFactory.getLogger(ConnectionExpiryReminderJob::class.java)
@@ -89,7 +89,7 @@ class ConnectionExpiryReminderJob(
     fun remind() {
         try {
             lock.getIfAvailable { ClusterLock.LOCAL }.runExclusively("connection-expiry-reminder", Duration.ofMinutes(10), Duration.ofMinutes(1)) {
-                val count = gate.asSystem("connection expiry reminder") { reminders.remindExpiring() }
+                val count = guard.asSystem("connection expiry reminder") { reminders.remindExpiring() }
                 if (count > 0) log.info("connection expiry reminders sent count={}", count)
             }
         } catch (e: RuntimeException) {

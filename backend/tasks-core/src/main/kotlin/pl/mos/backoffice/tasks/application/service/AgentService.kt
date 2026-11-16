@@ -8,7 +8,8 @@ import pl.mos.backoffice.shared.ValidationException.FieldError
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.tasks.application.port.`in`.ManageAgents
 import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.domain.model.Agent
@@ -27,13 +28,15 @@ import java.util.UUID
 class AgentService(
     private val agents: AgentRepository,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val lookup: LibraryLookup,
 ) : ManageAgents {
 
     override fun create(command: Agent.Content): Agent {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val key = command.key ?: Keys.unique(Keys.fromName(command.name, KEY_PREFIX)) { agents.existsByKey(it) }
         if (agents.findByKeyAndScope(key, command.scope) != null) {
             throw InvalidStateException("agent $key already exists in scope ${command.scope.describe()}")
@@ -51,9 +54,10 @@ class AgentService(
     }
 
     override fun update(id: AgentId, command: Agent.Content): Agent {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val existing = load(id)
-        if (existing.scope != command.scope) gate.requireWrite(existing.scope)
+        if (existing.scope != command.scope) guard.requireWrite(existing.scope)
         val key = command.key ?: existing.key
         agents.findByKeyAndScope(key, command.scope)?.let { clash ->
             if (clash.id != id) throw InvalidStateException("agent $key already exists in scope ${command.scope.describe()}")
@@ -84,12 +88,12 @@ class AgentService(
 
     override fun get(id: AgentId): Agent {
         val agent = load(id)
-        gate.requireRead(agent.scope)
+        guard.requireRead(agent.scope)
         return agent
     }
 
     override fun list(projectId: UUID?): List<Agent> {
-        val access = gate.requireListing(projectId)
+        val access = guard.requireListing(projectId, principal)
         return agents.findVisible(access.projectId)
             .filter { access.allows(it.scope) }
             .sortedWith(compareBy({ it.name.lowercase() }, { it.scope.projectId != null }))
@@ -97,7 +101,7 @@ class AgentService(
 
     override fun delete(id: AgentId) {
         val existing = load(id)
-        gate.requireWrite(existing.scope)
+        guard.requireWrite(existing.scope)
         agents.delete(id)
         audit.record(entry("AGENT_DELETE", existing, mapOf("key" to existing.key, "scope" to existing.scope.describe())))
     }

@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.ScopeFilter
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
 import pl.mos.backoffice.projects.application.port.`in`.StartScheduledRuns
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
@@ -12,8 +14,6 @@ import pl.mos.backoffice.projects.domain.model.TriggerType
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.InvalidStateException
-import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.security.SystemOperation
 import java.time.Duration
 
 /**
@@ -34,7 +34,7 @@ class ScheduledRunService(
     @SystemOperation("scheduled workflow starts (ADR 0052)")
     override fun sweep(): Int {
         val problems = mutableListOf<String>()
-        val started = projects.findAll(ProjectFilter.All).asSequence()
+        val started = projects.findAll(ScopeFilter.All).asSequence()
             .flatMap { workflows.findByProjectId(it.id).asSequence() }
             .count { workflow -> runCatching { start(workflow) }.getOrElse { problems += it.message ?: workflow.name; false } }
         if (problems.isNotEmpty()) throw InvalidStateException("$started scheduled run(s) started; " + problems.joinToString("; "))
@@ -45,7 +45,7 @@ class ScheduledRunService(
         if (!workflow.enabled) return false
         val interval = workflow.triggers.firstOrNull { it.type == TriggerType.SCHEDULE }?.intervalMinutes ?: return false
         if (runs.existsActiveByWorkflow(workflow.id)) return false
-        val latest = runs.find(RunFilter(workflowId = workflow.id), ProjectFilter.All, 0, 1).content.firstOrNull()
+        val latest = runs.find(RunFilter(workflowId = workflow.id), ScopeFilter.All, 0, 1).content.firstOrNull()
         val now = clock.now()
         if (latest != null && now.isBefore(latest.createdAt.plus(Duration.ofMinutes(interval.toLong())))) return false
         val parameters = mapOf("since" to (latest?.createdAt ?: now.minus(Duration.ofMinutes(interval.toLong()))).toString())

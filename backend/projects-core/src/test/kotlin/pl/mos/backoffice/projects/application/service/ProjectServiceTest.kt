@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.ScopeFilter
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -29,8 +30,7 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
-import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -62,15 +62,15 @@ class ProjectServiceTest {
         every { runs.countByProjectAndStatus(any(), any()) } returns 0
     }
 
-    private fun service(gate: FakeAuthorizationGate) = ProjectService(
-        projects, workflows, runs, approvals, executions, tokens, mockk(relaxed = true), CiSnippetRenderer(), "http://bo", gate, provisioner, audit, Clock.fixed(now),
+    private fun service(gate: FakeAccessGuard) = ProjectService(
+        projects, workflows, runs, approvals, executions, tokens, mockk(relaxed = true), CiSnippetRenderer(), "http://bo", gate, gate, provisioner, audit, Clock.fixed(now),
     )
 
     private val command = ProjectCommand(key = "SHOP", name = "Shop", repositories = listOf(GitRepository.legacy("https://git.example.com/g/shop.git", null)))
 
     @Test
     fun `creating a project needs projects create, makes the creator owner, seeds the SDLC workflows and is audited`() {
-        val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)
+        val gate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECTS_CREATE)
         val project = service(gate).create(command)
 
         assertThat(gate.checked).startsWith("projects.create")
@@ -86,20 +86,20 @@ class ProjectServiceTest {
         assertThat(entry.projectId).isEqualTo(project.id.value)
         assertThat(entry.details["key"]).isEqualTo("SHOP")
 
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).create(command.copy(key = "OTHER")) }
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).create(command.copy(key = "OTHER")) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("projects.create") }
     }
 
     @Test
     fun `the key is generated from the name when omitted and can be changed later, also in the memberships`() {
         every { projects.findByKey("MP") } returns pl.mos.backoffice.projects.Fixtures.project("MP")
-        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(key = null, name = "Mój projekt"))
+        val project = service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(key = null, name = "Mój projekt"))
         assertThat(project.key).isEqualTo("MP2")
         // nothing implicit about Jira: the project key is not a Jira key
         assertThat(project.jiraProjectKey).isNull()
         audit.entries.clear()
 
-        val manager = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
+        val manager = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
         val renamed = service(manager).update(project.id, command.copy(key = "lfv", name = "Mój projekt"))
         assertThat(renamed.key).isEqualTo("LFV")
         assertThat(provisioned).contains("renamed:LFV")
@@ -121,7 +121,7 @@ class ProjectServiceTest {
 
     @Test
     fun `a project without repositories gets the LLM starter and the SDLC workflows once it gets its first repository`() {
-        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(repositories = emptyList()))
+        val project = service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(repositories = emptyList()))
 
         assertThat(project.repositories).isEmpty()
         assertThat(seeded.map { it.name }).containsExactly(DefaultWorkflows.LLM_TASK_WITH_REVIEW)
@@ -131,7 +131,7 @@ class ProjectServiceTest {
         assertThat(audit.entries.single().details["seededWorkflows"]).isEqualTo(listOf(DefaultWorkflows.LLM_TASK_WITH_REVIEW))
         audit.entries.clear()
 
-        val manager = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
+        val manager = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
         val docs = GitRepository("docs", "https://git.example.com/g/docs.git", purpose = pl.mos.backoffice.projects.domain.model.RepositoryPurpose.DOCS, primary = true)
         val updated = service(manager).update(project.id, command.copy(repositories = listOf(docs)))
 
@@ -153,9 +153,9 @@ class ProjectServiceTest {
 
     @Test
     fun `updates need project manage and audit only the changed fields`() {
-        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command)
+        val project = service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command)
         audit.entries.clear()
-        val manager = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
+        val manager = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
 
         service(manager).update(project.id, command.copy(name = "Shop 2", constitution = "new rules"))
         val entry = audit.entries.single()
@@ -166,7 +166,7 @@ class ProjectServiceTest {
         service(manager).update(project.id, command.copy(name = "Shop 2", constitution = "new rules"))
         assertThat(audit.entries).hasSize(1)
 
-        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
         assertThatThrownBy { service(viewer).update(project.id, command) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("project.manage") }
         assertThatThrownBy { service(viewer).replaceEntrypoints(project.id, emptyList()) }.isInstanceOf(InsufficientPermissionException::class.java)
@@ -176,9 +176,9 @@ class ProjectServiceTest {
 
     @Test
     fun `entrypoint changes and deletion are audited and deletion removes memberships`() {
-        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command)
+        val project = service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command)
         audit.entries.clear()
-        val manager = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
+        val manager = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
         val review = seeded.first { it.name == DefaultWorkflows.CI_CODE_REVIEW }
 
         service(manager).replaceEntrypoints(project.id, listOf(CiEntrypoint("code-review", review.id, CiMode.ADVISORY)))
@@ -188,7 +188,7 @@ class ProjectServiceTest {
         // a maintainer (project.manage without project.members.manage) cannot delete; an owner can
         assertThatThrownBy { service(manager).delete(project.id) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("project.members.manage") }
-        val owner = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, ProjectsPermissions.PROJECT_MEMBERS_MANAGE, projects = setOf(project.id.value))
+        val owner = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_MANAGE, ProjectsPermissions.PROJECT_MEMBERS_MANAGE, projects = setOf(project.id.value))
         service(owner).delete(project.id)
         verify { projects.delete(project.id) }
         assertThat(provisioned.last()).isEqualTo("deleted:${project.id}")
@@ -198,8 +198,8 @@ class ProjectServiceTest {
 
     @Test
     fun `missing default workflows are listed with project view and added once with workflow edit`() {
-        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command)
-        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val project = service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command)
+        val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
         assertThat(service(viewer).missingDefaultWorkflows(project.id)).isEmpty()
 
         // a project created before the reference workflow existed
@@ -209,9 +209,9 @@ class ProjectServiceTest {
         assertThat(viewer.checked).containsOnly("project.view@${project.id.value}")
         assertThatThrownBy { service(viewer).addDefaultWorkflows(project.id) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("workflow.edit") }
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).missingDefaultWorkflows(project.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).missingDefaultWorkflows(project.id) }.isInstanceOf(InsufficientPermissionException::class.java)
 
-        val editor = FakeAuthorizationGate.permitting(ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
+        val editor = FakeAccessGuard.permitting(ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
         val added = service(editor).addDefaultWorkflows(project.id)
         assertThat(added.map { it.name }).containsExactly(DefaultWorkflows.REFERENCE_CLAUDE_CODE)
         assertThat(added.single().updatedBy).isEqualTo(alice)
@@ -231,8 +231,8 @@ class ProjectServiceTest {
 
     @Test
     fun `without a repository no default workflow is missing and adding them is refused`() {
-        val project = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(repositories = emptyList()))
-        val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
+        val project = service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECTS_CREATE)).create(command.copy(repositories = emptyList()))
+        val gate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
         assertThat(service(gate).missingDefaultWorkflows(project.id)).isEmpty()
         assertThatThrownBy { service(gate).addDefaultWorkflows(project.id) }
             .isInstanceOf(pl.mos.backoffice.shared.InvalidStateException::class.java).hasMessageContaining("repository")
@@ -242,12 +242,12 @@ class ProjectServiceTest {
     @Test
     fun `the project list only contains projects the caller can view`() {
         val visible = Fixtures.project("SEEN")
-        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(visible.id.value))
-        every { projects.findAll(ProjectFilter.Only(setOf(visible.id.value))) } returns listOf(visible)
+        val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(visible.id.value))
+        every { projects.findAll(ScopeFilter.Only(setOf(visible.id.value))) } returns listOf(visible)
         assertThat(service(viewer).list()).containsExactly(visible)
-        every { projects.findAll(ProjectFilter.Only(emptySet())) } returns emptyList()
-        assertThat(service(FakeAuthorizationGate.denyAll()).list()).isEmpty()
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).get(visible.id) }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).stats(visible.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        every { projects.findAll(ScopeFilter.Only(emptySet())) } returns emptyList()
+        assertThat(service(FakeAccessGuard.denyAll()).list()).isEmpty()
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).get(visible.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).stats(visible.id) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 }

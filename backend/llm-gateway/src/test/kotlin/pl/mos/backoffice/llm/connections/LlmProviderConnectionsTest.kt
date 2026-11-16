@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.connections
 
+import com.osucha.portpermissions.PermissionDefinition
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -12,7 +13,7 @@ import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.security.SealedValue
 import pl.mos.backoffice.shared.security.SecretVault
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import tools.jackson.databind.json.JsonMapper
 import java.time.Instant
@@ -46,10 +47,11 @@ class LlmProviderConnectionsTest {
     private val registry = ProviderRegistry(environment, cache)
     private val audit = RecordingAuditPort()
 
-    private fun service(vararg permissions: String) = LlmProviderService(
-        store, vault, FakeAuthorizationGate.permitting(*permissions), audit, Clock { Instant.parse("2026-10-18T10:00:00Z") }, cache, registry,
-        ProviderModelLister(JsonMapper.builder().build()),
-    )
+    private fun service(vararg permissions: PermissionDefinition) = FakeAccessGuard.permitting(*permissions).let { guard ->
+        LlmProviderService(store, vault, guard, guard, audit, Clock { Instant.parse("2026-10-18T10:00:00Z") }, cache, registry,
+            ProviderModelLister(JsonMapper.builder().build()),
+        )
+    }
 
     private val admin = service(LlmProviderService.MANAGE, LlmProviderService.VIEW)
 
@@ -62,10 +64,11 @@ class LlmProviderConnectionsTest {
         assertThat(mine.personal).isTrue()
         assertThat(viewer.list().single { it.key == "my-openai" }.usable).isTrue()
 
-        val otherUser = FakeAuthorizationGate.user(platform = setOf(LlmProviderService.VIEW, LlmProviderService.MANAGE))
+        val otherUser = FakeAccessGuard.user(platform = setOf(LlmProviderService.VIEW.key, LlmProviderService.MANAGE.key))
             .copy(userId = pl.mos.backoffice.shared.security.UserId(UUID.randomUUID()))
+        val otherGuard = FakeAccessGuard(otherUser)
         val otherAdmin = LlmProviderService(
-            store, vault, FakeAuthorizationGate(otherUser), audit, Clock { Instant.parse("2026-10-18T10:00:00Z") }, cache, registry,
+            store, vault, otherGuard, otherGuard, audit, Clock { Instant.parse("2026-10-18T10:00:00Z") }, cache, registry,
             ProviderModelLister(JsonMapper.builder().build()),
         )
         assertThat(otherAdmin.list().map { it.key }).doesNotContain("my-openai")
@@ -74,7 +77,7 @@ class LlmProviderConnectionsTest {
         // no platform OpenAI connection and no environment fallback: the personal one is not taken implicitly
         assertThat(registry.resolve(Provider.OPENAI)).isNull()
         val endpoint = registry.resolve(Provider.OPENAI, "my-openai")!!
-        val owner = FakeAuthorizationGate.TEST_USER_ID.value
+        val owner = FakeAccessGuard.TEST_USER_ID.value
         assertThat(endpoint.ownerUserId).isEqualTo(owner)
         assertThat(ProviderRegistry.personalRefusal(endpoint, owner)).isNull()
         assertThat(ProviderRegistry.personalRefusal(endpoint, null)).contains("personal connection")

@@ -29,6 +29,8 @@ shedlock = "7.10.1"
 bucket4j = "8.20.0"
 # AWS SDK for Java v2 (S3 client + presigner) for the S3-compatible BlobStore (ADR 0023); not managed by the Boot BOM
 awssdk = "2.55.6"
+# Typed permissions, the AccessGuard port and deny-by-default rules (ADR 0066); JitPack
+portPermissions = "0.2.0"
 
 [libraries]
 # Spring Boot starters (Boot 4 names)
@@ -111,6 +113,11 @@ awssdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "awssdk" }
 awssdk-s3 = { module = "software.amazon.awssdk:s3" }
 awssdk-apache-client = { module = "software.amazon.awssdk:apache-client" }
 assertj = { module = "org.assertj:assertj-core" }
+
+# Authorization (ADR 0066)
+port-permissions-core = { module = "com.github.Osucha.port-permissions:port-permissions-core", version.ref = "portPermissions" }
+port-permissions-archunit = { module = "com.github.Osucha.port-permissions:port-permissions-archunit", version.ref = "portPermissions" }
+port-permissions-test = { module = "com.github.Osucha.port-permissions:port-permissions-test", version.ref = "portPermissions" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

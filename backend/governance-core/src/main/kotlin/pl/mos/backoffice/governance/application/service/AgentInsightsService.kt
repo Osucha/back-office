@@ -1,13 +1,14 @@
 package pl.mos.backoffice.governance.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.ScopeFilter
 import pl.mos.backoffice.governance.application.port.`in`.AgentInsightsQuery
 import pl.mos.backoffice.governance.application.port.out.AgentInsightsReadModel
 import pl.mos.backoffice.governance.domain.model.AgentInsights
 import pl.mos.backoffice.governance.domain.model.GovernancePermissions
 import pl.mos.backoffice.governance.domain.service.AgentInsightsCalculator
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.ProjectFilter
+import pl.mos.backoffice.shared.security.isNothing
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import java.time.Instant
 import java.util.UUID
@@ -20,20 +21,20 @@ import java.util.UUID
  */
 class AgentInsightsService(
     private val readModel: AgentInsightsReadModel,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val clock: Clock,
     private val tasks: TaskCatalog? = null,
 ) : AgentInsightsQuery {
 
     override fun get(projectId: UUID?, from: Instant?, to: Instant?): AgentInsights {
         val filter = if (projectId != null) {
-            gate.require(GovernancePermissions.PROJECT_VIEW, projectId)
-            ProjectFilter.Only(setOf(projectId))
+            guard.require(GovernancePermissions.PROJECT_VIEW, projectId)
+            ScopeFilter.Only(setOf(projectId))
         } else {
-            gate.projectFilter(GovernancePermissions.PROJECT_VIEW)
+            guard.scopesWith(GovernancePermissions.PROJECT_VIEW)
         }
         val (start, end) = DeliveryInsightsService.window(from, to, clock)
-        val steps = if (filter is ProjectFilter.Only && filter.projectIds.isEmpty()) emptyList() else readModel.taskSteps(filter, start, end)
+        val steps = if (filter.isNothing) emptyList() else readModel.taskSteps(filter, start, end)
         val names = if (steps.isEmpty()) emptyMap() else templateNames(projectId)
         return AgentInsightsCalculator.insights(start, end, projectId, steps, names)
     }

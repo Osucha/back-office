@@ -6,8 +6,9 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.domain.model.Keys
@@ -33,12 +34,14 @@ class TaskTemplateService(
     private val templates: TaskTemplateRepository,
     private val lookup: RepositoryLookup,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : ManageTaskTemplates {
 
     override fun create(command: TaskTemplate.Content): TaskTemplate {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val key = command.key ?: Keys.unique(Keys.fromName(command.name, KEY_PREFIX)) { templates.existsByKey(it) }
         if (templates.findByKeyAndScope(key, command.scope) != null) {
             throw InvalidStateException("task template $key already exists in scope ${command.scope.describe()}")
@@ -51,9 +54,10 @@ class TaskTemplateService(
     }
 
     override fun update(id: TaskTemplateId, command: TaskTemplate.Content): TaskTemplate {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val existing = load(id)
-        if (existing.scope != command.scope) gate.requireWrite(existing.scope)
+        if (existing.scope != command.scope) guard.requireWrite(existing.scope)
         val key = command.key ?: existing.key
         templates.findByKeyAndScope(key, command.scope)?.let { clash ->
             if (clash.id != id) throw InvalidStateException("task template $key already exists in scope ${command.scope.describe()}")
@@ -71,12 +75,12 @@ class TaskTemplateService(
 
     override fun get(id: TaskTemplateId): TaskTemplate {
         val template = load(id)
-        gate.requireRead(template.scope)
+        guard.requireRead(template.scope)
         return template
     }
 
     override fun list(projectId: UUID?, includeAbstract: Boolean): List<TaskTemplate> {
-        val access = gate.requireListing(projectId)
+        val access = guard.requireListing(projectId, principal)
         return templates.findVisible(access.projectId)
             .filter { access.allows(it.scope) }
             .filter { includeAbstract || !it.abstract }
@@ -85,7 +89,7 @@ class TaskTemplateService(
 
     override fun delete(id: TaskTemplateId) {
         val existing = load(id)
-        gate.requireWrite(existing.scope)
+        guard.requireWrite(existing.scope)
         if (existing.builtIn) throw InvalidStateException("task template ${existing.key} is built in; shadow it per project instead of deleting")
         if (templates.existsExtending(existing.key)) throw InvalidStateException("task template ${existing.key} is extended by other templates and cannot be deleted")
         templates.delete(id)
@@ -93,12 +97,12 @@ class TaskTemplateService(
     }
 
     override fun resolve(key: String, projectId: UUID?): TaskResolution {
-        val access = gate.requireListing(projectId)
+        val access = guard.requireListing(projectId, principal)
         return lookup.resolver.preview(key, access.projectId) ?: throw NotFoundException("TaskTemplate", key)
     }
 
     override fun resolveStep(key: String, projectId: UUID?, overrides: TaskOverrides): TaskResolution {
-        val access = gate.requireListing(projectId)
+        val access = guard.requireListing(projectId, principal)
         return lookup.resolver.preview(key, access.projectId, overrides) ?: throw NotFoundException("TaskTemplate", key)
     }
 

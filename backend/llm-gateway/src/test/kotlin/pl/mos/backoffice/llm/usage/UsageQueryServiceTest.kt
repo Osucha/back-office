@@ -13,7 +13,8 @@ import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.security.PermissionScope
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.security.permissionScope
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageGroupBy
@@ -56,52 +57,52 @@ class UsageQueryServiceTest {
 
     @Test
     fun `the module declares usage view and project usage view`() {
-        assertThat(LlmPermissions.definitions.associate { it.key to it.scope })
+        assertThat(LlmPermissions.contribution.sets.flatMap { it.permissions }.associate { it.key to it.permissionScope })
             .containsExactlyInAnyOrderEntriesOf(mapOf("usage.view" to PermissionScope.PLATFORM, "project.usage.view" to PermissionScope.PROJECT))
     }
 
     @Test
     fun `unfiltered usage needs usage view`() {
-        val gate = FakeAuthorizationGate.permitting("usage.view")
-        UsageQueryService(ledger, gate).summary(all(), UsageGroupBy.MODEL)
+        val gate = FakeAccessGuard.permitting("usage.view")
+        UsageQueryService(ledger, gate, gate).summary(all(), UsageGroupBy.MODEL)
         assertThat(gate.checked).containsExactly("usage.view")
 
-        val member = FakeAuthorizationGate.permitting("project.usage.view", projects = setOf(project))
-        assertThatThrownBy { UsageQueryService(ledger, member).summary(all(), UsageGroupBy.MODEL) }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { UsageQueryService(ledger, member).entries(UsageQuery(null, null, benchmarkId = UUID.randomUUID()), 0, 20) }
+        val member = FakeAccessGuard.permitting("project.usage.view", projects = setOf(project))
+        assertThatThrownBy { UsageQueryService(ledger, member, member).summary(all(), UsageGroupBy.MODEL) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { UsageQueryService(ledger, member, member).entries(UsageQuery(null, null, benchmarkId = UUID.randomUUID()), 0, 20) }
             .isInstanceOf(InsufficientPermissionException::class.java)
     }
 
     @Test
     fun `a project filter needs project usage view on that project`() {
-        val member = FakeAuthorizationGate.permitting("project.usage.view", projects = setOf(project))
-        UsageQueryService(ledger, member).summary(UsageQuery(null, null, projectId = project), UsageGroupBy.DAY)
+        val member = FakeAccessGuard.permitting("project.usage.view", projects = setOf(project))
+        UsageQueryService(ledger, member, member).summary(UsageQuery(null, null, projectId = project), UsageGroupBy.DAY)
         assertThat(member.checked).containsExactly("project.usage.view@$project")
-        assertThatThrownBy { UsageQueryService(ledger, member).summary(UsageQuery(null, null, projectId = otherProject), UsageGroupBy.DAY) }
+        assertThatThrownBy { UsageQueryService(ledger, member, member).summary(UsageQuery(null, null, projectId = otherProject), UsageGroupBy.DAY) }
             .isInstanceOf(InsufficientPermissionException::class.java)
     }
 
     @Test
     fun `entries by run are allowed to members of the run's project and narrowed to it`() {
-        val member = FakeAuthorizationGate.permitting("project.usage.view", projects = setOf(project))
-        val page = UsageQueryService(ledger, member).entries(UsageQuery(null, null, runId = run), 0, 20)
+        val member = FakeAccessGuard.permitting("project.usage.view", projects = setOf(project))
+        val page = UsageQueryService(ledger, member, member).entries(UsageQuery(null, null, runId = run), 0, 20)
         assertThat(page.content).hasSize(1)
         assertThat(queries.last().projectId).isEqualTo(project)
 
-        val outsider = FakeAuthorizationGate.permitting("project.usage.view", projects = setOf(otherProject))
-        assertThatThrownBy { UsageQueryService(ledger, outsider).entries(UsageQuery(null, null, runId = run), 0, 20) }
+        val outsider = FakeAccessGuard.permitting("project.usage.view", projects = setOf(otherProject))
+        assertThatThrownBy { UsageQueryService(ledger, outsider, outsider).entries(UsageQuery(null, null, runId = run), 0, 20) }
             .isInstanceOf(InsufficientPermissionException::class.java)
     }
 
     @Test
     fun `a run without ledger rows answers empty for project readers and is denied to everyone else`() {
         val unknownRun = UUID.randomUUID()
-        val member = FakeAuthorizationGate.permitting("project.usage.view", projects = setOf(project))
-        val summary = UsageQueryService(ledger, member).summary(UsageQuery(null, null, runId = unknownRun), UsageGroupBy.MODEL)
+        val member = FakeAccessGuard.permitting("project.usage.view", projects = setOf(project))
+        val summary = UsageQueryService(ledger, member, member).summary(UsageQuery(null, null, runId = unknownRun), UsageGroupBy.MODEL)
         assertThat(summary.groups).isEmpty()
         verify(exactly = 0) { ledger.summary(any(), any()) }
 
-        assertThatThrownBy { UsageQueryService(ledger, FakeAuthorizationGate.denyAll()).summary(UsageQuery(null, null, runId = unknownRun), UsageGroupBy.MODEL) }
+        assertThatThrownBy { FakeAccessGuard.denyAll().let { UsageQueryService(ledger, it, it) }.summary(UsageQuery(null, null, runId = unknownRun), UsageGroupBy.MODEL) }
             .isInstanceOf(InsufficientPermissionException::class.java)
     }
 }

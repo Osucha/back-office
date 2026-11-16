@@ -3,7 +3,7 @@ package pl.mos.backoffice.tasks.application.service
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
 import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary.SeedResult
 import pl.mos.backoffice.tasks.application.port.out.AgentRepository

@@ -60,11 +60,12 @@ import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditResult
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.security.UserId
 
 /**
@@ -199,8 +200,8 @@ class LocalAccountSupport(
 }
 
 /** Resolves the signed-in user of a self-service call (sessions of real users only). */
-private fun selfOf(gate: AuthorizationGate, users: UserRepository): Pair<CurrentUser, User> {
-    val me = gate.currentUser()
+private fun selfOf(principal: CurrentPrincipal, users: UserRepository): Pair<CurrentUser, User> {
+    val me = principal.currentUser()
     val id = me.userId
     if (me.kind != PrincipalKind.USER || id == null) throw InvalidStateException("only a signed-in user can manage their own credentials")
     return me to (users.findById(id) ?: throw NotFoundException("user", id))
@@ -296,12 +297,12 @@ class LocalLoginService(private val local: LocalAccountSupport) : LocalLogin, Co
 class ChangePasswordService(
     private val local: LocalAccountSupport,
     private val sessions: SessionTerminator,
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
 ) : ChangePassword {
 
     @PublicOperation("users change their own password; the current password or the forced-change session proves it")
     override fun change(command: ChangePassword.Command): ChangePassword.Result {
-        val (_, user) = selfOf(gate, local.users)
+        val (_, user) = selfOf(principal, local.users)
         if (!user.authMode.allowsLocal) throw InvalidStateException("this account signs in through the identity provider; change the password there")
         val credential = local.credentials.find(user.id)
         val forced = command.forcedChange && credential?.mustChangePassword == true
@@ -333,11 +334,13 @@ class PasswordResetService(
     private val local: LocalAccountSupport,
     private val sessions: SessionTerminator,
     private val accessVersion: AccessVersion,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
 ) : PasswordResetLinks {
 
     override fun issue(userId: UserId): IssuedResetLink {
-        val me = gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
+        val me = principal.currentUser()
         val user = local.users.findById(userId) ?: throw NotFoundException("user", userId)
         if (!user.authMode.allowsLocal) throw InvalidStateException("user ${user.email} signs in through the identity provider only; switch the sign-in method to LOCAL or BOTH first")
         if (user.status == UserStatus.DEACTIVATED) throw InvalidStateException("user ${user.email} is deactivated")
@@ -389,11 +392,11 @@ class PasswordResetService(
     }
 }
 
-class MyMfaService(private val local: LocalAccountSupport, private val gate: AuthorizationGate) : ManageMyMfa {
+class MyMfaService(private val local: LocalAccountSupport, private val principal: CurrentPrincipal) : ManageMyMfa {
 
     @PublicOperation("users enrol their own authenticator")
     override fun startTotp(): TotpEnrolmentView {
-        val (_, user) = selfOf(gate, local.users)
+        val (_, user) = selfOf(principal, local.users)
         if (!user.authMode.allowsLocal) throw InvalidStateException("TOTP protects local sign-in; this account signs in through the identity provider")
         if (local.mfa.findTotp(user.id)?.isActive == true) throw InvalidStateException("TOTP is already enabled; disable it before enrolling a new device")
         val secret = TotpVerifier.newSecret()
@@ -404,7 +407,7 @@ class MyMfaService(private val local: LocalAccountSupport, private val gate: Aut
 
     @PublicOperation("users confirm their own authenticator with a current code")
     override fun confirmTotp(code: String): List<String> {
-        val (_, user) = selfOf(gate, local.users)
+        val (_, user) = selfOf(principal, local.users)
         val pending = local.mfa.findTotp(user.id) ?: throw InvalidStateException("start the TOTP enrolment first")
         if (pending.isActive) throw InvalidStateException("TOTP is already enabled")
         val now = local.clock.now()
@@ -418,7 +421,7 @@ class MyMfaService(private val local: LocalAccountSupport, private val gate: Aut
 
     @PublicOperation("users disable their own authenticator with their current password")
     override fun disableTotp(currentPassword: String) {
-        val (_, user) = selfOf(gate, local.users)
+        val (_, user) = selfOf(principal, local.users)
         if (local.settings.current().mfaRequiredForLocal && user.authMode.allowsLocal) {
             throw InvalidStateException("the platform requires MFA for local accounts; ask an administrator to reset it if you lost your device")
         }
@@ -430,7 +433,7 @@ class MyMfaService(private val local: LocalAccountSupport, private val gate: Aut
 
     @PublicOperation("users replace their own recovery codes with their current password")
     override fun regenerateRecoveryCodes(currentPassword: String): List<String> {
-        val (_, user) = selfOf(gate, local.users)
+        val (_, user) = selfOf(principal, local.users)
         local.verifyCurrentPassword(user.id, currentPassword)
         if (local.mfa.findTotp(user.id)?.isActive != true) throw InvalidStateException("enable TOTP first")
         val codes = local.newRecoveryCodes(user.id)
@@ -446,11 +449,13 @@ class LocalAccountAdminService(
     private val admins: PlatformAdmins,
     private val sessions: SessionTerminator,
     private val accessVersion: AccessVersion,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
 ) : AdminLocalAccounts {
 
     override fun setAuthMode(userId: UserId, mode: AuthMode): UserDetails {
-        val me = gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
+        val me = principal.currentUser()
         val user = load(userId)
         if (user.authMode == mode) return assembler.details(user)
         val hasPassword = local.credentials.find(userId)?.hasPassword == true
@@ -482,7 +487,7 @@ class LocalAccountAdminService(
     }
 
     override fun unlock(userId: UserId): UserDetails {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         val user = load(userId)
         val credential = local.credentials.find(userId) ?: return assembler.details(user)
         val unlocked = credential.unlocked()
@@ -499,7 +504,7 @@ class LocalAccountAdminService(
     }
 
     override fun resetMfa(userId: UserId) {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         val user = load(userId)
         val had = local.mfa.findTotp(userId)
         local.mfa.deleteAll(userId)
@@ -514,11 +519,11 @@ class LocalAccountAdminService(
     private fun load(id: UserId): User = local.users.findById(id) ?: throw NotFoundException("user", id)
 }
 
-class MySecurityService(private val local: LocalAccountSupport, private val auditLog: AuditLogReader, private val gate: AuthorizationGate) : GetMySecurity {
+class MySecurityService(private val local: LocalAccountSupport, private val auditLog: AuditLogReader, private val principal: CurrentPrincipal) : GetMySecurity {
 
     @PublicOperation("every signed-in user may read their own sign-in state")
     override fun mySecurity(): MySecurityView {
-        val (_, user) = selfOf(gate, local.users)
+        val (_, user) = selfOf(principal, local.users)
         val credential = local.credentials.find(user.id)
         val totp = local.mfa.findTotp(user.id)
         val settings = local.settings.current()

@@ -28,7 +28,7 @@ import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.runner.SandboxResources
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
@@ -48,7 +48,7 @@ class SealedCredentialsIntegrationTest {
 
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var json: JsonMapper
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
     @Autowired lateinit var pools: ManageRunnerPools
     @Autowired lateinit var runner: AgentJobService
     @Autowired lateinit var audit: RecordingAuditPort
@@ -62,7 +62,7 @@ class SealedCredentialsIntegrationTest {
 
     @BeforeEach
     fun pool() {
-        gate.user = FakeAuthorizationGate.user(platform = setOf(RunnerPermissions.FLEET_MANAGE, RunnerPermissions.FLEET_VIEW))
+        gate.user = FakeAccessGuard.user(platform = setOf(RunnerPermissions.FLEET_MANAGE.key, RunnerPermissions.FLEET_VIEW.key))
         poolId = "sealed-" + UUID.randomUUID().toString().take(8)
         pools.create(RunnerPoolInput(id = poolId, name = "Sealed $poolId", labels = mapOf("suite" to poolId), ceiling = SandboxPolicy(resources = SandboxResources(cpu = "1")), maxConcurrentJobs = 5))
         REPOSITORY_TOKENS[ref] = token

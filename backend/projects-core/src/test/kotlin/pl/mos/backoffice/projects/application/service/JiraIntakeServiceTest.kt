@@ -34,7 +34,7 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.platform.WorkKinds
 import pl.mos.backoffice.shared.platform.WorkRequest
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
 import java.time.Instant
@@ -64,8 +64,8 @@ class JiraIntakeServiceTest {
     private val intakes = InMemoryIntakes()
     private val queued = mutableListOf<WorkRequest>()
     private val audit = RecordingAuditPort()
-    private val owner = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
-    private val service = JiraIntakeService(intakes, projects, workflows, runs, access, JiraIntakePlanner(), { queued += it }, owner, audit, clock)
+    private val owner = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))
+    private val service = JiraIntakeService(intakes, projects, workflows, runs, access, JiraIntakePlanner(), { queued += it }, owner, owner, audit, clock)
 
     private fun enable() = service.update(project.id, IntakeCommand(enabled = true, pollIntervalMinutes = 5, workflowId = workflow.id))
 
@@ -75,7 +75,7 @@ class JiraIntakeServiceTest {
     @Test
     fun `configuring needs project manage, a workflow with a Jira trigger, and enqueues the first poll`() {
         assertThatThrownBy {
-            JiraIntakeService(intakes, projects, workflows, runs, access, JiraIntakePlanner(), { }, FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)), audit, clock)
+            (FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))).let { g -> JiraIntakeService(intakes, projects, workflows, runs, access, JiraIntakePlanner(), { }, g, g, audit, clock) }
                 .update(project.id, IntakeCommand(true, 5, workflow.id))
         }.isInstanceOf(InsufficientPermissionException::class.java)
         val manual = Fixtures.reviewWorkflow(project)

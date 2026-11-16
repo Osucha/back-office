@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.projects.application.port.`in`.IntegrationsStatus
 import pl.mos.backoffice.projects.application.port.out.IntegrationProbe
 import pl.mos.backoffice.projects.application.port.out.IntegrationTestOutcome
@@ -7,7 +8,6 @@ import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.Provider
-import pl.mos.backoffice.shared.security.AuthorizationGate
 
 /**
  * Implements [IntegrationsStatus] from the registered [IntegrationProbe]s (`jira`, `kubernetes`,
@@ -19,13 +19,13 @@ class IntegrationsService(
     private val llmGateway: LlmGateway,
     private val publicUrl: String,
     private val appVersion: String,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
 ) : IntegrationsStatus {
 
     private val probesByName = probes.associateBy { it.name.lowercase() }
 
     override fun status(): IntegrationsStatus.Status {
-        gate.require(ProjectsPermissions.INTEGRATIONS_VIEW)
+        guard.require(ProjectsPermissions.INTEGRATIONS_VIEW)
         val jira = describe("jira")
         val runner = describe("kubernetes")
         val langfuse = describe("langfuse")
@@ -50,7 +50,7 @@ class IntegrationsService(
     }
 
     override fun test(name: String): IntegrationTestOutcome {
-        gate.require(ProjectsPermissions.INTEGRATIONS_VIEW)
+        guard.require(ProjectsPermissions.INTEGRATIONS_VIEW)
         val probe = probesByName[name.lowercase()] ?: throw NotFoundException("Integration", name)
         return try {
             probe.test()

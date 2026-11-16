@@ -1,5 +1,9 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.ScopeFilter
+import java.util.UUID
 import pl.mos.backoffice.projects.application.port.`in`.ProjectsDashboardQuery
 import pl.mos.backoffice.projects.application.port.out.ApprovalRequestRepository
 import pl.mos.backoffice.projects.application.port.out.CiExecutionRepository
@@ -10,9 +14,6 @@ import pl.mos.backoffice.projects.domain.model.CiExecution
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.RunStatus
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.security.PublicOperation
 import java.time.Instant
 
 /**
@@ -23,7 +24,7 @@ class DashboardQueryService(
     private val runs: WorkflowRunRepository,
     private val approvals: ApprovalRequestRepository,
     private val ciExecutions: CiExecutionRepository,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
 ) : ProjectsDashboardQuery {
 
     @PublicOperation("landing page; filtered by project.view")
@@ -47,5 +48,5 @@ class DashboardQueryService(
     @PublicOperation("landing page; filtered by project.view")
     override fun pendingApprovals(limit: Int): List<ApprovalRequest> = approvals.findByStatus(ApprovalStatus.OPEN, visible(), limit)
 
-    private fun visible(): ProjectFilter = gate.projectFilter(ProjectsPermissions.PROJECT_VIEW)
+    private fun visible(): ScopeFilter<UUID> = guard.scopesWith(ProjectsPermissions.PROJECT_VIEW)
 }

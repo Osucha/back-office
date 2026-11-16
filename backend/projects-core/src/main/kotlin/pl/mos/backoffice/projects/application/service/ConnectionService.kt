@@ -1,5 +1,9 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.ScopeFilter
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageConnections
 import pl.mos.backoffice.projects.application.port.`in`.ManageConnections.ConnectionCommand
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalConnections
@@ -39,13 +43,10 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
 import java.time.LocalDate
 import java.util.UUID
 
@@ -64,7 +65,8 @@ class ConnectionService(
     private val trackers: IssueTrackerFactory,
     private val selector: ConnectionSelector,
     private val verificationPolicy: ConnectionVerificationPolicy,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
     private val events: EventPublisher = EventPublisher.NOOP,
@@ -92,20 +94,24 @@ class ConnectionService(
     private fun owner(projectId: ProjectId?): Owner = projectId?.let { Owner.OfProject(it) } ?: Owner.Platform
 
     /** Checks the manage permission of [owner] and returns the acting user. */
-    @Suppress("NOTHING_TO_INLINE") // inlined so the gate call is in the use-case method itself (DenyByDefaultArchitectureTest)
-    private inline fun requireManage(owner: Owner): CurrentUser = when (owner) {
-        Owner.Platform -> gate.require(ProjectsPermissions.CONNECTIONS_MANAGE)
-        is Owner.OfProject -> gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, owner.projectId.value)
-        is Owner.Personal -> gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+    @Suppress("NOTHING_TO_INLINE") // inlined so the guard call is in the use-case method itself (PortPermissionsRules.operationsAreGuarded)
+    private inline fun requireManage(owner: Owner): CurrentUser {
+        when (owner) {
+            Owner.Platform -> guard.require(ProjectsPermissions.CONNECTIONS_MANAGE)
+            is Owner.OfProject -> guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, owner.projectId.value)
+            is Owner.Personal -> guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        }
+        return principal.currentUser()
     }
 
     /** The caller as owner of personal connections: a person (session or personal token), with `connections.personal`. */
     @Suppress("NOTHING_TO_INLINE")
     private inline fun me(): Pair<CurrentUser, Owner.Personal> {
-        val user = gate.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        guard.require(ProjectsPermissions.CONNECTIONS_PERSONAL)
+        val user = principal.currentUser()
         val id = user.userId?.value
         if (id == null || (user.kind != PrincipalKind.USER && user.kind != PrincipalKind.PERSONAL_TOKEN)) {
-            throw InsufficientPermissionException(ProjectsPermissions.CONNECTIONS_PERSONAL)
+            throw InsufficientPermissionException(ProjectsPermissions.CONNECTIONS_PERSONAL.key)
         }
         return user to Owner.Personal(id, user.displayName)
     }
@@ -113,24 +119,24 @@ class ConnectionService(
     // ---- platform and project connections (ADR 0030)
 
     override fun listPlatform(): List<Connection> {
-        gate.require(ProjectsPermissions.INTEGRATIONS_VIEW)
+        guard.require(ProjectsPermissions.INTEGRATIONS_VIEW)
         return platformCandidates()
     }
 
     override fun listProject(projectId: ProjectId): List<Connection> {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         loadProject(projectId)
         return connections.findByProject(projectId).sortedBy { it.name.lowercase() }
     }
 
     override fun usable(projectId: ProjectId): List<Connection> {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         loadProject(projectId)
         return selector.order(connections.findByProject(projectId), platformCandidates())
     }
 
     override fun get(projectId: ProjectId?, id: ConnectionId): Connection {
-        if (projectId == null) gate.require(ProjectsPermissions.INTEGRATIONS_VIEW) else gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        if (projectId == null) guard.require(ProjectsPermissions.INTEGRATIONS_VIEW) else guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         return load(owner(projectId), id, allowLegacy = true)
     }
 
@@ -216,19 +222,19 @@ class ConnectionService(
     }
 
     override fun listAllPersonal(): List<Connection> {
-        gate.require(ProjectsPermissions.CONNECTIONS_MANAGE)
+        guard.require(ProjectsPermissions.CONNECTIONS_MANAGE)
         return connections.findAll().filter { it.personal }.sortedWith(compareBy({ it.ownerName?.lowercase() }, { it.name.lowercase() }))
     }
 
     // ---- the project's system connection and list (ADR 0035)
 
     override fun jiraConnections(projectId: ProjectId): ProjectJiraConnectionsView {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         return view(loadProject(projectId))
     }
 
     override fun updateJiraConnections(projectId: ProjectId, settings: ProjectJiraConnections): ProjectJiraConnectionsView {
-        gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
         val project = loadProject(projectId)
         val available = available(projectId).associateBy { it.id }
         settings.list().firstOrNull { it !in available }?.let { unknown ->
@@ -266,7 +272,7 @@ class ConnectionService(
 
     @PublicOperation("lists only connections the caller may manage (admin.connections.manage / project.connections.manage / own personal ones)")
     override fun expiring(): List<Connection> {
-        val user = gate.currentUser()
+        val user = principal.currentUser()
         val now = clock.now()
         val horizon = now.atZone(java.time.ZoneOffset.UTC).toLocalDate().plusDays(Connection.EXPIRY_REMINDER_DAYS)
         return connections.findAll()
@@ -305,7 +311,7 @@ class ConnectionService(
     }
 
     override fun resolve(projectId: ProjectId, capabilities: Set<ConnectionCapability>, pinned: ConnectionId?, jiraProjectKey: String?): ConnectionChoice {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         val project = loadProject(projectId)
         if (capabilities.isEmpty()) throw ValidationException("name at least one capability", "capabilities")
         val key = jiraProjectKey?.trim()?.uppercase()?.ifEmpty { null } ?: project.jiraProjectKey
@@ -434,7 +440,7 @@ class ConnectionService(
         // ADR 0035: a deleted connection leaves the system connection and the lists of the projects that named it
         val affected = when (owner) {
             is Owner.OfProject -> listOfNotNull(projects.findById(owner.projectId))
-            Owner.Platform -> projects.findAll(ProjectFilter.All)
+            Owner.Platform -> projects.findAll(ScopeFilter.All)
             is Owner.Personal -> emptyList()
         }.filter { id in it.jiraConnections.list() }
         affected.forEach { project ->

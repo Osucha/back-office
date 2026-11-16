@@ -20,7 +20,7 @@ import pl.mos.backoffice.projects.domain.model.CiExecutionId
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.usage.SortSpec
 import java.util.UUID
@@ -39,12 +39,12 @@ class CiController(
     private val startExecution: StartCiExecution,
     private val executions: CiExecutionQueries,
     private val signals: SignalRun,
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
     private val mapper: RestMapper,
 ) {
     @PostMapping("/api/v1/ci/executions")
     fun start(@RequestBody @Valid body: CiExecutionRequestDto): ResponseEntity<Any> {
-        val projectId = tokenProject(ProjectsPermissions.CI_EXECUTE)
+        val projectId = tokenProject(ProjectsPermissions.CI_EXECUTE.key)
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(mapper.toDto(startExecution.start(projectId, mapper.toCommand(body))))
     }
 
@@ -65,7 +65,7 @@ class CiController(
 
     @PostMapping("/api/v1/ci/signals")
     fun signal(@RequestBody @Valid body: CiSignalRequestDto): CiSignalResultDto {
-        val projectId = tokenProject(ProjectsPermissions.CI_SIGNAL)
+        val projectId = tokenProject(ProjectsPermissions.CI_SIGNAL.key)
         return mapper.toDto(signals.signal(mapper.toCommand(projectId, body)))
     }
 
@@ -86,7 +86,7 @@ class CiController(
 
     /** The single project a CI token principal holds [permission] on; anyone else is refused (403). */
     private fun tokenProject(permission: String): ProjectId {
-        val caller = gate.currentUser()
+        val caller = principal.currentUser()
         if (caller.kind != PrincipalKind.CI_TOKEN) throw InsufficientPermissionException(permission)
         val project = caller.projectPermissions.filterValues { permission in it }.keys.singleOrNull() ?: throw InsufficientPermissionException(permission)
         return ProjectId(project)

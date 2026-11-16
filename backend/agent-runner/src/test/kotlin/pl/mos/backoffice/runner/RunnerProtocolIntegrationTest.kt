@@ -34,7 +34,7 @@ import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.runner.SandboxResources
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.SortSpec
@@ -55,7 +55,7 @@ class RunnerProtocolIntegrationTest {
 
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var json: JsonMapper
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
     @Autowired lateinit var pools: ManageRunnerPools
     @Autowired lateinit var adminJobs: ManageAgentJobs
     @Autowired lateinit var runner: AgentJobService
@@ -70,7 +70,7 @@ class RunnerProtocolIntegrationTest {
 
     @BeforeEach
     fun pool() {
-        gate.user = FakeAuthorizationGate.user(platform = setOf(RunnerPermissions.FLEET_MANAGE, RunnerPermissions.FLEET_VIEW))
+        gate.user = FakeAccessGuard.user(platform = setOf(RunnerPermissions.FLEET_MANAGE.key, RunnerPermissions.FLEET_VIEW.key))
         poolId = "it-" + UUID.randomUUID().toString().take(8)
         selector = mapOf("suite" to poolId)
         pools.create(RunnerPoolInput(id = poolId, name = "Integration $poolId", labels = selector, ceiling = SandboxPolicy(resources = SandboxResources(cpu = "1")), maxConcurrentJobs = 5))
@@ -351,10 +351,10 @@ class RunnerProtocolIntegrationTest {
         assertThat(view.poolId).isNull()
         assertThat(view.reason).contains("no runner pool can run this job")
 
-        gate.user = FakeAuthorizationGate.user()
+        gate.user = FakeAccessGuard.user()
         mvc.perform(get("/api/v1/admin/agent-jobs/$jobId")).andExpect(status().isForbidden)
         mvc.perform(post("/api/v1/admin/runner-pools/$poolId/registration-tokens")).andExpect(status().isForbidden)
-        assertThat(gate.checked).contains(RunnerPermissions.FLEET_VIEW, RunnerPermissions.FLEET_MANAGE)
+        assertThat(gate.checked).contains(RunnerPermissions.FLEET_VIEW.key, RunnerPermissions.FLEET_MANAGE.key)
     }
 
     @Test

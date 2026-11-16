@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.projects.application.port.`in`.AssignApproval
 import pl.mos.backoffice.projects.application.port.`in`.AssignApproval.AssignCommand
 import pl.mos.backoffice.projects.application.port.`in`.AssignApproval.AssigneeCandidate
@@ -17,7 +18,7 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 
 /**
@@ -30,14 +31,16 @@ class ApprovalAssignmentService(
     private val approvals: ApprovalRequestRepository,
     private val directory: ProjectAccessDirectory,
     private val events: EventPublisher,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : AssignApproval {
 
     override fun assign(approvalId: ApprovalRequestId, command: AssignCommand): ApprovalRequest {
         val approval = load(approvalId)
-        val me = gate.require(ProjectsPermissions.RUN_ASSIGN, approval.projectId.value)
+        guard.require(ProjectsPermissions.RUN_ASSIGN, approval.projectId.value)
+        val me = principal.currentUser()
         if (approval.status != ApprovalStatus.OPEN) throw InvalidStateException("approval $approvalId is already ${approval.status}")
         val userIds = command.userIds.distinct()
         userIds.forEach { id ->
@@ -66,7 +69,7 @@ class ApprovalAssignmentService(
 
     override fun candidates(approvalId: ApprovalRequestId): List<AssigneeCandidate> {
         val approval = load(approvalId)
-        gate.require(ProjectsPermissions.RUN_ASSIGN, approval.projectId.value)
+        guard.require(ProjectsPermissions.RUN_ASSIGN, approval.projectId.value)
         val projectId = approval.projectId.value
         return directory.members(projectId)
             .filter { it.userId != null && GateApprovalPolicy.canBeAssigned(approval, it).allowed }

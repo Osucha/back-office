@@ -40,7 +40,7 @@ import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.platform.JobCredential
 import pl.mos.backoffice.shared.platform.JobTokenVerifier
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.usage.Pricing
 import pl.mos.backoffice.shared.usage.UsageLedger
 import pl.mos.backoffice.shared.usage.UsageQuery
@@ -120,7 +120,7 @@ class LlmProxyIntegrationTest : ProxyTestBase() {
     @Autowired lateinit var beans: ProxyTestBeans
     @Autowired lateinit var ledger: UsageLedger
     @Autowired lateinit var budgets: BudgetService
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
 
     private val anthropicJson = """{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],
         "usage":{"input_tokens":120,"output_tokens":30,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}"""
@@ -247,7 +247,7 @@ class LlmProxyIntegrationTest : ProxyTestBase() {
         )
         val (token, credential) = tokens.issue()
         val projectId = credential.projectId!!
-        gate.user = FakeAuthorizationGate.user(platform = setOf("admin.settings.manage"), allProjects = true)
+        gate.user = FakeAccessGuard.user(platform = setOf("admin.settings.manage"), allProjects = true)
         mvc.perform(
             MockMvcRequestBuilders.put("/api/v1/projects/$projectId/budget").contentType(MediaType.APPLICATION_JSON)
                 .content("""{"monthlyLimitUsd":1.00,"alertAtPercent":80,"hardStop":true}"""),
@@ -265,7 +265,7 @@ class LlmProxyIntegrationTest : ProxyTestBase() {
         mvc.perform(MockMvcRequestBuilders.get("/api/v1/budgets")).andExpect(status().isOk)
             .andExpect(jsonPath("$[?(@.projectId == '$projectId')].state").value("EXCEEDED"))
             .andExpect(jsonPath("$[?(@.scope == 'PLATFORM')].state").value("NO_LIMIT"))
-        gate.user = FakeAuthorizationGate.user(platform = setOf("usage.view"))
+        gate.user = FakeAccessGuard.user(platform = setOf("usage.view"))
     }
 
     @Test
@@ -289,7 +289,7 @@ class LlmProxyIntegrationTest : ProxyTestBase() {
 
     @Test
     fun `platform budget needs admin settings permission`() {
-        gate.user = FakeAuthorizationGate.user(platform = setOf("usage.view"))
+        gate.user = FakeAccessGuard.user(platform = setOf("usage.view"))
         org.assertj.core.api.Assertions.assertThatThrownBy { budgets.setPlatform(BudgetInput(BigDecimal.TEN)) }
             .isInstanceOf(pl.mos.backoffice.shared.InsufficientPermissionException::class.java)
     }

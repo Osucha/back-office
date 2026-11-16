@@ -1,5 +1,6 @@
 package pl.mos.backoffice.governance.adapter.out.insights
 
+import com.osucha.portpermissions.ScopeFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeAll
@@ -20,7 +21,6 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.security.UserId
 import java.math.BigDecimal
 import java.sql.Timestamp
@@ -56,7 +56,7 @@ class WorkflowInsightsIntegrationTest {
     private val workflow = UUID.randomUUID()
     private val from = Instant.parse("2026-11-01T00:00:00Z")
     private val to = Instant.parse("2026-12-01T00:00:00Z")
-    private val visible = ProjectFilter.Only(setOf(alpha, beta))
+    private val visible = ScopeFilter.Only(setOf(alpha, beta))
 
     @BeforeAll
     fun seed() {
@@ -151,7 +151,7 @@ class WorkflowInsightsIntegrationTest {
 
     @Test
     fun `a project workflow is measured by its own versions, linked or not`() {
-        val i = readModel.compute(WorkflowScope.Workflow(workflow), ProjectFilter.Only(setOf(alpha)), from, to)
+        val i = readModel.compute(WorkflowScope.Workflow(workflow), ScopeFilter.Only(setOf(alpha)), from, to)
         assertThat(i.totals.runs.total).isEqualTo(3)
         assertThat(i.totals.runs.cancelled).isEqualTo(1)
         assertThat(i.totals.duration.count).isEqualTo(2) // cancelled runs have no duration
@@ -163,9 +163,9 @@ class WorkflowInsightsIntegrationTest {
     @Test
     fun `headlines per library workflow honour the project filter`() {
         assertThat(readModel.libraryHeadlines(visible, from, to).getValue(library).runs.total).isEqualTo(4)
-        assertThat(readModel.libraryHeadlines(ProjectFilter.All, from, to).getValue(library).runs.total).isEqualTo(5)
-        assertThat(readModel.libraryHeadlines(ProjectFilter.Only(emptySet()), from, to)).isEmpty()
-        assertThat(readModel.compute(WorkflowScope.Library(library), ProjectFilter.Only(emptySet()), from, to).totals.runs.total).isZero()
+        assertThat(readModel.libraryHeadlines(ScopeFilter.All, from, to).getValue(library).runs.total).isEqualTo(5)
+        assertThat(readModel.libraryHeadlines(ScopeFilter.Only(emptySet()), from, to)).isEmpty()
+        assertThat(readModel.compute(WorkflowScope.Library(library), ScopeFilter.Only(emptySet()), from, to).totals.runs.total).isZero()
     }
 
     @Test

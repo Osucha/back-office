@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
+import com.osucha.portpermissions.ScopeFilter
 import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.NodeContext
@@ -19,7 +20,6 @@ import pl.mos.backoffice.projects.domain.model.ScmConnectionSelector
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.security.ProjectFilter
 import java.time.Duration
 import java.time.Instant
 
@@ -44,7 +44,7 @@ class ProjectDigestTaskExecutor(
         val since = context.run.input.parameters["since"]?.toString()?.let { runCatching { Instant.parse(it) }.getOrNull() }
             ?: now.minus(Duration.ofDays(1))
         val maxRuns = (step.config["maxRuns"] as? Number)?.toInt()?.coerceIn(1, 200) ?: DEFAULT_MAX_RUNS
-        val recent = runs.find(RunFilter(projectId = context.project.id), ProjectFilter.All, 0, maxRuns * 2).content
+        val recent = runs.find(RunFilter(projectId = context.project.id), ScopeFilter.All, 0, maxRuns * 2).content
             .filter { it.workflowId != context.run.workflowId && (it.createdAt >= since || (it.finishedAt ?: it.createdAt) >= since) }
             .take(maxRuns)
         val digest = buildString {

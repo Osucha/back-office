@@ -18,6 +18,7 @@ import pl.mos.backoffice.identity.domain.model.PersonalAccessToken
 import pl.mos.backoffice.identity.domain.model.TokenId
 import pl.mos.backoffice.identity.domain.model.User
 import pl.mos.backoffice.identity.domain.service.TokenCodec
+import pl.mos.backoffice.shared.security.PermissionModules
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
@@ -51,6 +52,7 @@ class ApplicationSmokeTest {
     @Autowired lateinit var resolveLogin: ResolveLogin
     @Autowired lateinit var tokens: PersonalTokenRepository
     @Autowired lateinit var sessions: FindByIndexNameSessionRepository<out Session>
+    @Autowired lateinit var permissionModules: PermissionModules
 
     private fun client() = restClientBuilder.baseUrl("http://localhost:$port").build()
 
@@ -72,6 +74,11 @@ class ApplicationSmokeTest {
         val generated = TokenCodec.generate()
         tokens.save(PersonalAccessToken(TokenId.new(), user.id, "smoke", generated.hash, generated.prefix, emptySet(), Instant.now().plus(Duration.ofHours(1)), Instant.now()))
         return "Bearer " + generated.plaintext
+    }
+
+    @Test
+    fun `every module contributes its permissions with unchanged keys (ADR 0066)`() {
+        assertThat(PermissionCatalogKeysTest.rows(permissionModules)).containsExactlyInAnyOrderElementsOf(PermissionCatalogKeysTest.EXPECTED)
     }
 
     @Test

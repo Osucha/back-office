@@ -1,5 +1,6 @@
 package pl.mos.backoffice.identity.adapter.`in`.rest
 
+import pl.mos.backoffice.identity.application.port.`in`.CatalogEntry
 import pl.mos.backoffice.identity.application.port.`in`.EffectivePermissionsView
 import pl.mos.backoffice.identity.application.port.`in`.GrantSetView
 import pl.mos.backoffice.identity.application.port.`in`.GroupView
@@ -24,7 +25,6 @@ import pl.mos.backoffice.identity.domain.model.UserPreferences
 import pl.mos.backoffice.identity.domain.model.UserStatus
 import pl.mos.backoffice.identity.domain.service.ProjectAccess
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.PermissionDefinition
 import pl.mos.backoffice.shared.security.PermissionScope
 import java.time.Instant
 import java.util.UUID
@@ -191,7 +191,7 @@ data class GroupInputDto(
 
 data class PermissionDefinitionDto(val key: String, val scope: PermissionScope, val module: String, val description: String) {
     companion object {
-        fun of(d: PermissionDefinition) = PermissionDefinitionDto(d.key, d.scope, d.module, d.description)
+        fun of(d: CatalogEntry) = PermissionDefinitionDto(d.key, d.scope, d.module, d.description)
     }
 }
 

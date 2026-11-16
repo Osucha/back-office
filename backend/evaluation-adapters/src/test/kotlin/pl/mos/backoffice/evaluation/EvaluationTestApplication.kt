@@ -19,7 +19,7 @@ import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.evaluation.application.EvaluationPermissions
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.IntegrationException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
@@ -65,7 +65,7 @@ class EvaluationTestApplication {
 
     /** Holds every evaluation permission by default; tests switch `user` to check denials. */
     @Bean
-    fun authorizationGate(): FakeAuthorizationGate = FakeAuthorizationGate.permitting(
+    fun accessGuard(): FakeAccessGuard = FakeAccessGuard.permitting(
         EvaluationPermissions.MODELS_VIEW, EvaluationPermissions.MODELS_MANAGE, EvaluationPermissions.EVALUATION_VIEW, EvaluationPermissions.EVALUATION_RUN,
     )
 

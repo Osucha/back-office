@@ -30,7 +30,7 @@ import pl.mos.backoffice.shared.platform.EnvelopeSigner
 import pl.mos.backoffice.shared.platform.PresignedUrl
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.platform.WorkRequest
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.Pricing
 import java.io.InputStream
@@ -135,7 +135,7 @@ class RunnerTestBeans {
     fun modelCatalog(): FakeModelCatalog = FakeModelCatalog()
 
     @Bean
-    fun authorizationGate(): FakeAuthorizationGate = FakeAuthorizationGate.denyAll()
+    fun authorizationGate(): FakeAccessGuard = FakeAccessGuard.denyAll()
 
     @Bean
     fun auditPort(): RecordingAuditPort = RecordingAuditPort()

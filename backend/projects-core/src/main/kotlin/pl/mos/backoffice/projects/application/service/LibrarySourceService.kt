@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.projects.application.port.`in`.ManageLibrarySources
 import pl.mos.backoffice.projects.application.port.`in`.ManageLibrarySources.SourceCommand
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
@@ -13,7 +14,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 
 /**
  * Sources of the library (ADR 0043): git repositories with company standards, templates or reference material that
@@ -21,23 +22,25 @@ import pl.mos.backoffice.shared.security.AuthorizationGate
  */
 class LibrarySourceService(
     private val sources: LibrarySourceRepository,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : ManageLibrarySources {
 
     override fun list(): List<LibrarySource> {
-        gate.require(ProjectsPermissions.LIBRARY_VIEW)
+        guard.require(ProjectsPermissions.LIBRARY_VIEW)
         return sources.findAll().sortedBy { it.key }
     }
 
     override fun get(id: LibrarySourceId): LibrarySource {
-        gate.require(ProjectsPermissions.LIBRARY_VIEW)
+        guard.require(ProjectsPermissions.LIBRARY_VIEW)
         return load(id)
     }
 
     override fun create(command: SourceCommand): LibrarySource {
-        val actor = gate.require(ProjectsPermissions.LIBRARY_MANAGE).actor
+        guard.require(ProjectsPermissions.LIBRARY_MANAGE)
+        val actor = principal.currentUser().actor
         val key = command.key.trim()
         if (sources.findByKey(key) != null) throw ValidationException("library source $key already exists", "key")
         val now = clock.now()
@@ -52,7 +55,8 @@ class LibrarySourceService(
     }
 
     override fun update(id: LibrarySourceId, command: SourceCommand): LibrarySource {
-        val actor = gate.require(ProjectsPermissions.LIBRARY_MANAGE).actor
+        guard.require(ProjectsPermissions.LIBRARY_MANAGE)
+        val actor = principal.currentUser().actor
         val existing = load(id)
         if (command.key.trim() != existing.key) throw ValidationException("the key of a library source cannot be changed: steps refer to it", "key")
         val saved = sources.save(
@@ -74,7 +78,7 @@ class LibrarySourceService(
     }
 
     override fun delete(id: LibrarySourceId) {
-        gate.require(ProjectsPermissions.LIBRARY_MANAGE)
+        guard.require(ProjectsPermissions.LIBRARY_MANAGE)
         val existing = load(id)
         sources.delete(id)
         audit.record(AuditEntry("LIBRARY_SOURCE_DELETE", ENTITY, id.toString(), details = mapOf("key" to existing.key)))

@@ -10,6 +10,10 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
+        // port-permissions (ADR 0066) is published on JitPack only; limited to its group.
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.Osucha.port-permissions") }
+        }
     }
 }
 

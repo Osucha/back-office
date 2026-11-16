@@ -1,35 +1,40 @@
 package pl.mos.backoffice.shared.testing
 
-import pl.mos.backoffice.shared.InsufficientPermissionException
+import com.osucha.portpermissions.Permission
+import com.osucha.portpermissions.PermissionCatalog
+import com.osucha.portpermissions.PermissionDefinition
+import com.osucha.portpermissions.ScopedPermission
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.CurrentUser
+import pl.mos.backoffice.shared.security.CurrentUserAccessGuard
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.UserId
 import java.util.UUID
 
 /**
- * Test double for [AuthorizationGate]. Use [permitting] with the exact permission a use case needs, so a
- * test fails when the use case checks the wrong constant (a permit-all fake would hide that).
+ * Test double for the `AccessGuard` and `CurrentPrincipal` ports (ADR 0066), with the production check rules
+ * of [CurrentUserAccessGuard] over a settable [user]. Use [permitting] with the exact permission a use case
+ * needs, so a test fails when the use case checks the wrong one (a permit-all fake would hide that).
  */
-class FakeAuthorizationGate(var user: CurrentUser) : AuthorizationGate {
+class FakeAccessGuard(
+    var user: CurrentUser,
+    catalog: PermissionCatalog = PermissionCatalog(emptyList()),
+) : CurrentUserAccessGuard(catalog) {
 
     /** Every permission checked, in order: `"run.approve"` or `"run.approve@<projectId>"`. */
     val checked = mutableListOf<String>()
 
     override fun currentUser(): CurrentUser = user
 
-    override fun require(permission: String): CurrentUser {
-        checked += permission
-        if (!user.can(permission)) throw InsufficientPermissionException(permission)
-        return user
+    override fun require(permission: Permission) {
+        checked += permission.key
+        super.require(permission)
     }
 
-    override fun require(permission: String, projectId: UUID): CurrentUser {
-        checked += "$permission@$projectId"
-        if (!user.can(permission, projectId)) throw InsufficientPermissionException(permission, projectId)
-        return user
+    override fun <S : Any> require(permission: ScopedPermission<S>, scope: S) {
+        checked += "${permission.key}@${permission.scopeType.key(scope)}"
+        super.require(permission, scope)
     }
 
     override fun <T> asSystem(reason: String, block: () -> T): T {
@@ -59,15 +64,20 @@ class FakeAuthorizationGate(var user: CurrentUser) : AuthorizationGate {
             allProjects = allProjects,
         )
 
-        /** Grants exactly [permissions] at platform level and on every project in [projects]. */
-        fun permitting(vararg permissions: String, projects: Set<UUID> = emptySet()) = FakeAuthorizationGate(
+        /** Grants exactly [permissions] (keys) at platform level and on every project in [projects]. */
+        fun permitting(vararg permissions: String, projects: Set<UUID> = emptySet()) = FakeAccessGuard(
             user(platform = permissions.toSet(), projects = projects.associateWith { permissions.toSet() }),
         )
 
-        /** Grants everything everywhere (platform admin with `allProjects`). Prefer [permitting]. */
-        fun permitAll(vararg platform: String) = FakeAuthorizationGate(user(platform = platform.toSet(), allProjects = true))
+        /** Grants exactly [permissions] at platform level and on every project in [projects]. */
+        fun permitting(vararg permissions: PermissionDefinition, projects: Set<UUID> = emptySet()) =
+            permitting(*permissions.map { it.key }.toTypedArray(), projects = projects)
 
-        fun denyAll() = FakeAuthorizationGate(user())
+        /** Grants everything everywhere (platform admin with `allProjects`). Prefer [permitting]. */
+        fun permitAll(vararg platform: PermissionDefinition) =
+            FakeAccessGuard(user(platform = platform.map { it.key }.toSet(), allProjects = true))
+
+        fun denyAll() = FakeAccessGuard(user())
     }
 }
 

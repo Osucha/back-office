@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.WatchPipelines
 import pl.mos.backoffice.projects.application.port.out.FailedJob
 import pl.mos.backoffice.projects.application.port.out.PipelineReport
@@ -17,7 +18,6 @@ import pl.mos.backoffice.projects.domain.model.WaitKind
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.security.SystemOperation
 
 /**
  * ADR 0052: runs waiting at a `WAIT_FOR_CI` node with `watchPipeline` are resumed by Back Office itself. The sweep reads

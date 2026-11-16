@@ -16,8 +16,9 @@ import pl.mos.backoffice.identity.domain.model.ProjectMembership
 import pl.mos.backoffice.identity.domain.model.Role
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.PermissionDefinition
+import pl.mos.backoffice.shared.security.PermissionModules
 import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.testing.testModulePermissions
 import java.time.Instant
 import java.util.UUID
 
@@ -119,7 +120,7 @@ class PermissionResolverTest {
     @Test
     fun `catalogue validator rejects unknown keys and wrong scopes`() {
         val validator = CatalogValidator(
-            listOf(PermissionDefinition("a.view", PermissionScope.PLATFORM, "t", "d"), PermissionDefinition("p.view", PermissionScope.PROJECT, "t", "d")),
+            PermissionModules(listOf(testModulePermissions("t", platform = listOf("a.view"), project = listOf("p.view")))).definitions(),
         )
         assertThatThrownBy { validator.validateGrantSet(system(Grant("nope.nope", ALLOW)), roles) }.isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { validator.validateGrantSet(system(Grant("p.view", ALLOW)), roles) }.isInstanceOf(ValidationException::class.java)

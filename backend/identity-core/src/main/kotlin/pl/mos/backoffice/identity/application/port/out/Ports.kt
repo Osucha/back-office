@@ -15,7 +15,6 @@ import pl.mos.backoffice.identity.domain.model.User
 import pl.mos.backoffice.identity.domain.model.UserStatus
 import pl.mos.backoffice.shared.audit.AuditResult
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.PermissionDefinition
 import pl.mos.backoffice.shared.security.UserId
 import pl.mos.backoffice.shared.usage.SortSpec
 import java.time.Instant
@@ -148,11 +147,6 @@ interface SessionTerminator {
 interface AccessVersion {
     fun current(): Long
     fun increment()
-}
-
-/** All permission definitions contributed by the modules (`PermissionCatalogContribution` beans). */
-fun interface PermissionCatalog {
-    fun definitions(): List<PermissionDefinition>
 }
 
 data class AuditQuery(

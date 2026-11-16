@@ -21,9 +21,10 @@ import pl.mos.backoffice.projects.domain.model.ProjectCiTokenId
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.service.DefaultWorkflows
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.security.permissionScope
 import java.util.UUID
 
 /**
@@ -36,8 +37,8 @@ class ProjectController(
     private val projects: ManageProjects,
     private val workflows: ManageWorkflows,
     private val tokens: ManageCiTokens,
-    private val gate: AuthorizationGate,
-    private val catalog: ObjectProvider<PermissionCatalogContribution>,
+    private val principal: CurrentPrincipal,
+    private val catalog: ObjectProvider<ModulePermissions>,
     private val library: ManageWorkflowLibrary,
     private val mapper: RestMapper,
 ) {
@@ -126,7 +127,7 @@ class ProjectController(
         mapper.toDto(workflows.create(ProjectId(projectId), mapper.toCommand(body)))
 
     private fun withStats(project: Project): ProjectDto {
-        val caller = gate.currentUser()
+        val caller = principal.currentUser()
         val pid = project.id.value
         val permissions = if (caller.allProjects) userProjectPermissions() else caller.projectPermissions[pid].orEmpty()
         return mapper.toDto(project, projects.stats(project.id), workflowNames(project.id), caller.projectRoles[pid].orEmpty(), permissions)
@@ -134,8 +135,8 @@ class ProjectController(
 
     /** Every project-scoped permission people can hold (CI-token-only `ci.*` excluded). */
     private fun userProjectPermissions(): Set<String> =
-        catalog.orderedStream().toList().flatMap { it.permissions() }
-            .filter { it.scope == PermissionScope.PROJECT && !it.key.startsWith("ci.") }
+        catalog.orderedStream().toList().flatMap { module -> module.sets.flatMap { it.permissions } }
+            .filter { it.permissionScope == PermissionScope.PROJECT && !it.key.startsWith("ci.") }
             .map { it.key }.toSet()
 
     private fun workflowNames(projectId: ProjectId) = workflows.listByProject(projectId).associate { it.id to it.name }

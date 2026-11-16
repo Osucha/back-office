@@ -30,7 +30,7 @@ import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -62,10 +62,10 @@ class RunStartInputTest {
         override fun palette(projectId: UUID?) = emptyList<pl.mos.backoffice.shared.tasks.TaskSummary>()
     }
     private val audit = RecordingAuditPort()
-    private val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_START, ProjectsPermissions.CI_EXECUTE, projects = setOf(project.id.value))
+    private val gate = FakeAccessGuard.permitting(ProjectsPermissions.RUN_START, ProjectsPermissions.CI_EXECUTE, projects = setOf(project.id.value))
 
-    private fun service(gate: FakeAuthorizationGate = this.gate) = RunService(
-        runs, workflows, projects, mockk<RunLogRepository>(), engine, mockk<RecordRunProgress>(), WorkflowValidator(), EventPublisher.NOOP, gate, audit,
+    private fun service(gate: FakeAccessGuard = this.gate) = RunService(
+        runs, workflows, projects, mockk<RunLogRepository>(), engine, mockk<RecordRunProgress>(), WorkflowValidator(), EventPublisher.NOOP, gate, gate, audit,
         Clock.fixed(now), runInputs = catalog,
     )
 
@@ -142,7 +142,7 @@ class RunStartInputTest {
 
     @Test
     fun `the permission check runs before the input check`() {
-        val stranger = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val stranger = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
 
         assertThatThrownBy { service(stranger).startChecked(definition.id, RunInput()) }.isInstanceOf(InsufficientPermissionException::class.java)
         verify(exactly = 0) { engine.start(any()) }

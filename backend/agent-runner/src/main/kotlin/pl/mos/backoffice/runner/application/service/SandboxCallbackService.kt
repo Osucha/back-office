@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.runner.application.port.`in`.SandboxCallbacks
 import pl.mos.backoffice.runner.application.port.`in`.SandboxEvent
 import pl.mos.backoffice.runner.application.port.`in`.UploadRequestInput
@@ -19,7 +20,6 @@ import pl.mos.backoffice.shared.platform.JobCredential
 import pl.mos.backoffice.shared.platform.JobTokenScope
 import pl.mos.backoffice.runner.domain.FleetTokens
 import pl.mos.backoffice.shared.runner.RunnerResult
-import pl.mos.backoffice.shared.security.SystemOperation
 import java.math.RoundingMode
 import java.util.UUID
 

@@ -37,7 +37,7 @@ import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.security.UserId
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import tools.jackson.databind.json.JsonMapper
@@ -51,7 +51,7 @@ class PersonalRunnerIntegrationTest {
 
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var json: JsonMapper
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
     @Autowired lateinit var personal: ManagePersonalRunner
     @Autowired lateinit var pools: ManageRunnerPools
     @Autowired lateinit var adminJobs: ManageAgentJobs
@@ -68,12 +68,12 @@ class PersonalRunnerIntegrationTest {
     }
 
     private fun signInAs(userId: UUID) {
-        gate.user = FakeAuthorizationGate.user(platform = setOf(RunnerPermissions.FLEET_PERSONAL)).copy(userId = UserId(userId))
+        gate.user = FakeAccessGuard.user(platform = setOf(RunnerPermissions.FLEET_PERSONAL.key)).copy(userId = UserId(userId))
     }
 
     private fun asAdmin(block: () -> Unit) {
         val saved = gate.user
-        gate.user = FakeAuthorizationGate.user(platform = setOf(RunnerPermissions.FLEET_MANAGE, RunnerPermissions.FLEET_VIEW))
+        gate.user = FakeAccessGuard.user(platform = setOf(RunnerPermissions.FLEET_MANAGE.key, RunnerPermissions.FLEET_VIEW.key))
         try {
             block()
         } finally {

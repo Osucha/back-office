@@ -11,7 +11,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories
 import org.testcontainers.containers.PostgreSQLContainer
 import pl.mos.backoffice.llm.usage.LlmPermissions
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.llm.ModelCatalog
 
 /** Minimal boot for llm-gateway integration tests: this module plus stand-ins for beans the `app` module provides. */
@@ -24,7 +24,7 @@ class LlmGatewayTestApplication {
     fun clock(): Clock = Clock.SYSTEM
 
     @Bean
-    fun authorizationGate(): FakeAuthorizationGate = FakeAuthorizationGate.permitting(LlmPermissions.USAGE_VIEW)
+    fun authorizationGate(): FakeAccessGuard = FakeAccessGuard.permitting(LlmPermissions.USAGE_VIEW)
 
     @Bean
     fun modelCatalog(): ModelCatalog = mockk<ModelCatalog>().also {

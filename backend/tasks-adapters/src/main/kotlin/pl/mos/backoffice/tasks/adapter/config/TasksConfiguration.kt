@@ -9,8 +9,9 @@ import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.adapter.out.persistence.TaskMappers
 import pl.mos.backoffice.tasks.application.port.`in`.ManageAgents
@@ -33,8 +34,8 @@ import tools.jackson.databind.json.JsonMapper
 /**
  * Instantiates the Task Library use cases from their ports. Beans provided to other modules:
  * `ManageTaskTemplates`, `ManageSkills`, `ManageRules`, `ManageAgents`, `SeedTaskLibrary`, the tasks
- * `PermissionCatalogContribution` and, through `TaskCatalogAdapter`, the shared `TaskCatalog` port.
- * Requires `Clock`, a Jackson 3 `JsonMapper`, `AuthorizationGate` and `AuditPort` from the application.
+ * `ModulePermissions` and, through `TaskCatalogAdapter`, the shared `TaskCatalog` port.
+ * Requires `Clock`, a Jackson 3 `JsonMapper`, `AccessGuard`, `CurrentPrincipal` and `AuditPort` from the application.
  */
 @Configuration
 @EnableConfigurationProperties(TasksProperties::class)
@@ -49,27 +50,27 @@ class TasksConfiguration {
 
     /** The Task Library permissions for the identity context's catalogue (ADR 0017). */
     @Bean
-    fun tasksPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { TasksPermissions.definitions }
+    fun tasksPermissionCatalog(): ModulePermissions = TasksPermissions.contribution
 
     @Bean
     fun manageTaskTemplates(
-        templates: TaskTemplateRepository, lookup: RepositoryLookup, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageTaskTemplates = TransactionalManageTaskTemplates(TaskTemplateService(templates, lookup, clock, gate, audit))
+        templates: TaskTemplateRepository, lookup: RepositoryLookup, clock: Clock, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort,
+    ): ManageTaskTemplates = TransactionalManageTaskTemplates(TaskTemplateService(templates, lookup, clock, guard, principal, audit))
 
     @Bean
     fun manageSkills(
-        skills: SkillRepository, agents: AgentRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageSkills = TransactionalManageSkills(SkillService(skills, agents, clock, gate, audit))
+        skills: SkillRepository, agents: AgentRepository, clock: Clock, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort,
+    ): ManageSkills = TransactionalManageSkills(SkillService(skills, agents, clock, guard, principal, audit))
 
     @Bean
     fun manageRules(
-        rules: RuleRepository, agents: AgentRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort,
-    ): ManageRules = TransactionalManageRules(RuleService(rules, agents, clock, gate, audit))
+        rules: RuleRepository, agents: AgentRepository, clock: Clock, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort,
+    ): ManageRules = TransactionalManageRules(RuleService(rules, agents, clock, guard, principal, audit))
 
     @Bean
     fun manageAgents(
-        agents: AgentRepository, clock: Clock, gate: AuthorizationGate, audit: AuditPort, lookup: RepositoryLookup,
-    ): ManageAgents = TransactionalManageAgents(AgentService(agents, clock, gate, audit, lookup))
+        agents: AgentRepository, clock: Clock, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, lookup: RepositoryLookup,
+    ): ManageAgents = TransactionalManageAgents(AgentService(agents, clock, guard, principal, audit, lookup))
 
     @Bean
     fun seedTaskLibrary(

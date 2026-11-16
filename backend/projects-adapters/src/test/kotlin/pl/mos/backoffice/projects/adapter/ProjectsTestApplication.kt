@@ -220,7 +220,7 @@ open class ProjectsStandIns {
 
     // ---- identity context stand-ins (see TestSecurity.kt)
 
-    @Bean fun authorizationGate(): TestAuthorizationGate = TestAuthorizationGate()
+    @Bean fun accessGuard(): TestAccessGuard = TestAccessGuard()
 
     @Bean fun auditPort(): ConcurrentRecordingAuditPort = ConcurrentRecordingAuditPort()
 
@@ -229,6 +229,6 @@ open class ProjectsStandIns {
     @Bean fun projectAccessDirectory(): FakeProjectAccessDirectory = FakeProjectAccessDirectory()
 
     @Bean
-    fun testAuthenticationFilter(gate: TestAuthorizationGate, verifier: CiTokenVerifier): FilterRegistrationBean<TestAuthenticationFilter> =
+    fun testAuthenticationFilter(gate: TestAccessGuard, verifier: CiTokenVerifier): FilterRegistrationBean<TestAuthenticationFilter> =
         FilterRegistrationBean(TestAuthenticationFilter(gate, verifier)).apply { addUrlPatterns("/api/*", "/ci/*") }
 }

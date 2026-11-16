@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.projects.application.port.`in`.CheckAgentCoherence
 import pl.mos.backoffice.projects.application.port.`in`.CoherenceFinding
 import pl.mos.backoffice.projects.application.port.`in`.CoherenceQuote
@@ -20,7 +21,7 @@ import pl.mos.backoffice.shared.llm.ModelDefaults
 import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.StepKind
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentText
 import pl.mos.backoffice.shared.tasks.AgentProfile
 import pl.mos.backoffice.shared.tasks.TaskCatalog
@@ -44,18 +45,20 @@ class AgentCoherenceService(
     private val llm: LlmGateway,
     private val models: ModelCatalog,
     private val defaults: ModelDefaults?,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : CheckAgentCoherence {
 
     override fun check(agentId: UUID, projectId: ProjectId?): CoherenceReport {
-        val user = gate.require(ProjectsPermissions.LIBRARY_VIEW)
-        projectId?.let { gate.require(ProjectsPermissions.PROJECT_VIEW, it.value) }
+        guard.require(ProjectsPermissions.LIBRARY_VIEW)
+        val user = principal.currentUser()
+        projectId?.let { guard.require(ProjectsPermissions.PROJECT_VIEW, it.value) }
         val project = projectId?.let { projects.findById(it) ?: throw NotFoundException("Project", it) }
         val profile = catalog.agentProfileById(agentId, projectId?.value) ?: throw NotFoundException("Agent", agentId)
         profile.projectId?.let { own ->
             if (projectId != null && own != projectId.value) throw NotFoundException("Agent", agentId)
-            gate.require(ProjectsPermissions.PROJECT_VIEW, own)
+            guard.require(ProjectsPermissions.PROJECT_VIEW, own)
         }
         val model = model()
         val document = document(profile, project)

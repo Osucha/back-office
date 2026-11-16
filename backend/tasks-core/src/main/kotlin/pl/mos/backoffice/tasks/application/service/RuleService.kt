@@ -6,7 +6,8 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.AgentRepository
@@ -24,12 +25,14 @@ class RuleService(
     private val rules: RuleRepository,
     private val agents: AgentRepository,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : ManageRules {
 
     override fun create(command: Rule.Content): Rule {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val key = command.key ?: Keys.unique(Keys.fromName(command.name, KEY_PREFIX)) { rules.existsByKey(it) }
         if (rules.findByKeyAndScope(key, command.scope) != null) {
             throw InvalidStateException("rule $key already exists in scope ${command.scope.describe()}")
@@ -42,9 +45,10 @@ class RuleService(
     }
 
     override fun update(id: RuleId, command: Rule.Content): Rule {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val existing = load(id)
-        if (existing.scope != command.scope) gate.requireWrite(existing.scope)
+        if (existing.scope != command.scope) guard.requireWrite(existing.scope)
         val key = command.key ?: existing.key
         rules.findByKeyAndScope(key, command.scope)?.let { clash ->
             if (clash.id != id) throw InvalidStateException("rule $key already exists in scope ${command.scope.describe()}")
@@ -69,12 +73,12 @@ class RuleService(
 
     override fun get(id: RuleId): Rule {
         val rule = load(id)
-        gate.requireRead(rule.scope)
+        guard.requireRead(rule.scope)
         return rule
     }
 
     override fun list(projectId: UUID?): List<Rule> {
-        val access = gate.requireListing(projectId)
+        val access = guard.requireListing(projectId, principal)
         return rules.findVisible(access.projectId)
             .filter { access.allows(it.scope) }
             .sortedWith(compareBy({ it.name.lowercase() }, { it.scope.projectId != null }))
@@ -82,7 +86,7 @@ class RuleService(
 
     override fun delete(id: RuleId) {
         val existing = load(id)
-        gate.requireWrite(existing.scope)
+        guard.requireWrite(existing.scope)
         if (agents.existsUsingRule(existing.key)) throw InvalidStateException("rule ${existing.key} is used by agents and cannot be deleted")
         rules.delete(id)
         audit.record(entry("RULE_DELETE", existing, mapOf("key" to existing.key, "scope" to existing.scope.describe())))

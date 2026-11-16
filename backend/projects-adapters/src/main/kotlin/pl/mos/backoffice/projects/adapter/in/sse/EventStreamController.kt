@@ -12,7 +12,7 @@ import pl.mos.backoffice.projects.adapter.`in`.rest.DomainEventEnvelopeDto
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.shared.platform.EventStream
 import pl.mos.backoffice.shared.platform.StoredEvent
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import tools.jackson.databind.json.JsonMapper
@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap
 @RestController
 class EventStreamController(
     private val json: JsonMapper,
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
     private val events: EventStream,
     /** Refreshes a subscriber's access when an event is not visible with the one captured at subscription; null in tests. */
     private val directory: ProjectAccessDirectory? = null,
@@ -55,7 +55,7 @@ class EventStreamController(
         @RequestParam(value = "lastEventId", required = false) lastEventIdParam: String?,
     ): SseEmitter {
         val lastEventId = lastEventIdHeader?.takeIf { it.isNotBlank() } ?: lastEventIdParam
-        val subscriber = Subscriber(SseEmitter(0L), gate.currentUser())
+        val subscriber = Subscriber(SseEmitter(0L), principal.currentUser())
         val emitter = subscriber.emitter
         emitter.onCompletion { drop(subscriber) }
         emitter.onTimeout { drop(subscriber) }

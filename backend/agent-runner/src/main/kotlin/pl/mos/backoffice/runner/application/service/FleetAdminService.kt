@@ -1,5 +1,7 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.runner.application.port.`in`.AgentJobFilter
 import pl.mos.backoffice.runner.application.port.`in`.AgentJobView
 import pl.mos.backoffice.runner.application.port.`in`.IssuedRegistrationToken
@@ -30,8 +32,7 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.runner.SandboxPolicy
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.usage.PageOf
 import java.util.UUID
 
@@ -43,24 +44,25 @@ class FleetAdminService(
     private val jobs: AgentJobStore,
     private val lifecycle: JobLifecycle,
     private val tx: Transactions,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : ManageRunnerPools, ManageRunners, ManageAgentJobs {
 
     // ---------------------------------------------------------------- pools
 
     override fun list(): List<RunnerPoolView> {
-        gate.require(RunnerPermissions.FLEET_VIEW)
+        guard.require(RunnerPermissions.FLEET_VIEW)
         return poolViews(pools.findAll())
     }
 
     override fun get(poolId: String): RunnerPoolView {
-        gate.require(RunnerPermissions.FLEET_VIEW)
+        guard.require(RunnerPermissions.FLEET_VIEW)
         return poolViews(listOf(pool(poolId))).single()
     }
 
     override fun create(input: RunnerPoolInput): RunnerPoolView {
-        gate.require(RunnerPermissions.FLEET_MANAGE)
+        guard.require(RunnerPermissions.FLEET_MANAGE)
         validate(input)
         val created = tx.inTransaction {
             if (pools.find(input.id) != null) throw InvalidStateException("runner pool ${input.id} exists already")
@@ -77,7 +79,7 @@ class FleetAdminService(
     }
 
     override fun update(poolId: String, input: RunnerPoolInput): RunnerPoolView {
-        gate.require(RunnerPermissions.FLEET_MANAGE)
+        guard.require(RunnerPermissions.FLEET_MANAGE)
         if (input.id != poolId) throw ValidationException("the pool id cannot be changed", "id")
         validate(input)
         val updated = tx.inTransaction {
@@ -107,7 +109,7 @@ class FleetAdminService(
     }
 
     override fun delete(poolId: String) {
-        gate.require(RunnerPermissions.FLEET_MANAGE)
+        guard.require(RunnerPermissions.FLEET_MANAGE)
         tx.inTransaction {
             pool(poolId)
             if (jobs.hasLiveJobs(poolId)) throw InvalidStateException("runner pool $poolId still has queued or running agent jobs; cancel them or wait")
@@ -138,7 +140,8 @@ class FleetAdminService(
     }
 
     override fun issueRegistrationToken(poolId: String): IssuedRegistrationToken {
-        val user = gate.require(RunnerPermissions.FLEET_MANAGE)
+        guard.require(RunnerPermissions.FLEET_MANAGE)
+        val user = principal.currentUser()
         return tx.inTransaction {
             val pool = pool(poolId)
             val now = lifecycle.now()
@@ -153,14 +156,14 @@ class FleetAdminService(
     // ---------------------------------------------------------------- runners
 
     override fun list(poolId: String?): List<RunnerView> {
-        gate.require(RunnerPermissions.FLEET_VIEW)
+        guard.require(RunnerPermissions.FLEET_VIEW)
         val now = lifecycle.now()
         val running = jobs.countActiveByRunners()
         return nodes.list(poolId).map { runnerView(it, running[it.id] ?: 0, it.online(now, lifecycle.settings.onlineWindow)) }
     }
 
     override fun revoke(runnerId: UUID) {
-        gate.require(RunnerPermissions.FLEET_MANAGE)
+        guard.require(RunnerPermissions.FLEET_MANAGE)
         tx.inTransaction {
             val node = nodes.find(runnerId) ?: throw NotFoundException("Runner", runnerId)
             if (node.revokedAt != null) return@inTransaction
@@ -172,19 +175,20 @@ class FleetAdminService(
     // ---------------------------------------------------------------- agent jobs
 
     override fun list(filter: AgentJobFilter, page: Int, size: Int): PageOf<AgentJobView> {
-        gate.require(RunnerPermissions.FLEET_VIEW)
+        guard.require(RunnerPermissions.FLEET_VIEW)
         val result = jobs.page(filter, page.coerceAtLeast(0), size.coerceIn(1, MAX_PAGE_SIZE))
         val online = onlineByPool()
         return PageOf(result.content.map { jobView(it, online) }, result.page, result.size, result.totalElements)
     }
 
     override fun get(jobId: RunnerJobId): AgentJobView {
-        gate.require(RunnerPermissions.FLEET_VIEW)
+        guard.require(RunnerPermissions.FLEET_VIEW)
         return jobView(JobLifecycle.existing(jobs.find(jobId), jobId), onlineByPool())
     }
 
     override fun cancel(jobId: RunnerJobId) {
-        val user = gate.require(RunnerPermissions.FLEET_MANAGE)
+        guard.require(RunnerPermissions.FLEET_MANAGE)
+        val user = principal.currentUser()
         tx.inTransaction {
             val job = JobLifecycle.existing(jobs.lock(jobId), jobId)
             when {

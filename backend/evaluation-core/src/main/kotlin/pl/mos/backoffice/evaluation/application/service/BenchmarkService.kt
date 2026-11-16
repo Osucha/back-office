@@ -31,8 +31,9 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
@@ -57,14 +58,16 @@ class BenchmarkService(
     private val executor: AttemptExecutor,
     private val runner: AgentRunner,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     /** ADR 0059: the agents of candidates (global agents of the Task Library); null = only benchmarks of models. */
     private val agents: TaskCatalog? = null,
 ) : ManageBenchmarks, RecoverBenchmarks, EvaluationDashboardQuery {
 
     override fun create(command: BenchmarkCommand): BenchmarkDetails {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val suite = suites.findById(command.suiteId) ?: throw NotFoundException("TaskSuite", command.suiteId)
         val candidates = resolveCandidates(command)
         if (candidates.isEmpty() && command.modelProfileIds.isEmpty()) {
@@ -108,7 +111,8 @@ class BenchmarkService(
     }
 
     override fun start(id: BenchmarkId): BenchmarkDetails {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val benchmark = refreshCandidates(load(id))
         val suite = suites.findById(benchmark.suiteId) ?: throw NotFoundException("TaskSuite", benchmark.suiteId)
         val models = resolveModels(benchmark.modelProfileIds)
@@ -175,7 +179,8 @@ class BenchmarkService(
     }
 
     override fun executionTargets(): List<ExecutionTarget> {
-        val user = gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
+        val user = principal.currentUser()
         return runner.executionTargets(user.userId?.value)
     }
 
@@ -236,7 +241,8 @@ class BenchmarkService(
     }
 
     override fun cancel(id: BenchmarkId): BenchmarkDetails {
-        val user = gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
+        val user = principal.currentUser()
         val benchmark = load(id)
         val cancelled = benchmarks.save(benchmark.cancel(clock.now(), user.actor))
         val jobs = benchmarks.findAttemptsByStatus(id, setOf(AttemptStatus.RUNNING, AttemptStatus.JUDGING)).mapNotNull { it.runnerJobId }
@@ -246,17 +252,17 @@ class BenchmarkService(
     }
 
     override fun get(id: BenchmarkId): BenchmarkDetails {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         return details(load(id))
     }
 
     override fun list(): List<BenchmarkDetails> {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         return benchmarks.findAll().sortedByDescending { it.createdAt }.map { details(it) }
     }
 
     override fun delete(id: BenchmarkId) {
-        gate.require(EvaluationPermissions.EVALUATION_RUN)
+        guard.require(EvaluationPermissions.EVALUATION_RUN)
         val benchmark = load(id)
         if (benchmark.status == BenchmarkStatus.RUNNING) throw InvalidStateException("benchmark $id is running; cancel it first")
         benchmarks.delete(id)
@@ -264,21 +270,21 @@ class BenchmarkService(
     }
 
     override fun attempts(id: BenchmarkId, taskId: EvalTaskId?, modelProfileId: ModelProfileId?): List<Attempt> {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         load(id)
         return benchmarks.findAttempts(id, taskId, modelProfileId)
             .sortedWith(compareBy<Attempt> { it.taskName }.thenBy { it.repetition }.thenBy { it.modelDisplayName })
     }
 
     override fun attempt(id: BenchmarkId, attemptId: AttemptId): Attempt {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         val attempt = benchmarks.findAttempt(attemptId) ?: throw NotFoundException("Attempt", attemptId)
         if (attempt.benchmarkId != id) throw NotFoundException("Attempt", attemptId)
         return attempt
     }
 
     override fun leaderboard(id: BenchmarkId): Leaderboard {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         val benchmark = load(id)
         // ADR 0065: candidates whose model runs on a subscription (a deleted profile counts as an API model)
         val subscription = benchmark.modelProfileIds.filter { profiles.findById(it)?.viaClaudeCodeLogin == true }.toSet()
@@ -336,7 +342,7 @@ class BenchmarkService(
     /** Dashboard tile: callers without `evaluation.view` see 0 instead of a failing landing page. */
     override fun runningBenchmarks(): Int {
         try {
-            gate.require(EvaluationPermissions.EVALUATION_VIEW)
+            guard.require(EvaluationPermissions.EVALUATION_VIEW)
         } catch (_: InsufficientPermissionException) {
             return 0
         }
@@ -344,7 +350,7 @@ class BenchmarkService(
     }
 
     override fun recentBenchmarks(limit: Int): List<EvaluationDashboardQuery.BenchmarkSummaryView> {
-        gate.require(EvaluationPermissions.EVALUATION_VIEW)
+        guard.require(EvaluationPermissions.EVALUATION_VIEW)
         return benchmarks.findAll().sortedByDescending { it.createdAt }.take(limit).map { b ->
             val attempts = benchmarks.findAttempts(b.id)
             val byId = profiles.findAll().associateBy { it.id }

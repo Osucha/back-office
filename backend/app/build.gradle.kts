@@ -48,6 +48,7 @@ dependencies {
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.archunit)
+    testImplementation(libs.port.permissions.archunit)
     testImplementation(libs.spring.ai.mcp.client)
 }
 

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.adapter.`in`.web
 
+import com.osucha.portpermissions.AccessGuard
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -26,7 +27,6 @@ import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.time.Duration
 import java.util.UUID
 
@@ -43,7 +43,7 @@ class RunnerProtocolController(
     private val callbacks: SandboxCallbacks,
     private val signer: AssignmentSigner,
     private val signal: LeaseSignal,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val clock: Clock,
     private val longPoll: LongPollSettings,
 ) {
@@ -53,7 +53,7 @@ class RunnerProtocolController(
 
     @PostMapping("/register")
     fun register(@RequestBody body: RunnerRegistrationJson): ResponseEntity<RunnerRegisteredJson> {
-        val registered = gate.asSystem(REASON) {
+        val registered = guard.asSystem(REASON) {
             protocol.register(
                 RunnerRegistrationRequest(
                     body.registrationToken, body.name, body.version, body.cluster,
@@ -66,7 +66,7 @@ class RunnerProtocolController(
 
     @GetMapping("/config")
     fun config(request: HttpServletRequest): RunnerConfigJson {
-        val config = gate.asSystem(REASON) { protocol.config(RunnerTokenFilter.runner(request)) }
+        val config = guard.asSystem(REASON) { protocol.config(RunnerTokenFilter.runner(request)) }
         return RunnerConfigJson(config.poolId, SandboxPolicyJson.of(config.ceiling), config.allowedImages, config.warmPoolSize, config.gateway.toJson(), config.signingKeys)
     }
 
@@ -77,7 +77,7 @@ class RunnerProtocolController(
         val wait = Duration.ofSeconds((body?.waitSeconds ?: DEFAULT_WAIT_SECONDS).toLong().coerceAtLeast(0)).coerceAtMost(longPoll.maxWait)
         val deadline = clock.now().plus(wait)
         while (true) {
-            val leased = gate.asSystem(REASON) { protocol.lease(runner, body?.maxJobs ?: 1, body?.freeSlots, body?.let { RunnerReport(it.harnesses, it.claudeLogin) }) }
+            val leased = guard.asSystem(REASON) { protocol.lease(runner, body?.maxJobs ?: 1, body?.freeSlots, body?.let { RunnerReport(it.harnesses, it.claudeLogin) }) }
             if (leased.isNotEmpty()) return leased.map(signer::assignment)
             val remaining = Duration.between(clock.now(), deadline)
             if (remaining.isNegative || remaining.isZero) return emptyList()
@@ -92,7 +92,7 @@ class RunnerProtocolController(
             "RUNNING" -> AgentJobStatus.RUNNING
             else -> throw ValidationException("phase must be STARTING or RUNNING", "phase")
         }
-        val ack = gate.asSystem(REASON) {
+        val ack = guard.asSystem(REASON) {
             protocol.heartbeat(RunnerTokenFilter.runner(request), RunnerJobId(jobId), JobHeartbeatInput(phase, body.sandboxName, body.node, body.cpuMillis, body.memoryBytes))
         }
         return JobHeartbeatResponseJson(ack.leaseExpiresAt, ack.cancelRequested)
@@ -101,14 +101,14 @@ class RunnerProtocolController(
     @PostMapping("/jobs/{jobId}/complete")
     fun complete(request: HttpServletRequest, @PathVariable jobId: UUID, @RequestBody body: JobCompletionJson): ResponseEntity<Void> {
         val report = body.toReport()
-        gate.asSystem(REASON) { protocol.complete(RunnerTokenFilter.runner(request), RunnerJobId(jobId), report) }
+        guard.asSystem(REASON) { protocol.complete(RunnerTokenFilter.runner(request), RunnerJobId(jobId), report) }
         return ResponseEntity.accepted().build()
     }
 
     /** Presigned object-storage URL; called from the sandbox with its job token. */
     @PostMapping("/jobs/{jobId}/uploads")
     fun upload(request: HttpServletRequest, @PathVariable jobId: UUID, @RequestBody body: UploadRequestJson): UploadTargetJson {
-        val target = gate.asSystem(REASON) {
+        val target = guard.asSystem(REASON) {
             callbacks.createUpload(RunnerTokenFilter.credential(request), RunnerJobId(jobId), UploadRequestInput(body.name, body.contentType, body.sizeBytes, body.sha256))
         }
         return UploadTargetJson(target.url, target.method, target.headers, target.blobKey, target.expiresAt)
@@ -117,21 +117,21 @@ class RunnerProtocolController(
     /** ADR 0044: the run workspaces this runner holds; the answer names the ones it deletes. */
     @PostMapping("/workspaces/sync")
     fun syncWorkspaces(request: HttpServletRequest, @RequestBody(required = false) body: WorkspaceSyncJson?): WorkspaceSyncResultJson {
-        val release = gate.asSystem(REASON) { protocol.syncWorkspaces(RunnerTokenFilter.runner(request), body?.held.orEmpty()) }
+        val release = guard.asSystem(REASON) { protocol.syncWorkspaces(RunnerTokenFilter.runner(request), body?.held.orEmpty()) }
         return WorkspaceSyncResultJson(release)
     }
 
     /** ADR 0051: the controller's X25519 public key (base64, 32 bytes) its job tokens are sealed to; idempotent. */
     @PutMapping("/key")
     fun setKey(request: HttpServletRequest, @RequestBody body: RunnerPublicKeyJson): ResponseEntity<Void> {
-        gate.asSystem(REASON) { protocol.setPublicKey(RunnerTokenFilter.runner(request), body.publicKey) }
+        guard.asSystem(REASON) { protocol.setPublicKey(RunnerTokenFilter.runner(request), body.publicKey) }
         return ResponseEntity.noContent().build()
     }
 
     /** ADR 0051: the project repository tokens named in the job's signed spec, sealed to the runner's key, once per lease. */
     @PostMapping("/jobs/{jobId}/credentials")
     fun credentials(request: HttpServletRequest, @PathVariable jobId: UUID): JobCredentialsJson {
-        val release = gate.asSystem(REASON) { protocol.releaseCredentials(RunnerTokenFilter.runner(request), RunnerJobId(jobId)) }
+        val release = guard.asSystem(REASON) { protocol.releaseCredentials(RunnerTokenFilter.runner(request), RunnerJobId(jobId)) }
         return JobCredentialsJson(
             release.expiresAt.toString(),
             release.credentials.map { SealedCredentialJson(it.ref, it.repository, it.capability, it.sealed.enc, it.sealed.ciphertext, it.connector) },
@@ -141,7 +141,7 @@ class RunnerProtocolController(
     /** Queue depth for autoscaling (KEDA metrics-api scaler). */
     @GetMapping("/pools/{poolId}/queue")
     fun queue(request: HttpServletRequest, @PathVariable poolId: String): QueueDepthJson {
-        val depth = gate.asSystem(REASON) { protocol.queueDepth(RunnerTokenFilter.runner(request), poolId) }
+        val depth = guard.asSystem(REASON) { protocol.queueDepth(RunnerTokenFilter.runner(request), poolId) }
         return QueueDepthJson(depth.queued, depth.running)
     }
 
@@ -157,11 +157,11 @@ class RunnerProtocolController(
  */
 @RestController
 @RequestMapping("/api/v1/internal/runner/jobs/{jobId}")
-class SandboxCallbackController(private val callbacks: SandboxCallbacks, private val gate: AuthorizationGate, private val clock: Clock) {
+class SandboxCallbackController(private val callbacks: SandboxCallbacks, private val guard: AccessGuard, private val clock: Clock) {
 
     @PostMapping("/events")
     fun events(request: HttpServletRequest, @PathVariable jobId: UUID, @RequestBody body: List<RunnerEventJson>): ResponseEntity<Void> {
-        gate.asSystem(REASON) {
+        guard.asSystem(REASON) {
             callbacks.appendEvents(RunnerTokenFilter.credential(request), RunnerJobId(jobId), body.map { SandboxEvent(it.type, it.message, it.at) })
         }
         return ResponseEntity.accepted().build()
@@ -169,14 +169,14 @@ class SandboxCallbackController(private val callbacks: SandboxCallbacks, private
 
     @PostMapping("/result")
     fun result(request: HttpServletRequest, @PathVariable jobId: UUID, @RequestBody body: RunnerResultJson): ResponseEntity<Void> {
-        gate.asSystem(REASON) { callbacks.postResult(RunnerTokenFilter.credential(request), RunnerJobId(jobId), body.toRunnerResult(clock.now())) }
+        guard.asSystem(REASON) { callbacks.postResult(RunnerTokenFilter.credential(request), RunnerJobId(jobId), body.toRunnerResult(clock.now())) }
         return ResponseEntity.accepted().build()
     }
 
     /** The gateway-only token for the coding agent (ADR 0029); the runner keeps the job token to itself. */
     @PostMapping("/agent-token")
     fun agentToken(request: HttpServletRequest, @PathVariable jobId: UUID): ResponseEntity<Map<String, String>> {
-        val token = gate.asSystem(REASON) { callbacks.issueAgentToken(RunnerTokenFilter.credential(request), RunnerJobId(jobId)) }
+        val token = guard.asSystem(REASON) { callbacks.issueAgentToken(RunnerTokenFilter.credential(request), RunnerJobId(jobId)) }
         return ResponseEntity.status(201).body(mapOf("token" to token, "scope" to "GATEWAY"))
     }
 

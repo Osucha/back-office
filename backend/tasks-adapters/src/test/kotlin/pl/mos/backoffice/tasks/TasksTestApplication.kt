@@ -16,7 +16,7 @@ import pl.mos.backoffice.shared.DomainEvent
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.IntegrationException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.shared.InvalidStateException
@@ -44,8 +44,8 @@ class TasksTestApplication {
 
     /** A platform admin by default; tests switch `user` to check denials. */
     @Bean
-    fun authorizationGate(): FakeAuthorizationGate =
-        FakeAuthorizationGate.permitAll(TasksPermissions.LIBRARY_VIEW, TasksPermissions.LIBRARY_MANAGE)
+    fun accessGuard(): FakeAccessGuard =
+        FakeAccessGuard.permitAll(TasksPermissions.LIBRARY_VIEW, TasksPermissions.LIBRARY_MANAGE)
 
     @Bean
     fun auditPort(): RecordingAuditPort = RecordingAuditPort()

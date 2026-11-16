@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.out.langgraph
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -16,7 +17,6 @@ import pl.mos.backoffice.shared.platform.WorkHandler
 import pl.mos.backoffice.shared.platform.WorkItem
 import pl.mos.backoffice.shared.platform.WorkKinds
 import pl.mos.backoffice.shared.platform.WorkOutcome
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.time.Duration
 
 /** [WorkHandler] of `RUN_ADVANCE`: drives one workflow run on the worker holding the item's lease. */
@@ -41,7 +41,7 @@ class RunRecovery(
     private val runs: WorkflowRunRepository,
     private val engine: WorkflowEngine,
     private val props: PipelinesProperties,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val lock: ObjectProvider<ClusterLock>,
 ) {
     private val log = LoggerFactory.getLogger(RunRecovery::class.java)
@@ -63,7 +63,7 @@ class RunRecovery(
     fun scan() {
         try {
             lock.getIfAvailable { ClusterLock.LOCAL }.runExclusively("workflow-recovery", Duration.ofMinutes(5), Duration.ofSeconds(30)) {
-                gate.asSystem("workflow recovery") {
+                guard.asSystem("workflow recovery") {
                     val inFlight = runs.findByStatus(setOf(RunStatus.RUNNING))
                     if (inFlight.isNotEmpty()) log.info("recovery scan: re-driving RUNNING workflow runs count={}", inFlight.size)
                     engine.recoverAll(inFlight)

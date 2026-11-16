@@ -28,7 +28,7 @@ import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.RunInputType
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 class WorkflowServiceTest {
@@ -44,8 +44,8 @@ class WorkflowServiceTest {
         override fun evaluate(expression: String, view: WorkflowStateView): Boolean = true
     }
     private val audit = RecordingAuditPort()
-    private val editor = FakeAuthorizationGate.permitting(ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
-    private val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+    private val editor = FakeAccessGuard.permitting(ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
+    private val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
 
     init {
         every { workflows.save(any()) } answers { firstArg<WorkflowDefinition>().also { store[it.id] = it } }
@@ -56,7 +56,7 @@ class WorkflowServiceTest {
 
     private fun id(arg: Any): WorkflowDefinitionId = arg as? WorkflowDefinitionId ?: WorkflowDefinitionId(arg as java.util.UUID)
 
-    private fun service(gate: FakeAuthorizationGate) = WorkflowService(workflows, projects, runs, WorkflowValidator(), catalog, expressions, gate, audit, Clock.fixed(now))
+    private fun service(gate: FakeAccessGuard) = WorkflowService(workflows, projects, runs, WorkflowValidator(), catalog, expressions, gate, gate, audit, Clock.fixed(now))
 
     private val command = WorkflowCommand(
         name = "minimal",
@@ -91,7 +91,7 @@ class WorkflowServiceTest {
         assertThat(service(viewer).runInputs(definition.id)).containsExactly(issue)
         assertThat(viewer.checked).containsExactly("project.view@${project.id}")
 
-        val stranger = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW)
+        val stranger = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW)
         assertThatThrownBy { service(stranger).runInputs(definition.id) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("project.view") }
         assertThatThrownBy { service(viewer).runInputs(WorkflowDefinitionId.new()) }.isInstanceOf(pl.mos.backoffice.shared.NotFoundException::class.java)
@@ -104,7 +104,7 @@ class WorkflowServiceTest {
         assertThat(service(viewer).listByProject(project.id)).containsExactly(created)
         assertThat(service(viewer).validate(project.id, command).valid).isTrue()
         assertThat(service(viewer).palette(project.id).controlNodes).isNotEmpty
-        assertThat(service(FakeAuthorizationGate.denyAll()).validateExpression("true").valid).isTrue()
+        assertThat(service(FakeAccessGuard.denyAll()).validateExpression("true").valid).isTrue()
 
         listOf<() -> Unit>(
             { service(viewer).create(project.id, command) },
@@ -116,6 +116,6 @@ class WorkflowServiceTest {
         }
         assertThatThrownBy { service(editor).get(created.id) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("project.view") }
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).palette(project.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).palette(project.id) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 }

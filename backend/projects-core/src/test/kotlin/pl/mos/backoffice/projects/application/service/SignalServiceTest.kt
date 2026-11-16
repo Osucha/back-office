@@ -23,7 +23,7 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.DomainEvent
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 class SignalServiceTest {
@@ -38,7 +38,7 @@ class SignalServiceTest {
     private val gate = Fixtures.ciGate(project.id, project.key)
     private val service = service(gate)
 
-    private fun service(gate: FakeAuthorizationGate) = SignalService(runs, engine, EventPublisher { events += it }, gate, audit, Clock.fixed(now))
+    private fun service(gate: FakeAccessGuard) = SignalService(runs, engine, EventPublisher { events += it }, gate, audit, Clock.fixed(now))
 
     private fun waiting(branch: String?, createdAt: java.time.Instant = now): WorkflowRun {
         var run = Fixtures.runningRun(project, definition).copy(createdAt = createdAt)
@@ -77,7 +77,7 @@ class SignalServiceTest {
     fun `CI signals need ci signal on the project, manual signals need run signal`() {
         val run = waiting("feature/a")
         every { runs.findById(run.id) } returns run
-        val developer = service(FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_SIGNAL, projects = setOf(project.id.value)))
+        val developer = service(FakeAccessGuard.permitting(ProjectsPermissions.RUN_SIGNAL, projects = setOf(project.id.value)))
         assertThatThrownBy { developer.signal(SignalCommand(project.id, "tests", CiSignalStatus.SUCCESS, runId = run.id)) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("ci.signal") }
         assertThatThrownBy { service.signalRun(run.id, "tests", CiSignalStatus.SUCCESS, null) }

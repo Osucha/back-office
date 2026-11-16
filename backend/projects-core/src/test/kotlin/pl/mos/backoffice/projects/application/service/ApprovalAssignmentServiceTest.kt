@@ -31,7 +31,7 @@ import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.UserId
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -50,10 +50,10 @@ class ApprovalAssignmentServiceTest {
         override fun displayNames(userIds: Collection<UUID>) = userIds.mapNotNull { id -> people[id]?.let { id to it.displayName } }.toMap()
     }
 
-    private val ann = person("Ann", setOf(ProjectsPermissions.RUN_APPROVE), setOf("approver"))
-    private val dev = person("Dev", setOf(ProjectsPermissions.RUN_APPROVE), setOf("developer"))
-    private val viewer = person("Vic", setOf(ProjectsPermissions.PROJECT_VIEW), setOf("approver"))
-    private val starter = person("Bob", setOf(ProjectsPermissions.RUN_APPROVE), setOf("approver"), bob.userId!!)
+    private val ann = person("Ann", setOf(ProjectsPermissions.RUN_APPROVE.key), setOf("approver"))
+    private val dev = person("Dev", setOf(ProjectsPermissions.RUN_APPROVE.key), setOf("developer"))
+    private val viewer = person("Vic", setOf(ProjectsPermissions.PROJECT_VIEW.key), setOf("approver"))
+    private val starter = person("Bob", setOf(ProjectsPermissions.RUN_APPROVE.key), setOf("approver"), bob.userId!!)
 
     init {
         every { approvals.save(any()) } answers { firstArg() }
@@ -63,9 +63,9 @@ class ApprovalAssignmentServiceTest {
         CurrentUser(PrincipalKind.USER, UserId(id), "$name@example.com", name, emptySet(), mapOf(projectId to permissions), projectRoles = mapOf(projectId to roles))
             .also { people[id] = it }
 
-    private fun service(gate: FakeAuthorizationGate) = ApprovalAssignmentService(approvals, directory, EventPublisher { events += it }, gate, audit, Clock.fixed(now))
+    private fun service(gate: FakeAccessGuard) = ApprovalAssignmentService(approvals, directory, EventPublisher { events += it }, gate, gate, audit, Clock.fixed(now))
 
-    private fun manager() = FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_ASSIGN, projects = setOf(projectId))
+    private fun manager() = FakeAccessGuard.permitting(ProjectsPermissions.RUN_ASSIGN, projects = setOf(projectId))
 
     private fun openApproval(approvers: GateApprovers = GateApprovers(projectRoles = listOf("approver"), forbidSelfApproval = true), status: ApprovalStatus = ApprovalStatus.OPEN): ApprovalRequest {
         val approval = ApprovalRequest(
@@ -104,7 +104,7 @@ class ApprovalAssignmentServiceTest {
     @Test
     fun `without run assign the assignment is refused before anything else`() {
         val approval = openApproval()
-        val approver = FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_APPROVE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(projectId))
+        val approver = FakeAccessGuard.permitting(ProjectsPermissions.RUN_APPROVE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(projectId))
         assertThatThrownBy { service(approver).assign(approval.id, AssignCommand(listOf(id(ann)))) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("run.assign") }
         assertThatThrownBy { service(approver).candidates(approval.id) }.isInstanceOf(InsufficientPermissionException::class.java)
@@ -125,7 +125,7 @@ class ApprovalAssignmentServiceTest {
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("four-eyes")
         assertThatThrownBy { service.assign(approval.id, AssignCommand(listOf(UUID.randomUUID()))) }
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("not active")
-        assertThatThrownBy { service.assign(approval.id, AssignCommand((1..21).map { id(person("P$it", setOf(ProjectsPermissions.RUN_APPROVE), setOf("approver"))) })) }
+        assertThatThrownBy { service.assign(approval.id, AssignCommand((1..21).map { id(person("P$it", setOf(ProjectsPermissions.RUN_APPROVE.key), setOf("approver"))) })) }
             .isInstanceOf(ValidationException::class.java).hasMessageContaining("at most 20")
         verify(exactly = 0) { approvals.save(any()) }
     }
@@ -160,7 +160,7 @@ class ApprovalAssignmentServiceTest {
         assertThat(GateApprovalPolicy.check(approval, ann).reason).contains("named approvers")
         val assigned = approval.assign(listOf(id(ann)), alice, now)
         assertThat(GateApprovalPolicy.check(assigned, ann).allowed).isTrue()
-        val other = person("Otto", setOf(ProjectsPermissions.RUN_APPROVE), setOf("approver"))
+        val other = person("Otto", setOf(ProjectsPermissions.RUN_APPROVE.key), setOf("approver"))
         assertThat(GateApprovalPolicy.check(assigned, other).reason).contains("assigned to other users")
         assertThat(GateApprovalPolicy.check(approval.assign(listOf(id(starter)), alice, now), starter).reason).contains("four-eyes")
         assertThat(GateApprovalPolicy.canBeAssigned(approval, ann).allowed).isTrue()

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.adapter.config
 
+import com.osucha.portpermissions.AccessGuard
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.slf4j.LoggerFactory
@@ -48,8 +49,8 @@ import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.platform.BlobStore
 import pl.mos.backoffice.shared.platform.EnvelopeSigner
 import pl.mos.backoffice.shared.platform.WorkQueue
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModulePermissions
 import tools.jackson.databind.json.JsonMapper
 
 /**
@@ -120,16 +121,16 @@ class RunnerConfiguration {
         AgentJobService(stores, stores, lifecycle, tx, archive)
 
     @Bean
-    fun fleetAdminService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>) =
-        FleetAdminService(stores, stores, stores, stores, lifecycle, tx, gate, audit.getIfAvailable { AuditPort.NOOP })
+    fun fleetAdminService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, guard: AccessGuard, principal: CurrentPrincipal, audit: ObjectProvider<AuditPort>) =
+        FleetAdminService(stores, stores, stores, stores, lifecycle, tx, guard, principal, audit.getIfAvailable { AuditPort.NOOP })
 
     @Bean
-    fun personalRunnerService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>) =
-        PersonalRunnerService(stores, stores, stores, stores, lifecycle, tx, gate, audit.getIfAvailable { AuditPort.NOOP })
+    fun personalRunnerService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, guard: AccessGuard, principal: CurrentPrincipal, audit: ObjectProvider<AuditPort>) =
+        PersonalRunnerService(stores, stores, stores, stores, lifecycle, tx, guard, principal, audit.getIfAvailable { AuditPort.NOOP })
 
     @Bean
-    fun projectSandboxPolicyService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>) =
-        ProjectSandboxPolicyService(stores, stores, lifecycle, tx, gate, audit.getIfAvailable { AuditPort.NOOP })
+    fun projectSandboxPolicyService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, guard: AccessGuard, principal: CurrentPrincipal, audit: ObjectProvider<AuditPort>) =
+        ProjectSandboxPolicyService(stores, stores, lifecycle, tx, guard, principal, audit.getIfAvailable { AuditPort.NOOP })
 
     /** ADR 0050 step 4: model calls of Claude Code login models, answered by PROMPT jobs on the user's personal runner. */
     @Bean
@@ -191,7 +192,7 @@ class RunnerConfiguration {
         }
 
     @Bean
-    fun runnerPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { RunnerPermissions.definitions }
+    fun runnerPermissionCatalog(): ModulePermissions = RunnerPermissions.contribution
 
     /** `backoffice_runner_jobs{pool,status}` for the "Runner fleet" dashboard and the pool-without-runners alert. */
     @Bean
@@ -199,7 +200,7 @@ class RunnerConfiguration {
         AgentJobMetrics(meters.getIfAvailable { SimpleMeterRegistry() }, db)
 
     @Bean
-    fun leaseScanScheduler(maintenance: MaintainAgentJobs, gate: AuthorizationGate, props: RunnerProperties) = LeaseScanScheduler(maintenance, gate, props)
+    fun leaseScanScheduler(maintenance: MaintainAgentJobs, guard: AccessGuard, props: RunnerProperties) = LeaseScanScheduler(maintenance, guard, props)
 
     /** ADR 0046: the shared pool and registration token of a local stack (`backoffice.runner.local-fleet`), after the migrations. */
     @Bean
@@ -218,14 +219,14 @@ class RunnerConfiguration {
 }
 
 /** Runs the lease scan every `backoffice.runner.lease-scan.interval` on every replica; the advisory lock lets one of them work. */
-class LeaseScanScheduler(private val maintenance: MaintainAgentJobs, private val gate: AuthorizationGate, private val props: RunnerProperties) {
+class LeaseScanScheduler(private val maintenance: MaintainAgentJobs, private val guard: AccessGuard, private val props: RunnerProperties) {
     private val log = LoggerFactory.getLogger(LeaseScanScheduler::class.java)
 
     @Scheduled(fixedDelayString = "\${backoffice.runner.lease-scan.interval:PT10S}", initialDelayString = "\${backoffice.runner.lease-scan.interval:PT10S}")
     fun run() {
         if (!props.leaseScan.enabled) return
         try {
-            val outcome = gate.asSystem("agent job lease scan") { maintenance.scan() }
+            val outcome = guard.asSystem("agent job lease scan") { maintenance.scan() }
             if (outcome.requeued + outcome.lost + outcome.timedOut + outcome.routed > 0) {
                 log.info("lease scan: requeued={} lost={} timedOut={} routed={}", outcome.requeued, outcome.lost, outcome.timedOut, outcome.routed)
             }

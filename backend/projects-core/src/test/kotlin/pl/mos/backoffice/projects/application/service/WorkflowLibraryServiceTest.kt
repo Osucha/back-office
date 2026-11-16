@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.allows
+import com.osucha.portpermissions.ScopeFilter
+import java.util.UUID
 import pl.mos.backoffice.shared.testing.TestAgents
 import io.mockk.every
 import io.mockk.mockk
@@ -35,12 +38,11 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskSummary
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 class WorkflowLibraryServiceTest {
@@ -72,16 +74,16 @@ class WorkflowLibraryServiceTest {
     }
 
     /** Library manager who edits workflows in SHOP and BLOG and sees HIDDEN only through the library. */
-    private val gate = FakeAuthorizationGate(
-        FakeAuthorizationGate.user(
-            platform = setOf(ProjectsPermissions.LIBRARY_VIEW, ProjectsPermissions.LIBRARY_MANAGE),
-            projects = listOf(shop, blog).associate { it.id.value to setOf(ProjectsPermissions.WORKFLOW_EDIT, ProjectsPermissions.PROJECT_VIEW) },
+    private val gate = FakeAccessGuard(
+        FakeAccessGuard.user(
+            platform = setOf(ProjectsPermissions.LIBRARY_VIEW.key, ProjectsPermissions.LIBRARY_MANAGE.key),
+            projects = listOf(shop, blog).associate { it.id.value to setOf(ProjectsPermissions.WORKFLOW_EDIT.key, ProjectsPermissions.PROJECT_VIEW.key) },
         ),
     )
 
     init {
         listOf(shop, blog, hidden).forEach { p -> every { projects.findById(p.id) } returns p }
-        every { projects.findAll(any()) } answers { listOf(shop, blog, hidden).filter { firstArg<ProjectFilter>().allows(it.id.value) } }
+        every { projects.findAll(any()) } answers { listOf(shop, blog, hidden).filter { firstArg<ScopeFilter<UUID>>().allows(it.id.value) } }
         every { workflows.save(any()) } answers { firstArg<WorkflowDefinition>().also { store[it.id] = it } }
         every { workflows.findById(any()) } answers { store[WorkflowDefinitionId(uuid(firstArg()))] }
         every { workflows.findByProjectId(any()) } answers { store.values.filter { it.projectId.value == uuid(firstArg()) } }
@@ -100,8 +102,8 @@ class WorkflowLibraryServiceTest {
         else -> arg as java.util.UUID
     }
 
-    private val workflowService = WorkflowService(workflows, projects, runs, WorkflowValidator(), catalog, expressions, gate, audit, Clock.fixed(now), library = library)
-    private val service = WorkflowLibraryService(library, workflows, projects, workflowService, catalog, gate, audit, Clock.fixed(now))
+    private val workflowService = WorkflowService(workflows, projects, runs, WorkflowValidator(), catalog, expressions, gate, gate, audit, Clock.fixed(now), library = library)
+    private val service = WorkflowLibraryService(library, workflows, projects, workflowService, catalog, gate, gate, audit, Clock.fixed(now))
 
     private fun graph(template: String = "llm-task", prompt: String = "Summarise", config: Map<String, Any?> = emptyMap()) = WorkflowCommand(
         name = "Summarise issue",
@@ -200,8 +202,8 @@ class WorkflowLibraryServiceTest {
     @Test
     fun `curating needs library manage, deprecated entries cannot be adopted, linked entries cannot be deleted`() {
         val (_, id) = publishShop()
-        val reader = FakeAuthorizationGate.permitting(ProjectsPermissions.LIBRARY_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(blog.id.value))
-        val readOnly = WorkflowLibraryService(library, workflows, projects, workflowService, catalog, reader, audit, Clock.fixed(now))
+        val reader = FakeAccessGuard.permitting(ProjectsPermissions.LIBRARY_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(blog.id.value))
+        val readOnly = WorkflowLibraryService(library, workflows, projects, workflowService, catalog, reader, reader, audit, Clock.fixed(now))
         assertThat(readOnly.list().map { it.workflow.key }).containsExactly("summarise-issue")
         assertThatThrownBy { readOnly.update(id, LibraryDetailsCommand("x")) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("library.manage") }

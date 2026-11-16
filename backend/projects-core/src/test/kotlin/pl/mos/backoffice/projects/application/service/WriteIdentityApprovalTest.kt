@@ -27,7 +27,7 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 /** ADR 0035: who writes after a write confirmation: the step's system connection or the approver's own personal one. */
@@ -40,18 +40,17 @@ class WriteIdentityApprovalTest {
     private val engine = mockk<WorkflowEngine>(relaxed = true)
     private val connections = ConnectionFakes.InMemoryConnections()
     private val audit = RecordingAuditPort()
-    private val me = FakeAuthorizationGate.TEST_USER_ID.value
+    private val me = FakeAccessGuard.TEST_USER_ID.value
 
     init {
         every { approvals.save(any()) } answers { firstArg() }
         every { runs.save(any()) } answers { firstArg() }
     }
 
-    private fun service() = ApprovalService(
-        approvals, runs, engine, EventPublisher.NOOP,
-        FakeAuthorizationGate(Fixtures.userWithRoles(project.id, setOf(ProjectsPermissions.RUN_APPROVE, ProjectsPermissions.PROJECT_VIEW), setOf("owner"))),
+    private fun service() = (FakeAccessGuard(Fixtures.userWithRoles(project.id, setOf(ProjectsPermissions.RUN_APPROVE.key, ProjectsPermissions.PROJECT_VIEW.key), setOf("owner")))).let { g -> ApprovalService(
+        approvals, runs, engine, EventPublisher.NOOP, g, g,
         audit, Clock.fixed(now), connections,
-    )
+    ) }
 
     private fun waiting(write: PendingWrite): ApprovalRequest {
         val id = ApprovalRequestId.new()

@@ -21,10 +21,10 @@ import pl.mos.backoffice.shared.audit.AuditResult
 
 /**
  * The single place that maps authorisation failures for every controller of every context:
- * - `InsufficientPermissionException` (thrown by `AuthorizationGate.require`) -> 403 problem detail with
+ * - `InsufficientPermissionException` (thrown by `AccessGuard.require`) -> 403 problem detail with
  *   `permission` and `projectId`, plus an `ACCESS_DENIED` audit entry written in its own transaction
  *   (the business transaction has already rolled back);
- * - an authentication exception thrown by the gate (no principal) -> 401 problem detail.
+ * - an authentication exception thrown by the guard (no principal) -> 401 problem detail.
  */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)

@@ -31,7 +31,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.ConnectorAuth
 import pl.mos.backoffice.shared.runner.ConnectorKind
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 /** ADR 0064: connectors: scopes and permissions, write-only secrets, audit, the test from Back Office. */
@@ -49,12 +49,12 @@ class ConnectorServiceTest {
     private var scmAnswer = ScmProbe(gitRead = true, gitPush = false, scopes = listOf("read_api", "read_repository"), accessLevel = 20, defaultBranch = "main", defaultBranchProtected = true)
     private val scmProbe = ScmProbePort { _, _, _ -> scmAnswer }
 
-    private val admin = FakeAuthorizationGate.permitting(ProjectsPermissions.LIBRARY_MANAGE, ProjectsPermissions.LIBRARY_VIEW)
-    private val owner = FakeAuthorizationGate.permitting(
+    private val admin = FakeAccessGuard.permitting(ProjectsPermissions.LIBRARY_MANAGE, ProjectsPermissions.LIBRARY_VIEW)
+    private val owner = FakeAccessGuard.permitting(
         ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.LIBRARY_VIEW, projects = setOf(project.id.value),
     )
-    private val member = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.LIBRARY_VIEW, projects = setOf(project.id.value))
-    private fun service(gate: FakeAuthorizationGate = admin) = ConnectorService(store, projects, sealer, mcp, scm, scmProbe, gate, audit, Clock.SYSTEM)
+    private val member = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.LIBRARY_VIEW, projects = setOf(project.id.value))
+    private fun service(gate: FakeAccessGuard = admin) = ConnectorService(store, projects, sealer, mcp, scm, scmProbe, gate, gate, audit, Clock.SYSTEM)
 
     private val secret = "tkn-very-secret-mcp-key"
     private val docs = ConnectorCommand(
@@ -99,9 +99,9 @@ class ConnectorServiceTest {
 
         assertThat(service(admin).list(null).map { it.key }).containsExactly("docs")
         assertThat(service(member).list(project.id).map { it.key }).describedAs("platform first, then the project's").containsExactly("docs", "gitlab-read")
-        val outsider = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val outsider = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
         assertThat(service(outsider).list(project.id).map { it.key }).describedAs("without library.view only the project's").containsExactly("gitlab-read")
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).list(null) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).list(null) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { service(owner).list(ProjectId.new()) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 

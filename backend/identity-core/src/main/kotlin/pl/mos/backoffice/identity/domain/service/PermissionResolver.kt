@@ -109,6 +109,6 @@ class ProjectPermissionResolver {
                 permissions = projectRoles.flatMap { roles.getValue(it).permissions }.toSet(),
             )
         }
-        return ProjectResolution(projects, IdentityPermissions.PROJECTS_ALL in platformPermissions)
+        return ProjectResolution(projects, IdentityPermissions.PROJECTS_ALL.key in platformPermissions)
     }
 }

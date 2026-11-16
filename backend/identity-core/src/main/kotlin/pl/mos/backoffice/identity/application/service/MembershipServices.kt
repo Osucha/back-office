@@ -27,11 +27,12 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.security.UserId
 import java.util.UUID
 
@@ -49,16 +50,18 @@ class ProjectMembershipService(
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
 ) : ManageProjectMembers, ProjectAccessProvisioner {
 
     override fun list(projectId: UUID): List<MemberView> {
-        gate.require(PROJECT_VIEW, projectId)
+        guard.require(IdentityPermissions.PROJECT_VIEW, projectId)
         return memberships.findByProject(projectId).map(::view).sortedWith(compareBy({ it.membership.principalType }, { it.principalName.lowercase() }))
     }
 
     override fun add(projectId: UUID, command: ManageProjectMembers.AddMember): MemberView {
-        val me = gate.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, projectId)
+        guard.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, projectId)
+        val me = principal.currentUser()
         requireProjectRole(command.role)
         requirePrincipal(command.principalType, command.principalId)
         if (projectKeys.isPersonal(projectId)) throw InvalidStateException("a private project has only its owner; members cannot be added (ADR 0038)")
@@ -81,7 +84,7 @@ class ProjectMembershipService(
     }
 
     override fun changeRole(projectId: UUID, memberId: MembershipId, role: String): MemberView {
-        gate.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, projectId)
+        guard.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, projectId)
         requireProjectRole(role)
         val membership = load(projectId, memberId)
         if (membership.roleKey == role) return view(membership)
@@ -99,7 +102,7 @@ class ProjectMembershipService(
     }
 
     override fun remove(projectId: UUID, memberId: MembershipId) {
-        gate.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, projectId)
+        guard.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, projectId)
         val membership = load(projectId, memberId)
         if (membership.roleKey == BuiltInRoles.OWNER) ensureAnotherOwner(projectId, membership, "removed")
         memberships.delete(memberId)
@@ -172,23 +175,19 @@ class ProjectMembershipService(
         PrincipalType.USER -> users.findById(UserId(m.principalId)).let { MemberView(m, it?.displayName ?: m.principalId.toString(), it?.email) }
         PrincipalType.GROUP -> MemberView(m, groups.findById(GroupId(m.principalId))?.name ?: m.principalId.toString(), null)
     }
-
-    companion object {
-        /** Owned by the Projects context; spelled out because identity-core cannot depend on it. */
-        const val PROJECT_VIEW = "project.view"
-    }
 }
 
 /** User and group pickers: `admin.users.view`, or `project.members.manage` on at least one project. */
 class DirectoryService(
     private val users: UserRepository,
     private val groups: GroupRepository,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
 ) : LookupDirectory {
 
     override fun users(q: String): List<User> {
         val project = memberManagerProject()
-        if (project == null) gate.require(IdentityPermissions.USERS_VIEW) else gate.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, project)
+        if (project == null) guard.require(IdentityPermissions.USERS_VIEW) else guard.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, project)
         val query = q.trim()
         if (query.length < 2) throw ValidationException("q must have at least 2 characters", "q")
         return users.lookup(query, LIMIT)
@@ -196,15 +195,15 @@ class DirectoryService(
 
     override fun groups(q: String?): List<Group> {
         val project = memberManagerProject()
-        if (project == null) gate.require(IdentityPermissions.USERS_VIEW) else gate.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, project)
+        if (project == null) guard.require(IdentityPermissions.USERS_VIEW) else guard.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, project)
         return groups.lookup(q?.trim()?.ifEmpty { null }, LIMIT)
     }
 
     /** `null` when the caller may use `admin.users.view` (or has neither: the gate then denies). */
     private fun memberManagerProject(): UUID? {
-        val current = gate.currentUser()
+        val current = principal.currentUser()
         if (current.can(IdentityPermissions.USERS_VIEW)) return null
-        return current.projectPermissions.entries.firstOrNull { IdentityPermissions.PROJECT_MEMBERS_MANAGE in it.value }?.key
+        return current.projectPermissions.entries.firstOrNull { IdentityPermissions.PROJECT_MEMBERS_MANAGE.key in it.value }?.key
     }
 
     companion object {

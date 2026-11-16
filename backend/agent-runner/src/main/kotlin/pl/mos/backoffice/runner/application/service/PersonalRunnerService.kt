@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.runner.application.port.`in`.IssuedPersonalRegistration
 import pl.mos.backoffice.runner.application.port.`in`.ManagePersonalRunner
 import pl.mos.backoffice.runner.application.port.`in`.PersonalRunnerView
@@ -19,7 +20,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.runner.SandboxPolicy
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import java.net.URI
 import java.util.UUID
@@ -36,17 +37,20 @@ class PersonalRunnerService(
     private val jobs: AgentJobStore,
     private val lifecycle: JobLifecycle,
     private val tx: Transactions,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : ManagePersonalRunner {
 
     override fun mine(): PersonalRunnerView? {
-        val me = gate.require(RunnerPermissions.FLEET_PERSONAL)
+        guard.require(RunnerPermissions.FLEET_PERSONAL)
+        val me = principal.currentUser()
         return ownPool(userOf(me))?.let(::view)
     }
 
     override fun enable(llmCredentials: LlmCredentials): PersonalRunnerView {
-        val me = gate.require(RunnerPermissions.FLEET_PERSONAL)
+        guard.require(RunnerPermissions.FLEET_PERSONAL)
+        val me = principal.currentUser()
         val pool = tx.inTransaction {
             val now = lifecycle.now()
             val existing = ownPool(userOf(me))
@@ -82,7 +86,8 @@ class PersonalRunnerService(
     }
 
     override fun disable() {
-        val me = gate.require(RunnerPermissions.FLEET_PERSONAL)
+        guard.require(RunnerPermissions.FLEET_PERSONAL)
+        val me = principal.currentUser()
         tx.inTransaction {
             val pool = ownPool(userOf(me)) ?: return@inTransaction
             if (jobs.hasLiveJobs(pool.id)) throw InvalidStateException("your personal runner still has queued or running agent jobs; cancel them or wait")
@@ -92,7 +97,8 @@ class PersonalRunnerService(
     }
 
     override fun issueRegistrationToken(): IssuedPersonalRegistration {
-        val me = gate.require(RunnerPermissions.FLEET_PERSONAL)
+        guard.require(RunnerPermissions.FLEET_PERSONAL)
+        val me = principal.currentUser()
         return tx.inTransaction {
             val pool = ownPool(userOf(me)) ?: throw NotFoundException("RunnerPool", "personal runner of ${me.login}")
             val now = lifecycle.now()
@@ -110,7 +116,8 @@ class PersonalRunnerService(
     }
 
     override fun revokeRunner(runnerId: UUID) {
-        val me = gate.require(RunnerPermissions.FLEET_PERSONAL)
+        guard.require(RunnerPermissions.FLEET_PERSONAL)
+        val me = principal.currentUser()
         tx.inTransaction {
             val pool = ownPool(userOf(me)) ?: throw NotFoundException("Runner", runnerId)
             // another user's runner is reported as missing, not as forbidden

@@ -73,8 +73,7 @@ import pl.mos.backoffice.identity.adapter.out.persistence.JdbcProjectMembershipR
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcRoleRepository
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcUserRepository
 import pl.mos.backoffice.identity.adapter.out.security.CurrentUserCache
-import pl.mos.backoffice.identity.adapter.out.security.PermissionCatalogCollector
-import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAuthorizationGate
+import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAccessGuard
 import pl.mos.backoffice.identity.adapter.out.security.SpringSessionTerminator
 import pl.mos.backoffice.identity.application.port.`in`.EffectivePermissionsQuery
 import pl.mos.backoffice.identity.application.port.`in`.GetMe
@@ -99,7 +98,6 @@ import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.AuditLogReader
 import pl.mos.backoffice.identity.application.port.out.GrantRepository
 import pl.mos.backoffice.identity.application.port.out.GroupRepository
-import pl.mos.backoffice.identity.application.port.out.PermissionCatalog
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.application.port.out.PlatformSettingsRepository
 import pl.mos.backoffice.identity.application.port.out.ProjectKeyLookup
@@ -134,8 +132,11 @@ import pl.mos.backoffice.identity.domain.model.IdentityPermissions
 import pl.mos.backoffice.identity.domain.model.PlatformSettings
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import com.osucha.portpermissions.PermissionCatalog
+import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.security.PermissionModules
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
 import pl.mos.backoffice.shared.security.UserId
@@ -153,10 +154,11 @@ class IdentityPorts(
     val sessions: SessionTerminator,
     val accessVersion: AccessVersion,
     val auditReader: AuditLogReader,
-    val catalog: PermissionCatalog,
+    val catalog: PermissionModules,
     val projectKeyLookup: ProjectKeyLookup,
     val audit: AuditPort,
-    val gate: AuthorizationGate,
+    val guard: AccessGuard,
+    val principal: CurrentPrincipal,
     val clock: Clock,
     val options: IdentityOptions,
     val local: LocalAccountSupport,
@@ -167,21 +169,21 @@ class IdentityPorts(
     val admins = PlatformAdmins(users, groups, grants)
     val access = AccessResolver(groups, roles, grants, memberships, catalogSupport)
 
-    fun userAdmin() = UserAdminService(users, groups, roles, grants, memberships, tokens, sessions, projectKeys, admins, audit, accessVersion, clock, gate, local)
-    fun grantAdmin() = GrantAdminService(grants, roles, users, groups, memberships, access, projectKeys, catalogSupport, admins, audit, accessVersion, gate)
-    fun me() = MeService(users, groups, memberships, projectKeys, audit, gate)
-    fun platformSettings() = PlatformSettingsService(settingsRepository, settings, audit, accessVersion, gate, options)
+    fun userAdmin() = UserAdminService(users, groups, roles, grants, memberships, tokens, sessions, projectKeys, admins, audit, accessVersion, clock, guard, principal, local)
+    fun grantAdmin() = GrantAdminService(grants, roles, users, groups, memberships, access, projectKeys, catalogSupport, admins, audit, accessVersion, guard)
+    fun me() = MeService(users, groups, memberships, projectKeys, audit, principal)
+    fun platformSettings() = PlatformSettingsService(settingsRepository, settings, audit, accessVersion, guard, options)
     fun localLogin() = LocalLoginService(local)
-    fun passwordResets() = PasswordResetService(local, sessions, accessVersion, gate)
+    fun passwordResets() = PasswordResetService(local, sessions, accessVersion, guard, principal)
     fun assembler() = UserDetailsAssembler(groups, grants, memberships, local)
-    fun memberships() = ProjectMembershipService(memberships, users, groups, roles, projectKeys, audit, accessVersion, clock, gate)
+    fun memberships() = ProjectMembershipService(memberships, users, groups, roles, projectKeys, audit, accessVersion, clock, guard, principal)
 }
 
 /**
- * Wires the identity context. Beans offered to every other context: `AuthorizationGate`
- * ([SecurityContextAuthorizationGate]), `AuditPort` ([JdbcAuditLog]), `ProjectAccessProvisioner`
- * ([ProjectMembershipService]) and the catalogue collector ([PermissionCatalog] over all
- * [PermissionCatalogContribution] beans). Every use case runs in a transaction (an interface proxy with a
+ * Wires the identity context. Beans offered to every other context: `AccessGuard` and `CurrentPrincipal`
+ * ([SecurityContextAccessGuard], ADR 0066), `AuditPort` ([JdbcAuditLog]), `ProjectAccessProvisioner`
+ * ([ProjectMembershipService]) and the permission catalogue ([PermissionModules] over all
+ * [ModulePermissions] beans, with the library `PermissionCatalog`). Every use case runs in a transaction (an interface proxy with a
  * `TransactionInterceptor`), so audit rows and access-version bumps commit or roll back with the change.
  */
 @Configuration
@@ -190,24 +192,29 @@ class IdentityConfiguration {
 
     // ---------------------------------------------------------------- cross-context beans
 
-    /** The shared `AuthorizationGate`; also used by the audit log and the 403 handler. */
+    /** The shared `AccessGuard` and `CurrentPrincipal`; also used by the audit log and the 403 handler. */
     @Bean
-    fun authorizationGate(): SecurityContextAuthorizationGate = SecurityContextAuthorizationGate()
+    fun accessGuard(catalog: PermissionCatalog): SecurityContextAccessGuard = SecurityContextAccessGuard(catalog)
 
     @Bean
     fun auditDetailsEncoder(json: JsonMapper) = AuditDetailsEncoder(json)
 
     /** The shared `AuditPort`. */
     @Bean
-    fun auditPort(jdbc: JdbcClient, encoder: AuditDetailsEncoder, clock: Clock, dataSource: javax.sql.DataSource, gate: SecurityContextAuthorizationGate): JdbcAuditLog =
+    fun auditPort(jdbc: JdbcClient, encoder: AuditDetailsEncoder, clock: Clock, dataSource: javax.sql.DataSource, gate: SecurityContextAccessGuard): JdbcAuditLog =
         JdbcAuditLog(jdbc, encoder, clock, dataSource) { gate.actorOrNull() }
 
     @Bean
-    fun identityPermissionContribution(): PermissionCatalogContribution = PermissionCatalogContribution { IdentityPermissions.definitions }
+    fun identityPermissions(): ModulePermissions = IdentityPermissions.contribution
 
+    /** Every module's [ModulePermissions]; a key declared twice fails startup. */
     @Bean
-    fun permissionCatalog(contributions: ObjectProvider<PermissionCatalogContribution>): PermissionCatalog =
-        PermissionCatalogCollector(contributions.orderedStream().toList())
+    fun permissionModules(contributions: ObjectProvider<ModulePermissions>): PermissionModules =
+        PermissionModules(contributions.orderedStream().toList())
+
+    /** The library catalogue (port-permissions) of all modules. */
+    @Bean
+    fun permissionCatalog(modules: PermissionModules): PermissionCatalog = modules.catalog
 
     @Bean
     fun projectAccessProvisioner(ports: IdentityPorts, tm: PlatformTransactionManager): ProjectAccessProvisioner =
@@ -295,9 +302,9 @@ class IdentityConfiguration {
     fun identityPorts(
         users: UserRepository, groups: GroupRepository, roles: RoleRepository, grants: GrantRepository, memberships: ProjectMembershipRepository,
         tokens: PersonalTokenRepository, settings: PlatformSettingsRepository, sessions: SessionTerminator, version: AccessVersion,
-        reader: AuditLogReader, catalog: PermissionCatalog, keys: ProjectKeyLookup, audit: AuditPort, gate: AuthorizationGate, clock: Clock,
+        reader: AuditLogReader, catalog: PermissionModules, keys: ProjectKeyLookup, audit: AuditPort, guard: AccessGuard, principal: CurrentPrincipal, clock: Clock,
         options: IdentityOptions, local: LocalAccountSupport,
-    ) = IdentityPorts(users, groups, roles, grants, memberships, tokens, settings, sessions, version, reader, catalog, keys, audit, gate, clock, options, local)
+    ) = IdentityPorts(users, groups, roles, grants, memberships, tokens, settings, sessions, version, reader, catalog, keys, audit, guard, principal, clock, options, local)
 
     @Bean
     fun currentUserCache(loader: LoadCurrentUser, version: AccessVersion) = CurrentUserCache(loader, version)
@@ -329,12 +336,12 @@ class IdentityConfiguration {
 
     @Bean
     fun manageGroups(p: IdentityPorts, tm: PlatformTransactionManager): ManageGroups = transactional(
-        GroupAdminService(p.groups, p.users, p.roles, p.grants, p.memberships, p.admins, p.audit, p.accessVersion, p.clock, p.gate), tm, ManageGroups::class.java,
+        GroupAdminService(p.groups, p.users, p.roles, p.grants, p.memberships, p.admins, p.audit, p.accessVersion, p.clock, p.guard), tm, ManageGroups::class.java,
     )
 
     @Bean
     fun manageRoles(p: IdentityPorts, tm: PlatformTransactionManager): ManageRoles = transactional(
-        RoleAdminService(p.roles, p.grants, p.memberships, p.catalogSupport, p.audit, p.accessVersion, p.gate), tm, ManageRoles::class.java,
+        RoleAdminService(p.roles, p.grants, p.memberships, p.catalogSupport, p.audit, p.accessVersion, p.guard), tm, ManageRoles::class.java,
     )
 
     @Bean fun manageGrants(p: IdentityPorts, tm: PlatformTransactionManager): ManageGrants = transactional(p.grantAdmin(), tm, ManageGrants::class.java)
@@ -357,18 +364,18 @@ class IdentityConfiguration {
 
     @Bean
     fun lookupDirectory(p: IdentityPorts, tm: PlatformTransactionManager): LookupDirectory =
-        transactional(DirectoryService(p.users, p.groups, p.gate), tm, LookupDirectory::class.java)
+        transactional(DirectoryService(p.users, p.groups, p.guard, p.principal), tm, LookupDirectory::class.java)
 
     @Bean
     fun managePersonalTokens(p: IdentityPorts, tm: PlatformTransactionManager): ManagePersonalTokens = transactional(
-        PersonalTokenService(p.tokens, p.settings, p.catalogSupport, p.audit, p.accessVersion, p.clock, p.gate), tm, ManagePersonalTokens::class.java,
+        PersonalTokenService(p.tokens, p.settings, p.catalogSupport, p.audit, p.accessVersion, p.clock, p.guard, p.principal), tm, ManagePersonalTokens::class.java,
     )
 
     @Bean fun permissionCatalogQuery(p: IdentityPorts): PermissionCatalogQuery = PermissionCatalogService(p.catalog)
 
     @Bean
     fun searchAuditLog(p: IdentityPorts, tm: PlatformTransactionManager): SearchAuditLog =
-        transactional(AuditSearchService(p.auditReader, p.audit, p.gate), tm, SearchAuditLog::class.java)
+        transactional(AuditSearchService(p.auditReader, p.audit, p.guard), tm, SearchAuditLog::class.java)
 
     @Bean
     fun seedIdentity(p: IdentityPorts, tm: PlatformTransactionManager): SeedIdentity =
@@ -383,27 +390,27 @@ class IdentityConfiguration {
 
     @Bean
     fun changePassword(p: IdentityPorts, tm: PlatformTransactionManager): ChangePassword =
-        transactional(ChangePasswordService(p.local, p.sessions, p.gate), tm, ChangePassword::class.java)
+        transactional(ChangePasswordService(p.local, p.sessions, p.principal), tm, ChangePassword::class.java)
 
     @Bean fun passwordResetLinks(p: IdentityPorts, tm: PlatformTransactionManager): PasswordResetLinks = transactional(p.passwordResets(), tm, PasswordResetLinks::class.java)
-    @Bean fun manageMyMfa(p: IdentityPorts, tm: PlatformTransactionManager): ManageMyMfa = transactional(MyMfaService(p.local, p.gate), tm, ManageMyMfa::class.java)
+    @Bean fun manageMyMfa(p: IdentityPorts, tm: PlatformTransactionManager): ManageMyMfa = transactional(MyMfaService(p.local, p.principal), tm, ManageMyMfa::class.java)
 
     @Bean
     fun adminLocalAccounts(p: IdentityPorts, tm: PlatformTransactionManager): AdminLocalAccounts = transactional(
-        LocalAccountAdminService(p.local, p.assembler(), p.admins, p.sessions, p.accessVersion, p.gate), tm, AdminLocalAccounts::class.java,
+        LocalAccountAdminService(p.local, p.assembler(), p.admins, p.sessions, p.accessVersion, p.guard, p.principal), tm, AdminLocalAccounts::class.java,
     )
 
     @Bean
     fun getMySecurity(p: IdentityPorts, tm: PlatformTransactionManager): GetMySecurity =
-        transactional(MySecurityService(p.local, p.auditReader, p.gate), tm, GetMySecurity::class.java)
+        transactional(MySecurityService(p.local, p.auditReader, p.principal), tm, GetMySecurity::class.java)
 
     @Bean
     fun bootstrapLocalAdmin(p: IdentityPorts, tm: PlatformTransactionManager): BootstrapLocalAdmin =
         transactional(BootstrapLocalAdminService(p.local, p.grants, p.accessVersion), tm, BootstrapLocalAdmin::class.java)
 
     @Bean
-    fun identityStartup(seed: SeedIdentity, bootstrap: BootstrapLocalAdmin, gate: AuthorizationGate, lock: ObjectProvider<ClusterLock>) =
-        IdentityStartup(seed, bootstrap, gate, lock.getIfAvailable { ClusterLock.LOCAL })
+    fun identityStartup(seed: SeedIdentity, bootstrap: BootstrapLocalAdmin, guard: AccessGuard, lock: ObjectProvider<ClusterLock>) =
+        IdentityStartup(seed, bootstrap, guard, lock.getIfAvailable { ClusterLock.LOCAL })
 
     private object NoSessions : SessionTerminator {
         override fun sessionsOf(userId: UserId) = emptyList<SessionSummary>()
@@ -433,7 +440,7 @@ class IdentityConfiguration {
 class IdentityStartup(
     private val seed: SeedIdentity,
     private val bootstrap: BootstrapLocalAdmin,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val lock: ClusterLock = ClusterLock.LOCAL,
 ) {
     private val log = LoggerFactory.getLogger(IdentityStartup::class.java)
@@ -441,8 +448,8 @@ class IdentityStartup(
     @EventListener(ApplicationReadyEvent::class)
     fun seedOnStartup() {
         val ran = lock.runExclusively("identity-seed", Duration.ofMinutes(5), Duration.ofSeconds(10)) {
-            gate.asSystem("seed built-in roles") { seed.seed() }
-            gate.asSystem("bootstrap local admin") { bootstrap.bootstrap() }?.let {
+            guard.asSystem("seed built-in roles") { seed.seed() }
+            guard.asSystem("bootstrap local admin") { bootstrap.bootstrap() }?.let {
                 log.warn("created the bootstrap local administrator {} (password must be changed at the first login)", it.email)
             }
         }

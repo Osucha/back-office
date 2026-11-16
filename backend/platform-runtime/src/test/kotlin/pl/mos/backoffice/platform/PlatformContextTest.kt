@@ -28,7 +28,7 @@ import pl.mos.backoffice.shared.platform.WorkItem
 import pl.mos.backoffice.shared.platform.WorkOutcome
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.platform.WorkRequest
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
 import java.util.UUID
@@ -38,7 +38,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 class PlatformTestApplication {
     val handled = CopyOnWriteArrayList<WorkItem>()
 
-    @Bean fun gate(): FakeAuthorizationGate = FakeAuthorizationGate.permitting(OperationsService.PERMISSION)
+    @Bean fun gate(): FakeAccessGuard = FakeAccessGuard.permitting(OperationsService.PERMISSION)
 
     @Bean fun audit(): RecordingAuditPort = RecordingAuditPort()
 
@@ -77,7 +77,7 @@ class PlatformContextTest {
     @Autowired lateinit var events: EventPublisher
     @Autowired lateinit var stream: EventStream
     @Autowired lateinit var lock: ClusterLock
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
     @Autowired lateinit var audit: RecordingAuditPort
     @Autowired lateinit var mvc: MockMvc
 
@@ -114,7 +114,7 @@ class PlatformContextTest {
         await { app.handled.count { it.payload["marker"] == marker } == 2 }
 
         val previous = gate.user
-        gate.user = FakeAuthorizationGate.user()
+        gate.user = FakeAccessGuard.user()
         try {
             assertThatThrownBy { mvc.perform(get("/api/v1/admin/operations/overview")) }.hasCauseInstanceOf(InsufficientPermissionException::class.java)
         } finally {

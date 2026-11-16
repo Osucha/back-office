@@ -30,10 +30,10 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.shared.security.PermissionScope
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.security.UserId
 
 class GroupAdminService(
@@ -46,23 +46,23 @@ class GroupAdminService(
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
 ) : ManageGroups {
 
     override fun list(): List<GroupView> {
-        gate.require(IdentityPermissions.USERS_VIEW)
+        guard.require(IdentityPermissions.USERS_VIEW)
         return groups.findAll().sortedBy { it.name.lowercase() }.map(::view)
     }
 
     override fun get(id: GroupId): GroupView {
-        gate.require(IdentityPermissions.USERS_VIEW)
+        guard.require(IdentityPermissions.USERS_VIEW)
         return view(load(id))
     }
 
     override fun create(command: ManageGroups.GroupCommand): GroupView {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         val platformRoles = command.platformRoles ?: emptySet()
-        if (platformRoles.isNotEmpty()) gate.require(IdentityPermissions.ROLES_MANAGE)
+        if (platformRoles.isNotEmpty()) guard.require(IdentityPermissions.ROLES_MANAGE)
         val name = command.name.trim()
         if (groups.findByName(name) != null) throw InvalidStateException("a group named $name already exists")
         requireUsers(command.memberIds)
@@ -85,12 +85,12 @@ class GroupAdminService(
     }
 
     override fun update(id: GroupId, command: ManageGroups.GroupCommand): GroupView {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         val group = load(id)
         val currentRoles = grants.find(GrantLevel.GROUP, id.value).roles
         val newRoles = command.platformRoles ?: currentRoles
         if (newRoles != currentRoles) {
-            gate.require(IdentityPermissions.ROLES_MANAGE)
+            guard.require(IdentityPermissions.ROLES_MANAGE)
             requirePlatformRoles(newRoles)
         }
         val name = command.name.trim()
@@ -119,7 +119,7 @@ class GroupAdminService(
     }
 
     override fun delete(id: GroupId) {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         val group = load(id)
         val projects = memberships.findByPrincipal(PrincipalType.GROUP, id.value)
         if (projects.isNotEmpty()) {
@@ -155,7 +155,7 @@ class RoleAdminService(
     private val catalog: CatalogSupport,
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
 ) : ManageRoles {
 
     @PublicOperation("role names and bundles are needed by every member and token picker; they are not sensitive")
@@ -163,7 +163,7 @@ class RoleAdminService(
         roles.findAll().filter { scope == null || it.scope == scope }.sortedWith(compareBy({ it.scope }, { !it.builtIn }, { it.key }))
 
     override fun create(command: ManageRoles.RoleCommand): Role {
-        gate.require(IdentityPermissions.ROLES_MANAGE)
+        guard.require(IdentityPermissions.ROLES_MANAGE)
         if (roles.findByKey(command.key) != null) throw InvalidStateException("role ${command.key} already exists")
         val role = Role(command.key, command.name.trim(), command.description?.trim()?.ifEmpty { null }, command.scope, command.permissions, builtIn = false)
         catalog.validator().validateRole(role)
@@ -179,7 +179,7 @@ class RoleAdminService(
     }
 
     override fun update(key: String, command: ManageRoles.RoleCommand): Role {
-        gate.require(IdentityPermissions.ROLES_MANAGE)
+        guard.require(IdentityPermissions.ROLES_MANAGE)
         val existing = roles.findByKey(key) ?: throw NotFoundException("role", key)
         if (command.key != key) throw ValidationException("the role key cannot be changed", "key")
         if (command.scope != existing.scope) throw ValidationException("the role scope cannot be changed", "scope")
@@ -198,7 +198,7 @@ class RoleAdminService(
     }
 
     override fun delete(key: String) {
-        gate.require(IdentityPermissions.ROLES_MANAGE)
+        guard.require(IdentityPermissions.ROLES_MANAGE)
         val existing = roles.findByKey(key) ?: throw NotFoundException("role", key)
         if (existing.builtIn) throw InvalidStateException("built-in role $key cannot be deleted")
         if (grants.targetsWithRole(key).isNotEmpty() || memberships.findByRole(key).isNotEmpty()) {
@@ -222,11 +222,11 @@ class GrantAdminService(
     private val admins: PlatformAdmins,
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
 ) : ManageGrants, EffectivePermissionsQuery {
 
     override fun list(level: GrantLevel?, targetId: java.util.UUID?): List<GrantSetView> {
-        gate.require(IdentityPermissions.USERS_VIEW)
+        guard.require(IdentityPermissions.USERS_VIEW)
         val sets = when {
             level == GrantLevel.SYSTEM -> listOf(grants.find(GrantLevel.SYSTEM, null))
             level != null && targetId != null -> listOf(grants.find(level, targetId))
@@ -237,7 +237,7 @@ class GrantAdminService(
     }
 
     override fun replace(set: GrantSet): GrantSetView {
-        gate.require(IdentityPermissions.ROLES_MANAGE)
+        guard.require(IdentityPermissions.ROLES_MANAGE)
         val targetName = when (set.level) {
             GrantLevel.SYSTEM -> null
             GrantLevel.GROUP -> (groups.findById(GroupId(set.targetId!!)) ?: throw NotFoundException("group", set.targetId)).name
@@ -280,7 +280,7 @@ class GrantAdminService(
     }
 
     override fun of(userId: UserId): EffectivePermissionsView {
-        gate.require(IdentityPermissions.USERS_VIEW)
+        guard.require(IdentityPermissions.USERS_VIEW)
         val user = users.findById(userId) ?: throw NotFoundException("user", userId)
         val resolved = access.resolve(user)
         val descriptions = catalog.validator().let { validator ->

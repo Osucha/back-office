@@ -1,31 +1,42 @@
 package pl.mos.backoffice.identity.domain.model
 
-import pl.mos.backoffice.shared.security.PermissionDefinition
+import com.osucha.portpermissions.PermissionSet
+import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.security.PlatformSettingsPermissions
+import pl.mos.backoffice.shared.security.ProjectAccessPermissions
+import pl.mos.backoffice.shared.security.ProjectMembershipPermissions
 
-/** Permissions owned by the identity context (catalogue table in 08-identity-and-access.md). */
+/** Permissions owned by the identity context (catalogue table in 08-identity-and-access.md, ADR 0066). */
 object IdentityPermissions {
-    const val USERS_VIEW = "admin.users.view"
-    const val USERS_MANAGE = "admin.users.manage"
-    const val ROLES_MANAGE = "admin.roles.manage"
-    const val AUDIT_VIEW = "admin.audit.view"
-    const val PROJECTS_ALL = "admin.projects.all"
-    const val SETTINGS_MANAGE = "admin.settings.manage"
-    const val TOKENS_PERSONAL = "tokens.personal"
-    const val PROJECT_MEMBERS_MANAGE = "project.members.manage"
+    object Admin : PermissionSet("admin") {
+        val USERS_VIEW = permission("users.view", "List users, groups and memberships")
+        val USERS_MANAGE = permission("users.manage", "Invite, edit and deactivate users; manage groups")
+        val ROLES_MANAGE = permission("roles.manage", "Edit roles and platform grants")
+        val AUDIT_VIEW = permission("audit.view", "Read the audit log")
+        val PROJECTS_ALL = permission("projects.all", "Every project permission on every project")
+    }
+
+    object Tokens : PermissionSet("tokens") {
+        val PERSONAL = permission("personal", "Create own personal access tokens")
+    }
+
+    val USERS_VIEW = Admin.USERS_VIEW
+    val USERS_MANAGE = Admin.USERS_MANAGE
+    val ROLES_MANAGE = Admin.ROLES_MANAGE
+    val AUDIT_VIEW = Admin.AUDIT_VIEW
+    val PROJECTS_ALL = Admin.PROJECTS_ALL
+    val SETTINGS_MANAGE = PlatformSettingsPermissions.SETTINGS_MANAGE
+    val TOKENS_PERSONAL = Tokens.PERSONAL
+    val PROJECT_MEMBERS_MANAGE = ProjectMembershipPermissions.MEMBERS_MANAGE
+
+    /** Contributed by the Projects context; members of a project see its member list. */
+    val PROJECT_VIEW = ProjectAccessPermissions.VIEW
 
     const val MODULE = "identity"
 
-    val definitions: List<PermissionDefinition> = listOf(
-        PermissionDefinition(USERS_VIEW, PermissionScope.PLATFORM, MODULE, "List users, groups and memberships"),
-        PermissionDefinition(USERS_MANAGE, PermissionScope.PLATFORM, MODULE, "Invite, edit and deactivate users; manage groups"),
-        PermissionDefinition(ROLES_MANAGE, PermissionScope.PLATFORM, MODULE, "Edit roles and platform grants"),
-        PermissionDefinition(AUDIT_VIEW, PermissionScope.PLATFORM, MODULE, "Read the audit log"),
-        PermissionDefinition(PROJECTS_ALL, PermissionScope.PLATFORM, MODULE, "Every project permission on every project"),
-        PermissionDefinition(SETTINGS_MANAGE, PermissionScope.PLATFORM, MODULE, "Platform settings (registration mode, domains)"),
-        PermissionDefinition(TOKENS_PERSONAL, PermissionScope.PLATFORM, MODULE, "Create own personal access tokens"),
-        PermissionDefinition(PROJECT_MEMBERS_MANAGE, PermissionScope.PROJECT, MODULE, "Add/remove members and change their project roles"),
-    )
+    /** What this context contributes to the catalogue. */
+    val contribution = ModulePermissions(MODULE, listOf(Admin, PlatformSettingsPermissions, Tokens, ProjectMembershipPermissions))
 }
 
 /**
@@ -67,16 +78,16 @@ object BuiltInRoles {
 
     /** Every platform permission of the catalogue table (the seeder adds contributed platform keys too). */
     val ALL_PLATFORM = setOf(
-        IdentityPermissions.USERS_VIEW, IdentityPermissions.USERS_MANAGE, IdentityPermissions.ROLES_MANAGE,
-        IdentityPermissions.AUDIT_VIEW, IdentityPermissions.PROJECTS_ALL, IdentityPermissions.SETTINGS_MANAGE,
-        IdentityPermissions.TOKENS_PERSONAL, CONNECTIONS_PERSONAL, PROJECTS_CREATE_PERSONAL, FLEET_PERSONAL,
+        IdentityPermissions.USERS_VIEW.key, IdentityPermissions.USERS_MANAGE.key, IdentityPermissions.ROLES_MANAGE.key,
+        IdentityPermissions.AUDIT_VIEW.key, IdentityPermissions.PROJECTS_ALL.key, IdentityPermissions.SETTINGS_MANAGE.key,
+        IdentityPermissions.TOKENS_PERSONAL.key, CONNECTIONS_PERSONAL, PROJECTS_CREATE_PERSONAL, FLEET_PERSONAL,
         "projects.create", "integrations.view", "admin.connections.manage", LIBRARY_VIEW, "library.manage", MODELS_VIEW, "models.manage",
         EVALUATION_VIEW, "evaluation.run", USAGE_VIEW,
     )
 
     /** Every user: reads the shared catalogues, own tokens. No `projects.create`: managers create projects (ADR 0028). */
     private val MEMBER_PERMISSIONS = setOf(
-        LIBRARY_VIEW, MODELS_VIEW, EVALUATION_VIEW, IdentityPermissions.TOKENS_PERSONAL, "integrations.view", CONNECTIONS_PERSONAL,
+        LIBRARY_VIEW, MODELS_VIEW, EVALUATION_VIEW, IdentityPermissions.TOKENS_PERSONAL.key, "integrations.view", CONNECTIONS_PERSONAL,
         PROJECTS_CREATE_PERSONAL, FLEET_PERSONAL,
     )
 
@@ -84,7 +95,7 @@ object BuiltInRoles {
     private val PROJECT_MANAGER_PERMISSIONS = MEMBER_PERMISSIONS + setOf("projects.create", USAGE_VIEW)
 
     private val OWNER_PERMISSIONS = setOf(
-        PROJECT_VIEW, "project.manage", IdentityPermissions.PROJECT_MEMBERS_MANAGE, "project.ci.manage", "workflow.edit",
+        PROJECT_VIEW, "project.manage", IdentityPermissions.PROJECT_MEMBERS_MANAGE.key, "project.ci.manage", "workflow.edit",
         "run.start", "run.cancel", "run.approve", "run.assign", "run.signal", "library.project.manage", PROJECT_USAGE_VIEW,
         PROJECT_CONNECTIONS_MANAGE,
     )
@@ -100,12 +111,12 @@ object BuiltInRoles {
         platform(LIBRARY_CURATOR, "Library curator", "Member who maintains the global task library", MEMBER_PERMISSIONS + "library.manage"),
         platform(
             AUDITOR, "Auditor", "Read-only access to users, audit log and usage",
-            setOf(IdentityPermissions.USERS_VIEW, IdentityPermissions.AUDIT_VIEW, USAGE_VIEW, LIBRARY_VIEW, MODELS_VIEW, EVALUATION_VIEW),
+            setOf(IdentityPermissions.USERS_VIEW.key, IdentityPermissions.AUDIT_VIEW.key, USAGE_VIEW, LIBRARY_VIEW, MODELS_VIEW, EVALUATION_VIEW),
         ),
         project(OWNER, "Owner", "Every project permission except CI-token-only ones", OWNER_PERMISSIONS),
         project(
             MAINTAINER, "Maintainer", "Owner without member and connection management (project.manage still allows settings)",
-            OWNER_PERMISSIONS - IdentityPermissions.PROJECT_MEMBERS_MANAGE - PROJECT_CONNECTIONS_MANAGE,
+            OWNER_PERMISSIONS - IdentityPermissions.PROJECT_MEMBERS_MANAGE.key - PROJECT_CONNECTIONS_MANAGE,
         ),
         project(
             DEVELOPER, "Developer", "Edits workflows and runs them",

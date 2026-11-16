@@ -18,7 +18,7 @@ import pl.mos.backoffice.identity.adapter.config.IdentityProperties
 import pl.mos.backoffice.identity.adapter.config.IdentityWebValues
 import pl.mos.backoffice.identity.adapter.config.LazyOidcClientRegistrationRepository
 import pl.mos.backoffice.identity.adapter.`in`.web.SessionAttributes
-import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAuthorizationGate
+import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAccessGuard
 import pl.mos.backoffice.identity.application.port.`in`.GetMe
 import pl.mos.backoffice.identity.application.port.`in`.GetLoginOptions
 import pl.mos.backoffice.identity.application.port.`in`.GetRegistrationMode
@@ -79,7 +79,7 @@ class AuthController(
     private val registration: GetRegistrationMode,
     private val loginOptions: GetLoginOptions,
     private val authEvents: RecordAuthEvent,
-    private val gate: SecurityContextAuthorizationGate,
+    private val gate: SecurityContextAccessGuard,
     private val properties: IdentityProperties,
     private val web: IdentityWebValues,
     private val clients: ClientRegistrationRepository,

@@ -9,8 +9,8 @@ import org.springframework.context.annotation.Import
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.assertj.MockMvcTester
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.PostgresTestSupport
 import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
@@ -27,9 +27,9 @@ class TaskLibraryRestIntegrationTest {
     @Autowired lateinit var mvc: MockMvcTester
     @Autowired lateinit var json: JsonMapper
     @Autowired lateinit var seed: SeedTaskLibrary
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
     @Autowired lateinit var audit: RecordingAuditPort
-    @Autowired lateinit var contributions: List<PermissionCatalogContribution>
+    @Autowired lateinit var contributions: List<ModulePermissions>
 
     private val suffix = UUID.randomUUID().toString().substring(0, 8)
 
@@ -392,14 +392,14 @@ class TaskLibraryRestIntegrationTest {
     fun `callers without the library permissions get 403 and change nothing`() {
         val previous = gate.user
         try {
-            gate.user = FakeAuthorizationGate.user(platform = setOf("library.view"))
+            gate.user = FakeAccessGuard.user(platform = setOf("library.view"))
             assertThat(mvc.get().uri("/api/v1/task-templates")).hasStatusOk()
             assertThat(post("/api/v1/task-templates", templateBody("denied-$suffix", extra = """"""))).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(post("/api/v1/rules", """{"key":"denied-$suffix","name":"x","content":"x","scope":{"type":"GLOBAL"}}""")).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(post("/api/v1/skills", """{"key":"denied-$suffix","name":"x","content":"x","scope":{"type":"GLOBAL"}}""")).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(post("/api/v1/agents", """{"key":"denied-$suffix","name":"x","scope":{"type":"GLOBAL"}}""")).hasStatus(HttpStatus.FORBIDDEN)
 
-            gate.user = FakeAuthorizationGate.user()
+            gate.user = FakeAccessGuard.user()
             assertThat(mvc.get().uri("/api/v1/task-templates")).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(mvc.get().uri("/api/v1/rules")).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(mvc.get().uri("/api/v1/skills")).hasStatus(HttpStatus.FORBIDDEN)
@@ -452,7 +452,7 @@ class TaskLibraryRestIntegrationTest {
 
     @Test
     fun `the module contributes its permissions to the catalogue`() {
-        assertThat(contributions.flatMap { it.permissions() }.map { it.key })
+        assertThat(contributions.flatMap { it.sets }.flatMap { it.permissions }.map { it.key })
             .contains("library.view", "library.manage", "library.project.manage")
     }
 }

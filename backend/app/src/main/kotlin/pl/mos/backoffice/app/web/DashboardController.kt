@@ -13,7 +13,7 @@ import pl.mos.backoffice.projects.adapter.`in`.rest.WorkflowRunSummaryDto
 import pl.mos.backoffice.projects.application.port.`in`.ProjectsDashboardQuery
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.Money
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.usage.UsageGroupBy
 import pl.mos.backoffice.shared.usage.UsageLedger
 import pl.mos.backoffice.shared.usage.UsageQuery
@@ -35,7 +35,7 @@ class DashboardController(
     private val approvals: ApprovalViews,
     private val usage: UsageLedger,
     private val mapper: RestMapper,
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
     private val clock: Clock,
 ) {
 
@@ -61,7 +61,7 @@ class DashboardController(
         val monthStart = today.withDayOfMonth(1).atStartOfDay(ZoneOffset.UTC).toInstant()
         val thirtyDaysAgo = today.minusDays(29).atStartOfDay(ZoneOffset.UTC).toInstant()
 
-        val caller = gate.currentUser()
+        val caller = principal.currentUser()
         // the ledger aggregates all projects; platform-wide cost is only shown to holders of usage.view
         val seesCost = caller.can(USAGE_VIEW)
         val byDay = if (!seesCost) emptyMap() else usage.summary(UsageQuery(from = thirtyDaysAgo, to = now), UsageGroupBy.DAY).groups

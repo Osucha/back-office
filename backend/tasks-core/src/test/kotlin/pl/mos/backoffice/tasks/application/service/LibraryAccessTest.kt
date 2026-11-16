@@ -5,8 +5,9 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.security.permissionScope
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.domain.model.Rule
@@ -24,24 +25,24 @@ class LibraryAccessTest {
     private val audit = RecordingAuditPort()
     private val stranger: UUID = UUID.fromString("33333333-3333-3333-3333-333333333333")
 
-    private fun templates(gate: FakeAuthorizationGate) = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, audit)
-    private fun skills(gate: FakeAuthorizationGate) = SkillService(lib.skills, lib.agents, lib.clock, gate, audit)
-    private fun rules(gate: FakeAuthorizationGate) = RuleService(lib.rules, lib.agents, lib.clock, gate, audit)
+    private fun templates(gate: FakeAccessGuard) = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, gate, audit)
+    private fun skills(gate: FakeAccessGuard) = SkillService(lib.skills, lib.agents, lib.clock, gate, gate, audit)
+    private fun rules(gate: FakeAccessGuard) = RuleService(lib.rules, lib.agents, lib.clock, gate, gate, audit)
 
     private fun content(key: String, scope: Scope = Scope.Global) = TaskTemplate.Content(key = key, name = key, scope = scope)
 
     @Test
     fun `the permission catalogue declares the three library permissions with their scopes`() {
-        assertThat(TasksPermissions.definitions.associate { it.key to it.scope }).containsExactlyInAnyOrderEntriesOf(
+        assertThat(TasksPermissions.contribution.sets.flatMap { it.permissions }.associate { it.key to it.permissionScope }).containsExactlyInAnyOrderEntriesOf(
             mapOf("library.view" to PermissionScope.PLATFORM, "library.manage" to PermissionScope.PLATFORM, "library.project.manage" to PermissionScope.PROJECT),
         )
-        assertThat(TasksPermissions.definitions).allSatisfy { assertThat(it.module).isEqualTo("tasks") }
+        assertThat(TasksPermissions.contribution.module).isEqualTo("tasks")
     }
 
     @Test
     fun `global templates are read with library view and changed only with library manage`() {
-        val reader = FakeAuthorizationGate.permitting("library.view")
-        val curator = FakeAuthorizationGate.permitting("library.manage")
+        val reader = FakeAccessGuard.permitting("library.view")
+        val curator = FakeAccessGuard.permitting("library.manage")
 
         val created = templates(curator).create(content("global-one"))
         assertThat(curator.checked).containsExactly("library.manage")
@@ -57,19 +58,19 @@ class LibraryAccessTest {
         assertThatThrownBy { templates(reader).update(created.id, created.content.copy(name = "x")) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { templates(reader).delete(created.id) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { templates(curator).list() }.describedAs("manage does not imply view").isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { templates(FakeAuthorizationGate.denyAll()).get(created.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { templates(FakeAccessGuard.denyAll()).get(created.id) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThat(lib.templates.findByKeyAndScope("nope", Scope.Global)).isNull()
     }
 
     @Test
     fun `project templates need library project manage on that project and are visible to its members only`() {
-        val editor = FakeAuthorizationGate.permitting("library.project.manage", projects = setOf(lib.projectId))
-        val member = FakeAuthorizationGate(FakeAuthorizationGate.user(projects = mapOf(lib.projectId to setOf("project.view"))))
-        val outsider = FakeAuthorizationGate.permitting("library.view", "library.manage", projects = setOf(stranger))
+        val editor = FakeAccessGuard.permitting("library.project.manage", projects = setOf(lib.projectId))
+        val member = FakeAccessGuard(FakeAccessGuard.user(projects = mapOf(lib.projectId to setOf("project.view"))))
+        val outsider = FakeAccessGuard.permitting("library.view", "library.manage", projects = setOf(stranger))
 
         val mine = templates(editor).create(content("project-one", Scope.Project(lib.projectId)))
         assertThat(editor.checked).containsExactly("library.project.manage@${lib.projectId}")
-        templates(FakeAuthorizationGate.permitting("library.manage")).create(content("global-one"))
+        templates(FakeAccessGuard.permitting("library.manage")).create(content("global-one"))
 
         assertThat(templates(member).list(lib.projectId).map { it.key }).describedAs("no library.view: project entries only").containsExactly("project-one")
         assertThat(templates(member).get(mine.id).key).isEqualTo("project-one")
@@ -92,7 +93,7 @@ class LibraryAccessTest {
 
     @Test
     fun `template changes are audited with a field diff and no entry when nothing changed`() {
-        val gate = FakeAuthorizationGate.permitting("library.manage")
+        val gate = FakeAccessGuard.permitting("library.manage")
         lib.skill("s1")
         val created = templates(gate).create(content("audited").copy(instructions = "12345"))
         val updated = templates(gate).update(created.id, created.content.copy(instructions = "1234567", parameters = listOf(pl.mos.backoffice.shared.tasks.TemplateParameter("s1", "S1")), extendsKey = null))
@@ -111,8 +112,8 @@ class LibraryAccessTest {
 
     @Test
     fun `skills follow the scope rules and are audited`() {
-        val curator = FakeAuthorizationGate.permitting("library.manage", "library.view")
-        val editor = FakeAuthorizationGate.permitting("library.project.manage", projects = setOf(lib.projectId))
+        val curator = FakeAccessGuard.permitting("library.manage", "library.view")
+        val editor = FakeAccessGuard.permitting("library.project.manage", projects = setOf(lib.projectId))
 
         val global = skills(curator).create(Skill.Content(key = "g-skill", name = "G", content = "# g"))
         assertThat(curator.checked).containsExactly("library.manage")
@@ -122,7 +123,7 @@ class LibraryAccessTest {
 
         assertThatThrownBy { skills(editor).create(Skill.Content(key = "x", name = "X", content = "# x")) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { skills(editor).delete(global.id) }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { skills(FakeAuthorizationGate.denyAll()).list() }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { skills(FakeAccessGuard.denyAll()).list() }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThat(skills(editor).list(lib.projectId).map { it.key }).containsExactly("p-skill")
 
         skills(editor).delete(local.id)
@@ -133,10 +134,10 @@ class LibraryAccessTest {
 
     @Test
     fun `rules follow the scope rules of skills and are audited`() {
-        val curator = FakeAuthorizationGate.permitting("library.manage", "library.view")
-        val reader = FakeAuthorizationGate.permitting("library.view")
-        val editor = FakeAuthorizationGate.permitting("library.project.manage", projects = setOf(lib.projectId))
-        val member = FakeAuthorizationGate(FakeAuthorizationGate.user(projects = mapOf(lib.projectId to setOf("project.view"))))
+        val curator = FakeAccessGuard.permitting("library.manage", "library.view")
+        val reader = FakeAccessGuard.permitting("library.view")
+        val editor = FakeAccessGuard.permitting("library.project.manage", projects = setOf(lib.projectId))
+        val member = FakeAccessGuard(FakeAccessGuard.user(projects = mapOf(lib.projectId to setOf("project.view"))))
 
         val global = rules(curator).create(Rule.Content(key = "g-rule", name = "G", content = "Be brief.", automatic = true))
         assertThat(curator.checked).containsExactly("library.manage")
@@ -159,7 +160,7 @@ class LibraryAccessTest {
             .describedAs("moving to global needs library.manage").isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { rules(editor).delete(global.id) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { rules(member).delete(local.id) }.isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { rules(FakeAuthorizationGate.denyAll()).list() }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { rules(FakeAccessGuard.denyAll()).list() }.isInstanceOf(InsufficientPermissionException::class.java)
 
         rules(editor).delete(local.id)
         assertThat(audit.operations()).containsExactly("RULE_CREATE", "RULE_CREATE", "RULE_UPDATE", "RULE_DELETE")
@@ -174,7 +175,7 @@ class LibraryAccessTest {
 
     @Test
     fun `the catalog port used by the workflow engine needs no user permission`() {
-        templates(FakeAuthorizationGate.permitting("library.manage")).create(content("engine-task"))
+        templates(FakeAccessGuard.permitting("library.manage")).create(content("engine-task"))
         val catalog = TaskCatalogService(lib.templates, lib.lookup)
         assertThat(catalog.resolve("engine-task", null)!!.key).isEqualTo("engine-task")
         assertThat(catalog.palette(null).map { it.key }).containsExactly("engine-task")

@@ -165,7 +165,7 @@ set; ADR 0035 lists the recommended extra read scopes):
 | Piece | Module | Role |
 |---|---|---|
 | `Connection`, `ConnectionCapability` (with `write` flag and Jira permissions), `SealedSecret`, `ConnectionSelector`, `ConnectionVerificationPolicy` | `projects-core` domain | pure model, least-privilege choice, and turning a Jira probe (granted permissions) into missing / excess / status |
-| Connection use cases (manage platform / project connections, verify, resolve, list usable) | `projects-core` application | `AuthorizationGate` + audit; secrets enter only as plaintext to be sealed |
+| Connection use cases (manage platform / project connections, verify, resolve, list usable) | `projects-core` application | `AccessGuard` + audit; secrets enter only as plaintext to be sealed |
 | `SecretSealer` | `projects-core` port (generic, not Jira-specific) | `seal(plaintext, associatedData)` → sealed envelope; core never decrypts |
 | `AesGcmSecretCipher` | `projects-adapters` | implements `SecretSealer`, and the adapter-only opening used to build clients; KEK handling, re-wrap |
 | `IssueTrackerFactory` | `projects-core` port, `projects-adapters` implementation | opens a per-connection `JiraIssueTracker`, restricted to the step's capabilities and the allow-list |

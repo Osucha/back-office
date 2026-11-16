@@ -23,7 +23,7 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.DomainEvent
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.LocalDate
 
@@ -39,13 +39,13 @@ class ConnectionDraftAndExpiryTest {
     private val events = mutableListOf<DomainEvent>()
     private val today = LocalDate.parse("2026-09-26")
 
-    private fun service(gate: FakeAuthorizationGate) = ConnectionService(
-        connections, projects, LegacyConnectionSource.NONE, sealer, trackers, ConnectionSelector(), ConnectionVerificationPolicy(), gate, audit,
+    private fun service(gate: FakeAccessGuard) = ConnectionService(
+        connections, projects, LegacyConnectionSource.NONE, sealer, trackers, ConnectionSelector(), ConnectionVerificationPolicy(), gate, gate, audit,
         Clock.fixed(Fixtures.now), { events += it },
     )
 
-    private val owner = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
-    private val admin = FakeAuthorizationGate.permitting(ProjectsPermissions.CONNECTIONS_MANAGE, ProjectsPermissions.INTEGRATIONS_VIEW)
+    private val owner = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+    private val admin = FakeAccessGuard.permitting(ProjectsPermissions.CONNECTIONS_MANAGE, ProjectsPermissions.INTEGRATIONS_VIEW)
     private val secret = "ATATT3x-draft-token"
 
     private fun draft(token: String? = secret) = ConnectionCommand(
@@ -106,6 +106,6 @@ class ConnectionDraftAndExpiryTest {
 
         assertThat(service(admin).expiring().map { it.name }).containsExactly("platform soon")
         assertThat(service(owner).expiring().map { it.name }).containsExactly("project soon")
-        assertThat(service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))).expiring()).isEmpty()
+        assertThat(service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))).expiring()).isEmpty()
     }
 }

@@ -21,7 +21,7 @@ import pl.mos.backoffice.projects.adapter.FakeProjectAccessDirectory
 import pl.mos.backoffice.projects.adapter.ProjectsTestApplication
 import pl.mos.backoffice.projects.adapter.ProjectsTestBeans
 import pl.mos.backoffice.projects.adapter.RecordingProjectAccessProvisioner
-import pl.mos.backoffice.projects.adapter.TestAuthorizationGate
+import pl.mos.backoffice.projects.adapter.TestAccessGuard
 import pl.mos.backoffice.projects.adapter.out.langgraph.LangGraphWorkflowEngine
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 import pl.mos.backoffice.shared.security.CurrentUser
@@ -175,8 +175,8 @@ class AccessControlRestTest {
         val ann = user(UUID.randomUUID(), "Ann Approver", setOf("project.view", "run.approve"), setOf("approver"))
         val dave = user(UUID.randomUUID(), "Dave Developer", setOf("project.view", "run.approve"), setOf("developer"))
         val vic = user(UUID.randomUUID(), "Vic Viewer", setOf("project.view"), setOf("approver"))
-        val mia = user(TestAuthorizationGate.member(projectId, emptySet()).userId!!.value, "Mia Member", setOf("project.view", "run.approve"), setOf("approver"))
-        directory.register(TestAuthorizationGate.OWNER)
+        val mia = user(TestAccessGuard.member(projectId, emptySet()).userId!!.value, "Mia Member", setOf("project.view", "run.approve"), setOf("approver"))
+        directory.register(TestAccessGuard.OWNER)
         val annId = ann.userId!!.value
         val miaId = mia.userId!!.value
 
@@ -212,7 +212,7 @@ class AccessControlRestTest {
             .andExpect(jsonPath("$[?(@.displayName == 'Ann Approver')].assigned").value(true))
         assign("""{"userIds":["${dave.userId}"]}""").andExpect(status().isBadRequest)
         assign("""{"userIds":["${vic.userId}"]}""").andExpect(status().isBadRequest)
-        assign("""{"userIds":["${TestAuthorizationGate.OWNER_ID}"]}""").andExpect(status().isBadRequest) // four-eyes: Olivia started the run
+        assign("""{"userIds":["${TestAccessGuard.OWNER_ID}"]}""").andExpect(status().isBadRequest) // four-eyes: Olivia started the run
         assign("""{"userIds":["${UUID.randomUUID()}"]}""").andExpect(status().isBadRequest)
         assign("""{"comment":"no list"}""").andExpect(status().isBadRequest)
 

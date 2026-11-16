@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.PermissionDefinition
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -12,7 +13,7 @@ import pl.mos.backoffice.projects.domain.model.RepositoryPurpose
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Instant
 
@@ -29,7 +30,7 @@ class LibrarySourceServiceTest {
     }
     private val audit = RecordingAuditPort()
     private val clock = Clock { Instant.parse("2026-10-17T10:00:00Z") }
-    private fun service(vararg permissions: String) = LibrarySourceService(store, FakeAuthorizationGate.permitting(*permissions), audit, clock)
+    private fun service(vararg permissions: PermissionDefinition) = (FakeAccessGuard.permitting(*permissions)).let { g -> LibrarySourceService(store, g, g, audit, clock) }
 
     private val command = SourceCommand("standards", "Company standards", "Coding and review rules", "https://git.example.com/acme/standards.git", null, RepositoryPurpose.STANDARDS)
 

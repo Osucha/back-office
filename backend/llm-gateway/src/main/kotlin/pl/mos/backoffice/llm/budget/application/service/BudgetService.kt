@@ -1,5 +1,9 @@
 package pl.mos.backoffice.llm.budget.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
+import com.osucha.portpermissions.allows
 import pl.mos.backoffice.llm.budget.application.port.`in`.BudgetInput
 import pl.mos.backoffice.llm.budget.application.port.`in`.EnforceBudgets
 import pl.mos.backoffice.llm.budget.application.port.`in`.ManageBudgets
@@ -18,20 +22,21 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
+import pl.mos.backoffice.llm.usage.LlmPermissions
 import pl.mos.backoffice.shared.platform.JobCredential
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PublicOperation
-import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.PlatformSettingsPermissions
+import pl.mos.backoffice.shared.security.ProjectAccessPermissions
 import pl.mos.backoffice.shared.usage.UsageContext
 import java.math.BigDecimal
 import java.util.UUID
 
 /** Permission keys used by budgets (no new permissions, docs/architecture/11-governance.md). */
 object BudgetPermissions {
-    const val PLATFORM_MANAGE = "admin.settings.manage"
-    const val USAGE_VIEW = "usage.view"
-    const val PROJECT_MANAGE = "project.manage"
-    const val PROJECT_USAGE_VIEW = "project.usage.view"
+    val PLATFORM_MANAGE = PlatformSettingsPermissions.SETTINGS_MANAGE
+    val USAGE_VIEW = LlmPermissions.USAGE_VIEW
+    val PROJECT_MANAGE = ProjectAccessPermissions.MANAGE
+    val PROJECT_USAGE_VIEW = LlmPermissions.PROJECT_USAGE_VIEW
 }
 
 /**
@@ -41,7 +46,8 @@ object BudgetPermissions {
  */
 class BudgetService(
     private val store: BudgetStore,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val events: EventPublisher,
     private val clock: Clock,
@@ -51,8 +57,8 @@ class BudgetService(
 
     @PublicOperation("returns only the budgets the caller may see: platform with admin.settings.manage or usage.view, projects with project.usage.view")
     override fun list(): List<BudgetStatus> {
-        val user = gate.currentUser()
-        val filter = gate.projectFilter(BudgetPermissions.PROJECT_USAGE_VIEW)
+        val user = principal.currentUser()
+        val filter = guard.scopesWith(BudgetPermissions.PROJECT_USAGE_VIEW)
         val configs = store.findConfigs()
         val platform = if (user.can(BudgetPermissions.PLATFORM_MANAGE) || user.can(BudgetPermissions.USAGE_VIEW) || user.allProjects) {
             listOf(status(configs.firstOrNull { it.scope == BudgetScope.PLATFORM } ?: BudgetConfig(BudgetScope.PLATFORM, null, null)))
@@ -62,17 +68,19 @@ class BudgetService(
     }
 
     override fun setPlatform(input: BudgetInput): BudgetStatus {
-        val user = gate.require(BudgetPermissions.PLATFORM_MANAGE)
+        guard.require(BudgetPermissions.PLATFORM_MANAGE)
+        val user = principal.currentUser()
         return save(BudgetConfig(BudgetScope.PLATFORM, null, input.monthlyLimitUsd, input.alertAtPercent, input.hardStop), user.login)
     }
 
     override fun getProject(projectId: UUID): BudgetStatus {
-        gate.require(BudgetPermissions.PROJECT_USAGE_VIEW, projectId)
+        guard.require(BudgetPermissions.PROJECT_USAGE_VIEW, projectId)
         return status(projectConfig(projectId))
     }
 
     override fun setProject(projectId: UUID, input: BudgetInput): BudgetStatus {
-        val user = gate.require(BudgetPermissions.PROJECT_MANAGE, projectId)
+        guard.require(BudgetPermissions.PROJECT_MANAGE, projectId)
+        val user = principal.currentUser()
         return save(BudgetConfig(BudgetScope.PROJECT, projectId, input.monthlyLimitUsd, input.alertAtPercent, input.hardStop), user.login)
     }
 

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.governance.adapter.`in`.events
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.scheduling.annotation.Scheduled
@@ -8,7 +9,6 @@ import org.springframework.transaction.event.TransactionalEventListener
 import org.springframework.transaction.support.TransactionTemplate
 import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
 import pl.mos.backoffice.shared.DomainEvent
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -24,7 +24,7 @@ import java.util.concurrent.Executors
  */
 class AttestationTrigger(
     private val record: RecordAttestations,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val jdbc: JdbcClient,
     private val transactions: TransactionTemplate,
 ) : AutoCloseable {
@@ -56,12 +56,12 @@ class AttestationTrigger(
     fun sweepNow(): Int = transactions.execute {
         val locked = jdbc.sql("SELECT pg_try_advisory_xact_lock(:key)").param("key", LOCK_KEY).query(Boolean::class.java).single()
         if (!locked) return@execute -1
-        gate.asSystem("provenance attestation sweep") { record.attestPending() }.also { if (it > 0) log.info("attestation sweep attested runs={}", it) }
+        guard.asSystem("provenance attestation sweep") { record.attestPending() }.also { if (it > 0) log.info("attestation sweep attested runs={}", it) }
     } ?: 0
 
     private fun submit(what: String, block: () -> Any?) {
         executor.execute {
-            runCatching { gate.asSystem("provenance attestation") { block() } }
+            runCatching { guard.asSystem("provenance attestation") { block() } }
                 .onFailure { log.warn("attestation of {} failed (the sweep retries): {}", what, it.toString()) }
         }
     }

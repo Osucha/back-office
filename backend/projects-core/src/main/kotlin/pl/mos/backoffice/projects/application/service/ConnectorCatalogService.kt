@@ -1,12 +1,12 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.out.ConnectorRepository
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.service.ConnectorResolution
 import pl.mos.backoffice.shared.runner.ConnectorCatalog
 import pl.mos.backoffice.shared.runner.ConnectorKind
 import pl.mos.backoffice.shared.runner.JobConnectors
-import pl.mos.backoffice.shared.security.SystemOperation
 import java.util.UUID
 
 /**

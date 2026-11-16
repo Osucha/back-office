@@ -9,7 +9,7 @@ import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.runner.AgentHarness
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.domain.model.Agent
@@ -24,14 +24,14 @@ class AgentServiceTest {
 
     private val lib = Library(builtInAgents = false)
     private val other: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
-    private val curator = FakeAuthorizationGate.permitting(
+    private val curator = FakeAccessGuard.permitting(
         TasksPermissions.LIBRARY_VIEW, TasksPermissions.LIBRARY_MANAGE, TasksPermissions.LIBRARY_PROJECT_MANAGE,
         projects = setOf(lib.projectId, other),
     )
     private val audit = RecordingAuditPort()
 
-    private fun agents(gate: FakeAuthorizationGate = curator) = AgentService(lib.agents, lib.clock, gate, audit, lib.lookup)
-    private fun templates() = TaskTemplateService(lib.templates, lib.lookup, lib.clock, curator, audit)
+    private fun agents(gate: FakeAccessGuard = curator) = AgentService(lib.agents, lib.clock, gate, gate, audit, lib.lookup)
+    private fun templates() = TaskTemplateService(lib.templates, lib.lookup, lib.clock, curator, curator, audit)
 
     @Test
     fun `agents are created with a derived key, unique per scope, listed by name and updated keeping the key`() {
@@ -79,7 +79,7 @@ class AgentServiceTest {
 
     @Test
     fun `global agents need library manage to change and library view to read, project agents the project permissions`() {
-        val reader = FakeAuthorizationGate.permitting(TasksPermissions.LIBRARY_VIEW)
+        val reader = FakeAccessGuard.permitting(TasksPermissions.LIBRARY_VIEW)
         val created = agents().create(Agent.Content(name = "Global"))
 
         assertThat(agents(reader).list().map { it.key }).containsExactly("global")
@@ -88,13 +88,13 @@ class AgentServiceTest {
         assertThatThrownBy { agents(reader).update(created.id, Agent.Content(name = "No")) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { agents(reader).delete(created.id) }.isInstanceOf(InsufficientPermissionException::class.java)
 
-        val editor = FakeAuthorizationGate.permitting(TasksPermissions.LIBRARY_PROJECT_MANAGE, projects = setOf(lib.projectId))
+        val editor = FakeAccessGuard.permitting(TasksPermissions.LIBRARY_PROJECT_MANAGE, projects = setOf(lib.projectId))
         val mine = agents(editor).create(Agent.Content(name = "Mine", scope = Scope.Project(lib.projectId)))
         assertThat(editor.checked).containsExactly("library.project.manage@${lib.projectId}")
         assertThat(agents(editor).list(lib.projectId).map { it.key }).containsExactly("mine")
         assertThatThrownBy { agents(editor).create(Agent.Content(name = "Elsewhere", scope = Scope.Project(other))) }
             .isInstanceOf(InsufficientPermissionException::class.java)
-        assertThatThrownBy { agents(FakeAuthorizationGate.denyAll()).get(mine.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { agents(FakeAccessGuard.denyAll()).get(mine.id) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThat(audit.entries.map { it.entityType }.distinct()).containsExactly("Agent")
         assertThat(audit.entries.first().details).containsEntry("key", "global").containsEntry("scope", "GLOBAL")
     }

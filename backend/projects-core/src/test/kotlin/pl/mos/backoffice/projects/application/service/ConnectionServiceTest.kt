@@ -33,7 +33,7 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.LocalDate
 
@@ -48,12 +48,12 @@ class ConnectionServiceTest {
     private val audit = RecordingAuditPort()
     private var legacy = LegacyConnectionSource.NONE
 
-    private fun service(gate: FakeAuthorizationGate) = ConnectionService(
-        connections, projects, { legacy.legacy() }, sealer, trackers, ConnectionSelector(), ConnectionVerificationPolicy(), gate, audit, Clock.fixed(Fixtures.now),
+    private fun service(gate: FakeAccessGuard) = ConnectionService(
+        connections, projects, { legacy.legacy() }, sealer, trackers, ConnectionSelector(), ConnectionVerificationPolicy(), gate, gate, audit, Clock.fixed(Fixtures.now),
     )
 
-    private val owner = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
-    private val admin = FakeAuthorizationGate.permitting(ProjectsPermissions.CONNECTIONS_MANAGE, ProjectsPermissions.INTEGRATIONS_VIEW)
+    private val owner = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+    private val admin = FakeAccessGuard.permitting(ProjectsPermissions.CONNECTIONS_MANAGE, ProjectsPermissions.INTEGRATIONS_VIEW)
 
     private val secret = "ATATT3xFfGF0-very-secret-token"
 
@@ -88,7 +88,7 @@ class ConnectionServiceTest {
 
     @Test
     fun `project connections need project connections manage, platform ones admin connections manage`() {
-        val maintainer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val maintainer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
         assertThatThrownBy { service(maintainer).create(project.id, command()) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { service(owner).create(null, command()) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { service(admin).create(project.id, command()) }.isInstanceOf(InsufficientPermissionException::class.java)
@@ -98,7 +98,7 @@ class ConnectionServiceTest {
         assertThat(admin.checked.last()).isEqualTo("admin.connections.manage")
 
         // a viewer lists; a project connection is not reachable through the platform endpoints and vice versa
-        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
         val own = service(owner).create(project.id, command())
         assertThat(service(viewer).listProject(project.id)).containsExactly(own)
         assertThatThrownBy { service(admin).get(null, own.id) }.isInstanceOf(NotFoundException::class.java)
@@ -174,7 +174,7 @@ class ConnectionServiceTest {
     @Test
     fun `resolve explains which connection a step would use`() {
         legacy = LegacyConnectionSource { ConnectionFakes.connection("Jira (environment variables)", ALL, legacy = true) }
-        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
 
         val legacyOnly = service(viewer).resolve(project.id, setOf(ISSUE_READ), null, null)
         assertThat(legacyOnly.status).isEqualTo(SelectionStatus.OVER_PRIVILEGED)

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.platform.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.platform.application.port.`in`.OperationsOverview
 import pl.mos.backoffice.platform.application.port.`in`.OperationsQueries
 import pl.mos.backoffice.platform.application.port.`in`.RetryWorkItem
@@ -12,7 +13,7 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.platform.AgentJobStatistics
 import pl.mos.backoffice.shared.platform.EventStream
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.PlatformSettingsPermissions
 import pl.mos.backoffice.shared.usage.PageOf
 import java.time.Duration
 import java.util.UUID
@@ -25,13 +26,13 @@ class OperationsService(
     private val readModel: OperationsReadModel,
     private val events: EventStream?,
     private val agentJobs: AgentJobStatistics?,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val audit: AuditPort,
     private val staleAfter: Duration,
 ) : OperationsQueries, RetryWorkItem {
 
     override fun overview(): OperationsOverview {
-        gate.require(PERMISSION)
+        guard.require(PERMISSION)
         val counts = readModel.countsByStatus()
         return OperationsOverview(
             replicas = readModel.replicas(staleAfter),
@@ -44,14 +45,14 @@ class OperationsService(
     }
 
     override fun workItems(status: String?, kind: String?, page: Int, size: Int): PageOf<WorkItemView> {
-        gate.require(PERMISSION)
+        guard.require(PERMISSION)
         val normalised = status?.uppercase()?.also { if (it !in STATUSES) throw ValidationException("status must be one of $STATUSES") }
         if (page < 0 || size !in 1..MAX_PAGE_SIZE) throw ValidationException("page must be >= 0 and size within 1..$MAX_PAGE_SIZE")
         return readModel.workItems(normalised, kind?.takeIf { it.isNotBlank() }, page, size)
     }
 
     override fun retry(itemId: UUID) {
-        gate.require(PERMISSION)
+        guard.require(PERMISSION)
         val item = readModel.find(itemId) ?: throw NotFoundException("WorkItem", itemId)
         if (item.status != "DEAD") throw InvalidStateException("work item $itemId is ${item.status}; only DEAD items can be retried")
         val requeued = try {
@@ -65,7 +66,7 @@ class OperationsService(
 
     companion object {
         /** Platform administrators (identity's `admin.settings.manage`); no new key needed. */
-        const val PERMISSION = "admin.settings.manage"
+        val PERMISSION = PlatformSettingsPermissions.SETTINGS_MANAGE
         val STATUSES = listOf("READY", "LEASED", "DONE", "DEAD")
         const val MAX_PAGE_SIZE = 200
     }

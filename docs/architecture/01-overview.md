@@ -80,7 +80,7 @@ backend/
   evaluation-core/        Model catalogue, task suites, benchmarks: domain + application
   evaluation-adapters/    REST, JPA, benchmark attempt executor, leaderboard queries
   identity-core/          Users, groups, roles, grants, local accounts, personal access tokens: domain + application
-  identity-adapters/      OIDC BFF login, Spring Security, AuthorizationGate, token filters, REST, JPA
+  identity-adapters/      OIDC BFF login, Spring Security, AccessGuard, token filters, REST, JPA
   governance-core/        Signing, attestations, insights: domain + application
   governance-adapters/    REST, JPA, signing keys, MCP server (/mcp)
   llm-gateway/            Spring AI implementation of LlmGateway (all providers), usage ledger (JPA), budgets,

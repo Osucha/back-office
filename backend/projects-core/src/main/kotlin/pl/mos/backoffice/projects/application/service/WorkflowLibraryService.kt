@@ -1,5 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.allows
+import com.osucha.portpermissions.PublicOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary.Adoption
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflowLibrary.LibraryDetailsCommand
@@ -29,8 +32,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PublicOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 
 /**
@@ -44,13 +46,14 @@ class WorkflowLibraryService(
     private val projects: ProjectRepository,
     private val workflowService: WorkflowService,
     private val taskCatalog: TaskCatalog,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : ManageWorkflowLibrary {
 
     override fun list(includeDeprecated: Boolean): List<LibraryWorkflowView> {
-        gate.require(ProjectsPermissions.LIBRARY_VIEW)
+        guard.require(ProjectsPermissions.LIBRARY_VIEW)
         val adoptions = visibleAdoptions(null)
         return library.findAll()
             .filter { includeDeprecated || !it.deprecated }
@@ -59,18 +62,19 @@ class WorkflowLibraryService(
     }
 
     override fun get(id: LibraryWorkflowId): LibraryWorkflowView {
-        gate.require(ProjectsPermissions.LIBRARY_VIEW)
+        guard.require(ProjectsPermissions.LIBRARY_VIEW)
         return view(load(id))
     }
 
     override fun version(id: LibraryWorkflowId, version: Int): LibraryVersionView {
-        gate.require(ProjectsPermissions.LIBRARY_VIEW)
+        guard.require(ProjectsPermissions.LIBRARY_VIEW)
         val entry = load(id)
         return LibraryVersionView(entry, entry.version(version))
     }
 
     override fun update(id: LibraryWorkflowId, command: LibraryDetailsCommand): LibraryWorkflowView {
-        val actor = gate.require(ProjectsPermissions.LIBRARY_MANAGE).actor
+        guard.require(ProjectsPermissions.LIBRARY_MANAGE)
+        val actor = principal.currentUser().actor
         val existing = load(id)
         val saved = library.save(existing.withDetails(command.name.trim(), command.description.trim(), command.tags, command.deprecated, clock.now(), actor))
         audit.record(
@@ -88,7 +92,7 @@ class WorkflowLibraryService(
     }
 
     override fun delete(id: LibraryWorkflowId) {
-        gate.require(ProjectsPermissions.LIBRARY_MANAGE)
+        guard.require(ProjectsPermissions.LIBRARY_MANAGE)
         val existing = load(id)
         val linked = workflows.findLinkedToLibrary(id)
         if (linked.isNotEmpty()) {
@@ -100,8 +104,9 @@ class WorkflowLibraryService(
 
     override fun publish(workflowId: WorkflowDefinitionId, command: PublishCommand): LibraryWorkflowView {
         val source = workflows.findById(workflowId) ?: throw NotFoundException("Workflow", workflowId)
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, source.projectId.value).actor
-        gate.require(ProjectsPermissions.LIBRARY_MANAGE)
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, source.projectId.value)
+        val actor = principal.currentUser().actor
+        guard.require(ProjectsPermissions.LIBRARY_MANAGE)
         val project = projects.findById(source.projectId) ?: throw NotFoundException("Project", source.projectId)
         if (source.draft) throw InvalidStateException("workflow ${source.name} is a draft with validation errors; fix them and save it before publishing")
         requireGlobalTemplates(source)
@@ -164,8 +169,9 @@ class WorkflowLibraryService(
     }
 
     override fun adopt(projectId: ProjectId, libraryWorkflowId: LibraryWorkflowId, version: Int?, name: String?): WorkflowDefinition {
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value).actor
-        gate.require(ProjectsPermissions.LIBRARY_VIEW)
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, projectId.value)
+        val actor = principal.currentUser().actor
+        guard.require(ProjectsPermissions.LIBRARY_VIEW)
         projects.findById(projectId) ?: throw NotFoundException("Project", projectId)
         val entry = load(libraryWorkflowId)
         if (entry.deprecated) throw InvalidStateException("library workflow ${entry.key} is deprecated")
@@ -215,7 +221,8 @@ class WorkflowLibraryService(
 
     override fun updateFromLibrary(workflowId: WorkflowDefinitionId, version: Int?, discardLocalChanges: Boolean): WorkflowDefinition {
         val existing = workflows.findById(workflowId) ?: throw NotFoundException("Workflow", workflowId)
-        val actor = gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value).actor
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value)
+        val actor = principal.currentUser().actor
         val link = existing.library ?: throw InvalidStateException("workflow ${existing.name} is not linked to the library")
         val entry = load(link.libraryWorkflowId)
         val target = version?.let(entry::version) ?: entry.latest
@@ -251,7 +258,7 @@ class WorkflowLibraryService(
 
     override fun detach(workflowId: WorkflowDefinitionId): WorkflowDefinition {
         val existing = workflows.findById(workflowId) ?: throw NotFoundException("Workflow", workflowId)
-        gate.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value)
+        guard.require(ProjectsPermissions.WORKFLOW_EDIT, existing.projectId.value)
         val link = existing.library ?: return existing
         val saved = workflows.save(existing.withLibrary(null))
         audit.record(
@@ -294,7 +301,7 @@ class WorkflowLibraryService(
 
     /** Linked project workflows per entry, only in projects the caller may view. */
     private fun visibleAdoptions(id: LibraryWorkflowId?): Map<LibraryWorkflowId, List<Adoption>> {
-        val filter = gate.projectFilter(ProjectsPermissions.PROJECT_VIEW)
+        val filter = guard.scopesWith(ProjectsPermissions.PROJECT_VIEW)
         val linked = workflows.findLinkedToLibrary(id).filter { filter.allows(it.projectId.value) }
         if (linked.isEmpty()) return emptyMap()
         val keys = projects.findAll(filter).associate { it.id to it.key }

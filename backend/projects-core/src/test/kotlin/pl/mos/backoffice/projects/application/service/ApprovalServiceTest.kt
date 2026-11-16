@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.ScopeFilter
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -30,9 +31,8 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditResult
-import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.security.UserId
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -45,7 +45,7 @@ class ApprovalServiceTest {
     private val engine = mockk<WorkflowEngine>(relaxed = true)
     private val events = mutableListOf<DomainEvent>()
     private val audit = RecordingAuditPort()
-    private val approve = setOf(ProjectsPermissions.RUN_APPROVE)
+    private val approve = setOf(ProjectsPermissions.RUN_APPROVE.key)
     private val checklist = listOf(ChecklistItem("tests-green", "Tests green"), ChecklistItem("docs", "Docs updated", required = false))
 
     init {
@@ -53,7 +53,7 @@ class ApprovalServiceTest {
         every { runs.save(any()) } answers { firstArg() }
     }
 
-    private fun service(gate: FakeAuthorizationGate) = ApprovalService(approvals, runs, engine, EventPublisher { events += it }, gate, audit, Clock.fixed(now))
+    private fun service(gate: FakeAccessGuard) = ApprovalService(approvals, runs, engine, EventPublisher { events += it }, gate, gate, audit, Clock.fixed(now))
 
     /** A run of [startedBy] waiting at the merge gate with an approval carrying [approvers] and the checklist. */
     private fun waitingApproval(approvers: GateApprovers, startedBy: pl.mos.backoffice.shared.security.Actor? = bob): Pair<WorkflowRun, ApprovalRequest> {
@@ -68,8 +68,8 @@ class ApprovalServiceTest {
         return run to approval
     }
 
-    private fun gateFor(roles: Set<String> = emptySet(), userId: UserId = FakeAuthorizationGate.TEST_USER_ID, permissions: Set<String> = approve) =
-        FakeAuthorizationGate(Fixtures.userWithRoles(project.id, permissions, roles, userId))
+    private fun gateFor(roles: Set<String> = emptySet(), userId: UserId = FakeAccessGuard.TEST_USER_ID, permissions: Set<String> = approve) =
+        FakeAccessGuard(Fixtures.userWithRoles(project.id, permissions, roles, userId))
 
     @Test
     fun `an approver with run approve decides, the decision is stamped, audited and resumes the run`() {
@@ -96,7 +96,7 @@ class ApprovalServiceTest {
     @Test
     fun `without run approve on the project the decision is refused`() {
         val (_, approval) = waitingApproval(GateApprovers.ANYONE)
-        assertThatThrownBy { service(gateFor(permissions = setOf(ProjectsPermissions.PROJECT_VIEW))).decide(approval.id, DecisionCommand("reject")) }
+        assertThatThrownBy { service(gateFor(permissions = setOf(ProjectsPermissions.PROJECT_VIEW.key))).decide(approval.id, DecisionCommand("reject")) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) {
                 assertThat(it.permission).isEqualTo("run.approve")
                 assertThat(it.projectId).isEqualTo(project.id.value)
@@ -114,7 +114,7 @@ class ApprovalServiceTest {
         assertThat(service(gateFor(roles = setOf("approver"))).decide(approval.id, DecisionCommand("reject")).status).isEqualTo(ApprovalStatus.DECIDED)
 
         val (_, other) = waitingApproval(rule)
-        val admin = FakeAuthorizationGate.permitAll()
+        val admin = FakeAccessGuard.permitAll()
         assertThat(service(admin).decide(other.id, DecisionCommand("reject")).status).isEqualTo(ApprovalStatus.DECIDED)
     }
 
@@ -162,12 +162,12 @@ class ApprovalServiceTest {
     @Test
     fun `the inbox only lists approvals of visible projects and get needs project view`() {
         val (_, approval) = waitingApproval(GateApprovers.ANYONE)
-        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
-        every { approvals.findByStatus(ApprovalStatus.OPEN, ProjectFilter.Only(setOf(project.id.value)), null) } returns listOf(approval)
+        val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        every { approvals.findByStatus(ApprovalStatus.OPEN, ScopeFilter.Only(setOf(project.id.value)), null) } returns listOf(approval)
         assertThat(service(viewer).list(ApprovalStatus.OPEN)).containsExactly(approval)
         assertThat(service(viewer).get(approval.id)).isEqualTo(approval)
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).get(approval.id) }.isInstanceOf(InsufficientPermissionException::class.java)
-        every { approvals.findByStatus(ApprovalStatus.OPEN, ProjectFilter.Only(emptySet()), null) } returns emptyList()
-        assertThat(service(FakeAuthorizationGate.denyAll()).list(ApprovalStatus.OPEN)).isEmpty()
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).get(approval.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        every { approvals.findByStatus(ApprovalStatus.OPEN, ScopeFilter.Only(emptySet()), null) } returns emptyList()
+        assertThat(service(FakeAccessGuard.denyAll()).list(ApprovalStatus.OPEN)).isEmpty()
     }
 }

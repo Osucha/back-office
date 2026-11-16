@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.out.persistence
 
+import com.osucha.portpermissions.ScopeFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -70,7 +71,6 @@ import pl.mos.backoffice.projects.domain.model.ChecklistItem
 import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.projects.domain.model.CiExecutionStatus
 import pl.mos.backoffice.projects.application.port.`in`.CiExecutionQueries
 import pl.mos.backoffice.shared.usage.SortSpec
@@ -167,10 +167,10 @@ class PersistenceRoundTripTest {
         assertThat(loaded.definitionSnapshot).isEqualTo(definition)
         assertThat(loaded.startedBy).isEqualTo(ciActor)
 
-        assertThat(runs.find(RunFilter(project.id, statuses = setOf(RunStatus.FAILED)), ProjectFilter.All, 0, 10).totalElements).isEqualTo(1)
-        assertThat(runs.find(RunFilter(workflowId = definition.id), ProjectFilter.All, 0, 10).totalElements).isEqualTo(1)
-        assertThat(runs.find(RunFilter(project.id, statuses = setOf(RunStatus.RUNNING)), ProjectFilter.All, 0, 10).totalElements).isEqualTo(0)
-        assertThat(runs.countFinishedSince(RunStatus.FAILED, now.minusSeconds(60), ProjectFilter.All)).isGreaterThanOrEqualTo(1)
+        assertThat(runs.find(RunFilter(project.id, statuses = setOf(RunStatus.FAILED)), ScopeFilter.All, 0, 10).totalElements).isEqualTo(1)
+        assertThat(runs.find(RunFilter(workflowId = definition.id), ScopeFilter.All, 0, 10).totalElements).isEqualTo(1)
+        assertThat(runs.find(RunFilter(project.id, statuses = setOf(RunStatus.RUNNING)), ScopeFilter.All, 0, 10).totalElements).isEqualTo(0)
+        assertThat(runs.countFinishedSince(RunStatus.FAILED, now.minusSeconds(60), ScopeFilter.All)).isGreaterThanOrEqualTo(1)
         assertThat(runs.existsActiveByWorkflow(definition.id)).isFalse()
 
         runs.save(loaded.copy(status = RunStatus.RUNNING).replaceArtifactContent(loaded.artifacts.single().id, "edited"))
@@ -201,7 +201,7 @@ class PersistenceRoundTripTest {
         assertThat(waiting.map { it.id }).containsExactlyInAnyOrder(waitingCi.id, waitingHuman.id)
         assertThat(waiting.first { it.id == waitingCi.id }.waitingOn?.signal).isEqualTo("tests")
         assertThat(waiting.first { it.id == waitingHuman.id }.waitingOn).isEqualTo(pl.mos.backoffice.projects.domain.model.WaitingOn(WaitKind.HUMAN_GATE, "spec-gate", approvalId = approvalId))
-        assertThat(runs.countWaitingForCi(ProjectFilter.All)).isGreaterThanOrEqualTo(1)
+        assertThat(runs.countWaitingForCi(ScopeFilter.All)).isGreaterThanOrEqualTo(1)
         assertThat(runs.existsActiveByWorkflow(definition.id)).isTrue()
 
         val artifactId = ArtifactId.new()
@@ -229,7 +229,7 @@ class PersistenceRoundTripTest {
         val decided = approvals.save(approval.decide(Decision("revise", "tighten", decidedAt = now, checkedItems = listOf("docs"), decidedBy = alice)))
         assertThat(approvals.findById(approval.id)!!.decision).isEqualTo(decided.decision)
         assertThat(approvals.findById(approval.id)!!.decision?.decidedBy).isEqualTo(alice)
-        assertThat(approvals.findByStatus(ApprovalStatus.DECIDED, ProjectFilter.All)).contains(decided)
+        assertThat(approvals.findByStatus(ApprovalStatus.DECIDED, ScopeFilter.All)).contains(decided)
         assertThat(approvals.findOpenByRunId(waitingHuman.id)).isNull()
 
         val context = CiContext(CiProvider.GITLAB, commitSha = "sha1", mergeRequest = CiMergeRequest(iid = "42"))
@@ -244,7 +244,7 @@ class PersistenceRoundTripTest {
         val finished = executions.save(execution.finishedWith(waitingCi.copy(review = ReviewReport(Verdict.APPROVE, 95, "fine")).succeeded(RunOutcome.SUCCESS, now), now))
         assertThat(executions.findById(execution.id)!!.gateResult).isEqualTo(GateResult.PASS)
         assertThat(executions.findById(execution.id)!!.report?.verdict).isEqualTo(Verdict.APPROVE)
-        assertThat(executions.find(project.id, ProjectFilter.All, 0, 10).content).containsExactly(finished)
+        assertThat(executions.find(project.id, ScopeFilter.All, 0, 10).content).containsExactly(finished)
         assertThat(executions.countByProjectSince(project.id, now.minusSeconds(60))).isEqualTo(1)
     }
 
@@ -262,12 +262,13 @@ class PersistenceRoundTripTest {
         listOf(a to runA, b to runB).forEach { (project, run) ->
             approvals.save(ApprovalRequest(ApprovalRequestId.new(), run.id, "gate", project.id, project.key, "wf", null, "ok?", createdAt = now))
         }
-        val onlyA = ProjectFilter.Only(setOf(a.id.value))
-        val none = ProjectFilter.Only(emptySet())
+        val onlyA = ScopeFilter.Only(setOf(a.id.value))
+        val none = ScopeFilter.Only(emptySet<UUID>())
+        val allButB = ScopeFilter.AllExcept(setOf(b.id.value))
 
         assertThat(projects.findAll(onlyA).map { it.id }).containsExactly(a.id)
         assertThat(projects.findAll(none)).isEmpty()
-        assertThat(projects.findAll(ProjectFilter.All).map { it.id }).contains(a.id, b.id)
+        assertThat(projects.findAll(ScopeFilter.All).map { it.id }).contains(a.id, b.id)
 
         assertThat(runs.find(RunFilter(), onlyA, 0, 50).content.map { it.id }).containsExactly(runA.id)
         assertThat(runs.find(RunFilter(projectId = b.id), onlyA, 0, 50).totalElements).isZero()
@@ -275,7 +276,7 @@ class PersistenceRoundTripTest {
         assertThat(runs.findRecent(50, onlyA).map { it.id }).containsExactly(runA.id)
         assertThat(runs.countByStatus(setOf(RunStatus.RUNNING), onlyA)).isEqualTo(1)
         assertThat(runs.countByStatus(setOf(RunStatus.RUNNING), none)).isZero()
-        assertThat(runs.countByStatus(setOf(RunStatus.RUNNING), ProjectFilter.Only(setOf(a.id.value, b.id.value)))).isEqualTo(2)
+        assertThat(runs.countByStatus(setOf(RunStatus.RUNNING), ScopeFilter.Only(setOf(a.id.value, b.id.value)))).isEqualTo(2)
 
         assertThat(executions.find(null, onlyA, 0, 50).content.map { it.projectId }).containsOnly(a.id)
         assertThat(executions.findRecent(50, onlyA).map { it.projectId }).containsOnly(a.id)
@@ -285,13 +286,21 @@ class PersistenceRoundTripTest {
         assertThat(approvals.findByStatus(ApprovalStatus.OPEN, onlyA, 1)).hasSize(1)
         assertThat(approvals.countOpen(onlyA)).isEqualTo(1)
         assertThat(approvals.countOpen(none)).isZero()
+
+        // AllExcept (a global grant revoked on some projects) is NOT IN; nothing excluded is everything
+        assertThat(projects.findAll(allButB).map { it.id }).contains(a.id).doesNotContain(b.id)
+        assertThat(runs.find(RunFilter(), allButB, 0, 50).content.map { it.id }).contains(runA.id).doesNotContain(runB.id)
+        assertThat(runs.countByStatus(setOf(RunStatus.RUNNING), allButB)).isEqualTo(runs.countByStatus(setOf(RunStatus.RUNNING), ScopeFilter.All) - 1)
+        assertThat(executions.find(null, allButB, 0, 50).content.map { it.projectId }).contains(a.id).doesNotContain(b.id)
+        assertThat(approvals.findByStatus(ApprovalStatus.OPEN, allButB).map { it.projectId }).contains(a.id).doesNotContain(b.id)
+        assertThat(runs.find(RunFilter(), ScopeFilter.AllExcept(emptySet()), 0, 50).totalElements).isEqualTo(runs.find(RunFilter(), ScopeFilter.All, 0, 50).totalElements)
     }
 
     @Test
     fun `run listings sort by the asked column with empty values last and keep newest first without a sort (ADR 0046)`() {
         val a = project("RS1")
         val b = project("RS2")
-        val both = ProjectFilter.Only(setOf(a.id.value, b.id.value))
+        val both = ScopeFilter.Only(setOf(a.id.value, b.id.value))
         val review = workflows.save(DefaultWorkflows.ciCodeReview(a.id, now))
         val issue = workflows.save(DefaultWorkflows.issueToReviewedMr(b.id, now))
         val bob = Actor(PrincipalKind.USER, UUID.randomUUID(), "bob")
@@ -319,7 +328,7 @@ class PersistenceRoundTripTest {
     fun `CI execution listings sort by the asked column with empty values last and keep newest first without a sort (ADR 0046)`() {
         val a = project("RS3")
         val b = project("RS4")
-        val both = ProjectFilter.Only(setOf(a.id.value, b.id.value))
+        val both = ScopeFilter.Only(setOf(a.id.value, b.id.value))
         fun execution(project: Project, entrypoint: String, ref: String?, ageSeconds: Long, cost: Double, status: CiExecutionStatus = CiExecutionStatus.QUEUED) = executions.save(
             CiExecution(
                 CiExecutionId.new(), project.id, project.key, entrypoint, CiMode.BLOCKING, status = status,

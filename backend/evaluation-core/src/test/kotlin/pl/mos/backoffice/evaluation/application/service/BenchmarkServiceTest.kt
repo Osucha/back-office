@@ -20,7 +20,7 @@ import pl.mos.backoffice.evaluation.support.InMemoryModelProfileRepository
 import pl.mos.backoffice.evaluation.support.InMemoryTaskSuiteRepository
 import pl.mos.backoffice.evaluation.application.EvaluationPermissions
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.InvalidStateException
@@ -46,9 +46,9 @@ class BenchmarkServiceTest {
     private val submitted = mutableListOf<AttemptId>()
     private val runner = mockk<AgentRunner>(relaxed = true)
     private val clock = Clock.fixed(Fixtures.now)
-    private val gate = FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_VIEW, EvaluationPermissions.EVALUATION_RUN)
+    private val gate = FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_VIEW, EvaluationPermissions.EVALUATION_RUN)
     private val audit = RecordingAuditPort()
-    private val service = BenchmarkService(benchmarks, suites, profiles, { submitted += it }, runner, clock, gate, audit)
+    private val service = BenchmarkService(benchmarks, suites, profiles, { submitted += it }, runner, clock, gate, gate, audit)
 
     private val judge = Fixtures.profile("Judge")
     private val a = Fixtures.profile("A")
@@ -157,7 +157,7 @@ class BenchmarkServiceTest {
     @Test
     fun `model profile test books a MODEL_TEST call and never throws`() {
         val gateway = mockk<LlmGateway>()
-        val modelService = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.MODELS_MANAGE), audit)
+        val modelService = FakeAccessGuard.permitting(EvaluationPermissions.MODELS_MANAGE).let { g -> ModelProfileService(profiles, benchmarks, gateway, clock, g, g, audit) }
         every { gateway.chat(a.ref, any()) } answers {
             LlmResult("OK", null, TokenUsage(10, 2), latency = Duration.ofMillis(321), modelRef = a.ref)
         }
@@ -186,14 +186,14 @@ class BenchmarkServiceTest {
         val gateway = mockk<LlmGateway>()
         every { gateway.chat(a.ref, any()) } answers { LlmResult("OK", null, TokenUsage(10, 2), latency = Duration.ofMillis(5), modelRef = a.ref) }
         every { gateway.chat(b.ref, any()) } throws IntegrationException("openai_compatible", "HTTP 429 (quota used up)", persistent = true)
-        val runner = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_RUN), audit)
+        val runner = FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_RUN).let { g -> ModelProfileService(profiles, benchmarks, gateway, clock, g, g, audit) }
 
         val results = runner.preflight(listOf(a.id, b.id, a.id))
 
         assertThat(results.map { it.first.displayName to it.second.ok }).containsExactly("A" to true, "B" to false)
         assertThat(results.last().second.error).contains("quota")
         verify(exactly = 1) { gateway.chat(a.ref, any()) }
-        val viewer = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_VIEW), audit)
+        val viewer = FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_VIEW).let { g -> ModelProfileService(profiles, benchmarks, gateway, clock, g, g, audit) }
         assertThatThrownBy { viewer.preflight(listOf(a.id)) }.isInstanceOf(pl.mos.backoffice.shared.InsufficientPermissionException::class.java)
     }
 
@@ -236,7 +236,7 @@ class BenchmarkServiceTest {
         profiles.save(login)
         val gateway = mockk<LlmGateway>()
         val agents = mockk<AgentRunner>()
-        val models = ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_RUN), audit, agents)
+        val models = FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_RUN).let { g -> ModelProfileService(profiles, benchmarks, gateway, clock, g, g, audit, agents) }
         fun check(vararg targets: ExecutionTarget): String? {
             every { agents.executionTargets(any()) } returns targets.toList()
             return models.preflight(listOf(login.id)).single().second.let { if (it.ok) null else it.error }
@@ -246,7 +246,7 @@ class BenchmarkServiceTest {
         assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 0, localLogin = true))).contains("offline")
         assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = true))).isNull()
         verify(exactly = 0) { gateway.chat(any(), any()) }
-        assertThat(ModelProfileService(profiles, benchmarks, gateway, clock, FakeAuthorizationGate.permitting(EvaluationPermissions.EVALUATION_RUN), audit)
+        assertThat(FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_RUN).let { g -> ModelProfileService(profiles, benchmarks, gateway, clock, g, g, audit) }
             .preflight(listOf(login.id)).single().second.ok).isFalse()
     }
 }

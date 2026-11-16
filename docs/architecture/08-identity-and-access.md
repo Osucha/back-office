@@ -12,8 +12,8 @@ can be added later without reshaping the model.
 | 1 | Authentication through an OIDC provider (Keycloak by default) and/or local accounts with Argon2id passwords and optional TOTP, chosen per user (`authMode`). | ADR 0016, ADR 0021 |
 | 2 | The browser never sees a token. The API is its own backend-for-frontend: OIDC login, server-side session, HttpOnly cookie, same origin. | ADR 0016; common BFF cookie pattern |
 | 3 | Authorisation is decided by Back Office, not by the identity provider, because it is project-scoped. | ADR 0017 |
-| 4 | Deny by default: every use case calls `AuthorizationGate.require(...)` or is explicitly marked `@PublicOperation` / `@SystemOperation`; the build fails otherwise. | ADR 0017; guardrail GR-A10 |
-| 5 | Permissions come from code (module contributions); the database stores only grants. | ADR 0017 |
+| 4 | Deny by default: every use case calls `AccessGuard.require(...)` or is explicitly marked `@PublicOperation` / `@SystemOperation` (library port-permissions); the build fails otherwise. | ADR 0017, ADR 0066; guardrail GR-A4 |
+| 5 | Permissions come from code (typed `PermissionSet`s contributed by each module); the database stores only grants, by key. | ADR 0017, ADR 0066 |
 | 6 | Effective permissions are resolved per request (cached, invalidated on change), never frozen in a token: revoking access takes effect on the next request. | ADR 0017 |
 | 7 | Every change to access, every denied access and every authentication event is audited in the same transaction as the change. | ADR 0018 |
 
@@ -134,7 +134,30 @@ permissions = union of the project roles of the user's direct and group membersh
 platform permission `admin.projects.all` get every project permission everywhere (auditors get read-only
 equivalents through the `auditor` role).
 
-### Permission catalogue (source of truth: `*Permissions` objects in each core module)
+### Checks in the use cases (ADR 0066)
+
+Authorisation primitives come from the library port-permissions; roles, groups, memberships, grants, gate
+approver rules, token capabilities and the resolution of effective permissions stay in Back Office.
+
+- Each module declares typed permissions in `PermissionSet`s (a key is `<set module>.<name>`, so `run.start` is
+  `PermissionSet("run")` + `start`); project-scoped ones are `ScopedPermission<UUID>` of the scope type `project`.
+  A module contributes its sets as a `ModulePermissions` bean; the module name is what the admin screens group by.
+  Permissions checked by several contexts (`project.view`, `project.manage`, `project.members.manage`,
+  `library.view`, `library.manage`, `admin.settings.manage`, `models.view`) are declared in shared-kernel and
+  contributed by their owning module. Identity builds the library `PermissionCatalog`, which validates roles,
+  grants and token subsets.
+- A use case calls `guard.require(PERMISSION)` or `guard.require(PERMISSION, projectId)` on the `AccessGuard`
+  port and filters lists with `guard.scopesWith(PERMISSION)` (`ScopeFilter.All`, `Only(ids)` or `AllExcept(ids)`,
+  `NOT IN` in SQL). "Who am I" (user id, roles per project, token capabilities) is the Back Office port
+  `CurrentPrincipal`.
+- The guard is Back Office's own `AccessGuard` over the request's `CurrentUser`; `CurrentUser.effectivePermissions`
+  is the same access as a library snapshot (principal kind `USER`, `DELEGATED` for personal tokens, `MACHINE` for
+  CI tokens, `SYSTEM`). A denied check throws `InsufficientPermissionException` (403 with `permission` /
+  `projectId`, audited as `ACCESS_DENIED`).
+- `asSystem(reason) { }` runs internal work (engine, schedulers, runner protocol, seeding) as the system
+  principal, which passes every check.
+
+### Permission catalogue (source of truth: the `*Permissions` objects of each module)
 
 | Key | Scope | Module | Meaning |
 |---|---|---|---|
@@ -274,7 +297,7 @@ audited (`AUDIT_VIEW`).
 
 | Module | Content |
 |---|---|
-| `shared-kernel` (`shared.security`, `shared.audit`) | `AuthorizationGate`, `CurrentUser`, `Actor`, `ProjectFilter`, annotations, `PermissionDefinition`, `PermissionCatalogContribution`, `ProjectAccessProvisioner`, `ProjectAccessDirectory` (ADR 0028), `AuditPort`; test fixtures `FakeAuthorizationGate`, `RecordingAuditPort` |
+| `shared-kernel` (`shared.security`, `shared.audit`) | `CurrentPrincipal`, `CurrentUser`, `CurrentUserAccessGuard`, `Actor`, `PROJECT_SCOPE`, `ModulePermissions`, `PermissionModules`, permission sets shared by several contexts, `ProjectAccessProvisioner`, `ProjectAccessDirectory` (ADR 0028), `AuditPort`; port-permissions-core (`AccessGuard`, `PermissionSet`, `ScopeFilter`, annotations) as an `api` dependency; test fixtures `FakeAccessGuard`, `testModulePermissions`, `RecordingAuditPort` |
 | `identity-core` | users, groups, roles, grants, memberships, tokens, invitations; `PermissionResolver`; use cases; local accounts (`LocalAccounts.kt`, `Totp.kt`, `LocalAccountServices.kt`) |
-| `identity-adapters` | OIDC login/BFF, local login (`LocalAuthController`, `LoginSessions`, `LoginThrottleFilter`, Argon2/AES-GCM/HMAC adapters), session handling, token filters, `AuthorizationGate` implementation, audit log store and search, correlation id filter, REST for `/me`, `/auth`, `/admin/**`, `/projects/{id}/members`, `/tokens` |
-| every other context | a `*Permissions` object in core + a `PermissionCatalogContribution` bean in adapters config; `gate.require(...)` at the top of every use case; audit entries for mutations |
+| `identity-adapters` | OIDC login/BFF, local login (`LocalAuthController`, `LoginSessions`, `LoginThrottleFilter`, Argon2/AES-GCM/HMAC adapters), session handling, token filters, `AccessGuard` implementation (`SecurityContextAccessGuard`), the permission catalogue, audit log store and search, correlation id filter, REST for `/me`, `/auth`, `/admin/**`, `/projects/{id}/members`, `/tokens` |
+| every other context | a `*Permissions` object with its `PermissionSet`s in core + a `ModulePermissions` bean in adapters config; `guard.require(...)` at the top of every use case; audit entries for mutations |

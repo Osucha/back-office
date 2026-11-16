@@ -1,5 +1,6 @@
 package pl.mos.backoffice.governance.adapter.out.insights
 
+import com.osucha.portpermissions.ScopeFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeAll
@@ -15,7 +16,6 @@ import pl.mos.backoffice.governance.adapter.TestGate
 import pl.mos.backoffice.governance.adapter.`in`.rest.AgentInsightsDto
 import pl.mos.backoffice.governance.application.port.`in`.AgentInsightsQuery
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.shared.security.ProjectFilter
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Instant
@@ -66,7 +66,7 @@ class AgentInsightsIntegrationTest {
 
     @Test
     fun `task step executions come back with their agent, cost, duration and the result of their run`() {
-        val steps = readModel.taskSteps(ProjectFilter.Only(setOf(alpha, beta)), from, to)
+        val steps = readModel.taskSteps(ScopeFilter.Only(setOf(alpha, beta)), from, to)
 
         assertThat(steps.map { it.nodeId }).describedAs("task steps only, in run order, outside the window left out")
             .containsExactly("draft", "draft", "review", "draft", "draft")
@@ -82,8 +82,8 @@ class AgentInsightsIntegrationTest {
         assertThat(steps[3].runSuccessful).isFalse()
         assertThat(steps[4].agent).isNull()
 
-        assertThat(readModel.taskSteps(ProjectFilter.Only(emptySet()), from, to)).isEmpty()
-        assertThat(readModel.taskSteps(ProjectFilter.All, from, to).size).isGreaterThanOrEqualTo(5)
+        assertThat(readModel.taskSteps(ScopeFilter.Only(emptySet()), from, to)).isEmpty()
+        assertThat(readModel.taskSteps(ScopeFilter.All, from, to).size).isGreaterThanOrEqualTo(5)
     }
 
     @Test

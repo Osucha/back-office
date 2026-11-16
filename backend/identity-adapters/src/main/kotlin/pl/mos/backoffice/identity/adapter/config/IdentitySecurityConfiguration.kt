@@ -64,7 +64,7 @@ import tools.jackson.databind.json.JsonMapper
  * - CSRF in SPA mode (`XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header), except bearer requests, runner callbacks
  *   and CI POSTs;
  * - API calls never redirect: 401/403 are problem details.
- * Authorisation is decided inside the use cases (`AuthorizationGate`); this chain only requires
+ * Authorisation is decided inside the use cases (`AccessGuard`, ADR 0066); this chain only requires
  * authentication for `/api/`.
  */
 @Configuration

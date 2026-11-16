@@ -3,8 +3,9 @@ package pl.mos.backoffice.identity.domain.service
 import pl.mos.backoffice.identity.domain.model.GrantSet
 import pl.mos.backoffice.identity.domain.model.Role
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.security.PermissionDefinition
+import com.osucha.portpermissions.PermissionDefinition
 import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.security.permissionScope
 
 /**
  * Validates grants and roles against the permission catalogue contributed by the modules: unknown keys and
@@ -21,7 +22,7 @@ class CatalogValidator(catalogue: List<PermissionDefinition>) {
             val definition = byKey[grant.permission]
             when {
                 definition == null -> errors += ValidationException.FieldError("grants", "unknown permission ${grant.permission}")
-                definition.scope != PermissionScope.PLATFORM ->
+                definition.permissionScope != PermissionScope.PLATFORM ->
                     errors += ValidationException.FieldError("grants", "${grant.permission} is project-scoped; grant it through a project role")
             }
         }
@@ -41,7 +42,8 @@ class CatalogValidator(catalogue: List<PermissionDefinition>) {
             val definition = byKey[key]
             when {
                 definition == null -> ValidationException.FieldError("permissions", "unknown permission $key")
-                definition.scope != role.scope -> ValidationException.FieldError("permissions", "$key is ${definition.scope}-scoped, the role is ${role.scope}")
+                definition.permissionScope != role.scope ->
+                    ValidationException.FieldError("permissions", "$key is ${definition.permissionScope}-scoped, the role is ${role.scope}")
                 else -> null
             }
         }

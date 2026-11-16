@@ -26,7 +26,7 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.LocalDate
 
@@ -43,9 +43,9 @@ class ScmConnectionServiceTest {
         tokenExpiresAt = LocalDate.parse("2027-01-15"), defaultBranch = "main", defaultBranchProtected = true, mergeAccessLevel = 40)
     private val probe = ScmProbePort { _, _, token -> tokens += token; answer }
 
-    private val owner = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
-    private val member = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
-    private fun service(gate: FakeAuthorizationGate = owner) = ScmConnectionService(store, projects, sealer, probe, gate, audit, Clock.SYSTEM)
+    private val owner = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+    private val member = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+    private fun service(gate: FakeAccessGuard = owner) = ScmConnectionService(store, projects, sealer, probe, gate, gate, audit, Clock.SYSTEM)
 
     private val token = "tkn-very-secret-read-token"
     private val repo = project.repositories.single().key

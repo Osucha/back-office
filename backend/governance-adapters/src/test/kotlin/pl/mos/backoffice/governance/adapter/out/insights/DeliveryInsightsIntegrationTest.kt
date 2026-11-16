@@ -1,5 +1,6 @@
 package pl.mos.backoffice.governance.adapter.out.insights
 
+import com.osucha.portpermissions.ScopeFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.data.Offset
@@ -15,7 +16,6 @@ import pl.mos.backoffice.governance.adapter.GovernanceTestBeans
 import pl.mos.backoffice.governance.adapter.TestGate
 import pl.mos.backoffice.governance.application.port.`in`.DeliveryInsightsQuery
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.shared.security.ProjectFilter
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Instant
@@ -86,7 +86,7 @@ class DeliveryInsightsIntegrationTest {
 
     @Test
     fun `every metric on the seeded dataset`() {
-        val i = readModel.compute(ProjectFilter.Only(setOf(p1)), from, to)
+        val i = readModel.compute(ScopeFilter.Only(setOf(p1)), from, to)
 
         assertThat(i.runs.total).isEqualTo(3)
         assertThat(i.runs.succeeded).isEqualTo(2)
@@ -140,12 +140,16 @@ class DeliveryInsightsIntegrationTest {
 
     @Test
     fun `all visible projects include the other project, an empty filter sees nothing`() {
-        val all = readModel.compute(ProjectFilter.All, from, to)
+        val all = readModel.compute(ScopeFilter.All, from, to)
         assertThat(all.runs.total).isEqualTo(4)
         assertThat(all.totalCost.amount).isEqualByComparingTo(BigDecimal("104.75"))
-        val none = readModel.compute(ProjectFilter.Only(emptySet()), from, to)
+        val none = readModel.compute(ScopeFilter.Only(emptySet()), from, to)
         assertThat(none.runs.total).isZero()
         assertThat(none.humanWait.count).isZero()
+        // every project but p2 (a global grant revoked on one project, ADR 0066): NOT IN
+        val allButP2 = readModel.compute(ScopeFilter.AllExcept(setOf(p2)), from, to)
+        assertThat(allButP2.runs.total).isEqualTo(readModel.compute(ScopeFilter.Only(setOf(p1)), from, to).runs.total)
+        assertThat(readModel.compute(ScopeFilter.AllExcept(emptySet()), from, to).runs.total).isEqualTo(4)
     }
 
     @Test

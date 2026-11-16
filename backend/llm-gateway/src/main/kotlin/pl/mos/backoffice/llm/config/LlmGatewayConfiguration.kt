@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.config
 
+import com.osucha.portpermissions.AccessGuard
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.observation.ObservationRegistry
 import org.springframework.beans.factory.ObjectProvider
@@ -25,8 +26,8 @@ import pl.mos.backoffice.llm.usage.LlmPermissions
 import pl.mos.backoffice.llm.usage.UsageQueryService
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.IntegrationException
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.llm.Provider
@@ -70,9 +71,9 @@ class LlmGatewayConfiguration {
 
     @Bean
     fun llmProviderService(
-        store: LlmProviderConnectionStore, vault: ObjectProvider<SecretVault>, gate: AuthorizationGate, audit: ObjectProvider<AuditPort>, clock: Clock,
+        store: LlmProviderConnectionStore, vault: ObjectProvider<SecretVault>, guard: AccessGuard, principal: CurrentPrincipal, audit: ObjectProvider<AuditPort>, clock: Clock,
         cache: CachedProviderConnections, registry: ProviderRegistry, lister: ProviderModelLister, quota: ConnectionQuota,
-    ) = LlmProviderService(store, vault.getIfAvailable(), gate, audit.getIfAvailable { AuditPort.NOOP }, clock, cache, registry, lister, quota)
+    ) = LlmProviderService(store, vault.getIfAvailable(), guard, principal, audit.getIfAvailable { AuditPort.NOOP }, clock, cache, registry, lister, quota)
 
     /**
      * Provider endpoints (ADR 0045): connections added in Back Office first, the environment variables of each type as a
@@ -111,11 +112,11 @@ class LlmGatewayConfiguration {
 
     /** Gate-checked read side of the ledger behind `/api/v1/usage` endpoints. */
     @Bean
-    fun usageQueryService(ledger: UsageLedger, gate: AuthorizationGate): UsageQueryService = UsageQueryService(ledger, gate)
+    fun usageQueryService(ledger: UsageLedger, guard: AccessGuard, principal: CurrentPrincipal): UsageQueryService = UsageQueryService(ledger, guard, principal)
 
     /** The llm module permissions for the identity context's catalogue (ADR 0017). */
     @Bean
-    fun llmPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { LlmPermissions.definitions }
+    fun llmPermissionCatalog(): ModulePermissions = LlmPermissions.contribution
 
     /** Token and cost counters of the gateway and the sandbox proxy; recorded only when a meter registry exists. */
     @Bean
@@ -133,7 +134,7 @@ class LlmGatewayConfiguration {
         observationRegistry: ObjectProvider<ObservationRegistry>,
         rateLimiter: ProviderRateLimiter,
         budgets: ObjectProvider<EnforceBudgets>,
-        gate: AuthorizationGate,
+        guard: AccessGuard,
         quota: ConnectionQuota,
         metrics: LlmMetrics,
     ): LlmGateway = SpringAiLlmGateway(
@@ -147,17 +148,17 @@ class LlmGatewayConfiguration {
         properties = properties,
         observationRegistry = observationRegistry.getIfAvailable { ObservationRegistry.NOOP },
         rateLimiter = rateLimiter,
-        budgetPrecheck = budgetPrecheck(budgets.getIfAvailable(), gate),
+        budgetPrecheck = budgetPrecheck(budgets.getIfAvailable(), guard),
         quota = quota,
         metrics = metrics,
     )
 
     /** In-process calls stop at the same hard limits as the sandbox proxy (ADR 0025). */
-    private fun budgetPrecheck(enforce: EnforceBudgets?, gate: AuthorizationGate): (UsageContext, BigDecimal, Long) -> Unit {
+    private fun budgetPrecheck(enforce: EnforceBudgets?, guard: AccessGuard): (UsageContext, BigDecimal, Long) -> Unit {
         if (enforce == null) return { _, _, _ -> }
         return { context, cost, tokens ->
             try {
-                gate.asSystem("LLM budget check") { enforce.precheck(null, context, cost, tokens) }
+                guard.asSystem("LLM budget check") { enforce.precheck(null, context, cost, tokens) }
             } catch (e: BudgetExceededException) {
                 // A workflow node or benchmark attempt fails with this reason instead of spending past a hard stop.
                 throw IntegrationException("budget-exceeded", e.message ?: "budget exceeded", e, retryable = false)

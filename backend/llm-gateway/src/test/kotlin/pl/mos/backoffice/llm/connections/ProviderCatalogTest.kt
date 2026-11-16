@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.connections
 
+import com.osucha.portpermissions.PermissionDefinition
 import com.sun.net.httpserver.HttpServer
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -12,7 +13,7 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.security.SealedValue
 import pl.mos.backoffice.shared.security.SecretVault
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
@@ -83,10 +84,12 @@ class ProviderCatalogTest {
         }
         val cache = CachedProviderConnections(store, vault)
         val registry = ProviderRegistry(emptyMap(), cache)
-        fun service(vararg permissions: String) = LlmProviderService(
-            store, vault, FakeAuthorizationGate.permitting(*permissions), RecordingAuditPort(),
+        fun service(vararg permissions: PermissionDefinition) = FakeAccessGuard.permitting(*permissions).let { guard ->
+            LlmProviderService(
+            store, vault, guard, guard, RecordingAuditPort(),
             Clock { Instant.parse("2026-10-19T10:00:00Z") }, cache, registry, lister,
-        )
+            )
+        }
         val admin = service(LlmProviderService.MANAGE, LlmProviderService.VIEW)
         admin.create(LlmProviderCommand("openrouter", "OpenRouter", Provider.OPENAI_COMPATIBLE, baseUrl, apiKey = "sk-or"))
         admin.create(LlmProviderCommand("off", "Disabled", Provider.OPENAI, apiKey = "sk", enabled = false))

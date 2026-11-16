@@ -22,7 +22,7 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.PermissionScope
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -31,13 +31,13 @@ class AccessAdminServicesTest {
     private val db = InMemoryIdentity()
     private val audit = RecordingAuditPort()
 
-    private fun grants(gate: FakeAuthorizationGate) = GrantAdminService(
+    private fun grants(gate: FakeAccessGuard) = GrantAdminService(
         db.grants, db.roles, db.users, db.groups, db.memberships, db.access, db.projectKeys, db.catalogSupport, db.admins, audit, db.accessVersion, gate,
     )
 
-    private fun roles(gate: FakeAuthorizationGate) = RoleAdminService(db.roles, db.grants, db.memberships, db.catalogSupport, audit, db.accessVersion, gate)
+    private fun roles(gate: FakeAccessGuard) = RoleAdminService(db.roles, db.grants, db.memberships, db.catalogSupport, audit, db.accessVersion, gate)
 
-    private fun groups(gate: FakeAuthorizationGate) =
+    private fun groups(gate: FakeAccessGuard) =
         GroupAdminService(db.groups, db.users, db.roles, db.grants, db.memberships, db.admins, audit, db.accessVersion, db.clock, gate)
 
     private fun seed() = SeedIdentityService(db.roles, db.grants, db.catalogSupport, audit, db.accessVersion)
@@ -115,7 +115,7 @@ class AccessAdminServicesTest {
     fun `replacing grants validates the catalogue and records one GRANT_CHANGE per changed permission`() {
         seed().seed()
         audit.entries.clear()
-        val gate = FakeAuthorizationGate.permitting("admin.roles.manage")
+        val gate = FakeAccessGuard.permitting("admin.roles.manage")
         grants(gate).replace(GrantSet.system(roles = setOf("member"), grants = listOf(Grant("library.manage", GrantEffect.ALLOW), Grant("usage.view", GrantEffect.DENY))))
         assertThat(gate.checked).containsExactly("admin.roles.manage")
         assertThat(audit.entries.filter { it.operation == "GRANT_CHANGE" }.map { it.details["permission"] }).containsExactly("library.manage", "usage.view")
@@ -127,7 +127,7 @@ class AccessAdminServicesTest {
 
         assertThatThrownBy { grants(gate).replace(GrantSet.system(grants = listOf(Grant("run.start", GrantEffect.ALLOW)))) }.isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { grants(gate).replace(GrantSet.system(roles = setOf("owner"))) }.isInstanceOf(ValidationException::class.java)
-        assertThatThrownBy { grants(FakeAuthorizationGate.permitting("admin.users.manage")).replace(GrantSet.system()) }
+        assertThatThrownBy { grants(FakeAccessGuard.permitting("admin.users.manage")).replace(GrantSet.system()) }
             .isInstanceOf(InsufficientPermissionException::class.java)
     }
 
@@ -141,7 +141,7 @@ class AccessAdminServicesTest {
         val project = UUID.randomUUID()
         db.member(project, "PRJ", PrincipalType.GROUP, group.id.value, "viewer")
 
-        val view = grants(FakeAuthorizationGate.permitting("admin.users.view")).of(user.id)
+        val view = grants(FakeAccessGuard.permitting("admin.users.view")).of(user.id)
         val manage = view.rows.first { it.permission == "library.manage" }
         assertThat(manage.system).isNull()
         assertThat(manage.groups.single().effect).isEqualTo(GrantEffect.ALLOW)
@@ -159,7 +159,7 @@ class AccessAdminServicesTest {
     fun `built-in roles are editable but not deletable, custom roles validate scope`() {
         seed().seed()
         audit.entries.clear()
-        val gate = FakeAuthorizationGate.permitting("admin.roles.manage")
+        val gate = FakeAccessGuard.permitting("admin.roles.manage")
         val updated = roles(gate).update("developer", RoleCommand("developer", "Developer", null, PermissionScope.PROJECT, setOf("project.view", "run.start")))
         assertThat(updated.builtIn).isTrue()
         assertThat(audit.operations()).containsExactly("ROLE_UPDATE")
@@ -170,7 +170,7 @@ class AccessAdminServicesTest {
         assertThatThrownBy { roles(gate).create(RoleCommand("release-manager", "Again", null, PermissionScope.PROJECT, emptySet())) }.isInstanceOf(InvalidStateException::class.java)
         roles(gate).delete("release-manager")
         assertThat(audit.operations()).containsExactly("ROLE_UPDATE", "ROLE_CREATE", "ROLE_DELETE")
-        assertThat(roles(FakeAuthorizationGate.denyAll()).list(PermissionScope.PROJECT).map { it.key }).contains("owner").doesNotContain("member")
+        assertThat(roles(FakeAccessGuard.denyAll()).list(PermissionScope.PROJECT).map { it.key }).contains("owner").doesNotContain("member")
     }
 
     @Test
@@ -178,13 +178,13 @@ class AccessAdminServicesTest {
         seed().seed()
         audit.entries.clear()
         val user = db.user("m@example.com")
-        val gate = FakeAuthorizationGate.permitting("admin.users.manage")
+        val gate = FakeAccessGuard.permitting("admin.users.manage")
         val created = groups(gate).create(GroupCommand("Architects", memberIds = setOf(user.id), externalGroup = "architects"))
         assertThat(created.group.memberIds).containsExactly(user.id)
         assertThatThrownBy { groups(gate).create(GroupCommand("architects")) }.isInstanceOf(InvalidStateException::class.java)
         assertThatThrownBy { groups(gate).update(created.group.id, GroupCommand("Architects", memberIds = setOf(user.id), platformRoles = setOf("evaluator"))) }
             .isInstanceOf(InsufficientPermissionException::class.java)
-        groups(FakeAuthorizationGate.permitting("admin.users.manage", "admin.roles.manage"))
+        groups(FakeAccessGuard.permitting("admin.users.manage", "admin.roles.manage"))
             .update(created.group.id, GroupCommand("Architects", memberIds = setOf(user.id), platformRoles = setOf("evaluator"), externalGroup = "architects"))
         assertThat(db.grants.find(GrantLevel.GROUP, created.group.id.value).roles).containsExactly("evaluator")
 
@@ -195,13 +195,13 @@ class AccessAdminServicesTest {
 
     @Test
     fun `platform settings need admin settings manage and changes are audited`() {
-        val service = PlatformSettingsService(db.settingsRepository, db.settingsProvider(), audit, db.accessVersion, FakeAuthorizationGate.permitting("admin.settings.manage"))
+        val service = PlatformSettingsService(db.settingsRepository, db.settingsProvider(), audit, db.accessVersion, FakeAccessGuard.permitting("admin.settings.manage"))
         assertThat(service.get().registration).isEqualTo(RegistrationMode.INVITE_ONLY)
         service.update(PlatformSettings(RegistrationMode.OPEN, listOf("@Example.COM")))
         assertThat(db.storedSettings!!.allowedEmailDomains).containsExactly("example.com")
         assertThat(audit.entries.single().details).containsOnlyKeys("registration", "allowedEmailDomains")
         assertThat(service.registrationMode()).isEqualTo(RegistrationMode.OPEN)
-        assertThatThrownBy { PlatformSettingsService(db.settingsRepository, db.settingsProvider(), audit, db.accessVersion, FakeAuthorizationGate.denyAll()).get() }
+        assertThatThrownBy { PlatformSettingsService(db.settingsRepository, db.settingsProvider(), audit, db.accessVersion, FakeAccessGuard.denyAll()).get() }
             .isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { PlatformSettings(personalTokenMaxDays = 400) }.isInstanceOf(ValidationException::class.java)
     }
@@ -209,12 +209,12 @@ class AccessAdminServicesTest {
     @Test
     fun `searching the audit log needs admin audit view and is itself audited`() {
         var seen: AuditQuery? = null
-        val service = AuditSearchService({ query -> seen = query; AuditRecordPage(emptyList(), null) }, audit, FakeAuthorizationGate.permitting("admin.audit.view"))
+        val service = AuditSearchService({ query -> seen = query; AuditRecordPage(emptyList(), null) }, audit, FakeAccessGuard.permitting("admin.audit.view"))
         service.search(AuditQuery(operation = "USER_UPDATE", size = 1000))
         assertThat(seen!!.size).isEqualTo(200)
         assertThat(audit.entries.single().operation).isEqualTo("AUDIT_VIEW")
         assertThat(audit.entries.single().details["filter"]).isEqualTo(mapOf("operation" to "USER_UPDATE"))
-        assertThatThrownBy { AuditSearchService({ AuditRecordPage(emptyList(), null) }, audit, FakeAuthorizationGate.permitting("admin.users.view")).search(AuditQuery()) }
+        assertThatThrownBy { AuditSearchService({ AuditRecordPage(emptyList(), null) }, audit, FakeAccessGuard.permitting("admin.users.view")).search(AuditQuery()) }
             .isInstanceOf(InsufficientPermissionException::class.java)
     }
 
@@ -222,10 +222,10 @@ class AccessAdminServicesTest {
     fun `me returns the profile with groups and projects and preferences are saved`() {
         seed().seed()
         val group = db.group("Team")
-        val me = db.user("alice@example.com", id = FakeAuthorizationGate.TEST_USER_ID, groups = setOf(group.id))
+        val me = db.user("alice@example.com", id = FakeAccessGuard.TEST_USER_ID, groups = setOf(group.id))
         val project = UUID.randomUUID()
         db.member(project, "PRJ", PrincipalType.USER, me.id.value, "developer")
-        val gate = FakeAuthorizationGate(db.access.resolve(db.users.findById(me.id)!!).toCurrentUser())
+        val gate = FakeAccessGuard(db.access.resolve(db.users.findById(me.id)!!).toCurrentUser())
         val service = MeService(db.users, db.groups, db.memberships, db.projectKeys, audit, gate)
         val view = service.me()
         assertThat(view.groups.map { it.name }).containsExactly("Team")

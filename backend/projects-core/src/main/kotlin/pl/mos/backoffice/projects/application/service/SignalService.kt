@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.projects.application.port.`in`.SignalRun
 import pl.mos.backoffice.projects.application.port.`in`.SignalRun.SignalCommand
 import pl.mos.backoffice.projects.application.port.`in`.SignalRun.SignalResult
@@ -19,7 +20,6 @@ import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
 
 /**
  * Implements [SignalRun] (docs/architecture/03-pipelines-and-agents.md): a CI token signal (`ci.signal`)
@@ -30,13 +30,13 @@ class SignalService(
     private val runs: WorkflowRunRepository,
     private val engine: WorkflowEngine,
     private val events: EventPublisher,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : SignalRun {
 
     override fun signal(command: SignalCommand): SignalResult {
-        gate.require(ProjectsPermissions.CI_SIGNAL, command.projectId.value)
+        guard.require(ProjectsPermissions.CI_SIGNAL, command.projectId.value)
         val result = deliver(command)
         audit.record(
             AuditEntry(
@@ -49,7 +49,7 @@ class SignalService(
 
     override fun signalRun(runId: WorkflowRunId, signal: String, status: CiSignalStatus, message: String?): WorkflowRun {
         val run = runs.findById(runId) ?: throw NotFoundException("Run", runId)
-        gate.require(ProjectsPermissions.RUN_SIGNAL, run.projectId.value)
+        guard.require(ProjectsPermissions.RUN_SIGNAL, run.projectId.value)
         val result = deliver(SignalCommand(run.projectId, signal, status, runId = runId, message = message, context = CiContext()))
         if (!result.resumed) throw InvalidStateException(result.message)
         audit.record(

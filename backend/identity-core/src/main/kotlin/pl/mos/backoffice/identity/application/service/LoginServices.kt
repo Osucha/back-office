@@ -30,7 +30,7 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.CiTokenIdentity
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.security.UserId
 import java.time.Duration
 import java.time.Instant
@@ -210,7 +210,7 @@ class LoadCurrentUserService(
             tokenCapabilities = capabilities,
             platformPermissions = owner.platformPermissions intersect subset,
             projectPermissions = owner.projectPermissions.mapValues { it.value intersect subset }.filterValues { it.isNotEmpty() },
-            allProjects = owner.allProjects && IdentityPermissions.PROJECTS_ALL in subset,
+            allProjects = owner.allProjects && IdentityPermissions.PROJECTS_ALL.key in subset,
         )
     }
 

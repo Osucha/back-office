@@ -25,7 +25,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.time.Duration
 import java.time.Instant
@@ -37,22 +37,22 @@ class LocalAccountServicesTest {
     private val audit = RecordingAuditPort()
     private val support = local.support(audit)
 
-    private fun gateFor(user: User, vararg permissions: String) = FakeAuthorizationGate(
+    private fun gateFor(user: User, vararg permissions: String) = FakeAccessGuard(
         CurrentUser(PrincipalKind.USER, user.id, user.email, user.displayName, permissions.toSet(), emptyMap()),
     )
 
-    private fun resets(gate: FakeAuthorizationGate) = PasswordResetService(support, db.sessions, db.accessVersion, gate)
-    private fun admin(gate: FakeAuthorizationGate) =
-        LocalAccountAdminService(support, UserDetailsAssembler(db.groups, db.grants, db.memberships, support), db.admins, db.sessions, db.accessVersion, gate)
+    private fun resets(gate: FakeAccessGuard) = PasswordResetService(support, db.sessions, db.accessVersion, gate, gate)
+    private fun admin(gate: FakeAccessGuard) =
+        LocalAccountAdminService(support, UserDetailsAssembler(db.groups, db.grants, db.memberships, support), db.admins, db.sessions, db.accessVersion, gate, gate)
 
     // ---------------------------------------------------------------- reset links
 
     @Test
     fun `issuing a reset link needs admin users manage, removes the password and ends the sessions`() {
         val user = local.localUser("ada@example.com")
-        assertThatThrownBy { resets(FakeAuthorizationGate.permitting("admin.users.view")).issue(user.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { resets(FakeAccessGuard.permitting("admin.users.view")).issue(user.id) }.isInstanceOf(InsufficientPermissionException::class.java)
 
-        val gate = FakeAuthorizationGate.permitting("admin.users.manage")
+        val gate = FakeAccessGuard.permitting("admin.users.manage")
         val link = resets(gate).issue(user.id)
         assertThat(gate.checked).containsExactly("admin.users.manage")
         assertThat(link.purpose).isEqualTo(ResetPurpose.RESET)
@@ -68,7 +68,7 @@ class LocalAccountServicesTest {
     @Test
     fun `a link is single use, expires and the completion signs the user in`() {
         val user = local.localUser("ada@example.com")
-        val service = resets(FakeAuthorizationGate.permitting("admin.users.manage"))
+        val service = resets(FakeAccessGuard.permitting("admin.users.manage"))
         val link = service.issue(user.id)
 
         assertThat(service.check(link.token).email).isEqualTo("ada@example.com")
@@ -89,7 +89,7 @@ class LocalAccountServicesTest {
     @Test
     fun `a new link replaces the older one and OIDC-only users cannot get one`() {
         val user = local.localUser("ada@example.com")
-        val service = resets(FakeAuthorizationGate.permitting("admin.users.manage"))
+        val service = resets(FakeAccessGuard.permitting("admin.users.manage"))
         val first = service.issue(user.id)
         val second = service.issue(user.id)
         assertThatThrownBy { service.check(first.token) }.isInstanceOf(NotFoundException::class.java)
@@ -103,10 +103,10 @@ class LocalAccountServicesTest {
 
     @Test
     fun `inviting a local user returns a SET_INITIAL token, completing it activates the user`() {
-        val gate = FakeAuthorizationGate.permitting("admin.users.manage")
+        val gate = FakeAccessGuard.permitting("admin.users.manage")
         val users = UserAdminService(
             db.users, db.groups, db.roles, db.grants, db.memberships, db.tokens, db.sessions, db.projectKeys, db.admins,
-            audit, db.accessVersion, local.clock, gate, support,
+            audit, db.accessVersion, local.clock, gate, gate, support,
         )
         val details = users.invite(ManageUsers.InviteUser("fresh@example.com", authMode = AuthMode.LOCAL))
         assertThat(details.user.authMode).isEqualTo(AuthMode.LOCAL)
@@ -125,7 +125,7 @@ class LocalAccountServicesTest {
 
     @Test
     fun `switching to LOCAL without a password issues a link, switching to OIDC removes the credential`() {
-        val gate = FakeAuthorizationGate.permitting("admin.users.manage")
+        val gate = FakeAccessGuard.permitting("admin.users.manage")
         val user = db.user("oidc@example.com")
         val details = admin(gate).setAuthMode(user.id, AuthMode.BOTH)
         assertThat(gate.checked).containsExactly("admin.users.manage")
@@ -143,7 +143,7 @@ class LocalAccountServicesTest {
 
     @Test
     fun `the last platform admin who can sign in cannot lose the sign-in method`() {
-        val gate = FakeAuthorizationGate.permitting("admin.users.manage")
+        val gate = FakeAccessGuard.permitting("admin.users.manage")
         val boss = local.localUser("boss@example.com")
         db.assign(GrantLevel.USER, boss.id.value, BuiltInRoles.PLATFORM_ADMIN)
         // no identity provider configured: OIDC would lock everybody out
@@ -156,7 +156,7 @@ class LocalAccountServicesTest {
 
     @Test
     fun `unlock clears the lockout and is audited, reset MFA removes the authenticator`() {
-        val gate = FakeAuthorizationGate.permitting("admin.users.manage")
+        val gate = FakeAccessGuard.permitting("admin.users.manage")
         val user = local.localUser("ada@example.com")
         local.credentialMap[user.id] = local.credentialMap[user.id]!!.copy(lockedUntil = local.time.plusSeconds(600), lockoutCount = 2, failedAttempts = 1)
         assertThat(support.view(user).lockedUntil).isNotNull()
@@ -169,7 +169,7 @@ class LocalAccountServicesTest {
         admin(gate).resetMfa(user.id)
         assertThat(local.totpMap).isEmpty()
         assertThat(audit.operations().last()).isEqualTo("MFA_RESET")
-        assertThatThrownBy { admin(FakeAuthorizationGate.permitting("admin.users.view")).resetMfa(user.id) }.isInstanceOf(InsufficientPermissionException::class.java)
+        assertThatThrownBy { admin(FakeAccessGuard.permitting("admin.users.view")).resetMfa(user.id) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 
     // ---------------------------------------------------------------- change password
@@ -235,7 +235,7 @@ class LocalAccountServicesTest {
     fun `OIDC-only users and tokens cannot manage local MFA`() {
         val user = db.user("oidc@example.com")
         assertThatThrownBy { MyMfaService(support, gateFor(user)).startTotp() }.isInstanceOf(InvalidStateException::class.java)
-        val token = FakeAuthorizationGate(gateFor(user).user.copy(kind = PrincipalKind.PERSONAL_TOKEN))
+        val token = FakeAccessGuard(gateFor(user).user.copy(kind = PrincipalKind.PERSONAL_TOKEN))
         assertThatThrownBy { MyMfaService(support, token).startTotp() }.isInstanceOf(InvalidStateException::class.java)
     }
 
@@ -289,7 +289,7 @@ class LocalAccountServicesTest {
 
     @Test
     fun `settings refuse switching off local login when it is the only method`() {
-        val gate = FakeAuthorizationGate.permitting("admin.settings.manage")
+        val gate = FakeAccessGuard.permitting("admin.settings.manage")
         val service = PlatformSettingsService(db.settingsRepository, db.settingsProvider(local.options()), audit, db.accessVersion, gate, local.options())
         assertThatThrownBy { service.update(PlatformSettings(localLoginEnabled = false)) }.isInstanceOf(InvalidStateException::class.java)
         val withOidc = PlatformSettingsService(db.settingsRepository, db.settingsProvider(local.options(oidc = true)), audit, db.accessVersion, gate, local.options(oidc = true))

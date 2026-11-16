@@ -22,8 +22,8 @@ import pl.mos.backoffice.shared.llm.LlmRequest
 import pl.mos.backoffice.shared.llm.LlmResult
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.TokenUsage
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
@@ -40,9 +40,9 @@ class EvaluationRestIntegrationTest {
     @Autowired lateinit var gateway: LlmGateway
     @Autowired lateinit var benchmarks: BenchmarkRepository
     @Autowired lateinit var events: CopyOnWriteArrayList<DomainEvent>
-    @Autowired lateinit var gate: FakeAuthorizationGate
+    @Autowired lateinit var gate: FakeAccessGuard
     @Autowired lateinit var audit: RecordingAuditPort
-    @Autowired lateinit var contributions: List<PermissionCatalogContribution>
+    @Autowired lateinit var contributions: List<ModulePermissions>
 
     private fun profileBody(name: String, provider: String = "ANTHROPIC", modelId: String = "claude-sonnet-5", enabled: Boolean = true) = """
         {"displayName":"$name","ref":{"provider":"$provider","modelId":"$modelId","options":{"reasoning":"HIGH","maxOutputTokens":2048}},
@@ -192,7 +192,7 @@ class EvaluationRestIntegrationTest {
 
         val previous = gate.user
         try {
-            gate.user = FakeAuthorizationGate.user(platform = setOf("models.view", "evaluation.view"))
+            gate.user = FakeAccessGuard.user(platform = setOf("models.view", "evaluation.view"))
             assertThat(mvc.get().uri("/api/v1/model-profiles")).hasStatusOk()
             assertThat(mvc.get().uri("/api/v1/model-profiles/providers")).hasStatusOk()
             assertThat(mvc.get().uri("/api/v1/task-suites")).hasStatusOk()
@@ -202,7 +202,7 @@ class EvaluationRestIntegrationTest {
             assertThat(mvc.delete().uri("/api/v1/model-profiles/$id")).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(post("/api/v1/task-suites", """{"name":"Denied"}""")).hasStatus(HttpStatus.FORBIDDEN)
 
-            gate.user = FakeAuthorizationGate.user()
+            gate.user = FakeAccessGuard.user()
             assertThat(mvc.get().uri("/api/v1/model-profiles")).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(mvc.get().uri("/api/v1/benchmarks")).hasStatus(HttpStatus.FORBIDDEN)
             assertThat(mvc.get().uri("/api/v1/task-suites")).hasStatus(HttpStatus.FORBIDDEN)
@@ -216,7 +216,7 @@ class EvaluationRestIntegrationTest {
 
     @Test
     fun `the module contributes its permissions to the catalogue`() {
-        assertThat(contributions.flatMap { it.permissions() }.map { it.key })
+        assertThat(contributions.flatMap { it.sets }.flatMap { it.permissions }.map { it.key })
             .contains("models.view", "models.manage", "evaluation.view", "evaluation.run")
     }
 

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.platform.config
 
+import com.osucha.portpermissions.AccessGuard
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import jakarta.servlet.FilterChain
@@ -42,7 +43,6 @@ import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.shared.platform.EventStream
 import pl.mos.backoffice.shared.platform.WorkHandler
 import pl.mos.backoffice.shared.platform.WorkQueue
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import tools.jackson.databind.json.JsonMapper
 import java.sql.DriverManager
 import javax.sql.DataSource
@@ -203,11 +203,11 @@ class PlatformAutoConfiguration {
         queue: JdbcWorkQueue,
         events: ObjectProvider<EventStream>,
         agentJobs: ObjectProvider<AgentJobStatistics>,
-        gate: AuthorizationGate,
+        guard: AccessGuard,
         audit: ObjectProvider<AuditPort>,
         properties: PlatformProperties,
     ): OperationsService = OperationsService(
-        JdbcOperationsReadModel(JdbcClient.create(dataSource), queue), events.ifAvailable, agentJobs.ifAvailable, gate,
+        JdbcOperationsReadModel(JdbcClient.create(dataSource), queue), events.ifAvailable, agentJobs.ifAvailable, guard,
         audit.getIfAvailable { AuditPort.NOOP }, properties.instanceStaleAfter,
     )
 

@@ -21,7 +21,8 @@ import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.llm.ModelDefaults
 import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.StepKind
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import java.util.UUID
 
 /**
@@ -33,7 +34,8 @@ import java.util.UUID
 class ModelDefaultsService(
     private val defaults: ModelDefaultRepository,
     private val profiles: ModelProfileRepository,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
     /** Null = no availability wiring: [options] is empty. */
@@ -41,12 +43,14 @@ class ModelDefaultsService(
 ) : ManageModelDefaults, ModelDefaults {
 
     override fun get(): Defaults {
-        val user = gate.require(EvaluationPermissions.MODELS_VIEW)
+        guard.require(EvaluationPermissions.MODELS_VIEW)
+        val user = principal.currentUser()
         return defaultsOf(user.userId?.value)
     }
 
     override fun setPlatform(stepKind: StepKind, profileId: ModelProfileId?): Defaults {
-        val user = gate.require(EvaluationPermissions.MODELS_MANAGE)
+        guard.require(EvaluationPermissions.MODELS_MANAGE)
+        val user = principal.currentUser()
         val profile = profileId?.let { checked(it, stepKind, user.userId?.value) }
         if (profile?.personal == true) throw ValidationException("a platform default must be a platform model profile, not a personal one", "profileId")
         store(null, stepKind, profile, user.actor)
@@ -54,14 +58,16 @@ class ModelDefaultsService(
     }
 
     override fun setMine(stepKind: StepKind, profileId: ModelProfileId?): Defaults {
-        val user = gate.require(EvaluationPermissions.MODELS_VIEW)
+        guard.require(EvaluationPermissions.MODELS_VIEW)
+        val user = principal.currentUser()
         val owner = user.userId?.value ?: throw ValidationException("personal defaults need a signed-in user", "profileId")
         store(owner, stepKind, profileId?.let { checked(it, stepKind, owner) }, user.actor)
         return defaultsOf(owner)
     }
 
     override fun options(stepKind: StepKind, harness: AgentHarness?, platform: Boolean): List<ModelOption> {
-        val user = gate.require(EvaluationPermissions.MODELS_VIEW)
+        guard.require(EvaluationPermissions.MODELS_VIEW)
+        val user = principal.currentUser()
         val options = availability?.options(ModelUse(stepKind, harness, privateProject = !platform, userId = user.userId?.value)).orEmpty()
         return if (platform) options.filterNot { it.personal } else options
     }

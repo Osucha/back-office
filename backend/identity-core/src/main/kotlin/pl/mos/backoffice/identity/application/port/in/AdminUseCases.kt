@@ -15,7 +15,6 @@ import pl.mos.backoffice.identity.domain.model.Role
 import pl.mos.backoffice.identity.domain.model.User
 import pl.mos.backoffice.identity.domain.service.PermissionDecision
 import pl.mos.backoffice.identity.domain.service.ProjectAccess
-import pl.mos.backoffice.shared.security.PermissionDefinition
 import pl.mos.backoffice.shared.security.PermissionScope
 import pl.mos.backoffice.shared.security.UserId
 import pl.mos.backoffice.identity.domain.model.AuthMode
@@ -139,8 +138,11 @@ interface ManagePlatformSettings {
 }
 
 interface PermissionCatalogQuery {
-    fun catalog(): List<PermissionDefinition>
+    fun catalog(): List<CatalogEntry>
 }
+
+/** One permission of the catalogue as the admin screens show it; [module] is the contributing Back Office module. */
+data class CatalogEntry(val key: String, val scope: PermissionScope, val module: String, val description: String)
 
 interface SearchAuditLog {
     fun search(query: AuditQuery): AuditRecordPage

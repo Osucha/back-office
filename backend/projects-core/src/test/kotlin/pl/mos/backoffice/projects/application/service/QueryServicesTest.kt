@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.ScopeFilter
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -18,13 +19,13 @@ import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.RunStatus
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.security.PermissionScope
-import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.security.permissionScope
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 
 class QueryServicesTest {
 
     private val project = Fixtures.project()
-    private val only = ProjectFilter.Only(setOf(project.id.value))
+    private val only = ScopeFilter.Only(setOf(project.id.value))
 
     @Test
     fun `dashboard counts and lists only cover projects the caller can view`() {
@@ -39,7 +40,7 @@ class QueryServicesTest {
         every { runs.findRecent(10, only) } returns listOf(run)
         every { executions.findRecent(10, only) } returns emptyList()
         every { approvals.findByStatus(ApprovalStatus.OPEN, only, 10) } returns emptyList()
-        val service = DashboardQueryService(runs, approvals, executions, FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)))
+        val service = DashboardQueryService(runs, approvals, executions, FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)))
 
         assertThat(service.openApprovals()).isEqualTo(2)
         assertThat(service.activeRuns()).isEqualTo(3)
@@ -57,23 +58,23 @@ class QueryServicesTest {
             override fun describe() = IntegrationDescriptor("jira", true, "https://jira")
             override fun test() = IntegrationTestOutcome(true, "ok")
         }
-        val allowed = IntegrationsService(listOf(probe), mockk(relaxed = true), "http://bo", "1", FakeAuthorizationGate.permitting(ProjectsPermissions.INTEGRATIONS_VIEW))
+        val allowed = IntegrationsService(listOf(probe), mockk(relaxed = true), "http://bo", "1", FakeAccessGuard.permitting(ProjectsPermissions.INTEGRATIONS_VIEW))
         assertThat(allowed.status().jira.configured).isTrue()
         assertThat(allowed.test("jira").ok).isTrue()
-        val denied = IntegrationsService(listOf(probe), mockk(relaxed = true), "http://bo", "1", FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW))
+        val denied = IntegrationsService(listOf(probe), mockk(relaxed = true), "http://bo", "1", FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW))
         assertThatThrownBy { denied.status() }.isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("integrations.view") }
         assertThatThrownBy { denied.test("jira") }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 
     @Test
     fun `the permission catalogue matches the architecture table`() {
-        val byKey = ProjectsPermissions.definitions.associateBy { it.key }
+        val byKey = ProjectsPermissions.contribution.sets.flatMap { it.permissions }.associateBy { it.key }
         assertThat(byKey.keys).containsExactlyInAnyOrder(
             "projects.create", "projects.create.personal", "integrations.view", "admin.connections.manage", "connections.personal", "project.view", "project.manage", "project.ci.manage",
             "project.connections.manage", "workflow.edit",
             "run.start", "run.cancel", "run.approve", "run.assign", "run.signal", "ci.execute", "ci.signal",
         )
-        assertThat(byKey.filterValues { it.scope == PermissionScope.PLATFORM }.keys).containsExactlyInAnyOrder("projects.create", "projects.create.personal", "integrations.view", "admin.connections.manage", "connections.personal")
-        assertThat(ProjectsPermissions.definitions).allMatch { it.module == "projects" }
+        assertThat(byKey.filterValues { it.permissionScope == PermissionScope.PLATFORM }.keys).containsExactlyInAnyOrder("projects.create", "projects.create.personal", "integrations.view", "admin.connections.manage", "connections.personal")
+        assertThat(ProjectsPermissions.contribution.module).isEqualTo("projects")
     }
 }

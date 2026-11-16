@@ -18,7 +18,7 @@ import pl.mos.backoffice.projects.adapter.ConcurrentRecordingAuditPort
 import pl.mos.backoffice.projects.adapter.FakeModelCatalog
 import pl.mos.backoffice.projects.adapter.ProjectsTestApplication
 import pl.mos.backoffice.projects.adapter.ProjectsTestBeans
-import pl.mos.backoffice.projects.adapter.TestAuthorizationGate
+import pl.mos.backoffice.projects.adapter.TestAccessGuard
 import pl.mos.backoffice.projects.application.port.`in`.ManageConnections
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
@@ -60,7 +60,7 @@ class JiraIntakeIntegrationTest {
     @Autowired lateinit var intakes: JiraIntakeRepository
     @Autowired lateinit var runs: RunQueries
     @Autowired lateinit var catalog: FakeModelCatalog
-    @Autowired lateinit var gate: TestAuthorizationGate
+    @Autowired lateinit var gate: TestAccessGuard
     @Autowired lateinit var audit: ConcurrentRecordingAuditPort
 
     private val jira = WireMockServer(wireMockConfig().dynamicPort().http2PlainDisabled(true)).also { it.start() }

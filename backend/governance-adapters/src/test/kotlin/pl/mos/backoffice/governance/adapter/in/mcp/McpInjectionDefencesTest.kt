@@ -20,7 +20,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditResult
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.TokenCapabilities
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
@@ -37,7 +37,7 @@ class McpInjectionDefencesTest {
     private val audit = RecordingAuditPort()
 
     private fun tools(capabilities: Set<String> = emptySet()) = BackOfficeMcpTools(
-        FakeAuthorizationGate(FakeAuthorizationGate.user(allProjects = true).copy(kind = PrincipalKind.PERSONAL_TOKEN, tokenCapabilities = capabilities)),
+        FakeAccessGuard(FakeAccessGuard.user(allProjects = true).copy(kind = PrincipalKind.PERSONAL_TOKEN, tokenCapabilities = capabilities)),
         runs, Mockito.mock(StartRun::class.java), Mockito.mock(ApprovalQueries::class.java), decide,
         projects, workflows, Mockito.mock(ManageTaskTemplates::class.java),
         Mockito.mock(ManageSkills::class.java), Mockito.mock(DeliveryInsightsQuery::class.java), audit,

@@ -20,7 +20,7 @@ import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.StepKind
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.Pricing
 import java.util.UUID
@@ -32,16 +32,16 @@ class PersonalModelsAndDefaultsTest {
     private val defaults = InMemoryModelDefaultRepository()
     private val audit = RecordingAuditPort()
     private val clock = Clock.fixed(Fixtures.now)
-    private val viewer = FakeAuthorizationGate.permitting(EvaluationPermissions.MODELS_VIEW)
-    private val admin = FakeAuthorizationGate.permitting(EvaluationPermissions.MODELS_VIEW, EvaluationPermissions.MODELS_MANAGE)
-    private val me = FakeAuthorizationGate.TEST_USER_ID.value
+    private val viewer = FakeAccessGuard.permitting(EvaluationPermissions.MODELS_VIEW)
+    private val admin = FakeAccessGuard.permitting(EvaluationPermissions.MODELS_VIEW, EvaluationPermissions.MODELS_MANAGE)
+    private val me = FakeAccessGuard.TEST_USER_ID.value
     private val other = UUID.randomUUID()
 
     private val gateway = mockk<LlmGateway>().also { g ->
         io.mockk.every { g.connectionOwner(any()) } answers { if (firstArg<ModelRef>().connection == "their-key") other else null }
     }
-    private fun models(gate: FakeAuthorizationGate) = ModelProfileService(profiles, InMemoryBenchmarkRepository(), gateway, clock, gate, audit)
-    private fun defaultsOf(gate: FakeAuthorizationGate) = ModelDefaultsService(defaults, profiles, gate, audit, clock)
+    private fun models(gate: FakeAccessGuard) = ModelProfileService(profiles, InMemoryBenchmarkRepository(), gateway, clock, gate, gate, audit)
+    private fun defaultsOf(gate: FakeAccessGuard) = ModelDefaultsService(defaults, profiles, gate, gate, audit, clock)
 
     private val platform = Fixtures.profile("Sonnet API").also { profiles.save(it) }
     private val theirs = Fixtures.profile("Their key").copy(ownerUserId = other).also { profiles.save(it) }

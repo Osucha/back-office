@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter
 
+import com.osucha.portpermissions.PermissionCatalog
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -7,13 +8,12 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.web.filter.OncePerRequestFilter
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
-import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.CiTokenVerifier
 import pl.mos.backoffice.shared.security.CurrentUser
+import pl.mos.backoffice.shared.security.CurrentUserAccessGuard
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
@@ -23,29 +23,17 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /*
  * Test-only stand-ins for the identity context so projects-adapters tests stay independent of
- * identity-adapters: a thread-bound gate, a servlet filter that authenticates requests (CI tokens through
+ * identity-adapters: a thread-bound guard, a servlet filter that authenticates requests (CI tokens through
  * this context's CiTokenVerifier, everything else as a session user) and recording audit/provisioning ports.
  */
 
-/** Thread-bound [AuthorizationGate]; threads without a principal act as [defaultUser] (the project owner). */
-class TestAuthorizationGate : AuthorizationGate {
+/** Thread-bound `AccessGuard` and `CurrentPrincipal`; threads without a principal act as [defaultUser] (the project owner). */
+class TestAccessGuard : CurrentUserAccessGuard(PermissionCatalog(emptyList())) {
     private val current = ThreadLocal<CurrentUser?>()
 
     @Volatile var defaultUser: CurrentUser = OWNER
 
     override fun currentUser(): CurrentUser = current.get() ?: defaultUser
-
-    override fun require(permission: String): CurrentUser {
-        val user = currentUser()
-        if (!user.can(permission)) throw InsufficientPermissionException(permission)
-        return user
-    }
-
-    override fun require(permission: String, projectId: UUID): CurrentUser {
-        val user = currentUser()
-        if (!user.can(permission, projectId)) throw InsufficientPermissionException(permission, projectId)
-        return user
-    }
 
     override fun <T> asSystem(reason: String, block: () -> T): T = runAs(CurrentUser.SYSTEM, block)
 
@@ -68,7 +56,7 @@ class TestAuthorizationGate : AuthorizationGate {
             userId = OWNER_ID,
             login = "owner@example.com",
             displayName = "Olivia Owner",
-            platformPermissions = setOf(ProjectsPermissions.PROJECTS_CREATE, ProjectsPermissions.INTEGRATIONS_VIEW),
+            platformPermissions = setOf(ProjectsPermissions.PROJECTS_CREATE.key, ProjectsPermissions.INTEGRATIONS_VIEW.key),
             projectPermissions = emptyMap(),
             allProjects = true,
         )
@@ -79,7 +67,7 @@ class TestAuthorizationGate : AuthorizationGate {
             login = "ci:$projectKey",
             displayName = "CI token $tokenName ($projectKey)",
             platformPermissions = emptySet(),
-            projectPermissions = mapOf(projectId to setOf(ProjectsPermissions.CI_EXECUTE, ProjectsPermissions.CI_SIGNAL)),
+            projectPermissions = mapOf(projectId to setOf(ProjectsPermissions.CI_EXECUTE.key, ProjectsPermissions.CI_SIGNAL.key)),
         )
 
         /** `X-Test-Platform-Permissions: p1,p2` - a user with exactly those platform permissions and no project access. */
@@ -111,9 +99,9 @@ class TestAuthorizationGate : AuthorizationGate {
  * - any other `Authorization` header or `X-Test-Anonymous` -> 401 (no session);
  * - `X-Test-Project-Permissions: <projectId>=p1,p2` -> a member with exactly those permissions (and the
  *   project roles listed in `X-Test-Project-Roles`);
- * - otherwise -> the session owner ([TestAuthorizationGate.OWNER]).
+ * - otherwise -> the session owner ([TestAccessGuard.OWNER]).
  */
-class TestAuthenticationFilter(private val gate: TestAuthorizationGate, private val verifier: CiTokenVerifier) : OncePerRequestFilter() {
+class TestAuthenticationFilter(private val gate: TestAccessGuard, private val verifier: CiTokenVerifier) : OncePerRequestFilter() {
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
         val user = resolve(request)
@@ -132,18 +120,18 @@ class TestAuthenticationFilter(private val gate: TestAuthorizationGate, private 
         if (authorization != null) {
             val token = authorization.takeIf { it.startsWith("Bearer ", ignoreCase = true) }?.substring(7)?.trim() ?: return null
             val identity = verifier.verify(token) ?: return null
-            return TestAuthorizationGate.ciToken(identity.projectId, identity.projectKey, identity.tokenName)
+            return TestAccessGuard.ciToken(identity.projectId, identity.projectKey, identity.tokenName)
         }
         request.getHeader("X-Test-Platform-Permissions")?.let { spec ->
             val permissions = spec.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             // `X-Test-User-Id`: another person with the same permissions (personal connections, ADR 0035)
             val id = request.getHeader("X-Test-User-Id")?.let(UUID::fromString)
-            return if (id == null) TestAuthorizationGate.platformUser(permissions) else TestAuthorizationGate.platformUser(permissions, id)
+            return if (id == null) TestAccessGuard.platformUser(permissions) else TestAccessGuard.platformUser(permissions, id)
         }
         request.getHeader("X-Test-Project-Permissions")?.let { spec ->
             val (project, permissions) = spec.split("=", limit = 2)
             val roles = request.getHeader("X-Test-Project-Roles")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
-            return TestAuthorizationGate.member(UUID.fromString(project.trim()), permissions.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet(), roles)
+            return TestAccessGuard.member(UUID.fromString(project.trim()), permissions.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet(), roles)
         }
         // `X-Test-Extra-Platform-Permissions: p1,p2`: the session owner plus those platform permissions (library.manage, ADR 0037)
         request.getHeader("X-Test-Extra-Platform-Permissions")?.let { spec ->

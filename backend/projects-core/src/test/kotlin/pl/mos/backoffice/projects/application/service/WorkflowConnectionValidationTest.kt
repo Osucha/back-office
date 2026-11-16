@@ -33,7 +33,7 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.tasks.ResolvedTask
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 /** ADR 0030 in the designer: Jira steps without a fitting connection are errors, over-privileged ones warnings. */
@@ -54,9 +54,9 @@ class WorkflowConnectionValidationTest {
         override fun validate(expression: String): String? = null
         override fun evaluate(expression: String, view: WorkflowStateView): Boolean = true
     }
-    private val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
+    private val gate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, ProjectsPermissions.WORKFLOW_EDIT, projects = setOf(project.id.value))
     private val service = WorkflowService(
-        workflows, projects, runs, WorkflowValidator(), catalog, expressions, gate, RecordingAuditPort(), Clock.fixed(Fixtures.now),
+        workflows, projects, runs, WorkflowValidator(), catalog, expressions, gate, gate, RecordingAuditPort(), Clock.fixed(Fixtures.now),
         JiraConnectionAccess(connections, LegacyConnectionSource.NONE, ConnectionSelector(), ConnectionFakes.FakeTrackers()),
     )
 

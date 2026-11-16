@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.ScopeFilter
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -38,8 +39,7 @@ import pl.mos.backoffice.shared.NotFoundException
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.shared.security.ProjectFilter
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.PageOf
 
@@ -54,7 +54,7 @@ class CiExecutionServiceTest {
     private val events = mutableListOf<DomainEvent>()
     private val gate = Fixtures.ciGate(project.id, project.key)
     private val audit = RecordingAuditPort()
-    private val service = CiExecutionService(executions, projects, runService, EventPublisher { events += it }, gate, audit, Clock.fixed(now))
+    private val service = CiExecutionService(executions, projects, runService, EventPublisher { events += it }, gate, gate, audit, Clock.fixed(now))
     private val completion = CiExecutionCompletionService(executions, EventPublisher { events += it }, Clock.fixed(now))
 
     private val context = CiContext(commitSha = "abc123", mergeRequest = CiMergeRequest(iid = "7", sourceBranch = "feature/x", targetBranch = "main"))
@@ -127,10 +127,10 @@ class CiExecutionServiceTest {
 
     @Test
     fun `only the CI token of the project may start executions`() {
-        val owner = CiExecutionService(executions, projects, runService, EventPublisher.NOOP, FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value)), audit, Clock.fixed(now))
+        val owner = (FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_MANAGE, projects = setOf(project.id.value))).let { g -> CiExecutionService(executions, projects, runService, EventPublisher.NOOP, g, g, audit, Clock.fixed(now)) }
         assertThatThrownBy { owner.start(project.id, CiExecutionCommand("code-review", context)) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("ci.execute") }
-        val foreign = CiExecutionService(executions, projects, runService, EventPublisher.NOOP, Fixtures.ciGate(pl.mos.backoffice.projects.domain.model.ProjectId.new()), audit, Clock.fixed(now))
+        val foreign = (Fixtures.ciGate(pl.mos.backoffice.projects.domain.model.ProjectId.new())).let { g -> CiExecutionService(executions, projects, runService, EventPublisher.NOOP, g, g, audit, Clock.fixed(now)) }
         assertThatThrownBy { foreign.start(project.id, CiExecutionCommand("code-review", context)) }.isInstanceOf(InsufficientPermissionException::class.java)
         verify(exactly = 0) { runService.startForCi(any(), any(), any(), any()) }
         assertThat(audit.entries).isEmpty()
@@ -143,19 +143,19 @@ class CiExecutionServiceTest {
         assertThat(service.get(execution.id)).isEqualTo(execution)
         assertThat(gate.checked.last()).isEqualTo("ci.execute@${project.id}")
 
-        val viewerGate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
-        val viewer = CiExecutionService(executions, projects, runService, EventPublisher.NOOP, viewerGate, audit, Clock.fixed(now))
+        val viewerGate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val viewer = CiExecutionService(executions, projects, runService, EventPublisher.NOOP, viewerGate, viewerGate, audit, Clock.fixed(now))
         assertThat(viewer.get(execution.id)).isEqualTo(execution)
         assertThat(viewerGate.checked.last()).isEqualTo("project.view@${project.id}")
 
-        val foreignToken = CiExecutionService(executions, projects, runService, EventPublisher.NOOP, Fixtures.ciGate(pl.mos.backoffice.projects.domain.model.ProjectId.new()), audit, Clock.fixed(now))
+        val foreignToken = (Fixtures.ciGate(pl.mos.backoffice.projects.domain.model.ProjectId.new())).let { g -> CiExecutionService(executions, projects, runService, EventPublisher.NOOP, g, g, audit, Clock.fixed(now)) }
         assertThatThrownBy { foreignToken.get(execution.id) }.isInstanceOf(InsufficientPermissionException::class.java)
-        val stranger = CiExecutionService(executions, projects, runService, EventPublisher.NOOP, FakeAuthorizationGate.denyAll(), audit, Clock.fixed(now))
+        val stranger = (FakeAccessGuard.denyAll()).let { g -> CiExecutionService(executions, projects, runService, EventPublisher.NOOP, g, g, audit, Clock.fixed(now)) }
         assertThatThrownBy { stranger.get(execution.id) }.isInstanceOf(InsufficientPermissionException::class.java)
 
-        every { executions.find(null, ProjectFilter.Only(setOf(project.id.value)), 0, 20) } returns PageOf(listOf(execution), 0, 20, 1)
+        every { executions.find(null, ScopeFilter.Only(setOf(project.id.value)), 0, 20) } returns PageOf(listOf(execution), 0, 20, 1)
         assertThat(viewer.list(null, 0, 20).content).containsExactly(execution)
-        every { executions.find(null, ProjectFilter.Only(emptySet()), 0, 20) } returns PageOf(emptyList(), 0, 20, 0)
+        every { executions.find(null, ScopeFilter.Only(emptySet()), 0, 20) } returns PageOf(emptyList(), 0, 20, 0)
         assertThat(stranger.list(null, 0, 20).totalElements).isZero()
     }
 

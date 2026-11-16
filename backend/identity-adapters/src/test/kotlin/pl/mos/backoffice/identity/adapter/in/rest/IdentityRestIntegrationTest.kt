@@ -15,7 +15,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import pl.mos.backoffice.identity.PostgresTestSupport
 import pl.mos.backoffice.identity.TestIdentity
-import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAuthorizationGate
+import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAccessGuard
 import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
 import pl.mos.backoffice.identity.application.port.`in`.ManageGroups
 import pl.mos.backoffice.identity.application.port.out.UserRepository
@@ -39,7 +39,7 @@ class IdentityRestIntegrationTest {
     @Autowired lateinit var json: JsonMapper
     @Autowired lateinit var provisioner: ProjectAccessProvisioner
     @Autowired lateinit var groups: ManageGroups
-    @Autowired lateinit var gate: SecurityContextAuthorizationGate
+    @Autowired lateinit var gate: SecurityContextAccessGuard
     @Autowired lateinit var loader: LoadCurrentUser
     @Autowired lateinit var tm: PlatformTransactionManager
     @Autowired lateinit var users: UserRepository

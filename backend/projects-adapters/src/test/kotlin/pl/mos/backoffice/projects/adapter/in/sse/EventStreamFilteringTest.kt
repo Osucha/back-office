@@ -11,7 +11,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.request
 import pl.mos.backoffice.projects.adapter.ProjectsTestApplication
 import pl.mos.backoffice.projects.adapter.ProjectsTestBeans
-import pl.mos.backoffice.projects.adapter.TestAuthorizationGate
+import pl.mos.backoffice.projects.adapter.TestAccessGuard
 import pl.mos.backoffice.projects.adapter.`in`.rest.DomainEventEnvelopeDto
 import pl.mos.backoffice.projects.domain.event.NodeStarted
 import pl.mos.backoffice.projects.domain.event.RunnerLog
@@ -73,7 +73,7 @@ class EventStreamFilteringTest {
             .andExpect(request().asyncStarted())
             .andReturn()
         // the same person now also owns a project created after the stream opened
-        directory.register(TestAuthorizationGate.member(created.value, setOf(ProjectsPermissions.PROJECT_VIEW)))
+        directory.register(TestAccessGuard.member(created.value, setOf(ProjectsPermissions.PROJECT_VIEW.key)))
 
         stream.onEvent(stored(NodeStarted(run, created, "start", "START", 1, Instant.now())))
 
@@ -83,21 +83,21 @@ class EventStreamFilteringTest {
     @Test
     fun `the delivery rule fails closed on unparseable project ids`() {
         val project = UUID.randomUUID()
-        val member = TestAuthorizationGate.member(project, setOf(ProjectsPermissions.PROJECT_VIEW))
+        val member = TestAccessGuard.member(project, setOf(ProjectsPermissions.PROJECT_VIEW.key))
         fun envelope(payload: Map<String, Any?>) = DomainEventEnvelopeDto("1", "X", Instant.now(), payload)
         assertThat(EventStreamController.visible(member, envelope(mapOf("projectId" to project.toString())))).isTrue()
         assertThat(EventStreamController.visible(member, envelope(mapOf("projectId" to UUID.randomUUID().toString())))).isFalse()
         assertThat(EventStreamController.visible(member, envelope(mapOf("projectId" to null)))).isTrue()
         assertThat(EventStreamController.visible(member, envelope(emptyMap()))).isTrue()
         assertThat(EventStreamController.visible(member, envelope(mapOf("projectId" to "not-a-uuid")))).isFalse()
-        assertThat(EventStreamController.visible(TestAuthorizationGate.OWNER, envelope(mapOf("projectId" to UUID.randomUUID().toString())))).isTrue()
+        assertThat(EventStreamController.visible(TestAccessGuard.OWNER, envelope(mapOf("projectId" to UUID.randomUUID().toString())))).isTrue()
     }
 
     @Test
     fun `events about a personal connection reach only its owner (ADR 0035)`() {
         fun envelope(payload: Map<String, Any?>) = DomainEventEnvelopeDto("1", "ConnectionExpiring", Instant.now(), payload)
-        val personal = envelope(mapOf("projectId" to null, "scope" to "USER", "ownerUserId" to TestAuthorizationGate.OWNER_ID.toString()))
-        assertThat(EventStreamController.visible(TestAuthorizationGate.OWNER, personal)).isTrue()
-        assertThat(EventStreamController.visible(TestAuthorizationGate.platformUser(setOf(ProjectsPermissions.CONNECTIONS_MANAGE)), personal)).isFalse()
+        val personal = envelope(mapOf("projectId" to null, "scope" to "USER", "ownerUserId" to TestAccessGuard.OWNER_ID.toString()))
+        assertThat(EventStreamController.visible(TestAccessGuard.OWNER, personal)).isTrue()
+        assertThat(EventStreamController.visible(TestAccessGuard.platformUser(setOf(ProjectsPermissions.CONNECTIONS_MANAGE.key)), personal)).isFalse()
     }
 }

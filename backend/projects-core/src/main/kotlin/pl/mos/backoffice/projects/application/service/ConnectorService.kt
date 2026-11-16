@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageConnectors
 import pl.mos.backoffice.projects.application.port.`in`.ManageConnectors.ConnectorCommand
 import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectorSecrets
@@ -31,9 +33,8 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.runner.ConnectorAuth
 import pl.mos.backoffice.shared.runner.ConnectorKind
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
-import pl.mos.backoffice.shared.security.SystemOperation
 
 /**
  * ADR 0064: connectors, the tools agents use. The secret of an MCP connector is sealed before it is stored and never
@@ -47,13 +48,15 @@ class ConnectorService(
     private val mcp: McpProbePort,
     private val scmConnections: ScmConnectionRepository,
     private val scmProbe: ScmProbePort,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : ManageConnectors, RewrapConnectorSecrets {
 
     override fun list(projectId: ProjectId?): List<Connector> {
-        val user = if (projectId == null) gate.require(ProjectsPermissions.LIBRARY_VIEW) else gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        if (projectId == null) guard.require(ProjectsPermissions.LIBRARY_VIEW) else guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        val user = principal.currentUser()
         val platform = if (projectId == null || user.can(ProjectsPermissions.LIBRARY_VIEW)) connectors.findPlatform() else emptyList()
         val own = projectId?.let { loadProject(it); connectors.findByProject(it) }.orEmpty()
         return (platform.sortedBy { it.key } + own.sortedBy { it.key })
@@ -209,10 +212,12 @@ class ConnectorService(
         "no verified read-only token with CI_READ for repository '$repositoryKey': add one under the project's Sources tab, " +
             "Repository access tokens (role Reporter, scopes read_api and read_repository), and test it."
 
-    // inline: the gate call lands in each use case's body (DenyByDefaultArchitectureTest)
+    // inline: the guard call lands in each use case's body (PortPermissionsRules.operationsAreGuarded)
     @Suppress("NOTHING_TO_INLINE")
-    private inline fun requireManage(projectId: ProjectId?): CurrentUser =
-        if (projectId == null) gate.require(ProjectsPermissions.LIBRARY_MANAGE) else gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+    private inline fun requireManage(projectId: ProjectId?): CurrentUser {
+        if (projectId == null) guard.require(ProjectsPermissions.LIBRARY_MANAGE) else guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+        return principal.currentUser()
+    }
 
     private fun siblings(projectId: ProjectId?): List<Connector> = projectId?.let(connectors::findByProject) ?: connectors.findPlatform()
 

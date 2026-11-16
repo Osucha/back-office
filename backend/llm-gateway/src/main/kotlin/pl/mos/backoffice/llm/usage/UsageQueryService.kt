@@ -1,11 +1,13 @@
 package pl.mos.backoffice.llm.usage
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PermissionSet
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.llm.TokenUsage
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.PermissionDefinition
-import pl.mos.backoffice.shared.security.PermissionScope
-import pl.mos.backoffice.shared.security.ProjectFilter
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.security.PROJECT_SCOPE
+import pl.mos.backoffice.shared.security.isNothing
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.shared.usage.UsageGroupBy
 import pl.mos.backoffice.shared.usage.UsageLedger
@@ -14,20 +16,26 @@ import pl.mos.backoffice.shared.usage.UsageRecord
 import pl.mos.backoffice.shared.usage.UsageSummary
 import java.util.UUID
 
-/** Permissions of the LLM gateway module (docs/architecture/08-identity-and-access.md, ADR 0017). */
+/** Permissions of the LLM gateway module (docs/architecture/08-identity-and-access.md, ADR 0017, ADR 0066). */
 object LlmPermissions {
     const val MODULE = "llm"
 
+    object Usage : PermissionSet("usage") {
+        val VIEW = permission("view", "Read the usage ledger for all projects and benchmarks")
+    }
+
+    object ProjectUsage : PermissionSet("project") {
+        val VIEW = scoped("usage.view", "Usage and cost of this project", PROJECT_SCOPE)
+    }
+
     /** Read the usage ledger of all projects and benchmarks. */
-    const val USAGE_VIEW = "usage.view"
+    val USAGE_VIEW = Usage.VIEW
 
     /** Read usage and cost of one project (and of its runs). */
-    const val PROJECT_USAGE_VIEW = "project.usage.view"
+    val PROJECT_USAGE_VIEW = ProjectUsage.VIEW
 
-    val definitions: List<PermissionDefinition> = listOf(
-        PermissionDefinition(USAGE_VIEW, PermissionScope.PLATFORM, MODULE, "Read the usage ledger for all projects and benchmarks"),
-        PermissionDefinition(PROJECT_USAGE_VIEW, PermissionScope.PROJECT, MODULE, "Usage and cost of this project"),
-    )
+    /** What this module contributes to the catalogue. */
+    val contribution = ModulePermissions(MODULE, listOf(Usage, ProjectUsage))
 }
 
 /**
@@ -38,7 +46,7 @@ object LlmPermissions {
  * - `runId` filter: `project.usage.view` on the project the run's ledger rows belong to, or `usage.view`.
  *   The query is then narrowed to that project so a run id cannot be used to read another project.
  */
-class UsageQueryService(private val ledger: UsageLedger, private val gate: AuthorizationGate) {
+class UsageQueryService(private val ledger: UsageLedger, private val guard: AccessGuard, private val principal: CurrentPrincipal) {
 
     fun summary(query: UsageQuery, groupBy: UsageGroupBy): UsageSummary =
         when (val access = authorise(query)) {
@@ -60,25 +68,25 @@ class UsageQueryService(private val ledger: UsageLedger, private val gate: Autho
     }
 
     private fun authorise(query: UsageQuery): Access {
-        if (gate.currentUser().can(LlmPermissions.USAGE_VIEW)) {
-            gate.require(LlmPermissions.USAGE_VIEW)
+        if (principal.currentUser().can(LlmPermissions.USAGE_VIEW)) {
+            guard.require(LlmPermissions.USAGE_VIEW)
             return Access.Allowed(query)
         }
         query.projectId?.let { projectId ->
-            gate.require(LlmPermissions.PROJECT_USAGE_VIEW, projectId)
+            guard.require(LlmPermissions.PROJECT_USAGE_VIEW, projectId)
             return Access.Allowed(query)
         }
         query.runId?.let { runId ->
             val projectId = projectOfRun(runId)
             if (projectId != null) {
-                gate.require(LlmPermissions.PROJECT_USAGE_VIEW, projectId)
+                guard.require(LlmPermissions.PROJECT_USAGE_VIEW, projectId)
                 return Access.Allowed(query.copy(projectId = projectId))
             }
             // No ledger row for the run: nothing to reveal to a caller who reads usage of some project.
-            val projects = gate.projectFilter(LlmPermissions.PROJECT_USAGE_VIEW)
-            if (projects !is ProjectFilter.Only || projects.projectIds.isNotEmpty()) return Access.Nothing
+            val projects = guard.scopesWith(LlmPermissions.PROJECT_USAGE_VIEW)
+            if (!projects.isNothing) return Access.Nothing
         }
-        gate.require(LlmPermissions.USAGE_VIEW)
+        guard.require(LlmPermissions.USAGE_VIEW)
         return Access.Allowed(query)
     }
 

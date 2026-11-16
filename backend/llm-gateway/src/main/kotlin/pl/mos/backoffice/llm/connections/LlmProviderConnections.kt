@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.connections
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.simple.JdbcClient
 import pl.mos.backoffice.llm.gateway.ProviderConnection
@@ -15,7 +16,9 @@ import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModelAccessPermissions
+import pl.mos.backoffice.shared.security.PlatformSettingsPermissions
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.SealedValue
 import pl.mos.backoffice.shared.security.SecretVault
@@ -255,7 +258,8 @@ data class CatalogSection(
 class LlmProviderService(
     private val store: LlmProviderConnectionStore,
     private val vault: SecretVault?,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
     private val cache: CachedProviderConnections,
@@ -265,7 +269,8 @@ class LlmProviderService(
 ) {
 
     fun list(): List<LlmProviderView> {
-        val user = gate.require(VIEW)
+        guard.require(VIEW)
+        val user = principal.currentUser()
         val usable = cache.connections().map { it.key to it.provider }.filter { (key, provider) -> registry.resolve(provider, key) != null }.toSet()
         val today = quota.usedToday()
         val own = store.findAll().filter { it.visibleTo(user.userId?.value) }.map { c ->
@@ -283,7 +288,8 @@ class LlmProviderService(
     }
 
     fun create(command: LlmProviderCommand): LlmProviderView {
-        val user = gate.require(if (command.personal) VIEW else MANAGE)
+        guard.require(if (command.personal) VIEW else MANAGE)
+        val user = principal.currentUser()
         val actor = user.actor
         val owner = if (command.personal) user.userId?.value ?: throw ValidationException("a personal connection needs a signed-in user", "personal") else null
         val key = command.key.trim()
@@ -304,7 +310,8 @@ class LlmProviderService(
 
     fun update(id: UUID, command: LlmProviderCommand): LlmProviderView {
         val found = store.findById(id)
-        val user = gate.require(if (found?.personal == true) VIEW else MANAGE)
+        guard.require(if (found?.personal == true) VIEW else MANAGE)
+        val user = principal.currentUser()
         val actor = user.actor
         val existing = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("LlmProviderConnection", id)
         if (command.key.trim() != existing.key) throw ValidationException("the key cannot change: model profiles refer to it", "key")
@@ -336,7 +343,8 @@ class LlmProviderService(
 
     fun delete(id: UUID) {
         val found = store.findById(id)
-        val user = gate.require(if (found?.personal == true) VIEW else MANAGE)
+        guard.require(if (found?.personal == true) VIEW else MANAGE)
+        val user = principal.currentUser()
         val existing = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("LlmProviderConnection", id)
         store.delete(id)
         cache.invalidate()
@@ -350,7 +358,8 @@ class LlmProviderService(
      * ten minutes; [refresh] asks the providers again.
      */
     fun catalog(refresh: Boolean): List<CatalogSection> {
-        val user = gate.require(VIEW)
+        guard.require(VIEW)
+        val user = principal.currentUser()
         val now = clock.now()
         val names = store.findAll().associate { it.key to it.name }
         // ADR 0050 step 2b: the caller's own connections are listed to them only
@@ -372,7 +381,8 @@ class LlmProviderService(
     /** Lists the models the endpoint offers (also a connection test); [id] null = the environment endpoint of [provider]. */
     fun models(id: UUID?, provider: Provider?): ProviderModels {
         val found = id?.let { store.findById(it) }
-        val user = gate.require(if (found?.personal == true) VIEW else MANAGE)
+        guard.require(if (found?.personal == true) VIEW else MANAGE)
+        val user = principal.currentUser()
         val endpoint = if (id != null) {
             val c = found?.takeIf { it.visibleTo(user.userId?.value) } ?: throw NotFoundException("LlmProviderConnection", id)
             cache.invalidate()
@@ -414,8 +424,8 @@ class LlmProviderService(
 
     companion object {
         const val ENTITY = "LlmProviderConnection"
-        const val VIEW = "models.view"
-        const val MANAGE = "admin.settings.manage"
+        val VIEW = ModelAccessPermissions.VIEW
+        val MANAGE = PlatformSettingsPermissions.SETTINGS_MANAGE
         val CATALOG_TTL: Duration = Duration.ofMinutes(10)
         const val SUBSCRIPTION_TOKEN_PREFIX = "sk-ant-oat"
     }

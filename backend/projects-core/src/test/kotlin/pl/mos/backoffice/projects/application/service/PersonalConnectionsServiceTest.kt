@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.ScopeFilter
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -26,9 +27,8 @@ import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.security.UserId
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -41,7 +41,7 @@ class PersonalConnectionsServiceTest {
     private var project: Project = Fixtures.project()
     private val projects = mockk<ProjectRepository> {
         every { findById(any()) } answers { project }
-        every { findAll(any<ProjectFilter>()) } answers { listOf(project) }
+        every { findAll(any<ScopeFilter<UUID>>()) } answers { listOf(project) }
         val saved = slot<Project>()
         every { save(capture(saved)) } answers { saved.captured.also { project = it } }
     }
@@ -49,17 +49,18 @@ class PersonalConnectionsServiceTest {
     private val trackers = ConnectionFakes.FakeTrackers(granted = mapOf("SHOP" to setOf(BROWSE_PROJECTS)))
     private val audit = RecordingAuditPort()
 
-    private fun service(gate: FakeAuthorizationGate) = ConnectionService(
+    private fun service(gate: FakeAccessGuard) = ConnectionService(
         connections, projects, LegacyConnectionSource.NONE, ConnectionFakes.FakeSealer(), trackers, ConnectionSelector(), ConnectionVerificationPolicy(),
+        gate,
         gate, audit, Clock.fixed(Fixtures.now),
     )
 
-    private val anna = FakeAuthorizationGate.permitting(ProjectsPermissions.CONNECTIONS_PERSONAL)
-    private val otherUser = FakeAuthorizationGate(
-        FakeAuthorizationGate.user(platform = setOf(ProjectsPermissions.CONNECTIONS_PERSONAL)).copy(userId = UserId(UUID.randomUUID()), displayName = "Bob Other"),
+    private val anna = FakeAccessGuard.permitting(ProjectsPermissions.CONNECTIONS_PERSONAL)
+    private val otherUser = FakeAccessGuard(
+        FakeAccessGuard.user(platform = setOf(ProjectsPermissions.CONNECTIONS_PERSONAL.key)).copy(userId = UserId(UUID.randomUUID()), displayName = "Bob Other"),
     )
-    private val admin = FakeAuthorizationGate.permitting(ProjectsPermissions.CONNECTIONS_MANAGE, ProjectsPermissions.INTEGRATIONS_VIEW)
-    private val owner = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+    private val admin = FakeAccessGuard.permitting(ProjectsPermissions.CONNECTIONS_MANAGE, ProjectsPermissions.INTEGRATIONS_VIEW)
+    private val owner = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
 
     private fun classic(name: String = "My Jira", ack: Boolean = true) = ConnectionCommand(
         type = ConnectionType.JIRA, name = name, siteUrl = "https://acme.atlassian.net", accountEmail = "anna@acme.com", secret = "tok-123",
@@ -76,7 +77,7 @@ class PersonalConnectionsServiceTest {
 
         assertThat(anna.checked.first()).isEqualTo("connections.personal")
         assertThat(mine.scope).isEqualTo(ConnectionScope.USER)
-        assertThat(mine.ownerUserId).isEqualTo(FakeAuthorizationGate.TEST_USER_ID.value)
+        assertThat(mine.ownerUserId).isEqualTo(FakeAccessGuard.TEST_USER_ID.value)
         assertThat(mine.ownerName).isEqualTo("Alice Test")
         assertThat(service(anna).listMine()).containsExactly(mine)
         assertThat(service(anna).getMine(mine.id)).isEqualTo(mine)
@@ -101,8 +102,8 @@ class PersonalConnectionsServiceTest {
 
     @Test
     fun `personal connections need connections personal and a person, not a CI token`() {
-        assertThatThrownBy { service(FakeAuthorizationGate.denyAll()).listMine() }.isInstanceOf(InsufficientPermissionException::class.java)
-        val ci = FakeAuthorizationGate(FakeAuthorizationGate.user(platform = setOf(ProjectsPermissions.CONNECTIONS_PERSONAL)).copy(kind = PrincipalKind.CI_TOKEN))
+        assertThatThrownBy { service(FakeAccessGuard.denyAll()).listMine() }.isInstanceOf(InsufficientPermissionException::class.java)
+        val ci = FakeAccessGuard(FakeAccessGuard.user(platform = setOf(ProjectsPermissions.CONNECTIONS_PERSONAL.key)).copy(kind = PrincipalKind.CI_TOKEN))
         assertThatThrownBy { service(ci).createMine(classic()) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 
@@ -139,7 +140,7 @@ class PersonalConnectionsServiceTest {
         assertThat(project.jiraConnections.systemConnectionId).isEqualTo(reader.id)
         assertThat(view.available.map { it.id }).containsExactly(reader.id)
         assertThat(audit.entries.last().operation).isEqualTo("PROJECT_JIRA_CONNECTIONS_UPDATE")
-        assertThatThrownBy { service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)))
+        assertThatThrownBy { service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)))
             .updateJiraConnections(project.id, ProjectJiraConnections()) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 

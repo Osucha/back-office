@@ -40,7 +40,7 @@ import pl.mos.backoffice.shared.llm.StepKind
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.prompt.UntrustedText
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.TokenCapabilities
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
@@ -55,7 +55,7 @@ import java.util.UUID
 /**
  * Back Office as an MCP server (ADR 0025, docs/architecture/11-governance.md "MCP server"): streamable HTTP at
  * `/mcp`, personal access tokens only. Every tool calls an existing `application.port.in` use case of the
- * Projects / Task Library contexts or the insights query, so `AuthorizationGate` applies exactly as for REST:
+ * Projects / Task Library contexts or the insights query, so `AccessGuard` applies exactly as for REST:
  *
  * | tool | use case | permission |
  * |---|---|---|
@@ -93,7 +93,7 @@ import java.util.UUID
  * drop a human gate. Every create and update is validated first and versioned by the use case.
  */
 class BackOfficeMcpTools(
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
     private val runs: RunQueries,
     private val startRun: StartRun,
     private val approvals: ApprovalQueries,
@@ -568,7 +568,7 @@ class BackOfficeMcpTools(
     )
 
     /** PAT only (the `/mcp` filter already rejects other credentials; this keeps the rule next to the tools). */
-    private fun caller() = gate.currentUser().also {
+    private fun caller() = principal.currentUser().also {
         if (it.kind != PrincipalKind.PERSONAL_TOKEN) throw ValidationException("the MCP server accepts personal access tokens only", "Authorization")
     }
 

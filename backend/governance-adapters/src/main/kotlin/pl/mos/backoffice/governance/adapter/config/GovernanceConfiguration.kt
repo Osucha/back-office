@@ -1,5 +1,6 @@
 package pl.mos.backoffice.governance.adapter.config
 
+import com.osucha.portpermissions.AccessGuard
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -36,10 +37,10 @@ import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.RunQueries
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.provenance.RunProvenanceSource
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.usage.UsageLedger
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
@@ -87,31 +88,31 @@ class GovernanceConfiguration {
         repository: JdbcAttestationRepository,
         signer: Ed25519EnvelopeSigner,
         json: JacksonJsonCodec,
-        gate: AuthorizationGate,
-    ) = ProvenanceQueryService(source, repository, signer, json, gate)
+        guard: AccessGuard,
+    ) = ProvenanceQueryService(source, repository, signer, json, guard)
 
     @Bean
-    fun deliveryInsightsService(readModel: JdbcDeliveryInsightsReadModel, gate: AuthorizationGate, clock: Clock) = DeliveryInsightsService(readModel, gate, clock)
+    fun deliveryInsightsService(readModel: JdbcDeliveryInsightsReadModel, guard: AccessGuard, clock: Clock) = DeliveryInsightsService(readModel, guard, clock)
 
     @Bean
     fun workflowInsightsReadModel(jdbc: JdbcClient) = JdbcWorkflowInsightsReadModel(jdbc)
 
     /** Workflow metrics (ADR 0037). */
     @Bean
-    fun workflowInsightsService(readModel: JdbcWorkflowInsightsReadModel, gate: AuthorizationGate, clock: Clock) = WorkflowInsightsService(readModel, gate, clock)
+    fun workflowInsightsService(readModel: JdbcWorkflowInsightsReadModel, guard: AccessGuard, clock: Clock) = WorkflowInsightsService(readModel, guard, clock)
 
     @Bean
     fun agentInsightsReadModel(jdbc: JdbcClient) = JdbcAgentInsightsReadModel(jdbc)
 
     /** Agent insights (ADR 0059); template names from the Task Library when it is present. */
     @Bean
-    fun agentInsightsService(readModel: JdbcAgentInsightsReadModel, gate: AuthorizationGate, clock: Clock, tasks: ObjectProvider<TaskCatalog>) =
-        AgentInsightsService(readModel, gate, clock, tasks.ifAvailable)
+    fun agentInsightsService(readModel: JdbcAgentInsightsReadModel, guard: AccessGuard, clock: Clock, tasks: ObjectProvider<TaskCatalog>) =
+        AgentInsightsService(readModel, guard, clock, tasks.ifAvailable)
 
     @Bean
     @ConditionalOnProperty(prefix = "backoffice.provenance", name = ["enabled"], matchIfMissing = true)
-    fun attestationTrigger(record: RecordAttestations, gate: AuthorizationGate, jdbc: JdbcClient, transactions: PlatformTransactionManager) =
-        AttestationTrigger(record, gate, jdbc, TransactionTemplate(transactions))
+    fun attestationTrigger(record: RecordAttestations, guard: AccessGuard, jdbc: JdbcClient, transactions: PlatformTransactionManager) =
+        AttestationTrigger(record, guard, jdbc, TransactionTemplate(transactions))
 }
 
 /**
@@ -124,7 +125,7 @@ class McpServerConfiguration {
 
     @Bean
     fun backOfficeMcpTools(
-        gate: AuthorizationGate,
+        principal: CurrentPrincipal,
         runs: RunQueries,
         startRun: StartRun,
         approvals: ApprovalQueries,
@@ -136,7 +137,7 @@ class McpServerConfiguration {
         insights: DeliveryInsightsQuery,
         audit: AuditPort,
         agentInsights: AgentInsightsQuery,
-    ) = BackOfficeMcpTools(gate, runs, startRun, approvals, decideApproval, projects, workflows, templates, skills, insights, audit, agentInsights)
+    ) = BackOfficeMcpTools(principal, runs, startRun, approvals, decideApproval, projects, workflows, templates, skills, insights, audit, agentInsights)
 
     /** Before Spring Security's chain (order -100) so non-PAT credentials never reach the MCP transport. */
     @Bean

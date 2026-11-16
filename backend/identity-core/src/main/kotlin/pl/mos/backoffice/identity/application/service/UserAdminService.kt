@@ -31,7 +31,8 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.UserId
 
 /**
@@ -52,7 +53,8 @@ class UserAdminService(
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     /** Local accounts (ADR 0021); `null` in tests that only cover OIDC users. */
     private val local: LocalAccountSupport? = null,
 ) : ManageUsers, ManageUserSessions {
@@ -60,20 +62,21 @@ class UserAdminService(
     private val assembler = UserDetailsAssembler(groups, grants, memberships, local)
 
     override fun list(query: UserQuery): Page<UserDetails> {
-        gate.require(IdentityPermissions.USERS_VIEW)
+        guard.require(IdentityPermissions.USERS_VIEW)
         val page = users.search(query.copy(size = query.size.coerceIn(1, 200), page = query.page.coerceAtLeast(0)))
         return Page(page.content.map(::details), page.page, page.size, page.totalElements)
     }
 
     override fun get(id: UserId): UserDetails {
-        gate.require(IdentityPermissions.USERS_VIEW)
+        guard.require(IdentityPermissions.USERS_VIEW)
         return details(load(id))
     }
 
     override fun invite(command: ManageUsers.InviteUser): UserDetails {
-        val me = gate.require(IdentityPermissions.USERS_MANAGE)
-        if (command.platformRoles.isNotEmpty()) gate.require(IdentityPermissions.ROLES_MANAGE)
-        command.projectMemberships.map { it.projectId }.distinct().forEach { gate.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, it) }
+        guard.require(IdentityPermissions.USERS_MANAGE)
+        val me = principal.currentUser()
+        if (command.platformRoles.isNotEmpty()) guard.require(IdentityPermissions.ROLES_MANAGE)
+        command.projectMemberships.map { it.projectId }.distinct().forEach { guard.require(IdentityPermissions.PROJECT_MEMBERS_MANAGE, it) }
 
         val email = User.validEmail(command.email)
         if (users.findByEmail(email) != null) throw InvalidStateException("a user with e-mail $email already exists")
@@ -118,12 +121,12 @@ class UserAdminService(
     }
 
     override fun update(id: UserId, command: ManageUsers.UpdateUser): UserDetails {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         val user = load(id)
         val currentRoles = grants.find(GrantLevel.USER, id.value).roles
         val newRoles = command.platformRoles ?: currentRoles
         if (newRoles != currentRoles) {
-            gate.require(IdentityPermissions.ROLES_MANAGE)
+            guard.require(IdentityPermissions.ROLES_MANAGE)
             requirePlatformRoles(newRoles)
         }
         val newGroups = command.groupIds ?: user.groupIds
@@ -147,7 +150,7 @@ class UserAdminService(
     }
 
     override fun activate(id: UserId): UserDetails {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         val user = load(id)
         if (user.status != UserStatus.DEACTIVATED) return details(user)
         val saved = users.save(user.activate(hasPassword = local?.credentials?.find(id)?.hasPassword == true))
@@ -162,7 +165,8 @@ class UserAdminService(
     }
 
     override fun deactivate(id: UserId): UserDetails {
-        val me = gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
+        val me = principal.currentUser()
         if (me.userId == id) throw InvalidStateException("you cannot deactivate yourself")
         val user = load(id)
         if (user.status == UserStatus.DEACTIVATED) return details(user)
@@ -183,13 +187,13 @@ class UserAdminService(
     }
 
     override fun list(userId: UserId): List<SessionSummary> {
-        gate.require(IdentityPermissions.USERS_VIEW)
+        guard.require(IdentityPermissions.USERS_VIEW)
         load(userId)
         return sessions.sessionsOf(userId)
     }
 
     override fun terminateAll(userId: UserId): Int {
-        gate.require(IdentityPermissions.USERS_MANAGE)
+        guard.require(IdentityPermissions.USERS_MANAGE)
         load(userId)
         val terminated = sessions.terminateAll(userId)
         audit.record(AuditEntry(IdentityAudit.SESSIONS_TERMINATE, IdentityAudit.ENTITY_USER, userId.toString(), details = mapOf("terminatedSessions" to terminated)))

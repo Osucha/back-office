@@ -1,13 +1,13 @@
 package pl.mos.backoffice.governance.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.ScopeFilter
 import pl.mos.backoffice.governance.application.port.`in`.DeliveryInsightsQuery
 import pl.mos.backoffice.governance.application.port.out.DeliveryInsightsReadModel
 import pl.mos.backoffice.governance.domain.model.DeliveryInsights
 import pl.mos.backoffice.governance.domain.model.GovernancePermissions
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.ProjectFilter
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -18,16 +18,16 @@ import java.util.UUID
  */
 class DeliveryInsightsService(
     private val readModel: DeliveryInsightsReadModel,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val clock: Clock,
 ) : DeliveryInsightsQuery {
 
     override fun get(projectId: UUID?, from: Instant?, to: Instant?): DeliveryInsights {
         val filter = if (projectId != null) {
-            gate.require(GovernancePermissions.PROJECT_VIEW, projectId)
-            ProjectFilter.Only(setOf(projectId))
+            guard.require(GovernancePermissions.PROJECT_VIEW, projectId)
+            ScopeFilter.Only(setOf(projectId))
         } else {
-            gate.projectFilter(GovernancePermissions.PROJECT_VIEW)
+            guard.scopesWith(GovernancePermissions.PROJECT_VIEW)
         }
         val (start, end) = window(from, to, clock)
         return readModel.compute(filter, start, end).copy(projectId = projectId)

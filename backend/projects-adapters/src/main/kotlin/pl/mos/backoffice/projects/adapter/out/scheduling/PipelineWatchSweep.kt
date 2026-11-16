@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.out.scheduling
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -7,7 +8,6 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import pl.mos.backoffice.projects.application.port.`in`.WatchPipelines
 import pl.mos.backoffice.shared.platform.ClusterLock
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.time.Duration
 
 /**
@@ -16,7 +16,7 @@ import java.time.Duration
  */
 @Component
 @ConditionalOnProperty(prefix = "backoffice.platform", name = ["worker-enabled"], havingValue = "true", matchIfMissing = true)
-class PipelineWatchSweep(private val watch: WatchPipelines, private val gate: AuthorizationGate, private val lock: ObjectProvider<ClusterLock>) {
+class PipelineWatchSweep(private val watch: WatchPipelines, private val guard: AccessGuard, private val lock: ObjectProvider<ClusterLock>) {
 
     private val log = LoggerFactory.getLogger(PipelineWatchSweep::class.java)
 
@@ -24,7 +24,7 @@ class PipelineWatchSweep(private val watch: WatchPipelines, private val gate: Au
     fun sweep() {
         try {
             lock.getIfAvailable { ClusterLock.LOCAL }.runExclusively("pipeline-watch-sweep", Duration.ofMinutes(5), Duration.ofSeconds(20)) {
-                val resumed = gate.asSystem("pipeline watch sweep") { watch.sweep() }
+                val resumed = guard.asSystem("pipeline watch sweep") { watch.sweep() }
                 if (resumed > 0) log.info("pipeline watch resumed runs count={}", resumed)
             }
         } catch (e: RuntimeException) {

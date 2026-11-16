@@ -9,7 +9,7 @@ import org.springframework.web.filter.OncePerRequestFilter
  * `/mcp` accepts personal access tokens only (`Authorization: Bearer bo_pat_...`). Runs before the security
  * chain: requests with a session cookie, a CI token or nothing are answered with 401 here, so the endpoint (CSRF
  * exempt, like every bearer request) can never be driven by a browser session. The identity bearer filter then
- * authenticates the token and the tools check permissions through `AuthorizationGate`.
+ * authenticates the token and the tools check permissions through `AccessGuard`.
  */
 class McpPersonalTokenFilter(private val endpoint: String) : OncePerRequestFilter() {
 

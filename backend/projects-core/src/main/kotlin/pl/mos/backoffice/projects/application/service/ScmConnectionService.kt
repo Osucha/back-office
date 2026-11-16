@@ -1,5 +1,7 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageScmConnections
 import pl.mos.backoffice.projects.application.port.`in`.ManageScmConnections.ScmConnectionCommand
 import pl.mos.backoffice.projects.application.port.`in`.ManageScmConnections.ScmConnectionView
@@ -25,8 +27,7 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.AuthorizationGate
-import pl.mos.backoffice.shared.security.SystemOperation
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 
 /**
  * Tokens of project repositories (ADR 0051 step 1). The token is sealed before it is stored and never returned;
@@ -38,13 +39,14 @@ class ScmConnectionService(
     private val projects: ProjectRepository,
     private val sealer: SecretSealer,
     private val probe: ScmProbePort,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
     private val clock: Clock,
 ) : ManageScmConnections, RewrapScmConnectionSecrets {
 
     override fun list(projectId: ProjectId): List<ScmConnectionView> {
-        gate.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_VIEW, projectId.value)
         val project = loadProject(projectId)
         return connections.findByProject(projectId)
             .sortedWith(compareBy({ it.repositoryKey }, { it.name.lowercase() }))
@@ -52,7 +54,8 @@ class ScmConnectionService(
     }
 
     override fun create(projectId: ProjectId, command: ScmConnectionCommand): ScmConnectionView {
-        val actor = gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value).actor
+        guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+        val actor = principal.currentUser().actor
         requireSealer()
         val project = loadProject(projectId)
         val repository = repositoryOf(project, command.repositoryKey)
@@ -73,7 +76,8 @@ class ScmConnectionService(
     }
 
     override fun update(projectId: ProjectId, id: ScmConnectionId, command: ScmConnectionCommand): ScmConnectionView {
-        val actor = gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value).actor
+        guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+        val actor = principal.currentUser().actor
         val project = loadProject(projectId)
         val current = load(projectId, id)
         val repository = repositoryOf(project, command.repositoryKey)
@@ -97,14 +101,14 @@ class ScmConnectionService(
     }
 
     override fun delete(projectId: ProjectId, id: ScmConnectionId) {
-        gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
         val current = load(projectId, id)
         connections.delete(id)
         audit.record(AuditEntry(DELETE, ENTITY, id.toString(), projectId = projectId.value, details = describe(current)))
     }
 
     override fun verify(projectId: ProjectId, id: ScmConnectionId): ScmConnectionView {
-        gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
         val project = loadProject(projectId)
         val current = load(projectId, id)
         val repository = project.repositories.firstOrNull { it.key == current.repositoryKey }
@@ -116,7 +120,7 @@ class ScmConnectionService(
     }
 
     override fun test(projectId: ProjectId, command: ScmConnectionCommand): ScmVerification {
-        gate.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
+        guard.require(ProjectsPermissions.PROJECT_CONNECTIONS_MANAGE, projectId.value)
         val repository = repositoryOf(loadProject(projectId), command.repositoryKey)
         val token = command.token?.trim()?.takeIf { it.isNotEmpty() } ?: throw ValidationException("is required", "token")
         val verification = evaluate(command, repository, ScmToken.Plain(token))

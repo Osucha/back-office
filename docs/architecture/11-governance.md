@@ -1,6 +1,6 @@
 # 11 — Governance: budgets, insights, provenance, MCP
 
-Capabilities for engineering leaders (ADR 0025). All read paths go through `AuthorizationGate`; project
+Capabilities for engineering leaders (ADR 0025). All read paths go through `AccessGuard`; project
 data is filtered by `project.view`.
 
 Code: modules `governance-core` (package `pl.mos.backoffice.governance.domain` / `.application`, pure Kotlin
@@ -211,7 +211,7 @@ declared with `@McpTool` in `governance.adapter.in.mcp.BackOfficeMcpTools`). Aut
 tokens only** (`Authorization: Bearer bo_pat_…`). `McpPersonalTokenFilter` answers anything else (no token, session
 cookie, CI token) with 401 before the transport; the identity bearer filter authenticates the token (`/mcp` is added
 to the authenticated paths and to the CSRF exemptions of `IdentitySecurityConfiguration`); tools re-check the
-principal kind. Tools call the same `application.port.in` use cases as REST, so `AuthorizationGate` applies; a denied
+principal kind. Tools call the same `application.port.in` use cases as REST, so the `AccessGuard` checks apply; a denied
 or failed call is an MCP tool error (`isError: true`), not a transport error. Disable with
 `BACKOFFICE_MCP_ENABLED=false`.
 

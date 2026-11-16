@@ -5,7 +5,6 @@ import pl.mos.backoffice.identity.application.port.`in`.UserDetails
 import pl.mos.backoffice.identity.application.port.`in`.UserMembershipView
 import pl.mos.backoffice.identity.application.port.out.GrantRepository
 import pl.mos.backoffice.identity.application.port.out.GroupRepository
-import pl.mos.backoffice.identity.application.port.out.PermissionCatalog
 import pl.mos.backoffice.identity.application.port.out.PlatformSettingsRepository
 import pl.mos.backoffice.identity.application.port.out.ProjectKeyLookup
 import pl.mos.backoffice.identity.application.port.out.ProjectMembershipRepository
@@ -28,7 +27,9 @@ import pl.mos.backoffice.identity.domain.service.ProjectPermissionResolver
 import pl.mos.backoffice.identity.domain.service.ProjectResolution
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.security.CurrentUser
+import pl.mos.backoffice.shared.security.PermissionModules
 import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.security.permissionScope
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.UserId
 import java.time.Duration
@@ -64,10 +65,10 @@ class SettingsProvider(private val repository: PlatformSettingsRepository, priva
 }
 
 /** The catalogue validator over the current catalogue (contributions are fixed after startup). */
-class CatalogSupport(private val catalog: PermissionCatalog) {
-    fun validator(): CatalogValidator = CatalogValidator(catalog.definitions())
-    fun platformKeys(): List<String> = catalog.definitions().filter { it.scope == PermissionScope.PLATFORM }.map { it.key }
-    fun projectKeys(): List<String> = catalog.definitions().filter { it.scope == PermissionScope.PROJECT }.map { it.key }
+class CatalogSupport(private val modules: PermissionModules) {
+    fun validator(): CatalogValidator = CatalogValidator(modules.definitions())
+    fun platformKeys(): List<String> = modules.definitions().filter { it.permissionScope == PermissionScope.PLATFORM }.map { it.key }
+    fun projectKeys(): List<String> = modules.definitions().filter { it.permissionScope == PermissionScope.PROJECT }.map { it.key }
 }
 
 /** A user's platform and project permissions, resolved from grants, roles and memberships. */

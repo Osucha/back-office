@@ -5,7 +5,7 @@ import pl.mos.backoffice.evaluation.application.port.`in`.SeedStarterContent.See
 import pl.mos.backoffice.evaluation.application.port.out.ModelProfileRepository
 import pl.mos.backoffice.evaluation.application.port.out.TaskSuiteRepository
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.SystemOperation
 
 /**
  * Creates the starter suite (docs/architecture/04-model-evaluation.md) when there is none. Idempotent: the owner's edits

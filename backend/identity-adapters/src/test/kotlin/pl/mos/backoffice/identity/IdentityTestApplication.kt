@@ -30,10 +30,9 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.CiTokenIdentity
 import pl.mos.backoffice.shared.security.CiTokenVerifier
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
-import pl.mos.backoffice.shared.security.PermissionDefinition
-import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.security.UserId
+import pl.mos.backoffice.shared.testing.testModulePermissions
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
@@ -51,12 +50,11 @@ class IdentityTestApplication {
 
     /** Keys other modules contribute in the real application (so built-in roles validate). */
     @Bean
-    fun otherModulesPermissions() = PermissionCatalogContribution {
-        listOf("projects.create", "integrations.view", "library.view", "library.manage", "models.view", "models.manage", "evaluation.view", "evaluation.run", "usage.view")
-            .map { PermissionDefinition(it, PermissionScope.PLATFORM, "test", it) } +
-            listOf("project.view", "project.manage", "project.ci.manage", "workflow.edit", "run.start", "run.cancel", "run.approve", "run.assign", "run.signal", "library.project.manage", "project.usage.view", "ci.execute", "ci.signal")
-                .map { PermissionDefinition(it, PermissionScope.PROJECT, "test", it) }
-    }
+    fun otherModulesPermissions(): ModulePermissions = testModulePermissions(
+        "test",
+        platform = listOf("projects.create", "integrations.view", "library.view", "library.manage", "models.view", "models.manage", "evaluation.view", "evaluation.run", "usage.view"),
+        project = listOf("project.view", "project.manage", "project.ci.manage", "workflow.edit", "run.start", "run.cancel", "run.approve", "run.assign", "run.signal", "library.project.manage", "project.usage.view", "ci.execute", "ci.signal"),
+    )
 
     @Bean
     fun testCiTokenVerifier(): CiTokenVerifier = CiTokenVerifier { token ->

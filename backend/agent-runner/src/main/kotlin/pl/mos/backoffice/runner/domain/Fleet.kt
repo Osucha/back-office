@@ -1,12 +1,13 @@
 package pl.mos.backoffice.runner.domain
 
+import com.osucha.portpermissions.PermissionSet
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.platform.WorkRequest
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.SandboxPolicy
-import pl.mos.backoffice.shared.security.PermissionDefinition
-import pl.mos.backoffice.shared.security.PermissionScope
+import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.security.ProjectAccessPermissions
 import java.math.BigDecimal
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -40,28 +41,31 @@ enum class AgentJobStatus {
     }
 }
 
-/** Permissions of the runner fleet (ADR 0017, docs/architecture/08-identity-and-access.md). */
+/** Permissions of the runner fleet (ADR 0017, ADR 0066, docs/architecture/08-identity-and-access.md). */
 object RunnerPermissions {
     const val MODULE = "runner"
 
+    object Fleet : PermissionSet("fleet") {
+        val VIEW = permission("view", "See runner pools, runners and agent jobs")
+        val MANAGE = permission("manage", "Manage runner pools, registration tokens, runners and agent jobs")
+        val PERSONAL = permission("personal", "Connect your own computer as a personal runner for your private projects")
+    }
+
     /** See runner pools, runners and agent jobs of every project. */
-    const val FLEET_VIEW = "fleet.view"
+    val FLEET_VIEW = Fleet.VIEW
 
     /** Create/edit/delete pools, issue registration tokens, revoke runners, cancel agent jobs. */
-    const val FLEET_MANAGE = "fleet.manage"
+    val FLEET_MANAGE = Fleet.MANAGE
 
     /** Your own personal runner pool (ADR 0040): connect your computer, revoke it, choose its model credentials. */
-    const val FLEET_PERSONAL = "fleet.personal"
+    val FLEET_PERSONAL = Fleet.PERSONAL
 
-    /** Project sandbox policy (read with `project.view`, change with `project.manage`). */
-    const val PROJECT_VIEW = "project.view"
-    const val PROJECT_MANAGE = "project.manage"
+    /** Project sandbox policy (read with `project.view`, change with `project.manage`; contributed by Projects). */
+    val PROJECT_VIEW = ProjectAccessPermissions.VIEW
+    val PROJECT_MANAGE = ProjectAccessPermissions.MANAGE
 
-    val definitions: List<PermissionDefinition> = listOf(
-        PermissionDefinition(FLEET_VIEW, PermissionScope.PLATFORM, MODULE, "See runner pools, runners and agent jobs"),
-        PermissionDefinition(FLEET_MANAGE, PermissionScope.PLATFORM, MODULE, "Manage runner pools, registration tokens, runners and agent jobs"),
-        PermissionDefinition(FLEET_PERSONAL, PermissionScope.PLATFORM, MODULE, "Connect your own computer as a personal runner for your private projects"),
-    )
+    /** What this module contributes to the catalogue. */
+    val contribution = ModulePermissions(MODULE, listOf(Fleet))
 }
 
 /**

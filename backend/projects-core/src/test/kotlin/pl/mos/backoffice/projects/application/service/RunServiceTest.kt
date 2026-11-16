@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.ScopeFilter
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -28,9 +29,8 @@ import pl.mos.backoffice.projects.application.port.out.RunFilter
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
-import pl.mos.backoffice.shared.security.ProjectFilter
 import pl.mos.backoffice.shared.security.UserId
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.PageOf
 import pl.mos.backoffice.projects.Fixtures.alice
@@ -45,11 +45,11 @@ class RunServiceTest {
     private val engine = mockk<WorkflowEngine>(relaxed = true)
     private val progress = mockk<RecordRunProgress>()
     private val audit = RecordingAuditPort()
-    private val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_START, ProjectsPermissions.RUN_CANCEL, projects = setOf(project.id.value))
+    private val gate = FakeAccessGuard.permitting(ProjectsPermissions.RUN_START, ProjectsPermissions.RUN_CANCEL, projects = setOf(project.id.value))
     private val service = service(gate)
 
-    private fun service(gate: FakeAuthorizationGate) =
-        RunService(runs, workflows, projects, mockk<RunLogRepository>(), engine, progress, WorkflowValidator(), EventPublisher.NOOP, gate, audit, Clock.fixed(now))
+    private fun service(gate: FakeAccessGuard) =
+        RunService(runs, workflows, projects, mockk<RunLogRepository>(), engine, progress, WorkflowValidator(), EventPublisher.NOOP, gate, gate, audit, Clock.fixed(now))
 
     init {
         every { runs.save(any()) } answers { firstArg() }
@@ -76,7 +76,7 @@ class RunServiceTest {
     @Test
     fun `a schedule or a Start workflow step starts the run on behalf of a user who may start runs`() {
         val bob = CurrentUser(
-            PrincipalKind.USER, UserId.new(), "bob@example.com", "Bob", emptySet(), mapOf(project.id.value to setOf(ProjectsPermissions.RUN_START)),
+            PrincipalKind.USER, UserId.new(), "bob@example.com", "Bob", emptySet(), mapOf(project.id.value to setOf(ProjectsPermissions.RUN_START.key)),
         )
         val viewer = bob.copy(userId = UserId.new(), displayName = "Viewer", projectPermissions = emptyMap())
         val directory = mockk<ProjectAccessDirectory> {
@@ -85,7 +85,7 @@ class RunServiceTest {
             every { user(not(or(bob.userId!!.value, viewer.userId!!.value))) } returns null
         }
         val system = RunService(
-            runs, workflows, projects, mockk<RunLogRepository>(), engine, progress, WorkflowValidator(), EventPublisher.NOOP, gate, audit,
+            runs, workflows, projects, mockk<RunLogRepository>(), engine, progress, WorkflowValidator(), EventPublisher.NOOP, gate, gate, audit,
             Clock.fixed(now), directory = directory,
         )
 
@@ -140,7 +140,7 @@ class RunServiceTest {
     fun `starting, retrying, cancelling and reading need their own permission on the run project`() {
         val running = Fixtures.runningRun(project, definition)
         every { runs.findById(running.id) } returns running
-        val viewer = service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)))
+        val viewer = service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)))
         assertThatThrownBy { viewer.start(definition.id, RunInput("SHOP-1")) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("run.start") }
         assertThatThrownBy { viewer.cancel(running.id) }
@@ -148,7 +148,7 @@ class RunServiceTest {
         assertThatThrownBy { viewer.retry(running.id) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("run.start") }
         assertThat(viewer.get(running.id)).isEqualTo(running)
-        val starter = service(FakeAuthorizationGate.permitting(ProjectsPermissions.RUN_START, projects = setOf(project.id.value)))
+        val starter = service(FakeAccessGuard.permitting(ProjectsPermissions.RUN_START, projects = setOf(project.id.value)))
         assertThatThrownBy { starter.get(running.id) }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("project.view") }
         verify(exactly = 0) { engine.start(any()) }
@@ -157,12 +157,12 @@ class RunServiceTest {
 
     @Test
     fun `the run list is restricted to projects the caller can view`() {
-        val viewerGate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
-        every { runs.find(RunFilter(), ProjectFilter.Only(setOf(project.id.value)), 0, 20) } returns PageOf(emptyList(), 0, 20, 0)
+        val viewerGate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        every { runs.find(RunFilter(), ScopeFilter.Only(setOf(project.id.value)), 0, 20) } returns PageOf(emptyList(), 0, 20, 0)
         assertThat(service(viewerGate).list(RunFilter(), 0, 20).totalElements).isZero()
-        verify { runs.find(RunFilter(), ProjectFilter.Only(setOf(project.id.value)), 0, 20) }
-        every { runs.find(RunFilter(), ProjectFilter.All, 0, 20) } returns PageOf(emptyList(), 0, 20, 0)
-        service(FakeAuthorizationGate.permitAll()).list(RunFilter(), 0, 20)
-        verify { runs.find(RunFilter(), ProjectFilter.All, 0, 20) }
+        verify { runs.find(RunFilter(), ScopeFilter.Only(setOf(project.id.value)), 0, 20) }
+        every { runs.find(RunFilter(), ScopeFilter.All, 0, 20) } returns PageOf(emptyList(), 0, 20, 0)
+        service(FakeAccessGuard.permitAll()).list(RunFilter(), 0, 20)
+        verify { runs.find(RunFilter(), ScopeFilter.All, 0, 20) }
     }
 }

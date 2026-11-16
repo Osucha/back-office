@@ -1,5 +1,7 @@
 package pl.mos.backoffice.governance.adapter.out.insights
 
+import com.osucha.portpermissions.ScopeFilter
+import java.util.UUID
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
 import pl.mos.backoffice.governance.application.port.out.DeliveryInsightsReadModel
@@ -12,7 +14,6 @@ import pl.mos.backoffice.governance.domain.model.ModelMix
 import pl.mos.backoffice.governance.domain.model.RunCounts
 import pl.mos.backoffice.governance.domain.model.WeeklyThroughput
 import pl.mos.backoffice.shared.Money
-import pl.mos.backoffice.shared.security.ProjectFilter
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.sql.ResultSet
@@ -20,6 +21,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import pl.mos.backoffice.shared.security.isNothing
 
 /**
  * Delivery insights computed with SQL over the tables of other contexts (a read model; nothing is written):
@@ -32,8 +34,8 @@ import java.time.ZoneOffset
 @Transactional(readOnly = true)
 class JdbcDeliveryInsightsReadModel(private val jdbc: JdbcClient) : DeliveryInsightsReadModel {
 
-    override fun compute(projects: ProjectFilter, from: Instant, to: Instant): DeliveryInsights {
-        if (projects is ProjectFilter.Only && projects.projectIds.isEmpty()) return empty(from, to)
+    override fun compute(projects: ScopeFilter<UUID>, from: Instant, to: Instant): DeliveryInsights {
+        if (projects.isNothing) return empty(from, to)
         val scope = Scope(projects, from, to)
 
         val runs = scope.query(
@@ -208,11 +210,11 @@ class JdbcDeliveryInsightsReadModel(private val jdbc: JdbcClient) : DeliveryInsi
     private data class Costs(val total: BigDecimal, val successCost: BigDecimal, val successRuns: Int, val mrCost: BigDecimal, val mrRuns: Int)
 
     /** Binds the window and the project filter; prepends the `runs` and `execs` CTEs to every query. */
-    private inner class Scope(private val projects: ProjectFilter, from: Instant, to: Instant) {
+    private inner class Scope(private val projects: ScopeFilter<UUID>, from: Instant, to: Instant) {
         private val fromParam = OffsetDateTime.ofInstant(from, ZoneOffset.UTC)
         private val toParam = OffsetDateTime.ofInstant(to, ZoneOffset.UTC)
 
-        fun projectClause(alias: String): String = if (projects is ProjectFilter.Only) "AND $alias.project_id IN (:projectIds)" else ""
+        fun projectClause(alias: String): String = projects.projectClause(alias)
 
         /** [sql] either starts with `SELECT` or with `, name AS (...)` to add CTEs after `runs` and `execs`. */
         fun <T : Any> query(sql: String, mapper: (ResultSet, Int) -> T): List<T> {
@@ -231,7 +233,7 @@ class JdbcDeliveryInsightsReadModel(private val jdbc: JdbcClient) : DeliveryInsi
                 )
             """.trimIndent() + (if (body.startsWith(",")) "\n" else "\n") + body
             var spec = jdbc.sql(text).param("from", fromParam).param("to", toParam)
-            if (projects is ProjectFilter.Only) spec = spec.param("projectIds", projects.projectIds.toList())
+            spec = spec.bindProjects(projects)
             return spec.query(mapper).list()
         }
     }

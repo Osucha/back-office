@@ -1,10 +1,13 @@
 package pl.mos.backoffice.tasks.application
 
-import pl.mos.backoffice.shared.security.PermissionDefinition
-import pl.mos.backoffice.shared.security.PermissionScope
+import com.osucha.portpermissions.PermissionSet
+import pl.mos.backoffice.shared.security.LibraryAccessPermissions
+import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.security.PROJECT_SCOPE
+import pl.mos.backoffice.shared.security.ProjectAccessPermissions
 
 /**
- * Permissions of the Task Library context (docs/architecture/08-identity-and-access.md, ADR 0017).
+ * Permissions of the Task Library context (docs/architecture/08-identity-and-access.md, ADR 0017, ADR 0066).
  * Global entries need the platform permissions; project-scoped entries need `library.project.manage` on
  * that project to change them and are visible to holders of `project.view` or `library.project.manage`
  * of that project.
@@ -12,21 +15,22 @@ import pl.mos.backoffice.shared.security.PermissionScope
 object TasksPermissions {
     const val MODULE = "tasks"
 
+    object LibraryProject : PermissionSet("library") {
+        val MANAGE = scoped("project.manage", "Create and edit project-scoped templates, skills and rules", PROJECT_SCOPE)
+    }
+
     /** Read the global task library (templates, skills, rules, resolution previews). */
-    const val LIBRARY_VIEW = "library.view"
+    val LIBRARY_VIEW = LibraryAccessPermissions.VIEW
 
     /** Create, edit and delete global templates, skills and rules. */
-    const val LIBRARY_MANAGE = "library.manage"
+    val LIBRARY_MANAGE = LibraryAccessPermissions.MANAGE
 
     /** Create, edit and delete templates, skills and rules scoped to one project. */
-    const val LIBRARY_PROJECT_MANAGE = "library.project.manage"
+    val LIBRARY_PROJECT_MANAGE = LibraryProject.MANAGE
 
-    /** Declared by the Projects context; members of a project see the project's own library entries. */
-    const val PROJECT_VIEW = "project.view"
+    /** Contributed by the Projects context; members of a project see the project's own library entries. */
+    val PROJECT_VIEW = ProjectAccessPermissions.VIEW
 
-    val definitions: List<PermissionDefinition> = listOf(
-        PermissionDefinition(LIBRARY_VIEW, PermissionScope.PLATFORM, MODULE, "Read the global task library"),
-        PermissionDefinition(LIBRARY_MANAGE, PermissionScope.PLATFORM, MODULE, "Create and edit global templates, skills and rules"),
-        PermissionDefinition(LIBRARY_PROJECT_MANAGE, PermissionScope.PROJECT, MODULE, "Create and edit project-scoped templates, skills and rules"),
-    )
+    /** What this context contributes to the catalogue. */
+    val contribution = ModulePermissions(MODULE, listOf(LibraryAccessPermissions, LibraryProject))
 }

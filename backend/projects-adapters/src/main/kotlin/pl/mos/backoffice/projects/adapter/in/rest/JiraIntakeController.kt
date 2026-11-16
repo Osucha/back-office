@@ -18,9 +18,9 @@ import pl.mos.backoffice.projects.domain.model.JiraIntake
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.time.Instant
 import java.util.UUID
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 
 /**
  * `/projects/{projectId}/jira-intake` (ADR 0033): the project's Jira intake watcher. Reading needs `project.view`,
@@ -31,7 +31,7 @@ import java.util.UUID
 class JiraIntakeController(
     private val intake: ManageJiraIntake,
     private val connections: ConnectionDtos,
-    private val gate: AuthorizationGate,
+    private val principal: CurrentPrincipal,
 ) {
     @GetMapping
     fun get(@PathVariable projectId: UUID): JiraIntakeDto = toDto(intake.get(ProjectId(projectId)))
@@ -70,7 +70,7 @@ class JiraIntakeController(
                 lastConnection = i.lastConnection,
                 lastWarning = i.lastWarning,
             ),
-            canManage = gate.currentUser().can(ProjectsPermissions.PROJECT_MANAGE, i.projectId.value),
+            canManage = principal.currentUser().can(ProjectsPermissions.PROJECT_MANAGE, i.projectId.value),
             updatedAt = i.updatedAt,
             updatedBy = i.updatedBy?.let { ActorRefDto(it.kind.name, it.userId, it.displayName) },
         )

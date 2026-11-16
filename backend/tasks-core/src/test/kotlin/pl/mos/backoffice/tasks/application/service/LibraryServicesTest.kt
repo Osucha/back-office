@@ -9,7 +9,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.application.TasksPermissions
 
@@ -27,14 +27,14 @@ class LibraryServicesTest {
     private val other: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
 
     /** A library curator who also edits the library of two projects; access rules are covered in LibraryAccessTest. */
-    private val gate = FakeAuthorizationGate.permitting(
+    private val gate = FakeAccessGuard.permitting(
         TasksPermissions.LIBRARY_VIEW, TasksPermissions.LIBRARY_MANAGE, TasksPermissions.LIBRARY_PROJECT_MANAGE,
         projects = setOf(lib.projectId, other),
     )
     private val audit = RecordingAuditPort()
-    private val rules = RuleService(lib.rules, lib.agents, lib.clock, gate, audit)
-    private val templates = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, audit)
-    private val skills = SkillService(lib.skills, lib.agents, lib.clock, gate, audit)
+    private val rules = RuleService(lib.rules, lib.agents, lib.clock, gate, gate, audit)
+    private val templates = TaskTemplateService(lib.templates, lib.lookup, lib.clock, gate, gate, audit)
+    private val skills = SkillService(lib.skills, lib.agents, lib.clock, gate, gate, audit)
     private val catalog = TaskCatalogService(lib.templates, lib.lookup)
 
     private fun content(key: String, scope: Scope = Scope.Global, extendsKey: String? = null, abstract: Boolean = false) =

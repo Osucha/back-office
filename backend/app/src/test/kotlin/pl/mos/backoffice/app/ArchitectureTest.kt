@@ -55,7 +55,7 @@ class ArchitectureTest {
         .that().resideInAnyPackage("pl.mos.backoffice.projects.domain..", "pl.mos.backoffice.projects.application..")
         .should().onlyDependOnClassesThat().resideInAnyPackage(
             "pl.mos.backoffice.projects.domain..", "pl.mos.backoffice.projects.application..",
-            "pl.mos.backoffice.shared..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
+            "pl.mos.backoffice.shared..", "com.osucha.portpermissions..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
         )
 
     @ArchTest
@@ -63,7 +63,7 @@ class ArchitectureTest {
         .that().resideInAnyPackage("pl.mos.backoffice.evaluation.domain..", "pl.mos.backoffice.evaluation.application..")
         .should().onlyDependOnClassesThat().resideInAnyPackage(
             "pl.mos.backoffice.evaluation.domain..", "pl.mos.backoffice.evaluation.application..",
-            "pl.mos.backoffice.shared..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
+            "pl.mos.backoffice.shared..", "com.osucha.portpermissions..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
         )
 
     @ArchTest
@@ -71,7 +71,7 @@ class ArchitectureTest {
         .that().resideInAnyPackage("pl.mos.backoffice.tasks.domain..", "pl.mos.backoffice.tasks.application..")
         .should().onlyDependOnClassesThat().resideInAnyPackage(
             "pl.mos.backoffice.tasks.domain..", "pl.mos.backoffice.tasks.application..",
-            "pl.mos.backoffice.shared..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
+            "pl.mos.backoffice.shared..", "com.osucha.portpermissions..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
         )
 
     @ArchTest
@@ -127,7 +127,7 @@ class ArchitectureTest {
         .that().resideInAnyPackage("pl.mos.backoffice.identity.domain..", "pl.mos.backoffice.identity.application..")
         .should().onlyDependOnClassesThat().resideInAnyPackage(
             "pl.mos.backoffice.identity.domain..", "pl.mos.backoffice.identity.application..",
-            "pl.mos.backoffice.shared..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
+            "pl.mos.backoffice.shared..", "com.osucha.portpermissions..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
             // JDK crypto (HMAC-SHA1 of RFC 6238 TOTP in the domain, ADR 0021) - part of the JDK, not a framework
             "javax.crypto..",
         )
@@ -153,13 +153,13 @@ class ArchitectureTest {
             "pl.mos.backoffice.llm..", "pl.mos.backoffice.runner..", "pl.mos.backoffice.governance..",
         )
         .should().dependOnClassesThat().resideInAPackage("pl.mos.backoffice.identity..")
-        .because("use AuthorizationGate, AuditPort and the other shared.security ports instead")
+        .because("use AccessGuard, CurrentPrincipal, AuditPort and the other shared.security ports instead")
 
     @ArchTest
     val onlyIdentityAdaptersAndAppUseSpringSecurity: ArchRule = noClasses()
         .that().resideOutsideOfPackages("pl.mos.backoffice.identity.adapter..", "pl.mos.backoffice.app..")
         .should().dependOnClassesThat().resideInAPackage("org.springframework.security..")
-        .because("authentication is the identity context's job; everyone else calls AuthorizationGate (ADR 0017)")
+        .because("authentication is the identity context's job; everyone else calls AccessGuard (ADR 0017, ADR 0066)")
 
     // ---------------------------------------------------------------- governance (ADR 0025)
 
@@ -168,7 +168,7 @@ class ArchitectureTest {
         .that().resideInAnyPackage("pl.mos.backoffice.governance.domain..", "pl.mos.backoffice.governance.application..")
         .should().onlyDependOnClassesThat().resideInAnyPackage(
             "pl.mos.backoffice.governance.domain..", "pl.mos.backoffice.governance.application..",
-            "pl.mos.backoffice.shared..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
+            "pl.mos.backoffice.shared..", "com.osucha.portpermissions..", "java..", "kotlin..", "kotlinx..", "org.jetbrains.annotations..",
         )
         .because("governance-core is pure Kotlin (JDK crypto only) and reaches other contexts through shared-kernel ports")
 
@@ -204,7 +204,7 @@ class ArchitectureTest {
                     name.startsWith("pl.mos.backoffice.llm") || name.startsWith("pl.mos.backoffice.runner")
             },
         )
-        .because("the MCP server must go through the same use cases (and AuthorizationGate) as REST")
+        .because("the MCP server must go through the same use cases (and AccessGuard checks) as REST")
 
     @ArchTest
     val otherContextsDoNotDependOnGovernance: ArchRule = noClasses()

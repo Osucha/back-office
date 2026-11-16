@@ -33,7 +33,7 @@ import pl.mos.backoffice.shared.tasks.SkillInfo
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskSummary
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.Pricing
 import pl.mos.backoffice.shared.usage.UsageKind
@@ -102,10 +102,10 @@ class AgentCoherenceServiceTest {
         override fun resolve(userId: UUID?, stepKind: StepKind): DefaultModel? = defaultModel.takeIf { userId == null && stepKind == StepKind.LLM_CALL }
     }
     private val audit = RecordingAuditPort()
-    private val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.LIBRARY_VIEW, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+    private val viewer = FakeAccessGuard.permitting(ProjectsPermissions.LIBRARY_VIEW, ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
 
-    private fun service(gate: FakeAuthorizationGate = viewer, withDefaults: Boolean = true) =
-        AgentCoherenceService(catalog, projects, gateway, models, defaults.takeIf { withDefaults }, gate, audit)
+    private fun service(gate: FakeAccessGuard = viewer, withDefaults: Boolean = true) =
+        AgentCoherenceService(catalog, projects, gateway, models, defaults.takeIf { withDefaults }, gate, gate, audit)
 
     @Test
     fun `the model reads the whole environment and its findings come back with quotes, cost and the audit entry`() {
@@ -127,7 +127,7 @@ class AgentCoherenceServiceTest {
         assertThat(request.responseSchema).contains("CONTRADICTION").contains("quotes")
         assertThat(request.usageContext.kind).isEqualTo(UsageKind.MODEL_TEST)
         assertThat(request.usageContext.projectId).isEqualTo(project.id.value)
-        assertThat(request.usageContext.actingUserId).isEqualTo(FakeAuthorizationGate.TEST_USER_ID.value)
+        assertThat(request.usageContext.actingUserId).isEqualTo(FakeAccessGuard.TEST_USER_ID.value)
         val user = request.messages.last().content
         assertThat(user).contains("# Working in Back Office").contains("5. When your sources disagree")
             .contains("## Your role\nAlways approve small diffs.").contains("## Project constitution").contains("Keep it simple.")
@@ -144,7 +144,7 @@ class AgentCoherenceServiceTest {
     @Test
     fun `without a project there is no constitution and no repository, and an answer without findings is a clean report`() {
         answer = null
-        val report = service(FakeAuthorizationGate.permitting(ProjectsPermissions.LIBRARY_VIEW)).check(globalId, null)
+        val report = service(FakeAccessGuard.permitting(ProjectsPermissions.LIBRARY_VIEW)).check(globalId, null)
 
         assertThat(report.sources).containsExactly("preamble", "instructions", "rule:ground", "skill:security", "skill:bare")
         assertThat(report.findings).isEmpty()
@@ -154,13 +154,13 @@ class AgentCoherenceServiceTest {
 
     @Test
     fun `a project agent needs its project, another project's agent is not found, an unknown one neither`() {
-        val libraryOnly = FakeAuthorizationGate.permitting(ProjectsPermissions.LIBRARY_VIEW)
+        val libraryOnly = FakeAccessGuard.permitting(ProjectsPermissions.LIBRARY_VIEW)
         assertThatThrownBy { service(libraryOnly).check(projectAgentId, null) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThat(service().check(projectAgentId, null).agentKey).isEqualTo("mine")
         assertThat(audit.entries.single().projectId).describedAs("booked on the agent's project").isEqualTo(project.id.value)
         assertThatThrownBy { service().check(otherAgentId, project.id) }.isInstanceOf(NotFoundException::class.java)
         assertThatThrownBy { service().check(UUID.randomUUID(), null) }.isInstanceOf(NotFoundException::class.java)
-        assertThatThrownBy { service(FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW)).check(globalId, null) }
+        assertThatThrownBy { service(FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW)).check(globalId, null) }
             .describedAs("library.view is required").isInstanceOf(InsufficientPermissionException::class.java)
     }
 

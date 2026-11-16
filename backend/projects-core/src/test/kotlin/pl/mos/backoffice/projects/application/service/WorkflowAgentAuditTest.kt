@@ -26,7 +26,7 @@ import pl.mos.backoffice.shared.tasks.StepNeeds
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TaskSummary
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import java.util.UUID
 
@@ -59,15 +59,15 @@ class WorkflowAgentAuditTest {
         override fun evaluate(expression: String, view: WorkflowStateView): Boolean = true
     }
 
-    private fun service(gate: FakeAuthorizationGate) = WorkflowService(
-        mockk(relaxed = true), projects, mockk(relaxed = true), WorkflowValidator(), catalog, expressions, gate, RecordingAuditPort(), Clock.fixed(Fixtures.now),
+    private fun service(gate: FakeAccessGuard) = WorkflowService(
+        mockk(relaxed = true), projects, mockk(relaxed = true), WorkflowValidator(), catalog, expressions, gate, gate, RecordingAuditPort(), Clock.fixed(Fixtures.now),
     )
 
     private fun task(id: String, key: String, agent: String? = null) = WorkflowNode.Task(id, id, task = TaskBinding(key, TaskOverrides(agentKey = agent)))
 
     @Test
     fun `the audit groups the draft's task steps by agent and skips steps the validator reports`() {
-        val viewer = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
+        val viewer = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))
         val nodes = listOf(
             WorkflowNode.Start("start"),
             task("story", "write-adr", "analyst"),
@@ -89,7 +89,7 @@ class WorkflowAgentAuditTest {
 
     @Test
     fun `the audit needs project view`() {
-        val stranger = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(UUID.randomUUID()))
+        val stranger = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(UUID.randomUUID()))
         assertThatThrownBy { service(stranger).auditAgents(ProjectId(project.id.value), emptyList()) }.isInstanceOf(InsufficientPermissionException::class.java)
     }
 }

@@ -1,7 +1,7 @@
 package pl.mos.backoffice.tasks.application.service
 
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.shared.security.SystemOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentSnapshot
 import pl.mos.backoffice.shared.tasks.AgentProfile
 import pl.mos.backoffice.shared.tasks.AgentSnapshot

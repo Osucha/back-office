@@ -1,5 +1,6 @@
 package pl.mos.backoffice.llm.proxy
 
+import com.osucha.portpermissions.AccessGuard
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
@@ -18,7 +19,6 @@ import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.platform.JobCredential
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import pl.mos.backoffice.shared.usage.UsageLedger
@@ -50,7 +50,7 @@ class LlmProxy(
     private val budgets: EnforceBudgets,
     private val ledger: UsageLedger,
     private val catalog: ModelCatalog?,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val json: JsonMapper,
     private val clock: Clock,
     /** ADR 0046: request limits of provider connections; agents' calls count against them too. */
@@ -178,13 +178,13 @@ class LlmProxy(
         response: HttpServletResponse,
     ): Admission {
         try {
-            gate.asSystem("LLM proxy budget check") {
+            guard.asSystem("LLM proxy budget check") {
                 budgets.precheck(credential, context, estimatedCost, estimatedTokens)
                 budgets.countJobRequest(credential, context)
             }
         } catch (e: BudgetExceededException) {
             log.warn("LLM proxy refused jobId={} scope={} reason={}", credential.jobId, e.scope, e.message)
-            runCatching { gate.asSystem("LLM proxy budget refusal") { budgets.recordRefusal(credential.jobId, e.message ?: "budget exceeded") } }
+            runCatching { guard.asSystem("LLM proxy budget refusal") { budgets.recordRefusal(credential.jobId, e.message ?: "budget exceeded") } }
                 .onFailure { log.warn("could not record the budget refusal of job {}: {}", credential.jobId, it.message) }
             ProxyProblems.write(
                 response, 402, "Budget exceeded", e.message ?: "budget exceeded", "budget-exceeded",
@@ -279,7 +279,7 @@ class LlmProxy(
         try {
             val cost = pricing?.costOf(tokens) ?: Money.ZERO
             metrics.record(modelRef, tokens, cost)
-            gate.asSystem("LLM proxy usage booking") {
+            guard.asSystem("LLM proxy usage booking") {
                 ledger.record(
                     UsageRecord(
                         occurredAt = clock.now(), modelRef = modelRef, usage = tokens, cost = cost, estimatedCost = cost,

@@ -4,7 +4,6 @@ import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.GrantRepository
 import pl.mos.backoffice.identity.application.port.out.GroupRepository
 import pl.mos.backoffice.identity.application.port.out.Page
-import pl.mos.backoffice.identity.application.port.out.PermissionCatalog
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.application.port.out.PlatformSettingsRepository
 import pl.mos.backoffice.identity.application.port.out.ProjectKeyLookup
@@ -37,8 +36,9 @@ import pl.mos.backoffice.identity.domain.model.User
 import pl.mos.backoffice.identity.domain.model.UserStatus
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.security.PermissionDefinition
-import pl.mos.backoffice.shared.security.PermissionScope
+import com.osucha.portpermissions.PermissionDefinition
+import pl.mos.backoffice.shared.security.PermissionModules
+import pl.mos.backoffice.shared.testing.testModulePermissions
 import pl.mos.backoffice.shared.security.UserId
 import java.time.Instant
 import java.util.UUID
@@ -61,15 +61,24 @@ class InMemoryIdentity(val now: Instant = Instant.parse("2026-09-27T10:00:00Z"))
 
     val clock = Clock.fixed(now)
 
-    val catalogDefinitions: MutableList<PermissionDefinition> = (
-        IdentityPermissions.definitions +
-            (BuiltInRoles.ALL_PLATFORM - IdentityPermissions.definitions.map { it.key }.toSet())
-                .map { PermissionDefinition(it, PermissionScope.PLATFORM, "test", it) } +
-            listOf(
-                "project.view", "project.manage", "project.ci.manage", "workflow.edit", "run.start", "run.cancel", "run.approve", "run.assign",
-                "run.signal", "library.project.manage", "project.usage.view", "ci.execute", "ci.signal", "project.connections.manage",
-            ).map { PermissionDefinition(it, PermissionScope.PROJECT, "test", it) }
-        ).toMutableList()
+    private val identityKeys = IdentityPermissions.contribution.sets.flatMap { set -> set.permissions.map { it.key } }.toSet()
+
+    /** Identity's own permissions plus made-up stand-ins for the keys other modules contribute. */
+    val catalogModules = PermissionModules(
+        listOf(
+            IdentityPermissions.contribution,
+            testModulePermissions(
+                "test",
+                platform = BuiltInRoles.ALL_PLATFORM - identityKeys,
+                project = listOf(
+                    "project.view", "project.manage", "project.ci.manage", "workflow.edit", "run.start", "run.cancel", "run.approve", "run.assign",
+                    "run.signal", "library.project.manage", "project.usage.view", "ci.execute", "ci.signal", "project.connections.manage",
+                ),
+            ),
+        ),
+    )
+
+    val catalogDefinitions: List<PermissionDefinition> = catalogModules.definitions()
 
     private fun withMembers(group: Group) = group.copy(memberIds = memberRows.filter { it.first == group.id }.map { it.second }.toSet())
     private fun withGroups(user: User) = user.copy(groupIds = memberRows.filter { it.second == user.id }.map { it.first }.toSet())
@@ -198,8 +207,7 @@ class InMemoryIdentity(val now: Instant = Instant.parse("2026-09-27T10:00:00Z"))
         }
     }
 
-    val catalog = PermissionCatalog { catalogDefinitions }
-    val catalogSupport = CatalogSupport(catalog)
+    val catalogSupport = CatalogSupport(catalogModules)
     val projectKeyLookup = ProjectKeyLookup { projectKeyMap[it] }
     val projectKeys = ProjectKeys(memberships, projectKeyLookup)
     val access = AccessResolver(groups, roles, grants, memberships, catalogSupport)

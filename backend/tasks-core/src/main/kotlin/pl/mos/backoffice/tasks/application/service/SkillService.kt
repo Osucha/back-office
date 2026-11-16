@@ -6,7 +6,8 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
 import pl.mos.backoffice.tasks.application.port.out.AgentRepository
@@ -25,12 +26,14 @@ class SkillService(
     private val skills: SkillRepository,
     private val agents: AgentRepository,
     private val clock: Clock,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
+    private val principal: CurrentPrincipal,
     private val audit: AuditPort,
 ) : ManageSkills {
 
     override fun create(command: Skill.Content): Skill {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val key = command.key ?: Keys.unique(Keys.fromName(command.name, KEY_PREFIX)) { skills.existsByKey(it) }
         if (skills.findByKeyAndScope(key, command.scope) != null) {
             throw InvalidStateException("skill $key already exists in scope ${command.scope.describe()}")
@@ -41,9 +44,10 @@ class SkillService(
     }
 
     override fun update(id: SkillId, command: Skill.Content): Skill {
-        val user = gate.requireWrite(command.scope)
+        guard.requireWrite(command.scope)
+        val user = principal.currentUser()
         val existing = load(id)
-        if (existing.scope != command.scope) gate.requireWrite(existing.scope)
+        if (existing.scope != command.scope) guard.requireWrite(existing.scope)
         val key = command.key ?: existing.key
         skills.findByKeyAndScope(key, command.scope)?.let { clash ->
             if (clash.id != id) throw InvalidStateException("skill $key already exists in scope ${command.scope.describe()}")
@@ -67,12 +71,12 @@ class SkillService(
 
     override fun get(id: SkillId): Skill {
         val skill = load(id)
-        gate.requireRead(skill.scope)
+        guard.requireRead(skill.scope)
         return skill
     }
 
     override fun list(projectId: UUID?): List<Skill> {
-        val access = gate.requireListing(projectId)
+        val access = guard.requireListing(projectId, principal)
         return skills.findVisible(access.projectId)
             .filter { access.allows(it.scope) }
             .sortedWith(compareBy({ it.name.lowercase() }, { it.scope.projectId != null }))
@@ -80,7 +84,7 @@ class SkillService(
 
     override fun delete(id: SkillId) {
         val existing = load(id)
-        gate.requireWrite(existing.scope)
+        guard.requireWrite(existing.scope)
         if (agents.existsUsingSkill(existing.key)) throw InvalidStateException("skill ${existing.key} is used by agents and cannot be deleted")
         skills.delete(id)
         audit.record(entry("SKILL_DELETE", existing, mapOf("key" to existing.key, "scope" to existing.scope.describe())))

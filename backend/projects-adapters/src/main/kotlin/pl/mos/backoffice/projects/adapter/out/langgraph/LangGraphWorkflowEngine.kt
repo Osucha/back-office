@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.out.langgraph
 
+import com.osucha.portpermissions.AccessGuard
 import org.bsc.langgraph4j.CompileConfig
 import org.bsc.langgraph4j.CompiledGraph
 import org.bsc.langgraph4j.GraphDefinition
@@ -56,7 +57,6 @@ import pl.mos.backoffice.shared.platform.WorkItem
 import pl.mos.backoffice.shared.platform.WorkOutcome
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.runner.AgentRunner
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -84,7 +84,7 @@ import java.util.concurrent.ConcurrentHashMap
  * answers (`{{answers}}`; a coding agent continues its session), `cancel` fails it. What asking cost is added to the
  * step's final result.
  * `HUMAN_GATE` and `WAIT_FOR_CI` nodes are `interruptBefore` and resume with `{decision|ci}`. Every invocation runs inside
- * `gate.asSystem("workflow engine")` (ADR 0017). Loops are bounded by `maxVisits`. Cancellation interrupts
+ * `guard.asSystem("workflow engine")` (ADR 0017). Loops are bounded by `maxVisits`. Cancellation interrupts
  * the worker thread holding the run on whichever replica ([ClusterSignals] topic `workflow-run-cancel`).
  */
 class LangGraphWorkflowEngine(
@@ -95,7 +95,7 @@ class LangGraphWorkflowEngine(
     private val renderer: TemplateRenderer,
     private val templateModel: TemplateModelBuilder,
     private val checkpointSaver: BaseCheckpointSaver,
-    private val gate: AuthorizationGate,
+    private val guard: AccessGuard,
     private val queue: WorkQueue,
     private val runner: AgentRunner,
     private val signals: ClusterSignals = ClusterSignals.local(),
@@ -171,7 +171,7 @@ class LangGraphWorkflowEngine(
             return WorkOutcome.Retry(java.time.Duration.ofSeconds(1), "run $runId is being advanced on this replica")
         }
         try {
-            gate.asSystem(SYSTEM_REASON) { drive(runId, resume, item.attempt) }
+            guard.asSystem(SYSTEM_REASON) { drive(runId, resume, item.attempt) }
         } finally {
             inflight.remove(runId.value, thread)
             Thread.interrupted()

@@ -1,20 +1,20 @@
 package pl.mos.backoffice.governance.adapter
 
+import com.osucha.portpermissions.PermissionCatalog
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.context.annotation.Bean
 import org.testcontainers.postgresql.PostgreSQLContainer
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.provenance.RunProvenance
 import pl.mos.backoffice.shared.provenance.RunProvenanceSource
-import pl.mos.backoffice.shared.security.AuthorizationGate
 import pl.mos.backoffice.shared.security.CurrentUser
+import pl.mos.backoffice.shared.security.CurrentUserAccessGuard
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.UserId
 import pl.mos.backoffice.shared.usage.PageOf
@@ -32,14 +32,12 @@ import java.util.concurrent.CopyOnWriteArrayList
 @SpringBootApplication(scanBasePackages = ["pl.mos.backoffice.governance"])
 class GovernanceTestApplication
 
-class TestGate : AuthorizationGate {
+/** The guard of the tests: production check rules ([CurrentUserAccessGuard]) over a thread-local user. */
+class TestGate : CurrentUserAccessGuard(PermissionCatalog(emptyList())) {
     private val current = ThreadLocal<CurrentUser?>()
     @Volatile var defaultUser: CurrentUser = CurrentUser.SYSTEM.copy(kind = PrincipalKind.USER, userId = UserId(UUID.randomUUID()), login = "owner@example.com", displayName = "Olivia Owner")
 
     override fun currentUser(): CurrentUser = current.get() ?: defaultUser
-    override fun require(permission: String): CurrentUser = currentUser().also { if (!it.can(permission)) throw InsufficientPermissionException(permission) }
-    override fun require(permission: String, projectId: UUID): CurrentUser =
-        currentUser().also { if (!it.can(permission, projectId)) throw InsufficientPermissionException(permission, projectId) }
     override fun <T> asSystem(reason: String, block: () -> T): T = runAs(CurrentUser.SYSTEM, block)
 
     fun <T> runAs(user: CurrentUser, block: () -> T): T {

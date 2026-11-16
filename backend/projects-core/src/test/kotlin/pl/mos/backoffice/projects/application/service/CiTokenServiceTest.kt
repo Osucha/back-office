@@ -16,7 +16,7 @@ import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.NotFoundException
-import pl.mos.backoffice.shared.testing.FakeAuthorizationGate
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 class CiTokenServiceTest {
@@ -33,8 +33,8 @@ class CiTokenServiceTest {
     private val projects = mockk<ProjectRepository> { every { findById(project.id) } returns project }
     private val hasher = Fixtures.TestHasher()
     private val audit = RecordingAuditPort()
-    private val gate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_CI_MANAGE, projects = setOf(project.id.value))
-    private val service = CiTokenService(tokens, projects, hasher, gate, audit, Clock.fixed(now))
+    private val gate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CI_MANAGE, projects = setOf(project.id.value))
+    private val service = CiTokenService(tokens, projects, hasher, gate, gate, audit, Clock.fixed(now))
 
     @Test
     fun `tokens are stored hashed, shown once, stamped with the creator and audited`() {
@@ -67,18 +67,18 @@ class CiTokenServiceTest {
         assertThat(service.verify(created.plaintext)).isNull()
         assertThat(audit.operations()).containsExactly("CI_TOKEN_CREATE", "CI_TOKEN_REVOKE")
         val other = Fixtures.project("OTHER")
-        val otherGate = FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_CI_MANAGE, projects = setOf(other.id.value))
-        assertThatThrownBy { CiTokenService(tokens, projects, hasher, otherGate, audit, Clock.fixed(now)).revoke(other.id, created.token.id) }
+        val otherGate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CI_MANAGE, projects = setOf(other.id.value))
+        assertThatThrownBy { CiTokenService(tokens, projects, hasher, otherGate, otherGate, audit, Clock.fixed(now)).revoke(other.id, created.token.id) }
             .isInstanceOf(NotFoundException::class.java)
     }
 
     @Test
     fun `managing tokens needs project ci manage on that project`() {
-        val viewer = CiTokenService(tokens, projects, hasher, FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value)), audit, Clock.fixed(now))
+        val viewer = (FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_VIEW, projects = setOf(project.id.value))).let { g -> CiTokenService(tokens, projects, hasher, g, g, audit, Clock.fixed(now)) }
         assertThatThrownBy { viewer.create(project.id, "gitlab") }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { viewer.list(project.id) }.isInstanceOf(InsufficientPermissionException::class.java)
         assertThatThrownBy { viewer.revoke(project.id, ProjectCiTokenId.new()) }.isInstanceOf(InsufficientPermissionException::class.java)
-        val elsewhere = CiTokenService(tokens, projects, hasher, FakeAuthorizationGate.permitting(ProjectsPermissions.PROJECT_CI_MANAGE, projects = setOf(ProjectId.new().value)), audit, Clock.fixed(now))
+        val elsewhere = (FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CI_MANAGE, projects = setOf(ProjectId.new().value))).let { g -> CiTokenService(tokens, projects, hasher, g, g, audit, Clock.fixed(now)) }
         assertThatThrownBy { elsewhere.create(project.id, "gitlab") }
             .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.projectId).isEqualTo(project.id.value) }
         assertThat(audit.entries).isEmpty()

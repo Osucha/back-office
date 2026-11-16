@@ -1,5 +1,6 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.runner.application.port.`in`.LeaseScanOutcome
 import pl.mos.backoffice.runner.application.port.`in`.MaintainAgentJobs
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
@@ -7,7 +8,6 @@ import pl.mos.backoffice.runner.application.port.out.Transactions
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.shared.runner.GitAccess
-import pl.mos.backoffice.shared.security.SystemOperation
 
 /**
  * The lease scan (every 10 s on one replica at a time, `pg_try_advisory_xact_lock`):

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.projects.adapter.config
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.projects.adapter.out.scm.GitLabPipelineStatus
 import pl.mos.backoffice.projects.application.port.out.PipelineStatusPort
 import pl.mos.backoffice.projects.application.service.PipelineWatchService
@@ -105,9 +106,9 @@ import pl.mos.backoffice.projects.domain.service.WorkflowValidator
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.AuthorizationGate
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CiTokenVerifier
-import pl.mos.backoffice.shared.security.PermissionCatalogContribution
+import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
 import pl.mos.backoffice.shared.llm.LlmGateway
@@ -130,7 +131,7 @@ import pl.mos.backoffice.projects.domain.model.SealedSecret
  * Wires the Projects & Workflows use cases (plain Kotlin classes from `projects-core`) from the port
  * implementations in this module and the shared beans provided by other modules
  * (`LlmGateway`, `UsageLedger`, `ModelCatalog`, `TaskCatalog`, `AgentRunner`, `Clock`, `EventPublisher`, `DataSource`)
- * and by the identity context (`AuthorizationGate`, `AuditPort`, `ProjectAccessProvisioner`). Contributes the
+ * and by the identity context (`AccessGuard` and `CurrentPrincipal`, `AuditPort`, `ProjectAccessProvisioner`). Contributes the
  * `projects` permission catalogue and the `CiTokenVerifier` the identity bearer-token filter uses.
  */
 @Configuration
@@ -155,15 +156,15 @@ class ProjectsConfiguration {
     @Bean
     fun checkAgentCoherence(
         taskCatalog: TaskCatalog, projects: ProjectRepository, llmGateway: LlmGateway, models: ModelCatalog,
-        defaults: ObjectProvider<ModelDefaults>, gate: AuthorizationGate, audit: AuditPort,
+        defaults: ObjectProvider<ModelDefaults>, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort,
     ): pl.mos.backoffice.projects.application.port.`in`.CheckAgentCoherence =
-        pl.mos.backoffice.projects.application.service.AgentCoherenceService(taskCatalog, projects, llmGateway, models, defaults.getIfAvailable(), gate, audit)
+        pl.mos.backoffice.projects.application.service.AgentCoherenceService(taskCatalog, projects, llmGateway, models, defaults.getIfAvailable(), guard, principal, audit)
 
     @Bean fun tokenHasher(): TokenHasher = Sha256TokenHasher()
 
     // ---- security contributions
 
-    @Bean fun projectsPermissionCatalog(): PermissionCatalogContribution = PermissionCatalogContribution { ProjectsPermissions.definitions }
+    @Bean fun projectsPermissionCatalog(): ModulePermissions = ProjectsPermissions.contribution
 
     @Bean fun projectCiTokenVerifier(tokens: VerifyCiToken): CiTokenVerifier = ProjectCiTokenVerifier(tokens)
 
@@ -173,38 +174,38 @@ class ProjectsConfiguration {
     fun projectService(
         projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: WorkflowRunRepository, approvals: ApprovalRequestRepository,
         ciExecutions: CiExecutionRepository, ciTokens: ProjectCiTokenRepository, usageLedger: UsageLedger, snippets: CiSnippetRenderer,
-        publicUrl: PublicUrlProperties, gate: AuthorizationGate, provisioner: ProjectAccessProvisioner, audit: AuditPort, clock: Clock,
+        publicUrl: PublicUrlProperties, guard: AccessGuard, principal: CurrentPrincipal, provisioner: ProjectAccessProvisioner, audit: AuditPort, clock: Clock,
     ) = ProjectService(
-        projects, workflows, runs, approvals, ciExecutions, ciTokens, usageLedger, snippets, publicUrl.publicUrl, gate, provisioner, audit, clock,
+        projects, workflows, runs, approvals, ciExecutions, ciTokens, usageLedger, snippets, publicUrl.publicUrl, guard, principal, provisioner, audit, clock,
     )
 
     @Bean
-    fun ciTokenService(tokens: ProjectCiTokenRepository, projects: ProjectRepository, hasher: TokenHasher, gate: AuthorizationGate, audit: AuditPort, clock: Clock) =
-        CiTokenService(tokens, projects, hasher, gate, audit, clock)
+    fun ciTokenService(tokens: ProjectCiTokenRepository, projects: ProjectRepository, hasher: TokenHasher, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock) =
+        CiTokenService(tokens, projects, hasher, guard, principal, audit, clock)
 
     @Bean
     fun workflowService(
         workflows: WorkflowDefinitionRepository, projects: ProjectRepository, runs: WorkflowRunRepository, validator: WorkflowValidator,
-        taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
+        taskCatalog: TaskCatalog, expressions: ExpressionEvaluator, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
         jira: JiraConnectionAccess, library: LibraryWorkflowRepository, librarySources: LibrarySourceRepository,
         availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
         connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository,
     ) = WorkflowService(
-        workflows, projects, runs, validator, taskCatalog, expressions, gate, audit, clock, jira, library = library, librarySources = librarySources,
+        workflows, projects, runs, validator, taskCatalog, expressions, guard, principal, audit, clock, jira, library = library, librarySources = librarySources,
         availability.getIfAvailable(), defaults.getIfAvailable(), connectors,
     )
 
     /** Sources of the library (ADR 0043). */
     @Bean
-    fun librarySourceService(sources: LibrarySourceRepository, gate: AuthorizationGate, audit: AuditPort, clock: Clock) =
-        LibrarySourceService(sources, gate, audit, clock)
+    fun librarySourceService(sources: LibrarySourceRepository, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock) =
+        LibrarySourceService(sources, guard, principal, audit, clock)
 
     /** Workflow library (ADR 0037): publish, adopt, update and detach linked copies. */
     @Bean
     fun workflowLibraryService(
         library: LibraryWorkflowRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository, workflowService: WorkflowService,
-        taskCatalog: TaskCatalog, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-    ) = WorkflowLibraryService(library, workflows, projects, workflowService, taskCatalog, gate, audit, clock)
+        taskCatalog: TaskCatalog, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
+    ) = WorkflowLibraryService(library, workflows, projects, workflowService, taskCatalog, guard, principal, audit, clock)
 
 
     /** Jira steps of a workflow: connection per step and write-approval settings (ADR 0030, 0033). */
@@ -218,11 +219,11 @@ class ProjectsConfiguration {
     fun runService(
         runs: WorkflowRunRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository, logs: RunLogRepository,
         engine: WorkflowEngine, progress: RecordRunProgress, validator: WorkflowValidator, events: EventPublisher,
-        gate: AuthorizationGate, audit: AuditPort, clock: Clock, jiraSteps: JiraStepCheck, repositorySteps: RepositoryStepCheck,
+        guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock, jiraSteps: JiraStepCheck, repositorySteps: RepositoryStepCheck,
         taskCatalog: TaskCatalog, availability: ObjectProvider<ModelAvailability>, defaults: ObjectProvider<ModelDefaults>,
         directory: ObjectProvider<ProjectAccessDirectory>,
     ) = RunService(
-        runs, workflows, projects, logs, engine, progress, validator, events, gate, audit, clock, jiraSteps, repositorySteps,
+        runs, workflows, projects, logs, engine, progress, validator, events, guard, principal, audit, clock, jiraSteps, repositorySteps,
         // ADR 0050: the model of every task step must be usable by the starting user; without the model catalogue (the
         // Projects module alone) models are not checked
         availability.getIfAvailable()?.let { ModelStepCheck(taskCatalog, it, defaults.getIfAvailable()) },
@@ -238,19 +239,19 @@ class ProjectsConfiguration {
     @Bean
     fun jiraIntakeService(
         intakes: JiraIntakeRepository, projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: RunService,
-        jira: JiraConnectionAccess, planner: JiraIntakePlanner, queue: WorkQueue, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-    ) = JiraIntakeService(intakes, projects, workflows, runs, jira, planner, queue, gate, audit, clock)
+        jira: JiraConnectionAccess, planner: JiraIntakePlanner, queue: WorkQueue, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
+    ) = JiraIntakeService(intakes, projects, workflows, runs, jira, planner, queue, guard, principal, audit, clock)
 
     /** Personal work (ADR 0038): personal intake rules and run proposals. */
     @Bean
     fun personalIntakeService(
         intake: PersonalIntakeRepository, connections: ConnectionRepository, workflows: WorkflowDefinitionRepository, projects: ProjectRepository,
-        runs: RunService, jira: JiraConnectionAccess, queue: WorkQueue, events: EventPublisher, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-    ) = PersonalIntakeService(intake, connections, workflows, projects, runs, jira, queue, events, gate, audit, clock)
+        runs: RunService, jira: JiraConnectionAccess, queue: WorkQueue, events: EventPublisher, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
+    ) = PersonalIntakeService(intake, connections, workflows, projects, runs, jira, queue, events, guard, principal, audit, clock)
 
     @Bean
-    fun signalService(runs: WorkflowRunRepository, engine: WorkflowEngine, events: EventPublisher, gate: AuthorizationGate, audit: AuditPort, clock: Clock) =
-        SignalService(runs, engine, events, gate, audit, clock)
+    fun signalService(runs: WorkflowRunRepository, engine: WorkflowEngine, events: EventPublisher, guard: AccessGuard, audit: AuditPort, clock: Clock) =
+        SignalService(runs, engine, events, guard, audit, clock)
 
     @Bean
     fun runProgressService(
@@ -261,14 +262,14 @@ class ProjectsConfiguration {
     @Bean
     fun approvalService(
         approvals: ApprovalRequestRepository, runs: WorkflowRunRepository, engine: WorkflowEngine, events: EventPublisher,
-        gate: AuthorizationGate, audit: AuditPort, clock: Clock, connections: ConnectionRepository,
-    ) = ApprovalService(approvals, runs, engine, events, gate, audit, clock, connections)
+        guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock, connections: ConnectionRepository,
+    ) = ApprovalService(approvals, runs, engine, events, guard, principal, audit, clock, connections)
 
     /** Run-time assignment of open approvals (ADR 0028); assignees are resolved by the identity context. */
     @Bean
     fun approvalAssignmentService(
-        approvals: ApprovalRequestRepository, directory: ProjectAccessDirectory, events: EventPublisher, gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-    ): AssignApproval = ApprovalAssignmentService(approvals, directory, events, gate, audit, clock)
+        approvals: ApprovalRequestRepository, directory: ProjectAccessDirectory, events: EventPublisher, guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
+    ): AssignApproval = ApprovalAssignmentService(approvals, directory, events, guard, principal, audit, clock)
 
     @Bean
     fun ciExecutionCompletionService(executions: CiExecutionRepository, events: EventPublisher, clock: Clock): CompleteCiExecution =
@@ -277,21 +278,21 @@ class ProjectsConfiguration {
     @Bean
     fun ciExecutionService(
         executions: CiExecutionRepository, projects: ProjectRepository, runService: RunService, events: EventPublisher,
-        gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-    ) = CiExecutionService(executions, projects, runService, events, gate, audit, clock)
+        guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
+    ) = CiExecutionService(executions, projects, runService, events, guard, principal, audit, clock)
 
     @Bean
     fun waitTimeoutService(runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, engine: WorkflowEngine, clock: Clock) =
         WaitTimeoutService(runs, approvals, engine, clock)
 
     @Bean
-    fun dashboardQueryService(runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, ciExecutions: CiExecutionRepository, gate: AuthorizationGate) =
-        DashboardQueryService(runs, approvals, ciExecutions, gate)
+    fun dashboardQueryService(runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, ciExecutions: CiExecutionRepository, guard: AccessGuard) =
+        DashboardQueryService(runs, approvals, ciExecutions, guard)
 
     @Bean
     fun integrationsService(
-        probes: List<IntegrationProbe>, llmGateway: LlmGateway, publicUrl: PublicUrlProperties, build: ObjectProvider<BuildProperties>, gate: AuthorizationGate,
-    ) = IntegrationsService(probes, llmGateway, publicUrl.publicUrl, build.ifAvailable?.version ?: "dev", gate)
+        probes: List<IntegrationProbe>, llmGateway: LlmGateway, publicUrl: PublicUrlProperties, build: ObjectProvider<BuildProperties>, guard: AccessGuard,
+    ) = IntegrationsService(probes, llmGateway, publicUrl.publicUrl, build.ifAvailable?.version ?: "dev", guard)
 
     // ---- node executors
 
@@ -395,9 +396,9 @@ class ProjectsConfiguration {
     @Bean
     fun connectionService(
         connections: ConnectionRepository, projects: ProjectRepository, legacy: LegacyConnectionSource, cipher: AesGcmSecretCipher,
-        trackers: IssueTrackerFactory, selector: ConnectionSelector, policy: ConnectionVerificationPolicy, gate: AuthorizationGate,
+        trackers: IssueTrackerFactory, selector: ConnectionSelector, policy: ConnectionVerificationPolicy, guard: AccessGuard, principal: CurrentPrincipal,
         audit: AuditPort, clock: Clock, events: EventPublisher,
-    ) = ConnectionService(connections, projects, legacy, cipher, trackers, selector, policy, gate, audit, clock, events)
+    ) = ConnectionService(connections, projects, legacy, cipher, trackers, selector, policy, guard, principal, audit, clock, events)
 
     /** ADR 0051: tokens of project repositories, tested against GitLab on save. */
     @Bean fun gitLabScmProbe(cipher: AesGcmSecretCipher, json: JsonMapper) = GitLabScmProbe(cipher, json)
@@ -405,8 +406,8 @@ class ProjectsConfiguration {
     @Bean
     fun scmConnectionService(
         connections: ScmConnectionRepository, projects: ProjectRepository, cipher: AesGcmSecretCipher, probe: ScmProbePort,
-        gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-    ) = ScmConnectionService(connections, projects, cipher, probe, gate, audit, clock)
+        guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
+    ) = ScmConnectionService(connections, projects, cipher, probe, guard, principal, audit, clock)
 
     /** ADR 0052: Back Office watches the pipeline of a run's branch itself (WAIT_FOR_CI with watchPipeline). */
     @Bean fun gitLabPipelineStatus(cipher: AesGcmSecretCipher, json: JsonMapper) = GitLabPipelineStatus(cipher, json)
@@ -446,8 +447,8 @@ class ProjectsConfiguration {
     fun connectorService(
         connectors: pl.mos.backoffice.projects.application.port.out.ConnectorRepository, projects: ProjectRepository, cipher: AesGcmSecretCipher,
         mcp: pl.mos.backoffice.projects.application.port.out.McpProbePort, scmConnections: ScmConnectionRepository, scmProbe: ScmProbePort,
-        gate: AuthorizationGate, audit: AuditPort, clock: Clock,
-    ) = pl.mos.backoffice.projects.application.service.ConnectorService(connectors, projects, cipher, mcp, scmConnections, scmProbe, gate, audit, clock)
+        guard: AccessGuard, principal: CurrentPrincipal, audit: AuditPort, clock: Clock,
+    ) = pl.mos.backoffice.projects.application.service.ConnectorService(connectors, projects, cipher, mcp, scmConnections, scmProbe, guard, principal, audit, clock)
 
     /** ADR 0064: connectors for other contexts' agent jobs (benchmarks), shared-kernel port. */
     @Bean
@@ -478,10 +479,10 @@ class ProjectsConfiguration {
     fun workflowEngine(
         runs: WorkflowRunRepository, projects: ProjectRepository, progress: RecordRunProgress, executors: NodeExecutors,
         renderer: TemplateRenderer, templateModel: TemplateModelBuilder, checkpointSaver: BaseCheckpointSaver,
-        gate: AuthorizationGate, queue: WorkQueue, runner: AgentRunner, signals: ObjectProvider<ClusterSignals>,
+        guard: AccessGuard, queue: WorkQueue, runner: AgentRunner, signals: ObjectProvider<ClusterSignals>,
         meters: ObjectProvider<MeterRegistry>,
     ): LangGraphWorkflowEngine = LangGraphWorkflowEngine(
-        runs, projects, progress, executors, renderer, templateModel, checkpointSaver, gate, queue, runner, signals.getIfAvailable { ClusterSignals.local() },
+        runs, projects, progress, executors, renderer, templateModel, checkpointSaver, guard, queue, runner, signals.getIfAvailable { ClusterSignals.local() },
     ).also { engine ->
         // backoffice_runs_active{holder}: runs this replica is advancing right now
         meters.ifAvailable?.let { registry ->
