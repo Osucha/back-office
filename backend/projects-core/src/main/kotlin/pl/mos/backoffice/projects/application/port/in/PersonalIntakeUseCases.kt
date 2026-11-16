@@ -58,11 +58,3 @@ interface ManagePersonalIntake {
         val issueUrl: String?,
     )
 }
-
-/** System use case (ADR 0038): polling of personal intake rules by the scheduler and the work handler. */
-interface PollPersonalIntake {
-    fun due(): List<IntakeRuleId>
-
-    /** One poll of the rule; returns how many proposals it created. */
-    fun poll(id: IntakeRuleId): Int
-}

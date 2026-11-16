@@ -1,9 +1,9 @@
-package pl.mos.backoffice.runner.adapter.`in`.web
+package pl.mos.backoffice.runner.adapter.`in`.runner
 
 import org.slf4j.LoggerFactory
 import pl.mos.backoffice.runner.RunnerJobSpecJson
 import pl.mos.backoffice.runner.SandboxPolicyJson
-import pl.mos.backoffice.runner.application.port.`in`.LeasedJob
+import pl.mos.backoffice.runner.application.port.`in`.system.LeasedJob
 import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.shared.platform.EnvelopeSigner
 import tools.jackson.databind.json.JsonMapper

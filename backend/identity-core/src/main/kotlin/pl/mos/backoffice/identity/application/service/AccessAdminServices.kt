@@ -1,5 +1,8 @@
 package pl.mos.backoffice.identity.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.identity.application.port.`in`.EffectivePermissionsQuery
 import pl.mos.backoffice.identity.application.port.`in`.EffectivePermissionsView
 import pl.mos.backoffice.identity.application.port.`in`.GrantSetView
@@ -7,7 +10,7 @@ import pl.mos.backoffice.identity.application.port.`in`.GroupView
 import pl.mos.backoffice.identity.application.port.`in`.ManageGrants
 import pl.mos.backoffice.identity.application.port.`in`.ManageGroups
 import pl.mos.backoffice.identity.application.port.`in`.ManageRoles
-import pl.mos.backoffice.identity.application.port.`in`.SeedIdentity
+import pl.mos.backoffice.identity.application.port.`in`.system.SeedIdentity
 import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.GrantRepository
 import pl.mos.backoffice.identity.application.port.out.GroupRepository
@@ -30,10 +33,7 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.shared.security.PermissionScope
-import com.osucha.portpermissions.PublicOperation
-import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.security.UserId
 
 class GroupAdminService(
@@ -312,10 +312,12 @@ class SeedIdentityService(
     private val catalog: CatalogSupport,
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
+    private val guard: AccessGuard,
 ) : SeedIdentity {
 
     @SystemOperation("startup seeding of built-in roles")
     override fun seed() {
+        guard.requireSystem()
         val existing = roles.findAll().associateBy { it.key }
         val firstStart = existing.values.none { it.builtIn }
         var changed = false

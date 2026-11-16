@@ -1,7 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.projects.application.port.`in`.ExpireWaits
+import pl.mos.backoffice.projects.application.port.`in`.system.ExpireWaits
 import pl.mos.backoffice.projects.application.port.out.ApprovalRequestRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowEngine
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
@@ -22,10 +23,12 @@ class WaitTimeoutService(
     private val approvals: ApprovalRequestRepository,
     private val engine: WorkflowEngine,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : ExpireWaits {
 
     @SystemOperation("scheduled wait-timeout sweep")
     override fun sweep(): Int {
+        guard.requireSystem()
         var resumed = 0
         runs.findWaiting(null).forEach { run ->
             if (expire(run)) resumed++
@@ -34,8 +37,7 @@ class WaitTimeoutService(
     }
 
     /** Returns true when [run] was resumed by timeout. */
-    @SystemOperation("scheduled wait-timeout sweep, one run")
-    fun expire(run: WorkflowRun): Boolean {
+    private fun expire(run: WorkflowRun): Boolean {
         val waiting = run.waitingOn ?: return false
         // a write confirmation (ADR 0033) waits for a person; the node's timeoutSeconds limits its execution, not the wait
         if (waiting.kind == WaitKind.WRITE_CONFIRMATION || waiting.kind == WaitKind.AGENT_QUESTIONS) return false

@@ -1,7 +1,8 @@
 package pl.mos.backoffice.evaluation.adapter.out.executor
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
-import pl.mos.backoffice.evaluation.application.port.`in`.ExecuteAttempt
+import pl.mos.backoffice.evaluation.application.port.`in`.system.ExecuteAttempt
 import pl.mos.backoffice.evaluation.application.port.out.AttemptExecutor
 import pl.mos.backoffice.evaluation.application.port.out.AttemptWork
 import pl.mos.backoffice.evaluation.domain.model.AttemptId
@@ -54,6 +55,7 @@ class AttemptExecutorAdapter(private val queue: WorkQueue, private val retryPoli
 class BenchmarkAttemptHandler(
     private val executeAttempt: ExecuteAttempt,
     private val events: EventPublisher,
+    private val guard: AccessGuard,
     private val retryPolicy: AttemptExecutorAdapter.RetryPolicy = AttemptExecutorAdapter.RetryPolicy(),
 ) : WorkHandler {
 
@@ -65,7 +67,8 @@ class BenchmarkAttemptHandler(
         val attemptId = item.payload[AttemptWork.ATTEMPT_ID]?.toString()?.let { runCatching { AttemptId.of(it) }.getOrNull() }
             ?: return WorkOutcome.Dead("BENCHMARK_ATTEMPT without a valid attemptId")
         val allowRetry = item.attempt <= retryPolicy.maxAttempts + 1
-        val report = executeAttempt.execute(attemptId, allowRetry)
+        // on the worker's own thread: the system context is set here, where the system operation runs
+        val report = guard.asSystem("benchmark attempt") { executeAttempt.execute(attemptId, allowRetry) }
         if (report.retry) {
             val retry = item.attempt
             if (retry > retryPolicy.maxAttempts) {

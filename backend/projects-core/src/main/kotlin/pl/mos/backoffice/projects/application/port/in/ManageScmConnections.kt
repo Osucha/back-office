@@ -35,8 +35,3 @@ interface ManageScmConnections {
     /** A connection and whether its repository still exists in the project. */
     data class ScmConnectionView(val connection: ScmConnection, val repositoryExists: Boolean)
 }
-
-/** Startup job of the worker role after a key rotation (like [RewrapConnectionSecrets]). */
-fun interface RewrapScmConnectionSecrets {
-    fun rewrapScmSecrets(): Int
-}

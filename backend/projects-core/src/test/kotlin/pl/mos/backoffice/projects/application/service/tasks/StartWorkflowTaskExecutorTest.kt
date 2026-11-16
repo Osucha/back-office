@@ -1,8 +1,5 @@
 package pl.mos.backoffice.projects.application.service.tasks
 
-import pl.mos.backoffice.projects.application.port.out.ActionStep
-import pl.mos.backoffice.projects.domain.model.ActionBinding
-import pl.mos.backoffice.projects.domain.model.ActionType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -12,17 +9,19 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
-import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
+import pl.mos.backoffice.projects.application.port.`in`.system.StartRunOnBehalf
+import pl.mos.backoffice.projects.application.port.out.ActionStep
 import pl.mos.backoffice.projects.application.port.out.JsonCodec
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.RunStateKeys
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.Artifact
 import pl.mos.backoffice.projects.domain.model.ArtifactId
 import pl.mos.backoffice.projects.domain.model.ArtifactKind
 import pl.mos.backoffice.projects.domain.model.GateSpec
 import pl.mos.backoffice.projects.domain.model.RunInput
-import pl.mos.backoffice.projects.domain.model.TaskBinding
 import pl.mos.backoffice.projects.domain.model.TriggerSource
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun

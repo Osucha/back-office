@@ -6,8 +6,8 @@ import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalIntake
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalIntake.ProposalView
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalIntake.RuleCommand
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalIntake.RuleView
-import pl.mos.backoffice.projects.application.port.`in`.PollPersonalIntake
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
+import pl.mos.backoffice.projects.application.port.`in`.system.PollPersonalIntake
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 import pl.mos.backoffice.projects.application.port.out.IssueTrackerUnavailableException
 import pl.mos.backoffice.projects.application.port.out.PersonalIntakeRepository
@@ -175,10 +175,14 @@ class PersonalIntakeService(
     }
 
     @SystemOperation("scheduler of personal intake rules (ShedLock singleton)")
-    override fun due(): List<IntakeRuleId> = intake.dueRules(clock.now()).map { it.id }
+    override fun due(): List<IntakeRuleId> {
+        guard.requireSystem()
+        return intake.dueRules(clock.now()).map { it.id }
+    }
 
     @SystemOperation("PERSONAL_INTAKE_POLL work item; reads Jira with the rule owner's own personal connection, ISSUE_READ only")
     override fun poll(id: IntakeRuleId): Int {
+        guard.requireSystem()
         val rule = intake.findRule(id)?.takeIf { it.enabled } ?: return 0
         val now = clock.now()
         return try {

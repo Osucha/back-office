@@ -2,7 +2,6 @@ package pl.mos.backoffice.runner.application.port.out
 
 import pl.mos.backoffice.runner.application.port.`in`.AgentJobFilter
 import pl.mos.backoffice.runner.domain.AgentJob
-import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.RegistrationToken
 import pl.mos.backoffice.runner.domain.RunWorkspace
 import pl.mos.backoffice.runner.domain.RunnerNode

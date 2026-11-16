@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
-import pl.mos.backoffice.llm.budget.application.port.`in`.EnforceBudgets
+import pl.mos.backoffice.llm.budget.application.port.`in`.system.EnforceBudgets
 import pl.mos.backoffice.llm.budget.application.port.out.BudgetStore
 import pl.mos.backoffice.llm.budget.domain.BudgetConfig
 import pl.mos.backoffice.llm.budget.domain.BudgetScope

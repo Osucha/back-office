@@ -6,7 +6,7 @@ import pl.mos.backoffice.evaluation.application.port.`in`.EvaluationDashboardQue
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageBenchmarks
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageModelProfiles
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageTaskSuites
-import pl.mos.backoffice.evaluation.application.port.`in`.RecoverBenchmarks
+import pl.mos.backoffice.evaluation.application.port.`in`.system.RecoverBenchmarks
 import pl.mos.backoffice.evaluation.application.service.BenchmarkService
 import pl.mos.backoffice.shared.ModelProfileId
 

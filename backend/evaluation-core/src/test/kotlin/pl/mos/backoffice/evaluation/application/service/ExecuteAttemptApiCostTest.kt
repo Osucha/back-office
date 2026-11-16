@@ -26,6 +26,7 @@ import pl.mos.backoffice.shared.runner.RunnerDiffStat
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerVerification
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.usage.Pricing
 import java.math.BigDecimal
 import java.time.Duration
@@ -43,7 +44,7 @@ class ExecuteAttemptApiCostTest {
     private val gateway = mockk<LlmGateway>()
     private val runner = mockk<AgentRunner>(relaxed = true)
     private val ownLogin = mockk<OwnLoginLlm>()
-    private val service = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, SteppingClock(), ownLogin)
+    private val service = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, SteppingClock(), ownLogin, guard = FakeAccessGuard.system())
 
     /** The enabled API profile of the Sonnet family: its prices value a Sonnet login model's tokens. */
     private val sonnetApi = Fixtures.profile("Sonnet API", modelId = "claude-sonnet-5", input = "3", output = "15")

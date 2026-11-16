@@ -1,9 +1,8 @@
 package pl.mos.backoffice.identity.adapter.config
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PermissionCatalog
 import jakarta.servlet.DispatcherType
-import pl.mos.backoffice.shared.platform.ClusterLock
-import pl.mos.backoffice.shared.platform.ClusterSignals
-import java.time.Duration
 import org.slf4j.LoggerFactory
 import org.springframework.aop.framework.ProxyFactory
 import org.springframework.beans.factory.ObjectProvider
@@ -15,50 +14,12 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.event.EventListener
 import org.springframework.core.Ordered
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.session.Session
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.interceptor.MatchAlwaysTransactionAttributeSource
 import org.springframework.transaction.interceptor.TransactionInterceptor
-import org.springframework.security.crypto.password.PasswordEncoder
-import pl.mos.backoffice.identity.adapter.out.persistence.JdbcLocalCredentialRepository
-import pl.mos.backoffice.identity.adapter.out.persistence.JdbcMfaRepository
-import pl.mos.backoffice.identity.adapter.out.persistence.JdbcUsedTokenStore
-import pl.mos.backoffice.identity.adapter.out.persistence.JdbcPasswordResetTokenRepository
-import pl.mos.backoffice.identity.adapter.out.security.AesGcmSecretCipher
-import pl.mos.backoffice.identity.adapter.out.security.HmacCodeHasher
-import pl.mos.backoffice.identity.adapter.out.security.LocalKeyMaterial
-import pl.mos.backoffice.identity.adapter.out.security.ResourceCommonPasswords
-import pl.mos.backoffice.identity.adapter.out.security.SignedMfaChallenges
-import pl.mos.backoffice.identity.adapter.out.security.SpringPasswordHasher
-import pl.mos.backoffice.identity.application.port.`in`.AdminLocalAccounts
-import pl.mos.backoffice.identity.application.port.`in`.BootstrapLocalAdmin
-import pl.mos.backoffice.identity.application.port.`in`.ChangePassword
-import pl.mos.backoffice.identity.application.port.`in`.CompleteMfaLogin
-import pl.mos.backoffice.identity.application.port.`in`.GetLoginOptions
-import pl.mos.backoffice.identity.application.port.`in`.GetMySecurity
-import pl.mos.backoffice.identity.application.port.`in`.LocalLogin
-import pl.mos.backoffice.identity.application.port.`in`.ManageMyMfa
-import pl.mos.backoffice.identity.application.port.`in`.PasswordResetLinks
-import pl.mos.backoffice.identity.application.port.out.CodeHasher
-import pl.mos.backoffice.identity.application.port.out.CommonPasswords
-import pl.mos.backoffice.identity.application.port.out.LocalCredentialRepository
-import pl.mos.backoffice.identity.application.port.out.MfaChallenges
-import pl.mos.backoffice.identity.application.port.out.MfaRepository
-import pl.mos.backoffice.identity.application.port.out.PasswordHasher
-import pl.mos.backoffice.identity.application.port.out.PasswordResetTokenRepository
-import pl.mos.backoffice.identity.application.port.out.SecretCipher
-import pl.mos.backoffice.identity.application.service.BootstrapLocalAdminService
-import pl.mos.backoffice.identity.application.service.ChangePasswordService
-import pl.mos.backoffice.identity.application.service.LocalAccountAdminService
-import pl.mos.backoffice.identity.application.service.LocalAccountSupport
-import pl.mos.backoffice.identity.application.service.LocalAuthOptions
-import pl.mos.backoffice.identity.application.service.LocalLoginService
-import pl.mos.backoffice.identity.application.service.MyMfaService
-import pl.mos.backoffice.identity.application.service.MySecurityService
-import pl.mos.backoffice.identity.application.service.PasswordResetService
-import pl.mos.backoffice.identity.application.service.UserDetailsAssembler
-import pl.mos.backoffice.identity.domain.model.LockoutSettings
 import pl.mos.backoffice.identity.adapter.`in`.web.CorrelationIdFilter
 import pl.mos.backoffice.identity.adapter.out.persistence.AuditDetailsEncoder
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcAccessVersion
@@ -66,81 +27,122 @@ import pl.mos.backoffice.identity.adapter.out.persistence.JdbcAuditLog
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcAuditLogReader
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcGrantRepository
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcGroupRepository
+import pl.mos.backoffice.identity.adapter.out.persistence.JdbcLocalCredentialRepository
+import pl.mos.backoffice.identity.adapter.out.persistence.JdbcMfaRepository
+import pl.mos.backoffice.identity.adapter.out.persistence.JdbcPasswordResetTokenRepository
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcPersonalTokenRepository
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcPlatformSettingsRepository
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcProjectKeyLookup
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcProjectMembershipRepository
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcRoleRepository
+import pl.mos.backoffice.identity.adapter.out.persistence.JdbcUsedTokenStore
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcUserRepository
+import pl.mos.backoffice.identity.adapter.out.security.AesGcmSecretCipher
 import pl.mos.backoffice.identity.adapter.out.security.CurrentUserCache
+import pl.mos.backoffice.identity.adapter.out.security.HmacCodeHasher
+import pl.mos.backoffice.identity.adapter.out.security.LocalKeyMaterial
+import pl.mos.backoffice.identity.adapter.out.security.ResourceCommonPasswords
 import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAccessGuard
+import pl.mos.backoffice.identity.adapter.out.security.SignedMfaChallenges
+import pl.mos.backoffice.identity.adapter.out.security.SpringPasswordHasher
 import pl.mos.backoffice.identity.adapter.out.security.SpringSessionTerminator
+import pl.mos.backoffice.identity.application.port.`in`.AdminLocalAccounts
+import pl.mos.backoffice.identity.application.port.`in`.ChangePassword
+import pl.mos.backoffice.identity.application.port.`in`.CompleteMfaLogin
 import pl.mos.backoffice.identity.application.port.`in`.EffectivePermissionsQuery
+import pl.mos.backoffice.identity.application.port.`in`.GetLoginOptions
 import pl.mos.backoffice.identity.application.port.`in`.GetMe
+import pl.mos.backoffice.identity.application.port.`in`.GetMySecurity
 import pl.mos.backoffice.identity.application.port.`in`.GetRegistrationMode
-import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
+import pl.mos.backoffice.identity.application.port.`in`.LocalLogin
 import pl.mos.backoffice.identity.application.port.`in`.LookupDirectory
 import pl.mos.backoffice.identity.application.port.`in`.ManageGrants
 import pl.mos.backoffice.identity.application.port.`in`.ManageGroups
+import pl.mos.backoffice.identity.application.port.`in`.ManageMyMfa
 import pl.mos.backoffice.identity.application.port.`in`.ManagePersonalTokens
 import pl.mos.backoffice.identity.application.port.`in`.ManagePlatformSettings
 import pl.mos.backoffice.identity.application.port.`in`.ManageProjectMembers
 import pl.mos.backoffice.identity.application.port.`in`.ManageRoles
 import pl.mos.backoffice.identity.application.port.`in`.ManageUserSessions
 import pl.mos.backoffice.identity.application.port.`in`.ManageUsers
+import pl.mos.backoffice.identity.application.port.`in`.PasswordResetLinks
 import pl.mos.backoffice.identity.application.port.`in`.PermissionCatalogQuery
-import pl.mos.backoffice.identity.application.port.`in`.RecordAuthEvent
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.RecordLogout
 import pl.mos.backoffice.identity.application.port.`in`.SearchAuditLog
-import pl.mos.backoffice.identity.application.port.`in`.SeedIdentity
 import pl.mos.backoffice.identity.application.port.`in`.UpdateMyPreferences
+import pl.mos.backoffice.identity.application.port.`in`.system.BootstrapLocalAdmin
+import pl.mos.backoffice.identity.application.port.`in`.system.LoadCurrentUser
+import pl.mos.backoffice.identity.application.port.`in`.system.RecordAuthEvent
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.SeedIdentity
 import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.AuditLogReader
+import pl.mos.backoffice.identity.application.port.out.CodeHasher
+import pl.mos.backoffice.identity.application.port.out.CommonPasswords
 import pl.mos.backoffice.identity.application.port.out.GrantRepository
 import pl.mos.backoffice.identity.application.port.out.GroupRepository
+import pl.mos.backoffice.identity.application.port.out.LocalCredentialRepository
+import pl.mos.backoffice.identity.application.port.out.MfaChallenges
+import pl.mos.backoffice.identity.application.port.out.MfaRepository
+import pl.mos.backoffice.identity.application.port.out.PasswordHasher
+import pl.mos.backoffice.identity.application.port.out.PasswordResetTokenRepository
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.application.port.out.PlatformSettingsRepository
 import pl.mos.backoffice.identity.application.port.out.ProjectKeyLookup
 import pl.mos.backoffice.identity.application.port.out.ProjectMembershipRepository
 import pl.mos.backoffice.identity.application.port.out.RoleRepository
+import pl.mos.backoffice.identity.application.port.out.SecretCipher
 import pl.mos.backoffice.identity.application.port.out.SessionSummary
 import pl.mos.backoffice.identity.application.port.out.SessionTerminator
 import pl.mos.backoffice.identity.application.port.out.UserRepository
 import pl.mos.backoffice.identity.application.service.AccessResolver
 import pl.mos.backoffice.identity.application.service.AuditSearchService
+import pl.mos.backoffice.identity.application.service.BootstrapLocalAdminService
 import pl.mos.backoffice.identity.application.service.CatalogSupport
+import pl.mos.backoffice.identity.application.service.ChangePasswordService
 import pl.mos.backoffice.identity.application.service.DirectoryService
 import pl.mos.backoffice.identity.application.service.GrantAdminService
 import pl.mos.backoffice.identity.application.service.GroupAdminService
 import pl.mos.backoffice.identity.application.service.IdentityOptions
 import pl.mos.backoffice.identity.application.service.LoadCurrentUserService
+import pl.mos.backoffice.identity.application.service.LocalAccountAdminService
+import pl.mos.backoffice.identity.application.service.LocalAccountSupport
+import pl.mos.backoffice.identity.application.service.LocalAuthOptions
+import pl.mos.backoffice.identity.application.service.LocalLoginService
 import pl.mos.backoffice.identity.application.service.MeService
+import pl.mos.backoffice.identity.application.service.MyMfaService
+import pl.mos.backoffice.identity.application.service.MySecurityService
+import pl.mos.backoffice.identity.application.service.PasswordResetService
 import pl.mos.backoffice.identity.application.service.PermissionCatalogService
 import pl.mos.backoffice.identity.application.service.PersonalTokenService
 import pl.mos.backoffice.identity.application.service.PlatformAdmins
 import pl.mos.backoffice.identity.application.service.PlatformSettingsService
-import pl.mos.backoffice.identity.application.service.ProjectKeys
 import pl.mos.backoffice.identity.application.service.ProjectAccessDirectoryService
+import pl.mos.backoffice.identity.application.service.ProjectKeys
 import pl.mos.backoffice.identity.application.service.ProjectMembershipService
 import pl.mos.backoffice.identity.application.service.RecordAuthEventService
+import pl.mos.backoffice.identity.application.service.RecordLogoutService
 import pl.mos.backoffice.identity.application.service.ResolveLoginService
 import pl.mos.backoffice.identity.application.service.RoleAdminService
 import pl.mos.backoffice.identity.application.service.SeedIdentityService
 import pl.mos.backoffice.identity.application.service.SettingsProvider
 import pl.mos.backoffice.identity.application.service.UserAdminService
+import pl.mos.backoffice.identity.application.service.UserDetailsAssembler
 import pl.mos.backoffice.identity.domain.model.IdentityPermissions
+import pl.mos.backoffice.identity.domain.model.LockoutSettings
 import pl.mos.backoffice.identity.domain.model.PlatformSettings
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.audit.AuditPort
-import com.osucha.portpermissions.AccessGuard
+import pl.mos.backoffice.shared.platform.ClusterLock
+import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.shared.security.CurrentPrincipal
-import com.osucha.portpermissions.PermissionCatalog
 import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.security.PermissionModules
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
 import pl.mos.backoffice.shared.security.UserId
 import tools.jackson.databind.json.JsonMapper
+import java.time.Duration
 
 /** The ports every identity use case depends on, bundled so the bean methods stay readable. */
 class IdentityPorts(
@@ -319,15 +321,19 @@ class IdentityConfiguration {
 
     @Bean
     fun resolveLogin(p: IdentityPorts, tm: PlatformTransactionManager): ResolveLogin =
-        transactional(ResolveLoginService(p.users, p.groups, p.grants, p.settings, p.options, p.audit, p.accessVersion, p.clock), tm, ResolveLogin::class.java)
+        transactional(ResolveLoginService(p.users, p.groups, p.grants, p.settings, p.options, p.audit, p.accessVersion, p.clock, p.guard), tm, ResolveLogin::class.java)
 
     @Bean
     fun loadCurrentUser(p: IdentityPorts, tm: PlatformTransactionManager): LoadCurrentUser =
-        transactional(LoadCurrentUserService(p.users, p.tokens, p.access, p.clock), tm, LoadCurrentUser::class.java)
+        transactional(LoadCurrentUserService(p.users, p.tokens, p.access, p.clock, p.guard), tm, LoadCurrentUser::class.java)
 
     @Bean
     fun recordAuthEvent(p: IdentityPorts, tm: PlatformTransactionManager): RecordAuthEvent =
-        transactional(RecordAuthEventService(p.audit), tm, RecordAuthEvent::class.java)
+        transactional(RecordAuthEventService(p.audit, p.guard), tm, RecordAuthEvent::class.java)
+
+    @Bean
+    fun recordLogout(p: IdentityPorts, tm: PlatformTransactionManager): RecordLogout =
+        transactional(RecordLogoutService(p.audit, p.principal), tm, RecordLogout::class.java)
 
     @Bean fun getMe(p: IdentityPorts, tm: PlatformTransactionManager): GetMe = transactional(p.me(), tm, GetMe::class.java)
     @Bean fun updateMyPreferences(p: IdentityPorts, tm: PlatformTransactionManager): UpdateMyPreferences = transactional(p.me(), tm, UpdateMyPreferences::class.java)
@@ -379,7 +385,7 @@ class IdentityConfiguration {
 
     @Bean
     fun seedIdentity(p: IdentityPorts, tm: PlatformTransactionManager): SeedIdentity =
-        transactional(SeedIdentityService(p.roles, p.grants, p.catalogSupport, p.audit, p.accessVersion), tm, SeedIdentity::class.java)
+        transactional(SeedIdentityService(p.roles, p.grants, p.catalogSupport, p.audit, p.accessVersion, p.guard), tm, SeedIdentity::class.java)
 
     @Bean
     fun getLoginOptions(p: IdentityPorts, tm: PlatformTransactionManager): GetLoginOptions =
@@ -406,7 +412,7 @@ class IdentityConfiguration {
 
     @Bean
     fun bootstrapLocalAdmin(p: IdentityPorts, tm: PlatformTransactionManager): BootstrapLocalAdmin =
-        transactional(BootstrapLocalAdminService(p.local, p.grants, p.accessVersion), tm, BootstrapLocalAdmin::class.java)
+        transactional(BootstrapLocalAdminService(p.local, p.grants, p.accessVersion, p.guard), tm, BootstrapLocalAdmin::class.java)
 
     @Bean
     fun identityStartup(seed: SeedIdentity, bootstrap: BootstrapLocalAdmin, guard: AccessGuard, lock: ObjectProvider<ClusterLock>) =

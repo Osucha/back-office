@@ -11,6 +11,7 @@ import pl.mos.backoffice.runner.application.port.`in`.ManageRunners
 import pl.mos.backoffice.runner.application.port.`in`.RunnerPoolInput
 import pl.mos.backoffice.runner.application.port.`in`.RunnerPoolView
 import pl.mos.backoffice.runner.application.port.`in`.RunnerView
+import pl.mos.backoffice.runner.application.port.`in`.system.BootstrapLocalFleet
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
 import pl.mos.backoffice.runner.application.port.out.RegistrationTokenStore
 import pl.mos.backoffice.runner.application.port.out.RunnerNodeStore
@@ -47,7 +48,7 @@ class FleetAdminService(
     private val guard: AccessGuard,
     private val principal: CurrentPrincipal,
     private val audit: AuditPort,
-) : ManageRunnerPools, ManageRunners, ManageAgentJobs {
+) : ManageRunnerPools, ManageRunners, ManageAgentJobs, BootstrapLocalFleet {
 
     // ---------------------------------------------------------------- pools
 
@@ -123,7 +124,8 @@ class FleetAdminService(
      * usable again after every start, so the stack's bundled runner-controller registers without a manual step.
      */
     @SystemOperation("startup: local stack fleet from configuration (runner.local-fleet); never exposed through a controller")
-    fun bootstrapLocalFleet(poolId: String, registrationToken: String, allowedImages: List<String>, maxConcurrentJobs: Int) {
+    override fun bootstrapLocalFleet(poolId: String, registrationToken: String, allowedImages: List<String>, maxConcurrentJobs: Int) {
+        guard.requireSystem()
         tx.inTransaction {
             val now = lifecycle.now()
             if (pools.find(poolId) == null) {

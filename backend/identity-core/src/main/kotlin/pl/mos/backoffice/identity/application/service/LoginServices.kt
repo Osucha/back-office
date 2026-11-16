@@ -1,10 +1,14 @@
 package pl.mos.backoffice.identity.application.service
 
-import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
-import pl.mos.backoffice.identity.application.port.`in`.RecordAuthEvent
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin.LoginClaims
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin.LoginResult
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
+import pl.mos.backoffice.identity.application.port.`in`.RecordLogout
+import pl.mos.backoffice.identity.application.port.`in`.system.LoadCurrentUser
+import pl.mos.backoffice.identity.application.port.`in`.system.RecordAuthEvent
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin.LoginClaims
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin.LoginResult
 import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.GrantRepository
 import pl.mos.backoffice.identity.application.port.out.GroupRepository
@@ -25,12 +29,12 @@ import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditResult
-import pl.mos.backoffice.shared.security.TokenCapabilities
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.CiTokenIdentity
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
-import com.osucha.portpermissions.SystemOperation
+import pl.mos.backoffice.shared.security.TokenCapabilities
 import pl.mos.backoffice.shared.security.UserId
 import java.time.Duration
 import java.time.Instant
@@ -53,10 +57,12 @@ class ResolveLoginService(
     private val audit: AuditPort,
     private val accessVersion: AccessVersion,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : ResolveLogin {
 
     @SystemOperation("called by the OIDC login success handler before any principal exists")
     override fun resolve(claims: LoginClaims): LoginResult {
+        guard.requireSystem()
         val email = claims.email?.let(User::normaliseEmail)?.takeIf { it.isNotEmpty() }
         val now = clock.now()
         val current = settings.current()
@@ -179,16 +185,19 @@ class LoadCurrentUserService(
     private val tokens: PersonalTokenRepository,
     private val access: AccessResolver,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : LoadCurrentUser {
 
     @SystemOperation("authentication: builds the principal of every request")
     override fun forUser(userId: UserId): CurrentUser? {
+        guard.requireSystem()
         val user = users.findById(userId)?.takeIf { it.status == UserStatus.ACTIVE } ?: return null
         return access.resolve(user).toCurrentUser()
     }
 
     @SystemOperation("authentication: verifies a bearer personal access token")
     override fun verifyPersonalToken(plaintext: String): PersonalAccessToken? {
+        guard.requireSystem()
         if (!TokenCodec.looksLikePersonalToken(plaintext)) return null
         val token = tokens.findByHash(TokenCodec.hash(plaintext)) ?: return null
         val now = clock.now()
@@ -199,6 +208,7 @@ class LoadCurrentUserService(
 
     @SystemOperation("authentication: narrows the owner's permissions to the token's subset")
     override fun forPersonalToken(owner: CurrentUser, token: PersonalAccessToken): CurrentUser {
+        guard.requireSystem()
         val subset = token.permissions
         val capabilities = buildSet {
             if (token.allowMcpGateDecisions) add(TokenCapabilities.MCP_GATE_DECISIONS)
@@ -215,14 +225,17 @@ class LoadCurrentUserService(
     }
 
     @SystemOperation("authentication: a CI token verified by the Projects context")
-    override fun forCiToken(identity: CiTokenIdentity): CurrentUser = CurrentUser(
-        kind = PrincipalKind.CI_TOKEN,
-        userId = null,
-        login = "ci:${identity.projectKey}",
-        displayName = "CI token ${identity.tokenName} (${identity.projectKey})",
-        platformPermissions = emptySet(),
-        projectPermissions = mapOf(identity.projectId to CI_PERMISSIONS),
-    )
+    override fun forCiToken(identity: CiTokenIdentity): CurrentUser {
+        guard.requireSystem()
+        return CurrentUser(
+            kind = PrincipalKind.CI_TOKEN,
+            userId = null,
+            login = "ci:${identity.projectKey}",
+            displayName = "CI token ${identity.tokenName} (${identity.projectKey})",
+            platformPermissions = emptySet(),
+            projectPermissions = mapOf(identity.projectId to CI_PERMISSIONS),
+        )
+    }
 
     companion object {
         val CI_PERMISSIONS = setOf("ci.execute", "ci.signal")
@@ -230,15 +243,20 @@ class LoadCurrentUserService(
     }
 }
 
-class RecordAuthEventService(private val audit: AuditPort) : RecordAuthEvent {
+class RecordLogoutService(private val audit: AuditPort, private val principal: CurrentPrincipal) : RecordLogout {
 
-    @SystemOperation("authentication event recorded by the logout endpoint")
-    override fun loggedOut(user: CurrentUser) {
+    @PublicOperation("every signed-in caller may record the end of their own session")
+    override fun loggedOut() {
+        val user = principal.currentUser()
         audit.record(AuditEntry(IdentityAudit.LOGOUT, IdentityAudit.ENTITY_USER, user.userId?.toString(), actor = user.actor))
     }
+}
+
+class RecordAuthEventService(private val audit: AuditPort, private val guard: AccessGuard) : RecordAuthEvent {
 
     @SystemOperation("authentication event recorded by the session filter")
     override fun sessionExpired(userId: UserId, reason: String) {
+        guard.requireSystem()
         audit.record(
             AuditEntry(
                 IdentityAudit.SESSION_EXPIRED, IdentityAudit.ENTITY_USER, userId.toString(),
@@ -250,6 +268,7 @@ class RecordAuthEventService(private val audit: AuditPort) : RecordAuthEvent {
 
     @SystemOperation("authentication event recorded by the login throttle")
     override fun loginThrottled(path: String) {
+        guard.requireSystem()
         audit.record(
             AuditEntry(
                 IdentityAudit.LOGIN_FAILURE, IdentityAudit.ENTITY_USER, null,
@@ -262,6 +281,7 @@ class RecordAuthEventService(private val audit: AuditPort) : RecordAuthEvent {
 
     @SystemOperation("authentication event recorded by the OIDC login failure handler")
     override fun loginFailed(code: String, detail: String?) {
+        guard.requireSystem()
         audit.record(
             AuditEntry(
                 IdentityAudit.LOGIN_FAILURE, IdentityAudit.ENTITY_USER, null,

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.tasks.adapter.config
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -9,16 +10,15 @@ import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.audit.AuditPort
-import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.ModulePermissions
-import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.adapter.out.persistence.TaskMappers
+import pl.mos.backoffice.tasks.application.TasksPermissions
 import pl.mos.backoffice.tasks.application.port.`in`.ManageAgents
 import pl.mos.backoffice.tasks.application.port.`in`.ManageRules
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
-import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
+import pl.mos.backoffice.tasks.application.port.`in`.system.SeedTaskLibrary
 import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
@@ -74,8 +74,8 @@ class TasksConfiguration {
 
     @Bean
     fun seedTaskLibrary(
-        templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository, agents: AgentRepository, clock: Clock,
-    ): SeedTaskLibrary = SeedTaskLibraryService(templates, skills, rules, agents, clock)
+        templates: TaskTemplateRepository, skills: SkillRepository, rules: RuleRepository, agents: AgentRepository, clock: Clock, guard: AccessGuard,
+    ): SeedTaskLibrary = SeedTaskLibraryService(templates, skills, rules, agents, clock, guard)
 }
 
 /** On startup: create the missing built-in library entries when `backoffice.tasks.seed-builtin` is on. */
@@ -84,6 +84,7 @@ class TasksStartupListener(
     private val properties: TasksProperties,
     private val seed: SeedTaskLibrary,
     private val lock: org.springframework.beans.factory.ObjectProvider<pl.mos.backoffice.shared.platform.ClusterLock>,
+    private val guard: AccessGuard,
 ) {
     private val log = LoggerFactory.getLogger(TasksStartupListener::class.java)
 
@@ -95,7 +96,7 @@ class TasksStartupListener(
     }
 
     private fun seedNow() {
-        val result = seed.seed()
+        val result = guard.asSystem("startup seeding of the built-in task library") { seed.seed() }
         if (result.total > 0) {
             log.info(
                 "seeded task library templates={} skills={} rules={} agents={} upgraded templates={} skills={} rules={} agents={} removed templates={}",

@@ -14,17 +14,17 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import pl.mos.backoffice.runner.application.port.`in`.AgentJobFilter
-import pl.mos.backoffice.runner.application.port.`in`.MaintainAgentJobs
 import pl.mos.backoffice.runner.application.port.`in`.ManageAgentJobs
 import pl.mos.backoffice.runner.application.port.`in`.ManageRunnerPools
 import pl.mos.backoffice.runner.application.port.`in`.RunnerPoolInput
+import pl.mos.backoffice.runner.application.port.`in`.system.MaintainAgentJobs
 import pl.mos.backoffice.runner.application.service.AgentJobService
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.RunnerPermissions
-import pl.mos.backoffice.shared.platform.JobTokenScope
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
+import pl.mos.backoffice.shared.platform.JobTokenScope
 import pl.mos.backoffice.shared.platform.WorkKinds
 import pl.mos.backoffice.shared.platform.WorkRequest
 import pl.mos.backoffice.shared.runner.AgentHarness
@@ -36,8 +36,8 @@ import pl.mos.backoffice.shared.runner.SandboxPolicy
 import pl.mos.backoffice.shared.runner.SandboxResources
 import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
-import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.SortSpec
+import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
@@ -274,7 +274,7 @@ class RunnerProtocolIntegrationTest {
         heartbeat(runnerToken, jobId).andExpect(status().isOk)
 
         clock.advance(Duration.ofMinutes(2))
-        val scan = maintenance.scan()
+        val scan = gate.asSystem("test") { maintenance.scan() }
         assertThat(scan.ran).isTrue()
         assertThat(runner.verify(first["jobToken"] as String)).isNull()
         assertThat(adminJobs.get(jobId).status).isEqualTo(AgentJobStatus.QUEUED)
@@ -285,7 +285,7 @@ class RunnerProtocolIntegrationTest {
         assertThat(second["jobToken"]).isNotEqualTo(first["jobToken"])
         heartbeat(runnerToken, jobId).andExpect(status().isOk)
         clock.advance(Duration.ofMinutes(2))
-        maintenance.scan()
+        gate.asSystem("test") { maintenance.scan() }
 
         val view = adminJobs.get(jobId)
         assertThat(view.status).isEqualTo(AgentJobStatus.LOST)
@@ -303,7 +303,7 @@ class RunnerProtocolIntegrationTest {
         lease(runnerToken).single()
         heartbeat(runnerToken, jobId).andExpect(status().isOk)
         clock.advance(Duration.ofMinutes(2))
-        maintenance.scan()
+        gate.asSystem("test") { maintenance.scan() }
         assertThat(adminJobs.get(jobId).status).isEqualTo(AgentJobStatus.LOST)
     }
 

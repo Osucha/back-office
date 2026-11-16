@@ -2,13 +2,14 @@ package pl.mos.backoffice.tasks.application.service
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import com.osucha.portpermissions.test.assertSystemOnly
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
-
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.support.Library
 import java.util.UUID
@@ -16,9 +17,16 @@ import java.util.UUID
 class SeedTaskLibraryServiceTest {
 
     private val lib = Library(builtInAgents = false)
-    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock)
+    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock, guard = FakeAccessGuard.system())
     private val opencode = AgentSnapshot(AgentSnapshot.OPENCODE, "OpenCode", AgentHarness.OPENCODE)
     private val alice = Actor(PrincipalKind.USER, UUID.fromString("00000000-0000-0000-0000-0000000000a1"), "Alice")
+
+    @Test
+    fun `seeding is a system operation that refuses a user holding every permission (ADR 0067)`() {
+        assertSystemOnly(touched = { lib.templates.rows.isNotEmpty() || lib.agents.rows.isNotEmpty() }) { guard ->
+            SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock, guard).seed()
+        }
+    }
 
     @Test
     fun `seeds the documented library once and never twice`() {

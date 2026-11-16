@@ -1,10 +1,11 @@
-package pl.mos.backoffice.runner.adapter.`in`.web
+package pl.mos.backoffice.runner.adapter.`in`.runner
 
+import com.osucha.portpermissions.AccessGuard
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.web.filter.OncePerRequestFilter
-import pl.mos.backoffice.runner.application.port.`in`.RunnerFleetProtocol
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerFleetProtocol
 import pl.mos.backoffice.runner.domain.FleetTokens
 import pl.mos.backoffice.runner.domain.RunnerNode
 import pl.mos.backoffice.shared.platform.JobCredential
@@ -24,11 +25,13 @@ import pl.mos.backoffice.shared.platform.JobTokenVerifier
  *
  * A token of the wrong kind is refused with 401: a sandbox cannot lease jobs, a controller cannot post an
  * agent result or call the LLM proxy, and the gateway-only agent token of the coding agent (ADR 0029) reaches
- * none of these paths.
+ * none of these paths. The authenticated runner or job credential is put on the request and passed explicitly to
+ * the system operations, which only act on that runner's pool and leases or that job (ADR 0067).
  */
 class RunnerTokenFilter(
     private val protocol: RunnerFleetProtocol,
     private val verifier: JobTokenVerifier,
+    private val guard: AccessGuard,
 ) : OncePerRequestFilter() {
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
@@ -50,7 +53,7 @@ class RunnerTokenFilter(
             request.setAttribute(JOB_CREDENTIAL, credential)
         } else {
             if (!token.startsWith(FleetTokens.RUNNER_PREFIX)) return unauthorized(response, "This endpoint needs a runner token (bo_rt_)")
-            val runner = protocol.authenticate(token) ?: return unauthorized(response, "The runner token is invalid or revoked")
+            val runner = guard.asSystem(REASON) { protocol.authenticate(token) } ?: return unauthorized(response, "The runner token is invalid or revoked")
             request.setAttribute(RUNNER, runner)
         }
         chain.doFilter(request, response)
@@ -63,6 +66,9 @@ class RunnerTokenFilter(
         const val CALLBACK_PREFIX = "/api/v1/internal/runner/"
         const val REGISTER_PATH = "/api/v1/runner/v2/register"
         val UPLOADS = Regex("^/api/v1/runner/v2/jobs/[^/]+/uploads/?$")
+
+        /** No person is behind a runner token: its lookup is a system operation (ADR 0067). */
+        const val REASON = "runner token authentication"
 
         const val JOB_CREDENTIAL = "pl.mos.backoffice.runner.jobCredential"
         const val RUNNER = "pl.mos.backoffice.runner.runner"

@@ -1,17 +1,18 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.runner.application.port.`in`.JobHeartbeatAck
-import pl.mos.backoffice.runner.application.port.`in`.JobHeartbeatInput
-import pl.mos.backoffice.runner.application.port.`in`.LeasedJob
-import pl.mos.backoffice.runner.application.port.`in`.QueueDepth
-import pl.mos.backoffice.runner.application.port.`in`.RunnerConfigView
-import pl.mos.backoffice.runner.application.port.`in`.RunnerFleetProtocol
-import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistration
-import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistrationRequest
-import pl.mos.backoffice.runner.application.port.`in`.RunnerReport
-import pl.mos.backoffice.runner.application.port.`in`.CredentialRelease
-import pl.mos.backoffice.runner.application.port.`in`.ReleasedCredential
+import pl.mos.backoffice.runner.application.port.`in`.system.CredentialRelease
+import pl.mos.backoffice.runner.application.port.`in`.system.JobHeartbeatAck
+import pl.mos.backoffice.runner.application.port.`in`.system.JobHeartbeatInput
+import pl.mos.backoffice.runner.application.port.`in`.system.LeasedJob
+import pl.mos.backoffice.runner.application.port.`in`.system.QueueDepth
+import pl.mos.backoffice.runner.application.port.`in`.system.ReleasedCredential
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerConfigView
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerFleetProtocol
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerRegistration
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerRegistrationRequest
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerReport
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
 import pl.mos.backoffice.runner.application.port.out.CredentialSealer
 import pl.mos.backoffice.runner.application.port.out.RegistrationTokenStore
@@ -26,7 +27,6 @@ import pl.mos.backoffice.runner.domain.LlmCredentials
 import pl.mos.backoffice.runner.domain.RunnerNode
 import pl.mos.backoffice.runner.domain.RunnerPool
 import pl.mos.backoffice.runner.domain.WorkspaceSync
-import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.RunnerJobId
@@ -38,6 +38,7 @@ import pl.mos.backoffice.shared.llm.PersonalLoginModels
 import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.shared.runner.RepositoryTokenSource
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
+import pl.mos.backoffice.shared.runner.RunnerWorkspace
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
 import java.util.UUID
@@ -67,11 +68,13 @@ class RunnerProtocolService(
     /** ADR 0051: opens project repository tokens; null = none (tests), jobs naming tokens then fail to fetch them. */
     private val repositoryTokens: RepositoryTokenSource? = null,
     private val sealer: CredentialSealer? = null,
+    private val guard: AccessGuard,
 ) : RunnerFleetProtocol {
     private val log = org.slf4j.LoggerFactory.getLogger(RunnerProtocolService::class.java)
 
     @SystemOperation("runner-controller registration, authenticated by a single-use bo_rrt_ token")
     override fun register(request: RunnerRegistrationRequest): RunnerRegistration {
+        guard.requireSystem()
         if (!request.registrationToken.startsWith(FleetTokens.REGISTRATION_PREFIX)) throw RunnerAuthenticationException("invalid registration token")
         if (request.name.isBlank() || request.version.isBlank()) throw ValidationException("name and version are required")
         return tx.inTransaction {
@@ -101,6 +104,7 @@ class RunnerProtocolService(
 
     @SystemOperation("runner-controller registering its own public key, authenticated by its bo_rt_ token")
     override fun setPublicKey(runner: RunnerNode, publicKey: String) {
+        guard.requireSystem()
         val sealer = sealer ?: throw InvalidStateException("this Back Office cannot seal credentials")
         val key = publicKey.trim()
         if (!sealer.valid(key)) throw ValidationException("must be the base64 of a 32-byte X25519 public key", "publicKey")
@@ -116,47 +120,51 @@ class RunnerProtocolService(
     }
 
     @SystemOperation("release of the tokens named in a job's signed spec to the runner holding its lease")
-    override fun releaseCredentials(runner: RunnerNode, jobId: RunnerJobId): CredentialRelease = tx.inTransaction {
-        val job = ownedActiveJob(runner, jobId)
-        val now = lifecycle.now()
-        val expiresAt = now.plus(CREDENTIAL_VALIDITY)
-        val refs = job.spec.credentials
-        if (refs.isEmpty()) return@inTransaction CredentialRelease(expiresAt, emptyList())
-        if (job.leaseExpiresAt == null || !job.leaseExpiresAt.isAfter(now)) throw InvalidStateException("the lease of agent job $jobId has expired")
-        val key = runner.publicKey ?: throw InvalidStateException("runner ${runner.name} has no public key; update the runner-controller (ADR 0051)")
-        val sealer = sealer ?: throw InvalidStateException("this Back Office cannot seal credentials")
-        val source = repositoryTokens ?: throw InvalidStateException("no project repository tokens are available")
-        if (!jobs.markCredentialsReleased(jobId, now)) throw InvalidStateException("the tokens of agent job $jobId were already released for this lease")
-        val released = refs.map { ref ->
-            val token = if (ref.capability == JobCredentialRef.CONNECTOR) {
-                // ADR 0064: the secret of an MCP connector, named by its id and key
-                val connector = ref.connector ?: throw InvalidStateException("connector secret ${ref.ref} of agent job $jobId names no connector key")
-                source.openConnector(ref.ref, connector)
-                    ?: throw InvalidStateException("the secret of connector '$connector' no longer exists or cannot be opened; check the connector")
-            } else {
-                source.open(ref.ref)
-                    ?: throw InvalidStateException("the project token for repository '${ref.repository}' no longer exists or cannot be opened; check the project's repository access tokens")
+    override fun releaseCredentials(runner: RunnerNode, jobId: RunnerJobId): CredentialRelease {
+        guard.requireSystem()
+        return tx.inTransaction {
+            val job = ownedActiveJob(runner, jobId)
+            val now = lifecycle.now()
+            val expiresAt = now.plus(CREDENTIAL_VALIDITY)
+            val refs = job.spec.credentials
+            if (refs.isEmpty()) return@inTransaction CredentialRelease(expiresAt, emptyList())
+            if (job.leaseExpiresAt == null || !job.leaseExpiresAt.isAfter(now)) throw InvalidStateException("the lease of agent job $jobId has expired")
+            val key = runner.publicKey ?: throw InvalidStateException("runner ${runner.name} has no public key; update the runner-controller (ADR 0051)")
+            val sealer = sealer ?: throw InvalidStateException("this Back Office cannot seal credentials")
+            val source = repositoryTokens ?: throw InvalidStateException("no project repository tokens are available")
+            if (!jobs.markCredentialsReleased(jobId, now)) throw InvalidStateException("the tokens of agent job $jobId were already released for this lease")
+            val released = refs.map { ref ->
+                val token = if (ref.capability == JobCredentialRef.CONNECTOR) {
+                    // ADR 0064: the secret of an MCP connector, named by its id and key
+                    val connector = ref.connector ?: throw InvalidStateException("connector secret ${ref.ref} of agent job $jobId names no connector key")
+                    source.openConnector(ref.ref, connector)
+                        ?: throw InvalidStateException("the secret of connector '$connector' no longer exists or cannot be opened; check the connector")
+                } else {
+                    source.open(ref.ref)
+                        ?: throw InvalidStateException("the project token for repository '${ref.repository}' no longer exists or cannot be opened; check the project's repository access tokens")
+                }
+                ReleasedCredential(
+                    ref.ref, ref.repository, ref.capability,
+                    sealer.seal(key, token, CredentialSealer.associatedData(jobId.toString(), ref.ref, expiresAt.toString())), ref.connector,
+                )
             }
-            ReleasedCredential(
-                ref.ref, ref.repository, ref.capability,
-                sealer.seal(key, token, CredentialSealer.associatedData(jobId.toString(), ref.ref, expiresAt.toString())), ref.connector,
-            )
-        }
-        audit.record(
-            AuditEntry(
-                "RUNNER_CREDENTIALS_RELEASED", "AgentJob", jobId.toString(), projectId = job.spec.usageContext.projectId,
-                details = mapOf(
-                    "runnerId" to runner.id.toString(), "runner" to runner.name, "poolId" to runner.poolId,
-                    "credentials" to refs.map { mapOf("ref" to it.ref, "repository" to it.repository, "capability" to it.capability, "connector" to it.connector) },
+            audit.record(
+                AuditEntry(
+                    "RUNNER_CREDENTIALS_RELEASED", "AgentJob", jobId.toString(), projectId = job.spec.usageContext.projectId,
+                    details = mapOf(
+                        "runnerId" to runner.id.toString(), "runner" to runner.name, "poolId" to runner.poolId,
+                        "credentials" to refs.map { mapOf("ref" to it.ref, "repository" to it.repository, "capability" to it.capability, "connector" to it.connector) },
+                    ),
+                    actor = Actor(PrincipalKind.SYSTEM, null, "runner:${runner.name}"),
                 ),
-                actor = Actor(PrincipalKind.SYSTEM, null, "runner:${runner.name}"),
-            ),
-        )
-        CredentialRelease(expiresAt, released)
+            )
+            CredentialRelease(expiresAt, released)
+        }
     }
 
     @SystemOperation("token lookup for the runner-fleet endpoints")
     override fun authenticate(runnerToken: String): RunnerNode? {
+        guard.requireSystem()
         if (!runnerToken.startsWith(FleetTokens.RUNNER_PREFIX)) return null
         val node = nodes.findRunnerByTokenHash(FleetTokens.hash(runnerToken)) ?: return null
         if (node.revokedAt != null) return null
@@ -167,6 +175,7 @@ class RunnerProtocolService(
 
     @SystemOperation("pool configuration for the authenticated runner-controller")
     override fun config(runner: RunnerNode): RunnerConfigView {
+        guard.requireSystem()
         val pool = pools.find(runner.poolId) ?: throw NotFoundException("RunnerPool", runner.poolId)
         val ceiling = lifecycle.resolver.resolve(listOf(lifecycle.platformLayer(), lifecycle.poolLayer(pool)), mandatoryHosts = lifecycle.mandatoryHosts(null) + lifecycle.localLoginHosts(pool)).policy
         return RunnerConfigView(pool.id, ceiling, pool.allowedImages, pool.warmPoolSize, lifecycle.settings.gateway, signingKeys())
@@ -187,65 +196,72 @@ class RunnerProtocolService(
     }
 
     @SystemOperation("lease of queued jobs of the runner's own pool")
-    override fun lease(runner: RunnerNode, maxJobs: Int, freeSlots: Int?, report: RunnerReport?): List<LeasedJob> = tx.inTransaction {
-        val pool = pools.find(runner.poolId) ?: return@inTransaction emptyList()
-        if (report != null) record(runner, pool, report)
-        val capacity = minOf(
-            maxJobs.coerceIn(1, MAX_JOBS_PER_LEASE),
-            freeSlots ?: Int.MAX_VALUE,
-            pool.maxConcurrentJobs - jobs.countActive(pool.id),
-            runner.maxConcurrent - jobs.countActiveByRunner(runner.id),
-        )
-        if (capacity <= 0) return@inTransaction emptyList()
-        val now = lifecycle.now()
-        val leaseExpiresAt = now.plus(lifecycle.settings.leaseDuration)
-        jobs.lockQueued(pool.id, runner.id, capacity).mapNotNull { job ->
-            // ADR 0044: a job of a run workspace only on the runner that holds it, one job at a time
-            val workspace = job.spec.workspace
-            val workspaces = lifecycle.workspaces
-            if (workspace != null && workspaces != null && !workspaces.claim(workspace.name, runner.id, job.id.value, now)) {
-                return@mapNotNull null
-            }
-            // the pool may have changed since submit: resolve again against the current ceiling
-            val resolved = lifecycle.resolveFor(pool, job.spec, lifecycle.projectPolicy(job.spec.usageContext.projectId))
-            if (!resolved.ok) {
-                lifecycle.finish(job, AgentJobStatus.FAILED, "policy-violation: ${resolved.errors.joinToString("; ")}")
-                return@mapNotNull null
-            }
-            val token = FleetTokens.generate(FleetTokens.JOB_PREFIX)
-            val leased = job.copy(
-                status = AgentJobStatus.LEASED, runnerId = runner.id, leaseExpiresAt = leaseExpiresAt, leasedAt = now,
-                leaseCount = job.leaseCount + 1, policy = resolved.policy, policySources = resolved.sources, reason = null,
+    override fun lease(runner: RunnerNode, maxJobs: Int, freeSlots: Int?, report: RunnerReport?): List<LeasedJob> {
+        guard.requireSystem()
+        return tx.inTransaction {
+            val pool = pools.find(runner.poolId) ?: return@inTransaction emptyList()
+            if (report != null) record(runner, pool, report)
+            val capacity = minOf(
+                maxJobs.coerceIn(1, MAX_JOBS_PER_LEASE),
+                freeSlots ?: Int.MAX_VALUE,
+                pool.maxConcurrentJobs - jobs.countActive(pool.id),
+                runner.maxConcurrent - jobs.countActiveByRunner(runner.id),
             )
-            jobs.update(leased)
-            jobs.setTokenHash(job.id, token.hash)
-            LeasedJob(job.id, leaseExpiresAt, token.plaintext, job.spec.copy(policy = resolved.policy), resolved.policy, lifecycle.settings.gateway, pool.llmCredentials)
+            if (capacity <= 0) return@inTransaction emptyList()
+            val now = lifecycle.now()
+            val leaseExpiresAt = now.plus(lifecycle.settings.leaseDuration)
+            jobs.lockQueued(pool.id, runner.id, capacity).mapNotNull { job ->
+                // ADR 0044: a job of a run workspace only on the runner that holds it, one job at a time
+                val workspace = job.spec.workspace
+                val workspaces = lifecycle.workspaces
+                if (workspace != null && workspaces != null && !workspaces.claim(workspace.name, runner.id, job.id.value, now)) {
+                    return@mapNotNull null
+                }
+                // the pool may have changed since submit: resolve again against the current ceiling
+                val resolved = lifecycle.resolveFor(pool, job.spec, lifecycle.projectPolicy(job.spec.usageContext.projectId))
+                if (!resolved.ok) {
+                    lifecycle.finish(job, AgentJobStatus.FAILED, "policy-violation: ${resolved.errors.joinToString("; ")}")
+                    return@mapNotNull null
+                }
+                val token = FleetTokens.generate(FleetTokens.JOB_PREFIX)
+                val leased = job.copy(
+                    status = AgentJobStatus.LEASED, runnerId = runner.id, leaseExpiresAt = leaseExpiresAt, leasedAt = now,
+                    leaseCount = job.leaseCount + 1, policy = resolved.policy, policySources = resolved.sources, reason = null,
+                )
+                jobs.update(leased)
+                jobs.setTokenHash(job.id, token.hash)
+                LeasedJob(job.id, leaseExpiresAt, token.plaintext, job.spec.copy(policy = resolved.policy), resolved.policy, lifecycle.settings.gateway, pool.llmCredentials)
+            }
         }
     }
 
     @SystemOperation("heartbeat of a job leased by this runner")
-    override fun heartbeat(runner: RunnerNode, jobId: RunnerJobId, heartbeat: JobHeartbeatInput): JobHeartbeatAck = tx.inTransaction {
-        val job = ownedActiveJob(runner, jobId)
-        val now = lifecycle.now()
-        val status = when {
-            heartbeat.phase == AgentJobStatus.RUNNING -> AgentJobStatus.RUNNING
-            job.status == AgentJobStatus.RUNNING -> AgentJobStatus.RUNNING
-            else -> AgentJobStatus.STARTING
+    override fun heartbeat(runner: RunnerNode, jobId: RunnerJobId, heartbeat: JobHeartbeatInput): JobHeartbeatAck {
+        guard.requireSystem()
+        return tx.inTransaction {
+            val job = ownedActiveJob(runner, jobId)
+            val now = lifecycle.now()
+            val status = when {
+                heartbeat.phase == AgentJobStatus.RUNNING -> AgentJobStatus.RUNNING
+                job.status == AgentJobStatus.RUNNING -> AgentJobStatus.RUNNING
+                else -> AgentJobStatus.STARTING
+            }
+            val updated = job.copy(
+                status = status,
+                phase = heartbeat.phase.name,
+                leaseExpiresAt = now.plus(lifecycle.settings.leaseDuration),
+                startedAt = job.startedAt ?: now.takeIf { status == AgentJobStatus.RUNNING },
+                sandboxName = heartbeat.sandboxName ?: job.sandboxName,
+                node = heartbeat.node ?: job.node,
+            )
+            jobs.update(updated)
+            JobHeartbeatAck(updated.leaseExpiresAt!!, updated.cancelRequested)
         }
-        val updated = job.copy(
-            status = status,
-            phase = heartbeat.phase.name,
-            leaseExpiresAt = now.plus(lifecycle.settings.leaseDuration),
-            startedAt = job.startedAt ?: now.takeIf { status == AgentJobStatus.RUNNING },
-            sandboxName = heartbeat.sandboxName ?: job.sandboxName,
-            node = heartbeat.node ?: job.node,
-        )
-        jobs.update(updated)
-        JobHeartbeatAck(updated.leaseExpiresAt!!, updated.cancelRequested)
     }
 
     @SystemOperation("terminal report of a job leased by this runner")
     override fun complete(runner: RunnerNode, jobId: RunnerJobId, completion: JobCompletionReport) {
+        guard.requireSystem()
         if (!completion.status.terminal) throw ValidationException("status must be terminal (SUCCEEDED, FAILED, TIMED_OUT, CANCELLED)", "status")
         tx.inTransaction {
             val job = jobs.lock(jobId) ?: throw NotFoundException("AgentJob", jobId)
@@ -262,24 +278,28 @@ class RunnerProtocolService(
     }
 
     @SystemOperation("run workspaces the runner holds: which to delete (ADR 0044)")
-    override fun syncWorkspaces(runner: RunnerNode, held: List<String>): List<String> = tx.inTransaction {
-        val store = lifecycle.workspaces ?: return@inTransaction emptyList()
-        val names = held.filter { it.startsWith(RunnerWorkspace.NAME_PREFIX) }.distinct().take(MAX_SYNCED_WORKSPACES)
-        val now = lifecycle.now()
-        val rows = store.lockForSync(runner.id, names)
-        // runners that are gone (revoked): a runner of the same pool holding their volumes adopts them instead of deleting
-        val departed = rows.mapNotNull { it.runnerId }.filter { it != runner.id }.distinct()
-            .filter { id -> nodes.find(id)?.revokedAt != null }.toSet()
-        val decision = WorkspaceSync.decide(runner.id, names, rows, now, runner.poolId, departed)
-        store.markReleased(decision.release, now)
-        store.forget(decision.forget)
-        store.adopt(decision.adopt, runner.id)
-        decision.adopt.forEach { log.info("runner {} adopts run workspace {} of a revoked runner", runner.name, it) }
-        decision.delete
+    override fun syncWorkspaces(runner: RunnerNode, held: List<String>): List<String> {
+        guard.requireSystem()
+        return tx.inTransaction {
+            val store = lifecycle.workspaces ?: return@inTransaction emptyList()
+            val names = held.filter { it.startsWith(RunnerWorkspace.NAME_PREFIX) }.distinct().take(MAX_SYNCED_WORKSPACES)
+            val now = lifecycle.now()
+            val rows = store.lockForSync(runner.id, names)
+            // runners that are gone (revoked): a runner of the same pool holding their volumes adopts them instead of deleting
+            val departed = rows.mapNotNull { it.runnerId }.filter { it != runner.id }.distinct()
+                .filter { id -> nodes.find(id)?.revokedAt != null }.toSet()
+            val decision = WorkspaceSync.decide(runner.id, names, rows, now, runner.poolId, departed)
+            store.markReleased(decision.release, now)
+            store.forget(decision.forget)
+            store.adopt(decision.adopt, runner.id)
+            decision.adopt.forEach { log.info("runner {} adopts run workspace {} of a revoked runner", runner.name, it) }
+            decision.delete
+        }
     }
 
     @SystemOperation("queue depth of the runner's own pool (autoscaling)")
     override fun queueDepth(runner: RunnerNode, poolId: String): QueueDepth {
+        guard.requireSystem()
         if (poolId != runner.poolId) throw InvalidStateException("runner belongs to pool ${runner.poolId}")
         val counts = jobs.countsByPool()[poolId]
         return QueueDepth(counts?.queued ?: 0, counts?.active ?: 0)

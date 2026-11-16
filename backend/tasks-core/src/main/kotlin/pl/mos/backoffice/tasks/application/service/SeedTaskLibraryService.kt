@@ -1,11 +1,12 @@
 package pl.mos.backoffice.tasks.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.PrincipalKind
-import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
-import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary.SeedResult
+import pl.mos.backoffice.tasks.application.port.`in`.system.SeedTaskLibrary
+import pl.mos.backoffice.tasks.application.port.`in`.system.SeedTaskLibrary.SeedResult
 import pl.mos.backoffice.tasks.application.port.out.AgentRepository
 import pl.mos.backoffice.tasks.application.port.out.RuleRepository
 import pl.mos.backoffice.tasks.application.port.out.SkillRepository
@@ -37,10 +38,12 @@ class SeedTaskLibraryService(
     private val rules: RuleRepository,
     private val agents: AgentRepository,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : SeedTaskLibrary {
 
     @SystemOperation("startup seeding of the built-in task library; never exposed through a controller")
     override fun seed(): SeedResult {
+        guard.requireSystem()
         val now = clock.now()
         var rulesCreated = 0
         var rulesUpgraded = 0

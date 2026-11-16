@@ -4,11 +4,11 @@ import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.PublicOperation
 import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.CancelRun
-import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
 import pl.mos.backoffice.projects.application.port.`in`.RetryRun
 import pl.mos.backoffice.projects.application.port.`in`.RunQueries
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
-import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
+import pl.mos.backoffice.projects.application.port.`in`.system.RecordRunProgress
+import pl.mos.backoffice.projects.application.port.`in`.system.StartRunOnBehalf
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.RunFilter
@@ -17,6 +17,8 @@ import pl.mos.backoffice.projects.application.port.out.RunLogRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowEngine
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
+import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
+import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
 import pl.mos.backoffice.projects.domain.event.WorkflowRunStarted
 import pl.mos.backoffice.projects.domain.model.Artifact
 import pl.mos.backoffice.projects.domain.model.ArtifactId
@@ -44,8 +46,6 @@ import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.tasks.TaskCatalog
-import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
-import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
 import pl.mos.backoffice.shared.usage.PageOf
 import java.time.Instant
 import java.util.UUID
@@ -108,6 +108,7 @@ class RunService(
 
     @SystemOperation("schedules and Start workflow steps (ADR 0052); the person they act for must hold run.start")
     override fun startOnBehalf(workflowId: WorkflowDefinitionId, input: RunInput, source: TriggerSource, onBehalfOf: UUID?): WorkflowRun {
+        guard.requireSystem()
         val definition = loadDefinition(workflowId)
         val user = onBehalfOf?.let { directory?.user(it) }
             ?: throw InvalidStateException("workflow ${definition.name} cannot start: there is no user to start it on behalf of")
@@ -122,7 +123,8 @@ class RunService(
      * (a system actor), audited `RUN_START` like every start. [dedupeKey] is recorded in the audit details.
      */
     @SystemOperation("Jira intake watcher on a worker; the watcher was configured by a holder of project.manage")
-    fun startForJira(workflowId: WorkflowDefinitionId, issueKey: String, dedupeKey: String): WorkflowRun {
+    override fun startForJira(workflowId: WorkflowDefinitionId, issueKey: String, dedupeKey: String): WorkflowRun {
+        guard.requireSystem()
         val definition = loadDefinition(workflowId)
         return launch(definition, RunTrigger(TriggerSource.JIRA), RunInput(issueKey = issueKey), emptyList(), JIRA_INTAKE_ACTOR, mapOf("intakeDedupeKey" to dedupeKey))
     }
@@ -177,7 +179,8 @@ class RunService(
         guard.require(ProjectsPermissions.RUN_CANCEL, run.projectId.value)
         if (run.status.terminal) throw InvalidStateException("run $runId is already ${run.status}")
         engine.cancel(runId)
-        val cancelled = progress.finished(runId, RunStatus.CANCELLED)
+        // recording a run's progress is a system port; the system holds no permissions, so nothing is escalated
+        val cancelled = guard.asSystem("run cancelled by a person") { progress.finished(runId, RunStatus.CANCELLED) }
         audit.record(AuditEntry("RUN_CANCEL", ENTITY, runId.toString(), projectId = run.projectId.value, details = mapOf("previousStatus" to run.status.name)))
         return cancelled
     }

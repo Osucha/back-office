@@ -12,7 +12,7 @@ can be added later without reshaping the model.
 | 1 | Authentication through an OIDC provider (Keycloak by default) and/or local accounts with Argon2id passwords and optional TOTP, chosen per user (`authMode`). | ADR 0016, ADR 0021 |
 | 2 | The browser never sees a token. The API is its own backend-for-frontend: OIDC login, server-side session, HttpOnly cookie, same origin. | ADR 0016; common BFF cookie pattern |
 | 3 | Authorisation is decided by Back Office, not by the identity provider, because it is project-scoped. | ADR 0017 |
-| 4 | Deny by default: every use case calls `AccessGuard.require(...)` or is explicitly marked `@PublicOperation` / `@SystemOperation` (library port-permissions); the build fails otherwise. | ADR 0017, ADR 0066; guardrail GR-A4 |
+| 4 | Deny by default: every use case calls `AccessGuard.require(...)` or is explicitly marked `@PublicOperation` / `@SystemOperation` (library port-permissions); system operations live on system ports and call `requireSystem()`; the build fails otherwise. | ADR 0017, ADR 0066, ADR 0067; guardrail GR-A4 |
 | 5 | Permissions come from code (typed `PermissionSet`s contributed by each module); the database stores only grants, by key. | ADR 0017, ADR 0066 |
 | 6 | Effective permissions are resolved per request (cached, invalidated on change), never frozen in a token: revoking access takes effect on the next request. | ADR 0017 |
 | 7 | Every change to access, every denied access and every authentication event is audited in the same transaction as the change. | ADR 0018 |
@@ -154,8 +154,26 @@ approver rules, token capabilities and the resolution of effective permissions s
   is the same access as a library snapshot (principal kind `USER`, `DELEGATED` for personal tokens, `MACHINE` for
   CI tokens, `SYSTEM`). A denied check throws `InsufficientPermissionException` (403 with `permission` /
   `projectId`, audited as `ACCESS_DENIED`).
-- `asSystem(reason) { }` runs internal work (engine, schedulers, runner protocol, seeding) as the system
-  principal, which passes every check.
+- `asSystem(reason) { }` runs internal work as the system principal, which holds no permissions (ADR 0067): inside
+  it every `require(...)` fails and `scopesWith` lets nothing through; only `requireSystem()` passes.
+
+### System operations (ADR 0067)
+
+- Work nobody asked for in person is a system operation on a separate inbound port in
+  `<context>.application.port.in.system`: annotated `@SystemOperation(reason)`, it calls `guard.requireSystem()`
+  first, so it refuses to run outside `asSystem`.
+- Only internal and machine-facing adapters call system ports, each inside `asSystem` on the thread that makes the
+  call (`asSystem` is thread-bound): schedulers and sweeps, work-queue handlers (`RUN_ADVANCE`,
+  `BENCHMARK_ATTEMPT`, intake polls), event listeners (attestations, on their executor thread), startup seeding and
+  re-wrapping, the workflow engine, the authentication filters (they resolve the principal before anyone is
+  authenticated) and the runner protocol and sandbox callbacks in `runner.adapter.in.runner`. Web, REST, MCP and
+  SSE adapters cannot depend on system ports.
+- The runner protocol has no principal of its own: the token filter authenticates the runner (`bo_rt_`) or job
+  (`bo_job_`), the controller passes it explicitly, and every operation checks that the job or pool belongs to it.
+- Ports another context calls inside its own use case (`TaskCatalog`, `ProjectAccessDirectory`,
+  `ProjectAccessProvisioner`, `ConnectorCatalog`) are not use cases: they check nothing, the caller authorises.
+- `DenyByDefaultArchitectureTest` enforces `operationsAreGuarded`, `systemOperationsRequireSystem`,
+  `systemOperationsLiveInSystemPorts` and `systemPortsAreNotReachableFromUserFacingAdapters` (guardrail GR-A4).
 
 ### Permission catalogue (source of truth: the `*Permissions` objects of each module)
 

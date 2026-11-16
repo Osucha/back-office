@@ -25,8 +25,6 @@ class FakeAccessGuard(
     /** Every permission checked, in order: `"run.approve"` or `"run.approve@<projectId>"`. */
     val checked = mutableListOf<String>()
 
-    override fun currentUser(): CurrentUser = user
-
     override fun require(permission: Permission) {
         checked += permission.key
         super.require(permission)
@@ -37,13 +35,18 @@ class FakeAccessGuard(
         super.require(permission, scope)
     }
 
+    /** `asSystem` is bound to the calling thread like the production guard, so a worker's system work does not leak to a test thread. */
+    private val system = ThreadLocal<Boolean>()
+
+    override fun currentUser(): CurrentUser = if (system.get() == true) CurrentUser.SYSTEM else user
+
     override fun <T> asSystem(reason: String, block: () -> T): T {
-        val previous = user
-        user = CurrentUser.SYSTEM
+        val previous = system.get()
+        system.set(true)
         try {
             return block()
         } finally {
-            user = previous
+            if (previous == null) system.remove() else system.set(previous)
         }
     }
 
@@ -78,6 +81,12 @@ class FakeAccessGuard(
             FakeAccessGuard(user(platform = platform.map { it.key }.toSet(), allProjects = true))
 
         fun denyAll() = FakeAccessGuard(user())
+
+        /**
+         * The system principal (ADR 0067) for unit tests of system operations: `requireSystem()` passes, every
+         * permission check fails.
+         */
+        fun system() = FakeAccessGuard(CurrentUser.SYSTEM)
     }
 }
 

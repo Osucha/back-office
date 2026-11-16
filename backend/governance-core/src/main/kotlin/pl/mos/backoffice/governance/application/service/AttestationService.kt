@@ -4,7 +4,7 @@ import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.PublicOperation
 import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.governance.application.port.`in`.ProvenanceQueries
-import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
+import pl.mos.backoffice.governance.application.port.`in`.system.RecordAttestations
 import pl.mos.backoffice.governance.application.port.out.AttestationRepository
 import pl.mos.backoffice.governance.application.port.out.JobEvidenceSource
 import pl.mos.backoffice.governance.application.port.out.JsonCodec
@@ -52,10 +52,12 @@ class AttestationService(
     private val audit: AuditPort,
     private val clock: Clock,
     private val lookback: Duration = Duration.ofDays(7),
+    private val guard: AccessGuard,
 ) : RecordAttestations {
 
     @SystemOperation("invoked by the attestation trigger on WorkflowRunFinished / AgentJobFinished and by the catch-up sweep")
     override fun attestRun(runId: UUID): List<Attestation> {
+        guard.requireSystem()
         val run = source.find(runId) ?: return emptyList()
         val created = mutableListOf<Attestation>()
         run.nodes.filter { it.runnerJobId != null && it.status in FINISHED_NODE }.forEach { node ->
@@ -75,16 +77,19 @@ class AttestationService(
 
     @SystemOperation("invoked by the attestation trigger when the runner reports a finished job")
     override fun attestJob(runId: UUID, jobId: UUID): Attestation? {
+        guard.requireSystem()
         val run = source.find(runId) ?: return null
         val node = run.nodes.lastOrNull { it.runnerJobId == jobId && it.status in FINISHED_NODE } ?: return null
         return attestNode(run, node)
     }
 
     @SystemOperation("scheduled catch-up sweep, guarded by an advisory lock")
-    override fun attestPending(limit: Int): Int =
-        repository.runsMissingAttestation(clock.now().minus(lookback), limit).count { runId ->
+    override fun attestPending(limit: Int): Int {
+        guard.requireSystem()
+        return repository.runsMissingAttestation(clock.now().minus(lookback), limit).count { runId ->
             attestRun(runId).any { it.kind == AttestationKind.RUN }
         }
+    }
 
     private fun attestNode(run: RunProvenance, node: ProvenanceNode): Attestation? {
         val key = Attestation.jobKey(run.runId, node.executionId)

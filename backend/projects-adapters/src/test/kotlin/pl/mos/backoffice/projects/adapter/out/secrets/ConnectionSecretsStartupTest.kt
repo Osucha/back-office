@@ -5,11 +5,11 @@ import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.support.StaticListableBeanFactory
-import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectorSecrets
-import pl.mos.backoffice.projects.application.port.`in`.RewrapScmConnectionSecrets
 import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.mock.env.MockEnvironment
-import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapConnectorSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapScmConnectionSecrets
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 import pl.mos.backoffice.projects.domain.model.Connection
 import pl.mos.backoffice.projects.domain.model.ConnectionCapability
@@ -18,10 +18,14 @@ import pl.mos.backoffice.projects.domain.model.ConnectionScope
 import pl.mos.backoffice.projects.domain.model.ConnectionType
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.SealedSecret
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import java.util.Base64
 
 /** ADR 0030: the api/worker roles refuse to start when stored secrets cannot be opened; the worker re-wraps after a rotation. */
 class ConnectionSecretsStartupTest {
+
+    /** ADR 0067: the re-wrap is a system operation; the startup runner establishes the system context itself. */
+    private val guard = FakeAccessGuard.denyAll()
 
     private val k1 = Base64.getEncoder().encodeToString(ByteArray(32) { 1 })
     private val k2 = Base64.getEncoder().encodeToString(ByteArray(32) { 2 })
@@ -50,12 +54,13 @@ class ConnectionSecretsStartupTest {
     private var connectorRewraps = 0
 
     private fun startup(properties: SecretsProperties, rows: List<Connection>, roles: String = "api,worker") = ConnectionSecretsStartup(
-        AesGcmSecretCipher(properties), properties, Rows(rows), RewrapConnectionSecrets { rewraps++; 0 },
+        AesGcmSecretCipher(properties), properties, Rows(rows), RewrapConnectionSecrets { guard.requireSystem(); rewraps++; 0 },
         MockEnvironment()
             .withProperty("backoffice.platform.api-enabled", ("api" in roles).toString())
             .withProperty("backoffice.platform.worker-enabled", ("worker" in roles).toString()),
         StaticListableBeanFactory(mapOf("scm" to RewrapScmConnectionSecrets { scmRewraps++; 0 })).getBeanProvider(RewrapScmConnectionSecrets::class.java),
         StaticListableBeanFactory(mapOf("connectors" to RewrapConnectorSecrets { connectorRewraps++; 0 })).getBeanProvider(RewrapConnectorSecrets::class.java),
+        guard,
     )
 
     @Test

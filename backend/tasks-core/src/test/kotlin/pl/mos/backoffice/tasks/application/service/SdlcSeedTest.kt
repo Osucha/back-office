@@ -6,6 +6,7 @@ import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.tasks.TemplateCategory
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.tasks.domain.model.Scope
 import pl.mos.backoffice.tasks.domain.service.JsonSyntax
 import pl.mos.backoffice.tasks.support.Library
@@ -14,7 +15,7 @@ import pl.mos.backoffice.tasks.support.Library
 class SdlcSeedTest {
 
     private val lib = Library(builtInAgents = false)
-    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock)
+    private val service = SeedTaskLibraryService(lib.templates, lib.skills, lib.rules, lib.agents, lib.clock, guard = FakeAccessGuard.system())
 
     @Test
     fun `the keys the change-request workflow uses exist exactly`() {

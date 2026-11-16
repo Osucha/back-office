@@ -1,10 +1,13 @@
 package pl.mos.backoffice.evaluation.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
+import pl.mos.backoffice.evaluation.application.EvaluationPermissions
 import pl.mos.backoffice.evaluation.application.port.`in`.EvaluationDashboardQuery
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageBenchmarks
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageBenchmarks.BenchmarkCommand
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageBenchmarks.BenchmarkDetails
-import pl.mos.backoffice.evaluation.application.port.`in`.RecoverBenchmarks
+import pl.mos.backoffice.evaluation.application.port.`in`.system.RecoverBenchmarks
 import pl.mos.backoffice.evaluation.application.port.out.AttemptExecutor
 import pl.mos.backoffice.evaluation.application.port.out.BenchmarkRepository
 import pl.mos.backoffice.evaluation.application.port.out.ModelProfileRepository
@@ -13,35 +16,32 @@ import pl.mos.backoffice.evaluation.domain.model.Attempt
 import pl.mos.backoffice.evaluation.domain.model.AttemptId
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.Benchmark
+import pl.mos.backoffice.evaluation.domain.model.BenchmarkCandidate
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkProgressCounts
-import pl.mos.backoffice.evaluation.domain.model.BenchmarkCandidate
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
 import pl.mos.backoffice.evaluation.domain.model.CandidateRef
-import pl.mos.backoffice.evaluation.domain.model.LeaderboardCandidate
 import pl.mos.backoffice.evaluation.domain.model.EvalTask
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
 import pl.mos.backoffice.evaluation.domain.model.Leaderboard
+import pl.mos.backoffice.evaluation.domain.model.LeaderboardCandidate
 import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
 import pl.mos.backoffice.evaluation.domain.service.LeaderboardCalculator
-import pl.mos.backoffice.evaluation.application.EvaluationPermissions
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
-import pl.mos.backoffice.shared.audit.AuditEntry
-import pl.mos.backoffice.shared.audit.AuditPort
-import com.osucha.portpermissions.AccessGuard
-import pl.mos.backoffice.shared.security.CurrentPrincipal
-import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.ModelProfileId
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.audit.AuditEntry
+import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.ExecutionTarget
 import pl.mos.backoffice.shared.runner.RunnerTarget
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 
 /**
@@ -324,6 +324,7 @@ class BenchmarkService(
 
     @SystemOperation("startup recovery of attempts interrupted by a restart; the benchmarks were started by authorised users")
     override fun recover(): Int {
+        guard.requireSystem()
         var requeued = 0
         for (benchmark in benchmarks.findByStatus(BenchmarkStatus.RUNNING)) {
             val inFlight = benchmarks.findAttemptsByStatus(

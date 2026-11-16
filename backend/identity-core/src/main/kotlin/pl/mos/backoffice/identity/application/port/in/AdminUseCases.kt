@@ -5,6 +5,7 @@ import pl.mos.backoffice.identity.application.port.out.AuditRecordPage
 import pl.mos.backoffice.identity.application.port.out.Page
 import pl.mos.backoffice.identity.application.port.out.SessionSummary
 import pl.mos.backoffice.identity.application.port.out.UserQuery
+import pl.mos.backoffice.identity.domain.model.AuthMode
 import pl.mos.backoffice.identity.domain.model.GrantLevel
 import pl.mos.backoffice.identity.domain.model.GrantSet
 import pl.mos.backoffice.identity.domain.model.Group
@@ -17,7 +18,6 @@ import pl.mos.backoffice.identity.domain.service.PermissionDecision
 import pl.mos.backoffice.identity.domain.service.ProjectAccess
 import pl.mos.backoffice.shared.security.PermissionScope
 import pl.mos.backoffice.shared.security.UserId
-import pl.mos.backoffice.identity.domain.model.AuthMode
 import java.time.Instant
 import java.util.UUID
 
@@ -146,9 +146,4 @@ data class CatalogEntry(val key: String, val scope: PermissionScope, val module:
 
 interface SearchAuditLog {
     fun search(query: AuditQuery): AuditRecordPage
-}
-
-/** On startup: built-in roles and the SYSTEM default role (idempotent). */
-interface SeedIdentity {
-    fun seed()
 }

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.identity.adapter.config
 
+import com.osucha.portpermissions.AccessGuard
 import jakarta.servlet.DispatcherType
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
@@ -9,6 +10,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.http.HttpMethod
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.config.Customizer
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -27,29 +29,28 @@ import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.session.Session
 import org.springframework.session.config.SessionRepositoryCustomizer
-import pl.mos.backoffice.identity.adapter.`in`.rest.SessionInspector
 import org.springframework.session.jdbc.JdbcIndexedSessionRepository
 import org.springframework.session.web.http.CookieSerializer
 import org.springframework.session.web.http.DefaultCookieSerializer
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
+import pl.mos.backoffice.identity.adapter.`in`.rest.SessionInspector
+import pl.mos.backoffice.identity.adapter.`in`.security.LoginThrottleFilter
+import pl.mos.backoffice.identity.adapter.`in`.security.OidcLoginFailureHandler
+import pl.mos.backoffice.identity.adapter.`in`.security.OidcLoginSuccessHandler
+import pl.mos.backoffice.identity.adapter.`in`.security.PrincipalFilter
+import pl.mos.backoffice.identity.adapter.`in`.security.ReturnToAuthorizationRequestResolver
 import pl.mos.backoffice.identity.adapter.`in`.web.CsrfCookieFilter
 import pl.mos.backoffice.identity.adapter.`in`.web.LoginSessions
-import pl.mos.backoffice.identity.adapter.`in`.web.LoginThrottleFilter
 import pl.mos.backoffice.identity.adapter.`in`.web.LoginThrottle
+import pl.mos.backoffice.identity.adapter.`in`.web.ProblemResponses
 import pl.mos.backoffice.identity.adapter.`in`.web.ThrottleAuditMemory
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcLoginThrottle
 import pl.mos.backoffice.identity.adapter.out.persistence.JdbcThrottleAuditMemory
-import org.springframework.jdbc.core.simple.JdbcClient
-import org.springframework.transaction.PlatformTransactionManager
-import org.springframework.transaction.support.TransactionTemplate
-import pl.mos.backoffice.identity.adapter.`in`.web.OidcLoginFailureHandler
-import pl.mos.backoffice.identity.adapter.`in`.web.OidcLoginSuccessHandler
-import pl.mos.backoffice.identity.adapter.`in`.web.PrincipalFilter
-import pl.mos.backoffice.identity.adapter.`in`.web.ProblemResponses
-import pl.mos.backoffice.identity.adapter.`in`.web.ReturnToAuthorizationRequestResolver
 import pl.mos.backoffice.identity.adapter.out.security.CurrentUserCache
-import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
-import pl.mos.backoffice.identity.application.port.`in`.RecordAuthEvent
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.LoadCurrentUser
+import pl.mos.backoffice.identity.application.port.`in`.system.RecordAuthEvent
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.security.CiTokenVerifier
 import tools.jackson.databind.json.JsonMapper
@@ -106,6 +107,7 @@ class IdentitySecurityConfiguration(private val properties: IdentityProperties) 
         clock: Clock,
         throttle: LoginThrottle,
         throttleAudits: ThrottleAuditMemory,
+        guard: AccessGuard,
     ): SecurityFilterChain {
         val bearer = RequestMatcher { it.getHeader("Authorization")?.startsWith("Bearer ", ignoreCase = true) == true }
         http
@@ -135,10 +137,10 @@ class IdentitySecurityConfiguration(private val properties: IdentityProperties) 
                     PathPatternRequestMatcher.pathPattern(HttpMethod.PUT, "/blobs/**"),
                 )
             }
-            .addFilterAfter(PrincipalFilter(loader, cache, ciVerifier, authEvents, properties, clock, problems), SecurityContextHolderFilter::class.java)
+            .addFilterAfter(PrincipalFilter(loader, cache, ciVerifier, authEvents, properties, clock, problems, guard), SecurityContextHolderFilter::class.java)
             .addFilterAfter(CsrfCookieFilter(), CsrfFilter::class.java)
             // before CSRF: floods without a token are throttled too
-            .addFilterBefore(LoginThrottleFilter(throttle, problems, authEvents, throttleAudits), CsrfFilter::class.java)
+            .addFilterBefore(LoginThrottleFilter(throttle, problems, authEvents, guard, throttleAudits), CsrfFilter::class.java)
             .authorizeHttpRequests {
                 // SSE completes on an ASYNC dispatch; the REQUEST dispatch was already authenticated
                 it.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
@@ -169,8 +171,8 @@ class IdentitySecurityConfiguration(private val properties: IdentityProperties) 
             http.oauth2Login {
                 it.loginPage("/login")
                 it.authorizationEndpoint { endpoint -> endpoint.authorizationRequestResolver(ReturnToAuthorizationRequestResolver(resolver)) }
-                it.successHandler(OidcLoginSuccessHandler(resolveLogin, properties, clock))
-                it.failureHandler(OidcLoginFailureHandler(authEvents))
+                it.successHandler(OidcLoginSuccessHandler(resolveLogin, properties, clock, guard))
+                it.failureHandler(OidcLoginFailureHandler(authEvents, guard))
             }
         } else {
             log.warn(

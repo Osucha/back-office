@@ -16,8 +16,8 @@ import org.springframework.transaction.support.TransactionTemplate
 import pl.mos.backoffice.identity.PostgresTestSupport
 import pl.mos.backoffice.identity.TestIdentity
 import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAccessGuard
-import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
 import pl.mos.backoffice.identity.application.port.`in`.ManageGroups
+import pl.mos.backoffice.identity.application.port.`in`.system.LoadCurrentUser
 import pl.mos.backoffice.identity.application.port.out.UserRepository
 import pl.mos.backoffice.identity.domain.model.UserStatus
 import pl.mos.backoffice.shared.security.Actor
@@ -327,7 +327,7 @@ class IdentityRestIntegrationTest {
         val admin = identity.user("rollback-${UUID.randomUUID()}@example.com", "platform-admin")
         val name = "Rolled back ${UUID.randomUUID()}"
         runCatching {
-            gate.runAs(loader.forUser(admin.id)!!) {
+            gate.runAs(gate.asSystem("test principal") { loader.forUser(admin.id) }!!) {
                 TransactionTemplate(tm).executeWithoutResult {
                     groups.create(ManageGroups.GroupCommand(name))
                     error("boom after the change")
@@ -337,7 +337,7 @@ class IdentityRestIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM identity_group WHERE name = :n").param("n", name).query(Long::class.javaObjectType).single()).isZero()
         assertThat(jdbc.sql("SELECT count(*) FROM audit_log WHERE operation = 'GROUP_CREATE' AND details ->> 'name' = :n").param("n", name).query(Long::class.javaObjectType).single()).isZero()
 
-        gate.runAs(loader.forUser(admin.id)!!) { groups.create(ManageGroups.GroupCommand(name)) }
+        gate.runAs(gate.asSystem("test principal") { loader.forUser(admin.id) }!!) { groups.create(ManageGroups.GroupCommand(name)) }
         assertThat(jdbc.sql("SELECT count(*) FROM audit_log WHERE operation = 'GROUP_CREATE' AND details ->> 'name' = :n AND actor_id = :a")
             .param("n", name).param("a", admin.id.value).query(Long::class.javaObjectType).single()).isEqualTo(1)
     }

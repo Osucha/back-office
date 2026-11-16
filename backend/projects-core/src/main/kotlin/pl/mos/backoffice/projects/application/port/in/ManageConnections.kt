@@ -111,17 +111,3 @@ interface ManageProjectJiraConnections {
         val available: List<Connection>,
     )
 }
-
-/**
- * System use case (ADR 0030): the daily job publishes `ConnectionExpiring` for every connection whose token expires
- * within [Connection.EXPIRY_REMINDER_DAYS] days (once per expiry date). Returns the number of reminders.
- */
-fun interface RemindExpiringConnections {
-    fun remindExpiring(): Int
-}
-
-/** System use case: re-wraps every stored secret to the active key-encryption key after a key rotation (ADR 0030). */
-fun interface RewrapConnectionSecrets {
-    /** Returns the number of re-wrapped secrets. */
-    fun rewrapSecrets(): Int
-}

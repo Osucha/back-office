@@ -1,4 +1,4 @@
-package pl.mos.backoffice.runner.adapter.`in`.web
+package pl.mos.backoffice.runner.adapter.`in`.runner
 
 import java.math.BigDecimal
 import java.math.BigInteger

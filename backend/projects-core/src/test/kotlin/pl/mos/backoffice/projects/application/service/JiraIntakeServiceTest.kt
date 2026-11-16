@@ -94,7 +94,7 @@ class JiraIntakeServiceTest {
     @Test
     fun `without an ISSUE_READ connection the watcher refuses to poll`() {
         enable()
-        assertThat(service.poll(project.id)).isZero()
+        assertThat(owner.asSystem("test") { service.poll(project.id) }).isZero()
 
         val intake = intakes.find(project.id)!!
         assertThat(intake.lastError).startsWith("refused:").contains("[ISSUE_READ]")
@@ -110,12 +110,12 @@ class JiraIntakeServiceTest {
         enable()
 
         trackers.watchResult = listOf(issue("SHOP-1", "Ready for AI", "10"))
-        assertThat(service.poll(project.id)).isZero()
+        assertThat(owner.asSystem("test") { service.poll(project.id) }).isZero()
         assertThat(trackers.watchedJql).isEmpty()
         assertThat(intakes.find(project.id)!!.cursor).isEqualTo(now)
 
         now = now.plus(Duration.ofMinutes(5))
-        assertThat(service.poll(project.id)).isEqualTo(1)
+        assertThat(owner.asSystem("test") { service.poll(project.id) }).isEqualTo(1)
         assertThat(trackers.opened.map { it.name }.distinct()).containsExactly("reader")
         assertThat(trackers.watchedJql.single()).isEqualTo("project = \"SHOP\" AND (labels = ai) AND status CHANGED TO \"Ready for AI\" AFTER -7m ORDER BY updated ASC")
         assertThat(started).containsExactly("SHOP-1" to "T:SHOP-1:10")
@@ -123,10 +123,10 @@ class JiraIntakeServiceTest {
         // the overlapping window returns the same transition again: no second run; a new transition of the same issue starts one
         now = now.plus(Duration.ofMinutes(5))
         trackers.watchResult = listOf(issue("SHOP-1", "Ready for AI", "10"), issue("SHOP-2", "In Progress", "11"))
-        assertThat(service.poll(project.id)).isZero()
+        assertThat(owner.asSystem("test") { service.poll(project.id) }).isZero()
         now = now.plus(Duration.ofMinutes(5))
         trackers.watchResult = listOf(issue("SHOP-1", "Ready for AI", "15"))
-        assertThat(service.poll(project.id)).isEqualTo(1)
+        assertThat(owner.asSystem("test") { service.poll(project.id) }).isEqualTo(1)
 
         val intake = intakes.find(project.id)!!
         assertThat(started.map { it.second }).containsExactly("T:SHOP-1:10", "T:SHOP-1:15")
@@ -141,7 +141,7 @@ class JiraIntakeServiceTest {
     fun `an over-privileged connection is used with a warning`() {
         connections.save(ConnectionFakes.connection("writer", WRITE))
         enable()
-        service.poll(project.id)
+        owner.asSystem("test") { service.poll(project.id) }
         val intake = intakes.find(project.id)!!
         assertThat(intake.lastError).isNull()
         assertThat(intake.lastWarning).contains("more rights than needed")
@@ -152,28 +152,28 @@ class JiraIntakeServiceTest {
     fun `rate limits and server errors back off, honouring Retry-After`() {
         connections.save(ConnectionFakes.connection("reader", READ))
         enable()
-        service.poll(project.id)
+        owner.asSystem("test") { service.poll(project.id) }
         now = now.plus(Duration.ofMinutes(5))
         trackers.watchFailure = IssueTrackerUnavailableException(429, Duration.ofMinutes(20), "rate limited")
 
-        assertThat(service.poll(project.id)).isZero()
+        assertThat(owner.asSystem("test") { service.poll(project.id) }).isZero()
         val intake = intakes.find(project.id)!!
         assertThat(intake.lastError).contains("HTTP 429")
         assertThat(intake.nextPollAt).isEqualTo(now.plus(Duration.ofMinutes(20)))
         assertThat(intake.cursor).isEqualTo(now.minus(Duration.ofMinutes(5)))
-        assertThat(service.due()).isEmpty()
+        assertThat(owner.asSystem("test") { service.due() }).isEmpty()
     }
 
     @Test
     fun `a run that cannot start releases its claim so the next poll retries`() {
         connections.save(ConnectionFakes.connection("reader", READ))
         enable()
-        service.poll(project.id)
+        owner.asSystem("test") { service.poll(project.id) }
         now = now.plus(Duration.ofMinutes(5))
         trackers.watchResult = listOf(issue("SHOP-9", "Ready for AI", "90"))
         every { runs.startForJira(workflow.id, "SHOP-9", any()) } throws InvalidStateException("workflow cannot start: no Jira connection")
 
-        assertThat(service.poll(project.id)).isZero()
+        assertThat(owner.asSystem("test") { service.poll(project.id) }).isZero()
         assertThat(intakes.find(project.id)!!.lastError).contains("cannot start")
         assertThat(intakes.claims.keys).isEmpty()
         verify(exactly = 1) { runs.startForJira(workflow.id, "SHOP-9", "T:SHOP-9:90") }

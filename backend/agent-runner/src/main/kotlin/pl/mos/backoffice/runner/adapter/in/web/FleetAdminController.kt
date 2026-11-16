@@ -1,10 +1,8 @@
 package pl.mos.backoffice.runner.adapter.`in`.web
 
 import org.springframework.http.HttpStatus
-import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
-import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -13,14 +11,12 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.bind.annotation.RestControllerAdvice
 import pl.mos.backoffice.runner.SandboxPolicyJson
 import pl.mos.backoffice.runner.application.port.`in`.AgentJobFilter
 import pl.mos.backoffice.runner.application.port.`in`.ManageAgentJobs
 import pl.mos.backoffice.runner.application.port.`in`.ManageProjectSandboxPolicy
 import pl.mos.backoffice.runner.application.port.`in`.ManageRunnerPools
 import pl.mos.backoffice.runner.application.port.`in`.ManageRunners
-import pl.mos.backoffice.runner.application.service.RunnerAuthenticationException
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.ValidationException
@@ -106,17 +102,4 @@ class ProjectSandboxPolicyController(private val policies: ManageProjectSandboxP
     @PutMapping
     fun put(@PathVariable projectId: UUID, @RequestBody body: SandboxPolicyJson): SandboxPolicyViewJson =
         SandboxPolicyViewJson.of(policies.update(projectId, body.toPolicy()))
-}
-
-/** 401 for unknown / used registration tokens and job tokens of another job (the generic mapping lives in `app`). */
-@RestControllerAdvice(assignableTypes = [RunnerProtocolController::class, SandboxCallbackController::class])
-class RunnerProtocolExceptionHandler {
-    @ExceptionHandler(RunnerAuthenticationException::class)
-    fun unauthorized(e: RunnerAuthenticationException): ResponseEntity<ProblemDetail> =
-        ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
-            ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.message ?: "unauthorized").apply {
-                title = "Unauthorized"
-                setProperty("code", "invalid-token")
-            },
-        )
 }

@@ -1,4 +1,5 @@
-package pl.mos.backoffice.tasks.application.port.`in`
+package pl.mos.backoffice.tasks.application.port.`in`.system
+
 
 /**
  * Use case: create the built-in templates, skills, rules and agents (ADR 0056) of docs/architecture/07-task-library.md.

@@ -1,5 +1,6 @@
 package pl.mos.backoffice.evaluation.application.service
 
+import com.osucha.portpermissions.SystemOnlyOperationException
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -192,7 +193,9 @@ class EvaluationAccessTest {
     }
 
     @Test
-    fun `recovery after a restart runs as the system without a user`() {
-        assertThat(benchmarks(FakeAccessGuard.denyAll()).recover()).isZero()
+    fun `recovery after a restart is a system operation (ADR 0067)`() {
+        val guard = FakeAccessGuard.denyAll()
+        assertThatThrownBy { benchmarks(guard).recover() }.isInstanceOf(SystemOnlyOperationException::class.java)
+        assertThat(guard.asSystem("test") { benchmarks(guard).recover() }).isZero()
     }
 }

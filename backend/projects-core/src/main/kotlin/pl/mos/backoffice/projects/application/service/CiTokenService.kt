@@ -4,7 +4,7 @@ import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageCiTokens
 import pl.mos.backoffice.projects.application.port.`in`.ManageCiTokens.CreatedToken
-import pl.mos.backoffice.projects.application.port.`in`.VerifyCiToken
+import pl.mos.backoffice.projects.application.port.`in`.system.VerifyCiToken
 import pl.mos.backoffice.projects.application.port.out.ProjectCiTokenRepository
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.TokenHasher
@@ -72,6 +72,7 @@ class CiTokenService(
 
     @SystemOperation("called by the identity bearer-token filter before any principal exists")
     override fun verify(plaintext: String): CiTokenIdentity? {
+        guard.requireSystem()
         val candidate = plaintext.trim().takeIf { it.startsWith(ProjectCiToken.PREFIX) } ?: return null
         val token = tokens.findByHash(hasher.hash(candidate)) ?: return null
         if (token.revoked) return null

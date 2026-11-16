@@ -38,8 +38,11 @@ cd deploy/helm/back-office && helm dependency build && helm lint . && helm templ
 3. Adapters of one bounded context never import the other context. Cross-context access goes through ports in
    `shared-kernel` (`LlmGateway`, `UsageLedger`, `ModelCatalog`, `TaskCatalog`, `AgentRunner`, `Clock`, `EventPublisher`).
 4. Every public use-case method calls `AccessGuard.require(...)` (library port-permissions, ADR 0066) first or is
-   annotated `@PublicOperation` / `@SystemOperation` from `com.osucha.portpermissions` (`PortPermissionsRules
-   .operationsAreGuarded()` in `DenyByDefaultArchitectureTest`); mutations record an `AuditEntry`.
+   annotated `@PublicOperation` / `@SystemOperation` from `com.osucha.portpermissions`; mutations record an
+   `AuditEntry`. System operations (ADR 0067) live on system ports in `application.port.in.system`, call
+   `guard.requireSystem()` first and are called only from internal or machine-facing adapters inside
+   `guard.asSystem(reason) { }` on the calling thread (the system holds no permissions); web, REST, MCP and SSE
+   adapters never depend on system ports (four `PortPermissionsRules` in `DenyByDefaultArchitectureTest`).
 5. Controllers live in `..adapter.in..`; JPA entities in `..adapter.out.persistence..` (or in `runner`/`llm` modules).
 6. SonarQube gate "Back Office way" on NEW code (CI `quality:sonar`, ADR 0027): coverage >= 70 %, duplication <= 3 %,
    ratings A, no new blocker/critical issue, hotspots reviewed. Write tests with new code; suppress a rule only

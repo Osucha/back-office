@@ -156,7 +156,14 @@ class LlmProxyIntegrationTest : ProxyTestBase() {
         assertThat(record.modelRef.label).isEqualTo("anthropic/claude-opus-5")
         assertThat(record.context.stepId).isEqualTo("implement")
         assertThat(record.cost.amount).isEqualByComparingTo("0.001350")
-        assertThat(gate.asSystem("test") { budgets.getProject(credential.projectId!!) }.spentUsd).isEqualByComparingTo("0.001350")
+        // the budget read is a user use case: the system holds no permissions (ADR 0067)
+        val previous = gate.user
+        gate.user = FakeAccessGuard.user(allProjects = true)
+        try {
+            assertThat(budgets.getProject(credential.projectId!!).spentUsd).isEqualByComparingTo("0.001350")
+        } finally {
+            gate.user = previous
+        }
     }
 
     @Test

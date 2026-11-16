@@ -2,7 +2,6 @@ package pl.mos.backoffice.evaluation.application.service
 
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -29,14 +28,14 @@ import pl.mos.backoffice.shared.llm.LlmResult
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.runner.AgentHarness
+import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.ConnectorAuth
 import pl.mos.backoffice.shared.runner.ConnectorCatalog
 import pl.mos.backoffice.shared.runner.ConnectorKind
+import pl.mos.backoffice.shared.runner.ExecutionTarget
 import pl.mos.backoffice.shared.runner.JobConnectors
 import pl.mos.backoffice.shared.runner.JobCredentialRef
 import pl.mos.backoffice.shared.runner.RunnerConnector
-import pl.mos.backoffice.shared.runner.AgentRunner
-import pl.mos.backoffice.shared.runner.ExecutionTarget
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerTarget
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentSnapshot
@@ -103,7 +102,7 @@ class CandidateBenchmarkTest {
             listOf(JobCredentialRef("c-1", "", JobCredentialRef.CONNECTOR, "docs")),
         )
     }
-    private val execute = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, agents = catalog, connectors = connectorCatalog)
+    private val execute = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, agents = catalog, connectors = connectorCatalog, guard = FakeAccessGuard.system())
 
     @BeforeEach
     fun setUp() {

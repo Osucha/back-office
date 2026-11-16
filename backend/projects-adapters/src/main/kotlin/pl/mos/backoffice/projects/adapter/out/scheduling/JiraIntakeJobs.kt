@@ -6,8 +6,8 @@ import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import pl.mos.backoffice.projects.application.port.`in`.PollJiraIntake
-import pl.mos.backoffice.projects.application.port.`in`.RemindExpiringConnections
+import pl.mos.backoffice.projects.application.port.`in`.system.PollJiraIntake
+import pl.mos.backoffice.projects.application.port.`in`.system.RemindExpiringConnections
 import pl.mos.backoffice.projects.application.service.JiraIntakeService
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.shared.platform.ClusterLock

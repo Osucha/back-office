@@ -5,8 +5,8 @@ import com.osucha.portpermissions.PublicOperation
 import com.osucha.portpermissions.SystemOperation
 import com.osucha.portpermissions.allows
 import pl.mos.backoffice.llm.budget.application.port.`in`.BudgetInput
-import pl.mos.backoffice.llm.budget.application.port.`in`.EnforceBudgets
 import pl.mos.backoffice.llm.budget.application.port.`in`.ManageBudgets
+import pl.mos.backoffice.llm.budget.application.port.`in`.system.EnforceBudgets
 import pl.mos.backoffice.llm.budget.application.port.out.BudgetStore
 import pl.mos.backoffice.llm.budget.domain.BudgetAlertEvent
 import pl.mos.backoffice.llm.budget.domain.BudgetConfig
@@ -16,13 +16,13 @@ import pl.mos.backoffice.llm.budget.domain.BudgetPeriods
 import pl.mos.backoffice.llm.budget.domain.BudgetScope
 import pl.mos.backoffice.llm.budget.domain.BudgetStatus
 import pl.mos.backoffice.llm.budget.domain.LimitScope
+import pl.mos.backoffice.llm.usage.LlmPermissions
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import pl.mos.backoffice.llm.usage.LlmPermissions
 import pl.mos.backoffice.shared.platform.JobCredential
 import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.PlatformSettingsPermissions
@@ -116,6 +116,7 @@ class BudgetService(
 
     @SystemOperation("budget pre-check before an LLM provider call")
     override fun precheck(credential: JobCredential?, context: UsageContext, estimatedCostUsd: BigDecimal, estimatedTokens: Long) {
+        guard.requireSystem()
         if (credential != null) precheckJob(credential, context, estimatedCostUsd, estimatedTokens)
         precheckMonthly(context, estimatedCostUsd)
     }
@@ -158,6 +159,7 @@ class BudgetService(
 
     @SystemOperation("books spend of a ledger record into the monthly budget state")
     override fun recordSpend(context: UsageContext, costUsd: BigDecimal) {
+        guard.requireSystem()
         if (costUsd.signum() <= 0) return
         add(BudgetConfig.keyOf(BudgetScope.PLATFORM, null), BudgetScope.PLATFORM, null, costUsd)
         context.projectId?.let { add(BudgetConfig.keyOf(BudgetScope.PROJECT, it), BudgetScope.PROJECT, it, costUsd) }
@@ -165,12 +167,14 @@ class BudgetService(
 
     @SystemOperation("books spend of one agent job")
     override fun recordJobSpend(jobId: UUID, costUsd: BigDecimal, tokens: Long) {
+        guard.requireSystem()
         if (costUsd.signum() <= 0 && tokens <= 0) return
         store.addJobSpend(jobId, costUsd.max(BigDecimal.ZERO), tokens.coerceAtLeast(0), clock.now())
     }
 
     @SystemOperation("per-job request cap of the LLM proxy")
     override fun countJobRequest(credential: JobCredential, context: UsageContext) {
+        guard.requireSystem()
         val cap = credential.maxRequests ?: return
         val count = store.incrementJobRequests(credential.jobId, clock.now())
         if (count > cap) {
@@ -183,6 +187,7 @@ class BudgetService(
 
     @SystemOperation("remembers a hard budget stop of one agent job")
     override fun recordRefusal(jobId: UUID, reason: String) {
+        guard.requireSystem()
         store.recordJobRefusal(jobId, reason.take(MAX_REASON), clock.now())
     }
 

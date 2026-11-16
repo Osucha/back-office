@@ -25,22 +25,22 @@ import pl.mos.backoffice.governance.adapter.out.signing.Ed25519EnvelopeSigner
 import pl.mos.backoffice.governance.adapter.out.signing.SigningProperties
 import pl.mos.backoffice.governance.application.port.`in`.AgentInsightsQuery
 import pl.mos.backoffice.governance.application.port.`in`.DeliveryInsightsQuery
-import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
+import pl.mos.backoffice.governance.application.port.`in`.system.RecordAttestations
 import pl.mos.backoffice.governance.application.service.AgentInsightsService
 import pl.mos.backoffice.governance.application.service.AttestationService
 import pl.mos.backoffice.governance.application.service.DeliveryInsightsService
-import pl.mos.backoffice.governance.application.service.WorkflowInsightsService
 import pl.mos.backoffice.governance.application.service.ProvenanceQueryService
+import pl.mos.backoffice.governance.application.service.WorkflowInsightsService
 import pl.mos.backoffice.projects.application.port.`in`.ApprovalQueries
 import pl.mos.backoffice.projects.application.port.`in`.DecideApproval
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.RunQueries
 import pl.mos.backoffice.projects.application.port.`in`.StartRun
-import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.provenance.RunProvenanceSource
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.usage.UsageLedger
 import pl.mos.backoffice.tasks.application.port.`in`.ManageSkills
@@ -80,7 +80,8 @@ class GovernanceConfiguration {
         json: JacksonJsonCodec,
         audit: AuditPort,
         clock: Clock,
-    ) = AttestationService(source, evidence, ledger, tasks.ifAvailable, repository, signer, json, audit, clock)
+        guard: AccessGuard,
+    ) = AttestationService(source, evidence, ledger, tasks.ifAvailable, repository, signer, json, audit, clock, guard = guard)
 
     @Bean
     fun provenanceQueryService(

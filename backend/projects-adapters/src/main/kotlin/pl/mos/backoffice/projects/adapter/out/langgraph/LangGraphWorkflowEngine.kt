@@ -16,7 +16,7 @@ import org.bsc.langgraph4j.state.AgentStateFactory
 import org.slf4j.LoggerFactory
 import pl.mos.backoffice.projects.adapter.out.langgraph.WorkflowState.Companion.NODE_CANCELLED
 import pl.mos.backoffice.projects.adapter.out.langgraph.WorkflowState.Companion.NODE_FAILED
-import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
+import pl.mos.backoffice.projects.application.port.`in`.system.RecordRunProgress
 import pl.mos.backoffice.projects.application.port.out.LogLevel
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.NodeResult
@@ -34,10 +34,9 @@ import pl.mos.backoffice.projects.domain.model.CiSignal
 import pl.mos.backoffice.projects.domain.model.Decision
 import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.projects.domain.model.GateSpec
-import pl.mos.backoffice.projects.domain.model.PendingWrite
-import pl.mos.backoffice.projects.domain.model.WriteApprovalConfig
 import pl.mos.backoffice.projects.domain.model.NodeExecutionStatus
 import pl.mos.backoffice.projects.domain.model.NodeKind
+import pl.mos.backoffice.projects.domain.model.PendingWrite
 import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunOutcome
 import pl.mos.backoffice.projects.domain.model.RunStatus
@@ -45,13 +44,14 @@ import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
+import pl.mos.backoffice.projects.domain.model.WriteApprovalConfig
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.projects.domain.service.WorkflowGraph
 import pl.mos.backoffice.shared.DomainException
 import pl.mos.backoffice.shared.Money
-import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.RunnerJobId
+import pl.mos.backoffice.shared.llm.TokenUsage
 import pl.mos.backoffice.shared.platform.ClusterSignals
 import pl.mos.backoffice.shared.platform.WorkItem
 import pl.mos.backoffice.shared.platform.WorkOutcome
@@ -83,9 +83,10 @@ import java.util.concurrent.ConcurrentHashMap
  * there, the engine opens an AGENT_QUESTIONS approval, and `answer` runs the step again in the same execution with the
  * answers (`{{answers}}`; a coding agent continues its session), `cancel` fails it. What asking cost is added to the
  * step's final result.
- * `HUMAN_GATE` and `WAIT_FOR_CI` nodes are `interruptBefore` and resume with `{decision|ci}`. Every invocation runs inside
- * `guard.asSystem("workflow engine")` (ADR 0017). Loops are bounded by `maxVisits`. Cancellation interrupts
- * the worker thread holding the run on whichever replica ([ClusterSignals] topic `workflow-run-cancel`).
+ * `HUMAN_GATE` and `WAIT_FOR_CI` nodes are `interruptBefore` and resume with `{decision|ci}`. Every invocation, and every
+ * node and edge action on LangGraph4j's own threads, runs inside `guard.asSystem("workflow engine")` (ADR 0067). Loops
+ * are bounded by `maxVisits`. Cancellation interrupts the worker thread holding the run on whichever replica
+ * ([ClusterSignals] topic `workflow-run-cancel`).
  */
 class LangGraphWorkflowEngine(
     private val runs: WorkflowRunRepository,
@@ -444,11 +445,15 @@ class LangGraphWorkflowEngine(
         return graph.compile(config)
     }
 
+    /**
+     * LangGraph4j runs node and edge actions on its own threads (the common fork-join pool), not on the worker thread
+     * that called `invoke`; `asSystem` is thread-bound, so every action enters it itself (ADR 0067).
+     */
     private fun node(body: (WorkflowState) -> Map<String, Any?>): AsyncNodeAction<WorkflowState> =
-        AsyncNodeAction.node_async(NodeAction { state -> WorkflowState.normaliseUpdates(body(state)) })
+        AsyncNodeAction.node_async(NodeAction { state -> guard.asSystem(SYSTEM_REASON) { WorkflowState.normaliseUpdates(body(state)) } })
 
     private fun edge(body: (WorkflowState) -> String): AsyncEdgeAction<WorkflowState> =
-        AsyncEdgeAction.edge_async(EdgeAction { state -> body(state) })
+        AsyncEdgeAction.edge_async(EdgeAction { state -> guard.asSystem(SYSTEM_REASON) { body(state) } })
 
     /** Conditional edge: the port recorded by the node body, resolved through the definition's edges. */
     private fun route(node: WorkflowNode, topology: WorkflowGraph, state: WorkflowState): String {

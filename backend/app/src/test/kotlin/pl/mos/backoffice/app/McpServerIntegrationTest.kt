@@ -1,5 +1,6 @@
 package pl.mos.backoffice.app
 
+import com.osucha.portpermissions.AccessGuard
 import io.modelcontextprotocol.client.McpClient
 import io.modelcontextprotocol.client.McpSyncClient
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport
@@ -14,7 +15,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.domain.model.PersonalAccessToken
 import pl.mos.backoffice.identity.domain.model.TokenId
@@ -50,12 +51,13 @@ class McpServerIntegrationTest {
     @LocalServerPort var port: Int = 0
 
     @Autowired lateinit var resolveLogin: ResolveLogin
+    @Autowired lateinit var guard: AccessGuard
     @Autowired lateinit var tokens: PersonalTokenRepository
     @Autowired lateinit var restClientBuilder: RestClient.Builder
     @Autowired lateinit var json: JsonMapper
 
     private fun admin(): User {
-        val result = resolveLogin.resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-mcp-admin", "mcp-admin@example.com", true, "Mia MCP", null))
+        val result = guard.asSystem("test login") { resolveLogin.resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-mcp-admin", "mcp-admin@example.com", true, "Mia MCP", null)) }
         return (result as ResolveLogin.LoginResult.Success).user
     }
 

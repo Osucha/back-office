@@ -1,9 +1,11 @@
-package pl.mos.backoffice.runner.adapter.`in`.web
+package pl.mos.backoffice.runner.adapter.`in`.runner
 
 import com.osucha.portpermissions.AccessGuard
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -11,18 +13,20 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.RestControllerAdvice
 import pl.mos.backoffice.runner.JobCompletionJson
 import pl.mos.backoffice.runner.RunnerEventJson
 import pl.mos.backoffice.runner.RunnerResultJson
 import pl.mos.backoffice.runner.SandboxPolicyJson
-import pl.mos.backoffice.runner.application.port.`in`.JobHeartbeatInput
-import pl.mos.backoffice.runner.application.port.`in`.RunnerFleetProtocol
-import pl.mos.backoffice.runner.application.port.`in`.RunnerRegistrationRequest
-import pl.mos.backoffice.runner.application.port.`in`.RunnerReport
-import pl.mos.backoffice.runner.application.port.`in`.SandboxCallbacks
-import pl.mos.backoffice.runner.application.port.`in`.SandboxEvent
-import pl.mos.backoffice.runner.application.port.`in`.UploadRequestInput
+import pl.mos.backoffice.runner.application.port.`in`.system.JobHeartbeatInput
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerFleetProtocol
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerRegistrationRequest
+import pl.mos.backoffice.runner.application.port.`in`.system.RunnerReport
+import pl.mos.backoffice.runner.application.port.`in`.system.SandboxCallbacks
+import pl.mos.backoffice.runner.application.port.`in`.system.SandboxEvent
+import pl.mos.backoffice.runner.application.port.`in`.system.UploadRequestInput
 import pl.mos.backoffice.runner.application.port.out.LeaseSignal
+import pl.mos.backoffice.runner.application.service.RunnerAuthenticationException
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.RunnerJobId
@@ -33,8 +37,9 @@ import java.util.UUID
 /**
  * Runner protocol v2 (`/api/v1/runner/v2`, openapi tag `runner-v2`), called by runner-controllers with their
  * `bo_rt_` token (checked by [RunnerTokenFilter]) - except `register` (registration token in the body) and
- * `uploads` (the sandbox's job token). No person is behind these calls: the use cases run as the system
- * principal and are scoped to the authenticated runner's pool and leases.
+ * `uploads` (the sandbox's job token). A machine-facing adapter (ADR 0067): no person is behind these calls, so
+ * they run inside `asSystem` (which holds no permissions) and call system ports only, passing the authenticated
+ * runner explicitly; every operation is scoped to that runner's pool and leases.
  */
 @RestController
 @RequestMapping("/api/v1/runner/v2")
@@ -183,4 +188,17 @@ class SandboxCallbackController(private val callbacks: SandboxCallbacks, private
     companion object {
         const val REASON = "sandbox callback"
     }
+}
+
+/** 401 for unknown / used registration tokens and job tokens of another job (the generic mapping lives in `app`). */
+@RestControllerAdvice(assignableTypes = [RunnerProtocolController::class, SandboxCallbackController::class])
+class RunnerProtocolExceptionHandler {
+    @ExceptionHandler(RunnerAuthenticationException::class)
+    fun unauthorized(e: RunnerAuthenticationException): ResponseEntity<ProblemDetail> =
+        ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+            ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.message ?: "unauthorized").apply {
+                title = "Unauthorized"
+                setProperty("code", "invalid-token")
+            },
+        )
 }

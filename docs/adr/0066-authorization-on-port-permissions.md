@@ -1,6 +1,6 @@
 # 0066 — Authorization on port-permissions
 
-- Status: accepted
+- Status: partly superseded by 0067 (runner principal)
 - Date: 2026-11-16
 - Deciders: owner
 - Related: ADR 0017 (deny-by-default authorisation), 0029 (token capabilities), 0028 (gate approvers);

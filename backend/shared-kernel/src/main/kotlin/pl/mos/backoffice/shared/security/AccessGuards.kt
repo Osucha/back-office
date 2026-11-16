@@ -4,13 +4,13 @@ import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.EffectivePermissions
 import com.osucha.portpermissions.Permission
 import com.osucha.portpermissions.PermissionCatalog
+import com.osucha.portpermissions.PrincipalKind as GuardPrincipalKind
 import com.osucha.portpermissions.ScopeFilter
 import com.osucha.portpermissions.ScopeSet
 import com.osucha.portpermissions.ScopedPermission
 import com.osucha.portpermissions.SystemOnlyOperationException
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import java.util.UUID
-import com.osucha.portpermissions.PrincipalKind as GuardPrincipalKind
 
 /**
  * Who is calling, as a Back Office principal: user id, display name, roles per project and token
@@ -33,17 +33,14 @@ val PrincipalKind.guardKind: GuardPrincipalKind
 
 /**
  * This principal's access as a port-permissions snapshot:
- * - global: [CurrentUser.platformPermissions]; the system principal passes every platform check, so it holds
- *   every platform permission of [catalog];
+ * - global: [CurrentUser.platformPermissions];
  * - per project-scoped key: every project ([ScopeSet.allExcept] with nothing excluded) for [CurrentUser.allProjects]
- *   holders (and the system), otherwise exactly the projects holding it.
+ *   holders, otherwise exactly the projects holding it;
+ * - the system principal holds nothing (ADR 0067): system work goes through system ports and `requireSystem()`.
  */
 fun CurrentUser.effectivePermissions(catalog: PermissionCatalog): EffectivePermissions {
-    val global = if (kind == PrincipalKind.SYSTEM) {
-        platformPermissions + catalog.permissions.filter { it.scope == null }.map { it.key }
-    } else {
-        platformPermissions
-    }
+    if (kind == PrincipalKind.SYSTEM) return EffectivePermissions.SYSTEM
+    val global = platformPermissions
     val held: Map<String, Set<UUID>> = projectPermissions
         .flatMap { (projectId, keys) -> keys.map { it to projectId } }
         .groupBy({ it.first }, { it.second })
@@ -59,7 +56,8 @@ fun CurrentUser.effectivePermissions(catalog: PermissionCatalog): EffectivePermi
 /**
  * [AccessGuard] over a [CurrentUser] (ADR 0066): the checks read the principal directly, with the same
  * result as [effective] (`effectivePermissions`), and fail with [InsufficientPermissionException] (403 with
- * `permission` / `projectId`). The system principal passes every check. Subclasses say where the current
+ * `permission` / `projectId`). The system principal holds no permissions (ADR 0067): inside `asSystem` every
+ * permission check fails and only [requireSystem] passes, so `asSystem` never escalates. Subclasses say where the current
  * user comes from and how `asSystem` switches to [CurrentUser.SYSTEM].
  */
 abstract class CurrentUserAccessGuard(private val catalog: PermissionCatalog) : AccessGuard, CurrentPrincipal {
@@ -68,12 +66,12 @@ abstract class CurrentUserAccessGuard(private val catalog: PermissionCatalog) : 
 
     override fun isGranted(permission: Permission): Boolean {
         val user = currentUser()
-        return user.kind == PrincipalKind.SYSTEM || user.can(permission.key)
+        return user.kind != PrincipalKind.SYSTEM && user.can(permission.key)
     }
 
     override fun <S : Any> isGranted(permission: ScopedPermission<S>, scope: S): Boolean {
         val user = currentUser()
-        return user.kind == PrincipalKind.SYSTEM || (scope is UUID && user.can(permission.key, scope))
+        return user.kind != PrincipalKind.SYSTEM && scope is UUID && user.can(permission.key, scope)
     }
 
     override fun require(permission: Permission) {
@@ -86,7 +84,8 @@ abstract class CurrentUserAccessGuard(private val catalog: PermissionCatalog) : 
 
     override fun <S : Any> scopesWith(permission: ScopedPermission<S>): ScopeFilter<S> {
         val user = currentUser()
-        if (user.kind == PrincipalKind.SYSTEM || user.allProjects) return ScopeFilter.All
+        if (user.kind == PrincipalKind.SYSTEM) return ScopeFilter.Only(emptySet())
+        if (user.allProjects) return ScopeFilter.All
         val projects = user.projectPermissions.filterValues { permission.key in it }.keys
         return ScopeFilter.Only(projects.map { permission.scopeType.parse(PROJECT_SCOPE.key(it)) }.toSet())
     }

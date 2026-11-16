@@ -1,6 +1,5 @@
 package pl.mos.backoffice.projects.application.service
 
-import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.out.ConnectorRepository
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.service.ConnectorResolution
@@ -16,7 +15,7 @@ import java.util.UUID
  */
 class ConnectorCatalogService(private val connectors: ConnectorRepository) : ConnectorCatalog {
 
-    @SystemOperation("benchmark executor resolving the connectors of a candidate agent; never exposed through a controller")
+    // not a use case, no check of its own (ADR 0067): benchmark executor resolving the connectors of a candidate agent; never exposed through a controller
     override fun mcpConnectors(keys: List<String>, projectId: UUID?): JobConnectors {
         if (keys.isEmpty()) return JobConnectors.NONE
         val project = projectId?.let { connectors.findByProject(ProjectId(it)) }.orEmpty()

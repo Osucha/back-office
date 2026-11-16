@@ -6,6 +6,7 @@ import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import com.osucha.portpermissions.test.assertSystemOnly
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
 import pl.mos.backoffice.projects.application.port.out.FailedJob
@@ -34,6 +35,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.security.Actor
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 
 /** ADR 0052: Back Office resumes a run waiting for the pipeline of its branch once GitLab says it finished. */
 class PipelineWatchServiceTest {
@@ -56,13 +58,22 @@ class PipelineWatchServiceTest {
     private val projects = mockk<ProjectRepository> { every { findById(project.id) } returns project }
     private val tokens = mockk<ScmConnectionRepository> { every { findByProject(project.id) } returns listOf(token) }
     private val engine = mockk<WorkflowEngine>(relaxed = true)
-    private val service = PipelineWatchService(runs, projects, tokens, pipelines, engine, Clock.fixed(now))
+    private val service = PipelineWatchService(runs, projects, tokens, pipelines, engine, Clock.fixed(now), guard = FakeAccessGuard.system())
 
     private fun waiting(definition: WorkflowDefinition = this.definition, node: WorkflowNode = wait): WorkflowRun =
         Fixtures.runningRun(project, definition)
             .nodeStarted(implement, now)
             .nodeFinished("implement", "success", now, repositories = listOf(RepositoryResult(repo.key, branch = "bo/1234abcd", commitSha = "abc123", pushed = true, primary = true)))
             .waitingForCi(node, "pipeline", now)
+
+    @Test
+    fun `the sweep is a system operation that refuses a user holding every permission (ADR 0067)`() {
+        every { runs.findWaiting(null) } returns listOf(waiting())
+        assertSystemOnly(touched = { asked.isNotEmpty() }) { guard ->
+            PipelineWatchService(runs, projects, tokens, pipelines, engine, Clock.fixed(now), guard).sweep()
+        }
+        verify(exactly = 0) { runs.findWaiting(any()) }
+    }
 
     @Test
     fun `a running pipeline keeps the run waiting, a finished one resumes it with the node's signal`() {

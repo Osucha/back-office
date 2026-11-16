@@ -6,8 +6,8 @@ import io.mockk.verify
 import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import pl.mos.backoffice.evaluation.application.port.`in`.ExecuteAttempt
-import pl.mos.backoffice.evaluation.application.port.`in`.ExecuteAttempt.AttemptExecutionReport
+import pl.mos.backoffice.evaluation.application.port.`in`.system.ExecuteAttempt
+import pl.mos.backoffice.evaluation.application.port.`in`.system.ExecuteAttempt.AttemptExecutionReport
 import pl.mos.backoffice.evaluation.domain.model.Attempt
 import pl.mos.backoffice.evaluation.domain.model.AttemptId
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkId
@@ -23,6 +23,8 @@ import pl.mos.backoffice.shared.platform.WorkItem
 import pl.mos.backoffice.shared.platform.WorkKinds
 import pl.mos.backoffice.shared.platform.WorkOutcome
 import pl.mos.backoffice.shared.platform.WorkRequest
+import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -42,7 +44,8 @@ class AttemptExecutorAdapterTest {
     private val execute = mockk<ExecuteAttempt>()
     private val published = mutableListOf<DomainEvent>()
     private val policy = AttemptExecutorAdapter.RetryPolicy(3, Duration.ofSeconds(10), Duration.ofSeconds(25))
-    private val handler = BenchmarkAttemptHandler(execute, EventPublisher { published += it }, policy)
+    private val guard = FakeAccessGuard.denyAll()
+    private val handler = BenchmarkAttemptHandler(execute, EventPublisher { published += it }, guard, policy)
 
     private val retry = AttemptExecutionReport(attempt, null, null, retry = true, retryReason = "rate limited")
     private val done = AttemptExecutionReport(attempt, null, null)
@@ -91,6 +94,21 @@ class AttemptExecutorAdapterTest {
             execute.execute(attemptId, true)
             execute.execute(attemptId, false)
         }
+    }
+
+    @Test
+    fun `the attempt runs as the system on the worker thread and the worker leaves no principal behind`() {
+        var principal: PrincipalKind? = null
+        every { execute.execute(attemptId, true) } answers {
+            guard.requireSystem()
+            principal = guard.currentUser().kind
+            done
+        }
+
+        assertThat(handler.handle(item(1))).isEqualTo(WorkOutcome.Done)
+
+        assertThat(principal).isEqualTo(PrincipalKind.SYSTEM)
+        assertThat(guard.currentUser().kind).isEqualTo(PrincipalKind.USER)
     }
 
     @Test

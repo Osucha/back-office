@@ -34,12 +34,3 @@ interface ManageJiraIntake {
         val problems: List<String>,
     )
 }
-
-/** System use case (ADR 0033): polling, run by the scheduler and the `JIRA_INTAKE_POLL` work handler on workers. */
-interface PollJiraIntake {
-    /** Projects whose watcher is due now. */
-    fun due(): List<ProjectId>
-
-    /** One poll of [projectId]'s watcher; returns how many runs it started (0 when disabled or failing). */
-    fun poll(projectId: ProjectId): Int
-}

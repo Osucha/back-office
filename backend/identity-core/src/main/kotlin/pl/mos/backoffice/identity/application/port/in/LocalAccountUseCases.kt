@@ -105,9 +105,3 @@ data class LoginOptions(val localLoginEnabled: Boolean, val passwordPolicy: Pass
 interface GetLoginOptions {
     fun loginOptions(): LoginOptions
 }
-
-/** Startup: creates the configured local platform admin when no user exists yet. */
-interface BootstrapLocalAdmin {
-    /** The created user, or `null` when nothing was configured or users already exist. */
-    fun bootstrap(): User?
-}

@@ -1,7 +1,5 @@
 package pl.mos.backoffice.projects.application.service
 
-import pl.mos.backoffice.projects.domain.model.ActionBinding
-import pl.mos.backoffice.projects.domain.model.ActionType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -11,7 +9,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
-import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
+import pl.mos.backoffice.projects.application.port.`in`.system.StartRunOnBehalf
 import pl.mos.backoffice.projects.application.port.out.FailedJob
 import pl.mos.backoffice.projects.application.port.out.NodeContext
 import pl.mos.backoffice.projects.application.port.out.PipelineReport
@@ -22,6 +20,8 @@ import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
 import pl.mos.backoffice.projects.application.service.tasks.ProjectDigestTaskExecutor
+import pl.mos.backoffice.projects.domain.model.ActionBinding
+import pl.mos.backoffice.projects.domain.model.ActionType
 import pl.mos.backoffice.projects.domain.model.GateSpec
 import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunInput
@@ -39,7 +39,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.security.Actor
-import pl.mos.backoffice.shared.tasks.ResolvedTask
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.usage.PageOf
 import java.time.Duration
 
@@ -62,7 +62,7 @@ class WatcherBuildingBlocksTest {
         val previous = Fixtures.runningRun(project, watcher).copy(createdAt = now.minus(Duration.ofMinutes(61)))
         every { runs.existsActiveByWorkflow(watcher.id) } returns false
         every { runs.find(any(), any(), 0, 1) } returns PageOf(listOf(previous), 0, 1, 1)
-        val service = ScheduledRunService(projects, workflows, runs, { startRun }, Clock.fixed(now))
+        val service = ScheduledRunService(projects, workflows, runs, { startRun }, Clock.fixed(now), guard = FakeAccessGuard.system())
 
         assertThat(service.sweep()).isEqualTo(1)
         assertThat(input.captured.parameters["since"]).isEqualTo(previous.createdAt.toString())

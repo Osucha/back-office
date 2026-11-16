@@ -15,8 +15,8 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.runner.SandboxPolicy
-import java.util.UUID
 import pl.mos.backoffice.shared.security.CurrentPrincipal
+import java.util.UUID
 
 /**
  * The project level of the sandbox policy (`GET/PUT /projects/{projectId}/sandbox-policy`). The view shows

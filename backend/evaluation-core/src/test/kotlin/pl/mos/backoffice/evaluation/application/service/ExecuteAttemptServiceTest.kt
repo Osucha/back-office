@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import pl.mos.backoffice.evaluation.domain.model.AttemptStatus
 import pl.mos.backoffice.evaluation.domain.model.Benchmark
 import pl.mos.backoffice.evaluation.domain.model.BenchmarkStatus
+import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 import pl.mos.backoffice.evaluation.support.Fixtures
 import pl.mos.backoffice.evaluation.support.InMemoryBenchmarkRepository
 import pl.mos.backoffice.evaluation.support.InMemoryModelProfileRepository
@@ -32,10 +33,10 @@ import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerVerification
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.usage.UsageKind
 import java.math.BigDecimal
 import java.time.Duration
-import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 
 class ExecuteAttemptServiceTest {
 
@@ -45,7 +46,7 @@ class ExecuteAttemptServiceTest {
     private val gateway = mockk<LlmGateway>()
     private val runner = mockk<AgentRunner>(relaxed = true)
     private val clock = SteppingClock()
-    private val service = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock)
+    private val service = ExecuteAttemptService(benchmarks, suites, profiles, gateway, runner, clock, guard = FakeAccessGuard.system())
 
     private val judge = Fixtures.profile("Judge", modelId = "claude-fable-5-1", input = "10", output = "50")
     private val candidate = Fixtures.profile("Candidate", modelId = "claude-sonnet-5", input = "2", output = "10")

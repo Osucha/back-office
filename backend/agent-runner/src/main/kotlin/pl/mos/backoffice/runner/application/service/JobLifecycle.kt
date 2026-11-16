@@ -1,12 +1,13 @@
 package pl.mos.backoffice.runner.application.service
 
-import pl.mos.backoffice.runner.application.port.`in`.GatewayUrls
+import org.slf4j.LoggerFactory
+import pl.mos.backoffice.runner.application.port.`in`.system.GatewayUrls
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
 import pl.mos.backoffice.runner.application.port.out.LeaseSignal
 import pl.mos.backoffice.runner.application.port.out.ProjectPolicyStore
+import pl.mos.backoffice.runner.application.port.out.RunWorkspaceStore
 import pl.mos.backoffice.runner.application.port.out.RunnerNodeStore
 import pl.mos.backoffice.runner.application.port.out.RunnerPoolStore
-import pl.mos.backoffice.runner.application.port.out.RunWorkspaceStore
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
 import pl.mos.backoffice.runner.domain.JobCompletionReport
@@ -22,8 +23,8 @@ import pl.mos.backoffice.runner.domain.policy.SandboxPolicyResolver
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.RunnerJobId
-import pl.mos.backoffice.shared.platform.JobTokenScope
 import pl.mos.backoffice.shared.platform.JobCredential
+import pl.mos.backoffice.shared.platform.JobTokenScope
 import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.SandboxPolicy
@@ -31,7 +32,6 @@ import java.math.BigDecimal
 import java.net.URI
 import java.time.Duration
 import java.time.Instant
-import org.slf4j.LoggerFactory
 
 /** Settings of the control plane, taken from `backoffice.runner.*` by the adapter configuration. */
 data class FleetSettings(

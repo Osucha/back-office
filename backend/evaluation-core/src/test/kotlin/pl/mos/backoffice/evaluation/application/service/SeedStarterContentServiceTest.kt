@@ -2,6 +2,7 @@ package pl.mos.backoffice.evaluation.application.service
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import com.osucha.portpermissions.test.assertSystemOnly
 import pl.mos.backoffice.evaluation.domain.model.Difficulty
 import pl.mos.backoffice.evaluation.domain.model.EvalTaskId
 import pl.mos.backoffice.evaluation.domain.model.TaskCategory
@@ -10,15 +11,20 @@ import pl.mos.backoffice.evaluation.support.Fixtures
 import pl.mos.backoffice.evaluation.support.InMemoryModelProfileRepository
 import pl.mos.backoffice.evaluation.support.InMemoryTaskSuiteRepository
 import pl.mos.backoffice.shared.Clock
-import pl.mos.backoffice.shared.llm.Provider
-import pl.mos.backoffice.shared.llm.Reasoning
-import java.math.BigDecimal
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 
 class SeedStarterContentServiceTest {
 
     private val profiles = InMemoryModelProfileRepository()
     private val suites = InMemoryTaskSuiteRepository()
-    private val service = SeedStarterContentService(profiles, suites, Clock.fixed(Fixtures.now))
+    private val service = SeedStarterContentService(profiles, suites, Clock.fixed(Fixtures.now), guard = FakeAccessGuard.system())
+
+    @Test
+    fun `seeding is a system operation that refuses a user holding every permission (ADR 0067)`() {
+        assertSystemOnly(touched = { suites.count() > 0 || profiles.count() > 0 }) { guard ->
+            SeedStarterContentService(profiles, suites, Clock.fixed(Fixtures.now), guard).seedIfEmpty()
+        }
+    }
 
     @Test
     fun `seeds the twelve task suite once and no model profiles (ADR 0045)`() {

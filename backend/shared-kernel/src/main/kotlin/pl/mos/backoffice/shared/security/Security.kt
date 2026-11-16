@@ -84,6 +84,7 @@ data class CurrentUser(
     val actor: Actor get() = Actor(kind, userId?.value, displayName)
 
     companion object {
+        /** Background work inside `AccessGuard.asSystem`: holds no permissions (ADR 0067). */
         val SYSTEM = CurrentUser(
             kind = PrincipalKind.SYSTEM,
             userId = null,
@@ -91,7 +92,6 @@ data class CurrentUser(
             displayName = "system",
             platformPermissions = emptySet(),
             projectPermissions = emptyMap(),
-            allProjects = true,
         )
     }
 }

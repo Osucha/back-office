@@ -114,7 +114,7 @@ class ScmConnectionServiceTest {
         assertThatThrownBy { service().verify(project.id, created.id) }.isInstanceOf(InvalidStateException::class.java)
 
         sealer.keyId = "k2"
-        assertThat(service().rewrapScmSecrets()).isEqualTo(1)
+        assertThat(owner.asSystem("test") { service().rewrapScmSecrets() }).isEqualTo(1)
         assertThat(store.findById(created.id)!!.secret.keyId).isEqualTo("k2")
 
         service().delete(project.id, created.id)

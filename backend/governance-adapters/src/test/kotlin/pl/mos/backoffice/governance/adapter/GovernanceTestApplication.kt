@@ -35,7 +35,7 @@ class GovernanceTestApplication
 /** The guard of the tests: production check rules ([CurrentUserAccessGuard]) over a thread-local user. */
 class TestGate : CurrentUserAccessGuard(PermissionCatalog(emptyList())) {
     private val current = ThreadLocal<CurrentUser?>()
-    @Volatile var defaultUser: CurrentUser = CurrentUser.SYSTEM.copy(kind = PrincipalKind.USER, userId = UserId(UUID.randomUUID()), login = "owner@example.com", displayName = "Olivia Owner")
+    @Volatile var defaultUser: CurrentUser = CurrentUser.SYSTEM.copy(kind = PrincipalKind.USER, userId = UserId(UUID.randomUUID()), login = "owner@example.com", displayName = "Olivia Owner", allProjects = true)
 
     override fun currentUser(): CurrentUser = current.get() ?: defaultUser
     override fun <T> asSystem(reason: String, block: () -> T): T = runAs(CurrentUser.SYSTEM, block)

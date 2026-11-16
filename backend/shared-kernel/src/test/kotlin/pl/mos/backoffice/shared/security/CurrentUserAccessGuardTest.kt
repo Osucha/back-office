@@ -107,13 +107,14 @@ class CurrentUserAccessGuardTest {
     }
 
     @Test
-    fun `the system principal holds every platform and every project permission`() {
+    fun `the system principal holds nothing (ADR 0067)`() {
         val effective = CurrentUser.SYSTEM.effectivePermissions(catalog)
 
+        assertThat(effective).isEqualTo(EffectivePermissions.SYSTEM)
         assertThat(effective.principal).isEqualTo(GuardKind.SYSTEM)
-        assertThat(effective.global).containsExactlyInAnyOrder("platform.view", "platform.manage")
-        assertThat(effective.scoped.keys).containsExactlyInAnyOrder("work.view", "work.start", "work.execute")
-        assertThat(effective.scoped.values).allMatch { it == ScopeSet.allExcept() }
+        assertThat(effective.global).isEmpty()
+        assertThat(effective.scoped).isEmpty()
+        assertThat(CurrentUser.SYSTEM.allProjects).isFalse()
     }
 
     // ---------------------------------------------------------------- checks
@@ -160,16 +161,23 @@ class CurrentUserAccessGuardTest {
     }
 
     @Test
-    fun `asSystem passes every check and requireSystem only inside it`() {
-        val guard = Guard(user(), catalog)
+    fun `inside asSystem every permission check fails and only requireSystem passes`() {
+        val guard = Guard(user(allProjects = true, platform = setOf("platform.manage")), catalog)
 
         assertThatThrownBy { guard.requireSystem() }.isInstanceOf(SystemOnlyOperationException::class.java)
         guard.asSystem("test") {
-            guard.require(Platform.MANAGE)
-            guard.require(Work.START, gamma)
             guard.requireSystem()
-            assertThat(guard.scopesWith(Work.VIEW)).isEqualTo(ScopeFilter.All)
+            assertThatThrownBy { guard.require(Platform.MANAGE) }
+                .isInstanceOfSatisfying(InsufficientPermissionException::class.java) { assertThat(it.permission).isEqualTo("platform.manage") }
+            assertThatThrownBy { guard.require(Work.START, gamma) }.isInstanceOf(InsufficientPermissionException::class.java)
+            assertThat(guard.isGranted(Platform.VIEW)).isFalse()
+            assertThat(guard.isGranted(Work.VIEW, alpha)).isFalse()
+            assertThat(guard.scopesWith(Work.VIEW).isNothing).isTrue()
+            assertThat(guard.effective()).isEqualTo(EffectivePermissions.SYSTEM)
         }
+        // the caller's own access is back after the block
+        guard.require(Platform.MANAGE)
+        guard.require(Work.START, gamma)
     }
 
     // ---------------------------------------------------------------- scopesWith

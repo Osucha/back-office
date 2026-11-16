@@ -17,7 +17,7 @@ import pl.mos.backoffice.governance.adapter.`in`.events.AttestationTrigger
 import pl.mos.backoffice.governance.adapter.out.json.DsseJson
 import pl.mos.backoffice.governance.adapter.out.json.JacksonJsonCodec
 import pl.mos.backoffice.governance.application.port.`in`.ProvenanceQueries
-import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
+import pl.mos.backoffice.governance.application.port.`in`.system.RecordAttestations
 import pl.mos.backoffice.governance.domain.model.AttestationKind
 import pl.mos.backoffice.governance.domain.service.Digests
 import pl.mos.backoffice.shared.InsufficientPermissionException

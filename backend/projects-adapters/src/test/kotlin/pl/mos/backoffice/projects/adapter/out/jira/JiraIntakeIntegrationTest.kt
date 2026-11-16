@@ -23,8 +23,8 @@ import pl.mos.backoffice.projects.application.port.`in`.ManageConnections
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjects
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
-import pl.mos.backoffice.projects.application.port.`in`.PollJiraIntake
 import pl.mos.backoffice.projects.application.port.`in`.RunQueries
+import pl.mos.backoffice.projects.application.port.`in`.system.PollJiraIntake
 import pl.mos.backoffice.projects.application.port.out.JiraIntakeRepository
 import pl.mos.backoffice.projects.application.port.out.RunFilter
 import pl.mos.backoffice.projects.domain.model.ConnectionCapability

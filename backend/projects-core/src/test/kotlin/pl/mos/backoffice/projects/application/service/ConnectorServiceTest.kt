@@ -206,15 +206,15 @@ class ConnectorServiceTest {
     fun `delete is audited, rewrap re-seals stored secrets with the active key`() {
         val c = service().create(docs)
         sealer.keyId = "k2"
-        assertThat(service().rewrapConnectorSecrets()).isEqualTo(1)
+        assertThat(admin.asSystem("test") { service().rewrapConnectorSecrets() }).isEqualTo(1)
         assertThat(store.findById(c.id)!!.secret!!.keyId).isEqualTo("k2")
         assertThat(audit.entries.last().operation).isEqualTo("CONNECTOR_SECRET_REWRAP")
-        assertThat(service().rewrapConnectorSecrets()).isZero()
+        assertThat(admin.asSystem("test") { service().rewrapConnectorSecrets() }).isZero()
         service().delete(c.id)
         assertThat(store.findAll()).isEmpty()
         assertThat(audit.entries.last().operation).isEqualTo("CONNECTOR_DELETE")
         sealer.configured = false
-        assertThat(service().rewrapConnectorSecrets()).isZero()
+        assertThat(admin.asSystem("test") { service().rewrapConnectorSecrets() }).isZero()
     }
 
     private fun token(name: String, caps: Set<ScmCapability>, repo: String) = ScmConnection(

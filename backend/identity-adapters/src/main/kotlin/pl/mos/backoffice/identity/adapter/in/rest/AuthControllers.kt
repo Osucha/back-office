@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
 import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.session.Session
 import org.springframework.session.web.http.CookieSerializer
@@ -19,13 +20,12 @@ import pl.mos.backoffice.identity.adapter.config.IdentityWebValues
 import pl.mos.backoffice.identity.adapter.config.LazyOidcClientRegistrationRepository
 import pl.mos.backoffice.identity.adapter.`in`.web.SessionAttributes
 import pl.mos.backoffice.identity.adapter.out.security.SecurityContextAccessGuard
-import pl.mos.backoffice.identity.application.port.`in`.GetMe
 import pl.mos.backoffice.identity.application.port.`in`.GetLoginOptions
+import pl.mos.backoffice.identity.application.port.`in`.GetMe
 import pl.mos.backoffice.identity.application.port.`in`.GetRegistrationMode
-import pl.mos.backoffice.identity.domain.model.LoginMethod
-import pl.mos.backoffice.identity.application.port.`in`.RecordAuthEvent
+import pl.mos.backoffice.identity.application.port.`in`.RecordLogout
 import pl.mos.backoffice.identity.application.port.`in`.UpdateMyPreferences
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
+import pl.mos.backoffice.identity.domain.model.LoginMethod
 import java.time.Instant
 
 /**
@@ -78,7 +78,7 @@ class MeController(
 class AuthController(
     private val registration: GetRegistrationMode,
     private val loginOptions: GetLoginOptions,
-    private val authEvents: RecordAuthEvent,
+    private val logouts: RecordLogout,
     private val gate: SecurityContextAccessGuard,
     private val properties: IdentityProperties,
     private val web: IdentityWebValues,
@@ -108,7 +108,7 @@ class AuthController(
         val session = request.getSession(false)
         val idToken = session?.getAttribute(SessionAttributes.ID_TOKEN) as? String
         val local = session?.getAttribute(SessionAttributes.AUTH_METHOD) == LoginMethod.LOCAL.name
-        gate.currentUserOrNull()?.let { user -> runCatching { authEvents.loggedOut(user) } }
+        gate.currentUserOrNull()?.let { runCatching { logouts.loggedOut() } }
         runCatching { session?.invalidate() }
         SecurityContextHolder.clearContext()
         // a local session has nothing to end at the identity provider

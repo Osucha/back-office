@@ -1,7 +1,8 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.projects.application.port.`in`.WatchPipelines
+import pl.mos.backoffice.projects.application.port.`in`.system.WatchPipelines
 import pl.mos.backoffice.projects.application.port.out.FailedJob
 import pl.mos.backoffice.projects.application.port.out.PipelineReport
 import pl.mos.backoffice.projects.application.port.out.PipelineState
@@ -33,14 +34,17 @@ class PipelineWatchService(
     private val pipelines: PipelineStatusPort,
     private val engine: WorkflowEngine,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : WatchPipelines {
 
     @SystemOperation("scheduled pipeline watch sweep (ADR 0052)")
-    override fun sweep(): Int = runs.findWaiting(null).count { watch(it) }
+    override fun sweep(): Int {
+        guard.requireSystem()
+        return runs.findWaiting(null).count { watch(it) }
+    }
 
     /** True when [run] was resumed. */
-    @SystemOperation("scheduled pipeline watch, one run")
-    fun watch(run: WorkflowRun): Boolean {
+    private fun watch(run: WorkflowRun): Boolean {
         val waiting = run.waitingOn?.takeIf { it.kind == WaitKind.WAIT_FOR_CI } ?: return false
         val node = run.definitionSnapshot.node(waiting.nodeId) as? WorkflowNode.WaitForCi ?: return false
         if (!node.ci.watchPipeline) return false

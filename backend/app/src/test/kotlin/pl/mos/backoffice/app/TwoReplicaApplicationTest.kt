@@ -1,5 +1,6 @@
 package pl.mos.backoffice.app
 
+import com.osucha.portpermissions.AccessGuard
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -10,7 +11,7 @@ import org.springframework.boot.web.server.context.WebServerApplicationContext
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.testcontainers.containers.PostgreSQLContainer
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.domain.model.PersonalAccessToken
 import pl.mos.backoffice.identity.domain.model.TokenId
@@ -79,7 +80,7 @@ class TwoReplicaApplicationTest {
     private data class Plain(override val type: String, override val payload: Map<String, Any?>, override val occurredAt: Instant = Instant.now()) : DomainEvent
 
     private fun bearerOn(ctx: ConfigurableApplicationContext): String {
-        val login = ctx.getBean(ResolveLogin::class.java).resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-boss", "boss@example.com", true, "Boss", null))
+        val login = ctx.getBean(AccessGuard::class.java).asSystem("test login") { ctx.getBean(ResolveLogin::class.java).resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-boss", "boss@example.com", true, "Boss", null)) }
         val user = (login as ResolveLogin.LoginResult.Success).user
         val generated = TokenCodec.generate()
         ctx.getBean(PersonalTokenRepository::class.java)

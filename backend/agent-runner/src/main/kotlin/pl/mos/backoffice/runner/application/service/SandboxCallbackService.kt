@@ -1,13 +1,15 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.runner.application.port.`in`.SandboxCallbacks
-import pl.mos.backoffice.runner.application.port.`in`.SandboxEvent
-import pl.mos.backoffice.runner.application.port.`in`.UploadRequestInput
-import pl.mos.backoffice.runner.application.port.`in`.UploadTargetView
+import pl.mos.backoffice.runner.application.port.`in`.system.SandboxCallbacks
+import pl.mos.backoffice.runner.application.port.`in`.system.SandboxEvent
+import pl.mos.backoffice.runner.application.port.`in`.system.UploadRequestInput
+import pl.mos.backoffice.runner.application.port.`in`.system.UploadTargetView
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
 import pl.mos.backoffice.runner.application.port.out.ResultArchive
 import pl.mos.backoffice.runner.application.port.out.Transactions
+import pl.mos.backoffice.runner.domain.FleetTokens
 import pl.mos.backoffice.runner.domain.RunnerLogEvent
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.IntegrationException
@@ -18,7 +20,6 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.platform.JobCredential
 import pl.mos.backoffice.shared.platform.JobTokenScope
-import pl.mos.backoffice.runner.domain.FleetTokens
 import pl.mos.backoffice.shared.runner.RunnerResult
 import java.math.RoundingMode
 import java.util.UUID
@@ -40,10 +41,12 @@ class SandboxCallbackService(
     private val tx: Transactions,
     private val events: EventPublisher,
     private val catalog: ModelCatalog?,
+    private val guard: AccessGuard,
 ) : SandboxCallbacks {
 
     @SystemOperation("sandbox log events, authenticated by the job token")
     override fun appendEvents(credential: JobCredential, jobId: RunnerJobId, events: List<SandboxEvent>) {
+        guard.requireSystem()
         requireOwnJob(credential, jobId, JobTokenScope.FULL)
         val job = jobs.find(jobId) ?: throw NotFoundException("AgentJob", jobId)
         val now = lifecycle.now()
@@ -59,6 +62,7 @@ class SandboxCallbackService(
 
     @SystemOperation("agent result, authenticated by the job token")
     override fun postResult(credential: JobCredential, jobId: RunnerJobId, result: RunnerResult) {
+        guard.requireSystem()
         requireOwnJob(credential, jobId, JobTokenScope.FULL)
         tx.inTransaction {
             val job = jobs.lock(jobId) ?: throw NotFoundException("AgentJob", jobId)
@@ -74,6 +78,7 @@ class SandboxCallbackService(
 
     @SystemOperation("presigned upload URL, authenticated by the job token")
     override fun createUpload(credential: JobCredential, jobId: RunnerJobId, request: UploadRequestInput): UploadTargetView {
+        guard.requireSystem()
         requireOwnJob(credential, jobId, JobTokenScope.FULL)
         if (request.sizeBytes <= 0 || request.sizeBytes > lifecycle.settings.maxUploadBytes) {
             throw ValidationException("sizeBytes must be between 1 and ${lifecycle.settings.maxUploadBytes}", "sizeBytes")
@@ -87,6 +92,7 @@ class SandboxCallbackService(
 
     @SystemOperation("gateway-only agent token, authenticated by the full job token")
     override fun issueAgentToken(credential: JobCredential, jobId: RunnerJobId): String {
+        guard.requireSystem()
         requireOwnJob(credential, jobId, JobTokenScope.FULL)
         return tx.inTransaction {
             val job = jobs.lock(jobId) ?: throw NotFoundException("AgentJob", jobId)

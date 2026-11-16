@@ -8,13 +8,16 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
+import pl.mos.backoffice.projects.Fixtures.alice
 import pl.mos.backoffice.projects.Fixtures.now
-import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
+import pl.mos.backoffice.projects.application.port.`in`.system.RecordRunProgress
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
+import pl.mos.backoffice.projects.application.port.out.RunFilter
 import pl.mos.backoffice.projects.application.port.out.RunLogRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowEngine
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
+import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunInput
 import pl.mos.backoffice.projects.domain.model.RunStatus
@@ -22,10 +25,8 @@ import pl.mos.backoffice.projects.domain.model.TriggerSource
 import pl.mos.backoffice.projects.domain.service.WorkflowValidator
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
-import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.InsufficientPermissionException
-import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
-import pl.mos.backoffice.projects.application.port.out.RunFilter
+import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
@@ -33,7 +34,6 @@ import pl.mos.backoffice.shared.security.UserId
 import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.PageOf
-import pl.mos.backoffice.projects.Fixtures.alice
 
 class RunServiceTest {
 
@@ -89,14 +89,14 @@ class RunServiceTest {
             Clock.fixed(now), directory = directory,
         )
 
-        val run = system.startOnBehalf(definition.id, RunInput(null, mapOf("since" to "x")), TriggerSource.SCHEDULE, bob.userId!!.value)
+        val run = gate.asSystem("test") { system.startOnBehalf(definition.id, RunInput(null, mapOf("since" to "x")), TriggerSource.SCHEDULE, bob.userId!!.value) }
 
         assertThat(run.startedBy).isEqualTo(bob.actor)
         assertThat(run.trigger.type).isEqualTo(TriggerSource.SCHEDULE)
         assertThat(gate.checked).isEmpty()
-        assertThatThrownBy { system.startOnBehalf(definition.id, RunInput(null), TriggerSource.API, viewer.userId!!.value) }
+        assertThatThrownBy { gate.asSystem("test") { system.startOnBehalf(definition.id, RunInput(null), TriggerSource.API, viewer.userId!!.value) } }
             .hasMessageContaining("Viewer may not start runs")
-        assertThatThrownBy { system.startOnBehalf(definition.id, RunInput(null), TriggerSource.API, null) }
+        assertThatThrownBy { gate.asSystem("test") { system.startOnBehalf(definition.id, RunInput(null), TriggerSource.API, null) } }
             .hasMessageContaining("no user to start it on behalf of")
     }
 

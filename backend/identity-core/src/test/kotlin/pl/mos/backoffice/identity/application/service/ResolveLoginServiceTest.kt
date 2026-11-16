@@ -3,18 +3,19 @@ package pl.mos.backoffice.identity.application.service
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.identity.InMemoryIdentity
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin.LoginClaims
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin.LoginResult
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin.LoginClaims
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin.LoginResult
 import pl.mos.backoffice.identity.domain.model.AuthMode
 import pl.mos.backoffice.identity.domain.model.BuiltInRoles
-import pl.mos.backoffice.identity.domain.model.LoginMethod
 import pl.mos.backoffice.identity.domain.model.GrantLevel
+import pl.mos.backoffice.identity.domain.model.LoginMethod
 import pl.mos.backoffice.identity.domain.model.PlatformSettings
 import pl.mos.backoffice.identity.domain.model.RegistrationMode
 import pl.mos.backoffice.identity.domain.model.UserStatus
 import pl.mos.backoffice.shared.audit.AuditResult
 import pl.mos.backoffice.shared.security.PrincipalKind
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 
 class ResolveLoginServiceTest {
@@ -29,7 +30,7 @@ class ResolveLoginServiceTest {
         bootstrap: Set<String> = emptySet(),
     ): ResolveLoginService {
         val options = IdentityOptions(bootstrap, PlatformSettings(registration, domains, sync))
-        return ResolveLoginService(db.users, db.groups, db.grants, db.settingsProvider(options), options, audit, db.accessVersion, db.clock)
+        return ResolveLoginService(db.users, db.groups, db.grants, db.settingsProvider(options), options, audit, db.accessVersion, db.clock, guard = FakeAccessGuard.system())
     }
 
     private fun claims(email: String?, subject: String = "sub-1", groups: List<String> = emptyList(), verified: Boolean? = true) =

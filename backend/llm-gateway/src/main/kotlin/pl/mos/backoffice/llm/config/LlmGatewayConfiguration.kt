@@ -8,8 +8,16 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.Environment
-import pl.mos.backoffice.llm.budget.application.port.`in`.EnforceBudgets
+import org.springframework.jdbc.core.simple.JdbcClient
+import pl.mos.backoffice.llm.budget.application.port.`in`.system.EnforceBudgets
 import pl.mos.backoffice.llm.budget.domain.BudgetExceededException
+import pl.mos.backoffice.llm.connections.CachedProviderConnections
+import pl.mos.backoffice.llm.connections.ConnectionQuota
+import pl.mos.backoffice.llm.connections.JdbcConnectionQuota
+import pl.mos.backoffice.llm.connections.JdbcLlmProviderConnectionStore
+import pl.mos.backoffice.llm.connections.LlmProviderConnectionStore
+import pl.mos.backoffice.llm.connections.LlmProviderService
+import pl.mos.backoffice.llm.connections.ProviderModelLister
 import pl.mos.backoffice.llm.gateway.ChatModelFactory
 import pl.mos.backoffice.llm.gateway.ChatOptionsMapper
 import pl.mos.backoffice.llm.gateway.LlmMetrics
@@ -20,30 +28,22 @@ import pl.mos.backoffice.llm.gateway.SpringAiLlmGateway
 import pl.mos.backoffice.llm.gateway.StructuredOutputParser
 import pl.mos.backoffice.llm.ratelimit.ProviderRateLimiter
 import pl.mos.backoffice.llm.ratelimit.RateBuckets
-import java.math.BigDecimal
-import javax.sql.DataSource
 import pl.mos.backoffice.llm.usage.LlmPermissions
 import pl.mos.backoffice.llm.usage.UsageQueryService
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.IntegrationException
-import pl.mos.backoffice.shared.security.CurrentPrincipal
-import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.llm.Provider
+import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.security.SecretVault
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageLedger
 import tools.jackson.databind.json.JsonMapper
-import org.springframework.jdbc.core.simple.JdbcClient
-import pl.mos.backoffice.llm.connections.CachedProviderConnections
-import pl.mos.backoffice.llm.connections.JdbcLlmProviderConnectionStore
-import pl.mos.backoffice.llm.connections.LlmProviderConnectionStore
-import pl.mos.backoffice.llm.connections.LlmProviderService
-import pl.mos.backoffice.llm.connections.ProviderModelLister
-import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.SecretVault
-import pl.mos.backoffice.llm.connections.ConnectionQuota
-import pl.mos.backoffice.llm.connections.JdbcConnectionQuota
+import java.math.BigDecimal
+import javax.sql.DataSource
 
 /**
  * Wires the gateway. Provider credentials are read from the standard Spring AI properties

@@ -6,7 +6,7 @@ import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import pl.mos.backoffice.projects.application.port.`in`.PollPersonalIntake
+import pl.mos.backoffice.projects.application.port.`in`.system.PollPersonalIntake
 import pl.mos.backoffice.projects.application.service.PersonalIntakeService
 import pl.mos.backoffice.projects.domain.model.IntakeRuleId
 import pl.mos.backoffice.shared.platform.ClusterLock

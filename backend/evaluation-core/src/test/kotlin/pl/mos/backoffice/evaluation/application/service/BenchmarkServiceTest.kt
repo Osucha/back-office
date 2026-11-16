@@ -134,7 +134,7 @@ class BenchmarkServiceTest {
         val other = service.create(command())
         submitted.clear()
 
-        val requeued = service.recover()
+        val requeued = gate.asSystem("test") { service.recover() }
 
         assertThat(requeued).isEqualTo(3)
         assertThat(submitted).hasSize(3)

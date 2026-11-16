@@ -1,14 +1,15 @@
 package pl.mos.backoffice.projects.adapter.out.secrets
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
-import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectionSecrets
-import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectorSecrets
-import pl.mos.backoffice.projects.application.port.`in`.RewrapScmConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapConnectorSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapScmConnectionSecrets
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 
 /**
@@ -29,6 +30,7 @@ class ConnectionSecretsStartup(
     private val environment: Environment,
     private val scmRewrap: ObjectProvider<RewrapScmConnectionSecrets>,
     private val connectorRewrap: ObjectProvider<RewrapConnectorSecrets>,
+    private val guard: AccessGuard,
 ) : ApplicationRunner {
 
     private val log = LoggerFactory.getLogger(ConnectionSecretsStartup::class.java)
@@ -38,14 +40,16 @@ class ConnectionSecretsStartup(
         val worker = environment.getProperty(WORKER_ENABLED, Boolean::class.java, true)
         if (!api && !worker) return
         check()
-        if (worker && cipher.configured) {
-            val count = rewrap.rewrapSecrets()
-            if (count > 0) log.info("re-wrapped {} connection secrets to key {}", count, cipher.activeKeyId)
-            val scm = scmRewrap.ifAvailable?.rewrapScmSecrets() ?: 0
-            if (scm > 0) log.info("re-wrapped {} repository tokens to key {}", scm, cipher.activeKeyId)
-            val connectorSecrets = connectorRewrap.ifAvailable?.rewrapConnectorSecrets() ?: 0
-            if (connectorSecrets > 0) log.info("re-wrapped {} connector secrets to key {}", connectorSecrets, cipher.activeKeyId)
-        }
+        if (worker && cipher.configured) guard.asSystem("re-wrap of connection secrets after a key rotation") { rewrapAll() }
+    }
+
+    private fun rewrapAll() {
+        val count = rewrap.rewrapSecrets()
+        if (count > 0) log.info("re-wrapped {} connection secrets to key {}", count, cipher.activeKeyId)
+        val scm = scmRewrap.ifAvailable?.rewrapScmSecrets() ?: 0
+        if (scm > 0) log.info("re-wrapped {} repository tokens to key {}", scm, cipher.activeKeyId)
+        val connectorSecrets = connectorRewrap.ifAvailable?.rewrapConnectorSecrets() ?: 0
+        if (connectorSecrets > 0) log.info("re-wrapped {} connector secrets to key {}", connectorSecrets, cipher.activeKeyId)
     }
 
     /** Fails (or warns with the recovery switch) when stored secrets cannot be opened with the configured keys. */

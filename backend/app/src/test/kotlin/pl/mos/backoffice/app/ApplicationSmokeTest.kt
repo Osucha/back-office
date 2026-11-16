@@ -1,5 +1,6 @@
 package pl.mos.backoffice.app
 
+import com.osucha.portpermissions.AccessGuard
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -12,7 +13,7 @@ import org.springframework.http.MediaType
 import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.session.Session
 import org.springframework.web.client.RestClient
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
 import pl.mos.backoffice.identity.application.port.out.PersonalTokenRepository
 import pl.mos.backoffice.identity.domain.model.PersonalAccessToken
 import pl.mos.backoffice.identity.domain.model.TokenId
@@ -50,6 +51,7 @@ class ApplicationSmokeTest {
 
     @Autowired lateinit var restClientBuilder: RestClient.Builder
     @Autowired lateinit var resolveLogin: ResolveLogin
+    @Autowired lateinit var guard: AccessGuard
     @Autowired lateinit var tokens: PersonalTokenRepository
     @Autowired lateinit var sessions: FindByIndexNameSessionRepository<out Session>
     @Autowired lateinit var permissionModules: PermissionModules
@@ -58,7 +60,7 @@ class ApplicationSmokeTest {
 
     /** What the OIDC success handler does: resolve the user, store its id in a server-side session. */
     private fun login(email: String): Pair<User, String> {
-        val result = resolveLogin.resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-$email", email, true, "Smoke $email", null))
+        val result = guard.asSystem("test login") { resolveLogin.resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-$email", email, true, "Smoke $email", null)) }
         val user = (result as ResolveLogin.LoginResult.Success).user
         @Suppress("UNCHECKED_CAST")
         val repository = sessions as FindByIndexNameSessionRepository<Session>
@@ -99,7 +101,7 @@ class ApplicationSmokeTest {
     @Test
     fun `a session user gets me and the bootstrap admin is a platform admin`() {
         // invite-only by default: a non-invited, non-bootstrap e-mail is rejected at login
-        assertThat(resolveLogin.resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-x-${UUID.randomUUID()}", "x-${UUID.randomUUID()}@example.com", true, "X", null)))
+        assertThat(guard.asSystem("test login") { resolveLogin.resolve(ResolveLogin.LoginClaims("https://idp.test", "sub-x-${UUID.randomUUID()}", "x-${UUID.randomUUID()}@example.com", true, "X", null)) })
             .isInstanceOf(ResolveLogin.LoginResult.Rejected::class.java)
 
         val (_, adminCookie) = login("boss@example.com")

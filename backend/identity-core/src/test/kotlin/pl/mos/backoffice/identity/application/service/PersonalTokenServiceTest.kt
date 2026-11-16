@@ -32,7 +32,7 @@ class PersonalTokenServiceTest {
         audit, db.accessVersion, db.clock, gate, gate,
     )
 
-    private val loader get() = LoadCurrentUserService(db.users, db.tokens, db.access, db.clock)
+    private val loader get() = LoadCurrentUserService(db.users, db.tokens, db.access, db.clock, guard = FakeAccessGuard.system())
 
     @Test
     fun `creating a token needs tokens personal, stores only the hash and audits PAT_CREATE`() {
@@ -134,7 +134,7 @@ class PersonalTokenServiceTest {
         assertThat(loader.verifyPersonalToken("bo_pat_" + "x".repeat(40))).isNull()
         service(gate).revoke(narrow.token.id)
         assertThat(loader.verifyPersonalToken(narrow.plaintext)).isNull()
-        val expiredLoader = LoadCurrentUserService(db.users, db.tokens, db.access, pl.mos.backoffice.shared.Clock.fixed(db.now.plus(Duration.ofDays(11))))
+        val expiredLoader = LoadCurrentUserService(db.users, db.tokens, db.access, pl.mos.backoffice.shared.Clock.fixed(db.now.plus(Duration.ofDays(11))), guard = FakeAccessGuard.system())
         assertThat(expiredLoader.verifyPersonalToken(full.plaintext)).isNull()
 
         db.users.save(owner.deactivate())

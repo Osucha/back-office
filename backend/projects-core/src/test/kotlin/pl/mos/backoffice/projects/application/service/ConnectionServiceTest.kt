@@ -193,10 +193,10 @@ class ConnectionServiceTest {
         sealer.keyId = "k2"
         audit.entries.clear()
 
-        assertThat(service(owner).rewrapSecrets()).isEqualTo(1)
+        assertThat(owner.asSystem("test") { service(owner).rewrapSecrets() }).isEqualTo(1)
         assertThat(connections.rows[created.id]!!.secret).isEqualTo(SealedSecret("k2", "rewrapped:connection:${created.id}", created.secret!!.ciphertext))
         assertThat(audit.entries.single().operation).isEqualTo("CONNECTION_SECRET_REWRAP")
         assertThat(audit.entries.single().actor!!.kind).isEqualTo(PrincipalKind.SYSTEM)
-        assertThat(service(owner).rewrapSecrets()).isZero()
+        assertThat(owner.asSystem("test") { service(owner).rewrapSecrets() }).isZero()
     }
 }

@@ -6,6 +6,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
@@ -24,6 +25,7 @@ import pl.mos.backoffice.projects.domain.model.CiExecutionStatus
 import pl.mos.backoffice.projects.domain.model.CiMergeRequest
 import pl.mos.backoffice.projects.domain.model.CiMode
 import pl.mos.backoffice.projects.domain.model.GateResult
+import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.ReviewReport
 import pl.mos.backoffice.projects.domain.model.RunFailure
 import pl.mos.backoffice.projects.domain.model.RunInput
@@ -35,10 +37,8 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.DomainEvent
 import pl.mos.backoffice.shared.EventPublisher
-import pl.mos.backoffice.shared.NotFoundException
-import org.assertj.core.api.Assertions.assertThatThrownBy
-import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.shared.InsufficientPermissionException
+import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.shared.usage.PageOf
@@ -55,7 +55,7 @@ class CiExecutionServiceTest {
     private val gate = Fixtures.ciGate(project.id, project.key)
     private val audit = RecordingAuditPort()
     private val service = CiExecutionService(executions, projects, runService, EventPublisher { events += it }, gate, gate, audit, Clock.fixed(now))
-    private val completion = CiExecutionCompletionService(executions, EventPublisher { events += it }, Clock.fixed(now))
+    private val completion = CiExecutionCompletionService(executions, EventPublisher { events += it }, Clock.fixed(now), guard = FakeAccessGuard.system())
 
     private val context = CiContext(commitSha = "abc123", mergeRequest = CiMergeRequest(iid = "7", sourceBranch = "feature/x", targetBranch = "main"))
 

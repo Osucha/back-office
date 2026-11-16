@@ -8,7 +8,7 @@ import pl.mos.backoffice.projects.domain.model.WorkflowRunId
 /**
  * Outbound port to the durable graph engine (LangGraph4j in `projects-adapters`). Every call returns
  * immediately; execution happens on the engine's own threads and reports progress through
- * [pl.mos.backoffice.projects.application.port.in.RecordRunProgress].
+ * [pl.mos.backoffice.projects.application.port.in.system.RecordRunProgress].
  */
 interface WorkflowEngine {
     /** Starts a `RUNNING` run from its START node. */

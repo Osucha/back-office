@@ -1,4 +1,4 @@
-package pl.mos.backoffice.projects.application.port.`in`
+package pl.mos.backoffice.projects.application.port.`in`.system
 
 import pl.mos.backoffice.projects.application.port.out.LogLevel
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
@@ -7,8 +7,8 @@ import pl.mos.backoffice.projects.domain.model.ApprovalContext
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.Artifact
 import pl.mos.backoffice.projects.domain.model.GateApprovers
-import pl.mos.backoffice.projects.domain.model.PendingWrite
 import pl.mos.backoffice.projects.domain.model.MergeRequestSnapshot
+import pl.mos.backoffice.projects.domain.model.PendingWrite
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.RepositoryResult
 import pl.mos.backoffice.projects.domain.model.ReviewReport

@@ -1,8 +1,8 @@
 package pl.mos.backoffice.evaluation.adapter.config
 
+import com.osucha.portpermissions.AccessGuard
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
-import pl.mos.backoffice.shared.tasks.TaskCatalog
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -12,17 +12,14 @@ import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
 import pl.mos.backoffice.evaluation.adapter.out.executor.AttemptExecutorAdapter
 import pl.mos.backoffice.evaluation.adapter.out.executor.BenchmarkAttemptHandler
-import pl.mos.backoffice.shared.platform.ClusterLock
-import pl.mos.backoffice.shared.platform.WorkQueue
-import java.time.Duration
 import pl.mos.backoffice.evaluation.adapter.out.persistence.EvaluationMappers
 import pl.mos.backoffice.evaluation.application.EvaluationPermissions
-import pl.mos.backoffice.evaluation.application.port.`in`.ExecuteAttempt
 import pl.mos.backoffice.evaluation.application.port.`in`.ListProviders
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageModelProfiles
 import pl.mos.backoffice.evaluation.application.port.`in`.ManageTaskSuites
-import pl.mos.backoffice.evaluation.application.port.`in`.RecoverBenchmarks
-import pl.mos.backoffice.evaluation.application.port.`in`.SeedStarterContent
+import pl.mos.backoffice.evaluation.application.port.`in`.system.ExecuteAttempt
+import pl.mos.backoffice.evaluation.application.port.`in`.system.RecoverBenchmarks
+import pl.mos.backoffice.evaluation.application.port.`in`.system.SeedStarterContent
 import pl.mos.backoffice.evaluation.application.port.out.AttemptExecutor
 import pl.mos.backoffice.evaluation.application.port.out.BenchmarkRepository
 import pl.mos.backoffice.evaluation.application.port.out.ModelDefaultRepository
@@ -32,10 +29,8 @@ import pl.mos.backoffice.evaluation.application.service.BenchmarkService
 import pl.mos.backoffice.evaluation.application.service.ExecuteAttemptService
 import pl.mos.backoffice.evaluation.application.service.ModelAvailabilityService
 import pl.mos.backoffice.evaluation.application.service.ModelDefaultsService
-import pl.mos.backoffice.evaluation.application.service.PersonalLoginModelsService
-import pl.mos.backoffice.shared.llm.OwnLoginLlm
-import pl.mos.backoffice.shared.llm.PersonalLoginModels
 import pl.mos.backoffice.evaluation.application.service.ModelProfileService
+import pl.mos.backoffice.evaluation.application.service.PersonalLoginModelsService
 import pl.mos.backoffice.evaluation.application.service.ProviderService
 import pl.mos.backoffice.evaluation.application.service.SeedStarterContentService
 import pl.mos.backoffice.evaluation.application.service.TaskSuiteService
@@ -44,12 +39,17 @@ import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.llm.LlmGateway
 import pl.mos.backoffice.shared.llm.ModelAvailability
+import pl.mos.backoffice.shared.llm.OwnLoginLlm
+import pl.mos.backoffice.shared.llm.PersonalLoginModels
 import pl.mos.backoffice.shared.llm.Provider
+import pl.mos.backoffice.shared.platform.ClusterLock
+import pl.mos.backoffice.shared.platform.WorkQueue
 import pl.mos.backoffice.shared.runner.AgentRunner
-import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.ModulePermissions
+import pl.mos.backoffice.shared.tasks.TaskCatalog
 import tools.jackson.databind.json.JsonMapper
+import java.time.Duration
 
 /**
  * Instantiates the Model Evaluation use cases from their ports. Beans provided to other modules:
@@ -133,8 +133,9 @@ class EvaluationConfiguration {
         ownLogin: ObjectProvider<OwnLoginLlm>,
         agents: ObjectProvider<TaskCatalog>,
         connectors: ObjectProvider<pl.mos.backoffice.shared.runner.ConnectorCatalog>,
+        guard: AccessGuard,
     ): ExecuteAttempt = ExecuteAttemptService(
-        benchmarks, suites, profiles, gateway, runner, clock, ownLogin.getIfAvailable(), agents.getIfAvailable(), connectors.getIfAvailable(),
+        benchmarks, suites, profiles, gateway, runner, clock, ownLogin.getIfAvailable(), agents.getIfAvailable(), connectors.getIfAvailable(), guard,
     )
 
 
@@ -147,12 +148,12 @@ class EvaluationConfiguration {
     fun attemptExecutor(queue: WorkQueue, retryPolicy: AttemptExecutorAdapter.RetryPolicy): AttemptExecutorAdapter = AttemptExecutorAdapter(queue, retryPolicy)
 
     @Bean
-    fun benchmarkAttemptHandler(executeAttempt: ExecuteAttempt, events: EventPublisher, retryPolicy: AttemptExecutorAdapter.RetryPolicy) =
-        BenchmarkAttemptHandler(executeAttempt, events, retryPolicy)
+    fun benchmarkAttemptHandler(executeAttempt: ExecuteAttempt, events: EventPublisher, retryPolicy: AttemptExecutorAdapter.RetryPolicy, guard: AccessGuard) =
+        BenchmarkAttemptHandler(executeAttempt, events, guard, retryPolicy)
 
     @Bean
-    fun seedStarterContent(profiles: ModelProfileRepository, suites: TaskSuiteRepository, clock: Clock): SeedStarterContent =
-        SeedStarterContentService(profiles, suites, clock)
+    fun seedStarterContent(profiles: ModelProfileRepository, suites: TaskSuiteRepository, clock: Clock, guard: AccessGuard): SeedStarterContent =
+        SeedStarterContentService(profiles, suites, clock, guard)
 }
 
 /**
@@ -168,6 +169,7 @@ class EvaluationStartupListener(
     private val recover: RecoverBenchmarks,
     private val lock: ObjectProvider<ClusterLock>,
     private val environment: Environment,
+    private val guard: AccessGuard,
 ) {
     private val log = LoggerFactory.getLogger(EvaluationStartupListener::class.java)
 
@@ -176,7 +178,7 @@ class EvaluationStartupListener(
         val cluster = lock.getIfAvailable { ClusterLock.LOCAL }
         if (properties.seedStarterContent) {
             cluster.runExclusively("evaluation-seed", Duration.ofMinutes(5), Duration.ofSeconds(30)) {
-                val result = seed.seedIfEmpty()
+                val result = guard.asSystem("evaluation starter content seeding") { seed.seedIfEmpty() }
                 if (result.profilesCreated > 0 || result.suitesCreated > 0) {
                     log.info("seeded starter content profiles={} suites={}", result.profilesCreated, result.suitesCreated)
                 }
@@ -185,7 +187,7 @@ class EvaluationStartupListener(
         val worker = environment.getProperty("backoffice.platform.worker-enabled", Boolean::class.java, true)
         if (properties.recoverOnStartup && worker) {
             cluster.runExclusively("evaluation-recovery", Duration.ofMinutes(10), Duration.ofMinutes(10)) {
-                val requeued = recover.recover()
+                val requeued = guard.asSystem("benchmark recovery") { recover.recover() }
                 if (requeued > 0) log.info("re-queued benchmark attempts after restart count={}", requeued)
             }
         }

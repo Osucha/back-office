@@ -9,8 +9,8 @@ import pl.mos.backoffice.projects.application.port.`in`.ManageConnections.Connec
 import pl.mos.backoffice.projects.application.port.`in`.ManagePersonalConnections
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjectJiraConnections
 import pl.mos.backoffice.projects.application.port.`in`.ManageProjectJiraConnections.ProjectJiraConnectionsView
-import pl.mos.backoffice.projects.application.port.`in`.RemindExpiringConnections
-import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RemindExpiringConnections
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapConnectionSecrets
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
 import pl.mos.backoffice.projects.application.port.out.IssueTrackerFactory
 import pl.mos.backoffice.projects.application.port.out.LegacyConnectionSource
@@ -35,6 +35,7 @@ import pl.mos.backoffice.projects.domain.service.ConnectionSelector
 import pl.mos.backoffice.projects.domain.service.ConnectionVerificationPolicy
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
+import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.IntegrationException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
@@ -45,7 +46,6 @@ import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.Actor
 import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
-import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.security.PrincipalKind
 import java.time.LocalDate
 import java.util.UUID
@@ -290,6 +290,7 @@ class ConnectionService(
 
     @SystemOperation("daily connection expiry reminder (ShedLock singleton); publishes names and dates only")
     override fun remindExpiring(): Int {
+        guard.requireSystem()
         val now = clock.now()
         var count = 0
         connections.findAll().filter { it.needsExpiryReminder(now) }.forEach { connection ->
@@ -325,6 +326,7 @@ class ConnectionService(
 
     @SystemOperation("startup job of the worker role after a key rotation; changes no plaintext and no permissions")
     override fun rewrapSecrets(): Int {
+        guard.requireSystem()
         if (!sealer.configured) return 0
         var count = 0
         connections.findAll().forEach { connection ->

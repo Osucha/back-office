@@ -13,7 +13,7 @@ import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
 import pl.mos.backoffice.tasks.PostgresTestSupport
-import pl.mos.backoffice.tasks.application.port.`in`.SeedTaskLibrary
+import pl.mos.backoffice.tasks.application.port.`in`.system.SeedTaskLibrary
 import pl.mos.backoffice.tasks.application.service.BuiltInLibrary
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
@@ -43,7 +43,7 @@ class TaskLibraryRestIntegrationTest {
 
     @Test
     fun `the startup seed is idempotent and exposes the built-in library`() {
-        assertThat(seed.seed().total).isZero()
+        assertThat(gate.asSystem("test") { seed.seed() }.total).isZero()
         assertThat(mvc.get().uri("/api/v1/rules")).hasStatusOk().bodyJson()
             .extractingPath("$[*].key").asArray().contains(*BuiltInLibrary.ruleKeys.toTypedArray())
         assertThat(mvc.get().uri("/api/v1/task-templates")).hasStatusOk().bodyJson()

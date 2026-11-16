@@ -4,9 +4,9 @@ import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.PublicOperation
 import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.CiExecutionQueries
-import pl.mos.backoffice.projects.application.port.`in`.CompleteCiExecution
 import pl.mos.backoffice.projects.application.port.`in`.StartCiExecution
 import pl.mos.backoffice.projects.application.port.`in`.StartCiExecution.CiExecutionCommand
+import pl.mos.backoffice.projects.application.port.`in`.system.CompleteCiExecution
 import pl.mos.backoffice.projects.application.port.out.CiExecutionRepository
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
@@ -18,12 +18,12 @@ import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.RunInput
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
+import pl.mos.backoffice.projects.domain.service.RepositoryUrls
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.DomainException
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
-import pl.mos.backoffice.projects.domain.service.RepositoryUrls
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.security.CurrentPrincipal
@@ -41,10 +41,12 @@ class CiExecutionCompletionService(
     private val executions: CiExecutionRepository,
     private val events: EventPublisher,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : CompleteCiExecution {
 
     @SystemOperation("workflow engine callback when a CI-triggered run finishes")
     override fun runFinished(run: WorkflowRun) {
+        guard.requireSystem()
         val executionId = run.trigger.ciExecutionId ?: return
         val execution = executions.findById(executionId) ?: executions.findByRunId(run.id) ?: return
         if (execution.finished) return

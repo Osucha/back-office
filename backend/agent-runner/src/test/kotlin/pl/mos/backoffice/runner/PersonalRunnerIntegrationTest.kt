@@ -108,8 +108,8 @@ class PersonalRunnerIntegrationTest {
         val poolId = "local-${UUID.randomUUID().toString().take(8)}"
         val token = "bo_rrt_local-${UUID.randomUUID()}"
         val admin = runnerAdmin
-        admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2)
-        admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2)
+        gate.asSystem("test") { admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2) }
+        gate.asSystem("test") { admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2) }
         fun registerWith(name: String) = mvc.perform(
             post("/api/v1/runner/v2/register").contentType(MediaType.APPLICATION_JSON)
                 .content("""{"registrationToken":"$token","name":"$name","version":"2.0.0","capabilities":{"backends":["DOCKER"],"maxConcurrent":2}}"""),
@@ -117,7 +117,7 @@ class PersonalRunnerIntegrationTest {
         registerWith("compose").andExpect(status().isCreated)
         // used once; the next start of the API arms it again (a controller that lost its volume registers anew)
         registerWith("compose-again").andExpect(status().isUnauthorized)
-        admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2)
+        gate.asSystem("test") { admin.bootstrapLocalFleet(poolId, token, listOf("back-office/runner:*"), 2) }
         registerWith("compose-again").andExpect(status().isCreated)
 
         asAdmin { assertThat(pools.list().map { it.input.id }).contains(poolId) }

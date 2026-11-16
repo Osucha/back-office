@@ -1,9 +1,10 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.ScopeFilter
 import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf
-import pl.mos.backoffice.projects.application.port.`in`.StartScheduledRuns
+import pl.mos.backoffice.projects.application.port.`in`.system.StartRunOnBehalf
+import pl.mos.backoffice.projects.application.port.`in`.system.StartScheduledRuns
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.RunFilter
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
@@ -29,10 +30,12 @@ class ScheduledRunService(
     private val runs: WorkflowRunRepository,
     private val startRun: () -> StartRunOnBehalf,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : StartScheduledRuns {
 
     @SystemOperation("scheduled workflow starts (ADR 0052)")
     override fun sweep(): Int {
+        guard.requireSystem()
         val problems = mutableListOf<String>()
         val started = projects.findAll(ScopeFilter.All).asSequence()
             .flatMap { workflows.findByProjectId(it.id).asSequence() }

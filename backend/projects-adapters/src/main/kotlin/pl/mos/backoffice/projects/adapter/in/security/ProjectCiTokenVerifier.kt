@@ -1,6 +1,6 @@
 package pl.mos.backoffice.projects.adapter.`in`.security
 
-import pl.mos.backoffice.projects.application.port.`in`.VerifyCiToken
+import pl.mos.backoffice.projects.application.port.`in`.system.VerifyCiToken
 import pl.mos.backoffice.shared.security.CiTokenIdentity
 import pl.mos.backoffice.shared.security.CiTokenVerifier
 

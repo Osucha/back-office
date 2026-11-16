@@ -2,8 +2,8 @@ package pl.mos.backoffice.runner
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import pl.mos.backoffice.runner.adapter.`in`.web.AssignmentSigner
-import pl.mos.backoffice.runner.adapter.`in`.web.CanonicalJson
+import pl.mos.backoffice.runner.adapter.`in`.runner.AssignmentSigner
+import pl.mos.backoffice.runner.adapter.`in`.runner.CanonicalJson
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.runner.AgentHarness

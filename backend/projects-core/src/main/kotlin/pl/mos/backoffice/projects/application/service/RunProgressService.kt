@@ -1,9 +1,10 @@
 package pl.mos.backoffice.projects.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.projects.application.port.`in`.CompleteCiExecution
-import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
-import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress.NodeCompletion
+import pl.mos.backoffice.projects.application.port.`in`.system.CompleteCiExecution
+import pl.mos.backoffice.projects.application.port.`in`.system.RecordRunProgress
+import pl.mos.backoffice.projects.application.port.`in`.system.RecordRunProgress.NodeCompletion
 import pl.mos.backoffice.projects.application.port.out.ApprovalRequestRepository
 import pl.mos.backoffice.projects.application.port.out.LogLevel
 import pl.mos.backoffice.projects.application.port.out.NewArtifact
@@ -17,18 +18,17 @@ import pl.mos.backoffice.projects.domain.event.RunWaitingForCi
 import pl.mos.backoffice.projects.domain.event.RunWaitingForHuman
 import pl.mos.backoffice.projects.domain.event.RunnerLog
 import pl.mos.backoffice.projects.domain.event.WorkflowRunFinished
-import pl.mos.backoffice.projects.domain.model.ApprovalContext
-import pl.mos.backoffice.projects.domain.model.ApprovalKind
-import pl.mos.backoffice.projects.domain.model.PendingWrite
 import pl.mos.backoffice.projects.domain.model.AgentQuestion
 import pl.mos.backoffice.projects.domain.model.AgentQuestions
-import pl.mos.backoffice.projects.domain.model.WriteApprovalConfig
+import pl.mos.backoffice.projects.domain.model.ApprovalContext
+import pl.mos.backoffice.projects.domain.model.ApprovalKind
 import pl.mos.backoffice.projects.domain.model.ApprovalRequest
 import pl.mos.backoffice.projects.domain.model.ApprovalRequestId
 import pl.mos.backoffice.projects.domain.model.Artifact
 import pl.mos.backoffice.projects.domain.model.ArtifactId
 import pl.mos.backoffice.projects.domain.model.GateApprovers
 import pl.mos.backoffice.projects.domain.model.GateSpec
+import pl.mos.backoffice.projects.domain.model.PendingWrite
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.RepositoryResult
 import pl.mos.backoffice.projects.domain.model.RunFailure
@@ -38,6 +38,7 @@ import pl.mos.backoffice.projects.domain.model.StepAgentRecord
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
 import pl.mos.backoffice.projects.domain.model.WorkflowRun
 import pl.mos.backoffice.projects.domain.model.WorkflowRunId
+import pl.mos.backoffice.projects.domain.model.WriteApprovalConfig
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.InvalidStateException
@@ -65,6 +66,7 @@ class RunProgressService(
     private val clock: Clock,
     /** ADR 0044: releases the run's workspaces when it ends; null = no runner (tests). */
     private val runner: AgentRunner? = null,
+    private val guard: AccessGuard,
 ) : RecordRunProgress {
 
     /** In-process only; across replicas a run is advanced by the one worker holding its RUN_ADVANCE lease. */
@@ -72,6 +74,7 @@ class RunProgressService(
 
     @SystemOperation(ENGINE)
     override fun nodeStarted(runId: WorkflowRunId, nodeId: String): WorkflowRun = synchronized(lock) {
+        guard.requireSystem()
         val run = load(runId)
         val node = run.definitionSnapshot.requireNode(nodeId)
         val now = clock.now()
@@ -83,6 +86,7 @@ class RunProgressService(
 
     @SystemOperation(ENGINE)
     override fun nodeFinished(runId: WorkflowRunId, nodeId: String, completion: NodeCompletion): WorkflowRun = synchronized(lock) {
+        guard.requireSystem()
         var run = load(runId)
         val now = clock.now()
         val created = completion.artifacts.map { toArtifact(nodeId, it, now) }
@@ -122,6 +126,7 @@ class RunProgressService(
         agent: StepAgentRecord?,
     ): WorkflowRun =
         synchronized(lock) {
+            guard.requireSystem()
             val run = load(runId)
             val now = clock.now()
             val saved = runs.save(run.nodeFailed(nodeId, error, now, port, usage, cost, runnerJobId, repositories, apiCost, agent))
@@ -131,6 +136,7 @@ class RunProgressService(
 
     @SystemOperation(ENGINE)
     override fun nodeSkipped(runId: WorkflowRunId, nodeId: String, reason: String): WorkflowRun = synchronized(lock) {
+        guard.requireSystem()
         val run = load(runId)
         runs.save(run.nodeSkipped(run.definitionSnapshot.requireNode(nodeId), clock.now(), reason))
     }
@@ -138,6 +144,7 @@ class RunProgressService(
     @SystemOperation(ENGINE)
     override fun waitingForHuman(runId: WorkflowRunId, nodeId: String, question: String, options: List<String>, context: ApprovalContext): ApprovalRequest =
         synchronized(lock) {
+            guard.requireSystem()
             val run = load(runId)
             approvals.findOpenByRunId(runId)?.let { return it }
             val node = run.definitionSnapshot.requireNode(nodeId)
@@ -173,6 +180,7 @@ class RunProgressService(
         approvers: GateApprovers,
         context: ApprovalContext,
     ): ApprovalRequest = synchronized(lock) {
+        guard.requireSystem()
         val run = load(runId)
         approvals.findOpenByRunId(runId)?.let { return it }
         val node = run.definitionSnapshot.requireNode(nodeId)
@@ -211,6 +219,7 @@ class RunProgressService(
         context: ApprovalContext,
         maxRounds: Int?,
     ): ApprovalRequest = synchronized(lock) {
+        guard.requireSystem()
         val run = load(runId)
         approvals.findOpenByRunId(runId)?.let { return it }
         val node = run.definitionSnapshot.requireNode(nodeId)
@@ -243,6 +252,7 @@ class RunProgressService(
 
     @SystemOperation(ENGINE)
     override fun waitingForCi(runId: WorkflowRunId, nodeId: String, signal: String): WorkflowRun = synchronized(lock) {
+        guard.requireSystem()
         val run = load(runId)
         if (run.status == RunStatus.WAITING && run.waitingOn?.nodeId == nodeId) return run
         val node = run.definitionSnapshot.requireNode(nodeId)
@@ -254,6 +264,7 @@ class RunProgressService(
 
     @SystemOperation(ENGINE)
     override fun finished(runId: WorkflowRunId, status: RunStatus, outcome: RunOutcome?, failure: RunFailure?): WorkflowRun = synchronized(lock) {
+        guard.requireSystem()
         val run = load(runId)
         if (run.status.terminal) return run
         val now = clock.now()
@@ -274,6 +285,7 @@ class RunProgressService(
 
     @SystemOperation(ENGINE)
     override fun addArtifact(runId: WorkflowRunId, nodeId: String, artifact: NewArtifact): Artifact = synchronized(lock) {
+        guard.requireSystem()
         val run = load(runId)
         val created = toArtifact(nodeId, artifact, clock.now())
         runs.save(run.addArtifact(created))
@@ -282,6 +294,7 @@ class RunProgressService(
 
     @SystemOperation(ENGINE)
     override fun appendLog(runId: WorkflowRunId, nodeId: String?, level: LogLevel, message: String, projectId: ProjectId?) {
+        guard.requireSystem()
         val now = clock.now()
         logs.append(RunLogLine(runId, nodeId, now, level, message))
         // the engine passes the project; other callers pay one lookup (no per-process map: runs move between workers)

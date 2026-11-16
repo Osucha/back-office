@@ -1,11 +1,12 @@
 package pl.mos.backoffice.evaluation.application.service
 
-import pl.mos.backoffice.evaluation.application.port.`in`.SeedStarterContent
-import pl.mos.backoffice.evaluation.application.port.`in`.SeedStarterContent.SeedResult
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
+import pl.mos.backoffice.evaluation.application.port.`in`.system.SeedStarterContent
+import pl.mos.backoffice.evaluation.application.port.`in`.system.SeedStarterContent.SeedResult
 import pl.mos.backoffice.evaluation.application.port.out.ModelProfileRepository
 import pl.mos.backoffice.evaluation.application.port.out.TaskSuiteRepository
 import pl.mos.backoffice.shared.Clock
-import com.osucha.portpermissions.SystemOperation
 
 /**
  * Creates the starter suite (docs/architecture/04-model-evaluation.md) when there is none. Idempotent: the owner's edits
@@ -17,10 +18,12 @@ class SeedStarterContentService(
     private val profiles: ModelProfileRepository,
     private val suites: TaskSuiteRepository,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : SeedStarterContent {
 
     @SystemOperation("startup seeding of the starter suite; never exposed through a controller")
     override fun seedIfEmpty(): SeedResult {
+        guard.requireSystem()
         val now = clock.now()
         var profilesCreated = 0
         var suitesCreated = 0

@@ -4,7 +4,7 @@ import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageConnectors
 import pl.mos.backoffice.projects.application.port.`in`.ManageConnectors.ConnectorCommand
-import pl.mos.backoffice.projects.application.port.`in`.RewrapConnectorSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapConnectorSecrets
 import pl.mos.backoffice.projects.application.port.out.ConnectorRepository
 import pl.mos.backoffice.projects.application.port.out.McpProbePort
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
@@ -154,6 +154,7 @@ class ConnectorService(
 
     @SystemOperation("startup job of the worker role after a key rotation; changes no plaintext and no permissions")
     override fun rewrapConnectorSecrets(): Int {
+        guard.requireSystem()
         if (!sealer.configured) return 0
         var count = 0
         connectors.findAll().forEach { connector ->

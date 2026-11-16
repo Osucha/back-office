@@ -1,6 +1,5 @@
 package pl.mos.backoffice.projects.application.service
 
-import pl.mos.backoffice.shared.testing.TestAgents
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -11,7 +10,7 @@ import pl.mos.backoffice.projects.ConnectionFakes
 import pl.mos.backoffice.projects.ConnectionFakes.READ
 import pl.mos.backoffice.projects.Fixtures
 import pl.mos.backoffice.projects.Fixtures.now
-import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
+import pl.mos.backoffice.projects.application.port.`in`.system.RecordRunProgress
 import pl.mos.backoffice.projects.application.port.out.LegacyConnectionSource
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.RunLogRepository
@@ -34,6 +33,7 @@ import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import pl.mos.backoffice.shared.testing.RecordingAuditPort
+import pl.mos.backoffice.shared.testing.TestAgents
 
 /** ADR 0030 amendment: a missing Jira connection does not block saving, but a run refuses to start; Jira intake runs (ADR 0033). */
 class RunStartJiraTest {

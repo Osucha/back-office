@@ -1,7 +1,6 @@
 package pl.mos.backoffice.tasks.application.service
 
 import pl.mos.backoffice.shared.ValidationException
-import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentSnapshot
 import pl.mos.backoffice.shared.tasks.AgentProfile
 import pl.mos.backoffice.shared.tasks.AgentSnapshot
@@ -31,11 +30,11 @@ class TaskCatalogService(
     private val agents: AgentRepository? = null,
 ) : TaskCatalog {
 
-    @SystemOperation("TaskCatalog port for the Projects context: the workflow engine resolves tasks as the system; callers authorise their own use case")
+    // not a use case, no check of its own (ADR 0067): TaskCatalog port for the Projects context: the workflow engine resolves tasks as the system; callers authorise their own use case
     override fun resolve(key: String, projectId: UUID?, overrides: TaskOverrides): ResolvedTask? =
         lookup.resolver.resolve(key, projectId, overrides)
 
-    @SystemOperation("TaskCatalog port for the Projects context: the designer palette is authorised by the calling workflow use case")
+    // not a use case, no check of its own (ADR 0067): TaskCatalog port for the Projects context: the designer palette is authorised by the calling workflow use case
     override fun palette(projectId: UUID?): List<TaskSummary> = templates.findVisible(projectId)
         .filter { !it.abstract }
         .groupBy { it.key }
@@ -44,17 +43,17 @@ class TaskCatalogService(
         .sortedBy { it.key }
         .mapNotNull { summary(it, projectId) }
 
-    @SystemOperation("TaskCatalog port for the Evaluation context (ADR 0059): benchmark candidates; the benchmark use case authorises the caller")
+    // not a use case, no check of its own (ADR 0067): TaskCatalog port for the Evaluation context (ADR 0059): benchmark candidates; the benchmark use case authorises the caller
     override fun agent(key: String, projectId: UUID?): AgentSnapshot? = lookup.visibleAgent(key, projectId)?.snapshot
 
-    @SystemOperation("TaskCatalog port for the Evaluation context (ADR 0059): a candidate's environment; the attempt runs as the system after an authorised start")
+    // not a use case, no check of its own (ADR 0067): TaskCatalog port for the Evaluation context (ADR 0059): a candidate's environment; the attempt runs as the system after an authorised start
     override fun agentEnvironment(key: String, projectId: UUID?): AgentEnvironmentSnapshot? {
         val resolved = lookup.resolver.environment(key, projectId)
         if (!resolved.found) return null
         return AgentEnvironmentSnapshot(resolved.agent, resolved.rules, resolved.skills)
     }
 
-    @SystemOperation("TaskCatalog port for the Projects context (ADR 0061): the agent audit authorises the caller on the project")
+    // not a use case, no check of its own (ADR 0067): TaskCatalog port for the Projects context (ADR 0061): the agent audit authorises the caller on the project
     override fun stepNeeds(key: String, projectId: UUID?, overrides: TaskOverrides): StepNeeds? {
         val resolution = previewOrNull(key, projectId, overrides) ?: return null
         return StepNeeds(
@@ -64,14 +63,14 @@ class TaskCatalogService(
         )
     }
 
-    @SystemOperation("TaskCatalog port for the Projects context (ADR 0061): the agent audit authorises the caller on the project")
+    // not a use case, no check of its own (ADR 0067): TaskCatalog port for the Projects context (ADR 0061): the agent audit authorises the caller on the project
     override fun agentProfile(key: String, projectId: UUID?): AgentProfile? {
         val stored = lookup.visibleAgent(key, projectId)
         if (stored == null && key != AgentSnapshot.MODEL_ANSWER) return null
         return profile(key, stored, projectId)
     }
 
-    @SystemOperation("TaskCatalog port for the Projects context (ADR 0061): the coherence check authorises the caller on the agent and the project")
+    // not a use case, no check of its own (ADR 0067): TaskCatalog port for the Projects context (ADR 0061): the coherence check authorises the caller on the agent and the project
     override fun agentProfileById(id: UUID, projectId: UUID?): AgentProfile? {
         val stored = agents?.findById(AgentId(id)) ?: return null
         val seenFrom = stored.scope.projectId ?: projectId

@@ -8,8 +8,8 @@ import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.boot.context.properties.EnableConfigurationProperties
-import org.springframework.context.ApplicationListener
 import org.springframework.boot.web.servlet.FilterRegistrationBean
+import org.springframework.context.ApplicationListener
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -17,16 +17,17 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import pl.mos.backoffice.runner.RunnerProperties
-import pl.mos.backoffice.runner.adapter.`in`.web.AssignmentSigner
-import pl.mos.backoffice.runner.adapter.`in`.web.RunnerProtocolController
-import pl.mos.backoffice.runner.adapter.`in`.web.RunnerTokenFilter
+import pl.mos.backoffice.runner.adapter.`in`.runner.AssignmentSigner
+import pl.mos.backoffice.runner.adapter.`in`.runner.RunnerProtocolController
+import pl.mos.backoffice.runner.adapter.`in`.runner.RunnerTokenFilter
 import pl.mos.backoffice.runner.adapter.out.BlobResultArchive
 import pl.mos.backoffice.runner.adapter.out.InProcessLeaseSignal
 import pl.mos.backoffice.runner.adapter.out.SpringTransactions
 import pl.mos.backoffice.runner.adapter.out.metrics.AgentJobMetrics
 import pl.mos.backoffice.runner.adapter.out.persistence.JdbcFleetStores
 import pl.mos.backoffice.runner.adapter.out.persistence.JdbcRunWorkspaceStore
-import pl.mos.backoffice.runner.application.port.`in`.MaintainAgentJobs
+import pl.mos.backoffice.runner.application.port.`in`.system.BootstrapLocalFleet
+import pl.mos.backoffice.runner.application.port.`in`.system.MaintainAgentJobs
 import pl.mos.backoffice.runner.application.port.out.LeaseSignal
 import pl.mos.backoffice.runner.application.port.out.ResultArchive
 import pl.mos.backoffice.runner.application.port.out.Transactions
@@ -151,6 +152,7 @@ class RunnerConfiguration {
         loginModels: ObjectProvider<pl.mos.backoffice.shared.llm.PersonalLoginModels>,
         repositoryTokens: ObjectProvider<pl.mos.backoffice.shared.runner.RepositoryTokenSource>,
         sealer: pl.mos.backoffice.runner.application.port.out.CredentialSealer,
+        guard: AccessGuard,
     ) = RunnerProtocolService(
         stores, stores, stores, stores, lifecycle, tx, audit.getIfAvailable { AuditPort.NOOP },
         signingKeys = { signer.getIfAvailable()?.publicJwks().orEmpty() },
@@ -158,6 +160,7 @@ class RunnerConfiguration {
         loginModels = loginModels.getIfAvailable(),
         repositoryTokens = repositoryTokens.getIfAvailable(),
         sealer = sealer,
+        guard = guard,
     )
 
     /** ADR 0051: HPKE sealing of project repository tokens to runner-controller keys. */
@@ -172,10 +175,12 @@ class RunnerConfiguration {
         tx: Transactions,
         events: EventPublisher,
         catalog: ObjectProvider<ModelCatalog>,
-    ) = SandboxCallbackService(stores, archive, lifecycle, tx, events, catalog.getIfAvailable())
+        guard: AccessGuard,
+    ) = SandboxCallbackService(stores, archive, lifecycle, tx, events, catalog.getIfAvailable(), guard)
 
     @Bean
-    fun agentJobMaintenanceService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions) = AgentJobMaintenanceService(stores, lifecycle, tx)
+    fun agentJobMaintenanceService(stores: JdbcFleetStores, lifecycle: JobLifecycle, tx: Transactions, guard: AccessGuard) =
+        AgentJobMaintenanceService(stores, lifecycle, tx, guard)
 
     @Bean
     fun assignmentSigner(json: JsonMapper, signer: ObjectProvider<EnvelopeSigner>) = AssignmentSigner(json) { signer.getIfAvailable() }
@@ -185,8 +190,8 @@ class RunnerConfiguration {
 
     /** Token authentication of the runner-fleet and sandbox callback paths (after the security chain, which permits them). */
     @Bean
-    fun runnerTokenFilter(protocol: RunnerProtocolService, verifier: AgentJobService): FilterRegistrationBean<RunnerTokenFilter> =
-        FilterRegistrationBean(RunnerTokenFilter(protocol, verifier)).apply {
+    fun runnerTokenFilter(protocol: RunnerProtocolService, verifier: AgentJobService, guard: AccessGuard): FilterRegistrationBean<RunnerTokenFilter> =
+        FilterRegistrationBean(RunnerTokenFilter(protocol, verifier, guard)).apply {
             addUrlPatterns("/api/v1/runner/v2/*", "/api/v1/internal/runner/*")
             order = FILTER_ORDER
         }
@@ -204,10 +209,14 @@ class RunnerConfiguration {
 
     /** ADR 0046: the shared pool and registration token of a local stack (`backoffice.runner.local-fleet`), after the migrations. */
     @Bean
-    fun localFleetBootstrap(admin: FleetAdminService, props: RunnerProperties) = ApplicationListener<ApplicationReadyEvent> {
+    fun localFleetBootstrap(bootstrap: BootstrapLocalFleet, guard: AccessGuard, props: RunnerProperties) = ApplicationListener<ApplicationReadyEvent> {
         val fleet = props.localFleet
         if (fleet.registrationToken.isBlank()) return@ApplicationListener
-        runCatching { admin.bootstrapLocalFleet(fleet.poolId, fleet.registrationToken, props.personal.allowedImages, fleet.maxConcurrentJobs) }
+        runCatching {
+            guard.asSystem("local fleet bootstrap") {
+                bootstrap.bootstrapLocalFleet(fleet.poolId, fleet.registrationToken, props.personal.allowedImages, fleet.maxConcurrentJobs)
+            }
+        }
             .onSuccess { log.info("local fleet: pool {} accepts the configured registration token", fleet.poolId) }
             .onFailure { log.warn("local fleet bootstrap failed: {}", it.toString()) }
     }

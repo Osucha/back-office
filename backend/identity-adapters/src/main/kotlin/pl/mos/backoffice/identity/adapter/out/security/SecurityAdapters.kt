@@ -8,7 +8,7 @@ import org.springframework.security.authentication.AuthenticationCredentialsNotF
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.session.Session
-import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
+import pl.mos.backoffice.identity.application.port.`in`.system.LoadCurrentUser
 import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.SessionSummary
 import pl.mos.backoffice.identity.application.port.out.SessionTerminator
@@ -40,7 +40,8 @@ class CurrentUserAuthentication(val currentUser: CurrentUser, val source: Authen
 /**
  * The shared `AccessGuard` and `CurrentPrincipal` (ADR 0017, ADR 0066) over the Spring Security context.
  * `asSystem` uses a thread-local override, so it works on any thread (engine, schedulers, seeding) with or
- * without an HTTP request. The SYSTEM principal passes every check.
+ * without an HTTP request, but only on the thread that called it: work handed to another thread must call
+ * `asSystem` there. The SYSTEM principal holds no permissions; it only passes `requireSystem()` (ADR 0067).
  */
 class SecurityContextAccessGuard(catalog: PermissionCatalog) : CurrentUserAccessGuard(catalog) {
 

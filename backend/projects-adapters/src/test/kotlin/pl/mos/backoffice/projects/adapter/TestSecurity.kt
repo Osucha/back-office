@@ -119,7 +119,7 @@ class TestAuthenticationFilter(private val gate: TestAccessGuard, private val ve
         val authorization = request.getHeader(HttpHeaders.AUTHORIZATION)
         if (authorization != null) {
             val token = authorization.takeIf { it.startsWith("Bearer ", ignoreCase = true) }?.substring(7)?.trim() ?: return null
-            val identity = verifier.verify(token) ?: return null
+            val identity = gate.asSystem("test authentication") { verifier.verify(token) } ?: return null
             return TestAccessGuard.ciToken(identity.projectId, identity.projectKey, identity.tokenName)
         }
         request.getHeader("X-Test-Platform-Permissions")?.let { spec ->

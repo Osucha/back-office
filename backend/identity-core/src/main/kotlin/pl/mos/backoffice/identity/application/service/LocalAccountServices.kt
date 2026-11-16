@@ -1,7 +1,9 @@
 package pl.mos.backoffice.identity.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
+import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.identity.application.port.`in`.AdminLocalAccounts
-import pl.mos.backoffice.identity.application.port.`in`.BootstrapLocalAdmin
 import pl.mos.backoffice.identity.application.port.`in`.ChangePassword
 import pl.mos.backoffice.identity.application.port.`in`.CompleteMfaLogin
 import pl.mos.backoffice.identity.application.port.`in`.GetMySecurity
@@ -16,6 +18,7 @@ import pl.mos.backoffice.identity.application.port.`in`.PasswordResetLinks
 import pl.mos.backoffice.identity.application.port.`in`.ResetLinkInfo
 import pl.mos.backoffice.identity.application.port.`in`.TotpEnrolmentView
 import pl.mos.backoffice.identity.application.port.`in`.UserDetails
+import pl.mos.backoffice.identity.application.port.`in`.system.BootstrapLocalAdmin
 import pl.mos.backoffice.identity.application.port.out.AccessVersion
 import pl.mos.backoffice.identity.application.port.out.AuditLogReader
 import pl.mos.backoffice.identity.application.port.out.AuditQuery
@@ -60,12 +63,9 @@ import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditResult
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.Actor
-import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.PrincipalKind
-import com.osucha.portpermissions.PublicOperation
-import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.security.UserId
 
 /**
@@ -560,10 +560,12 @@ class BootstrapLocalAdminService(
     private val local: LocalAccountSupport,
     private val grants: GrantRepository,
     private val accessVersion: AccessVersion,
+    private val guard: AccessGuard,
 ) : BootstrapLocalAdmin {
 
     @SystemOperation("startup: first administrator of an installation without an identity provider")
     override fun bootstrap(): User? {
+        guard.requireSystem()
         val email = local.options.local.bootstrapAdminEmail?.takeIf { it.isNotBlank() } ?: return null
         val password = local.options.local.bootstrapAdminPassword?.takeIf { it.isNotEmpty() }
             ?: throw IllegalStateException("backoffice.auth.local.bootstrap-admin-password must be set together with bootstrap-admin-email")

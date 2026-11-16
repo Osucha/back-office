@@ -103,7 +103,7 @@ class PersonalIntakeServiceTest {
         val rule = service.create(command).rule
         trackers.headlinesResult = listOf(issue("SHOP-1"), issue("SHOP-2"))
 
-        assertThat(service.poll(rule.id)).isEqualTo(2)
+        assertThat(gate.asSystem("test") { service.poll(rule.id) }).isEqualTo(2)
         assertThat(trackers.opened.last().id).isEqualTo(mine.id)
         assertThat(trackers.headlinesJql.single()).isEqualTo("assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC")
         val found = events.single() as IntakeProposalsFound
@@ -114,7 +114,7 @@ class PersonalIntakeServiceTest {
         // SHOP-1 again (e.g. after a status change) is not proposed twice; SHOP-3 is new
         now = now.plus(Duration.ofMinutes(5))
         trackers.headlinesResult = listOf(issue("SHOP-1"), issue("SHOP-3"))
-        assertThat(service.poll(rule.id)).isEqualTo(1)
+        assertThat(gate.asSystem("test") { service.poll(rule.id) }).isEqualTo(1)
         assertThat(service.proposals().map { it.proposal.issueKey }).containsExactlyInAnyOrder("SHOP-1", "SHOP-2", "SHOP-3")
         assertThat(service.proposals().first().issueUrl).startsWith("https://acme.atlassian.net/browse/")
         assertThat(service.rules().single().newProposals).isEqualTo(3)
@@ -125,12 +125,12 @@ class PersonalIntakeServiceTest {
     fun `without includeExisting the first poll only remembers what already matches`() {
         val rule = service.create(command.copy(includeExisting = false)).rule
         trackers.headlinesResult = listOf(issue("SHOP-1"))
-        assertThat(service.poll(rule.id)).isZero()
+        assertThat(gate.asSystem("test") { service.poll(rule.id) }).isZero()
         assertThat(events).isEmpty()
         assertThat(service.proposals()).isEmpty()
 
         trackers.headlinesResult = listOf(issue("SHOP-1"), issue("SHOP-2"))
-        assertThat(service.poll(rule.id)).isEqualTo(1)
+        assertThat(gate.asSystem("test") { service.poll(rule.id) }).isEqualTo(1)
         assertThat(service.proposals().single().proposal.issueKey).isEqualTo("SHOP-2")
     }
 
@@ -138,7 +138,7 @@ class PersonalIntakeServiceTest {
     fun `starting a proposal is the owner's own run of the rule's workflow, dismiss and restore change only the state`() {
         val rule = service.create(command).rule
         trackers.headlinesResult = listOf(issue("SHOP-1"), issue("SHOP-2"))
-        service.poll(rule.id)
+        gate.asSystem("test") { service.poll(rule.id) }
         val (first, second) = service.proposals().sortedBy { it.proposal.issueKey }.map { it.proposal.id }
 
         val started = service.start(first)
@@ -159,7 +159,7 @@ class PersonalIntakeServiceTest {
     fun `rules and proposals of another person do not exist for the caller`() {
         val rule = service.create(command).rule
         trackers.headlinesResult = listOf(issue("SHOP-1"))
-        service.poll(rule.id)
+        gate.asSystem("test") { service.poll(rule.id) }
         val proposal = service.proposals().single().proposal.id
         val stranger = (FakeAccessGuard.permitting(ProjectsPermissions.CONNECTIONS_PERSONAL).also {
                 it.user = it.user.copy(userId = pl.mos.backoffice.shared.security.UserId(UUID.randomUUID()))
@@ -177,7 +177,7 @@ class PersonalIntakeServiceTest {
     fun `errors back off, a foreign or deleted connection stops the rule with a reason`() {
         val rule = service.create(command).rule
         trackers.headlinesFailure = IssueTrackerUnavailableException(429, Duration.ofMinutes(30), "slow down")
-        assertThat(service.poll(rule.id)).isZero()
+        assertThat(gate.asSystem("test") { service.poll(rule.id) }).isZero()
         val failed = repo.findRule(rule.id)!!
         assertThat(failed.consecutiveFailures).isEqualTo(1)
         assertThat(failed.nextPollAt).isEqualTo(now.plus(Duration.ofMinutes(30)))
@@ -185,7 +185,7 @@ class PersonalIntakeServiceTest {
 
         repo.saveRule(failed.copy(connectionId = someoneElses.id))
         trackers.headlinesFailure = null
-        service.poll(rule.id)
+        gate.asSystem("test") { service.poll(rule.id) }
         assertThat(repo.findRule(rule.id)!!.lastError).contains("not one of your personal connections")
     }
 

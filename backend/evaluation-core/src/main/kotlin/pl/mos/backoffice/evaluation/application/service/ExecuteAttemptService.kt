@@ -1,7 +1,9 @@
 package pl.mos.backoffice.evaluation.application.service
 
-import pl.mos.backoffice.evaluation.application.port.`in`.ExecuteAttempt
-import pl.mos.backoffice.evaluation.application.port.`in`.ExecuteAttempt.AttemptExecutionReport
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.SystemOperation
+import pl.mos.backoffice.evaluation.application.port.`in`.system.ExecuteAttempt
+import pl.mos.backoffice.evaluation.application.port.`in`.system.ExecuteAttempt.AttemptExecutionReport
 import pl.mos.backoffice.evaluation.application.port.out.AttemptWork
 import pl.mos.backoffice.evaluation.application.port.out.BenchmarkRepository
 import pl.mos.backoffice.evaluation.application.port.out.ModelProfileRepository
@@ -22,11 +24,8 @@ import pl.mos.backoffice.evaluation.domain.model.ModelProfile
 import pl.mos.backoffice.evaluation.domain.model.TaskKind
 import pl.mos.backoffice.evaluation.domain.service.JudgePrompts
 import pl.mos.backoffice.evaluation.domain.service.ScoreCombiner
-import pl.mos.backoffice.shared.prompt.InjectionDetector
-import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.IntegrationException
-import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.Money
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.llm.ApiPricing
@@ -35,23 +34,25 @@ import pl.mos.backoffice.shared.llm.LlmRequest
 import pl.mos.backoffice.shared.llm.LlmResult
 import pl.mos.backoffice.shared.llm.OwnLoginLlm
 import pl.mos.backoffice.shared.llm.chatAs
+import pl.mos.backoffice.shared.prompt.InjectionDetector
+import pl.mos.backoffice.shared.prompt.PromptDataBlocks
 import pl.mos.backoffice.shared.runner.AgentRunner
-import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.ConnectorCatalog
+import pl.mos.backoffice.shared.runner.GitAccess
 import pl.mos.backoffice.shared.runner.JobConnectors
+import pl.mos.backoffice.shared.runner.RunnerAcceptance
 import pl.mos.backoffice.shared.runner.RunnerJobSpec
 import pl.mos.backoffice.shared.runner.RunnerJobStatus
 import pl.mos.backoffice.shared.runner.RunnerMode
 import pl.mos.backoffice.shared.runner.RunnerRepository
 import pl.mos.backoffice.shared.runner.RunnerResult
 import pl.mos.backoffice.shared.runner.RunnerSkill
+import pl.mos.backoffice.shared.runner.RunnerTarget
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentSnapshot
 import pl.mos.backoffice.shared.tasks.AgentEnvironmentText
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.usage.UsageContext
 import pl.mos.backoffice.shared.usage.UsageKind
-import pl.mos.backoffice.shared.runner.RunnerTarget
-import pl.mos.backoffice.shared.runner.RunnerAcceptance
 
 /**
  * Runs one attempt synchronously on the caller's thread (docs/architecture/04-model-evaluation.md):
@@ -77,10 +78,12 @@ class ExecuteAttemptService(
     private val agents: TaskCatalog? = null,
     /** ADR 0064: the platform connectors (MCP_HTTP) of a candidate's agent; null = none. */
     private val connectors: ConnectorCatalog? = null,
+    private val guard: AccessGuard,
 ) : ExecuteAttempt {
 
     @SystemOperation("runs on the benchmark executor's threads after an authorised start; never exposed through a controller")
     override fun execute(attemptId: AttemptId, allowRetry: Boolean): AttemptExecutionReport {
+        guard.requireSystem()
         val pending = benchmarks.findAttempt(attemptId) ?: return AttemptExecutionReport.SKIPPED
         // RUNNING / JUDGING: a previous holder of the work item died mid-attempt; the queue lease makes this call the only one
         if (pending.status.terminal) return AttemptExecutionReport.SKIPPED

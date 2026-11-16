@@ -1,15 +1,9 @@
 package pl.mos.backoffice.projects.adapter.config
 
 import com.osucha.portpermissions.AccessGuard
-import pl.mos.backoffice.projects.adapter.out.scm.GitLabPipelineStatus
-import pl.mos.backoffice.projects.application.port.out.PipelineStatusPort
-import pl.mos.backoffice.projects.application.service.PipelineWatchService
-import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
-import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
-import pl.mos.backoffice.projects.application.service.WorkflowLibraryService
-import pl.mos.backoffice.projects.application.service.LibrarySourceService
-import pl.mos.backoffice.projects.application.service.PersonalIntakeService
-import pl.mos.backoffice.projects.application.port.out.PersonalIntakeRepository
+import io.micrometer.core.instrument.Gauge
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.binder.MeterBinder
 import org.bsc.langgraph4j.checkpoint.BaseCheckpointSaver
 import org.bsc.langgraph4j.checkpoint.PostgresSaverV2
 import org.bsc.langgraph4j.serializer.std.ObjectStreamStateSerializer
@@ -20,50 +14,40 @@ import org.springframework.boot.info.BuildProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import pl.mos.backoffice.projects.adapter.`in`.security.ProjectCiTokenVerifier
+import pl.mos.backoffice.projects.adapter.`in`.sse.EventStreamController
 import pl.mos.backoffice.projects.adapter.out.langgraph.LangGraphWorkflowEngine
 import pl.mos.backoffice.projects.adapter.out.langgraph.LeakSafeCheckpointSaver
 import pl.mos.backoffice.projects.adapter.out.langgraph.SequencedPostgresSaver
 import pl.mos.backoffice.projects.adapter.out.langgraph.TrackingDataSource
 import pl.mos.backoffice.projects.adapter.out.langgraph.WorkflowState
-import pl.mos.backoffice.projects.adapter.out.support.Sha256TokenHasher
-import pl.mos.backoffice.projects.application.port.`in`.AssignApproval
-import pl.mos.backoffice.projects.application.port.`in`.CompleteCiExecution
-import pl.mos.backoffice.projects.application.port.`in`.RecordRunProgress
-import pl.mos.backoffice.projects.application.port.`in`.VerifyCiToken
-import pl.mos.backoffice.projects.application.port.out.ApprovalRequestRepository
-import pl.mos.backoffice.projects.application.port.out.CiExecutionRepository
-import pl.mos.backoffice.projects.application.port.out.ExpressionEvaluator
-import pl.mos.backoffice.projects.application.port.out.IntegrationProbe
+import pl.mos.backoffice.projects.adapter.out.scm.GitLabPipelineStatus
+import pl.mos.backoffice.projects.adapter.out.scm.GitLabScmProbe
 import pl.mos.backoffice.projects.adapter.out.secrets.AesGcmSecretCipher
 import pl.mos.backoffice.projects.adapter.out.secrets.SecretsProperties
+import pl.mos.backoffice.projects.adapter.out.support.Sha256TokenHasher
+import pl.mos.backoffice.projects.application.port.`in`.AssignApproval
+import pl.mos.backoffice.projects.application.port.`in`.system.CompleteCiExecution
+import pl.mos.backoffice.projects.application.port.`in`.system.RecordRunProgress
+import pl.mos.backoffice.projects.application.port.`in`.system.VerifyCiToken
+import pl.mos.backoffice.projects.application.port.out.ApprovalRequestRepository
+import pl.mos.backoffice.projects.application.port.out.CiExecutionRepository
 import pl.mos.backoffice.projects.application.port.out.ConnectionRepository
+import pl.mos.backoffice.projects.application.port.out.ExpressionEvaluator
+import pl.mos.backoffice.projects.application.port.out.IntegrationProbe
 import pl.mos.backoffice.projects.application.port.out.IssueTrackerFactory
-import pl.mos.backoffice.projects.application.port.out.LegacyConnectionSource
-import pl.mos.backoffice.projects.application.service.ConnectionService
-import pl.mos.backoffice.projects.adapter.out.scm.GitLabScmProbe
-import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
-import pl.mos.backoffice.projects.application.port.out.ScmProbePort
-import pl.mos.backoffice.projects.application.service.ScmConnectionService
-import pl.mos.backoffice.projects.domain.model.ScmConnection
-import pl.mos.backoffice.projects.domain.model.ScmConnectionId
-import pl.mos.backoffice.shared.runner.RepositoryTokenSource
-import tools.jackson.databind.json.JsonMapper
-import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
-import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
-import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
-import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
-import pl.mos.backoffice.shared.llm.ModelAvailability
-import pl.mos.backoffice.shared.llm.ModelDefaults
-import pl.mos.backoffice.projects.application.service.JiraIntakeService
 import pl.mos.backoffice.projects.application.port.out.JiraIntakeRepository
-import pl.mos.backoffice.projects.domain.service.JiraIntakePlanner
-import pl.mos.backoffice.projects.domain.service.ConnectionSelector
-import pl.mos.backoffice.projects.domain.service.ConnectionVerificationPolicy
 import pl.mos.backoffice.projects.application.port.out.JsonCodec
+import pl.mos.backoffice.projects.application.port.out.LegacyConnectionSource
+import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
+import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
 import pl.mos.backoffice.projects.application.port.out.NodeExecutor
+import pl.mos.backoffice.projects.application.port.out.PersonalIntakeRepository
+import pl.mos.backoffice.projects.application.port.out.PipelineStatusPort
 import pl.mos.backoffice.projects.application.port.out.ProjectCiTokenRepository
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.RunLogRepository
+import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
+import pl.mos.backoffice.projects.application.port.out.ScmProbePort
 import pl.mos.backoffice.projects.application.port.out.TaskExecutorStrategy
 import pl.mos.backoffice.projects.application.port.out.TokenHasher
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
@@ -74,15 +58,22 @@ import pl.mos.backoffice.projects.application.service.ApprovalService
 import pl.mos.backoffice.projects.application.service.CiExecutionCompletionService
 import pl.mos.backoffice.projects.application.service.CiExecutionService
 import pl.mos.backoffice.projects.application.service.CiTokenService
+import pl.mos.backoffice.projects.application.service.ConnectionService
 import pl.mos.backoffice.projects.application.service.DashboardQueryService
 import pl.mos.backoffice.projects.application.service.IntegrationsService
+import pl.mos.backoffice.projects.application.service.JiraIntakeService
+import pl.mos.backoffice.projects.application.service.LibrarySourceService
 import pl.mos.backoffice.projects.application.service.ModelResolver
+import pl.mos.backoffice.projects.application.service.PersonalIntakeService
+import pl.mos.backoffice.projects.application.service.PipelineWatchService
 import pl.mos.backoffice.projects.application.service.ProjectService
 import pl.mos.backoffice.projects.application.service.RunProgressService
 import pl.mos.backoffice.projects.application.service.RunService
+import pl.mos.backoffice.projects.application.service.ScmConnectionService
 import pl.mos.backoffice.projects.application.service.SignalService
 import pl.mos.backoffice.projects.application.service.TemplateModelBuilder
 import pl.mos.backoffice.projects.application.service.WaitTimeoutService
+import pl.mos.backoffice.projects.application.service.WorkflowLibraryService
 import pl.mos.backoffice.projects.application.service.WorkflowService
 import pl.mos.backoffice.projects.application.service.nodes.DecisionNodeExecutor
 import pl.mos.backoffice.projects.application.service.nodes.EndNodeExecutor
@@ -94,38 +85,47 @@ import pl.mos.backoffice.projects.application.service.nodes.TaskNodeExecutor
 import pl.mos.backoffice.projects.application.service.nodes.WaitForCiNodeExecutor
 import pl.mos.backoffice.projects.application.service.tasks.FetchIssueTaskExecutor
 import pl.mos.backoffice.projects.application.service.tasks.ImplementTaskExecutor
+import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
+import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.LlmTaskExecutor
+import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.NotifyTaskExecutor
+import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
 import pl.mos.backoffice.projects.application.service.tasks.RunnerTaskSupport
 import pl.mos.backoffice.projects.application.service.tasks.TransitionIssueTaskExecutor
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
+import pl.mos.backoffice.projects.domain.model.ScmConnection
+import pl.mos.backoffice.projects.domain.model.ScmConnectionId
+import pl.mos.backoffice.projects.domain.model.SealedSecret
 import pl.mos.backoffice.projects.domain.service.CiSnippetRenderer
+import pl.mos.backoffice.projects.domain.service.ConnectionSelector
+import pl.mos.backoffice.projects.domain.service.ConnectionVerificationPolicy
+import pl.mos.backoffice.projects.domain.service.JiraIntakePlanner
 import pl.mos.backoffice.projects.domain.service.ReviewVerdictPolicy
 import pl.mos.backoffice.projects.domain.service.TemplateRenderer
 import pl.mos.backoffice.projects.domain.service.WorkflowValidator
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.EventPublisher
 import pl.mos.backoffice.shared.audit.AuditPort
-import pl.mos.backoffice.shared.security.CurrentPrincipal
+import pl.mos.backoffice.shared.llm.LlmGateway
+import pl.mos.backoffice.shared.llm.ModelAvailability
+import pl.mos.backoffice.shared.llm.ModelCatalog
+import pl.mos.backoffice.shared.llm.ModelDefaults
+import pl.mos.backoffice.shared.platform.ClusterSignals
+import pl.mos.backoffice.shared.platform.WorkQueue
+import pl.mos.backoffice.shared.runner.AgentRunner
+import pl.mos.backoffice.shared.runner.RepositoryTokenSource
 import pl.mos.backoffice.shared.security.CiTokenVerifier
+import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.ModulePermissions
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
-import pl.mos.backoffice.shared.llm.LlmGateway
-import pl.mos.backoffice.shared.llm.ModelCatalog
-import pl.mos.backoffice.shared.runner.AgentRunner
+import pl.mos.backoffice.shared.security.SealedValue
+import pl.mos.backoffice.shared.security.SecretVault
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 import pl.mos.backoffice.shared.usage.UsageLedger
+import tools.jackson.databind.json.JsonMapper
 import javax.sql.DataSource
-import io.micrometer.core.instrument.Gauge
-import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.binder.MeterBinder
-import pl.mos.backoffice.projects.adapter.`in`.sse.EventStreamController
-import pl.mos.backoffice.shared.platform.ClusterSignals
-import pl.mos.backoffice.shared.platform.WorkQueue
-import pl.mos.backoffice.shared.security.SecretVault
-import pl.mos.backoffice.shared.security.SealedValue
-import pl.mos.backoffice.projects.domain.model.SealedSecret
 
 /**
  * Wires the Projects & Workflows use cases (plain Kotlin classes from `projects-core`) from the port
@@ -256,8 +256,8 @@ class ProjectsConfiguration {
     @Bean
     fun runProgressService(
         runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, logs: RunLogRepository, ciExecutions: CompleteCiExecution,
-        events: EventPublisher, clock: Clock, runner: ObjectProvider<AgentRunner>,
-    ): RecordRunProgress = RunProgressService(runs, approvals, logs, ciExecutions, events, clock, runner.getIfAvailable())
+        events: EventPublisher, clock: Clock, runner: ObjectProvider<AgentRunner>, guard: AccessGuard,
+    ): RecordRunProgress = RunProgressService(runs, approvals, logs, ciExecutions, events, clock, runner.getIfAvailable(), guard)
 
     @Bean
     fun approvalService(
@@ -272,8 +272,8 @@ class ProjectsConfiguration {
     ): AssignApproval = ApprovalAssignmentService(approvals, directory, events, guard, principal, audit, clock)
 
     @Bean
-    fun ciExecutionCompletionService(executions: CiExecutionRepository, events: EventPublisher, clock: Clock): CompleteCiExecution =
-        CiExecutionCompletionService(executions, events, clock)
+    fun ciExecutionCompletionService(executions: CiExecutionRepository, events: EventPublisher, clock: Clock, guard: AccessGuard): CompleteCiExecution =
+        CiExecutionCompletionService(executions, events, clock, guard)
 
     @Bean
     fun ciExecutionService(
@@ -282,8 +282,8 @@ class ProjectsConfiguration {
     ) = CiExecutionService(executions, projects, runService, events, guard, principal, audit, clock)
 
     @Bean
-    fun waitTimeoutService(runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, engine: WorkflowEngine, clock: Clock) =
-        WaitTimeoutService(runs, approvals, engine, clock)
+    fun waitTimeoutService(runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, engine: WorkflowEngine, clock: Clock, guard: AccessGuard) =
+        WaitTimeoutService(runs, approvals, engine, clock, guard)
 
     @Bean
     fun dashboardQueryService(runs: WorkflowRunRepository, approvals: ApprovalRequestRepository, ciExecutions: CiExecutionRepository, guard: AccessGuard) =
@@ -357,12 +357,12 @@ class ProjectsConfiguration {
     @Bean
     fun scheduledRunService(
         projects: ProjectRepository, workflows: WorkflowDefinitionRepository, runs: WorkflowRunRepository,
-        startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf>, clock: Clock,
-    ) = pl.mos.backoffice.projects.application.service.ScheduledRunService(projects, workflows, runs, { startRun.getObject() }, clock)
+        startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.system.StartRunOnBehalf>, clock: Clock, guard: AccessGuard,
+    ) = pl.mos.backoffice.projects.application.service.ScheduledRunService(projects, workflows, runs, { startRun.getObject() }, clock, guard)
 
     /** ADR 0052: a step starts another workflow of the project; StartRun is looked up late (it depends on the engine). */
     @Bean
-    fun startWorkflowTaskExecutor(startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.StartRunOnBehalf>, workflows: WorkflowDefinitionRepository, json: JsonCodec) =
+    fun startWorkflowTaskExecutor(startRun: ObjectProvider<pl.mos.backoffice.projects.application.port.`in`.system.StartRunOnBehalf>, workflows: WorkflowDefinitionRepository, json: JsonCodec) =
         pl.mos.backoffice.projects.application.service.tasks.StartWorkflowTaskExecutor({ startRun.getObject() }, workflows, json)
 
     @Bean
@@ -415,8 +415,8 @@ class ProjectsConfiguration {
     @Bean
     fun pipelineWatchService(
         runs: WorkflowRunRepository, projects: ProjectRepository, connections: ScmConnectionRepository, pipelines: PipelineStatusPort,
-        engine: WorkflowEngine, clock: Clock,
-    ) = PipelineWatchService(runs, projects, connections, pipelines, engine, clock)
+        engine: WorkflowEngine, clock: Clock, guard: AccessGuard,
+    ) = PipelineWatchService(runs, projects, connections, pipelines, engine, clock, guard)
 
     /**
      * ADR 0051: opens a project repository token only for its sealed release to the runner holding the job (agent-runner);

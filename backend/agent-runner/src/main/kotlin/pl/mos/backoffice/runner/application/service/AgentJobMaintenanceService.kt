@@ -1,8 +1,9 @@
 package pl.mos.backoffice.runner.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.runner.application.port.`in`.LeaseScanOutcome
-import pl.mos.backoffice.runner.application.port.`in`.MaintainAgentJobs
+import pl.mos.backoffice.runner.application.port.`in`.system.LeaseScanOutcome
+import pl.mos.backoffice.runner.application.port.`in`.system.MaintainAgentJobs
 import pl.mos.backoffice.runner.application.port.out.AgentJobStore
 import pl.mos.backoffice.runner.application.port.out.Transactions
 import pl.mos.backoffice.runner.domain.AgentJob
@@ -26,37 +27,41 @@ class AgentJobMaintenanceService(
     private val jobs: AgentJobStore,
     private val lifecycle: JobLifecycle,
     private val tx: Transactions,
+    private val guard: AccessGuard,
 ) : MaintainAgentJobs {
 
     private val startedAt = lifecycle.now()
 
     @SystemOperation("scheduled lease scan")
-    override fun scan(): LeaseScanOutcome = tx.inTransaction {
-        if (!jobs.tryAdvisoryLock(ADVISORY_LOCK_KEY)) return@inTransaction LeaseScanOutcome(ran = false)
-        val now = lifecycle.now()
-        var requeued = 0
-        var lost = 0
-        val inGrace = now.isBefore(startedAt.plus(lifecycle.settings.restartGrace))
-        jobs.lockExpiredLeases(now, BATCH).filterNot { inGrace && it.status != AgentJobStatus.LEASED }.forEach { job ->
-            when (expired(job)) {
-                Outcome.REQUEUED -> requeued++
-                Outcome.LOST -> lost++
-                Outcome.FAILED -> lost++
+    override fun scan(): LeaseScanOutcome {
+        guard.requireSystem()
+        return tx.inTransaction {
+            if (!jobs.tryAdvisoryLock(ADVISORY_LOCK_KEY)) return@inTransaction LeaseScanOutcome(ran = false)
+            val now = lifecycle.now()
+            var requeued = 0
+            var lost = 0
+            val inGrace = now.isBefore(startedAt.plus(lifecycle.settings.restartGrace))
+            jobs.lockExpiredLeases(now, BATCH).filterNot { inGrace && it.status != AgentJobStatus.LEASED }.forEach { job ->
+                when (expired(job)) {
+                    Outcome.REQUEUED -> requeued++
+                    Outcome.LOST -> lost++
+                    Outcome.FAILED -> lost++
+                }
             }
-        }
-        val timedOut = jobs.lockQueuedPastDeadline(now, BATCH).onEach { job ->
-            lifecycle.finish(job, AgentJobStatus.TIMED_OUT, "queue-timeout: no runner leased the job within ${lifecycle.settings.queueTimeout.toHours()} h" + (job.reason?.let { " ($it)" } ?: ""))
-        }.size
-        var routed = 0
-        jobs.lockUnassigned(BATCH).forEach { job ->
-            val routing = lifecycle.routeJob(job.spec)
-            if (routing.pool != null) routed++
-            if (routing.pool != null || routing.reason != job.reason) {
-                jobs.update(lifecycle.applyRouting(job, routing))
-                lifecycle.wake(routing.pool?.id)
+            val timedOut = jobs.lockQueuedPastDeadline(now, BATCH).onEach { job ->
+                lifecycle.finish(job, AgentJobStatus.TIMED_OUT, "queue-timeout: no runner leased the job within ${lifecycle.settings.queueTimeout.toHours()} h" + (job.reason?.let { " ($it)" } ?: ""))
+            }.size
+            var routed = 0
+            jobs.lockUnassigned(BATCH).forEach { job ->
+                val routing = lifecycle.routeJob(job.spec)
+                if (routing.pool != null) routed++
+                if (routing.pool != null || routing.reason != job.reason) {
+                    jobs.update(lifecycle.applyRouting(job, routing))
+                    lifecycle.wake(routing.pool?.id)
+                }
             }
+            LeaseScanOutcome(ran = true, requeued = requeued, lost = lost, timedOut = timedOut, routed = routed)
         }
-        LeaseScanOutcome(ran = true, requeued = requeued, lost = lost, timedOut = timedOut, routed = routed)
     }
 
     private enum class Outcome { REQUEUED, LOST, FAILED }

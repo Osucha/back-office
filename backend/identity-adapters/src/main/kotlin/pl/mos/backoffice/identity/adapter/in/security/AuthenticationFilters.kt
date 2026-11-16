@@ -1,5 +1,6 @@
-package pl.mos.backoffice.identity.adapter.`in`.web
+package pl.mos.backoffice.identity.adapter.`in`.security
 
+import com.osucha.portpermissions.AccessGuard
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -20,13 +21,17 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.web.filter.OncePerRequestFilter
 import pl.mos.backoffice.identity.adapter.config.IdentityProperties
+import pl.mos.backoffice.identity.adapter.`in`.web.ProblemResponses
+import pl.mos.backoffice.identity.adapter.`in`.web.RestrictedSession
+import pl.mos.backoffice.identity.adapter.`in`.web.SafeRedirect
+import pl.mos.backoffice.identity.adapter.`in`.web.SessionAttributes
 import pl.mos.backoffice.identity.adapter.out.security.AuthenticationSource
 import pl.mos.backoffice.identity.adapter.out.security.CurrentUserAuthentication
 import pl.mos.backoffice.identity.adapter.out.security.CurrentUserCache
 import pl.mos.backoffice.identity.adapter.out.security.SpringSessionTerminator
-import pl.mos.backoffice.identity.application.port.`in`.LoadCurrentUser
-import pl.mos.backoffice.identity.application.port.`in`.RecordAuthEvent
-import pl.mos.backoffice.identity.application.port.`in`.ResolveLogin
+import pl.mos.backoffice.identity.application.port.`in`.system.LoadCurrentUser
+import pl.mos.backoffice.identity.application.port.`in`.system.RecordAuthEvent
+import pl.mos.backoffice.identity.application.port.`in`.system.ResolveLogin
 import pl.mos.backoffice.identity.domain.model.LoginMethod
 import pl.mos.backoffice.identity.domain.model.SessionRestriction
 import pl.mos.backoffice.identity.domain.service.TokenCodec
@@ -46,6 +51,8 @@ import java.net.URLEncoder
  * the endpoints that resolve the restriction; anything else under `/api/` gets a 403 with the restriction code.
  * Runner callbacks (`/api/v1/internal/runner/...`) authenticate inside their controller and are skipped;
  * `/api/v1/auth/session` is skipped so that reading the remaining session time does not extend it.
+ * Resolving the principal happens before anyone is authenticated, so it calls the identity system ports inside
+ * `asSystem` (which holds no permissions, ADR 0067), on this request thread, and leaves it before the chain goes on.
  */
 class PrincipalFilter(
     private val loader: LoadCurrentUser,
@@ -55,6 +62,7 @@ class PrincipalFilter(
     private val properties: IdentityProperties,
     private val clock: Clock,
     private val problems: ProblemResponses,
+    private val guard: AccessGuard,
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(PrincipalFilter::class.java)
@@ -65,7 +73,7 @@ class PrincipalFilter(
 
         val bearer = request.getHeader("Authorization")?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }?.substring(7)?.trim()
         if (bearer != null && (bearer.startsWith(TokenCodec.PAT_PREFIX) || bearer.startsWith(TokenCodec.CI_PREFIX))) {
-            val authentication = authenticateBearer(bearer)
+            val authentication = guard.asSystem(REASON) { authenticateBearer(bearer) }
                 ?: return problems.unauthorized(response, "The bearer token is invalid, expired or revoked", "invalid-token")
             authenticate(authentication)
             return chain.doFilter(request, response)
@@ -86,11 +94,11 @@ class PrincipalFilter(
         val authTime = session.getAttribute(SessionAttributes.AUTH_TIME) as? Long ?: 0L
         if (clock.now().toEpochMilli() - authTime > properties.session.absoluteTimeout.toMillis()) {
             invalidate(request)
-            runCatching { authEvents.sessionExpired(id, "absolute-timeout") }.onFailure { log.warn("could not audit session expiry: {}", it.toString()) }
+            runCatching { guard.asSystem(REASON) { authEvents.sessionExpired(id, "absolute-timeout") } }.onFailure { log.warn("could not audit session expiry: {}", it.toString()) }
             anonymous()
             return chain.doFilter(request, response)
         }
-        val user = cache.get(id)
+        val user = guard.asSystem(REASON) { cache.get(id) }
         if (user == null) {
             // deactivated or deleted since login: the session is gone for good
             invalidate(request)
@@ -131,6 +139,7 @@ class PrincipalFilter(
 
     companion object {
         const val RUNNER_PATH = "/api/v1/internal/runner/"
+        const val REASON = "authentication: resolving the request principal"
         const val SESSION_INFO_PATH = "/api/v1/auth/session"
     }
 }
@@ -162,6 +171,7 @@ class OidcLoginSuccessHandler(
     private val resolveLogin: ResolveLogin,
     private val properties: IdentityProperties,
     private val clock: Clock,
+    private val guard: AccessGuard,
 ) : AuthenticationSuccessHandler {
 
     override fun onAuthenticationSuccess(request: HttpServletRequest, response: HttpServletResponse, authentication: Authentication) {
@@ -176,7 +186,7 @@ class OidcLoginSuccessHandler(
             preferredUsername = oidc.preferredUsername,
             groups = groupsOf(oidc.getClaim<Any>(properties.groupsClaim)),
         )
-        when (val result = resolveLogin.resolve(claims)) {
+        when (val result = guard.asSystem("authentication: OIDC login") { resolveLogin.resolve(claims) }) {
             is ResolveLogin.LoginResult.Rejected -> reject(request, response, result.code)
             is ResolveLogin.LoginResult.Success -> {
                 val session = request.getSession(true)
@@ -214,7 +224,7 @@ class OidcLoginSuccessHandler(
 }
 
 /** Provider or code-exchange errors: audited as LOGIN_FAILURE and redirected to `/login?error=<code>`. */
-class OidcLoginFailureHandler(private val authEvents: RecordAuthEvent) : AuthenticationFailureHandler {
+class OidcLoginFailureHandler(private val authEvents: RecordAuthEvent, private val guard: AccessGuard) : AuthenticationFailureHandler {
 
     private val log = LoggerFactory.getLogger(OidcLoginFailureHandler::class.java)
 
@@ -226,7 +236,7 @@ class OidcLoginFailureHandler(private val authEvents: RecordAuthEvent) : Authent
         val code = ((exception as? OAuth2AuthenticationException)?.error?.errorCode ?: "login-failed")
             .lowercase().replace('_', '-').filter { it.isLetterOrDigit() || it == '-' }.take(40).ifEmpty { "login-failed" }
         log.warn("OIDC login failed code={} message={}", code, exception.message)
-        runCatching { authEvents.loginFailed(code, exception.message) }
+        runCatching { guard.asSystem("authentication: failed OIDC login") { authEvents.loginFailed(code, exception.message) } }
         runCatching { request.getSession(false)?.invalidate() }
         response.sendRedirect(request.contextPath + "/login?error=" + code)
     }

@@ -38,8 +38,3 @@ interface ManageConnectors {
         override fun toString() = "ConnectorCommand(key=$key, name=$name, kind=$kind, projectId=$projectId, url=$url, auth=$auth, secret=${if (secret == null) "null" else "***"})"
     }
 }
-
-/** ADR 0064: startup job of the worker role after a key rotation (like [RewrapScmConnectionSecrets]). */
-fun interface RewrapConnectorSecrets {
-    fun rewrapConnectorSecrets(): Int
-}

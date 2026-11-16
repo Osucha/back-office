@@ -1,21 +1,21 @@
 package pl.mos.backoffice.tasks.application.service
 
+import com.osucha.portpermissions.AccessGuard
+import com.osucha.portpermissions.PublicOperation
 import pl.mos.backoffice.shared.Clock
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
-import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.shared.security.CurrentPrincipal
-import com.osucha.portpermissions.SystemOperation
+import pl.mos.backoffice.shared.tasks.TaskOverrides
 import pl.mos.backoffice.tasks.application.port.`in`.ManageTaskTemplates
 import pl.mos.backoffice.tasks.application.port.out.TaskTemplateRepository
 import pl.mos.backoffice.tasks.domain.model.Keys
 import pl.mos.backoffice.tasks.domain.model.TaskTemplate
 import pl.mos.backoffice.tasks.domain.model.TaskTemplateId
 import pl.mos.backoffice.tasks.domain.service.TaskResolution
-import pl.mos.backoffice.shared.tasks.TaskOverrides
 import java.util.UUID
 
 /**
@@ -106,7 +106,7 @@ class TaskTemplateService(
         return lookup.resolver.preview(key, access.projectId, overrides) ?: throw NotFoundException("TaskTemplate", key)
     }
 
-    @SystemOperation("ADR 0061: a flag derived from a template the caller already obtained through an authorised read; reveals nothing else")
+    @PublicOperation("ADR 0061: a flag derived from a template the caller already obtained through an authorised read; reveals nothing else")
     override fun needsCodingAgent(template: TaskTemplate): Boolean =
         lookup.resolver.needsCodingAgent(template, template.scope.projectId)
 

@@ -5,7 +5,7 @@ import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageScmConnections
 import pl.mos.backoffice.projects.application.port.`in`.ManageScmConnections.ScmConnectionCommand
 import pl.mos.backoffice.projects.application.port.`in`.ManageScmConnections.ScmConnectionView
-import pl.mos.backoffice.projects.application.port.`in`.RewrapScmConnectionSecrets
+import pl.mos.backoffice.projects.application.port.`in`.system.RewrapScmConnectionSecrets
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.ScmConnectionRepository
 import pl.mos.backoffice.projects.application.port.out.ScmProbePort
@@ -135,6 +135,7 @@ class ScmConnectionService(
 
     @SystemOperation("startup job of the worker role after a key rotation; changes no plaintext and no permissions")
     override fun rewrapScmSecrets(): Int {
+        guard.requireSystem()
         if (!sealer.configured) return 0
         var count = 0
         connections.findAll().forEach { connection ->

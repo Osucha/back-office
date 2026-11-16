@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.transaction.event.TransactionPhase
 import org.springframework.transaction.event.TransactionalEventListener
 import org.springframework.transaction.support.TransactionTemplate
-import pl.mos.backoffice.governance.application.port.`in`.RecordAttestations
+import pl.mos.backoffice.governance.application.port.`in`.system.RecordAttestations
 import pl.mos.backoffice.shared.DomainEvent
 import java.util.UUID
 import java.util.concurrent.ExecutorService

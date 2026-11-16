@@ -5,7 +5,7 @@ import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake.IntakeCommand
 import pl.mos.backoffice.projects.application.port.`in`.ManageJiraIntake.JiraIntakeView
-import pl.mos.backoffice.projects.application.port.`in`.PollJiraIntake
+import pl.mos.backoffice.projects.application.port.`in`.system.PollJiraIntake
 import pl.mos.backoffice.projects.application.port.out.IssueTrackerUnavailableException
 import pl.mos.backoffice.projects.application.port.out.JiraIntakeRepository
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
@@ -104,10 +104,14 @@ class JiraIntakeService(
     }
 
     @SystemOperation("scheduler of the Jira intake watcher (ShedLock singleton)")
-    override fun due(): List<ProjectId> = intakes.findDue(clock.now()).map { it.projectId }
+    override fun due(): List<ProjectId> {
+        guard.requireSystem()
+        return intakes.findDue(clock.now()).map { it.projectId }
+    }
 
     @SystemOperation("JIRA_INTAKE_POLL work item on a worker; reads Jira with an ISSUE_READ connection only")
     override fun poll(projectId: ProjectId): Int {
+        guard.requireSystem()
         val intake = intakes.find(projectId)?.takeIf { it.enabled } ?: return 0
         val project = projects.findById(projectId) ?: return 0
         val now = clock.now()

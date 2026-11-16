@@ -2,44 +2,38 @@ package pl.mos.backoffice.projects.application.service
 
 import com.osucha.portpermissions.AccessGuard
 import com.osucha.portpermissions.PublicOperation
-import com.osucha.portpermissions.SystemOperation
-import pl.mos.backoffice.projects.application.port.`in`.TaskConfigSchemas
-import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.ExpressionCheck
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.Palette
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.PaletteTask
 import pl.mos.backoffice.projects.application.port.`in`.ManageWorkflows.WorkflowCommand
+import pl.mos.backoffice.projects.application.port.`in`.TaskConfigSchemas
 import pl.mos.backoffice.projects.application.port.out.ExpressionEvaluator
 import pl.mos.backoffice.projects.application.port.out.LibrarySourceRepository
 import pl.mos.backoffice.projects.application.port.out.LibraryWorkflowRepository
-import pl.mos.backoffice.projects.domain.model.LibraryLink
-import pl.mos.backoffice.projects.domain.service.LibraryPortability
 import pl.mos.backoffice.projects.application.port.out.ProjectRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowDefinitionRepository
 import pl.mos.backoffice.projects.application.port.out.WorkflowRunRepository
+import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
+import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
+import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
+import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
+import pl.mos.backoffice.projects.domain.model.LibraryLink
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.model.ProjectsPermissions
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinition
 import pl.mos.backoffice.projects.domain.model.WorkflowDefinitionId
 import pl.mos.backoffice.projects.domain.model.WorkflowNode
+import pl.mos.backoffice.projects.domain.service.ActionCatalog
 import pl.mos.backoffice.projects.domain.service.AgentAuditReport
 import pl.mos.backoffice.projects.domain.service.AgentAuditor
 import pl.mos.backoffice.projects.domain.service.AuditedStep
 import pl.mos.backoffice.projects.domain.service.ControlNodeCatalog
 import pl.mos.backoffice.projects.domain.service.ExpressionValidator
+import pl.mos.backoffice.projects.domain.service.LibraryPortability
+import pl.mos.backoffice.projects.domain.service.RunInputs
 import pl.mos.backoffice.projects.domain.service.TaskPortsProvider
 import pl.mos.backoffice.projects.domain.service.TaskTemplateInfo
-import pl.mos.backoffice.projects.application.service.tasks.JiraConnectionAccess
-import pl.mos.backoffice.projects.application.service.tasks.JiraStepCheck
-import pl.mos.backoffice.projects.application.service.tasks.ModelStepCheck
-import pl.mos.backoffice.projects.application.service.tasks.RepositoryStepCheck
-import pl.mos.backoffice.shared.llm.ModelAvailability
-import pl.mos.backoffice.shared.llm.ModelDefaults
-import pl.mos.backoffice.shared.llm.ModelOption
-import pl.mos.backoffice.shared.llm.ModelUse
-import pl.mos.backoffice.shared.llm.StepKind
-import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.projects.domain.service.ValidationIssue
 import pl.mos.backoffice.projects.domain.service.WorkflowValidationResult
 import pl.mos.backoffice.projects.domain.service.WorkflowValidator
@@ -50,8 +44,13 @@ import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
+import pl.mos.backoffice.shared.llm.ModelAvailability
+import pl.mos.backoffice.shared.llm.ModelDefaults
+import pl.mos.backoffice.shared.llm.ModelOption
+import pl.mos.backoffice.shared.llm.ModelUse
+import pl.mos.backoffice.shared.llm.StepKind
+import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.security.CurrentPrincipal
-import pl.mos.backoffice.projects.domain.service.RunInputs
 import pl.mos.backoffice.shared.tasks.RunInputField
 import pl.mos.backoffice.shared.tasks.TaskCatalog
 
@@ -319,7 +318,7 @@ class WorkflowService(
     }
 
     /** Graph, connection and repository checks of [command] in [projectId]; used by the library to adopt and update. */
-    @SystemOperation("validation helper of WorkflowLibraryService, which checks workflow.edit before calling it")
+    // not a use case, no check of its own (ADR 0067): validation helper of WorkflowLibraryService, which checks workflow.edit before calling it
     internal fun requireValidFor(projectId: ProjectId, command: WorkflowCommand) = requireValid(projectId, command)
 
     private fun requireValid(projectId: ProjectId, command: WorkflowCommand) {

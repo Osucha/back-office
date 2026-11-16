@@ -10,7 +10,6 @@ import pl.mos.backoffice.projects.domain.model.ProjectDefaults
 import pl.mos.backoffice.projects.domain.model.ProjectId
 import pl.mos.backoffice.projects.domain.service.CiSnippet
 import pl.mos.backoffice.shared.Money
-import pl.mos.backoffice.shared.security.CiTokenIdentity
 
 /**
  * Use case: CRUD of projects. Creating a project (`projects.create`) makes the creator its OWNER. A project with
@@ -69,13 +68,4 @@ interface ManageCiTokens {
     fun revoke(projectId: ProjectId, tokenId: ProjectCiTokenId)
 
     data class CreatedToken(val token: ProjectCiToken, val plaintext: String)
-}
-
-/**
- * Internal use case behind the shared `CiTokenVerifier` port: resolves a `bo_ci_...` plaintext to its
- * token and project; updates `lastUsedAt`. Called by the identity context's bearer-token filter.
- */
-interface VerifyCiToken {
-    /** Returns null when the token is malformed, unknown or revoked. */
-    fun verify(plaintext: String): CiTokenIdentity?
 }

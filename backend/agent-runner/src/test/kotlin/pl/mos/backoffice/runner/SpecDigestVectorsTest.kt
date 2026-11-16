@@ -3,8 +3,8 @@ package pl.mos.backoffice.runner
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
-import pl.mos.backoffice.runner.adapter.`in`.web.AssignmentSigner
-import pl.mos.backoffice.runner.adapter.`in`.web.CanonicalJson
+import pl.mos.backoffice.runner.adapter.`in`.runner.AssignmentSigner
+import pl.mos.backoffice.runner.adapter.`in`.runner.CanonicalJson
 import tools.jackson.databind.json.JsonMapper
 import java.io.File
 

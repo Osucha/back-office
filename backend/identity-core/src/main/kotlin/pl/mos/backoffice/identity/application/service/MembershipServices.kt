@@ -1,5 +1,6 @@
 package pl.mos.backoffice.identity.application.service
 
+import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.identity.application.port.`in`.LookupDirectory
 import pl.mos.backoffice.identity.application.port.`in`.ManageProjectMembers
 import pl.mos.backoffice.identity.application.port.`in`.MemberView
@@ -27,12 +28,10 @@ import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
 import pl.mos.backoffice.shared.audit.AuditableChanges
 import pl.mos.backoffice.shared.security.Actor
-import com.osucha.portpermissions.AccessGuard
 import pl.mos.backoffice.shared.security.CurrentPrincipal
 import pl.mos.backoffice.shared.security.CurrentUser
 import pl.mos.backoffice.shared.security.ProjectAccessDirectory
 import pl.mos.backoffice.shared.security.ProjectAccessProvisioner
-import com.osucha.portpermissions.SystemOperation
 import pl.mos.backoffice.shared.security.UserId
 import java.util.UUID
 
@@ -115,7 +114,7 @@ class ProjectMembershipService(
         accessVersion.increment()
     }
 
-    @SystemOperation("called by the Projects context when a project is created")
+    // not a use case, no check of its own (ADR 0067): called by the Projects context when a project is created
     override fun grantCreator(projectId: UUID, projectKey: String, creator: Actor) {
         val userId = creator.userId ?: return
         val existing = memberships.findByProject(projectId)
@@ -132,14 +131,14 @@ class ProjectMembershipService(
         accessVersion.increment()
     }
 
-    @SystemOperation("called by the Projects context when a project key changes")
+    // not a use case, no check of its own (ADR 0067): called by the Projects context when a project key changes
     override fun projectRenamed(projectId: UUID, projectKey: String) {
         val changed = memberships.findByProject(projectId).filter { it.projectKey != projectKey }
         changed.forEach { memberships.save(it.copy(projectKey = projectKey)) }
         if (changed.isNotEmpty()) accessVersion.increment()
     }
 
-    @SystemOperation("called by the Projects context when a project is deleted")
+    // not a use case, no check of its own (ADR 0067): called by the Projects context when a project is deleted
     override fun projectDeleted(projectId: UUID) {
         val removed = memberships.deleteByProject(projectId)
         if (removed == 0) return
@@ -221,7 +220,7 @@ class ProjectAccessDirectoryService(
     private val access: AccessResolver,
 ) : ProjectAccessDirectory {
 
-    @SystemOperation("lookup for the Projects context; its callers check run.assign / project.view")
+    // not a use case, no check of its own (ADR 0067): lookup for the Projects context; its callers check run.assign / project.view
     override fun members(projectId: UUID): List<CurrentUser> {
         val rows = memberships.findByProject(projectId)
         val direct = rows.filter { it.principalType == PrincipalType.USER }.map { UserId(it.principalId) }
@@ -234,11 +233,11 @@ class ProjectAccessDirectoryService(
             .map { access.resolve(it).toCurrentUser() }
     }
 
-    @SystemOperation("lookup for the Projects context; its callers check run.assign")
+    // not a use case, no check of its own (ADR 0067): lookup for the Projects context; its callers check run.assign
     override fun user(userId: UUID): CurrentUser? =
         users.findById(UserId(userId))?.takeIf { it.status == UserStatus.ACTIVE }?.let { access.resolve(it).toCurrentUser() }
 
-    @SystemOperation("display names for the Projects context (approval assignees)")
+    // not a use case, no check of its own (ADR 0067): display names for the Projects context (approval assignees)
     override fun displayNames(userIds: Collection<UUID>): Map<UUID, String> =
         if (userIds.isEmpty()) emptyMap() else users.findByIds(userIds.distinct().map(::UserId)).associate { it.id.value to it.displayName }
 

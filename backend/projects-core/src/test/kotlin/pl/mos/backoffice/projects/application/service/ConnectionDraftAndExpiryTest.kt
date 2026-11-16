@@ -85,16 +85,16 @@ class ConnectionDraftAndExpiryTest {
         val expired = connections.save(ConnectionFakes.connection("expired", READ, projectId = project.id).copy(secretExpiresAt = today.minusDays(1)))
         connections.save(ConnectionFakes.connection("none", READ))
 
-        assertThat(service(admin).remindExpiring()).isEqualTo(2)
+        assertThat(admin.asSystem("test") { service(admin).remindExpiring() }).isEqualTo(2)
         val reminders = events.filterIsInstance<ConnectionExpiring>()
         assertThat(reminders.map { it.name to it.daysLeft }).containsExactlyInAnyOrder("soon" to 10L, "expired" to -1L)
         assertThat(reminders.single { it.name == "expired" }.payload).containsEntry("projectId", project.id.toString())
         assertThat(audit.operations()).containsOnly("CONNECTION_EXPIRY_REMINDER")
 
-        assertThat(service(admin).remindExpiring()).isZero()
+        assertThat(admin.asSystem("test") { service(admin).remindExpiring() }).isZero()
         // a rotated token with a new expiry date is reminded again when it comes close
         connections.save(connections.rows[soon.id]!!.copy(secretExpiresAt = today.plusDays(12)))
-        assertThat(service(admin).remindExpiring()).isEqualTo(1)
+        assertThat(admin.asSystem("test") { service(admin).remindExpiring() }).isEqualTo(1)
         assertThat(connections.rows[expired.id]!!.expiryRemindedFor).isEqualTo(today.minusDays(1))
     }
 

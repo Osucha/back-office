@@ -12,6 +12,7 @@ import pl.mos.backoffice.runner.application.service.FleetSettings
 import pl.mos.backoffice.runner.application.service.JobLifecycle
 import pl.mos.backoffice.runner.domain.AgentJob
 import pl.mos.backoffice.runner.domain.AgentJobStatus
+import pl.mos.backoffice.shared.testing.FakeAccessGuard
 import java.time.Duration
 import java.time.Instant
 
@@ -40,7 +41,7 @@ class LeaseScanRestartGraceTest {
     private val tx = object : Transactions {
         override fun <T> inTransaction(block: () -> T): T = block()
     }
-    private val scan = AgentJobMaintenanceService(jobs, lifecycle, tx)
+    private val scan = AgentJobMaintenanceService(jobs, lifecycle, tx, guard = FakeAccessGuard.system())
 
     @Test
     fun `running jobs with expired leases are left alone right after a restart and handled after the grace`() {

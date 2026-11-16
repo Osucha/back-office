@@ -3,6 +3,7 @@ package pl.mos.backoffice.identity.application.service
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import com.osucha.portpermissions.test.assertSystemOnly
 import pl.mos.backoffice.identity.InMemoryIdentity
 import pl.mos.backoffice.identity.application.port.`in`.ManageGroups.GroupCommand
 import pl.mos.backoffice.identity.application.port.`in`.ManageRoles.RoleCommand
@@ -16,8 +17,8 @@ import pl.mos.backoffice.identity.domain.model.GrantSet
 import pl.mos.backoffice.identity.domain.model.PlatformSettings
 import pl.mos.backoffice.identity.domain.model.PrincipalType
 import pl.mos.backoffice.identity.domain.model.RegistrationMode
-import pl.mos.backoffice.identity.domain.model.UserPreferences
 import pl.mos.backoffice.identity.domain.model.Theme
+import pl.mos.backoffice.identity.domain.model.UserPreferences
 import pl.mos.backoffice.shared.InsufficientPermissionException
 import pl.mos.backoffice.shared.InvalidStateException
 import pl.mos.backoffice.shared.ValidationException
@@ -40,7 +41,14 @@ class AccessAdminServicesTest {
     private fun groups(gate: FakeAccessGuard) =
         GroupAdminService(db.groups, db.users, db.roles, db.grants, db.memberships, db.admins, audit, db.accessVersion, db.clock, gate)
 
-    private fun seed() = SeedIdentityService(db.roles, db.grants, db.catalogSupport, audit, db.accessVersion)
+    private fun seed() = SeedIdentityService(db.roles, db.grants, db.catalogSupport, audit, db.accessVersion, guard = FakeAccessGuard.system())
+
+    @Test
+    fun `seeding is a system operation that refuses a user holding every permission (ADR 0067)`() {
+        assertSystemOnly(touched = { audit.entries.isNotEmpty() }) { guard ->
+            SeedIdentityService(db.roles, db.grants, db.catalogSupport, audit, db.accessVersion, guard).seed()
+        }
+    }
 
     @Test
     fun `seeding creates built-in roles and the SYSTEM member default once`() {

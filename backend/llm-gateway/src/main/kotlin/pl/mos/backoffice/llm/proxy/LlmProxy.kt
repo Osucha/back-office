@@ -4,8 +4,9 @@ import com.osucha.portpermissions.AccessGuard
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
-import pl.mos.backoffice.llm.budget.application.port.`in`.EnforceBudgets
+import pl.mos.backoffice.llm.budget.application.port.`in`.system.EnforceBudgets
 import pl.mos.backoffice.llm.budget.domain.BudgetExceededException
+import pl.mos.backoffice.llm.connections.ConnectionQuota
 import pl.mos.backoffice.llm.gateway.LlmMetrics
 import pl.mos.backoffice.llm.gateway.ProviderRegistry
 import pl.mos.backoffice.llm.gateway.ProviderSettings
@@ -33,7 +34,6 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
-import pl.mos.backoffice.llm.connections.ConnectionQuota
 
 /**
  * The LLM gateway proxy for sandboxes (ADR 0024 "credential brokering"): the agent calls Anthropic- or

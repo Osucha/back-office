@@ -254,7 +254,7 @@ class LocalAccountServicesTest {
     @Test
     fun `the bootstrap admin is created once, only when no user exists, with a forced password change`() {
         val options = local.options(bootstrapEmail = "Owner@Example.com", bootstrapPassword = "ChangeMe-Local-123")
-        val service = BootstrapLocalAdminService(local.support(audit, options), db.grants, db.accessVersion)
+        val service = BootstrapLocalAdminService(local.support(audit, options), db.grants, db.accessVersion, guard = FakeAccessGuard.system())
         val created = service.bootstrap()!!
         assertThat(created.email).isEqualTo("owner@example.com")
         assertThat(created.status).isEqualTo(UserStatus.ACTIVE)
@@ -271,7 +271,7 @@ class LocalAccountServicesTest {
     @Test
     fun `the bootstrap gives an OIDC-only administrator a password once, never anybody else`() {
         val options = local.options(bootstrapEmail = "owner@example.com", bootstrapPassword = "ChangeMe-Local-123")
-        val service = BootstrapLocalAdminService(local.support(audit, options), db.grants, db.accessVersion)
+        val service = BootstrapLocalAdminService(local.support(audit, options), db.grants, db.accessVersion, guard = FakeAccessGuard.system())
         val other = local.support(audit, options).users.save(User.invite("other@example.com", "Other", emptySet(), Instant.now(), Actor.SYSTEM).copy(status = UserStatus.ACTIVE))
         val owner = local.support(audit, options).users.save(User.invite("owner@example.com", "Owner", emptySet(), Instant.now(), Actor.SYSTEM).copy(status = UserStatus.ACTIVE))
         // not an administrator yet: nothing happens

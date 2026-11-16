@@ -53,18 +53,18 @@ class CiTokenServiceTest {
     @Test
     fun `verification resolves the project, records usage and rejects unknown or revoked tokens`() {
         val created = service.create(project.id, "gitlab")
-        val identity = service.verify(created.plaintext)!!
+        val identity = gate.asSystem("test") { service.verify(created.plaintext) }!!
         assertThat(identity.projectId).isEqualTo(project.id.value)
         assertThat(identity.projectKey).isEqualTo(project.key)
         assertThat(identity.tokenId).isEqualTo(created.token.id.value)
         assertThat(identity.tokenName).isEqualTo("gitlab")
         assertThat(store[created.token.id]?.lastUsedAt).isEqualTo(now)
-        assertThat(service.verify("bo_ci_" + "x".repeat(40))).isNull()
-        assertThat(service.verify("not-a-token")).isNull()
+        assertThat(gate.asSystem("test") { service.verify("bo_ci_" + "x".repeat(40)) }).isNull()
+        assertThat(gate.asSystem("test") { service.verify("not-a-token") }).isNull()
 
         service.revoke(project.id, created.token.id)
         assertThat(store[created.token.id]?.revokedAt).isEqualTo(now)
-        assertThat(service.verify(created.plaintext)).isNull()
+        assertThat(gate.asSystem("test") { service.verify(created.plaintext) }).isNull()
         assertThat(audit.operations()).containsExactly("CI_TOKEN_CREATE", "CI_TOKEN_REVOKE")
         val other = Fixtures.project("OTHER")
         val otherGate = FakeAccessGuard.permitting(ProjectsPermissions.PROJECT_CI_MANAGE, projects = setOf(other.id.value))
