@@ -30,7 +30,7 @@ bucket4j = "8.20.0"
 # AWS SDK for Java v2 (S3 client + presigner) for the S3-compatible BlobStore (ADR 0023); not managed by the Boot BOM
 awssdk = "2.55.6"
 # Typed permissions, the AccessGuard port and deny-by-default rules (ADR 0066); JitPack
-portPermissions = "0.2.0"
+portPermissions = "0.2.1"
 
 [libraries]
 # Spring Boot starters (Boot 4 names)
