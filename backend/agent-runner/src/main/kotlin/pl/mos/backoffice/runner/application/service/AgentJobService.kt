@@ -140,12 +140,13 @@ class AgentJobService(
         fun target(kind: RunnerTarget, of: List<RunnerPool>): ExecutionTarget {
             val ids = of.map { it.id }.toSet()
             val nodes = onlineNodes.filter { it.poolId in ids }
-            val reported = nodes.mapNotNull { it.claudeLogin }
             // ADR 0050 step 3: true = a runner has a login, false = every reporting runner has none, null = unknown
-            val login = if (reported.any { it }) true else if (reported.isNotEmpty() && reported.size == nodes.size) false else null
+            fun login(reported: List<Boolean>): Boolean? =
+                if (reported.any { it }) true else if (reported.isNotEmpty() && reported.size == nodes.size) false else null
             return ExecutionTarget(
-                kind, of.size, nodes.size, of.any { it.llmCredentials == LlmCredentials.LOCAL_LOGIN }, login,
+                kind, of.size, nodes.size, of.any { it.llmCredentials == LlmCredentials.LOCAL_LOGIN }, login(nodes.mapNotNull { it.claudeLogin }),
                 nodes.flatMap { it.harnesses.orEmpty() }.distinct(),
+                copilotLogin = login(nodes.mapNotNull { it.copilotLogin }),
             )
         }
         return listOf(target(RunnerTarget.SHARED, all.filterNot { it.personal })) +

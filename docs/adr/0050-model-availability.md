@@ -1,6 +1,7 @@
 # 0050 — Model availability: who may use which model, where and by which route
 
-- Status: accepted (steps 1 to 4 implemented)
+- Status: accepted (steps 1 to 4 implemented); extended by 0069 (GitHub Copilot login models: a second own-login
+  runtime, OpenCode on the personal runner, never the judge)
 - Date: 2026-10-22
 - Deciders: owner
 - Related: ADR 0040 (personal runners, LOCAL_LOGIN), 0045 (model profiles from providers), 0048 (Claude Code login

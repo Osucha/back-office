@@ -3,7 +3,7 @@
   "words": [
     "CI", "MCP", "PAT", "PATs", "JSON", "YAML", "JQL", "API", "URL", "URLs", "ID", "IDs", "OIDC",
     "SSO", "MFA", "TOTP", "QR", "SSE", "LLM", "LLMs", "HTTP", "HTTPS", "SHA", "UTC", "USD", "Jira",
-    "GitLab", "GitHub", "Git", "Keycloak", "Entra", "Google", "Anthropic", "OpenAI", "Mistral", "Ollama",
+    "GitLab", "GitHub", "Copilot", "Git", "Keycloak", "Entra", "Google", "Anthropic", "OpenAI", "Mistral", "Ollama",
     "OpenCode", "Helm", "Kubernetes", "gVisor", "Ctrl", "Shift", "Alt", "Esc", "Enter", "Tab", "Backspace",
     "Cmd", "F1", "markdown", "Markdown", "in-toto", "intoto", "jsonl", "txt", "md"
   ],

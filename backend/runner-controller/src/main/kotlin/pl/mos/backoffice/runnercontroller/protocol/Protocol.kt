@@ -49,8 +49,9 @@ data class RunnerConfig(
 
 /**
  * [harnesses] and [claudeLogin] (ADR 0050 step 3) report what this runner can run right now: the coding agents of its
- * image and whether a Claude login (CLAUDE_CODE_OAUTH_TOKEN) is set for personal-runner jobs. Sent with every lease, so
- * Back Office sees a login added or removed without a new registration.
+ * image and whether a Claude login (CLAUDE_CODE_OAUTH_TOKEN) is set for personal-runner jobs; [copilotLogin] (ADR 0069)
+ * whether a GitHub Copilot login (mounted OpenCode auth file) is. Sent with every lease, so Back Office sees a login
+ * added or removed without a new registration.
  */
 data class LeaseRequest(
     val maxJobs: Int,
@@ -58,6 +59,7 @@ data class LeaseRequest(
     val freeSlots: Int,
     val harnesses: List<String>? = null,
     val claudeLogin: Boolean? = null,
+    val copilotLogin: Boolean? = null,
 )
 
 /** ADR 0044: `POST /runner/v2/workspaces/sync`: what the controller holds, and what it deletes. */

@@ -36,6 +36,8 @@ data class LeaseRequestJson(
     /** ADR 0050 step 3: the runner's coding agents and whether a Claude login is set (null = not reported). */
     val harnesses: List<String>? = null,
     val claudeLogin: Boolean? = null,
+    /** ADR 0069: whether a GitHub Copilot login (OpenCode auth file) is available (null = not reported). */
+    val copilotLogin: Boolean? = null,
 )
 
 /**

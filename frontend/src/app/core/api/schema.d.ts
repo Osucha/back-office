@@ -4879,6 +4879,8 @@ export interface components {
     ExecutionTarget: {
       /** @description ADR 0050 step 3: an online runner reported a Claude login (true), every online runner reported none (false), not reported (null) */
       claudeLogin?: boolean | null;
+      /** @description ADR 0069: the same for a GitHub Copilot login (OpenCode auth file mounted into the runner-controller) */
+      copilotLogin?: boolean | null;
       /** @description ADR 0050 step 3: coding agents the online runners reported */
       harnesses?: string[];
       /** @description ADR 0048: a pool of the target lets Claude Code use its owner's own login (LOCAL_LOGIN) */
@@ -5240,6 +5242,8 @@ export interface components {
     };
     /** @description ADR 0059: one row per candidate (agent and model) */
     LeaderboardRow: {
+      /** @description ADR 0069: false = a subscription attempt used tokens without a known API price; the API figures are unknown (apiCostPerAccepted and scorePerApiDollar null, shown as a dash, never the cheapest) */
+      apiCostKnown?: boolean;
       /** @description ADR 0065: totalApiCost / passed attempts; null without a passed attempt */
       apiCostPerAccepted?: components['schemas']['Money'] | null;
       attempts?: number;
@@ -5279,6 +5283,8 @@ export interface components {
     LeaseRequest: {
       /** @description ADR 0050 step 3: a Claude login (CLAUDE_CODE_OAUTH_TOKEN) is set for LOCAL_LOGIN jobs; the first true of a personal runner creates its owner's Claude Code login model profiles */
       claudeLogin?: boolean;
+      /** @description ADR 0069: a GitHub Copilot login (the github-copilot entry of a mounted OpenCode auth file) is available for LOCAL_LOGIN jobs; the first true of a personal runner creates its owner's Copilot login model profiles */
+      copilotLogin?: boolean;
       freeSlots?: number;
       /** @description ADR 0050 step 3: the coding agents the runner image provides (omitted = not reported) */
       harnesses?: ('OPENCODE' | 'CLAUDE_CODE')[];
@@ -5418,7 +5424,7 @@ export interface components {
       version: number;
     };
     /**
-     * @description ADR 0040: how Claude Code in a pool's sandboxes reaches the model. GATEWAY = the Back Office LLM gateway (metered, budgets apply). LOCAL_LOGIN = personal pools only: the login of the pool's owner (CLAUDE_CODE_OAUTH_TOKEN on their runner-controller), not metered by Back Office. OpenCode always uses the gateway.
+     * @description ADR 0040: how Claude Code in a pool's sandboxes reaches the model. GATEWAY = the Back Office LLM gateway (metered, budgets apply). LOCAL_LOGIN = personal pools only: the login of the pool's owner (CLAUDE_CODE_OAUTH_TOKEN on their runner-controller), not metered by Back Office. OpenCode uses the gateway, except for GitHub Copilot models (ADR 0069), which it calls with the owner's own Copilot login (the OpenCode auth file mounted into their runner-controller).
      * @enum {string}
      */
     LlmCredentials: 'GATEWAY' | 'LOCAL_LOGIN';
@@ -5618,11 +5624,11 @@ export interface components {
       provider: components['schemas']['Provider'];
     };
     /**
-     * @description ADR 0048: API = called through the LLM gateway and a provider connection. CLAUDE_CODE_LOGIN = Claude Code on the benchmark creator's personal runner signed in with their own subscription (LOCAL_LOGIN): provider ANTHROPIC, modelId is Claude Code's --model (opus, sonnet, haiku or a full id), coding tasks only, never the judge, nothing billed. Such profiles are not offered to workflows.
+     * @description ADR 0048: API = called through the LLM gateway and a provider connection. CLAUDE_CODE_LOGIN = Claude Code on the benchmark creator's personal runner signed in with their own subscription (LOCAL_LOGIN): provider ANTHROPIC, modelId is Claude Code's --model (opus, sonnet, haiku or a full id), nothing billed (ADR 0050: usable in private work and as the judge). COPILOT_LOGIN (ADR 0069) = OpenCode on the personal runner with the user's own GitHub Copilot login: provider GITHUB_COPILOT, modelId is the Copilot model id (e.g. gpt-5-mini, claude-sonnet-4.6), coding steps with OpenCode and model answers (prompt tasks, LLM steps), never the judge, nothing billed. Both are always personal.
      * @default API
      * @enum {string}
      */
-    ModelRuntime: 'API' | 'CLAUDE_CODE_LOGIN';
+    ModelRuntime: 'API' | 'CLAUDE_CODE_LOGIN' | 'COPILOT_LOGIN';
     ModelTestResult: {
       cost?: components['schemas']['Money'];
       error?: string | null;
@@ -6041,8 +6047,18 @@ export interface components {
       /** @description git URL the runner clones (and, for PUSH_MR steps, pushes to) */
       url: string;
     };
-    /** @enum {string} */
-    Provider: 'ANTHROPIC' | 'OPENAI' | 'GOOGLE' | 'MISTRAL' | 'OLLAMA' | 'OPENAI_COMPATIBLE';
+    /**
+     * @description GITHUB_COPILOT (ADR 0069) only names the models of a GitHub Copilot subscription (runtime COPILOT_LOGIN): OpenCode on the user's personal runner calls them with the user's own Copilot login. It has no provider connection and the LLM gateway never calls it.
+     * @enum {string}
+     */
+    Provider:
+      | 'ANTHROPIC'
+      | 'OPENAI'
+      | 'GOOGLE'
+      | 'MISTRAL'
+      | 'OLLAMA'
+      | 'OPENAI_COMPATIBLE'
+      | 'GITHUB_COPILOT';
     ProviderCatalogSection: {
       /** @description connection key; null for an environment endpoint */
       connection?: string | null;
@@ -6312,7 +6328,7 @@ export interface components {
       /** @description ADR 0057: the agent's environment document (platform preamble, agent instructions, project constitution, rules; markdown). The runner writes it outside every repository in the harness's own form: OpenCode /workspace/.backoffice-agent/AGENTS.md listed under `instructions` of opencode.json, Claude Code the user memory $CLAUDE_CONFIG_DIR/CLAUDE.md. PROMPT jobs get it in `system` instead. Covered by the spec digest when present. */
       instructions?: string | null;
       /**
-       * @description ADR 0040, v2 assignments of personal pools: LOCAL_LOGIN = Claude Code uses the owner's own login, delivered by the controller as the bundle file claude-login-token, and reaches api.anthropic.com directly. Omitted = the gateway. Covered by the spec digest when present.
+       * @description ADR 0040, v2 assignments of personal pools: LOCAL_LOGIN = Claude Code uses the owner's own login, delivered by the controller as the bundle file claude-login-token, and reaches api.anthropic.com directly; ADR 0069: OpenCode with a GITHUB_COPILOT model uses the owner's Copilot login, delivered as the bundle file copilot-login, and reaches api.githubcopilot.com directly. Omitted = the gateway. Covered by the spec digest when present.
        * @enum {string|null}
        */
       llmCredentials?: 'GATEWAY' | 'LOCAL_LOGIN' | null;

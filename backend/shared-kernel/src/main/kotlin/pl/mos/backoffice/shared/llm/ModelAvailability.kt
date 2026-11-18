@@ -8,8 +8,31 @@ import java.util.UUID
  * How a model is reached. `API`: through the LLM gateway and a provider connection. `CLAUDE_CODE_LOGIN` (ADR 0048):
  * Claude Code on the personal runner of the user who starts the work, signed in with that user's own subscription
  * (LOCAL_LOGIN); no API key, nothing billed. [ModelRef.modelId] is what Claude Code gets as `--model`.
+ * `COPILOT_LOGIN` (ADR 0069): OpenCode on that personal runner with the user's own GitHub Copilot login (provider
+ * [Provider.GITHUB_COPILOT], OpenCode's built-in `github-copilot` provider); the same rules, except that it never judges.
+ *
+ * [loginHarness] is the coding agent that holds the login (null for `API`): a login model runs only in that agent.
  */
-enum class ModelRuntime { API, CLAUDE_CODE_LOGIN }
+enum class ModelRuntime(val loginHarness: AgentHarness?) {
+    API(null),
+    CLAUDE_CODE_LOGIN(AgentHarness.CLAUDE_CODE),
+    COPILOT_LOGIN(AgentHarness.OPENCODE),
+    ;
+
+    /** ADR 0048/0069: runs on the user's personal runner with their own login, never through the gateway; nothing billed. */
+    val ownLogin: Boolean get() = loginHarness != null
+
+    /** ADR 0069: the provider a profile of this runtime must use; null = any gateway provider (`API`). */
+    val requiredProvider: Provider?
+        get() = when (this) {
+            API -> null
+            CLAUDE_CODE_LOGIN -> Provider.ANTHROPIC
+            COPILOT_LOGIN -> Provider.GITHUB_COPILOT
+        }
+
+    /** ADR 0050/0069: may judge a benchmark (a Copilot login may not: the judge must not depend on a subscription's model list). */
+    val mayJudge: Boolean get() = this != COPILOT_LOGIN
+}
 
 /** ADR 0050: what a step does with its model. `LLM_CALL`: one gateway call (LLM tasks, judges); `CODING_AGENT`: a runner job. */
 enum class StepKind { LLM_CALL, CODING_AGENT }
@@ -46,10 +69,14 @@ data class ModelOption(
 
 /**
  * ADR 0050 step 3: makes sure a user whose personal runner reported their Claude login has the Claude Code login
- * model profiles (Opus, Sonnet, Haiku); existing ones are kept. Returns how many were created.
+ * model profiles (Opus, Sonnet, Haiku); existing ones are kept. Returns how many were created. ADR 0069: [ensureFor]
+ * does the same for another login ([ModelRuntime.COPILOT_LOGIN]: a few GitHub Copilot models).
  */
 fun interface PersonalLoginModels {
     fun ensure(userId: UUID): Int
+
+    /** The login profiles of [runtime] (an own-login runtime); [ModelRuntime.CLAUDE_CODE_LOGIN] = [ensure]. */
+    fun ensureFor(userId: UUID, runtime: ModelRuntime): Int = if (runtime == ModelRuntime.CLAUDE_CODE_LOGIN) ensure(userId) else 0
 }
 
 /** ADR 0050 step 2: a default model and whether it is the user's own default or the platform's. */

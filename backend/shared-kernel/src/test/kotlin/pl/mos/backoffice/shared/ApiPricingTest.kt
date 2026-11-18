@@ -75,4 +75,50 @@ class ApiPricingTest {
         assertThat(ApiPricing.costOf(null, TokenUsage(1_000_000, 0), pricing)).isEqualTo(Money.usd("3"))
         assertThat(resolved).isEqualTo(1)
     }
+    // ------------------------------------------------------------------ ADR 0069: GitHub Copilot login models
+
+    private fun copilot(modelId: String, name: String = modelId) =
+        profile(modelId, "0", "0", ModelRuntime.COPILOT_LOGIN, Provider.GITHUB_COPILOT, name = name)
+
+    @Test
+    fun `a Copilot model takes the price of the same model in the catalogue first`() {
+        val sonnet = copilot("claude-sonnet-4.6")
+        val catalogue = listOf(profile("claude-sonnet-4-6", "4", "20"), profile("claude-sonnet-5", "9", "99"))
+        assertThat(ApiPricing.of(sonnet, catalogue).outputPerMTok).isEqualByComparingTo("20")
+        val gpt = copilot("gpt-5.3-codex")
+        assertThat(ApiPricing.of(gpt, listOf(profile("gpt-5-3-codex", "2", "16", provider = Provider.OPENAI))).outputPerMTok).isEqualByComparingTo("16")
+    }
+
+    @Test
+    fun `else the vendor list price`() {
+        val pricing = ApiPricing.of(copilot("gpt-5.3-codex"), emptyList())
+        assertThat(pricing.inputPerMTok).isEqualByComparingTo("1.75")
+        assertThat(pricing.outputPerMTok).isEqualByComparingTo("14")
+        assertThat(pricing.cacheReadPerMTok).isEqualByComparingTo("0.175")
+        assertThat(ApiPricing.of(copilot("claude-haiku-4.5"), emptyList()).cacheWritePerMTok).isEqualByComparingTo("1.25")
+        assertThat(ApiPricing.of(copilot("gemini-3.8-flash"), emptyList()).outputPerMTok).isEqualByComparingTo("3.75")
+        assertThat(ApiPricing.of(copilot("grok-4.7"), emptyList()).inputPerMTok).isEqualByComparingTo("2")
+        assertThat(ApiPricing.listPrice("github-copilot/Claude-Sonnet-4.6")!!.outputPerMTok).isEqualByComparingTo("15")
+    }
+
+    @Test
+    fun `an unknown Claude model falls back to its family, anything else to the profile's own pricing`() {
+        val unknownClaude = copilot("claude-sonnet-9")
+        assertThat(ApiPricing.of(unknownClaude, listOf(profile("claude-sonnet-5", "3", "15"))).outputPerMTok).isEqualByComparingTo("15")
+        val unknown = copilot("mystery-model")
+        assertThat(ApiPricing.of(unknown, listOf(profile("claude-sonnet-5", "3", "15")))).isEqualTo(unknown.pricing)
+        assertThat(ApiPricing.listPrice("mystery-model")).isNull()
+    }
+
+    @Test
+    fun `the runtimes say who holds the login and who may judge`() {
+        assertThat(ModelRuntime.API.ownLogin).isFalse()
+        assertThat(ModelRuntime.CLAUDE_CODE_LOGIN.loginHarness).isEqualTo(pl.mos.backoffice.shared.runner.AgentHarness.CLAUDE_CODE)
+        assertThat(ModelRuntime.COPILOT_LOGIN.loginHarness).isEqualTo(pl.mos.backoffice.shared.runner.AgentHarness.OPENCODE)
+        assertThat(ModelRuntime.COPILOT_LOGIN.requiredProvider).isEqualTo(Provider.GITHUB_COPILOT)
+        assertThat(ModelRuntime.COPILOT_LOGIN.mayJudge).isFalse()
+        assertThat(ModelRuntime.CLAUDE_CODE_LOGIN.mayJudge).isTrue()
+        assertThat(Provider.GITHUB_COPILOT.viaGateway).isFalse()
+        assertThat(Provider.ANTHROPIC.viaGateway).isTrue()
+    }
 }

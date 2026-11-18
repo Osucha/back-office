@@ -133,7 +133,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
     // ================================================================ runners
 
     private val nodeColumns =
-        "id, pool_id, name, version, cluster, backends, runtime_classes, max_concurrent, registered_at, last_seen_at, revoked_at, harnesses, claude_login, public_key"
+        "id, pool_id, name, version, cluster, backends, runtime_classes, max_concurrent, registered_at, last_seen_at, revoked_at, harnesses, claude_login, copilot_login, public_key"
 
     private fun node(rs: ResultSet) = RunnerNode(
         id = rs.getObject("id", UUID::class.java),
@@ -149,6 +149,7 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
         revokedAt = rs.instant("revoked_at"),
         harnesses = rs.getString("harnesses")?.let { json.readValue(it, STRING_LIST) },
         claudeLogin = rs.getObject("claude_login") as Boolean?,
+        copilotLogin = rs.getObject("copilot_login") as Boolean?,
         publicKey = rs.getString("public_key"),
     )
 
@@ -190,10 +191,11 @@ class JdbcFleetStores(private val db: NamedParameterJdbcTemplate, private val js
         )
     }
 
-    override fun report(id: UUID, harnesses: List<String>?, claudeLogin: Boolean?) {
+    override fun report(id: UUID, harnesses: List<String>?, claudeLogin: Boolean?, copilotLogin: Boolean?) {
         db.update(
-            "UPDATE runner SET harnesses = CAST(:harnesses AS jsonb), claude_login = :login WHERE id = :id",
-            MapSqlParameterSource().addValue("id", id).addValue("harnesses", harnesses?.let { write(it) }).addValue("login", claudeLogin),
+            "UPDATE runner SET harnesses = CAST(:harnesses AS jsonb), claude_login = :login, copilot_login = :copilot WHERE id = :id",
+            MapSqlParameterSource().addValue("id", id).addValue("harnesses", harnesses?.let { write(it) }).addValue("login", claudeLogin)
+                .addValue("copilot", copilotLogin),
         )
     }
 

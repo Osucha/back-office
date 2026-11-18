@@ -107,6 +107,7 @@ const PROVIDER_SLOT: Record<string, number> = {
   MISTRAL: 5, // brick
   OLLAMA: 4, // graphite
   OPENAI_COMPATIBLE: 3, // moss
+  GITHUB_COPILOT: 6,
 };
 
 /** A stable colour per LLM provider, from the categorical token series. */

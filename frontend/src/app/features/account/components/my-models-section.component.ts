@@ -100,6 +100,27 @@ interface KindRow {
             </dd>
           </div>
           <div>
+            <dt i18n="@@account.models.copilotReported">GitHub Copilot login</dt>
+            <dd>
+              @switch (r.copilotLogin) {
+                @case ('reported') {
+                  <span class="ok" i18n="@@account.models.loginYes">reported by the runner</span>
+                }
+                @case ('none') {
+                  <span class="warn" i18n="@@account.models.loginNo">none reported</span>
+                  <span class="hint" i18n="@@account.models.copilotNoHint"
+                    >Only needed for GitHub Copilot models: sign in with opencode auth login (GitHub
+                    Copilot) and start the runner with your OpenCode auth file mounted (My computer as a
+                    runner).</span
+                  >
+                }
+                @default {
+                  <span class="muted" i18n="@@account.models.loginUnknown">not reported</span>
+                }
+              }
+            </dd>
+          </div>
+          <div>
             <dt i18n="@@account.models.harnesses">Coding agents</dt>
             <dd>
               @for (h of r.harnesses; track h) {

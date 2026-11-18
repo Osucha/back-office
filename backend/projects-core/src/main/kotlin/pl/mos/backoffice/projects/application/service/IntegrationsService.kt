@@ -43,7 +43,7 @@ class IntegrationsService(
             ),
             langfuse = IntegrationsStatus.Langfuse(langfuse?.configured ?: false, langfuse?.url),
             ci = IntegrationsStatus.Ci(scriptUrl = publicUrl.trimEnd('/') + "/ci/backoffice-ci.sh", version = appVersion),
-            providers = Provider.entries.map { provider ->
+            providers = Provider.entries.filter { it.viaGateway }.map { provider ->
                 IntegrationsStatus.ProviderStatus(provider = provider, configured = runCatching { llmGateway.isConfigured(provider) }.getOrDefault(false))
             },
         )

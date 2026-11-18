@@ -44,6 +44,7 @@ class ChatOptionsMapper(
             Provider.OPENAI -> openAi(model.modelId, options, maxTokens, reasoning, schema.takeIf { useSchema }, strictSchema = true)
             Provider.OPENAI_COMPATIBLE -> openAi(model.modelId, options, maxTokens, reasoning, schema.takeIf { useSchema }, strictSchema = false)
             Provider.GOOGLE -> google(model.modelId, options, maxTokens, reasoning, useSchema)
+            Provider.GITHUB_COPILOT -> throw IllegalArgumentException("GitHub Copilot models are not called through the LLM gateway (ADR 0069)")
             Provider.MISTRAL -> mistral(model.modelId, options, maxTokens, reasoning, useSchema)
             Provider.OLLAMA -> ollama(model.modelId, options, maxTokens, reasoning, useSchema)
         }

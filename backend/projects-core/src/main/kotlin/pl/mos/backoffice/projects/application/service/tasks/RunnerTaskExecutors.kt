@@ -275,7 +275,7 @@ class RunnerTaskSupport(
         val apiCost = ApiPricing.costOf(result.reportedCostUsd, result.usage) { modelResolver.apiPricing(plan.profile) }
         val cost = if (result.subscription) {
             // ADR 0040: paid by the user's own subscription, so nothing is spent; the API-equivalent cost is kept
-            context.log("the agent used your own Claude login on your personal runner (cost at API prices ${apiCost.rounded().amount.toPlainString()} USD; paid by the subscription)")
+            context.log("the agent used your own login (Claude or GitHub Copilot) on your personal runner (cost at API prices ${apiCost.rounded().amount.toPlainString()} USD; paid by the subscription)")
             Money.ZERO
         } else {
             apiCost

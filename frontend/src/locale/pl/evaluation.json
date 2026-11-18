@@ -305,9 +305,7 @@
   "evaluation.task.acceptanceInvalid": "Niepoprawne: obiekt z files (ścieżka do treści), protectedPaths i requireChanges",
   "evaluation.task.acceptanceHint": "Ukryte przed agentem: files (np. testy akceptacyjne) są zapisywane tylko na czas komendy weryfikacji, protectedPaths (ścieżki git, np. istniejące testy) muszą pozostać bez zmian, requireChanges oblewa przebieg, który niczego nie zmienił. Puste = brak.",
   "evaluation.benchmarks.form.loginCandidate": "{$name} (logowanie Claude Code)",
-  "evaluation.benchmarks.form.login.title": "Claude Code z Twoim własnym logowaniem ({$names}) wymaga przed startem benchmarku:",
   "evaluation.benchmarks.form.login.target": "Zadania programistyczne muszą działać na Twoim osobistym runnerze.",
-  "evaluation.benchmarks.form.login.localLogin": "Twój osobisty runner musi używać Twojego logowania Claude Code: skonfiguruj go w Moim koncie (osobisty runner z logowaniem Claude Code). Szkic można zapisać już wcześniej.",
   "evaluation.benchmarks.form.runnerLocalLogin": "{$status}, logowanie Claude Code",
   "evaluation.benchmarks.form.login.blocked": "Modele z logowaniem Claude Code wymagają ustawień wymienionych w formularzu.",
   "evaluation.benchmark.attempts.searchCandidates": "Szukaj zadań lub kandydatów",
@@ -402,5 +400,11 @@
   "evaluation.benchmark.attempts.shown": "{shown} z {count, plural, one {# próby} few {# prób} many {# prób} other {# próby}}",
   "evaluation.board.unreliable": "Mniej niż połowa prób zaakceptowana — tani, ale zawodny.",
   "evaluation.board.verdictCheapest": "Najtańszy zaakceptowany wynik: {$model} · {$cost} · {$accepted} zaakceptowanych",
-  "evaluation.board.verdictBest": "Najwyższy wynik: {$model} · {$score}"
+  "evaluation.board.verdictBest": "Najwyższy wynik: {$model} · {$score}",
+  "evaluation.benchmarks.form.copilotCandidate": "{$name} (logowanie GitHub Copilot)",
+  "evaluation.benchmarks.form.login.titleOwn": "Twoje własne logowanie ({$names}) wymaga przed startem benchmarku:",
+  "evaluation.benchmarks.form.login.copilotHarness": "Model z logowaniem GitHub Copilot działa tylko w agencie OpenCode: wybierz dla niego agenta OpenCode.",
+  "evaluation.benchmarks.form.login.copilotJudge": "Model z logowaniem GitHub Copilot nie może oceniać: wybierz jako sędziego model API albo model z logowaniem Claude Code.",
+  "evaluation.benchmarks.form.login.localLoginOwn": "Twój osobisty runner musi używać Twoich własnych logowań: skonfiguruj go w Moim koncie (osobisty runner, własne logowanie). Szkic można zapisać już wcześniej.",
+  "evaluation.board.apiUnknown": "Koszt nieznany: nie jest znana cena API tego modelu. Wpisz jego cenę w profilu modelu."
 }

@@ -112,6 +112,8 @@ PROVIDER_TO_OPENCODE = {
     "MISTRAL": "mistral",
     "OLLAMA": "ollama",
     "OPENAI_COMPATIBLE": "openai-compatible",
+    # ADR 0069: OpenCode's built-in GitHub Copilot provider, called with the personal runner owner's own Copilot login
+    "GITHUB_COPILOT": "github-copilot",
 }
 
 # ModelOptions.reasoning -> OpenAI style reasoningEffort
@@ -237,6 +239,8 @@ PROVIDER_ENV_NAMES = (
     "OPENAI_COMPATIBLE_BASE_URL",
     "OLLAMA_BASE_URL",
     "CLAUDE_CODE_OAUTH_TOKEN",
+    # ADR 0069: OpenCode's auth content (the Copilot login) is set by the runner for Copilot jobs only
+    "OPENCODE_AUTH_CONTENT",
 )
 # Per-invocation environment of the git calls that need credentials (see Git._cred_env).
 GIT_PASSWORD_ENV = "BO_GIT_PASSWORD"
@@ -937,6 +941,11 @@ class JobSpec:
         return self.llm_credentials == LLM_CREDENTIALS_LOCAL_LOGIN
 
     @property
+    def copilot_model(self) -> bool:
+        """ADR 0069: a GitHub Copilot model (OpenCode with the owner's own Copilot login, never the gateway)."""
+        return self.model.provider == COPILOT_PROVIDER
+
+    @property
     def delivers(self) -> bool:
         """ADR 0063: a DELIVER job (no agent): commit, push and merge request of the run directory."""
         return self.mode == DELIVER_MODE
@@ -1008,6 +1017,19 @@ REQUIRED_SPEC_KEYS = ("mode", "agent", "model", "prompt", "timeoutSeconds")
 LLM_CREDENTIALS_LOCAL_LOGIN = "LOCAL_LOGIN"
 LLM_CREDENTIALS = ("GATEWAY", LLM_CREDENTIALS_LOCAL_LOGIN)
 LOCAL_LOGIN_FILE = "claude-login-token"
+# ADR 0069: the owner's GitHub Copilot login of a LOCAL_LOGIN OpenCode job with a Copilot model: the `github-copilot`
+# entry of their OpenCode auth file as {"github-copilot": {...}}, passed to OpenCode only as OPENCODE_AUTH_CONTENT
+COPILOT_LOGIN_FILE = "copilot-login"
+COPILOT_PROVIDER = "GITHUB_COPILOT"
+COPILOT_AUTH_ENV = "OPENCODE_AUTH_CONTENT"
+# ADR 0069: the OpenCode agent of a PROMPT job: the step's instructions as its prompt, every tool denied, one step
+PROMPT_OPENCODE_AGENT = "backoffice-answer"
+PROMPT_OPENCODE_DEFAULT_SYSTEM = "Answer the user's request directly. You have no tools."
+COPILOT_SETTINGS_HINT = (
+    " (GitHub Copilot: the model must be enabled in your Copilot settings, https://github.com/settings/copilot/features,"
+    " and offered by your plan; `opencode models github-copilot` on your computer lists the models your login can use)"
+)
+COPILOT_HINT_RE = re.compile(r"model|not supported|not available|forbidden|unauthori[sz]ed|\b40[0134]\b|access|enabled|quota|limit", re.I)
 # ADR 0051 step 4 / 0064: the read-only token of a GITLAB_READ connector, per repository ("tool-token-<key>";
 # "tool-token" = legacy repository)
 TOOL_TOKEN_FILE = "tool-token"
@@ -1619,6 +1641,34 @@ def load_local_login_token(env: Dict[str, str], ctx: Optional[JobContext]) -> Tu
     return token or "", removed
 
 
+def load_copilot_login(env: Dict[str, str], ctx: Optional[JobContext]) -> Tuple[str, Optional[bool]]:
+    """ADR 0069: the owner's GitHub Copilot login of a LOCAL_LOGIN job with a Copilot model, read once from the bundle and
+    deleted, so only the OpenCode process gets it (as OPENCODE_AUTH_CONTENT). ("", None) for other jobs or without the
+    file; a file that is not {"github-copilot": {...}} is deleted and ignored."""
+    if ctx is None or not ctx.spec.local_login or not ctx.spec.copilot_model:
+        return "", None
+    path = Path(env.get("RUNNER_JOB_DIR") or DEFAULT_JOB_DIR) / COPILOT_LOGIN_FILE
+    if not path.is_file():
+        return "", None
+    content, removed = consume_secret_file(path)
+    try:
+        parsed = json.loads(content or "")
+    except ValueError:
+        return "", removed
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("github-copilot"), dict):
+        return "", removed
+    return json.dumps({"github-copilot": parsed["github-copilot"]}), removed
+
+
+def copilot_secrets(login: str) -> List[str]:
+    """ADR 0069: the token values inside a Copilot login (redacted from every log and result)."""
+    try:
+        entry = json.loads(login).get("github-copilot") or {}
+    except (ValueError, AttributeError):
+        return [login] if login else []
+    return [str(entry.get(k)) for k in ("refresh", "access") if entry.get(k)] + ([login] if login else [])
+
+
 def load_tool_tokens(env: Dict[str, str], ctx: Optional[JobContext]) -> Dict[str, str]:
     """ADR 0051 step 4 / 0064: the read-only tokens of the job's GITLAB_READ connectors, by repository key, read once
     from the bundle and deleted. Only these tokens ever reach the agent (as glab's environment); git tokens never do."""
@@ -2070,8 +2120,9 @@ def require_gateway(gateway: Optional[Gateway], need: str) -> str:
 
 
 def opencode_model_ref(model: ModelRef) -> str:
-    """`provider/model` for OpenCode: Anthropic and OpenAI natively, every other provider via the gateway's OpenAI endpoint."""
-    if model.provider in ("ANTHROPIC", "OPENAI"):
+    """`provider/model` for OpenCode: Anthropic and OpenAI natively, every other provider via the gateway's OpenAI endpoint.
+    ADR 0069: GitHub Copilot through OpenCode's built-in `github-copilot` provider (the owner's own login)."""
+    if model.provider in ("ANTHROPIC", "OPENAI", COPILOT_PROVIDER):
         return f"{PROVIDER_TO_OPENCODE[model.provider]}/{model.model_id}"
     return f"{GATEWAY_PROVIDER_ID}/{model.model_id}"
 
@@ -2129,6 +2180,23 @@ def build_opencode_config(
     """
     api_key = "{env:%s}" % JOB_TOKEN_ENV
     providers: Dict[str, Any] = {}
+    if model.provider == COPILOT_PROVIDER:
+        # ADR 0069: OpenCode's own github-copilot provider with the owner's login (OPENCODE_AUTH_CONTENT); no gateway.
+        # The small model (session titles) is the benchmarked model, so no other Copilot model is used.
+        config: Dict[str, Any] = {
+            "$schema": "https://opencode.ai/config.json",
+            "model": opencode_model_ref(model),
+            "small_model": opencode_model_ref(model),
+            "autoupdate": False,
+            "share": "disabled",
+            "permission": opencode_permission(tools, extra_dirs, edit),
+        }
+        if instructions_file is not None:
+            config["instructions"] = [instructions_file.as_posix()]
+        mcp = opencode_mcp(connectors)
+        if mcp:
+            config["mcp"] = mcp
+        return config
     if model.provider == "ANTHROPIC":
         providers["anthropic"] = {"options": {"baseURL": _with_v1(require_gateway(gateway, "anthropic")), "apiKey": api_key}}
         provider_id = "anthropic"
@@ -2205,6 +2273,29 @@ def agent_home_path(spec: JobSpec, workspace: Path) -> Optional[Path]:
     return workspace / AGENT_HOMES_DIR / spec.agent_home
 
 
+def build_opencode_prompt_config(model: ModelRef, gateway: Optional[Gateway], system_prompt: Optional[str]) -> Dict[str, Any]:
+    """ADR 0069: opencode.json of a PROMPT job: the job's model, an agent whose prompt is the step's instructions (it
+    replaces OpenCode's coding prompt), every tool denied and one step (verified with OpenCode 1.18.32: `debug agent`
+    lists every tool disabled)."""
+    config = build_opencode_config(model, gateway)
+    config["permission"] = {"*": "deny"}
+    config["agent"] = {
+        PROMPT_OPENCODE_AGENT: {
+            "mode": "primary",
+            "description": "Back Office: one answer without tools",
+            "prompt": system_prompt or PROMPT_OPENCODE_DEFAULT_SYSTEM,
+            "permission": {"*": "deny"},
+            "steps": 1,
+        }
+    }
+    return config
+
+
+def build_opencode_prompt_command(model: ModelRef) -> List[str]:
+    """ADR 0069: OpenCode for one answer; the prompt goes to stdin (`opencode run` reads it when stdin is no terminal)."""
+    return ["opencode", "run", "--model", opencode_model_ref(model), "--agent", PROMPT_OPENCODE_AGENT, "--format", "json"]
+
+
 def build_opencode_command(model: ModelRef, prompt: str, continue_session: bool = False) -> List[str]:
     cmd = ["opencode", "run", "--model", opencode_model_ref(model), "--format", "json"]
     if continue_session:
@@ -2244,6 +2335,7 @@ def agent_environment(
     spec: JobSpec, base_env: Dict[str, str], workspace: Path, agent_token: str = "", proxy_url: Optional[str] = None,
     local_login_token: str = "",
     tool_tokens: Optional[Dict[str, str]] = None, connector_secrets: Optional[Dict[str, str]] = None,
+    copilot_login: str = "",
 ) -> Dict[str, str]:
     """Environment of the agent process: the gateway-only agent token is its only credential (the job token only
     as fallback for an older Back Office) besides its connectors (ADR 0064). Runner credentials (git, callback) never
@@ -2266,6 +2358,9 @@ def agent_environment(
             env["OPENCODE_CONFIG_DIR"] = str(home)
         env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "1")
         env.setdefault("OPENCODE_DISABLE_MODELS_FETCH", "1")
+        if spec.local_login and spec.copilot_model and copilot_login:
+            # ADR 0069: the owner's Copilot login as OpenCode's auth content (overrides its auth.json; never on disk)
+            env[COPILOT_AUTH_ENV] = copilot_login
     elif spec.agent == "CLAUDE_CODE":
         if home is not None:
             # ADR 0060 §3: the home is the agent's Claude Code configuration (CLAUDE.md, skills/, sessions)
@@ -3887,6 +3982,9 @@ class _Run:
     repo_results: Optional[List[Dict[str, Any]]] = None
     # ADR 0040: the owner's Claude Code login (LOCAL_LOGIN jobs); subscription = Claude Code ran with it
     local_login_token: str = ""
+    # ADR 0069: the owner's GitHub Copilot login (OpenCode jobs with a Copilot model); copilot = OpenCode ran with it
+    copilot_login: str = ""
+    copilot: bool = False
     # ADR 0051 step 4 / 0064: read-only tokens of GITLAB_READ connectors by repository key
     tool_tokens: Dict[str, str] = field(default_factory=dict)
     # ADR 0064: secrets of MCP connectors by connector key (only ever in the agent process's environment)
@@ -4388,6 +4486,8 @@ def _agent_invocation(
 ) -> Tuple[List[str], LineParser, bool]:
     """(command, output line parser, run through the shell) for the spec's agent."""
     if spec.agent == "OPENCODE":
+        if spec.copilot_model:
+            use_copilot_login(run, spec)
         edit = opencode_edit_rule(spec.access, repo_dir, access_repo_dirs(run))
         config = build_opencode_config(spec.model, spec.gateway, run.tools, run.extra_dirs,
                                        files.instructions if files else None, spec.connectors, edit)
@@ -4401,6 +4501,28 @@ def _agent_invocation(
         return _claude_invocation(run, spec, repo_dir, prompt, agent_env, session, files), parse_claude_line, False
     # STUB (tests only): the prompt is a shell script run with the agent's environment
     return [prompt], parse_stub_line, True
+
+
+def use_copilot_login(run: "_Run", spec: JobSpec) -> None:
+    """ADR 0069: a GitHub Copilot model runs only with the owner's own Copilot login on their personal runner."""
+    if not spec.local_login:
+        raise ValueError("GitHub Copilot models run only on a personal runner with its owner's own login (llmCredentials LOCAL_LOGIN) - ADR 0069")
+    if not run.copilot_login:
+        raise ValueError(f"no {COPILOT_LOGIN_FILE} in the job bundle: the runner-controller needs the OpenCode auth file with a GitHub"
+                         " Copilot login (opencode auth login) mounted read-only - ADR 0069")
+    run.subscription = True
+    run.copilot = True
+    run.log(f"[agent] OpenCode uses the personal runner owner's own GitHub Copilot login for {spec.model.model_id} (ADR 0069):"
+            " not metered by Back Office")
+
+
+def copilot_result(result: Dict[str, Any]) -> None:
+    """ADR 0069: OpenCode's cost of a Copilot model is not an API price (Back Office prices the tokens at the vendor's list
+    price), and a failure that may come from the user's Copilot settings says where to look."""
+    result["usage"]["costUsd"] = None
+    error = result.get("error")
+    if error and COPILOT_HINT_RE.search(error) and COPILOT_SETTINGS_HINT not in error:
+        result["error"] = error + COPILOT_SETTINGS_HINT
 
 
 def _warn_missing_usage(run: _Run) -> None:
@@ -4440,10 +4562,19 @@ def _execute_prompt(run: _Run, spec: JobSpec) -> None:
     """ADR 0050 step 4: one answer of the model, in an empty directory, returned as the `response` artefact."""
     work_dir = run.workspace / "prompt"
     work_dir.mkdir(parents=True, exist_ok=True)
-    agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token)
+    agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token,
+                                  copilot_login=run.copilot_login)
     stdin_text: Optional[str] = None
     if spec.agent == STUB_AGENT:
         cmd, parser, shell = [spec.prompt], parse_stub_line, True
+    elif spec.agent == "OPENCODE":
+        # ADR 0069: OpenCode answers (a GitHub Copilot model on the owner's login, else the gateway); no tools, one step
+        if spec.copilot_model:
+            use_copilot_login(run, spec)
+        config = build_opencode_prompt_config(spec.model, spec.gateway, spec.system_prompt)
+        _replace_file(Path(agent_env["OPENCODE_CONFIG"]), json.dumps(config, indent=2).encode("utf-8"))
+        cmd, stdin_text = build_opencode_prompt_command(spec.model), spec.prompt
+        parser, shell = parse_opencode_line, False
     elif spec.agent == "CLAUDE_CODE":
         if spec.local_login:
             if not run.local_login_token:
@@ -4456,7 +4587,7 @@ def _execute_prompt(run: _Run, spec: JobSpec) -> None:
         cmd, stdin_text = build_prompt_command(spec.model, spec.prompt, spec.system_prompt, _claude_help(agent_env))
         parser, shell = parse_claude_line, False
     else:
-        raise ValueError(f"PROMPT jobs run Claude Code, not {spec.agent}")
+        raise ValueError(f"PROMPT jobs run Claude Code or OpenCode, not {spec.agent}")
     memory = environment_document_path(spec, run.workspace, agent_env)
     if memory is not None:
         # the user memory a coding step left in a run workspace is not this answer's environment
@@ -4505,7 +4636,7 @@ def _run_agent(run: _Run, spec: JobSpec, repo_dir: Path) -> None:
     if spec.agent != STUB_AGENT:
         prompt = f"{prompt}\n\n{sandbox_prompt_section(run.env, run.egress_hosts)}"
     agent_env = agent_environment(spec, run.env, run.workspace, run.agent_credential, run.proxy_url, run.local_login_token,
-                                  run.tool_tokens, run.connector_secrets)
+                                  run.tool_tokens, run.connector_secrets, run.copilot_login)
     _log_gitlab_read(run, spec)
     session = agent_session(spec, run.workspace, agent_env)
     if session is not None:
@@ -5203,6 +5334,8 @@ def _finalize_result(run: _Run, log_file: LogFile) -> Dict[str, Any]:
     if run.subscription:
         # ADR 0040: costUsd stays Claude Code's estimate; Back Office does not count it as spend
         result["usage"]["billing"] = BILLING_SUBSCRIPTION
+    if run.copilot:
+        copilot_result(result)
     if run.questions:
         line = f"[Back Office runner] the agent asked {run.questions} question(s); verification skipped"
         result["summary"] = f"{result['summary']}\n\n{line}" if result.get("summary") else line
@@ -5269,6 +5402,8 @@ def main() -> int:
     git_token_removed = _combine_removed(git_token_removed, repo_tokens_removed)
     # ADR 0040: the owner's Claude Code login of a LOCAL_LOGIN job, read once the same way
     local_login_token, local_login_removed = load_local_login_token(env, ctx)
+    # ADR 0069: the owner's GitHub Copilot login of an OpenCode job with a Copilot model, read once the same way
+    copilot_login, copilot_login_removed = load_copilot_login(env, ctx)
     # ADR 0051 step 4 / 0064: read-only tokens of GITLAB_READ connectors and secrets of MCP connectors, read once the same way
     tool_tokens = load_tool_tokens(env, ctx)
     connector_secrets = load_connector_secrets(env, ctx)
@@ -5276,7 +5411,7 @@ def main() -> int:
     apply_proxy_env(env, proxy_url)
 
     redact = Redactor([env.get(n, "") for n in SECRET_ENV_NAMES] + [callback_token, proxy_password(proxy_url), git_token]
-                      + list(repo_tokens.values()) + [local_login_token] + list(tool_tokens.values())
+                      + list(repo_tokens.values()) + [local_login_token] + copilot_secrets(copilot_login) + list(tool_tokens.values())
                       + list(connector_secrets.values()))
     client = CallbackClient(callback_url, job_id, callback_token, redact, proxy_url)
     log_file = LogFile(private_log_path(env, job_id))
@@ -5296,12 +5431,15 @@ def main() -> int:
     if ctx is not None and ctx.spec.local_login:
         security["llmCredentials"] = LLM_CREDENTIALS_LOCAL_LOGIN
         security["localLoginFileRemoved"] = local_login_removed
+        if ctx.spec.copilot_model:
+            security["copilotLoginFileRemoved"] = copilot_login_removed
     agent_token = _isolate_agent_token(client, ctx, redact, security, log)
     run = _Run(
         env=env, workspace=workspace, started=started, sandboxed=sandboxed, proxy_url=proxy_url, redact=redact, sink=sink,
         uploader=uploader, security=security, agent_credential=agent_token or callback_token,
         tools=tool_policy_from(ctx.policy) if ctx else None, fatal_error=ctx_error, repo_tokens=repo_tokens,
         local_login_token=local_login_token, tool_tokens=tool_tokens, connector_secrets=connector_secrets,
+        copilot_login=copilot_login,
         egress_hosts=egress_hosts_of(ctx.policy if ctx else None),
     )
     if ctx is not None and ctx.spec.gitlab_read_connectors and run.tools is not None and run.tools.allow:

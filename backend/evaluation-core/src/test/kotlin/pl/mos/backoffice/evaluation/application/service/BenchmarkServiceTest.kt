@@ -249,4 +249,71 @@ class BenchmarkServiceTest {
         assertThat(FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_RUN).let { g -> ModelProfileService(profiles, benchmarks, gateway, clock, g, g, audit) }
             .preflight(listOf(login.id)).single().second.ok).isFalse()
     }
+    private val copilot = pl.mos.backoffice.evaluation.domain.model.ModelProfile.create(
+        displayName = "GPT-5.3-Codex (Copilot)", ref = ModelRef(Provider.GITHUB_COPILOT, "gpt-5.3-codex"),
+        pricing = pl.mos.backoffice.shared.usage.Pricing.FREE, now = Fixtures.now, runtime = ModelRuntime.COPILOT_LOGIN,
+    )
+
+    @Test
+    fun `GitHub Copilot login models run coding tasks in OpenCode on the personal runner and never judge (ADR 0069)`() {
+        profiles.save(copilot)
+        val coding = suite.tasks.single { it.kind == pl.mos.backoffice.evaluation.domain.model.TaskKind.CODING_JOB }
+        val ok = command().copy(
+            modelProfileIds = listOf(copilot.id, a.id), taskIds = listOf(coding.id),
+            codingHarness = AgentHarness.OPENCODE, runnerTarget = RunnerTarget.PERSONAL,
+        )
+        fun refused(c: ManageBenchmarks.BenchmarkCommand, field: String, text: String) =
+            assertThatThrownBy { service.create(c) }.isInstanceOfSatisfying(ValidationException::class.java) { e ->
+                assertThat(e.errors.map { it.field }).contains(field)
+                assertThat(e.message).contains(text)
+            }
+        refused(ok.copy(runnerTarget = RunnerTarget.SHARED), "runnerTarget", "personal runner")
+        refused(ok.copy(codingHarness = AgentHarness.CLAUDE_CODE), "codingHarness", "need OpenCode")
+        refused(ok.copy(judgeModelProfileId = copilot.id), "judgeModelProfileId", "cannot judge")
+
+        val draft = service.create(ok)
+        every { runner.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = false))
+        assertThatThrownBy { service.start(draft.benchmark.id) }.isInstanceOf(InvalidStateException::class.java).hasMessageContaining("own login")
+        every { runner.executionTargets(any()) } returns listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = true))
+        assertThat(service.start(draft.benchmark.id).benchmark.status).isEqualTo(BenchmarkStatus.RUNNING)
+
+        assertThatThrownBy { copilot.copy(ref = ModelRef(Provider.OPENAI, "gpt-5")) }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { a.copy(ref = ModelRef(Provider.GITHUB_COPILOT, "gpt-5")) }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `a GitHub Copilot login model is checked on the personal runner for a Copilot login (ADR 0069)`() {
+        profiles.save(copilot)
+        val gateway = mockk<LlmGateway>()
+        val agents = mockk<AgentRunner>()
+        val models = FakeAccessGuard.permitting(EvaluationPermissions.EVALUATION_RUN).let { g -> ModelProfileService(profiles, benchmarks, gateway, clock, g, g, audit, agents) }
+        fun check(vararg targets: ExecutionTarget): String? {
+            every { agents.executionTargets(any()) } returns targets.toList()
+            return models.preflight(listOf(copilot.id)).single().second.let { if (it.ok) null else it.error }
+        }
+        assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1))).contains("own logins")
+        assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = true, claudeLogin = true, copilotLogin = false))).contains("no GitHub Copilot login")
+        assertThat(check(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, localLogin = true, claudeLogin = false, copilotLogin = true))).isNull()
+        verify(exactly = 0) { gateway.chat(any(), any()) }
+    }
+    @Test
+    fun `a GitHub Copilot login profile needs a known API price, else the user enters one (ADR 0069)`() {
+        val user = pl.mos.backoffice.shared.testing.FakeAccessGuard.permitting(EvaluationPermissions.MODELS_VIEW)
+        val models = ModelProfileService(profiles, benchmarks, mockk(relaxed = true), clock, user, user, audit)
+        fun command(modelId: String, input: String = "0", output: String = "0") = ManageModelProfiles.ProfileCommand(
+            displayName = modelId, ref = ModelRef(Provider.GITHUB_COPILOT, modelId),
+            pricing = pl.mos.backoffice.shared.usage.Pricing(java.math.BigDecimal(input), java.math.BigDecimal(output)),
+            runtime = ModelRuntime.COPILOT_LOGIN, personal = true,
+        )
+        assertThatThrownBy { models.create(command("mystery-model")) }.isInstanceOfSatisfying(ValidationException::class.java) { e ->
+            assertThat(e.errors.map { it.field }).containsExactly("pricing.inputPerMTok", "pricing.outputPerMTok")
+            assertThat(e.errors.first().message).contains("mystery-model").contains("price per million tokens")
+        }
+        // the vendor list price, the same model in the catalogue, or the user's own price
+        assertThat(models.create(command("gpt-5.3-codex")).runtime).isEqualTo(ModelRuntime.COPILOT_LOGIN)
+        profiles.save(Fixtures.profile("Mystery API", provider = Provider.OPENAI_COMPATIBLE, modelId = "other-model", input = "1", output = "2"))
+        assertThat(models.create(command("other-model")).id).isNotNull()
+        val own = models.create(command("mystery-model", "1", "4"))
+        assertThatThrownBy { models.update(own.id, command("mystery-model")) }.isInstanceOf(ValidationException::class.java)
+    }
 }

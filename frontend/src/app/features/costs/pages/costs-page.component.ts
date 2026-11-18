@@ -680,6 +680,7 @@ export class CostsPageComponent {
     const brand: Record<string, string> = {
       OPENAI: 'OpenAI',
       OPENAI_COMPATIBLE: $localize`:@@costs.provider.openaiCompatible:OpenAI-compatible`,
+      GITHUB_COPILOT: 'GitHub Copilot',
     };
     return brand[p] ?? p.charAt(0) + p.slice(1).toLowerCase();
   };

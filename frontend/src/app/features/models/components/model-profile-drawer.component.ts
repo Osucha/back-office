@@ -43,6 +43,7 @@ import { formatUsage } from '../../../core/ui/relay/format';
 import { ProvenanceComponent } from '../../../core/ui/relay/provenance.component';
 import { SidePanelComponent } from '../../../core/ui/relay/side-panel.component';
 import { humanize } from '../../../core/ui/status-tag.component';
+import { isLoginRuntime } from '../data/model-catalog';
 import { capabilityLabel, providerLabel, reasoningLabel } from '../data/model-format';
 import {
   type ProfileScope,
@@ -107,7 +108,12 @@ import {
           <div class="test-head">
             <div>
               <div class="test-title" i18n="@@models.drawer.test">Test profile</div>
-              @if (login()) {
+              @if (copilot()) {
+                <div class="test-sub" i18n="@@models.drawer.copilotTestSub">
+                  Checks that your personal runner reported your GitHub Copilot login and is online;
+                  no model is called.
+                </div>
+              } @else if (login()) {
                 <div class="test-sub" i18n="@@models.drawer.loginTestSub">
                   Checks that your personal runner uses your Claude Code login and is online; no
                   model is called.
@@ -186,7 +192,13 @@ import {
         </nz-form-item>
         <nz-form-item>
           <nz-form-label
-            [nzTooltipTitle]="login() ? text.loginRuntimeHint : text.apiRuntimeHint"
+            [nzTooltipTitle]="
+              copilot()
+                ? text.copilotRuntimeHint
+                : login()
+                  ? text.loginRuntimeHint
+                  : text.apiRuntimeHint
+            "
             nzFor="mp-runtime"
             i18n="@@models.drawer.runtime"
             >Runs through</nz-form-label
@@ -195,6 +207,7 @@ import {
             <nz-select id="mp-runtime" formControlName="runtime">
               <nz-option nzValue="API" [nzLabel]="text.runtimeApi" />
               <nz-option nzValue="CLAUDE_CODE_LOGIN" [nzLabel]="text.runtimeLogin" />
+              <nz-option nzValue="COPILOT_LOGIN" [nzLabel]="text.runtimeCopilot" />
             </nz-select>
           </nz-form-control>
         </nz-form-item>
@@ -228,8 +241,7 @@ import {
         <div class="grid">
           <nz-form-item>
             <nz-form-label
-              nzTooltipTitle="Claude Code runs Anthropic models only."
-              i18n-nzTooltipTitle="@@models.drawer.loginProviderHint"
+              [nzTooltipTitle]="copilot() ? text.copilotProviderHint : text.loginProviderHint"
               nzRequired
               nzFor="mp-provider"
               i18n="@@models.drawer.provider"
@@ -237,7 +249,7 @@ import {
             >
             @if (login()) {
               <nz-form-control>
-                <input nz-input id="mp-provider" [value]="providerName('ANTHROPIC')" readonly />
+                <input nz-input id="mp-provider" [value]="providerName(loginProvider())" readonly />
               </nz-form-control>
             } @else {
               <nz-form-control [nzExtra]="providerHint()">
@@ -270,7 +282,9 @@ import {
           }
           <nz-form-item>
             <nz-form-label
-              [nzTooltipTitle]="login() ? text.loginModelIdHint : text.modelIdHint"
+              [nzTooltipTitle]="
+                copilot() ? text.copilotModelIdHint : login() ? text.loginModelIdHint : text.modelIdHint
+              "
               nzRequired
               nzFor="mp-model"
               i18n="@@models.drawer.modelId"
@@ -282,13 +296,25 @@ import {
                 id="mp-model"
                 class="mono"
                 formControlName="modelId"
-                [placeholder]="login() ? loginModelIdExample : modelIdExample"
+                [placeholder]="
+                  copilot() ? copilotModelIdExample : login() ? loginModelIdExample : modelIdExample
+                "
               />
             </nz-form-control>
           </nz-form-item>
         </div>
 
-        @if (login()) {
+        @if (copilot()) {
+          <p class="login-note" role="note" i18n="@@models.drawer.copilotNote">
+            OpenCode runs on your personal runner, signed in with your own GitHub Copilot
+            subscription (My account: personal runner with your OpenCode auth file). It answers
+            coding steps with OpenCode and LLM steps of your private projects; in your benchmarks it
+            can be a candidate (coding tasks with the personal runner and an OpenCode agent, prompt
+            tasks), never the judge. The model must be enabled in your Copilot settings. Default
+            options and pricing do not apply: nothing is billed; the cost at API prices uses the
+            model vendor's list price.
+          </p>
+        } @else if (login()) {
           <p class="login-note" role="note" i18n="@@models.drawer.loginNoteLlm">
             Claude Code runs on your personal runner, signed in with your own Claude subscription
             (My account: personal runner with Claude Code login). It answers coding steps and LLM
@@ -371,10 +397,26 @@ import {
             </nz-form-control>
           </nz-form-item>
 
+        </div>
+
+        <div [hidden]="login() && !copilot()">
           <h3 class="sec">
             <ng-container i18n="@@models.drawer.pricing">Pricing</ng-container>
             <span class="sec-note" i18n="@@models.drawer.pricingNote">USD per million tokens</span>
           </h3>
+          @if (copilot()) {
+            <p class="login-note" role="note" i18n="@@models.drawer.copilotPricingNote">
+              The model's API list price, used only for the cost at API prices (nothing is billed).
+              Leave 0 when Back Office knows the price (the same model among the profiles, or the
+              vendor's list price); otherwise enter the input and output price.
+            </p>
+            @if (pricingRequired()) {
+              <p class="pricing-error" role="alert" i18n="@@models.drawer.copilotPriceRequired">
+                Back Office knows no API price for this model: enter its input and output price per
+                million tokens (USD), as the model's vendor lists them.
+              </p>
+            }
+          }
           <div class="grid four" formGroupName="pricing">
             <nz-form-item>
               <nz-form-label nzRequired nzFor="mp-in" i18n="@@models.drawer.input"
@@ -600,6 +642,11 @@ import {
         margin-top: 8px;
         max-height: 180px;
       }
+      .pricing-error {
+        margin: 0 0 12px;
+        font-size: 12px;
+        color: var(--bo-blocked);
+      }
       .login-note {
         margin: 0 0 16px;
         padding: 10px 12px;
@@ -640,6 +687,8 @@ export class ModelProfileDrawerComponent {
   readonly saving = input(false);
   readonly testing = input(false);
   readonly testResult = input<ModelTestResult | null>(null);
+  /** ADR 0069: the server refused a GitHub Copilot profile without a known API price (fields pricing.*). */
+  readonly pricingRequired = input(false);
   readonly saved = output<ModelProfileInput>();
   readonly closed = output<void>();
   readonly test = output<void>();
@@ -651,6 +700,7 @@ export class ModelProfileDrawerComponent {
   readonly capabilityName = capabilityLabel;
   readonly modelIdExample = 'claude-opus-4-1'; // i18n-ignore: model id
   readonly loginModelIdExample = 'sonnet'; // i18n-ignore: model alias
+  readonly copilotModelIdExample = 'claude-sonnet-4.6'; // i18n-ignore: model id
   readonly text = {
     newTitle: $localize`:@@models.drawer.newTitle:New model profile`,
     newSubtitle: $localize`:@@models.drawer.newSubtitle:A provider, a model id, default options and pricing`,
@@ -666,6 +716,11 @@ export class ModelProfileDrawerComponent {
     runnerReady: $localize`:@@models.drawer.runnerReady:your runner is ready`,
     runtimeApi: $localize`:@@models.drawer.runtimeApi:Provider API (LLM gateway)`,
     runtimeLogin: $localize`:@@models.drawer.runtimeLogin:Claude Code (my login)`,
+    runtimeCopilot: $localize`:@@models.drawer.runtimeCopilot:GitHub Copilot (my login)`,
+    copilotRuntimeHint: $localize`:@@models.drawer.copilotRuntimeHint:OpenCode on your personal runner with your own GitHub Copilot subscription: coding steps with OpenCode and LLM steps of your private projects, benchmark candidates (never the judge); nothing billed.`,
+    loginProviderHint: $localize`:@@models.drawer.loginProviderHint:Claude Code runs Anthropic models only.`,
+    copilotProviderHint: $localize`:@@models.drawer.copilotProviderHint:OpenCode calls GitHub Copilot with your own Copilot login.`,
+    copilotModelIdHint: $localize`:@@models.drawer.copilotModelIdHint:The Copilot model id as OpenCode lists it (opencode models github-copilot), e.g. gpt-5.3-codex. It must be enabled in your Copilot settings.`,
     apiRuntimeHint: $localize`:@@models.drawer.apiRuntimeHint:Called through a provider connection and billed per token.`,
     loginRuntimeHint: $localize`:@@models.drawer.loginRuntimeHintLlm:Claude Code on your personal runner with your own Claude subscription: coding steps and LLM steps of your private projects, benchmark candidates and the judge; nothing billed.`,
     modelIdHint: $localize`:@@models.drawer.modelIdHint:Exactly as the provider API expects it.`,
@@ -754,6 +809,12 @@ export class ModelProfileDrawerComponent {
       ? $localize`:@@models.drawer.scope.personalHint:Only you see and use it: in your private projects and your own benchmarks.`
       : $localize`:@@models.drawer.scope.platformHint:Everyone can pick it, in every project; called through the platform's provider connections.`;
     if (this.profile()?.id || !personal) return what;
+    if (this.copilot())
+      return (
+        what +
+        ' ' +
+        $localize`:@@models.drawer.scope.copilotHint:A GitHub Copilot login profile is always personal.`
+      );
     if (this.login())
       return (
         what +
@@ -807,11 +868,23 @@ export class ModelProfileDrawerComponent {
     enabled: this.fb.nonNullable.control(true),
   });
 
-  /** ADR 0048: Claude Code with the user's own login: Anthropic only, no connection, options or pricing. */
+  /**
+   * ADR 0048: Claude Code with the user's own login: Anthropic only, no connection, options or pricing. ADR 0069: the
+   * same for GitHub Copilot with the user's own login (OpenCode).
+   */
   readonly login = computed(() => {
     this.status();
-    return this.form.controls.runtime.value === 'CLAUDE_CODE_LOGIN';
+    return isLoginRuntime(this.form.controls.runtime.value);
   });
+
+  /** ADR 0069: a GitHub Copilot login profile. */
+  readonly copilot = computed(() => {
+    this.status();
+    return this.form.controls.runtime.value === 'COPILOT_LOGIN';
+  });
+
+  /** The provider a login profile must use. */
+  readonly loginProvider = computed<Provider>(() => (this.copilot() ? 'GITHUB_COPILOT' : 'ANTHROPIC'));
 
   readonly valid = computed(() => {
     this.status();
@@ -844,10 +917,10 @@ export class ModelProfileDrawerComponent {
     this.form.controls.runtime.valueChanges
       .pipe(takeUntilDestroyed(destroyRef))
       .subscribe((runtime) => {
-        if (runtime !== 'CLAUDE_CODE_LOGIN') return;
-        // nothing is billed and Claude Code runs Anthropic models only
+        if (!isLoginRuntime(runtime)) return;
+        // nothing is billed; Claude Code runs Anthropic models only, OpenCode with the Copilot login Copilot models
         this.form.patchValue({
-          provider: 'ANTHROPIC',
+          provider: runtime === 'COPILOT_LOGIN' ? 'GITHUB_COPILOT' : 'ANTHROPIC',
           connection: '',
           pricing: {
             inputPerMTok: 0,
@@ -945,12 +1018,13 @@ export class ModelProfileDrawerComponent {
     const extra = v.options.extra.trim()
       ? (JSON.parse(v.options.extra) as Record<string, unknown>)
       : undefined;
-    const login = v.runtime === 'CLAUDE_CODE_LOGIN';
+    const login = isLoginRuntime(v.runtime);
+    const loginProvider: Provider = v.runtime === 'COPILOT_LOGIN' ? 'GITHUB_COPILOT' : 'ANTHROPIC';
     const input: ModelProfileInput = {
       displayName: v.displayName.trim(),
       runtime: v.runtime,
       ref: {
-        provider: login ? 'ANTHROPIC' : v.provider,
+        provider: login ? loginProvider : v.provider,
         connection:
           !login && this.connectionsOfType().some((c) => c.key === v.connection)
             ? v.connection
@@ -963,7 +1037,9 @@ export class ModelProfileDrawerComponent {
           ...(extra ? { extra } : {}),
         },
       },
-      pricing: login
+      // ADR 0069: a Copilot profile keeps the API list price its owner entered (nothing is billed)
+      pricing:
+        login && v.runtime !== 'COPILOT_LOGIN'
         ? { inputPerMTok: 0, outputPerMTok: 0, currency: 'USD' }
         : {
             inputPerMTok: v.pricing.inputPerMTok ?? 0,

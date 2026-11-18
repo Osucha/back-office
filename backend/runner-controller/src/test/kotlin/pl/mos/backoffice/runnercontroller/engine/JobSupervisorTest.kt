@@ -86,7 +86,11 @@ class JobSupervisorTest {
         props, client, backend, registry, PolicyResolver(PolicyDefaults(image = "back-office/runner:dev")), json, meters,
         env = { controllerEnv[it] },
         keys = { holder.keys },
+        copilotLogin = { copilotLogin },
     )
+
+    /** ADR 0069: the owner's Copilot login the controller would read from the mounted OpenCode auth file. */
+    @Volatile private var copilotLogin: pl.mos.backoffice.runnercontroller.sandbox.CopilotLogin? = null
 
     private val spec = mapOf(
         "mode" to "EVAL_CODING", "agent" to "OPENCODE", "prompt" to "do it", "timeoutSeconds" to 7200,
@@ -317,6 +321,38 @@ class JobSupervisorTest {
         assertThat(launched.bundle.specJson).doesNotContain("sk-ant-oat-own")
         assertThat(backend.launched.getValue(gateway).localLoginCredential).isNull()
         assertThat(backend.launched.getValue(gateway).policy.egressHosts).doesNotContain("api.anthropic.com")
+    }
+
+    @Test
+    fun `OpenCode jobs with a GitHub Copilot model get the owner's Copilot login and its egress, only on docker (ADR 0069)`() {
+        register()
+        val copilot = spec + mapOf("model" to mapOf("provider" to "GITHUB_COPILOT", "modelId" to "gpt-5.3-codex"), "llmCredentials" to "LOCAL_LOGIN")
+        val onK8s = bo.enqueue(copilot, policy)
+        leaseOnce()
+        assertThat(bo.completionOf(onK8s)!!.get("reason").asString()).startsWith("local-login: ").contains("DOCKER")
+
+        backend.kind = BackendKind.DOCKER
+        val noLogin = bo.enqueue(copilot, policy)
+        leaseOnce()
+        assertThat(bo.completionOf(noLogin)!!.get("reason").asString()).contains("no GitHub Copilot login")
+
+        val gatewayPool = bo.enqueue(spec + mapOf("model" to mapOf("provider" to "GITHUB_COPILOT", "modelId" to "gpt-5.3-codex")), policy)
+        leaseOnce()
+        assertThat(bo.completionOf(gatewayPool)!!.get("reason").asString()).contains("LOCAL_LOGIN")
+
+        val claudeCode = bo.enqueue(copilot + mapOf("agent" to "CLAUDE_CODE"), policy)
+        copilotLogin = pl.mos.backoffice.runnercontroller.sandbox.CopilotLogin("""{"github-copilot":{"type":"oauth","refresh":"gho_FAKE"}}""", listOf("api.githubcopilot.com"))
+        leaseOnce()
+        assertThat(bo.completionOf(claudeCode)!!.get("reason").asString()).contains("only in OpenCode")
+
+        val ok = bo.enqueue(copilot, policy)
+        leaseOnce()
+        val launched = backend.launched.getValue(ok)
+        assertThat(launched.copilotLogin).isSameAs(copilotLogin)
+        assertThat(launched.localLoginCredential).describedAs("no Claude login needed").isNull()
+        assertThat(launched.policy.egressHosts).contains("api.githubcopilot.com").doesNotContain("api.anthropic.com")
+        assertThat(launched.bundle.specJson).doesNotContain("gho_FAKE")
+        assertThat(launched.toString()).doesNotContain("gho_FAKE")
     }
 
     @Test

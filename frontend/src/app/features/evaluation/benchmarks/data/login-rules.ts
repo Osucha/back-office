@@ -16,16 +16,23 @@ export interface LoginRuleForm {
 }
 
 /**
- * What a benchmark using Claude Code with its owner's login (ADR 0048, ADR 0050 step 4) still needs:
+ * What a benchmark using its owner's own login (ADR 0048, ADR 0050 step 4, ADR 0069) still needs:
  * - `target`: coding tasks done by a coding agent with a login model must run on the personal runner,
- * - `harness`: a login model in a coding agent needs a Claude Code agent (OpenCode cannot use the login),
- * - `localLogin`: the personal runner does not use the Claude Code login, which every login model (candidate or
+ * - `harness`: a Claude Code login model needs a Claude Code agent (OpenCode cannot use the login),
+ * - `copilotHarness`: a GitHub Copilot login model needs an OpenCode agent (ADR 0069),
+ * - `judge`: a GitHub Copilot login model cannot judge (ADR 0069),
+ * - `localLogin`: the personal runner does not use its owner's logins, which every login model (candidate or
  *   judge) needs, also for prompt tasks and judging (blocks the start, not the draft).
  */
-export type LoginIssue = 'target' | 'harness' | 'localLogin';
+export type LoginIssue = 'target' | 'harness' | 'copilotHarness' | 'judge' | 'localLogin';
 
 export function isLogin(p: Pick<ModelProfile, 'runtime'> | null | undefined): boolean {
-  return p?.runtime === 'CLAUDE_CODE_LOGIN';
+  return p?.runtime === 'CLAUDE_CODE_LOGIN' || p?.runtime === 'COPILOT_LOGIN';
+}
+
+/** ADR 0069: a GitHub Copilot login model (OpenCode with the user's Copilot login; never the judge). */
+export function isCopilot(p: Pick<ModelProfile, 'runtime'> | null | undefined): boolean {
+  return p?.runtime === 'COPILOT_LOGIN';
 }
 
 /** Tasks the benchmark runs: the picked ones, or every task of the suite when none is picked. */
@@ -76,9 +83,14 @@ export function loginIssues(
   const out: LoginIssue[] = [];
   const coding = loginCodingCandidates(form, profiles);
   if (coding.length && codingSelected(form, tasks)) {
+    const copilotIds = new Set(profiles.filter(isCopilot).map((p) => p.id));
     if (form.runnerTarget !== 'PERSONAL') out.push('target');
-    if (coding.some((c) => c.harness !== 'CLAUDE_CODE')) out.push('harness');
+    if (coding.some((c) => !copilotIds.has(c.modelProfileId!) && c.harness !== 'CLAUDE_CODE'))
+      out.push('harness');
+    if (coding.some((c) => copilotIds.has(c.modelProfileId!) && c.harness !== 'OPENCODE'))
+      out.push('copilotHarness');
   }
+  if (profiles.some((p) => isCopilot(p) && p.id === form.judgeModelProfileId)) out.push('judge');
   if (!targets.find((t) => t.target === 'PERSONAL')?.localLogin) out.push('localLogin');
   return out;
 }

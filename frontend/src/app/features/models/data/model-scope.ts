@@ -34,7 +34,8 @@ export function allowedScopes(
   runtime: ModelRuntime | null | undefined,
   personalConnection = false,
 ): ProfileScope[] {
-  return canManage && runtime !== 'CLAUDE_CODE_LOGIN' && !personalConnection
+  // ADR 0048 / ADR 0069: login profiles (Claude Code, GitHub Copilot) are always personal
+  return canManage && runtime !== 'CLAUDE_CODE_LOGIN' && runtime !== 'COPILOT_LOGIN' && !personalConnection
     ? ['PLATFORM', 'PERSONAL']
     : ['PERSONAL'];
 }
@@ -93,4 +94,13 @@ export function defaultProfile(
 ): ModelProfile | null {
   const byKind = scope === 'PLATFORM' ? defaults?.platform : defaults?.mine;
   return byKind?.[stepKind] ?? null;
+}
+
+/**
+ * ADR 0069: whether a save failed because a GitHub Copilot login profile has no known API price: the problem names
+ * the fields `pricing.inputPerMTok` / `pricing.outputPerMTok`.
+ */
+export function pricingRefused(err: unknown): boolean {
+  const body = (err as { error?: { errors?: { field?: string | null }[] } } | null)?.error;
+  return (body?.errors ?? []).some((e) => !!e.field && e.field.startsWith('pricing.'));
 }

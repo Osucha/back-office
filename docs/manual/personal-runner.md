@@ -4,7 +4,8 @@ Agent steps (specification, implementation, coding benchmarks) and deliveries ru
 For your **private projects** ([My work](my-work.md#private-projects)) you can run them on **your own computer**
 instead, the way a GitLab runner works: a small controller in Docker on your computer asks Back Office for work and
 starts every step in its own sandbox container there. Optionally, Claude Code in those steps uses **your own Claude
-login** instead of the Back Office LLM gateway.
+login** instead of the Back Office LLM gateway, and OpenCode can use **your own GitHub Copilot login** for GitHub
+Copilot models.
 
 <a id="personal-runner"></a>
 ## What it does
@@ -63,14 +64,52 @@ back at `backoffice.runner.api-url` (`RUNNER_API_URL`); for a Back Office starte
 - **Back Office LLM gateway**: as on the shared fleet; your computer only provides the compute. Metered, budgets
   apply.
 
-OpenCode steps always use the gateway. You can switch at any time; restart the runner with a new command when you
-switch to your own login (the variable must be passed to the container).
+OpenCode steps use the gateway, except steps with a [GitHub Copilot model](#copilot). You can switch at any time;
+restart the runner with a new command when you switch to your own login (the variable must be passed to the
+container).
 
 The runner tells Back Office with every request for work which coding agents it has and whether your login is set
 (ADR 0050). When it reports your login for the first time, you get the model profiles **Claude Opus (my login)**,
 **Claude Sonnet (my login)** and **Claude Haiku (my login)**; **My account** → **My models** shows the runner's state
 and the models you can use. A runner that is online without the login makes those models unusable (the model
 pickers and the start of a run say so) instead of failing the job later.
+
+<a id="copilot"></a>
+## GitHub Copilot with your own login
+
+With a GitHub Copilot subscription you can benchmark the models Copilot offers (and use them in your private
+projects): OpenCode in the sandbox calls GitHub Copilot with your own login. Your personal runner must use
+**My own Claude login (subscription)** (the own-login setting covers both logins; the Claude token is only needed for
+Claude Code steps).
+
+1. Once, on your computer: install [OpenCode](https://opencode.ai) (`npm install -g opencode-ai`), run
+   `opencode auth login`, choose **GitHub Copilot** and **GitHub.com** (or GitHub Enterprise), and confirm the code
+   shown on github.com. OpenCode stores the login in its auth file: `~/.local/share/opencode/auth.json`
+   (`%USERPROFILE%\.local\share\opencode\auth.json` on Windows); `opencode auth list` prints the path.
+2. Run `opencode models github-copilot` to see the models your login can use. Some models must first be enabled in
+   your Copilot settings on github.com (Settings, Copilot, Features: the model list); a model that is not enabled
+   fails its step with a hint where to enable it.
+3. In **My account → My computer as a runner** tick **Also my GitHub Copilot login (OpenCode)** before you copy the
+   command. It adds one option before the image name, which mounts the auth file read-only:
+
+   ```
+   -v "$HOME/.local/share/opencode/auth.json:/var/run/backoffice/opencode-auth.json:ro"
+   ```
+
+   (PowerShell: `-v "$env:USERPROFILE\.local\share\opencode\auth.json:/var/run/backoffice/opencode-auth.json:ro"`.)
+   You can also add it to an existing command and restart the runner.
+
+The controller reads only the GitHub Copilot entry of the file (never the API keys of other providers you may have
+stored there), never sends it to Back Office, and gives it only to OpenCode steps with a GitHub Copilot model; the
+runner deletes it before the agent starts and passes it to OpenCode alone. The sandbox may then reach
+`api.githubcopilot.com`. When the runner first reports your Copilot login (**My account → My models**: **GitHub
+Copilot login: reported by the runner**), you get the profiles **Claude Sonnet 4.6 (Copilot)**, **GPT-5.3-Codex
+(Copilot)**, **Gemini 3.8 Flash (Copilot)** and **Grok 4.7 (Copilot)**; add others with any model id Copilot offers
+([Models](evaluation.md#copilot-login)).
+
+Back Office meters nothing: a step costs **0**; its [cost at API prices](costs-insights.md#api-cost) values the tokens
+at the model vendor's list price. Check that your Copilot plan allows this use; the agent inside the sandbox can read
+the login, so use it only for repositories and issues you trust.
 
 <a id="corporate-proxy"></a>
 ## Behind a TLS-inspecting corporate proxy

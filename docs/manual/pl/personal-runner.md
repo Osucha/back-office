@@ -4,7 +4,8 @@ Kroki agentowe (specyfikacja, implementacja, benchmarki kodowania) i dostarczeni
 Kroki Twoich **projektów prywatnych** ([Moja praca](my-work.md#private-projects)) możesz zamiast tego uruchamiać na
 **własnym komputerze**, podobnie jak GitLab runner: mały kontroler w Dockerze na Twoim komputerze pyta Back Office o
 pracę i uruchamia każdy krok w osobnym kontenerze-piaskownicy. Opcjonalnie Claude Code w tych krokach używa **Twojego
-własnego logowania do Claude** zamiast bramy LLM Back Office.
+własnego logowania do Claude** zamiast bramy LLM Back Office, a OpenCode może używać **Twojego własnego logowania
+GitHub Copilot** dla modeli GitHub Copilot.
 
 <a id="personal-runner"></a>
 ## Co to daje
@@ -70,8 +71,48 @@ ustawione (ADR 0050). Gdy pierwszy raz zgłosi Twoje logowanie, dostajesz profil
 pokazuje stan runnera i modele, których możesz użyć. Runner dostępny bez logowania sprawia, że te modele są
 niedostępne (mówią o tym listy wyboru modeli i start uruchomienia), zamiast że zadanie nie powiedzie się później.
 
-Kroki OpenCode zawsze używają bramy. Możesz przełączyć tryb w każdej chwili; po przełączeniu na własne logowanie
-uruchom runner ponownie z nowym poleceniem (zmienna musi trafić do kontenera).
+Kroki OpenCode używają bramy, z wyjątkiem kroków z [modelem GitHub Copilot](#copilot). Możesz przełączyć tryb w
+każdej chwili; po przełączeniu na własne logowanie uruchom runner ponownie z nowym poleceniem (zmienna musi trafić do
+kontenera).
+
+<a id="copilot"></a>
+## GitHub Copilot z własnym logowaniem
+
+Z subskrypcją GitHub Copilot możesz testować w benchmarkach modele, które oferuje Copilot (i używać ich w swoich
+prywatnych projektach): OpenCode w piaskownicy wywołuje GitHub Copilot z Twoim własnym logowaniem. Twój osobisty
+runner musi używać **Mojego własnego logowania do Claude (subskrypcja)** (**My own Claude login (subscription)**;
+to ustawienie obejmuje oba logowania, token Claude jest potrzebny tylko dla kroków Claude Code).
+
+1. Jednorazowo, na swoim komputerze: zainstaluj [OpenCode](https://opencode.ai) (`npm install -g opencode-ai`),
+   uruchom `opencode auth login`, wybierz **GitHub Copilot** i **GitHub.com** (albo GitHub Enterprise) i potwierdź na
+   github.com wyświetlony kod. OpenCode zapisuje logowanie w swoim pliku uwierzytelniania:
+   `~/.local/share/opencode/auth.json` (`%USERPROFILE%\.local\share\opencode\auth.json` w Windows); ścieżkę wypisuje
+   `opencode auth list`.
+2. Uruchom `opencode models github-copilot`, aby zobaczyć modele dostępne dla Twojego logowania. Niektóre modele
+   trzeba najpierw włączyć w ustawieniach Copilot na github.com (Settings, Copilot, Features: lista modeli); model,
+   który nie jest włączony, kończy krok błędem ze wskazówką, gdzie go włączyć.
+3. W **Moje konto → Mój komputer jako runner** (**My account → My computer as a runner**) zaznacz **Także moje
+   logowanie GitHub Copilot (OpenCode)**, zanim skopiujesz polecenie. Dodaje ono jedną opcję przed nazwą obrazu,
+   która montuje plik uwierzytelniania tylko do odczytu:
+
+   ```
+   -v "$HOME/.local/share/opencode/auth.json:/var/run/backoffice/opencode-auth.json:ro"
+   ```
+
+   (PowerShell: `-v "$env:USERPROFILE\.local\share\opencode\auth.json:/var/run/backoffice/opencode-auth.json:ro"`.)
+   Możesz ją też dopisać do istniejącego polecenia i uruchomić runner ponownie.
+
+Kontroler odczytuje z pliku tylko wpis GitHub Copilot (nigdy klucze API innych dostawców, które możesz tam mieć),
+nigdy nie wysyła go do Back Office i przekazuje go tylko krokom OpenCode z modelem GitHub Copilot; runner usuwa go
+przed startem agenta i przekazuje wyłącznie OpenCode. Piaskownica może wtedy łączyć się z `api.githubcopilot.com`.
+Gdy runner pierwszy raz zgłosi Twoje logowanie Copilot (**Moje konto → Moje modele**: **Logowanie GitHub Copilot:
+zgłoszone przez runner**), dostajesz profile **Claude Sonnet 4.6 (Copilot)**, **GPT-5.3-Codex (Copilot)**,
+**Gemini 3.8 Flash (Copilot)** i **Grok 4.7 (Copilot)**; inne dodasz z dowolnym identyfikatorem modelu oferowanym
+przez Copilot ([Modele](evaluation.md#copilot-login)).
+
+Back Office niczego nie mierzy: krok kosztuje **0**; jego [koszt w cenach API](costs-insights.md#api-cost) wycenia
+tokeny według cennika dostawcy modelu. Sprawdź, czy Twój plan Copilot pozwala na takie użycie; agent w piaskownicy
+może odczytać logowanie, więc używaj go tylko z repozytoriami i zgłoszeniami, którym ufasz.
 
 <a id="corporate-proxy"></a>
 ## Za firmowym proxy, które zagląda w TLS

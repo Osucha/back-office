@@ -250,5 +250,20 @@
   "models.providers.form.scope.personal": "Osobiste (tylko Ty, Twój własny klucz API)",
   "models.providers.scope.personalHint": "Widzisz je i używasz tylko Ty, w swoich osobistych profilach modeli (w prywatnych projektach i własnych benchmarkach). Klucze połączeń są unikalne w całym Back Office, np. openrouter-twojeimie.",
   "models.providers.scope.platformHint": "Każdy może z niego korzystać przez profile modeli platformy.",
-  "models.providers.scope.manageHint": "Połączenia platformy dodają administratorzy (admin.settings.manage)."
+  "models.providers.scope.manageHint": "Połączenia platformy dodają administratorzy (admin.settings.manage).",
+  "models.drawer.copilotTestSub": " Sprawdza, czy Twój osobisty runner zgłosił Twoje logowanie GitHub Copilot i jest online; żaden model nie jest wywoływany. ",
+  "models.drawer.copilotNote": " OpenCode działa na Twoim osobistym runnerze, zalogowany Twoją własną subskrypcją GitHub Copilot (Moje konto: osobisty runner z Twoim plikiem uwierzytelniania OpenCode). Odpowiada w krokach kodowania z OpenCode i krokach LLM Twoich prywatnych projektów; w Twoich benchmarkach może być kandydatem (zadania kodowania z osobistym runnerem i agentem OpenCode, zadania promptowe), nigdy sędzią. Model musi być włączony w ustawieniach Copilot. Domyślne opcje i cennik nie mają zastosowania: nic nie jest rozliczane; koszt w cenach API używa cennika dostawcy modelu. ",
+  "models.drawer.runtimeCopilot": "GitHub Copilot (moje logowanie)",
+  "models.drawer.copilotRuntimeHint": "OpenCode na Twoim osobistym runnerze z Twoją własną subskrypcją GitHub Copilot: kroki kodowania z OpenCode i kroki LLM Twoich prywatnych projektów, kandydaci benchmarków (nigdy sędzia); nic nie jest rozliczane.",
+  "models.drawer.copilotProviderHint": "OpenCode wywołuje GitHub Copilot z Twoim własnym logowaniem Copilot.",
+  "models.drawer.copilotModelIdHint": "Identyfikator modelu Copilot tak, jak podaje go OpenCode (opencode models github-copilot), np. gpt-5.3-codex. Musi być włączony w ustawieniach Copilot.",
+  "models.drawer.scope.copilotHint": "Profil z logowaniem GitHub Copilot jest zawsze osobisty.",
+  "models.copilot.title": "GitHub Copilot (Twoje logowanie)",
+  "models.copilot.subtitle": " Uruchamia OpenCode na Twoim osobistym runnerze z Twoją własną subskrypcją GitHub Copilot (Moje konto: osobisty runner z Twoim plikiem uwierzytelniania OpenCode). Dla kroków kodowania z OpenCode i kroków LLM Twoich prywatnych projektów oraz kandydatów benchmarków, nigdy sędziego; nic nie jest rozliczane. Model musi być włączony w ustawieniach Copilot; każdy inny identyfikator modelu Copilot można wpisać w nowym profilu. ",
+  "models.copilot.tag": "logowanie GitHub Copilot",
+  "models.copilot.name": "{$name} (Copilot)",
+  "models.copilot.yourLogin": "Twoje logowanie Copilot",
+  "models.copilot.hint": "OpenCode na Twoim osobistym runnerze z Twoją własną subskrypcją GitHub Copilot: kroki kodowania z OpenCode i kroki LLM Twoich prywatnych projektów, kandydaci benchmarków (nigdy sędzia); nic nie jest rozliczane.",
+  "models.drawer.copilotPricingNote": " Cena katalogowa API modelu, używana tylko do kosztu w cenach API (nic nie jest rozliczane). Zostaw 0, gdy Back Office zna cenę (ten sam model wśród profili albo cennik dostawcy); w przeciwnym razie wpisz cenę wejścia i wyjścia. ",
+  "models.drawer.copilotPriceRequired": " Back Office nie zna ceny API tego modelu: wpisz jego cenę wejścia i wyjścia za milion tokenów (USD), tak jak podaje ją dostawca modelu. "
 }

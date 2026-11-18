@@ -31,4 +31,19 @@ class PersonalLoginModelsServiceTest {
 
         assertThat(service.ensure(user)).describedAs("idempotent").isZero()
     }
+    @Test
+    fun `a reported GitHub Copilot login gives a few Copilot profiles once (ADR 0069)`() {
+        assertThat(service.ensureFor(user, ModelRuntime.COPILOT_LOGIN)).isEqualTo(PersonalLoginModelsService.COPILOT_MODELS.size)
+        val mine = profiles.findAll().filter { it.ownerUserId == user }
+        assertThat(mine).allSatisfy {
+            assertThat(it.runtime).isEqualTo(ModelRuntime.COPILOT_LOGIN)
+            assertThat(it.ref.provider).isEqualTo(pl.mos.backoffice.shared.llm.Provider.GITHUB_COPILOT)
+            assertThat(it.pricing.outputPerMTok.signum()).isZero()
+        }
+        assertThat(mine.map { it.ref.modelId }).contains("claude-sonnet-4.6", "gpt-5.3-codex")
+        assertThat(audit.entries.single { it.details["model"] == "github_copilot/gpt-5.3-codex" }.details["reason"]).isEqualTo("personal runner reported a GitHub Copilot login")
+        assertThat(service.ensureFor(user, ModelRuntime.COPILOT_LOGIN)).describedAs("idempotent").isZero()
+        assertThat(service.ensureFor(user, ModelRuntime.API)).isZero()
+        assertThat(profiles.findAll().count { it.runtime == ModelRuntime.CLAUDE_CODE_LOGIN }).isZero()
+    }
 }

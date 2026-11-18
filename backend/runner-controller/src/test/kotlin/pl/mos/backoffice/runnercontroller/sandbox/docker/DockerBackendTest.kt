@@ -135,6 +135,19 @@ class DockerBackendTest {
     }
 
     @Test
+    fun `GitHub Copilot - only the github-copilot entry is a bundle file, never an argument (ADR 0069)`() {
+        val docker = RecordingDocker()
+        val props = ControllerProperties(docker = ControllerProperties.Docker(workDir = dir.toString()))
+        val backend = DockerBackend(props, docker, JsonMapper.builder().build(), emptyMap<String, String>()::get)
+        val login = pl.mos.backoffice.runnercontroller.sandbox.CopilotLogin("""{"github-copilot":{"type":"oauth","refresh":"gho_FAKE"}}""", listOf("api.githubcopilot.com"))
+        val request = TestPolicies.launch(gitAccess = GitAccess.NONE, gitCredential = null).copy(copilotLogin = login)
+        backend.launch(request)
+        assertThat(Files.readString(dir.resolve(request.jobId).resolve("job").resolve("copilot-login"))).isEqualTo(login.authJson)
+        assertThat(dir.resolve(request.jobId).resolve("job").resolve("claude-login-token")).doesNotExist()
+        assertThat(docker.calls.flatten().joinToString(" ")).doesNotContain("gho_FAKE")
+    }
+
+    @Test
     fun `a run workspace is a labelled named volume at workspace, listed and deleted by name (ADR 0044)`() {
         val docker = object : DockerCli() {
             val calls = mutableListOf<List<String>>()

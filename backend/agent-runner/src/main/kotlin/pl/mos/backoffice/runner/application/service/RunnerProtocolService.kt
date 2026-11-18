@@ -33,6 +33,7 @@ import pl.mos.backoffice.shared.RunnerJobId
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.BudgetRefusals
 import pl.mos.backoffice.shared.llm.PersonalLoginModels
 import pl.mos.backoffice.shared.runner.JobCredentialRef
@@ -183,15 +184,21 @@ class RunnerProtocolService(
 
     /**
      * ADR 0050 step 3: keeps what the runner reported; when the runner of a personal LOCAL_LOGIN pool reports a login for
-     * the first time, its owner gets the Claude Code login model profiles. A failure there never blocks the lease.
+     * the first time, its owner gets the Claude Code login model profiles (ADR 0069: the GitHub Copilot ones for a Copilot
+     * login). A failure there never blocks the lease.
      */
     private fun record(runner: RunnerNode, pool: RunnerPool, report: RunnerReport) {
-        if (report.harnesses == runner.harnesses && report.claudeLogin == runner.claudeLogin) return
-        nodes.report(runner.id, report.harnesses, report.claudeLogin)
+        if (report.harnesses == runner.harnesses && report.claudeLogin == runner.claudeLogin && report.copilotLogin == runner.copilotLogin) return
+        nodes.report(runner.id, report.harnesses, report.claudeLogin, report.copilotLogin)
         val owner = pool.ownerUserId
-        if (report.claudeLogin == true && runner.claudeLogin != true && owner != null && pool.llmCredentials == LlmCredentials.LOCAL_LOGIN) {
+        if (owner == null || pool.llmCredentials != LlmCredentials.LOCAL_LOGIN) return
+        if (report.claudeLogin == true && runner.claudeLogin != true) {
             runCatching { loginModels?.ensure(owner) }
                 .onFailure { log.warn("could not create the Claude Code login models of user {}: {}", owner, it.toString()) }
+        }
+        if (report.copilotLogin == true && runner.copilotLogin != true) {
+            runCatching { loginModels?.ensureFor(owner, ModelRuntime.COPILOT_LOGIN) }
+                .onFailure { log.warn("could not create the GitHub Copilot login models of user {}: {}", owner, it.toString()) }
         }
     }
 

@@ -25,12 +25,14 @@ export class ModelProfilesApi {
 
   /**
    * Enabled profiles the LLM gateway can call: what projects, templates and workflow steps may pick without a
-   * project's model options. Claude Code login profiles (ADR 0048, ADR 0050) run on their owner's personal runner and
-   * are offered only where the server's model options (`ModelOption`) allow them.
+   * project's model options. Login profiles (Claude Code, ADR 0048 / 0050; GitHub Copilot, ADR 0069) run on their
+   * owner's personal runner and are offered only where the server's model options (`ModelOption`) allow them.
    */
   listCallable(): Observable<ModelProfile[]> {
     return this.list(true).pipe(
-      map((list) => list.filter((p) => p.runtime !== 'CLAUDE_CODE_LOGIN')),
+      map((list) =>
+        list.filter((p) => p.runtime !== 'CLAUDE_CODE_LOGIN' && p.runtime !== 'COPILOT_LOGIN'),
+      ),
     );
   }
 

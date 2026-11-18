@@ -48,7 +48,7 @@ data class LeasedJob(
     val spec: RunnerJobSpec,
     val policy: SandboxPolicy,
     val gateway: GatewayUrls,
-    /** ADR 0040: LOCAL_LOGIN = Claude Code uses the login of the personal pool's owner, not the gateway. */
+    /** ADR 0040: LOCAL_LOGIN = Claude Code (ADR 0069: and OpenCode with a Copilot model) uses the owner's login, not the gateway. */
     val llmCredentials: LlmCredentials = LlmCredentials.GATEWAY,
 )
 
@@ -60,8 +60,8 @@ data class JobHeartbeatInput(
     val memoryBytes: Long? = null,
 )
 
-/** ADR 0050 step 3: what a runner reports with a lease; null fields = not reported. */
-data class RunnerReport(val harnesses: List<String>?, val claudeLogin: Boolean?)
+/** ADR 0050 step 3 / 0069: what a runner reports with a lease; null fields = not reported. */
+data class RunnerReport(val harnesses: List<String>?, val claudeLogin: Boolean?, val copilotLogin: Boolean? = null)
 
 data class JobHeartbeatAck(val leaseExpiresAt: Instant, val cancelRequested: Boolean)
 

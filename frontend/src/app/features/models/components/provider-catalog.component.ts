@@ -27,6 +27,9 @@ import {
   catalogRows,
   filterCatalog,
   loginKey,
+  copilotKey,
+  copilotModels,
+  profileFromCopilot,
   loginModels,
   profileFromCatalog,
   profileFromLogin,
@@ -274,6 +277,38 @@ import { contextLabel, perMTok, providerLabel } from '../data/model-format';
           }
         </ul>
       </div>
+
+      <div class="login" role="group" aria-labelledby="copilot-title">
+        <h3 id="copilot-title" i18n="@@models.copilot.title">GitHub Copilot (your login)</h3>
+        <p class="sub" i18n="@@models.copilot.subtitle">
+          Runs OpenCode on your personal runner with your own GitHub Copilot subscription (My
+          account: personal runner with your OpenCode auth file). For coding steps with OpenCode and
+          LLM steps of your private projects and benchmark candidates, never the judge; nothing is
+          billed. A model must be enabled in your Copilot settings; any other Copilot model id can
+          be entered in a new profile.
+        </p>
+        <ul class="login-list">
+          @for (m of copilotModels; track m.modelId) {
+            <li>
+              <span class="cell-title">{{ m.displayName }}</span>
+              <span class="mono-cell sub">{{ m.modelId }}</span>
+              <span class="chip" i18n="@@models.copilot.tag">GitHub Copilot login</span>
+              <span class="grow"></span>
+              @if (existing().has(copilotKeyOf(m.modelId))) {
+                <span class="state-word"
+                  ><bo-glyph holder="done" [size]="11" />
+                  <ng-container i18n="@@models.catalog.added">profile exists</ng-container></span
+                >
+              } @else if (canManage()) {
+                <button nz-button nzSize="small" type="button" (click)="add.emit(prefillCopilot(m))">
+                  <nz-icon nzType="plus" />
+                  <ng-container i18n="@@models.catalog.add">Add as profile</ng-container>
+                </button>
+              }
+            </li>
+          }
+        </ul>
+      </div>
     </section>
   `,
   styles: [
@@ -406,6 +441,10 @@ export class ProviderCatalogComponent {
   readonly loginModels = loginModels();
   readonly loginKeyOf = loginKey;
   readonly prefillLogin = profileFromLogin;
+  /** ADR 0069: GitHub Copilot with the user's own login (OpenCode on the personal runner). */
+  readonly copilotModels = copilotModels();
+  readonly copilotKeyOf = copilotKey;
+  readonly prefillCopilot = profileFromCopilot;
 
   readonly rows = computed<CatalogRow[]>(() => catalogRows(this.sections()));
   readonly failed = computed(() => this.sections().filter((s) => !s.ok));

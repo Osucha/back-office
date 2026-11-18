@@ -1,5 +1,6 @@
 import type {
   ModelProfile,
+  ModelRuntime,
   Provider,
   ProviderCatalogSection,
   ProviderModelInfo,
@@ -58,13 +59,27 @@ export function filterCatalog(rows: CatalogRow[], f: CatalogFilter): CatalogRow[
   );
 }
 
-/** ADR 0048: whether the profile runs Claude Code on the user's personal runner with their own Claude login. */
+/** ADR 0048 / ADR 0069: a runtime that runs on the user's personal runner with their own login. */
+export function isLoginRuntime(runtime: ModelRuntime | null | undefined): boolean {
+  return runtime === 'CLAUDE_CODE_LOGIN' || runtime === 'COPILOT_LOGIN';
+}
+
+/**
+ * ADR 0048 / ADR 0069: whether the profile runs on the user's personal runner with their own login (Claude Code with
+ * the Claude login, or OpenCode with the GitHub Copilot login).
+ */
 export function isLoginProfile(p: Pick<ModelProfile, 'runtime'> | null | undefined): boolean {
-  return p?.runtime === 'CLAUDE_CODE_LOGIN';
+  return isLoginRuntime(p?.runtime);
+}
+
+/** ADR 0069: a GitHub Copilot model run by OpenCode with the user's own Copilot login. */
+export function isCopilotProfile(p: Pick<ModelProfile, 'runtime'> | null | undefined): boolean {
+  return p?.runtime === 'COPILOT_LOGIN';
 }
 
 /** Catalogue key of a profile: login profiles have their own namespace, apart from the API connections. */
 export function profileKey(p: Pick<ModelProfile, 'ref' | 'runtime'>): string {
+  if (isCopilotProfile(p)) return copilotKey(p.ref.modelId);
   return isLoginProfile(p)
     ? loginKey(p.ref.modelId)
     : catalogKey(p.ref.provider, p.ref.connection, p.ref.modelId);
@@ -72,6 +87,50 @@ export function profileKey(p: Pick<ModelProfile, 'ref' | 'runtime'>): string {
 
 export function loginKey(modelId: string): string {
   return `login|${modelId}`;
+}
+
+/** ADR 0069: catalogue key of a GitHub Copilot login model. */
+export function copilotKey(modelId: string): string {
+  return `copilot|${modelId}`;
+}
+
+/** ADR 0069: a GitHub Copilot model offered as "GitHub Copilot (your login)". */
+export interface CopilotModel {
+  modelId: string;
+  displayName: string;
+}
+
+/**
+ * ADR 0069: a few GitHub Copilot models (the ones Back Office creates when the personal runner first reports a Copilot
+ * login); any other model id Copilot offers can be entered in the profile drawer.
+ */
+export function copilotModels(): CopilotModel[] {
+  const names: [string, string][] = [
+    ['claude-sonnet-4.6', 'Claude Sonnet 4.6'], // i18n-ignore: model name
+    ['gpt-5.3-codex', 'GPT-5.3-Codex'], // i18n-ignore: model name
+    ['gemini-3.8-flash', 'Gemini 3.8 Flash'], // i18n-ignore: model name
+    ['grok-4.7', 'Grok 4.7'], // i18n-ignore: model name
+  ];
+  return names.map(([modelId, name]) => ({
+    modelId,
+    displayName: $localize`:@@models.copilot.name:${name}:name: (Copilot)`,
+  }));
+}
+
+/** ADR 0069: a profile without id for a GitHub Copilot login model: no connection, nothing billed, personal. */
+export function profileFromCopilot(m: CopilotModel): ModelProfile {
+  return {
+    id: undefined as unknown as string,
+    displayName: m.displayName,
+    runtime: 'COPILOT_LOGIN',
+    ref: { provider: 'GITHUB_COPILOT', modelId: m.modelId, connection: null },
+    pricing: { inputPerMTok: 0, outputPerMTok: 0, currency: 'USD' },
+    capabilities: ['CODING'],
+    contextWindow: null,
+    notes: '',
+    enabled: true,
+    personal: true,
+  };
 }
 
 /** ADR 0048: the models Claude Code takes as `--model` aliases, offered as "Claude Code (your login)". */

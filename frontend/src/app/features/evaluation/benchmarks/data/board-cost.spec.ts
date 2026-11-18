@@ -1,10 +1,12 @@
 import type { LeaderboardRow } from '../../../../core/api/types';
 import {
+  apiCostUnknown,
   boardCostPerAccepted,
   boardMeanCost,
   boardScorePerDollar,
   comparesOnApi,
 } from './board-cost';
+import { blockVerdict, rankRows } from './board-blocks';
 
 const usd = (amount: number) => ({ amount, currency: 'USD' });
 
@@ -69,5 +71,25 @@ describe('board figures', () => {
     expect(boardMeanCost({})).toBe(0);
     expect(boardCostPerAccepted({})).toBeNull();
     expect(boardScorePerDollar({ subscription: true })).toBeNull();
+  });
+  it('shows an unknown API cost as a dash that never ranks first (ADR 0069)', () => {
+    const unknown: LeaderboardRow = {
+      ...SUBSCRIPTION_ROW,
+      modelProfileId: 'u',
+      meanApiCost: usd(0),
+      totalApiCost: usd(0),
+      apiCostPerAccepted: null,
+      scorePerApiDollar: null,
+      apiCostKnown: false,
+    };
+    expect(apiCostUnknown(unknown)).toBe(true);
+    expect(boardCostPerAccepted(unknown)).toBeNull();
+    expect(boardScorePerDollar(unknown)).toBeNull();
+    // even with a stale zero amount it is not a $0 result
+    expect(boardCostPerAccepted({ ...unknown, apiCostPerAccepted: usd(0) })).toBeNull();
+    expect(rankRows([unknown, API_ROW, SUBSCRIPTION_ROW])[2].modelProfileId).toBe('u');
+    expect(blockVerdict([unknown, API_ROW]).cheapest?.modelProfileId).toBe('a');
+    expect(apiCostUnknown(API_ROW)).toBe(false);
+    expect(apiCostUnknown({ ...API_ROW, apiCostKnown: false, totalCost: usd(4) })).toBe(false);
   });
 });

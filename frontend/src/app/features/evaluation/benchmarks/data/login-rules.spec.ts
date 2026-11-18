@@ -106,6 +106,24 @@ describe('Claude Code login rules (ADR 0048, ADR 0050, candidates ADR 0059)', ()
     expect(loginIssues(fixed, profiles, tasks, targets)).toEqual([]);
   });
 
+  it('wants an OpenCode agent for a GitHub Copilot login model and never lets it judge (ADR 0069)', () => {
+    const copilot: ModelProfile = {
+      ...profile('codex', 'COPILOT_LOGIN'),
+      ref: { provider: 'GITHUB_COPILOT', modelId: 'gpt-5.3-codex' },
+    };
+    const all = [...profiles, copilot];
+    const ok = form({ candidates: [opencode('codex')], runnerTarget: 'PERSONAL' });
+    expect(loginIssues(ok, all, tasks, targets)).toEqual([]);
+    expect(loginIssues(form({ candidates: [claude('codex')], runnerTarget: 'PERSONAL' }), all, tasks, targets)).toEqual([
+      'copilotHarness',
+    ]);
+    expect(loginIssues(form({ candidates: [opencode('codex')] }), all, tasks, targets)).toEqual(['target']);
+    const judged = form({ candidates: [answer('api')], judgeModelProfileId: 'codex' });
+    expect(loginIssues(judged, all, tasks, targets)).toEqual(['judge']);
+    expect(blocksSave(['judge'])).toBe(true);
+    expect(loginModels(judged, all).map((p) => p.id)).toEqual(['codex']);
+  });
+
   it('changes nothing when no coding task needs it', () => {
     const prompts = form({ taskIds: ['p1'] });
     expect(applyLoginRules(prompts, profiles, tasks)).toBe(prompts);

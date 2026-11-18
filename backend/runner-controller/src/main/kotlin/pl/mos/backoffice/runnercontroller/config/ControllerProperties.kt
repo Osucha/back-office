@@ -45,6 +45,7 @@ data class ControllerProperties(
     val kubernetes: Kubernetes = Kubernetes(),
     val docker: Docker = Docker(),
     val localLogin: LocalLogin = LocalLogin(),
+    val copilotLogin: CopilotLoginSettings = CopilotLoginSettings(),
     /** Keep finished sandboxes for debugging instead of deleting them (never in production). */
     val keepFinishedSandboxes: Boolean = false,
     /**
@@ -131,6 +132,15 @@ data class ControllerProperties(
     data class LocalLogin(
         val tokenEnv: String = "CLAUDE_CODE_OAUTH_TOKEN",
         val hosts: List<String> = listOf("api.anthropic.com"),
+    )
+
+    /**
+     * ADR 0069, personal runners (DOCKER backend): OpenCode jobs of a LOCAL_LOGIN pool with a GitHub Copilot model use the
+     * owner's own Copilot login: the `github-copilot` entry of OpenCode's auth file, mounted read-only at [authFile]. The
+     * controller delivers only that entry, as a bundle file the runner deletes after reading.
+     */
+    data class CopilotLoginSettings(
+        val authFile: String = "/var/run/backoffice/opencode-auth.json",
     )
 
     data class Kubernetes(

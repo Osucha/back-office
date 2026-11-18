@@ -26,6 +26,7 @@ import type {
 } from '../../../core/api/types';
 import { IdentityService } from '../../../core/auth/identity.service';
 import { problemMessage } from '../../../core/http/http-error.interceptor';
+import { pricingRefused } from '../data/model-scope';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { formatDuration } from '../../../core/ui/pipes/duration.pipe';
 import { BreadcrumbService } from '../../../core/ui/relay/breadcrumb.service';
@@ -60,7 +61,7 @@ import { LlmProvidersApi } from '../../../core/api/llm-providers.service';
 import { ProviderCatalogComponent } from '../components/provider-catalog.component';
 import { SortHeaderDirective } from '../../../core/ui/relay/sort-header.directive';
 import { tableSort } from '../../../core/ui/relay/table-sort';
-import { isLoginProfile, profileKey } from '../data/model-catalog';
+import { isCopilotProfile, isLoginProfile, profileKey } from '../data/model-catalog';
 
 /**
  * Models: the catalogue of model profiles. Filters live in the URL; rows open the profile side
@@ -281,7 +282,15 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
                           >Personal</span
                         >
                       }
-                      @if (isLogin(p)) {
+                      @if (isCopilot(p)) {
+                        <span
+                          class="chip login"
+                          nz-tooltip
+                          [nzTooltipTitle]="text.copilotHint"
+                          i18n="@@models.copilot.tag"
+                          >GitHub Copilot login</span
+                        >
+                      } @else if (isLogin(p)) {
                         <span
                           class="chip login"
                           nz-tooltip
@@ -303,7 +312,14 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
                 <td>
                   <div class="cell-main">
                     <span class="ink">{{ providerName(p.ref.provider) }}</span>
-                    @if (isLogin(p)) {
+                    @if (isCopilot(p)) {
+                      <span class="state-word"
+                        ><bo-glyph holder="done" [size]="11" />
+                        <ng-container i18n="@@models.copilot.yourLogin"
+                          >your Copilot login</ng-container
+                        ></span
+                      >
+                    } @else if (isLogin(p)) {
                       <span class="state-word"
                         ><bo-glyph holder="done" [size]="11" />
                         <ng-container i18n="@@models.login.yourLogin"
@@ -506,6 +522,7 @@ import { isLoginProfile, profileKey } from '../data/model-catalog';
       [saving]="saving()"
       [testing]="!!editing()?.id && testing() === editing()?.id"
       [testResult]="editing()?.id ? (results()[editing()!.id] ?? null) : null"
+      [pricingRequired]="pricingRequired()"
       (saved)="save($event)"
       (test)="editing() && test(editing()!)"
       (closed)="closePanel()"
@@ -594,10 +611,12 @@ export class ModelsPageComponent {
     personalHint: $localize`:@@models.personal.hint:Your personal profile: only you see and use it, in your private projects and your own benchmarks.`,
     scopePlatform: $localize`:@@models.scope.platform:Platform profiles`,
     scopeMine: $localize`:@@models.scope.mine:My profiles`,
+    copilotHint: $localize`:@@models.copilot.hint:OpenCode on your personal runner with your own GitHub Copilot subscription: coding steps with OpenCode and LLM steps of your private projects, benchmark candidates (never the judge); nothing billed.`,
     loginHint: $localize`:@@models.login.hintLlm:Claude Code on your personal runner with your own Claude subscription: coding steps and LLM steps of your private projects, benchmark candidates and the judge; nothing billed.`,
   };
   /** ADR 0048: Claude Code with the user's own login (personal runner, no API key, no price). */
   readonly isLogin = isLoginProfile;
+  readonly isCopilot = isCopilotProfile;
   /** ADR 0045: profiles whose provider is not connected are hidden unless asked for. */
   readonly showUnavailable = signal(false);
 
@@ -801,12 +820,17 @@ export class ModelsPageComponent {
   }
 
   closePanel(): void {
+    this.pricingRequired.set(false);
     this.panel.close();
     this.copyOf.set(null);
   }
 
+  /** ADR 0069: the last save of a GitHub Copilot profile was refused for want of an API price. */
+  readonly pricingRequired = signal(false);
+
   save(input: ModelProfileInput): void {
     this.saving.set(true);
+    this.pricingRequired.set(false);
     const existing = this.editing();
     const req = existing?.id ? this.api.update(existing.id, input) : this.api.create(input);
     req.subscribe({
@@ -823,7 +847,10 @@ export class ModelsPageComponent {
         this.load();
         this.defaultsCard()?.load();
       },
-      error: () => this.saving.set(false),
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.pricingRequired.set(input.runtime === 'COPILOT_LOGIN' && pricingRefused(err));
+      },
     });
   }
 

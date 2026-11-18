@@ -82,7 +82,7 @@ class RunnerProtocolController(
         val wait = Duration.ofSeconds((body?.waitSeconds ?: DEFAULT_WAIT_SECONDS).toLong().coerceAtLeast(0)).coerceAtMost(longPoll.maxWait)
         val deadline = clock.now().plus(wait)
         while (true) {
-            val leased = guard.asSystem(REASON) { protocol.lease(runner, body?.maxJobs ?: 1, body?.freeSlots, body?.let { RunnerReport(it.harnesses, it.claudeLogin) }) }
+            val leased = guard.asSystem(REASON) { protocol.lease(runner, body?.maxJobs ?: 1, body?.freeSlots, body?.let { RunnerReport(it.harnesses, it.claudeLogin, it.copilotLogin) }) }
             if (leased.isNotEmpty()) return leased.map(signer::assignment)
             val remaining = Duration.between(clock.now(), deadline)
             if (remaining.isNegative || remaining.isZero) return emptyList()

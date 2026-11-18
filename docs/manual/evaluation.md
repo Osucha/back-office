@@ -127,6 +127,30 @@ a candidate with API models on scores and cost, with care on response times.
 A subscription token (`sk-ant-oat...`, from `claude setup-token`) is not an API key: an Anthropic provider
 connection refuses it.
 
+<a id="copilot-login"></a>
+### GitHub Copilot with your own login
+
+With a GitHub Copilot subscription and your personal runner set up for it
+([GitHub Copilot with your own login](personal-runner.md#copilot)), the models Copilot offers can be benchmark
+candidates. Under **Available from providers**, the source **GitHub Copilot (your login)** offers a few of them;
+any other model id Copilot offers (`opencode models github-copilot` on your computer lists them) can be entered in a
+new profile with **Runs through: GitHub Copilot (my login)**. Such a profile, marked **GitHub Copilot login**:
+
+- runs as OpenCode on the personal runner of whoever creates the benchmark or starts the run, with that person's
+  Copilot login; in a benchmark it must be the model of an **OpenCode** agent for coding tasks (with **My personal
+  runner** as the execution target) and answers prompt tasks and LLM steps as a single answer (OpenCode without
+  tools);
+- **never judges**: pick an API model or a Claude Code login model as the judge;
+- works only in your private projects and your own benchmarks, spends nothing through Back Office (spent cost 0);
+- is valued at API prices by the model vendor's list price (the same model in the catalogue first), so the
+  leaderboard can compare it with API candidates. When Back Office knows no price for the model id, saving the
+  profile asks you to enter its input and output price per million tokens; a candidate whose price is lost later
+  shows its cost as a dash (unknown) and is never ranked the cheapest;
+- must be enabled in your Copilot settings, otherwise its attempts fail with a hint where to enable it.
+
+**Test profile** and **Check models** check that your personal runner reported your Copilot login and is online;
+they do not call the model.
+
 <a id="suites"></a>
 ## Task suites
 

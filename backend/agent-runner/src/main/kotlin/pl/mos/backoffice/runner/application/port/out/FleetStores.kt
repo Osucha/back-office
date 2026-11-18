@@ -31,7 +31,7 @@ interface RunnerNodeStore {
     fun revoke(id: UUID, at: Instant)
 
     /** ADR 0050 step 3: stores what the runner reported with its lease. */
-    fun report(id: UUID, harnesses: List<String>?, claudeLogin: Boolean?)
+    fun report(id: UUID, harnesses: List<String>?, claudeLogin: Boolean?, copilotLogin: Boolean? = null)
 
     /** ADR 0051: the controller's public key for sealed credentials. */
     fun setPublicKey(id: UUID, publicKey: String, at: Instant)

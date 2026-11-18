@@ -169,4 +169,9 @@ class RunnerTestBeans {
 class RecordingLoginModels : pl.mos.backoffice.shared.llm.PersonalLoginModels {
     val users = CopyOnWriteArrayList<UUID>()
     override fun ensure(userId: UUID): Int { users += userId; return 3 }
+
+    /** ADR 0069: users whose Copilot login models were ensured. */
+    val copilotUsers = CopyOnWriteArrayList<UUID>()
+    override fun ensureFor(userId: UUID, runtime: pl.mos.backoffice.shared.llm.ModelRuntime): Int =
+        if (runtime == pl.mos.backoffice.shared.llm.ModelRuntime.COPILOT_LOGIN) { copilotUsers += userId; 4 } else ensure(userId)
 }

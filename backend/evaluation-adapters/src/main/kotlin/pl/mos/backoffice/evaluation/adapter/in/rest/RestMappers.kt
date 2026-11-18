@@ -198,7 +198,7 @@ object RestMappers {
         scorePerDollar = r.scorePerDollar, p50LatencyMs = r.p50LatencyMs, p95LatencyMs = r.p95LatencyMs, latencySamples = r.latencySamples, stability = r.stability,
         candidate = candidateRef(r.candidate), notApplicable = r.notApplicable, costPerAccepted = r.costPerAccepted?.let(::money),
         meanApiCost = money(r.meanApiCost), totalApiCost = money(r.totalApiCost), apiCostPerAccepted = r.apiCostPerAccepted?.let(::money),
-        scorePerApiDollar = r.scorePerApiDollar, subscription = r.subscription,
+        scorePerApiDollar = r.scorePerApiDollar, subscription = r.subscription, apiCostKnown = r.apiCostKnown,
     )
 
     fun leaderboard(l: Leaderboard) = LeaderboardDto(

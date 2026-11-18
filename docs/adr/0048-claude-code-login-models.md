@@ -1,6 +1,7 @@
 # 0048 — Benchmarking Claude Code on its user's own login
 
-- Status: accepted; partly superseded by 0050 (login models may judge and serve workflow steps)
+- Status: accepted; partly superseded by 0050 (login models may judge and serve workflow steps); extended by 0069
+  (GitHub Copilot models on the own login, through OpenCode)
 - Date: 2026-10-20
 - Deciders: owner
 - Related: ADR 0040 (personal runners, LOCAL_LOGIN), 0045 (model profiles from providers), 0046 (benchmark execution

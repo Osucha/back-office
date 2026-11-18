@@ -105,7 +105,11 @@ single answer through `OwnLoginLlm`, also as judge) is worth the harness's estim
 `LlmResult.reportedCostUsd`: Claude Code's `total_cost_usd`); without one (a job killed before its final event) its
 tokens are priced like the enabled API profile of the same Claude family (`opus`, `sonnet`, `haiku` in the model id or
 name; the most expensive, then the highest model id: `ApiPricing`, behind `ModelProfileRepository.apiPricingOf`), else
-the profile's own pricing. Failed and timed-out coding attempts keep the usage and both amounts the runner reported.
+the profile's own pricing. Failed and timed-out coding attempts keep the usage and both amounts the runner reported. A
+GitHub Copilot login model (ADR 0069, runtime `COPILOT_LOGIN`, provider `GITHUB_COPILOT`, OpenCode on the personal
+runner; never the judge) reports no estimate (the runner drops OpenCode's figure): its tokens are priced like an
+enabled API profile with the same model id (dots and dashes alike), else the vendor's list price
+(`ApiPricing.listPrice`, sources cited there), else the Claude family rule, else the profile's own pricing.
 `Benchmark.totalApiCost` sums `apiCost + judgeApiCost`; budgets and the ledger keep counting spent money only. V209
 adds the columns and fills them for older attempts from the runner jobs' `agent_job.cost_usd` (the coding candidate's
 `runner_job_id`, a login candidate's first prompt job, a login judge's other jobs of the attempt), else the spent cost.

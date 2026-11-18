@@ -19,6 +19,7 @@ export const PROVIDER_COLORS: Record<string, string> = {
   MISTRAL: '#ff7000',
   OLLAMA: '#5b5b5b',
   OPENAI_COMPATIBLE: '#13c2c2',
+  GITHUB_COPILOT: '#8250df',
 };
 
 // Mid-tone neutrals that read on the light and the dark Relay surfaces (canvas charts cannot use

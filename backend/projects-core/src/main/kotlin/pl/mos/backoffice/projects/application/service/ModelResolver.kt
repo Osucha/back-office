@@ -8,7 +8,6 @@ import pl.mos.backoffice.shared.llm.ModelCatalog
 import pl.mos.backoffice.shared.usage.Pricing
 import pl.mos.backoffice.shared.llm.ModelProfileSnapshot
 import pl.mos.backoffice.shared.llm.ModelDefaults
-import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.StepKind
 import java.util.UUID
 import pl.mos.backoffice.shared.tasks.ResolvedTask
@@ -37,7 +36,7 @@ class ModelResolver(private val catalog: ModelCatalog, private val defaults: Mod
 
     /** ADR 0050 step 2: personal models (and login models) work only in private projects, for their owner. */
     private fun requirePersonalUse(profile: ModelProfileSnapshot, project: Project, userId: UUID?, task: ResolvedTask) {
-        val personal = profile.ownerUserId != null || profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN
+        val personal = profile.ownerUserId != null || profile.runtime.ownLogin
         if (personal && !project.personal) {
             throw InvalidStateException("${profile.displayName} is a personal model, which works only in private projects; choose a platform model for ${task.key}")
         }
@@ -57,10 +56,11 @@ class ModelResolver(private val catalog: ModelCatalog, private val defaults: Mod
 
     /**
      * ADR 0042/0065: what [profile]'s tokens are worth at API prices when the harness reported no estimate: a Claude Code
-     * login profile is priced like the enabled API profile of its Claude family ([ApiPricing]), others by their own pricing.
+     * login profile is priced like the enabled API profile of its Claude family, a GitHub Copilot login profile (ADR 0069)
+     * like its underlying model at API prices ([ApiPricing]), others by their own pricing.
      */
     fun apiPricing(profile: ModelProfileSnapshot): Pricing =
-        if (profile.runtime != ModelRuntime.CLAUDE_CODE_LOGIN) profile.pricing else ApiPricing.of(profile, catalog.findAllEnabled())
+        if (!profile.runtime.ownLogin) profile.pricing else ApiPricing.of(profile, catalog.findAllEnabled())
 
     companion object {
         val ResolvedTask.producesReview: Boolean

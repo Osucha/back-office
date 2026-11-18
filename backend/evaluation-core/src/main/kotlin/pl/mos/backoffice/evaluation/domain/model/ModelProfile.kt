@@ -40,10 +40,20 @@ data class ModelProfile(
         if (runtime == ModelRuntime.CLAUDE_CODE_LOGIN && ref.provider != Provider.ANTHROPIC) {
             throw ValidationException("a Claude Code login model must use the ANTHROPIC provider", "ref.provider")
         }
+        // ADR 0069: GitHub Copilot models exist only as Copilot login profiles, and those only name Copilot models
+        if (runtime == ModelRuntime.COPILOT_LOGIN && ref.provider != Provider.GITHUB_COPILOT) {
+            throw ValidationException("a GitHub Copilot login model must use the GITHUB_COPILOT provider", "ref.provider")
+        }
+        if (ref.provider == Provider.GITHUB_COPILOT && runtime != ModelRuntime.COPILOT_LOGIN) {
+            throw ValidationException("GITHUB_COPILOT models run only with your own Copilot login (runtime COPILOT_LOGIN)", "runtime")
+        }
     }
 
     /** ADR 0048: runs only as Claude Code on a personal runner with its owner's login, never through the gateway. */
     val viaClaudeCodeLogin: Boolean get() = runtime == ModelRuntime.CLAUDE_CODE_LOGIN
+
+    /** ADR 0048/0069: runs on a personal runner with its owner's own login (Claude Code or GitHub Copilot); nothing billed. */
+    val viaOwnLogin: Boolean get() = runtime.ownLogin
 
     /** ADR 0050 step 2: usable only by [ownerUserId], in their private projects and own benchmarks. */
     val personal: Boolean get() = ownerUserId != null

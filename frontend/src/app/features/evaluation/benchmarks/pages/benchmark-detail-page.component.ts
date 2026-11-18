@@ -75,7 +75,12 @@ import {
   scatterOption,
   unplotted,
 } from '../data/leaderboard-chart';
-import { boardCostPerAccepted, boardMeanCost, comparesOnApi } from '../data/board-cost';
+import {
+  apiCostUnknown,
+  boardCostPerAccepted,
+  boardMeanCost,
+  comparesOnApi,
+} from '../data/board-cost';
 import {
   agentLabel,
   allOnSubscription,
@@ -112,6 +117,7 @@ const PROVIDERS: Record<string, string> = {
   MISTRAL: 'Mistral',
   OLLAMA: 'Ollama',
   OPENAI_COMPATIBLE: $localize`:@@evaluation.provider.openaiCompatible:OpenAI-compatible`,
+  GITHUB_COPILOT: 'GitHub Copilot',
 };
 
 /** A candidate of the attempts filter: agent and model. */
@@ -854,7 +860,15 @@ interface BreakdownGroup {
                 }
               </td>
               <td nzAlign="right">
-                @if (allSub()) {
+                @if (apiUnknown(r)) {
+                  <span
+                    class="mono-cell quiet"
+                    nz-tooltip
+                    [nzTooltipTitle]="text.apiUnknown"
+                    tabindex="0"
+                    >—</span
+                  >
+                } @else if (allSub()) {
                   <bo-cost [value]="r.meanApiCost" [format]="fmt.mean" />
                 } @else {
                   <bo-cost
@@ -1030,6 +1044,9 @@ interface BreakdownGroup {
       }
       .dot[data-provider='OPENAI_COMPATIBLE'] {
         background: var(--bo-done);
+      }
+      .dot[data-provider='GITHUB_COPILOT'] {
+        background: var(--bo-ink);
       }
       .block + .block {
         margin-top: 32px;
@@ -1231,6 +1248,7 @@ export class BenchmarkDetailPageComponent {
     noByCategory: $localize`:@@evaluation.benchmark.noByCategory:No breakdown by category yet.`,
     noByDifficulty: $localize`:@@evaluation.benchmark.noByDifficulty:No breakdown by difficulty yet.`,
     noByTask: $localize`:@@evaluation.benchmark.noByTask:No breakdown by task yet.`,
+    apiUnknown: $localize`:@@evaluation.board.apiUnknown:Cost unknown: no API price is known for this model. Enter its price in the model profile.`,
     apiHint: $localize`:@@evaluation.board.apiHint:Estimated at API list prices; paid by the subscription (Claude Code with your own login).`,
     acceptRule: $localize`:@@evaluation.board.acceptRule:An attempt is accepted when its score is at least 70; a coding task also needs its verification (the tests) to pass.`,
     perAcceptedTip: $localize`:@@evaluation.board.costPerAcceptedApiTooltip:Cost per accepted result: total cost / passed attempts: failed and timed-out attempts are paid by the passed ones. Marked API: estimated at API list prices, paid by the subscription`,
@@ -1240,6 +1258,8 @@ export class BenchmarkDetailPageComponent {
   };
   readonly onApi = comparesOnApi;
   readonly perAccepted = boardCostPerAccepted;
+  /** ADR 0069: the API cost of the row is unknown (no API price for its subscription model). */
+  readonly apiUnknown = apiCostUnknown;
   readonly attemptsTab = computed(() => {
     const n = this.attempts().length;
     return $localize`:@@evaluation.benchmark.tab.attempts:Attempts · ${n}:count:`;
@@ -1491,7 +1511,7 @@ export class BenchmarkDetailPageComponent {
       score: (r) => r.meanScore,
       passed: (r) => r.passRate,
       perAccepted: (r) => boardCostPerAccepted(r)?.amount,
-      meanCost: (r) => boardMeanCost(r),
+      meanCost: (r) => (apiCostUnknown(r) ? null : boardMeanCost(r)),
       latency: (r) => r.p50LatencyMs,
       stability: (r) => r.stability,
     },

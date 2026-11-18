@@ -186,7 +186,10 @@ export type ResolvedRule = NonNullable<ResolvedTask['rules']>[number];
 export type Pricing = S['Pricing'];
 export type ModelProfileInput = S['ModelProfileInput'];
 export type ModelProfile = S['ModelProfile'];
-/** ADR 0048: API (LLM gateway) or CLAUDE_CODE_LOGIN (Claude Code with the user's own login on their personal runner). */
+/**
+ * ADR 0048: API (LLM gateway) or CLAUDE_CODE_LOGIN (Claude Code with the user's own login on their personal runner);
+ * ADR 0069: COPILOT_LOGIN (OpenCode with the user's own GitHub Copilot login on their personal runner).
+ */
 export type ModelRuntime = S['ModelRuntime'];
 /** ADR 0050: LLM_CALL (one gateway call) or CODING_AGENT (a runner job). */
 export type StepKind = S['StepKind'];

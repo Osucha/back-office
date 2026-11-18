@@ -191,7 +191,9 @@ agents; any other pair (a coding task for `analyst`, a prompt task for `claude-c
 counted in the candidate's `notApplicable`. To compare on both kinds of tasks, add a candidate of each kind. The same
 agent with the same model may appear once. `GET /benchmarks/{id}` returns the resolved `candidateRefs`
 (`agentKey`, `agentName`, `harness`, `modelProfileId`, `label` = `"<agent> · <model>"`). A Claude Code login model
-(ADR 0048) works only as the model of a Claude Code agent and with `runnerTarget` on your personal runner.
+(ADR 0048) works only as the model of a Claude Code agent and with `runnerTarget` on your personal runner; a GitHub
+Copilot login model (ADR 0069) only as the model of an OpenCode agent, on your personal runner, and never as the
+judge (`judgeModelProfileId` is refused).
 
 **Benchmarks of models (before ADR 0059).** `modelProfileIds` with `codingHarness` and no `candidates` is still
 accepted and means what it meant before: each model as `model-answer` on prompt tasks and as the agent of the coding

@@ -46,6 +46,7 @@ const STYLES: Record<string, { color: string; icon?: string; spin?: boolean }> =
   MISTRAL: { color: 'orange' },
   OLLAMA: { color: 'default' },
   OPENAI_COMPATIBLE: { color: 'cyan' },
+  GITHUB_COPILOT: { color: 'purple' },
   // Misc
   ENABLED: { color: 'success' },
   DISABLED: { color: 'default' },

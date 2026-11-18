@@ -113,6 +113,8 @@ object LeaderboardCalculator {
         val meanApiCost = if (attempts.isEmpty()) Money.ZERO else totalApiCost / attempts.size
         // ADR 0046: the candidate's own time; failed attempts (often seconds) and the judge would distort it
         val latencies = succeeded.mapNotNull { it.candidateLatencyMs }.sorted()
+        // ADR 0069: a subscription attempt that used tokens but is worth 0 at API prices had no API price
+        val apiCostKnown = !subscription || attempts.none { it.apiCost.isZero() && (it.usage.inputTokens > 0 || it.usage.outputTokens > 0) }
         return LeaderboardRow(
             modelProfileId = candidate.modelProfileId,
             modelDisplayName = first.modelDisplayName,
@@ -132,9 +134,10 @@ object LeaderboardCalculator {
             costPerAccepted = if (passed == 0) null else totalCost / passed,
             meanApiCost = meanApiCost,
             totalApiCost = totalApiCost,
-            apiCostPerAccepted = if (passed == 0) null else totalApiCost / passed,
-            scorePerApiDollar = scorePer(meanScore, meanApiCost),
+            apiCostPerAccepted = if (passed == 0 || !apiCostKnown) null else totalApiCost / passed,
+            scorePerApiDollar = if (apiCostKnown) scorePer(meanScore, meanApiCost) else null,
             subscription = subscription,
+            apiCostKnown = apiCostKnown,
         )
     }
 

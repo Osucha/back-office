@@ -36,4 +36,14 @@ class OwnLoginLlmTest {
         assertThatThrownBy { gateway.chatAs(ModelRuntime.CLAUDE_CODE_LOGIN, model, request, null) }
             .isInstanceOf(IntegrationException::class.java).hasMessageContaining("no runner fleet")
     }
+
+    @Test
+    fun `a Copilot login model also answers on the own login`() {
+        val copilot = ModelRef(Provider.GITHUB_COPILOT, "gpt-5-mini")
+        val ownLogin = OwnLoginLlm { m, _ -> answer("own login " + m.modelId) }
+        assertThat(gateway.chatAs(ModelRuntime.COPILOT_LOGIN, copilot, request, ownLogin).content).isEqualTo("own login gpt-5-mini")
+        assertThatThrownBy { gateway.chatAs(ModelRuntime.COPILOT_LOGIN, copilot, request, null) }
+            .isInstanceOf(IntegrationException::class.java)
+            .satisfies({ assertThat((it as IntegrationException).system).isEqualTo("github-copilot") })
+    }
 }

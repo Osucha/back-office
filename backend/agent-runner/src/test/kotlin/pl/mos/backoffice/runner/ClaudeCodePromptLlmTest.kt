@@ -102,4 +102,22 @@ class ClaudeCodePromptLlmTest {
         assertThatThrownBy { llm.chat(opus, request()) }.isInstanceOf(IntegrationException::class.java).hasMessageContaining("no Claude login")
         assertThatThrownBy { llm.chat(opus, request(actingUser = null)) }.isInstanceOf(IntegrationException::class.java).hasMessageContaining("no acting user")
     }
+    @Test
+    fun `a GitHub Copilot model is answered by OpenCode on the personal runner (ADR 0069)`() {
+        val spec = slot<RunnerJobSpec>()
+        val id = RunnerJobId.new()
+        every { runner.start(capture(spec)) } returns id
+        every { runner.await(id, any()) } returns result(RunnerJobStatus.SUCCEEDED, "Fine.")
+        val copilot = ModelRef(Provider.GITHUB_COPILOT, "gpt-5-mini")
+
+        assertThat(llm.chat(copilot, request()).content).isEqualTo("Fine.")
+        assertThat(spec.captured.let { Triple(it.agent, it.mode, it.personalRunnerOf) }).isEqualTo(Triple(AgentHarness.OPENCODE, RunnerMode.PROMPT, user))
+        assertThat(spec.captured.systemPrompt).isEqualTo("You review code.")
+
+        every { runner.await(id, any()) } returns result(RunnerJobStatus.FAILED, null, "model not supported")
+        assertThatThrownBy { llm.chat(copilot, request()) }.isInstanceOfSatisfying(IntegrationException::class.java) {
+            assertThat(it.system).isEqualTo("github-copilot")
+            assertThat(it.message).contains("OpenCode did not answer").contains("model not supported")
+        }
+    }
 }

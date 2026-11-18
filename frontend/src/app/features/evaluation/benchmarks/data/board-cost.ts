@@ -16,6 +16,7 @@ type CostRow = Pick<
   | 'apiCostPerAccepted'
   | 'scorePerDollar'
   | 'scorePerApiDollar'
+  | 'apiCostKnown'
 >;
 
 /** True when the row is compared on the API figures: a subscription, or nothing spent but an API amount. */
@@ -32,12 +33,22 @@ export function boardMeanCost(r: CostRow): number {
   return (comparesOnApi(r) ? r.meanApiCost?.amount : r.meanCost?.amount) ?? 0;
 }
 
-/** Cost per accepted result the row is compared on; null without a passed attempt. */
+/**
+ * ADR 0069: the row is compared on API figures that are unknown (a subscription model without an API price): its
+ * costs are shown as a dash and it is never the cheapest.
+ */
+export function apiCostUnknown(r: CostRow | null | undefined): boolean {
+  return !!r && r.apiCostKnown === false && comparesOnApi(r);
+}
+
+/** Cost per accepted result the row is compared on; null without a passed attempt or with an unknown API cost. */
 export function boardCostPerAccepted(r: CostRow): Money | null {
+  if (apiCostUnknown(r)) return null;
   return (comparesOnApi(r) ? r.apiCostPerAccepted : r.costPerAccepted) ?? null;
 }
 
 /** Score per dollar the row is compared on; null when it cannot be computed. */
 export function boardScorePerDollar(r: CostRow): number | null {
+  if (apiCostUnknown(r)) return null;
   return (comparesOnApi(r) ? r.scorePerApiDollar : r.scorePerDollar) ?? null;
 }

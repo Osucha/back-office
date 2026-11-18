@@ -155,6 +155,25 @@ class PersonalRunnerIntegrationTest {
     }
 
     @Test
+    fun `a runner reports a GitHub Copilot login, the first one creates the owner's Copilot models (ADR 0069)`() {
+        personal.enable(LlmCredentials.LOCAL_LOGIN)
+        val runnerToken = registerPersonal()
+        fun target() = runner.executionTargets(me).single { it.target == pl.mos.backoffice.shared.runner.RunnerTarget.PERSONAL }
+
+        lease(runnerToken, ""","harnesses":["OPENCODE"],"claudeLogin":false""")
+        assertThat(target().copilotLogin).describedAs("not reported").isNull()
+        lease(runnerToken, ""","harnesses":["OPENCODE"],"claudeLogin":false,"copilotLogin":false""")
+        assertThat(target().copilotLogin).isFalse()
+        assertThat(loginModels.copilotUsers).doesNotContain(me)
+
+        lease(runnerToken, ""","harnesses":["OPENCODE"],"claudeLogin":false,"copilotLogin":true""")
+        lease(runnerToken, ""","harnesses":["OPENCODE"],"claudeLogin":false,"copilotLogin":true""")
+        assertThat(target().let { it.copilotLogin to it.claudeLogin }).isEqualTo(true to false)
+        assertThat(loginModels.copilotUsers.filter { it == me }).describedAs("once, when the login appears").hasSize(1)
+        assertThat(loginModels.users).doesNotContain(me)
+    }
+
+    @Test
     fun `the personal pool is created once, keeps its id and changes credentials`() {
         assertThat(personal.mine()).isNull()
         val created = personal.enable(LlmCredentials.LOCAL_LOGIN)

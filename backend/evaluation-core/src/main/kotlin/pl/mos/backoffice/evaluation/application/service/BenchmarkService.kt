@@ -37,6 +37,7 @@ import pl.mos.backoffice.shared.NotFoundException
 import pl.mos.backoffice.shared.ValidationException
 import pl.mos.backoffice.shared.audit.AuditEntry
 import pl.mos.backoffice.shared.audit.AuditPort
+import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.ExecutionTarget
@@ -80,6 +81,7 @@ class BenchmarkService(
         if (unknownTasks.isNotEmpty()) throw ValidationException("tasks not in suite: ${unknownTasks.joinToString()}", "taskIds")
         val tasks = if (command.taskIds.isEmpty()) suite.tasks else suite.tasks.filter { it.id in command.taskIds.toSet() }
         requireOwnModels(models + judge, user.userId?.value)
+        requireJudge(judge)
         requireLoginModelRules(codingPairs(candidates, models, command.codingHarness), tasks, command.runnerTarget)
         val benchmark = benchmarks.save(
             Benchmark.create(
@@ -126,11 +128,12 @@ class BenchmarkService(
         if (attempts.isEmpty()) throw ValidationException("no candidate can do any of the selected tasks (model answer agents do prompt tasks, coding agents coding tasks)", "candidates")
         val tasks = BenchmarkExecutionPlanner.tasks(benchmark, suite)
         requireOwnModels(models + judge, benchmark.createdBy?.userId)
+        requireJudge(judge)
         requireLoginModelRules(codingPairs(benchmark.candidates, models, benchmark.codingHarness), tasks, benchmark.runnerTarget)
         if (attempts.any { it.kind == TaskKind.CODING_JOB }) {
-            requireRunnerTarget(benchmark, attempts.any { a -> a.kind == TaskKind.CODING_JOB && models.any { it.id == a.modelProfileId && it.viaClaudeCodeLogin } })
+            requireRunnerTarget(benchmark, attempts.any { a -> a.kind == TaskKind.CODING_JOB && models.any { it.id == a.modelProfileId && it.viaOwnLogin } })
         }
-        if ((models + judge).any { it.viaClaudeCodeLogin }) requirePersonalLogin(benchmark)
+        if ((models + judge).any { it.viaOwnLogin }) requirePersonalLogin(benchmark)
         val started = benchmarks.save(benchmark.start(now, user.actor))
         benchmarks.saveAttempts(attempts)
         attempts.forEach { executor.submit(it.id) }
@@ -195,27 +198,46 @@ class BenchmarkService(
     /**
      * ADR 0048 / 0050 step 4: Claude Code login models answer prompt tasks and judge through PROMPT jobs on the
      * creator's personal runner; for coding tasks they run as Claude Code there too, so the benchmark must send coding
-     * jobs to the personal runner with the Claude Code harness.
+     * jobs to the personal runner with the Claude Code harness. ADR 0069: GitHub Copilot login models the same with
+     * OpenCode.
      */
     private fun requireLoginModelRules(
         coding: List<Pair<ModelProfile, AgentHarness>>,
         tasks: List<EvalTask>,
         target: RunnerTarget,
     ) {
-        val login = coding.filter { it.first.viaClaudeCodeLogin }
+        val login = coding.filter { it.first.viaOwnLogin }
         if (login.isEmpty() || tasks.none { it.kind == TaskKind.CODING_JOB }) return
         val names = login.map { it.first.displayName }.distinct().joinToString()
         if (target != RunnerTarget.PERSONAL) {
-            throw ValidationException("$names use your own Claude Code login and run coding tasks only on your personal runner; choose it as the execution target", "runnerTarget")
+            throw ValidationException("$names use your own login and run coding tasks only on your personal runner; choose it as the execution target", "runnerTarget")
         }
-        if (login.any { it.second != AgentHarness.CLAUDE_CODE }) throw ValidationException("$names need Claude Code as the coding agent", "codingHarness")
+        val wrong = login.filter { it.second != it.first.runtime.loginHarness }
+        if (wrong.isEmpty()) return
+        val claude = wrong.filter { it.first.runtime == ModelRuntime.CLAUDE_CODE_LOGIN }.map { it.first.displayName }.distinct()
+        val copilot = wrong.filter { it.first.runtime == ModelRuntime.COPILOT_LOGIN }.map { it.first.displayName }.distinct()
+        val message = listOfNotNull(
+            claude.takeIf { it.isNotEmpty() }?.let { "${it.joinToString()} need Claude Code as the coding agent" },
+            copilot.takeIf { it.isNotEmpty() }?.let { "${it.joinToString()} need OpenCode as the coding agent" },
+        ).joinToString("; ")
+        throw ValidationException(message, "codingHarness")
+    }
+
+    /** ADR 0069: a GitHub Copilot login model never judges (the verdict must not depend on the Copilot plan of one user). */
+    private fun requireJudge(judge: ModelProfile) {
+        if (!judge.runtime.mayJudge) {
+            throw ValidationException(
+                "${judge.displayName} is a GitHub Copilot login model and cannot judge; choose an API model or a Claude Code login model",
+                "judgeModelProfileId",
+            )
+        }
     }
 
     /** ADR 0050 step 4: login models (candidates or the judge) answer on the creator's personal runner with their login. */
     private fun requirePersonalLogin(benchmark: Benchmark) {
         val personal = benchmark.createdBy?.userId?.let { owner -> runner.executionTargets(owner).firstOrNull { it.target == RunnerTarget.PERSONAL } }
         if (personal == null || !personal.exists || !personal.localLogin) {
-            throw InvalidStateException("Claude Code login models need your personal runner to use your own login; set it up under My account")
+            throw InvalidStateException("login models (Claude Code or GitHub Copilot) need your personal runner to use your own login; set it up under My account")
         }
     }
 
@@ -236,7 +258,7 @@ class BenchmarkService(
             )
         }
         if (needsLocalLogin && !target.localLogin) {
-            throw InvalidStateException("Claude Code login models need your personal runner to use your own login; switch its LLM credentials to Claude Code login under My account")
+            throw InvalidStateException("login models (Claude Code or GitHub Copilot) need your personal runner to use your own login; switch its LLM credentials to own login under My account")
         }
     }
 
@@ -287,7 +309,7 @@ class BenchmarkService(
         guard.require(EvaluationPermissions.EVALUATION_VIEW)
         val benchmark = load(id)
         // ADR 0065: candidates whose model runs on a subscription (a deleted profile counts as an API model)
-        val subscription = benchmark.modelProfileIds.filter { profiles.findById(it)?.viaClaudeCodeLogin == true }.toSet()
+        val subscription = benchmark.modelProfileIds.filter { profiles.findById(it)?.viaOwnLogin == true }.toSet()
         return LeaderboardCalculator.leaderboard(id, benchmarks.findAttempts(id), benchmark.codingHarness, leaderboardCandidates(benchmark), subscription)
     }
 

@@ -44,6 +44,11 @@ data class LaunchRequest(
      */
     val localLoginCredential: String? = null,
     /**
+     * ADR 0069: the owner's GitHub Copilot login of an OpenCode job with a Copilot model (LOCAL_LOGIN, DOCKER backend);
+     * delivered as `copilot-login` in the bundle. Null = none.
+     */
+    val copilotLogin: CopilotLogin? = null,
+    /**
      * ADR 0044: the run workspace (volume / PVC name, [Workspaces.NAME]) mounted at `/workspace` instead of a throwaway
      * one; null = throwaway. Set only when the backend [SandboxBackend.supportsWorkspaces].
      */
@@ -113,7 +118,8 @@ class ProjectTokens(
  * Files under `/var/run/backoffice/job/` (runner: `RUNNER_JOB_DIR`):
  * `spec.json` (RunnerJobSpec incl. `gateway`), `policy.json` (resolved SandboxPolicy), `job-id`, `job-token`
  * (bo_job_), `proxy-url` (HTTPS_PROXY for the sandbox; filled in by the backend) and `ready` (written last).
- * LOCAL_LOGIN jobs (ADR 0040, DOCKER backend) also get `claude-login-token`, written before `ready`.
+ * LOCAL_LOGIN jobs (ADR 0040, DOCKER backend) also get `claude-login-token` (ADR 0069: OpenCode jobs with a GitHub
+ * Copilot model `copilot-login` instead), written before `ready`.
  */
 data class JobBundle(
     val specJson: String,
@@ -206,6 +212,9 @@ data class PoolSettings(val poolId: String, val warmPoolSize: Int, val defaultPo
 
 /** Bundle file with the owner's Claude Code login of a LOCAL_LOGIN job (ADR 0040). */
 const val LOCAL_LOGIN_FILE = "claude-login-token"
+
+/** ADR 0069: bundle file with the owner's GitHub Copilot login (`{"github-copilot": ...}`, OpenCode's auth form). */
+const val COPILOT_LOGIN_FILE = "copilot-login"
 
 object Labels {
     const val MANAGED_BY = "app.kubernetes.io/managed-by"

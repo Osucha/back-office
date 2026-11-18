@@ -6,6 +6,7 @@ import {
   defaultProfile,
   effectiveScope,
   filterByScope,
+  pricingRefused,
 } from './model-scope';
 
 const P = (id: string, personal = false): ModelProfile =>
@@ -33,6 +34,7 @@ describe('model scope', () => {
     expect(allowedScopes(true, 'API')).toEqual(['PLATFORM', 'PERSONAL']);
     expect(allowedScopes(true, undefined)).toEqual(['PLATFORM', 'PERSONAL']);
     expect(allowedScopes(true, 'CLAUDE_CODE_LOGIN')).toEqual(['PERSONAL']);
+    expect(allowedScopes(true, 'COPILOT_LOGIN')).toEqual(['PERSONAL']);
     expect(allowedScopes(false, 'API')).toEqual(['PERSONAL']);
     expect(effectiveScope('PLATFORM', true, 'API')).toBe('PLATFORM');
     expect(effectiveScope('PLATFORM', true, 'CLAUDE_CODE_LOGIN')).toBe('PERSONAL');
@@ -66,5 +68,13 @@ describe('model scope', () => {
       ['LLM_CALL', null],
       ['CODING_AGENT', 'CLAUDE_CODE'],
     ]);
+  });
+
+  it('recognises a save refused for want of an API price (ADR 0069)', () => {
+    const refused = { error: { errors: [{ field: 'pricing.inputPerMTok', message: 'no API price' }] } };
+    expect(pricingRefused(refused)).toBe(true);
+    expect(pricingRefused({ error: { errors: [{ field: 'displayName', message: 'x' }] } })).toBe(false);
+    expect(pricingRefused(null)).toBe(false);
+    expect(pricingRefused(new Error('x'))).toBe(false);
   });
 });

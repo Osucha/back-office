@@ -293,6 +293,13 @@ class LlmProviderService(
         val actor = user.actor
         val owner = if (command.personal) user.userId?.value ?: throw ValidationException("a personal connection needs a signed-in user", "personal") else null
         val key = command.key.trim()
+        if (!command.provider.viaGateway) {
+            throw ValidationException(
+                "GitHub Copilot is not an API provider: add Copilot models as model profiles with the source GitHub Copilot (your login), " +
+                    "run by OpenCode on your personal runner (ADR 0069)",
+                "provider",
+            )
+        }
         rejectSubscriptionToken(command)
         if (store.findAll().any { it.key == key }) throw ValidationException("a provider connection $key already exists", "key")
         val id = UUID.randomUUID()

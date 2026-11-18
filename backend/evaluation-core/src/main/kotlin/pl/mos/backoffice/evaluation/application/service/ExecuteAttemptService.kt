@@ -181,7 +181,7 @@ class ExecuteAttemptService(
      * the API prices of its Claude family ([ModelProfileRepository.apiPricingOf]).
      */
     private fun answerCosts(profile: ModelProfile, result: LlmResult): Pair<Money, Money> {
-        if (!profile.viaClaudeCodeLogin) return profile.pricing.costOf(result.usage).let { it to it }
+        if (!profile.viaOwnLogin) return profile.pricing.costOf(result.usage).let { it to it }
         return Money.ZERO to ApiPricing.costOf(result.reportedCostUsd, result.usage) { profiles.apiPricingOf(profile) }
     }
 

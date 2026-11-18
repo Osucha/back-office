@@ -13,8 +13,8 @@ import pl.mos.backoffice.shared.platform.WorkRequest
 
 /**
  * IMPLEMENT: an agent job (ADR 0063: never pushes). DELIVER (ADR 0063): no agent; commits the run directory, pushes the job
- * branch and opens the merge request through push options. PROMPT (ADR 0050 step 4): one answer of Claude Code without a
- * repository or tools (an LLM call on a user's own login).
+ * branch and opens the merge request through push options. PROMPT (ADR 0050 step 4): one answer of Claude Code (ADR 0069:
+ * or OpenCode for a GitHub Copilot model) without a repository or tools (an LLM call on a user's own login).
  */
 enum class RunnerMode {
     IMPLEMENT, DELIVER, EVAL_CODING, PROMPT;
@@ -47,6 +47,8 @@ data class ExecutionTarget(
     val claudeLogin: Boolean? = null,
     /** ADR 0050 step 3: the coding agents the online runners reported. */
     val harnesses: List<String> = emptyList(),
+    /** ADR 0069: the same as [claudeLogin] for a GitHub Copilot login (OpenCode auth file on the runner-controller). */
+    val copilotLogin: Boolean? = null,
 ) {
     val exists: Boolean get() = pools > 0
 }

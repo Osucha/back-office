@@ -59,6 +59,10 @@ runner-controller:
   local-login:
     # ADR 0040: variable with the owner's Claude Code login (claude setup-token) for LOCAL_LOGIN jobs
     token-env: ${RUNNER_LOCAL_LOGIN_TOKEN_ENV:CLAUDE_CODE_OAUTH_TOKEN}
+  copilot-login:
+    # ADR 0069: OpenCode auth file (opencode auth login, GitHub Copilot) mounted read-only; only its github-copilot
+    # entry is delivered to OpenCode jobs with a GitHub Copilot model of a LOCAL_LOGIN pool
+    auth-file: ${RUNNER_COPILOT_AUTH_FILE:/var/run/backoffice/opencode-auth.json}
   kubernetes:
     # sandboxes, egress proxy and runner-token Secret; empty = the controller's own namespace
     namespace: ${RUNNER_NAMESPACE:}

@@ -239,7 +239,6 @@
   "account.runner.credentials": "Jak Claude Code łączy się z modelem",
   "account.runner.localLogin": "Moje własne logowanie do Claude (subskrypcja) - bez pomiaru w Back Office",
   "account.runner.gateway": "Brama LLM Back Office - zużycie mierzone, obowiązują budżety",
-  "account.runner.localLoginWarning": " Sprawdź, czy Twoja licencja Claude pozwala na takie automatyczne użycie. Token logowania jest dostępny dla agenta w piaskownicy, więc używaj go tylko z repozytoriami i zgłoszeniami, którym ufasz. Kroki OpenCode zawsze używają bramy. ",
   "account.runner.computers": "Podłączone komputery",
   "account.runner.online": "online",
   "account.runner.lastSeen": "offline, ostatnio widziany {$INTERPOLATION}",
@@ -296,5 +295,12 @@
   "account.models.notSet": "nie ustawiono",
   "account.models.platformApplies": "brak (obowiązuje domyślny platformy)",
   "account.models.online": "{count, plural, =0 {skonfigurowany, żaden komputer nie jest online} one {# komputer online} few {# komputery online} many {# komputerów online} other {# komputera online}}",
-  "account.models.unusable": "{count, plural, one {# model obecnie niedostępny} few {# modele obecnie niedostępne} many {# modeli obecnie niedostępnych} other {# modelu obecnie niedostępnego}}"
+  "account.models.unusable": "{count, plural, one {# model obecnie niedostępny} few {# modele obecnie niedostępne} many {# modeli obecnie niedostępnych} other {# modelu obecnie niedostępnego}}",
+  "account.models.copilotReported": "Logowanie GitHub Copilot",
+  "account.models.copilotNoHint": "Potrzebne tylko dla modeli GitHub Copilot: zaloguj się przez opencode auth login (GitHub Copilot) i uruchom runner z zamontowanym plikiem uwierzytelniania OpenCode (Mój komputer jako runner).",
+  "account.runner.localLoginWarningCopilot": " Sprawdź, czy Twoja licencja Claude pozwala na takie automatyczne użycie. Token logowania jest dostępny dla agenta w piaskownicy, więc używaj go tylko z repozytoriami i zgłoszeniami, którym ufasz. Kroki OpenCode używają bramy, z wyjątkiem modeli GitHub Copilot. ",
+  "account.runner.copilot": "Także moje logowanie GitHub Copilot (OpenCode) - dla modeli GitHub Copilot, bez pomiaru w Back Office",
+  "account.runner.copilotWarning": " Sprawdź, czy Twój plan GitHub Copilot pozwala na takie użycie. Runner odczytuje tylko wpis GitHub Copilot z Twojego pliku uwierzytelniania OpenCode; dostaje go OpenCode w piaskownicy, więc używaj go tylko z repozytoriami i zgłoszeniami, którym ufasz. Modele muszą być włączone w ustawieniach Copilot. ",
+  "account.runner.stepCopilot": "Jednorazowo: zainstaluj OpenCode, zaloguj się do GitHub Copilot (opencode auth login, wybierz GitHub Copilot i potwierdź kod na github.com), sprawdź ścieżkę pliku uwierzytelniania i modele dostępne dla Twojego logowania:",
+  "account.runner.copilotLabel": "OpenCode"
 }

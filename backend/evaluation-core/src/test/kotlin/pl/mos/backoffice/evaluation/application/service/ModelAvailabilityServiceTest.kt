@@ -91,4 +91,29 @@ class ModelAvailabilityServiceTest {
         assertThat(service.check(theirs.id, llm)!!.problem).contains("another user")
     }
 
+    @Test
+    fun `a GitHub Copilot login model needs an OpenCode step, never Claude Code, and a runner with the Copilot login (ADR 0069)`() {
+        val copilot = profiles.save(
+            pl.mos.backoffice.evaluation.domain.model.ModelProfile.create(
+                displayName = "GPT (Copilot)", ref = pl.mos.backoffice.shared.llm.ModelRef(Provider.GITHUB_COPILOT, "gpt-5.3-codex"),
+                pricing = pl.mos.backoffice.shared.usage.Pricing.FREE, now = Fixtures.now, runtime = ModelRuntime.COPILOT_LOGIN,
+            ),
+        )
+        val openCode = coding.copy(harness = AgentHarness.OPENCODE)
+        fun problem(use: ModelUse) = service.check(copilot.id, use)!!.problem
+
+        assertThat(service.check(copilot.id, openCode)!!.let { Triple(it.usable, it.route, it.personal) }).isEqualTo(Triple(true, ModelRoute.OWN_LOGIN, true))
+        assertThat(service.check(copilot.id, openCode.copy(stepKind = StepKind.LLM_CALL, harness = null))!!.usable).isTrue()
+        assertThat(problem(coding)).contains("OpenCode as the coding agent")
+        personal(localLogin = false)
+        assertThat(problem(openCode)).contains("does not use your own logins")
+        every { runner.executionTargets(user) } returns
+            listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, true, claudeLogin = true, copilotLogin = false))
+        assertThat(problem(openCode)).contains("no GitHub Copilot login")
+        every { runner.executionTargets(user) } returns
+            listOf(ExecutionTarget(RunnerTarget.PERSONAL, 1, 1, true, claudeLogin = false, copilotLogin = true))
+        assertThat(service.check(copilot.id, openCode)!!.usable).isTrue()
+        assertThat(problem(coding.copy(harness = AgentHarness.CLAUDE_CODE))).contains("OpenCode")
+        assertThat(service.check(login.id, coding)!!.problem).contains("has no Claude login")
+    }
 }

@@ -49,6 +49,7 @@ class ProviderModelLister(
             Provider.GOOGLE -> "https://generativelanguage.googleapis.com/v1beta/openai/models"
             Provider.OPENAI_COMPATIBLE -> (own ?: throw IllegalArgumentException("no base URL")) + "/models"
             Provider.OLLAMA -> (own ?: "http://localhost:11434") + "/api/tags"
+            Provider.GITHUB_COPILOT -> throw IllegalArgumentException("GitHub Copilot models are not called through the LLM gateway (ADR 0069)")
         }
         val builder = HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().header("accept", "application/json")
         val key = settings.apiKey?.takeIf { it.isNotBlank() }

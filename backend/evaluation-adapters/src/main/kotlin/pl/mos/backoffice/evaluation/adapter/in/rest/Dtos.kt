@@ -198,6 +198,8 @@ data class ExecutionTargetDto(
     /** ADR 0050 step 3: an online runner reported a Claude login (true), none did (false), not reported (null). */
     val claudeLogin: Boolean? = null,
     val harnesses: List<String> = emptyList(),
+    /** ADR 0069: the same for a GitHub Copilot login. */
+    val copilotLogin: Boolean? = null,
 )
 
 data class ProgressDto(val total: Int, val done: Int, val failed: Int)
@@ -344,6 +346,8 @@ data class LeaderboardRowDto(
     val apiCostPerAccepted: MoneyDto?,
     val scorePerApiDollar: Double?,
     val subscription: Boolean,
+    /** ADR 0069: false = the API figures are unknown (a subscription model without an API price). */
+    val apiCostKnown: Boolean = true,
 )
 
 data class TaskLeaderboardDto(val taskId: UUID, val taskName: String, val rows: List<LeaderboardRowDto>)

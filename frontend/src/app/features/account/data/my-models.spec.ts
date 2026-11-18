@@ -36,6 +36,7 @@ describe('my models (ADR 0050 step 3)', () => {
       online: 0,
       localLogin: false,
       login: 'unknown',
+      copilotLogin: 'unknown',
       harnesses: [],
     });
     expect(personalRunnerStatus([target({ pools: 0, localLogin: true })])?.localLogin).toBe(false);
@@ -47,8 +48,17 @@ describe('my models (ADR 0050 step 3)', () => {
       online: 1,
       localLogin: true,
       login: 'reported',
+      copilotLogin: 'unknown',
       harnesses: ['CLAUDE_CODE', 'OPENCODE'],
     });
+  });
+
+  it('reports the GitHub Copilot login apart from the Claude login (ADR 0069)', () => {
+    expect(personalRunnerStatus([target({ copilotLogin: true })])?.copilotLogin).toBe('reported');
+    expect(personalRunnerStatus([target({ copilotLogin: false })])?.copilotLogin).toBe('none');
+    expect(
+      personalRunnerStatus([target({ onlineRunners: 0, copilotLogin: true })])?.copilotLogin,
+    ).toBe('unknown');
   });
 
   it('tells a missing login apart from a login that was not reported', () => {

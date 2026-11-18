@@ -24,6 +24,7 @@ import pl.mos.backoffice.runnercontroller.protocol.JobHeartbeat
 import pl.mos.backoffice.runnercontroller.protocol.LeaseRequest
 import pl.mos.backoffice.runnercontroller.protocol.RunnerConfig
 import pl.mos.backoffice.runnercontroller.sandbox.CompletionMapper
+import pl.mos.backoffice.runnercontroller.sandbox.CopilotLogin
 import pl.mos.backoffice.runnercontroller.sandbox.JobBundle
 import pl.mos.backoffice.runnercontroller.sandbox.LaunchRequest
 import pl.mos.backoffice.runnercontroller.sandbox.PoolSettings
@@ -51,6 +52,9 @@ import kotlin.concurrent.withLock
 
 /** `spec.llmCredentials` of an assignment whose Claude Code uses the personal runner owner's own login (ADR 0040). */
 private const val LOCAL_LOGIN = "LOCAL_LOGIN"
+
+/** ADR 0069: `spec.model.provider` of a GitHub Copilot model (runs in OpenCode with the owner's Copilot login). */
+private const val COPILOT_PROVIDER = "GITHUB_COPILOT"
 
 /**
  * A job this controller runs. Observed on the monitor thread; ADR 0065: the deadline watchdog reads it too (deadline,
@@ -125,6 +129,8 @@ class JobSupervisor(
     private val env: (String) -> String? = System::getenv,
     /** ADR 0051: the key pair project tokens are sealed to; null = none (jobs naming project tokens fail). */
     private val keys: () -> CredentialKeys? = { null },
+    /** ADR 0069: the owner's GitHub Copilot login (mounted OpenCode auth file), read when needed; null = none. */
+    private val copilotLogin: () -> CopilotLogin? = { CopilotLogin.read(props.copilotLogin.authFile, json) },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -264,7 +270,7 @@ class JobSupervisor(
         }
         if (Duration.between(lastConfigRefresh, now()) > Duration.ofMinutes(5)) runCatching { refreshConfig() }
         val assignments = client.lease(
-            LeaseRequest(minOf(free, props.lease.maxJobsPerLease), props.lease.waitSeconds, free, props.harnesses, claudeLoginAvailable()),
+            LeaseRequest(minOf(free, props.lease.maxJobsPerLease), props.lease.waitSeconds, free, props.harnesses, claudeLoginAvailable(), copilotLoginAvailable()),
         )
         assignments.forEach { accept(it) }
         return true
@@ -349,8 +355,8 @@ class JobSupervisor(
         if (running.containsKey(a.jobId)) return false
 
         val spec = a.spec.deepCopy()
-        val localLogin = try {
-            localLoginCredential(spec)
+        val login = try {
+            loginCredential(spec)
         } catch (e: PolicyViolation) {
             log.warn("job {}: {}", a.jobId, e.message)
             rejectedCounter("local-login").increment()
@@ -377,7 +383,7 @@ class JobSupervisor(
                 specTimeoutSeconds = spec.get("timeoutSeconds")?.takeIf { it.isNumber }?.asInt(),
                 // every repository host is reachable, whatever its level (NONE repositories are cloned anonymously)
                 repositoryUrls = plan.repositories.urls,
-                gatewayUrls = gatewayList(effectiveGateway(spec)) + localLogin?.let { props.localLogin.hosts }.orEmpty(),
+                gatewayUrls = gatewayList(effectiveGateway(spec)) + login.hosts,
             )
         } catch (e: PolicyViolation) {
             log.warn("job {} violates the pool policy: {}", a.jobId, e.message)
@@ -406,7 +412,8 @@ class JobSupervisor(
             deadline = deadline,
             repositoryTokens = git.tokens,
             repositoryAccess = git.repositories.repositories.filter { git.repositories.multi }.associate { it.key to it.access },
-            localLoginCredential = localLogin,
+            localLoginCredential = login.claudeEnv,
+            copilotLogin = login.copilot,
             workspace = workspaceOf(a.jobId, spec),
             projectTokens = projectTokens,
         )
@@ -430,19 +437,38 @@ class JobSupervisor(
         return true
     }
 
-    /**
-     * ADR 0040: for a LOCAL_LOGIN assignment the name of the variable holding the owner's Claude Code login, null for
-     * gateway jobs. Throws when this controller cannot deliver it (not DOCKER, or the variable is not set).
-     */
     /** ADR 0050 step 3: a Claude login can serve LOCAL_LOGIN jobs (personal runner, DOCKER backend, token set). */
     private fun claudeLoginAvailable(): Boolean = backend.kind == BackendKind.DOCKER && !env(props.localLogin.tokenEnv).isNullOrBlank()
 
-    private fun localLoginCredential(spec: ObjectNode): String? {
-        if (spec.get("llmCredentials")?.asString() != LOCAL_LOGIN) return null
+    /** ADR 0069: a GitHub Copilot login can serve LOCAL_LOGIN jobs (personal runner, DOCKER backend, auth file mounted). */
+    private fun copilotLoginAvailable(): Boolean = backend.kind == BackendKind.DOCKER && copilotLogin() != null
+
+    /** The owner's login a job uses: the variable of the Claude Code login, or the GitHub Copilot login; none for gateway jobs. */
+    private class JobLogin(val claudeEnv: String? = null, val copilot: CopilotLogin? = null, val hosts: List<String> = emptyList())
+
+    /**
+     * ADR 0040: for a LOCAL_LOGIN assignment the name of the variable holding the owner's Claude Code login; ADR 0069: for
+     * one with a GitHub Copilot model the owner's Copilot login instead. Nothing for gateway jobs. Throws when this
+     * controller cannot deliver it (not DOCKER, or the login is not set).
+     */
+    private fun loginCredential(spec: ObjectNode): JobLogin {
+        val copilotModel = spec.get("model")?.get("provider")?.takeIf { it.isString }?.asString() == COPILOT_PROVIDER
+        if (spec.get("llmCredentials")?.asString() != LOCAL_LOGIN) {
+            if (copilotModel) throw PolicyViolation("GitHub Copilot models run only on a personal runner that uses its owner's own login (LOCAL_LOGIN)")
+            return JobLogin()
+        }
         if (backend.kind != BackendKind.DOCKER) throw PolicyViolation("Claude Code with the owner's own login runs only on a personal runner (DOCKER backend)")
+        if (copilotModel) {
+            if (spec.get("agent")?.asString() != "OPENCODE") throw PolicyViolation("GitHub Copilot models run only in OpenCode")
+            val login = copilotLogin() ?: throw PolicyViolation(
+                "no GitHub Copilot login on this runner-controller: sign in with opencode auth login (GitHub Copilot) and mount the " +
+                    "OpenCode auth file read-only at ${props.copilotLogin.authFile}",
+            )
+            return JobLogin(copilot = login, hosts = login.hosts)
+        }
         val name = props.localLogin.tokenEnv
         if (env(name).isNullOrBlank()) throw PolicyViolation("$name is not set on this runner-controller; run claude setup-token and start it with -e $name")
-        return name
+        return JobLogin(claudeEnv = name, hosts = props.localLogin.hosts)
     }
 
     /** The copy of the spec delivered to the sandbox: gateway filled in, timeout clamped to the policy. */

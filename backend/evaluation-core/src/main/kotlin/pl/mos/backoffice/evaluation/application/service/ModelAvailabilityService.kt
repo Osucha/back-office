@@ -10,7 +10,6 @@ import pl.mos.backoffice.shared.llm.ModelRoute
 import pl.mos.backoffice.shared.llm.ModelRuntime
 import pl.mos.backoffice.shared.llm.ModelUse
 import pl.mos.backoffice.shared.llm.StepKind
-import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.ExecutionTarget
 import pl.mos.backoffice.shared.runner.RunnerTarget
@@ -42,14 +41,14 @@ class ModelAvailabilityService(
         use.userId?.let { user -> runner?.executionTargets(user)?.firstOrNull { it.target == RunnerTarget.PERSONAL } }
 
     private fun evaluate(profile: ModelProfile, use: ModelUse, personalRunner: Lazy<ExecutionTarget?>): ModelOption {
-        val login = profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN
+        val login = profile.runtime.ownLogin
         // a login profile from before ADR 0050 step 2 may have no owner: it is still personal (it runs on a personal runner)
         val personal = profile.personal || login
         val verdict = when {
             !profile.enabled -> Verdict(problem = "the model profile is disabled")
             profile.ownerUserId != null && profile.ownerUserId != use.userId -> Verdict(problem = "this is another user's personal model profile")
             personal && !use.privateProject -> Verdict(problem = "personal models work only in your private projects and your own benchmarks")
-            login -> loginRules(use) ?: runnerRules(personalRunner.value)
+            login -> loginRules(profile.runtime, use) ?: runnerRules(profile.runtime, personalRunner.value)
             else -> Verdict(problem = "the provider connection of this model is not set up or has no API key".takeUnless { gateway.isConfigured(profile.ref) })
         }
         return ModelOption(
@@ -69,23 +68,33 @@ class ModelAvailabilityService(
 
     companion object {
         /** The rules of a login model that do not depend on the runner; null = they allow it. */
-        private fun loginRules(use: ModelUse): Verdict? = when {
-            // ADR 0050 step 4: an LLM step's answer comes from Claude Code on the personal runner (PROMPT job)
-            use.stepKind == StepKind.CODING_AGENT && use.harness != null && use.harness != AgentHarness.CLAUDE_CODE ->
-                Verdict(problem = "a Claude Code login model needs Claude Code as the coding agent of the step")
+        private fun loginRules(runtime: ModelRuntime, use: ModelUse): Verdict? = when {
+            // ADR 0050 step 4: an LLM step's answer comes from the login's agent on the personal runner (PROMPT job)
+            use.stepKind == StepKind.CODING_AGENT && use.harness != null && use.harness != runtime.loginHarness ->
+                Verdict(
+                    problem = if (runtime == ModelRuntime.COPILOT_LOGIN) "a GitHub Copilot login model needs OpenCode as the coding agent of the step"
+                    else "a Claude Code login model needs Claude Code as the coding agent of the step",
+                )
             else -> null
         }
 
-        private fun runnerRules(target: ExecutionTarget?): Verdict = when {
-            target == null || !target.exists ->
-                Verdict(problem = "you have no personal runner; set one up under My account, Personal runner")
-            !target.localLogin ->
-                Verdict(problem = "your personal runner does not use your own Claude login; switch its LLM credentials under My account")
-            target.onlineRunners == 0 ->
-                Verdict(note = "your personal runner is offline: its jobs wait until it connects")
-            target.claudeLogin == false ->
-                Verdict(problem = "your personal runner is online but has no Claude login; start it with -e CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)")
-            else -> Verdict()
+        private fun runnerRules(runtime: ModelRuntime, target: ExecutionTarget?): Verdict {
+            val copilot = runtime == ModelRuntime.COPILOT_LOGIN
+            return when {
+                target == null || !target.exists ->
+                    Verdict(problem = "you have no personal runner; set one up under My account, Personal runner")
+                !target.localLogin && copilot ->
+                    Verdict(problem = "your personal runner does not use your own logins; switch its LLM credentials under My account")
+                !target.localLogin ->
+                    Verdict(problem = "your personal runner does not use your own Claude login; switch its LLM credentials under My account")
+                target.onlineRunners == 0 ->
+                    Verdict(note = "your personal runner is offline: its jobs wait until it connects")
+                copilot && target.copilotLogin == false ->
+                    Verdict(problem = PersonalLoginModelsService.COPILOT_LOGIN_MISSING)
+                !copilot && target.claudeLogin == false ->
+                    Verdict(problem = "your personal runner is online but has no Claude login; start it with -e CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)")
+                else -> Verdict()
+            }
         }
     }
 }

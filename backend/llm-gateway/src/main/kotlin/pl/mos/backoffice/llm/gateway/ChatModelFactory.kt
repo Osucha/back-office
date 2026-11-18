@@ -81,11 +81,16 @@ class SpringAiChatModelFactory(
             .options(OllamaChatOptions.builder().model(PLACEHOLDER_MODEL).build())
             .observationRegistry(observationRegistry)
             .build()
+
+        Provider.GITHUB_COPILOT -> throw IllegalArgumentException(COPILOT_NOT_VIA_GATEWAY)
     }
 
     companion object {
         /** Never sent: every call carries its own model id in the prompt options. */
         const val PLACEHOLDER_MODEL = "unset"
         const val DEFAULT_OLLAMA_URL = "http://localhost:11434"
+
+        /** ADR 0069: GitHub Copilot models are called only by OpenCode on a personal runner with the user's own login. */
+        const val COPILOT_NOT_VIA_GATEWAY = "GitHub Copilot models are not called through the LLM gateway (ADR 0069)"
     }
 }

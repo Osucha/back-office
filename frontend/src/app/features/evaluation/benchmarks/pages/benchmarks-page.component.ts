@@ -84,6 +84,7 @@ import {
   applyLoginRules,
   blocksSave,
   fixable,
+  isCopilot,
   isLogin,
   loginIssues,
   loginModels,
@@ -508,7 +509,7 @@ import {
                 <nz-option
                   [nzValue]="p.id"
                   [nzLabel]="candidateLabel(p)"
-                  [nzDisabled]="p.providerConfigured === false"
+                  [nzDisabled]="p.providerConfigured === false || isCopilot(p)"
                 />
               }
             </nz-select>
@@ -1007,8 +1008,13 @@ export class BenchmarksPageComponent {
     return out;
   }
 
+  /** ADR 0069: a GitHub Copilot login model (never the judge). */
+  readonly isCopilot = isCopilot;
+
   candidateLabel(p: ModelProfile): string {
     const name = p.displayName;
+    if (isCopilot(p))
+      return $localize`:@@evaluation.benchmarks.form.copilotCandidate:${name}:name: (GitHub Copilot login)`;
     return isLogin(p)
       ? $localize`:@@evaluation.benchmarks.form.loginCandidate:${name}:name: (Claude Code login)`
       : name;
@@ -1031,7 +1037,7 @@ export class BenchmarksPageComponent {
     const names = loginModels(this.loginForm(), this.profiles())
       .map((p) => p.displayName)
       .join(', ');
-    return $localize`:@@evaluation.benchmarks.form.login.title:Claude Code with your own login (${names}:names:) needs, before the benchmark can start:`;
+    return $localize`:@@evaluation.benchmarks.form.login.titleOwn:Your own login (${names}:names:) needs, before the benchmark can start:`;
   }
 
   loginIssueText(i: LoginIssue): string {
@@ -1040,8 +1046,12 @@ export class BenchmarksPageComponent {
         return $localize`:@@evaluation.benchmarks.form.login.target:Coding tasks must run on your personal runner.`;
       case 'harness':
         return $localize`:@@evaluation.benchmarks.form.login.agentHarness:A Claude Code login model works only in a Claude Code agent: pick a Claude Code agent for it.`;
+      case 'copilotHarness':
+        return $localize`:@@evaluation.benchmarks.form.login.copilotHarness:A GitHub Copilot login model works only in an OpenCode agent: pick an OpenCode agent for it.`;
+      case 'judge':
+        return $localize`:@@evaluation.benchmarks.form.login.copilotJudge:A GitHub Copilot login model cannot judge: pick an API model or a Claude Code login model as the judge.`;
       case 'localLogin':
-        return $localize`:@@evaluation.benchmarks.form.login.localLogin:Your personal runner must use your Claude Code login: set it up under My account (personal runner with Claude Code login). A draft can be saved before that.`;
+        return $localize`:@@evaluation.benchmarks.form.login.localLoginOwn:Your personal runner must use your own logins: set it up under My account (personal runner, own login). A draft can be saved before that.`;
     }
   }
 

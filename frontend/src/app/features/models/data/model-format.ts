@@ -11,6 +11,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   MISTRAL: 'Mistral',
   OLLAMA: 'Ollama',
   OPENAI_COMPATIBLE: $localize`:@@models.provider.openaiCompatible:OpenAI-compatible`,
+  GITHUB_COPILOT: 'GitHub Copilot',
 };
 
 /** "OpenAI", "OpenAI-compatible" (brand casing), unknown values in sentence case. */

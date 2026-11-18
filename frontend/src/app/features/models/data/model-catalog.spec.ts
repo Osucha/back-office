@@ -3,10 +3,15 @@ import {
   catalogKey,
   catalogRows,
   filterCatalog,
+  copilotKey,
+  copilotModels,
+  isCopilotProfile,
   isLoginProfile,
+  isLoginRuntime,
   loginKey,
   loginModels,
   profileFromCatalog,
+  profileFromCopilot,
   profileFromLogin,
   profileKey,
 } from './model-catalog';
@@ -110,5 +115,22 @@ describe('model catalog', () => {
     expect(profileKey({ ref: { provider: 'ANTHROPIC', modelId: 'opus', connection: null } })).toBe(
       'env:ANTHROPIC|opus',
     );
+  });
+
+  it('offers GitHub Copilot login models as unbilled personal profiles (ADR 0069)', () => {
+    const models = copilotModels();
+    expect(models.map((m) => m.modelId)).toContain('gpt-5.3-codex');
+    const p = profileFromCopilot(models[0]);
+    expect(p.runtime).toBe('COPILOT_LOGIN');
+    expect(p.ref).toEqual({ provider: 'GITHUB_COPILOT', modelId: models[0].modelId, connection: null });
+    expect(p.pricing).toEqual({ inputPerMTok: 0, outputPerMTok: 0, currency: 'USD' });
+    expect(p.personal).toBe(true);
+    expect(isLoginProfile(p)).toBe(true);
+    expect(isCopilotProfile(p)).toBe(true);
+    expect(isCopilotProfile({ runtime: 'CLAUDE_CODE_LOGIN' })).toBe(false);
+    expect(isLoginRuntime('COPILOT_LOGIN')).toBe(true);
+    expect(isLoginRuntime('API')).toBe(false);
+    expect(profileKey(p)).toBe(copilotKey(models[0].modelId));
+    expect(profileKey(p)).not.toBe(loginKey(models[0].modelId));
   });
 });

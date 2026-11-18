@@ -311,6 +311,7 @@ class LlmProxy(
             Provider.GOOGLE -> "https://generativelanguage.googleapis.com/v1beta/openai"
             Provider.MISTRAL -> own ?: "https://api.mistral.ai/v1"
             Provider.OLLAMA -> (own ?: "http://localhost:11434").trimEnd('/') + "/v1"
+            Provider.GITHUB_COPILOT -> throw IntegrationException("github-copilot", "GitHub Copilot models are not called through the LLM gateway (ADR 0069)", persistent = true)
         }
     }
 

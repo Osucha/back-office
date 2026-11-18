@@ -5,6 +5,7 @@ import pl.mos.backoffice.shared.llm.LlmRequest
 import pl.mos.backoffice.shared.llm.LlmResult
 import pl.mos.backoffice.shared.llm.ModelRef
 import pl.mos.backoffice.shared.llm.OwnLoginLlm
+import pl.mos.backoffice.shared.llm.Provider
 import pl.mos.backoffice.shared.llm.Role
 import pl.mos.backoffice.shared.runner.AgentHarness
 import pl.mos.backoffice.shared.runner.AgentRunner
@@ -18,6 +19,7 @@ import java.util.UUID
  * ADR 0050 step 4: a model call answered by Claude Code with the acting user's own login: a PROMPT job routed to
  * their personal runner, awaited like a gateway call (one answer, minutes at most). The step's system message becomes
  * the job's system prompt; with a response schema the answer is asked for as one JSON object and parsed here.
+ * ADR 0069: a [Provider.GITHUB_COPILOT] model is answered the same way by OpenCode with the user's Copilot login.
  */
 class ClaudeCodePromptLlm(
     private val runner: AgentRunner,
@@ -27,15 +29,18 @@ class ClaudeCodePromptLlm(
 
     @Suppress("DEPRECATION")
     override fun chat(model: ModelRef, request: LlmRequest): LlmResult {
+        val copilot = model.provider == Provider.GITHUB_COPILOT
+        val system = if (copilot) COPILOT_SYSTEM else SYSTEM
+        val agentName = if (copilot) "OpenCode" else "Claude Code"
         val user = request.usageContext.actingUserId
-            ?: throw IntegrationException(SYSTEM, "a Claude Code login model answers only a user's own work (no acting user)", persistent = true)
-        val system = request.messages.filter { it.role == Role.SYSTEM }.joinToString("\n\n") { it.content }.takeIf { it.isNotBlank() }
+            ?: throw IntegrationException(system, "a login model answers only a user's own work (no acting user)", persistent = true)
+        val systemPrompt = request.messages.filter { it.role == Role.SYSTEM }.joinToString("\n\n") { it.content }.takeIf { it.isNotBlank() }
         val spec = RunnerJobSpec(
             mode = RunnerMode.PROMPT,
-            agent = AgentHarness.CLAUDE_CODE,
+            agent = if (copilot) AgentHarness.OPENCODE else AgentHarness.CLAUDE_CODE,
             model = model,
             prompt = promptOf(request),
-            systemPrompt = system,
+            systemPrompt = systemPrompt,
             timeout = timeout,
             collectDiff = false,
             usageContext = request.usageContext,
@@ -45,7 +50,7 @@ class ClaudeCodePromptLlm(
         val started = System.nanoTime()
         val result = runner.await(runner.start(spec), timeout.plusMinutes(1))
         if (result.status != RunnerJobStatus.SUCCEEDED) {
-            throw IntegrationException(SYSTEM, "Claude Code did not answer: " + (result.error ?: result.status.name), retryable = result.status == RunnerJobStatus.TIMED_OUT)
+            throw IntegrationException(system, "$agentName did not answer: " + (result.error ?: result.status.name), retryable = result.status == RunnerJobStatus.TIMED_OUT)
         }
         val content = result.artifacts.firstOrNull { it.name == RESPONSE_ARTIFACT }?.content ?: result.summary.orEmpty()
         return LlmResult(
@@ -56,7 +61,7 @@ class ClaudeCodePromptLlm(
             latency = result.startedAt?.let { Duration.between(it, result.finishedAt) }?.takeUnless { it.isNegative }
                 ?: Duration.ofNanos(System.nanoTime() - started),
             modelRef = model,
-            // ADR 0065: Claude Code's estimate at API prices; the login spends nothing
+            // ADR 0065: the harness's estimate at API prices; the login spends nothing
             reportedCostUsd = result.reportedCostUsd,
         )
     }
@@ -70,6 +75,7 @@ class ClaudeCodePromptLlm(
 
     companion object {
         const val SYSTEM = "claude-code"
+        const val COPILOT_SYSTEM = "github-copilot"
         const val RESPONSE_ARTIFACT = "response"
         val DEFAULT_TIMEOUT: Duration = Duration.ofMinutes(10)
 

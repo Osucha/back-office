@@ -40,6 +40,11 @@ data class LeaderboardRow(
     val scorePerApiDollar: Double? = scorePerDollar,
     /** ADR 0065: the candidate's model runs on a subscription (Claude Code login): compare it on the API figures. */
     val subscription: Boolean = false,
+    /**
+     * ADR 0069: false when a subscription attempt used tokens but has no API price (0): the API figures are unknown, so
+     * [apiCostPerAccepted] and [scorePerApiDollar] are null and the row is not cheaper than any other.
+     */
+    val apiCostKnown: Boolean = true,
 )
 
 data class TaskLeaderboard(val taskId: EvalTaskId, val taskName: String, val rows: List<LeaderboardRow>)

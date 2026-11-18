@@ -10,6 +10,8 @@ export interface PersonalRunnerStatus {
   /** The pool lets Claude Code use the owner's own login. */
   localLogin: boolean;
   login: LoginReport;
+  /** ADR 0069: what the runner reported about a GitHub Copilot login. */
+  copilotLogin: LoginReport;
   /** Coding agents the online runners reported, sorted. */
   harnesses: string[];
 }
@@ -23,11 +25,15 @@ export function personalRunnerStatus(
   const setUp = !!t?.pools;
   const online = setUp ? (t?.onlineRunners ?? 0) : 0;
   const claudeLogin = online ? t?.claudeLogin : null;
+  const copilotLogin = online ? t?.copilotLogin : null;
+  const report = (v: boolean | null | undefined): LoginReport =>
+    v === true ? 'reported' : v === false ? 'none' : 'unknown';
   return {
     setUp,
     online,
     localLogin: setUp && !!t?.localLogin,
-    login: claudeLogin === true ? 'reported' : claudeLogin === false ? 'none' : 'unknown',
+    login: report(claudeLogin),
+    copilotLogin: report(copilotLogin),
     harnesses: online ? [...(t?.harnesses ?? [])].sort() : [],
   };
 }

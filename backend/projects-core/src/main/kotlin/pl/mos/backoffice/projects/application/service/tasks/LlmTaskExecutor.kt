@@ -105,9 +105,10 @@ class LlmTaskExecutor(
         val result = answer.result
         val structured = answer.structured
         val usage = answer.usage
-        val cost = profile.pricing.costOf(usage)
-        // ADR 0042/0065: at API prices; a login model spends nothing and is worth Claude Code's estimate, else its tokens at API prices
-        val apiCost = if (profile.runtime != ModelRuntime.CLAUDE_CODE_LOGIN) cost
+        // ADR 0069: a login model spends nothing, whatever pricing its profile names
+        val cost = if (profile.runtime.ownLogin) Money.ZERO else profile.pricing.costOf(usage)
+        // ADR 0042/0065: at API prices; a login model spends nothing and is worth its harness's estimate, else its tokens at API prices
+        val apiCost = if (!profile.runtime.ownLogin) cost
         else ApiPricing.costOf(answer.reportedCostUsd, usage) { modelResolver.apiPricing(profile) }
 
         // ADR 0060: an answer that is only {"agentQuestions": [...]} asks the owner instead of answering
@@ -169,7 +170,11 @@ class LlmTaskExecutor(
     /** Calls the model; an invalid review answer gets exactly one repair turn, and stays invalid (fail closed) if that fails too. */
     private fun answerOf(context: NodeContext, task: ResolvedTask, profile: ModelProfileSnapshot, request: LlmRequest): Answer {
         val ref = profile.ref
-        if (profile.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) context.log("Claude Code answers on your own login (personal runner)")
+        when (profile.runtime) {
+            ModelRuntime.CLAUDE_CODE_LOGIN -> context.log("Claude Code answers on your own login (personal runner)")
+            ModelRuntime.COPILOT_LOGIN -> context.log("OpenCode answers on your own GitHub Copilot login (personal runner)")
+            ModelRuntime.API -> Unit
+        }
         val result = llmGateway.chatAs(profile.runtime, ref, request, ownLogin)
         val structured = structuredOf(result, task)
         val initial = Answer(result, structured, result.usage, emptyList())

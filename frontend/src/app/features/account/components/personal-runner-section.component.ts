@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NzButtonModule } from 'ng-zorro-antd/button';
+import { NzCheckboxModule } from 'ng-zorro-antd/checkbox';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
@@ -24,10 +25,12 @@ import { timeAgo } from '../../../core/ui/pipes/time-ago.pipe';
 import { absoluteTime } from '../../../core/ui/relay/format';
 import {
   BUILD_COMMANDS,
+  copilotSetupCommands,
   forShell,
   setupCommands,
-  sortRunners,
   type Shell,
+  sortRunners,
+  withCopilotMount,
 } from '../data/personal-runner';
 
 /**
@@ -37,7 +40,14 @@ import {
  */
 @Component({
   selector: 'app-personal-runner-section',
-  imports: [FormsModule, NzButtonModule, NzIconModule, NzRadioModule, CodeBlockComponent],
+  imports: [
+    FormsModule,
+    NzButtonModule,
+    NzCheckboxModule,
+    NzIconModule,
+    NzRadioModule,
+    CodeBlockComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <p class="intro" i18n="@@account.runner.intro">
@@ -68,11 +78,25 @@ import {
           </label>
         </nz-radio-group>
         @if (credentials() === 'LOCAL_LOGIN') {
-          <p class="warn" i18n="@@account.runner.localLoginWarning">
+          <p class="warn" i18n="@@account.runner.localLoginWarningCopilot">
             Check that your Claude licence allows automated use like this. The login token is
             available to the agent inside the sandbox, so use it only for repositories and issues
-            you trust. OpenCode steps always use the gateway.
+            you trust. OpenCode steps use the gateway, except GitHub Copilot models.
           </p>
+          <label class="copilot" nz-checkbox [(ngModel)]="copilot">
+            <span i18n="@@account.runner.copilot"
+              >Also my GitHub Copilot login (OpenCode) - for GitHub Copilot models, not metered by
+              Back Office</span
+            >
+          </label>
+          @if (copilot()) {
+            <p class="warn" i18n="@@account.runner.copilotWarning">
+              Check that your GitHub Copilot plan allows this use. The runner reads only the GitHub
+              Copilot entry of your OpenCode auth file; OpenCode inside the sandbox gets it, so use
+              it only for repositories and issues you trust. Models must be enabled in your Copilot
+              settings.
+            </p>
+          }
         }
       </fieldset>
 
@@ -173,6 +197,20 @@ import {
               [code]="buildCommands"
             />
           </li>
+          @if (copilotSetup()) {
+            <li>
+              <span i18n="@@account.runner.stepCopilot"
+                >Once: install OpenCode, sign in with GitHub Copilot (opencode auth login, choose
+                GitHub Copilot and confirm the code on github.com), check the auth file path and the
+                models your login can use:</span
+              >
+              <app-code-block
+                label="OpenCode"
+                i18n-label="@@account.runner.copilotLabel"
+                [code]="copilotSetup()"
+              />
+            </li>
+          }
           @if (setup()) {
             <li>
               <span i18n="@@account.runner.stepSecrets"
@@ -222,6 +260,9 @@ import {
       .credentials label {
         display: block;
         margin-bottom: 4px;
+      }
+      .credentials .copilot {
+        margin-top: 8px;
       }
       .warn {
         margin: 8px 0 0;
@@ -342,7 +383,19 @@ export class PersonalRunnerSectionComponent implements OnInit {
     () => this.runner()?.llmCredentials ?? this.wanted(),
   );
   readonly runners = computed<Runner[]>(() => sortRunners(this.runner()?.runners ?? []));
-  readonly command = computed(() => forShell(this.issued()?.dockerCommand ?? '', this.shell()));
+  /** ADR 0069: also mount the OpenCode auth file with the GitHub Copilot login. */
+  readonly copilot = signal(false);
+  readonly command = computed(() => {
+    const base = this.issued()?.dockerCommand ?? '';
+    const withCopilot =
+      this.copilot() && this.credentials() === 'LOCAL_LOGIN'
+        ? withCopilotMount(base, this.shell())
+        : base;
+    return forShell(withCopilot, this.shell());
+  });
+  readonly copilotSetup = computed(() =>
+    this.copilot() && this.credentials() === 'LOCAL_LOGIN' ? copilotSetupCommands() : '',
+  );
   readonly setup = computed(() =>
     setupCommands(this.shell(), this.credentials() === 'LOCAL_LOGIN'),
   );

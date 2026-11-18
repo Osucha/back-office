@@ -10,6 +10,8 @@ data class ProviderSettings(val apiKey: String? = null, val baseUrl: String? = n
 
     /** Ollama needs only a base URL, OPENAI_COMPATIBLE needs URL and key, the rest need a key. */
     fun usableFor(provider: Provider): Boolean = when (provider) {
+        // ADR 0069: GitHub Copilot models run only in OpenCode on a personal runner, never through the gateway
+        Provider.GITHUB_COPILOT -> false
         Provider.OLLAMA -> hasBaseUrl
         Provider.OPENAI_COMPATIBLE -> hasBaseUrl && hasKey
         else -> hasKey

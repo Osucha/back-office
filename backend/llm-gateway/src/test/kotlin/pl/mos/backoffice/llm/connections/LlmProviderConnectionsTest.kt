@@ -129,6 +129,13 @@ class LlmProviderConnectionsTest {
     }
 
     @Test
+    fun `GitHub Copilot is no provider connection, its models run in OpenCode on a personal runner (ADR 0069)`() {
+        assertThatThrownBy { admin.create(LlmProviderCommand("copilot", "Copilot", Provider.GITHUB_COPILOT, apiKey = "gho_FAKE")) }
+            .isInstanceOf(ValidationException::class.java).hasMessageContaining("not an API provider")
+        assertThat(pl.mos.backoffice.llm.gateway.ProviderSettings(apiKey = "k", baseUrl = "u").usableFor(Provider.GITHUB_COPILOT)).isFalse()
+    }
+
+    @Test
     fun `key and type are fixed, keys unique, only admins change, environment endpoints listed read only`() {
         val created = admin.create(LlmProviderCommand("ollama", "Ollama", Provider.OLLAMA, "http://localhost:11434"))
         assertThatThrownBy { admin.create(LlmProviderCommand("ollama", "Again", Provider.OLLAMA, "http://x")) }.isInstanceOf(ValidationException::class.java)

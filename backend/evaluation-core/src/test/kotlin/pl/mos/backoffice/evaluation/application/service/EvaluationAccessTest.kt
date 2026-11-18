@@ -122,7 +122,7 @@ class EvaluationAccessTest {
         every { gateway.isConfigured(any<Provider>()) } returns false
         every { gateway.isConfigured(any<ModelRef>()) } returns false
         val viewer = FakeAccessGuard.permitting("models.view")
-        assertThat(ProviderService(gateway, emptyMap(), viewer).list().map { it.provider }).containsExactlyElementsOf(Provider.entries)
+        assertThat(ProviderService(gateway, emptyMap(), viewer).list().map { it.provider }).containsExactlyElementsOf(Provider.entries.filter { it.viaGateway })
         assertThat(viewer.checked).containsExactly("models.view")
     }
 

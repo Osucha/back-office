@@ -32,6 +32,7 @@ import pl.mos.backoffice.shared.runner.AgentRunner
 import pl.mos.backoffice.shared.runner.RunnerTarget
 import java.util.UUID
 import pl.mos.backoffice.shared.ValidationException
+import pl.mos.backoffice.shared.llm.ApiPricing
 
 /**
  * Model catalogue use cases. Deleting a profile that any benchmark refers to is refused so historical
@@ -51,13 +52,13 @@ class ModelProfileService(
 ) : ManageModelProfiles {
 
     override fun create(command: ProfileCommand): ModelProfile {
-        val personal = command.personal || command.runtime == ModelRuntime.CLAUDE_CODE_LOGIN
+        val personal = command.personal || command.runtime.ownLogin
         guard.require(if (personal) EvaluationPermissions.MODELS_VIEW else EvaluationPermissions.MODELS_MANAGE)
         val user = principal.currentUser()
         val owner = if (personal) user.userId?.value ?: throw ValidationException("a personal model profile needs a signed-in user", "personal") else null
         requireConnectionOwner(command, owner)
         val saved = profiles.save(
-            ModelProfile.create(
+            requireApiPrice(ModelProfile.create(
                 displayName = command.displayName,
                 ref = command.ref,
                 pricing = command.pricing,
@@ -69,7 +70,7 @@ class ModelProfileService(
                 actor = user.actor,
                 runtime = command.runtime,
                 ownerUserId = owner,
-            ),
+            )),
         )
         audit.record(entry("MODEL_PROFILE_CREATE", saved, snapshot(saved)))
         return saved
@@ -80,12 +81,12 @@ class ModelProfileService(
         guard.require(if (existing?.personal == true) EvaluationPermissions.MODELS_VIEW else EvaluationPermissions.MODELS_MANAGE)
         val user = principal.currentUser()
         if (existing == null || !existing.visibleTo(user.userId?.value)) throw NotFoundException("ModelProfile", id)
-        if (!existing.personal && command.runtime == ModelRuntime.CLAUDE_CODE_LOGIN) {
-            throw ValidationException("a platform profile cannot become a Claude Code login profile; create a personal one", "runtime")
+        if (!existing.personal && command.runtime.ownLogin) {
+            throw ValidationException("a platform profile cannot become a login profile (Claude Code or GitHub Copilot); create a personal one", "runtime")
         }
         requireConnectionOwner(command, existing.ownerUserId)
         val saved = profiles.save(
-            existing.update(
+            requireApiPrice(existing.update(
                 displayName = command.displayName,
                 ref = command.ref,
                 pricing = command.pricing,
@@ -96,11 +97,28 @@ class ModelProfileService(
                 now = clock.now(),
                 actor = user.actor,
                 runtime = command.runtime,
-            ),
+            )),
         )
         val changes = diff(existing, saved)
         if (changes.isNotEmpty()) audit.record(entry("MODEL_PROFILE_UPDATE", saved, changes))
         return saved
+    }
+
+    /**
+     * ADR 0069: a GitHub Copilot login profile must have an API price (catalogue, vendor list price, Claude family or its
+     * own input/output pricing), else its attempts would cost 0 at API prices and look free on the leaderboard.
+     */
+    private fun requireApiPrice(profile: ModelProfile): ModelProfile {
+        if (profile.runtime != ModelRuntime.COPILOT_LOGIN) return profile
+        val catalogue = profiles.findAll(enabled = true).filter { it.id != profile.id }.map { it.toSnapshot() }
+        if (ApiPricing.resolve(profile.toSnapshot(), catalogue) != null) return profile
+        val message = "no API price is known for ${profile.ref.modelId}; enter its input and output price per million tokens (USD)"
+        throw ValidationException(
+            listOf(
+                ValidationException.FieldError(PRICING_INPUT_FIELD, message),
+                ValidationException.FieldError(PRICING_OUTPUT_FIELD, message),
+            ),
+        )
     }
 
     override fun get(id: ModelProfileId): ModelProfile {
@@ -146,7 +164,7 @@ class ModelProfileService(
     }
 
     private fun probe(profile: ModelProfile, userId: UUID?): ModelTestResult {
-        val result = if (profile.viaClaudeCodeLogin) loginCheck(userId) else callModel(profile, userId)
+        val result = if (profile.viaOwnLogin) loginCheck(userId, profile.runtime) else callModel(profile, userId)
         audit.record(
             entry("MODEL_TEST", profile, mapOf("model" to profile.ref.label, "ok" to result.ok, "latencyMs" to result.latencyMs, "error" to result.error))
                 .copy(result = if (result.ok) AuditResult.SUCCESS else AuditResult.FAILURE),
@@ -154,22 +172,35 @@ class ModelProfileService(
         return result
     }
 
-    /** ADR 0048: a Claude Code login model needs the caller's personal runner with their own login, online. */
-    private fun loginCheck(userId: UUID?): ModelTestResult {
+    /**
+     * ADR 0048: a Claude Code login model needs the caller's personal runner with their own login, online. ADR 0069: a
+     * GitHub Copilot login model the same with a Copilot login; whether Copilot offers the model to this user shows only
+     * when it answers (models must be enabled in the user's Copilot settings).
+     */
+    private fun loginCheck(userId: UUID?, runtime: ModelRuntime): ModelTestResult {
         val personal = runner?.executionTargets(userId)?.firstOrNull { it.target == RunnerTarget.PERSONAL }
+        val copilot = runtime == ModelRuntime.COPILOT_LOGIN
         val error = when {
-            personal == null || !personal.exists -> "you have no personal runner; set one up under My account, Claude Code login models run there"
+            personal == null || !personal.exists -> "you have no personal runner; set one up under My account, login models run there"
+            !personal.localLogin && copilot -> "your personal runner does not use your own logins; switch its LLM credentials to own login under My account"
             !personal.localLogin -> "your personal runner does not use your own Claude Code login; switch its LLM credentials to Claude Code login under My account"
             personal.onlineRunners == 0 -> "your personal runner is offline; start it before the benchmark"
-            personal.claudeLogin == false -> "your personal runner is online but has no Claude login; start it with -e CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)"
+            copilot && personal.copilotLogin == false -> PersonalLoginModelsService.COPILOT_LOGIN_MISSING
+            !copilot && personal.claudeLogin == false -> "your personal runner is online but has no Claude login; start it with -e CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)"
             else -> null
+        }
+        val sample = when {
+            error != null -> null
+            copilot -> "OpenCode with your own GitHub Copilot login on your personal runner; the model answers in the benchmark " +
+                "(it must be enabled in your Copilot settings)"
+            else -> "Claude Code with your own login on your personal runner; the model answers in the benchmark"
         }
         return ModelTestResult(
             ok = error == null,
             latencyMs = 0,
             usage = TokenUsage.ZERO,
             cost = Money.ZERO,
-            sample = if (error == null) "Claude Code with your own login on your personal runner; the model answers in the benchmark" else null,
+            sample = sample,
             error = error,
         )
     }
@@ -222,6 +253,10 @@ class ModelProfileService(
 
     companion object {
         const val TEST_PROMPT = "Reply with the single word OK."
+
+        /** ADR 0069: the fields of a Copilot login profile without a known API price. */
+        const val PRICING_INPUT_FIELD = "pricing.inputPerMTok"
+        const val PRICING_OUTPUT_FIELD = "pricing.outputPerMTok"
         const val TEST_MAX_TOKENS = 64
         const val MAX_PREFLIGHT = 20
 
@@ -273,7 +308,7 @@ class ProviderService(
 ) : ListProviders {
     override fun list(): List<ListProviders.ProviderStatus> {
         guard.require(EvaluationPermissions.MODELS_VIEW)
-        return Provider.entries.map { provider ->
+        return Provider.entries.filter { it.viaGateway }.map { provider ->
             ListProviders.ProviderStatus(
                 provider = provider,
                 configured = gateway.isConfigured(provider),

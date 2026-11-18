@@ -140,6 +140,33 @@ po czasach.
 Token subskrypcji (`sk-ant-oat...`, z `claude setup-token`) nie jest kluczem API: połączenie z dostawcą
 Anthropic go odrzuca.
 
+<a id="copilot-login"></a>
+### GitHub Copilot z własnym logowaniem
+
+Z subskrypcją GitHub Copilot i osobistym runnerem przygotowanym do niej
+([GitHub Copilot z własnym logowaniem](personal-runner.md#copilot)) modele oferowane przez Copilot mogą być
+kandydatami w benchmarkach. W sekcji **Dostępne u dostawców** (**Available from providers**) źródło **GitHub Copilot
+(Twoje logowanie)** (**GitHub Copilot (your login)**) oferuje kilka z nich; każdy inny identyfikator modelu Copilot
+(listę wypisuje `opencode models github-copilot` na Twoim komputerze) można wpisać w nowym profilu z **Działa przez:
+GitHub Copilot (moje logowanie)** (**Runs through: GitHub Copilot (my login)**). Taki profil, oznaczony **Logowanie
+GitHub Copilot** (**GitHub Copilot login**):
+
+- działa jako OpenCode na osobistym runnerze osoby, która tworzy benchmark albo uruchamia workflow, z jej logowaniem
+  Copilot; w benchmarku dla zadań programistycznych musi być modelem agenta **OpenCode** (z **Moim osobistym
+  runnerem** jako miejscem wykonania), a na zadania typu prompt i kroki LLM odpowiada jedną odpowiedzią (OpenCode bez
+  narzędzi);
+- **nigdy nie ocenia**: jako model oceniający wybierz model API albo model z logowaniem Claude Code;
+- działa tylko w Twoich prywatnych projektach i własnych benchmarkach, nie wydaje nic przez Back Office (koszt
+  wydany 0);
+- jest wyceniany w cenach API według cennika dostawcy modelu (najpierw ten sam model w katalogu), więc ranking może
+  porównać go z kandydatami API. Gdy Back Office nie zna ceny dla identyfikatora modelu, zapis profilu prosi o
+  wpisanie ceny wejścia i wyjścia za milion tokenów; kandydat, którego cena zniknie później, ma koszt pokazany jako
+  kreska (nieznany) i nigdy nie jest uznany za najtańszego;
+- musi być włączony w ustawieniach Copilot, inaczej jego próby kończą się błędem ze wskazówką, gdzie go włączyć.
+
+**Testuj profil** (**Test profile**) i **Sprawdź modele** (**Check models**) sprawdzają, czy Twój osobisty runner
+zgłosił Twoje logowanie Copilot i jest online; nie wywołują modelu.
+
 <a id="suites"></a>
 ## Zestawy zadań
 

@@ -72,7 +72,8 @@ object RunnerPermissions {
  * How coding agents of a pool reach the models (ADR 0040). `GATEWAY`: through the Back Office LLM gateway with the
  * job's agent token (metered, budgets apply). `LOCAL_LOGIN`: personal pools only; Claude Code uses the login of the
  * runner's owner (`CLAUDE_CODE_OAUTH_TOKEN` on their runner-controller) and talks to Anthropic directly; nothing
- * is metered by Back Office. Other harnesses (OpenCode) always use the gateway.
+ * is metered by Back Office. OpenCode uses the gateway, except for GitHub Copilot models (ADR 0069): those it calls with
+ * the owner's own Copilot login (their OpenCode auth file mounted into the runner-controller).
  */
 enum class LlmCredentials { GATEWAY, LOCAL_LOGIN }
 
@@ -129,8 +130,11 @@ data class RunnerPool(
     companion object {
         val ID = Regex("^[a-z][a-z0-9-]{1,39}$")
 
-        /** Hosts a LOCAL_LOGIN sandbox must reach besides the API: Claude Code's own endpoint. */
-        val LOCAL_LOGIN_HOSTS = listOf("api.anthropic.com")
+        /**
+         * Hosts a LOCAL_LOGIN sandbox must reach besides the API: Claude Code's own endpoint and (ADR 0069) the GitHub
+         * Copilot API OpenCode calls with the owner's Copilot login (a GitHub Enterprise host is added by the controller).
+         */
+        val LOCAL_LOGIN_HOSTS = listOf("api.anthropic.com", "api.githubcopilot.com")
 
         /** Id of the personal pool of [userId]: `personal-` + 24 hex digits of the user id. */
         fun personalId(userId: UUID): String = "personal-" + userId.toString().replace("-", "").take(24)
@@ -153,6 +157,8 @@ data class RunnerNode(
     val harnesses: List<String>? = null,
     /** ADR 0050 step 3: whether a Claude login is set for personal-runner jobs; null = not reported. */
     val claudeLogin: Boolean? = null,
+    /** ADR 0069: whether a GitHub Copilot login is set for personal-runner jobs; null = not reported. */
+    val copilotLogin: Boolean? = null,
     /** ADR 0051: the controller's X25519 public key (base64, 32 bytes) tokens are sealed to; null = none registered. */
     val publicKey: String? = null,
 ) {

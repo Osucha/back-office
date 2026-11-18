@@ -27,10 +27,11 @@ interface ModelProfileRepository {
 
     /**
      * ADR 0065: what [profile]'s tokens are worth at API prices: for a Claude Code login profile the pricing of the
-     * enabled API profile of the same Claude family ([ApiPricing]), else its own pricing.
+     * enabled API profile of the same Claude family, for a Copilot login profile (ADR 0069) the underlying model's API
+     * price ([ApiPricing]), else its own pricing.
      */
     fun apiPricingOf(profile: ModelProfile): Pricing =
-        if (!profile.viaClaudeCodeLogin) profile.pricing
+        if (!profile.viaOwnLogin) profile.pricing
         else ApiPricing.of(profile.toSnapshot(), findAll(enabled = true).map { it.toSnapshot() })
 }
 

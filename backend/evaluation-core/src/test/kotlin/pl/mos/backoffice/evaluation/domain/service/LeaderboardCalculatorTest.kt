@@ -77,6 +77,29 @@ class LeaderboardCalculatorTest {
     }
 
     @Test
+    fun `ADR 0069 - a subscription attempt with tokens but no API price leaves the API figures unknown`() {
+        val tokens = pl.mos.backoffice.shared.llm.TokenUsage(1000, 200)
+        val attempts = listOf(
+            Fixtures.attempt(benchmarkId, analysis, a, score = 90.0, passed = true, cost = Money.ZERO).copy(apiCost = Money.ZERO, usage = tokens),
+            Fixtures.attempt(benchmarkId, analysis, b, score = 80.0, passed = true, cost = Money.ZERO).copy(apiCost = Money.usd("0.30"), usage = tokens),
+            // a failed attempt that used no tokens is a known zero
+            Fixtures.attempt(benchmarkId, review, b, status = AttemptStatus.FAILED, score = null, passed = null, cost = Money.ZERO)
+                .copy(apiCost = Money.ZERO, usage = pl.mos.backoffice.shared.llm.TokenUsage.ZERO),
+        )
+        val rows = LeaderboardCalculator.rows(attempts, subscriptionModels = setOf(a.id, b.id)).associateBy { it.modelProfileId }
+
+        val unknown = rows.getValue(a.id)
+        assertThat(unknown.apiCostKnown).isFalse()
+        assertThat(unknown.apiCostPerAccepted).describedAs("never the cheapest").isNull()
+        assertThat(unknown.scorePerApiDollar).isNull()
+        val known = rows.getValue(b.id)
+        assertThat(known.apiCostKnown).isTrue()
+        assertThat(known.apiCostPerAccepted).isEqualTo(Money.usd("0.30"))
+        // a gateway candidate's zero is a real zero
+        assertThat(LeaderboardCalculator.rows(attempts.take(1)).single().apiCostKnown).isTrue()
+    }
+
+    @Test
     fun `ADR 0065 - without a passed attempt there is no API cost per accepted result`() {
         val row = LeaderboardCalculator.rows(
             listOf(Fixtures.attempt(benchmarkId, analysis, a, score = 20.0, passed = false).copy(apiCost = Money.usd("0.20"))),

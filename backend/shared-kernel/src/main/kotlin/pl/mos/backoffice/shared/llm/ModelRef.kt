@@ -1,7 +1,16 @@
 package pl.mos.backoffice.shared.llm
 
-/** LLM vendors supported by the gateway. `OPENAI_COMPATIBLE` covers OpenRouter, Groq, vLLM and similar. */
-enum class Provider { ANTHROPIC, OPENAI, GOOGLE, MISTRAL, OLLAMA, OPENAI_COMPATIBLE }
+/**
+ * LLM vendors supported by the gateway. `OPENAI_COMPATIBLE` covers OpenRouter, Groq, vLLM and similar.
+ * [GITHUB_COPILOT] (ADR 0069) is not a gateway provider: it names the models of a GitHub Copilot subscription, which
+ * only OpenCode on the user's personal runner calls, with the user's own Copilot login ([ModelRuntime.COPILOT_LOGIN]).
+ */
+enum class Provider {
+    ANTHROPIC, OPENAI, GOOGLE, MISTRAL, OLLAMA, OPENAI_COMPATIBLE, GITHUB_COPILOT;
+
+    /** ADR 0069: the LLM gateway can call this provider (with a connection); false for [GITHUB_COPILOT]. */
+    val viaGateway: Boolean get() = this != GITHUB_COPILOT
+}
 
 /**
  * Vendor-neutral reasoning depth. The gateway maps it per provider:

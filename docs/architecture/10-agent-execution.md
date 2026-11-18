@@ -653,7 +653,24 @@ there. The pool is served by a runner-controller with the DOCKER backend on the 
 else `local-login: ...` failure) writes the login as bundle file `claude-login-token`; the runner consumes and
 deletes it, starts Claude Code with `CLAUDE_CODE_OAUTH_TOKEN` and without gateway URL/token, and reports
 `usage.billing = SUBSCRIPTION`. Such a step costs 0 in runs and budgets; the estimate stays on the agent job.
-OpenCode jobs of the pool use the gateway as usual.
+OpenCode jobs of the pool use the gateway as usual, except jobs with a GitHub Copilot model.
+
+**GitHub Copilot on the own login (ADR 0069).** A model of provider `GITHUB_COPILOT` (profile runtime
+`COPILOT_LOGIN`) runs only in OpenCode on a LOCAL_LOGIN personal pool. The owner signs in once with
+`opencode auth login` (GitHub Copilot device flow), which stores `{"github-copilot": {"type": "oauth", "refresh":
+<GitHub token>, "access": ..., "expires": 0}}` in OpenCode's `auth.json`, and mounts that file read-only into the
+runner-controller (`runner-controller.copilot-login.auth-file`, `RUNNER_COPILOT_AUTH_FILE`, default
+`/var/run/backoffice/opencode-auth.json`). The controller reports `copilotLogin` with every lease (agent-runner V58,
+`ExecutionTarget.copilotLogin`) and, for an assignment with `spec.model.provider = GITHUB_COPILOT`, `agent =
+OPENCODE` and `llmCredentials = LOCAL_LOGIN` (else `local-login: ...` failure), writes only the `github-copilot` entry
+as bundle file `copilot-login` and allows its host (`api.githubcopilot.com`, `copilot-api.<domain>` for GitHub
+Enterprise). The runner consumes and deletes the file, redacts its tokens and passes it only to the OpenCode process
+as `OPENCODE_AUTH_CONTENT` (OpenCode reads it instead of `auth.json`); `opencode.json` names the built-in
+`github-copilot` provider and no gateway. The result has `billing = SUBSCRIPTION` and no `costUsd` (OpenCode's figure
+for Copilot models is not an API price); Back Office prices the tokens with `ApiPricing`. A failure that may come
+from the user's Copilot settings (a model not enabled) gets a hint in the error. PROMPT jobs of a Copilot model run
+`opencode run --agent backoffice-answer` with the prompt on stdin; the agent's prompt is the system message, every
+tool is denied and it has one step.
 
 ## Agent Sandbox prerequisites
 
